@@ -1,0 +1,27 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout git repo
+        uses: actions/checkout@v6
+
+      - name: Install Node and NPM
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install and build
+        run: npm ci
+
+      - name: Publish Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run publish
