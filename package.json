@@ -48,7 +48,7 @@
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^4.7.0",
     "babel-plugin-react-compiler": "1.0.0",
-    "electron": "^33.4.11",
+    "electron": "^39.2.4",
     "electron-devtools-installer": "^4.0.0",
     "electron-playwright-helpers": "^1.8.2",
     "eslint": "^9.39.1",
