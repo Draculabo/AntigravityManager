@@ -46,7 +46,7 @@
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^5.1.1",
     "babel-plugin-react-compiler": "1.0.0",
     "electron": "^33.4.11",
     "electron-devtools-installer": "^4.0.0",
