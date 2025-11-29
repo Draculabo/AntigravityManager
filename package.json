@@ -33,7 +33,7 @@
     "@electron-forge/publisher-github": "^7.10.2",
     "@electron-forge/shared-types": "^7.8.1",
     "@electron/fuses": "~1.8.0",
-    "@eslint/compat": "^1.4.1",
+    "@eslint/compat": "^2.0.0",
     "@eslint/js": "^9.39.0",
     "@playwright/test": "^1.56.1",
     "@tanstack/router-plugin": "^1.135.0",
