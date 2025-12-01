@@ -1,0 +1,5 @@
+ignoredBuiltDependencies:
+  - better-sqlite3
+  - electron
+  - electron-winstaller
+  - esbuild
