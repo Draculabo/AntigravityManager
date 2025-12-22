@@ -96,7 +96,7 @@
     "date-fns": "^4.1.0",
     "electron-squirrel-startup": "^1.0.1",
     "happy-dom": "^20.0.10",
-    "i18next": "^25.6.3",
+    "i18next": "^25.7.3",
     "i18next-browser-languagedetector": "^8.2.0",
     "keytar": "^7.9.0",
     "lucide-react": "^0.553.0",
