@@ -65,7 +65,7 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3",
-    "vite": "^5.4.21",
+    "vite": "^7.3.0",
     "vitest": "^4.0.8"
   },
   "dependencies": {
