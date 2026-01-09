@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { GeminiRequest, GeminiResponse } from '../interfaces/request-interfaces';
+import { GeminiInternalRequest } from '../../../../lib/antigravity/types';
 
 @Injectable()
 export class GeminiClient {
@@ -55,5 +56,57 @@ export class GeminiClient {
       }
       throw error;
     }
+  }
+
+  // --- Antigravity Internal API Support ---
+
+  private readonly internalBaseUrl = 'https://cloudcode-pa.googleapis.com/v1internal';
+
+  async streamGenerateInternal(body: GeminiInternalRequest, accessToken: string): Promise<any> {
+    const url = `${this.internalBaseUrl}:streamGenerateContent?alt=sse`;
+    try {
+      const response = await axios.post(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'antigravity/1.11.9 windows/amd64',
+        },
+        responseType: 'stream',
+        timeout: 60000,
+      });
+      return response.data;
+    } catch (error) {
+      this.handleAxiosError(error, 'StreamInternal');
+      throw error;
+    }
+  }
+
+  async generateInternal(body: GeminiInternalRequest, accessToken: string): Promise<any> {
+    const url = `${this.internalBaseUrl}:generateContent`;
+    try {
+      const response = await axios.post(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'antigravity/1.11.9 windows/amd64',
+        },
+        timeout: 60000,
+      });
+      // v1internal API wraps the response in a 'response' field, unwrap it
+      return response.data.response || response.data;
+    } catch (error) {
+      this.handleAxiosError(error, 'GenerateInternal');
+      throw error;
+    }
+  }
+
+  private handleAxiosError(error: any, context: string) {
+    if (axios.isAxiosError(error)) {
+      this.logger.error(
+        `Gemini ${context} API Error: ${error.message} - ${JSON.stringify(error.response?.data)}`,
+      );
+      throw new Error(error.response?.data?.error?.message || error.message);
+    }
+    throw error;
   }
 }

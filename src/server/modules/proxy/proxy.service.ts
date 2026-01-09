@@ -1,8 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { TokenManagerService } from './token-manager.service';
 import { GeminiClient } from './clients/gemini.client';
 import { v4 as uuidv4 } from 'uuid';
 import { Observable } from 'rxjs';
+import { transformClaudeRequestIn } from '../../../lib/antigravity/ClaudeRequestMapper';
+import { transformResponse } from '../../../lib/antigravity/ClaudeResponseMapper';
+import { StreamingState, PartProcessor } from '../../../lib/antigravity/ClaudeStreamingMapper';
+import { ClaudeRequest } from '../../../lib/antigravity/types';
 import {
   OpenAIChatRequest,
   AnthropicChatRequest,
@@ -22,8 +26,8 @@ export class ProxyService {
   private readonly logger = new Logger(ProxyService.name);
 
   constructor(
-    private readonly tokenManager: TokenManagerService,
-    private readonly geminiClient: GeminiClient,
+    @Inject(TokenManagerService) private readonly tokenManager: TokenManagerService,
+    @Inject(GeminiClient) private readonly geminiClient: GeminiClient,
   ) {}
 
   // --- Anthropic Handlers ---
@@ -47,23 +51,24 @@ export class ProxyService {
       }
 
       try {
-        // Convert Anthropic -> Gemini
-        const geminiRequest = this.convertAnthropicToGemini(request);
+        // Use Antigravity Mapper
+        const projectId = token.token.project_id!;
+        const geminiBody = transformClaudeRequestIn(request as unknown as ClaudeRequest, projectId);
+        // Antigravity mapper determines the final model (e.g. gemini-2.5-flash) based on input
+        // We trust its judgment (it handles logic for online/image models)
 
         if (request.stream) {
-          const stream = await this.geminiClient.streamGenerate(
-            targetModel,
-            geminiRequest,
+          const stream = await this.geminiClient.streamGenerateInternal(
+            geminiBody,
             token.token.access_token,
           );
-          return this.processAnthropicStreamResponse(stream, request.model);
+          return this.processAnthropicInternalStream(stream, geminiBody.model);
         } else {
-          const response = await this.geminiClient.generate(
-            targetModel,
-            geminiRequest,
+          const response = await this.geminiClient.generateInternal(
+            geminiBody,
             token.token.access_token,
           );
-          return this.convertGeminiToAnthropicResponse(response, request.model);
+          return transformResponse(response) as unknown as AnthropicChatResponse;
         }
       } catch (error) {
         lastError = error;
@@ -78,6 +83,7 @@ export class ProxyService {
     throw lastError || new Error('Request failed after retries');
   }
 
+  // Old converter kept for reference or other uses
   private convertAnthropicToGemini(request: AnthropicChatRequest): GeminiRequest {
     const contents: GeminiContent[] = [];
     let systemInstruction: { parts: GeminiPart[] } | undefined = undefined;
@@ -127,12 +133,10 @@ export class ProxyService {
         topP: request.top_p,
         topK: request.top_k,
       },
-      // Note: Rust version handles 'pending_images' logic here, but for now we assume simple text/image structure.
-      // If we need to support image injection from history to user msg, that logic needs to be ported too.
-      // Current port matches previous 'any' style logic but with types.
     };
   }
 
+  // Old response converter
   private convertGeminiToAnthropicResponse(
     geminiResponse: GeminiResponse,
     model: string,
@@ -157,36 +161,16 @@ export class ProxyService {
     };
   }
 
-  private processAnthropicStreamResponse(upstreamStream: any, model: string): Observable<string> {
+  private processAnthropicInternalStream(upstreamStream: any, model: string): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
       let buffer = '';
-      const msgId = `msg_${uuidv4()}`;
 
-      // Send Message Start
-      subscriber.next(
-        `event: message_start\ndata: ${JSON.stringify({
-          type: 'message_start',
-          message: {
-            id: msgId,
-            type: 'message',
-            role: 'assistant',
-            content: [],
-            model: model,
-            stop_reason: null,
-            stop_sequence: null,
-            usage: { input_tokens: 0, output_tokens: 0 },
-          },
-        })}\n\n`,
-      );
+      const state = new StreamingState();
+      const processor = new PartProcessor(state);
 
-      subscriber.next(
-        `event: content_block_start\ndata: ${JSON.stringify({
-          type: 'content_block_start',
-          index: 0,
-          content_block: { type: 'text', text: '' },
-        })}\n\n`,
-      );
+      let lastFinishReason: string | undefined;
+      let lastUsageMetadata: any | undefined;
 
       upstreamStream.on('data', (chunk: Buffer) => {
         buffer += decoder.decode(chunk, { stream: true });
@@ -201,45 +185,35 @@ export class ProxyService {
 
           try {
             const json = JSON.parse(dataStr);
-            const candidate = json.candidates?.[0];
-            const contentPart = candidate?.content?.parts?.[0];
-            const text = contentPart?.text || '';
 
-            if (text) {
-              subscriber.next(
-                `event: content_block_delta\ndata: ${JSON.stringify({
-                  type: 'content_block_delta',
-                  index: 0,
-                  delta: { type: 'text_delta', text: text },
-                })}\n\n`,
-              );
+            if (json) {
+              const startMsg = state.emitMessageStart(json);
+              if (startMsg) subscriber.next(startMsg);
             }
-          } catch (e) {}
+
+            const candidate = json.candidates?.[0];
+            const part = candidate?.content?.parts?.[0];
+
+            if (candidate?.finishReason) {
+              lastFinishReason = candidate.finishReason;
+            }
+            if (json.usageMetadata) {
+              lastUsageMetadata = json.usageMetadata;
+            }
+
+            if (part) {
+              const chunks = processor.process(part as any);
+              chunks.forEach((c) => subscriber.next(c));
+            }
+          } catch (e) {
+            this.logger.error('Stream parse error', e);
+          }
         }
       });
 
       upstreamStream.on('end', () => {
-        subscriber.next(
-          `event: content_block_stop\ndata: ${JSON.stringify({
-            type: 'content_block_stop',
-            index: 0,
-          })}\n\n`,
-        );
-
-        subscriber.next(
-          `event: message_delta\ndata: ${JSON.stringify({
-            type: 'message_delta',
-            delta: { stop_reason: 'end_turn', stop_sequence: null },
-            usage: { output_tokens: 0 },
-          })}\n\n`,
-        );
-
-        subscriber.next(
-          `event: message_stop\ndata: ${JSON.stringify({
-            type: 'message_stop',
-          })}\n\n`,
-        );
-
+        const finishChunks = state.emitFinish(lastFinishReason, lastUsageMetadata);
+        finishChunks.forEach((c) => subscriber.next(c));
         subscriber.complete();
       });
 
@@ -269,24 +243,31 @@ export class ProxyService {
       }
 
       try {
-        // 2. Convert Request
-        const geminiRequest = this.convertOpenAIToGemini(request);
+        // Convert OpenAI request to Claude format for Antigravity pipeline
+        const claudeRequest = this.convertOpenAIToClaude(request);
+        const projectId = token.token.project_id!;
+        const geminiBody = transformClaudeRequestIn(
+          claudeRequest as unknown as ClaudeRequest,
+          projectId,
+        );
 
-        // 3. Handle Stream vs Non-Stream
+        // Use v1internal API (same as Anthropic handler)
         if (request.stream) {
-          const stream = await this.geminiClient.streamGenerate(
-            targetModel,
-            geminiRequest,
+          const stream = await this.geminiClient.streamGenerateInternal(
+            geminiBody,
             token.token.access_token,
           );
           return this.processStreamResponse(stream, request.model);
         } else {
-          const response = await this.geminiClient.generate(
-            targetModel,
-            geminiRequest,
+          const response = await this.geminiClient.generateInternal(
+            geminiBody,
             token.token.access_token,
           );
-          return this.convertGeminiToOpenAIResponse(response, request.model);
+          this.logger.log(`Raw Gemini Response: ${JSON.stringify(response).substring(0, 500)}`);
+          // Transform Gemini response to OpenAI format
+          const claudeResponse = transformResponse(response);
+          this.logger.log(`Claude Response: ${JSON.stringify(claudeResponse).substring(0, 500)}`);
+          return this.convertClaudeToOpenAIResponse(claudeResponse, request.model);
         }
       } catch (error) {
         lastError = error;
@@ -467,6 +448,87 @@ export class ProxyService {
       content: {
         ...candidate.content,
         parts: newParts,
+      },
+    };
+  }
+
+  // Convert OpenAI request format to Claude/Anthropic format
+  private convertOpenAIToClaude(request: OpenAIChatRequest): AnthropicChatRequest {
+    const messages = request.messages || [];
+    let systemPrompt: string | undefined;
+    const anthropicMessages: { role: string; content: string }[] = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        // Extract system message
+        if (typeof msg.content === 'string') {
+          systemPrompt = msg.content;
+        }
+      } else {
+        let textContent = '';
+        if (Array.isArray(msg.content)) {
+          textContent = msg.content
+            .filter((p: OpenAIContentPart) => p.type === 'text')
+            .map((p: OpenAIContentPart) => p.text || '')
+            .join('\n');
+        } else {
+          textContent = msg.content;
+        }
+
+        anthropicMessages.push({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: textContent,
+        });
+      }
+    }
+
+    return {
+      model: request.model,
+      messages: anthropicMessages,
+      system: systemPrompt,
+      max_tokens: request.max_tokens || 4096,
+      temperature: request.temperature,
+      top_p: request.top_p,
+      stream: request.stream,
+    };
+  }
+
+  // Convert Claude response to OpenAI format
+  private convertClaudeToOpenAIResponse(claudeResponse: any, model: string): OpenAIChatResponse {
+    // Extract text content from Claude response
+    const content =
+      claudeResponse.content
+        ?.filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text)
+        .join('') || '';
+
+    const finishReason =
+      claudeResponse.stop_reason === 'end_turn'
+        ? 'stop'
+        : claudeResponse.stop_reason === 'max_tokens'
+          ? 'length'
+          : 'stop';
+
+    return {
+      id: `chatcmpl-${uuidv4()}`,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: content,
+          },
+          finish_reason: finishReason,
+        },
+      ],
+      usage: {
+        prompt_tokens: claudeResponse.usage?.input_tokens || 0,
+        completion_tokens: claudeResponse.usage?.output_tokens || 0,
+        total_tokens:
+          (claudeResponse.usage?.input_tokens || 0) + (claudeResponse.usage?.output_tokens || 0),
       },
     };
   }

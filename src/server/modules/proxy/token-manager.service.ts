@@ -65,7 +65,6 @@ export class TokenManagerService implements OnModuleInit {
   }
 
   private generateSessionId(): string {
-    // Match the Rust implementation's session ID format
     const min = 1_000_000_000_000_000_000n;
     const max = 9_000_000_000_000_000_000n;
     const range = max - min;
