@@ -192,7 +192,7 @@ function SettingsPage() {
                 <div className="font-medium capitalize">{platform || 'Unknown'}</div>
 
                 <div className="text-muted-foreground">{t('settings.license')}</div>
-                <div className="font-medium">MIT</div>
+                <div className="font-medium">CC BY-NC-SA 4.0</div>
               </div>
             </CardContent>
           </Card>

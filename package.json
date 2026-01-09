@@ -22,7 +22,7 @@
     "type-check": "tsc --noEmit"
   },
   "author": "Draculabo",
-  "license": "MIT",
+  "license": "CC-BY-NC-SA-4.0",
   "devDependencies": {
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-deb": "^7.10.2",
