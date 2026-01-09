@@ -13,8 +13,12 @@ export const startGateway = async (port: number): Promise<boolean> => {
   try {
     // Stop if already running
     await stopNestServer();
-    // Start NestJS server
-    return await bootstrapNestServer(port);
+
+    // Load full config and start NestJS server
+    const config = ConfigManager.loadConfig();
+    const proxyConfig = { ...config.proxy, port };
+
+    return await bootstrapNestServer(proxyConfig);
   } catch (e) {
     console.error('Failed to start gateway:', e);
     return false;

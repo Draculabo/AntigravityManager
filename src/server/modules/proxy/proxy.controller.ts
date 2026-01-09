@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Res, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Res, HttpStatus, UseGuards, Inject } from '@nestjs/common';
 import { FastifyReply } from 'fastify';
 import { ProxyService } from './proxy.service';
 import { Observable } from 'rxjs';
@@ -8,7 +8,7 @@ import { ProxyGuard } from './proxy.guard';
 @Controller('v1')
 @UseGuards(ProxyGuard)
 export class ProxyController {
-  constructor(private readonly proxyService: ProxyService) {}
+  constructor(@Inject(ProxyService) private readonly proxyService: ProxyService) {}
 
   @Get('models')
   getModels() {
