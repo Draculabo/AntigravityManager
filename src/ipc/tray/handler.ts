@@ -41,7 +41,11 @@ export function initTray(mainWindow: BrowserWindow) {
 
   // PATCH 3: Destroy existing tray before creating new one (prevents zombie tray icons)
   if (tray) {
-    tray.destroy();
+    try {
+      tray.destroy();
+    } catch (e) {
+      logger.error('Failed to destroy existing tray', e);
+    }
     tray = null;
     logger.info('Destroyed existing tray before creating new one');
   }
@@ -52,6 +56,13 @@ export function initTray(mainWindow: BrowserWindow) {
     : path.join(process.resourcesPath, 'assets/tray.png');
 
   const icon = nativeImage.createFromPath(iconPath);
+
+  // Verify icon is valid before creating tray
+  if (icon.isEmpty()) {
+    logger.error(`Tray icon not found or invalid at path: ${iconPath}`);
+    return;
+  }
+
   tray = new Tray(icon);
   tray.setToolTip('Antigravity Manager');
 
@@ -169,7 +180,11 @@ export function setTrayLanguage(lang: string) {
 
 export function destroyTray() {
   if (tray) {
-    tray.destroy();
+    try {
+      tray.destroy();
+    } catch (e) {
+      logger.error('Failed to destroy tray', e);
+    }
     tray = null;
     logger.info('Tray destroyed');
   }

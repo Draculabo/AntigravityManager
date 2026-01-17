@@ -193,14 +193,18 @@ export async function closeAntigravity(): Promise<void> {
       if (p.cmd.includes('Antigravity Manager') || p.cmd.includes('antigravity-manager')) {
         return false;
       }
-      // Match Antigravity
+      // Match Antigravity (but not manager)
       if (platform === 'win32') {
         return (
           p.cmd.includes('Antigravity.exe') ||
           (p.cmd.includes('antigravity') && !p.cmd.includes('manager'))
         );
       } else {
-        return p.cmd.includes('Antigravity') || p.cmd.includes('antigravity');
+        // Explicit !manager check for Linux/macOS to be defensive
+        return (
+          (p.cmd.includes('Antigravity') || p.cmd.includes('antigravity')) &&
+          !p.cmd.includes('manager')
+        );
       }
     });
 

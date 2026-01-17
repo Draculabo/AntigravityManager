@@ -156,7 +156,11 @@ app.on('before-quit', () => {
 
 app.on('will-quit', (event) => {
   logger.info('App will quit event triggered');
-  destroyTray();
+  try {
+    destroyTray();
+  } catch (err) {
+    logger.error('Failed to destroy tray during will-quit', err);
+  }
 });
 
 app.on('quit', (event, exitCode) => {
