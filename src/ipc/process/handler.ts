@@ -25,7 +25,7 @@ export async function isProcessRunning(): Promise<boolean> {
       command = `${cmd} /FI "IMAGENAME eq Antigravity.exe" /NH`;
     } else {
       // macOS and Linux (native)
-      command = 'pgrep -x Antigravity';
+      command = 'pgrep -xi Antigravity';
     }
 
     logger.debug(`Checking process with command: ${command}`);
@@ -189,8 +189,8 @@ export async function closeAntigravity(): Promise<void> {
       if (p.pid === currentPid) {
         return false;
       }
-      // Exclude this electron app (if named Antigravity Manager)
-      if (p.cmd.includes('Antigravity Manager')) {
+      // Exclude this electron app (if named Antigravity Manager or antigravity-manager)
+      if (p.cmd.includes('Antigravity Manager') || p.cmd.includes('antigravity-manager')) {
         return false;
       }
       // Match Antigravity

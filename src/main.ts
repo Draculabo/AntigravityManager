@@ -14,7 +14,7 @@ import { CloudMonitorService } from './services/CloudMonitorService';
 // Static Imports to fix Bundle Resolution Errors
 import { AuthServer } from './ipc/cloud/authServer';
 import { bootstrapNestServer, stopNestServer } from './server/main';
-import { initTray, setTrayLanguage } from './ipc/tray/handler';
+import { initTray, setTrayLanguage, destroyTray } from './ipc/tray/handler';
 import { rpcHandler } from './ipc/handler';
 import { ConfigManager } from './ipc/config/manager';
 
@@ -149,8 +149,14 @@ app.on('child-process-gone', (event, details) => {
   logger.error('Child process gone:', details);
 });
 
+app.on('before-quit', () => {
+  isQuitting = true;
+  logger.info('App before-quit event triggered - isQuitting set to true');
+});
+
 app.on('will-quit', (event) => {
   logger.info('App will quit event triggered');
+  destroyTray();
 });
 
 app.on('quit', (event, exitCode) => {

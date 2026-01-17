@@ -38,6 +38,14 @@ function getQuotaText(account: CloudAccount | null, texts: any): string[] {
 
 export function initTray(mainWindow: BrowserWindow) {
   globalMainWindow = mainWindow;
+
+  // PATCH 3: Destroy existing tray before creating new one (prevents zombie tray icons)
+  if (tray) {
+    tray.destroy();
+    tray = null;
+    logger.info('Destroyed existing tray before creating new one');
+  }
+
   const inDevelopment = process.env.NODE_ENV === 'development';
   const iconPath = inDevelopment
     ? path.join(process.cwd(), 'src/assets/tray.png')
@@ -157,4 +165,12 @@ export function updateTrayMenu(account: CloudAccount | null, language?: string) 
 
 export function setTrayLanguage(lang: string) {
   updateTrayMenu(lastAccount, lang);
+}
+
+export function destroyTray() {
+  if (tray) {
+    tray.destroy();
+    tray = null;
+    logger.info('Tray destroyed');
+  }
 }
