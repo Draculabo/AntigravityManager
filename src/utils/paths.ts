@@ -124,6 +124,8 @@ export function getAntigravityDbPaths(): string[] {
   }
 
   if (process.platform === 'linux') {
+    paths.push(path.join(appData, 'User', 'globalStorage', 'state.vscdb'));
+    paths.push(path.join(appData, 'User', 'state.vscdb'));
     paths.push(path.join(appData, 'state.vscdb'));
     return paths;
   }

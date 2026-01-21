@@ -93,7 +93,7 @@ src/
 **数据库位置：**
 * macOS: `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`
 * Windows: `%APPDATA%/Antigravity/User/globalStorage/state.vscdb`
-* Linux: `~/.config/Antigravity/state.vscdb`
+* Linux: `~/.config/Antigravity/User/globalStorage/state.vscdb`
 
 **关键数据库键：**
 * `antigravityAuthStatus`: 认证状态和用户信息。
