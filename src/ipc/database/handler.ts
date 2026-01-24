@@ -8,6 +8,12 @@ import path from 'path';
 
 const KEYS_TO_BACKUP = ['antigravityAuthStatus', 'jetskiStateSync.agentManagerInitState'];
 
+function getDbWithWal(dbPath: string, options: Database.Options = {}): Database.Database {
+  const db = new Database(dbPath, options);
+  db.pragma('journal_mode = WAL');
+  return db;
+}
+
 /**
  * Ensures that the database file exists.
  * @param dbPath {string} The path to the database file.
@@ -59,7 +65,7 @@ export function getDatabaseConnection(dbPath?: string): Database.Database {
   ensureDatabaseExists(targetPath);
 
   try {
-    return new Database(targetPath, { readonly: false, fileMustExist: false });
+    return getDbWithWal(targetPath, { readonly: false, fileMustExist: false });
   } catch (error: unknown) {
     const err = error as { code?: string };
     if (err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED') {
@@ -68,6 +74,12 @@ export function getDatabaseConnection(dbPath?: string): Database.Database {
     throw error;
   }
 }
+
+/**
+ * Gets a database connection and enables WAL mode.
+ * @param dbPath {string} The path to the database file.
+ * @returns {Database.Database} The database connection.
+ */
 
 /**
  * Gets the current account info.

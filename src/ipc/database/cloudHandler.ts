@@ -22,6 +22,7 @@ function ensureDatabaseInitialized(dbPath: string): void {
   let db: Database.Database | null = null;
   try {
     db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
 
     // Create accounts table
     // Storing complex objects (token, quota) as JSON strings for simplicity
@@ -73,7 +74,9 @@ function ensureDatabaseInitialized(dbPath: string): void {
 function getDb(): Database.Database {
   const dbPath = getCloudAccountsDbPath();
   ensureDatabaseInitialized(dbPath);
-  return new Database(dbPath);
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  return db;
 }
 
 export class CloudAccountRepo {
@@ -307,6 +310,7 @@ export class CloudAccountRepo {
     }
 
     const db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
     try {
       const row = db
         .prepare('SELECT value FROM ItemTable WHERE key = ?')
@@ -454,6 +458,7 @@ export class CloudAccountRepo {
 
     logger.info(`SyncLocal: Using Antigravity database at: ${dbPath}`);
     const ideDb = new Database(dbPath, { readonly: true });
+    ideDb.pragma('journal_mode = WAL');
     try {
       // 1. Read Raw Token Data
       const row = ideDb
