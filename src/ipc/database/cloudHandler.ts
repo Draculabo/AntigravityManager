@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getCloudAccountsDbPath, getAntigravityDbPaths } from '../../utils/paths';
 import { logger } from '../../utils/logger';
 import { CloudAccount } from '../../types/cloudAccount';
-import { encrypt, decrypt } from '../../utils/security';
+import { decryptWithMigration, encrypt, type KeySource } from '../../utils/security';
 import { ProtobufUtils } from '../../utils/protobuf';
 import { GoogleAPIService } from '../../services/GoogleAPIService';
 
@@ -78,6 +78,65 @@ function getDb(): Database.Database {
   db.pragma('journal_mode = WAL');
   return db;
 }
+
+interface MigrationStats {
+  totalFields: number;
+  fallbackUsedFields: number;
+  migratedFields: number;
+  migratedBySource: Record<KeySource, number>;
+  failedFields: number;
+}
+
+function createMigrationStats(): MigrationStats {
+  return {
+    totalFields: 0,
+    fallbackUsedFields: 0,
+    migratedFields: 0,
+    migratedBySource: {
+      safeStorage: 0,
+      keytar: 0,
+      file: 0,
+    },
+    failedFields: 0,
+  };
+}
+
+async function decryptAndMigrateField(
+  db: Database.Database,
+  accountId: string,
+  field: 'token_json' | 'quota_json',
+  value: string | null,
+): Promise<{ value: string | null; migrated: boolean; usedFallback?: KeySource }> {
+  if (!value) {
+    return { value: null, migrated: false };
+  }
+
+  const result = await decryptWithMigration(value);
+  if (result.reencrypted) {
+    if (field === 'token_json') {
+      db.prepare('UPDATE accounts SET token_json = ? WHERE id = ?').run(
+        result.reencrypted,
+        accountId,
+      );
+    } else {
+      db.prepare('UPDATE accounts SET quota_json = ? WHERE id = ?').run(
+        result.reencrypted,
+        accountId,
+      );
+    }
+    logger.info(
+      `Migrated ${field} for account ${accountId} from ${result.usedFallback ?? 'unknown'} key`,
+    );
+  }
+
+  return {
+    value: result.value,
+    migrated: Boolean(result.reencrypted),
+    usedFallback: result.usedFallback,
+  };
+}
+
+type DecryptFieldResult = Awaited<ReturnType<typeof decryptAndMigrateField>>;
 
 export class CloudAccountRepo {
   static async init(): Promise<void> {
@@ -171,6 +230,7 @@ export class CloudAccountRepo {
 
   static async getAccounts(): Promise<CloudAccount[]> {
     const db = getDb();
+    const migrationStats = createMigrationStats();
 
     try {
       const stmt = db.prepare('SELECT * FROM accounts ORDER BY last_used DESC');
@@ -183,24 +243,91 @@ export class CloudAccountRepo {
       );
       activeRows.forEach((r) => logger.info(`[DEBUG] Active Account: ${r.email} (${r.id})`));
 
-      const accounts = await Promise.all(
-        rows.map(async (row) => ({
+      const accounts: CloudAccount[] = [];
+      for (const row of rows) {
+        let tokenResult: DecryptFieldResult;
+        try {
+          tokenResult = await decryptAndMigrateField(db, row.id, 'token_json', row.token_json);
+        } catch (error) {
+          migrationStats.failedFields += 1;
+          logger.error(`Failed to decrypt token for account ${row.id}`, error);
+          throw error;
+        }
+
+        let quotaResult: DecryptFieldResult;
+        try {
+          quotaResult = await decryptAndMigrateField(db, row.id, 'quota_json', row.quota_json);
+        } catch (error) {
+          migrationStats.failedFields += 1;
+          logger.error(`Failed to decrypt quota for account ${row.id}`, error);
+          throw error;
+        }
+
+        if (!tokenResult.value) {
+          throw new Error(`Missing token data for account ${row.id}`);
+        }
+
+        if (tokenResult.value) {
+          migrationStats.totalFields += 1;
+        }
+        if (tokenResult.usedFallback) {
+          migrationStats.fallbackUsedFields += 1;
+        }
+        if (tokenResult.migrated) {
+          migrationStats.migratedFields += 1;
+          if (tokenResult.usedFallback) {
+            migrationStats.migratedBySource[tokenResult.usedFallback] += 1;
+          }
+        }
+
+        if (quotaResult.value) {
+          migrationStats.totalFields += 1;
+        }
+        if (quotaResult.usedFallback) {
+          migrationStats.fallbackUsedFields += 1;
+        }
+        if (quotaResult.migrated) {
+          migrationStats.migratedFields += 1;
+          if (quotaResult.usedFallback) {
+            migrationStats.migratedBySource[quotaResult.usedFallback] += 1;
+          }
+        }
+
+        accounts.push({
           id: row.id,
           provider: row.provider,
           email: row.email,
           name: row.name,
           avatar_url: row.avatar_url,
-          token: JSON.parse(await decrypt(row.token_json)),
-          quota: row.quota_json ? JSON.parse(await decrypt(row.quota_json)) : undefined,
+          token: JSON.parse(tokenResult.value),
+          quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
           created_at: row.created_at,
           last_used: row.last_used,
           status: row.status,
           is_active: Boolean(row.is_active),
-        })),
-      );
+        });
+      }
 
       return accounts;
     } finally {
+      if (
+        migrationStats.migratedFields > 0 ||
+        migrationStats.fallbackUsedFields > 0 ||
+        migrationStats.failedFields > 0
+      ) {
+        const summary = {
+          totalFields: migrationStats.totalFields,
+          fallbackUsedFields: migrationStats.fallbackUsedFields,
+          migratedFields: migrationStats.migratedFields,
+          migratedBySource: migrationStats.migratedBySource,
+          failedFields: migrationStats.failedFields,
+        };
+        if (migrationStats.failedFields > 0) {
+          logger.warn('CloudAccountRepo migration summary (with failures)', summary);
+        } else {
+          logger.info('CloudAccountRepo migration summary', summary);
+        }
+      }
       db.close();
     }
   }
@@ -214,14 +341,21 @@ export class CloudAccountRepo {
 
       if (!row) return undefined;
 
+      const tokenResult = await decryptAndMigrateField(db, row.id, 'token_json', row.token_json);
+      const quotaResult = await decryptAndMigrateField(db, row.id, 'quota_json', row.quota_json);
+
+      if (!tokenResult.value) {
+        throw new Error(`Missing token data for account ${row.id}`);
+      }
+
       return {
         id: row.id,
         provider: row.provider,
         email: row.email,
         name: row.name,
         avatar_url: row.avatar_url,
-        token: JSON.parse(await decrypt(row.token_json)),
-        quota: row.quota_json ? JSON.parse(await decrypt(row.quota_json)) : undefined,
+        token: JSON.parse(tokenResult.value),
+        quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
         created_at: row.created_at,
         last_used: row.last_used,
         status: row.status,
@@ -296,14 +430,7 @@ export class CloudAccountRepo {
 
   static injectCloudToken(account: CloudAccount): void {
     const dbPaths = getAntigravityDbPaths();
-    let dbPath: string | null = null;
-
-    for (const p of dbPaths) {
-      if (fs.existsSync(p)) {
-        dbPath = p;
-        break;
-      }
-    }
+    const dbPath = dbPaths.find((p) => fs.existsSync(p)) ?? null;
 
     if (!dbPath) {
       throw new Error(`Antigravity database not found. Checked paths: ${dbPaths.join(', ')}`);
@@ -441,14 +568,11 @@ export class CloudAccountRepo {
     const dbPaths = getAntigravityDbPaths();
     logger.info(`SyncLocal: Checking database paths: ${JSON.stringify(dbPaths)}`);
 
-    let dbPath: string | null = null;
-    for (const p of dbPaths) {
-      logger.info(`SyncLocal: Checking path: ${p}, exists: ${fs.existsSync(p)}`);
-      if (fs.existsSync(p)) {
-        dbPath = p;
-        break;
-      }
-    }
+    const dbPath =
+      dbPaths.find((p) => {
+        logger.info(`SyncLocal: Checking path: ${p}, exists: ${fs.existsSync(p)}`);
+        return fs.existsSync(p);
+      }) ?? null;
 
     if (!dbPath) {
       const errorMsg = `Antigravity database not found. Please ensure Antigravity IDE is installed. Checked paths: ${dbPaths.join(', ')}`;

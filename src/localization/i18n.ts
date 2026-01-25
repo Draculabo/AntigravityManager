@@ -42,6 +42,11 @@ i18n
                 'Keychain access denied. The app may be unsigned; see README for the self-signing workaround.',
               signNotarize: 'Please use a signed and notarized build when available.',
             },
+            dataMigrationFailed: 'Unable to decrypt legacy account data.',
+            dataMigrationHint: {
+              relogin: 'Please re-login or re-add your accounts.',
+              clearData: 'If the issue persists, clear local account data and sign in again.',
+            },
           },
           nav: {
             accounts: 'Accounts',
@@ -222,6 +227,9 @@ i18n
             list: {
               noAccounts: 'No cloud accounts added yet.',
             },
+            error: {
+              loadFailed: 'Failed to load cloud accounts.',
+            },
             toast: {
               syncSuccess: {
                 title: 'Sync Successful',
@@ -323,6 +331,11 @@ i18n
               translocation: '检测到 macOS App Translocation。请将应用移动到 /Applications 后重试。',
               keychainDenied: 'Keychain 访问被拒绝。应用可能未签名，可参考 README 的“macOS 自签”说明。',
               signNotarize: '请在可用时使用已签名并公证的版本。',
+            },
+            dataMigrationFailed: '旧版账号数据无法解密。',
+            dataMigrationHint: {
+              relogin: '请重新登录或重新添加账号。',
+              clearData: '如仍失败，请清理本地账号数据后再登录。',
             },
           },
           nav: {
@@ -501,6 +514,9 @@ i18n
             },
             list: {
               noAccounts: '暂无云账号。',
+            },
+            error: {
+              loadFailed: '加载云账号失败。',
             },
             toast: {
               syncSuccess: {
