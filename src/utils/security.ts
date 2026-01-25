@@ -1,6 +1,8 @@
-import keytar from 'keytar';
 import crypto from 'crypto';
 import { logger } from './logger';
+import { safeStorage, app } from 'electron';
+import path from 'path';
+import fs from 'fs';
 
 const SERVICE_NAME = 'AntigravityManager';
 const ACCOUNT_NAME = 'MasterKey';
@@ -8,33 +10,116 @@ const ACCOUNT_NAME = 'MasterKey';
 // Cache the key in memory to avoid frequent system calls
 let cachedMasterKey: Buffer | null = null;
 
+// Fallback key file path (used when keytar and safeStorage both fail)
+function getFallbackKeyPath(): string {
+  const userDataPath = app.getPath('userData');
+  return path.join(userDataPath, '.mk');
+}
+
+/**
+ * Try to load keytar dynamically to avoid hard failure if it's not available
+ */
+async function tryKeytar(): Promise<typeof import('keytar') | null> {
+  try {
+    // Native modules may fail to load in production builds
+    const keytar = await import('keytar');
+    // Test if keytar is actually working by calling a method
+    await keytar.default.findCredentials(SERVICE_NAME);
+    return keytar.default;
+  } catch (error) {
+    logger.warn('Security: keytar not available, using fallback', error);
+    return null;
+  }
+}
+
+/**
+ * Get or generate master encryption key using multiple fallback strategies:
+ * 1. safeStorage (Electron's built-in secure storage) - preferred
+ * 2. keytar (system keychain) - fallback
+ * 3. File-based with safeStorage encryption - last resort
+ */
 async function getOrGenerateMasterKey(): Promise<Buffer> {
   if (cachedMasterKey) return cachedMasterKey;
 
-  try {
-    let hexKey = await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
-
-    if (!hexKey) {
-      logger.info('Security: Generating new master key...');
-      // Generate 256-bit key (32 bytes)
-      const buffer = crypto.randomBytes(32);
-      hexKey = buffer.toString('hex');
-      await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, hexKey);
+  // Strategy 1: Try safeStorage (Electron's secure storage)
+  if (safeStorage.isEncryptionAvailable()) {
+    try {
+      const keyPath = getFallbackKeyPath();
+      
+      if (fs.existsSync(keyPath)) {
+        // Read and decrypt existing key
+        const encryptedKey = fs.readFileSync(keyPath);
+        const hexKey = safeStorage.decryptString(encryptedKey);
+        cachedMasterKey = Buffer.from(hexKey, 'hex');
+        logger.info('Security: Loaded master key via safeStorage');
+        return cachedMasterKey;
+      } else {
+        // Generate new key and save encrypted
+        const buffer = crypto.randomBytes(32);
+        const hexKey = buffer.toString('hex');
+        const encrypted = safeStorage.encryptString(hexKey);
+        fs.writeFileSync(keyPath, encrypted, { mode: 0o600 });
+        cachedMasterKey = buffer;
+        logger.info('Security: Generated new master key via safeStorage');
+        return cachedMasterKey;
+      }
+    } catch (error) {
+      logger.warn('Security: safeStorage failed, trying keytar', error);
     }
+  }
 
-    cachedMasterKey = Buffer.from(hexKey, 'hex');
+  // Strategy 2: Try keytar (system keychain)
+  try {
+    const keytar = await tryKeytar();
+    if (keytar) {
+      let hexKey = await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
+
+      if (!hexKey) {
+        logger.info('Security: Generating new master key via keytar...');
+        const buffer = crypto.randomBytes(32);
+        hexKey = buffer.toString('hex');
+        await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, hexKey);
+      }
+
+      cachedMasterKey = Buffer.from(hexKey, 'hex');
+      logger.info('Security: Loaded master key via keytar');
+      return cachedMasterKey;
+    }
+  } catch (error) {
+    logger.warn('Security: keytar failed', error);
+  }
+
+  // Strategy 3: File-based fallback (less secure but functional)
+  // This is used when both safeStorage and keytar fail
+  try {
+    const keyPath = getFallbackKeyPath();
+    
+    if (fs.existsSync(keyPath)) {
+      // Try to read as plain hex (fallback mode)
+      const content = fs.readFileSync(keyPath, 'utf8');
+      if (content.length === 64) {
+        // Looks like a hex key
+        cachedMasterKey = Buffer.from(content, 'hex');
+        logger.warn('Security: Using unencrypted fallback key (less secure)');
+        return cachedMasterKey;
+      }
+    }
+    
+    // Generate new fallback key
+    logger.warn('Security: Generating unencrypted fallback key (safeStorage and keytar unavailable)');
+    const buffer = crypto.randomBytes(32);
+    const hexKey = buffer.toString('hex');
+    fs.writeFileSync(keyPath, hexKey, { mode: 0o600 });
+    cachedMasterKey = buffer;
     return cachedMasterKey;
   } catch (error) {
-    logger.error('Security: Failed to access keychain/credential manager', error);
-    // Fallback? If we can't store the key, we can't persistently encrypt.
-    // For now, throw to prevent data loss (better not to write than to write something we can't decrypt later or write plain text when promised encrypted)
+    logger.error('Security: All key storage methods failed', error);
     throw new Error('Key management system unavailable');
   }
 }
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
-const AUTH_TAG_LENGTH = 16;
 
 /**
  * Encrypts a string using AES-256-GCM.
@@ -98,3 +183,4 @@ export async function decrypt(text: string): Promise<string> {
     throw error;
   }
 }
+

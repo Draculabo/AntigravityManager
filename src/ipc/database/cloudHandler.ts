@@ -296,14 +296,7 @@ export class CloudAccountRepo {
 
   static injectCloudToken(account: CloudAccount): void {
     const dbPaths = getAntigravityDbPaths();
-    let dbPath: string | null = null;
-
-    for (const p of dbPaths) {
-      if (fs.existsSync(p)) {
-        dbPath = p;
-        break;
-      }
-    }
+    const dbPath = dbPaths.find((p) => fs.existsSync(p)) ?? null;
 
     if (!dbPath) {
       throw new Error(`Antigravity database not found. Checked paths: ${dbPaths.join(', ')}`);
@@ -441,14 +434,10 @@ export class CloudAccountRepo {
     const dbPaths = getAntigravityDbPaths();
     logger.info(`SyncLocal: Checking database paths: ${JSON.stringify(dbPaths)}`);
 
-    let dbPath: string | null = null;
-    for (const p of dbPaths) {
+    const dbPath = dbPaths.find((p) => {
       logger.info(`SyncLocal: Checking path: ${p}, exists: ${fs.existsSync(p)}`);
-      if (fs.existsSync(p)) {
-        dbPath = p;
-        break;
-      }
-    }
+      return fs.existsSync(p);
+    }) ?? null;
 
     if (!dbPath) {
       const errorMsg = `Antigravity database not found. Please ensure Antigravity IDE is installed. Checked paths: ${dbPaths.join(', ')}`;
