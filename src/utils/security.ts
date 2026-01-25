@@ -3,7 +3,6 @@ import { logger } from './logger';
 import { safeStorage, app } from 'electron';
 import path from 'path';
 import fs from 'fs/promises';
-import fsSync from 'fs';
 
 const SERVICE_NAME = 'AntigravityManager';
 const ACCOUNT_NAME = 'MasterKey';
@@ -236,8 +235,7 @@ export async function encrypt(text: string): Promise<string> {
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
   } catch (error) {
     logger.error('Security: Encryption failed', error);
-    if (error instanceof SecurityError) throw error;
-    throw new SecurityError('Encryption failed', 'ENCRYPTION_FAILED');
+    throw new Error('Encryption failed');
   }
 }
 
@@ -269,7 +267,7 @@ export async function decrypt(text: string): Promise<string> {
     !/^[a-f0-9]+$/i.test(encryptedHex)
   ) {
     logger.warn('Security: Invalid encrypted format - not valid hex');
-    throw new SecurityError('Invalid encrypted data format', 'INVALID_FORMAT');
+    throw new Error('Invalid encrypted data format');
   }
 
   try {
@@ -293,18 +291,15 @@ export async function decrypt(text: string): Promise<string> {
       logger.error(
         'Security: Decryption failed - authentication tag mismatch (wrong key or corrupted data)',
       );
-      throw new SecurityError(
-        'Decryption failed: Data was encrypted with a different key or is corrupted',
-        'AUTH_TAG_MISMATCH',
-      );
+      throw new Error('Decryption failed: Data was encrypted with a different key or is corrupted');
     }
 
     if (errorMessage.includes('Invalid key length') || errorMessage.includes('Invalid IV length')) {
       logger.error('Security: Decryption failed - corrupted encrypted data');
-      throw new SecurityError('Decryption failed: Corrupted encrypted data', 'CORRUPTED_DATA');
+      throw new Error('Decryption failed: Corrupted encrypted data');
     }
 
     logger.error('Security: Decryption failed', error);
-    throw new SecurityError('Decryption failed', 'DECRYPTION_FAILED');
+    throw new Error('Decryption failed');
   }
 }
