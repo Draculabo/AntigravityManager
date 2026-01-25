@@ -47,7 +47,7 @@ import { getLocalizedErrorMessage } from '@/utils/errorMessages';
 
 export function CloudAccountList() {
   const { t } = useTranslation();
-  const { data: accounts, isLoading, isError } = useCloudAccounts();
+  const { data: accounts, isLoading, isError, error } = useCloudAccounts();
   const refreshMutation = useRefreshQuota();
   const deleteMutation = useDeleteCloudAccount();
   const addMutation = useAddGoogleAccount();
@@ -273,7 +273,13 @@ export function CloudAccountList() {
   }
 
   if (isError) {
-    return <div className="p-4 text-red-500">Failed to load cloud accounts.</div>;
+    const errorMessage = getLocalizedErrorMessage(error, t);
+    return (
+      <div className="p-4 text-red-500">
+        <div>{t('cloud.error.loadFailed')}</div>
+        <div className="mt-1 text-sm text-red-400">{errorMessage}</div>
+      </div>
+    );
   }
 
   return (
