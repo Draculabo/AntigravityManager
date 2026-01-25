@@ -281,6 +281,24 @@ Please check:
 </details>
 
 <details>
+<summary><b>Q: macOS shows Keychain/Credential error and OAuth cannot be saved?</b></summary>
+
+This is a common macOS security behavior, usually when the app is unsigned or run directly from Downloads.
+This is a **temporary workaround** for personal use:
+
+1. Move the app to `/Applications`
+2. Run the following commands in Terminal (repeat after every update)
+
+```plaintext
+sudo xattr -dr com.apple.quarantine "/Applications/Antigravity Manager 2.app"
+codesign --force --deep --sign - "/Applications/Antigravity Manager 2.app"
+```
+
+Reopen the app and allow Keychain access if prompted.
+
+</details>
+
+<details>
 <summary><b>Q: How to report issues or suggestions?</b></summary>
 
 Please submit issues or suggestions via [GitHub Issues](https://github.com/Draculabo/AntigravityManager/issues).

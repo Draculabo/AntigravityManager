@@ -7,9 +7,38 @@ import fsSync from 'fs';
 
 const SERVICE_NAME = 'AntigravityManager';
 const ACCOUNT_NAME = 'MasterKey';
+const KEYCHAIN_ERROR_CODE = 'ERR_KEYCHAIN_UNAVAILABLE';
+const KEYCHAIN_HINT_TRANSLOCATION = 'HINT_APP_TRANSLOCATION';
+const KEYCHAIN_HINT_KEYCHAIN_DENIED = 'HINT_KEYCHAIN_DENIED';
+const KEYCHAIN_HINT_SIGN_NOTARIZE = 'HINT_SIGN_NOTARIZE';
 
 // Cache the key in memory to avoid frequent system calls
 let cachedMasterKey: Buffer | null = null;
+
+function buildKeychainAccessHint(error: unknown): string | null {
+  if (process.platform !== 'darwin') {
+    return null;
+  }
+
+  let appPath = '';
+  try {
+    appPath = app.getAppPath();
+  } catch {
+    appPath = '';
+  }
+
+  const isTranslocated = appPath.includes('/AppTranslocation/');
+  if (isTranslocated) {
+    return KEYCHAIN_HINT_TRANSLOCATION;
+  }
+
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  if (errorMessage.toLowerCase().includes('keychain')) {
+    return KEYCHAIN_HINT_KEYCHAIN_DENIED;
+  }
+
+  return KEYCHAIN_HINT_SIGN_NOTARIZE;
+}
 
 // Lock to prevent concurrent key generation
 let keyGenerationInProgress: Promise<Buffer> | null = null;
@@ -40,7 +69,11 @@ async function tryKeytar(): Promise<typeof import('keytar') | null> {
  * Atomic file write to prevent data races
  * Writes to a temp file first, then renames atomically
  */
-async function atomicWriteFile(filePath: string, data: Buffer | string, options?: { mode?: number }): Promise<void> {
+async function atomicWriteFile(
+  filePath: string,
+  data: Buffer | string,
+  options?: { mode?: number },
+): Promise<void> {
   const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   try {
     await fs.writeFile(tempPath, data, { mode: options?.mode ?? 0o600 });
@@ -61,7 +94,7 @@ async function atomicWriteFile(filePath: string, data: Buffer | string, options?
  * 1. safeStorage (Electron's built-in secure storage) - preferred
  * 2. keytar (system keychain) - fallback
  * 3. File-based with safeStorage encryption - last resort (with security warning)
- * 
+ *
  * Uses a lock to prevent concurrent key generation (data race prevention)
  */
 async function getOrGenerateMasterKey(): Promise<Buffer> {
@@ -101,7 +134,7 @@ async function generateMasterKeyInternal(): Promise<Buffer> {
         if ((readError as NodeJS.ErrnoException).code !== 'ENOENT') {
           logger.warn('Security: Error reading key file, regenerating', readError);
         }
-        
+
         const buffer = crypto.randomBytes(32);
         const hexKey = buffer.toString('hex');
         const encrypted = safeStorage.encryptString(hexKey);
@@ -143,10 +176,10 @@ async function generateMasterKeyInternal(): Promise<Buffer> {
   // This is only used when both safeStorage and keytar fail
   logger.warn(
     'Security: WARNING - Using file-based key storage. ' +
-    'This is less secure than system keychain. ' +
-    'Ensure the app data directory has restricted permissions.'
+      'This is less secure than system keychain. ' +
+      'Ensure the app data directory has restricted permissions.',
   );
-  
+
   try {
     try {
       const content = await fs.readFile(keyPath, 'utf8');
@@ -160,35 +193,25 @@ async function generateMasterKeyInternal(): Promise<Buffer> {
         logger.warn('Security: Error reading fallback key file', readError);
       }
     }
-    
+
     // Generate new fallback key with atomic write
-    logger.warn('Security: Generating file-based fallback key (safeStorage and keytar unavailable)');
+    logger.warn(
+      'Security: Generating file-based fallback key (safeStorage and keytar unavailable)',
+    );
     const buffer = crypto.randomBytes(32);
     const hexKey = buffer.toString('hex');
     await atomicWriteFile(keyPath, hexKey, { mode: 0o600 });
     cachedMasterKey = buffer;
     return cachedMasterKey;
   } catch (error) {
-    logger.error('Security: All key storage methods failed', error);
-    throw new SecurityError('Key management system unavailable', 'KEY_STORAGE_FAILED');
+    const hint = buildKeychainAccessHint(error);
+    logger.error('Security: Failed to access keychain/credential manager', error);
+    // Fallback? If we can't store the key, we can't persistently encrypt.
+    // For now, throw to prevent data loss (better not to write than to write something we can't decrypt later or write plain text when promised encrypted)
+    const message = hint ? `${KEYCHAIN_ERROR_CODE}|${hint}` : KEYCHAIN_ERROR_CODE;
+    throw new Error(message);
   }
 }
-
-// Custom error class for better error categorization
-export class SecurityError extends Error {
-  constructor(message: string, public readonly code: SecurityErrorCode) {
-    super(message);
-    this.name = 'SecurityError';
-  }
-}
-
-export type SecurityErrorCode = 
-  | 'KEY_STORAGE_FAILED'
-  | 'ENCRYPTION_FAILED'
-  | 'DECRYPTION_FAILED'
-  | 'INVALID_FORMAT'
-  | 'AUTH_TAG_MISMATCH'
-  | 'CORRUPTED_DATA';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -221,7 +244,7 @@ export async function encrypt(text: string): Promise<string> {
 /**
  * Decrypts a string using AES-256-GCM.
  * Input format: "iv_hex:auth_tag_hex:ciphertext_hex"
- * 
+ *
  * @throws {SecurityError} With specific error codes for different failure types
  */
 export async function decrypt(text: string): Promise<string> {
@@ -240,7 +263,11 @@ export async function decrypt(text: string): Promise<string> {
   const [ivHex, authTagHex, encryptedHex] = parts;
 
   // Validate hex format
-  if (!/^[a-f0-9]+$/i.test(ivHex) || !/^[a-f0-9]+$/i.test(authTagHex) || !/^[a-f0-9]+$/i.test(encryptedHex)) {
+  if (
+    !/^[a-f0-9]+$/i.test(ivHex) ||
+    !/^[a-f0-9]+$/i.test(authTagHex) ||
+    !/^[a-f0-9]+$/i.test(encryptedHex)
+  ) {
     logger.warn('Security: Invalid encrypted format - not valid hex');
     throw new SecurityError('Invalid encrypted data format', 'INVALID_FORMAT');
   }
@@ -260,16 +287,18 @@ export async function decrypt(text: string): Promise<string> {
     return decrypted;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     // Categorize the error for better diagnostics
     if (errorMessage.includes('Unsupported state or unable to authenticate data')) {
-      logger.error('Security: Decryption failed - authentication tag mismatch (wrong key or corrupted data)');
+      logger.error(
+        'Security: Decryption failed - authentication tag mismatch (wrong key or corrupted data)',
+      );
       throw new SecurityError(
         'Decryption failed: Data was encrypted with a different key or is corrupted',
-        'AUTH_TAG_MISMATCH'
+        'AUTH_TAG_MISMATCH',
       );
     }
-    
+
     if (errorMessage.includes('Invalid key length') || errorMessage.includes('Invalid IV length')) {
       logger.error('Security: Decryption failed - corrupted encrypted data');
       throw new SecurityError('Decryption failed: Corrupted encrypted data', 'CORRUPTED_DATA');

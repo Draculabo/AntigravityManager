@@ -34,6 +34,14 @@ i18n
           },
           error: {
             generic: 'An unexpected error occurred.',
+            keychainUnavailable: 'Keychain is unavailable.',
+            keychainHint: {
+              translocation:
+                'Detected macOS App Translocation. Move the app to /Applications and reopen.',
+              keychainDenied:
+                'Keychain access denied. The app may be unsigned; see README for the self-signing workaround.',
+              signNotarize: 'Please use a signed and notarized build when available.',
+            },
           },
           nav: {
             accounts: 'Accounts',
@@ -310,6 +318,12 @@ i18n
           },
           error: {
             generic: '发生未知错误。',
+            keychainUnavailable: 'Keychain 不可用。',
+            keychainHint: {
+              translocation: '检测到 macOS App Translocation。请将应用移动到 /Applications 后重试。',
+              keychainDenied: 'Keychain 访问被拒绝。应用可能未签名，可参考 README 的“macOS 自签”说明。',
+              signNotarize: '请在可用时使用已签名并公证的版本。',
+            },
           },
           nav: {
             accounts: '账号',

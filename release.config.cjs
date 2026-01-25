@@ -6,6 +6,10 @@
  * instead of Gitmoji (since the project history doesn't use emojis).
  */
 
+const REPO_URL = 'https://github.com/Draculabo/AntigravityManager';
+const GITHUB_BASE_URL = 'https://github.com';
+const FULL_CHANGELOG_URL = `${REPO_URL}/blob/main/CHANGELOG.md`;
+
 const releaseRules = [
   {
     release: 'minor',
@@ -69,7 +73,127 @@ const releaseRules = [
   { release: false, subject: '*skip release*' },
 ];
 
-module.exports = {
+const getGithubUsernameFromEmail = (email) => {
+  if (!email) {
+    return undefined;
+  }
+
+  const match = email.match(/^(?:\d+\+)?(?<username>[a-z0-9-]+)@users\.noreply\.github\.com$/i);
+
+  return match?.groups?.username;
+};
+
+const isBotIdentity = (value) => {
+  return typeof value === 'string' && /bot/i.test(value);
+};
+
+const buildReleaseFooter = (commits) => {
+  const mergedPullRequests = new Map();
+  const contributors = new Map();
+
+  (commits || []).forEach((commit) => {
+    const message = [commit?.message, commit?.subject, commit?.header].filter(Boolean).join('\n');
+    if (message) {
+      const mergeMatches = message.match(/pull request #(?<number>\d+)/gi);
+      if (mergeMatches) {
+        mergeMatches.forEach((match) => {
+          const number = match.replace(/\D/g, '');
+          if (number) {
+            mergedPullRequests.set(number, {
+              number,
+              url: `${REPO_URL}/pull/${number}`,
+            });
+          }
+        });
+      }
+
+      const squashMatches = message.match(/\(#(?<number>\d+)\)/g);
+      if (squashMatches) {
+        squashMatches.forEach((match) => {
+          const number = match.replace(/\D/g, '');
+          if (number) {
+            mergedPullRequests.set(number, {
+              number,
+              url: `${REPO_URL}/pull/${number}`,
+            });
+          }
+        });
+      }
+    }
+
+    const author = commit?.author || commit?.committer;
+    const username = getGithubUsernameFromEmail(author?.email);
+    const displayName = username ? `@${username}` : author?.name;
+
+    if (!displayName || isBotIdentity(displayName)) {
+      return;
+    }
+
+    if (username && isBotIdentity(username)) {
+      return;
+    }
+
+    contributors.set(username || displayName, {
+      name: displayName,
+      url: username ? `${GITHUB_BASE_URL}/${username}` : undefined,
+    });
+  });
+
+  const footerLines = [];
+  const sortedPullRequests = Array.from(mergedPullRequests.values()).sort(
+    (left, right) => Number(left.number) - Number(right.number),
+  );
+  if (sortedPullRequests.length > 0) {
+    footerLines.push('### 🔀 Merged Pull Requests');
+    sortedPullRequests.forEach((pullRequest) => {
+      footerLines.push(`- [#${pullRequest.number}](${pullRequest.url})`);
+    });
+    footerLines.push('');
+  }
+
+  const sortedContributors = Array.from(contributors.values()).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+  if (sortedContributors.length > 0) {
+    footerLines.push('### 🙌 Contributors');
+    sortedContributors.forEach((contributor) => {
+      if (contributor.url) {
+        footerLines.push(`- [${contributor.name}](${contributor.url})`);
+        return;
+      }
+
+      footerLines.push(`- ${contributor.name}`);
+    });
+    footerLines.push('');
+  }
+
+  footerLines.push(`Full Changelog: ${FULL_CHANGELOG_URL}`);
+
+  return footerLines.join('\n');
+};
+
+const appendReleaseNotes = (notes, commits) => {
+  const trimmedNotes = (notes || '').trimEnd();
+  const footer = buildReleaseFooter(commits);
+
+  if (!footer) {
+    return trimmedNotes;
+  }
+
+  return `${trimmedNotes}\n\n${footer}`;
+};
+
+const appendReleaseNotesPlugin = {
+  publish: async (pluginConfig, context) => {
+    if (!context?.nextRelease?.notes) {
+      return;
+    }
+
+    context.nextRelease.notes = appendReleaseNotes(context.nextRelease.notes, context.commits);
+  },
+};
+
+const releaseConfig = {
   branches: ['main', 'master'],
   plugins: [
     [
@@ -107,6 +231,7 @@ module.exports = {
       },
     ],
     '@semantic-release/npm', // Updates package.json and npm-shrinkwrap.json
+    appendReleaseNotesPlugin,
     [
       '@semantic-release/github',
       {
@@ -125,3 +250,10 @@ module.exports = {
     ],
   ],
 };
+
+releaseConfig.__internal = {
+  appendReleaseNotes,
+  buildReleaseFooter,
+};
+
+module.exports = releaseConfig;

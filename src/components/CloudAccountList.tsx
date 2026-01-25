@@ -41,6 +41,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { getLocalizedErrorMessage } from '@/utils/errorMessages';
 
 // ... (existing code: imports and comments)
 
@@ -78,7 +79,7 @@ export function CloudAccountList() {
         onError: (err) => {
           toast({
             title: t('cloud.toast.addFailed.title'),
-            description: err.message,
+            description: getLocalizedErrorMessage(err, t),
             variant: 'destructive',
           });
         },
@@ -133,7 +134,7 @@ export function CloudAccountList() {
         onError: (err) =>
           toast({
             title: t('cloud.toast.switchFailed'),
-            description: err.message,
+            description: getLocalizedErrorMessage(err, t),
             variant: 'destructive',
           }),
       },
@@ -199,7 +200,7 @@ export function CloudAccountList() {
       onError: (err) => {
         toast({
           title: t('cloud.toast.syncFailed.title'),
-          description: err.message,
+          description: getLocalizedErrorMessage(err, t),
           variant: 'destructive',
         });
       },

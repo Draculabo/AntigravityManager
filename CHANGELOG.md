@@ -1,15 +1,27 @@
+<a name="readme-top"></a>
+
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## [0.3.2](https://github.com/Draculabo/AntigravityManager/compare/v0.3.1...v0.3.2) (2026-01-25)
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### 🐛 Bug Fixes
+
+* handle keychain hint and suppress pgrep spam ([bd3d41a](https://github.com/Draculabo/AntigravityManager/commit/bd3d41aed17bafe9d684c5c421bad8b90afa19a8))
+
+### 📝 Documentation
+
+* add macOS self-signing workaround for Keychain issues ([01e3f8f](https://github.com/Draculabo/AntigravityManager/commit/01e3f8f8fd6dacc5eed214ed4b505d6d85f4bcff))
+
+### 🔧 Continuous Integration
+
+* setup semantic release configuration and github actions workflow ([d2945a6](https://github.com/Draculabo/AntigravityManager/commit/d2945a6e8a14d75f577716183cdff093443d9636))
+* trigger publish on release published event ([6a07bc0](https://github.com/Draculabo/AntigravityManager/commit/6a07bc0a10a5ad802777e007cfd7390852119b15))
 
 ## [0.3.1] - 2026-01-25
 
 ### Bug Fixes
 
-- Fixed startup race condition causing cloud accounts verify failure ([f0718db]
+- Fixed startup race condition causing cloud accounts verify failure ([f0718db])
 - Enabled WAL mode and force initialization on startup to resolve process resource contention ([1bce5d3])
 
 ## [0.3.0] - 2026-01-23

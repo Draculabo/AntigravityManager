@@ -1,6 +1,6 @@
 import { exec, execSync } from 'child_process';
 import { promisify } from 'util';
-import findProcess from 'find-process';
+import findProcess, { ProcessInfo } from 'find-process';
 import { getAntigravityExecutablePath, isWsl } from '../../utils/paths';
 import { logger } from '../../utils/logger';
 
@@ -51,6 +51,17 @@ function isHelperProcess(name: string, cmd: string): boolean {
   return false;
 }
 
+function isPgrepNoMatchError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message;
+  const hasPgrep = message.includes('pgrep -xi Antigravity');
+  const code = (error as { code?: number }).code;
+  return hasPgrep && code === 1;
+}
+
 /**
  * Checks if the Antigravity process is running.
  * Uses find-process package for robust cross-platform process detection.
@@ -63,7 +74,16 @@ export async function isProcessRunning(): Promise<boolean> {
 
     // Use find-process to search for Antigravity processes
     // 'name' search type matches process name
-    const processes = await findProcess('name', 'Antigravity', true);
+    let processes: ProcessInfo[] = [];
+    try {
+      processes = await findProcess('name', 'Antigravity', true);
+    } catch (error) {
+      if (isPgrepNoMatchError(error)) {
+        logger.debug('No Antigravity process found (pgrep returned 1)');
+        return false;
+      }
+      throw error;
+    }
 
     logger.debug(`Found ${processes.length} processes matching 'Antigravity'`);
 
