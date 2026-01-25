@@ -281,6 +281,24 @@ AntigravityManager/
 </details>
 
 <details>
+<summary><b>Q: macOS 上提示 Keychain/凭据管理不可用，OAuth 无法保存？</b></summary>
+
+这是 macOS 安全机制导致的常见问题，通常出现在未签名的应用或从 Downloads 直接运行的场景。
+这是**临时方案**，仅适合个人设备：
+
+1. 将应用移动到 `/Applications`
+2. 打开终端执行以下命令（每次更新后都需要重新执行）
+
+```plaintext
+sudo xattr -dr com.apple.quarantine "/Applications/Antigravity Manager 2.app"
+codesign --force --deep --sign - "/Applications/Antigravity Manager 2.app"
+```
+
+重新打开应用后，Keychain 应会提示授权（可选“始终允许”）。
+
+</details>
+
+<details>
 <summary><b>Q: 如何反馈问题或建议？</b></summary>
 
 请通过 [GitHub Issues](https://github.com/Draculabo/AntigravityManager/issues) 提交问题或建议。
