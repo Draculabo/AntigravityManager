@@ -245,6 +245,7 @@ i18n
               },
               quotaRefreshed: 'Quota refreshed',
               refreshFailed: 'Failed to refresh quota',
+              pollFailed: 'Failed to poll quota for all accounts',
               switched: {
                 title: 'Account switched!',
                 description: 'Restarting Antigravity...',
@@ -533,6 +534,7 @@ i18n
               },
               quotaRefreshed: '配额已刷新',
               refreshFailed: '刷新配额失败',
+              pollFailed: '轮询所有账号配额失败',
               switched: {
                 title: '账号已切换！',
                 description: '正在重启 Antigravity...',
