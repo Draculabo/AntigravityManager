@@ -53,6 +53,7 @@ export class CloudMonitorService {
 
         // 3. Update DB
         await CloudAccountRepo.updateQuota(account.id, quota);
+        await CloudAccountRepo.updateLastUsed(account.id);
       } catch (error) {
         logger.error(`Monitor: Failed to update ${account.email}`, error);
         // Could mark status as 'error' or 'rate_limited' if 429

@@ -123,6 +123,8 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
     const quota = await GoogleAPIService.fetchQuota(account.token.access_token);
     account.quota = quota;
     await CloudAccountRepo.updateQuota(account.id, quota);
+    await CloudAccountRepo.updateLastUsed(account.id);
+    account.last_used = Math.floor(Date.now() / 1000); // Sync memory object
     notifyTrayUpdate(account);
     return account;
   } catch (error: any) {
@@ -143,6 +145,8 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
         const quota = await GoogleAPIService.fetchQuota(account.token.access_token);
         account.quota = quota;
         await CloudAccountRepo.updateQuota(account.id, quota);
+        await CloudAccountRepo.updateLastUsed(account.id);
+        account.last_used = Math.floor(Date.now() / 1000); // Sync memory object
         return account;
       } catch (refreshError) {
         logger.error(

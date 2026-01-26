@@ -78,7 +78,7 @@ function createIPCClient(port: MessagePort) {
           pendingRequests.delete(id);
           reject(new Error(`Request /${methodPath} timed out`));
         }
-      }, 10000);
+      }, 60000);
     });
   }
 
