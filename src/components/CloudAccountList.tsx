@@ -178,6 +178,12 @@ export function CloudAccountList() {
   const handleForcePoll = () => {
     forcePollMutation.mutate(undefined, {
       onSuccess: () => toast({ title: t('cloud.polling') }),
+      onError: (err) =>
+        toast({
+          title: t('cloud.toast.pollFailed'),
+          description: getLocalizedErrorMessage(err, t),
+          variant: 'destructive',
+        }),
     });
   };
 
