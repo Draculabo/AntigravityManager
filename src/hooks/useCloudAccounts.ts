@@ -47,12 +47,12 @@ export function useRefreshQuota() {
   return useMutation({
     mutationFn: refreshAccountQuota,
     onSuccess: (updatedAccount: CloudAccount) => {
-      // Optimistically update the list or just invalidate?
-      // Invalidating is safer as sorting might change (last_used)
+      // Optimistically update
       queryClient.setQueryData(QUERY_KEYS.cloudAccounts, (oldData: CloudAccount[] | undefined) => {
         if (!oldData) return [updatedAccount];
         return oldData.map((acc) => (acc.id === updatedAccount.id ? updatedAccount : acc));
       });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
     },
   });
 }
