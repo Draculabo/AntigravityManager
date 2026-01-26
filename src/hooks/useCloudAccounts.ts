@@ -103,6 +103,9 @@ export function useForcePollCloudMonitor() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
     },
+    onError: (error) => {
+      console.error('Failed to force poll cloud monitor:', error);
+    },
   });
 }
 
