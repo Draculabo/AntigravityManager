@@ -97,8 +97,12 @@ export function useSetAutoSwitchEnabled() {
 }
 
 export function useForcePollCloudMonitor() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: forcePollCloudMonitor,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+    },
   });
 }
 
