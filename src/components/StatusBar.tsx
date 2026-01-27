@@ -73,10 +73,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
             </TooltipTrigger>
             <TooltipContent side="right" className="flex items-center gap-2">
               <div
-                className={cn(
-                  'h-2 w-2 rounded-full',
-                  isRunning ? 'bg-green-500' : 'bg-red-500',
-                )}
+                className={cn('h-2 w-2 rounded-full', isRunning ? 'bg-green-500' : 'bg-red-500')}
               />
               <p>
                 {isLoading
@@ -96,7 +93,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
   return (
     <div
       className={cn(
-        'flex items-center justify-between overflow-hidden rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ring-1 ring-inset',
+        'flex items-center justify-between overflow-hidden rounded-lg px-3 py-2.5 text-sm font-medium ring-1 transition-colors ring-inset',
         isRunning
           ? 'bg-green-100 text-green-900 ring-green-200 dark:bg-green-900/20 dark:text-green-100 dark:ring-green-900/50'
           : 'bg-red-100 text-red-900 ring-red-200 dark:bg-red-900/20 dark:text-red-100 dark:ring-red-900/50',
@@ -111,12 +108,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
           <div className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
         )}
         <div className="flex flex-col gap-1 leading-none">
-           <span className="text-xs font-semibold opacity-80 uppercase tracking-wider">
-             Status
-           </span>
-           <span className="text-sm font-medium leading-tight">
-             {isLoading ? t('status.checking') : isRunning ? t('status.running') : t('status.stopped')}
-           </span>
+          <span className="text-xs font-semibold tracking-wider uppercase opacity-80">Status</span>
+          <span className="text-sm leading-tight font-medium">
+            {isLoading
+              ? t('status.checking')
+              : isRunning
+                ? t('status.running')
+                : t('status.stopped')}
+          </span>
         </div>
       </div>
       <Button
@@ -126,9 +125,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
         disabled={isLoading || isPending}
         className={cn(
           'ml-2 h-8 shrink-0 rounded-md border px-3 transition-all',
-          isRunning 
-            ? 'border-green-200 bg-green-200/50 hover:bg-green-200 text-green-900 dark:border-green-800 dark:bg-green-800/30 dark:hover:bg-green-800/50 dark:text-green-100' 
-            : 'border-red-200 bg-red-200/50 hover:bg-red-200 text-red-900 dark:border-red-800 dark:bg-red-800/30 dark:hover:bg-red-800/50 dark:text-red-100',
+          isRunning
+            ? 'border-green-200 bg-green-200/50 text-green-900 hover:bg-green-200 dark:border-green-800 dark:bg-green-800/30 dark:text-green-100 dark:hover:bg-green-800/50'
+            : 'border-red-200 bg-red-200/50 text-red-900 hover:bg-red-200 dark:border-red-800 dark:bg-red-800/30 dark:text-red-100 dark:hover:bg-red-800/50',
         )}
       >
         {isPending ? (
@@ -138,7 +137,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
         ) : (
           <Play className="h-3.5 w-3.5 fill-current" />
         )}
-        <span className="ml-2 font-semibold">{isRunning ? t('action.stop') : t('action.start')}</span>
+        <span className="ml-2 font-semibold">
+          {isRunning ? t('action.stop') : t('action.start')}
+        </span>
       </Button>
     </div>
   );
