@@ -1,13 +1,17 @@
 ---
 description: Archive a deployed OpenSpec change and update specs.
 ---
+
 <!-- OPENSPEC:START -->
+
 **Guardrails**
+
 - Favor straightforward, minimal implementations first and add complexity only when it is requested or clearly required.
 - Keep changes tightly scoped to the requested outcome.
 - Refer to `openspec/AGENTS.md` (located inside the `openspec/` directory—run `ls openspec` or `openspec update` if you don't see it) if you need additional OpenSpec conventions or clarifications.
 
 **Steps**
+
 1. Determine the change ID to archive:
    - If this prompt already includes a specific change ID (for example inside a `<ChangeId>` block populated by slash-command arguments), use that value after trimming whitespace.
    - If the conversation references a change loosely (for example by title or summary), run `openspec list` to surface likely IDs, share the relevant candidates, and confirm which one the user intends.
@@ -19,6 +23,7 @@ description: Archive a deployed OpenSpec change and update specs.
 5. Validate with `openspec validate --strict` and inspect with `openspec show <id>` if anything looks off.
 
 **Reference**
+
 - Use `openspec list` to confirm change IDs before archiving.
 - Inspect refreshed specs with `openspec list --specs` and address any validation issues before handing off.
 <!-- OPENSPEC:END -->
