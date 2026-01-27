@@ -51,7 +51,7 @@ export function transformClaudeRequestIn(
   const toolIdToName = new Map<string, string>();
 
   // 1. System Instruction
-  let systemInstruction = buildSystemInstruction(claudeReq.system, claudeReq.model);
+  const systemInstruction = buildSystemInstruction(claudeReq.system, claudeReq.model);
 
   // Map model name
   const mappedModel = hasWebSearchTool
@@ -100,7 +100,7 @@ export function transformClaudeRequestIn(
   );
 
   // 3. Tools
-  let tools = buildTools(claudeReq.tools, hasWebSearchTool);
+  const tools = buildTools(claudeReq.tools, hasWebSearchTool);
 
   // 5. Safety Settings
   const safetySettings = [
@@ -152,7 +152,7 @@ export function transformClaudeRequestIn(
     delete innerRequest.systemInstruction;
 
     // 3. Clean generationConfig
-    let genConfig = innerRequest.generationConfig || {};
+    const genConfig = innerRequest.generationConfig || {};
     delete genConfig.thinkingConfig;
     delete genConfig.responseMimeType;
     delete genConfig.responseModalities;
