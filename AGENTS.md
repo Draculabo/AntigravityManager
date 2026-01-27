@@ -106,7 +106,6 @@ Keep this managed block so 'openspec update' can refresh the instructions.
   - `npm run test:e2e` - 运行 Playwright 端到端测试
   - `npm run test:all` - 运行所有测试
 
-
 ### 运行单个测试 (Running Single Tests)
 
 - 单元测试: `npm run test:unit path/to/test.test.ts`
