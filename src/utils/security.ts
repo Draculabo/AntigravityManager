@@ -446,9 +446,7 @@ export async function decryptWithMigration(
           );
         }
         if (reencrypted) {
-          logger.info(
-            `Security: Re-encrypted data from ${fallback.source} to ${primary.source}`,
-          );
+          logger.info(`Security: Re-encrypted data from ${fallback.source} to ${primary.source}`);
         }
         return { value, reencrypted, usedFallback: fallback.source };
       } catch {
