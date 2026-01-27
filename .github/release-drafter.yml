@@ -1,7 +1,7 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 categories:
-  - title: '🚀 What''s new'
+  - title: "🚀 What's new"
     labels:
       - 'feature'
       - 'feat'
