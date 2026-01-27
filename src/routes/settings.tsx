@@ -33,6 +33,7 @@ function SettingsPage() {
   // Sync config to local state when loaded
   useEffect(() => {
     if (config) {
+      // eslint-disable-next-line
       setProxyConfig(config.proxy);
     }
   }, [config]);
