@@ -100,9 +100,7 @@ export async function isProcessRunning(): Promise<boolean> {
       logger.debug('No Antigravity process found (pgrep returned 1)');
     }
 
-    logger.debug(
-      `Found ${processes.length} processes matching 'Antigravity/antigravity'`,
-    );
+    logger.debug(`Found ${processes.length} processes matching 'Antigravity/antigravity'`);
 
     for (const proc of processes) {
       // Skip self
