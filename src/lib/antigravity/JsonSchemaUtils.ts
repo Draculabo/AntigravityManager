@@ -67,7 +67,7 @@ function flattenRefs(map: any, defs: Record<string, any>) {
 
   // Recursively process all children
   for (const k in map) {
-    if (map.hasOwnProperty(k)) {
+    if (Object.prototype.hasOwnProperty.call(map, k)) {
       const v = map[k];
       if (typeof v === 'object' && v !== null) {
         flattenRefs(v, defs);
@@ -91,7 +91,7 @@ function cleanJsonSchemaRecursive(value: any) {
 
     // 1. Recursively process all children first to ensure nested structures are cleaned
     for (const k in map) {
-      if (map.hasOwnProperty(k)) {
+      if (Object.prototype.hasOwnProperty.call(map, k)) {
         cleanJsonSchemaRecursive(map[k]);
       }
     }
