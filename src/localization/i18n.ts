@@ -337,8 +337,10 @@ i18n
             generic: '发生未知错误。',
             keychainUnavailable: 'Keychain 不可用。',
             keychainHint: {
-              translocation: '检测到 macOS App Translocation。请将应用移动到 /Applications 后重试。',
-              keychainDenied: 'Keychain 访问被拒绝。应用可能未签名，可参考 README 的“macOS 自签”说明。',
+              translocation:
+                '检测到 macOS App Translocation。请将应用移动到 /Applications 后重试。',
+              keychainDenied:
+                'Keychain 访问被拒绝。应用可能未签名，可参考 README 的“macOS 自签”说明。',
               signNotarize: '请在可用时使用已签名并公证的版本。',
             },
             dataMigrationFailed: '旧版账号数据无法解密。',
