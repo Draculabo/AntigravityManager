@@ -34,7 +34,7 @@ export default defineConfig([
       'no-empty-pattern': 'off',
       'no-case-declarations': 'off',
       'prefer-const': 'off',
-      'react-hooks/exhaustive-deps': 'off'
+      'react-hooks/exhaustive-deps': 'off',
     },
   },
 ]);
