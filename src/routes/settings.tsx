@@ -47,6 +47,10 @@ function SettingsPage() {
     queryFn: getPlatform,
   });
 
+  const isAutoStartSupported =
+    platform === 'win32' || platform === 'darwin' || platform === 'linux';
+  const isMac = platform === 'darwin';
+
   const handleLanguageChange = (value: string) => {
     setAppLanguage(value, i18n);
   };
@@ -178,6 +182,49 @@ function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {isAutoStartSupported && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('settings.startup.title', 'Startup')}</CardTitle>
+                <CardDescription>
+                  {t(
+                    'settings.startup.description',
+                    'Control application launch behavior at system startup.',
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-1">
+                    <Label>{t('settings.startup.auto_startup', 'Start with system')}</Label>
+                    <p className="text-xs text-gray-500">
+                      {t(
+                        'settings.startup.auto_startup_desc',
+                        'Launch at sign-in and keep the app in the system tray',
+                      )}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={config?.auto_startup || false}
+                    onCheckedChange={async (checked) => {
+                      if (config) {
+                        await saveConfig({ ...config, auto_startup: checked });
+                      }
+                    }}
+                  />
+                </div>
+                {isMac && (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      'settings.startup.macos_hint',
+                      'macOS requires a signed app for Login Items to work. If auto-start fails, please sign the app or enable it manually in System Settings.',
+                    )}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

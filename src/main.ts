@@ -18,6 +18,8 @@ import { bootstrapNestServer, stopNestServer } from './server/main';
 import { initTray, setTrayLanguage, destroyTray } from './ipc/tray/handler';
 import { rpcHandler } from './ipc/handler';
 import { ConfigManager } from './ipc/config/manager';
+import { AppConfig } from './types/config';
+import { isAutoStartLaunch, syncAutoStart } from './utils/autoStart';
 
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
 
@@ -63,6 +65,25 @@ const inDevelopment = process.env.NODE_ENV === 'development';
 let globalMainWindow: BrowserWindow | null = null;
 // let tray: Tray | null = null; // Moved to tray/handler.ts
 let isQuitting = false;
+let startupConfig: AppConfig | null = null;
+let shouldStartHidden = false;
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    logger.info('Second instance detected, focusing existing window');
+    if (app.isReady()) {
+      createWindow({ startHidden: false });
+      return;
+    }
+    app.whenReady().then(() => {
+      createWindow({ startHidden: false });
+    });
+  });
+}
 
 process.on('exit', (code) => {
   logger.info(`Process exit event triggered with code: ${code}`);
@@ -75,7 +96,22 @@ process.on('before-exit', (code) => {
 
 // let tray: Tray | null = null; // Moved to tray/handler.ts
 
-function createWindow() {
+function createWindow({ startHidden }: { startHidden: boolean }) {
+  if (globalMainWindow && !globalMainWindow.isDestroyed()) {
+    if (startHidden) {
+      globalMainWindow.hide();
+      return;
+    }
+    if (globalMainWindow.isMinimized()) {
+      globalMainWindow.restore();
+    }
+    if (!globalMainWindow.isVisible()) {
+      globalMainWindow.show();
+    }
+    globalMainWindow.focus();
+    return;
+  }
+
   logger.info('createWindow: start');
   const preload = path.join(__dirname, 'preload.js');
   logger.info(`createWindow: preload path: ${preload}`);
@@ -84,6 +120,7 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: !startHidden,
     autoHideMenuBar: true,
     webPreferences: {
       devTools: inDevelopment,
@@ -99,6 +136,10 @@ function createWindow() {
   });
   globalMainWindow = mainWindow;
   logger.info('createWindow: BrowserWindow instance created');
+  if (startHidden) {
+    mainWindow.hide();
+    logger.info('createWindow: startHidden enabled, window hidden');
+  }
 
   logger.info('createWindow: setting main window in ipcContext');
   ipcContext.setMainWindow(mainWindow);
@@ -126,6 +167,7 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     logger.info('Window closed event triggered');
+    globalMainWindow = null;
   });
 
   mainWindow.webContents.on('render-process-gone', (event, details) => {
@@ -242,12 +284,22 @@ app
     initDatabase();
   })
   .then(() => {
+    logger.info('Step: Load Config');
+    const config = ConfigManager.loadConfig();
+    startupConfig = config;
+    syncAutoStart(config);
+    shouldStartHidden = isAutoStartLaunch() && config.auto_startup;
+    if (shouldStartHidden) {
+      logger.info('Startup: Auto-start detected, window will start hidden');
+    }
+  })
+  .then(() => {
     logger.info('Step: setupORPC');
     return setupORPC();
   })
   .then(async () => {
     logger.info('Step: createWindow');
-    await createWindow();
+    await createWindow({ startHidden: shouldStartHidden });
   })
   .then(() => {
     logger.info('Step: installExtensions (SKIPPED)');
@@ -264,7 +316,7 @@ app
       AuthServer.start();
 
       // Gateway Server (NestJS) - auto-start if enabled
-      const config = ConfigManager.loadConfig();
+      const config = startupConfig || ConfigManager.loadConfig();
       if (config.proxy?.auto_start) {
         const port = config.proxy?.port || 8045;
         // Default to a valid ProxyConfig object if null, although loadConfig ensures defaults
@@ -306,7 +358,7 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    createWindow({ startHidden: false });
   }
 });
 //osX only ends

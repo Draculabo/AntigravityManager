@@ -22,6 +22,7 @@ export const AppConfigSchema = z.object({
   refresh_interval: z.number(), // minutes
   auto_sync: z.boolean(), // 是否自动同步
   sync_interval: z.number(), // minutes
+  auto_startup: z.boolean(), // 是否随系统启动
   default_export_path: z.string().nullable().optional(), // 导出路径
   proxy: ProxyConfigSchema,
 });
@@ -37,6 +38,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   refresh_interval: 15,
   auto_sync: false,
   sync_interval: 5,
+  auto_startup: false,
   default_export_path: null,
   proxy: {
     enabled: false,

@@ -100,6 +100,14 @@ i18n
               auto_sync: 'Auto Sync Current Account',
               auto_sync_desc: 'Periodically sync active account information',
             },
+            startup: {
+              title: 'Startup',
+              description: 'Control application launch behavior at system startup.',
+              auto_startup: 'Start with system',
+              auto_startup_desc: 'Launch at sign-in and keep the app in the system tray',
+              macos_hint:
+                'macOS requires a signed app for Login Items to work. If auto-start fails, please sign the app or enable it manually in System Settings.',
+            },
             proxy: {
               title: 'Upstream Proxy',
               description: 'Configure a proxy for outgoing requests to Google/Gemini APIs.',
@@ -390,6 +398,14 @@ i18n
               auto_refresh_desc: '定期自动刷新所有账号的配额信息',
               auto_sync: '自动获取当前账号',
               auto_sync_desc: '定期自动同步当前活跃账号信息',
+            },
+            startup: {
+              title: '启动',
+              description: '控制系统启动时的应用行为。',
+              auto_startup: '随系统启动',
+              auto_startup_desc: '登录时自动启动并保持在托盘里',
+              macos_hint:
+                'macOS 需要应用已签名才可生效。如自启动失败，请自行签名或在系统设置中手动启用。',
             },
             proxy: {
               title: '上游代理',
