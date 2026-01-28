@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MoreVertical, Trash2, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { enUS, zhCN, ru } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
@@ -32,18 +33,18 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   isSwitching,
   isDeleting,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const cardRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState('');
   const [glarePosition, setGlarePosition] = useState({ x: 50, y: 50 });
 
   const initials = account.name
     ? account.name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
     : account.email[0].toUpperCase();
 
   // 处理鼠标移动，计算 3D 旋转角度
@@ -136,6 +137,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                 {t('account.lastUsed', {
                   time: formatDistanceToNow(new Date(account.last_used), {
                     addSuffix: true,
+                    locale: { en: enUS, 'zh-CN': zhCN, ru: ru }[i18n.language] || enUS,
                   }),
                 })}
               </p>
