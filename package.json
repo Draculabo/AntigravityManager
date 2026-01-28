@@ -80,7 +80,7 @@
     "typescript-eslint": "^8.46.3",
     "unplugin-swc": "^1.5.9",
     "vite": "^5.4.21",
-    "vitest": "^4.0.8"
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.3",
