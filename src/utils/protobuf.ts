@@ -40,9 +40,11 @@ export class ProtobufUtils {
         return this.readVarint(data, offset).nextOffset;
       case 1: // 64-bit
         return offset + 8;
-      case 2: // Length-delimited
+      case 2: {
+        // Length-delimited
         const { value: length, nextOffset } = this.readVarint(data, offset);
         return nextOffset + Number(length);
+      }
       case 5: // 32-bit
         return offset + 4;
       default:

@@ -32,9 +32,7 @@ export default defineConfig([
       '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/ban-ts-comment': 'off',
       'no-empty-pattern': 'off',
-      'no-case-declarations': 'off',
       'prefer-const': 'off',
-      'react-hooks/exhaustive-deps': 'off',
     },
   },
 ]);
