@@ -312,6 +312,10 @@ i18n
               api_key: 'API Key',
               auto_start: 'Auto Start with App',
               auto_start_desc: 'Start proxy service when application launches',
+              local_access: 'Local network access:',
+              no_token_warning: '⚠️ API key is not set. Access is open to everyone!',
+              show_key: 'Show',
+              hide_key: 'Hide',
             },
             mapping: {
               title: 'Model Mapping',
@@ -730,6 +734,14 @@ i18n
               auto_startup_desc: 'Запускать при входе и сворачивать в трей',
               macos_hint:
                 'macOS требует подписанное приложение для работы элементов входа. Если автозапуск не работает, подпишите приложение или включите его вручную в системных настройках.',
+            },
+            privacy: {
+              title: 'Конфиденциальность',
+              description: 'Управление использованием данных для улучшения приложения.',
+              error_reporting: 'Отчеты об ошибках',
+              error_reporting_desc:
+                'Отправляйте анонимные отчеты об ошибках, чтобы помочь нам улучшить приложение. Личные данные не собираются.',
+              restart_note: 'Изменения в отчетах об ошибках вступят в силу после перезапуска приложения.',
             },
             proxy: {
               title: 'Верхнеуровневый прокси',
