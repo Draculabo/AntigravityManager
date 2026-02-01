@@ -103,13 +103,16 @@ i18n
             },
             notifications: {
               title: 'Notifications',
-              description: 'Configure desktop notifications for account switching and quota warnings.',
+              description:
+                'Configure desktop notifications for account switching and quota warnings.',
               enabled: 'Enable Notifications',
               enabled_desc: 'Show desktop notifications for important events',
               warning_threshold: 'Warning Threshold',
-              warning_threshold_desc: 'Show warning notification when quota falls below this percentage',
+              warning_threshold_desc:
+                'Show warning notification when quota falls below this percentage',
               switch_threshold: 'Auto-Switch Threshold',
-              switch_threshold_desc: 'Automatically switch accounts when quota falls below this percentage',
+              switch_threshold_desc:
+                'Automatically switch accounts when quota falls below this percentage',
               threshold_error: 'Switch threshold must be lower than warning threshold',
               test: 'Test Notification',
               test_desc: 'Send a test notification to verify settings',
@@ -456,8 +459,7 @@ i18n
               title: '隐私',
               description: '控制你的数据如何用于改进应用。',
               error_reporting: '错误上报',
-              error_reporting_desc:
-                '发送匿名错误报告以帮助我们改进应用。不收集个人数据。',
+              error_reporting_desc: '发送匿名错误报告以帮助我们改进应用。不收集个人数据。',
               restart_note: '错误上报设置会在重启应用后生效。',
             },
             proxy: {
@@ -716,7 +718,8 @@ i18n
             description: 'Управление вашими аккаунтами Antigravity Google Gemini.',
             noBackups: {
               title: 'Бэкапы не найдены',
-              description: 'Создайте резервную копию вашего текущего аккаунта Antigravity, чтобы начать.',
+              description:
+                'Создайте резервную копию вашего текущего аккаунта Antigravity, чтобы начать.',
               action: 'Создать бэкап текущего аккаунта',
             },
           },
@@ -757,13 +760,16 @@ i18n
             },
             notifications: {
               title: 'Уведомления',
-              description: 'Настройка уведомлений рабочего стола для переключения аккаунтов и предупреждений о квотах.',
+              description:
+                'Настройка уведомлений рабочего стола для переключения аккаунтов и предупреждений о квотах.',
               enabled: 'Включить уведомления',
               enabled_desc: 'Показывать уведомления о важных событиях',
               warning_threshold: 'Порог предупреждения',
-              warning_threshold_desc: 'Показывать предупреждение, когда квота падает ниже этого процента',
+              warning_threshold_desc:
+                'Показывать предупреждение, когда квота падает ниже этого процента',
               switch_threshold: 'Порог автопереключения',
-              switch_threshold_desc: 'Автоматически переключать аккаунт, когда квота падает ниже этого процента',
+              switch_threshold_desc:
+                'Автоматически переключать аккаунт, когда квота падает ниже этого процента',
               threshold_error: 'Порог переключения должен быть ниже порога предупреждения',
               test: 'Тестовое уведомление',
               test_desc: 'Отправить тестовое уведомление для проверки настроек',
@@ -783,7 +789,8 @@ i18n
               error_reporting: 'Отчеты об ошибках',
               error_reporting_desc:
                 'Отправляйте анонимные отчеты об ошибках, чтобы помочь нам улучшить приложение. Личные данные не собираются.',
-              restart_note: 'Изменения в отчетах об ошибках вступят в силу после перезапуска приложения.',
+              restart_note:
+                'Изменения в отчетах об ошибках вступят в силу после перезапуска приложения.',
             },
             proxy: {
               title: 'Верхнеуровневый прокси',

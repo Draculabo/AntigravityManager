@@ -59,13 +59,13 @@ describe('NotificationService', () => {
 
     // Ensure process.resourcesPath is safe
     if (typeof process.resourcesPath === 'undefined') {
-       // @ts-ignore
-       process.resourcesPath = '/mock/resources';
+      // @ts-ignore
+      process.resourcesPath = '/mock/resources';
     }
 
     // Setup Electron Notification mock
     // Use a regular function instead of arrow function for constructor
-    vi.mocked(Notification).mockImplementation(function() {
+    vi.mocked(Notification).mockImplementation(function () {
       return {
         show: mockShow,
       };
@@ -88,14 +88,16 @@ describe('NotificationService', () => {
 
       const mockedLogger = vi.mocked(logger);
       if (mockedLogger.error.mock.calls.length > 0) {
-         console.log('Logger Error:', JSON.stringify(mockedLogger.error.mock.calls, null, 2));
+        console.log('Logger Error:', JSON.stringify(mockedLogger.error.mock.calls, null, 2));
       }
 
       expect(mockShow).toHaveBeenCalled();
-      expect(Notification).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Account Switched',
-        body: expect.stringContaining('old@test.com'),
-      }));
+      expect(Notification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Account Switched',
+          body: expect.stringContaining('old@test.com'),
+        }),
+      );
     });
 
     it('should NOT send notification when disabled', () => {
@@ -121,10 +123,12 @@ describe('NotificationService', () => {
     it('should send warning notification', () => {
       NotificationService.sendQuotaWarningNotification('user@test.com', 15);
       expect(mockShow).toHaveBeenCalled();
-      expect(Notification).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Low Quota Warning',
-        body: expect.stringContaining('15.0%'),
-      }));
+      expect(Notification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Low Quota Warning',
+          body: expect.stringContaining('15.0%'),
+        }),
+      );
     });
   });
 
@@ -132,10 +136,12 @@ describe('NotificationService', () => {
     it('should send critical notification', () => {
       NotificationService.sendAllDepletedNotification();
       expect(mockShow).toHaveBeenCalled();
-      expect(Notification).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'All Accounts Depleted',
-        urgency: 'critical',
-      }));
+      expect(Notification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'All Accounts Depleted',
+          urgency: 'critical',
+        }),
+      );
     });
   });
 });

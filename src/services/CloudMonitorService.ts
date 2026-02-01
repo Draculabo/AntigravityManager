@@ -120,7 +120,9 @@ export class CloudMonitorService {
     }
   }
 
-  private static calculateAverageQuota(quota: { models: Record<string, { percentage: number }> }): number {
+  private static calculateAverageQuota(quota: {
+    models: Record<string, { percentage: number }>;
+  }): number {
     const values = Object.values(quota.models).map((m) => m.percentage);
     if (values.length === 0) return 100;
     return values.reduce((a, b) => a + b, 0) / values.length;

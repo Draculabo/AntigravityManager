@@ -40,11 +40,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
   const initials = account.name
     ? account.name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
     : account.email[0].toUpperCase();
 
   // 处理鼠标移动，计算 3D 旋转角度

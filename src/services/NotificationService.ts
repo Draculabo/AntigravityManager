@@ -33,7 +33,9 @@ function shouldSendNotification(key: string): boolean {
   return true;
 }
 
-function getNotificationIcon(type: 'success' | 'warning' | 'error'): Electron.NativeImage | undefined {
+function getNotificationIcon(
+  type: 'success' | 'warning' | 'error',
+): Electron.NativeImage | undefined {
   try {
     const iconName = `notification-${type}.png`;
     const possiblePaths = [

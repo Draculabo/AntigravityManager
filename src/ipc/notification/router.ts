@@ -15,7 +15,7 @@ export const notificationRouter = os.router({
       z.object({
         warningThreshold: z.number(),
         switchThreshold: z.number(),
-      })
+      }),
     )
     .handler(async () => {
       return getNotificationThresholds();

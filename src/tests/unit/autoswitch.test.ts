@@ -35,7 +35,6 @@ vi.mock('@/services/NotificationService', () => ({
   },
 }));
 
-
 describe('AutoSwitchService', () => {
   const mockCurrentAccount: CloudAccount = {
     id: 'current-id',
@@ -74,7 +73,10 @@ describe('AutoSwitchService', () => {
       vi.mocked(CloudAccountRepo.getSetting).mockReturnValue(true);
 
       // Mock accounts (current is depleted, next is healthy)
-      vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([mockCurrentAccount, mockNextAccount]);
+      vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+        mockCurrentAccount,
+        mockNextAccount,
+      ]);
 
       // Mock switch thresholds
       vi.mocked(NotificationService.getSwitchThreshold).mockReturnValue(5);
@@ -85,7 +87,7 @@ describe('AutoSwitchService', () => {
       expect(switchCloudAccount).toHaveBeenCalledWith(mockNextAccount.id);
       expect(NotificationService.sendAutoSwitchNotification).toHaveBeenCalledWith(
         mockCurrentAccount.email,
-        mockNextAccount.email
+        mockNextAccount.email,
       );
     });
 
@@ -104,7 +106,7 @@ describe('AutoSwitchService', () => {
 
       const healthyAccount = {
         ...mockCurrentAccount,
-        quota: { models: { 'gemini-pro': { percentage: 10 } } } // 10 > 5
+        quota: { models: { 'gemini-pro': { percentage: 10 } } }, // 10 > 5
       };
       vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([healthyAccount, mockNextAccount]);
       vi.mocked(NotificationService.getSwitchThreshold).mockReturnValue(5);
@@ -120,7 +122,7 @@ describe('AutoSwitchService', () => {
 
       const depletedNext = {
         ...mockNextAccount,
-        quota: { models: { 'gemini-pro': { percentage: 1 } } }
+        quota: { models: { 'gemini-pro': { percentage: 1 } } },
       };
 
       vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([mockCurrentAccount, depletedNext]);

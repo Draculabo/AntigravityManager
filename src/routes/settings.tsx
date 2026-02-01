@@ -239,8 +239,10 @@ function SettingsPage() {
               <div className="space-y-4 rounded-lg border p-4">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <Label>{t('settings.notifications.warning_threshold', 'Warning Threshold')}</Label>
-                    <span className="text-sm font-medium text-primary">
+                    <Label>
+                      {t('settings.notifications.warning_threshold', 'Warning Threshold')}
+                    </Label>
+                    <span className="text-primary text-sm font-medium">
                       {localWarningThreshold}%
                     </span>
                   </div>
@@ -264,14 +266,22 @@ function SettingsPage() {
                     if (config && value[0] > localSwitchThreshold) {
                       await saveConfig({
                         ...config,
-                        notifications: { ...config.notifications, quota_warning_threshold: value[0] },
+                        notifications: {
+                          ...config.notifications,
+                          quota_warning_threshold: value[0],
+                        },
                       });
                     } else {
                       // Revert to saved value and show error
-                      setLocalWarningThreshold(config?.notifications?.quota_warning_threshold ?? 20);
+                      setLocalWarningThreshold(
+                        config?.notifications?.quota_warning_threshold ?? 20,
+                      );
                       toast({
                         title: t('settings.notifications.validation_error', 'Invalid Value'),
-                        description: t('settings.notifications.warning_must_be_higher', 'Warning threshold must be higher than switch threshold'),
+                        description: t(
+                          'settings.notifications.warning_must_be_higher',
+                          'Warning threshold must be higher than switch threshold',
+                        ),
                         variant: 'destructive',
                       });
                     }
@@ -283,8 +293,10 @@ function SettingsPage() {
               <div className="space-y-4 rounded-lg border p-4">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <Label>{t('settings.notifications.switch_threshold', 'Auto-Switch Threshold')}</Label>
-                    <span className="text-sm font-medium text-primary">
+                    <Label>
+                      {t('settings.notifications.switch_threshold', 'Auto-Switch Threshold')}
+                    </Label>
+                    <span className="text-primary text-sm font-medium">
                       {localSwitchThreshold}%
                     </span>
                   </div>
@@ -308,21 +320,27 @@ function SettingsPage() {
                     if (config && value[0] < localWarningThreshold) {
                       await saveConfig({
                         ...config,
-                        notifications: { ...config.notifications, quota_switch_threshold: value[0] },
+                        notifications: {
+                          ...config.notifications,
+                          quota_switch_threshold: value[0],
+                        },
                       });
                     } else {
                       // Revert to saved value and show error
                       setLocalSwitchThreshold(config?.notifications?.quota_switch_threshold ?? 5);
                       toast({
                         title: t('settings.notifications.validation_error', 'Invalid Value'),
-                        description: t('settings.notifications.switch_must_be_lower', 'Switch threshold must be lower than warning threshold'),
+                        description: t(
+                          'settings.notifications.switch_must_be_lower',
+                          'Switch threshold must be lower than warning threshold',
+                        ),
                         variant: 'destructive',
                       });
                     }
                   }}
                 />
                 {localSwitchThreshold >= localWarningThreshold && (
-                  <p className="text-xs text-destructive">
+                  <p className="text-destructive text-xs">
                     {t(
                       'settings.notifications.threshold_error',
                       'Switch threshold must be lower than warning threshold',
@@ -335,9 +353,7 @@ function SettingsPage() {
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div className="space-y-1">
                   <Label>{t('settings.notifications.test')}</Label>
-                  <p className="text-xs text-gray-500">
-                    {t('settings.notifications.test_desc')}
-                  </p>
+                  <p className="text-xs text-gray-500">{t('settings.notifications.test_desc')}</p>
                 </div>
                 <Button
                   variant="outline"
