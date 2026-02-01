@@ -17,14 +17,19 @@ import { getAppVersion, getPlatform } from '@/actions/app';
 import { useTranslation } from 'react-i18next';
 import { setAppLanguage } from '@/actions/language';
 import { useAppConfig } from '@/hooks/useAppConfig';
-import { Loader2, FolderOpen } from 'lucide-react';
+import { Loader2, FolderOpen, Bell } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { ProxyConfig } from '@/types/config';
 import { openLogDirectory } from '@/actions/system';
+import { Slider } from '@/components/ui/slider';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
+import { sendTestNotification } from '@/actions/notification';
 
 function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { t, i18n } = useTranslation();
+  const { toast } = useToast();
   const { config, isLoading, saveConfig } = useAppConfig();
 
   // Local state for configuration editing
@@ -181,6 +186,155 @@ function SettingsPage() {
                     }
                   }}
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Notifications Settings Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                {t('settings.notifications.title', 'Notifications')}
+              </CardTitle>
+              <CardDescription>
+                {t(
+                  'settings.notifications.description',
+                  'Configure desktop notifications for account switching and quota warnings.',
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Enable Notifications Toggle */}
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label>{t('settings.notifications.enabled', 'Enable Notifications')}</Label>
+                  <p className="text-xs text-gray-500">
+                    {t(
+                      'settings.notifications.enabled_desc',
+                      'Show desktop notifications for important events',
+                    )}
+                  </p>
+                </div>
+                <Switch
+                  checked={config?.notifications?.enabled ?? true}
+                  onCheckedChange={async (checked) => {
+                    if (config) {
+                      await saveConfig({
+                        ...config,
+                        notifications: { ...config.notifications, enabled: checked },
+                      });
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Warning Threshold Slider */}
+              <div className="space-y-4 rounded-lg border p-4">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label>{t('settings.notifications.warning_threshold', 'Warning Threshold')}</Label>
+                    <span className="text-sm font-medium text-primary">
+                      {config?.notifications?.quota_warning_threshold ?? 20}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {t(
+                      'settings.notifications.warning_threshold_desc',
+                      'Show warning notification when quota falls below this percentage',
+                    )}
+                  </p>
+                </div>
+                <Slider
+                  value={[config?.notifications?.quota_warning_threshold ?? 20]}
+                  min={5}
+                  max={50}
+                  step={5}
+                  disabled={!config?.notifications?.enabled}
+                  onValueChange={async (value) => {
+                    if (config && value[0] > (config.notifications?.quota_switch_threshold ?? 5)) {
+                      await saveConfig({
+                        ...config,
+                        notifications: { ...config.notifications, quota_warning_threshold: value[0] },
+                      });
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Switch Threshold Slider */}
+              <div className="space-y-4 rounded-lg border p-4">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label>{t('settings.notifications.switch_threshold', 'Auto-Switch Threshold')}</Label>
+                    <span className="text-sm font-medium text-primary">
+                      {config?.notifications?.quota_switch_threshold ?? 5}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {t(
+                      'settings.notifications.switch_threshold_desc',
+                      'Automatically switch accounts when quota falls below this percentage',
+                    )}
+                  </p>
+                </div>
+                <Slider
+                  value={[config?.notifications?.quota_switch_threshold ?? 5]}
+                  min={1}
+                  max={20}
+                  step={1}
+                  disabled={!config?.notifications?.enabled}
+                  onValueChange={async (value) => {
+                    if (config && value[0] < (config.notifications?.quota_warning_threshold ?? 20)) {
+                      await saveConfig({
+                        ...config,
+                        notifications: { ...config.notifications, quota_switch_threshold: value[0] },
+                      });
+                    }
+                  }}
+                />
+                {(config?.notifications?.quota_switch_threshold ?? 5) >= (config?.notifications?.quota_warning_threshold ?? 20) && (
+                  <p className="text-xs text-destructive">
+                    {t(
+                      'settings.notifications.threshold_error',
+                      'Switch threshold must be lower than warning threshold',
+                    )}
+                  </p>
+                )}
+              </div>
+
+              {/* Test Notification Button */}
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label>{t('settings.notifications.test')}</Label>
+                  <p className="text-xs text-gray-500">
+                    {t('settings.notifications.test_desc')}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await sendTestNotification();
+                      toast({
+                        title: t('settings.notifications.toast_sent'),
+                        description: t('settings.notifications.test_desc'),
+                      });
+                    } catch (error) {
+                      console.error('Failed to send test notification', error);
+                      toast({
+                        variant: 'destructive',
+                        title: 'Error',
+                        description: 'Failed to send test notification',
+                      });
+                    }
+                  }}
+                  disabled={!config?.notifications?.enabled}
+                >
+                  <Bell className="mr-2 h-4 w-4" />
+                  {t('settings.notifications.test')}
+                </Button>
               </div>
             </CardContent>
           </Card>
