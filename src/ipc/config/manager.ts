@@ -35,6 +35,7 @@ export class ConfigManager {
       const merged: AppConfig = {
         ...DEFAULT_APP_CONFIG,
         ...raw,
+        notifications: { ...DEFAULT_APP_CONFIG.notifications, ...(raw.notifications || {}) },
         proxy: { ...DEFAULT_APP_CONFIG.proxy, ...(raw.proxy || {}) },
       };
 
