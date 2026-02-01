@@ -2,6 +2,7 @@ import { CloudAccountRepo } from '../ipc/database/cloudHandler';
 import { CloudAccount } from '../types/cloudAccount';
 import { switchCloudAccount } from '../ipc/cloud/handler';
 import { logger } from '../utils/logger';
+import { NotificationService } from './NotificationService';
 
 export class AutoSwitchService {
   /**
@@ -15,20 +16,23 @@ export class AutoSwitchService {
   static async findBestAccount(currentAccountId: string): Promise<CloudAccount | null> {
     const accounts = await CloudAccountRepo.getAccounts();
 
+    // Get configurable threshold from settings
+    const switchThreshold = NotificationService.getSwitchThreshold();
+
     // Filter potential candidates
     const candidates = accounts.filter((acc) => {
       if (acc.id === currentAccountId) return false;
       if (acc.status !== 'active') return false; // Rate limited or expired accounts are skipped
 
       // Check quota
-      // We assume simple check: if any model has < 5%, we skip it.
+      // We assume simple check: if any model has < threshold%, we skip it.
       // Or better: check average? NO, check critical models.
       // For now, let's just check if quota object exists.
       if (!acc.quota) return false; // No quota data means risky
 
       const models = Object.values(acc.quota.models);
-      // If any model is depleted (< 5%), skip.
-      const isDepleted = models.some((m) => m.percentage < 5);
+      // If any model is depleted (< threshold%), skip.
+      const isDepleted = models.some((m) => m.percentage < switchThreshold);
       return !isDepleted;
     });
 
@@ -81,18 +85,16 @@ export class AutoSwitchService {
       if (nextAccount) {
         logger.info(`AutoSwitch: Switching to ${nextAccount.email}...`);
 
-        // Notify user (via toast? we are in main process... IPC event?)
-        // Ideally we send an IPC event to renderer.
-        // For now, logic first.
-
         await switchCloudAccount(nextAccount.id);
 
-        // We might want to send a notification to user desktop?
-        // require('electron').Notification ...
+        // Send desktop notification about the switch
+        NotificationService.sendAutoSwitchNotification(currentAccount.email, nextAccount.email);
 
         return true;
       } else {
         logger.warn('AutoSwitch: No healthy accounts available to switch to.');
+        // Send critical notification about all accounts depleted
+        NotificationService.sendAllDepletedNotification();
       }
     }
 
@@ -101,8 +103,8 @@ export class AutoSwitchService {
 
   static isAccountDepleted(account: CloudAccount): boolean {
     if (!account.quota) return false; // Unknown, assume fine or let fetchQuota find out
-    // Threshold = 5%
-    const THRESHOLD = 5;
-    return Object.values(account.quota.models).some((m) => m.percentage < THRESHOLD);
+    // Use configurable threshold from settings
+    const threshold = NotificationService.getSwitchThreshold();
+    return Object.values(account.quota.models).some((m) => m.percentage < threshold);
   }
 }
