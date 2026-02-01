@@ -102,7 +102,8 @@ When using Antigravity IDE, have you ever encountered these problems?
       <h3>🔄 Intelligent Auto-Switching</h3>
       <ul>
         <li>Unlimited pool mode with smart backup selection</li>
-        <li>Auto-switch when quota < 5% or rate-limited</li>
+        <li>Auto-switch when quota drops below configurable threshold (default 5%)</li>
+        <li>Desktop notifications for switching events & warnings</li>
         <li>Background monitoring every 5 minutes</li>
       </ul>
     </td>
