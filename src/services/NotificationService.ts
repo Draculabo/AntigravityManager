@@ -1,35 +1,25 @@
+/**
+ * @created by https://github.com/abdul-zailani
+ */
 import { Notification, nativeImage, app } from 'electron';
 import path from 'path';
 import { logger } from '../utils/logger';
 import { ConfigManager } from '../ipc/config/manager';
 
-/**
- * Notification types for the application
- */
 export enum NotificationType {
   AUTO_SWITCH_SUCCESS = 'auto_switch_success',
   QUOTA_WARNING = 'quota_warning',
   ALL_DEPLETED = 'all_depleted',
 }
 
-/**
- * Debounce tracking to prevent notification spam
- */
 const notificationDebounce: Map<string, number> = new Map();
-const DEBOUNCE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const DEBOUNCE_DURATION_MS = 5 * 60 * 1000;
 
-/**
- * Check if notifications are enabled in config
- */
 function isNotificationsEnabled(): boolean {
   const config = ConfigManager.getCachedConfig() ?? ConfigManager.loadConfig();
   return config.notifications.enabled;
 }
 
-/**
- * Check if a notification should be sent (debounce check)
- * @param key Unique key for the notification (e.g., "quota_warning_user@email.com")
- */
 function shouldSendNotification(key: string): boolean {
   const lastSent = notificationDebounce.get(key);
   const now = Date.now();
@@ -43,14 +33,8 @@ function shouldSendNotification(key: string): boolean {
   return true;
 }
 
-/**
- * Get the icon path for notifications
- * @param type The type of notification icon
- */
 function getNotificationIcon(type: 'success' | 'warning' | 'error'): Electron.NativeImage | undefined {
   try {
-    // In production, icons are in resources folder
-    // In development, they might be in src/assets
     const iconName = `notification-${type}.png`;
     const possiblePaths = [
       path.join(process.resourcesPath, 'assets', iconName),
@@ -74,27 +58,15 @@ function getNotificationIcon(type: 'success' | 'warning' | 'error'): Electron.Na
   return undefined;
 }
 
-/**
- * NotificationService handles all desktop notifications for the application.
- * It respects user preferences and implements debouncing to prevent spam.
- */
 export class NotificationService {
-  /**
-   * Send a notification when auto-switch successfully switches accounts
-   * @param fromEmail The email of the account switched from
-   * @param toEmail The email of the account switched to
-   */
   static sendAutoSwitchNotification(fromEmail: string, toEmail: string): void {
     if (!isNotificationsEnabled()) {
-      logger.info('NotificationService: Notifications disabled, skipping auto-switch notification');
+      logger.info('NotificationService: Notifications disabled, skipping auto-switch');
       return;
     }
 
-    // Use both emails in key to allow notifications for different account pairs
     const key = `${NotificationType.AUTO_SWITCH_SUCCESS}_${fromEmail}_${toEmail}`;
-    if (!shouldSendNotification(key)) {
-      return;
-    }
+    if (!shouldSendNotification(key)) return;
 
     try {
       const notification = new Notification({
@@ -111,11 +83,6 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Send a warning notification when quota is running low
-   * @param email The email of the account with low quota
-   * @param percentage The current quota percentage
-   */
   static sendQuotaWarningNotification(email: string, percentage: number): void {
     if (!isNotificationsEnabled()) {
       logger.info('NotificationService: Notifications disabled, skipping quota warning');
@@ -123,9 +90,7 @@ export class NotificationService {
     }
 
     const key = `${NotificationType.QUOTA_WARNING}_${email}`;
-    if (!shouldSendNotification(key)) {
-      return;
-    }
+    if (!shouldSendNotification(key)) return;
 
     try {
       const notification = new Notification({
@@ -142,19 +107,14 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Send a critical notification when all accounts are depleted or rate-limited
-   */
   static sendAllDepletedNotification(): void {
     if (!isNotificationsEnabled()) {
-      logger.info('NotificationService: Notifications disabled, skipping all-depleted notification');
+      logger.info('NotificationService: Notifications disabled, skipping all-depleted');
       return;
     }
 
     const key = `${NotificationType.ALL_DEPLETED}`;
-    if (!shouldSendNotification(key)) {
-      return;
-    }
+    if (!shouldSendNotification(key)) return;
 
     try {
       const notification = new Notification({
@@ -172,25 +132,16 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Clear debounce cache for testing or reset purposes
-   */
   static clearDebounceCache(): void {
     notificationDebounce.clear();
     logger.info('NotificationService: Cleared debounce cache');
   }
 
-  /**
-   * Get the warning threshold from config
-   */
   static getWarningThreshold(): number {
     const config = ConfigManager.getCachedConfig() ?? ConfigManager.loadConfig();
     return config.notifications.quota_warning_threshold;
   }
 
-  /**
-   * Get the switch threshold from config
-   */
   static getSwitchThreshold(): number {
     const config = ConfigManager.getCachedConfig() ?? ConfigManager.loadConfig();
     return config.notifications.quota_switch_threshold;

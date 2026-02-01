@@ -1,3 +1,6 @@
+/**
+ * @created by https://github.com/abdul-zailani
+ */
 import { ipc } from '@/ipc/manager';
 
 export async function sendTestNotification() {
