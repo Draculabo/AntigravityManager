@@ -306,8 +306,13 @@ app
     // return installExtensions();
   })
   .then(() => {
-    logger.info('Step: checkForUpdates');
-    checkForUpdates();
+    // Skip update check for unsigned local builds to avoid "Could not get code signature" error
+    if (app.isPackaged && !inDevelopment) {
+      logger.info('Step: checkForUpdates (SKIPPED - unsigned build)');
+    } else {
+      logger.info('Step: checkForUpdates (SKIPPED - development mode)');
+    }
+    // checkForUpdates(); // Disabled for local unsigned builds
   })
   .then(async () => {
     // Initialize Cloud Monitor if enabled
