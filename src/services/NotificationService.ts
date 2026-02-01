@@ -90,7 +90,8 @@ export class NotificationService {
       return;
     }
 
-    const key = `${NotificationType.AUTO_SWITCH_SUCCESS}`;
+    // Use both emails in key to allow notifications for different account pairs
+    const key = `${NotificationType.AUTO_SWITCH_SUCCESS}_${fromEmail}_${toEmail}`;
     if (!shouldSendNotification(key)) {
       return;
     }

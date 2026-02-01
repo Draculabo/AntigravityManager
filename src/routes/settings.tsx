@@ -35,11 +35,17 @@ function SettingsPage() {
   // Local state for configuration editing
   const [proxyConfig, setProxyConfig] = useState<ProxyConfig | undefined>(undefined);
 
+  // Local state for notification thresholds (smooth slider dragging)
+  const [localWarningThreshold, setLocalWarningThreshold] = useState<number>(20);
+  const [localSwitchThreshold, setLocalSwitchThreshold] = useState<number>(5);
+
   // Sync config to local state when loaded
   useEffect(() => {
     if (config) {
       // eslint-disable-next-line
       setProxyConfig(config.proxy);
+      setLocalWarningThreshold(config.notifications?.quota_warning_threshold ?? 20);
+      setLocalSwitchThreshold(config.notifications?.quota_switch_threshold ?? 5);
     }
   }, [config]);
 
@@ -235,7 +241,7 @@ function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <Label>{t('settings.notifications.warning_threshold', 'Warning Threshold')}</Label>
                     <span className="text-sm font-medium text-primary">
-                      {config?.notifications?.quota_warning_threshold ?? 20}%
+                      {localWarningThreshold}%
                     </span>
                   </div>
                   <p className="text-xs text-gray-500">
@@ -246,16 +252,27 @@ function SettingsPage() {
                   </p>
                 </div>
                 <Slider
-                  value={[config?.notifications?.quota_warning_threshold ?? 20]}
+                  value={[localWarningThreshold]}
                   min={5}
                   max={50}
                   step={5}
                   disabled={!config?.notifications?.enabled}
-                  onValueChange={async (value) => {
-                    if (config && value[0] > (config.notifications?.quota_switch_threshold ?? 5)) {
+                  onValueChange={(value) => {
+                    setLocalWarningThreshold(value[0]);
+                  }}
+                  onValueCommit={async (value) => {
+                    if (config && value[0] > localSwitchThreshold) {
                       await saveConfig({
                         ...config,
                         notifications: { ...config.notifications, quota_warning_threshold: value[0] },
+                      });
+                    } else {
+                      // Revert to saved value and show error
+                      setLocalWarningThreshold(config?.notifications?.quota_warning_threshold ?? 20);
+                      toast({
+                        title: t('settings.notifications.validation_error', 'Invalid Value'),
+                        description: t('settings.notifications.warning_must_be_higher', 'Warning threshold must be higher than switch threshold'),
+                        variant: 'destructive',
                       });
                     }
                   }}
@@ -268,7 +285,7 @@ function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <Label>{t('settings.notifications.switch_threshold', 'Auto-Switch Threshold')}</Label>
                     <span className="text-sm font-medium text-primary">
-                      {config?.notifications?.quota_switch_threshold ?? 5}%
+                      {localSwitchThreshold}%
                     </span>
                   </div>
                   <p className="text-xs text-gray-500">
@@ -279,21 +296,32 @@ function SettingsPage() {
                   </p>
                 </div>
                 <Slider
-                  value={[config?.notifications?.quota_switch_threshold ?? 5]}
+                  value={[localSwitchThreshold]}
                   min={1}
                   max={20}
                   step={1}
                   disabled={!config?.notifications?.enabled}
-                  onValueChange={async (value) => {
-                    if (config && value[0] < (config.notifications?.quota_warning_threshold ?? 20)) {
+                  onValueChange={(value) => {
+                    setLocalSwitchThreshold(value[0]);
+                  }}
+                  onValueCommit={async (value) => {
+                    if (config && value[0] < localWarningThreshold) {
                       await saveConfig({
                         ...config,
                         notifications: { ...config.notifications, quota_switch_threshold: value[0] },
                       });
+                    } else {
+                      // Revert to saved value and show error
+                      setLocalSwitchThreshold(config?.notifications?.quota_switch_threshold ?? 5);
+                      toast({
+                        title: t('settings.notifications.validation_error', 'Invalid Value'),
+                        description: t('settings.notifications.switch_must_be_lower', 'Switch threshold must be lower than warning threshold'),
+                        variant: 'destructive',
+                      });
                     }
                   }}
                 />
-                {(config?.notifications?.quota_switch_threshold ?? 5) >= (config?.notifications?.quota_warning_threshold ?? 20) && (
+                {localSwitchThreshold >= localWarningThreshold && (
                   <p className="text-xs text-destructive">
                     {t(
                       'settings.notifications.threshold_error',
