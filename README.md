@@ -185,7 +185,7 @@ Download the latest release for your platform from the [Releases](https://github
 
 | Platform | Download |
 |----------|----------|
-| Windows | [.exe installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
+| Windows (x64/ARM64) | [.exe installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | macOS | [.dmg installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | Linux | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 
