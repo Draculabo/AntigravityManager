@@ -296,6 +296,14 @@ export async function closeAntigravity(): Promise<void> {
       if (p.cmd.includes('Antigravity Manager') || p.cmd.includes('antigravity-manager')) {
         return false;
       }
+      // Exclude development mode processes (electron-forge, vite, node running from workspace)
+      if (
+        p.cmd.includes('electron-forge') ||
+        p.cmd.includes('AntigravityManager') ||
+        p.cmd.includes('node_modules/electron')
+      ) {
+        return false;
+      }
       // Match Antigravity (but not manager)
       if (platform === 'win32') {
         return (
@@ -332,7 +340,8 @@ export async function closeAntigravity(): Promise<void> {
       if (platform === 'win32') {
         execSync('taskkill /F /IM "Antigravity.exe" /T', { stdio: 'ignore' });
       } else {
-        execSync('pkill -9 -f Antigravity', { stdio: 'ignore' });
+        // Only kill Antigravity.app processes, not Manager
+        execSync('pkill -9 -f "Antigravity.app/Contents/MacOS"', { stdio: 'ignore' });
       }
     } catch {
       // Ignore
