@@ -30,24 +30,19 @@ export class ConfigManager {
       const content = fs.readFileSync(configPath, 'utf-8');
       const raw = JSON.parse(content);
 
-      // Merge with default to ensure new fields are present
-      // Zod parse helps validate
       const merged: AppConfig = {
         ...DEFAULT_APP_CONFIG,
         ...raw,
+        notifications: { ...DEFAULT_APP_CONFIG.notifications, ...(raw.notifications || {}) },
         proxy: { ...DEFAULT_APP_CONFIG.proxy, ...(raw.proxy || {}) },
       };
 
-      // Fix deep merge for upstream_proxy if needed
       if (raw.proxy && raw.proxy.upstream_proxy) {
         merged.proxy.upstream_proxy = {
           ...DEFAULT_APP_CONFIG.proxy.upstream_proxy,
           ...raw.proxy.upstream_proxy,
         };
       }
-
-      // Handle Anthropic Mapping Map vs Object
-      // In JSON it's object
 
       this.cachedConfig = merged;
       return merged;

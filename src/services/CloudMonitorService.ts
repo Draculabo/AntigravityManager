@@ -1,16 +1,16 @@
 import { CloudAccountRepo } from '../ipc/database/cloudHandler';
 import { GoogleAPIService } from './GoogleAPIService';
 import { AutoSwitchService } from './AutoSwitchService';
+import { NotificationService } from './NotificationService';
 import { logger } from '../utils/logger';
 
 export class CloudMonitorService {
   private static intervalId: NodeJS.Timeout | null = null;
-  private static POLL_INTERVAL = 1000 * 60 * 5; // 5 minutes
-  private static DEBOUNCE_TIME = 10000; // 10 seconds
+  private static POLL_INTERVAL = 1000 * 60 * 5;
+  private static DEBOUNCE_TIME = 10000;
   private static lastFocusTime: number = 0;
   private static isPolling: boolean = false;
 
-  // Helper for testing
   static resetStateForTesting() {
     this.lastFocusTime = 0;
     this.isPolling = false;
@@ -21,12 +21,8 @@ export class CloudMonitorService {
     if (this.intervalId) return;
     logger.info('Starting CloudMonitorService...');
 
-    // Set lastFocusTime to now to prevent "double-dip" on startup (focus event immediately after start)
     this.lastFocusTime = Date.now();
-
-    // Initial Poll
-    this.poll().catch((e) => logger.error('Initial poll failed', e));
-
+    this.poll(true).catch((e) => logger.error('Initial poll failed', e));
     this.startInterval();
   }
 
@@ -38,33 +34,23 @@ export class CloudMonitorService {
     }
   }
 
-  /**
-   * Called when the application window gains focus.
-   * Triggers an immediate poll if not rate-limited by debounce.
-   */
   static async handleAppFocus() {
     const now = Date.now();
 
-    // 1. Concurrency Guard: If we are already polling, don't pile up requests
     if (this.isPolling) {
-      logger.info('Monitor: App focused, but polling is already in progress. Skipping.');
+      logger.info('Monitor: Polling in progress, skipping focus poll.');
       return;
     }
 
-    // 2. Debounce: If we focused recently, don't poll again
     if (now - this.lastFocusTime < this.DEBOUNCE_TIME) {
-      logger.info('Monitor: App focused, skipping poll (debounce active).');
+      logger.info('Monitor: Debounce active, skipping poll.');
       return;
     }
 
-    logger.info('Monitor: App focused, triggering immediate poll...');
+    logger.info('Monitor: App focused, triggering poll...');
     this.lastFocusTime = now;
 
-    // 3. Trigger Poll
-    await this.poll().catch((e) => {
-      logger.error('Monitor: Focus poll failed', e);
-    });
-    // 4. Reset the background interval so we don't double-poll shortly after
+    await this.poll().catch((e) => logger.error('Focus poll failed', e));
     this.resetInterval();
   }
 
@@ -80,14 +66,12 @@ export class CloudMonitorService {
   private static resetInterval() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
-      this.startInterval(); // Restart the 5-minute timer
+      this.startInterval();
     }
   }
 
-  static async poll() {
-    if (this.isPolling) {
-      return; // Extra safety
-    }
+  static async poll(skipAutoSwitch = false) {
+    if (this.isPolling) return;
     this.isPolling = true;
 
     try {
@@ -97,7 +81,6 @@ export class CloudMonitorService {
 
       for (const account of accounts) {
         try {
-          // 1. Check/Refresh Token if needed (give it a 10 min buffer here for safety)
           let accessToken = account.token.access_token;
           if (account.token.expiry_timestamp < now + 600) {
             logger.info(`Monitor: Refreshing token for ${account.email}`);
@@ -109,24 +92,39 @@ export class CloudMonitorService {
             accessToken = newToken.access_token;
           }
 
-          // 2. Fetch Quota
-          // We delay slightly between requests to act human/avoid spike
           await new Promise((r) => setTimeout(r, 1000));
           const quota = await GoogleAPIService.fetchQuota(accessToken);
 
-          // 3. Update DB
           await CloudAccountRepo.updateQuota(account.id, quota);
           await CloudAccountRepo.updateLastUsed(account.id);
+
+          const warningThreshold = NotificationService.getWarningThreshold();
+          const switchThreshold = NotificationService.getSwitchThreshold();
+          const avgQuota = this.calculateAverageQuota(quota);
+
+          if (avgQuota < warningThreshold && avgQuota >= switchThreshold) {
+            NotificationService.sendQuotaWarningNotification(account.email, avgQuota);
+          }
         } catch (error) {
           logger.error(`Monitor: Failed to update ${account.email}`, error);
-          // Could mark status as 'error' or 'rate_limited' if 429
         }
       }
 
-      // 4. Check for Auto-Switch
-      await AutoSwitchService.checkAndSwitchIfNeeded();
+      if (!skipAutoSwitch) {
+        await AutoSwitchService.checkAndSwitchIfNeeded();
+      } else {
+        logger.info('CloudMonitor: Skipping auto-switch on initial poll');
+      }
     } finally {
       this.isPolling = false;
     }
+  }
+
+  private static calculateAverageQuota(quota: {
+    models: Record<string, { percentage: number }>;
+  }): number {
+    const values = Object.values(quota.models).map((m) => m.percentage);
+    if (values.length === 0) return 100;
+    return values.reduce((a, b) => a + b, 0) / values.length;
   }
 }

@@ -15,6 +15,12 @@ export const ProxyConfigSchema = z.object({
   upstream_proxy: UpstreamProxyConfigSchema,
 });
 
+export const NotificationConfigSchema = z.object({
+  enabled: z.boolean(),
+  quota_warning_threshold: z.number().min(5).max(50), // Percentage to trigger warning
+  quota_switch_threshold: z.number().min(1).max(20), // Percentage to trigger auto-switch
+});
+
 export const AppConfigSchema = z.object({
   language: z.string(),
   theme: z.string(),
@@ -26,11 +32,13 @@ export const AppConfigSchema = z.object({
   error_reporting_enabled: z.boolean(),
   privacy_consent_asked: z.boolean().optional().default(false), // Optional for backward compatibility
   default_export_path: z.string().nullable().optional(), // 导出路径
+  notifications: NotificationConfigSchema,
   proxy: ProxyConfigSchema,
 });
 
 export type UpstreamProxyConfig = z.infer<typeof UpstreamProxyConfigSchema>;
 export type ProxyConfig = z.infer<typeof ProxyConfigSchema>;
+export type NotificationConfig = z.infer<typeof NotificationConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
@@ -44,6 +52,11 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   error_reporting_enabled: true, // Default to disabled for privacy
   privacy_consent_asked: false, // Whether the user has been asked for consent
   default_export_path: null,
+  notifications: {
+    enabled: true,
+    quota_warning_threshold: 20, // Warn when quota < 20%
+    quota_switch_threshold: 5, // Auto-switch when quota < 5%
+  },
   proxy: {
     enabled: false,
     port: 8045,

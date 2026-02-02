@@ -101,6 +101,23 @@ i18n
               auto_sync: 'Auto Sync Current Account',
               auto_sync_desc: 'Periodically sync active account information',
             },
+            notifications: {
+              title: 'Notifications',
+              description:
+                'Configure desktop notifications for account switching and quota warnings.',
+              enabled: 'Enable Notifications',
+              enabled_desc: 'Show desktop notifications for important events',
+              warning_threshold: 'Warning Threshold',
+              warning_threshold_desc:
+                'Show warning notification when quota falls below this percentage',
+              switch_threshold: 'Auto-Switch Threshold',
+              switch_threshold_desc:
+                'Automatically switch accounts when quota falls below this percentage',
+              threshold_error: 'Switch threshold must be lower than warning threshold',
+              test: 'Test Notification',
+              test_desc: 'Send a test notification to verify settings',
+              toast_sent: 'Test notification sent',
+            },
             startup: {
               title: 'Startup',
               description: 'Control application launch behavior at system startup.',
@@ -419,6 +436,20 @@ i18n
               auto_sync: '自动获取当前账号',
               auto_sync_desc: '定期自动同步当前活跃账号信息',
             },
+            notifications: {
+              title: '通知',
+              description: '配置账号切换和配额预警的桌面通知。',
+              enabled: '启用通知',
+              enabled_desc: '显示重要事件的桌面通知',
+              warning_threshold: '预警阈值',
+              warning_threshold_desc: '当配额低于此百分比时显示警告通知',
+              switch_threshold: '自动切换阈值',
+              switch_threshold_desc: '当配额低于此百分比时自动切换账号',
+              threshold_error: '切换阈值必须低于预警阈值',
+              test: '测试通知',
+              test_desc: '发送一条测试通知以验证设置',
+              toast_sent: '测试通知已发送',
+            },
             startup: {
               title: '启动',
               description: '控制系统启动时的应用行为。',
@@ -732,6 +763,23 @@ i18n
               auto_refresh_desc: 'Периодически обновлять информацию о квотах для всех аккаунтов',
               auto_sync: 'Автосинхронизация текущего',
               auto_sync_desc: 'Периодически синхронизировать активный аккаунт',
+            },
+            notifications: {
+              title: 'Уведомления',
+              description:
+                'Настройка уведомлений рабочего стола для переключения аккаунтов и предупреждений о квотах.',
+              enabled: 'Включить уведомления',
+              enabled_desc: 'Показывать уведомления о важных событиях',
+              warning_threshold: 'Порог предупреждения',
+              warning_threshold_desc:
+                'Показывать предупреждение, когда квота падает ниже этого процента',
+              switch_threshold: 'Порог автопереключения',
+              switch_threshold_desc:
+                'Автоматически переключать аккаунт, когда квота падает ниже этого процента',
+              threshold_error: 'Порог переключения должен быть ниже порога предупреждения',
+              test: 'Тестовое уведомление',
+              test_desc: 'Отправить тестовое уведомление для проверки настроек',
+              toast_sent: 'Тестовое уведомление отправлено',
             },
             startup: {
               title: 'Автозагрузка',

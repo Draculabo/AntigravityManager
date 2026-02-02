@@ -1,6 +1,7 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
@@ -24,7 +25,10 @@ const config: ForgeConfig = {
     icon: 'images/icon', // Electron Forge automatically adds .icns/.ico
     extraResource: ['src/assets'], // Copy assets folder to resources/assets
   },
-  rebuildConfig: {},
+  rebuildConfig: {
+    // Skip rebuild for native modules during development since they are pre-compiled for arm64 Electron
+    onlyModules: isStartCommand ? [] : undefined,
+  },
   hooks: {
     packageAfterCopy: async (_config, buildPath) => {
       // Copy native modules to the packaged app
@@ -64,7 +68,15 @@ const config: ForgeConfig = {
       }
     },
   },
-  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
+  makers: [
+    new MakerSquirrel({}),
+    new MakerZIP({}, ['darwin']),
+    new MakerDMG({
+      format: 'ULFO',
+    }),
+    new MakerRpm({}),
+    new MakerDeb({}),
+  ],
   publishers: [
     {
       /*
