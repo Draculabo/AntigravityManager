@@ -25,7 +25,10 @@ const config: ForgeConfig = {
     icon: 'images/icon', // Electron Forge automatically adds .icns/.ico
     extraResource: ['src/assets'], // Copy assets folder to resources/assets
   },
-  rebuildConfig: {},
+  rebuildConfig: {
+    // Skip rebuild for native modules during development since they are pre-compiled for arm64 Electron
+    onlyModules: isStartCommand ? [] : undefined,
+  },
   hooks: {
     packageAfterCopy: async (_config, buildPath) => {
       // Copy native modules to the packaged app
