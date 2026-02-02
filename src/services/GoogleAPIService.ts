@@ -236,6 +236,7 @@ export class GoogleAPIService {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(body),
+          signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
           ...this.getFetchOptions(),
         });
 
@@ -281,6 +282,7 @@ export class GoogleAPIService {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(payload),
+          signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
           ...fetchOptions,
         });
 
@@ -322,6 +324,11 @@ export class GoogleAPIService {
               result.models[name] = { percentage, resetTime };
             }
           }
+        }
+
+        // Warn if no models found with quota info
+        if (Object.keys(result.models).length === 0) {
+          console.warn('[GoogleAPIService] Quota response returned no models with quota info. Raw data had', Object.keys(data.models || {}).length, 'models.');
         }
 
         return result;

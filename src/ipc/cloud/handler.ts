@@ -104,6 +104,13 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
   if (account.token.expiry_timestamp < now + 300) {
     // 5 minutes buffer
     logger.info(`Token for ${account.email} near expiry, refreshing...`);
+
+    // Check if we have a refresh token
+    if (!account.token.refresh_token) {
+      logger.warn(`No refresh token available for ${account.email}. Token cannot be refreshed.`);
+      throw new Error(`Token expired and no refresh token available for ${account.email}. Please re-sync the account from IDE.`);
+    }
+
     try {
       const newTokenData = await GoogleAPIService.refreshAccessToken(account.token.refresh_token);
 
@@ -116,6 +123,7 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
       await CloudAccountRepo.updateToken(account.id, account.token);
     } catch (e) {
       logger.error(`Failed to refresh token during time-check for ${account.email}`, e);
+      throw e; // Re-throw so caller knows refresh failed
     }
   }
 
@@ -130,6 +138,13 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
   } catch (error: any) {
     if (error.message === 'UNAUTHORIZED') {
       logger.warn(`Got 401 Unauthorized for ${account.email}, forcing token refresh...`);
+
+      // Check if we have a refresh token before attempting refresh
+      if (!account.token.refresh_token) {
+        logger.error(`No refresh token available for ${account.email}. Cannot recover from 401.`);
+        throw new Error(`Token expired and no refresh token available for ${account.email}. Please re-sync the account from IDE.`);
+      }
+
       try {
         // Force Refresh
         const newTokenData = await GoogleAPIService.refreshAccessToken(account.token.refresh_token);
@@ -156,11 +171,11 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
         throw refreshError;
       }
     } else if (error.message === 'FORBIDDEN') {
-      logger.warn(
-        `Got 403 Forbidden for ${account.email}, marking as rate limited (if implemented) or just ignoring.`,
-      );
-      // Return existing account to avoid crash
-      return account;
+      logger.warn(`Got 403 Forbidden for ${account.email}. Account may be rate limited.`);
+      // Update account status to rate_limited so UI can show proper status
+      account.status = 'rate_limited';
+      // Throw error so UI knows the refresh failed
+      throw new Error(`Quota check failed: Account ${account.email} is rate limited (403 Forbidden). Please try again later.`);
     }
 
     logger.error(`Failed to refresh quota for ${account.email}`, error);
