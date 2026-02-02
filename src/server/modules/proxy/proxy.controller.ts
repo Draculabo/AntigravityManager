@@ -8,7 +8,7 @@ import { ProxyGuard } from './proxy.guard';
 @Controller('v1')
 @UseGuards(ProxyGuard)
 export class ProxyController {
-  constructor(@Inject(ProxyService) private readonly proxyService: ProxyService) { }
+  constructor(@Inject(ProxyService) private readonly proxyService: ProxyService) {}
 
   @Get('models')
   getModels() {
@@ -44,8 +44,7 @@ export class ProxyController {
   @Post('chat/completions')
   async chatCompletions(@Body() body: OpenAIChatRequest, @Res() res: FastifyReply) {
     try {
-
-      // 🔧 Claude Code CLI compatibility:
+      // Claude Code CLI compatibility:
       // Claude CLI uses OpenAI-style /v1/chat/completions
       if (body.model?.startsWith('claude-')) {
         const result = await this.proxyService.handleAnthropicMessages(
@@ -62,7 +61,6 @@ export class ProxyController {
         }
         return;
       }
-
 
       const result = await this.proxyService.handleChatCompletions(body);
 
