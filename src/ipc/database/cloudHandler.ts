@@ -245,67 +245,105 @@ export class CloudAccountRepo {
 
       const accounts: CloudAccount[] = [];
       for (const row of rows) {
-        let tokenResult: DecryptFieldResult;
         try {
-          tokenResult = await decryptAndMigrateField(db, row.id, 'token_json', row.token_json);
-        } catch (error) {
-          migrationStats.failedFields += 1;
-          logger.error(`Failed to decrypt token for account ${row.id}`, error);
-          throw error;
-        }
+          let tokenResult: DecryptFieldResult;
+          try {
+            tokenResult = await decryptAndMigrateField(db, row.id, 'token_json', row.token_json);
+          } catch (error) {
+            migrationStats.failedFields += 1;
+            logger.error(`Failed to decrypt token for account ${row.id}`, error);
 
-        let quotaResult: DecryptFieldResult;
-        try {
-          quotaResult = await decryptAndMigrateField(db, row.id, 'quota_json', row.quota_json);
-        } catch (error) {
-          migrationStats.failedFields += 1;
-          logger.error(`Failed to decrypt quota for account ${row.id}`, error);
-          throw error;
-        }
+            // Return account with expired status if decryption fails
+            accounts.push({
+              id: row.id,
+              provider: row.provider,
+              email: row.email,
+              name: row.name,
+              avatar_url: row.avatar_url,
+              token: {
+                access_token: '',
+                refresh_token: '',
+                expires_in: 0,
+                expiry_timestamp: 0,
+                token_type: 'Bearer',
+              },
+              quota: undefined,
+              created_at: row.created_at,
+              last_used: row.last_used,
+              status: 'expired',
+              is_active: Boolean(row.is_active),
+            });
+            continue;
+          }
 
-        if (!tokenResult.value) {
-          throw new Error(`Missing token data for account ${row.id}`);
-        }
+          let quotaResult: DecryptFieldResult;
+          try {
+            quotaResult = await decryptAndMigrateField(db, row.id, 'quota_json', row.quota_json);
+          } catch (error) {
+            // Quota is optional, we can just log and continue with null quota
+            logger.warn(`Failed to decrypt quota for account ${row.id}`, error);
+            quotaResult = { value: null, migrated: false };
+          }
 
-        if (tokenResult.value) {
+          if (!tokenResult.value) {
+            logger.warn(`Missing token data for account ${row.id}`);
+            continue;
+          }
+
+          // tokenResult.value is guaranteed to exist after the check above
           migrationStats.totalFields += 1;
-        }
-        if (tokenResult.usedFallback) {
-          migrationStats.fallbackUsedFields += 1;
-        }
-        if (tokenResult.migrated) {
-          migrationStats.migratedFields += 1;
           if (tokenResult.usedFallback) {
-            migrationStats.migratedBySource[tokenResult.usedFallback] += 1;
+            migrationStats.fallbackUsedFields += 1;
           }
-        }
+          if (tokenResult.migrated) {
+            migrationStats.migratedFields += 1;
+            if (tokenResult.usedFallback) {
+              migrationStats.migratedBySource[tokenResult.usedFallback] += 1;
+            }
+          }
 
-        if (quotaResult.value) {
-          migrationStats.totalFields += 1;
-        }
-        if (quotaResult.usedFallback) {
-          migrationStats.fallbackUsedFields += 1;
-        }
-        if (quotaResult.migrated) {
-          migrationStats.migratedFields += 1;
+          if (quotaResult.value) {
+            migrationStats.totalFields += 1;
+          }
           if (quotaResult.usedFallback) {
-            migrationStats.migratedBySource[quotaResult.usedFallback] += 1;
+            migrationStats.fallbackUsedFields += 1;
           }
-        }
+          if (quotaResult.migrated) {
+            migrationStats.migratedFields += 1;
+            if (quotaResult.usedFallback) {
+              migrationStats.migratedBySource[quotaResult.usedFallback] += 1;
+            }
+          }
 
-        accounts.push({
-          id: row.id,
-          provider: row.provider,
-          email: row.email,
-          name: row.name,
-          avatar_url: row.avatar_url,
-          token: JSON.parse(tokenResult.value),
-          quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
-          created_at: row.created_at,
-          last_used: row.last_used,
-          status: row.status,
-          is_active: Boolean(row.is_active),
-        });
+          // Parse token and quota JSON with validation
+          let parsedToken;
+          let parsedQuota;
+          try {
+            parsedToken = JSON.parse(tokenResult.value);
+            parsedQuota = quotaResult.value ? JSON.parse(quotaResult.value) : undefined;
+          } catch (parseError) {
+            logger.error(`Failed to parse JSON for account ${row.id}`, parseError);
+            migrationStats.failedFields += 1;
+            continue;
+          }
+
+          accounts.push({
+            id: row.id,
+            provider: row.provider,
+            email: row.email,
+            name: row.name,
+            avatar_url: row.avatar_url,
+            token: parsedToken,
+            quota: parsedQuota,
+            created_at: row.created_at,
+            last_used: row.last_used,
+            status: row.status,
+            is_active: Boolean(row.is_active),
+          });
+        } catch (error) {
+          logger.error(`Failed to process account row ${row.id}`, error);
+          migrationStats.failedFields += 1;
+        }
       }
 
       return accounts;
@@ -341,26 +379,49 @@ export class CloudAccountRepo {
 
       if (!row) return undefined;
 
-      const tokenResult = await decryptAndMigrateField(db, row.id, 'token_json', row.token_json);
-      const quotaResult = await decryptAndMigrateField(db, row.id, 'quota_json', row.quota_json);
+      try {
+        const tokenResult = await decryptAndMigrateField(db, row.id, 'token_json', row.token_json);
+        const quotaResult = await decryptAndMigrateField(db, row.id, 'quota_json', row.quota_json);
 
-      if (!tokenResult.value) {
-        throw new Error(`Missing token data for account ${row.id}`);
+        if (!tokenResult.value) {
+          throw new Error(`Missing token data for account ${row.id}`);
+        }
+
+        return {
+          id: row.id,
+          provider: row.provider,
+          email: row.email,
+          name: row.name,
+          avatar_url: row.avatar_url,
+          token: JSON.parse(tokenResult.value),
+          quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
+          created_at: row.created_at,
+          last_used: row.last_used,
+          status: row.status,
+          is_active: Boolean(row.is_active),
+        };
+      } catch (error) {
+        logger.error(`Failed to decrypt or parse account ${row.id}`, error);
+        return {
+          id: row.id,
+          provider: row.provider,
+          email: row.email,
+          name: row.name,
+          avatar_url: row.avatar_url,
+          token: {
+            access_token: '',
+            refresh_token: '',
+            expires_in: 0,
+            expiry_timestamp: 0,
+            token_type: 'Bearer',
+          },
+          quota: undefined,
+          created_at: row.created_at,
+          last_used: row.last_used,
+          status: 'expired',
+          is_active: Boolean(row.is_active),
+        };
       }
-
-      return {
-        id: row.id,
-        provider: row.provider,
-        email: row.email,
-        name: row.name,
-        avatar_url: row.avatar_url,
-        token: JSON.parse(tokenResult.value),
-        quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
-        created_at: row.created_at,
-        last_used: row.last_used,
-        status: row.status,
-        is_active: Boolean(row.is_active),
-      };
     } finally {
       db.close();
     }
@@ -620,38 +681,49 @@ export class CloudAccountRepo {
       }
 
       // 4. Check Duplicate & Construct Account
-      // We use existing addAccount logic which does UPSERT (REPLACE)
       // Construct CloudAccount object
       const now = Math.floor(Date.now() / 1000);
+
+      // Get all accounts to find existing one by email
+      const accounts = await this.getAccounts();
+      const existing = accounts.find((a) => a.email.toLowerCase() === userInfo.email.toLowerCase());
+
+      if (existing) {
+        logger.info(`SyncLocal: Found existing account for ${userInfo.email} (ID: ${existing.id}). Merging tokens.`);
+      } else {
+        logger.info(`SyncLocal: Creating new account for ${userInfo.email}`);
+      }
+
       const account: CloudAccount = {
-        id: uuidv4(), // Generate new ID if new, but check existing email
+        id: existing ? existing.id : uuidv4(),
         provider: 'google',
         email: userInfo.email,
         name: userInfo.name,
         avatar_url: userInfo.picture,
         token: {
           access_token: tokenInfo.accessToken,
-          refresh_token: tokenInfo.refreshToken,
-          expires_in: 3600, // Unknown, assume 1 hour validity or let it refresh
+          // CRITICAL: Must preserve existing refresh_token. If not found, use tokenInfo.refreshToken.
+          refresh_token: (existing && existing.token.refresh_token) ? existing.token.refresh_token : (tokenInfo.refreshToken || ''),
+          expires_in: 3600,
           expiry_timestamp: now + 3600,
           token_type: 'Bearer',
           email: userInfo.email,
         },
-        created_at: now,
+        // CRITICAL: Preserve existing quota so it doesn't get cleared by Sync
+        quota: existing ? existing.quota : undefined,
+        created_at: existing ? existing.created_at : now,
         last_used: now,
-        status: 'active',
-        is_active: true, // It is the active one in IDE
+        status: existing ? existing.status : 'active',
+        is_active: true,
       };
 
-      // Check if email already exists to preserve ID
-      const accounts = await this.getAccounts();
-      const existing = accounts.find((a) => a.email === account.email);
-      if (existing) {
-        account.id = existing.id; // Keep existing ID
-        account.created_at = existing.created_at;
-      }
-
+      // Perform the update
       await this.addAccount(account);
+
+      // If we switched IDs or found a duplicate with a different ID, the addAccount (UPSERT)
+      // might have created a new record if the ID was different.
+      // But since we use existing.id, it should be a perfect update.
+
       return account;
     } catch (error) {
       logger.error('SyncLocal: Failed to sync account from IDE', error);
