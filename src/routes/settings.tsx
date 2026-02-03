@@ -39,6 +39,10 @@ function SettingsPage() {
   const [localWarningThreshold, setLocalWarningThreshold] = useState<number>(20);
   const [localSwitchThreshold, setLocalSwitchThreshold] = useState<number>(5);
 
+  // Compute validity of thresholds in real-time
+  const isWarningThresholdInvalid = localWarningThreshold <= localSwitchThreshold;
+  const isSwitchThresholdInvalid = localSwitchThreshold >= localWarningThreshold;
+
   // Sync config to local state when loaded
   useEffect(() => {
     if (config) {
@@ -236,13 +240,23 @@ function SettingsPage() {
               </div>
 
               {/* Warning Threshold Slider */}
-              <div className="space-y-4 rounded-lg border p-4">
+              <div
+                className={`space-y-4 rounded-lg border p-4 transition-colors ${
+                  isWarningThresholdInvalid && config?.notifications?.enabled
+                    ? 'border-destructive bg-destructive/5'
+                    : ''
+                }`}
+              >
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <Label>
                       {t('settings.notifications.warning_threshold', 'Warning Threshold')}
                     </Label>
-                    <span className="text-primary text-sm font-medium">
+                    <span
+                      className={`text-sm font-medium ${
+                        isWarningThresholdInvalid ? 'text-destructive' : 'text-primary'
+                      }`}
+                    >
                       {localWarningThreshold}%
                     </span>
                   </div>
@@ -260,6 +274,7 @@ function SettingsPage() {
                   step={5}
                   disabled={!config?.notifications?.enabled}
                   onValueChange={(value) => {
+                    // Allow movement but show visual feedback for invalid states
                     setLocalWarningThreshold(value[0]);
                   }}
                   onValueCommit={async (value) => {
@@ -287,16 +302,35 @@ function SettingsPage() {
                     }
                   }}
                 />
+                {/* Real-time validation feedback */}
+                {isWarningThresholdInvalid && config?.notifications?.enabled && (
+                  <p className="text-destructive animate-in fade-in text-xs">
+                    {t(
+                      'settings.notifications.warning_must_be_higher',
+                      'Warning threshold must be higher than switch threshold',
+                    )}
+                  </p>
+                )}
               </div>
 
               {/* Switch Threshold Slider */}
-              <div className="space-y-4 rounded-lg border p-4">
+              <div
+                className={`space-y-4 rounded-lg border p-4 transition-colors ${
+                  isSwitchThresholdInvalid && config?.notifications?.enabled
+                    ? 'border-destructive bg-destructive/5'
+                    : ''
+                }`}
+              >
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <Label>
                       {t('settings.notifications.switch_threshold', 'Auto-Switch Threshold')}
                     </Label>
-                    <span className="text-primary text-sm font-medium">
+                    <span
+                      className={`text-sm font-medium ${
+                        isSwitchThresholdInvalid ? 'text-destructive' : 'text-primary'
+                      }`}
+                    >
                       {localSwitchThreshold}%
                     </span>
                   </div>
@@ -314,6 +348,7 @@ function SettingsPage() {
                   step={1}
                   disabled={!config?.notifications?.enabled}
                   onValueChange={(value) => {
+                    // Allow movement but show visual feedback for invalid states
                     setLocalSwitchThreshold(value[0]);
                   }}
                   onValueCommit={async (value) => {
@@ -339,10 +374,11 @@ function SettingsPage() {
                     }
                   }}
                 />
-                {localSwitchThreshold >= localWarningThreshold && (
-                  <p className="text-destructive text-xs">
+                {/* Real-time validation feedback */}
+                {isSwitchThresholdInvalid && config?.notifications?.enabled && (
+                  <p className="text-destructive animate-in fade-in text-xs">
                     {t(
-                      'settings.notifications.threshold_error',
+                      'settings.notifications.switch_must_be_lower',
                       'Switch threshold must be lower than warning threshold',
                     )}
                   </p>

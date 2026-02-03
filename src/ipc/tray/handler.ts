@@ -4,7 +4,8 @@ import { CloudAccount } from '../../types/cloudAccount';
 import { logger } from '../../utils/logger';
 import { getTrayTexts } from './i18n';
 import { CloudAccountRepo } from '../database/cloudHandler';
-import { GoogleAPIService } from '../../services/GoogleAPIService';
+import { switchCloudAccount, refreshAccountQuota } from '../cloud/handler';
+import { getQuotaDisplayLines } from '../../utils/quota';
 
 let tray: Tray | null = null;
 let globalMainWindow: BrowserWindow | null = null;
@@ -12,28 +13,7 @@ let lastAccount: CloudAccount | null = null;
 let lastLanguage: string = 'en';
 
 function getQuotaText(account: CloudAccount | null, texts: any): string[] {
-  if (!account) return [`${texts.quota}: --`];
-  if (!account.quota || !account.quota.models) return [`${texts.quota}: ${texts.unknown_quota}`];
-
-  const lines: string[] = [];
-  const models = account.quota.models;
-
-  let gHigh = 0;
-  let gImage = 0;
-  let claude = 0;
-
-  for (const [key, val] of Object.entries(models)) {
-    const k = key.toLowerCase();
-    if (k.includes('high')) gHigh = val.percentage;
-    else if (k.includes('image')) gImage = val.percentage;
-    else if (k.includes('claude')) claude = val.percentage;
-  }
-
-  lines.push(`Gemini High: ${gHigh}%`);
-  lines.push(`Gemini Image: ${gImage}%`);
-  lines.push(`Claude 4.5: ${claude}%`);
-
-  return lines;
+  return getQuotaDisplayLines(account?.quota, texts);
 }
 
 export function initTray(mainWindow: BrowserWindow) {
@@ -120,8 +100,9 @@ export function updateTrayMenu(account: CloudAccount | null, language?: string) 
           }
           const next = accounts[nextIndex];
 
-          CloudAccountRepo.setActive(next.id);
-          logger.info(`Tray: Switched to account ${next.email}`);
+          // Use the proper switch logic (restart process, inject token)
+          await switchCloudAccount(next.id);
+          logger.info(`Tray: Successfully switched to account ${next.email}`);
 
           updateTrayMenu(next, lastLanguage);
 
@@ -143,12 +124,9 @@ export function updateTrayMenu(account: CloudAccount | null, language?: string) 
 
           logger.info(`Tray: Refreshing quota for ${current.email}`);
 
-          const quota = await GoogleAPIService.fetchQuota(current.token.access_token);
-          await CloudAccountRepo.updateQuota(current.id, quota);
-
-          // Reload account to get updated obj
-          const updated = await CloudAccountRepo.getAccount(current.id);
-          if (updated) updateTrayMenu(updated, lastLanguage);
+          // Use common service for quota refresh
+          const updated = await refreshAccountQuota(current.id);
+          updateTrayMenu(updated, lastLanguage);
 
           if (globalMainWindow) {
             globalMainWindow.webContents.send('tray://refresh-current');

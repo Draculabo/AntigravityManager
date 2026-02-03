@@ -23,7 +23,6 @@ const config: ForgeConfig = {
     name: 'Antigravity Manager',
     executableName: 'antigravity-manager',
     icon: 'images/icon', // Electron Forge automatically adds .icns/.ico
-    extraResource: ['src/assets'], // Copy assets folder to resources/assets
   },
   rebuildConfig: {
     // Skip rebuild for native modules during development since they are pre-compiled for arm64 Electron
@@ -51,20 +50,6 @@ const config: ForgeConfig = {
 
       for (const moduleName of nativeModules) {
         copyModuleRecursive(moduleName);
-      }
-
-      // Copy assets to resources folder
-      const assetsSrc = path.join(process.cwd(), 'src', 'assets');
-      const assetsDest = path.join(buildPath, 'resources', 'assets');
-
-      if (fs.existsSync(assetsSrc)) {
-        if (!fs.existsSync(assetsDest)) {
-          fs.mkdirSync(assetsDest, { recursive: true });
-        }
-        fs.cpSync(assetsSrc, assetsDest, { recursive: true });
-        console.log(`Copied assets from ${assetsSrc} to ${assetsDest}`);
-      } else {
-        console.warn(`Assets directory not found: ${assetsSrc}`);
       }
     },
   },

@@ -3,6 +3,7 @@ import { CloudAccount } from '../types/cloudAccount';
 import { switchCloudAccount } from '../ipc/cloud/handler';
 import { logger } from '../utils/logger';
 import { NotificationService } from './NotificationService';
+import { calculateAverageQuota, isQuotaDepleted } from '../utils/quota';
 
 export class AutoSwitchService {
   /**
@@ -10,7 +11,7 @@ export class AutoSwitchService {
    */
   static async findBestAccount(currentAccountId: string): Promise<CloudAccount | null> {
     const accounts = await CloudAccountRepo.getAccounts();
-    const switchThreshold = NotificationService.getSwitchThreshold();
+    const switchThreshold = await NotificationService.getSwitchThresholdAsync();
 
     const candidates = accounts.filter((acc) => {
       if (acc.id === currentAccountId) return false;
@@ -18,6 +19,8 @@ export class AutoSwitchService {
       if (!acc.quota) return false;
 
       const models = Object.values(acc.quota.models);
+      if (models.length === 0) return false; // Exclude if no models data available
+
       const isDepleted = models.some((m) => m.percentage < switchThreshold);
       return !isDepleted;
     });
@@ -25,31 +28,25 @@ export class AutoSwitchService {
     if (candidates.length === 0) return null;
 
     candidates.sort((a, b) => {
-      return this.calculateAverageQuota(b) - this.calculateAverageQuota(a);
+      return calculateAverageQuota(b.quota) - calculateAverageQuota(a.quota);
     });
 
     return candidates[0];
   }
 
-  private static calculateAverageQuota(account: CloudAccount): number {
-    if (!account.quota) return 0;
-    const values = Object.values(account.quota.models).map((m) => m.percentage);
-    if (values.length === 0) return 0;
-    return values.reduce((a, b) => a + b, 0) / values.length;
-  }
-
   /**
    * Check if current account is depleted and switch if needed.
+   * @returns true if a switch was successfully performed, false otherwise.
    */
   static async checkAndSwitchIfNeeded(): Promise<boolean> {
-    const enabled = CloudAccountRepo.getSetting<boolean>('auto_switch_enabled', false);
+    const enabled = await CloudAccountRepo.getSettingAsync<boolean>('auto_switch_enabled', false);
     if (!enabled) return false;
 
     const accounts = await CloudAccountRepo.getAccounts();
     const currentAccount = accounts.find((a) => a.is_active);
     if (!currentAccount) return false;
 
-    const isDepleted = this.isAccountDepleted(currentAccount);
+    const isDepleted = await this.isAccountDepletedAsync(currentAccount);
 
     if (isDepleted || currentAccount.status === 'rate_limited') {
       logger.info(`AutoSwitch: ${currentAccount.email} is depleted or rate limited.`);
@@ -57,9 +54,22 @@ export class AutoSwitchService {
       const nextAccount = await this.findBestAccount(currentAccount.id);
       if (nextAccount) {
         logger.info(`AutoSwitch: Switching to ${nextAccount.email}...`);
-        await switchCloudAccount(nextAccount.id);
-        NotificationService.sendAutoSwitchNotification(currentAccount.email, nextAccount.email);
-        return true;
+
+        try {
+          await switchCloudAccount(nextAccount.id);
+          NotificationService.sendAutoSwitchNotification(currentAccount.email, nextAccount.email);
+          logger.info(`AutoSwitch: Successfully switched from ${currentAccount.email} to ${nextAccount.email}`);
+          return true;
+        } catch (error) {
+          logger.error('AutoSwitch: Failed to switch accounts', error);
+          // Attempt to notify user about the failure
+          try {
+            NotificationService.sendSwitchFailedNotification(currentAccount.email, nextAccount.email, error);
+          } catch {
+            // Ignore notification errors in fallback
+          }
+          return false;
+        }
       } else {
         logger.warn('AutoSwitch: No healthy accounts available.');
         NotificationService.sendAllDepletedNotification();
@@ -69,9 +79,8 @@ export class AutoSwitchService {
     return false;
   }
 
-  static isAccountDepleted(account: CloudAccount): boolean {
-    if (!account.quota) return false;
-    const threshold = NotificationService.getSwitchThreshold();
-    return Object.values(account.quota.models).some((m) => m.percentage < threshold);
+  static async isAccountDepletedAsync(account: CloudAccount): Promise<boolean> {
+    const threshold = await NotificationService.getSwitchThresholdAsync();
+    return isQuotaDepleted(account.quota, threshold);
   }
 }

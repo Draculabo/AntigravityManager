@@ -287,6 +287,25 @@ export class CloudAccountRepo {
 
           if (!tokenResult.value) {
             logger.warn(`Missing token data for account ${row.id}`);
+            accounts.push({
+              id: row.id,
+              provider: row.provider,
+              email: row.email,
+              name: row.name,
+              avatar_url: row.avatar_url,
+              token: {
+                access_token: '',
+                refresh_token: '',
+                expires_in: 0,
+                expiry_timestamp: 0,
+                token_type: 'Bearer',
+              },
+              quota: undefined,
+              created_at: row.created_at,
+              last_used: row.last_used,
+              status: 'expired',
+              is_active: Boolean(row.is_active),
+            });
             continue;
           }
 
@@ -324,6 +343,27 @@ export class CloudAccountRepo {
           } catch (parseError) {
             logger.error(`Failed to parse JSON for account ${row.id}`, parseError);
             migrationStats.failedFields += 1;
+
+            // Push an 'expired' placeholder so the user sees something is wrong instead of silent removal
+            accounts.push({
+              id: row.id,
+              provider: row.provider,
+              email: row.email,
+              name: row.name,
+              avatar_url: row.avatar_url,
+              token: {
+                access_token: '',
+                refresh_token: '',
+                expires_in: 0,
+                expiry_timestamp: 0,
+                token_type: 'Bearer',
+              },
+              quota: undefined,
+              created_at: row.created_at,
+              last_used: row.last_used,
+              status: 'expired',
+              is_active: Boolean(row.is_active),
+            });
             continue;
           }
 
@@ -343,6 +383,27 @@ export class CloudAccountRepo {
         } catch (error) {
           logger.error(`Failed to process account row ${row.id}`, error);
           migrationStats.failedFields += 1;
+
+          // Best effort fallback for any other row processing failure
+          accounts.push({
+            id: row.id,
+            provider: row.provider,
+            email: row.email,
+            name: row.name,
+            avatar_url: row.avatar_url,
+            token: {
+              access_token: '',
+              refresh_token: '',
+              expires_in: 0,
+              expiry_timestamp: 0,
+              token_type: 'Bearer',
+            },
+            quota: undefined,
+            created_at: row.created_at,
+            last_used: row.last_used,
+            status: 'expired',
+            is_active: Boolean(row.is_active),
+          });
         }
       }
 
@@ -596,6 +657,14 @@ export class CloudAccountRepo {
     }
   }
 
+  /**
+   * Get a setting value synchronously.
+   * @deprecated Prefer `getSettingAsync` for future compatibility with async storage backends.
+   * This method may be removed or changed to async in a future version.
+   * @param key The setting key
+   * @param defaultValue The default value if the setting is not found
+   * @returns The setting value or the default value
+   */
   static getSetting<T>(key: string, defaultValue: T): T {
     const db = getDb();
     try {
@@ -610,6 +679,10 @@ export class CloudAccountRepo {
     } finally {
       db.close();
     }
+  }
+
+  static async getSettingAsync<T>(key: string, defaultValue: T): Promise<T> {
+    return this.getSetting(key, defaultValue);
   }
 
   static setSetting(key: string, value: any): void {
@@ -694,6 +767,18 @@ export class CloudAccountRepo {
         logger.info(`SyncLocal: Creating new account for ${userInfo.email}`);
       }
 
+      const refreshToken = (existing && existing.token.refresh_token)
+        ? existing.token.refresh_token
+        : (tokenInfo.refreshToken || '');
+
+      if (!refreshToken) {
+        logger.warn(
+          `SyncLocal: No refresh token found for ${userInfo.email}. ` +
+          `Account session will not be persistent and will expire in 1 hour. ` +
+          `Please ensure you are logged into Antigravity IDE with "offline access" enabled.`
+        );
+      }
+
       const account: CloudAccount = {
         id: existing ? existing.id : uuidv4(),
         provider: 'google',
@@ -702,8 +787,7 @@ export class CloudAccountRepo {
         avatar_url: userInfo.picture,
         token: {
           access_token: tokenInfo.accessToken,
-          // CRITICAL: Must preserve existing refresh_token. If not found, use tokenInfo.refreshToken.
-          refresh_token: (existing && existing.token.refresh_token) ? existing.token.refresh_token : (tokenInfo.refreshToken || ''),
+          refresh_token: refreshToken,
           expires_in: 3600,
           expiry_timestamp: now + 3600,
           token_type: 'Bearer',

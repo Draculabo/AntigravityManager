@@ -49,7 +49,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   auto_sync: false,
   sync_interval: 5,
   auto_startup: false,
-  error_reporting_enabled: true, // Default to disabled for privacy
+  error_reporting_enabled: false, // Default to disabled for privacy
   privacy_consent_asked: false, // Whether the user has been asked for consent
   default_export_path: null,
   notifications: {

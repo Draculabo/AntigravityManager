@@ -3,11 +3,14 @@
  */
 import { Notification, nativeImage, app } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { logger } from '../utils/logger';
 import { ConfigManager } from '../ipc/config/manager';
+import { DEFAULT_APP_CONFIG } from '../types/config';
 
 export enum NotificationType {
   AUTO_SWITCH_SUCCESS = 'auto_switch_success',
+  SWITCH_FAILED = 'switch_failed',
   QUOTA_WARNING = 'quota_warning',
   ALL_DEPLETED = 'all_depleted',
 }
@@ -17,7 +20,7 @@ const DEBOUNCE_DURATION_MS = 5 * 60 * 1000;
 
 function isNotificationsEnabled(): boolean {
   const config = ConfigManager.getCachedConfig() ?? ConfigManager.loadConfig();
-  return config.notifications.enabled;
+  return config?.notifications?.enabled ?? DEFAULT_APP_CONFIG.notifications.enabled;
 }
 
 function shouldSendNotification(key: string): boolean {
@@ -38,20 +41,30 @@ function getNotificationIcon(
 ): Electron.NativeImage | undefined {
   try {
     const iconName = `notification-${type}.png`;
-    const possiblePaths = [
-      path.join(process.resourcesPath, 'assets', iconName),
-      path.join(app.getAppPath(), 'src', 'assets', iconName),
-      path.join(__dirname, '..', 'assets', iconName),
-    ];
+    const fallbackName = 'icon.png';
 
-    for (const iconPath of possiblePaths) {
-      try {
-        const image = nativeImage.createFromPath(iconPath);
-        if (!image.isEmpty()) {
-          return image;
+    // 1. Try specific icons first, then try the generic app icon
+    const iconTypes = [iconName, fallbackName];
+
+    for (const name of iconTypes) {
+      const possiblePaths = [
+        path.join(process.resourcesPath, 'assets', name),
+        path.join(app.getAppPath(), 'src', 'assets', name),
+        path.join(__dirname, '..', 'assets', name),
+      ];
+
+      for (const iconPath of possiblePaths) {
+        try {
+          // Check if path exists before trying nativeImage to avoid unnecessary overhead
+          if (fs.existsSync(iconPath)) {
+            const image = nativeImage.createFromPath(iconPath);
+            if (!image.isEmpty()) {
+              return image;
+            }
+          }
+        } catch {
+          // Continue to next path
         }
-      } catch {
-        // Continue to next path
       }
     }
   } catch (error) {
@@ -134,6 +147,38 @@ export class NotificationService {
     }
   }
 
+  /**
+   * Send a notification when auto-switch fails.
+   * @param fromEmail The email of the account being switched from
+   * @param toEmail The email of the account that was attempted to switch to
+   * @param error The error that caused the failure
+   */
+  static sendSwitchFailedNotification(fromEmail: string, toEmail: string, error: unknown): void {
+    if (!isNotificationsEnabled()) {
+      logger.info('NotificationService: Notifications disabled, skipping switch-failed');
+      return;
+    }
+
+    const key = `${NotificationType.SWITCH_FAILED}`;
+    if (!shouldSendNotification(key)) return;
+
+    try {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const notification = new Notification({
+        title: 'Account Switch Failed',
+        body: `Failed to switch from ${fromEmail} to ${toEmail}: ${errorMessage}`,
+        icon: getNotificationIcon('error'),
+        urgency: 'critical',
+        silent: false,
+      });
+
+      notification.show();
+      logger.info(`NotificationService: Sent switch-failed notification: ${fromEmail} -> ${toEmail}`);
+    } catch (notifError) {
+      logger.error('NotificationService: Failed to send switch-failed notification', notifError);
+    }
+  }
+
   static clearDebounceCache(): void {
     notificationDebounce.clear();
     logger.info('NotificationService: Cleared debounce cache');
@@ -141,11 +186,21 @@ export class NotificationService {
 
   static getWarningThreshold(): number {
     const config = ConfigManager.getCachedConfig() ?? ConfigManager.loadConfig();
-    return config.notifications.quota_warning_threshold;
+    return config?.notifications?.quota_warning_threshold ?? DEFAULT_APP_CONFIG.notifications.quota_warning_threshold;
+  }
+
+  static async getWarningThresholdAsync(): Promise<number> {
+    const config = ConfigManager.getCachedConfig() ?? (await ConfigManager.loadConfigAsync());
+    return config?.notifications?.quota_warning_threshold ?? DEFAULT_APP_CONFIG.notifications.quota_warning_threshold;
   }
 
   static getSwitchThreshold(): number {
     const config = ConfigManager.getCachedConfig() ?? ConfigManager.loadConfig();
-    return config.notifications.quota_switch_threshold;
+    return config?.notifications?.quota_switch_threshold ?? DEFAULT_APP_CONFIG.notifications.quota_switch_threshold;
+  }
+
+  static async getSwitchThresholdAsync(): Promise<number> {
+    const config = ConfigManager.getCachedConfig() ?? (await ConfigManager.loadConfigAsync());
+    return config?.notifications?.quota_switch_threshold ?? DEFAULT_APP_CONFIG.notifications.quota_switch_threshold;
   }
 }

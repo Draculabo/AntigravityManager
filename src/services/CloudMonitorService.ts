@@ -2,7 +2,9 @@ import { CloudAccountRepo } from '../ipc/database/cloudHandler';
 import { GoogleAPIService } from './GoogleAPIService';
 import { AutoSwitchService } from './AutoSwitchService';
 import { NotificationService } from './NotificationService';
+import { CloudAccountService } from './CloudAccountService';
 import { logger } from '../utils/logger';
+import { calculateAverageQuota } from '../utils/quota';
 
 export class CloudMonitorService {
   private static intervalId: NodeJS.Timeout | null = null;
@@ -64,10 +66,7 @@ export class CloudMonitorService {
   }
 
   private static resetInterval() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.startInterval();
-    }
+    this.startInterval();
   }
 
   static async poll(skipAutoSwitch = false) {
@@ -79,28 +78,26 @@ export class CloudMonitorService {
       const accounts = await CloudAccountRepo.getAccounts();
       const now = Math.floor(Date.now() / 1000);
 
+      // Fetch thresholds once per poll
+      const [warningThreshold, switchThreshold] = await Promise.all([
+        NotificationService.getWarningThresholdAsync(),
+        NotificationService.getSwitchThresholdAsync(),
+      ]);
+
       for (const account of accounts) {
         try {
-          let accessToken = account.token.access_token;
-          if (account.token.expiry_timestamp < now + 600) {
-            logger.info(`Monitor: Refreshing token for ${account.email}`);
-            const newToken = await GoogleAPIService.refreshAccessToken(account.token.refresh_token);
-            account.token.access_token = newToken.access_token;
-            account.token.expires_in = newToken.expires_in;
-            account.token.expiry_timestamp = now + newToken.expires_in;
-            await CloudAccountRepo.updateToken(account.id, account.token);
-            accessToken = newToken.access_token;
+          const nowNow = Math.floor(Date.now() / 1000);
+          if (account.token.expiry_timestamp < nowNow + 600) {
+            await CloudAccountService.refreshAndSaveToken(account);
           }
 
-          await new Promise((r) => setTimeout(r, 1000));
-          const quota = await GoogleAPIService.fetchQuota(accessToken);
+          // Small delay to avoid heavy burst of requests
+          await new Promise((r) => setTimeout(r, 500));
+          const quota = await GoogleAPIService.fetchQuota(account.token.access_token);
 
           await CloudAccountRepo.updateQuota(account.id, quota);
-          await CloudAccountRepo.updateLastUsed(account.id);
 
-          const warningThreshold = NotificationService.getWarningThreshold();
-          const switchThreshold = NotificationService.getSwitchThreshold();
-          const avgQuota = this.calculateAverageQuota(quota);
+          const avgQuota = calculateAverageQuota(quota);
 
           if (avgQuota < warningThreshold && avgQuota >= switchThreshold) {
             NotificationService.sendQuotaWarningNotification(account.email, avgQuota);
@@ -120,11 +117,5 @@ export class CloudMonitorService {
     }
   }
 
-  private static calculateAverageQuota(quota: {
-    models: Record<string, { percentage: number }>;
-  }): number {
-    const values = Object.values(quota.models).map((m) => m.percentage);
-    if (values.length === 0) return 100;
-    return values.reduce((a, b) => a + b, 0) / values.length;
-  }
+
 }

@@ -1,14 +1,14 @@
 import { test, expect, ElectronApplication } from '@playwright/test';
 import { _electron as electron } from 'playwright';
-import path from 'path';
+import { getAppBuildPath } from './utils';
 
 test.describe('Antigravity Manager', () => {
   let electronApp: ElectronApplication;
 
   test.beforeAll(async () => {
-    // Launch Electron app
+    // Launch Electron app using helper to ensure build exists
     electronApp = await electron.launch({
-      args: [path.join(__dirname, '../../../.vite/build/main.js')],
+      args: [getAppBuildPath()],
     });
   });
 

@@ -1,15 +1,15 @@
 import { test, expect, ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from 'playwright';
-import path from 'path';
+import { getAppBuildPath } from './utils';
 
 test.describe('Settings - Notifications', () => {
   let electronApp: ElectronApplication;
   let window: Page;
 
   test.beforeAll(async () => {
-    // Note: This relies on the app being built at .vite/build/main.js
+    // Launch Electron app using helper to ensure build exists
     electronApp = await electron.launch({
-      args: [path.join(__dirname, '../../../.vite/build/main.js')],
+      args: [getAppBuildPath()],
     });
     window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');

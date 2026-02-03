@@ -9,6 +9,7 @@ import { CloudAccount } from '@/types/cloudAccount';
 vi.mock('@/ipc/database/cloudHandler', () => ({
   CloudAccountRepo: {
     getSetting: vi.fn(),
+    getSettingAsync: vi.fn(),
     getAccounts: vi.fn(),
   },
 }));
@@ -30,8 +31,11 @@ vi.mock('@/services/NotificationService', () => ({
     sendAutoSwitchNotification: vi.fn(),
     sendQuotaWarningNotification: vi.fn(),
     sendAllDepletedNotification: vi.fn(),
+    sendSwitchFailedNotification: vi.fn(),
     getSwitchThreshold: vi.fn().mockReturnValue(5),
+    getSwitchThresholdAsync: vi.fn().mockResolvedValue(5),
     getWarningThreshold: vi.fn().mockReturnValue(20),
+    getWarningThresholdAsync: vi.fn().mockResolvedValue(20),
   },
 }));
 
@@ -43,7 +47,7 @@ describe('AutoSwitchService', () => {
     status: 'active',
     quota: {
       models: {
-        'gemini-pro': { percentage: 2, limit: 100, usage: 98 }, // Depleted (< 5%)
+        'gemini-pro': { percentage: 2, resetTime: '2026-02-03T00:00:00Z' }, // Depleted (< 5%)
       },
       updated_at: Date.now(),
     },
@@ -57,7 +61,7 @@ describe('AutoSwitchService', () => {
     status: 'active',
     quota: {
       models: {
-        'gemini-pro': { percentage: 80, limit: 100, usage: 20 },
+        'gemini-pro': { percentage: 80, resetTime: '2026-02-03T00:00:00Z' },
       },
       updated_at: Date.now(),
     },
@@ -70,7 +74,7 @@ describe('AutoSwitchService', () => {
   describe('checkAndSwitchIfNeeded', () => {
     it('should switch account and notify when current is depleted', async () => {
       // Mock Auto Switch enabled
-      vi.mocked(CloudAccountRepo.getSetting).mockReturnValue(true);
+      vi.mocked(CloudAccountRepo.getSettingAsync).mockResolvedValue(true);
 
       // Mock accounts (current is depleted, next is healthy)
       vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
@@ -79,7 +83,7 @@ describe('AutoSwitchService', () => {
       ]);
 
       // Mock switch thresholds
-      vi.mocked(NotificationService.getSwitchThreshold).mockReturnValue(5);
+      vi.mocked(NotificationService.getSwitchThresholdAsync).mockResolvedValue(5);
 
       const result = await AutoSwitchService.checkAndSwitchIfNeeded();
 
@@ -92,7 +96,7 @@ describe('AutoSwitchService', () => {
     });
 
     it('should NOT switch if disabled', async () => {
-      vi.mocked(CloudAccountRepo.getSetting).mockReturnValue(false);
+      vi.mocked(CloudAccountRepo.getSettingAsync).mockResolvedValue(false);
 
       const result = await AutoSwitchService.checkAndSwitchIfNeeded();
 
@@ -102,14 +106,14 @@ describe('AutoSwitchService', () => {
     });
 
     it('should NOT switch if current account is healthy', async () => {
-      vi.mocked(CloudAccountRepo.getSetting).mockReturnValue(true);
+      vi.mocked(CloudAccountRepo.getSettingAsync).mockResolvedValue(true);
 
       const healthyAccount = {
         ...mockCurrentAccount,
-        quota: { models: { 'gemini-pro': { percentage: 10 } } }, // 10 > 5
+        quota: { models: { 'gemini-pro': { percentage: 10, resetTime: '2026-02-03T00:00:00Z' } } }, // 10 > 5
       };
       vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([healthyAccount, mockNextAccount]);
-      vi.mocked(NotificationService.getSwitchThreshold).mockReturnValue(5);
+      vi.mocked(NotificationService.getSwitchThresholdAsync).mockResolvedValue(5);
 
       const result = await AutoSwitchService.checkAndSwitchIfNeeded();
 
@@ -118,21 +122,23 @@ describe('AutoSwitchService', () => {
     });
 
     it('should send depleted notification if no healthy accounts available', async () => {
-      vi.mocked(CloudAccountRepo.getSetting).mockReturnValue(true);
+      vi.mocked(CloudAccountRepo.getSettingAsync).mockResolvedValue(true);
 
       const depletedNext = {
         ...mockNextAccount,
-        quota: { models: { 'gemini-pro': { percentage: 1 } } },
+        quota: { models: { 'gemini-pro': { percentage: 1, resetTime: '2026-02-03T00:00:00Z' } } },
       };
 
       vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([mockCurrentAccount, depletedNext]);
-      vi.mocked(NotificationService.getSwitchThreshold).mockReturnValue(5);
+      vi.mocked(NotificationService.getSwitchThresholdAsync).mockResolvedValue(5);
 
       const result = await AutoSwitchService.checkAndSwitchIfNeeded();
 
       expect(result).toBe(false); // Did not switch
       expect(switchCloudAccount).not.toHaveBeenCalled();
       expect(NotificationService.sendAllDepletedNotification).toHaveBeenCalled();
+      // Ensure we don't send switch notification when we didn't switch
+      expect(NotificationService.sendAutoSwitchNotification).not.toHaveBeenCalled();
     });
   });
 });

@@ -245,9 +245,15 @@ export class GoogleAPIService {
           if (data.cloudaicompanionProject) {
             return data.cloudaicompanionProject;
           }
+        } else {
+          const text = await response.text();
+          console.warn(
+            `[GoogleAPIService] Failed to fetch project ID: HTTP ${response.status} - ${text} (Attempt ${i + 1}/2)`,
+          );
         }
-      } catch (e) {
-        console.warn(`[GoogleAPIService] Failed to fetch project ID (Attempt ${i + 1}):`, e);
+      } catch (e: unknown) {
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        console.warn(`[GoogleAPIService] Failed to fetch project ID (Attempt ${i + 1}/2):`, errorMsg);
         await new Promise((r) => setTimeout(r, 500)); // Sleep 500ms
       }
     }

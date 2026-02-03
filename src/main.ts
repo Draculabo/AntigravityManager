@@ -283,9 +283,9 @@ app
     logger.info('Step: Initialize Antigravity DB (WAL Mode)');
     initDatabase();
   })
-  .then(() => {
+  .then(async () => {
     logger.info('Step: Load Config');
-    const config = ConfigManager.loadConfig();
+    const config = await ConfigManager.loadConfigAsync();
     startupConfig = config;
     syncAutoStart(config);
     shouldStartHidden = isAutoStartLaunch() && config.auto_startup;
@@ -321,7 +321,7 @@ app
       AuthServer.start();
 
       // Gateway Server (NestJS) - auto-start if enabled
-      const config = startupConfig || ConfigManager.loadConfig();
+      const config = startupConfig || (await ConfigManager.loadConfigAsync());
       if (config.proxy?.auto_start) {
         const port = config.proxy?.port || 8045;
         // Default to a valid ProxyConfig object if null, although loadConfig ensures defaults
@@ -331,7 +331,7 @@ app
         logger.info(`NestJS Proxy: Auto-started on port ${port}`);
       }
 
-      const enabled = CloudAccountRepo.getSetting('auto_switch_enabled', false);
+      const enabled = await CloudAccountRepo.getSettingAsync('auto_switch_enabled', false);
       if (enabled) {
         logger.info('Startup: Auto-Switch enabled, starting monitor...');
         CloudMonitorService.start();

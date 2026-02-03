@@ -7,6 +7,32 @@ import { logger } from '../../utils/logger';
 const execAsync = promisify(exec);
 
 /**
+ * Process name patterns for matching Antigravity processes.
+ * Using regex with word boundaries for more precise matching.
+ */
+const PROCESS_PATTERNS = {
+  // Patterns to identify Manager processes (should be excluded)
+  manager: {
+    exact: /\bantigravity[-\s]?manager\b/i,
+    nameContains: /\bmanager\b/i,
+  },
+  // Patterns to identify main Antigravity app
+  antigravity: {
+    macApp: /\bantigravity\.app\b/i,
+    winExe: /\bantigravity\.exe\b/i,
+    exactName: /^antigravity$/i,
+    pathBased: /[/\\]antigravity\b/i,
+  },
+  // Patterns to exclude (development/helper processes)
+  exclude: {
+    electronForge: /\belectron-forge\b/i,
+    nodeModules: /\bnode_modules[/\\]electron\b/i,
+    managerWorkspace: /\bAntigravityManager\b/,
+    tools: /\bantigravity[-\s]?tools\b/i,
+  },
+} as const;
+
+/**
  * Helper process name patterns to exclude (Electron helper processes)
  */
 const HELPER_PATTERNS = [
@@ -20,6 +46,61 @@ const HELPER_PATTERNS = [
   'sandbox',
   'language_server',
 ];
+
+/**
+ * Check if a process is a Manager process that should be excluded.
+ * @param name Process name
+ * @param cmd Process command line
+ * @returns True if the process is a Manager process
+ */
+function isManagerProcess(name: string, cmd: string): boolean {
+  return (
+    PROCESS_PATTERNS.manager.exact.test(cmd) ||
+    PROCESS_PATTERNS.manager.exact.test(name) ||
+    PROCESS_PATTERNS.manager.nameContains.test(name)
+  );
+}
+
+/**
+ * Check if a process is the main Antigravity app.
+ * @param name Process name
+ * @param cmd Process command line
+ * @param platform Current platform
+ * @returns True if the process is the main Antigravity app
+ */
+function isAntigravityApp(name: string, cmd: string, platform: NodeJS.Platform): boolean {
+  if (platform === 'darwin') {
+    return (
+      PROCESS_PATTERNS.antigravity.macApp.test(cmd) ||
+      PROCESS_PATTERNS.antigravity.exactName.test(name)
+    );
+  } else if (platform === 'win32') {
+    return (
+      PROCESS_PATTERNS.antigravity.winExe.test(name) ||
+      PROCESS_PATTERNS.antigravity.exactName.test(name)
+    );
+  } else {
+    // Linux
+    return (
+      PROCESS_PATTERNS.antigravity.exactName.test(name) ||
+      PROCESS_PATTERNS.antigravity.pathBased.test(cmd)
+    );
+  }
+}
+
+/**
+ * Check if a process should be excluded (development/workspace processes).
+ * @param cmd Process command line
+ * @returns True if the process should be excluded
+ */
+function isExcludedProcess(cmd: string): boolean {
+  return (
+    PROCESS_PATTERNS.exclude.electronForge.test(cmd) ||
+    PROCESS_PATTERNS.exclude.nodeModules.test(cmd) ||
+    PROCESS_PATTERNS.exclude.managerWorkspace.test(cmd) ||
+    PROCESS_PATTERNS.exclude.tools.test(cmd)
+  );
+}
 
 /**
  * Check if a process is a helper/auxiliary process that should be excluded.
@@ -108,15 +189,11 @@ export async function isProcessRunning(): Promise<boolean> {
         continue;
       }
 
-      const name = proc.name?.toLowerCase() || '';
-      const cmd = proc.cmd?.toLowerCase() || '';
+      const name = proc.name || '';
+      const cmd = proc.cmd || '';
 
-      // Skip manager process
-      if (
-        name.includes('manager') ||
-        cmd.includes('manager') ||
-        cmd.includes('antigravity-manager')
-      ) {
+      // Skip manager process using strict pattern matching
+      if (isManagerProcess(name, cmd)) {
         continue;
       }
 
@@ -125,36 +202,17 @@ export async function isProcessRunning(): Promise<boolean> {
         continue;
       }
 
-      if (platform === 'darwin') {
-        // macOS: Check for Antigravity.app in path
-        if (cmd.includes('antigravity.app')) {
-          logger.debug(
-            `Found Antigravity process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
-          );
-          return true;
-        }
-        // Also check if the process name is exactly 'Antigravity' (main process)
-        if (name === 'antigravity' && !isHelperProcess(name, cmd)) {
-          logger.debug(`Found Antigravity process: PID=${proc.pid}, name=${name}`);
-          return true;
-        }
-      } else if (platform === 'win32') {
-        // Windows: Check for Antigravity.exe
-        if (name === 'antigravity.exe' || name === 'antigravity') {
-          logger.debug(`Found Antigravity process: PID=${proc.pid}, name=${name}`);
-          return true;
-        }
-      } else {
-        // Linux: Check for antigravity in name or path (but not tools)
-        if (
-          (name.includes('antigravity') || cmd.includes('/antigravity')) &&
-          !name.includes('tools')
-        ) {
-          logger.debug(
-            `Found Antigravity process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
-          );
-          return true;
-        }
+      // Skip excluded processes (development mode, etc.)
+      if (isExcludedProcess(cmd)) {
+        continue;
+      }
+
+      // Check if this is the main Antigravity app using strict pattern matching
+      if (isAntigravityApp(name, cmd, platform)) {
+        logger.debug(
+          `Found Antigravity process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
+        );
+        return true;
       }
     }
 
@@ -292,31 +350,19 @@ export async function closeAntigravity(): Promise<void> {
       if (p.pid === currentPid) {
         return false;
       }
-      // Exclude this electron app (if named Antigravity Manager or antigravity-manager)
-      if (p.cmd.includes('Antigravity Manager') || p.cmd.includes('antigravity-manager')) {
+
+      // Exclude Manager processes using strict pattern matching
+      if (isManagerProcess(p.name, p.cmd)) {
         return false;
       }
-      // Exclude development mode processes (electron-forge, vite, node running from workspace)
-      if (
-        p.cmd.includes('electron-forge') ||
-        p.cmd.includes('AntigravityManager') ||
-        p.cmd.includes('node_modules/electron')
-      ) {
+
+      // Exclude development mode and helper processes
+      if (isExcludedProcess(p.cmd)) {
         return false;
       }
-      // Match Antigravity (but not manager)
-      if (platform === 'win32') {
-        return (
-          p.cmd.includes('Antigravity.exe') ||
-          (p.cmd.includes('antigravity') && !p.cmd.includes('manager'))
-        );
-      } else {
-        // Explicit !manager check for Linux/macOS to be defensive
-        return (
-          (p.cmd.includes('Antigravity') || p.cmd.includes('antigravity')) &&
-          !p.cmd.includes('manager')
-        );
-      }
+
+      // Match main Antigravity app using strict pattern matching
+      return isAntigravityApp(p.name, p.cmd, platform);
     });
 
     if (targetProcessList.length === 0) {
@@ -329,22 +375,45 @@ export async function closeAntigravity(): Promise<void> {
     for (const p of targetProcessList) {
       try {
         process.kill(p.pid, 'SIGKILL'); // Force kill as final step
-      } catch {
-        // Ignore if already dead
+      } catch (killError) {
+        // Log but continue - process may already be dead
+        logger.debug(`Failed to kill process ${p.pid}: ${killError}`);
       }
     }
   } catch (error) {
     logger.error('Error closing Antigravity', error);
+
     // Fallback to simple kill if everything fails
+    // Use dynamic executable path where possible
     try {
+      const execPath = getAntigravityExecutablePath();
+      logger.warn('Attempting fallback termination...');
+
       if (platform === 'win32') {
-        execSync('taskkill /F /IM "Antigravity.exe" /T', { stdio: 'ignore' });
+        // Extract executable name from path for taskkill
+        const exeName = execPath.split(/[/\\]/).pop() || 'Antigravity.exe';
+        const cmd = `taskkill /F /IM "${exeName}" /T`;
+        logger.debug(`Fallback command (Windows): ${cmd}`);
+        execSync(cmd, { stdio: 'ignore' });
+      } else if (platform === 'darwin') {
+        // For macOS, use the app bundle path pattern
+        // Try to extract app name from executable path
+        const appMatch = execPath.match(/([^/]+\.app)/i);
+        const appName = appMatch ? appMatch[1] : 'Antigravity.app';
+        const cmd = `pkill -9 -f "${appName}/Contents/MacOS"`;
+        logger.debug(`Fallback command (macOS): ${cmd}`);
+        execSync(cmd, { stdio: 'ignore' });
       } else {
-        // Only kill Antigravity.app processes, not Manager
-        execSync('pkill -9 -f "Antigravity.app/Contents/MacOS"', { stdio: 'ignore' });
+        // Linux: Use the executable path directly
+        const cmd = `pkill -9 -f "${execPath}"`;
+        logger.debug(`Fallback command (Linux): ${cmd}`);
+        execSync(cmd, { stdio: 'ignore' });
       }
-    } catch {
-      // Ignore
+
+      logger.info('Fallback termination command executed');
+    } catch (fallbackError) {
+      // Log the fallback error for troubleshooting
+      logger.warn('Fallback termination failed', fallbackError);
     }
   }
 }

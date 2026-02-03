@@ -4,10 +4,16 @@
 import { os } from '@orpc/server';
 import { z } from 'zod';
 import { sendTestNotification, getNotificationThresholds } from './handler';
+import { logger } from '../../utils/logger';
 
 export const notificationRouter = os.router({
   sendTestNotification: os.output(z.void()).handler(async () => {
-    sendTestNotification();
+    try {
+      sendTestNotification();
+    } catch (error) {
+      logger.error('NotificationRouter: Failed to send test notification', error);
+      throw error;
+    }
   }),
 
   getThresholds: os
@@ -18,6 +24,12 @@ export const notificationRouter = os.router({
       }),
     )
     .handler(async () => {
-      return getNotificationThresholds();
+      try {
+        return getNotificationThresholds();
+      } catch (error) {
+        logger.error('NotificationRouter: Failed to get notification thresholds', error);
+        throw error;
+      }
     }),
 });
+

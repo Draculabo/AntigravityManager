@@ -38,14 +38,16 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const [transform, setTransform] = useState('');
   const [glarePosition, setGlarePosition] = useState({ x: 50, y: 50 });
 
-  const initials = account.name
+  const initials = account.name && account.name.trim()
     ? account.name
         .split(' ')
         .map((n) => n[0])
         .join('')
         .toUpperCase()
         .slice(0, 2)
-    : account.email[0].toUpperCase();
+    : account.email && account.email[0]
+      ? account.email[0].toUpperCase()
+      : '?';
 
   // 处理鼠标移动，计算 3D 旋转角度
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
