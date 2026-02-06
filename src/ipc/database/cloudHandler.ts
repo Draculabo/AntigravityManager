@@ -439,6 +439,29 @@ export class CloudAccountRepo {
     const db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
     try {
+      // ========== NEW: Inject into UnifiedStateSync keys (for newer Antigravity versions) ==========
+      // Check if new unified state system exists
+      const unifiedOAuthRow = db
+        .prepare('SELECT value FROM ItemTable WHERE key = ?')
+        .get('antigravityUnifiedStateSync.oauthToken') as { value: string } | undefined;
+
+      if (unifiedOAuthRow) {
+        logger.info('Detected new UnifiedStateSync format, injecting into new keys...');
+
+        // Create new oauthToken in the new format
+        // Format: protobuf with sentinelKey wrapper containing base64-encoded token info
+        const newUnifiedOAuth = this.createUnifiedOAuthToken(account);
+        db.prepare('UPDATE ItemTable SET value = ? WHERE key = ?').run(
+          newUnifiedOAuth,
+          'antigravityUnifiedStateSync.oauthToken',
+        );
+
+        logger.info(
+          `Injected token into antigravityUnifiedStateSync.oauthToken for ${account.email}`,
+        );
+      }
+
+      // ========== LEGACY: Inject into jetskiStateSync (for older Antigravity versions) ==========
       const row = db
         .prepare('SELECT value FROM ItemTable WHERE key = ?')
         .get('jetskiStateSync.agentManagerInitState') as { value: string } | undefined;
@@ -533,6 +556,110 @@ export class CloudAccountRepo {
     } finally {
       db.close();
     }
+  }
+
+  /**
+   * Creates the new UnifiedStateSync oauthToken format
+   * Format from analysis:
+   * - Outer: Field 1 (length-delimited) containing:
+   *   - Field 1: sentinel key "oauthTokenInfoSentinelKey"
+   *   - Field 2: base64-encoded inner token protobuf
+   * - Inner token (when decoded from base64):
+   *   - Field 1: access_token (string)
+   *   - Field 2: "Bearer" (string)
+   *   - Field 3: refresh_token (string)
+   *   - Field 4: expiry timestamp
+   */
+  private static createUnifiedOAuthToken(account: CloudAccount): string {
+    // Create inner token protobuf (NOT wrapped in field 6 like the old format)
+    // Format: field1=access_token, field2=Bearer, field3=refresh_token, field4=expiry
+    const f1 = ProtobufUtils.createStringField(1, account.token.access_token);
+    const f2 = ProtobufUtils.createStringField(2, 'Bearer');
+    const f3 = ProtobufUtils.createStringField(3, account.token.refresh_token);
+
+    // Field 4 is expiry timestamp - need to encode it properly
+    // Based on observation: "22 06 08 cc ea 96 cc 06" - this is a nested message with varint
+    const expiryBytes = this.createExpiryField(account.token.expiry_timestamp);
+
+    // Combine inner token fields
+    const innerToken = new Uint8Array(f1.length + f2.length + f3.length + expiryBytes.length);
+    let offset = 0;
+    innerToken.set(f1, offset);
+    offset += f1.length;
+    innerToken.set(f2, offset);
+    offset += f2.length;
+    innerToken.set(f3, offset);
+    offset += f3.length;
+    innerToken.set(expiryBytes, offset);
+
+    // Base64 encode the inner token
+    const innerB64 = Buffer.from(innerToken).toString('base64');
+
+    // Create the nested protobuf for field 2 (contains field 1 with base64 data)
+    // Format observed: field 2 contains { field 1: base64_string }
+    const nestedField1 = ProtobufUtils.createStringField(1, innerB64);
+
+    // Create outer wrapper with sentinel key
+    const sentinelKey = 'oauthTokenInfoSentinelKey';
+    const sentinelField = ProtobufUtils.createStringField(1, sentinelKey);
+
+    // Field 2 is length-delimited containing the nested protobuf
+    const field2Tag = (2 << 3) | 2;
+    const field2TagBytes = ProtobufUtils.encodeVarint(field2Tag);
+    const field2LenBytes = ProtobufUtils.encodeVarint(nestedField1.length);
+
+    // Combine sentinel + field2 with nested content
+    const innerWrapper = new Uint8Array(
+      sentinelField.length + field2TagBytes.length + field2LenBytes.length + nestedField1.length,
+    );
+    let wrapperOffset = 0;
+    innerWrapper.set(sentinelField, wrapperOffset);
+    wrapperOffset += sentinelField.length;
+    innerWrapper.set(field2TagBytes, wrapperOffset);
+    wrapperOffset += field2TagBytes.length;
+    innerWrapper.set(field2LenBytes, wrapperOffset);
+    wrapperOffset += field2LenBytes.length;
+    innerWrapper.set(nestedField1, wrapperOffset);
+
+    // Wrap as field 1 (length-delimited)
+    const tag = (1 << 3) | 2;
+    const tagBytes = ProtobufUtils.encodeVarint(tag);
+    const lenBytes = ProtobufUtils.encodeVarint(innerWrapper.length);
+
+    const result = new Uint8Array(tagBytes.length + lenBytes.length + innerWrapper.length);
+    result.set(tagBytes, 0);
+    result.set(lenBytes, tagBytes.length);
+    result.set(innerWrapper, tagBytes.length + lenBytes.length);
+
+    // Final base64 encoding for storage
+    return Buffer.from(result).toString('base64');
+  }
+
+  /**
+   * Creates expiry timestamp field in the format observed:
+   * Field 4 (tag 22) containing a nested message with Field 1 varint
+   */
+  private static createExpiryField(timestampSeconds: number): Uint8Array {
+    // Inner: Field 1 (varint) with timestamp
+    const innerTag = (1 << 3) | 0; // Field 1, wire type 0 (varint)
+    const innerTagBytes = ProtobufUtils.encodeVarint(innerTag);
+    const timestampBytes = ProtobufUtils.encodeVarint(timestampSeconds);
+
+    const innerMessage = new Uint8Array(innerTagBytes.length + timestampBytes.length);
+    innerMessage.set(innerTagBytes, 0);
+    innerMessage.set(timestampBytes, innerTagBytes.length);
+
+    // Outer: Field 4 (length-delimited)
+    const outerTag = (4 << 3) | 2;
+    const outerTagBytes = ProtobufUtils.encodeVarint(outerTag);
+    const lenBytes = ProtobufUtils.encodeVarint(innerMessage.length);
+
+    const result = new Uint8Array(outerTagBytes.length + lenBytes.length + innerMessage.length);
+    result.set(outerTagBytes, 0);
+    result.set(lenBytes, outerTagBytes.length);
+    result.set(innerMessage, outerTagBytes.length + lenBytes.length);
+
+    return result;
   }
 
   static getSetting<T>(key: string, defaultValue: T): T {
