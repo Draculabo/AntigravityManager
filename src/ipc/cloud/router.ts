@@ -13,6 +13,7 @@ import {
 } from './handler';
 import { CloudAccountSchema } from '../../types/cloudAccount';
 import { CloudAccountRepo } from '../database/cloudHandler';
+import { logger } from '../../utils/logger';
 
 export const cloudRouter = os.router({
   addGoogleAccount: os
@@ -72,7 +73,7 @@ export const cloudRouter = os.router({
 
       return result;
     } catch (error: any) {
-      console.error('[ORPC] syncLocalAccount error:', error.message, error.stack);
+      logger.error('[ORPC] syncLocalAccount error:', error.message, error.stack);
       throw error;
     }
   }),

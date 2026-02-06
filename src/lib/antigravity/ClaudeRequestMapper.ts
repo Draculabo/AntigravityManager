@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { mapClaudeModelToGemini } from './ModelMapping';
 import { cleanJsonSchema } from './JsonSchemaUtils';
 import { SignatureStore } from './SignatureStore';
+import { logger } from '../../utils/logger';
 import {
   ClaudeRequest,
   Message,
@@ -378,7 +379,7 @@ function injectGoogleSearchTool(body: { tools?: GeminiToolDeclaration[] }) {
 
   const hasFunctions = toolsArr.some((t) => t.functionDeclarations);
   if (hasFunctions) {
-    console.info('Skipping googleSearch injection due to existing functionDeclarations');
+    logger.info('Skipping googleSearch injection due to existing functionDeclarations');
     return;
   }
 

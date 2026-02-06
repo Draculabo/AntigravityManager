@@ -28,7 +28,7 @@ try {
     logger.info(`Database router check: ${!!db}`);
   }
 } catch (e) {
-  console.error('Error logging router:', e);
+  logger.error('Error logging router:', e);
 }
 
 export const rpcHandler: RPCHandler<Record<never, never>> = new RPCHandler(router);

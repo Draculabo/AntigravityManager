@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import { QuotaData, Tier, LoadProjectResponse, QuotaApiResponse } from './types';
+import { logger } from '../../utils/logger';
 
 // Constants
 const QUOTA_API_URL = 'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels';
@@ -48,15 +49,15 @@ export class QuotaService {
         const subscriptionTier = data.paidTier?.id || data.currentTier?.id;
 
         if (subscriptionTier) {
-          console.log(`📊 [${email}] Subscription Identified: ${subscriptionTier}`);
+          logger.info(`📊 [${email}] Subscription Identified: ${subscriptionTier}`);
         }
 
         return [projectId, subscriptionTier];
       } else {
-        console.warn(`⚠️  [${email}] loadCodeAssist failed: Status: ${res.status}`);
+        logger.warn(`⚠️  [${email}] loadCodeAssist failed: Status: ${res.status}`);
       }
     } catch (error: any) {
-      console.error(`❌ [${email}] loadCodeAssist Network Error: ${error.message}`);
+      logger.error(`❌ [${email}] loadCodeAssist Network Error: ${error.message}`);
     }
 
     return [undefined, undefined];
@@ -86,7 +87,7 @@ export class QuotaService {
     const url = QUOTA_API_URL;
     const maxRetries = 3;
 
-    console.log(`Sending quota request to ${url}`);
+    logger.info(`Sending quota request to ${url}`);
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -104,11 +105,11 @@ export class QuotaService {
           subscriptionTier: subscriptionTier,
         };
 
-        console.log(`Quota API returned ${Object.keys(quotaResponse.models || {}).length} models:`);
+        logger.info(`Quota API returned ${Object.keys(quotaResponse.models || {}).length} models:`);
 
         if (quotaResponse.models) {
           for (const [name, info] of Object.entries(quotaResponse.models)) {
-            console.log(`   - ${name}`);
+            logger.info(`   - ${name}`);
             if (info.quotaInfo) {
               const fraction = info.quotaInfo.remainingFraction ?? 0;
               const percentage = Math.floor(fraction * 100);
@@ -135,7 +136,7 @@ export class QuotaService {
 
           // ✅ Handle 403 Forbidden specifically - return immediately, do not retry
           if (status === 403) {
-            console.warn(`Account no permission (403 Forbidden), marked as forbidden`);
+            logger.warn(`Account no permission (403 Forbidden), marked as forbidden`);
             return {
               quotaData: {
                 models: {},
@@ -146,9 +147,9 @@ export class QuotaService {
             };
           }
 
-          console.warn(`API Error: ${status} - ${text} (Attempt ${attempt}/${maxRetries})`);
+          logger.warn(`API Error: ${status} - ${text} (Attempt ${attempt}/${maxRetries})`);
         } else {
-          console.warn(`Request Failed: ${error.message} (Attempt ${attempt}/${maxRetries})`);
+          logger.warn(`Request Failed: ${error.message} (Attempt ${attempt}/${maxRetries})`);
         }
 
         if (attempt < maxRetries) {

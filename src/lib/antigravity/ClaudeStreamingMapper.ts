@@ -1,6 +1,7 @@
 import { GeminiPart, Usage, UsageMetadata } from './types';
 import { SignatureStore } from './SignatureStore';
 import { decodeSignature } from './signature-utils';
+import { logger } from '../../utils/logger';
 
 type BlockType = 'None' | 'Text' | 'Thinking' | 'Function';
 
@@ -249,7 +250,7 @@ export class StreamingState {
     const chunks: string[] = [];
     this.parseErrorCount++;
 
-    console.warn(
+    logger.warn(
       `[SSE-Parser] Parse error #${this.parseErrorCount}. Raw data length: ${rawData.length}`,
     );
 
@@ -260,7 +261,7 @@ export class StreamingState {
 
     // Emit error event if too many errors
     if (this.parseErrorCount > 3) {
-      console.error(
+      logger.error(
         `[SSE-Parser] High error rate (${this.parseErrorCount} errors). Stream may be corrupted.`,
       );
       chunks.push(

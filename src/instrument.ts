@@ -15,7 +15,7 @@ function getQuickConfig() {
       return config.error_reporting_enabled;
     }
   } catch (e) {
-    console.error('Failed to read config for Sentry init:', e);
+    logger.error('Failed to read config for Sentry init:', e);
   }
   return false;
 }

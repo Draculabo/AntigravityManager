@@ -55,7 +55,7 @@ function logPacket(data: any) {
     );
   } catch (e) {
     if (e instanceof Error) {
-      console.error(e.message);
+      logger.error('Failed to append ORPC packet log', e);
     }
   }
 }
@@ -315,7 +315,7 @@ async function setupORPC() {
 
         logPacket(data);
       } catch (e) {
-        console.log('[RAW ORPC MSG] (unparseable)', msgEvent.data);
+        logger.debug('[RAW ORPC MSG] (unparseable)', msgEvent.data);
       }
     });
 

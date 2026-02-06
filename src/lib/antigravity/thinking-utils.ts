@@ -5,6 +5,7 @@
  * Problem: Invalid signatures cause thinking blocks to be dropped, losing content
  * Solution: Validate and convert invalid blocks to text instead of dropping
  */
+import { logger } from '../../utils/logger';
 
 /** Minimum length for a valid thought signature */
 const MIN_SIGNATURE_LENGTH = 10;
@@ -82,7 +83,7 @@ export function gracefulDegradeThinking(block: ContentBlock): ContentBlock | nul
   // Invalid signature - check if we have content to preserve
   if (thinkingBlock.thinking && thinkingBlock.thinking.length > 0) {
     // Convert to text block to preserve content
-    console.info(
+    logger.info(
       `[Thinking-Utils] Converting invalid thinking block to text. Content length: ${thinkingBlock.thinking.length}`,
     );
     return {
@@ -92,7 +93,7 @@ export function gracefulDegradeThinking(block: ContentBlock): ContentBlock | nul
   }
 
   // Empty content + invalid signature = drop
-  console.debug('[Thinking-Utils] Dropping empty thinking block with invalid signature');
+  logger.debug('[Thinking-Utils] Dropping empty thinking block with invalid signature');
   return null;
 }
 

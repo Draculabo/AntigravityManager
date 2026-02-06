@@ -2,6 +2,7 @@
  * Global thought_signature storage shared by all endpoints
  * Used to capture and replay signatures for Gemini 3+ function calls when clients don't pass them back.
  */
+import { logger } from '../../utils/logger';
 
 class SignatureStoreImpl {
   private static instance: SignatureStoreImpl;
@@ -28,12 +29,12 @@ class SignatureStoreImpl {
     const newLen = sig.length;
 
     if (newLen > existingLen) {
-      console.log(
+      logger.info(
         `[ThoughtSig] Storing new signature (length: ${newLen}, replacing old: ${existingLen})`,
       );
       this.signature = sig;
     } else {
-      console.debug(
+      logger.debug(
         `[ThoughtSig] Skipping shorter signature (new length: ${newLen}, existing: ${existingLen})`,
       );
     }

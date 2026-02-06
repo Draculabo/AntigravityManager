@@ -11,6 +11,7 @@ import { os } from '@orpc/server';
 import { z } from 'zod';
 import { isProcessRunning, closeAntigravity, startAntigravity } from './process/handler';
 import { systemHandler } from './system/handler';
+import { logger } from '../utils/logger';
 
 // Log middleware setup
 const logMiddleware = os.middleware(async (opts: any) => {
@@ -21,7 +22,7 @@ const logMiddleware = os.middleware(async (opts: any) => {
     const result = await next({});
     return result;
   } catch (err) {
-    console.error(`[ORPC] Error in handler for ${JSON.stringify(requestPath)}:`, err);
+    logger.error(`[ORPC] Error in handler for ${JSON.stringify(requestPath)}:`, err);
     throw err;
   }
 });

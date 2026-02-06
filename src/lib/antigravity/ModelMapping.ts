@@ -1,7 +1,4 @@
-const logger = {
-  log: (msg: string) => console.log(msg),
-  warn: (msg: string) => console.warn(msg),
-};
+import { logger } from '../../utils/logger';
 
 const CLAUDE_TO_GEMINI: Record<string, string> = {
   // Directly supported models
@@ -78,7 +75,7 @@ export function resolveModelRoute(
 ): string {
   // 1. Check custom exact mapping (Highest priority)
   if (customMapping[originalModel]) {
-    logger.log(
+    logger.info(
       `[Router] Using custom exact mapping: ${originalModel} -> ${customMapping[originalModel]}`,
     );
     return customMapping[originalModel];
@@ -98,7 +95,7 @@ export function resolveModelRoute(
     lowerModel === 'gpt-4'
   ) {
     if (openaiMapping['gpt-4-series']) {
-      logger.log(
+      logger.info(
         `[Router] Using GPT-4 series mapping: ${originalModel} -> ${openaiMapping['gpt-4-series']}`,
       );
       return openaiMapping['gpt-4-series'];
@@ -113,7 +110,7 @@ export function resolveModelRoute(
     lowerModel.includes('turbo')
   ) {
     if (openaiMapping['gpt-4o-series']) {
-      logger.log(
+      logger.info(
         `[Router] Using GPT-4o/3.5 series mapping: ${originalModel} -> ${openaiMapping['gpt-4o-series']}`,
       );
       return openaiMapping['gpt-4o-series'];
@@ -124,13 +121,13 @@ export function resolveModelRoute(
   if (lowerModel.startsWith('gpt-5')) {
     // Prefer gpt-5-series mapping, fallback to gpt-4-series if missing
     if (openaiMapping['gpt-5-series']) {
-      logger.log(
+      logger.info(
         `[Router] Using GPT-5 series mapping: ${originalModel} -> ${openaiMapping['gpt-5-series']}`,
       );
       return openaiMapping['gpt-5-series'];
     }
     if (openaiMapping['gpt-4-series']) {
-      logger.log(
+      logger.info(
         `[Router] Using GPT-4 series mapping (GPT-5 fallback): ${originalModel} -> ${openaiMapping['gpt-4-series']}`,
       );
       return openaiMapping['gpt-4-series'];

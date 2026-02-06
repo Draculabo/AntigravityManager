@@ -1,11 +1,15 @@
 import fs from 'fs';
 import path from 'path';
+import winston from 'winston';
+import DailyRotateFile from 'winston-daily-rotate-file';
 import { getAgentDir } from './paths';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 const LOG_WINDOW_MS = 30_000;
 const MAX_LOG_ENTRIES = 200;
+const LOG_RETENTION = '30d';
+const LOG_MAX_SIZE = '10m';
 
 interface LogEntry {
   timestamp: number;
@@ -49,13 +53,14 @@ function safeStringify(obj: unknown): string {
 }
 
 class Logger {
-  private logFilePath: string;
+  private winstonLogger: winston.Logger;
   private recentLogs: LogEntry[] = [];
   private sentryReporter: SentryReporter | null = null;
   private sentryEnabled = false;
 
   constructor() {
     const agentDir = getAgentDir();
+
     if (!fs.existsSync(agentDir)) {
       try {
         fs.mkdirSync(agentDir, { recursive: true });
@@ -63,36 +68,50 @@ class Logger {
         console.error('Failed to create agent directory for logs', e);
       }
     }
-    this.logFilePath = path.join(agentDir, 'app.log');
-  }
 
-  private formatMessage(level: LogLevel, message: string, ...args: unknown[]): string {
-    const timestamp = new Date().toISOString();
-    const formattedArgs = args
-      .map((arg) => (typeof arg === 'object' ? safeStringify(arg) : String(arg)))
-      .join(' ');
-    return `[${timestamp}] [${level.toUpperCase()}] ${message} ${formattedArgs}`;
-  }
+    const fileFormat = winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.printf(({ timestamp, level, message }) => {
+        return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+      }),
+    );
 
-  private writeToFile(formattedMessage: string) {
-    try {
-      fs.appendFileSync(this.logFilePath, formattedMessage + '\n');
-    } catch (e) {
-      console.error('Failed to write to log file', e);
-    }
-  }
+    const consoleFormat = winston.format.combine(
+      winston.format.colorize({ all: true }),
+      winston.format.printf(({ level, message }) => {
+        return `[${level.toUpperCase()}] ${message}`;
+      }),
+    );
 
-  private writeToConsole(level: LogLevel, message: string, ...args: unknown[]) {
-    const colorMap: Record<LogLevel, string> = {
-      info: '\x1b[36m', // Cyan
-      warn: '\x1b[33m', // Yellow
-      error: '\x1b[31m', // Red
-      debug: '\x1b[90m', // Gray
-    };
-    const reset = '\x1b[0m';
-    const color = colorMap[level];
+    const rotateTransport = new DailyRotateFile({
+      filename: path.join(agentDir, 'app-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      maxSize: LOG_MAX_SIZE,
+      maxFiles: LOG_RETENTION,
+      zippedArchive: false,
+      auditFile: path.join(agentDir, '.app-log-audit.json'),
+      level: 'debug',
+      format: fileFormat,
+    });
 
-    console.log(`${color}[${level.toUpperCase()}]${reset} ${message}`, ...args);
+    rotateTransport.on('error', (error) => {
+      console.error('DailyRotateFile transport error', error);
+    });
+
+    const consoleTransport = new winston.transports.Console({
+      level: 'debug',
+      format: consoleFormat,
+    });
+
+    consoleTransport.on('error', (error) => {
+      console.error('Console transport error', error);
+    });
+
+    this.winstonLogger = winston.createLogger({
+      level: 'debug',
+      transports: [consoleTransport, rotateTransport],
+      exitOnError: false,
+    });
   }
 
   private pruneLogs(now: number) {
@@ -122,24 +141,35 @@ class Logger {
     this.sentryEnabled = enabled;
   }
 
+  private formatArgs(args: unknown[]): string {
+    return args
+      .map((arg) => (typeof arg === 'object' ? safeStringify(arg) : String(arg)))
+      .join(' ');
+  }
+
   log(level: LogLevel, message: string, ...args: unknown[]) {
-    const formattedMessage = this.formatMessage(level, message, ...args);
+    const formattedArgs = this.formatArgs(args);
+    const mergedMessage = formattedArgs ? `${message} ${formattedArgs}` : message;
     const now = Date.now();
+    const formattedMessage = `[${new Date(now).toISOString()}] [${level.toUpperCase()}] ${mergedMessage}`;
+
     this.recentLogs.push({
       timestamp: now,
       level,
-      message,
+      message: mergedMessage,
       formatted: formattedMessage,
     });
     this.pruneLogs(now);
 
-    this.writeToConsole(level, message, ...args);
-    this.writeToFile(formattedMessage);
+    this.winstonLogger.log({
+      level,
+      message: mergedMessage,
+    });
 
     if (level === 'error' && this.sentryEnabled && this.sentryReporter) {
       this.sentryReporter({
         level,
-        message,
+        message: mergedMessage,
         error: this.extractError(args),
         logs: [...this.recentLogs],
       });

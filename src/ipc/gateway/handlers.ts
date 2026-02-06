@@ -5,6 +5,7 @@
 import { bootstrapNestServer, stopNestServer, getNestServerStatus } from '../../server/main';
 import { ConfigManager } from '../config/manager';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../../utils/logger';
 
 /**
  * Start the gateway server (NestJS)
@@ -20,7 +21,7 @@ export const startGateway = async (port: number): Promise<boolean> => {
 
     return await bootstrapNestServer(proxyConfig);
   } catch (e) {
-    console.error('Failed to start gateway:', e);
+    logger.error('Failed to start gateway:', e);
     return false;
   }
 };
@@ -32,7 +33,7 @@ export const stopGateway = async (): Promise<boolean> => {
   try {
     return await stopNestServer();
   } catch (e) {
-    console.error('Failed to stop gateway:', e);
+    logger.error('Failed to stop gateway:', e);
     return false;
   }
 };

@@ -1,5 +1,6 @@
 import { ConfigManager } from '../ipc/config/manager';
 import { ProxyAgent } from 'undici';
+import { logger } from '../utils/logger';
 
 // --- Constants & Config ---
 
@@ -85,7 +86,7 @@ export class GoogleAPIService {
       }
     } catch (e) {
       // Fallback or log if config load fails (shouldn't happen usually)
-      console.warn('[GoogleAPIService] Failed to load proxy config', e);
+      logger.warn('[GoogleAPIService] Failed to load proxy config', e);
     }
     return {};
   }
@@ -246,7 +247,7 @@ export class GoogleAPIService {
           }
         }
       } catch (e) {
-        console.warn(`[GoogleAPIService] Failed to fetch project ID (Attempt ${i + 1}):`, e);
+        logger.warn(`[GoogleAPIService] Failed to fetch project ID (Attempt ${i + 1}):`, e);
         await new Promise((r) => setTimeout(r, 500)); // Sleep 500ms
       }
     }
@@ -296,7 +297,7 @@ export class GoogleAPIService {
           }
 
           const errorMsg = `HTTP ${status} - ${text}`;
-          console.warn(
+          logger.warn(
             `[GoogleAPIService] API Error: ${errorMsg} (Attempt ${attempt}/${maxRetries})`,
           );
 
@@ -327,7 +328,7 @@ export class GoogleAPIService {
         return result;
       } catch (e: unknown) {
         if (e instanceof Error) {
-          console.warn(
+          logger.warn(
             `[GoogleAPIService] Request failed: ${e.message} (Attempt ${attempt}/${maxRetries})`,
           );
         }
