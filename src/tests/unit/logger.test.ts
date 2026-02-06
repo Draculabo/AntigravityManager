@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { logger } from '../../utils/logger';
 import fs from 'fs';
 import path from 'path';
@@ -42,8 +42,18 @@ describe('Logger Utilities', () => {
   };
 
   beforeEach(() => {
-    if (!fs.existsSync(testLogDir)) {
-      fs.mkdirSync(testLogDir, { recursive: true });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    if (fs.existsSync(testLogDir)) {
+      fs.rmSync(testLogDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(testLogDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (fs.existsSync(testLogDir)) {
+      fs.rmSync(testLogDir, { recursive: true, force: true });
     }
   });
 
