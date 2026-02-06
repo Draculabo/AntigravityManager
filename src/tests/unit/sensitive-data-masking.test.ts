@@ -9,7 +9,9 @@ describe('sensitive data masking', () => {
 
     it('maschera token e varianti (case-insensitive)', () => {
       expect(sanitizeObject({ token: 'abc' })).toEqual({ token: '[REDACTED]' });
-      expect(sanitizeObject({ Authorization: 'Bearer xyz' })).toEqual({ Authorization: '[REDACTED]' });
+      expect(sanitizeObject({ Authorization: 'Bearer xyz' })).toEqual({
+        Authorization: '[REDACTED]',
+      });
       expect(sanitizeObject({ api_key: 'key123' })).toEqual({ api_key: '[REDACTED]' });
       expect(sanitizeObject({ refresh_token: 'rt' })).toEqual({ refresh_token: '[REDACTED]' });
     });
@@ -18,7 +20,7 @@ describe('sensitive data masking', () => {
       expect(
         sanitizeObject({
           user: { name: 'Alice', password: 'pwd', nested: { token: 't' } },
-        })
+        }),
       ).toEqual({
         user: { name: 'Alice', password: '[REDACTED]', nested: { token: '[REDACTED]' } },
       });
@@ -57,7 +59,7 @@ describe('sensitive data masking', () => {
           client_secret: 'cs',
           otp: '1234',
           pin: '0000',
-        })
+        }),
       ).toEqual({
         session_id: '[REDACTED]',
         cookie: '[REDACTED]',

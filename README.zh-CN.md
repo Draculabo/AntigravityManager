@@ -182,11 +182,11 @@
 
 从 [Releases](https://github.com/Draculabo/AntigravityManager/releases) 页面下载适合你平台的最新版本。
 
-| 平台    | 下载链接                                                                       |
-| ------- | ------------------------------------------------------------------------------ |
+| 平台                | 下载链接                                                                       |
+| ------------------- | ------------------------------------------------------------------------------ |
 | Windows (x64/ARM64) | [.exe 安装包](https://github.com/Draculabo/AntigravityManager/releases/latest) |
-| macOS   | [.dmg 安装包](https://github.com/Draculabo/AntigravityManager/releases/latest) |
-| Linux   | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest) |
+| macOS               | [.dmg 安装包](https://github.com/Draculabo/AntigravityManager/releases/latest) |
+| Linux               | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 
 ### 从源码构建
 
