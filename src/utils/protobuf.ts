@@ -93,6 +93,24 @@ export class ProtobufUtils {
     return result;
   }
 
+  static encodeLenDelimField(fieldNum: number, data: Uint8Array): Uint8Array {
+    const tag = (fieldNum << 3) | 2;
+    const tagBytes = this.encodeVarint(tag);
+    const lenBytes = this.encodeVarint(data.length);
+
+    const result = new Uint8Array(tagBytes.length + lenBytes.length + data.length);
+    result.set(tagBytes, 0);
+    result.set(lenBytes, tagBytes.length);
+    result.set(data, tagBytes.length + lenBytes.length);
+    return result;
+  }
+
+  static encodeStringField(fieldNum: number, value: string): Uint8Array {
+    const utf8Encode = new TextEncoder();
+    const bytes = utf8Encode.encode(value);
+    return this.encodeLenDelimField(fieldNum, bytes);
+  }
+
   // Create timestamp field (Field 4 -> Field 1 varint)
   static createTimestampField(fieldNum: number, seconds: number): Uint8Array {
     // Timestamp message format: Field 1 (seconds) as varint
@@ -197,5 +215,93 @@ export class ProtobufUtils {
     result.set(combined, tag6Bytes.length + lenBytes.length);
 
     return result;
+  }
+
+  static createOAuthInfo(accessToken: string, refreshToken: string, expiry: number): Uint8Array {
+    const field1 = this.encodeStringField(1, accessToken);
+    const field2 = this.encodeStringField(2, 'Bearer');
+    const field3 = this.encodeStringField(3, refreshToken);
+
+    const timestampTag = (1 << 3) | 0;
+    const tagBytes = this.encodeVarint(timestampTag);
+    const secondsBytes = this.encodeVarint(expiry);
+    const timestampMsg = new Uint8Array(tagBytes.length + secondsBytes.length);
+    timestampMsg.set(tagBytes, 0);
+    timestampMsg.set(secondsBytes, tagBytes.length);
+
+    const field4 = this.encodeLenDelimField(4, timestampMsg);
+
+    const combined = new Uint8Array(
+      field1.length + field2.length + field3.length + field4.length,
+    );
+    combined.set(field1, 0);
+    combined.set(field2, field1.length);
+    combined.set(field3, field1.length + field2.length);
+    combined.set(field4, field1.length + field2.length + field3.length);
+    return combined;
+  }
+
+  static createUnifiedOAuthToken(
+    accessToken: string,
+    refreshToken: string,
+    expiry: number,
+  ): string {
+    const oauthInfo = this.createOAuthInfo(accessToken, refreshToken, expiry);
+    const oauthInfoB64 = Buffer.from(oauthInfo).toString('base64');
+
+    const inner2 = this.encodeStringField(1, oauthInfoB64);
+    const inner1 = this.encodeStringField(1, 'oauthTokenInfoSentinelKey');
+    const innerField2 = this.encodeLenDelimField(2, inner2);
+
+    const inner = new Uint8Array(inner1.length + innerField2.length);
+    inner.set(inner1, 0);
+    inner.set(innerField2, inner1.length);
+
+    const outer = this.encodeLenDelimField(1, inner);
+    return Buffer.from(outer).toString('base64');
+  }
+
+  static extractOAuthTokenInfoFromOAuthInfo(
+    data: Uint8Array,
+  ): { accessToken: string; refreshToken: string } | null {
+    const accessTokenBytes = this.getField(data, 1);
+    const refreshTokenBytes = this.getField(data, 3);
+
+    if (accessTokenBytes && refreshTokenBytes) {
+      return {
+        accessToken: this.readString(accessTokenBytes),
+        refreshToken: this.readString(refreshTokenBytes),
+      };
+    }
+    return null;
+  }
+
+  static extractOAuthTokenInfoFromUnifiedState(
+    data: Uint8Array,
+  ): { accessToken: string; refreshToken: string } | null {
+    const inner = this.getField(data, 1);
+    if (!inner) {
+      return null;
+    }
+
+    const inner2 = this.getField(inner, 2);
+    if (!inner2) {
+      return null;
+    }
+
+    const oauthInfoB64Bytes = this.getField(inner2, 1);
+    if (!oauthInfoB64Bytes) {
+      return null;
+    }
+
+    const oauthInfoB64 = this.readString(oauthInfoB64Bytes);
+    let oauthInfoBytes: Uint8Array;
+    try {
+      oauthInfoBytes = new Uint8Array(Buffer.from(oauthInfoB64, 'base64'));
+    } catch {
+      return null;
+    }
+
+    return this.extractOAuthTokenInfoFromOAuthInfo(oauthInfoBytes);
   }
 }

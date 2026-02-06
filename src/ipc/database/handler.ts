@@ -1,17 +1,27 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
-import { getAntigravityDbPaths } from '../../utils/paths';
-import { logger } from '../../utils/logger';
-import { AccountBackupData, AccountInfo } from '../../types/account';
-
 import path from 'path';
+import { eq } from 'drizzle-orm';
+import { AccountBackupData, AccountInfo } from '../../types/account';
+import { ItemTableValueRowSchema, type ItemTableKey } from '../../types/db';
+import { logger } from '../../utils/logger';
+import { getAntigravityDbPaths } from '../../utils/paths';
+import { parseRow } from '../../utils/sqlite';
+import { openDrizzleConnection } from './dbConnection';
+import { itemTable } from './schema';
 
-const KEYS_TO_BACKUP = ['antigravityAuthStatus', 'jetskiStateSync.agentManagerInitState'];
+const KEYS_TO_BACKUP: ItemTableKey[] = [
+  'antigravityAuthStatus',
+  'jetskiStateSync.agentManagerInitState',
+  'antigravityUnifiedStateSync.oauthToken',
+];
 
-function getDbWithWal(dbPath: string, options: Database.Options = {}): Database.Database {
-  const db = new Database(dbPath, options);
-  db.pragma('journal_mode = WAL');
-  return db;
+function openIdeDb(dbPath: string, readOnly = false): ReturnType<typeof openDrizzleConnection> {
+  return openDrizzleConnection(
+    dbPath,
+    { readonly: readOnly, fileMustExist: false },
+    { readOnly, busyTimeoutMs: 3000 },
+  );
 }
 
 /**
@@ -25,8 +35,8 @@ export function initDatabase(): void {
       return;
     }
 
-    const db = getDatabaseConnection();
-    db.close();
+    const { raw } = getDatabaseConnection();
+    raw.close();
     logger.info('Database initialized and verified (WAL mode)');
   } catch (error) {
     logger.error('Failed to initialize database on startup', error);
@@ -72,9 +82,9 @@ function ensureDatabaseExists(dbPath: string): void {
 /**
  * Gets a database connection.
  * @param dbPath {string} The path to the database file.
- * @returns {Database.Database} The database connection.
+ * @returns {ReturnType<typeof openDrizzleConnection>} The database connection.
  */
-export function getDatabaseConnection(dbPath?: string): Database.Database {
+export function getDatabaseConnection(dbPath?: string): ReturnType<typeof openDrizzleConnection> {
   const targetPath = dbPath || getAntigravityDbPaths()[0];
 
   if (!targetPath) {
@@ -84,7 +94,7 @@ export function getDatabaseConnection(dbPath?: string): Database.Database {
   ensureDatabaseExists(targetPath);
 
   try {
-    return getDbWithWal(targetPath, { readonly: false, fileMustExist: false });
+    return openIdeDb(targetPath);
   } catch (error: unknown) {
     const err = error as { code?: string };
     if (err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED') {
@@ -94,11 +104,19 @@ export function getDatabaseConnection(dbPath?: string): Database.Database {
   }
 }
 
-/**
- * Gets a database connection and enables WAL mode.
- * @param dbPath {string} The path to the database file.
- * @returns {Database.Database} The database connection.
- */
+function readItemValue(
+  orm: ReturnType<typeof openDrizzleConnection>['orm'],
+  key: string,
+  context: string,
+): string | null {
+  const rows = orm
+    .select({ value: itemTable.value })
+    .from(itemTable)
+    .where(eq(itemTable.key, key))
+    .all();
+  const row = parseRow(ItemTableValueRowSchema, rows[0], context);
+  return row?.value ?? null;
+}
 
 /**
  * Gets the current account info.
@@ -106,61 +124,66 @@ export function getDatabaseConnection(dbPath?: string): Database.Database {
  */
 export function getCurrentAccountInfo(): AccountInfo {
   // NOTE Database existence is now handled by getDatabaseConnection
-  let db: Database.Database | null = null;
+  let connection: ReturnType<typeof openDrizzleConnection> | null = null;
   try {
-    db = getDatabaseConnection();
+    connection = getDatabaseConnection();
+    const { orm } = connection;
 
     // Query for auth status
-    const authRow = db
-      .prepare("SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'")
-      .get() as { value: string } | undefined;
-
+    const authValue = readItemValue(
+      orm,
+      'antigravityAuthStatus',
+      'ide.itemTable.antigravityAuthStatus',
+    );
     let authStatus = null;
-    if (authRow) {
+    if (authValue) {
       try {
-        authStatus = JSON.parse(authRow.value);
+        authStatus = JSON.parse(authValue);
       } catch {
         // NOTE Ignore JSON parse errors
       }
     }
 
     // NOTE Query for user info (usually in jetskiStateSync.agentManagerInitState or similar)
-    const initRow = db
-      .prepare("SELECT value FROM ItemTable WHERE key = 'jetskiStateSync.agentManagerInitState'")
-      .get() as { value: string } | undefined;
-
+    const initValue = readItemValue(
+      orm,
+      'jetskiStateSync.agentManagerInitState',
+      'ide.itemTable.jetskiStateSync.agentManagerInitState',
+    );
     let initState = null;
-    if (initRow) {
+    if (initValue) {
       try {
-        initState = JSON.parse(initRow.value);
+        initState = JSON.parse(initValue);
       } catch {
         // Ignore JSON parse errors (this key often contains non-JSON data)
       }
     }
 
     // Query for google.antigravity
-    const googleRow = db
-      .prepare("SELECT value FROM ItemTable WHERE key = 'google.antigravity'")
-      .get() as { value: string } | undefined;
-
+    const googleValue = readItemValue(
+      orm,
+      'google.antigravity',
+      'ide.itemTable.google.antigravity',
+    );
     let googleState = null;
-    if (googleRow) {
+    if (googleValue) {
       try {
-        googleState = JSON.parse(googleRow.value);
+        googleState = JSON.parse(googleValue);
       } catch {
         // Ignore JSON parse errors
       }
     }
 
     // Query for antigravityUserSettings.allUserSettings
-    const settingsRow = db
-      .prepare("SELECT value FROM ItemTable WHERE key = 'antigravityUserSettings.allUserSettings'")
-      .get() as { value: string } | undefined;
-
+    const settingsValue = readItemValue(
+      orm,
+      'antigravityUserSettings.allUserSettings',
+      'ide.itemTable.antigravityUserSettings.allUserSettings',
+    );
     let settingsState = null;
-    if (settingsRow) {
+    if (settingsValue) {
       try {
-        settingsState = JSON.parse(settingsRow.value);
+        settingsState = JSON.parse(settingsValue);
       } catch {
         // Ignore JSON parse errors
       }
@@ -195,28 +218,28 @@ export function getCurrentAccountInfo(): AccountInfo {
     logger.error('Failed to get current account info', error);
     throw error;
   } finally {
-    if (db) db.close();
+    if (connection) {
+      connection.raw.close();
+    }
   }
 }
 
 export function backupAccount(account: AccountBackupData['account']): AccountBackupData {
-  let db: Database.Database | null = null;
+  let connection: ReturnType<typeof openDrizzleConnection> | null = null;
   try {
-    db = getDatabaseConnection();
+    connection = getDatabaseConnection();
+    const { orm } = connection;
 
     // NOTE Backup only specific keys
     const data: Record<string, unknown> = {};
 
     for (const key of KEYS_TO_BACKUP) {
-      const row = db.prepare('SELECT value FROM ItemTable WHERE key = ?').get(key) as
-        | { value: string }
-        | undefined;
-
-      if (row) {
+      const value = readItemValue(orm, key, `ide.itemTable.backup.${key}`);
+      if (value) {
         try {
-          data[key] = JSON.parse(row.value);
+          data[key] = JSON.parse(value);
         } catch {
-          data[key] = row.value;
+          data[key] = value;
         }
         logger.debug(`Backed up key: ${key}`);
       } else {
@@ -237,7 +260,9 @@ export function backupAccount(account: AccountBackupData['account']): AccountBac
     logger.error('Failed to backup account', error);
     throw error;
   } finally {
-    if (db) db.close();
+    if (connection) {
+      connection.raw.close();
+    }
   }
 }
 
@@ -288,32 +313,36 @@ function _restoreSingleDb(dbPath: string, backup: AccountBackupData): boolean {
   }
 
   logger.info(`Restoring database: ${dbPath}`);
-  let db: Database.Database | null = null;
+  let connection: ReturnType<typeof openDrizzleConnection> | null = null;
 
   try {
-    db = getDatabaseConnection(dbPath);
-
-    const insert = db.prepare('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)');
-
-    const transaction = db.transaction(() => {
+    connection = getDatabaseConnection(dbPath);
+    const { orm } = connection;
+    orm.transaction((tx) => {
       // NOTE Only restore the keys that were backed up
       for (const key of KEYS_TO_BACKUP) {
         if (key in backup.data) {
           const value = backup.data[key];
           const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-          insert.run(key, stringValue);
+          tx.insert(itemTable)
+            .values({ key, value: stringValue })
+            .onConflictDoUpdate({
+              target: itemTable.key,
+              set: { value: stringValue },
+            })
+            .run();
           logger.debug(`Restored key: ${key}`);
         }
       }
     });
-
-    transaction();
     logger.info(`Database restoration complete: ${dbPath}`);
     return true;
   } catch (error) {
     logger.error(`Failed to restore database: ${dbPath}`, error);
     return false;
   } finally {
-    if (db) db.close();
+    if (connection) {
+      connection.raw.close();
+    }
   }
 }

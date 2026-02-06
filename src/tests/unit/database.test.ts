@@ -54,9 +54,9 @@ describe.skip('Database Handler', () => {
   });
 
   it('should connect to database', () => {
-    const db = getDatabaseConnection();
-    expect(db).toBeDefined();
-    db.close();
+    const { raw } = getDatabaseConnection();
+    expect(raw).toBeDefined();
+    raw.close();
   });
 
   it('should get current account info', () => {

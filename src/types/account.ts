@@ -17,6 +17,7 @@ export interface AccountBackupData {
     // Key-value pairs from Antigravity database
     antigravityAuthStatus?: string;
     'jetskiStateSync.agentManagerInitState'?: string;
+    'antigravityUnifiedStateSync.oauthToken'?: string;
     [key: string]: unknown;
   };
 }
