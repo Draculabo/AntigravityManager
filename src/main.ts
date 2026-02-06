@@ -32,11 +32,87 @@ import { isAutoStartLaunch, syncAutoStart } from './utils/autoStart';
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
 
 /**
- * Safely stringify an object, handling circular references
+ * List of keys that should be masked in logs to prevent sensitive data exposure
+ */
+const SENSITIVE_KEYS = [
+  'password',
+  'token',
+  'apikey',
+  'api_key',
+  'secret',
+  'authorization',
+  'credentials',
+  'accesstoken',
+  'access_token',
+  'refreshtoken',
+  'refresh_token',
+  'bearertoken',
+  'bearer_token',
+  'sessionid',
+  'session_id',
+  'cookie',
+  'private_key',
+  'privatekey',
+  'client_secret',
+  'clientsecret',
+  'auth',
+  'authcode',
+  'auth_code',
+  'code',
+  'otp',
+  'pin',
+  'verificationcode',
+  'verification_code',
+];
+
+/**
+ * Recursively sanitize an object by masking sensitive field values
+ */
+function sanitizeObject(obj: unknown): unknown {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (typeof obj === 'string') {
+    // Try to parse as JSON in case it's a stringified object
+    try {
+      const parsed = JSON.parse(obj);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return JSON.stringify(sanitizeObject(parsed));
+      }
+    } catch {
+      // Not JSON, return as-is
+    }
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeObject(item));
+  }
+
+  if (typeof obj === 'object') {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const lowerKey = key.toLowerCase();
+      if (SENSITIVE_KEYS.some((sensitiveKey) => lowerKey.includes(sensitiveKey))) {
+        sanitized[key] = '[REDACTED]';
+      } else {
+        sanitized[key] = sanitizeObject(value);
+      }
+    }
+    return sanitized;
+  }
+
+  return obj;
+}
+
+/**
+ * Safely stringify an object, handling circular references and masking sensitive data
  */
 function safeStringifyPacket(obj: unknown): string {
+  const sanitized = sanitizeObject(obj);
   const seen = new WeakSet();
-  return JSON.stringify(obj, (key, value) => {
+  return JSON.stringify(sanitized, (key, value) => {
     if (typeof value === 'object' && value !== null) {
       if (seen.has(value)) {
         return '[Circular]';
