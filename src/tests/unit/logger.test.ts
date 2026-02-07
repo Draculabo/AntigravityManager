@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import { logger } from '../../utils/logger';
 import fs from 'fs';
 import path from 'path';
@@ -42,8 +42,38 @@ describe('Logger Utilities', () => {
   };
 
   beforeEach(() => {
-    if (!fs.existsSync(testLogDir)) {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      if (fs.existsSync(testLogDir)) {
+        fs.rmSync(testLogDir, { recursive: true, force: true });
+      }
       fs.mkdirSync(testLogDir, { recursive: true });
+    } catch (err) {
+      console.error('beforeEach: setup testLogDir failed', err);
+      throw err;
+    }
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    try {
+      if (fs.existsSync(testLogDir)) {
+        fs.rmSync(testLogDir, { recursive: true, force: true });
+      }
+    } catch (err) {
+      console.error('afterEach: cleanup testLogDir failed', err);
+      throw err;
+    }
+  });
+
+  afterAll(() => {
+    try {
+      if (fs.existsSync(testLogDir)) {
+        fs.rmSync(testLogDir, { recursive: true, force: true });
+      }
+    } catch (err) {
+      console.error('afterAll: cleanup testLogDir failed', err);
     }
   });
 
