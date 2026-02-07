@@ -51,6 +51,16 @@ describe('sensitive data masking', () => {
       expect(sanitizeObject('plain text')).toBe('plain text');
     });
 
+    it('gestisce riferimenti circolari senza loop infiniti', () => {
+      const circular: Record<string, unknown> = { name: 'a', password: 'secret' };
+      circular.self = circular;
+      expect(sanitizeObject(circular)).toEqual({
+        name: 'a',
+        password: '[REDACTED]',
+        self: '[Circular]',
+      });
+    });
+
     it('maschera session_id, cookie, client_secret, otp, pin', () => {
       expect(
         sanitizeObject({

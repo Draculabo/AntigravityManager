@@ -32,10 +32,9 @@ const SENSITIVE_KEYS = [
   'verification_code',
 ];
 
-/**
- * Sanitizza ricorsivamente un oggetto mascherando i valori dei campi sensibili
- */
-export function sanitizeObject(obj: unknown): unknown {
+const CIRCULAR_PLACEHOLDER = '[Circular]';
+
+function sanitizeWithSeen(obj: unknown, seen: WeakSet<object>): unknown {
   if (obj === null || obj === undefined) {
     return obj;
   }
@@ -44,7 +43,7 @@ export function sanitizeObject(obj: unknown): unknown {
     try {
       const parsed = JSON.parse(obj);
       if (typeof parsed === 'object' && parsed !== null) {
-        return JSON.stringify(sanitizeObject(parsed));
+        return JSON.stringify(sanitizeWithSeen(parsed, seen));
       }
     } catch {
       // Non JSON, restituisci invariato
@@ -53,23 +52,39 @@ export function sanitizeObject(obj: unknown): unknown {
   }
 
   if (Array.isArray(obj)) {
-    return obj.map((item) => sanitizeObject(item));
+    if (seen.has(obj)) {
+      return CIRCULAR_PLACEHOLDER;
+    }
+    seen.add(obj);
+    return obj.map((item) => sanitizeWithSeen(item, seen));
   }
 
   if (typeof obj === 'object') {
+    if (seen.has(obj)) {
+      return CIRCULAR_PLACEHOLDER;
+    }
+    seen.add(obj);
     const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj)) {
       const lowerKey = key.toLowerCase();
       if (SENSITIVE_KEYS.includes(lowerKey)) {
         sanitized[key] = '[REDACTED]';
       } else {
-        sanitized[key] = sanitizeObject(value);
+        sanitized[key] = sanitizeWithSeen(value, seen);
       }
     }
     return sanitized;
   }
 
   return obj;
+}
+
+/**
+ * Sanitizza ricorsivamente un oggetto mascherando i valori dei campi sensibili.
+ * Gestisce i riferimenti circolari sostituendoli con '[Circular]'.
+ */
+export function sanitizeObject(obj: unknown): unknown {
+  return sanitizeWithSeen(obj, new WeakSet());
 }
 
 /**
