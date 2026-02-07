@@ -44,16 +44,26 @@ describe('Logger Utilities', () => {
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    if (fs.existsSync(testLogDir)) {
-      fs.rmSync(testLogDir, { recursive: true, force: true });
+    try {
+      if (fs.existsSync(testLogDir)) {
+        fs.rmSync(testLogDir, { recursive: true, force: true });
+      }
+      fs.mkdirSync(testLogDir, { recursive: true });
+    } catch (err) {
+      console.error('beforeEach: setup testLogDir failed', err);
+      throw err;
     }
-    fs.mkdirSync(testLogDir, { recursive: true });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    if (fs.existsSync(testLogDir)) {
-      fs.rmSync(testLogDir, { recursive: true, force: true });
+    try {
+      if (fs.existsSync(testLogDir)) {
+        fs.rmSync(testLogDir, { recursive: true, force: true });
+      }
+    } catch (err) {
+      console.error('afterEach: cleanup testLogDir failed', err);
+      throw err;
     }
   });
 
