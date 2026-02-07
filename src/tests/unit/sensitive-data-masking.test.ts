@@ -3,11 +3,11 @@ import { sanitizeObject, safeStringifyPacket } from '@/utils/sensitiveDataMaskin
 
 describe('sensitive data masking', () => {
   describe('sanitizeObject', () => {
-    it('maschera password', () => {
+    it('masks password', () => {
       expect(sanitizeObject({ password: 'secret123' })).toEqual({ password: '[REDACTED]' });
     });
 
-    it('maschera token e varianti (case-insensitive)', () => {
+    it('masks token and variants (case-insensitive)', () => {
       expect(sanitizeObject({ token: 'abc' })).toEqual({ token: '[REDACTED]' });
       expect(sanitizeObject({ Authorization: 'Bearer xyz' })).toEqual({
         Authorization: '[REDACTED]',
@@ -16,7 +16,7 @@ describe('sensitive data masking', () => {
       expect(sanitizeObject({ refresh_token: 'rt' })).toEqual({ refresh_token: '[REDACTED]' });
     });
 
-    it('maschera chiavi annidate', () => {
+    it('masks nested keys', () => {
       expect(
         sanitizeObject({
           user: { name: 'Alice', password: 'pwd', nested: { token: 't' } },
@@ -26,32 +26,32 @@ describe('sensitive data masking', () => {
       });
     });
 
-    it('non maschera chiavi non sensibili', () => {
+    it('does not mask non-sensitive keys', () => {
       expect(sanitizeObject({ name: 'Alice', id: 1 })).toEqual({ name: 'Alice', id: 1 });
     });
 
-    it('gestisce null e undefined', () => {
+    it('handles null and undefined', () => {
       expect(sanitizeObject(null)).toBe(null);
       expect(sanitizeObject(undefined)).toBe(undefined);
     });
 
-    it('gestisce array ricorsivamente', () => {
+    it('handles arrays recursively', () => {
       expect(sanitizeObject([{ password: 'x' }, { name: 'y' }])).toEqual([
         { password: '[REDACTED]' },
         { name: 'y' },
       ]);
     });
 
-    it('gestisce stringa JSON con campi sensibili', () => {
+    it('handles JSON string with sensitive fields', () => {
       const json = JSON.stringify({ password: 'hidden' });
       expect(sanitizeObject(json)).toBe(JSON.stringify({ password: '[REDACTED]' }));
     });
 
-    it('lascia stringa non-JSON invariata', () => {
+    it('leaves non-JSON string unchanged', () => {
       expect(sanitizeObject('plain text')).toBe('plain text');
     });
 
-    it('gestisce riferimenti circolari senza loop infiniti', () => {
+    it('handles circular references without infinite loops', () => {
       const circular: Record<string, unknown> = { name: 'a', password: 'secret' };
       circular.self = circular;
       expect(sanitizeObject(circular)).toEqual({
@@ -61,7 +61,7 @@ describe('sensitive data masking', () => {
       });
     });
 
-    it('maschera session_id, cookie, client_secret, otp, pin', () => {
+    it('masks session_id, cookie, client_secret, otp, pin', () => {
       expect(
         sanitizeObject({
           session_id: 'sess',
@@ -81,7 +81,7 @@ describe('sensitive data masking', () => {
   });
 
   describe('safeStringifyPacket', () => {
-    it('stringifica con campi sensibili mascherati', () => {
+    it('stringifies with sensitive fields masked', () => {
       const out = safeStringifyPacket({ user: 'a', password: 'p' });
       expect(out).toContain('"user":"a"');
       expect(out).toContain('"password":"[REDACTED]"');

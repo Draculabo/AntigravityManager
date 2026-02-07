@@ -1,5 +1,5 @@
 /**
- * Chiavi da mascherare nei log per evitare esposizione di dati sensibili
+ * Keys to mask in logs to avoid exposing sensitive data.
  */
 const SENSITIVE_KEYS = [
   'password',
@@ -46,7 +46,7 @@ function sanitizeWithSeen(obj: unknown, seen: WeakSet<object>): unknown {
         return JSON.stringify(sanitizeWithSeen(parsed, seen));
       }
     } catch {
-      // Non JSON, restituisci invariato
+      // Not JSON, return unchanged
     }
     return obj;
   }
@@ -80,15 +80,15 @@ function sanitizeWithSeen(obj: unknown, seen: WeakSet<object>): unknown {
 }
 
 /**
- * Sanitizza ricorsivamente un oggetto mascherando i valori dei campi sensibili.
- * Gestisce i riferimenti circolari sostituendoli con '[Circular]'.
+ * Recursively sanitizes an object by masking sensitive field values.
+ * Handles circular references by replacing them with '[Circular]'.
  */
 export function sanitizeObject(obj: unknown): unknown {
   return sanitizeWithSeen(obj, new WeakSet());
 }
 
 /**
- * Stringifica in modo sicuro un oggetto, gestendo riferimenti circolari e mascherando dati sensibili
+ * Safely stringifies an object, handling circular references and masking sensitive data.
  */
 export function safeStringifyPacket(obj: unknown): string {
   const sanitized = sanitizeObject(obj);
