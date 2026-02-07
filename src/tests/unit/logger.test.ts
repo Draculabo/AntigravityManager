@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import { logger } from '../../utils/logger';
 import fs from 'fs';
 import path from 'path';
@@ -64,6 +64,16 @@ describe('Logger Utilities', () => {
     } catch (err) {
       console.error('afterEach: cleanup testLogDir failed', err);
       throw err;
+    }
+  });
+
+  afterAll(() => {
+    try {
+      if (fs.existsSync(testLogDir)) {
+        fs.rmSync(testLogDir, { recursive: true, force: true });
+      }
+    } catch (err) {
+      console.error('afterAll: cleanup testLogDir failed', err);
     }
   });
 
