@@ -51,6 +51,11 @@ describe('sensitive data masking', () => {
       expect(sanitizeObject('plain text')).toBe('plain text');
     });
 
+    it('leaves malformed JSON string unchanged (no throw)', () => {
+      expect(sanitizeObject('{"broken":')).toBe('{"broken":');
+      expect(sanitizeObject('not valid json ]')).toBe('not valid json ]');
+    });
+
     it('handles circular references without infinite loops', () => {
       const circular: Record<string, unknown> = { name: 'a', password: 'secret' };
       circular.self = circular;
