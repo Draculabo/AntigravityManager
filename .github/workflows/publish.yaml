@@ -4,9 +4,20 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build artifacts only, skip uploading to GitHub Release'
+        required: false
+        type: boolean
+        default: true
+      allow_update_published_release:
+        description: 'Allow uploading assets to an already published release'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
-  publish:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +47,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout git repo
@@ -71,12 +82,126 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Publish Release
+      - name: Make Artifacts
+        if: matrix.platform != 'darwin'
         env:
           NODE_OPTIONS: --max-old-space-size=8192
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: npm run publish -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+        run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+
+      # DMG creation may be flaky on GitHub macOS runners, so retry the full darwin make.
+      - name: Make Artifacts (darwin with retry)
+        if: matrix.platform == 'darwin'
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 3
+          timeout_minutes: 20
+          retry_wait_seconds: 20
+          command: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: make-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            out/make/**/*.exe
+            out/make/**/*.dmg
+            out/make/**/*.zip
+            out/make/**/*.AppImage
+            out/make/**/*.deb
+            out/make/**/*.rpm
+            out/make/**/*.msi
+            out/make/**/*.yml
+            out/make/**/*.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Dry-run summary
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
+        run: |
+          echo "Dry run enabled: build artifacts generated and uploaded; release publish step will be skipped."
+
+  publish:
+    name: Publish Release (Manual Approval)
+    needs: build
+    runs-on: ubuntu-latest
+    if: needs.build.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true')
+    permissions:
+      contents: write
+    # Configure the `release` environment with required reviewers in GitHub settings
+    # to enforce a manual approval gate before assets are uploaded.
+    environment:
+      name: release
+
+    steps:
+      - name: Checkout git repo
+        uses: actions/checkout@v4
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: make-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Install Node and NPM
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Resolve release version
+        id: version
+        run: |
+          echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure release is safe to update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: v${{ steps.version.outputs.version }}
+          ALLOW_UPDATE_PUBLISHED_RELEASE: ${{ github.event_name == 'release' && 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.allow_update_published_release) || 'false' }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')"
+            if [ "$is_draft" != "true" ] && [ "$ALLOW_UPDATE_PUBLISHED_RELEASE" != "true" ]; then
+              echo "::error::Release $RELEASE_TAG is already published. Refusing to upload assets."
+              echo "::error::Re-run with workflow_dispatch input allow_update_published_release=true if you explicitly want to update it."
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --draft --notes "Automated release draft."
+          fi
+
+      - name: Upload assets to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: v${{ steps.version.outputs.version }}
+        run: |
+          mapfile -t files < <(find release-assets -type f \( \
+            -name '*.exe' -o \
+            -name '*.dmg' -o \
+            -name '*.zip' -o \
+            -name '*.AppImage' -o \
+            -name '*.deb' -o \
+            -name '*.rpm' -o \
+            -name '*.msi' -o \
+            -name '*.yml' -o \
+            -name '*.txt' \
+          \) | sort)
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No release assets found under release-assets/"
+            exit 1
+          fi
+
+          printf 'Uploading %s assets to %s\n' "${#files[@]}" "$RELEASE_TAG"
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
