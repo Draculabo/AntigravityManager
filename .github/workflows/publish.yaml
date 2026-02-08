@@ -156,15 +156,30 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: Resolve release version
-        id: version
+      - name: Resolve release tag
+        id: release_tag
+        env:
+          RELEASE_EVENT_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
         run: |
-          echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+          if [ -n "$RELEASE_EVENT_TAG" ]; then
+            tag="$RELEASE_EVENT_TAG"
+          else
+            version="$(node -e "const v=require('./package.json').version; if (!v) { throw new Error('package.json version is empty'); } process.stdout.write(v);")"
+            tag="v$version"
+          fi
+
+          if [ -z "$tag" ]; then
+            echo "::error::Resolved release tag is empty"
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Using release tag: $tag"
 
       - name: Ensure release is safe to update
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: v${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
           ALLOW_UPDATE_PUBLISHED_RELEASE: ${{ github.event_name == 'release' && 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.allow_update_published_release) || 'false' }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
@@ -181,7 +196,7 @@ jobs:
       - name: Upload assets to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: v${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
         run: |
           mapfile -t files < <(find release-assets -type f \( \
             -name '*.exe' -o \
