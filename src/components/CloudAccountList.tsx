@@ -40,7 +40,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getLocalizedErrorMessage } from '@/utils/errorMessages';
 
@@ -48,7 +48,7 @@ import { getLocalizedErrorMessage } from '@/utils/errorMessages';
 
 export function CloudAccountList() {
   const { t } = useTranslation();
-  const { data: accounts, isLoading, isError, error } = useCloudAccounts();
+  const { data: accounts, isLoading, isError, error, errorUpdatedAt, refetch } = useCloudAccounts();
   const refreshMutation = useRefreshQuota();
   const deleteMutation = useDeleteCloudAccount();
   const addMutation = useAddGoogleAccount();
@@ -60,6 +60,7 @@ export function CloudAccountList() {
   const forcePollMutation = useForcePollCloudMonitor();
 
   const { toast } = useToast();
+  const lastCloudLoadErrorToastAt = useRef<number>(0);
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [authCode, setAuthCode] = useState('');
@@ -115,6 +116,19 @@ export function CloudAccountList() {
 
   // Batch Operations State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!isError || !errorUpdatedAt || errorUpdatedAt === lastCloudLoadErrorToastAt.current) {
+      return;
+    }
+
+    toast({
+      title: t('cloud.error.loadFailed'),
+      description: getLocalizedErrorMessage(error, t),
+      variant: 'destructive',
+    });
+    lastCloudLoadErrorToastAt.current = errorUpdatedAt;
+  }, [error, errorUpdatedAt, isError, t, toast]);
 
   // ... (existing code: handleRefresh, handleSwitch, handleDelete)
 
@@ -291,11 +305,15 @@ export function CloudAccountList() {
   }
 
   if (isError) {
-    const errorMessage = getLocalizedErrorMessage(error, t);
     return (
-      <div className="p-4 text-red-500">
-        <div>{t('cloud.error.loadFailed')}</div>
-        <div className="mt-1 text-sm text-red-400">{errorMessage}</div>
+      <div className="col-span-full rounded-lg border border-dashed p-8 text-center">
+        <Cloud className="text-muted-foreground mx-auto mb-3 h-10 w-10 opacity-40" />
+        <div className="text-sm font-medium">{t('cloud.error.loadFailed')}</div>
+        <div className="text-muted-foreground mt-2 text-xs">{t('action.retry')}</div>
+        <Button className="mt-4" variant="outline" onClick={() => void refetch()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          {t('action.retry')}
+        </Button>
       </div>
     );
   }
