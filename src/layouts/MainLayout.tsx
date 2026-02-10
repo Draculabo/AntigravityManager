@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, Outlet, useLocation } from '@tanstack/react-router';
 import { cn } from '@/lib/utils';
 import { StatusBar } from '@/components/StatusBar';
@@ -9,14 +9,20 @@ import {
   Rocket,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ErrorBoundary } from 'react-error-boundary';
+import { useToast } from '@/components/ui/use-toast';
+import { getLocalizedErrorMessage } from '@/utils/errorMessages';
 
 export const MainLayout: React.FC = () => {
   const location = useLocation();
   const { t } = useTranslation();
+  const { toast } = useToast();
+  const hasShownRouteErrorToastRef = useRef(false);
 
   // Initialize state from localStorage if available, default to false (expanded)
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -147,7 +153,38 @@ export const MainLayout: React.FC = () => {
 
         {/* Content Area */}
         <main className="flex-1 overflow-auto transition-all duration-300">
-          <Outlet />
+          <ErrorBoundary
+            resetKeys={[location.pathname]}
+            onReset={() => {
+              hasShownRouteErrorToastRef.current = false;
+            }}
+            onError={(error) => {
+              if (hasShownRouteErrorToastRef.current) {
+                return;
+              }
+
+              toast({
+                title: t('error.generic'),
+                description: getLocalizedErrorMessage(error, t),
+                variant: 'destructive',
+              });
+              hasShownRouteErrorToastRef.current = true;
+            }}
+            fallbackRender={({ resetErrorBoundary }) => (
+              <div className="mx-auto max-w-3xl p-6">
+                <div className="rounded-lg border border-dashed p-8 text-center">
+                  <div className="text-lg font-semibold">{t('error.generic')}</div>
+                  <div className="text-muted-foreground mt-2 text-sm">{t('action.retry')}</div>
+                  <Button className="mt-4" variant="outline" onClick={resetErrorBoundary}>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    {t('action.retry')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          >
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

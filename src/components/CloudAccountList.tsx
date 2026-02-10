@@ -306,11 +306,19 @@ export function CloudAccountList() {
 
   if (isError) {
     return (
-      <div className="col-span-full rounded-lg border border-dashed p-8 text-center">
+      <div
+        className="col-span-full rounded-lg border border-dashed p-8 text-center"
+        data-testid="cloud-load-error-fallback"
+      >
         <Cloud className="text-muted-foreground mx-auto mb-3 h-10 w-10 opacity-40" />
         <div className="text-sm font-medium">{t('cloud.error.loadFailed')}</div>
         <div className="text-muted-foreground mt-2 text-xs">{t('action.retry')}</div>
-        <Button className="mt-4" variant="outline" onClick={() => void refetch()}>
+        <Button
+          className="mt-4"
+          variant="outline"
+          onClick={() => void refetch()}
+          data-testid="cloud-load-error-retry"
+        >
           <RefreshCw className="mr-2 h-4 w-4" />
           {t('action.retry')}
         </Button>

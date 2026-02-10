@@ -199,7 +199,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   ipcContext.setMainWindow(mainWindow);
   logger.info('createWindow: setMainWindow done');
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+  if (inDevelopment && MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     logger.info(`createWindow: loading URL ${MAIN_WINDOW_VITE_DEV_SERVER_URL}`);
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
