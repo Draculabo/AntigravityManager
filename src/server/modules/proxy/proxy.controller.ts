@@ -41,21 +41,32 @@ export class ProxyController {
 
   @Get('models')
   listModels(@Res() res: FastifyReply) {
-    const config = getServerConfig();
-    const customMapping = config?.custom_mapping ?? {};
-    const modelIds = getAllDynamicModels(customMapping);
+    try {
+      const config = getServerConfig();
+      const customMapping = config?.custom_mapping ?? {};
+      const modelIds = getAllDynamicModels(customMapping);
 
-    const data = modelIds.map((id) => ({
-      id,
-      object: 'model',
-      created: MODEL_LIST_CREATED_AT,
-      owned_by: MODEL_LIST_OWNER,
-    }));
+      const data = modelIds.map((id) => ({
+        id,
+        object: 'model',
+        created: MODEL_LIST_CREATED_AT,
+        owned_by: MODEL_LIST_OWNER,
+      }));
 
-    res.status(HttpStatus.OK).send({
-      object: 'list',
-      data,
-    });
+      res.status(HttpStatus.OK).send({
+        object: 'list',
+        data,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to list models';
+      this.logger.error(message, error instanceof Error ? error.stack : undefined);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
+        error: {
+          message,
+          type: 'server_error',
+        },
+      });
+    }
   }
 
   @Post('chat/completions')
