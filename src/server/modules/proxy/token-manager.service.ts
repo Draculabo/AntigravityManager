@@ -26,12 +26,19 @@ function normalizeProjectId(projectId: string | null | undefined): string | unde
     return undefined;
   }
 
+  // Legacy upgrades may carry malformed resource names (e.g. "projects/").
+  // The internal gateway expects a plain project id, not a resource path.
+  if (/^projects(?:\/.*)?$/i.test(trimmedProjectId)) {
+    return undefined;
+  }
+
   return trimmedProjectId;
 }
 
 @Injectable()
 export class TokenManagerService implements OnModuleInit {
   private readonly logger = new Logger(TokenManagerService.name);
+  private readonly defaultFallbackProjectId = 'silver-orbit-5m7qc';
   private currentIndex = 0;
   private readonly stickySessionTtlMs = 10 * 60 * 1000;
   private readonly rateLimitCooldownMs = 5 * 60 * 1000;
@@ -178,6 +185,8 @@ export class TokenManagerService implements OnModuleInit {
     sessionKey?: string,
   ): Promise<CloudAccount | null> {
     try {
+      let effectiveProjectId: string | undefined;
+
       // Check if token needs refresh (expires in < 5 minutes)
       if (nowSeconds >= tokenData.expiry_timestamp - 300) {
         this.logger.log(`Token for ${tokenData.email} is close to expiry; refreshing...`);
@@ -199,19 +208,19 @@ export class TokenManagerService implements OnModuleInit {
         }
       }
 
-      if (
-        normalizeProjectId(tokenData.project_id) === undefined
-      ) {
+      if (normalizeProjectId(tokenData.project_id) === undefined) {
         tokenData.project_id = undefined;
       }
+      effectiveProjectId = tokenData.project_id;
 
-      if (!tokenData.project_id) {
+      if (!effectiveProjectId) {
         try {
           const fetchedProjectId = await GoogleAPIService.fetchProjectId(tokenData.access_token);
           const normalizedProjectId = normalizeProjectId(fetchedProjectId);
 
           if (normalizedProjectId) {
             tokenData.project_id = normalizedProjectId;
+            effectiveProjectId = normalizedProjectId;
             await this.saveTokenState(accountId, tokenData);
             this.tokens.set(accountId, tokenData);
             this.logger.log(`Resolved project ID for ${tokenData.email}: ${normalizedProjectId}`);
@@ -223,6 +232,14 @@ export class TokenManagerService implements OnModuleInit {
         } catch (error) {
           this.logger.warn(`Failed to resolve project ID for ${tokenData.email}`, error);
         }
+      }
+
+      if (!effectiveProjectId) {
+        const fallbackProjectId = this.getFallbackProjectId();
+        effectiveProjectId = fallbackProjectId;
+        this.logger.warn(
+          `Using fallback project ID for ${tokenData.email} without persistence: ${fallbackProjectId}`,
+        );
       }
 
       this.logger.log(`Using account: ${tokenData.email}`);
@@ -245,7 +262,7 @@ export class TokenManagerService implements OnModuleInit {
           token_type: tokenData.token_type,
           expires_in: tokenData.expires_in,
           expiry_timestamp: tokenData.expiry_timestamp,
-          project_id: tokenData.project_id,
+          project_id: effectiveProjectId,
           session_id: tokenData.session_id,
           upstream_proxy_url: tokenData.upstream_proxy_url,
         },
@@ -328,5 +345,14 @@ export class TokenManagerService implements OnModuleInit {
    */
   getAccountCount(): number {
     return this.tokens.size;
+  }
+
+  private getFallbackProjectId(): string {
+    const fromEnv = process.env.PROXY_FALLBACK_PROJECT_ID?.trim();
+    const normalizedFromEnv = normalizeProjectId(fromEnv);
+    if (normalizedFromEnv) {
+      return normalizedFromEnv;
+    }
+    return this.defaultFallbackProjectId;
   }
 }

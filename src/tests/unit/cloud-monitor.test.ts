@@ -261,7 +261,7 @@ describe('TokenManagerService project-id hydration', () => {
     expect(selectedToken?.token.project_id).toBe('existing-project');
   });
 
-  it('keeps request usable when project_id cannot be resolved', async () => {
+  it('uses fallback project_id when project_id cannot be resolved', async () => {
     const account = {
       id: 'acc-3',
       provider: 'google',
@@ -285,6 +285,42 @@ describe('TokenManagerService project-id hydration', () => {
     const selectedToken = await service.getNextToken();
 
     expect(GoogleAPIService.fetchProjectId).toHaveBeenCalledWith('access-token-3');
-    expect(selectedToken?.token.project_id).toBeUndefined();
+    expect(CloudAccountRepo.updateToken).not.toHaveBeenCalled();
+    expect(selectedToken?.token.project_id).toBe('silver-orbit-5m7qc');
+  });
+
+  it('rehydrates malformed legacy resource-style project_id values', async () => {
+    const account = {
+      id: 'acc-4',
+      provider: 'google',
+      email: 'legacy@example.com',
+      token: {
+        access_token: 'access-token-4',
+        refresh_token: 'refresh-token-4',
+        token_type: 'Bearer',
+        expires_in: 3600,
+        expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
+        project_id: 'projects/',
+      },
+      created_at: 1,
+      last_used: 1,
+    };
+
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([account] as never);
+    vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue(account as never);
+    vi.mocked(CloudAccountRepo.updateToken).mockResolvedValue(undefined as never);
+    vi.mocked(GoogleAPIService.fetchProjectId).mockResolvedValue('resolved-project-4' as never);
+
+    const service = new TokenManagerService();
+    const selectedToken = await service.getNextToken();
+
+    expect(GoogleAPIService.fetchProjectId).toHaveBeenCalledWith('access-token-4');
+    expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
+      'acc-4',
+      expect.objectContaining({
+        project_id: 'resolved-project-4',
+      }),
+    );
+    expect(selectedToken?.token.project_id).toBe('resolved-project-4');
   });
 });
