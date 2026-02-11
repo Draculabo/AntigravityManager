@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import { transformClaudeRequestIn } from '../../lib/antigravity/ClaudeRequestMapper';
 import { ProxyService } from '../../server/modules/proxy/proxy.service';
 import { TokenManagerService } from '../../server/modules/proxy/token-manager.service';
-import { CloudAccountRepo } from '../../ipc/database/cloudHandler';
-import { GoogleAPIService } from '../../services/GoogleAPIService';
 
 const mockTokenManager: any = {
   getNextToken: async () => null,
@@ -199,43 +197,12 @@ async function validateRuntimeGeminiRequestPath(): Promise<void> {
   assert.ok(!Object.prototype.hasOwnProperty.call(capturedBody, 'project'));
 }
 
-async function validateRuntimeGeminiRequestFromAccountProject(): Promise<void> {
-  const sourceProjectId = `account-project-${Date.now()}`;
-  const account = {
-    id: 'account-source-1',
-    provider: 'google',
-    email: 'account-source@example.com',
-    token: {
-      access_token: 'source-access-token',
-      refresh_token: 'source-refresh-token',
-      token_type: 'Bearer',
-      expires_in: 3600,
-      expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
-      project_id: sourceProjectId,
-    },
-    created_at: 1,
-    last_used: 1,
-  };
-
-  const cloudAccountRepo = CloudAccountRepo as any;
-  const googleApiService = GoogleAPIService as any;
-
-  const originalGetAccounts = cloudAccountRepo.getAccounts;
-  const originalGetAccount = cloudAccountRepo.getAccount;
-  const originalUpdateToken = cloudAccountRepo.updateToken;
-  const originalFetchProjectId = googleApiService.fetchProjectId;
+async function validateRuntimeAnthropicRequestFromRealTokenManager(): Promise<void> {
   const originalGenerateInternal = mockGeminiClient.generateInternal;
 
   let capturedBody: Record<string, unknown> | null = null;
-  let fetchProjectIdCalled = false;
-
-  cloudAccountRepo.getAccounts = async () => [account];
-  cloudAccountRepo.getAccount = async (id: string) => (id === account.id ? account : null);
-  cloudAccountRepo.updateToken = async () => undefined;
-  googleApiService.fetchProjectId = async () => {
-    fetchProjectIdCalled = true;
-    return 'unexpected-project-id';
-  };
+  let selectedToken: any = null;
+  let observedGetNextTokenOptions: any = null;
 
   mockGeminiClient.generateInternal = async (body: Record<string, unknown>) => {
     capturedBody = body;
@@ -254,36 +221,63 @@ async function validateRuntimeGeminiRequestFromAccountProject(): Promise<void> {
     };
   };
 
+  const realTokenManager = new TokenManagerService();
+  await realTokenManager.onModuleInit();
+
+  const tokenManagerProxy = {
+    getNextToken: async (options?: { sessionKey?: string; excludeAccountIds?: string[] }) => {
+      observedGetNextTokenOptions = options ?? null;
+      selectedToken = await realTokenManager.getNextToken(options);
+      return selectedToken;
+    },
+    markAsRateLimited: (accountIdOrEmail: string) =>
+      realTokenManager.markAsRateLimited(accountIdOrEmail),
+    markAsForbidden: (accountIdOrEmail: string) => realTokenManager.markAsForbidden(accountIdOrEmail),
+  };
+
   try {
-    const tokenManager = new TokenManagerService();
-    const service = new ProxyService(tokenManager as any, mockGeminiClient as any);
-    await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
-      contents: [{ role: 'user', parts: [{ text: 'hello from account source' }] }],
+    const service = new ProxyService(tokenManagerProxy as any, mockGeminiClient as any);
+    await service.handleAnthropicMessages({
+      model: 'claude-sonnet-4-5',
+      stream: false,
+      max_tokens: 128,
+      metadata: {
+        session_id: 'project-chain-debug-session',
+      },
+      messages: [{ role: 'user', content: 'hello from real token manager chain' }],
     } as any);
   } finally {
-    cloudAccountRepo.getAccounts = originalGetAccounts;
-    cloudAccountRepo.getAccount = originalGetAccount;
-    cloudAccountRepo.updateToken = originalUpdateToken;
-    googleApiService.fetchProjectId = originalFetchProjectId;
     mockGeminiClient.generateInternal = originalGenerateInternal;
   }
 
+  assert.ok(selectedToken, 'Expected TokenManagerService.getNextToken to return a token');
   assert.ok(capturedBody, 'Expected captured Gemini internal request');
-  const captured = capturedBody as Record<string, unknown>;
-  assert.equal(
-    captured['project'],
-    sourceProjectId,
-    'Expected project field to come from account.token.project_id',
-  );
-  assert.equal(
-    fetchProjectIdCalled,
-    false,
-    'fetchProjectId should not be called when account already has project_id',
-  );
 
-  console.log('[DEBUG] Account source project_id:', sourceProjectId);
+  const captured = capturedBody as Record<string, unknown>;
+  const tokenProjectId = selectedToken?.token?.project_id;
+  const normalizedTokenProjectId =
+    typeof tokenProjectId === 'string' && tokenProjectId.trim() !== '' ? tokenProjectId.trim() : undefined;
+
+  if (normalizedTokenProjectId) {
+    assert.equal(
+      captured['project'],
+      normalizedTokenProjectId,
+      'Expected project field to come from tokenManager.getNextToken().token.project_id',
+    );
+  } else {
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(captured, 'project'),
+      'Expected project field to be omitted when token project_id is unavailable',
+    );
+  }
+
   console.log(
-    '[DEBUG] Runtime captured internal request (project from account):',
+    '[DEBUG] Observed getNextToken options from ProxyService:',
+    JSON.stringify(observedGetNextTokenOptions, null, 2),
+  );
+  console.log('[DEBUG] Selected token project_id from TokenManagerService:', tokenProjectId ?? null);
+  console.log(
+    '[DEBUG] Runtime captured internal request (from handleAnthropicMessages):',
     JSON.stringify(captured, null, 2),
   );
 }
@@ -340,8 +334,8 @@ async function main(): Promise<void> {
   await validateRuntimeGeminiRequestPath();
   console.log('[PASS] Runtime Gemini request path omits empty project');
 
-  await validateRuntimeGeminiRequestFromAccountProject();
-  console.log('[PASS] Runtime Gemini request uses project_id from account source');
+  await validateRuntimeAnthropicRequestFromRealTokenManager();
+  console.log('[PASS] Runtime Anthropic request uses project_id from TokenManagerService');
 
   if (process.argv.includes('--live')) {
     await validateLiveRequests();

@@ -198,7 +198,7 @@ export class GeminiClient {
         const hasNextEndpoint = index < baseUrls.length - 1;
 
         if (!hasNextEndpoint || !this.shouldSwitchEndpointOnError(error)) {
-          this.handleAxiosError(error, operation);
+          await this.handleAxiosError(error, operation);
         }
 
         this.logger.warn(
@@ -209,33 +209,141 @@ export class GeminiClient {
       }
     }
 
-    this.handleAxiosError(lastError, operation);
+    await this.handleAxiosError(lastError, operation);
+    throw new Error(`[${operation}] unexpected control flow after upstream error handling`);
   }
 
-  private handleAxiosError(error: unknown, operation: string): never {
+  private async handleAxiosError(error: unknown, operation: string): Promise<never> {
     if (axios.isAxiosError(error)) {
       const responseData = error.response?.data;
-      const upstreamMessage = this.extractAxiosErrorMessage(responseData);
+      const upstreamMessage = await this.extractAxiosErrorMessage(responseData);
       this.logger.error(
-        `[${operation}] upstream request error: ${error.message} - ${this.safeStringify(responseData)}`,
+        `[${operation}] upstream request error: ${error.message} - ${this.describeAxiosErrorData(
+          responseData,
+        )}`,
       );
       throw new Error(upstreamMessage || error.message);
     }
     this.throwAsCleanError(error);
   }
 
-  private extractAxiosErrorMessage(responseData: unknown): string | null {
-    if (!responseData || typeof responseData !== 'object') {
+  private async extractAxiosErrorMessage(responseData: unknown): Promise<string | null> {
+    const fromObject = this.extractAxiosErrorMessageFromObject(responseData);
+    if (fromObject) {
+      return fromObject;
+    }
+
+    if (typeof responseData === 'string') {
+      return this.extractAxiosErrorMessageFromText(responseData);
+    }
+
+    if (Buffer.isBuffer(responseData)) {
+      return this.extractAxiosErrorMessageFromText(responseData.toString('utf-8'));
+    }
+
+    if (this.isReadableStream(responseData)) {
+      const streamText = await this.readStreamAsText(responseData);
+      return streamText ? this.extractAxiosErrorMessageFromText(streamText) : null;
+    }
+
+    return null;
+  }
+
+  private extractAxiosErrorMessageFromObject(responseData: unknown): string | null {
+    if (!responseData || typeof responseData !== 'object' || this.isReadableStream(responseData)) {
       return null;
     }
 
     const errorRecord = (responseData as { error?: unknown }).error;
-    if (!errorRecord || typeof errorRecord !== 'object') {
+    if (errorRecord && typeof errorRecord === 'object') {
+      const message = (errorRecord as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim() !== '') {
+        return message.trim();
+      }
+    }
+
+    const message = (responseData as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim() !== '') {
+      return message.trim();
+    }
+
+    return null;
+  }
+
+  private extractAxiosErrorMessageFromText(rawText: string): string | null {
+    const text = rawText.trim();
+    if (!text) {
       return null;
     }
 
-    const message = (errorRecord as { message?: unknown }).message;
-    return typeof message === 'string' && message.trim() !== '' ? message : null;
+    const sseLines = text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('data:'));
+
+    for (const line of sseLines) {
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') {
+        continue;
+      }
+      const parsed = this.tryParseJson(payload);
+      const message = this.extractAxiosErrorMessageFromObject(parsed);
+      if (message) {
+        return message;
+      }
+    }
+
+    const parsed = this.tryParseJson(text);
+    const fromJson = this.extractAxiosErrorMessageFromObject(parsed);
+    if (fromJson) {
+      return fromJson;
+    }
+
+    return null;
+  }
+
+  private tryParseJson(value: string): unknown {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  private isReadableStream(value: unknown): value is NodeJS.ReadableStream {
+    return (
+      Boolean(value) &&
+      typeof value === 'object' &&
+      typeof (value as { pipe?: unknown }).pipe === 'function'
+    );
+  }
+
+  private async readStreamAsText(stream: NodeJS.ReadableStream): Promise<string | null> {
+    return new Promise((resolve) => {
+      let buffer = '';
+      const maxChars = 512 * 1024;
+
+      stream.on('data', (chunk: Buffer | string) => {
+        const text = Buffer.isBuffer(chunk) ? chunk.toString('utf-8') : String(chunk);
+        if (buffer.length >= maxChars) {
+          return;
+        }
+        buffer += text;
+        if (buffer.length > maxChars) {
+          buffer = buffer.slice(0, maxChars);
+        }
+      });
+
+      stream.on('end', () => resolve(buffer));
+      stream.on('error', () => resolve(null));
+    });
+  }
+
+  private describeAxiosErrorData(responseData: unknown): string {
+    if (this.isReadableStream(responseData)) {
+      return '[stream]';
+    }
+    return this.safeStringify(responseData);
   }
 
   private resolveAxiosProxy(upstreamProxyUrl?: string): AxiosProxyConfig | false | undefined {
