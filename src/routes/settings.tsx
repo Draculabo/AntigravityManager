@@ -66,14 +66,14 @@ function SettingsPage() {
 
   if (isLoading || !proxyConfig) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-full items-center justify-center">
         <Loader2 className="animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="scrollbar-hide container mx-auto h-[calc(100vh-theme(spacing.16))] max-w-4xl space-y-8 overflow-y-auto p-6">
+    <div className="container mx-auto max-w-4xl space-y-5 p-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">{t('settings.title')}</h2>
         <p className="text-muted-foreground mt-1">{t('settings.description')}</p>
@@ -86,7 +86,7 @@ function SettingsPage() {
         </TabsList>
 
         {/* --- GENERAL TAB --- */}
-        <TabsContent value="general" className="space-y-4">
+        <TabsContent value="general" className="space-y-5">
           <Card>
             <CardHeader>
               <CardTitle>{t('settings.appearance.title')}</CardTitle>
@@ -298,7 +298,7 @@ function SettingsPage() {
         </TabsContent>
 
         {/* --- PROXY TAB (Upstream Proxy Config Only) --- */}
-        <TabsContent value="proxy" className="space-y-4">
+        <TabsContent value="proxy" className="space-y-5">
           <Card>
             <CardHeader>
               <CardTitle>{t('settings.proxy.title')}</CardTitle>

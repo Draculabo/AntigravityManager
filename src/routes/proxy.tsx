@@ -192,21 +192,20 @@ print(response.choices[0].message.content)`;
 
   if (isLoading || !proxyConfig) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-full items-center justify-center">
         <Loader2 className="animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="scrollbar-hide container mx-auto h-[calc(100vh-theme(spacing.16))] max-w-4xl space-y-6 overflow-y-auto p-6">
+    <div className="container mx-auto max-w-4xl space-y-5 p-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">{t('proxy.title', 'API Proxy')}</h2>
         <p className="text-muted-foreground mt-1">
           {t('proxy.description', 'Manage the local API proxy service.')}
         </p>
 
-        {/* Local Access Info Banner */}
         {/* Local Access Info Banner */}
         {proxyConfig?.enabled && (
           <div className="mt-4 flex flex-col gap-2 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
