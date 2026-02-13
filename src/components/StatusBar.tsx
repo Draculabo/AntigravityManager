@@ -18,7 +18,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
   const { data: isRunning, isLoading } = useQuery({
     queryKey: ['process', 'status'],
     queryFn: isProcessRunning,
-    refetchInterval: 2000,
+    refetchInterval: 10000,
   });
 
   const startMutation = useMutation({
