@@ -236,8 +236,8 @@ export function getAntigravityExecutablePath(): string {
         }
       }
 
-      // Fallback to default
-      return possiblePaths[0];
+      // No known path found; return empty string (caller must handle missing binary)
+      return '';
     }
     case 'linux': {
       const possibleLinuxPaths = [
@@ -263,7 +263,8 @@ export function getAntigravityExecutablePath(): string {
         return fromPath;
       }
 
-      return possibleLinuxPaths[0]; // fallback default
+      // No known path found; return empty string (caller must handle missing binary)
+      return '';
     }
     default:
       return '';
