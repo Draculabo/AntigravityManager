@@ -239,8 +239,32 @@ export function getAntigravityExecutablePath(): string {
       // Fallback to default
       return possiblePaths[0];
     }
-    case 'linux':
-      return '/usr/share/antigravity/antigravity';
+    case 'linux': {
+      const possibleLinuxPaths = [
+        '/usr/bin/antigravity',
+        '/usr/local/bin/antigravity',
+        '/usr/share/antigravity/antigravity',
+        '/opt/Antigravity/antigravity',
+        '/opt/antigravity/antigravity',
+        path.join(os.homedir(), '.local', 'share', 'antigravity', 'antigravity'),
+      ];
+
+      for (const p of possibleLinuxPaths) {
+        if (fs.existsSync(p)) {
+          return p;
+        }
+      }
+
+      // Fallback: try `which antigravity` via path lookup
+      const fromPath = process.env.PATH?.split(':')
+        .map((dir) => path.join(dir, 'antigravity'))
+        .find((p) => fs.existsSync(p));
+      if (fromPath) {
+        return fromPath;
+      }
+
+      return possibleLinuxPaths[0]; // fallback default
+    }
     default:
       return '';
   }
