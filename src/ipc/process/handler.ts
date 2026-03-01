@@ -111,11 +111,14 @@ export async function isProcessRunning(): Promise<boolean> {
       const name = proc.name?.toLowerCase() || '';
       const cmd = proc.cmd?.toLowerCase() || '';
 
-      // Skip manager process
+      // Skip manager and agent processes
       if (
         name.includes('manager') ||
         cmd.includes('manager') ||
-        cmd.includes('antigravity-manager')
+        cmd.includes('antigravity-manager') ||
+        name.includes('agent') ||
+        cmd.includes('agent') ||
+        cmd.includes('antigravity-agent')
       ) {
         continue;
       }
@@ -292,22 +295,26 @@ export async function closeAntigravity(): Promise<void> {
       if (p.pid === currentPid) {
         return false;
       }
-      // Exclude this electron app (if named Antigravity Manager or antigravity-manager)
-      if (p.cmd.includes('Antigravity Manager') || p.cmd.includes('antigravity-manager')) {
+
+      const cmdLower = p.cmd.toLowerCase();
+      const nameLower = p.name.toLowerCase();
+
+      // Exclude manager and agent processes
+      if (
+        nameLower.includes('manager') || cmdLower.includes('manager') ||
+        nameLower.includes('agent') || cmdLower.includes('agent')
+      ) {
         return false;
       }
-      // Match Antigravity (but not manager)
+
+      // Match Antigravity
       if (platform === 'win32') {
         return (
-          p.cmd.includes('Antigravity.exe') ||
-          (p.cmd.includes('antigravity') && !p.cmd.includes('manager'))
+          cmdLower.includes('antigravity.exe') ||
+          cmdLower.includes('antigravity')
         );
       } else {
-        // Explicit !manager check for Linux/macOS to be defensive
-        return (
-          (p.cmd.includes('Antigravity') || p.cmd.includes('antigravity')) &&
-          !p.cmd.includes('manager')
-        );
+        return cmdLower.includes('antigravity');
       }
     });
 
@@ -332,7 +339,9 @@ export async function closeAntigravity(): Promise<void> {
       if (platform === 'win32') {
         execSync('taskkill /F /IM "Antigravity.exe" /T', { stdio: 'ignore' });
       } else {
-        execSync('pkill -9 -f Antigravity', { stdio: 'ignore' });
+        // Send kill to any Antigravity process but exclude manager and agent
+        // Use pgrep with grep inverse matching to filter out agent and manager safely
+        execSync("pgrep -i -f antigravity | while read pid; do ps -p $pid -o command= | grep -viE 'manager|agent' > /dev/null && kill -9 $pid || true; done", { stdio: 'ignore' });
       }
     } catch {
       // Ignore
