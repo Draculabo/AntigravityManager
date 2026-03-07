@@ -56,11 +56,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
   let stage = 'close';
   try {
     await closeAntigravity();
-    try {
-      await _waitForProcessExit(processExitTimeoutMs);
-    } catch (error) {
-      logger.warn('Process did not exit cleanly within timeout, but proceeding...', error);
-    }
+    await _waitForProcessExit(processExitTimeoutMs);
 
     stage = 'apply';
     if (applyFingerprint) {

@@ -22,7 +22,7 @@ export class ConfigManager {
     try {
       const configPath = this.getConfigPath();
       if (!fs.existsSync(configPath)) {
-        logger.info(`Config: File not found at ${configPath}, returning default`);
+        fs.writeFileSync(configPath, JSON.stringify(DEFAULT_APP_CONFIG, null, 2), 'utf-8');
         this.cachedConfig = DEFAULT_APP_CONFIG;
         return DEFAULT_APP_CONFIG;
       }

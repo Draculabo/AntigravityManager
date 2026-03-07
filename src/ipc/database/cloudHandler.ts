@@ -473,11 +473,11 @@ export class CloudAccountRepo {
       orm.transaction((tx) => {
         // If this account is being set to active, deactivate all others first
         if (account.is_active) {
-          logger.info(
-            `[DEBUG] addAccount: Deactivating all other accounts because ${account.email} is active`,
+          logger.debug(
+            `addAccount: Deactivating all other accounts because ${account.email} is active`,
           );
           const info = tx.update(accounts).set({ isActive: 0 }).run();
-          logger.info(`[DEBUG] addAccount: Deactivation changed ${info.changes} rows`);
+          logger.debug(`addAccount: Deactivation changed ${info.changes} rows`);
         }
         tx.insert(accounts)
           .values(values)
@@ -500,12 +500,14 @@ export class CloudAccountRepo {
     try {
       const rows = orm.select().from(accounts).orderBy(desc(accounts.lastUsed)).all();
 
-      // DEBUG LOGS
+      if (rows.length === 0) {
+        logger.debug('getAccounts: No accounts in database');
+      }
       const activeRows = rows.filter((r) => r.isActive);
-      logger.info(
-        `[DEBUG] getAccounts: Found ${rows.length} accounts, ${activeRows.length} active.`,
+      logger.debug(
+        `getAccounts: Found ${rows.length} accounts, ${activeRows.length} active.`,
       );
-      activeRows.forEach((r) => logger.info(`[DEBUG] Active Account: ${r.email} (${r.id})`));
+      activeRows.forEach((r) => logger.debug(`getAccounts: Active account ${r.email} (${r.id})`));
 
       const cloudAccounts: CloudAccount[] = [];
       for (const normalizedRow of rows) {

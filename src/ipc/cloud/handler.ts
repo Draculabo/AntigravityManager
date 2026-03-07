@@ -6,7 +6,7 @@ import { logger } from '../../utils/logger';
 
 import { shell } from 'electron';
 import fs from 'fs';
-import { updateTrayMenu } from '../../ipc/tray/handler';
+import { notifyRendererCloudAccountSwitched, updateTrayMenu } from '../../ipc/tray/handler';
 import {
   ensureGlobalOriginalFromCurrentStorage,
   generateDeviceProfile,
@@ -17,12 +17,12 @@ import {
   saveGlobalOriginalProfile,
 } from '../../ipc/device/handler';
 import { getAntigravityDbPaths } from '../../utils/paths';
-import { runWithSwitchGuard } from '../../ipc/switchGuard';
+import { runWithSwitchGuard, clearPendingCloudSwitches } from '../../ipc/switchGuard';
 import { executeSwitchFlow } from '../../ipc/switchFlow';
 import type { DeviceProfile, DeviceProfilesSnapshot } from '../../types/account';
+import { isProcessRunning } from '../process/handler';
+import { getGoogleClientId } from '@/constants/oauth';
 
-// Fallback constants if service constants are not available or for direct usage
-const CLIENT_ID = '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com';
 const REDIRECT_URI = 'http://localhost:8888/oauth-callback';
 const SCOPE = [
   'https://www.googleapis.com/auth/cloud-platform',
@@ -217,11 +217,14 @@ export async function switchCloudAccount(accountId: string): Promise<void> {
         }
       })();
 
+      const processWasRunning = await isProcessRunning();
+      const processExitTimeoutMs = processWasRunning ? 20000 : 10000;
+
       await executeSwitchFlow({
         scope: 'cloud',
         targetProfile: account.device_profile || null,
         applyFingerprint: isIdentityProfileApplyEnabled(),
-        processExitTimeoutMs: 10000,
+        processExitTimeoutMs,
         performSwitch: async () => {
           // Wait for token refresh to complete before injection if it was started
           await tokenRefreshPromise;
@@ -250,11 +253,17 @@ export async function switchCloudAccount(accountId: string): Promise<void> {
 
           logger.info(`Successfully switched to cloud account: ${account.email}`);
           notifyTrayUpdate(account);
+          notifyRendererCloudAccountSwitched();
         },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isProcessExitFailure = typeof message === 'string' && message.includes('did not exit');
+      if (isProcessExitFailure) {
+        clearPendingCloudSwitches();
+      }
       logger.error('Failed to switch cloud account', err);
-      throw new Error(`Switch failed: ${err.message || 'Unknown error'}`);
+      throw new Error(`Switch failed: ${message || 'Unknown error'}`);
     }
   });
 }
@@ -375,7 +384,7 @@ export async function forcePollCloudMonitor(): Promise<void> {
 }
 
 export async function startAuthFlow(): Promise<void> {
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=${SCOPE}&access_type=offline&prompt=consent&include_granted_scopes=true`;
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${getGoogleClientId()}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=${SCOPE}&access_type=offline&prompt=consent&include_granted_scopes=true`;
 
   logger.info(`Starting auth flow, opening URL: ${url}`);
   await shell.openExternal(url);
