@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { spawnSync } from 'child_process';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import type {
   HookFunction,
@@ -54,6 +55,8 @@ const ignorePatterns = [
   /^\/node_modules\/\.cache/,
 ];
 const setLanguagesHook = setLanguages([...keepLanguages.values()]);
+const enableDebMakerOnLinuxEnv =
+  process.env.FORGE_ENABLE_DEB_ON_LINUX === '1' || process.env.FORGE_ENABLE_DEB_ON_LINUX === 'true';
 const packagerAfterCopy: HookFunction[] = [
   (
     buildPath: string,
@@ -70,6 +73,76 @@ const packagerAfterCopy: HookFunction[] = [
     setLanguagesHook(buildPath, electronVersion, platform, arch, callback);
   },
 ];
+
+function isDebianLikeLinux() {
+  if (process.platform !== 'linux') {
+    return false;
+  }
+
+  const osReleasePath = '/etc/os-release';
+  if (!fs.existsSync(osReleasePath)) {
+    return false;
+  }
+
+  const content = fs.readFileSync(osReleasePath, 'utf-8');
+  const lowerContent = content.toLowerCase();
+
+  if (lowerContent.includes('id=debian') || lowerContent.includes('id=ubuntu')) {
+    return true;
+  }
+
+  if (lowerContent.includes('id_like=debian') || lowerContent.includes('id_like=ubuntu')) {
+    return true;
+  }
+
+  return false;
+}
+
+function hasBinaryInPath(binaryName: string) {
+  const result = spawnSync(binaryName, ['--version'], { stdio: 'ignore' });
+  return result.status === 0;
+}
+
+function hasDebianPackagingTools() {
+  return hasBinaryInPath('dpkg') && hasBinaryInPath('fakeroot');
+}
+
+function createDebMakers() {
+  if (process.platform !== 'linux') {
+    return [];
+  }
+
+  const debianLikeLinux = isDebianLikeLinux();
+  const debianToolsAvailable = hasDebianPackagingTools();
+
+  if (debianToolsAvailable && (debianLikeLinux || enableDebMakerOnLinuxEnv)) {
+    return [new MakerDeb({})];
+  }
+
+  if (!debianToolsAvailable && (debianLikeLinux || enableDebMakerOnLinuxEnv)) {
+    const suggestedCommand =
+      'sudo dnf install dpkg fakeroot || sudo apt-get install dpkg-dev fakeroot';
+    console.warn(
+      `Skipping Deb maker because required tools are missing. Install dpkg and fakeroot, for example: "${suggestedCommand}".`,
+    );
+    return [];
+  }
+
+  if (!debianLikeLinux && enableDebMakerOnLinuxEnv) {
+    console.warn(
+      'FORGE_ENABLE_DEB_ON_LINUX is set but the current Linux distribution does not look Debian or Ubuntu based. Deb maker will remain disabled.',
+    );
+    return [];
+  }
+
+  if (!debianLikeLinux) {
+    console.warn(
+      'Skipping Deb maker because the current Linux distribution does not look Debian or Ubuntu based. To enable Deb builds, install dpkg and fakeroot and set FORGE_ENABLE_DEB_ON_LINUX=1.',
+    );
+  }
+
+  return [];
+}
 
 function normalizeArtifactName(value?: string) {
   if (!value) {
@@ -214,6 +287,12 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   hooks: {
+    preMake: async () => {
+      const makeDir = path.join(process.cwd(), 'out', 'make');
+      if (fs.existsSync(makeDir)) {
+        fs.rmSync(makeDir, { recursive: true });
+      }
+    },
     packageAfterCopy: async (_config, buildPath) => {
       // Copy native modules to the packaged app
       const nodeModulesPath = path.join(buildPath, 'node_modules');
@@ -473,7 +552,7 @@ const config: ForgeConfig = {
     new MakerZIP({}, ['darwin']),
     appImageMaker,
     new MakerRpm({}),
-    new MakerDeb({}),
+    ...createDebMakers(),
   ],
   publishers: [
     {
