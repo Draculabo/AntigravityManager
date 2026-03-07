@@ -6,11 +6,9 @@ import {
   FALLBACK_VERSION,
   resolveLocalInstalledVersion,
 } from '@/server/modules/proxy/request-user-agent';
+import { getGoogleClientId, getGoogleClientSecret } from '@/constants/oauth';
 
 // --- Constants & Config ---
-
-const CLIENT_ID = '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com';
-const CLIENT_SECRET = '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';
 
 const URLS = {
   TOKEN: 'https://oauth2.googleapis.com/token',
@@ -247,7 +245,7 @@ export class GoogleAPIService {
     ].join(' ');
 
     const params = new URLSearchParams({
-      client_id: CLIENT_ID,
+      client_id: getGoogleClientId(),
       redirect_uri: REDIRECT_URI,
       response_type: 'code',
       scope: scopes,
@@ -264,8 +262,8 @@ export class GoogleAPIService {
    */
   static async exchangeCode(code: string): Promise<TokenResponse> {
     const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
+      client_id: getGoogleClientId(),
+      client_secret: getGoogleClientSecret(),
       code: code,
       redirect_uri: REDIRECT_URI,
       grant_type: 'authorization_code',
@@ -301,8 +299,8 @@ export class GoogleAPIService {
    */
   static async refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
     const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
+      client_id: getGoogleClientId(),
+      client_secret: getGoogleClientSecret(),
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
     });
