@@ -336,6 +336,7 @@ describe('cloud switch fail-fast path', () => {
       closeAntigravity: vi.fn(async () => undefined),
       startAntigravity: startAntigravityMock,
       _waitForProcessExit: vi.fn(async () => undefined),
+      isProcessRunning: vi.fn(async () => false),
     }));
 
     vi.doMock('../../ipc/switchMetrics', () => ({

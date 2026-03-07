@@ -1,4 +1,4 @@
-import { exec, execSync } from 'child_process';
+import { exec, execSync, spawn } from 'child_process';
 import { promisify } from 'util';
 import findProcess, { ProcessInfo } from 'find-process';
 import { getAntigravityExecutablePath, isWsl } from '../../utils/paths';
@@ -62,103 +62,101 @@ function isPgrepNoMatchError(error: unknown): boolean {
   return hasPgrep && code === 1;
 }
 
-/**
- * Checks if the Antigravity process is running.
- * Uses find-process package for robust cross-platform process detection.
- * @returns {boolean} True if the Antigravity process is running, false otherwise.
- */
+function isAntigravityMainProcess(proc: ProcessInfo, platform: NodeJS.Platform): boolean {
+  const currentPid = process.pid;
+  if (proc.pid === currentPid) {
+    return false;
+  }
+
+  const name = proc.name?.toLowerCase() || '';
+  const cmd = proc.cmd?.toLowerCase() || '';
+
+  if (
+    name.includes('manager') ||
+    cmd.includes('manager') ||
+    cmd.includes('antigravity-manager')
+  ) {
+    return false;
+  }
+
+  if (isHelperProcess(name, cmd)) {
+    return false;
+  }
+
+  if (platform === 'darwin') {
+    if (cmd.includes('antigravity.app')) {
+      return true;
+    }
+    return name === 'antigravity' && !isHelperProcess(name, cmd);
+  }
+
+  if (platform === 'win32') {
+    return name === 'antigravity.exe' || name === 'antigravity';
+  }
+
+  return (
+    (name.includes('antigravity') || cmd.includes('/antigravity')) &&
+    !name.includes('tools')
+  );
+}
+
+async function getAntigravityProcessPids(): Promise<number[]> {
+  const platform = process.platform;
+  const processMap = new Map<number, ProcessInfo>();
+  const searchNames = ['Antigravity', 'antigravity'];
+
+  for (const searchName of searchNames) {
+    try {
+      const matches = await findProcess('name', searchName, true);
+      for (const proc of matches) {
+        if (typeof proc.pid === 'number') {
+          processMap.set(proc.pid, proc);
+        }
+      }
+    } catch (error) {
+      if (isPgrepNoMatchError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return Array.from(processMap.values())
+    .filter((proc) => isAntigravityMainProcess(proc, platform))
+    .map((proc) => proc.pid as number);
+}
+
+async function getAntigravityProcessPidsMatchingPath(managedPath: string): Promise<number[]> {
+  const platform = process.platform;
+  const processMap = new Map<number, ProcessInfo>();
+  const searchNames = ['Antigravity', 'antigravity'];
+
+  for (const searchName of searchNames) {
+    try {
+      const matches = await findProcess('name', searchName, true);
+      for (const proc of matches) {
+        if (typeof proc.pid === 'number') {
+          processMap.set(proc.pid, proc);
+        }
+      }
+    } catch (error) {
+      if (isPgrepNoMatchError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return Array.from(processMap.values())
+    .filter((proc) => isAntigravityMainProcess(proc, platform))
+    .filter((proc) => (proc.cmd ?? '').includes(managedPath))
+    .map((proc) => proc.pid as number);
+}
+
 export async function isProcessRunning(): Promise<boolean> {
   try {
-    const platform = process.platform;
-    const currentPid = process.pid;
-
-    // Use find-process to search for Antigravity processes
-    // 'name' search type matches process name
-    const processMap = new Map<number, ProcessInfo>();
-    const searchNames = ['Antigravity', 'antigravity'];
-    let sawNoMatch = false;
-
-    for (const searchName of searchNames) {
-      try {
-        const matches = await findProcess('name', searchName, true);
-        for (const proc of matches) {
-          if (typeof proc.pid === 'number') {
-            processMap.set(proc.pid, proc);
-          }
-        }
-      } catch (error) {
-        if (isPgrepNoMatchError(error)) {
-          sawNoMatch = true;
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    const processes = Array.from(processMap.values());
-    if (processes.length === 0 && sawNoMatch) {
-      logger.debug('No Antigravity process found (pgrep returned 1)');
-    }
-
-    logger.debug(`Found ${processes.length} processes matching 'Antigravity/antigravity'`);
-
-    for (const proc of processes) {
-      // Skip self
-      if (proc.pid === currentPid) {
-        continue;
-      }
-
-      const name = proc.name?.toLowerCase() || '';
-      const cmd = proc.cmd?.toLowerCase() || '';
-
-      // Skip manager process
-      if (
-        name.includes('manager') ||
-        cmd.includes('manager') ||
-        cmd.includes('antigravity-manager')
-      ) {
-        continue;
-      }
-
-      // Skip helper processes
-      if (isHelperProcess(name, cmd)) {
-        continue;
-      }
-
-      if (platform === 'darwin') {
-        // macOS: Check for Antigravity.app in path
-        if (cmd.includes('antigravity.app')) {
-          logger.debug(
-            `Found Antigravity process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
-          );
-          return true;
-        }
-        // Also check if the process name is exactly 'Antigravity' (main process)
-        if (name === 'antigravity' && !isHelperProcess(name, cmd)) {
-          logger.debug(`Found Antigravity process: PID=${proc.pid}, name=${name}`);
-          return true;
-        }
-      } else if (platform === 'win32') {
-        // Windows: Check for Antigravity.exe
-        if (name === 'antigravity.exe' || name === 'antigravity') {
-          logger.debug(`Found Antigravity process: PID=${proc.pid}, name=${name}`);
-          return true;
-        }
-      } else {
-        // Linux: Check for antigravity in name or path (but not tools)
-        if (
-          (name.includes('antigravity') || cmd.includes('/antigravity')) &&
-          !name.includes('tools')
-        ) {
-          logger.debug(
-            `Found Antigravity process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
-          );
-          return true;
-        }
-      }
-    }
-
-    return false;
+    const pids = await getAntigravityProcessPids();
+    return pids.length > 0;
   } catch (error) {
     logger.error('Error checking process status with find-process:', error);
     return false;
@@ -204,139 +202,105 @@ export async function closeAntigravity(): Promise<void> {
       }
     }
 
-    // Stage 2 & 3: Find and Kill remaining processes
-    // We use a more aggressive approach here but try to avoid killing ourselves
-    const currentPid = process.pid;
+    const managedPath = getAntigravityExecutablePath();
 
-    // Helper to list processes
-    const getProcesses = (): { pid: number; name: string; cmd: string }[] => {
+    if (platform === 'win32') {
+      if (!managedPath) {
+        logger.info('Antigravity executable path not found, skipping process kill');
+        return;
+      }
       try {
-        let output = '';
-        if (platform === 'win32') {
-          const psCommand = (cmdlet: string) =>
-            `powershell -NoProfile -Command "${cmdlet} Win32_Process -Filter \\"Name like 'Antigravity%'\\" | Select-Object ProcessId, Name, CommandLine | ConvertTo-Csv -NoTypeInformation"`;
-
-          try {
-            output = execSync(psCommand('Get-CimInstance'), {
-              encoding: 'utf-8',
-              maxBuffer: 1024 * 1024 * 10,
-              stdio: ['pipe', 'pipe', 'ignore'],
-            });
-          } catch (e) {
-            // CIM failed (likely older OS), try WMI
-            try {
-              output = execSync(psCommand('Get-WmiObject'), {
-                encoding: 'utf-8',
-                maxBuffer: 1024 * 1024 * 10,
-              });
-            } catch (innerE) {
-              // Both failed, throw original or log? Throwing lets the outer catch handle it (returning empty list)
-              throw e;
-            }
-          }
-        } else {
-          // Unix/Linux/macOS
-          output = execSync('ps -A -o pid,comm,args', {
-            encoding: 'utf-8',
-            maxBuffer: 1024 * 1024 * 10,
-          });
-        }
-
-        const processList: { pid: number; name: string; cmd: string }[] = [];
-
-        if (platform === 'win32') {
-          // Parse CSV Output
-          const lines = output.trim().split(/\r?\n/);
-          // First line is headers "ProcessId","Name","CommandLine"
-          // We start from index 1
-          for (let i = 1; i < lines.length; i++) {
-            const line = lines[i];
-            if (!line) {
-              continue;
-            }
-
-            // Regex to match CSV fields: "val1","val2","val3"
-            const match = line.match(/^"(\d+)","(.*?)","(.*?)"$/);
-
-            if (match) {
-              const pid = parseInt(match[1]);
-              const name = match[2];
-              const cmdLine = match[3];
-
-              processList.push({ pid, name, cmd: cmdLine || name });
-            }
-          }
-        } else {
-          const lines = output.split('\n');
-          for (const line of lines) {
-            const parts = line.trim().split(/\s+/);
-            if (parts.length < 2) continue;
-
-            const pid = parseInt(parts[0]);
-            if (isNaN(pid)) continue;
-            const rest = parts.slice(1).join(' ');
-            if (rest.includes('Antigravity') || rest.includes('antigravity')) {
-              processList.push({ pid, name: parts[1], cmd: rest });
-            }
-          }
-        }
-        return processList;
-      } catch (e) {
-        logger.error('Failed to list processes', e);
-        return [];
+        execSync('taskkill /F /IM "Antigravity.exe" /T', { stdio: 'ignore' });
+      } catch (fallbackError) {
+        logger.debug('taskkill failed (process may already be gone)', fallbackError);
       }
-    };
-
-    const targetProcessList = getProcesses().filter((p) => {
-      // Exclude self
-      if (p.pid === currentPid) {
-        return false;
-      }
-      // Exclude this electron app (if named Antigravity Manager or antigravity-manager)
-      if (p.cmd.includes('Antigravity Manager') || p.cmd.includes('antigravity-manager')) {
-        return false;
-      }
-      // Match Antigravity (but not manager)
-      if (platform === 'win32') {
-        return (
-          p.cmd.includes('Antigravity.exe') ||
-          (p.cmd.includes('antigravity') && !p.cmd.includes('manager'))
-        );
-      } else {
-        // Explicit !manager check for Linux/macOS to be defensive
-        return (
-          (p.cmd.includes('Antigravity') || p.cmd.includes('antigravity')) &&
-          !p.cmd.includes('manager')
-        );
-      }
-    });
-
-    if (targetProcessList.length === 0) {
-      logger.info('No Antigravity processes found running.');
       return;
     }
 
-    logger.info(`Found ${targetProcessList.length} remaining Antigravity processes. Killing...`);
+    if (platform === 'linux' || platform === 'darwin') {
+      const killByPids = async (pids: number[]) => {
+        if (pids.length === 0) return;
+        if (platform === 'linux') {
+          try {
+            process.kill(-pids[0], 'SIGKILL');
+          } catch {
+            for (const pid of pids) {
+              try {
+                process.kill(pid, 'SIGKILL');
+              } catch {
+                logger.debug(`kill -9 ${pid} failed (process may already be gone)`);
+              }
+            }
+          }
+        } else {
+          for (const pid of pids) {
+            try {
+              process.kill(pid, 'SIGKILL');
+            } catch {
+              logger.debug(`kill -9 ${pid} failed (process may already be gone)`);
+            }
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      };
 
-    for (const p of targetProcessList) {
-      try {
-        process.kill(p.pid, 'SIGKILL'); // Force kill as final step
-      } catch {
-        // Ignore if already dead
+      if (platform === 'linux') {
+        if (managedPath) {
+          for (let attempt = 1; attempt <= 5; attempt++) {
+            try {
+              execSync(`pkill -9 -f "${managedPath}"`, { stdio: 'ignore' });
+            } catch {
+              logger.debug('pkill returned non-zero (process may already be gone)');
+            }
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            if (!(await isProcessRunning())) break;
+          }
+        }
+
+        if (await isProcessRunning()) {
+          const pidsByPath = managedPath ? await getAntigravityProcessPidsMatchingPath(managedPath) : [];
+          const pidsAll = await getAntigravityProcessPids();
+          const pids = pidsByPath.length > 0 ? pidsByPath : pidsAll;
+          if (pids.length > 0) {
+            logger.info(`Killing Antigravity PIDs: ${pids.join(', ')}`);
+            await killByPids(pids);
+          }
+        }
+
+        const maxWait = 5;
+        for (let w = 0; w < maxWait && (await isProcessRunning()); w++) {
+          const pids = await getAntigravityProcessPids();
+          if (pids.length > 0) {
+            await killByPids(pids);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      } else if (managedPath) {
+        const maxRetries = 3;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            execSync(`pkill -9 -f "${managedPath}"`, { stdio: 'ignore' });
+          } catch {
+            logger.debug('pkill returned non-zero (process may already be gone)');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          if (!(await isProcessRunning())) break;
+          if (attempt < maxRetries) {
+            logger.debug(`Antigravity processes still running, retry ${attempt + 1}/${maxRetries}`);
+          }
+        }
+
+        if (managedPath && (await isProcessRunning())) {
+          const pids = await getAntigravityProcessPidsMatchingPath(managedPath);
+          if (pids.length > 0) {
+            logger.info(`pkill did not terminate process, falling back to PID-based kill (PIDs: ${pids.join(', ')})`);
+            await killByPids(pids);
+          }
+        }
       }
     }
   } catch (error) {
     logger.error('Error closing Antigravity', error);
-    // Fallback to simple kill if everything fails
-    try {
-      if (platform === 'win32') {
-        execSync('taskkill /F /IM "Antigravity.exe" /T', { stdio: 'ignore' });
-      } else {
-        execSync('pkill -9 -f Antigravity', { stdio: 'ignore' });
-      }
-    } catch {
-      // Ignore
-    }
   }
 }
 
@@ -379,8 +343,8 @@ async function openUri(uri: string): Promise<boolean> {
       // WSL: use cmd.exe to open URI
       await execAsync(`/mnt/c/Windows/System32/cmd.exe /c start "" "${uri}"`);
     } else {
-      // Linux: use xdg-open
-      await execAsync(`xdg-open "${uri}"`);
+      const child = spawn('xdg-open', [uri], { detached: true, stdio: 'ignore' });
+      child.unref();
     }
     return true;
   } catch (error) {

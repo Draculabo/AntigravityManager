@@ -9,6 +9,7 @@ declare global {
     electron: {
       SENTRY_ENABLED: boolean;
       onGoogleAuthCode: (callback: (code: string) => void) => () => void;
+      onCloudAccountSwitched: (callback: () => void) => () => void;
       changeLanguage: (lang: string) => void;
     };
   }

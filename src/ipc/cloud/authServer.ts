@@ -2,6 +2,15 @@ import http from 'http';
 import { logger } from '../../utils/logger';
 import { ipcContext } from '../context';
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export class AuthServer {
   private static server: http.Server | null = null;
   private static PORT = 8888;
@@ -50,7 +59,7 @@ export class AuthServer {
             <html>
               <body>
                 <h1>Login Failed</h1>
-                <p>Error: ${error}</p>
+                <p>Error: ${escapeHtml(error)}</p>
               </body>
             </html>
           `);
@@ -64,11 +73,18 @@ export class AuthServer {
       }
     });
 
-    this.server.on('error', (err) => {
-      logger.error('AuthServer: Server error', err);
+    this.server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        this.server = null;
+        logger.warn(
+          `AuthServer: Port ${this.PORT} is in use. Another instance may be running. OAuth login will not work until you close other instances.`,
+        );
+      } else {
+        logger.error('AuthServer: Server error', err);
+      }
     });
 
-    this.server.listen(this.PORT, () => {
+    this.server.listen(this.PORT, '127.0.0.1', () => {
       logger.info(`AuthServer: Listening on http://localhost:${this.PORT}`);
     });
   }

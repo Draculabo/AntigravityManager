@@ -73,12 +73,14 @@ function createIPCClient(port: MessagePort) {
 
       port.postMessage(JSON.stringify(payload));
 
+      const timeoutMs =
+        methodPath === 'cloud/switchCloudAccount' ? 90000 : 60000;
       setTimeout(() => {
         if (pendingRequests.has(id)) {
           pendingRequests.delete(id);
           reject(new Error(`Request /${methodPath} timed out`));
         }
-      }, 60000);
+      }, timeoutMs);
     });
   }
 

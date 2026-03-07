@@ -167,22 +167,22 @@ export function CloudAccountList() {
       },
     );
   }, [addMutation, authCode, t, toast]);
-  // Listen for Google Auth Code
+
+  const oauthListenerRegisteredRef = useRef(false);
   useEffect(() => {
-    if (window.electron?.onGoogleAuthCode) {
-      console.log('[OAuth] Registering Google auth code IPC listener');
-      const cleanup = window.electron.onGoogleAuthCode((code) => {
-        console.log('[OAuth] Received Google auth code via IPC:', code?.substring(0, 10) + '...');
-        setAuthCode(code);
-      });
-      return cleanup;
-    }
+    if (!window.electron?.onGoogleAuthCode || oauthListenerRegisteredRef.current) return;
+    oauthListenerRegisteredRef.current = true;
+    const cleanup = window.electron.onGoogleAuthCode((code) => {
+      setAuthCode(code);
+    });
+    return () => {
+      oauthListenerRegisteredRef.current = false;
+      cleanup();
+    };
   }, []);
 
-  // Auto-submit when authCode is set and dialog is open
   useEffect(() => {
     if (authCode && isAddDialogOpen && !addMutation.isPending) {
-      console.log('[OAuth] Auto-submitting Google auth code');
       submitAuthCode(authCode);
     }
   }, [addMutation.isPending, authCode, isAddDialogOpen, submitAuthCode]);
@@ -619,9 +619,7 @@ export function CloudAccountList() {
             isDeleting={
               deleteMutation.isPending && deleteMutation.variables?.accountId === account.id
             }
-            isSwitching={
-              switchMutation.isPending && switchMutation.variables?.accountId === account.id
-            }
+            isSwitching={switchMutation.isPending}
           />
         ))}
 

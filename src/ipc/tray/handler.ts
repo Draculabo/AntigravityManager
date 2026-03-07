@@ -183,6 +183,12 @@ export function setTrayLanguage(lang: string) {
   updateTrayMenu(lastAccount, lang);
 }
 
+export function notifyRendererCloudAccountSwitched() {
+  if (globalMainWindow && !globalMainWindow.isDestroyed()) {
+    globalMainWindow.webContents.send('cloud://account-switched');
+  }
+}
+
 export function destroyTray() {
   if (tray) {
     try {

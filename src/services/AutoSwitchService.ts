@@ -1,6 +1,7 @@
 import { CloudAccountRepo } from '../ipc/database/cloudHandler';
 import { CloudAccount } from '../types/cloudAccount';
 import { switchCloudAccount } from '../ipc/cloud/handler';
+import { getActiveSwitchOwner } from '../ipc/switchGuard';
 import { logger } from '../utils/logger';
 
 export class AutoSwitchService {
@@ -61,7 +62,10 @@ export class AutoSwitchService {
     const enabled = CloudAccountRepo.getSetting<boolean>('auto_switch_enabled', false);
     if (!enabled) return false;
 
-    // Get current active account
+    if (getActiveSwitchOwner() !== null) {
+      return false;
+    }
+
     const accounts = await CloudAccountRepo.getAccounts();
     const currentAccount = accounts.find((a) => a.is_active);
 

@@ -1,4 +1,5 @@
 import { CloudAccountRepo } from '../ipc/database/cloudHandler';
+import { getActiveSwitchOwner } from '../ipc/switchGuard';
 import { GoogleAPIService } from './GoogleAPIService';
 import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '../utils/logger';
@@ -45,13 +46,15 @@ export class CloudMonitorService {
   static async handleAppFocus() {
     const now = Date.now();
 
-    // 1. Concurrency Guard: If we are already polling, don't pile up requests
+    if (getActiveSwitchOwner() !== null) {
+      return;
+    }
+
     if (this.isPolling) {
       logger.info('Monitor: App focused, but polling is already in progress. Skipping.');
       return;
     }
 
-    // 2. Debounce: If we focused recently, don't poll again
     if (now - this.lastFocusTime < this.DEBOUNCE_TIME) {
       logger.info('Monitor: App focused, skipping poll (debounce active).');
       return;
@@ -109,9 +112,7 @@ export class CloudMonitorService {
             accessToken = newToken.access_token;
           }
 
-          // 2. Fetch Quota
-          // We delay slightly between requests to act human/avoid spike
-          await new Promise((r) => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, 300));
           const quota = await GoogleAPIService.fetchQuota(accessToken);
 
           // 3. Update DB

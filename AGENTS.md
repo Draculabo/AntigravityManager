@@ -108,6 +108,14 @@ Use `npm` for all commands:
 - **DevTools**: `code-inspector-plugin` is integrated; use `Shift + Click` on page elements to jump to source code.
 - **React**: React Strict Mode is disabled.
 - **NestJS**: Runs as an Electron child process; logs are visible in main-process console.
+- **Linux (Fedora/Wayland)**: `npm start` sets `ELECTRON_OZONE_PLATFORM_HINT=x11` (ignored on Windows/macOS) to avoid freezes on Wayland. Hardware acceleration is disabled only when Wayland is detected. Logs: `~/.antigravity-agent/app-*.log`.
+- **Linux packaging**:
+  - RPM/AppImage makers are always available on Linux when the required system tools are installed.
+  - RPM maker requires `rpm-build` (Fedora: `dnf install rpm-build`; Debian/Ubuntu: `apt install rpm`).
+  - The RPM desktop file launches the app with `ELECTRON_OZONE_PLATFORM_HINT=x11` so the installed app avoids Wayland freezes (same as `npm start`).
+  - To capture startup errors from the installed app, run: `ELECTRON_OZONE_PLATFORM_HINT=x11 antigravity-manager` from a terminal (or inspect `~/.antigravity-agent/app-*.log`).
+  - Deb maker runs automatically on Debian/Ubuntu-like systems when `dpkg` and `fakeroot` are available.
+  - On other Linux distributions (for example, Fedora), Deb maker is disabled by default; to enable it, install `dpkg` and `fakeroot` from your package manager and set `FORGE_ENABLE_DEB_ON_LINUX=1` before running `npm run make`.
 
 ## Security and Data
 
