@@ -1,9 +1,16 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listCloudAccounts,
   addGoogleAccount,
   deleteCloudAccount,
   refreshAccountQuota,
+  switchCloudAccount,
+  getAutoSwitchEnabled,
+  setAutoSwitchEnabled,
+  forcePollCloudMonitor,
+  syncLocalAccount,
+  startAuthFlow,
 } from '@/actions/cloud';
 import { CloudAccount } from '@/types/cloudAccount';
 
@@ -15,7 +22,7 @@ export function useCloudAccounts() {
   return useQuery<CloudAccount[]>({
     queryKey: QUERY_KEYS.cloudAccounts,
     queryFn: listCloudAccounts,
-    staleTime: 1000 * 60, // 1 minute
+    staleTime: 1000 * 60,
   });
 }
 
@@ -47,7 +54,6 @@ export function useRefreshQuota() {
   return useMutation({
     mutationFn: refreshAccountQuota,
     onSuccess: (updatedAccount: CloudAccount) => {
-      // Optimistically update
       queryClient.setQueryData(QUERY_KEYS.cloudAccounts, (oldData: CloudAccount[] | undefined) => {
         if (!oldData) return [updatedAccount];
         return oldData.map((acc) => (acc.id === updatedAccount.id ? updatedAccount : acc));
@@ -56,13 +62,6 @@ export function useRefreshQuota() {
     },
   });
 }
-
-import {
-  switchCloudAccount,
-  getAutoSwitchEnabled,
-  setAutoSwitchEnabled,
-  forcePollCloudMonitor,
-} from '@/actions/cloud';
 
 export function useSwitchCloudAccount() {
   const queryClient = useQueryClient();
@@ -82,7 +81,7 @@ export function useAutoSwitchEnabled() {
   return useQuery<boolean>({
     queryKey: AUTO_SWITCH_KEY,
     queryFn: getAutoSwitchEnabled,
-    staleTime: Infinity, // Settings don't change often unless we change them
+    staleTime: Infinity,
   });
 }
 
@@ -106,8 +105,6 @@ export function useForcePollCloudMonitor() {
   });
 }
 
-import { syncLocalAccount } from '@/actions/cloud';
-
 export function useSyncLocalAccount() {
   const queryClient = useQueryClient();
   return useMutation<CloudAccount | null, Error, void>({
@@ -118,5 +115,21 @@ export function useSyncLocalAccount() {
   });
 }
 
-import { startAuthFlow } from '@/actions/cloud';
 export { startAuthFlow };
+
+export function useCloudAccountSwitchListener() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!window.electron?.onCloudAccountSwitched) {
+      return;
+    }
+
+    const cleanup = window.electron.onCloudAccountSwitched(() => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+      queryClient.invalidateQueries({ queryKey: ['currentAccount'] });
+    });
+
+    return cleanup;
+  }, [queryClient]);
+}
