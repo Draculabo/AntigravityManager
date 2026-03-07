@@ -31,25 +31,31 @@ import { isAutoStartLaunch, syncAutoStart } from './utils/autoStart';
 import { safeStringifyPacket } from './utils/sensitiveDataMasking';
 
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
+const orpcLogPacketsEnabled = process.env.ORPC_LOG_PACKETS === '1';
 
-function logPacket(data: any) {
-  try {
-    fs.appendFileSync(
-      packetLogPath,
-      `[${new Date().toISOString()}] ${safeStringifyPacket(data)}\n`,
-    );
-  } catch (e) {
+function logPacket(data: unknown) {
+  if (!orpcLogPacketsEnabled) return;
+  const line = `[${new Date().toISOString()}] ${safeStringifyPacket(data)}\n`;
+  fs.promises.appendFile(packetLogPath, line).catch((e) => {
     if (e instanceof Error) {
       logger.error('Failed to append ORPC packet log', e);
     }
-  }
+  });
 }
 ipcMain.on(IPC_CHANNELS.CHANGE_LANGUAGE, (event, lang) => {
-  logger.info(`IPC: Received CHANGE_LANGUAGE: ${lang}`);
+  logger.debug(`IPC: Received CHANGE_LANGUAGE: ${lang}`);
   setTrayLanguage(lang);
 });
 
-app.disableHardwareAcceleration();
+const isLinuxWayland =
+  process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland';
+const shouldDisableHwAccel =
+  process.platform !== 'linux' ||
+  isLinuxWayland ||
+  process.env.ELECTRON_DISABLE_HW_ACCEL === '1';
+if (shouldDisableHwAccel) {
+  app.disableHardwareAcceleration();
+}
 
 if (squirrelStartup) {
   app.quit();
@@ -122,11 +128,11 @@ function showWindowsInstallNoticeIfNeeded() {
   });
 }
 
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+const gotSingleInstanceLock = inDevelopment || app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.quit();
-} else {
+} else if (!inDevelopment) {
   app.on('second-instance', () => {
     logger.info('Second instance detected, focusing existing window');
     if (app.isReady()) {
@@ -144,7 +150,6 @@ process.on('exit', (code) => {
 });
 
 process.on('before-exit', (code) => {
-  logger.info(`Process before-exit event triggered with code: ${code}`);
   logger.info(`Process before-exit event triggered with code: ${code}`);
 });
 
@@ -272,7 +277,13 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
 
   mainWindow.webContents.on('console-message', (details) => {
     const { level, message, lineNumber, sourceId } = details;
-    logger.info(`[Renderer Console][${level}] ${message} (${sourceId}:${lineNumber})`);
+    const isWarn =
+      (typeof level === 'number' && level === 2) || level === 'warning';
+    const isError =
+      (typeof level === 'number' && level === 3) || level === 'error';
+    if (!isWarn && !isError) return;
+    const logLevel = isError ? 'error' : 'warn';
+    logger.log(logLevel, `[Renderer Console][${String(level)}] ${message} (${sourceId}:${lineNumber})`);
   });
 
   mainWindow.on('focus', () => {

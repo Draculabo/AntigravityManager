@@ -54,6 +54,11 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('GOOGLE_AUTH_CODE', handler);
     return () => ipcRenderer.off('GOOGLE_AUTH_CODE', handler);
   },
+  onCloudAccountSwitched: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('cloud://account-switched', handler);
+    return () => ipcRenderer.off('cloud://account-switched', handler);
+  },
   changeLanguage: (lang: string) => {
     ipcRenderer.send(IPC_CHANNELS.CHANGE_LANGUAGE, lang);
   },

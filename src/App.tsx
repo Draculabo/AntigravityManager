@@ -10,6 +10,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/toaster';
 import { LOCAL_STORAGE_KEYS } from '@/constants';
+import { useCloudAccountSwitchListener } from '@/hooks/useCloudAccounts';
+
+function CloudAccountSwitchListener() {
+  useCloudAccountSwitchListener();
+  return null;
+}
 
 function App() {
   const { i18n } = useTranslation();
@@ -22,7 +28,12 @@ function App() {
     }
   }, [i18n]);
 
-  return <RouterProvider router={router} />;
+  return (
+    <>
+      <CloudAccountSwitchListener />
+      <RouterProvider router={router} />
+    </>
+  );
 }
 
 const queryClient = new QueryClient();
