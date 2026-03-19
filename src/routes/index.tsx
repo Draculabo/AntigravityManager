@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 
 function HomePage() {
   return (
-    <div className="container mx-auto max-w-4xl p-6">
+    <div className="container mx-auto p-6">
       <CloudAccountList />
     </div>
   );

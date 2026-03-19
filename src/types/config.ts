@@ -30,7 +30,7 @@ export const AppConfigSchema = z.object({
   default_export_path: z.string().nullable().optional(), // 导出路径
   model_visibility: z.record(z.string(), z.boolean()).default({}), // Model visibility preferences
   provider_groupings_enabled: z.boolean().default(false), // Enable provider groupings UI
-  grid_layout: z.enum(['auto', '2-col', '3-col', 'list']).default('auto'), // Account card grid layout
+  grid_layout: z.enum(['auto', '2-col', '3-col', 'list', 'table']).default('auto'), // Account card grid layout
   proxy: ProxyConfigSchema,
 });
 
@@ -51,7 +51,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   default_export_path: null,
   model_visibility: {}, // Model visibility preferences
   provider_groupings_enabled: false, // Enable provider groupings UI
-  grid_layout: 'auto' as const, // Account card grid layout
+  grid_layout: 'table' as const, // Account card grid layout
   proxy: {
     enabled: false,
     port: 8045,

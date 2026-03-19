@@ -221,7 +221,7 @@ export function CloudAccountCard({
 
   return (
     <Card
-      className={`group bg-card hover:border-primary/40 flex h-full flex-col overflow-hidden border transition-all duration-200 hover:shadow-sm ${isSelected ? 'ring-primary border-primary/50 ring-2' : ''}`}
+      className={`group bg-card hover:border-primary/40 flex h-full flex-col overflow-hidden border transition-all duration-200 hover:shadow-sm ${isSelected ? 'ring-primary border-primary/50 ring-2' : ''} ${account.is_active ? 'border-emerald-200/50 bg-emerald-50/80 dark:border-emerald-800/50 dark:bg-emerald-950/30' : ''}`}
     >
       <CardHeader className="relative flex flex-row items-center gap-4 space-y-0 pb-2">
         {onToggleSelection && (
@@ -337,7 +337,7 @@ export function CloudAccountCard({
               ) : (
                 <Power className="mr-1 h-3 w-3" />
               )}
-              {t('cloud.card.use')}
+              {t('cloud.card.useAccount')}
             </Button>
           )}
         </div>
