@@ -200,6 +200,7 @@ Download the latest release for your platform from the [Releases](https://github
 You can integrate Antigravity Manager into your Nix configuration using the provided flake.
 
 #### 🛠️ NixOS / Home Manager
+
 Add the flake to your `flake.nix` inputs:
 
 ```nix
@@ -209,7 +210,9 @@ inputs = {
 };
 ```
 
-Then add it to your `environment.systemPackages` (NixOS) or `home.packages` (Home Manager):
+You can consume the package directly or use the preferred **Overlay** method to integrate it into your own `nixpkgs` instance (ensuring it respects your global `allowUnfree` configuration).
+
+##### Option 1: Direct Integration (Easiest)
 
 ```nix
 # NixOS
@@ -223,7 +226,22 @@ home.packages = [
 ];
 ```
 
+##### Option 2: Overlay (Preferred for full control)
+
+```nix
+# Add to your NixOS/Home Manager configuration
+{
+  nixpkgs.overlays = [ inputs.antigravity-manager.overlays.default ];
+  nixpkgs.config.allowUnfree = true; # Required for this package
+
+  environment.systemPackages = [
+    pkgs.antigravity-manager
+  ];
+}
+```
+
 #### 💻 Development Shell
+
 Add it to your `devShell` to use it as a tool during development:
 
 ```nix
@@ -235,7 +253,7 @@ devShells.default = pkgs.mkShell {
 ```
 
 > [!NOTE]
-> As the package has an unfree license (`cc-by-nc-sa-40`), you may need to allow unfree packages in your configuration: `nixpkgs.config.allowUnfree = true;`.
+> As the package has an unfree license (`cc-by-nc-sa-40`), you **must** allow unfree packages in your configuration (e.g. `nixpkgs.config.allowUnfree = true;`) for either method to work correctly within your system setup.
 
 ### Build from Source
 
