@@ -193,6 +193,49 @@ Download the latest release for your platform from the [Releases](https://github
 | Windows (x64/ARM64) | [.exe installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | macOS | [.dmg installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | Linux | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest) |
+| NixOS / Nix | `nix run github:Draculabo/AntigravityManager` |
+
+### ❄️ Nix Integration
+
+You can integrate Antigravity Manager into your Nix configuration using the provided flake.
+
+#### 🛠️ NixOS / Home Manager
+Add the flake to your `flake.nix` inputs:
+
+```nix
+inputs = {
+  nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  antigravity-manager.url = "github:Draculabo/AntigravityManager";
+};
+```
+
+Then add it to your `environment.systemPackages` (NixOS) or `home.packages` (Home Manager):
+
+```nix
+# NixOS
+environment.systemPackages = [
+  inputs.antigravity-manager.packages.${pkgs.system}.default
+];
+
+# Home Manager
+home.packages = [
+  inputs.antigravity-manager.packages.${pkgs.system}.default
+];
+```
+
+#### 💻 Development Shell
+Add it to your `devShell` to use it as a tool during development:
+
+```nix
+devShells.default = pkgs.mkShell {
+  packages = [
+    inputs.antigravity-manager.packages.${pkgs.system}.default
+  ];
+};
+```
+
+> [!NOTE]
+> As the package has an unfree license (`cc-by-nc-sa-40`), you may need to allow unfree packages in your configuration: `nixpkgs.config.allowUnfree = true;`.
 
 ### Build from Source
 
