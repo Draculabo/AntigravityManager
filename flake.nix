@@ -11,7 +11,6 @@
   }: let
     supportedSystems = ["x86_64-linux" "aarch64-linux"];
     forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-    pkgsFor = forAllSystems (system: import nixpkgs {inherit system;});
 
     version = "0.10.0";
 
@@ -25,12 +24,12 @@
         sha256 = "666c9659efa66bb6be6a8e7fb0c384ceb799a17245eab374bf9b3d7901c5c4cb";
       };
     };
-  in {
-    packages = forAllSystems (system: let
-      pkgs = pkgsFor.${system};
-      source = sources.${system};
-    in {
-      default = pkgs.stdenv.mkDerivation {
+
+    mkPackage = pkgs: let
+      system = pkgs.stdenv.hostPlatform.system;
+      source = sources.${system} or (throw "Unsupported system: ${system}");
+    in
+      pkgs.stdenv.mkDerivation {
         pname = "antigravity-manager";
         inherit version;
 
@@ -105,6 +104,18 @@
           mainProgram = "antigravity-manager";
         };
       };
+  in {
+    overlays.default = final: prev: {
+      antigravity-manager = mkPackage final;
+    };
+
+    packages = forAllSystems (system: let
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
+    in {
+      default = mkPackage pkgs;
     });
   };
 }
