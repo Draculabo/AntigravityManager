@@ -210,29 +210,15 @@ inputs = {
 };
 ```
 
-You can consume the package directly or use the preferred **Overlay** method to integrate it into your own `nixpkgs` instance (ensuring it respects your global `allowUnfree` configuration).
-
-##### Option 1: Direct Integration (Easiest)
-
-```nix
-# NixOS
-environment.systemPackages = [
-  inputs.antigravity-manager.packages.${pkgs.system}.default
-];
-
-# Home Manager
-home.packages = [
-  inputs.antigravity-manager.packages.${pkgs.system}.default
-];
-```
-
-##### Option 2: Overlay (Preferred for full control)
+To integrate with your system, add `antigravity-manager.overlays.default` to your `nixpkgs.overlays`. This ensures the package is correctly built against your own `nixpkgs` instance and respects your global configuration.
 
 ```nix
 # Add to your NixOS/Home Manager configuration
 {
   nixpkgs.overlays = [ inputs.antigravity-manager.overlays.default ];
-  nixpkgs.config.allowUnfree = true; # Required for this package
+  
+  # Antigravity Manager has an unfree license (cc-by-nc-sa-40)
+  nixpkgs.config.allowUnfree = true; 
 
   environment.systemPackages = [
     pkgs.antigravity-manager
@@ -242,18 +228,18 @@ home.packages = [
 
 #### 💻 Development Shell
 
-Add it to your `devShell` to use it as a tool during development:
+If you're using the overlay above, you can simply add it to your `devShell`:
 
 ```nix
 devShells.default = pkgs.mkShell {
   packages = [
-    inputs.antigravity-manager.packages.${pkgs.system}.default
+    pkgs.antigravity-manager
   ];
 };
 ```
 
 > [!NOTE]
-> As the package has an unfree license (`cc-by-nc-sa-40`), you **must** allow unfree packages in your configuration (e.g. `nixpkgs.config.allowUnfree = true;`) for either method to work correctly within your system setup.
+> Since the package is unfree, you **must** have `allowUnfree = true;` enabled in your `nixpkgs` configuration for it to evaluate correctly.
 
 ### Build from Source
 
