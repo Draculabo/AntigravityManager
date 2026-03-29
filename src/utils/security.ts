@@ -92,22 +92,29 @@ async function readSafeStorageKey(keyPath: string): Promise<Buffer | null> {
     return null;
   }
 
+  let encryptedKey: Buffer;
   try {
-    const encryptedKey = await fs.readFile(keyPath);
+    encryptedKey = await fs.readFile(keyPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null;
+    }
+    logger.error('Security: Failed to read safeStorage key file', error);
+    throw error;
+  }
+
+  try {
     const hexKey = safeStorage.decryptString(encryptedKey);
 
     if (!/^[a-f0-9]+$/i.test(hexKey) || hexKey.length !== 64) {
+      logger.warn('Security: safeStorage key has invalid format');
       return null;
     }
 
     return Buffer.from(hexKey, 'hex');
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null;
-    }
-
-    logger.warn('Security: Failed to read safeStorage key file', error);
-    return null;
+    logger.error('Security: Decryption of safeStorage key file failed. Keyring might be locked.', error);
+    throw error;
   }
 }
 
@@ -169,14 +176,15 @@ async function readFileFallbackKey(keyPath: string): Promise<Buffer | null> {
       return Buffer.from(content, 'hex');
     }
 
+    // If it's not a valid hex key but file exists, it might be a safeStorage encrypted key
     return null;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return null;
     }
 
-    logger.warn('Security: Error reading fallback key file', error);
-    return null;
+    logger.error('Security: Error reading fallback key file', error);
+    throw error;
   }
 }
 
@@ -293,6 +301,13 @@ async function generatePrimaryMasterKey(): Promise<MasterKeyState> {
       }
       return { key: result.key, source: 'safeStorage' };
     } catch (error) {
+      // If we failed to decrypt but the file exists, we should NOT proceed to other fallbacks
+      // as they might overwrite the existing file and cause permanent data loss.
+      const fileExists = await fs.access(keyPath).then(() => true).catch(() => false);
+      if (fileExists) {
+        logger.error('Security: safeStorage key file exists but decryption failed. Keyring might be locked. Stopping to prevent data loss.', error);
+        throw error;
+      }
       logger.warn('Security: safeStorage failed, trying keytar', error);
     }
   }

@@ -638,21 +638,41 @@ export class CloudAccountRepo {
         return undefined;
       }
 
-      const tokenResult = await decryptAndMigrateField(
-        orm,
-        normalizedRow.id,
-        'tokenJson',
-        normalizedRow.tokenJson,
-      );
-      const quotaResult = await decryptAndMigrateField(
-        orm,
-        normalizedRow.id,
-        'quotaJson',
-        normalizedRow.quotaJson,
-      );
+      let tokenResult: DecryptFieldResult;
+      try {
+        tokenResult = await decryptAndMigrateField(
+          orm,
+          normalizedRow.id,
+          'tokenJson',
+          normalizedRow.tokenJson,
+        );
+      } catch (error) {
+        logger.error(
+          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for token`,
+          error,
+        );
+        return undefined;
+      }
 
-      if (!tokenResult.value) {
-        throw new Error(`Missing token data for account ${normalizedRow.id}`);
+      let quotaResult: DecryptFieldResult;
+      try {
+        quotaResult = await decryptAndMigrateField(
+          orm,
+          normalizedRow.id,
+          'quotaJson',
+          normalizedRow.quotaJson,
+        );
+      } catch (error) {
+        logger.error(
+          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for quota`,
+          error,
+        );
+        quotaResult = { value: null, migrated: false };
+      }
+
+      const tokenValue = tokenResult.value;
+      if (!tokenValue) {
+        return undefined;
       }
 
       return {
