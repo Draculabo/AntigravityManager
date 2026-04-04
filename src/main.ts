@@ -122,10 +122,17 @@ function showWindowsInstallNoticeIfNeeded() {
   });
 }
 
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+if (isDev) {
+  app.setName('Antigravity Manager Dev');
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.quit();
+  process.exit(0);
 } else {
   app.on('second-instance', () => {
     logger.info('Second instance detected, focusing existing window');

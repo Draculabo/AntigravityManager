@@ -187,9 +187,8 @@ export function groupModelsByProvider(
 
   // Sort: known providers first (claude-, gemini-), then others
   const providerDisplayOrder = keys(PROVIDER_REGISTRY);
-  const sortedProviders = sortBy(
-    providerStatsList,
-    (providerStats) => providerDisplayOrder.indexOf(providerStats.providerKey),
+  const sortedProviders = sortBy(providerStatsList, (providerStats) =>
+    providerDisplayOrder.indexOf(providerStats.providerKey),
   );
 
   const allVisibleModels = flatMap(sortedProviders, (providerStats) => providerStats.visibleModels);

@@ -73,25 +73,30 @@ export async function isProcessRunning(): Promise<boolean> {
     const currentPid = process.pid;
 
     // Use find-process to search for Antigravity processes
-    // 'name' search type matches process name
-    const processMap = new Map<number, ProcessInfo>();
+    const allMatches: ProcessInfo[] = [];
     const searchNames = ['Antigravity', 'antigravity'];
+    if (platform === 'linux') {
+      searchNames.push('electron');
+    }
     let sawNoMatch = false;
 
     for (const searchName of searchNames) {
       try {
-        const matches = await findProcess('name', searchName, true);
-        for (const proc of matches) {
-          if (typeof proc.pid === 'number') {
-            processMap.set(proc.pid, proc);
-          }
-        }
+        const matches = await findProcess('name', searchName, false);
+        allMatches.push(...matches);
       } catch (error) {
         if (isPgrepNoMatchError(error)) {
           sawNoMatch = true;
           continue;
         }
         throw error;
+      }
+    }
+
+    const processMap = new Map<number, ProcessInfo>();
+    for (const proc of allMatches) {
+      if (typeof proc.pid === 'number') {
+        processMap.set(proc.pid, proc);
       }
     }
 
@@ -145,7 +150,27 @@ export async function isProcessRunning(): Promise<boolean> {
           return true;
         }
       } else {
-        // Linux: Check for antigravity in name or path (but not tools)
+        const nameLower = name.toLowerCase();
+        const cmdLower = cmd.toLowerCase();
+
+        if (nameLower === 'electron') {
+          // Stricter check for AUR/Electron wrapper:
+          // Must include antigravity in command line but NOT manager or tools
+          const isAntigravityApp =
+            (cmdLower.includes('/antigravity') ||
+              cmdLower.includes(' antigravity') ||
+              cmdLower.endsWith('antigravity')) &&
+            !cmdLower.includes('manager') &&
+            !cmdLower.includes('tools');
+
+          if (isAntigravityApp) {
+            logger.debug(
+              `Found Antigravity (AUR/electron) process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
+            );
+            return true;
+          }
+        }
+
         if (
           (name.includes('antigravity') || cmd.includes('/antigravity')) &&
           !name.includes('tools')

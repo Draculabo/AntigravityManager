@@ -123,3 +123,6 @@ build/
 cli/aliases.json
 *.backup
 accounts_backup.json
+
+# Bun lock file
+bun.lock

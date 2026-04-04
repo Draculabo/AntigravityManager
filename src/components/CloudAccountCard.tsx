@@ -17,8 +17,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-import { MoreVertical, Trash, RefreshCw, Box, Power, Fingerprint } from 'lucide-react';
+import { MoreVertical, Trash, RefreshCw, Box, Power, Fingerprint, Eye, EyeOff } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +34,9 @@ import {
   getQuotaStatus,
   type QuotaStatus,
 } from '@/utils/quota-display';
+import { useState } from 'react';
+import { useSetAccountProxy } from '@/hooks/useCloudAccounts';
+import { isValidProxyUrl } from '@/utils/url';
 
 type ModelQuotaEntry = [string, CloudQuotaModelInfo];
 
@@ -81,7 +86,9 @@ function isGeminiProFamilyModel(modelName: string): boolean {
   return normalizedModelName.includes('gemini-3.1-pro');
 }
 
-function mergeGeminiProQuotaEntries(entries: ModelQuotaEntry[]): Record<string, CloudQuotaModelInfo> {
+function mergeGeminiProQuotaEntries(
+  entries: ModelQuotaEntry[],
+): Record<string, CloudQuotaModelInfo> {
   const mergedModels: Record<string, CloudQuotaModelInfo> = {};
   const hasProLowModel = entries.some(([modelName]) => isGeminiProLowModel(modelName));
   const hasProHighModel = entries.some(([modelName]) => isGeminiProHighModel(modelName));
@@ -96,9 +103,18 @@ function mergeGeminiProQuotaEntries(entries: ModelQuotaEntry[]): Record<string, 
       const mergedPercentage = proLowModelInfo
         ? Math.min(modelInfo.percentage, proLowModelInfo.percentage)
         : modelInfo.percentage;
+
       mergedModels[GEMINI_PRO_COMBINED_MODEL_ID] = {
         ...modelInfo,
+        ...proLowModelInfo,
         percentage: mergedPercentage,
+        display_name: 'Gemini 3.1 Pro',
+        resetTime:
+          modelInfo.resetTime && proLowModelInfo?.resetTime
+            ? modelInfo.resetTime < proLowModelInfo.resetTime
+              ? modelInfo.resetTime
+              : proLowModelInfo.resetTime
+            : modelInfo.resetTime || proLowModelInfo?.resetTime || '',
       };
       continue;
     }
@@ -148,13 +164,16 @@ export function CloudAccountCard({
   isSwitching,
 }: CloudAccountCardProps) {
   const { t } = useTranslation();
-  const { config } = useAppConfig();
+  const { config, saveConfig } = useAppConfig();
   const {
     enabled: providerGroupingsEnabled,
     getAccountStats,
     isProviderCollapsed,
     toggleProviderCollapse,
   } = useProviderGrouping();
+  const setAccountProxy = useSetAccountProxy();
+  const [proxyUrl, setProxyUrl] = useState(account.proxy_url || '');
+  const [proxySaved, setProxySaved] = useState(false);
 
   const getQuotaTextColorClass = (percentage: number) => {
     const quotaStatus = getQuotaStatus(percentage);
@@ -183,6 +202,8 @@ export function CloudAccountCard({
   const formatResetTimeTitleText = (resetTime?: string) => {
     return formatResetTimeTitle(resetTime, t('cloud.card.resetTime'));
   };
+
+  const allModelEntries = Object.entries(account.quota?.models || {}) as ModelQuotaEntry[];
 
   const visibleModelEntries = Object.entries(account.quota?.models || {}).filter(
     ([modelName]) => config?.model_visibility?.[modelName] !== false,
@@ -265,7 +286,9 @@ export function CloudAccountCard({
         <div className="bg-muted/40 flex items-center justify-between rounded-lg px-3 py-1.5 text-xs">
           <span className="font-medium">{t('settings.providerGroupings.overall')}</span>
           <div className="flex items-center gap-2">
-            <span className={`font-mono font-bold ${getQuotaTextColorClass(providerStats.overallPercentage)}`}>
+            <span
+              className={`font-mono font-bold ${getQuotaTextColorClass(providerStats.overallPercentage)}`}
+            >
               {formatQuotaLabel(providerStats.overallPercentage)}
             </span>
             <div className="bg-muted h-1.5 w-16 overflow-hidden rounded-full">
@@ -278,24 +301,39 @@ export function CloudAccountCard({
             </div>
           </div>
         </div>
-        {providerStats.providers.map((statsByProvider) => (
-          <ProviderGroup
-            key={statsByProvider.providerKey}
-            stats={statsByProvider}
-            isCollapsed={isProviderCollapsed(account.id, statsByProvider.providerKey)}
-            onToggleCollapse={() => toggleProviderCollapse(account.id, statsByProvider.providerKey)}
-            getQuotaTextColorClass={getQuotaTextColorClass}
-            getQuotaBarColorClass={getQuotaBarColorClass}
-            formatQuotaLabel={formatQuotaLabel}
-            formatResetTimeLabel={formatResetTimeLabelText}
-            formatResetTimeTitle={formatResetTimeTitleText}
-            leftLabel={t('cloud.card.left')}
-          />
-        ))}
+
+        <div className="mt-3 space-y-2">
+          {providerStats.providers.map((group) => (
+            <ProviderGroup
+              key={group.providerKey}
+              stats={group}
+              isCollapsed={isProviderCollapsed(account.id, group.providerKey)}
+              onToggleCollapse={() => toggleProviderCollapse(account.id, group.providerKey)}
+              getQuotaTextColorClass={getQuotaTextColorClass}
+              getQuotaBarColorClass={getQuotaBarColorClass}
+              formatQuotaLabel={formatQuotaLabel}
+              formatResetTimeLabel={formatResetTimeLabelText}
+              formatResetTimeTitle={formatResetTimeTitleText}
+              leftLabel={t('cloud.card.left')}
+            />
+          ))}
+        </div>
       </>
     ) : (
       emptyQuotaState
     );
+
+  const aiCredits = account.quota?.ai_credits;
+
+  const formatCreditsExpiry = (expiryDate: string) => {
+    if (!expiryDate) return '';
+    try {
+      const date = new Date(expiryDate);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch {
+      return expiryDate;
+    }
+  };
 
   return (
     <Card
@@ -330,7 +368,71 @@ export function CloudAccountCard({
             {account.name || t('cloud.card.unknown')}
           </CardTitle>
           <CardDescription className="truncate text-xs">{account.email}</CardDescription>
+
+          {aiCredits && aiCredits.credits > 0 && (
+            <div className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-500">
+              <span>${aiCredits.credits.toFixed(2)}</span>
+              {aiCredits.expiryDate && (
+                <span className="text-muted-foreground opacity-70">
+                  ·{' '}
+                  {t('cloud.card.creditsExpiry', {
+                    date: formatCreditsExpiry(aiCredits.expiryDate),
+                  })}
+                </span>
+              )}
+            </div>
+          )}
         </div>
+
+        {allModelEntries.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 cursor-pointer rounded-full">
+                {(() => {
+                  const hiddenCount = allModelEntries.filter(
+                    ([modelName]) => config?.model_visibility?.[modelName] === false,
+                  ).length;
+                  return hiddenCount > 0 ? (
+                    <EyeOff className="text-muted-foreground h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  );
+                })()}
+                <span className="sr-only">{t('cloud.card.modelVisibility')}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-64" align="end">
+              <DropdownMenuLabel>{t('cloud.card.modelVisibility')}</DropdownMenuLabel>
+              <div className="max-h-64 overflow-auto px-2 py-1">
+                {allModelEntries.map(([modelName]) => {
+                  const isVisible = config?.model_visibility?.[modelName] !== false;
+                  return (
+                    <DropdownMenuItem
+                      key={modelName}
+                      onSelect={(e) => e.preventDefault()}
+                      className="flex cursor-pointer items-center gap-2"
+                    >
+                      <Checkbox
+                        checked={isVisible}
+                        onCheckedChange={(checked) => {
+                          if (config) {
+                            const newVisibility = { ...config.model_visibility };
+                            newVisibility[modelName] = checked as boolean;
+                            saveConfig({ ...config, model_visibility: newVisibility });
+                          }
+                        }}
+                      />
+                      <span className="truncate text-xs" title={modelName}>
+                        {formatModelDisplayName(modelName)}
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8 cursor-pointer rounded-full">
@@ -440,7 +542,288 @@ export function CloudAccountCard({
           {t('cloud.card.used')}{' '}
           {formatDistanceToNow(account.last_used * 1000, { addSuffix: true })}
         </span>
+        <div className="flex items-center gap-2">
+          <Input
+            value={proxyUrl}
+            onChange={(e) => {
+              setProxyUrl(e.target.value);
+              setProxySaved(false);
+            }}
+            onBlur={() => {
+              const trimmed = proxyUrl.trim();
+              if (trimmed && !isValidProxyUrl(trimmed)) {
+                setProxyUrl(account.proxy_url || '');
+                return;
+              }
+              if (trimmed !== (account.proxy_url || '')) {
+                setAccountProxy.mutate({
+                  accountId: account.id,
+                  proxyUrl: trimmed || null,
+                });
+                setProxySaved(true);
+                setTimeout(() => setProxySaved(false), 2000);
+              }
+            }}
+            placeholder={t('cloud.card.proxyPlaceholder')}
+            className="h-6 w-40 text-xs"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.currentTarget.blur();
+              }
+            }}
+          />
+          {proxySaved && (
+            <span className="text-[10px] text-green-500">{t('cloud.card.proxySaved')}</span>
+          )}
+        </div>
       </CardFooter>
     </Card>
+  );
+}
+
+interface CompactCloudAccountCardProps {
+  account: CloudAccount;
+  onRefresh: (id: string) => void;
+  onDelete: (id: string) => void;
+  onSwitch: (id: string) => void;
+  onManageIdentity: (id: string) => void;
+  isRefreshing?: boolean;
+  isDeleting?: boolean;
+  isSwitching?: boolean;
+}
+
+export function CompactCloudAccountCard({
+  account,
+  onRefresh,
+  onDelete,
+  onSwitch,
+  onManageIdentity,
+  isRefreshing,
+  isDeleting,
+  isSwitching,
+}: CompactCloudAccountCardProps) {
+  const { t } = useTranslation();
+  const { config, saveConfig } = useAppConfig();
+
+  const getQuotaBarColorClass = (percentage: number) => {
+    const quotaStatus = getQuotaStatus(percentage);
+    return QUOTA_BAR_COLOR_CLASS_BY_STATUS[quotaStatus];
+  };
+
+  const visibleModelEntries = Object.entries(account.quota?.models || {}).filter(
+    ([modelName]) => config?.model_visibility?.[modelName] !== false,
+  ) as ModelQuotaEntry[];
+
+  const allModelEntries = Object.entries(account.quota?.models || {}) as ModelQuotaEntry[];
+
+  const mergedModelQuotas = mergeGeminiProQuotaEntries(visibleModelEntries);
+
+  const compactModels = Object.entries(mergedModelQuotas).sort(
+    (a, b) => b[1].percentage - a[1].percentage,
+  );
+
+  const aiCredits = account.quota?.ai_credits;
+
+  const formatCreditsExpiry = (expiryDate: string) => {
+    if (!expiryDate) return '';
+    try {
+      const date = new Date(expiryDate);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch {
+      return expiryDate;
+    }
+  };
+
+  return (
+    <div className="group bg-card hover:border-primary/40 flex items-center gap-3 rounded-lg border px-3 py-2 transition-all duration-200">
+      {account.avatar_url ? (
+        <img
+          src={account.avatar_url}
+          alt={account.name || ''}
+          className="bg-muted h-7 w-7 rounded-full border"
+        />
+      ) : (
+        <div className="bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold">
+          {account.name?.[0]?.toUpperCase() || 'A'}
+        </div>
+      )}
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-semibold">
+            {account.name || t('cloud.card.unknown')}
+          </span>
+          <Badge
+            variant={account.status === 'rate_limited' ? 'destructive' : 'outline'}
+            className="shrink-0 text-[10px]"
+          >
+            {account.provider.toUpperCase()}
+          </Badge>
+          {account.is_active && (
+            <Badge
+              variant="default"
+              className="shrink-0 bg-green-500 text-[10px] hover:bg-green-600"
+            >
+              {t('cloud.card.active')}
+            </Badge>
+          )}
+        </div>
+
+        <div className="text-muted-foreground flex items-center gap-3 text-xs">
+          <span className="truncate">{account.email}</span>
+
+          {aiCredits && aiCredits.credits > 0 && (
+            <span className="shrink-0 text-amber-500">
+              ${aiCredits.credits.toFixed(2)}
+              {aiCredits.expiryDate && (
+                <span className="text-muted-foreground">
+                  {' '}
+                  ·{' '}
+                  {t('cloud.card.creditsExpiry', {
+                    date: formatCreditsExpiry(aiCredits.expiryDate),
+                  })}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+
+        {compactModels.length > 0 && (
+          <div className="mt-1 flex items-center gap-1">
+            {compactModels.map(([modelName, info]) => (
+              <TooltipProvider key={modelName}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="bg-muted h-1.5 w-12 overflow-hidden rounded-full">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${getQuotaBarColorClass(info.percentage)}`}
+                        style={{ width: `${clampQuotaPercentage(info.percentage)}%` }}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">
+                      {formatModelDisplayName(modelName)}: {info.percentage}%
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        {allModelEntries.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer rounded-full">
+                {(() => {
+                  const hiddenCount = allModelEntries.filter(
+                    ([modelName]) => config?.model_visibility?.[modelName] === false,
+                  ).length;
+                  return hiddenCount > 0 ? (
+                    <EyeOff className="text-muted-foreground h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  );
+                })()}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-64" align="end">
+              <DropdownMenuLabel>{t('cloud.card.modelVisibility')}</DropdownMenuLabel>
+              <div className="max-h-64 overflow-auto px-2 py-1">
+                {allModelEntries.map(([modelName]) => {
+                  const isVisible = config?.model_visibility?.[modelName] !== false;
+                  return (
+                    <DropdownMenuItem
+                      key={modelName}
+                      onSelect={(e) => e.preventDefault()}
+                      className="flex cursor-pointer items-center gap-2"
+                    >
+                      <Checkbox
+                        checked={isVisible}
+                        onCheckedChange={(checked) => {
+                          if (config) {
+                            const newVisibility = { ...config.model_visibility };
+                            newVisibility[modelName] = checked as boolean;
+                            saveConfig({ ...config, model_visibility: newVisibility });
+                          }
+                        }}
+                      />
+                      <span className="truncate text-xs" title={modelName}>
+                        {formatModelDisplayName(modelName)}
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        {account.is_active ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled
+            className="h-7 text-xs text-green-600 opacity-100"
+          >
+            <Power className="mr-1 h-3 w-3" />
+            {t('cloud.card.active')}
+          </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onSwitch(account.id)}
+            disabled={isSwitching}
+            className="h-7 cursor-pointer text-xs"
+          >
+            {isSwitching ? (
+              <RefreshCw className="h-3 w-3 animate-spin" />
+            ) : (
+              <Power className="mr-1 h-3 w-3" />
+            )}
+            {t('cloud.card.use')}
+          </Button>
+        )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer rounded-full">
+              <MoreVertical className="h-3.5 w-3.5" />
+              <span className="sr-only">Menu</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>{t('cloud.card.actions')}</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => onSwitch(account.id)} disabled={isSwitching}>
+              <Power className="mr-2 h-4 w-4" />
+              {t('cloud.card.useAccount')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onRefresh(account.id)} disabled={isRefreshing}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              {t('cloud.card.refresh')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onManageIdentity(account.id)}>
+              <Fingerprint className="mr-2 h-4 w-4" />
+              {t('cloud.card.identityProfile')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => onDelete(account.id)}
+              className="text-destructive focus:text-destructive"
+              disabled={isDeleting}
+            >
+              <Trash className="mr-2 h-4 w-4" />
+              {t('cloud.card.delete')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 }

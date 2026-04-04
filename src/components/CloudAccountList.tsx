@@ -9,16 +9,23 @@ import {
   useForcePollCloudMonitor,
   useSyncLocalAccount,
   startAuthFlow,
+  useExportCloudAccounts,
+  useImportCloudAccounts,
 } from '@/hooks/useCloudAccounts';
-import { CloudAccountCard } from '@/components/CloudAccountCard';
+import { CloudAccountCard, CompactCloudAccountCard } from '@/components/CloudAccountCard';
 import { IdentityProfileDialog } from '@/components/IdentityProfileDialog';
 import { CloudAccount } from '@/types/cloudAccount';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 import {
   Plus,
-  Loader2,
   Cloud,
   Zap,
   RefreshCcw,
@@ -31,6 +38,12 @@ import {
   List,
   Columns2,
   Columns3,
+  SortAsc,
+  LayoutList,
+  Upload,
+  FileDown,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import {
@@ -49,21 +62,30 @@ import { useTranslation } from 'react-i18next';
 import { getLocalizedErrorMessage } from '@/utils/errorMessages';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { filter, flatMap, isEmpty, size, sumBy } from 'lodash-es';
 import {
   clampQuotaPercentage,
   getQuotaStatus,
   roundQuotaPercentage,
+  getAccountSortValue,
   type QuotaStatus,
 } from '@/utils/quota-display';
 
-export type GridLayout = 'auto' | '2-col' | '3-col' | 'list';
+export type GridLayout = 'auto' | '2-col' | '3-col' | 'list' | 'compact';
 
 const GRID_LAYOUT_CLASSES: Record<GridLayout, string> = {
   auto: 'grid gap-4 md:grid-cols-2 xl:grid-cols-3',
   '2-col': 'grid gap-4 grid-cols-2',
   '3-col': 'grid gap-4 grid-cols-3',
   list: 'grid gap-4 grid-cols-1',
+  compact: 'flex flex-col gap-2',
 };
 
 const GLOBAL_QUOTA_BAR_COLOR_CLASS_BY_STATUS: Record<QuotaStatus, string> = {
@@ -103,6 +125,43 @@ export function CloudAccountList() {
     }
   };
 
+  const sortOptions = [
+    'recently-used',
+    'quota-overall',
+    'quota-claude',
+    'quota-pro3',
+    'quota-flash',
+  ] as const;
+  type SortOption = (typeof sortOptions)[number];
+  const currentSort: SortOption = (config?.account_sort as SortOption) || 'recently-used';
+  const sortI18nKeys: Record<SortOption, string> = {
+    'recently-used': 'cloud.sort.recentlyUsed',
+    'quota-overall': 'cloud.sort.quotaOverall',
+    'quota-claude': 'cloud.sort.quotaClaude',
+    'quota-pro3': 'cloud.sort.quotaPro3',
+    'quota-flash': 'cloud.sort.quotaFlash',
+  };
+
+  const sortedAccounts = useMemo(() => {
+    if (!accounts || accounts.length === 0) return [];
+
+    const activeAccounts = accounts.filter((a) => a.is_active);
+    const otherAccounts = accounts.filter((a) => !a.is_active);
+
+    const sortedActive = [...activeAccounts].sort((a, b) => {
+      return (b.last_used ?? 0) - (a.last_used ?? 0);
+    });
+
+    const sortedOthers = [...otherAccounts].sort((a, b) => {
+      if (currentSort === 'recently-used') {
+        return (b.last_used ?? 0) - (a.last_used ?? 0);
+      }
+      return getAccountSortValue(b, currentSort) - getAccountSortValue(a, currentSort);
+    });
+
+    return [...sortedActive, ...sortedOthers];
+  }, [accounts, currentSort]);
+
   // Calculate global quota across all accounts
   const overallQuotaPercentage = useMemo(() => {
     if (!accounts || accounts.length === 0) {
@@ -137,6 +196,16 @@ export function CloudAccountList() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [authCode, setAuthCode] = useState('');
   const [identityAccount, setIdentityAccount] = useState<CloudAccount | null>(null);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importStrategy, setImportStrategy] = useState<'merge' | 'overwrite' | 'skip-existing'>(
+    'merge',
+  );
+  const [importFileContent, setImportFileContent] = useState<string | null>(null);
+  const [importFileName, setImportFileName] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const exportMutation = useExportCloudAccounts();
+  const importMutation = useImportCloudAccounts();
   const totalAccounts = size(accounts);
   const activeAccounts = filter(accounts, (account) => account.is_active).length;
   const rateLimitedAccounts = filter(
@@ -144,29 +213,32 @@ export function CloudAccountList() {
     (account) => account.status === 'rate_limited',
   ).length;
 
-  const submitAuthCode = useCallback((incomingAuthCode?: string) => {
-    const codeToUse = incomingAuthCode || authCode;
-    if (!codeToUse) {
-      return;
-    }
-    addMutation.mutate(
-      { authCode: codeToUse },
-      {
-        onSuccess: () => {
-          setIsAddDialogOpen(false);
-          setAuthCode('');
-          toast({ title: t('cloud.toast.addSuccess') });
+  const submitAuthCode = useCallback(
+    (incomingAuthCode?: string) => {
+      const codeToUse = incomingAuthCode || authCode;
+      if (!codeToUse) {
+        return;
+      }
+      addMutation.mutate(
+        { authCode: codeToUse },
+        {
+          onSuccess: () => {
+            setIsAddDialogOpen(false);
+            setAuthCode('');
+            toast({ title: t('cloud.toast.addSuccess') });
+          },
+          onError: (err) => {
+            toast({
+              title: t('cloud.toast.addFailed.title'),
+              description: getLocalizedErrorMessage(err, t),
+              variant: 'destructive',
+            });
+          },
         },
-        onError: (err) => {
-          toast({
-            title: t('cloud.toast.addFailed.title'),
-            description: getLocalizedErrorMessage(err, t),
-            variant: 'destructive',
-          });
-        },
-      },
-    );
-  }, [addMutation, authCode, t, toast]);
+      );
+    },
+    [addMutation, authCode, t, toast],
+  );
   // Listen for Google Auth Code
   useEffect(() => {
     if (window.electron?.onGoogleAuthCode) {
@@ -204,6 +276,7 @@ export function CloudAccountList() {
   }, [error, errorUpdatedAt, isError, t, toast]);
 
   const handleRefresh = (id: string) => {
+    console.log(`[Renderer] Triggering refresh for: ${id}`);
     refreshMutation.mutate(
       { accountId: id },
       {
@@ -315,11 +388,117 @@ export function CloudAccountList() {
       await startAuthFlow();
     } catch (e) {
       toast({
-        title: t('cloud.toast.startAuthFailed'), // Need to add this key or just use generic error
+        title: t('cloud.toast.startAuthFailed'),
         description: String(e),
         variant: 'destructive',
       });
     }
+  };
+
+  const handleExport = async (stripTokens: boolean) => {
+    let url: string | null = null;
+    try {
+      const jsonContent: string = await exportMutation.mutateAsync({ stripTokens });
+      const blob = new Blob([jsonContent], { type: 'application/json' });
+      url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cloud-accounts-export-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setIsExportDialogOpen(false);
+      toast({ title: t('cloud.exportImport.exportSuccess') });
+    } catch (error) {
+      toast({
+        title: t('cloud.error.loadFailed'),
+        description: getLocalizedErrorMessage(error, t),
+        variant: 'destructive',
+      });
+    } finally {
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    }
+  };
+
+  const handleImportFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: t('cloud.error.loadFailed'),
+        description: 'File size exceeds 5MB limit',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setImportFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        JSON.parse(content);
+        setImportFileContent(content);
+      } catch (err) {
+        toast({
+          title: t('cloud.error.loadFailed'),
+          description: 'Invalid JSON file format',
+          variant: 'destructive',
+        });
+        setImportFileName('');
+        setImportFileContent(null);
+      }
+    };
+    reader.onerror = () => {
+      toast({
+        title: t('cloud.error.loadFailed'),
+        description: 'Failed to read file',
+        variant: 'destructive',
+      });
+    };
+    reader.readAsText(file);
+    if (e.target) {
+      e.target.value = '';
+    }
+  };
+
+  const handleImport = () => {
+    if (!importFileContent) return;
+    importMutation.mutate(
+      { jsonContent: importFileContent, strategy: importStrategy },
+      {
+        onSuccess: (result) => {
+          setIsImportDialogOpen(false);
+          setImportFileContent(null);
+          setImportFileName('');
+          setImportStrategy('merge');
+          toast({
+            title: t('cloud.exportImport.importSuccess', {
+              imported: result.imported,
+              updated: result.updated,
+              skipped: result.skipped,
+            }),
+          });
+          if (result.errors.length > 0) {
+            toast({
+              title: t('cloud.exportImport.importErrors', { count: result.errors.length }),
+              description: result.errors.slice(0, 3).join('\n'),
+              variant: 'destructive',
+            });
+          }
+        },
+        onError: (err) => {
+          toast({
+            title: t('cloud.error.loadFailed'),
+            description: getLocalizedErrorMessage(err, t),
+            variant: 'destructive',
+          });
+        },
+      },
+    );
   };
 
   // Batch Selection Handlers
@@ -343,26 +522,54 @@ export function CloudAccountList() {
     }
   };
 
-  const refreshSelectedAccounts = () => {
-    selectedIds.forEach((id) => {
-      refreshMutation.mutate({ accountId: id });
-    });
-    toast({
-      title: t('cloud.toast.quotaRefreshed'),
-      description: `Triggered for ${selectedIds.size} accounts.`,
-    });
+  const refreshSelectedAccounts = async () => {
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(
+      ids.map((id) => refreshMutation.mutateAsync({ accountId: id })),
+    );
+
+    const successful = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.filter((r) => r.status === 'rejected').length;
+
+    if (failed === 0) {
+      toast({
+        title: t('cloud.toast.quotaRefreshed'),
+        description: `Successfully refreshed ${successful} accounts.`,
+      });
+    } else {
+      toast({
+        title: `Refresh completed with issues`,
+        description: `Refreshed ${successful} accounts, ${failed} failed.`,
+        variant: 'destructive',
+      });
+    }
+
     setSelectedIds(new Set());
   };
 
-  const deleteSelectedAccounts = () => {
+  const deleteSelectedAccounts = async () => {
     if (confirm(t('cloud.batch.confirmDelete', { count: selectedIds.size }))) {
-      selectedIds.forEach((id) => {
-        deleteMutation.mutate({ accountId: id });
-      });
-      toast({
-        title: t('cloud.toast.deleted'),
-        description: `Deleted ${selectedIds.size} accounts.`,
-      });
+      const ids = Array.from(selectedIds);
+      const results = await Promise.allSettled(
+        ids.map((id) => deleteMutation.mutateAsync({ accountId: id })),
+      );
+
+      const successful = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+
+      if (failed === 0) {
+        toast({
+          title: t('cloud.toast.deleted'),
+          description: `Successfully deleted ${successful} accounts.`,
+        });
+      } else {
+        toast({
+          title: `Deletion completed with issues`,
+          description: `Deleted ${successful} accounts, ${failed} failed.`,
+          variant: 'destructive',
+        });
+      }
+
       setSelectedIds(new Set());
     }
   };
@@ -501,6 +708,117 @@ export function CloudAccountList() {
           {t('cloud.syncFromIDE')}
         </Button>
 
+        <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" className="cursor-pointer">
+              <FileDown className="mr-2 h-4 w-4" />
+              {t('cloud.exportImport.export')}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>{t('cloud.exportImport.exportTitle')}</DialogTitle>
+              <DialogDescription>{t('cloud.exportImport.exportDesc')}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center sm:space-x-0">
+              <Button
+                variant="outline"
+                onClick={() => handleExport(false)}
+                disabled={exportMutation.isPending}
+                className="w-full cursor-pointer sm:flex-1"
+              >
+                {exportMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t('cloud.exportImport.includeTokens')}
+              </Button>
+              <Button
+                onClick={() => handleExport(true)}
+                disabled={exportMutation.isPending}
+                className="w-full cursor-pointer sm:flex-1"
+              >
+                {exportMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t('cloud.exportImport.stripTokens')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={isImportDialogOpen}
+          onOpenChange={(open) => {
+            setIsImportDialogOpen(open);
+            if (!open) {
+              setImportFileContent(null);
+              setImportFileName('');
+              setImportStrategy('merge');
+            }
+          }}
+        >
+          <DialogTrigger asChild>
+            <Button variant="outline" className="cursor-pointer">
+              <Upload className="mr-2 h-4 w-4" />
+              {t('cloud.exportImport.import')}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>{t('cloud.exportImport.importTitle')}</DialogTitle>
+              <DialogDescription>{t('cloud.exportImport.importDesc')}</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>{t('cloud.exportImport.selectFile')}</Label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleImportFileSelect}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="cursor-pointer"
+                >
+                  {importFileName || t('cloud.exportImport.selectFile')}
+                </Button>
+              </div>
+              <div className="grid gap-2">
+                <Label>{t('cloud.exportImport.importStrategy')}</Label>
+                <Select
+                  value={importStrategy}
+                  onValueChange={(v: 'merge' | 'overwrite' | 'skip-existing') =>
+                    setImportStrategy(v)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="merge">{t('cloud.exportImport.strategyMerge')}</SelectItem>
+                    <SelectItem value="overwrite">
+                      {t('cloud.exportImport.strategyOverwrite')}
+                    </SelectItem>
+                    <SelectItem value="skip-existing">
+                      {t('cloud.exportImport.strategySkip')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={handleImport}
+                disabled={!importFileContent || importMutation.isPending}
+              >
+                {importMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {importMutation.isPending
+                  ? t('cloud.exportImport.importing')
+                  : t('cloud.exportImport.import')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button className="cursor-pointer">
@@ -508,7 +826,7 @@ export function CloudAccountList() {
               {t('cloud.addAccount')}
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>{t('cloud.authDialog.title')}</DialogTitle>
               <DialogDescription>{t('cloud.authDialog.description')}</DialogDescription>
@@ -543,7 +861,35 @@ export function CloudAccountList() {
           </DialogContent>
         </Dialog>
 
-        {/* Layout Selector */}
+        {/* Sort + Layout Selector */}
+        <div className="flex items-center gap-1 rounded-md border p-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer">
+                <SortAsc className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56" side="bottom" sideOffset={8}>
+              {sortOptions.map((option) => (
+                <DropdownMenuItem
+                  key={option}
+                  className="cursor-pointer"
+                  onClick={async () => {
+                    if (config) {
+                      await saveConfig({ ...config, account_sort: option });
+                    }
+                  }}
+                >
+                  {currentSort === option && <Check className="mr-2 h-4 w-4" />}
+                  <span className={currentSort === option ? '' : 'ml-6'}>
+                    {t(sortI18nKeys[option])}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
         <div className="ml-auto flex items-center gap-1 rounded-md border p-1">
           <TooltipProvider delayDuration={0}>
             <Tooltip>
@@ -598,34 +944,67 @@ export function CloudAccountList() {
               </TooltipTrigger>
               <TooltipContent>{t('cloud.layout.list')}</TooltipContent>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={gridLayout === 'compact' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  className="h-7 w-7 cursor-pointer"
+                  onClick={() => updateGridLayout('compact')}
+                >
+                  <LayoutList className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('cloud.layout.compact')}</TooltipContent>
+            </Tooltip>
           </TooltipProvider>
         </div>
       </div>
 
       <div className={GRID_LAYOUT_CLASSES[gridLayout]}>
-        {accounts?.map((account) => (
-          <CloudAccountCard
-            key={account.id}
-            account={account}
-            onRefresh={handleRefresh}
-            onDelete={handleDelete}
-            onSwitch={handleSwitch}
-            onManageIdentity={handleManageIdentity}
-            isSelected={selectedIds.has(account.id)}
-            onToggleSelection={setSelectionState}
-            isRefreshing={
-              refreshMutation.isPending && refreshMutation.variables?.accountId === account.id
-            }
-            isDeleting={
-              deleteMutation.isPending && deleteMutation.variables?.accountId === account.id
-            }
-            isSwitching={
-              switchMutation.isPending && switchMutation.variables?.accountId === account.id
-            }
-          />
-        ))}
+        {sortedAccounts.map((account) =>
+          gridLayout === 'compact' ? (
+            <CompactCloudAccountCard
+              key={account.id}
+              account={account}
+              onRefresh={handleRefresh}
+              onDelete={handleDelete}
+              onSwitch={handleSwitch}
+              onManageIdentity={handleManageIdentity}
+              isRefreshing={
+                refreshMutation.isPending && refreshMutation.variables?.accountId === account.id
+              }
+              isDeleting={
+                deleteMutation.isPending && deleteMutation.variables?.accountId === account.id
+              }
+              isSwitching={
+                switchMutation.isPending && switchMutation.variables?.accountId === account.id
+              }
+            />
+          ) : (
+            <CloudAccountCard
+              key={account.id}
+              account={account}
+              onRefresh={handleRefresh}
+              onDelete={handleDelete}
+              onSwitch={handleSwitch}
+              onManageIdentity={handleManageIdentity}
+              isSelected={selectedIds.has(account.id)}
+              onToggleSelection={setSelectionState}
+              isRefreshing={
+                refreshMutation.isPending && refreshMutation.variables?.accountId === account.id
+              }
+              isDeleting={
+                deleteMutation.isPending && deleteMutation.variables?.accountId === account.id
+              }
+              isSwitching={
+                switchMutation.isPending && switchMutation.variables?.accountId === account.id
+              }
+            />
+          ),
+        )}
 
-        {accounts?.length === 0 && (
+        {sortedAccounts.length === 0 && (
           <div className="text-muted-foreground bg-muted/20 col-span-full rounded-lg border border-dashed py-14 text-center">
             <Cloud className="mx-auto mb-3 h-10 w-10 opacity-40" />
             <div className="text-sm">{t('cloud.list.noAccounts')}</div>

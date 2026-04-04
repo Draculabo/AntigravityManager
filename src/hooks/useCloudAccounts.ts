@@ -4,6 +4,7 @@ import {
   addGoogleAccount,
   deleteCloudAccount,
   refreshAccountQuota,
+  setAccountProxy,
 } from '@/actions/cloud';
 import { CloudAccount } from '@/types/cloudAccount';
 
@@ -120,3 +121,41 @@ export function useSyncLocalAccount() {
 
 import { startAuthFlow } from '@/actions/cloud';
 export { startAuthFlow };
+
+export function useSetAccountProxy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setAccountProxy,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+    },
+    onError: (error: any) => {
+      console.error('[Mutation] setAccountProxy failed:', error);
+    },
+  });
+}
+
+import { exportCloudAccounts, importCloudAccounts } from '@/actions/cloud';
+
+export function useExportCloudAccounts() {
+  return useMutation<string, Error, { stripTokens?: boolean }>({
+    mutationFn: exportCloudAccounts,
+  });
+}
+
+export function useImportCloudAccounts() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { imported: number; skipped: number; updated: number; errors: string[] },
+    Error,
+    { jsonContent: string; strategy?: 'merge' | 'overwrite' | 'skip-existing' }
+  >({
+    mutationFn: importCloudAccounts,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+    },
+    onError: (error: any) => {
+      console.error('[Mutation] importCloudAccounts failed:', error);
+    },
+  });
+}

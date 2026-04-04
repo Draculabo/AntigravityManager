@@ -70,11 +70,7 @@ const CLAUDE_TO_GEMINI: Record<string, string> = {
 const DYNAMIC_IMAGE_BASE_MODEL = 'gemini-3-pro-image';
 const DYNAMIC_IMAGE_RESOLUTIONS = ['', '-2k', '-4k'];
 const DYNAMIC_IMAGE_RATIOS = ['', '-1x1', '-4x3', '-3x4', '-16x9', '-9x16', '-21x9'];
-const EXTRA_DYNAMIC_MODELS = [
-  'gemini-3-flash',
-  'gemini-3.1-pro-high',
-  'gemini-3.1-pro-low',
-];
+const EXTRA_DYNAMIC_MODELS = ['gemini-3-flash', 'gemini-3.1-pro-high', 'gemini-3.1-pro-low'];
 
 const DYNAMIC_MODEL_FORWARDING_RULES = new Map<string, string>();
 
@@ -95,13 +91,18 @@ export function getSupportedModels(): string[] {
 }
 
 export function updateDynamicForwardingRules(oldModel: string, newModel: string): void {
+  if (typeof oldModel !== 'string' || typeof newModel !== 'string') {
+    return;
+  }
   const normalizedOld = oldModel.trim();
   const normalizedNew = newModel.trim();
   if (!normalizedOld || !normalizedNew) {
     return;
   }
   if (!DYNAMIC_MODEL_FORWARDING_RULES.has(normalizedOld)) {
-    logger.info(`[Router] Registered dynamic forwarding rule: ${normalizedOld} -> ${normalizedNew}`);
+    logger.info(
+      `[Router] Registered dynamic forwarding rule: ${normalizedOld} -> ${normalizedNew}`,
+    );
   }
   DYNAMIC_MODEL_FORWARDING_RULES.set(normalizedOld, normalizedNew);
 }
@@ -142,12 +143,13 @@ export function getAllDynamicModels(
     }
   }
 
-  return [...modelIds]
-    .filter((id) => !shouldHideDeprecatedModelFromList(id))
-    .sort();
+  return [...modelIds].filter((id) => !shouldHideDeprecatedModelFromList(id)).sort();
 }
 
 export function mapClaudeModelToGemini(input: string): string {
+  if (!input || typeof input !== 'string') {
+    return '';
+  }
   const mappedModel = CLAUDE_TO_GEMINI[input];
   if (mappedModel) {
     return mappedModel;
@@ -172,8 +174,10 @@ export function resolveModelRoute(
   anthropicMapping: Record<string, string>,
 ): string {
   const dynamicForwarded = getDynamicForwardingTarget(originalModel);
-  if (dynamicForwarded) {
-    logger.info(`[Router] Dynamic deprecated-model forwarding: ${originalModel} -> ${dynamicForwarded}`);
+  if (dynamicForwarded && getSupportedModels().includes(dynamicForwarded)) {
+    logger.info(
+      `[Router] Dynamic deprecated-model forwarding: ${originalModel} -> ${dynamicForwarded}`,
+    );
     return dynamicForwarded;
   }
 

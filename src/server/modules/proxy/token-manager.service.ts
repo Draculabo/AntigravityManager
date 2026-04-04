@@ -435,6 +435,10 @@ export class TokenManagerService implements OnModuleInit {
     return candidates.find(([accountId]) => accountId === stickyBinding.accountId) ?? null;
   }
 
+  public resetSelectionState(): void {
+    this.currentIndex = 0;
+  }
+
   private pickRoundRobinEntry(candidates: TokenEntry[]): TokenEntry | null {
     if (candidates.length === 0) {
       return null;
@@ -507,10 +511,7 @@ export class TokenManagerService implements OnModuleInit {
 
     const stickyBinding = this.getValidSessionBinding(sessionKey, now);
     if (stickyBinding && mode === 'cache-first') {
-      const waitSec = this.rateLimitTracker.getRemainingWaitSeconds(
-        stickyBinding.accountId,
-        model,
-      );
+      const waitSec = this.rateLimitTracker.getRemainingWaitSeconds(stickyBinding.accountId, model);
       const waitMs = waitSec * 1000;
       const maxWaitMs = this.getMaxWaitDurationMs();
       if (waitMs > 0 && waitMs <= maxWaitMs) {
@@ -586,18 +587,18 @@ export class TokenManagerService implements OnModuleInit {
   ): void {
     const now = Date.now();
     const legacyAccountId = this.predictLegacyAccountCandidateId(allTokens, sessionKey, now);
-    const parityAccountId = this.predictParityAccountCandidateId(
-      allTokens,
-      sessionKey,
-      model,
-      now,
-    );
+    const parityAccountId = this.predictParityAccountCandidateId(allTokens, sessionKey, model, now);
+
+    this.updateShadowStats(legacyAccountId, parityAccountId);
+  }
+
+  private updateShadowStats(legacyId: string | null, parityId: string | null): void {
     this.shadowComparisonCount++;
 
-    if (legacyAccountId !== parityAccountId) {
+    if (legacyId !== parityId) {
       this.shadowMismatchCount++;
       this.logger.warn(
-        `Parity shadow mismatch detected: legacy=${legacyAccountId ?? 'n/a'}, parity=${parityAccountId ?? 'n/a'}`,
+        `Parity shadow mismatch detected: legacy=${legacyId ?? 'n/a'}, parity=${parityId ?? 'n/a'}`,
       );
     }
 

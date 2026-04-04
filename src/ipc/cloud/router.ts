@@ -18,10 +18,12 @@ import {
   setAutoSwitchEnabled,
   forcePollCloudMonitor,
   startAuthFlow,
+  exportCloudAccounts,
+  importCloudAccounts,
 } from './handler';
+import { CloudAccountRepo } from '../database/cloudHandler';
 import { CloudAccountSchema } from '../../types/cloudAccount';
 import { DeviceProfileSchema, DeviceProfilesSnapshotSchema } from '../../types/account';
-import { CloudAccountRepo } from '../database/cloudHandler';
 import { logger } from '../../utils/logger';
 import { getSwitchMetricsSnapshot } from '../switchMetrics';
 import { getSwitchGuardSnapshot } from '../switchGuard';
@@ -117,6 +119,18 @@ export const cloudRouter = os.router({
     await startAuthFlow();
   }),
 
+  setAccountProxy: os
+    .input(z.object({ accountId: z.string(), proxyUrl: z.string().nullable() }))
+    .output(z.void())
+    .handler(async ({ input }) => {
+      try {
+        await CloudAccountRepo.setAccountProxy(input.accountId, input.proxyUrl);
+      } catch (error: any) {
+        logger.error('[ORPC] setAccountProxy error:', error.message, error.stack);
+        throw error;
+      }
+    }),
+
   syncLocalAccount: os.output(CloudAccountSchema.nullable()).handler(async () => {
     try {
       const result = await CloudAccountRepo.syncFromIDE();
@@ -185,4 +199,40 @@ export const cloudRouter = os.router({
   openIdentityStorageFolder: os.output(z.void()).handler(async () => {
     await openCloudIdentityStorageFolder();
   }),
+
+  exportCloudAccounts: os
+    .input(z.object({ stripTokens: z.boolean().default(false) }))
+    .output(z.string())
+    .handler(async ({ input }) => {
+      try {
+        return await exportCloudAccounts(input.stripTokens);
+      } catch (error: any) {
+        logger.error('[ORPC] exportCloudAccounts error:', error.message, error.stack);
+        throw error;
+      }
+    }),
+
+  importCloudAccounts: os
+    .input(
+      z.object({
+        jsonContent: z.string(),
+        strategy: z.enum(['merge', 'overwrite', 'skip-existing']).default('merge'),
+      }),
+    )
+    .output(
+      z.object({
+        imported: z.number(),
+        skipped: z.number(),
+        updated: z.number(),
+        errors: z.array(z.string()),
+      }),
+    )
+    .handler(async ({ input }) => {
+      try {
+        return await importCloudAccounts(input.jsonContent, input.strategy);
+      } catch (error: any) {
+        logger.error('[ORPC] importCloudAccounts error:', error.message, error.stack);
+        throw error;
+      }
+    }),
 });

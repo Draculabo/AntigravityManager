@@ -260,8 +260,12 @@ describe('ProxyController Integration', () => {
     );
 
     const callArg = proxyService.handleChatCompletions.mock.calls[0][0];
-    const assistantMessage = callArg.messages.find((message: { role: string }) => message.role === 'assistant');
-    const toolMessage = callArg.messages.find((message: { role: string }) => message.role === 'tool');
+    const assistantMessage = callArg.messages.find(
+      (message: { role: string }) => message.role === 'assistant',
+    );
+    const toolMessage = callArg.messages.find(
+      (message: { role: string }) => message.role === 'tool',
+    );
 
     expect(assistantMessage?.tool_calls?.[0]?.function?.name).toBe('builtin_web_search');
     expect(toolMessage?.name).toBe('builtin_web_search');

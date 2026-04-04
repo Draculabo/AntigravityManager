@@ -1,8 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { CloudAccountRepo } from '../../ipc/database/cloudHandler';
 import { GoogleAPIService } from '../../services/GoogleAPIService';
-import { CloudAccount } from '../../types/cloudAccount';
+import { CloudAccount, CloudAccountExportSchema } from '../../types/cloudAccount';
 import { logger } from '../../utils/logger';
+import { AuthServer } from './authServer';
 
 import { shell } from 'electron';
 import fs from 'fs';
@@ -22,8 +23,7 @@ import { executeSwitchFlow } from '../../ipc/switchFlow';
 import type { DeviceProfile, DeviceProfilesSnapshot } from '../../types/account';
 
 // Fallback constants if service constants are not available or for direct usage
-const CLIENT_ID = '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com';
-const REDIRECT_URI = 'http://localhost:8888/oauth-callback';
+const CLIENT_ID = '1071006060591-tmhssin21lcre235vtolojh4g403ep.apps.googleusercontent.com';
 const SCOPE = [
   'https://www.googleapis.com/auth/cloud-platform',
   'https://www.googleapis.com/auth/userinfo.email',
@@ -52,7 +52,13 @@ export async function addGoogleAccount(authCode: string): Promise<CloudAccount> 
     // 2. Get User Info
     const userInfo = await GoogleAPIService.getUserInfo(tokenResp.access_token);
 
-    // 3. Construct CloudAccount Object
+    // 3. Check for existing account
+    const existing = await CloudAccountRepo.getAccountByEmail(userInfo.email);
+    if (existing) {
+      throw new Error(`Account with email ${userInfo.email} already exists.`);
+    }
+
+    // 4. Construct CloudAccount Object
     const now = Math.floor(Date.now() / 1000);
     const account: CloudAccount = {
       id: uuidv4(),
@@ -62,7 +68,7 @@ export async function addGoogleAccount(authCode: string): Promise<CloudAccount> 
       avatar_url: userInfo.picture,
       token: {
         access_token: tokenResp.access_token,
-        refresh_token: tokenResp.refresh_token || '', // prompt=consent guarantees this, but we fallback safely
+        refresh_token: tokenResp.refresh_token || '',
         expires_in: tokenResp.expires_in,
         expiry_timestamp: now + tokenResp.expires_in,
         token_type: tokenResp.token_type,
@@ -76,10 +82,8 @@ export async function addGoogleAccount(authCode: string): Promise<CloudAccount> 
       logger.warn(`No refresh token received for ${account.email}. Account will expire in 1 hour.`);
     }
 
-    // 4. Save to DB
     await CloudAccountRepo.addAccount(account);
 
-    // 5. Initial Quota Check (Async, best effort)
     try {
       const quota = await GoogleAPIService.fetchQuota(account.token.access_token);
       account.quota = quota;
@@ -110,40 +114,56 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
     throw new Error(`Account not found: ${accountId}`);
   }
 
-  // Check if token needs refresh
   let now = Math.floor(Date.now() / 1000);
   if (account.token.expiry_timestamp < now + 300) {
-    // 5 minutes buffer
     logger.info(`Token for ${account.email} near expiry, refreshing...`);
     try {
-      const newTokenData = await GoogleAPIService.refreshAccessToken(account.token.refresh_token);
+      const newTokenData = await GoogleAPIService.refreshAccessToken(
+        account.token.refresh_token,
+        account.proxy_url,
+      );
 
-      // Update token in memory object
       account.token.access_token = newTokenData.access_token;
       account.token.expires_in = newTokenData.expires_in;
       account.token.expiry_timestamp = now + newTokenData.expires_in;
 
-      // Save to DB
       await CloudAccountRepo.updateToken(account.id, account.token);
     } catch (e) {
       logger.error(`Failed to refresh token during time-check for ${account.email}`, e);
+      throw new Error(`Token refresh failed for ${account.email}. Please try logging in again.`);
     }
   }
 
   try {
-    const quota = await GoogleAPIService.fetchQuota(account.token.access_token);
+    const quota = await GoogleAPIService.fetchQuota(account.token.access_token, account.proxy_url);
     account.quota = quota;
     await CloudAccountRepo.updateQuota(account.id, quota);
+
+    try {
+      const aiCredits = await GoogleAPIService.fetchAICredits(
+        account.token.access_token,
+        account.proxy_url,
+      );
+      if (aiCredits) {
+        account.quota = { ...quota, ai_credits: aiCredits };
+        await CloudAccountRepo.updateQuota(account.id, account.quota);
+      }
+    } catch (e) {
+      logger.warn('Failed to fetch AI credits', e);
+    }
+
     await CloudAccountRepo.updateLastUsed(account.id);
-    account.last_used = Math.floor(Date.now() / 1000); // Sync memory object
+    account.last_used = Math.floor(Date.now() / 1000);
     notifyTrayUpdate(account);
     return account;
   } catch (error: any) {
     if (error.message === 'UNAUTHORIZED') {
       logger.warn(`Got 401 Unauthorized for ${account.email}, forcing token refresh...`);
       try {
-        // Force Refresh
-        const newTokenData = await GoogleAPIService.refreshAccessToken(account.token.refresh_token);
+        const newTokenData = await GoogleAPIService.refreshAccessToken(
+          account.token.refresh_token,
+          account.proxy_url,
+        );
         now = Math.floor(Date.now() / 1000);
 
         account.token.access_token = newTokenData.access_token;
@@ -152,12 +172,28 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
 
         await CloudAccountRepo.updateToken(account.id, account.token);
 
-        // Retry Quota
-        const quota = await GoogleAPIService.fetchQuota(account.token.access_token);
+        const quota = await GoogleAPIService.fetchQuota(
+          account.token.access_token,
+          account.proxy_url,
+        );
         account.quota = quota;
         await CloudAccountRepo.updateQuota(account.id, quota);
+
+        try {
+          const aiCredits = await GoogleAPIService.fetchAICredits(
+            account.token.access_token,
+            account.proxy_url,
+          );
+          if (aiCredits) {
+            account.quota = { ...quota, ai_credits: aiCredits };
+            await CloudAccountRepo.updateQuota(account.id, account.quota);
+          }
+        } catch (e) {
+          logger.warn('Failed to fetch AI credits after token refresh', e);
+        }
+
         await CloudAccountRepo.updateLastUsed(account.id);
-        account.last_used = Math.floor(Date.now() / 1000); // Sync memory object
+        account.last_used = Math.floor(Date.now() / 1000);
         return account;
       } catch (refreshError) {
         logger.error(
@@ -170,7 +206,6 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
       logger.warn(
         `Got 403 Forbidden for ${account.email}, marking as rate limited (if implemented) or just ignoring.`,
       );
-      // Return existing account to avoid crash
       return account;
     }
 
@@ -200,16 +235,23 @@ export async function switchCloudAccount(accountId: string): Promise<void> {
       // 1. Prepare token refresh promise (start it in parallel with process exit)
       const tokenRefreshPromise = (async () => {
         const now = Math.floor(Date.now() / 1000);
-        if (account.token.expiry_timestamp < now + 1200) { // Increased buffer to 20m
+        if (account.token.expiry_timestamp < now + 1200) {
           logger.info(`Token for ${account.email} near expiry, refreshing in parallel...`);
           try {
             const newTokenData = await GoogleAPIService.refreshAccessToken(
               account.token.refresh_token,
+              account.proxy_url,
             );
-            account.token.access_token = newTokenData.access_token;
-            account.token.expires_in = newTokenData.expires_in;
-            account.token.expiry_timestamp = now + newTokenData.expires_in;
-            await CloudAccountRepo.updateToken(account.id, account.token);
+
+            const updatedToken = {
+              ...account.token,
+              access_token: newTokenData.access_token,
+              expires_in: newTokenData.expires_in,
+              expiry_timestamp: now + newTokenData.expires_in,
+            };
+            await CloudAccountRepo.updateToken(account.id, updatedToken);
+
+            account.token = updatedToken;
             logger.info(`Token refreshed for ${account.email}`);
           } catch (e) {
             logger.warn('Failed to refresh token in parallel, will try to use existing', e);
@@ -375,8 +417,119 @@ export async function forcePollCloudMonitor(): Promise<void> {
 }
 
 export async function startAuthFlow(): Promise<void> {
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=${SCOPE}&access_type=offline&prompt=consent&include_granted_scopes=true`;
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${AuthServer.getRedirectUri()}&response_type=code&scope=${SCOPE}&access_type=offline&prompt=consent&include_granted_scopes=true`;
 
   logger.info(`Starting auth flow, opening URL: ${url}`);
   await shell.openExternal(url);
+}
+
+export async function exportCloudAccounts(stripTokens = false): Promise<string> {
+  const accounts = await CloudAccountRepo.getAccounts();
+  const exportData = {
+    version: '1.0' as const,
+    exportedAt: Math.floor(Date.now() / 1000),
+    accounts: accounts.map((acc) => ({
+      provider: acc.provider,
+      email: acc.email,
+      name: acc.name,
+      avatar_url: acc.avatar_url,
+      token: stripTokens ? undefined : acc.token,
+      quota: acc.quota,
+      device_profile: acc.device_profile,
+      device_history: acc.device_history,
+      proxy_url: acc.proxy_url ?? null,
+    })),
+  };
+
+  CloudAccountExportSchema.parse(exportData);
+  return JSON.stringify(exportData, null, 2);
+}
+
+export type ImportStrategy = 'merge' | 'overwrite' | 'skip-existing';
+
+export async function importCloudAccounts(
+  jsonContent: string,
+  strategy: ImportStrategy = 'merge',
+): Promise<{ imported: number; skipped: number; updated: number; errors: string[] }> {
+  const result = { imported: 0, skipped: 0, updated: 0, errors: [] as string[] };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonContent);
+  } catch {
+    throw new Error('Invalid JSON format');
+  }
+
+  const validated = CloudAccountExportSchema.safeParse(parsed);
+  if (!validated.success) {
+    throw new Error(
+      `Invalid export file: ${validated.error.issues[0]?.message || 'schema mismatch'}`,
+    );
+  }
+
+  const importEmails = new Set<string>();
+  for (const acc of validated.data.accounts) {
+    const emailLower = acc.email.toLowerCase();
+    if (importEmails.has(emailLower)) {
+      throw new Error(`Duplicate email found in import file: ${acc.email}`);
+    }
+    importEmails.add(emailLower);
+  }
+
+  const existingAccounts = await CloudAccountRepo.getAccounts();
+  const existingByEmail = new Map(existingAccounts.map((a) => [a.email.toLowerCase(), a]));
+
+  for (const acc of validated.data.accounts) {
+    try {
+      const existing = existingByEmail.get(acc.email.toLowerCase());
+      const now = Math.floor(Date.now() / 1000);
+
+      if (existing) {
+        if (strategy === 'skip-existing') {
+          result.skipped++;
+          continue;
+        }
+
+        const updatedAccount: CloudAccount = {
+          ...existing,
+          provider: acc.provider,
+          name: acc.name ?? existing.name,
+          avatar_url: acc.avatar_url ?? existing.avatar_url,
+          token: acc.token,
+          quota: acc.quota ?? existing.quota,
+          device_profile: acc.device_profile ?? existing.device_profile,
+          device_history: acc.device_history ?? existing.device_history,
+          proxy_url: acc.proxy_url ?? existing.proxy_url,
+          last_used: now,
+        };
+
+        await CloudAccountRepo.addAccount(updatedAccount);
+        result.updated++;
+      } else {
+        const newAccount: CloudAccount = {
+          id: uuidv4(),
+          provider: acc.provider,
+          email: acc.email,
+          name: acc.name,
+          avatar_url: acc.avatar_url,
+          token: acc.token,
+          quota: acc.quota,
+          device_profile: acc.device_profile,
+          device_history: acc.device_history,
+          proxy_url: acc.proxy_url ?? undefined,
+          created_at: now,
+          last_used: now,
+          status: 'active',
+          is_active: false,
+        };
+
+        await CloudAccountRepo.addAccount(newAccount);
+        result.imported++;
+      }
+    } catch (error: any) {
+      result.errors.push(`Failed to import ${acc.email}: ${error.message}`);
+    }
+  }
+
+  return result;
 }

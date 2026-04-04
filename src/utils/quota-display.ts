@@ -1,4 +1,5 @@
 import { differenceInHours, differenceInMinutes, isBefore } from 'date-fns';
+import { CloudAccount } from '@/types/cloudAccount';
 
 const HIGH_QUOTA_PERCENTAGE = 80;
 const MEDIUM_QUOTA_PERCENTAGE = 20;
@@ -82,4 +83,31 @@ export function formatResetTimeTitle(
   }
 
   return `${resetTimeLabel}: ${resetDate.toLocaleString()}`;
+}
+
+export function getAccountSortValue(account: CloudAccount, sortKey: string): number {
+  if (!account.quota?.models) return 0;
+  const models = Object.values(account.quota.models);
+  if (models.length === 0) return 0;
+
+  switch (sortKey) {
+    case 'quota-overall':
+      return models.reduce((sum, m) => sum + m.percentage, 0) / models.length;
+    case 'quota-claude': {
+      const claude = models.filter((m) => m.percentage > 0);
+      return claude.length > 0
+        ? claude.reduce((sum, m) => sum + m.percentage, 0) / claude.length
+        : 0;
+    }
+    case 'quota-pro3': {
+      const pro3 = models.filter((m) => m.percentage > 0 && /pro/i.test(m.display_name || ''));
+      return pro3.length > 0 ? pro3.reduce((sum, m) => sum + m.percentage, 0) / pro3.length : 0;
+    }
+    case 'quota-flash': {
+      const flash = models.filter((m) => m.percentage > 0 && /flash/i.test(m.display_name || ''));
+      return flash.length > 0 ? flash.reduce((sum, m) => sum + m.percentage, 0) / flash.length : 0;
+    }
+    default:
+      return 0;
+  }
 }

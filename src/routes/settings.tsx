@@ -17,6 +17,7 @@ import { getAppVersion, getPlatform } from '@/actions/app';
 import { useTranslation } from 'react-i18next';
 import { setAppLanguage } from '@/actions/language';
 import { useAppConfig } from '@/hooks/useAppConfig';
+import { useToast } from '@/components/ui/use-toast';
 import { Loader2, FolderOpen } from 'lucide-react';
 import { ModelVisibilitySettings } from '@/components/ModelVisibilitySettings';
 import { useEffect, useState } from 'react';
@@ -27,6 +28,7 @@ function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { t, i18n } = useTranslation();
   const { config, isLoading, saveConfig } = useAppConfig();
+  const { toast } = useToast();
 
   // Local state for configuration editing
   const [proxyConfig, setProxyConfig] = useState<ProxyConfig | undefined>(undefined);
@@ -295,6 +297,86 @@ function SettingsPage() {
                   'Changes to error reporting will take effect after restarting the application.',
                 )}
               </p>
+            </CardContent>
+          </Card>
+
+          {/* Notifications Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('settings.notifications.title', 'Notifications')}</CardTitle>
+              <CardDescription>
+                {t(
+                  'settings.notifications.description',
+                  'Configure desktop alerts for account events.',
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label>{t('settings.notifications.quotaAlert', 'Low Quota Alerts')}</Label>
+                  <p className="text-xs text-gray-500">
+                    {t(
+                      'settings.notifications.quotaAlertDesc',
+                      'Get notified when a model quota drops below the set threshold',
+                    )}
+                  </p>
+                </div>
+                <Switch
+                  checked={config?.quota_alert_enabled || false}
+                  onCheckedChange={async (checked) => {
+                    if (config) {
+                      try {
+                        await saveConfig({ ...config, quota_alert_enabled: checked });
+                      } catch (err) {
+                        toast({
+                          title: t('common.error'),
+                          description: 'Failed to save notification settings',
+                          variant: 'destructive',
+                        });
+                      }
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label>{t('settings.notifications.quotaThreshold', 'Alert Threshold')}</Label>
+                  <p className="text-xs text-gray-500">
+                    {t(
+                      'settings.notifications.quotaThresholdDesc',
+                      'Percentage below which to trigger an alert',
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={config?.quota_alert_threshold ?? 20}
+                    onChange={async (e) => {
+                      const rawValue = e.target.value;
+                      const parsed = parseInt(rawValue, 10);
+                      if (isNaN(parsed) || parsed < 0 || parsed > 100) return;
+
+                      if (config) {
+                        try {
+                          await saveConfig({ ...config, quota_alert_threshold: parsed });
+                        } catch (err) {
+                          toast({
+                            title: t('common.error'),
+                            description: 'Failed to save threshold setting',
+                            variant: 'destructive',
+                          });
+                        }
+                      }
+                    }}
+                    className="w-16 rounded-md border bg-transparent px-2 py-1 text-center text-sm"
+                  />
+                  <span className="text-muted-foreground text-sm">%</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

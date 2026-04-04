@@ -40,7 +40,12 @@ export const AppConfigSchema = z.object({
   default_export_path: z.string().nullable().optional(), // Export path
   model_visibility: z.record(z.string(), z.boolean()).default({}), // Model visibility preferences
   provider_groupings_enabled: z.boolean().default(false), // Enable provider groupings UI
-  grid_layout: z.enum(['auto', '2-col', '3-col', 'list']).default('auto'), // Account card grid layout
+  grid_layout: z.enum(['auto', '2-col', '3-col', 'list', 'compact']).default('auto'), // Account card grid layout
+  account_sort: z
+    .enum(['recently-used', 'quota-overall', 'quota-claude', 'quota-pro3', 'quota-flash'])
+    .default('recently-used'),
+  quota_alert_enabled: z.boolean().default(false),
+  quota_alert_threshold: z.number().default(20),
   proxy: ProxyConfigSchema,
 });
 
@@ -50,7 +55,7 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
   language: 'zh-CN',
-  theme: 'system',
+  theme: 'dark',
   auto_refresh: false,
   refresh_interval: 15,
   auto_sync: false,
@@ -62,6 +67,9 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   model_visibility: {}, // Model visibility preferences
   provider_groupings_enabled: false, // Enable provider groupings UI
   grid_layout: 'auto' as const, // Account card grid layout
+  account_sort: 'recently-used' as const,
+  quota_alert_enabled: false,
+  quota_alert_threshold: 20,
   proxy: {
     enabled: false,
     port: 8045,

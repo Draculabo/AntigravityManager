@@ -76,10 +76,12 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
             </span>
           )}
           <div className="flex items-baseline gap-1">
-            <span className={`font-mono text-xs font-bold ${getQuotaTextColorClass(avgPercentage)}`}>
+            <span
+              className={`font-mono text-xs font-bold ${getQuotaTextColorClass(avgPercentage)}`}
+            >
               {formatQuotaLabel(avgPercentage)}
             </span>
-            {avgPercentage > 0 && (
+            {Number.isFinite(avgPercentage) && avgPercentage > 0 && (
               <span className="text-muted-foreground text-[10px]">
                 {t('settings.providerGroupings.avgLabel')}
               </span>

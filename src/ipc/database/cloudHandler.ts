@@ -6,7 +6,12 @@ import { desc, eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { getCloudAccountsDbPath, getAntigravityDbPaths } from '../../utils/paths';
 import { logger } from '../../utils/logger';
-import { CloudAccount } from '../../types/cloudAccount';
+import {
+  CloudAccount,
+  CloudAccountSchema,
+  CloudQuotaDataSchema,
+  CloudTokenDataSchema,
+} from '../../types/cloudAccount';
 import { type DeviceProfile, type DeviceProfileVersion } from '../../types/account';
 import { ItemTableValueRowSchema, TableInfoRowSchema } from '../../types/db';
 import { decryptWithMigration, encrypt, type KeySource } from '../../utils/security';
@@ -90,6 +95,7 @@ function ensureDatabaseInitialized(dbPath: string): void {
     const hasIsActive = tableInfo.some((col) => col.name === 'is_active');
     const hasDeviceProfileJson = tableInfo.some((col) => col.name === 'device_profile_json');
     const hasDeviceHistoryJson = tableInfo.some((col) => col.name === 'device_history_json');
+    const hasProxyUrl = tableInfo.some((col) => col.name === 'proxy_url');
     if (!hasIsActive) {
       db.exec('ALTER TABLE accounts ADD COLUMN is_active INTEGER DEFAULT 0');
     }
@@ -98,6 +104,9 @@ function ensureDatabaseInitialized(dbPath: string): void {
     }
     if (!hasDeviceHistoryJson) {
       db.exec('ALTER TABLE accounts ADD COLUMN device_history_json TEXT');
+    }
+    if (!hasProxyUrl) {
+      db.exec('ALTER TABLE accounts ADD COLUMN proxy_url TEXT');
     }
 
     // Create index on email for faster lookups
@@ -450,6 +459,9 @@ export class CloudAccountRepo {
   }
 
   static async addAccount(account: CloudAccount): Promise<void> {
+    // Validate account data before processing
+    CloudAccountSchema.parse(account);
+
     const { raw, orm } = getCloudDb();
     try {
       const tokenEncrypted = await encrypt(JSON.stringify(account.token));
@@ -468,6 +480,7 @@ export class CloudAccountRepo {
         lastUsed: account.last_used,
         status: account.status || 'active',
         isActive: account.is_active ? 1 : 0,
+        proxyUrl: account.proxy_url ?? null,
       };
 
       orm.transaction((tx) => {
@@ -509,79 +522,86 @@ export class CloudAccountRepo {
 
       const cloudAccounts: CloudAccount[] = [];
       for (const normalizedRow of rows) {
-        let tokenResult: DecryptFieldResult;
         try {
-          tokenResult = await decryptAndMigrateField(
-            orm,
-            normalizedRow.id,
-            'tokenJson',
-            normalizedRow.tokenJson,
-          );
-        } catch (error) {
-          migrationStats.failedFields += 1;
-          logger.error(`Failed to decrypt token for account ${normalizedRow.id}`, error);
-          throw error;
-        }
+          let tokenResult: DecryptFieldResult;
+          try {
+            tokenResult = await decryptAndMigrateField(
+              orm,
+              normalizedRow.id,
+              'tokenJson',
+              normalizedRow.tokenJson,
+            );
+          } catch (error) {
+            migrationStats.failedFields += 1;
+            logger.error(`Failed to decrypt token for account ${normalizedRow.id}`, error);
+            continue; // Skip corrupted account
+          }
 
-        let quotaResult: DecryptFieldResult;
-        try {
-          quotaResult = await decryptAndMigrateField(
-            orm,
-            normalizedRow.id,
-            'quotaJson',
-            normalizedRow.quotaJson,
-          );
-        } catch (error) {
-          migrationStats.failedFields += 1;
-          logger.error(`Failed to decrypt quota for account ${normalizedRow.id}`, error);
-          throw error;
-        }
+          let quotaResult: DecryptFieldResult;
+          try {
+            quotaResult = await decryptAndMigrateField(
+              orm,
+              normalizedRow.id,
+              'quotaJson',
+              normalizedRow.quotaJson,
+            );
+          } catch (error) {
+            migrationStats.failedFields += 1;
+            logger.error(`Failed to decrypt quota for account ${normalizedRow.id}`, error);
+            quotaResult = { value: null, migrated: false }; // Quota is optional, proceed
+          }
 
-        if (!tokenResult.value) {
-          throw new Error(`Missing token data for account ${normalizedRow.id}`);
-        }
+          if (!tokenResult.value) {
+            logger.warn(`Missing token data for account ${normalizedRow.id}`);
+            continue;
+          }
 
-        if (tokenResult.value) {
-          migrationStats.totalFields += 1;
-        }
-        if (tokenResult.usedFallback) {
-          migrationStats.fallbackUsedFields += 1;
-        }
-        if (tokenResult.migrated) {
-          migrationStats.migratedFields += 1;
+          if (tokenResult.value) {
+            migrationStats.totalFields += 1;
+          }
           if (tokenResult.usedFallback) {
-            migrationStats.migratedBySource[tokenResult.usedFallback] += 1;
+            migrationStats.fallbackUsedFields += 1;
           }
-        }
+          if (tokenResult.migrated) {
+            migrationStats.migratedFields += 1;
+            if (tokenResult.usedFallback) {
+              migrationStats.migratedBySource[tokenResult.usedFallback] += 1;
+            }
+          }
 
-        if (quotaResult.value) {
-          migrationStats.totalFields += 1;
-        }
-        if (quotaResult.usedFallback) {
-          migrationStats.fallbackUsedFields += 1;
-        }
-        if (quotaResult.migrated) {
-          migrationStats.migratedFields += 1;
+          if (quotaResult.value) {
+            migrationStats.totalFields += 1;
+          }
           if (quotaResult.usedFallback) {
-            migrationStats.migratedBySource[quotaResult.usedFallback] += 1;
+            migrationStats.fallbackUsedFields += 1;
           }
-        }
+          if (quotaResult.migrated) {
+            migrationStats.migratedFields += 1;
+            if (quotaResult.usedFallback) {
+              migrationStats.migratedBySource[quotaResult.usedFallback] += 1;
+            }
+          }
 
-        cloudAccounts.push({
-          id: normalizedRow.id,
-          provider: normalizedRow.provider as CloudAccount['provider'],
-          email: normalizedRow.email,
-          name: normalizedRow.name ?? undefined,
-          avatar_url: normalizedRow.avatarUrl ?? undefined,
-          token: JSON.parse(tokenResult.value),
-          quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
-          device_profile: parseDeviceProfileColumn(normalizedRow.deviceProfileJson),
-          device_history: parseDeviceHistoryColumn(normalizedRow.deviceHistoryJson),
-          created_at: normalizedRow.createdAt,
-          last_used: normalizedRow.lastUsed,
-          status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
-          is_active: Boolean(normalizedRow.isActive),
-        });
+          cloudAccounts.push({
+            id: normalizedRow.id,
+            provider: normalizedRow.provider as CloudAccount['provider'],
+            email: normalizedRow.email,
+            name: normalizedRow.name ?? undefined,
+            avatar_url: normalizedRow.avatarUrl ?? undefined,
+            token: JSON.parse(tokenResult.value),
+            quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
+            device_profile: parseDeviceProfileColumn(normalizedRow.deviceProfileJson),
+            device_history: parseDeviceHistoryColumn(normalizedRow.deviceHistoryJson),
+            created_at: normalizedRow.createdAt,
+            last_used: normalizedRow.lastUsed,
+            status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
+            is_active: Boolean(normalizedRow.isActive),
+            proxy_url: normalizedRow.proxyUrl ?? undefined,
+          });
+        } catch (rowError) {
+          logger.error(`Unexpected error processing row for account ${normalizedRow.id}`, rowError);
+          continue;
+        }
       }
 
       return cloudAccounts;
@@ -649,6 +669,7 @@ export class CloudAccountRepo {
         last_used: normalizedRow.lastUsed,
         status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
         is_active: Boolean(normalizedRow.isActive),
+        proxy_url: normalizedRow.proxyUrl ?? undefined,
       };
     } finally {
       raw.close();
@@ -666,22 +687,42 @@ export class CloudAccountRepo {
   }
 
   static async updateToken(id: string, token: any): Promise<void> {
+    // Validate token data before encryption
+    CloudTokenDataSchema.parse(token);
+
     const { raw, orm } = getCloudDb();
 
     try {
       const encrypted = await encrypt(JSON.stringify(token));
-      orm.update(accounts).set({ tokenJson: encrypted }).where(eq(accounts.id, id)).run();
+      const result = orm
+        .update(accounts)
+        .set({ tokenJson: encrypted })
+        .where(eq(accounts.id, id))
+        .run();
+      if (result.changes === 0) {
+        logger.warn(`updateToken: No account found with ID ${id}`);
+      }
     } finally {
       raw.close();
     }
   }
 
   static async updateQuota(id: string, quota: any): Promise<void> {
+    // Validate quota data before encryption
+    CloudQuotaDataSchema.parse(quota);
+
     const { raw, orm } = getCloudDb();
 
     try {
       const encrypted = await encrypt(JSON.stringify(quota));
-      orm.update(accounts).set({ quotaJson: encrypted }).where(eq(accounts.id, id)).run();
+      const result = orm
+        .update(accounts)
+        .set({ quotaJson: encrypted })
+        .where(eq(accounts.id, id))
+        .run();
+      if (result.changes === 0) {
+        logger.warn(`updateQuota: No account found with ID ${id}`);
+      }
     } finally {
       raw.close();
     }
@@ -909,6 +950,24 @@ export class CloudAccountRepo {
     } finally {
       raw.close();
     }
+  }
+
+  static setAccountProxy(id: string, proxyUrl: string | null): void {
+    const { raw, orm } = getCloudDb();
+    try {
+      orm.update(accounts).set({ proxyUrl }).where(eq(accounts.id, id)).run();
+      logger.info(`Updated proxy for account ${id}: ${proxyUrl ?? 'none'}`);
+    } catch (error) {
+      logger.error(`Failed to update proxy for account ${id}`, error);
+      throw error;
+    } finally {
+      raw.close();
+    }
+  }
+
+  static async getAccountByEmail(email: string): Promise<CloudAccount | null> {
+    const all = await this.getAccounts();
+    return all.find((a) => a.email.toLowerCase() === email.toLowerCase()) || null;
   }
 
   private static upsertItemValue(db: DrizzleExecutor, key: string, value: string): void {

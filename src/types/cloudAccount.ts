@@ -37,6 +37,7 @@ export interface CloudQuotaData {
   subscription_tier?: string;
   is_forbidden?: boolean;
   isForbidden?: boolean;
+  ai_credits?: { credits: number; expiryDate: string };
 }
 
 export interface CloudAccount {
@@ -53,6 +54,7 @@ export interface CloudAccount {
   last_used: number; // Unix timestamp
   status?: 'active' | 'rate_limited' | 'expired';
   is_active?: boolean;
+  proxy_url?: string;
 }
 
 // Zod Schemas
@@ -87,6 +89,7 @@ export const CloudQuotaDataSchema = z.object({
   subscription_tier: z.string().optional(),
   is_forbidden: z.boolean().optional(),
   isForbidden: z.boolean().optional(),
+  ai_credits: z.object({ credits: z.number(), expiryDate: z.string() }).optional(),
 });
 
 export const CloudAccountSchema = z.object({
@@ -103,4 +106,25 @@ export const CloudAccountSchema = z.object({
   last_used: z.number(),
   status: z.enum(['active', 'rate_limited', 'expired']).optional(),
   is_active: z.boolean().optional(),
+  proxy_url: z.string().optional(),
 });
+
+export const CloudAccountExportSchema = z.object({
+  version: z.literal('1.0'),
+  exportedAt: z.number(),
+  accounts: z.array(
+    z.object({
+      provider: z.enum(['google', 'anthropic']),
+      email: z.string(),
+      name: z.string().optional().nullable(),
+      avatar_url: z.string().optional().nullable(),
+      token: CloudTokenDataSchema,
+      quota: CloudQuotaDataSchema.optional(),
+      device_profile: z.any().optional(),
+      device_history: z.any().optional(),
+      proxy_url: z.string().optional().nullable(),
+    }),
+  ),
+});
+
+export type CloudAccountExport = z.infer<typeof CloudAccountExportSchema>;

@@ -158,7 +158,12 @@ When using Antigravity IDE, have you ever encountered these problems?
 - **🖥️ System Tray** - Background mode with tray icon and right-click menu
 - **🔗 IDE Sync** - Automatically scan and import accounts from IDE's `state.vscdb`
 - **📦 Batch Operations** - Batch refresh and delete multiple accounts
-- **🌏 Internationalization** - Multi-language support (English / 中文)
+- **📤 JSON Export/Import** - Export and import account pools with schema validation and deduplication
+- **🔔 Desktop Notifications** - Configurable alerts when model quota drops below your threshold
+- **🌐 Per-Account Proxy** - Route individual accounts through their own HTTP/SOCKS5 proxy
+- **📊 Smart Sorting** - Sort accounts by recently used, overall quota, or specific model groups
+- **📋 Compact Layout** - Dense horizontal view to maximize visible accounts
+- **🌏 Internationalization** - Multi-language support (English / 中文 / Русский)
 - **🎨 Modern UI** - Built with React, TailwindCSS, and Shadcn UI
 
 ---

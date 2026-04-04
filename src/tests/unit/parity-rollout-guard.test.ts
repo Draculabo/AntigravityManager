@@ -72,9 +72,11 @@ describe('Parity rollout guard replay', () => {
         preferred_account_id: 'acc-2',
       }),
     );
-    (service as any).currentIndex = 0;
+    service.resetSelectionState();
     const rollbackSelected = await service.getNextToken({ model: 'gemini-2.5-flash' });
     expect(rollbackSelected?.id).toBe('acc-1');
+    // Verify that shadow comparison was bypassed due to kill-switch
+    expect((service as any).shadowComparisonCount).toBe(0);
   });
 
   it('enforces no-go threshold after shadow mismatch and blocks parity enablement', async () => {
@@ -98,9 +100,9 @@ describe('Parity rollout guard replay', () => {
         preferred_account_id: 'acc-2',
       }),
     );
-    (service as any).currentIndex = 0;
+    service.resetSelectionState();
     const blockedSelection = await service.getNextToken({ model: 'gemini-2.5-flash' });
     expect(blockedSelection?.id).toBe('acc-1');
+    expect((service as any).noGoBlocked).toBe(true);
   });
 });
-

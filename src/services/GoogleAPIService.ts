@@ -1,4 +1,6 @@
+import { z } from 'zod';
 import { ConfigManager } from '../ipc/config/manager';
+import { AuthServer } from '../ipc/cloud/authServer';
 import { ProxyAgent } from 'undici';
 import { logger } from '../utils/logger';
 import {
@@ -22,7 +24,6 @@ const URLS = {
 
 // Internal API masquerading
 const USER_AGENT = 'antigravity/1.11.3 Darwin/arm64';
-const REDIRECT_URI = 'http://localhost:8888/oauth-callback';
 
 // Request timeout in milliseconds (30 seconds)
 const REQUEST_TIMEOUT_MS = 30000;
@@ -56,11 +57,22 @@ export interface UserInfo {
   picture: string;
 }
 
+export const UserInfoSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  verified_email: z.boolean(),
+  name: z.string(),
+  given_name: z.string(),
+  family_name: z.string(),
+  picture: z.string(),
+});
+
 export interface QuotaData {
   models: Record<string, ModelQuotaInfo>;
   model_forwarding_rules?: Record<string, string>;
   subscription_tier?: string;
   is_forbidden?: boolean;
+  ai_credits?: { credits: number; expiryDate: string };
 }
 
 export interface ModelQuotaInfo {
@@ -219,17 +231,25 @@ function toModelForwardingRules(
 // --- Service Implementation ---
 
 export class GoogleAPIService {
-  private static getFetchOptions() {
+  private static getFetchOptions(proxyUrl?: string) {
+    if (proxyUrl && proxyUrl.length > 0) {
+      return {
+        dispatcher: new ProxyAgent(proxyUrl),
+      };
+    }
     try {
       const config = ConfigManager.loadConfig();
-      if (config.proxy?.upstream_proxy?.enabled && config.proxy.upstream_proxy.url) {
+      if (config.proxy?.upstream_proxy?.enabled) {
+        if (!config.proxy.upstream_proxy.url) {
+          throw new Error('Upstream proxy is enabled but URL is not configured');
+        }
         return {
           dispatcher: new ProxyAgent(config.proxy.upstream_proxy.url),
         };
       }
     } catch (e) {
-      // Fallback or log if config load fails (shouldn't happen usually)
-      logger.warn('[GoogleAPIService] Failed to load proxy config', e);
+      logger.error('[GoogleAPIService] Proxy configuration error', e);
+      throw e;
     }
     return {};
   }
@@ -242,13 +262,13 @@ export class GoogleAPIService {
       'https://www.googleapis.com/auth/cloud-platform',
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile',
-      'https://www.googleapis.com/auth/cclog',
-      'https://www.googleapis.com/auth/experimentsandconfigs',
     ].join(' ');
+
+    const redirectUri = AuthServer.getRedirectUri();
 
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: redirectUri,
       response_type: 'code',
       scope: scopes,
       access_type: 'offline',
@@ -262,12 +282,14 @@ export class GoogleAPIService {
   /**
    * Exchanges an authorization code for tokens.
    */
-  static async exchangeCode(code: string): Promise<TokenResponse> {
+  static async exchangeCode(code: string, proxyUrl?: string): Promise<TokenResponse> {
+    const redirectUri = AuthServer.getRedirectUri();
+
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
       code: code,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: redirectUri,
       grant_type: 'authorization_code',
     });
 
@@ -276,7 +298,7 @@ export class GoogleAPIService {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
       signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
-      ...this.getFetchOptions(),
+      ...this.getFetchOptions(proxyUrl),
     }).catch((err: unknown) => {
       if (err instanceof Error) {
         if (err.name === 'AbortError') {
@@ -299,7 +321,7 @@ export class GoogleAPIService {
   /**
    * Refreshes an access token using a refresh token.
    */
-  static async refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+  static async refreshAccessToken(refreshToken: string, proxyUrl?: string): Promise<TokenResponse> {
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
@@ -312,7 +334,7 @@ export class GoogleAPIService {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
       signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
-      ...this.getFetchOptions(),
+      ...this.getFetchOptions(proxyUrl),
     }).catch((err: unknown) => {
       if (err instanceof Error) {
         if (err.name === 'AbortError') {
@@ -337,11 +359,11 @@ export class GoogleAPIService {
   /**
    * Fetches user profile information.
    */
-  static async getUserInfo(accessToken: string): Promise<UserInfo> {
+  static async getUserInfo(accessToken: string, proxyUrl?: string): Promise<UserInfo> {
     const response = await fetch(URLS.USER_INFO, {
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
-      ...this.getFetchOptions(),
+      ...this.getFetchOptions(proxyUrl),
     }).catch((err: unknown) => {
       if (err instanceof Error) {
         if (err.name === 'AbortError') {
@@ -358,16 +380,26 @@ export class GoogleAPIService {
       throw new Error(`Failed to fetch user info: ${text}`);
     }
 
-    return response.json() as Promise<UserInfo>;
+    const data = await response.json();
+    try {
+      return UserInfoSchema.parse(data);
+    } catch (err) {
+      logger.error('[GoogleAPIService] Malformed user info response:', err);
+      throw new Error('Received malformed user info from Google APIs');
+    }
   }
 
-  public static async fetchProjectContext(accessToken: string): Promise<ProjectContext> {
+  public static async fetchProjectContext(
+    accessToken: string,
+    proxyUrl?: string,
+  ): Promise<ProjectContext> {
     const body = {
       metadata: { ideType: 'ANTIGRAVITY' },
     };
 
     let projectId: string | undefined;
     let subscriptionTier: string | undefined;
+    let lastError: any;
 
     for (let i = 0; i < 2; i++) {
       try {
@@ -376,7 +408,7 @@ export class GoogleAPIService {
           headers: buildInternalApiHeaders(accessToken),
           body: JSON.stringify(body),
           signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
-          ...this.getFetchOptions(),
+          ...this.getFetchOptions(proxyUrl),
         });
 
         if (response.ok) {
@@ -386,11 +418,18 @@ export class GoogleAPIService {
           }
           subscriptionTier = resolveSubscriptionTier(data);
           break;
+        } else {
+          lastError = new Error(`HTTP ${response.status}: ${await response.text()}`);
         }
       } catch (error) {
+        lastError = error;
         logger.warn(`[GoogleAPIService] Failed to fetch project ID (Attempt ${i + 1}):`, error);
         await sleep(500);
       }
+    }
+
+    if (!projectId && !subscriptionTier) {
+      throw lastError || new Error('Failed to fetch project context after multiple attempts.');
     }
 
     return {
@@ -399,16 +438,42 @@ export class GoogleAPIService {
     };
   }
 
-  public static async fetchProjectId(accessToken: string): Promise<string | null> {
-    const context = await this.fetchProjectContext(accessToken);
+  public static async fetchProjectId(
+    accessToken: string,
+    proxyUrl?: string,
+  ): Promise<string | null> {
+    const context = await this.fetchProjectContext(accessToken, proxyUrl);
     return context.projectId ?? null;
+  }
+
+  static async fetchAICredits(
+    accessToken: string,
+    proxyUrl?: string,
+  ): Promise<{ credits: number; expiryDate: string } | null> {
+    try {
+      const response = await fetch('https://cloudcode-pa.googleapis.com/v1internal:fetchCredits', {
+        method: 'POST',
+        headers: buildInternalApiHeaders(accessToken),
+        body: JSON.stringify({}),
+        signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
+        ...this.getFetchOptions(proxyUrl),
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return {
+        credits: data?.credits ?? data?.remainingCredits ?? 0,
+        expiryDate: data?.expiryDate ?? data?.expirationDate ?? '',
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**
    * Core logic: Fetches detailed model quota information.
    */
-  static async fetchQuota(accessToken: string): Promise<QuotaData> {
-    const { projectId, subscriptionTier } = await this.fetchProjectContext(accessToken);
+  static async fetchQuota(accessToken: string, proxyUrl?: string): Promise<QuotaData> {
+    const { projectId, subscriptionTier } = await this.fetchProjectContext(accessToken, proxyUrl);
 
     const payload: Record<string, unknown> = {};
     if (projectId) {
@@ -417,7 +482,7 @@ export class GoogleAPIService {
 
     const maxRetries = 3;
     let lastError: Error | null = null;
-    const fetchOptions = this.getFetchOptions();
+    const fetchOptions = this.getFetchOptions(proxyUrl);
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -446,7 +511,8 @@ export class GoogleAPIService {
           );
 
           if (attempt < maxRetries) {
-            await sleep(1000);
+            const backoffMs = 1000 * Math.pow(2, attempt - 1);
+            await sleep(backoffMs);
             continue;
           } else {
             throw new Error(errorMsg);
@@ -474,14 +540,23 @@ export class GoogleAPIService {
 
         return result;
       } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
         if (error instanceof Error) {
           logger.warn(
             `[GoogleAPIService] Request failed: ${error.message} (Attempt ${attempt}/${maxRetries})`,
           );
         }
         lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Abort retries for auth errors
+        if (errorMsg === 'FORBIDDEN' || errorMsg === 'UNAUTHORIZED') {
+          throw error;
+        }
+
         if (attempt < maxRetries) {
-          await sleep(1000);
+          const backoffMs = 1000 * Math.pow(2, attempt - 1);
+          await sleep(backoffMs);
+          continue;
         }
       }
     }

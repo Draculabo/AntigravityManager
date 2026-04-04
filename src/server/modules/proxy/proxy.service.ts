@@ -29,7 +29,10 @@ import {
   AnthropicContent,
 } from './interfaces/request-interfaces';
 import { getServerConfig } from '../../server-config';
-import { normalizeGeminiModelAlias, resolveModelRoute } from '../../../lib/antigravity/ModelMapping';
+import {
+  normalizeGeminiModelAlias,
+  resolveModelRoute,
+} from '../../../lib/antigravity/ModelMapping';
 import { getMaxOutputTokens, getThinkingBudget } from '../../../lib/antigravity/ModelSpecs';
 import { resolveRequestUserAgent } from './request-user-agent';
 import { UpstreamRequestError } from './clients/upstream-error';
@@ -679,7 +682,9 @@ export class ProxyService {
     for (let i = 0; i < maxRetries; i++) {
       if (i > 0) {
         const delay = calculateRetryDelay(i - 1);
-        this.logger.log(`OpenAI-compatible retry ${i + 1}/${maxRetries}, backoff=${delay}ms (jittered)`);
+        this.logger.log(
+          `OpenAI-compatible retry ${i + 1}/${maxRetries}, backoff=${delay}ms (jittered)`,
+        );
         await sleep(delay);
       }
 

@@ -1,5 +1,6 @@
 import { ipc } from '@/ipc/manager';
 import type { DeviceProfile } from '@/types/account';
+import { isValidProxyUrl } from '@/utils/url';
 
 export function addGoogleAccount(input: { authCode: string }) {
   return ipc.client.cloud.addGoogleAccount(input);
@@ -14,6 +15,7 @@ export function deleteCloudAccount(input: { accountId: string }) {
 }
 
 export function refreshAccountQuota(input: { accountId: string }) {
+  console.log(`[Action] Calling refreshAccountQuota for: ${input.accountId}`);
   return ipc.client.cloud.refreshAccountQuota(input);
 }
 
@@ -87,4 +89,27 @@ export function deleteCloudIdentityProfileRevision(input: {
 
 export function openCloudIdentityStorageFolder() {
   return ipc.client.cloud.openIdentityStorageFolder();
+}
+
+export function setAccountProxy(input: { accountId: string; proxyUrl: string | null }) {
+  if (input.proxyUrl && !isValidProxyUrl(input.proxyUrl)) {
+    throw new Error('Invalid proxy URL format');
+  }
+  return ipc.client.cloud.setAccountProxy(input);
+}
+
+export function exportCloudAccounts(input: { stripTokens?: boolean }) {
+  return ipc.client.cloud.exportCloudAccounts(input);
+}
+
+export function importCloudAccounts(input: {
+  jsonContent: string;
+  strategy?: 'merge' | 'overwrite' | 'skip-existing';
+}) {
+  try {
+    JSON.parse(input.jsonContent);
+  } catch {
+    throw new Error('Invalid JSON content provided for import');
+  }
+  return ipc.client.cloud.importCloudAccounts(input);
 }
