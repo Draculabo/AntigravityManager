@@ -192,6 +192,53 @@
 | Windows (x64/ARM64) | [.exe 安装包](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | macOS               | [.dmg 安装包](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | Linux               | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest) |
+| NixOS / Nix         | `nix run github:Draculabo/AntigravityManager` |
+
+### ❄️ Nix 集成
+
+你可以通过项目提供的 flake 将 Antigravity Manager 集成到你的 Nix 配置中。
+
+#### 🛠️ NixOS / Home Manager
+
+先在你的 `flake.nix` 的 `inputs` 中加入：
+
+```nix
+inputs = {
+  nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  antigravity-manager.url = "github:Draculabo/AntigravityManager";
+};
+```
+
+然后把 `antigravity-manager.overlays.default` 添加到 `nixpkgs.overlays`。这样会基于你自己的 `nixpkgs` 实例构建，并继承你的全局配置。
+
+```nix
+# 添加到你的 NixOS/Home Manager 配置中
+{
+  nixpkgs.overlays = [ inputs.antigravity-manager.overlays.default ];
+
+  # Antigravity Manager 使用非自由许可证 (cc-by-nc-sa-40)
+  nixpkgs.config.allowUnfree = true;
+
+  environment.systemPackages = [
+    pkgs.antigravity-manager
+  ];
+}
+```
+
+#### 💻 开发 Shell
+
+如果你已经使用上面的 overlay，也可以直接在 `devShell` 里加入：
+
+```nix
+devShells.default = pkgs.mkShell {
+  packages = [
+    pkgs.antigravity-manager
+  ];
+};
+```
+
+> [!NOTE]
+> 由于该包是非自由软件，你必须在 `nixpkgs` 配置中开启 `allowUnfree = true;`，否则会评估失败。
 
 ### 从源码构建
 
