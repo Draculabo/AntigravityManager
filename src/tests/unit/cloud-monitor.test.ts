@@ -61,7 +61,7 @@ describe('CloudMonitorService', () => {
     await pollPromise;
 
     expect(CloudAccountRepo.getAccounts).toHaveBeenCalled();
-    expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('valid_token');
+    expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('valid_token', undefined);
     expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc1', expect.anything());
     expect(CloudAccountRepo.updateLastUsed).toHaveBeenCalledWith('acc1');
     expect(AutoSwitchService.checkAndSwitchIfNeeded).toHaveBeenCalled();
@@ -93,9 +93,9 @@ describe('CloudMonitorService', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await pollPromise;
 
-    expect(GoogleAPIService.refreshAccessToken).toHaveBeenCalledWith('ref_token');
+    expect(GoogleAPIService.refreshAccessToken).toHaveBeenCalledWith('ref_token', undefined);
     expect(CloudAccountRepo.updateToken).toHaveBeenCalled();
-    expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('new_token');
+    expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('new_token', undefined);
   });
 
   describe('handleAppFocus (Smart Refresh)', () => {

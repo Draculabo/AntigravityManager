@@ -1,7 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import { CloudAccountRepo } from '../../ipc/database/cloudHandler';
 import { GoogleAPIService } from '../../services/GoogleAPIService';
-import { CloudAccount, CloudAccountExportSchema } from '../../types/cloudAccount';
+import {
+  CloudAccount,
+  CloudAccountExportSchema,
+  CloudAccountSchema,
+} from '../../types/cloudAccount';
 import { logger } from '../../utils/logger';
 import { AuthServer } from './authServer';
 
@@ -529,6 +533,16 @@ export async function importCloudAccounts(
           last_used: now,
         };
 
+        // Validate the merged account before saving
+        try {
+          CloudAccountSchema.parse(updatedAccount);
+        } catch (validationError: any) {
+          result.errors.push(
+            `Cannot update account ${acc.email}: validation failed - ${validationError.message}`,
+          );
+          continue;
+        }
+
         await CloudAccountRepo.addAccount(updatedAccount);
         result.updated++;
       } else {
@@ -553,6 +567,16 @@ export async function importCloudAccounts(
           status: 'active',
           is_active: false,
         };
+
+        // Validate the new account before saving
+        try {
+          CloudAccountSchema.parse(newAccount);
+        } catch (validationError: any) {
+          result.errors.push(
+            `Cannot import new account ${acc.email}: validation failed - ${validationError.message}`,
+          );
+          continue;
+        }
 
         await CloudAccountRepo.addAccount(newAccount);
         result.imported++;
