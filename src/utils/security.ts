@@ -113,7 +113,10 @@ async function readSafeStorageKey(keyPath: string): Promise<Buffer | null> {
 
     return Buffer.from(hexKey, 'hex');
   } catch (error) {
-    logger.error('Security: Decryption of safeStorage key file failed. Keyring might be locked.', error);
+    logger.error(
+      'Security: Decryption of safeStorage key file failed. Keyring might be locked.',
+      error,
+    );
     throw error;
   }
 }
@@ -303,9 +306,15 @@ async function generatePrimaryMasterKey(): Promise<MasterKeyState> {
     } catch (error) {
       // If we failed to decrypt but the file exists, we should NOT proceed to other fallbacks
       // as they might overwrite the existing file and cause permanent data loss.
-      const fileExists = await fs.access(keyPath).then(() => true).catch(() => false);
+      const fileExists = await fs
+        .access(keyPath)
+        .then(() => true)
+        .catch(() => false);
       if (fileExists) {
-        logger.error('Security: safeStorage key file exists but decryption failed. Keyring might be locked. Stopping to prevent data loss.', error);
+        logger.error(
+          'Security: safeStorage key file exists but decryption failed. Keyring might be locked. Stopping to prevent data loss.',
+          error,
+        );
         throw error;
       }
       logger.warn('Security: safeStorage failed, trying keytar', error);

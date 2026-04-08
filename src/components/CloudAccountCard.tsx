@@ -324,7 +324,8 @@ export function CloudAccountCard({
     );
 
   const aiCredits = account.quota?.ai_credits;
-  const shouldShowAiCredits = !!aiCredits && Number.isFinite(aiCredits.credits) && aiCredits.credits >= 0;
+  const shouldShowAiCredits =
+    !!aiCredits && Number.isFinite(aiCredits.credits) && aiCredits.credits >= 0;
 
   const formatCreditsExpiry = (expiryDate: string) => {
     if (!expiryDate) return '';
@@ -624,7 +625,8 @@ export function CompactCloudAccountCard({
   );
 
   const aiCredits = account.quota?.ai_credits;
-  const shouldShowAiCredits = !!aiCredits && Number.isFinite(aiCredits.credits) && aiCredits.credits >= 0;
+  const shouldShowAiCredits =
+    !!aiCredits && Number.isFinite(aiCredits.credits) && aiCredits.credits >= 0;
 
   const formatCreditsExpiry = (expiryDate: string) => {
     if (!expiryDate) return '';

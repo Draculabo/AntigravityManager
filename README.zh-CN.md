@@ -192,7 +192,7 @@
 | Windows (x64/ARM64) | [.exe 安装包](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | macOS               | [.dmg 安装包](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | Linux               | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest) |
-| NixOS / Nix         | `nix run github:Draculabo/AntigravityManager` |
+| NixOS / Nix         | `nix run github:Draculabo/AntigravityManager`                                  |
 
 ### ❄️ Nix 集成
 
