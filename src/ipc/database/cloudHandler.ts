@@ -85,6 +85,7 @@ function ensureDatabaseInitialized(dbPath: string): void {
         created_at INTEGER NOT NULL,
         last_used INTEGER NOT NULL,
         status TEXT DEFAULT 'active',
+        status_reason TEXT,
         is_active INTEGER DEFAULT 0
       );
     `);
@@ -96,6 +97,7 @@ function ensureDatabaseInitialized(dbPath: string): void {
     const hasDeviceProfileJson = tableInfo.some((col) => col.name === 'device_profile_json');
     const hasDeviceHistoryJson = tableInfo.some((col) => col.name === 'device_history_json');
     const hasProxyUrl = tableInfo.some((col) => col.name === 'proxy_url');
+    const hasStatusReason = tableInfo.some((col) => col.name === 'status_reason');
     if (!hasIsActive) {
       db.exec('ALTER TABLE accounts ADD COLUMN is_active INTEGER DEFAULT 0');
     }
@@ -107,6 +109,9 @@ function ensureDatabaseInitialized(dbPath: string): void {
     }
     if (!hasProxyUrl) {
       db.exec('ALTER TABLE accounts ADD COLUMN proxy_url TEXT');
+    }
+    if (!hasStatusReason) {
+      db.exec('ALTER TABLE accounts ADD COLUMN status_reason TEXT');
     }
 
     // Create index on email for faster lookups
@@ -479,6 +484,7 @@ export class CloudAccountRepo {
         createdAt: account.created_at,
         lastUsed: account.last_used,
         status: account.status || 'active',
+        statusReason: account.status_reason ?? null,
         isActive: account.is_active ? 1 : 0,
         proxyUrl: account.proxy_url ?? null,
       };
@@ -595,6 +601,7 @@ export class CloudAccountRepo {
             created_at: normalizedRow.createdAt,
             last_used: normalizedRow.lastUsed,
             status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
+            status_reason: normalizedRow.statusReason ?? undefined,
             is_active: Boolean(normalizedRow.isActive),
             proxy_url: normalizedRow.proxyUrl ?? undefined,
           });
@@ -681,13 +688,14 @@ export class CloudAccountRepo {
         email: normalizedRow.email,
         name: normalizedRow.name ?? undefined,
         avatar_url: normalizedRow.avatarUrl ?? undefined,
-        token: JSON.parse(tokenResult.value),
+        token: JSON.parse(tokenValue),
         quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
         device_profile: parseDeviceProfileColumn(normalizedRow.deviceProfileJson),
         device_history: parseDeviceHistoryColumn(normalizedRow.deviceHistoryJson),
         created_at: normalizedRow.createdAt,
         last_used: normalizedRow.lastUsed,
         status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
+        status_reason: normalizedRow.statusReason ?? undefined,
         is_active: Boolean(normalizedRow.isActive),
         proxy_url: normalizedRow.proxyUrl ?? undefined,
       };
@@ -985,6 +993,26 @@ export class CloudAccountRepo {
     }
   }
 
+  static async setAccountStatus(
+    id: string,
+    status: CloudAccount['status'],
+    reason?: string | null,
+  ): Promise<void> {
+    const { raw, orm } = getCloudDb();
+    try {
+      orm
+        .update(accounts)
+        .set({
+          status,
+          statusReason: reason?.trim() ? reason.trim() : null,
+        })
+        .where(eq(accounts.id, id))
+        .run();
+    } finally {
+      raw.close();
+    }
+  }
+
   static async getAccountByEmail(email: string): Promise<CloudAccount | null> {
     const all = await this.getAccounts();
     return all.find((a) => a.email.toLowerCase() === email.toLowerCase()) || null;
@@ -1030,10 +1058,35 @@ export class CloudAccountRepo {
       account.token.access_token,
       account.token.refresh_token,
       account.token.expiry_timestamp,
+      account.token.is_gcp_tos ?? true,
     );
+    const userStatusPayload = ProtobufUtils.createMinimalUserStatusPayload(account.email);
+    const userStatusEntry = ProtobufUtils.createUnifiedStateEntry(
+      'userStatusSentinelKey',
+      userStatusPayload,
+    );
+    const normalizedProjectId = account.token.project_id?.trim();
 
     orm.transaction((tx) => {
       this.upsertItemValue(tx, 'antigravityUnifiedStateSync.oauthToken', oauthToken);
+      this.upsertItemValue(tx, 'antigravityUnifiedStateSync.userStatus', userStatusEntry);
+      if (normalizedProjectId) {
+        const projectPayload = ProtobufUtils.createStringValuePayload(normalizedProjectId);
+        const projectEntry = ProtobufUtils.createUnifiedStateEntry(
+          'enterpriseGcpProjectId',
+          projectPayload,
+        );
+        this.upsertItemValue(
+          tx,
+          'antigravityUnifiedStateSync.enterprisePreferences',
+          projectEntry,
+        );
+      } else {
+        tx
+          .delete(itemTable)
+          .where(eq(itemTable.key, 'antigravityUnifiedStateSync.enterprisePreferences'))
+          .run();
+      }
       this.writeAuthStatusAndCleanup(tx, account);
     });
   }
@@ -1252,7 +1305,9 @@ export class CloudAccountRepo {
   private static readTokenInfoFromDb(db: DrizzleExecutor): {
     accessToken: string;
     refreshToken: string;
+    projectId?: string;
   } {
+    const enterpriseProjectId = this.readEnterpriseProjectIdFromDb(db);
     const unifiedValue = this.getItemValue(
       db,
       'antigravityUnifiedStateSync.oauthToken',
@@ -1296,12 +1351,16 @@ export class CloudAccountRepo {
       throw new Error(errorMsg);
     }
 
-    return tokenInfo;
+    return {
+      ...tokenInfo,
+      projectId: enterpriseProjectId,
+    };
   }
 
   private static readTokenInfoWithRetry(dbPath: string): {
     accessToken: string;
     refreshToken: string;
+    projectId?: string;
   } {
     let lastError: unknown;
     for (let attempt = 1; attempt <= SQLITE_MAX_RETRIES; attempt += 1) {
@@ -1321,6 +1380,41 @@ export class CloudAccountRepo {
       }
     }
     throw lastError;
+  }
+
+  private static readEnterpriseProjectIdFromDb(db: DrizzleExecutor): string | undefined {
+    const enterprisePreferencesValue = this.getItemValue(
+      db,
+      'antigravityUnifiedStateSync.enterprisePreferences',
+      'ide.itemTable.antigravityUnifiedStateSync.enterprisePreferences',
+    );
+    if (!enterprisePreferencesValue) {
+      return undefined;
+    }
+
+    try {
+      const { sentinelKey, payload } = ProtobufUtils.decodeUnifiedStateEntry(
+        enterprisePreferencesValue,
+      );
+      if (sentinelKey !== 'enterpriseGcpProjectId') {
+        return undefined;
+      }
+
+      const projectBytes = ProtobufUtils.getField(payload, 3);
+      if (!projectBytes) {
+        return undefined;
+      }
+
+      const projectId = ProtobufUtils.readString(projectBytes).trim();
+      if (projectId === '') {
+        return undefined;
+      }
+
+      return projectId;
+    } catch (error) {
+      logger.warn('SyncLocal: Failed to parse enterprise project preference', error);
+      return undefined;
+    }
   }
 
   static async syncFromIDE(): Promise<CloudAccount | null> {
@@ -1372,6 +1466,8 @@ export class CloudAccountRepo {
           expiry_timestamp: now + 3600,
           token_type: 'Bearer',
           email: userInfo.email,
+          project_id: tokenInfo.projectId,
+          is_gcp_tos: true,
         },
         created_at: now,
         last_used: now,
@@ -1383,8 +1479,28 @@ export class CloudAccountRepo {
       const accounts = await this.getAccounts();
       const existing = accounts.find((a) => a.email === account.email);
       if (existing) {
+        const existingProjectId = existing.token.project_id?.trim();
+
         account.id = existing.id; // Keep existing ID
         account.created_at = existing.created_at;
+        account.name = account.name ?? existing.name;
+        account.avatar_url = account.avatar_url ?? existing.avatar_url;
+        account.proxy_url = existing.proxy_url;
+        account.device_profile = existing.device_profile;
+        account.device_history = existing.device_history;
+        account.status = 'active';
+        account.status_reason = undefined;
+        account.token = {
+          ...existing.token,
+          access_token: tokenInfo.accessToken,
+          refresh_token: tokenInfo.refreshToken || existing.token.refresh_token,
+          expires_in: 3600,
+          expiry_timestamp: now + 3600,
+          token_type: 'Bearer',
+          email: userInfo.email,
+          project_id: existingProjectId || tokenInfo.projectId,
+          is_gcp_tos: existing.token.is_gcp_tos ?? true,
+        };
       }
 
       await this.addAccount(account);

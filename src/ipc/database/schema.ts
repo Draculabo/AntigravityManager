@@ -13,6 +13,7 @@ export const accounts = sqliteTable('accounts', {
   createdAt: integer('created_at').notNull(),
   lastUsed: integer('last_used').notNull(),
   status: text('status', { enum: ['active', 'rate_limited', 'expired'] }).default('active'),
+  statusReason: text('status_reason'),
   isActive: integer('is_active').notNull().default(0),
   proxyUrl: text('proxy_url'),
 });

@@ -14,8 +14,10 @@ export interface CloudTokenData {
   token_type: string;
   email?: string;
   project_id?: string;
+  oauth_client_key?: string;
   session_id?: string;
   upstream_proxy_url?: string;
+  is_gcp_tos?: boolean;
 }
 
 export interface CloudQuotaModelInfo {
@@ -53,6 +55,7 @@ export interface CloudAccount {
   created_at: number;
   last_used: number; // Unix timestamp
   status?: 'active' | 'rate_limited' | 'expired';
+  status_reason?: string;
   is_active?: boolean;
   proxy_url?: string;
 }
@@ -66,8 +69,10 @@ export const CloudTokenDataSchema = z.object({
   token_type: z.string(),
   email: z.string().optional(),
   project_id: z.string().optional(),
+  oauth_client_key: z.string().optional(),
   session_id: z.string().optional(),
   upstream_proxy_url: z.string().optional(),
+  is_gcp_tos: z.boolean().optional(),
 });
 
 export const CloudQuotaModelInfoSchema = z.object({
@@ -105,6 +110,7 @@ export const CloudAccountSchema = z.object({
   created_at: z.number(),
   last_used: z.number(),
   status: z.enum(['active', 'rate_limited', 'expired']).optional(),
+  status_reason: z.string().optional(),
   is_active: z.boolean().optional(),
   proxy_url: z.string().optional(),
 });
@@ -123,6 +129,8 @@ export const CloudAccountExportSchema = z.object({
       device_profile: z.any().optional(),
       device_history: z.any().optional(),
       proxy_url: z.string().optional().nullable(),
+      status: z.enum(['active', 'rate_limited', 'expired']).optional(),
+      status_reason: z.string().optional(),
     }),
   ),
 });
