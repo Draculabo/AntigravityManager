@@ -52,6 +52,12 @@ ipcMain.on(IPC_CHANNELS.CHANGE_LANGUAGE, (event, lang) => {
 
 app.disableHardwareAcceleration();
 
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+  logger.info('Applied Linux GPU-safe Chromium switches for Antigravity Manager startup');
+}
+
 if (squirrelStartup) {
   app.quit();
   process.exit(0);

@@ -1,10 +1,13 @@
-import { exec, execSync } from 'child_process';
+import { exec, execSync, spawn } from 'child_process';
 import { promisify } from 'util';
 import findProcess, { ProcessInfo } from 'find-process';
 import { getAntigravityExecutablePath, isWsl } from '../../utils/paths';
 import { logger } from '../../utils/logger';
 
 const execAsync = promisify(exec);
+const PROCESS_STARTUP_TIMEOUT_MS = 6000;
+const PROCESS_STARTUP_POLL_INTERVAL_MS = 200;
+const LINUX_GPU_SAFE_LAUNCH_ARGS = ['--disable-gpu', '--disable-gpu-compositing'] as const;
 
 /**
  * Helper process name patterns to exclude (Electron helper processes)
@@ -414,6 +417,73 @@ async function openUri(uri: string): Promise<boolean> {
   }
 }
 
+async function waitForAntigravityStartup(
+  timeoutMs = PROCESS_STARTUP_TIMEOUT_MS,
+  pollIntervalMs = PROCESS_STARTUP_POLL_INTERVAL_MS,
+): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await isProcessRunning()) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+  return false;
+}
+
+function shouldUseLinuxGpuSafeLaunchArgs(): boolean {
+  if (process.platform !== 'linux' || isWsl()) {
+    return false;
+  }
+
+  const enableLinuxGpuRaw = process.env.ANTIGRAVITY_MANAGER_ENABLE_LINUX_GPU?.trim().toLowerCase();
+  return enableLinuxGpuRaw !== '1' && enableLinuxGpuRaw !== 'true';
+}
+
+async function startAntigravityByExecutable(execPath: string): Promise<void> {
+  if (process.platform === 'darwin') {
+    await execAsync(`open -a Antigravity`);
+    return;
+  }
+
+  if (process.platform === 'win32') {
+    if (!execPath) {
+      throw new Error('Unable to locate Antigravity executable path');
+    }
+    // Use start command to detach
+    await execAsync(`start "" "${execPath}"`);
+    return;
+  }
+
+  if (isWsl()) {
+    if (!execPath) {
+      throw new Error('Unable to locate Antigravity executable path');
+    }
+    // In WSL, convert path and use cmd.exe
+    const winPath = execPath
+      .replace(/^\/mnt\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`)
+      .replace(/\//g, '\\');
+
+    await execAsync(`/mnt/c/Windows/System32/cmd.exe /c start "" "${winPath}"`);
+    return;
+  }
+
+  if (!execPath) {
+    throw new Error('Unable to locate Antigravity executable path');
+  }
+
+  const launchArgs = shouldUseLinuxGpuSafeLaunchArgs() ? [...LINUX_GPU_SAFE_LAUNCH_ARGS] : [];
+  if (launchArgs.length > 0) {
+    logger.info(`Linux launch with GPU-safe args: ${launchArgs.join(' ')}`);
+  }
+
+  const child = spawn(execPath, launchArgs, {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+}
+
 /**
  * Starts the Antigravity process.
  * @param useUri {boolean} Whether to use the URI protocol to start Antigravity.
@@ -433,7 +503,19 @@ export async function startAntigravity(useUri = true): Promise<void> {
 
     if (await openUri(uri)) {
       logger.info('Antigravity URI launch command sent');
-      return;
+
+      if (process.platform !== 'linux' || isWsl()) {
+        return;
+      }
+
+      if (await waitForAntigravityStartup()) {
+        logger.info('Antigravity process detected after URI launch');
+        return;
+      }
+
+      logger.warn(
+        'URI launch did not keep Antigravity running on Linux. Falling back to executable launch.',
+      );
     } else {
       logger.warn('URI launch failed, trying executable path...');
     }
@@ -444,24 +526,17 @@ export async function startAntigravity(useUri = true): Promise<void> {
   const execPath = getAntigravityExecutablePath();
 
   try {
-    if (process.platform === 'darwin') {
-      await execAsync(`open -a Antigravity`);
-    } else if (process.platform === 'win32') {
-      // Use start command to detach
-      await execAsync(`start "" "${execPath}"`);
-    } else if (isWsl()) {
-      // In WSL, convert path and use cmd.exe
-      const winPath = execPath
-        .replace(/^\/mnt\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`)
-        .replace(/\//g, '\\');
-
-      await execAsync(`/mnt/c/Windows/System32/cmd.exe /c start "" "${winPath}"`);
-    } else {
-      // Linux native
-      const child = exec(`"${execPath}"`);
-      child.unref();
-    }
+    await startAntigravityByExecutable(execPath);
     logger.info('Antigravity launch command sent');
+
+    if (process.platform === 'linux' && !isWsl()) {
+      const started = await waitForAntigravityStartup();
+      if (!started) {
+        logger.warn(
+          'Antigravity launch command completed, but process startup could not be confirmed on Linux.',
+        );
+      }
+    }
   } catch (error) {
     logger.error('Failed to start Antigravity via executable', error);
     throw error;
