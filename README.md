@@ -50,6 +50,7 @@
 - [Quick Start](#-quick-start)
 - [Tech Stack](#️-tech-stack)
 - [Development](#-development)
+- [Debugging Docs](#-debugging-docs)
 - [FAQ](#-faq)
 - [Contributing](#-contributing)
 - [License](#-license)
@@ -308,6 +309,15 @@ AntigravityManager/
 ├── docs/                # Documentation and assets
 └── .github/             # GitHub configuration
 ```
+
+---
+
+## 🔍 Debugging Docs
+
+If you want to inspect Antigravity or Antigravity Manager traffic with Proxyman, start here:
+
+- [Proxyman Installation and Basic Setup on Windows](docs/proxyman-install.md)
+- [Proxyman Debugging Guide for Antigravity and Antigravity Manager](docs/proxyman-debugging.md)
 
 ---
 

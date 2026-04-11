@@ -50,6 +50,7 @@
 - [快速开始](#-快速开始)
 - [技术栈](#️-技术栈)
 - [开发指南](#-开发指南)
+- [调试文档](#-调试文档)
 - [常见问题](#-常见问题)
 - [贡献指南](#-贡献指南)
 - [许可证](#-许可证)
@@ -307,6 +308,15 @@ AntigravityManager/
 ├── docs/                # 文档和资源
 └── .github/             # GitHub 配置
 ```
+
+---
+
+## 🔍 调试文档
+
+如果你希望用 Proxyman 抓取和排查 Antigravity 或 Antigravity Manager 的流量，请先阅读：
+
+- [Proxyman Installation and Basic Setup on Windows](docs/proxyman-install.md)
+- [Proxyman Debugging Guide for Antigravity and Antigravity Manager](docs/proxyman-debugging.md)
 
 ---
 
