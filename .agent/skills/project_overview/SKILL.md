@@ -69,7 +69,7 @@ The project uses `orpc` for type-safe communication.
 
 ### Database Access
 
-Data is stored in a local SQLite file (`test.db` in dev, user data in prod).
+Data is stored in a local SQLite file.
 
 - Use `Better-SQLite3` for direct access.
 - Logic should be encapsulated in `src/services` or `src/ipc`.
