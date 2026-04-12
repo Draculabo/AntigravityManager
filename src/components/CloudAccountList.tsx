@@ -71,7 +71,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { filter, flatMap, isEmpty, size, sumBy } from 'lodash-es';
+import { filter, flatMap, isEmpty, isNumber, size, sumBy } from 'lodash-es';
 import {
   clampQuotaPercentage,
   getQuotaStatus,
@@ -313,7 +313,7 @@ export function CloudAccountList() {
       {
         onSuccess: (updatedAccount) => {
           const credits = updatedAccount.quota?.ai_credits?.credits;
-          if (typeof credits === 'number') {
+          if (isNumber(credits)) {
             toast({
               title: t('cloud.toast.quotaRefreshed'),
               description: `AI credits: $${credits.toFixed(2)}`,

@@ -1,3 +1,5 @@
+import { isEmpty } from 'lodash-es';
+
 export function shouldAutoSubmitGoogleAuthCode(params: {
   authCode: string;
   isAddDialogOpen: boolean;
@@ -5,7 +7,7 @@ export function shouldAutoSubmitGoogleAuthCode(params: {
   lastSubmittedAuthCode: string | null;
 }): boolean {
   return (
-    params.authCode.trim() !== '' &&
+    !isEmpty(params.authCode.trim()) &&
     params.isAddDialogOpen &&
     !params.isPending &&
     params.authCode !== params.lastSubmittedAuthCode

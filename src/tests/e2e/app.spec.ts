@@ -6,17 +6,18 @@ const injectCloudAccountsFailureScript = `
 (() => {
   const START_ORPC_SERVER = 'start-orpc-server';
   const originalPostMessage = window.postMessage.bind(window);
+  const isStringValue = (value) => Object.prototype.toString.call(value) === '[object String]';
 
   window.postMessage = function (message, targetOrigin, transfer) {
     if (message === START_ORPC_SERVER && Array.isArray(transfer) && transfer[0]) {
       const serverPort = transfer[0];
-      if (typeof serverPort.start === 'function') {
+      if (serverPort.start instanceof Function) {
         serverPort.start();
       }
 
       serverPort.onmessage = (event) => {
         try {
-          const request = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+          const request = isStringValue(event.data) ? JSON.parse(event.data) : event.data;
           const requestId = request && (request.i || request.id);
           const requestUrl = (request && request.p && request.p.u) || '';
 

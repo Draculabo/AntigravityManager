@@ -1,3 +1,5 @@
+import { isNumber, isObjectLike, isString } from 'lodash-es';
+
 export interface UpstreamErrorHeaders {
   retryAfter?: string;
 }
@@ -16,10 +18,10 @@ export class UpstreamRequestError extends Error {
     super(params.message);
     this.name = 'UpstreamRequestError';
 
-    if (params.status && typeof params.status !== 'number') {
+    if (params.status && !isNumber(params.status)) {
       throw new TypeError('status must be a number');
     }
-    if (params.headers && typeof params.headers !== 'object') {
+    if (params.headers && !isObjectLike(params.headers)) {
       throw new TypeError('headers must be an object');
     }
 
@@ -27,7 +29,7 @@ export class UpstreamRequestError extends Error {
     this.headers = params.headers;
 
     // Sanitize and limit body size
-    if (typeof params.body === 'string') {
+    if (isString(params.body)) {
       const sanitized = params.body.replace(/<[^>]*>?/gm, '');
       this.body = sanitized.substring(0, 1000);
     } else {

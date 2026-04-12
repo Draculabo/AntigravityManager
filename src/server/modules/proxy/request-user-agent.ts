@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isString } from 'lodash-es';
 import { getAntigravityVersion } from '../../../utils/antigravityVersion';
 import { logger } from '../../../utils/logger';
 
@@ -20,7 +21,7 @@ let cachedUserAgentResolution: UserAgentResolution | null = null;
 let pendingUserAgentResolution: Promise<UserAgentResolution> | null = null;
 
 function normalizeNonEmptyString(value: string | null | undefined): string | null {
-  if (typeof value !== 'string') {
+  if (!isString(value)) {
     return null;
   }
 
@@ -125,7 +126,7 @@ async function fetchTextPayload(url: string): Promise<string | null> {
       },
     });
 
-    if (typeof response.data === 'string') {
+    if (isString(response.data)) {
       return response.data;
     }
 

@@ -1,4 +1,5 @@
 import modelSpecsJson from './model-specs';
+import { isNumber } from 'lodash-es';
 
 type ModelSpec = {
   max_output_tokens?: number;
@@ -24,7 +25,7 @@ export function resolveModelAlias(modelId: string): string {
 export function getMaxOutputTokens(modelId: string): number {
   const resolved = resolveModelAlias(modelId);
   const fromSpec = SPECS.models[resolved]?.max_output_tokens;
-  if (typeof fromSpec === 'number' && Number.isFinite(fromSpec) && fromSpec > 0) {
+  if (isNumber(fromSpec) && Number.isFinite(fromSpec) && fromSpec > 0) {
     return Math.floor(fromSpec);
   }
   return DEFAULT_MAX_OUTPUT_TOKENS;
@@ -33,7 +34,7 @@ export function getMaxOutputTokens(modelId: string): number {
 export function getThinkingBudget(modelId: string): number {
   const resolved = resolveModelAlias(modelId);
   const fromSpec = SPECS.models[resolved]?.thinking_budget;
-  if (typeof fromSpec === 'number' && Number.isFinite(fromSpec) && fromSpec >= 0) {
+  if (isNumber(fromSpec) && Number.isFinite(fromSpec) && fromSpec >= 0) {
     return Math.floor(fromSpec);
   }
   return DEFAULT_THINKING_BUDGET;

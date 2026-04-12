@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { eq } from 'drizzle-orm';
+import { isString } from 'lodash-es';
 import { AccountBackupData, AccountInfo } from '../../types/account';
 import { ItemTableValueRowSchema, type ItemTableKey } from '../../types/db';
 import { logger } from '../../utils/logger';
@@ -192,8 +193,8 @@ export function getCurrentAccountInfo(): AccountInfo {
     // Helper to find email in object
     const findEmail = (obj: { email?: string; user?: { email?: string } }): string => {
       if (!obj) return '';
-      if (typeof obj.email === 'string') return obj.email;
-      if (obj.user && typeof obj.user.email === 'string') return obj.user.email;
+      if (isString(obj.email)) return obj.email;
+      if (obj.user && isString(obj.user.email)) return obj.user.email;
       return '';
     };
 
@@ -323,7 +324,7 @@ function _restoreSingleDb(dbPath: string, backup: AccountBackupData): boolean {
       for (const key of KEYS_TO_BACKUP) {
         if (key in backup.data) {
           const value = backup.data[key];
-          const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+          const stringValue = isString(value) ? value : JSON.stringify(value);
           tx.insert(itemTable)
             .values({ key, value: stringValue })
             .onConflictDoUpdate({

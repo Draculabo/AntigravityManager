@@ -1,3 +1,5 @@
+import { isObjectLike, isString } from 'lodash-es';
+
 /**
  * Keys to mask in logs to avoid exposing sensitive data.
  */
@@ -39,10 +41,10 @@ function sanitizeWithSeen(obj: unknown, seen: WeakSet<object>): unknown {
     return obj;
   }
 
-  if (typeof obj === 'string') {
+  if (isString(obj)) {
     try {
       const parsed = JSON.parse(obj);
-      if (typeof parsed === 'object' && parsed !== null) {
+      if (isObjectLike(parsed)) {
         return JSON.stringify(sanitizeWithSeen(parsed, seen));
       }
     } catch {
@@ -59,7 +61,7 @@ function sanitizeWithSeen(obj: unknown, seen: WeakSet<object>): unknown {
     return obj.map((item) => sanitizeWithSeen(item, seen));
   }
 
-  if (typeof obj === 'object') {
+  if (isObjectLike(obj)) {
     if (seen.has(obj)) {
       return CIRCULAR_PLACEHOLDER;
     }
@@ -94,7 +96,7 @@ export function safeStringifyPacket(obj: unknown): string {
   const sanitized = sanitizeObject(obj);
   const seen = new WeakSet();
   return JSON.stringify(sanitized, (key, value) => {
-    if (typeof value === 'object' && value !== null) {
+    if (isObjectLike(value)) {
       if (seen.has(value)) {
         return '[Circular]';
       }

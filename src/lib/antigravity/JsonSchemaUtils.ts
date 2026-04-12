@@ -1,3 +1,5 @@
+import { isArray, isBoolean, isNumber, isObjectLike, isString } from 'lodash-es';
+
 /**
  * Recursively cleans JSON Schema to meet Gemini interface requirements
  *
@@ -9,7 +11,7 @@
  */
 export function cleanJsonSchema(value: any) {
   // 0. Preprocessing: Expand $ref (Schema Flattening)
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
+  if (isObjectLike(value) && !isArray(value)) {
     const defs: Record<string, any> = {};
 
     // Extract $defs or definitions
@@ -34,21 +36,21 @@ export function cleanJsonSchema(value: any) {
 
 export function normalizeObjectJsonSchema(schema: unknown): Record<string, unknown> {
   const fallbackSchema: Record<string, unknown> = { type: 'object', properties: {} };
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+  if (!isObjectLike(schema) || isArray(schema)) {
     return fallbackSchema;
   }
 
   const normalizedSchema = JSON.parse(JSON.stringify(schema)) as Record<string, unknown>;
   cleanJsonSchema(normalizedSchema);
 
-  if (typeof normalizedSchema.type !== 'string') {
+  if (!isString(normalizedSchema.type)) {
     normalizedSchema.type = 'object';
   }
   if (
     normalizedSchema.type === 'object' &&
     (!normalizedSchema.properties ||
-      typeof normalizedSchema.properties !== 'object' ||
-      Array.isArray(normalizedSchema.properties))
+      !isObjectLike(normalizedSchema.properties) ||
+      isArray(normalizedSchema.properties))
   ) {
     normalizedSchema.properties = {};
   }
@@ -60,10 +62,10 @@ export function normalizeObjectJsonSchema(schema: unknown): Record<string, unkno
  * Recursively expand $ref
  */
 function flattenRefs(map: any, defs: Record<string, any>) {
-  if (!map || typeof map !== 'object') return;
+  if (!isObjectLike(map)) return;
 
   // Check and replace $ref
-  if (typeof map['$ref'] === 'string') {
+  if (isString(map['$ref'])) {
     const refPath = map['$ref'];
     // Parse reference name (e.g. #/$defs/MyType -> MyType)
     const parts = refPath.split('/');
@@ -74,7 +76,7 @@ function flattenRefs(map: any, defs: Record<string, any>) {
       // $ref nodes should not have other properties, remove $ref directly
       delete map['$ref'];
 
-      if (defSchema && typeof defSchema === 'object') {
+      if (isObjectLike(defSchema)) {
         for (const [k, v] of Object.entries(defSchema)) {
           // Only insert if the key does not exist in current map (avoid overwrite)
           if (map[k] === undefined) {
@@ -93,7 +95,7 @@ function flattenRefs(map: any, defs: Record<string, any>) {
   for (const k in map) {
     if (Object.prototype.hasOwnProperty.call(map, k)) {
       const v = map[k];
-      if (typeof v === 'object' && v !== null) {
+      if (isObjectLike(v)) {
         flattenRefs(v, defs);
       }
     }
@@ -101,11 +103,11 @@ function flattenRefs(map: any, defs: Record<string, any>) {
 }
 
 function cleanJsonSchemaRecursive(value: any) {
-  if (!value || typeof value !== 'object') {
+  if (!isObjectLike(value)) {
     return;
   }
 
-  if (Array.isArray(value)) {
+  if (isArray(value)) {
     // Array: Recursively process each element
     for (const v of value) {
       cleanJsonSchemaRecursive(v);
@@ -142,7 +144,7 @@ function cleanJsonSchemaRecursive(value: any) {
       if (map[field] !== undefined) {
         const val = map[field];
         // Only migrate if value is primitive type
-        if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+        if (isString(val) || isNumber(val) || isBoolean(val)) {
           constraints.push(`${label}: ${val}`);
           delete map[field];
         } else {
@@ -188,13 +190,13 @@ function cleanJsonSchemaRecursive(value: any) {
     // 5. Handle type field (Gemini requires single lowercase string)
     if (map['type']) {
       const typeVal = map['type'];
-      if (typeof typeVal === 'string') {
+      if (isString(typeVal)) {
         map['type'] = typeVal.toLowerCase();
-      } else if (Array.isArray(typeVal)) {
+      } else if (isArray(typeVal)) {
         // Union type downgrade: take the first non-null type
         let selectedType = 'string';
         for (const item of typeVal) {
-          if (typeof item === 'string' && item !== 'null') {
+          if (isString(item) && item !== 'null') {
             selectedType = item.toLowerCase();
             break;
           }

@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { isEmpty, isNumber, isString } from 'lodash-es';
 import { CloudAccountRepo } from '../../../ipc/database/cloudHandler';
 import { CloudAccount, CloudQuotaData } from '../../../types/cloudAccount';
 import { GoogleAPIService } from '../../../services/GoogleAPIService';
@@ -36,7 +37,7 @@ interface GetNextTokenOptions {
 type TokenEntry = [string, TokenData];
 
 function normalizeProjectId(projectId: string | null | undefined): string | undefined {
-  if (typeof projectId !== 'string') {
+  if (!isString(projectId)) {
     return undefined;
   }
 
@@ -53,7 +54,7 @@ function normalizeProjectId(projectId: string | null | undefined): string | unde
 }
 
 function normalizeModelId(modelId: string | null | undefined): string | undefined {
-  if (typeof modelId !== 'string') {
+  if (!isString(modelId)) {
     return undefined;
   }
   const normalized = modelId.replace(/^models\//i, '').trim();
@@ -61,7 +62,7 @@ function normalizeModelId(modelId: string | null | undefined): string | undefine
 }
 
 function normalizeClientKey(clientKey: string | undefined): string | undefined {
-  if (typeof clientKey !== 'string') {
+  if (!isString(clientKey)) {
     return undefined;
   }
   const normalized = clientKey.trim().toLowerCase();
@@ -190,7 +191,7 @@ export class TokenManagerService implements OnModuleInit {
     const accountId = this.resolveAccountId(params.accountIdOrEmail) ?? params.accountIdOrEmail;
     const normalizedModel = normalizeModelId(params.model);
     const hasExplicitRetryWindow =
-      Boolean(params.retryAfter && params.retryAfter.trim() !== '') ||
+      Boolean(isString(params.retryAfter) && !isEmpty(params.retryAfter.trim())) ||
       Boolean(params.body && params.body.includes('quotaResetDelay'));
 
     if (!hasExplicitRetryWindow && (params.status ?? 0) === 429) {
@@ -215,7 +216,7 @@ export class TokenManagerService implements OnModuleInit {
         if (
           parsed.reason !== RateLimitReason.QuotaExhausted ||
           !parsed.model ||
-          parsed.model.trim() === ''
+          isEmpty(parsed.model.trim())
         ) {
           this.accountCooldowns.set(accountId, Date.now() + parsed.retryAfterSec * 1000);
         }
@@ -258,7 +259,7 @@ export class TokenManagerService implements OnModuleInit {
     if (
       parsed.reason !== RateLimitReason.QuotaExhausted ||
       !parsed.model ||
-      parsed.model.trim() === ''
+      isEmpty(parsed.model.trim())
     ) {
       this.accountCooldowns.set(accountId, Date.now() + parsed.retryAfterSec * 1000);
     }
@@ -661,14 +662,14 @@ export class TokenManagerService implements OnModuleInit {
 
       const limitCandidate = modelInfo.max_output_tokens ?? modelInfo.max_tokens;
       if (
-        typeof limitCandidate === 'number' &&
+        isNumber(limitCandidate) &&
         Number.isFinite(limitCandidate) &&
         limitCandidate > 0
       ) {
         modelLimits[normalizedModel] = Math.floor(limitCandidate);
       }
 
-      if (typeof modelInfo.resetTime === 'string' && modelInfo.resetTime.trim() !== '') {
+      if (isString(modelInfo.resetTime) && !isEmpty(modelInfo.resetTime.trim())) {
         modelResetTimes[normalizedModel] = modelInfo.resetTime;
       }
     }
@@ -692,7 +693,7 @@ export class TokenManagerService implements OnModuleInit {
   }
 
   private findEarliestQuotaResetTime(modelResetTimes: Record<string, string>): string | null {
-    const validTimes = Object.values(modelResetTimes).filter((value) => value.trim() !== '');
+    const validTimes = Object.values(modelResetTimes).filter((value) => !isEmpty(value.trim()));
     if (validTimes.length === 0) {
       return null;
     }
@@ -1084,7 +1085,7 @@ export class TokenManagerService implements OnModuleInit {
         continue;
       }
       const budget = modelInfo?.thinking_budget;
-      if (typeof budget === 'number' && Number.isFinite(budget) && budget >= 0) {
+      if (isNumber(budget) && Number.isFinite(budget) && budget >= 0) {
         return Math.floor(budget);
       }
     }

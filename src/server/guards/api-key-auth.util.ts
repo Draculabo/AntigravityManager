@@ -1,9 +1,11 @@
+import { isEmpty, isString } from 'lodash-es';
+
 export type RequestHeaderValue = string | string[] | undefined;
 
 export type RequestHeaders = Record<string, RequestHeaderValue>;
 
 export function hasConfiguredApiKey(apiKey: string | undefined): apiKey is string {
-  return typeof apiKey === 'string' && apiKey.trim() !== '';
+  return isString(apiKey) && !isEmpty(apiKey.trim());
 }
 
 export function extractApiKeyToken(headers: RequestHeaders): string | null {
@@ -29,16 +31,16 @@ export function extractApiKeyToken(headers: RequestHeaders): string | null {
 }
 
 function readHeaderValue(headerValue: RequestHeaderValue): string | null {
-  if (typeof headerValue === 'string') {
+  if (isString(headerValue)) {
     const trimmedValue = headerValue.trim();
-    return trimmedValue !== '' ? trimmedValue : null;
+    return !isEmpty(trimmedValue) ? trimmedValue : null;
   }
 
   if (Array.isArray(headerValue)) {
     for (const value of headerValue) {
-      if (typeof value === 'string') {
+      if (isString(value)) {
         const trimmedValue = value.trim();
-        if (trimmedValue !== '') {
+        if (!isEmpty(trimmedValue)) {
           return trimmedValue;
         }
       }

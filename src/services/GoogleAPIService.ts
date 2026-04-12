@@ -8,7 +8,7 @@ import {
   FALLBACK_VERSION,
   resolveLocalInstalledVersion,
 } from '@/server/modules/proxy/request-user-agent';
-import { isNumber, isString } from 'lodash-es';
+import { isEmpty, isNumber, isString, isUndefined } from 'lodash-es';
 
 // --- Constants & Config ---
 
@@ -81,7 +81,7 @@ function buildOAuthClientRegistry(): OAuthClientRegistry {
   ];
 
   const rawExtraClients = process.env[OAUTH_CLIENTS_ENV];
-  if (isString(rawExtraClients) && rawExtraClients.trim() !== '') {
+  if (isString(rawExtraClients) && !isEmpty(rawExtraClients.trim())) {
     for (const entry of rawExtraClients.split(';')) {
       const trimmed = entry.trim();
       if (trimmed === '') {
@@ -180,7 +180,7 @@ function selectAuthClient(clientKey?: string): OAuthClientConfig {
     throw new Error('No OAuth clients configured');
   }
 
-  if (clientKey && clientKey.trim() !== '') {
+  if (isString(clientKey) && !isEmpty(clientKey.trim())) {
     const selected = getClientByKey(registry.clients, clientKey);
     if (!selected) {
       throw new Error(`Unknown OAuth client key: ${clientKey}`);
@@ -345,20 +345,20 @@ function buildInternalApiHeaders(accessToken: string): Record<string, string> {
 
 function resolveSubscriptionTier(payload: LoadProjectResponse): string | undefined {
   const paidTier = payload.paidTier;
-  if (paidTier?.name && paidTier.name.trim() !== '') {
+  if (isString(paidTier?.name) && !isEmpty(paidTier.name.trim())) {
     return paidTier.name;
   }
-  if (paidTier?.id && paidTier.id.trim() !== '') {
+  if (isString(paidTier?.id) && !isEmpty(paidTier.id.trim())) {
     return paidTier.id;
   }
 
   const ineligible = Array.isArray(payload.ineligibleTiers) && payload.ineligibleTiers.length > 0;
   if (!ineligible) {
     const currentTier = payload.currentTier;
-    if (currentTier?.name && currentTier.name.trim() !== '') {
+    if (isString(currentTier?.name) && !isEmpty(currentTier.name.trim())) {
       return currentTier.name;
     }
-    if (currentTier?.id && currentTier.id.trim() !== '') {
+    if (isString(currentTier?.id) && !isEmpty(currentTier.id.trim())) {
       return currentTier.id;
     }
   }
@@ -366,10 +366,10 @@ function resolveSubscriptionTier(payload: LoadProjectResponse): string | undefin
   if (Array.isArray(payload.allowedTiers)) {
     const preferredAllowedTier =
       payload.allowedTiers.find((tier) => tier.is_default === true) ?? payload.allowedTiers[0];
-    if (preferredAllowedTier?.name && preferredAllowedTier.name.trim() !== '') {
+    if (isString(preferredAllowedTier?.name) && !isEmpty(preferredAllowedTier.name.trim())) {
       return ineligible ? `${preferredAllowedTier.name} (Restricted)` : preferredAllowedTier.name;
     }
-    if (preferredAllowedTier?.id && preferredAllowedTier.id.trim() !== '') {
+    if (isString(preferredAllowedTier?.id) && !isEmpty(preferredAllowedTier.id.trim())) {
       return ineligible ? `${preferredAllowedTier.id} (Restricted)` : preferredAllowedTier.id;
     }
   }
@@ -410,7 +410,7 @@ function toModelForwardingRules(
 
   const forwardingRules: Record<string, string> = {};
   for (const [oldModelId, deprecatedInfo] of Object.entries(deprecatedModelIds)) {
-    if (typeof deprecatedInfo.newModelId === 'string' && deprecatedInfo.newModelId !== '') {
+    if (isString(deprecatedInfo.newModelId) && deprecatedInfo.newModelId !== '') {
       forwardingRules[oldModelId] = deprecatedInfo.newModelId;
     }
   }
@@ -423,7 +423,7 @@ function parseCreditAmount(value: string | number | undefined): number {
     return value;
   }
 
-  if (typeof value === 'string') {
+  if (isString(value)) {
     const parsed = Number.parseInt(value, 10);
     if (Number.isFinite(parsed)) {
       return parsed;
@@ -448,7 +448,7 @@ function toAiCredits(
         ? payload.remainingCredits
         : undefined;
 
-  if (typeof creditsValue === 'undefined') {
+  if (isUndefined(creditsValue)) {
     return null;
   }
 
@@ -517,10 +517,10 @@ export class GoogleAPIService {
   ): string | undefined {
     const resolved = refreshedClientKey ?? currentToken.oauth_client_key;
     const projectMissing =
-      typeof currentToken.project_id !== 'string' || currentToken.project_id.trim() === '';
+      !isString(currentToken.project_id) || isEmpty(currentToken.project_id.trim());
 
     if (
-      typeof currentToken.oauth_client_key !== 'string' &&
+      !isString(currentToken.oauth_client_key) &&
       projectMissing &&
       resolved &&
       normalizeClientKey(resolved) === DEFAULT_OAUTH_CLIENT_KEY
@@ -812,7 +812,7 @@ export class GoogleAPIService {
 
         if (response.ok) {
           const data = (await response.json()) as LoadProjectResponse;
-          if (typeof data.cloudaicompanionProject === 'string') {
+          if (isString(data.cloudaicompanionProject)) {
             projectId = data.cloudaicompanionProject;
           }
           subscriptionTier = resolveSubscriptionTier(data);

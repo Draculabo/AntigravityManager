@@ -12,7 +12,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { isNil, isPlainObject, isString } from 'lodash-es';
+import { isEmpty, isFunction, isNil, isObjectLike, isPlainObject, isString } from 'lodash-es';
 import { ProxyService } from './proxy.service';
 import { Observable } from 'rxjs';
 import {
@@ -339,7 +339,7 @@ export class ProxyController {
   private toLegacyTextCompletionsResponse(response: OpenAIChatResponse): Record<string, unknown> {
     const choice = response.choices?.[0];
     const content = choice?.message?.content;
-    const text = typeof content === 'string' ? content : '';
+    const text = isString(content) ? content : '';
 
     return {
       id: response.id,
@@ -397,7 +397,7 @@ export class ProxyController {
     stream?: boolean;
   }): OpenAIChatRequest {
     const messages: OpenAIChatRequest['messages'] = [];
-    if (body.instructions && body.instructions.trim() !== '') {
+    if (isString(body.instructions) && !isEmpty(body.instructions.trim())) {
       messages.push({
         role: 'system',
         content: body.instructions,
@@ -484,7 +484,7 @@ export class ProxyController {
           continue;
         }
       }
-    } else if (typeof body.input === 'string') {
+    } else if (isString(body.input)) {
       messages.push({
         role: 'user',
         content: body.input,
@@ -716,18 +716,14 @@ export class ProxyController {
   }
 
   private isObservableLike(value: unknown): value is Observable<unknown> {
-    return (
-      Boolean(value) &&
-      typeof value === 'object' &&
-      typeof (value as { subscribe?: unknown }).subscribe === 'function'
-    );
+    return isObjectLike(value) && isFunction((value as { subscribe?: unknown }).subscribe);
   }
 
   private writeSseResponse(res: FastifyReply, stream: Observable<unknown>): void {
     if (
       !res.raw ||
-      typeof res.raw.writeHead !== 'function' ||
-      typeof res.raw.write !== 'function'
+      !isFunction(res.raw.writeHead) ||
+      !isFunction(res.raw.write)
     ) {
       res.header('Content-Type', 'text/event-stream');
       res.header('Cache-Control', 'no-cache');
@@ -736,7 +732,7 @@ export class ProxyController {
       return;
     }
 
-    if (typeof (res as { hijack?: () => void }).hijack === 'function') {
+    if (isFunction((res as { hijack?: () => void }).hijack)) {
       (res as { hijack: () => void }).hijack();
     }
 
@@ -751,7 +747,7 @@ export class ProxyController {
         if (res.raw.writableEnded) {
           return;
         }
-        const payload = typeof chunk === 'string' ? chunk : String(chunk ?? '');
+        const payload = isString(chunk) ? chunk : String(chunk ?? '');
         res.raw.write(payload);
       },
       error: (error) => {
@@ -804,7 +800,7 @@ export class ProxyController {
       }
 
       const content = result.choices?.[0]?.message?.content;
-      const image = this.extractInlineBase64Image(typeof content === 'string' ? content : '');
+      const image = this.extractInlineBase64Image(isString(content) ? content : '');
       if (!image) {
         this.logProxyEndpointError(
           '/v1/images/generations',
@@ -908,7 +904,7 @@ export class ProxyController {
 
     if (!userMessage) {
       parts.push({ text: fallbackPrompt || 'Please generate an image based on this request.' });
-    } else if (typeof userMessage.content === 'string') {
+    } else if (isString(userMessage.content)) {
       parts.push({
         text:
           userMessage.content ||
@@ -917,7 +913,7 @@ export class ProxyController {
       });
     } else {
       for (const block of userMessage.content) {
-        if (block.type === 'text' && typeof block.text === 'string' && block.text.trim() !== '') {
+        if (block.type === 'text' && isString(block.text) && !isEmpty(block.text.trim())) {
           textParts.push(block.text);
         }
         if (block.type === 'image_url') {
@@ -964,7 +960,7 @@ export class ProxyController {
 
   private hasMultipartBoundary(req: FastifyRequest): boolean {
     const contentType = req.headers['content-type'];
-    if (typeof contentType !== 'string') {
+    if (!isString(contentType)) {
       return false;
     }
 

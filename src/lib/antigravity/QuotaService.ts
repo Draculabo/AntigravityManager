@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { isNumber } from 'lodash-es';
 import { QuotaData, LoadProjectResponse, QuotaApiResponse } from './types';
 import { logger } from '../../utils/logger';
 
@@ -162,7 +163,7 @@ export class QuotaService {
             };
           }
 
-          if (hasNextEndpoint && (status === 429 || (typeof status === 'number' && status >= 500))) {
+          if (hasNextEndpoint && (status === 429 || (isNumber(status) && status >= 500))) {
             logger.warn(
               `Quota API ${endpoint} returned ${status}, falling back to next endpoint`,
             );
@@ -173,7 +174,7 @@ export class QuotaService {
 
           logger.warn(`API Error: ${status} - ${text}`);
           lastError = new Error(`HTTP ${status} - ${text}`);
-          shouldFallback = typeof status !== 'number';
+          shouldFallback = !isNumber(status);
         } else {
           logger.warn(`Request Failed at ${endpoint}: ${error.message}`);
           lastError = error instanceof Error ? error : new Error(String(error));

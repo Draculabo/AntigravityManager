@@ -1,11 +1,12 @@
 import '@testing-library/jest-dom';
 import * as matchers from '@testing-library/jest-dom/matchers';
+import { isUndefined } from 'lodash-es';
 import { expect, vi } from 'vitest';
 
 expect.extend(matchers);
 
 // Mock window and localStorage for Node environment
-if (typeof window === 'undefined') {
+if (isUndefined((globalThis as { window?: unknown }).window)) {
   global.window = {
     matchMedia: vi.fn().mockImplementation((query) => ({
       matches: false,

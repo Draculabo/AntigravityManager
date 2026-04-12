@@ -1,3 +1,4 @@
+import { isEmpty, isString } from 'lodash-es';
 import { logger } from '../../utils/logger';
 
 const PUBLIC_SUPPORTED_MODELS = [
@@ -94,7 +95,7 @@ export function getSupportedModels(): string[] {
 }
 
 export function updateDynamicForwardingRules(oldModel: string, newModel: string): void {
-  if (typeof oldModel !== 'string' || typeof newModel !== 'string') {
+  if (!isString(oldModel) || !isString(newModel)) {
     return;
   }
   const normalizedOld = oldModel.trim();
@@ -140,7 +141,7 @@ export function getAllDynamicModels(
 
   if (dynamicModelIds) {
     for (const dynamicModelId of dynamicModelIds) {
-      if (typeof dynamicModelId === 'string' && dynamicModelId.trim() !== '') {
+      if (isString(dynamicModelId) && !isEmpty(dynamicModelId.trim())) {
         modelIds.add(dynamicModelId.trim());
       }
     }
@@ -150,7 +151,7 @@ export function getAllDynamicModels(
 }
 
 export function mapClaudeModelToGemini(input: string): string {
-  if (!input || typeof input !== 'string') {
+  if (!isString(input) || isEmpty(input)) {
     return '';
   }
   const mappedModel = CLAUDE_TO_GEMINI[input];

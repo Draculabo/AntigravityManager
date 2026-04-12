@@ -1,4 +1,5 @@
 import { IPC_CHANNELS } from '@/constants';
+import { isString } from 'lodash-es';
 
 // Custom IPC Client that correctly builds method paths
 function createIPCClient(port: MessagePort) {
@@ -10,7 +11,7 @@ function createIPCClient(port: MessagePort) {
 
   port.onmessage = (event) => {
     try {
-      const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+      const data = isString(event.data) ? JSON.parse(event.data) : event.data;
 
       const id = data.i || data.id;
       const pending = pendingRequests.get(id);

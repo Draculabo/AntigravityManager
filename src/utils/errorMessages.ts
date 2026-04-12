@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import { isObjectLike } from 'lodash-es';
 
 const KEYCHAIN_ERROR_CODE = 'ERR_KEYCHAIN_UNAVAILABLE';
 const KEYCHAIN_HINT_TRANSLOCATION = 'HINT_APP_TRANSLOCATION';
@@ -60,7 +61,7 @@ export function getLocalizedErrorMessage(error: unknown, t: TFunction): string {
     return rawMessage;
   }
 
-  if (error && typeof error === 'object' && 'message' in error) {
+  if (isObjectLike(error)) {
     const rawMessage = String((error as { message?: unknown }).message ?? '');
     const [code, hint] = rawMessage.split('|');
     if (code === KEYCHAIN_ERROR_CODE) {
