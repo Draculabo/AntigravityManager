@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosProxyConfig, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { isNil } from 'lodash-es';
+import { isEmpty, isFunction, isNil, isObjectLike, isString } from 'lodash-es';
 import { GeminiRequest, GeminiResponse } from '../interfaces/request-interfaces';
 import { GeminiInternalRequest } from '../../../../lib/antigravity/types';
 import { getServerConfig } from '../../../server-config';
@@ -131,10 +131,10 @@ export class GeminiClient {
       extraHeaders,
     );
     const payload = response.data;
-    if (payload && typeof payload === 'object' && 'response' in payload) {
-      return payload.response;
+    if (isObjectLike(payload) && 'response' in payload) {
+      return (payload as { response: GeminiResponse }).response;
     }
-    return payload;
+    return payload as GeminiResponse;
   }
 
   private getInternalBaseUrls(): string[] {
@@ -255,7 +255,7 @@ export class GeminiClient {
       return fromObject;
     }
 
-    if (typeof responseData === 'string') {
+    if (isString(responseData)) {
       return this.extractAxiosErrorMessageFromText(responseData);
     }
 
@@ -272,20 +272,20 @@ export class GeminiClient {
   }
 
   private extractAxiosErrorMessageFromObject(responseData: unknown): string | null {
-    if (!responseData || typeof responseData !== 'object' || this.isReadableStream(responseData)) {
+    if (!isObjectLike(responseData) || this.isReadableStream(responseData)) {
       return null;
     }
 
     const errorRecord = (responseData as { error?: unknown }).error;
-    if (errorRecord && typeof errorRecord === 'object') {
+    if (isObjectLike(errorRecord)) {
       const message = (errorRecord as { message?: unknown }).message;
-      if (typeof message === 'string' && message.trim() !== '') {
+      if (isString(message) && !isEmpty(message.trim())) {
         return message.trim();
       }
     }
 
     const message = (responseData as { message?: unknown }).message;
-    if (typeof message === 'string' && message.trim() !== '') {
+    if (isString(message) && !isEmpty(message.trim())) {
       return message.trim();
     }
 
@@ -333,11 +333,7 @@ export class GeminiClient {
   }
 
   private isReadableStream(value: unknown): value is NodeJS.ReadableStream {
-    return (
-      Boolean(value) &&
-      typeof value === 'object' &&
-      typeof (value as { pipe?: unknown }).pipe === 'function'
-    );
+    return isObjectLike(value) && isFunction((value as { pipe?: unknown }).pipe);
   }
 
   private async readStreamAsText(stream: NodeJS.ReadableStream): Promise<string | null> {
@@ -407,17 +403,17 @@ export class GeminiClient {
   }
 
   private extractRetryAfterHeader(headers: unknown): string | undefined {
-    if (!headers || typeof headers !== 'object') {
+    if (!isObjectLike(headers)) {
       return undefined;
     }
 
     const retryAfter = (headers as Record<string, unknown>)['retry-after'];
-    if (typeof retryAfter === 'string' && retryAfter.trim() !== '') {
+    if (isString(retryAfter) && !isEmpty(retryAfter.trim())) {
       return retryAfter.trim();
     }
     if (Array.isArray(retryAfter) && retryAfter.length > 0) {
       const first = retryAfter[0];
-      if (typeof first === 'string' && first.trim() !== '') {
+      if (isString(first) && !isEmpty(first.trim())) {
         return first.trim();
       }
     }
@@ -439,7 +435,7 @@ export class GeminiClient {
     try {
       const seen = new WeakSet();
       return JSON.stringify(obj, (key, value) => {
-        if (typeof value === 'object' && value !== null) {
+        if (isObjectLike(value)) {
           if (seen.has(value)) return '[Circular]';
           seen.add(value);
         }

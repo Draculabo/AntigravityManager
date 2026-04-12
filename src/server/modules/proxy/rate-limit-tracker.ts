@@ -1,3 +1,5 @@
+import { isEmpty, isNumber, isObjectLike, isString } from 'lodash-es';
+
 export enum RateLimitReason {
   QuotaExhausted = 'quota_exhausted',
   RateLimitExceeded = 'rate_limit_exceeded',
@@ -68,7 +70,7 @@ function tryParseGoogleErrorBody(body: string | undefined): ParsedGoogleErrorBod
 
   try {
     const parsed = JSON.parse(trimmed) as ParsedGoogleErrorBody;
-    if (!parsed || typeof parsed !== 'object') {
+    if (!isObjectLike(parsed)) {
       return null;
     }
     return parsed;
@@ -96,7 +98,7 @@ export class RateLimitTracker {
   private readonly failureCounts = new Map<string, FailureCountEntry>();
 
   private buildLockoutKey(accountId: string, model?: string): string {
-    if (model && model.trim() !== '') {
+    if (!isEmpty(model?.trim() ?? '')) {
       return `${accountId}:${model}`;
     }
     return accountId;
@@ -150,7 +152,7 @@ export class RateLimitTracker {
     model?: string,
   ): void {
     const retryAfterSec = Math.max(2, Math.ceil((resetTimeMs - Date.now()) / 1000));
-    const key = model && model.trim() !== '' ? this.buildLockoutKey(accountId, model) : accountId;
+    const key = !isEmpty(model?.trim() ?? '') ? this.buildLockoutKey(accountId, model) : accountId;
     this.lockoutByKey.set(key, {
       resetTimeMs,
       retryAfterSec,
@@ -240,7 +242,7 @@ export class RateLimitTracker {
     const parsedBody = tryParseGoogleErrorBody(body);
     const details = Array.isArray(parsedBody?.error?.details) ? parsedBody?.error?.details : [];
     for (const detail of details) {
-      if (typeof detail.reason !== 'string' || detail.reason.trim() === '') {
+      if (!isString(detail.reason) || isEmpty(detail.reason.trim())) {
         continue;
       }
       const mappedReason = mapGoogleReasonToTrackerReason(detail.reason);
@@ -354,7 +356,7 @@ export class RateLimitTracker {
     const parsedBody = tryParseGoogleErrorBody(body);
     const details = Array.isArray(parsedBody?.error?.details) ? parsedBody.error.details : [];
     for (const detail of details) {
-      if (typeof detail.retryDelay === 'string' && detail.retryDelay.trim() !== '') {
+      if (isString(detail.retryDelay) && !isEmpty(detail.retryDelay.trim())) {
         const parsedDelay = parseDurationToSeconds(detail.retryDelay);
         if (parsedDelay !== null) {
           return parsedDelay;
@@ -362,8 +364,8 @@ export class RateLimitTracker {
       }
 
       if (
-        typeof detail.metadata?.retryDelay === 'string' &&
-        detail.metadata.retryDelay.trim() !== ''
+        isString(detail.metadata?.retryDelay) &&
+        !isEmpty(detail.metadata.retryDelay.trim())
       ) {
         const parsedDelay = parseDurationToSeconds(detail.metadata.retryDelay);
         if (parsedDelay !== null) {
@@ -372,8 +374,8 @@ export class RateLimitTracker {
       }
 
       if (
-        typeof detail.metadata?.quotaResetDelay === 'string' &&
-        detail.metadata.quotaResetDelay.trim() !== ''
+        isString(detail.metadata?.quotaResetDelay) &&
+        !isEmpty(detail.metadata.quotaResetDelay.trim())
       ) {
         const parsedDelay = parseDurationToSeconds(detail.metadata.quotaResetDelay);
         if (parsedDelay !== null) {
@@ -383,7 +385,7 @@ export class RateLimitTracker {
     }
 
     const retryAfter = parsedBody?.error?.retry_after;
-    if (typeof retryAfter === 'number' && retryAfter > 0) {
+    if (isNumber(retryAfter) && retryAfter > 0) {
       return Math.ceil(retryAfter);
     }
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
+import { isEmpty, isNil, isNumber, isPlainObject, isString } from 'lodash-es';
 import { TokenManagerService } from './token-manager.service';
 import { GeminiClient } from './clients/gemini.client';
 import { v4 as uuidv4 } from 'uuid';
@@ -511,7 +511,7 @@ export class ProxyService {
   private getModelOutputCap(accountId: string, model: string): number {
     const normalizedModel = this.normalizeModelIdentifier(model);
     const dynamicCap = this.tokenManager.getModelOutputLimitForAccount(accountId, normalizedModel);
-    if (typeof dynamicCap === 'number' && Number.isFinite(dynamicCap) && dynamicCap > 0) {
+    if (isNumber(dynamicCap) && Number.isFinite(dynamicCap) && dynamicCap > 0) {
       return Math.floor(dynamicCap);
     }
     return getMaxOutputTokens(normalizedModel);
@@ -523,7 +523,7 @@ export class ProxyService {
       accountId,
       normalizedModel,
     );
-    if (typeof dynamicBudget === 'number' && Number.isFinite(dynamicBudget) && dynamicBudget >= 0) {
+    if (isNumber(dynamicBudget) && Number.isFinite(dynamicBudget) && dynamicBudget >= 0) {
       return Math.floor(dynamicBudget);
     }
     return getThinkingBudget(normalizedModel);
@@ -548,12 +548,12 @@ export class ProxyService {
       | undefined;
     const adaptiveSentinel =
       thinkingConfig &&
-      (typeof thinkingConfig.thinkingLevel === 'string' ||
+      (isString(thinkingConfig.thinkingLevel) ||
         thinkingConfig.thinkingBudget === -1 ||
         thinkingConfig.thinkingBudget === 32768);
 
     if (thinkingConfig) {
-      if (!isClaudeModel && typeof thinkingConfig.thinkingLevel === 'string') {
+      if (!isClaudeModel && isString(thinkingConfig.thinkingLevel)) {
         const converted = this.resolveThinkingLevelBudget(thinkingConfig.thinkingLevel);
         if (converted !== undefined) {
           thinkingConfig.thinkingBudget = converted;
@@ -561,12 +561,12 @@ export class ProxyService {
         delete thinkingConfig.thinkingLevel;
       }
 
-      if (typeof thinkingConfig.thinkingBudget === 'number' && thinkingConfig.thinkingBudget < 0) {
+      if (isNumber(thinkingConfig.thinkingBudget) && thinkingConfig.thinkingBudget < 0) {
         thinkingConfig.thinkingBudget = Math.min(thinkingBudgetCap, 24576);
       }
 
       if (
-        typeof thinkingConfig.thinkingBudget === 'number' &&
+        isNumber(thinkingConfig.thinkingBudget) &&
         Number.isFinite(thinkingConfig.thinkingBudget)
       ) {
         thinkingConfig.thinkingBudget = Math.min(
@@ -595,7 +595,7 @@ export class ProxyService {
     }
 
     if (
-      typeof generationConfig.maxOutputTokens === 'number' &&
+      isNumber(generationConfig.maxOutputTokens) &&
       Number.isFinite(generationConfig.maxOutputTokens)
     ) {
       generationConfig.maxOutputTokens = Math.min(
@@ -634,7 +634,7 @@ export class ProxyService {
       ? response.candidates.map((candidate, index) => ({
           content: candidate?.content,
           finishReason: candidate?.finishReason,
-          index: typeof candidate?.index === 'number' ? candidate.index : index,
+          index: isNumber(candidate?.index) ? candidate.index : index,
         }))
       : [];
 
@@ -1115,7 +1115,7 @@ export class ProxyService {
       const choice = response.choices?.[0];
       const finishReason = choice?.finish_reason ?? 'stop';
       const content =
-        choice?.message && typeof choice.message.content === 'string' ? choice.message.content : '';
+        choice?.message && isString(choice.message.content) ? choice.message.content : '';
       const chunkSize = 80;
 
       if (content.length === 0) {
@@ -1216,7 +1216,7 @@ export class ProxyService {
       systemInstruction: request.systemInstruction
         ? {
             parts: request.systemInstruction.parts
-              .filter((part): part is { text: string } => typeof part.text === 'string')
+              .filter((part): part is { text: string } => isString(part.text))
               .map((part) => ({ text: part.text })),
           }
         : undefined,
@@ -1294,7 +1294,7 @@ export class ProxyService {
   private convertOpenAIPartsToAnthropicContent(
     content: OpenAIChatRequest['messages'][number]['content'],
   ): AnthropicContent[] {
-    if (typeof content === 'string') {
+    if (isString(content)) {
       return content.trim() ? [{ type: 'text', text: content }] : [];
     }
 
@@ -1328,7 +1328,7 @@ export class ProxyService {
   private extractOpenAITextContent(
     content: OpenAIChatRequest['messages'][number]['content'],
   ): string {
-    if (typeof content === 'string') {
+    if (isString(content)) {
       return content;
     }
 
@@ -1339,14 +1339,14 @@ export class ProxyService {
   }
 
   private parseOpenAIFunctionArguments(argumentsString: string): Record<string, unknown> {
-    if (!argumentsString || argumentsString.trim() === '') {
+    if (isEmpty(argumentsString.trim())) {
       return {};
     }
 
     try {
       const parsed = JSON.parse(argumentsString);
-      if (this.isRecord(parsed)) {
-        return parsed;
+      if (isPlainObject(parsed)) {
+        return parsed as Record<string, unknown>;
       }
       return { value: parsed };
     } catch {
@@ -1446,7 +1446,7 @@ export class ProxyService {
   }
 
   private normalizeToolCallArguments(input: unknown): string {
-    if (typeof input === 'string') {
+    if (isString(input)) {
       return input;
     }
     if (isNil(input)) {
@@ -1730,7 +1730,7 @@ export class ProxyService {
     const metadata = request.metadata;
     const sessionCandidate =
       metadata?.session_id ?? metadata?.sessionId ?? metadata?.user_id ?? metadata?.userId;
-    if (!isString(sessionCandidate) || sessionCandidate.trim() === '') {
+    if (!isString(sessionCandidate) || isEmpty(sessionCandidate.trim())) {
       return undefined;
     }
     return `anthropic:${sessionCandidate.trim()}`;
@@ -1740,17 +1740,13 @@ export class ProxyService {
     const extra = request.extra;
     const sessionCandidate =
       extra?.session_id ?? extra?.sessionId ?? extra?.user_id ?? extra?.userId;
-    if (!isString(sessionCandidate) || sessionCandidate.trim() === '') {
+    if (!isString(sessionCandidate) || isEmpty(sessionCandidate.trim())) {
       return undefined;
     }
     return `openai:${sessionCandidate.trim()}`;
   }
 
-  private isRecord(value: unknown): value is Record<string, unknown> {
-    return isPlainObject(value);
-  }
-
   private isGeminiPart(value: unknown): value is InternalGeminiPart {
-    return this.isRecord(value);
+    return isPlainObject(value);
   }
 }

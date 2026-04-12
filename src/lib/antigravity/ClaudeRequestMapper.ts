@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { isPlainObject, isString } from 'lodash-es';
+import { isEmpty, isPlainObject, isString } from 'lodash-es';
 import { mapClaudeModelToGemini, normalizeGeminiModelAlias } from './ModelMapping';
 import { getMaxOutputTokens, getThinkingBudget } from './ModelSpecs';
 import { cleanJsonSchema, normalizeObjectJsonSchema } from './JsonSchemaUtils';
@@ -518,7 +518,7 @@ function buildContents(
 
     for (const block of contentBlocks) {
       if (block.type === 'text') {
-        if (block.text && block.text !== '(no content)' && block.text.trim() !== '')
+        if (block.text && block.text !== '(no content)' && !isEmpty(block.text.trim()))
           parts.push({ text: block.text.trim() });
       } else if (block.type === 'thinking') {
         const part: any = { text: block.thinking, thought: true };
@@ -553,7 +553,7 @@ function buildContents(
             .filter((b: any) => b.type === 'text')
             .map((b: any) => b.text)
             .join('\n');
-        if (mergedContent.trim().length === 0)
+        if (isEmpty(mergedContent.trim()))
           mergedContent = block.is_error
             ? 'Tool execution failed with no output.'
             : 'Command executed successfully.';

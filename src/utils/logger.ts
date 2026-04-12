@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { isObjectLike } from 'lodash-es';
 import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import { getAgentDir } from './paths';
@@ -42,7 +43,7 @@ function safeStringify(obj: unknown): string {
       };
     }
     // Handle circular references
-    if (typeof value === 'object' && value !== null) {
+    if (isObjectLike(value)) {
       if (seen.has(value)) {
         return '[Circular]';
       }
@@ -143,7 +144,7 @@ class Logger {
 
   private formatArgs(args: unknown[]): string {
     return args
-      .map((arg) => (typeof arg === 'object' ? safeStringify(arg) : String(arg)))
+      .map((arg) => (isObjectLike(arg) ? safeStringify(arg) : String(arg)))
       .join(' ');
   }
 

@@ -11,7 +11,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { FastifyReply } from 'fastify';
-import { isEmpty } from 'lodash-es';
+import { isEmpty, isFunction, isNumber, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from './proxy.guard';
@@ -198,7 +198,7 @@ export class GeminiController {
     const candidates = (response.candidates ?? []).map((candidate, index) => ({
       content: candidate.content,
       finishReason: candidate.finishReason,
-      index: typeof candidate.index === 'number' ? candidate.index : index,
+      index: isNumber(candidate.index) ? candidate.index : index,
     }));
 
     const normalized: GeminiResponse = {
@@ -246,8 +246,8 @@ export class GeminiController {
   private writeObservableSseResponse(res: FastifyReply, stream: Observable<unknown>): void {
     if (
       !res.raw ||
-      typeof res.raw.writeHead !== 'function' ||
-      typeof res.raw.write !== 'function'
+      !isFunction(res.raw.writeHead) ||
+      !isFunction(res.raw.write)
     ) {
       res.header('Content-Type', 'text/event-stream');
       res.header('Cache-Control', 'no-cache');
@@ -271,7 +271,7 @@ export class GeminiController {
         if (res.raw.writableEnded) {
           return;
         }
-        const payload = typeof chunk === 'string' ? chunk : String(chunk ?? '');
+        const payload = isString(chunk) ? chunk : String(chunk ?? '');
         res.raw.write(payload);
       },
       error: (error) => {
@@ -302,6 +302,6 @@ export class GeminiController {
   }
 
   private supportsReplyHijack(reply: FastifyReply): reply is FastifyReply & { hijack: () => void } {
-    return typeof (reply as { hijack?: unknown }).hijack === 'function';
+    return isFunction((reply as { hijack?: unknown }).hijack);
   }
 }
