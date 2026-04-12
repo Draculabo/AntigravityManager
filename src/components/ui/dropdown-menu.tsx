@@ -1,5 +1,6 @@
 import * as React from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
+import { isNumber, isObjectLike } from 'lodash-es';
 import { Check, ChevronRight, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -52,11 +53,11 @@ const DropdownMenuContent = React.forwardRef<
     collisionPadding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>;
   }
 >(({ className, sideOffset = 4, collisionPadding = 8, ...props }, ref) => {
-  if (typeof collisionPadding === 'number') {
+  if (isNumber(collisionPadding)) {
     if (collisionPadding < 0) {
       throw new Error('collisionPadding must be a non-negative number');
     }
-  } else if (typeof collisionPadding === 'object' && collisionPadding !== null) {
+  } else if (isObjectLike(collisionPadding)) {
     for (const key of Object.keys(collisionPadding)) {
       if ((collisionPadding as any)[key] < 0) {
         throw new Error(`collisionPadding.${key} must be a non-negative number`);
