@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger';
 
 import { shell } from 'electron';
 import fs from 'fs';
+import { isEmpty, isString } from 'lodash-es';
 import { updateTrayMenu } from '../../ipc/tray/handler';
 import {
   ensureGlobalOriginalFromCurrentStorage,
@@ -46,7 +47,7 @@ function isEnterpriseClient(clientKey?: string): boolean {
 }
 
 function normalizeProjectId(projectId?: string): string | null {
-  if (typeof projectId !== 'string') {
+  if (!isString(projectId)) {
     return null;
   }
   const normalized = projectId.trim();
@@ -148,7 +149,7 @@ async function clearAccountStatus(account: CloudAccount): Promise<void> {
 
 function hydrateActiveOAuthClientFromSettings(): void {
   const preferredClientKey = CloudAccountRepo.getSetting<string>(ACTIVE_OAUTH_CLIENT_KEY_SETTING, '');
-  if (preferredClientKey && preferredClientKey.trim() !== '') {
+  if (isString(preferredClientKey) && !isEmpty(preferredClientKey.trim())) {
     try {
       GoogleAPIService.setActiveOAuthClientKey(preferredClientKey);
     } catch (error) {
@@ -195,7 +196,7 @@ async function backfillMissingOAuthClientKeyForLegacyAccounts(
     }
 
     const projectMissing =
-      typeof account.token.project_id !== 'string' || account.token.project_id.trim() === '';
+      !isString(account.token.project_id) || isEmpty(account.token.project_id.trim());
     if (activeClientKey === ENTERPRISE_OAUTH_CLIENT_KEY && projectMissing) {
       skippedEnterpriseGuardCount += 1;
       continue;
@@ -232,7 +233,7 @@ export async function addGoogleAccount(
   oauthClientKey?: string,
 ): Promise<CloudAccount> {
   try {
-    if (oauthClientKey && oauthClientKey.trim() !== '') {
+    if (isString(oauthClientKey) && !isEmpty(oauthClientKey.trim())) {
       setActiveOAuthClient(oauthClientKey);
     } else {
       hydrateActiveOAuthClientFromSettings();
@@ -684,7 +685,7 @@ export async function forcePollCloudMonitor(): Promise<void> {
 }
 
 export async function startAuthFlow(oauthClientKey?: string): Promise<void> {
-  if (oauthClientKey && oauthClientKey.trim() !== '') {
+  if (isString(oauthClientKey) && !isEmpty(oauthClientKey.trim())) {
     setActiveOAuthClient(oauthClientKey);
   } else {
     hydrateActiveOAuthClientFromSettings();

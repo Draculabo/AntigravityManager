@@ -1,6 +1,7 @@
 import { exec, execSync, spawn } from 'child_process';
 import { promisify } from 'util';
 import findProcess, { ProcessInfo } from 'find-process';
+import { isNumber } from 'lodash-es';
 import { getAntigravityExecutablePath, isWsl } from '../../utils/paths';
 import { logger } from '../../utils/logger';
 
@@ -98,7 +99,7 @@ export async function isProcessRunning(): Promise<boolean> {
 
     const processMap = new Map<number, ProcessInfo>();
     for (const proc of allMatches) {
-      if (typeof proc.pid === 'number') {
+      if (isNumber(proc.pid)) {
         processMap.set(proc.pid, proc);
       }
     }

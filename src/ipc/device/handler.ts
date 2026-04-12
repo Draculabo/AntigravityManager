@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { createHash, randomBytes } from 'crypto';
+import { isBoolean, isNumber, isObjectLike, isString } from 'lodash-es';
 import { type DeviceProfile } from '../../types/account';
 import { logger } from '../../utils/logger';
 import { getAgentDir, getAntigravityDbPaths, getAntigravityStoragePaths } from '../../utils/paths';
@@ -76,14 +77,14 @@ const deviceHardeningState: DeviceHardeningState = {
 };
 
 function isSqliteBusyError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
+  if (!isObjectLike(error)) {
     return false;
   }
   const candidate = error as { code?: string; message?: string };
   if (candidate.code === 'SQLITE_BUSY' || candidate.code === 'SQLITE_LOCKED') {
     return true;
   }
-  if (typeof candidate.message === 'string') {
+  if (isString(candidate.message)) {
     return candidate.message.includes('SQLITE_BUSY') || candidate.message.includes('SQLITE_LOCKED');
   }
   return false;
@@ -139,8 +140,8 @@ function readLastKnownGoodMarker(): LastKnownGoodMarker | null {
     if (
       parsed &&
       parsed.version === 1 &&
-      typeof parsed.savedAt === 'number' &&
-      typeof parsed.hasStateDb === 'boolean'
+      isNumber(parsed.savedAt) &&
+      isBoolean(parsed.hasStateDb)
     ) {
       return {
         version: 1,
@@ -157,7 +158,7 @@ function readLastKnownGoodMarker(): LastKnownGoodMarker | null {
 function parseStorageJson(storagePath: string): Record<string, unknown> {
   const content = fs.readFileSync(storagePath, 'utf-8');
   const parsed = JSON.parse(content);
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  if (!isObjectLike(parsed) || Array.isArray(parsed)) {
     throw new Error('storage.json top-level value must be an object');
   }
   return parsed as Record<string, unknown>;
@@ -165,15 +166,15 @@ function parseStorageJson(storagePath: string): Record<string, unknown> {
 
 function getTelemetryField(storage: Record<string, unknown>, key: string): string | null {
   const telemetry = storage.telemetry;
-  if (telemetry && typeof telemetry === 'object' && !Array.isArray(telemetry)) {
+  if (isObjectLike(telemetry) && !Array.isArray(telemetry)) {
     const nestedValue = (telemetry as Record<string, unknown>)[key];
-    if (typeof nestedValue === 'string' && nestedValue.length > 0) {
+    if (isString(nestedValue) && nestedValue.length > 0) {
       return nestedValue;
     }
   }
 
   const flatValue = storage[`telemetry.${key}`];
-  if (typeof flatValue === 'string' && flatValue.length > 0) {
+  if (isString(flatValue) && flatValue.length > 0) {
     return flatValue;
   }
 
@@ -183,7 +184,7 @@ function getTelemetryField(storage: Record<string, unknown>, key: string): strin
 function ensureTelemetryObject(storage: Record<string, unknown>): Record<string, unknown> {
   if (
     !storage.telemetry ||
-    typeof storage.telemetry !== 'object' ||
+    !isObjectLike(storage.telemetry) ||
     Array.isArray(storage.telemetry)
   ) {
     storage.telemetry = {};
@@ -223,7 +224,7 @@ function readStateServiceMachineIdValue(dbPath: string): string | null {
     const row = db
       .prepare("SELECT value FROM ItemTable WHERE key = 'storage.serviceMachineId' LIMIT 1")
       .get() as { value?: unknown } | undefined;
-    if (!row || typeof row.value !== 'string' || row.value.length === 0) {
+    if (!row || !isString(row.value) || row.value.length === 0) {
       return null;
     }
     return row.value;

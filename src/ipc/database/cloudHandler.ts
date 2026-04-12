@@ -4,6 +4,7 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { desc, eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { isNumber, isObjectLike, isPlainObject, isString } from 'lodash-es';
 import { getCloudAccountsDbPath, getAntigravityDbPaths } from '../../utils/paths';
 import { logger } from '../../utils/logger';
 import {
@@ -35,14 +36,14 @@ type DrizzleExecutor = Pick<
 >;
 
 function isSqliteBusyError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
+  if (!isObjectLike(error)) {
     return false;
   }
   const err = error as { code?: string; message?: string };
   if (err.code && SQLITE_BUSY_CODES.has(err.code)) {
     return true;
   }
-  if (typeof err.message === 'string') {
+  if (isString(err.message)) {
     return err.message.includes('SQLITE_BUSY') || err.message.includes('SQLITE_LOCKED');
   }
   return false;
@@ -168,17 +169,13 @@ interface MigrationStats {
   failedFields: number;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
 function readStringCandidate(
   source: Record<string, unknown>,
   ...keys: string[]
 ): string | undefined {
   for (const key of keys) {
     const candidate = source[key];
-    if (typeof candidate === 'string' && candidate.length > 0) {
+    if (isString(candidate) && candidate.length > 0) {
       return candidate;
     }
   }
@@ -186,14 +183,15 @@ function readStringCandidate(
 }
 
 function normalizeDeviceProfile(value: unknown): DeviceProfile | undefined {
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     return undefined;
   }
+  const valueRecord = value as Record<string, unknown>;
 
-  const machineId = readStringCandidate(value, 'machineId', 'machine_id');
-  const macMachineId = readStringCandidate(value, 'macMachineId', 'mac_machine_id');
-  const devDeviceId = readStringCandidate(value, 'devDeviceId', 'dev_device_id');
-  const sqmId = readStringCandidate(value, 'sqmId', 'sqm_id');
+  const machineId = readStringCandidate(valueRecord, 'machineId', 'machine_id');
+  const macMachineId = readStringCandidate(valueRecord, 'macMachineId', 'mac_machine_id');
+  const devDeviceId = readStringCandidate(valueRecord, 'devDeviceId', 'dev_device_id');
+  const sqmId = readStringCandidate(valueRecord, 'sqmId', 'sqm_id');
 
   if (!machineId || !macMachineId || !devDeviceId || !sqmId) {
     return undefined;
@@ -217,45 +215,47 @@ function areDeviceProfilesEqual(left: DeviceProfile, right: DeviceProfile): bool
 }
 
 function readVersionedProfilePayload(value: unknown): unknown {
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     return value;
   }
-  if (!('schemaVersion' in value)) {
+  const valueRecord = value as Record<string, unknown>;
+  if (!('schemaVersion' in valueRecord)) {
     return value;
   }
 
-  const schemaVersion = value.schemaVersion;
-  if (typeof schemaVersion !== 'number' || !Number.isFinite(schemaVersion)) {
+  const schemaVersion = valueRecord.schemaVersion;
+  if (!isNumber(schemaVersion) || !Number.isFinite(schemaVersion)) {
     throw new Error('invalid_device_profile_schema_version');
   }
   if (schemaVersion !== DEVICE_PAYLOAD_SCHEMA_VERSION) {
     throw new Error(`unsupported_device_profile_schema_version:${schemaVersion}`);
   }
-  if (!('profile' in value)) {
+  if (!('profile' in valueRecord)) {
     throw new Error('invalid_device_profile_payload');
   }
-  return value.profile;
+  return valueRecord.profile;
 }
 
 function readVersionedHistoryPayload(value: unknown): unknown {
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     return value;
   }
-  if (!('schemaVersion' in value)) {
+  const valueRecord = value as Record<string, unknown>;
+  if (!('schemaVersion' in valueRecord)) {
     return value;
   }
 
-  const schemaVersion = value.schemaVersion;
-  if (typeof schemaVersion !== 'number' || !Number.isFinite(schemaVersion)) {
+  const schemaVersion = valueRecord.schemaVersion;
+  if (!isNumber(schemaVersion) || !Number.isFinite(schemaVersion)) {
     throw new Error('invalid_device_history_schema_version');
   }
   if (schemaVersion !== DEVICE_PAYLOAD_SCHEMA_VERSION) {
     throw new Error(`unsupported_device_history_schema_version:${schemaVersion}`);
   }
-  if (!('history' in value)) {
+  if (!('history' in valueRecord)) {
     throw new Error('invalid_device_history_payload');
   }
-  return value.history;
+  return valueRecord.history;
 }
 
 function serializeDeviceProfile(profile: DeviceProfile | undefined): string | null {
@@ -285,23 +285,25 @@ function normalizeDeviceHistory(value: unknown): DeviceProfileVersion[] | undefi
 
   const normalized: DeviceProfileVersion[] = [];
   for (const item of value) {
-    if (!isRecord(item)) {
+    if (!isPlainObject(item)) {
       continue;
     }
+    const itemRecord = item as Record<string, unknown>;
 
-    const profile = normalizeDeviceProfile(item.profile);
+    const profile = normalizeDeviceProfile(itemRecord.profile);
     if (!profile) {
       continue;
     }
 
-    const id = typeof item.id === 'string' && item.id.length > 0 ? item.id : uuidv4();
-    const createdAtCandidate = item.createdAt;
+    const id = isString(itemRecord.id) && itemRecord.id.length > 0 ? itemRecord.id : uuidv4();
+    const createdAtCandidate = itemRecord.createdAt;
     const createdAt =
-      typeof createdAtCandidate === 'number' && Number.isFinite(createdAtCandidate)
+      isNumber(createdAtCandidate) && Number.isFinite(createdAtCandidate)
         ? Math.floor(createdAtCandidate)
         : Math.floor(Date.now() / 1000);
-    const label = typeof item.label === 'string' && item.label.length > 0 ? item.label : 'legacy';
-    const isCurrent = item.isCurrent === true;
+    const label =
+      isString(itemRecord.label) && itemRecord.label.length > 0 ? itemRecord.label : 'legacy';
+    const isCurrent = itemRecord.isCurrent === true;
 
     normalized.push({
       id,
