@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { isEmpty, isString } from 'lodash-es';
 
 import { transformClaudeRequestIn } from '../../lib/antigravity/ClaudeRequestMapper';
 import { ProxyService } from '../../server/modules/proxy/proxy.service';
@@ -34,7 +35,7 @@ class TestableProxyService extends ProxyService {
 
 function getEnv(name: string, fallback?: string): string {
   const value = process.env[name];
-  if (value && value.trim() !== '') {
+  if (isString(value) && !isEmpty(value.trim())) {
     return value;
   }
   if (fallback !== undefined) {
@@ -46,7 +47,7 @@ function getEnv(name: string, fallback?: string): string {
 function getEnvFromList(names: string[], fallback?: string): string {
   for (const name of names) {
     const value = process.env[name];
-    if (value && value.trim() !== '') {
+    if (isString(value) && !isEmpty(value.trim())) {
       return value;
     }
   }
@@ -60,7 +61,7 @@ function getLiveHeaders(apiKey?: string): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  if (apiKey && apiKey.trim() !== '') {
+  if (isString(apiKey) && !isEmpty(apiKey.trim())) {
     headers.Authorization = apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`;
   }
   return headers;
@@ -271,7 +272,7 @@ async function validateRuntimeAnthropicRequestFromRealTokenManager(): Promise<vo
   const captured = capturedBody as Record<string, unknown>;
   const tokenProjectId = selectedToken?.token?.project_id;
   const normalizedTokenProjectId =
-    typeof tokenProjectId === 'string' && tokenProjectId.trim() !== ''
+    isString(tokenProjectId) && !isEmpty(tokenProjectId.trim())
       ? tokenProjectId.trim()
       : undefined;
 

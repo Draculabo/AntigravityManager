@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { isString } from 'lodash-es';
 
 // Mock module to test timeout behavior
 describe('GoogleAPIService Timeout', () => {
@@ -92,13 +93,13 @@ describe('GoogleAPIService OAuth clients', () => {
   });
 
   afterEach(() => {
-    if (typeof originalOauthClientsEnv === 'string') {
+    if (isString(originalOauthClientsEnv)) {
       process.env.ANTIGRAVITY_OAUTH_CLIENTS = originalOauthClientsEnv;
     } else {
       delete process.env.ANTIGRAVITY_OAUTH_CLIENTS;
     }
 
-    if (typeof originalActiveOauthClientEnv === 'string') {
+    if (isString(originalActiveOauthClientEnv)) {
       process.env.ANTIGRAVITY_OAUTH_CLIENT_KEY = originalActiveOauthClientEnv;
     } else {
       delete process.env.ANTIGRAVITY_OAUTH_CLIENT_KEY;
