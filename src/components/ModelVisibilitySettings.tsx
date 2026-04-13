@@ -130,7 +130,9 @@ export function ModelVisibilitySettings() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span>{t('settings.modelVisibility.title')}</span>
-          <Badge variant="secondary">{filteredModelIds.length} models</Badge>
+          <Badge variant="secondary">
+            {t('settings.providerGroupings.models', { count: filteredModelIds.length })}
+          </Badge>
         </CardTitle>
         <CardDescription>{t('settings.modelVisibility.description')}</CardDescription>
       </CardHeader>

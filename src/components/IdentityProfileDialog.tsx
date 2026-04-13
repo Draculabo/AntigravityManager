@@ -1,4 +1,4 @@
-import { type JSX, useEffect, useMemo, useRef, useState } from 'react';
+import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Fingerprint,
@@ -48,11 +48,14 @@ function formatError(error: unknown): string {
   return String(error);
 }
 
-function renderProfile(profile?: DeviceProfile): JSX.Element {
+function renderProfile(
+  profile: DeviceProfile | undefined,
+  t: ReturnType<typeof useTranslation>['t'],
+): JSX.Element {
   if (!profile) {
     return (
       <div className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-xs">
-        N/A
+        {t('common.notAvailable')}
       </div>
     );
   }
@@ -95,41 +98,44 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
   const history = useMemo(() => sortHistory(snapshot?.history || []), [snapshot?.history]);
   const showLoadingPlaceholder = initialLoading && !snapshot;
 
-  const refreshProfiles = async (options?: { silent?: boolean }) => {
-    if (!account) {
-      setSnapshot(null);
-      return;
-    }
-    const silent = options?.silent === true;
-    if (silent) {
-      setRefreshing(true);
-    } else {
-      setInitialLoading(true);
-    }
-    try {
-      const result = await getCloudIdentityProfiles({ accountId: account.id });
-      setSnapshot(result);
-    } catch (error) {
-      toast({
-        title: t('cloud.toast.actionFailed', { defaultValue: 'Action failed' }),
-        description: formatError(error),
-        variant: 'destructive',
-      });
-    } finally {
-      if (silent) {
-        setRefreshing(false);
-      } else {
-        setInitialLoading(false);
+  const refreshProfiles = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!account) {
+        setSnapshot(null);
+        return;
       }
-    }
-  };
+      const silent = options?.silent === true;
+      if (silent) {
+        setRefreshing(true);
+      } else {
+        setInitialLoading(true);
+      }
+      try {
+        const result = await getCloudIdentityProfiles({ accountId: account.id });
+        setSnapshot(result);
+      } catch (error) {
+        toast({
+          title: t('cloud.toast.actionFailed'),
+          description: formatError(error),
+          variant: 'destructive',
+        });
+      } finally {
+        if (silent) {
+          setRefreshing(false);
+        } else {
+          setInitialLoading(false);
+        }
+      }
+    },
+    [account, t, toast],
+  );
 
   useEffect(() => {
     if (!open) {
       return;
     }
-    refreshProfiles();
-  }, [open, account?.id]);
+    void refreshProfiles();
+  }, [open, refreshProfiles]);
 
   const runAction = async (key: string, action: () => Promise<void>) => {
     if (actionLockRef.current) {
@@ -142,7 +148,7 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
       await refreshProfiles({ silent: true });
     } catch (error) {
       toast({
-        title: t('cloud.toast.actionFailed', { defaultValue: 'Action failed' }),
+        title: t('cloud.toast.actionFailed'),
         description: formatError(error),
         variant: 'destructive',
       });
@@ -247,7 +253,7 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
                 <CardTitle className="text-sm">{t('cloud.identity.previewTitle')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {renderProfile(previewProfile)}
+                {renderProfile(previewProfile, t)}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
@@ -295,7 +301,7 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
                         {t('cloud.identity.loading')}
                       </div>
                     ) : (
-                      renderProfile(snapshot?.currentStorage)
+                      renderProfile(snapshot?.currentStorage, t)
                     )}
                   </CardContent>
                 </Card>
@@ -313,7 +319,7 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
                         {t('cloud.identity.loading')}
                       </div>
                     ) : (
-                      renderProfile(snapshot?.boundProfile)
+                      renderProfile(snapshot?.boundProfile, t)
                     )}
                   </CardContent>
                 </Card>
@@ -353,7 +359,7 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
                             ) : null}
                           </div>
 
-                          {renderProfile(version.profile)}
+                          {renderProfile(version.profile, t)}
 
                           <div className="mt-3 flex flex-wrap gap-2">
                             <Button
@@ -402,15 +408,13 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
 
             <Card className="shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm">
-                  {t('cloud.identity.baseline', { defaultValue: 'Reference Profile' })}
-                </CardTitle>
+                <CardTitle className="text-sm">{t('cloud.identity.baseline')}</CardTitle>
               </CardHeader>
               <CardContent>
                 {showLoadingPlaceholder ? (
                   <div className="text-muted-foreground text-xs">{t('cloud.identity.loading')}</div>
                 ) : (
-                  renderProfile(snapshot?.baseline)
+                  renderProfile(snapshot?.baseline, t)
                 )}
               </CardContent>
             </Card>

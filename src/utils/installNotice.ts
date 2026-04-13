@@ -1,6 +1,6 @@
 import path from 'path';
 
-export type InstallNoticeLanguage = 'zh-CN' | 'en' | 'ru';
+export type InstallNoticeLanguage = 'zh-CN' | 'en' | 'ru' | 'vi';
 
 const installNoticeText: Record<
   InstallNoticeLanguage,
@@ -32,6 +32,13 @@ const installNoticeText: Record<
     detailPrefix: 'Папка установки: ',
     buttons: ['Открыть папку', 'Понятно'],
   },
+  vi: {
+    title: 'Hãy mở ứng dụng từ menu Start',
+    message:
+      'Ứng dụng đang được chạy từ vị trí không phải thư mục cài đặt. Để tự động cập nhật hoạt động đúng, hãy mở ứng dụng từ menu Start hoặc biểu tượng ngoài màn hình. Nếu chưa có lối tắt, hãy chạy lại bộ cài.',
+    detailPrefix: 'Thư mục cài đặt: ',
+    buttons: ['Mở thư mục cài đặt', 'Đã hiểu'],
+  },
 };
 
 export function resolveInstallNoticeLanguage({
@@ -53,6 +60,10 @@ export function resolveInstallNoticeLanguage({
 
   if (normalized.startsWith('ru')) {
     return 'ru';
+  }
+
+  if (normalized.startsWith('vi')) {
+    return 'vi';
   }
 
   return 'en';

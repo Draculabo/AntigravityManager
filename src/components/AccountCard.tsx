@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MoreVertical, Trash2, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow, type Locale } from 'date-fns';
-import { enUS, zhCN, ru } from 'date-fns/locale';
+import { enUS, zhCN, ru, vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 
@@ -22,6 +22,7 @@ const DATE_LOCALE_MAP: Record<string, Locale> = {
   en: enUS,
   'zh-CN': zhCN,
   ru: ru,
+  vi: vi,
 };
 
 interface AccountCardProps {
@@ -162,7 +163,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreVertical className="h-4 w-4" />
-                  <span className="sr-only">Open menu</span>
+                  <span className="sr-only">{t('common.openMenu')}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

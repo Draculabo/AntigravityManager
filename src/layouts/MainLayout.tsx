@@ -44,7 +44,7 @@ export const MainLayout: React.FC = () => {
     {
       to: '/proxy',
       icon: Network,
-      label: t('nav.proxy', 'API Proxy'),
+      label: t('nav.proxy'),
     },
     {
       to: '/settings',

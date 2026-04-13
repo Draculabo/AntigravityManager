@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { toast } from '@/components/ui/use-toast';
 import { ipc } from '@/ipc/manager';
@@ -9,6 +10,7 @@ import { AppConfig } from '@/types/config';
 const SAVE_DEBOUNCE_MS = 400;
 
 export function useAppConfig() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   const {
@@ -57,8 +59,8 @@ export function useAppConfig() {
       queryClient.setQueryData(['appConfig'], savedConfig);
       lastStableConfigRef.current = savedConfig;
       toast({
-        title: 'Settings saved',
-        description: 'Your configuration has been updated.',
+        title: t('settings.toast.saved.title'),
+        description: t('settings.toast.saved.description'),
       });
       for (const item of pendingBatch) {
         item.resolve();
@@ -72,7 +74,7 @@ export function useAppConfig() {
         queryClient.invalidateQueries({ queryKey: ['appConfig'] });
       }
       toast({
-        title: 'Error saving settings',
+        title: t('settings.toast.saveFailed.title'),
         description: error.message,
         variant: 'destructive',
       });
@@ -80,7 +82,7 @@ export function useAppConfig() {
         item.reject(error);
       }
     }
-  }, [queryClient, updateConfig]);
+  }, [queryClient, t, updateConfig]);
 
   const saveConfig = useCallback(
     (newConfig: AppConfig) => {

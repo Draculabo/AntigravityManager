@@ -316,14 +316,16 @@ export function CloudAccountList() {
           if (isNumber(credits)) {
             toast({
               title: t('cloud.toast.quotaRefreshed'),
-              description: `AI credits: $${credits.toFixed(2)}`,
+              description: t('cloud.toast.refreshCreditsAvailable', {
+                amount: credits.toFixed(2),
+              }),
             });
             return;
           }
 
           toast({
             title: t('cloud.toast.quotaRefreshed'),
-            description: 'AI credits not available for this refresh.',
+            description: t('cloud.toast.refreshCreditsUnavailable'),
           });
         },
         onError: () => toast({ title: t('cloud.toast.refreshFailed'), variant: 'destructive' }),
@@ -483,7 +485,7 @@ export function CloudAccountList() {
     if (file.size > 5 * 1024 * 1024) {
       toast({
         title: t('cloud.error.loadFailed'),
-        description: 'File size exceeds 5MB limit',
+        description: t('cloud.exportImport.fileTooLarge'),
         variant: 'destructive',
       });
       return;
@@ -496,10 +498,10 @@ export function CloudAccountList() {
         const content = event.target?.result as string;
         JSON.parse(content);
         setImportFileContent(content);
-      } catch (err) {
+      } catch {
         toast({
           title: t('cloud.error.loadFailed'),
-          description: 'Invalid JSON file format',
+          description: t('cloud.exportImport.invalidJson'),
           variant: 'destructive',
         });
         setImportFileName('');
@@ -509,7 +511,7 @@ export function CloudAccountList() {
     reader.onerror = () => {
       toast({
         title: t('cloud.error.loadFailed'),
-        description: 'Failed to read file',
+        description: t('cloud.exportImport.readFileFailed'),
         variant: 'destructive',
       });
     };
@@ -588,12 +590,15 @@ export function CloudAccountList() {
     if (failed === 0) {
       toast({
         title: t('cloud.toast.quotaRefreshed'),
-        description: `Successfully refreshed ${successful} accounts.`,
+        description: t('cloud.toast.batchRefreshSuccess', { count: successful }),
       });
     } else {
       toast({
-        title: `Refresh completed with issues`,
-        description: `Refreshed ${successful} accounts, ${failed} failed.`,
+        title: t('cloud.toast.batchRefreshPartial.title'),
+        description: t('cloud.toast.batchRefreshPartial.description', {
+          successful,
+          failed,
+        }),
         variant: 'destructive',
       });
     }
@@ -614,12 +619,15 @@ export function CloudAccountList() {
       if (failed === 0) {
         toast({
           title: t('cloud.toast.deleted'),
-          description: `Successfully deleted ${successful} accounts.`,
+          description: t('cloud.toast.batchDeleteSuccess', { count: successful }),
         });
       } else {
         toast({
-          title: `Deletion completed with issues`,
-          description: `Deleted ${successful} accounts, ${failed} failed.`,
+          title: t('cloud.toast.batchDeletePartial.title'),
+          description: t('cloud.toast.batchDeletePartial.description', {
+            successful,
+            failed,
+          }),
           variant: 'destructive',
         });
       }
