@@ -90,6 +90,7 @@ function ensureDatabaseInitialized(dbPath: string): void {
     const hasIsActive = tableInfo.some((col) => col.name === 'is_active');
     const hasDeviceProfileJson = tableInfo.some((col) => col.name === 'device_profile_json');
     const hasDeviceHistoryJson = tableInfo.some((col) => col.name === 'device_history_json');
+    const hasSource = tableInfo.some((col) => col.name === 'source');
     if (!hasIsActive) {
       db.exec('ALTER TABLE accounts ADD COLUMN is_active INTEGER DEFAULT 0');
     }
@@ -98,6 +99,9 @@ function ensureDatabaseInitialized(dbPath: string): void {
     }
     if (!hasDeviceHistoryJson) {
       db.exec('ALTER TABLE accounts ADD COLUMN device_history_json TEXT');
+    }
+    if (!hasSource) {
+      db.exec('ALTER TABLE accounts ADD COLUMN source TEXT DEFAULT "manual"');
     }
 
     // Create index on email for faster lookups
@@ -468,6 +472,7 @@ export class CloudAccountRepo {
         lastUsed: account.last_used,
         status: account.status || 'active',
         isActive: account.is_active ? 1 : 0,
+        source: account.source || 'manual',
       };
 
       orm.transaction((tx) => {
@@ -581,6 +586,7 @@ export class CloudAccountRepo {
           last_used: normalizedRow.lastUsed,
           status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
           is_active: Boolean(normalizedRow.isActive),
+          source: (normalizedRow.source as CloudAccount['source']) || 'manual',
         });
       }
 
@@ -649,6 +655,7 @@ export class CloudAccountRepo {
         last_used: normalizedRow.lastUsed,
         status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
         is_active: Boolean(normalizedRow.isActive),
+        source: (normalizedRow.source as CloudAccount['source']) || 'manual',
       };
     } finally {
       raw.close();
@@ -1298,6 +1305,7 @@ export class CloudAccountRepo {
         last_used: now,
         status: 'active',
         is_active: true, // It is the active one in IDE
+        source: 'ide_sync',
       };
 
       // Check if email already exists to preserve ID

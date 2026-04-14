@@ -21,6 +21,25 @@ const AvatarImage = React.forwardRef<
   <AvatarPrimitive.Image
     ref={ref}
     className={cn('aspect-square h-full w-full', className)}
+    onError={(e) => {
+      // Enhanced error handling
+      const img = e.currentTarget;
+      const src = img.src;
+
+      // Log error for debugging
+      console.warn('[Avatar] Failed to load image:', src);
+
+      // Try to reload with cache busting for Google URLs
+      if (src && src.includes('googleusercontent.com')) {
+        const url = new URL(src);
+        url.searchParams.set('t', Date.now().toString()); // Cache busting
+        img.src = url.toString();
+        return;
+      }
+
+      // For other errors, let the fallback handle it
+      img.style.display = 'none';
+    }}
     {...props}
   />
 ));

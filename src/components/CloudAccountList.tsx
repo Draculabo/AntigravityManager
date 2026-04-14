@@ -15,6 +15,7 @@ import { CloudAccountCard } from '@/components/CloudAccountCard';
 import { CloudAccount } from '@/types/cloudAccount';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 import {
   Plus,
@@ -237,17 +238,18 @@ function CloudAccountTableRow({
       </TableCell>
       <TableCell className="max-w-[200px] font-medium">
         <div className="flex items-center gap-3">
-          {account.avatar_url ? (
-            <img
-              src={account.avatar_url}
+          <Avatar className="h-8 w-8 shrink-0">
+            <AvatarImage
+              src={account.avatar_url || undefined}
               alt={account.name || ''}
-              className="h-8 w-8 shrink-0 rounded-full border"
+              onError={(_e: React.SyntheticEvent<HTMLImageElement>) => {
+                // Let Avatar component handle fallback automatically
+              }}
             />
-          ) : (
-            <div className="bg-primary/10 text-primary flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm">
-              {account.name?.[0]?.toUpperCase() || 'A'}
-            </div>
-          )}
+            <AvatarFallback className="bg-primary/10 text-primary border text-sm">
+              {account.name?.[0]?.toUpperCase() || account.email?.[0]?.toUpperCase() || 'A'}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="block truncate">{account.name || t('cloud.card.unknown')}</span>
             <span className="text-muted-foreground block truncate text-xs">{account.email}</span>
@@ -303,6 +305,18 @@ function CloudAccountTableRow({
             {account.quota?.models ? 'No Claude models' : 'No quota data'}
           </div>
         )}
+      </TableCell>
+      <TableCell className="text-muted-foreground text-sm">
+        <div className="flex items-center gap-1">
+          {account.source === 'ide_sync' ? (
+            <Download className="h-3 w-3 text-blue-500" />
+          ) : (
+            <Plus className="h-3 w-3 text-green-500" />
+          )}
+          <span className="text-xs">
+            {t(`cloud.card.source${account.source === 'ide_sync' ? 'IDE' : 'Manual'}`)}
+          </span>
+        </div>
       </TableCell>
       <TableCell className="text-muted-foreground text-sm">
         {formatLastUsed(account.last_used)}
@@ -1000,6 +1014,7 @@ export function CloudAccountList() {
               <TableHead>{t('cloud.card.name')}</TableHead>
               <TableHead>{t('cloud.card.geminiModels')}</TableHead>
               <TableHead>{t('cloud.card.claudeModels')}</TableHead>
+              <TableHead>{t('cloud.card.source')}</TableHead>
               <TableHead>{t('cloud.card.lastUsed')}</TableHead>
               <TableHead className="w-24">{t('cloud.card.actions')}</TableHead>
             </TableRow>

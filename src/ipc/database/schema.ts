@@ -14,6 +14,7 @@ export const accounts = sqliteTable('accounts', {
   lastUsed: integer('last_used').notNull(),
   status: text('status'),
   isActive: integer('is_active').notNull().default(0),
+  source: text('source').notNull().default('manual'),
 });
 
 export const settings = sqliteTable('settings', {

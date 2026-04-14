@@ -18,13 +18,23 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 
-import { MoreVertical, Trash, RefreshCw, Box, Power, Fingerprint } from 'lucide-react';
+import {
+  MoreVertical,
+  Trash,
+  RefreshCw,
+  Box,
+  Power,
+  Fingerprint,
+  Download,
+  Plus,
+} from 'lucide-react';
 import { formatDistanceToNow, differenceInMinutes, differenceInHours, isBefore } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import { useAppConfig } from '@/hooks/useAppConfig';
 import { useProviderGrouping } from '@/hooks/useProviderGrouping';
 import { ProviderGroup } from '@/components/ProviderGroup';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 interface ModelQuotaInfo {
   percentage: number;
@@ -236,17 +246,19 @@ export function CloudAccountCard({
           </div>
         )}
 
-        {account.avatar_url ? (
-          <img
-            src={account.avatar_url}
+        <Avatar className="h-10 w-10">
+          <AvatarImage
+            src={account.avatar_url || undefined}
             alt={account.name || ''}
-            className="bg-muted h-10 w-10 rounded-full border"
+            onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+              // Fallback to default if image fails to load
+              e.currentTarget.style.display = 'none';
+            }}
           />
-        ) : (
-          <div className="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-full border">
-            {account.name?.[0]?.toUpperCase() || 'A'}
-          </div>
-        )}
+          <AvatarFallback className="bg-primary/10 text-primary border">
+            {account.name?.[0]?.toUpperCase() || account.email?.[0]?.toUpperCase() || 'A'}
+          </AvatarFallback>
+        </Avatar>
         <div className="flex-1 overflow-hidden">
           <CardTitle className="truncate text-base font-semibold">
             {account.name || t('cloud.card.unknown')}
@@ -409,6 +421,16 @@ export function CloudAccountCard({
       </CardContent>
 
       <CardFooter className="bg-muted/20 text-muted-foreground justify-between border-t p-2 px-4 text-xs">
+        <div className="flex items-center gap-1">
+          {account.source === 'ide_sync' ? (
+            <Download className="h-3 w-3 text-blue-500" />
+          ) : (
+            <Plus className="h-3 w-3 text-green-500" />
+          )}
+          <span className="text-xs">
+            {t(`cloud.card.source${account.source === 'ide_sync' ? 'IDE' : 'Manual'}`)}
+          </span>
+        </div>
         <span>
           {t('cloud.card.used')}{' '}
           {formatDistanceToNow(account.last_used * 1000, { addSuffix: true })}

@@ -294,6 +294,9 @@ i18n
               groupGoogleGemini: 'Google Gemini',
               groupAnthropicClaude: 'Anthropic Claude',
               lastUsed: 'Last Used',
+              source: 'Source',
+              sourceManual: 'Manual',
+              sourceIDE: 'IDE',
             },
             identity: {
               title: 'Identity Profile',
@@ -682,6 +685,9 @@ i18n
               groupGoogleGemini: 'Google Gemini',
               groupAnthropicClaude: 'Anthropic Claude',
               lastUsed: '上次使用',
+              source: '来源',
+              sourceManual: '手动添加',
+              sourceIDE: 'IDE',
             },
             identity: {
               title: '身份配置',

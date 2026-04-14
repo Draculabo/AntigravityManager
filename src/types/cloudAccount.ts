@@ -42,6 +42,7 @@ export interface CloudAccount {
   last_used: number; // Unix timestamp
   status?: 'active' | 'rate_limited' | 'expired';
   is_active?: boolean;
+  source?: 'manual' | 'ide_sync'; // Track account origin
 }
 
 // Zod Schemas
@@ -81,4 +82,5 @@ export const CloudAccountSchema = z.object({
   last_used: z.number(),
   status: z.enum(['active', 'rate_limited', 'expired']).optional(),
   is_active: z.boolean().optional(),
+  source: z.enum(['manual', 'ide_sync']).optional(),
 });
