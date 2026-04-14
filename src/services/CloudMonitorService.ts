@@ -5,6 +5,47 @@ import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '../utils/logger';
 import { classifyAccountStatusFromError } from '../utils/account-status';
 
+type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi';
+
+const CLOUD_MONITOR_NOTIFICATION_TEXT: Record<
+  CloudMonitorLanguage,
+  {
+    lowQuotaTitle: string;
+    lowQuotaBody: (email: string, models: string) => string;
+  }
+> = {
+  en: {
+    lowQuotaTitle: 'Low Quota Alert',
+    lowQuotaBody: (email, models) => `${email}: ${models} are low on quota`,
+  },
+  'zh-CN': {
+    lowQuotaTitle: '额度不足提醒',
+    lowQuotaBody: (email, models) => `${email}：${models} 的额度较低`,
+  },
+  ru: {
+    lowQuotaTitle: 'Предупреждение о низкой квоте',
+    lowQuotaBody: (email, models) => `${email}: низкая квота у ${models}`,
+  },
+  vi: {
+    lowQuotaTitle: 'Cảnh báo quota thấp',
+    lowQuotaBody: (email, models) => `${email}: ${models} đang có quota thấp`,
+  },
+};
+
+function getCloudMonitorLanguage(language: string | null | undefined): CloudMonitorLanguage {
+  const normalizedLanguage = language?.toLowerCase() ?? 'en';
+  if (normalizedLanguage.startsWith('zh')) {
+    return 'zh-CN';
+  }
+  if (normalizedLanguage.startsWith('ru')) {
+    return 'ru';
+  }
+  if (normalizedLanguage.startsWith('vi')) {
+    return 'vi';
+  }
+  return 'en';
+}
+
 function hasReusableCachedQuota(account: {
   quota?: { models?: Record<string, unknown> };
 }): boolean {
@@ -131,7 +172,11 @@ export class CloudMonitorService {
               logger.error(`Monitor: Token refresh failed for ${account.email}`, refreshError);
               const classified = classifyAccountStatusFromError(refreshError);
               if (classified) {
-                await CloudAccountRepo.setAccountStatus(account.id, classified.status, classified.reason);
+                await CloudAccountRepo.setAccountStatus(
+                  account.id,
+                  classified.status,
+                  classified.reason,
+                );
               }
               continue;
             }
@@ -163,7 +208,11 @@ export class CloudMonitorService {
           logger.error(`Monitor: Failed to update ${account.email}`, error);
           const classified = classifyAccountStatusFromError(error);
           if (classified) {
-            await CloudAccountRepo.setAccountStatus(account.id, classified.status, classified.reason);
+            await CloudAccountRepo.setAccountStatus(
+              account.id,
+              classified.status,
+              classified.reason,
+            );
             if (classified.status === 'rate_limited' && hasReusableCachedQuota(account)) {
               logger.warn(
                 `Monitor: Quota request rate-limited for ${account.email}, keeping cached quota as fallback.`,
@@ -176,6 +225,10 @@ export class CloudMonitorService {
       // 4. Check for Quota Alerts
       const alertEnabled = CloudAccountRepo.getSetting<boolean>('quota_alert_enabled', false);
       const alertThreshold = CloudAccountRepo.getSetting<number>('quota_alert_threshold', 20);
+      const notificationLanguage = getCloudMonitorLanguage(
+        CloudAccountRepo.getSetting<string>('language', 'en'),
+      );
+      const notificationText = CLOUD_MONITOR_NOTIFICATION_TEXT[notificationLanguage];
 
       if (alertEnabled) {
         for (const account of accounts) {
@@ -188,8 +241,8 @@ export class CloudMonitorService {
 
           if (lowQuotaModels.length > 0) {
             new Notification({
-              title: 'Low Quota Alert',
-              body: `${account.email}: ${lowQuotaModels.join(', ')} are low on quota`,
+              title: notificationText.lowQuotaTitle,
+              body: notificationText.lowQuotaBody(account.email, lowQuotaModels.join(', ')),
               silent: false,
             }).show();
           }

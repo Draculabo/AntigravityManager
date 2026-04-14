@@ -84,9 +84,9 @@ function SettingsPage() {
 
       <Tabs defaultValue="general" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="general">{t('settings.general', 'General')}</TabsTrigger>
-          <TabsTrigger value="models">{t('settings.models', 'Models')}</TabsTrigger>
-          <TabsTrigger value="proxy">{t('settings.proxy_tab', 'Proxy')}</TabsTrigger>
+          <TabsTrigger value="general">{t('settings.general')}</TabsTrigger>
+          <TabsTrigger value="models">{t('settings.models')}</TabsTrigger>
+          <TabsTrigger value="proxy">{t('settings.proxy_tab')}</TabsTrigger>
         </TabsList>
 
         {/* --- GENERAL TAB --- */}
@@ -130,6 +130,7 @@ function SettingsPage() {
                     <SelectItem value="en">{t('settings.language.english')}</SelectItem>
                     <SelectItem value="zh-CN">{t('settings.language.chinese')}</SelectItem>
                     <SelectItem value="ru">{t('settings.language.russian')}</SelectItem>
+                    <SelectItem value="vi">{t('settings.language.vietnamese')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -139,22 +140,15 @@ function SettingsPage() {
           {/* Account Settings Card */}
           <Card>
             <CardHeader>
-              <CardTitle>{t('settings.account.title', 'Account Settings')}</CardTitle>
-              <CardDescription>
-                {t('settings.account.description', 'Configure automatic account refresh and sync.')}
-              </CardDescription>
+              <CardTitle>{t('settings.account.title')}</CardTitle>
+              <CardDescription>{t('settings.account.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Auto Refresh Quota */}
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div className="space-y-1">
-                  <Label>{t('settings.account.auto_refresh', 'Auto Refresh Quota')}</Label>
-                  <p className="text-xs text-gray-500">
-                    {t(
-                      'settings.account.auto_refresh_desc',
-                      'Periodically refresh quota info for all accounts',
-                    )}
-                  </p>
+                  <Label>{t('settings.account.auto_refresh')}</Label>
+                  <p className="text-xs text-gray-500">{t('settings.account.auto_refresh_desc')}</p>
                 </div>
                 <Switch
                   checked={config?.auto_refresh || false}
@@ -169,13 +163,8 @@ function SettingsPage() {
               {/* Auto Sync Account */}
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div className="space-y-1">
-                  <Label>{t('settings.account.auto_sync', 'Auto Sync Current Account')}</Label>
-                  <p className="text-xs text-gray-500">
-                    {t(
-                      'settings.account.auto_sync_desc',
-                      'Periodically sync active account information',
-                    )}
-                  </p>
+                  <Label>{t('settings.account.auto_sync')}</Label>
+                  <p className="text-xs text-gray-500">{t('settings.account.auto_sync_desc')}</p>
                 </div>
                 <Switch
                   checked={config?.auto_sync || false}
@@ -192,23 +181,15 @@ function SettingsPage() {
           {isAutoStartSupported && (
             <Card>
               <CardHeader>
-                <CardTitle>{t('settings.startup.title', 'Startup')}</CardTitle>
-                <CardDescription>
-                  {t(
-                    'settings.startup.description',
-                    'Control application launch behavior at system startup.',
-                  )}
-                </CardDescription>
+                <CardTitle>{t('settings.startup.title')}</CardTitle>
+                <CardDescription>{t('settings.startup.description')}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div className="space-y-1">
-                    <Label>{t('settings.startup.auto_startup', 'Start with system')}</Label>
+                    <Label>{t('settings.startup.auto_startup')}</Label>
                     <p className="text-xs text-gray-500">
-                      {t(
-                        'settings.startup.auto_startup_desc',
-                        'Launch at sign-in and keep the app in the system tray',
-                      )}
+                      {t('settings.startup.auto_startup_desc')}
                     </p>
                   </div>
                   <Switch
@@ -222,10 +203,7 @@ function SettingsPage() {
                 </div>
                 {isMac && (
                   <p className="text-muted-foreground text-xs">
-                    {t(
-                      'settings.startup.macos_hint',
-                      'macOS requires a signed app for Login Items to work. If auto-start fails, please sign the app or enable it manually in System Settings.',
-                    )}
+                    {t('settings.startup.macos_hint')}
                   </p>
                 )}
               </CardContent>
@@ -240,10 +218,10 @@ function SettingsPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="text-muted-foreground">{t('settings.version')}</div>
-                <div className="font-medium">{appVersion || 'Unknown'}</div>
+                <div className="font-medium">{appVersion || t('common.unknown')}</div>
 
                 <div className="text-muted-foreground">{t('settings.platform')}</div>
-                <div className="font-medium capitalize">{platform || 'Unknown'}</div>
+                <div className="font-medium capitalize">{platform || t('common.unknown')}</div>
 
                 <div className="text-muted-foreground">{t('settings.license')}</div>
                 <div className="font-medium">CC BY-NC-SA 4.0</div>
@@ -254,7 +232,7 @@ function SettingsPage() {
                   className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                 >
                   <FolderOpen className="h-4 w-4" />
-                  <span>{t('settings.openLogDir', 'Open')}</span>
+                  <span>{t('settings.openLogDir')}</span>
                 </button>
               </div>
             </CardContent>
@@ -263,23 +241,15 @@ function SettingsPage() {
           {/* Privacy & Error Reporting Card */}
           <Card>
             <CardHeader>
-              <CardTitle>{t('settings.privacy.title', 'Privacy')}</CardTitle>
-              <CardDescription>
-                {t(
-                  'settings.privacy.description',
-                  'Control how your data is used to improve the application.',
-                )}
-              </CardDescription>
+              <CardTitle>{t('settings.privacy.title')}</CardTitle>
+              <CardDescription>{t('settings.privacy.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div className="space-y-1">
-                  <Label>{t('settings.privacy.error_reporting', 'Error Reporting')}</Label>
+                  <Label>{t('settings.privacy.error_reporting')}</Label>
                   <p className="text-xs text-gray-500">
-                    {t(
-                      'settings.privacy.error_reporting_desc',
-                      'Send anonymous error reports to help us improve the app. No personal data is collected.',
-                    )}
+                    {t('settings.privacy.error_reporting_desc')}
                   </p>
                 </div>
                 <Switch
@@ -291,35 +261,22 @@ function SettingsPage() {
                   }}
                 />
               </div>
-              <p className="text-muted-foreground text-xs">
-                {t(
-                  'settings.privacy.restart_note',
-                  'Changes to error reporting will take effect after restarting the application.',
-                )}
-              </p>
+              <p className="text-muted-foreground text-xs">{t('settings.privacy.restart_note')}</p>
             </CardContent>
           </Card>
 
           {/* Notifications Card */}
           <Card>
             <CardHeader>
-              <CardTitle>{t('settings.notifications.title', 'Notifications')}</CardTitle>
-              <CardDescription>
-                {t(
-                  'settings.notifications.description',
-                  'Configure desktop alerts for account events.',
-                )}
-              </CardDescription>
+              <CardTitle>{t('settings.notifications.title')}</CardTitle>
+              <CardDescription>{t('settings.notifications.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div className="space-y-1">
-                  <Label>{t('settings.notifications.quotaAlert', 'Low Quota Alerts')}</Label>
+                  <Label>{t('settings.notifications.quotaAlert')}</Label>
                   <p className="text-xs text-gray-500">
-                    {t(
-                      'settings.notifications.quotaAlertDesc',
-                      'Get notified when a model quota drops below the set threshold',
-                    )}
+                    {t('settings.notifications.quotaAlertDesc')}
                   </p>
                 </div>
                 <Switch
@@ -328,10 +285,10 @@ function SettingsPage() {
                     if (config) {
                       try {
                         await saveConfig({ ...config, quota_alert_enabled: checked });
-                      } catch (err) {
+                      } catch {
                         toast({
                           title: t('common.error'),
-                          description: 'Failed to save notification settings',
+                          description: t('settings.notifications.saveFailed'),
                           variant: 'destructive',
                         });
                       }
@@ -341,12 +298,9 @@ function SettingsPage() {
               </div>
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div className="space-y-1">
-                  <Label>{t('settings.notifications.quotaThreshold', 'Alert Threshold')}</Label>
+                  <Label>{t('settings.notifications.quotaThreshold')}</Label>
                   <p className="text-xs text-gray-500">
-                    {t(
-                      'settings.notifications.quotaThresholdDesc',
-                      'Percentage below which to trigger an alert',
-                    )}
+                    {t('settings.notifications.quotaThresholdDesc')}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -363,10 +317,10 @@ function SettingsPage() {
                       if (config) {
                         try {
                           await saveConfig({ ...config, quota_alert_threshold: parsed });
-                        } catch (err) {
+                        } catch {
                           toast({
                             title: t('common.error'),
-                            description: 'Failed to save threshold setting',
+                            description: t('settings.notifications.thresholdSaveFailed'),
                             variant: 'destructive',
                           });
                         }

@@ -257,16 +257,14 @@ print(response.choices[0].message.content)`;
   return (
     <div className="container mx-auto max-w-4xl space-y-5 p-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">{t('proxy.title', 'API Proxy')}</h2>
-        <p className="text-muted-foreground mt-1">
-          {t('proxy.description', 'Manage the local API proxy service.')}
-        </p>
+        <h2 className="text-3xl font-bold tracking-tight">{t('proxy.title')}</h2>
+        <p className="text-muted-foreground mt-1">{t('proxy.description')}</p>
 
         {/* Local Access Info Banner */}
         {proxyConfig?.enabled && (
           <div className="mt-4 flex flex-col gap-2 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
             <div className="flex items-center gap-2">
-              <div className="font-semibold">{t('proxy.config.local_access', 'Local Access:')}</div>
+              <div className="font-semibold">{t('proxy.config.local_access')}</div>
               <code className="rounded bg-blue-100 px-1.5 py-0.5 font-mono select-all dark:bg-blue-900/50">
                 http://{selectedIp || 'localhost'}:{proxyConfig.port}/v1
               </code>
@@ -274,7 +272,7 @@ print(response.choices[0].message.content)`;
               {localIps && localIps.length > 1 && (
                 <Select value={selectedIp} onValueChange={setSelectedIp}>
                   <SelectTrigger className="ml-2 h-7 w-auto min-w-[180px] text-xs">
-                    <SelectValue placeholder="Select IP" />
+                    <SelectValue placeholder={t('proxy.config.select_ip')} />
                   </SelectTrigger>
                   <SelectContent>
                     {localIps.map((ip) => (
@@ -288,10 +286,7 @@ print(response.choices[0].message.content)`;
             </div>
             {!proxyConfig.api_key && (
               <div className="flex items-center gap-2 text-xs font-medium text-amber-600 dark:text-amber-400">
-                {t(
-                  'proxy.config.no_token_warning',
-                  '⚠️ No API Key set. Service is open to the public network!',
-                )}
+                {t('proxy.config.no_token_warning')}
               </div>
             )}
           </div>
@@ -303,19 +298,15 @@ print(response.choices[0].message.content)`;
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>{t('proxy.service.title', 'Service Status')}</CardTitle>
-              <CardDescription>
-                {t('proxy.service.description', 'Control the local API proxy server.')}
-              </CardDescription>
+              <CardTitle>{t('proxy.service.title')}</CardTitle>
+              <CardDescription>{t('proxy.service.description')}</CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <div
                 className={`h-3 w-3 rounded-full ${proxyConfig.enabled ? 'animate-pulse bg-green-500' : 'bg-gray-400'}`}
               ></div>
               <span className="text-sm font-medium">
-                {proxyConfig.enabled
-                  ? t('proxy.service.running', 'Running')
-                  : t('proxy.service.stopped', 'Stopped')}
+                {proxyConfig.enabled ? t('proxy.service.running') : t('proxy.service.stopped')}
               </span>
             </div>
           </div>
@@ -336,16 +327,14 @@ print(response.choices[0].message.content)`;
                 }
               }}
             >
-              {proxyConfig.enabled
-                ? t('proxy.service.stop', 'Stop Service')
-                : t('proxy.service.start', 'Start Service')}
+              {proxyConfig.enabled ? t('proxy.service.stop') : t('proxy.service.start')}
             </Button>
           </div>
 
           {/* Port & Timeout Configuration */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="gateway-port">{t('proxy.config.port', 'Listen Port')}</Label>
+              <Label htmlFor="gateway-port">{t('proxy.config.port')}</Label>
               <Input
                 id="gateway-port"
                 type="number"
@@ -357,9 +346,7 @@ print(response.choices[0].message.content)`;
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gateway-timeout">
-                {t('proxy.config.timeout', 'Request Timeout')}
-              </Label>
+              <Label htmlFor="gateway-timeout">{t('proxy.config.timeout')}</Label>
               <Input
                 id="gateway-timeout"
                 type="number"
@@ -376,7 +363,7 @@ print(response.choices[0].message.content)`;
 
           {/* API Key */}
           <div className="space-y-2">
-            <Label>{t('proxy.config.api_key', 'API Key')}</Label>
+            <Label>{t('proxy.config.api_key')}</Label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input
@@ -405,28 +392,21 @@ print(response.choices[0].message.content)`;
                 onClick={() => navigator.clipboard.writeText(proxyConfig.api_key || '')}
               >
                 <Copy size={14} className="mr-1" />
-                {t('proxy.copy', 'Copy')}
+                {t('proxy.copy')}
               </Button>
               <Button variant="outline" size="sm" onClick={() => setIsRegenerateDialogOpen(true)}>
-                {t('proxy.regenerate', 'Regenerate')}
+                {t('proxy.regenerate')}
               </Button>
             </div>
             <Dialog open={isRegenerateDialogOpen} onOpenChange={setIsRegenerateDialogOpen}>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>
-                    {t('proxy.regenerateConfirm.title', 'Regenerate API Key?')}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {t(
-                      'proxy.regenerateConfirm.description',
-                      'This will invalidate the current API key immediately. Any applications using the old key will stop working.',
-                    )}
-                  </DialogDescription>
+                  <DialogTitle>{t('proxy.regenerateConfirm.title')}</DialogTitle>
+                  <DialogDescription>{t('proxy.regenerateConfirm.description')}</DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsRegenerateDialogOpen(false)}>
-                    {t('proxy.regenerateConfirm.cancel', 'Cancel')}
+                    {t('proxy.regenerateConfirm.cancel')}
                   </Button>
                   <Button
                     variant="destructive"
@@ -437,7 +417,7 @@ print(response.choices[0].message.content)`;
                       setIsRegenerateDialogOpen(false);
                     }}
                   >
-                    {t('proxy.regenerateConfirm.confirm', 'Regenerate')}
+                    {t('proxy.regenerateConfirm.confirm')}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -447,10 +427,8 @@ print(response.choices[0].message.content)`;
           {/* Auto Start Toggle */}
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="space-y-1">
-              <Label>{t('proxy.config.auto_start', 'Auto Start with App')}</Label>
-              <p className="text-xs text-gray-500">
-                {t('proxy.config.auto_start_desc', 'Start proxy service when application launches')}
-              </p>
+              <Label>{t('proxy.config.auto_start')}</Label>
+              <p className="text-xs text-gray-500">{t('proxy.config.auto_start_desc')}</p>
             </div>
             <Switch
               checked={proxyConfig.auto_start}
@@ -465,10 +443,8 @@ print(response.choices[0].message.content)`;
       {/* Model Mapping Card */}
       <Card>
         <CardHeader>
-          <CardTitle>{t('proxy.mapping.title', 'Model Mapping')}</CardTitle>
-          <CardDescription>
-            {t('proxy.mapping.description', 'Map Claude models to Gemini models for routing.')}
-          </CardDescription>
+          <CardTitle>{t('proxy.mapping.title')}</CardTitle>
+          <CardDescription>{t('proxy.mapping.description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -481,7 +457,7 @@ print(response.choices[0].message.content)`;
                 </h3>
               </div>
               <p className="mb-3 text-xs text-gray-600 dark:text-gray-400">
-                {t('proxy.mapping.maps_to', 'Maps to')}
+                {t('proxy.mapping.maps_to')}
               </p>
               <Select
                 value={resolveAnthropicMappingValue(
@@ -518,7 +494,7 @@ print(response.choices[0].message.content)`;
                 </h3>
               </div>
               <p className="mb-3 text-xs text-gray-600 dark:text-gray-400">
-                {t('proxy.mapping.maps_to', 'Maps to')}
+                {t('proxy.mapping.maps_to')}
               </p>
               <Select
                 value={resolveAnthropicMappingValue(
@@ -558,7 +534,7 @@ print(response.choices[0].message.content)`;
                 })
               }
             >
-              {t('proxy.mapping.restore', 'Restore Defaults')}
+              {t('proxy.mapping.restore')}
             </Button>
           </div>
         </CardContent>
@@ -569,11 +545,9 @@ print(response.choices[0].message.content)`;
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Code size={20} />
-            {t('proxy.examples.title', 'Usage Examples')}
+            {t('proxy.examples.title')}
           </CardTitle>
-          <CardDescription>
-            {t('proxy.examples.description', 'Example commands to call the local API proxy.')}
-          </CardDescription>
+          <CardDescription>{t('proxy.examples.description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Protocol Selector Cards */}
@@ -588,7 +562,7 @@ print(response.choices[0].message.content)`;
                   className={`h-2 w-2 rounded-full ${selectedProtocol === 'openai' ? 'animate-pulse bg-blue-500' : 'bg-blue-400'}`}
                 ></div>
                 <span className="text-sm font-bold text-blue-700 dark:text-blue-400">
-                  OpenAI Protocol
+                  {t('settings.examples.openai_protocol')}
                 </span>
               </div>
               <div className="mb-2 rounded border border-blue-200/50 bg-white/60 px-3 py-2 dark:border-blue-700/30 dark:bg-gray-800/40">
@@ -597,7 +571,7 @@ print(response.choices[0].message.content)`;
                 </code>
               </div>
               <p className="text-xs text-gray-600 dark:text-gray-400">
-                💡 Cursor, Windsurf, NextChat
+                {t('settings.examples.openai_tools')}
               </p>
             </div>
 
@@ -611,7 +585,7 @@ print(response.choices[0].message.content)`;
                   className={`h-2 w-2 rounded-full ${selectedProtocol === 'anthropic' ? 'animate-pulse bg-purple-500' : 'bg-purple-400'}`}
                 ></div>
                 <span className="text-sm font-bold text-purple-700 dark:text-purple-400">
-                  Anthropic Protocol
+                  {t('settings.examples.anthropic_protocol')}
                 </span>
               </div>
               <div className="mb-2 rounded border border-purple-200/50 bg-white/60 px-3 py-2 dark:border-purple-700/30 dark:bg-gray-800/40">
@@ -619,7 +593,9 @@ print(response.choices[0].message.content)`;
                   POST /v1/messages
                 </code>
               </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400">💡 Claude Code CLI</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {t('settings.examples.anthropic_tools')}
+              </p>
             </div>
           </div>
 
@@ -649,7 +625,7 @@ print(response.choices[0].message.content)`;
                 className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
               >
                 {copied === 'curl' ? <CheckCircle size={14} /> : <Copy size={14} />}
-                {copied === 'curl' ? 'Copied!' : 'Copy'}
+                {copied === 'curl' ? t('proxy.copied') : t('proxy.copy')}
               </button>
             </div>
             <pre className="overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-xs whitespace-pre-wrap text-gray-100">
@@ -669,7 +645,7 @@ print(response.choices[0].message.content)`;
                 className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
               >
                 {copied === 'python' ? <CheckCircle size={14} /> : <Copy size={14} />}
-                {copied === 'python' ? 'Copied!' : 'Copy'}
+                {copied === 'python' ? t('proxy.copied') : t('proxy.copy')}
               </button>
             </div>
             <pre className="overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-xs whitespace-pre-wrap text-gray-100">

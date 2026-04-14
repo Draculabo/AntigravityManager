@@ -1,6 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
+import vi from './vi';
 
 i18n
   .use(LanguageDetector)
@@ -12,12 +13,19 @@ i18n
       caches: ['localStorage'],
       lookupLocalStorage: 'lang',
     },
-    supportedLngs: ['en', 'zh-CN', 'ru'],
+    supportedLngs: ['en', 'zh-CN', 'ru', 'vi'],
     load: 'currentOnly', // Only load the exact language code, not variants
     resources: {
       en: {
         translation: {
           appName: 'Antigravity Manager',
+          common: {
+            loading: 'Loading...',
+            error: 'Error',
+            unknown: 'Unknown',
+            notAvailable: 'N/A',
+            openMenu: 'Open menu',
+          },
           status: {
             checking: 'Checking status...',
             running: 'Antigravity is running in background',
@@ -84,6 +92,7 @@ i18n
               english: 'English',
               chinese: 'Chinese (Simplified)',
               russian: 'Russian',
+              vietnamese: 'Vietnamese',
             },
             about: {
               title: 'About',
@@ -93,6 +102,15 @@ i18n
             platform: 'Platform',
             license: 'License',
             openLogDir: 'Open',
+            toast: {
+              saved: {
+                title: 'Settings saved',
+                description: 'Your configuration has been updated.',
+              },
+              saveFailed: {
+                title: 'Error saving settings',
+              },
+            },
             account: {
               title: 'Account Settings',
               description: 'Configure automatic account refresh and sync.',
@@ -125,6 +143,8 @@ i18n
               quotaAlertDesc: 'Get notified when a model quota drops below the set threshold',
               quotaThreshold: 'Alert Threshold',
               quotaThresholdDesc: 'Percentage below which to trigger an alert',
+              saveFailed: 'Failed to save notification settings',
+              thresholdSaveFailed: 'Failed to save threshold setting',
             },
             proxy: {
               title: 'Upstream Proxy',
@@ -369,6 +389,20 @@ i18n
               autoSwitchOn: 'Auto-Switch Enabled',
               autoSwitchOff: 'Auto-Switch Disabled',
               updateSettingsFailed: 'Failed to update settings',
+              actionFailed: 'Action failed',
+              startAuthFailed: 'Failed to start sign-in flow',
+              refreshCreditsAvailable: 'AI credits: ${{amount}}',
+              refreshCreditsUnavailable: 'AI credits not available for this refresh.',
+              batchRefreshSuccess: 'Successfully refreshed {{count}} accounts.',
+              batchRefreshPartial: {
+                title: 'Refresh completed with issues',
+                description: 'Refreshed {{successful}} accounts, {{failed}} failed.',
+              },
+              batchDeleteSuccess: 'Successfully deleted {{count}} accounts.',
+              batchDeletePartial: {
+                title: 'Deletion completed with issues',
+                description: 'Deleted {{successful}} accounts, {{failed}} failed.',
+              },
             },
             batch: {
               selected: 'Selected {{count}}',
@@ -403,6 +437,9 @@ i18n
               importErrors: 'Import completed with {{count}} error(s)',
               selectFile: 'Select File',
               importing: 'Importing...',
+              fileTooLarge: 'File size exceeds 5MB limit',
+              invalidJson: 'Invalid JSON file format',
+              readFileFailed: 'Failed to read file',
             },
           },
           proxy: {
@@ -410,6 +447,7 @@ i18n
             description: 'Manage the local API proxy service.',
             save: 'Save Settings',
             copy: 'Copy',
+            copied: 'Copied!',
             regenerate: 'Regenerate',
             regenerateConfirm: {
               title: 'Regenerate API Key?',
@@ -433,6 +471,7 @@ i18n
               auto_start: 'Auto Start with App',
               auto_start_desc: 'Start proxy service when application launches',
               local_access: 'Local network access:',
+              select_ip: 'Select IP',
               no_token_warning: '⚠️ API key is not set. Access is open to everyone!',
               show_key: 'Show',
               hide_key: 'Hide',
@@ -450,9 +489,19 @@ i18n
           },
         },
       },
+      vi: {
+        translation: vi,
+      },
       'zh-CN': {
         translation: {
           appName: 'Antigravity 管理器',
+          common: {
+            loading: '加载中...',
+            error: '错误',
+            unknown: '未知',
+            notAvailable: '不适用',
+            openMenu: '打开菜单',
+          },
           status: {
             checking: '正在检查状态...',
             running: 'Antigravity 正在后台运行',
@@ -519,6 +568,7 @@ i18n
               english: '英语',
               chinese: '中文 (简体)',
               russian: '俄语',
+              vietnamese: '越南语',
             },
             about: {
               title: '关于',
@@ -528,6 +578,15 @@ i18n
             platform: '平台',
             license: '许可证',
             openLogDir: '打开',
+            toast: {
+              saved: {
+                title: '设置已保存',
+                description: '配置已更新。',
+              },
+              saveFailed: {
+                title: '保存设置失败',
+              },
+            },
             account: {
               title: '账号设置',
               description: '配置自动刷新和同步账号。',
@@ -558,6 +617,8 @@ i18n
               quotaAlertDesc: '当模型配额低于设定阈值时收到提醒',
               quotaThreshold: '提醒阈值',
               quotaThresholdDesc: '触发提醒的百分比阈值',
+              saveFailed: '保存通知设置失败',
+              thresholdSaveFailed: '保存阈值设置失败',
             },
             proxy: {
               title: '上游代理',
@@ -799,6 +860,20 @@ i18n
               autoSwitchOn: '自动切换已启用',
               autoSwitchOff: '自动切换已禁用',
               updateSettingsFailed: '更新设置失败',
+              actionFailed: '操作失败',
+              startAuthFailed: '启动登录流程失败',
+              refreshCreditsAvailable: 'AI 积分：${{amount}}',
+              refreshCreditsUnavailable: '本次刷新没有可用的 AI 积分信息。',
+              batchRefreshSuccess: '成功刷新 {{count}} 个账号。',
+              batchRefreshPartial: {
+                title: '刷新已完成，但存在问题',
+                description: '已刷新 {{successful}} 个账号，{{failed}} 个失败。',
+              },
+              batchDeleteSuccess: '成功删除 {{count}} 个账号。',
+              batchDeletePartial: {
+                title: '删除已完成，但存在问题',
+                description: '已删除 {{successful}} 个账号，{{failed}} 个失败。',
+              },
             },
             batch: {
               selected: '已选 {{count}} 项',
@@ -833,6 +908,9 @@ i18n
               importErrors: '导入完成，但有 {{count}} 个错误',
               selectFile: '选择文件',
               importing: '导入中...',
+              fileTooLarge: '文件大小超过 5MB 限制',
+              invalidJson: 'JSON 文件格式无效',
+              readFileFailed: '读取文件失败',
             },
           },
           proxy: {
@@ -840,6 +918,7 @@ i18n
             description: '管理本地 API 代理服务。',
             save: '保存设置',
             copy: '复制',
+            copied: '已复制!',
             regenerate: '重新生成',
             regenerateConfirm: {
               title: '重新生成 API 密钥？',
@@ -862,6 +941,7 @@ i18n
               auto_start: '随应用启动',
               auto_start_desc: '应用启动时自动启动代理服务',
               local_access: '局域网访问:',
+              select_ip: '选择 IP',
               no_token_warning: '⚠️ 未设置 API 密钥。服务对公网开放！',
               show_key: '显示密钥',
               hide_key: '隐藏密钥',
@@ -882,6 +962,13 @@ i18n
       ru: {
         translation: {
           appName: 'Antigravity Manager',
+          common: {
+            loading: 'Загрузка...',
+            error: 'Ошибка',
+            unknown: 'Неизвестно',
+            notAvailable: 'Н/Д',
+            openMenu: 'Открыть меню',
+          },
           status: {
             checking: 'Проверка статуса...',
             running: 'Antigravity работает в фоне',
@@ -949,6 +1036,7 @@ i18n
               english: 'English',
               chinese: '中文 (简体)',
               russian: 'Русский',
+              vietnamese: 'Вьетнамский',
             },
             about: {
               title: 'О программе',
@@ -958,6 +1046,15 @@ i18n
             platform: 'Платформа',
             license: 'Лицензия',
             openLogDir: 'Открыть',
+            toast: {
+              saved: {
+                title: 'Настройки сохранены',
+                description: 'Конфигурация обновлена.',
+              },
+              saveFailed: {
+                title: 'Ошибка сохранения настроек',
+              },
+            },
             account: {
               title: 'Настройки аккаунта',
               description: 'Настройка автоматического обновления и синхронизации.',
@@ -991,6 +1088,8 @@ i18n
                 'Получайте уведомления, когда квота модели падает ниже установленного порога',
               quotaThreshold: 'Порог уведомления',
               quotaThresholdDesc: 'Процент, ниже которого срабатывает уведомление',
+              saveFailed: 'Не удалось сохранить настройки уведомлений',
+              thresholdSaveFailed: 'Не удалось сохранить порог уведомления',
             },
             proxy: {
               title: 'Верхнеуровневый прокси',
@@ -1234,6 +1333,20 @@ i18n
               autoSwitchOn: 'Авто-переключение включено',
               autoSwitchOff: 'Авто-переключение выключено',
               updateSettingsFailed: 'Не удалось обновить настройки',
+              actionFailed: 'Не удалось выполнить действие',
+              startAuthFailed: 'Не удалось запустить процесс входа',
+              refreshCreditsAvailable: 'AI кредиты: ${{amount}}',
+              refreshCreditsUnavailable: 'AI кредиты недоступны для этого обновления.',
+              batchRefreshSuccess: 'Успешно обновлено {{count}} аккаунтов.',
+              batchRefreshPartial: {
+                title: 'Обновление завершено с проблемами',
+                description: 'Обновлено {{successful}} аккаунтов, {{failed}} с ошибкой.',
+              },
+              batchDeleteSuccess: 'Успешно удалено {{count}} аккаунтов.',
+              batchDeletePartial: {
+                title: 'Удаление завершено с проблемами',
+                description: 'Удалено {{successful}} аккаунтов, {{failed}} с ошибкой.',
+              },
             },
             batch: {
               selected: 'Выбрано {{count}}',
@@ -1269,6 +1382,9 @@ i18n
               importErrors: 'Импорт завершён с {{count}} ошибкой(ами)',
               selectFile: 'Выбрать файл',
               importing: 'Импорт...',
+              fileTooLarge: 'Размер файла превышает лимит в 5 МБ',
+              invalidJson: 'Некорректный формат JSON-файла',
+              readFileFailed: 'Не удалось прочитать файл',
             },
           },
           proxy: {
@@ -1276,6 +1392,7 @@ i18n
             description: 'Управление локальным прокси-сервером API.',
             save: 'Сохранить',
             copy: 'Копировать',
+            copied: 'Скопировано!',
             regenerate: 'Перегенерировать',
             regenerateConfirm: {
               title: 'Перегенерировать API ключ?',
@@ -1299,6 +1416,7 @@ i18n
               auto_start: 'Автозапуск',
               auto_start_desc: 'Запускать прокси при старте приложения',
               local_access: 'Доступ из локальной сети:',
+              select_ip: 'Выбрать IP',
               no_token_warning: '⚠️ API ключ не установлен. Доступ открыт всем!',
               show_key: 'Показать',
               hide_key: 'Скрыть',
