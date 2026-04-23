@@ -5,6 +5,10 @@
   "description": "Antigravity Manager - Electron App",
   "main": ".vite/build/main.js",
   "private": true,
+  "engines": {
+    "node": ">=22.14.0",
+    "npm": ">=10"
+  },
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
