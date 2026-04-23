@@ -233,9 +233,27 @@ export async function closeAntigravity(): Promise<void> {
       }
     }
 
-    // Stage 2 & 3: Find and Kill remaining processes
-    // We use a more aggressive approach here but try to avoid killing ourselves
+    // Stage 2 & 3: Find and Kill remaining processes.
+    // We use a more aggressive approach here, but carefully avoid killing
+    // the Electron manager process itself or unrelated processes.
     const currentPid = process.pid;
+
+    /**
+     * Known Linux/macOS install path prefixes for the Antigravity binary.
+     * Only processes whose command line starts with one of these paths are
+     * considered safe to kill. This prevents accidentally killing the
+     * AntigravityManager Electron app or Antigravity extension helpers.
+     */
+    const ANTIGRAVITY_INSTALL_PATH_PREFIXES = [
+      '/opt/Antigravity/',
+      '/opt/antigravity/',
+      '/usr/share/antigravity/',
+      '/usr/local/bin/antigravity',
+      '/usr/bin/antigravity',
+      // macOS .app bundle paths (capitalized and lowercase variants)
+      '/Applications/Antigravity.app/Contents/MacOS/Antigravity',
+      '/Applications/antigravity.app/Contents/MacOS/antigravity',
+    ];
 
     // Helper to list processes
     const getProcesses = (): { pid: number; name: string; cmd: string }[] => {
@@ -259,13 +277,15 @@ export async function closeAntigravity(): Promise<void> {
                 maxBuffer: 1024 * 1024 * 10,
               });
             } catch (innerE) {
-              // Both failed, throw original or log? Throwing lets the outer catch handle it (returning empty list)
+              // Both failed; let outer catch handle it (returns empty list)
               throw e;
             }
           }
         } else {
-          // Unix/Linux/macOS
-          output = execSync('ps -A -o pid,comm,args', {
+          // Unix/Linux/macOS — use pid,args (no comm) so the first token
+          // after the PID is the real executable path, enabling the
+          // install-path startsWith check to work correctly.
+          output = execSync('ps -A -o pid,args', {
             encoding: 'utf-8',
             maxBuffer: 1024 * 1024 * 10,
           });
@@ -274,24 +294,20 @@ export async function closeAntigravity(): Promise<void> {
         const processList: { pid: number; name: string; cmd: string }[] = [];
 
         if (platform === 'win32') {
-          // Parse CSV Output
+          // Parse CSV output: first line is headers, data starts at index 1
           const lines = output.trim().split(/\r?\n/);
-          // First line is headers "ProcessId","Name","CommandLine"
-          // We start from index 1
           for (let i = 1; i < lines.length; i++) {
             const line = lines[i];
             if (!line) {
               continue;
             }
 
-            // Regex to match CSV fields: "val1","val2","val3"
+            // Match CSV fields: "val1","val2","val3"
             const match = line.match(/^"(\d+)","(.*?)","(.*?)"$/);
-
             if (match) {
               const pid = parseInt(match[1]);
               const name = match[2];
               const cmdLine = match[3];
-
               processList.push({ pid, name, cmd: cmdLine || name });
             }
           }
@@ -299,13 +315,25 @@ export async function closeAntigravity(): Promise<void> {
           const lines = output.split('\n');
           for (const line of lines) {
             const parts = line.trim().split(/\s+/);
-            if (parts.length < 2) continue;
+            if (parts.length < 2) {
+              continue;
+            }
 
             const pid = parseInt(parts[0]);
-            if (isNaN(pid)) continue;
-            const rest = parts.slice(1).join(' ');
-            if (rest.includes('Antigravity') || rest.includes('antigravity')) {
-              processList.push({ pid, name: parts[1], cmd: rest });
+            if (isNaN(pid)) {
+              continue;
+            }
+
+            const cmd = parts.slice(1).join(' ');
+
+            // Only include processes running from a known Antigravity install
+            // path. Because we use `pid,args` (no comm column), parts[1] is
+            // the real executable path, so startsWith is reliable here.
+            const isFromInstallPath = ANTIGRAVITY_INSTALL_PATH_PREFIXES.some((prefix) =>
+              cmd.startsWith(prefix),
+            );
+            if (isFromInstallPath) {
+              processList.push({ pid, name: parts[1] ?? '', cmd });
             }
           }
         }
@@ -321,23 +349,23 @@ export async function closeAntigravity(): Promise<void> {
       if (p.pid === currentPid) {
         return false;
       }
-      // Exclude this electron app (if named Antigravity Manager or antigravity-manager)
-      if (p.cmd.includes('Antigravity Manager') || p.cmd.includes('antigravity-manager')) {
+      // Exclude the manager app under all naming variants (defensive)
+      if (
+        p.cmd.includes('AntigravityManager') ||
+        p.cmd.includes('Antigravity Manager') ||
+        p.cmd.includes('antigravity-manager')
+      ) {
         return false;
       }
-      // Match Antigravity (but not manager)
+      // Windows: match by executable name
       if (platform === 'win32') {
         return (
           p.cmd.includes('Antigravity.exe') ||
           (p.cmd.includes('antigravity') && !p.cmd.includes('manager'))
         );
-      } else {
-        // Explicit !manager check for Linux/macOS to be defensive
-        return (
-          (p.cmd.includes('Antigravity') || p.cmd.includes('antigravity')) &&
-          !p.cmd.includes('manager')
-        );
       }
+      // Linux/macOS: already filtered to install-path processes above
+      return true;
     });
 
     if (targetProcessList.length === 0) {
@@ -356,15 +384,26 @@ export async function closeAntigravity(): Promise<void> {
     }
   } catch (error) {
     logger.error('Error closing Antigravity', error);
-    // Fallback to simple kill if everything fails
+    // Fallback: kill only the known Antigravity binary, never a broad pattern
+    // that could match the manager app itself.
     try {
       if (platform === 'win32') {
         execSync('taskkill /F /IM "Antigravity.exe" /T', { stdio: 'ignore' });
       } else {
-        execSync('pkill -9 -f Antigravity', { stdio: 'ignore' });
+        // Use -x to match the exact executable name, not substrings.
+        // Run both casings because macOS installs as 'Antigravity' (capital A)
+        // while Linux installs use 'antigravity' (lowercase).
+        // Errors are swallowed intentionally — process may already be gone or
+        // the variant may not exist on this platform.
+        try {
+          execSync('pkill -9 -x antigravity', { stdio: 'ignore' });
+        } catch {
+          // Ignore — may not match on this system
+        }
+        execSync('pkill -9 -x Antigravity', { stdio: 'ignore' });
       }
     } catch {
-      // Ignore
+      // Ignore — process may already be gone
     }
   }
 }
