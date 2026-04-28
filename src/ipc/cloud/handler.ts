@@ -503,38 +503,43 @@ export async function switchCloudAccount(accountId: string): Promise<void> {
         account.device_profile = generated;
       }
 
-      // 1. Prepare token refresh promise (start it in parallel with process exit)
       const tokenRefreshPromise = (async () => {
         const now = Math.floor(Date.now() / 1000);
-        if (account.token.expiry_timestamp < now + 1200) {
-          logger.info(`Token for ${account.email} near expiry, refreshing in parallel...`);
-          try {
-            const newTokenData = await GoogleAPIService.refreshAccessToken(
-              account.token.refresh_token,
-              account.proxy_url,
-              account.token.oauth_client_key,
-            );
+        if (!isString(account.token.refresh_token) || isEmpty(account.token.refresh_token.trim())) {
+          logger.warn(
+            `Token for ${account.email} has no refresh token; switched IDE session may expire without recovery.`,
+          );
+          return;
+        }
 
-            const updatedToken = {
-              ...account.token,
-              access_token: newTokenData.access_token,
-              expires_in: newTokenData.expires_in,
-              expiry_timestamp: now + newTokenData.expires_in,
-              oauth_client_key: GoogleAPIService.normalizeRefreshedOAuthClientKey(
-                account.token,
-                newTokenData.oauth_client_key,
-              ),
-            };
-            await CloudAccountRepo.updateToken(account.id, updatedToken);
+        logger.info(`Refreshing token for ${account.email} before IDE injection...`);
+        try {
+          const newTokenData = await GoogleAPIService.refreshAccessToken(
+            account.token.refresh_token,
+            account.proxy_url,
+            account.token.oauth_client_key,
+          );
 
-            account.token = updatedToken;
-            logger.info(`Token refreshed for ${account.email}`);
-          } catch (e) {
-            logger.warn('Failed to refresh token in parallel', e);
-            await markAccountStatusFromError(account, e);
-            const reason = extractErrorMessage(e);
-            throw new Error(formatSwitchRefreshError(reason));
-          }
+          const updatedToken = {
+            ...account.token,
+            access_token: newTokenData.access_token,
+            expires_in: newTokenData.expires_in,
+            expiry_timestamp: now + newTokenData.expires_in,
+            token_type: newTokenData.token_type,
+            oauth_client_key: GoogleAPIService.normalizeRefreshedOAuthClientKey(
+              account.token,
+              newTokenData.oauth_client_key,
+            ),
+          };
+          await CloudAccountRepo.updateToken(account.id, updatedToken);
+
+          account.token = updatedToken;
+          logger.info(`Token refreshed for ${account.email}`);
+        } catch (e) {
+          logger.warn('Failed to refresh token before IDE injection', e);
+          await markAccountStatusFromError(account, e);
+          const reason = extractErrorMessage(e);
+          throw new Error(formatSwitchRefreshError(reason));
         }
       })();
 

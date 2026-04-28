@@ -509,6 +509,13 @@ describe('cloud switch fail-fast path', () => {
     const startAntigravityMock = vi.fn(async () => undefined);
     const recordSwitchFailureMock = vi.fn();
     const recordSwitchSuccessMock = vi.fn();
+    const updateTokenMock = vi.fn(async () => undefined);
+    const refreshAccessTokenMock = vi.fn(async () => ({
+      access_token: 'refreshed-access',
+      expires_in: 3600,
+      token_type: 'Bearer',
+      oauth_client_key: 'custom_a',
+    }));
 
     const account = {
       id: 'acc-1',
@@ -537,7 +544,7 @@ describe('cloud switch fail-fast path', () => {
       CloudAccountRepo: {
         getAccount: vi.fn(async () => account),
         setDeviceBinding: vi.fn(),
-        updateToken: vi.fn(async () => undefined),
+        updateToken: updateTokenMock,
         injectCloudToken: vi.fn(() => {
           throw new Error('inject_failed');
         }),
@@ -590,7 +597,10 @@ describe('cloud switch fail-fast path', () => {
 
     vi.doMock('../../services/GoogleAPIService', () => ({
       GoogleAPIService: {
-        refreshAccessToken: vi.fn(async () => undefined),
+        refreshAccessToken: refreshAccessTokenMock,
+        normalizeRefreshedOAuthClientKey: vi.fn(
+          (_currentToken: unknown, refreshedClientKey?: string) => refreshedClientKey,
+        ),
       },
     }));
 
@@ -603,6 +613,14 @@ describe('cloud switch fail-fast path', () => {
     const { switchCloudAccount } = await import('../../ipc/cloud/handler');
     await expect(switchCloudAccount('acc-1')).rejects.toThrow('Switch failed: inject_failed');
 
+    expect(refreshAccessTokenMock).toHaveBeenCalledWith('refresh', undefined, undefined);
+    expect(updateTokenMock).toHaveBeenCalledWith(
+      'acc-1',
+      expect.objectContaining({
+        access_token: 'refreshed-access',
+        expiry_timestamp: expect.any(Number),
+      }),
+    );
     expect(applyDeviceProfileMock).toHaveBeenCalledTimes(1);
     expect(applyDeviceProfileMock).toHaveBeenCalledWith(account.device_profile);
     expect(startAntigravityMock).not.toHaveBeenCalled();
