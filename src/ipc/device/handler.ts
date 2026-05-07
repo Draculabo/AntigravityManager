@@ -15,6 +15,10 @@ const LAST_KNOWN_GOOD_STATE_DB_FILE = 'state.vscdb';
 const LAST_KNOWN_GOOD_MARKER_FILE = 'marker.json';
 const DEVICE_HARDENING_SAFE_MODE_THRESHOLD = 3;
 const DEVICE_HARDENING_SAFE_MODE_DURATION_MS = 5 * 60 * 1000;
+const STATE_SERVICE_MACHINE_ID_KEYS = [
+  'storage.serviceMachineId',
+  'telemetry.serviceMachineId',
+] as const;
 
 export type DeviceApplyFailureReason =
   | 'backup_failed'
@@ -182,11 +186,7 @@ function getTelemetryField(storage: Record<string, unknown>, key: string): strin
 }
 
 function ensureTelemetryObject(storage: Record<string, unknown>): Record<string, unknown> {
-  if (
-    !storage.telemetry ||
-    !isObjectLike(storage.telemetry) ||
-    Array.isArray(storage.telemetry)
-  ) {
+  if (!storage.telemetry || !isObjectLike(storage.telemetry) || Array.isArray(storage.telemetry)) {
     storage.telemetry = {};
   }
   return storage.telemetry as Record<string, unknown>;
@@ -254,6 +254,13 @@ function ensureStateServiceMachineIdApplied(serviceMachineId: string, dbPath: st
   const value = readStateServiceMachineIdValue(dbPath);
   if (value !== serviceMachineId) {
     throw new Error('device_profile_integrity_check_failed_for_state_db');
+  }
+}
+
+function writeStateServiceMachineIdValues(db: Database.Database, serviceMachineId: string): void {
+  const statement = db.prepare('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)');
+  for (const key of STATE_SERVICE_MACHINE_ID_KEYS) {
+    statement.run(key, serviceMachineId);
   }
 }
 
@@ -610,9 +617,7 @@ export function syncStateServiceMachineIdValue(serviceMachineId: string, dbPath?
       db = new Database(targetDbPath);
       db.pragma('busy_timeout = 3000');
       db.exec('CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT);');
-      db.prepare(
-        "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('storage.serviceMachineId', ?)",
-      ).run(serviceMachineId);
+      writeStateServiceMachineIdValues(db, serviceMachineId);
       return;
     } catch (error) {
       if (isSqliteBusyError(error) && attempt < SQLITE_RETRY_COUNT) {
