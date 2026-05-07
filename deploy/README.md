@@ -29,15 +29,17 @@ sudo nginx -t && sudo systemctl reload nginx
 ## Lock the upstreams to loopback
 
 The Node servers default to `0.0.0.0`, which means they're reachable
-directly on `:8045` and `:8046` even with nginx in front. Two fixes:
+directly on `:8045` and `:8046` even with nginx in front. Two fixes —
+ideally both:
 
-1. **Firewall (recommended):** allow only ports 80 and 443 inbound.
+1. **Set `AGM_BIND_HOST=127.0.0.1`** in `.env`. Both the proxy and the
+   management server then bind to loopback only and are only reachable
+   via nginx.
+2. **Firewall:** allow only ports 80 and 443 inbound.
    ```bash
    sudo ufw allow 22 && sudo ufw allow 80 && sudo ufw allow 443
    sudo ufw enable
    ```
-2. **Or change the bind address** in `src/standalone/main.ts` and
-   `src/server/main.ts` from `'0.0.0.0'` to `'127.0.0.1'`.
 
 ## Hardening checklist before pointing DNS at the VM
 

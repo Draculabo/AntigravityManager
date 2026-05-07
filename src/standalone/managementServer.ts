@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import Fastify, { FastifyInstance } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
@@ -93,19 +94,30 @@ async function registerRoutes(instance: FastifyInstance) {
     };
   });
 
-  instance.post('/api/auth/login', async (req, reply) => {
-    const parsed = LoginBody.safeParse(req.body);
-    if (!parsed.success) {
-      reply.status(400);
-      return { ok: false, error: 'Password required' };
-    }
-    if (!verifyAdminPassword(parsed.data.password)) {
-      reply.status(401);
-      return { ok: false, error: 'Invalid password' };
-    }
-    const { token, expiresAt } = issueToken();
-    return { ok: true, token, expires_at: expiresAt };
-  });
+  instance.post(
+    '/api/auth/login',
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (req, reply) => {
+      const parsed = LoginBody.safeParse(req.body);
+      if (!parsed.success) {
+        reply.status(400);
+        return { ok: false, error: 'Password required' };
+      }
+      if (!verifyAdminPassword(parsed.data.password)) {
+        reply.status(401);
+        return { ok: false, error: 'Invalid password' };
+      }
+      const { token, expiresAt } = issueToken();
+      return { ok: true, token, expires_at: expiresAt };
+    },
+  );
 
   instance.post('/api/auth/logout', async (req) => {
     const token = extractBearerToken(req);
@@ -328,6 +340,18 @@ export async function startManagementServer(port: number): Promise<void> {
   }
 
   const instance = Fastify({ logger: false });
+
+  // Generous global default; tighter override on /api/auth/login below.
+  await instance.register(rateLimit, {
+    global: true,
+    max: 300,
+    timeWindow: '1 minute',
+    allowList: (req) => {
+      const url = req.url ?? '';
+      return url === '/api/health' || url.startsWith('/admin') || url === '/';
+    },
+  });
+
   await instance.register(async (scope) => {
     scope.addHook('onRequest', (req, reply, done) => {
       reply.header('Access-Control-Allow-Origin', '*');
@@ -382,7 +406,8 @@ export async function startManagementServer(port: number): Promise<void> {
     logger.info('[standalone] No dist-web build found; web UI not served from this port');
   }
 
-  await instance.listen({ port, host: '0.0.0.0' });
+  const bindHost = process.env.AGM_BIND_HOST?.trim() || '0.0.0.0';
+  await instance.listen({ port, host: bindHost });
   app = instance;
 }
 
