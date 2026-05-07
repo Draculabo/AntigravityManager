@@ -1,8 +1,12 @@
 import crypto from 'crypto';
 import { logger } from './logger';
-import { safeStorage, app } from 'electron';
 import path from 'path';
 import fs from 'fs/promises';
+import {
+  getElectronApp,
+  getElectronSafeStorage,
+  getServerUserDataPath,
+} from './electronShim';
 
 const SERVICE_NAME = 'AntigravityManager';
 const ACCOUNT_NAME = 'MasterKey';
@@ -44,7 +48,7 @@ function buildKeychainAccessHint(error: unknown): string | null {
 
   let appPath = '';
   try {
-    appPath = app.getAppPath();
+    appPath = getElectronApp()?.getAppPath() ?? '';
   } catch {
     appPath = '';
   }
@@ -67,7 +71,8 @@ let keyGenerationInProgress: Promise<MasterKeyState> | null = null;
 
 // Fallback key file path (used when keytar and safeStorage both fail)
 function getFallbackKeyPath(): string {
-  const userDataPath = app.getPath('userData');
+  const electronApp = getElectronApp();
+  const userDataPath = electronApp ? electronApp.getPath('userData') : getServerUserDataPath();
   return path.join(userDataPath, '.mk');
 }
 
@@ -88,7 +93,8 @@ async function tryKeytar(): Promise<typeof import('keytar') | null> {
 }
 
 async function readSafeStorageKey(keyPath: string): Promise<Buffer | null> {
-  if (!safeStorage.isEncryptionAvailable()) {
+  const safeStorage = getElectronSafeStorage();
+  if (!safeStorage || !safeStorage.isEncryptionAvailable()) {
     return null;
   }
 
@@ -120,7 +126,11 @@ async function readSafeStorageKey(keyPath: string): Promise<Buffer | null> {
 
 async function getOrCreateSafeStorageKey(
   keyPath: string,
-): Promise<{ key: Buffer; created: boolean }> {
+): Promise<{ key: Buffer; created: boolean } | null> {
+  const safeStorage = getElectronSafeStorage();
+  if (!safeStorage || !safeStorage.isEncryptionAvailable()) {
+    return null;
+  }
   const existingKey = await readSafeStorageKey(keyPath);
   if (existingKey) {
     return { key: existingKey, created: false };
@@ -289,17 +299,22 @@ async function generatePrimaryMasterKey(): Promise<MasterKeyState> {
   }
 
   const keyPath = getFallbackKeyPath();
+  const userDataDir = path.dirname(keyPath);
+  await fs.mkdir(userDataDir, { recursive: true }).catch(() => undefined);
 
-  if (safeStorage.isEncryptionAvailable()) {
+  const safeStorage = getElectronSafeStorage();
+  if (safeStorage?.isEncryptionAvailable()) {
     try {
       const result = await getOrCreateSafeStorageKey(keyPath);
-      cacheMasterKey(result.key, 'safeStorage');
-      if (result.created) {
-        logger.info('Security: Generated new master key via safeStorage');
-      } else {
-        logger.info('Security: Loaded master key via safeStorage');
+      if (result) {
+        cacheMasterKey(result.key, 'safeStorage');
+        if (result.created) {
+          logger.info('Security: Generated new master key via safeStorage');
+        } else {
+          logger.info('Security: Loaded master key via safeStorage');
+        }
+        return { key: result.key, source: 'safeStorage' };
       }
-      return { key: result.key, source: 'safeStorage' };
     } catch (error) {
       // If we failed to decrypt but the file exists, we should NOT proceed to other fallbacks
       // as they might overwrite the existing file and cause permanent data loss.

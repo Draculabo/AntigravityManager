@@ -1,5 +1,5 @@
-import { Notification } from 'electron';
 import { CloudAccountRepo } from '../ipc/database/cloudHandler';
+import { isElectronRuntime } from '../utils/electronShim';
 import { GoogleAPIService, type TokenResponse } from './GoogleAPIService';
 import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '../utils/logger';
@@ -253,7 +253,9 @@ export class CloudMonitorService {
               return info.display_name || name.replace('models/', '').replace(/-/g, ' ');
             });
 
-          if (lowQuotaModels.length > 0) {
+          if (lowQuotaModels.length > 0 && isElectronRuntime()) {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const { Notification } = require('electron') as typeof import('electron');
             new Notification({
               title: notificationText.lowQuotaTitle,
               body: notificationText.lowQuotaBody(account.email, lowQuotaModels.join(', ')),

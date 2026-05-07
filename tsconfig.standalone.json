@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "outDir": "dist-server",
+    "composite": false,
+    "declaration": false,
+    "noEmit": false,
+    "jsx": "preserve",
+    "types": ["node"]
+  },
+  "include": [
+    "src/standalone/**/*",
+    "src/server/**/*",
+    "src/services/**/*",
+    "src/ipc/database/**/*",
+    "src/ipc/cloud/authServer.ts",
+    "src/ipc/cloud/handler.ts",
+    "src/ipc/config/**/*",
+    "src/ipc/context.ts",
+    "src/lib/**/*",
+    "src/types/**/*",
+    "src/utils/**/*"
+  ],
+  "exclude": ["src/tests/**/*", "src/mocks/**/*", "src/components/**/*"]
+}

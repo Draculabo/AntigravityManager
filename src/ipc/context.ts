@@ -1,5 +1,5 @@
 import { os } from '@orpc/server';
-import { BrowserWindow } from 'electron';
+import type { BrowserWindow } from 'electron';
 
 class IPCContext {
   public mainWindow: BrowserWindow | undefined;
