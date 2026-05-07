@@ -5,6 +5,7 @@ import path from 'path';
 
 export default defineConfig({
   root: path.resolve(process.cwd(), 'src/web-ui'),
+  base: '/admin/',
   plugins: [react(), tailwindcss()],
   build: {
     outDir: path.resolve(process.cwd(), 'dist-web'),

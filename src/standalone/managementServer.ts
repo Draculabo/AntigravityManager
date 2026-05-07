@@ -347,26 +347,38 @@ export async function startManagementServer(port: number): Promise<void> {
 
   const webDir = resolveWebUiDir();
   if (webDir) {
-    logger.info(`[standalone] Serving web UI from ${webDir}`);
-    instance.get('/*', (req, reply) => {
-      if (req.url.startsWith('/api')) {
-        reply.status(404).send({ error: 'Not found' });
-        return;
-      }
-      const requested = req.url.split('?')[0];
-      const candidate = requested === '/' ? '/index.html' : requested;
+    logger.info(`[standalone] Serving web UI from ${webDir} at /admin`);
+
+    instance.get('/', (_req, reply) => {
+      reply.redirect('/admin/', 302);
+    });
+
+    instance.get('/admin', (_req, reply) => {
+      reply.redirect('/admin/', 302);
+    });
+
+    instance.get('/admin/*', (req, reply) => {
+      const pathOnly = req.url.split('?')[0];
+      // Strip the /admin prefix so we resolve against the static build root.
+      const stripped = pathOnly.replace(/^\/admin/, '') || '/';
+      const candidate = stripped === '/' ? '/index.html' : stripped;
       const targetPath = path.normalize(path.join(webDir, candidate));
       if (!targetPath.startsWith(webDir)) {
         reply.status(403).send('Forbidden');
         return;
       }
-      const finalPath = fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()
-        ? targetPath
-        : path.join(webDir, 'index.html');
+      const finalPath =
+        fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()
+          ? targetPath
+          : path.join(webDir, 'index.html');
       reply.header('Content-Type', readMimeType(finalPath));
       reply.send(fs.readFileSync(finalPath));
     });
   } else {
+    instance.get('/', async () => ({
+      ok: true,
+      hint: 'Build the web UI with `npm run web:build`, then it will be served at /admin.',
+    }));
     logger.info('[standalone] No dist-web build found; web UI not served from this port');
   }
 
