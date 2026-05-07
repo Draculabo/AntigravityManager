@@ -5,8 +5,9 @@ or `npm run server:start`) on a Linux VM behind nginx with TLS.
 
 ## Files
 
-- `nginx/agm.conf` — site config that fronts both ports on a single
-  domain. Routes:
+- `nginx/agm.conf` — HTTP-only site config that fronts both ports on a
+  single domain. `certbot --nginx` rewrites it in place to add TLS,
+  the 443 server block, and the 80 → 443 redirect. Routes:
   - `/admin/*` → management UI (port 8046)
   - `/api/*`   → management API (port 8046, with login rate limit)
   - `/v1/*`, `/v1beta/*` → OpenAI/Anthropic/Gemini proxy (port 8045)
@@ -19,11 +20,10 @@ or `npm run server:start`) on a Linux VM behind nginx with TLS.
 sudo cp deploy/nginx/agm.conf /etc/nginx/sites-available/agm.conf
 sudo sed -i 's/agm.example.com/YOUR_DOMAIN/g' /etc/nginx/sites-available/agm.conf
 sudo ln -s /etc/nginx/sites-available/agm.conf /etc/nginx/sites-enabled/
-
-# TLS via Let's Encrypt
-sudo certbot --nginx -d YOUR_DOMAIN
-
 sudo nginx -t && sudo systemctl reload nginx
+
+# TLS via Let's Encrypt — rewrites agm.conf with the 443 block.
+sudo certbot --nginx -d YOUR_DOMAIN
 ```
 
 ## Lock the upstreams to loopback
