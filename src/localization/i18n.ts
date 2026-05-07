@@ -2,6 +2,7 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import vi from './vi';
+import tr from './tr';
 
 i18n
   .use(LanguageDetector)
@@ -13,7 +14,7 @@ i18n
       caches: ['localStorage'],
       lookupLocalStorage: 'lang',
     },
-    supportedLngs: ['en', 'zh-CN', 'ru', 'vi'],
+    supportedLngs: ['en', 'zh-CN', 'ru', 'vi', 'tr'],
     load: 'currentOnly', // Only load the exact language code, not variants
     resources: {
       en: {
@@ -93,6 +94,7 @@ i18n
               chinese: 'Chinese (Simplified)',
               russian: 'Russian',
               vietnamese: 'Vietnamese',
+              turkish: 'Turkish',
             },
             about: {
               title: 'About',
@@ -493,6 +495,9 @@ i18n
       vi: {
         translation: vi,
       },
+      tr: {
+        translation: tr,
+      },
       'zh-CN': {
         translation: {
           appName: 'Antigravity 管理器',
@@ -570,6 +575,7 @@ i18n
               chinese: '中文 (简体)',
               russian: '俄语',
               vietnamese: '越南语',
+              turkish: '土耳其语',
             },
             about: {
               title: '关于',
@@ -1039,6 +1045,7 @@ i18n
               chinese: '中文 (简体)',
               russian: 'Русский',
               vietnamese: 'Вьетнамский',
+              turkish: 'Турецкий',
             },
             about: {
               title: 'О программе',

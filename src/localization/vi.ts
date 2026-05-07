@@ -74,6 +74,7 @@ const vi = {
       chinese: 'Tiếng Trung Giản thể',
       russian: 'Tiếng Nga',
       vietnamese: 'Tiếng Việt',
+      turkish: 'Tiếng Thổ Nhĩ Kỳ',
     },
     about: {
       title: 'Thông tin',
