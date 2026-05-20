@@ -167,7 +167,7 @@ function showWindowsInstallNoticeIfNeeded() {
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 if (isDev) {
-  app.setName('Antigravity Manager Dev');
+  app.setName('Antigravity IDE Manager Dev');
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();

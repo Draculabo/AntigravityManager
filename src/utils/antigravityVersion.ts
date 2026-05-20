@@ -66,7 +66,7 @@ export function getAntigravityVersion(): AntigravityVersion {
   try {
     const execPath = getAntigravityExecutablePath();
     if (!execPath) {
-      throw new Error('Unable to locate Antigravity executable');
+      throw new Error('Unable to locate Antigravity IDE executable');
     }
 
     if (process.platform === 'win32') {
@@ -144,10 +144,10 @@ export function getAntigravityVersion(): AntigravityVersion {
       }
     }
 
-    throw new Error('Unable to determine Antigravity version');
+    throw new Error('Unable to determine Antigravity IDE version');
   } catch (error) {
     const normalized =
-      error instanceof Error ? error : new Error('Unable to determine Antigravity version');
+      error instanceof Error ? error : new Error('Unable to determine Antigravity IDE version');
     cachedError = normalized;
     throw normalized;
   }

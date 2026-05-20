@@ -61,7 +61,7 @@ function isPgrepNoMatchError(error: unknown): boolean {
   }
 
   const message = error.message.toLowerCase();
-  const hasPgrep = message.includes('pgrep') && message.includes('antigravity');
+  const hasPgrep = message.includes('pgrep') && (message.includes('antigravity') || message.includes('antigravity ide'));
   const code = (error as { code?: number }).code;
   return hasPgrep && code === 1;
 }
@@ -76,9 +76,9 @@ export async function isProcessRunning(): Promise<boolean> {
     const platform = process.platform;
     const currentPid = process.pid;
 
-    // Use find-process to search for Antigravity processes
+    // Use find-process to search for Antigravity IDE processes
     const allMatches: ProcessInfo[] = [];
-    const searchNames = ['Antigravity', 'antigravity'];
+    const searchNames = ['Antigravity IDE', 'antigravity-ide', 'Antigravity', 'antigravity'];
     if (platform === 'linux') {
       searchNames.push('electron');
     }
@@ -109,7 +109,7 @@ export async function isProcessRunning(): Promise<boolean> {
       logger.debug('No Antigravity process found (pgrep returned 1)');
     }
 
-    logger.debug(`Found ${processes.length} processes matching 'Antigravity/antigravity'`);
+    logger.debug(`Found ${processes.length} processes matching 'Antigravity IDE/antigravity-ide'`);
 
     for (const proc of processes) {
       // Skip self
@@ -135,22 +135,22 @@ export async function isProcessRunning(): Promise<boolean> {
       }
 
       if (platform === 'darwin') {
-        // macOS: Check for Antigravity.app in path
-        if (cmd.includes('antigravity.app')) {
+        // macOS: Check for Antigravity IDE.app in path
+        if (cmd.includes('antigravity ide.app') || cmd.includes('antigravity-ide.app')) {
           logger.debug(
-            `Found Antigravity process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
+            `Found Antigravity IDE process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
           );
           return true;
         }
-        // Also check if the process name is exactly 'Antigravity' (main process)
-        if (name === 'antigravity' && !isHelperProcess(name, cmd)) {
-          logger.debug(`Found Antigravity process: PID=${proc.pid}, name=${name}`);
+        // Also check if the process name is exactly 'Antigravity IDE' (main process)
+        if ((name === 'antigravity ide' || name === 'antigravity-ide') && !isHelperProcess(name, cmd)) {
+          logger.debug(`Found Antigravity IDE process: PID=${proc.pid}, name=${name}`);
           return true;
         }
       } else if (platform === 'win32') {
-        // Windows: Check for Antigravity.exe
-        if (name === 'antigravity.exe' || name === 'antigravity') {
-          logger.debug(`Found Antigravity process: PID=${proc.pid}, name=${name}`);
+        // Windows: Check for Antigravity IDE.exe
+        if (name === 'antigravity ide.exe' || name === 'antigravity-ide.exe' || name === 'antigravity ide' || name === 'antigravity-ide') {
+          logger.debug(`Found Antigravity IDE process: PID=${proc.pid}, name=${name}`);
           return true;
         }
       } else {
@@ -159,28 +159,31 @@ export async function isProcessRunning(): Promise<boolean> {
 
         if (nameLower === 'electron') {
           // Stricter check for AUR/Electron wrapper:
-          // Must include antigravity in command line but NOT manager or tools
+          // Must include antigravity-ide in command line but NOT manager or tools
           const isAntigravityApp =
-            (cmdLower.includes('/antigravity') ||
-              cmdLower.includes(' antigravity') ||
-              cmdLower.endsWith('antigravity')) &&
+            (cmdLower.includes('/antigravity-ide') ||
+              cmdLower.includes(' antigravity-ide') ||
+              cmdLower.endsWith('antigravity-ide') ||
+              cmdLower.includes('/antigravity ide') ||
+              cmdLower.includes(' antigravity ide') ||
+              cmdLower.endsWith('antigravity ide')) &&
             !cmdLower.includes('manager') &&
             !cmdLower.includes('tools');
 
           if (isAntigravityApp) {
             logger.debug(
-              `Found Antigravity (AUR/electron) process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
+              `Found Antigravity IDE (AUR/electron) process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
             );
             return true;
           }
         }
 
         if (
-          (name.includes('antigravity') || cmd.includes('/antigravity')) &&
+          (name.includes('antigravity-ide') || name.includes('antigravity ide') || cmd.includes('/antigravity-ide') || cmd.includes('/antigravity ide')) &&
           !name.includes('tools')
         ) {
           logger.debug(
-            `Found Antigravity process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
+            `Found Antigravity IDE process: PID=${proc.pid}, name=${name}, cmd=${cmd.substring(0, 100)}`,
           );
           return true;
         }
@@ -199,7 +202,7 @@ export async function isProcessRunning(): Promise<boolean> {
  * @returns {boolean} True if the Antigravity process is running, false otherwise.
  */
 export async function closeAntigravity(): Promise<void> {
-  logger.info('Closing Antigravity...');
+  logger.info('Closing Antigravity IDE...');
   const platform = process.platform;
 
   try {
@@ -208,7 +211,7 @@ export async function closeAntigravity(): Promise<void> {
       // macOS: Use AppleScript to quit gracefully
       try {
         logger.info('Attempting graceful exit via AppleScript...');
-        execSync('osascript -e \'tell application "Antigravity" to quit\'', {
+        execSync('osascript -e \'tell application "Antigravity IDE" to quit\'', {
           stdio: 'ignore',
           timeout: 3000,
         });
@@ -223,7 +226,7 @@ export async function closeAntigravity(): Promise<void> {
         logger.info('Attempting graceful exit via taskkill...');
         // /T = Tree (child processes), /IM = Image Name
         // We do not wait long here.
-        execSync('taskkill /IM "Antigravity.exe" /T', {
+        execSync('taskkill /IM "Antigravity IDE.exe" /T', {
           stdio: 'ignore',
           timeout: 2000,
         });
@@ -243,7 +246,7 @@ export async function closeAntigravity(): Promise<void> {
         let output = '';
         if (platform === 'win32') {
           const psCommand = (cmdlet: string) =>
-            `powershell -NoProfile -Command "${cmdlet} Win32_Process -Filter \\"Name like 'Antigravity%'\\" | Select-Object ProcessId, Name, CommandLine | ConvertTo-Csv -NoTypeInformation"`;
+            `powershell -NoProfile -Command "${cmdlet} Win32_Process -Filter \\"Name like 'Antigravity IDE%' OR Name like 'Antigravity%'\\" | Select-Object ProcessId, Name, CommandLine | ConvertTo-Csv -NoTypeInformation"`;
 
           try {
             output = execSync(psCommand('Get-CimInstance'), {
@@ -296,18 +299,18 @@ export async function closeAntigravity(): Promise<void> {
             }
           }
         } else {
-          const lines = output.split('\n');
-          for (const line of lines) {
-            const parts = line.trim().split(/\s+/);
-            if (parts.length < 2) continue;
+            const lines = output.split('\n');
+            for (const line of lines) {
+              const parts = line.trim().split(/\s+/);
+              if (parts.length < 2) continue;
 
-            const pid = parseInt(parts[0]);
-            if (isNaN(pid)) continue;
-            const rest = parts.slice(1).join(' ');
-            if (rest.includes('Antigravity') || rest.includes('antigravity')) {
-              processList.push({ pid, name: parts[1], cmd: rest });
+              const pid = parseInt(parts[0]);
+              if (isNaN(pid)) continue;
+              const rest = parts.slice(1).join(' ');
+              if (rest.includes('Antigravity IDE') || rest.includes('antigravity-ide') || rest.includes('Antigravity') || rest.includes('antigravity')) {
+                processList.push({ pid, name: parts[1], cmd: rest });
+              }
             }
-          }
         }
         return processList;
       } catch (e) {
@@ -325,27 +328,28 @@ export async function closeAntigravity(): Promise<void> {
       if (p.cmd.includes('Antigravity Manager') || p.cmd.includes('antigravity-manager')) {
         return false;
       }
-      // Match Antigravity (but not manager)
+      // Match Antigravity IDE (but not manager)
       if (platform === 'win32') {
         return (
+          p.cmd.includes('Antigravity IDE.exe') ||
           p.cmd.includes('Antigravity.exe') ||
           (p.cmd.includes('antigravity') && !p.cmd.includes('manager'))
         );
       } else {
         // Explicit !manager check for Linux/macOS to be defensive
         return (
-          (p.cmd.includes('Antigravity') || p.cmd.includes('antigravity')) &&
+          (p.cmd.includes('Antigravity IDE') || p.cmd.includes('antigravity-ide') || p.cmd.includes('Antigravity') || p.cmd.includes('antigravity')) &&
           !p.cmd.includes('manager')
         );
       }
     });
 
     if (targetProcessList.length === 0) {
-      logger.info('No Antigravity processes found running.');
+      logger.info('No Antigravity IDE processes found running.');
       return;
     }
 
-    logger.info(`Found ${targetProcessList.length} remaining Antigravity processes. Killing...`);
+    logger.info(`Found ${targetProcessList.length} remaining Antigravity IDE processes. Killing...`);
 
     for (const p of targetProcessList) {
       try {
@@ -359,9 +363,9 @@ export async function closeAntigravity(): Promise<void> {
     // Fallback to simple kill if everything fails
     try {
       if (platform === 'win32') {
-        execSync('taskkill /F /IM "Antigravity.exe" /T', { stdio: 'ignore' });
+        execSync('taskkill /F /IM "Antigravity IDE.exe" /T', { stdio: 'ignore' });
       } else {
-        execSync('pkill -9 -f Antigravity', { stdio: 'ignore' });
+        execSync('pkill -9 -f "Antigravity IDE"', { stdio: 'ignore' });
       }
     } catch {
       // Ignore
@@ -385,7 +389,7 @@ export async function _waitForProcessExit(
     }
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
   }
-  throw new Error(`Antigravity process did not exit within ${timeoutMs}ms`);
+  throw new Error(`Antigravity IDE process did not exit within ${timeoutMs}ms`);
 }
 
 /**
@@ -443,13 +447,13 @@ function shouldUseLinuxGpuSafeLaunchArgs(): boolean {
 
 async function startAntigravityByExecutable(execPath: string): Promise<void> {
   if (process.platform === 'darwin') {
-    await execAsync(`open -a Antigravity`);
+    await execAsync(`open -a "Antigravity IDE"`);
     return;
   }
 
   if (process.platform === 'win32') {
     if (!execPath) {
-      throw new Error('Unable to locate Antigravity executable path');
+      throw new Error('Unable to locate Antigravity IDE executable path');
     }
     // Use start command to detach
     await execAsync(`start "" "${execPath}"`);
@@ -458,7 +462,7 @@ async function startAntigravityByExecutable(execPath: string): Promise<void> {
 
   if (isWsl()) {
     if (!execPath) {
-      throw new Error('Unable to locate Antigravity executable path');
+      throw new Error('Unable to locate Antigravity IDE executable path');
     }
     // In WSL, convert path and use cmd.exe
     const winPath = execPath
@@ -470,7 +474,7 @@ async function startAntigravityByExecutable(execPath: string): Promise<void> {
   }
 
   if (!execPath) {
-    throw new Error('Unable to locate Antigravity executable path');
+    throw new Error('Unable to locate Antigravity IDE executable path');
   }
 
   const launchArgs = shouldUseLinuxGpuSafeLaunchArgs() ? [...LINUX_GPU_SAFE_LAUNCH_ARGS] : [];
@@ -491,31 +495,31 @@ async function startAntigravityByExecutable(execPath: string): Promise<void> {
  * @returns {Promise<void>} A promise that resolves when the process starts.
  */
 export async function startAntigravity(useUri = true): Promise<void> {
-  logger.info('Starting Antigravity...');
+  logger.info('Starting Antigravity IDE...');
 
   if (await isProcessRunning()) {
-    logger.info('Antigravity is already running');
+    logger.info('Antigravity IDE is already running');
     return;
   }
 
   if (useUri) {
     logger.info('Using URI protocol to start...');
-    const uri = 'antigravity://oauth-success';
+    const uri = 'antigravity-ide://oauth-success';
 
     if (await openUri(uri)) {
-      logger.info('Antigravity URI launch command sent');
+      logger.info('Antigravity IDE URI launch command sent');
 
       if (process.platform !== 'linux' || isWsl()) {
         return;
       }
 
       if (await waitForAntigravityStartup()) {
-        logger.info('Antigravity process detected after URI launch');
+        logger.info('Antigravity IDE process detected after URI launch');
         return;
       }
 
       logger.warn(
-        'URI launch did not keep Antigravity running on Linux. Falling back to executable launch.',
+        'URI launch did not keep Antigravity IDE running on Linux. Falling back to executable launch.',
       );
     } else {
       logger.warn('URI launch failed, trying executable path...');
@@ -528,18 +532,18 @@ export async function startAntigravity(useUri = true): Promise<void> {
 
   try {
     await startAntigravityByExecutable(execPath);
-    logger.info('Antigravity launch command sent');
+    logger.info('Antigravity IDE launch command sent');
 
     if (process.platform === 'linux' && !isWsl()) {
       const started = await waitForAntigravityStartup();
       if (!started) {
         logger.warn(
-          'Antigravity launch command completed, but process startup could not be confirmed on Linux.',
+          'Antigravity IDE launch command completed, but process startup could not be confirmed on Linux.',
         );
       }
     }
   } catch (error) {
-    logger.error('Failed to start Antigravity via executable', error);
+    logger.error('Failed to start Antigravity IDE via executable', error);
     throw error;
   }
 }

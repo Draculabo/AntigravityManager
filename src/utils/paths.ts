@@ -78,18 +78,18 @@ export function getAppDataDir(): string {
 
   if (isWsl()) {
     const winUser = getWindowsUser();
-    return `/mnt/c/Users/${winUser}/AppData/Roaming/Antigravity`;
+    return `/mnt/c/Users/${winUser}/AppData/Roaming/Antigravity IDE`;
   }
 
   switch (process.platform) {
     case 'darwin':
-      return path.join(home, 'Library', 'Application Support', 'Antigravity');
+      return path.join(home, 'Library', 'Application Support', 'Antigravity IDE');
     case 'win32':
-      return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Antigravity');
+      return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Antigravity IDE');
     case 'linux':
-      return path.join(home, '.config', 'Antigravity');
+      return path.join(home, '.config', 'Antigravity IDE');
     default:
-      return path.join(home, '.antigravity');
+      return path.join(home, '.antigravity-ide');
   }
 }
 
@@ -137,14 +137,14 @@ export function getAntigravityDbPaths(): string[] {
         home,
         'Library',
         'Application Support',
-        'Antigravity',
+        'Antigravity IDE',
         'User',
         'globalStorage',
         'state.vscdb',
       ),
     );
     // Fallback path
-    paths.push(path.join(home, 'Library', 'Application Support', 'Antigravity', 'state.vscdb'));
+    paths.push(path.join(home, 'Library', 'Application Support', 'Antigravity IDE', 'state.vscdb'));
     return paths;
   }
 
@@ -183,13 +183,13 @@ export function getAntigravityStoragePaths(): string[] {
         home,
         'Library',
         'Application Support',
-        'Antigravity',
+        'Antigravity IDE',
         'User',
         'globalStorage',
         'storage.json',
       ),
     );
-    paths.push(path.join(home, 'Library', 'Application Support', 'Antigravity', 'storage.json'));
+    paths.push(path.join(home, 'Library', 'Application Support', 'Antigravity IDE', 'storage.json'));
     return paths;
   }
 
@@ -213,21 +213,21 @@ export function getAntigravityDbPath(): string {
 export function getAntigravityExecutablePath(): string {
   if (isWsl()) {
     const winUser = getWindowsUser();
-    return `/mnt/c/Users/${winUser}/AppData/Local/Programs/Antigravity/Antigravity.exe`;
+    return `/mnt/c/Users/${winUser}/AppData/Local/Programs/Antigravity IDE/Antigravity IDE.exe`;
   }
 
   switch (process.platform) {
     case 'darwin':
-      return '/Applications/Antigravity.app/Contents/MacOS/Antigravity';
+      return '/Applications/Antigravity IDE.app/Contents/MacOS/Antigravity IDE';
     case 'win32': {
       const localAppData = process.env.LOCALAPPDATA || '';
       const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
       const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
 
       const possiblePaths = [
-        path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
-        path.join(programFiles, 'Antigravity', 'Antigravity.exe'),
-        path.join(programFilesX86, 'Antigravity', 'Antigravity.exe'),
+        path.join(localAppData, 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
+        path.join(programFiles, 'Antigravity IDE', 'Antigravity IDE.exe'),
+        path.join(programFilesX86, 'Antigravity IDE', 'Antigravity IDE.exe'),
       ];
 
       for (const p of possiblePaths) {
@@ -241,12 +241,12 @@ export function getAntigravityExecutablePath(): string {
     }
     case 'linux': {
       const possibleLinuxPaths = [
-        '/usr/bin/antigravity',
-        '/usr/local/bin/antigravity',
-        '/usr/share/antigravity/antigravity',
-        '/opt/Antigravity/antigravity',
-        '/opt/antigravity/antigravity',
-        path.join(os.homedir(), '.local', 'share', 'antigravity', 'antigravity'),
+        '/usr/bin/antigravity-ide',
+        '/usr/local/bin/antigravity-ide',
+        '/usr/share/antigravity-ide/antigravity-ide',
+        '/opt/Antigravity IDE/antigravity-ide',
+        '/opt/antigravity-ide/antigravity-ide',
+        path.join(os.homedir(), '.local', 'share', 'antigravity-ide', 'antigravity-ide'),
       ];
 
       for (const p of possibleLinuxPaths) {
@@ -255,9 +255,9 @@ export function getAntigravityExecutablePath(): string {
         }
       }
 
-      // Fallback: try `which antigravity` via path lookup
+      // Fallback: try `which antigravity-ide` via path lookup
       const fromPath = process.env.PATH?.split(':')
-        .map((dir) => path.join(dir, 'antigravity'))
+        .map((dir) => path.join(dir, 'antigravity-ide'))
         .find((p) => fs.existsSync(p));
       if (fromPath) {
         return fromPath;
