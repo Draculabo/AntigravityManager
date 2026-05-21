@@ -42,6 +42,19 @@ const tr = {
     proxy: 'API Proxy',
     settings: 'Ayarlar',
   },
+  editionSelection: {
+    title: 'Antigravity Sürümünüzü Seçin',
+    description: 'Kullandığınız Antigravity sürümünü seçin. Bu, Manager\'ın doğru uygulamaya bağlanmasını sağlar.',
+    edition1x: {
+      name: 'Antigravity 1.x',
+      description: 'Orijinal Antigravity uygulaması. Eski sürümü kullanıyorsanız bunu seçin.',
+    },
+    edition20: {
+      name: 'Antigravity IDE',
+      description: 'Yeni Antigravity IDE (2.0). En son IDE sürümünü kullanıyorsanız bunu seçin.',
+    },
+    confirm: 'Devam Et',
+  },
   account: {
     current: 'Mevcut',
     lastUsed: 'Son kullanım: {{time}}',
@@ -75,6 +88,13 @@ const tr = {
       russian: 'Rusça',
       vietnamese: 'Vietnamca',
       turkish: 'Türkçe',
+    },
+    ideEdition: {
+      title: 'Antigravity Sürümü',
+      description: 'Kullandığınız Antigravity sürümünü seçin.',
+      placeholder: 'Sürüm seçin',
+      edition1x: 'Antigravity 1.x',
+      edition20: 'Antigravity IDE',
     },
     about: {
       title: 'Hakkında',

@@ -62,6 +62,19 @@ i18n
             proxy: 'API Proxy',
             settings: 'Settings',
           },
+          editionSelection: {
+            title: 'Choose Your Antigravity Edition',
+            description: 'Select which version of Antigravity you are using. This helps the Manager connect to the correct application.',
+            edition1x: {
+              name: 'Antigravity 1.x',
+              description: 'The original Antigravity application. Choose this if you are using the legacy version.',
+            },
+            edition20: {
+              name: 'Antigravity IDE',
+              description: 'The new Antigravity IDE (2.0). Choose this if you are using the latest IDE version.',
+            },
+            confirm: 'Continue',
+          },
           account: {
             current: 'Current',
             lastUsed: 'Last used {{time}}',
@@ -95,6 +108,13 @@ i18n
               russian: 'Russian',
               vietnamese: 'Vietnamese',
               turkish: 'Turkish',
+            },
+            ideEdition: {
+              title: 'Antigravity Edition',
+              description: 'Select which version of Antigravity you are using.',
+              placeholder: 'Select edition',
+              edition1x: 'Antigravity 1.x',
+              edition20: 'Antigravity IDE',
             },
             about: {
               title: 'About',
@@ -543,6 +563,19 @@ i18n
             proxy: 'API 反代',
             settings: '设置',
           },
+          editionSelection: {
+            title: '选择您的 Antigravity 版本',
+            description: '选择您正在使用的 Antigravity 版本。这将帮助管理器连接到正确的应用程序。',
+            edition1x: {
+              name: 'Antigravity 1.x',
+              description: '原始 Antigravity 应用程序。如果您使用的是旧版本，请选择此项。',
+            },
+            edition20: {
+              name: 'Antigravity IDE',
+              description: '新版 Antigravity IDE (2.0)。如果您使用的是最新的 IDE 版本，请选择此项。',
+            },
+            confirm: '继续',
+          },
           account: {
             current: '当前',
             lastUsed: '上次使用 {{time}}',
@@ -576,6 +609,13 @@ i18n
               russian: '俄语',
               vietnamese: '越南语',
               turkish: '土耳其语',
+            },
+            ideEdition: {
+              title: 'Antigravity 版本',
+              description: '选择您正在使用的 Antigravity 版本。',
+              placeholder: '选择版本',
+              edition1x: 'Antigravity 1.x',
+              edition20: 'Antigravity IDE',
             },
             about: {
               title: '关于',
@@ -1012,6 +1052,19 @@ i18n
             proxy: 'API Прокси',
             settings: 'Настройки',
           },
+          editionSelection: {
+            title: 'Выберите версию Antigravity',
+            description: 'Выберите, какую версию Antigravity вы используете. Это поможет менеджеру подключиться к правильному приложению.',
+            edition1x: {
+              name: 'Antigravity 1.x',
+              description: 'Оригинальное приложение Antigravity. Выберите это, если вы используете устаревшую версию.',
+            },
+            edition20: {
+              name: 'Antigravity IDE',
+              description: 'Новый Antigravity IDE (2.0). Выберите это, если вы используете последнюю версию IDE.',
+            },
+            confirm: 'Продолжить',
+          },
           account: {
             current: 'Текущий',
             lastUsed: 'Последнее использование {{time}}',
@@ -1046,6 +1099,13 @@ i18n
               russian: 'Русский',
               vietnamese: 'Вьетнамский',
               turkish: 'Турецкий',
+            },
+            ideEdition: {
+              title: 'Версия Antigravity',
+              description: 'Выберите, какую версию Antigravity вы используете.',
+              placeholder: 'Выберите версию',
+              edition1x: 'Antigravity 1.x',
+              edition20: 'Antigravity IDE',
             },
             about: {
               title: 'О программе',

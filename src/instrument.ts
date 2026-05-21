@@ -2,12 +2,12 @@ import { app } from 'electron';
 import * as Sentry from '@sentry/electron/main';
 import path from 'path';
 import fs from 'fs';
-import { getAppDataDir } from './utils/paths';
+import { getAgentDir } from './utils/paths';
 import { logger } from './utils/logger';
 
 function getQuickConfig() {
   try {
-    const configPath = path.join(getAppDataDir(), 'gui_config.json');
+    const configPath = path.join(getAgentDir(), 'gui_config.json');
     if (fs.existsSync(configPath)) {
       const content = fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(content);

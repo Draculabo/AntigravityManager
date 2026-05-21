@@ -6,23 +6,12 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
-// Config check logic (duplicate of instrument.ts logic but adapted for preload)
+// Config check logic - reads from Manager's own data directory
 let sentryEnabled = false;
 try {
   const home = os.homedir();
-  let appDataPath = '';
-  if (process.platform === 'win32') {
-    appDataPath = path.join(
-      process.env.APPDATA || path.join(home, 'AppData', 'Roaming'),
-      'Antigravity',
-    );
-  } else if (process.platform === 'darwin') {
-    appDataPath = path.join(home, 'Library', 'Application Support', 'Antigravity');
-  } else {
-    appDataPath = path.join(home, '.config', 'Antigravity');
-  }
-
-  const configPath = path.join(appDataPath, 'gui_config.json');
+  const managerDataDir = path.join(home, '.antigravity-agent');
+  const configPath = path.join(managerDataDir, 'gui_config.json');
   if (fs.existsSync(configPath)) {
     const content = fs.readFileSync(configPath, 'utf-8');
     const config = JSON.parse(content);

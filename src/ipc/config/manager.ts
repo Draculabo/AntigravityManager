@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { AppConfig, DEFAULT_APP_CONFIG } from '../../types/config';
-import { getAppDataDir } from '../../utils/paths';
+import { getAgentDir } from '../../utils/paths';
 import { logger } from '../../utils/logger';
 
 const CONFIG_FILENAME = 'gui_config.json';
@@ -11,11 +11,11 @@ export class ConfigManager {
   private static saveQueue: Promise<void> = Promise.resolve();
 
   private static getConfigPath(): string {
-    const appDataDir = getAppDataDir();
-    if (!fs.existsSync(appDataDir)) {
-      fs.mkdirSync(appDataDir, { recursive: true });
+    const managerDataDir = getAgentDir();
+    if (!fs.existsSync(managerDataDir)) {
+      fs.mkdirSync(managerDataDir, { recursive: true });
     }
-    return path.join(appDataDir, CONFIG_FILENAME);
+    return path.join(managerDataDir, CONFIG_FILENAME);
   }
 
   static loadConfig(): AppConfig {

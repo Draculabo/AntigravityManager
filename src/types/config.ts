@@ -27,6 +27,8 @@ export const ProxyConfigSchema = z.object({
   upstream_proxy: UpstreamProxyConfigSchema,
 });
 
+export type IdeEdition = '1.x' | '2.0';
+
 export const AppConfigSchema = z.object({
   language: z.string(),
   theme: z.string(),
@@ -46,6 +48,7 @@ export const AppConfigSchema = z.object({
     .default('recently-used'),
   quota_alert_enabled: z.boolean().default(false),
   quota_alert_threshold: z.number().default(20),
+  ideEdition: z.enum(['1.x', '2.0']).nullable().default(null),
   proxy: ProxyConfigSchema,
 });
 
@@ -70,6 +73,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   account_sort: 'recently-used' as const,
   quota_alert_enabled: false,
   quota_alert_threshold: 20,
+  ideEdition: null,
   proxy: {
     enabled: false,
     port: 8045,

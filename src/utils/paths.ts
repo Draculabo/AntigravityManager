@@ -2,6 +2,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { execSync } from 'child_process';
+import type { IdeEdition } from '../types/config';
 
 /**
  * Checks if the current platform is WSL.
@@ -269,4 +270,198 @@ export function getAntigravityExecutablePath(): string {
     default:
       return '';
   }
+}
+
+/**
+ * Returns the application name for a given IDE edition.
+ */
+export function getIdeEditionAppName(edition: IdeEdition): string {
+  return edition === '2.0' ? 'Antigravity IDE' : 'Antigravity';
+}
+
+/**
+ * Returns the app data directory for a specific IDE edition.
+ */
+export function getAppDataDirForEdition(edition: IdeEdition): string {
+  const appName = getIdeEditionAppName(edition);
+  const home = os.homedir();
+
+  if (isWsl()) {
+    const winUser = getWindowsUser();
+    return `/mnt/c/Users/${winUser}/AppData/Roaming/${appName}`;
+  }
+
+  switch (process.platform) {
+    case 'darwin':
+      return path.join(home, 'Library', 'Application Support', appName);
+    case 'win32':
+      return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), appName);
+    case 'linux':
+      return path.join(home, '.config', appName);
+    default:
+      return path.join(home, `.${appName.toLowerCase().replace(/\s+/g, '-')}`);
+  }
+}
+
+/**
+ * Returns the executable path for a specific IDE edition.
+ */
+export function getAntigravityExecutablePathForEdition(edition: IdeEdition): string {
+  const appFolder = edition === '2.0' ? 'Antigravity IDE' : 'Antigravity';
+  const binName = edition === '2.0' ? 'Antigravity IDE' : 'Antigravity';
+
+  if (isWsl()) {
+    const winUser = getWindowsUser();
+    return `/mnt/c/Users/${winUser}/AppData/Local/Programs/${appFolder}/${binName}.exe`;
+  }
+
+  switch (process.platform) {
+    case 'darwin':
+      return `/Applications/${appFolder}.app/Contents/MacOS/${binName}`;
+    case 'win32': {
+      const localAppData = process.env.LOCALAPPDATA || '';
+      const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+      const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+
+      const possiblePaths = [
+        path.join(localAppData, 'Programs', appFolder, `${binName}.exe`),
+        path.join(programFiles, appFolder, `${binName}.exe`),
+        path.join(programFilesX86, appFolder, `${binName}.exe`),
+      ];
+
+      for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+          return p;
+        }
+      }
+
+      return '';
+    }
+    case 'linux': {
+      const binLower = binName.toLowerCase().replace(/\s+/g, '-');
+      const possibleLinuxPaths = [
+        `/usr/bin/${binLower}`,
+        `/usr/local/bin/${binLower}`,
+        `/usr/share/${binLower}/${binLower}`,
+        `/opt/${appFolder}/${binLower}`,
+        `/opt/${binLower}/${binLower}`,
+        path.join(os.homedir(), '.local', 'share', binLower, binLower),
+      ];
+
+      for (const p of possibleLinuxPaths) {
+        if (fs.existsSync(p)) {
+          return p;
+        }
+      }
+
+      const fromPath = process.env.PATH?.split(':')
+        .map((dir) => path.join(dir, binLower))
+        .find((p) => fs.existsSync(p));
+      if (fromPath) {
+        return fromPath;
+      }
+
+      return '';
+    }
+    default:
+      return '';
+  }
+}
+
+/**
+ * Returns database paths for a specific IDE edition.
+ */
+export function getAntigravityDbPathsForEdition(edition: IdeEdition): string[] {
+  const appData = getAppDataDirForEdition(edition);
+  const paths: string[] = [];
+  const home = os.homedir();
+
+  if (isWsl()) {
+    paths.push(path.join(appData, 'User', 'globalStorage', 'state.vscdb'));
+    paths.push(path.join(appData, 'User', 'state.vscdb'));
+    paths.push(path.join(appData, 'state.vscdb'));
+    return paths;
+  }
+
+  if (process.platform === 'linux') {
+    paths.push(path.join(appData, 'User', 'globalStorage', 'state.vscdb'));
+    paths.push(path.join(appData, 'User', 'state.vscdb'));
+    paths.push(path.join(appData, 'state.vscdb'));
+    return paths;
+  }
+
+  if (process.platform === 'darwin') {
+    const appName = getIdeEditionAppName(edition);
+    paths.push(
+      path.join(
+        home,
+        'Library',
+        'Application Support',
+        appName,
+        'User',
+        'globalStorage',
+        'state.vscdb',
+      ),
+    );
+    paths.push(path.join(home, 'Library', 'Application Support', appName, 'state.vscdb'));
+    return paths;
+  }
+
+  paths.push(path.join(appData, 'User', 'globalStorage', 'state.vscdb'));
+  paths.push(path.join(appData, 'User', 'state.vscdb'));
+  paths.push(path.join(appData, 'state.vscdb'));
+
+  return paths;
+}
+
+/**
+ * Returns storage.json paths for a specific IDE edition.
+ */
+export function getAntigravityStoragePathsForEdition(edition: IdeEdition): string[] {
+  const appData = getAppDataDirForEdition(edition);
+  const paths: string[] = [];
+  const home = os.homedir();
+
+  if (isWsl()) {
+    paths.push(path.join(appData, 'User', 'globalStorage', 'storage.json'));
+    paths.push(path.join(appData, 'User', 'storage.json'));
+    paths.push(path.join(appData, 'storage.json'));
+    return paths;
+  }
+
+  if (process.platform === 'linux') {
+    paths.push(path.join(appData, 'User', 'globalStorage', 'storage.json'));
+    paths.push(path.join(appData, 'User', 'storage.json'));
+    paths.push(path.join(appData, 'storage.json'));
+    return paths;
+  }
+
+  if (process.platform === 'darwin') {
+    const appName = getIdeEditionAppName(edition);
+    paths.push(
+      path.join(
+        home,
+        'Library',
+        'Application Support',
+        appName,
+        'User',
+        'globalStorage',
+        'storage.json',
+      ),
+    );
+    paths.push(path.join(home, 'Library', 'Application Support', appName, 'storage.json'));
+    return paths;
+  }
+
+  paths.push(path.join(appData, 'User', 'globalStorage', 'storage.json'));
+  paths.push(path.join(appData, 'User', 'storage.json'));
+  paths.push(path.join(appData, 'storage.json'));
+  return paths;
+}
+
+/**
+ * Returns the URI protocol for a specific IDE edition.
+ */
+export function getIdeEditionUriProtocol(edition: IdeEdition): string {
+  return edition === '2.0' ? 'antigravity-ide' : 'antigravity';
 }

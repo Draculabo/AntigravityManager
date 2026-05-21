@@ -6,10 +6,11 @@ import { isString } from 'lodash-es';
 import { AccountBackupData, AccountInfo } from '../../types/account';
 import { ItemTableValueRowSchema, type ItemTableKey } from '../../types/db';
 import { logger } from '../../utils/logger';
-import { getAntigravityDbPaths } from '../../utils/paths';
+import { getAntigravityDbPaths, getAntigravityDbPathsForEdition } from '../../utils/paths';
 import { parseRow } from '../../utils/sqlite';
 import { openDrizzleConnection } from './dbConnection';
 import { itemTable } from './schema';
+import type { IdeEdition } from '../../types/config';
 
 const KEYS_TO_BACKUP: ItemTableKey[] = [
   'antigravityAuthStatus',
@@ -29,14 +30,16 @@ function openIdeDb(dbPath: string, readOnly = false): ReturnType<typeof openDriz
  * Initializes the database and ensures WAL mode is enabled.
  * Should be called on application startup.
  */
-export function initDatabase(): void {
+export function initDatabase(edition?: IdeEdition): void {
   try {
-    const dbPaths = getAntigravityDbPaths();
+    const dbPaths = edition
+      ? getAntigravityDbPathsForEdition(edition)
+      : getAntigravityDbPaths();
     if (dbPaths.length === 0) {
       return;
     }
 
-    const { raw } = getDatabaseConnection();
+    const { raw } = getDatabaseConnection(undefined, edition);
     raw.close();
     logger.info('Database initialized and verified (WAL mode)');
   } catch (error) {
@@ -83,10 +86,14 @@ function ensureDatabaseExists(dbPath: string): void {
 /**
  * Gets a database connection.
  * @param dbPath {string} The path to the database file.
+ * @param edition {IdeEdition} The IDE edition to use for path resolution.
  * @returns {ReturnType<typeof openDrizzleConnection>} The database connection.
  */
-export function getDatabaseConnection(dbPath?: string): ReturnType<typeof openDrizzleConnection> {
-  const targetPath = dbPath || getAntigravityDbPaths()[0];
+export function getDatabaseConnection(
+  dbPath?: string,
+  edition?: IdeEdition,
+): ReturnType<typeof openDrizzleConnection> {
+  const targetPath = dbPath || (edition ? getAntigravityDbPathsForEdition(edition) : getAntigravityDbPaths())[0];
 
   if (!targetPath) {
     throw new Error('No Antigravity database path found');

@@ -42,6 +42,19 @@ const vi = {
     proxy: 'API Proxy',
     settings: 'Cài đặt',
   },
+  editionSelection: {
+    title: 'Chọn phiên bản Antigravity',
+    description: 'Chọn phiên bản Antigravity bạn đang sử dụng. Điều này giúp Manager kết nối đúng ứng dụng.',
+    edition1x: {
+      name: 'Antigravity 1.x',
+      description: 'Ứng dụng Antigravity gốc. Chọn nếu bạn đang dùng phiên bản cũ.',
+    },
+    edition20: {
+      name: 'Antigravity IDE',
+      description: 'Antigravity IDE mới (2.0). Chọn nếu bạn đang dùng phiên bản IDE mới nhất.',
+    },
+    confirm: 'Tiếp tục',
+  },
   account: {
     current: 'Hiện tại',
     lastUsed: 'Đã dùng {{time}}',
@@ -75,6 +88,13 @@ const vi = {
       russian: 'Tiếng Nga',
       vietnamese: 'Tiếng Việt',
       turkish: 'Tiếng Thổ Nhĩ Kỳ',
+    },
+    ideEdition: {
+      title: 'Phiên bản Antigravity',
+      description: 'Chọn phiên bản Antigravity bạn đang sử dụng.',
+      placeholder: 'Chọn phiên bản',
+      edition1x: 'Antigravity 1.x',
+      edition20: 'Antigravity IDE',
     },
     about: {
       title: 'Thông tin',

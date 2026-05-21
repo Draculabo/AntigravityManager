@@ -23,6 +23,7 @@ import { ModelVisibilitySettings } from '@/components/ModelVisibilitySettings';
 import { useEffect, useState } from 'react';
 import { ProxyConfig } from '@/types/config';
 import { openLogDirectory } from '@/actions/system';
+import type { IdeEdition } from '@/types/config';
 
 function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -132,6 +133,31 @@ function SettingsPage() {
                     <SelectItem value="ru">{t('settings.language.russian')}</SelectItem>
                     <SelectItem value="vi">{t('settings.language.vietnamese')}</SelectItem>
                     <SelectItem value="tr">{t('settings.language.turkish')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between space-x-2">
+                <div className="space-y-1">
+                  <Label htmlFor="ide-edition">{t('settings.ideEdition.title')}</Label>
+                  <p className="text-muted-foreground text-sm">
+                    {t('settings.ideEdition.description')}
+                  </p>
+                </div>
+                <Select
+                  value={config?.ideEdition ?? ''}
+                  onValueChange={async (value: IdeEdition) => {
+                    if (config) {
+                      await saveConfig({ ...config, ideEdition: value });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder={t('settings.ideEdition.placeholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1.x">{t('settings.ideEdition.edition1x')}</SelectItem>
+                    <SelectItem value="2.0">{t('settings.ideEdition.edition20')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
