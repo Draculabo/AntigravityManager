@@ -130,11 +130,11 @@ function readItemValue(
  * Gets the current account info.
  * @returns {AccountInfo} The current account info.
  */
-export function getCurrentAccountInfo(): AccountInfo {
+export function getCurrentAccountInfo(edition?: IdeEdition): AccountInfo {
   // NOTE Database existence is now handled by getDatabaseConnection
   let connection: ReturnType<typeof openDrizzleConnection> | null = null;
   try {
-    connection = getDatabaseConnection();
+    connection = getDatabaseConnection(undefined, edition);
     const { orm } = connection;
 
     // Query for auth status
@@ -232,10 +232,13 @@ export function getCurrentAccountInfo(): AccountInfo {
   }
 }
 
-export function backupAccount(account: AccountBackupData['account']): AccountBackupData {
+export function backupAccount(
+  account: AccountBackupData['account'],
+  edition?: IdeEdition,
+): AccountBackupData {
   let connection: ReturnType<typeof openDrizzleConnection> | null = null;
   try {
-    connection = getDatabaseConnection();
+    connection = getDatabaseConnection(undefined, edition);
     const { orm } = connection;
 
     // NOTE Backup only specific keys
@@ -279,8 +282,10 @@ export function backupAccount(account: AccountBackupData['account']): AccountBac
  * @param backup {AccountBackupData} The backup data to restore.
  * @throws {Error} If the backup data cannot be restored.
  */
-export function restoreAccount(backup: AccountBackupData): void {
-  const dbPaths = getAntigravityDbPaths();
+export function restoreAccount(backup: AccountBackupData, edition?: IdeEdition): void {
+  const dbPaths = edition
+    ? getAntigravityDbPathsForEdition(edition)
+    : getAntigravityDbPaths();
   if (dbPaths.length === 0) {
     throw new Error('No Antigravity database paths found');
   }

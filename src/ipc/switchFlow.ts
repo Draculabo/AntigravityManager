@@ -15,7 +15,7 @@ export interface SwitchFlowOptions {
   applyFingerprint: boolean;
   processExitTimeoutMs: number;
   edition?: IdeEdition;
-  performSwitch: () => Promise<void>;
+  performSwitch: (edition?: IdeEdition) => Promise<void>;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -78,7 +78,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
     }
 
     stage = 'switch';
-    await performSwitch();
+    await performSwitch(edition);
     stage = 'start';
     await startAntigravity(edition);
     recordSwitchSuccess(scope);

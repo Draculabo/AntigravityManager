@@ -253,13 +253,13 @@ export async function switchAccount(accountId: string): Promise<void> {
       applyFingerprint: isIdentityProfileApplyEnabled(),
       processExitTimeoutMs: SWITCH_EXIT_TIMEOUT_MS,
       edition: ConfigManager.getCachedConfig()?.ideEdition || undefined,
-      performSwitch: async () => {
+      performSwitch: async (edition) => {
         // NOTE Load backup file
         const backupContent = fs.readFileSync(backupPath, 'utf-8');
         const backupData: AccountBackupData = JSON.parse(backupContent);
 
         // NOTE Restore data to DB
-        dbRestore(backupData);
+        dbRestore(backupData, edition);
 
         // NOTE Update last used
         account.last_used = new Date().toISOString();

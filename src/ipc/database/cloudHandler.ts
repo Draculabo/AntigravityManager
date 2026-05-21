@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { desc, eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { isNumber, isObjectLike, isPlainObject, isString } from 'lodash-es';
-import { getCloudAccountsDbPath, getAntigravityDbPaths } from '../../utils/paths';
+import { getCloudAccountsDbPath, getAntigravityDbPaths, getAntigravityDbPathsForEdition } from '../../utils/paths';
 import { logger } from '../../utils/logger';
 import {
   CloudAccount,
@@ -23,6 +23,7 @@ import { parseRow, parseRows } from '../../utils/sqlite';
 import { configureDatabase, openDrizzleConnection } from './dbConnection';
 import { accounts, itemTable, settings } from './schema';
 import * as drizzleSchema from './schema';
+import type { IdeEdition } from '../../types/config';
 
 const SQLITE_BUSY_CODES = new Set(['SQLITE_BUSY', 'SQLITE_LOCKED']);
 const SQLITE_BUSY_TIMEOUT_MS = 3000;
@@ -1260,8 +1261,10 @@ export class CloudAccountRepo {
     throw lastError;
   }
 
-  static injectCloudToken(account: CloudAccount): void {
-    const dbPaths = getAntigravityDbPaths();
+  static injectCloudToken(account: CloudAccount, edition?: IdeEdition): void {
+    const dbPaths = edition
+      ? getAntigravityDbPathsForEdition(edition)
+      : getAntigravityDbPaths();
     const dbPath = dbPaths.find((p) => fs.existsSync(p)) ?? null;
 
     if (!dbPath) {
@@ -1429,9 +1432,11 @@ export class CloudAccountRepo {
     }
   }
 
-  static async syncFromIDE(): Promise<CloudAccount | null> {
+  static async syncFromIDE(edition?: IdeEdition): Promise<CloudAccount | null> {
     // Try all possible database paths
-    const dbPaths = getAntigravityDbPaths();
+    const dbPaths = edition
+      ? getAntigravityDbPathsForEdition(edition)
+      : getAntigravityDbPaths();
     logger.info(`SyncLocal: Checking database paths: ${JSON.stringify(dbPaths)}`);
 
     const dbPath =

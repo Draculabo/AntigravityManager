@@ -25,12 +25,18 @@ import {
   importCloudAccounts,
 } from './handler';
 import { CloudAccountRepo } from '../database/cloudHandler';
+import { ConfigManager } from '../config/manager';
 import { CloudAccountSchema } from '../../types/cloudAccount';
 import { DeviceProfileSchema, DeviceProfilesSnapshotSchema } from '../../types/account';
 import { logger } from '../../utils/logger';
 import { getSwitchMetricsSnapshot } from '../switchMetrics';
 import { getSwitchGuardSnapshot } from '../switchGuard';
 import { getDeviceHardeningSnapshot } from '../device/handler';
+
+function getEdition() {
+  const config = ConfigManager.getCachedConfig() || ConfigManager.loadConfig();
+  return config.ideEdition || undefined;
+}
 
 const switchOwnerSchema = z.enum(['local-account-switch', 'cloud-account-switch']);
 const switchMetricBucketSchema = z.object({
@@ -200,7 +206,7 @@ export const cloudRouter = os.router({
 
   syncLocalAccount: os.output(CloudAccountSchema.nullable()).handler(async () => {
     try {
-      const result = await CloudAccountRepo.syncFromIDE();
+      const result = await CloudAccountRepo.syncFromIDE(getEdition());
 
       return result;
     } catch (error: any) {

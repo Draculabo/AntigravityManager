@@ -21,7 +21,7 @@ import {
   readCurrentDeviceProfile,
   saveGlobalOriginalProfile,
 } from '../../ipc/device/handler';
-import { getAntigravityDbPaths } from '../../utils/paths';
+import { getAntigravityDbPaths, getAntigravityDbPathsForEdition } from '../../utils/paths';
 import { runWithSwitchGuard } from '../../ipc/switchGuard';
 import { executeSwitchFlow } from '../../ipc/switchFlow';
 import type { DeviceProfile, DeviceProfilesSnapshot } from '../../types/account';
@@ -552,9 +552,11 @@ export async function switchCloudAccount(accountId: string): Promise<void> {
         applyFingerprint: isIdentityProfileApplyEnabled(),
         processExitTimeoutMs: 10000,
         edition: ConfigManager.getCachedConfig()?.ideEdition || undefined,
-        performSwitch: async () => {
+        performSwitch: async (edition) => {
           // 3. Backup Database (Optimized to avoid race conditions)
-          const dbPaths = getAntigravityDbPaths();
+          const dbPaths = edition
+            ? getAntigravityDbPathsForEdition(edition)
+            : getAntigravityDbPaths();
           for (const dbPath of dbPaths) {
             try {
               const backupPath = `${dbPath}.backup`;
@@ -569,7 +571,7 @@ export async function switchCloudAccount(accountId: string): Promise<void> {
           }
 
           // 4. Inject Token
-          CloudAccountRepo.injectCloudToken(account);
+          CloudAccountRepo.injectCloudToken(account, edition);
 
           // 5. Update usage and active status
           CloudAccountRepo.updateLastUsed(account.id);
