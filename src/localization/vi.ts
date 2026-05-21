@@ -9,8 +9,8 @@ const vi = {
   },
   status: {
     checking: 'Đang kiểm tra trạng thái...',
-    running: 'Antigravity IDE đang chạy nền',
-    stopped: 'Dịch vụ Antigravity IDE đã dừng',
+    running: 'Antigravity đang chạy nền',
+    stopped: 'Dịch vụ Antigravity đã dừng',
   },
   action: {
     stop: 'Dừng',
@@ -48,10 +48,10 @@ const vi = {
   },
   home: {
     title: 'Tài khoản',
-    description: 'Quản lý các tài khoản Antigravity IDE Google Gemini.',
+    description: 'Quản lý các tài khoản Antigravity Google Gemini.',
     noBackups: {
       title: 'Chưa tìm thấy bản sao lưu',
-      description: 'Hãy tạo bản sao lưu cho tài khoản Antigravity IDE hiện tại để bắt đầu.',
+      description: 'Hãy tạo bản sao lưu cho tài khoản Antigravity hiện tại để bắt đầu.',
       action: 'Sao lưu tài khoản hiện tại',
     },
   },
@@ -137,7 +137,7 @@ const vi = {
     modelMapping: {
       title: 'Ánh xạ mô hình',
       description:
-        'Ánh xạ các model Claude Code sang model Antigravity IDE để tối ưu chi phí và tốc độ.',
+        'Ánh xạ các model Claude Code sang model Antigravity để tối ưu chi phí và tốc độ.',
       claudeKeyword: 'Từ khóa model Claude',
       targetGemini: 'Model Gemini đích',
       addPlaceholderKey: 'ví dụ: op-3',
@@ -361,7 +361,7 @@ const vi = {
       pollFailed: 'Không thể polling quota của tất cả tài khoản',
       switched: {
         title: 'Đã chuyển tài khoản!',
-        description: 'Đang khởi động lại Antigravity IDE...',
+        description: 'Đang khởi động lại Antigravity...',
       },
       switchFailed: 'Không thể chuyển tài khoản',
       deleted: 'Đã xóa tài khoản',

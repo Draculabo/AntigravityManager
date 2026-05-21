@@ -87,7 +87,7 @@ export const MainLayout: React.FC = () => {
                   isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100',
                 )}
               >
-                <h1 className="text-xl font-bold tracking-tight">Antigravity IDE</h1>
+                <h1 className="text-xl font-bold tracking-tight">Antigravity</h1>
               </div>
             </div>
             <div

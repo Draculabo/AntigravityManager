@@ -9,8 +9,8 @@ const tr = {
   },
   status: {
     checking: 'Durum kontrol ediliyor...',
-    running: 'Antigravity IDE arka planda çalışıyor',
-    stopped: 'Antigravity IDE hizmeti durduruldu',
+    running: 'Antigravity arka planda çalışıyor',
+    stopped: 'Antigravity hizmeti durduruldu',
   },
   action: {
     stop: 'Durdur',
@@ -48,10 +48,10 @@ const tr = {
   },
   home: {
     title: 'Hesaplar',
-    description: 'Antigravity IDE Google Gemini hesaplarınızı yönetin.',
+    description: 'Antigravity Google Gemini hesaplarınızı yönetin.',
     noBackups: {
       title: 'Yedek bulunamadı',
-      description: 'Başlamak için mevcut Antigravity IDE hesabınızın bir yedeğini oluşturun.',
+      description: 'Başlamak için mevcut Antigravity hesabınızın bir yedeğini oluşturun.',
       action: 'Mevcut Hesabı Yedekle',
     },
   },
@@ -138,7 +138,7 @@ const tr = {
     modelMapping: {
       title: 'Model Eşleme',
       description:
-        'Claude Code modellerini Antigravity IDE modelleriyle eşleyin. İstekleri akıllıca yönlendirerek maliyeti ve hızı optimize edin.',
+        'Claude Code modellerini Antigravity modelleriyle eşleyin. İstekleri akıllıca yönlendirerek maliyeti ve hızı optimize edin.',
       claudeKeyword: 'Claude Modeli (Anahtar Kelime)',
       targetGemini: 'Hedef Gemini Modeli',
       addPlaceholderKey: 'örn. op-3',
@@ -362,7 +362,7 @@ const tr = {
       pollFailed: 'Tüm hesaplar için kota sorgulanamadı',
       switched: {
         title: 'Hesap değiştirildi!',
-        description: 'Antigravity IDE yeniden başlatılıyor...',
+        description: 'Antigravity yeniden başlatılıyor...',
       },
       switchFailed: 'Hesap değiştirilemedi',
       deleted: 'Hesap silindi',

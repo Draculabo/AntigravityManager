@@ -29,8 +29,8 @@ i18n
           },
           status: {
             checking: 'Checking status...',
-            running: 'Antigravity IDE is running in background',
-            stopped: 'Antigravity IDE service stopped',
+            running: 'Antigravity is running in background',
+            stopped: 'Antigravity service stopped',
           },
           action: {
             stop: 'Stop',
@@ -68,10 +68,10 @@ i18n
           },
           home: {
             title: 'Accounts',
-            description: 'Manage your Antigravity IDE Google Gemini accounts.',
+            description: 'Manage your Antigravity Google Gemini accounts.',
             noBackups: {
               title: 'No backups found',
-              description: 'Create a backup of your current Antigravity IDE account to get started.',
+              description: 'Create a backup of your current Antigravity account to get started.',
               action: 'Backup Current Account',
             },
           },
@@ -158,7 +158,7 @@ i18n
             modelMapping: {
               title: 'Model Mapping',
               description:
-                'Map Claude Code models to Antigravity IDE models. Optimize cost and speed by routing requests intelligently.',
+                'Map Claude Code models to Antigravity models. Optimize cost and speed by routing requests intelligently.',
               claudeKeyword: 'Claude Model (Keyword)',
               targetGemini: 'Target Gemini Model',
               addPlaceholderKey: 'e.g. op-3',
@@ -383,7 +383,7 @@ i18n
               pollFailed: 'Failed to poll quota for all accounts',
               switched: {
                 title: 'Account switched!',
-                description: 'Restarting Antigravity IDE...',
+                description: 'Restarting Antigravity...',
               },
               switchFailed: 'Failed to switch account',
               deleted: 'Account deleted',
@@ -510,8 +510,8 @@ i18n
           },
           status: {
             checking: '正在检查状态...',
-            running: 'Antigravity IDE 正在后台运行',
-            stopped: 'Antigravity IDE 服务已停止',
+            running: 'Antigravity 正在后台运行',
+            stopped: 'Antigravity 服务已停止',
           },
           action: {
             stop: '停止',
@@ -549,10 +549,10 @@ i18n
           },
           home: {
             title: '账号列表',
-            description: '管理您的 Antigravity IDE Google Gemini 账号。',
+            description: '管理您的 Antigravity Google Gemini 账号。',
             noBackups: {
               title: '未找到备份',
-              description: '备份您当前的 Antigravity IDE 账号以开始使用。',
+              description: '备份您当前的 Antigravity 账号以开始使用。',
               action: '备份当前账号',
             },
           },
@@ -637,7 +637,7 @@ i18n
             modelMapping: {
               title: '模型映射',
               description:
-                '将 Claude Code 模型映射到 Antigravity IDE 模型，智能路由请求以优化成本和速度。',
+                '将 Claude Code 模型映射到 Antigravity 模型，智能路由请求以优化成本和速度。',
               claudeKeyword: 'Claude 模型 (关键词)',
               targetGemini: '目标 Gemini 模型',
               addPlaceholderKey: '例如 op-3',
@@ -859,7 +859,7 @@ i18n
               pollFailed: '轮询所有账号配额失败',
               switched: {
                 title: '账号已切换！',
-                description: '正在重启 Antigravity IDE...',
+                description: '正在重启 Antigravity...',
               },
               switchFailed: '切换账号失败',
               deleted: '账号已删除',
@@ -979,8 +979,8 @@ i18n
           },
           status: {
             checking: 'Проверка статуса...',
-            running: 'Antigravity IDE работает в фоне',
-            stopped: 'Служба Antigravity IDE остановлена',
+            running: 'Antigravity работает в фоне',
+            stopped: 'Служба Antigravity остановлена',
           },
           action: {
             stop: 'Стоп',
@@ -1018,11 +1018,11 @@ i18n
           },
           home: {
             title: 'Аккаунты',
-            description: 'Управление вашими аккаунтами Antigravity IDE Google Gemini.',
+            description: 'Управление вашими аккаунтами Antigravity Google Gemini.',
             noBackups: {
               title: 'Бэкапы не найдены',
               description:
-                'Создайте резервную копию вашего текущего аккаунта Antigravity IDE, чтобы начать.',
+                'Создайте резервную копию вашего текущего аккаунта Antigravity, чтобы начать.',
               action: 'Создать бэкап текущего аккаунта',
             },
           },
@@ -1110,7 +1110,7 @@ i18n
             modelMapping: {
               title: 'Маппинг моделей',
               description:
-                'Сопоставьте модели Claude Code с моделями Antigravity IDE. Оптимизируйте затраты и скорость, разумно маршрутизируя запросы.',
+                'Сопоставьте модели Claude Code с моделями Antigravity. Оптимизируйте затраты и скорость, разумно маршрутизируя запросы.',
               claudeKeyword: 'Модель Claude (Ключевое слово)',
               targetGemini: 'Целевая модель Gemini',
               addPlaceholderKey: 'например, op-3',
@@ -1334,7 +1334,7 @@ i18n
               pollFailed: 'Не удалось опросить квоты всех аккаунтов',
               switched: {
                 title: 'Аккаунт переключен!',
-                description: 'Перезапуск Antigravity IDE...',
+                description: 'Перезапуск Antigravity...',
               },
               switchFailed: 'Не удалось переключить аккаунт',
               deleted: 'Аккаунт удален',
