@@ -28,6 +28,7 @@ import {
 import { runWithSwitchGuard } from '../switchGuard';
 import { executeSwitchFlow } from '../switchFlow';
 import { shell } from 'electron';
+import { ConfigManager } from '../config/manager';
 
 type AccountIndex = Record<string, Account>;
 const SWITCH_EXIT_TIMEOUT_MS = 10000;
@@ -251,6 +252,7 @@ export async function switchAccount(accountId: string): Promise<void> {
       targetProfile: account.deviceProfile || null,
       applyFingerprint: isIdentityProfileApplyEnabled(),
       processExitTimeoutMs: SWITCH_EXIT_TIMEOUT_MS,
+      edition: ConfigManager.getCachedConfig()?.ideEdition || undefined,
       performSwitch: async () => {
         // NOTE Load backup file
         const backupContent = fs.readFileSync(backupPath, 'utf-8');

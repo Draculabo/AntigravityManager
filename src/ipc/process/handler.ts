@@ -374,11 +374,12 @@ export async function closeAntigravity(edition?: IdeEdition): Promise<void> {
  */
 export async function _waitForProcessExit(
   timeoutMs: number,
-  pollInterval = 100, // Make it configurable, but keep fast 100ms default
+  pollInterval = 100,
+  edition?: IdeEdition,
 ): Promise<void> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
-    if (!(await isProcessRunning())) {
+    if (!(await isProcessRunning(edition))) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, pollInterval));

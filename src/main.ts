@@ -408,19 +408,6 @@ process.on('unhandledRejection', (reason) => {
 app
   .whenReady()
   .then(async () => {
-    logger.info('Step: Initialize CloudAccountRepo');
-    try {
-      await CloudAccountRepo.init();
-    } catch (e) {
-      logger.error('Startup: Failed to initialize CloudAccountRepo', e);
-      // We might want to exit here or show a dialog, but for now we proceed
-      // though functionality will be broken.
-    }
-
-    logger.info('Step: Initialize Antigravity DB (WAL Mode)');
-    initDatabase();
-  })
-  .then(() => {
     logger.info('Step: Load Config');
     const config = ConfigManager.loadConfig();
     startupConfig = config;
@@ -429,6 +416,16 @@ app
     if (shouldStartHidden) {
       logger.info('Startup: Auto-start detected, window will start hidden');
     }
+
+    logger.info('Step: Initialize CloudAccountRepo');
+    try {
+      await CloudAccountRepo.init();
+    } catch (e) {
+      logger.error('Startup: Failed to initialize CloudAccountRepo', e);
+    }
+
+    logger.info('Step: Initialize Antigravity DB (WAL Mode)');
+    initDatabase(config.ideEdition || undefined);
   })
   .then(() => {
     logger.info('Step: setupORPC');
