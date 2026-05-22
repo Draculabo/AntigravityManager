@@ -2,6 +2,28 @@
 
 # Changelog
 
+## [0.13.0](https://github.com/Draculabo/AntigravityManager/compare/v0.12.0...v0.13.0) (2026-05-22)
+
+### ✨ Features
+
+* add Antigravity app target settings ([b3dbaad](https://github.com/Draculabo/AntigravityManager/commit/b3dbaadac3b7efdc5bb6cf8bfca4e8bedf8cd4d8))
+* **i18n:** add Turkish language support ([#175](https://github.com/Draculabo/AntigravityManager/issues/175)) ([836dfbf](https://github.com/Draculabo/AntigravityManager/commit/836dfbf67bcec92cfd5e9efc0ed48ac62b10cebe))
+* support Antigravity credential-store tokens ([4a3e2d9](https://github.com/Draculabo/AntigravityManager/commit/4a3e2d9034c1bd07cbd5af8c974c85c2d577d056))
+* switch accounts by Antigravity target ([124b8c0](https://github.com/Draculabo/AntigravityManager/commit/124b8c031dcdc01d62fb5aa49cbaaf07e7c4dfe6))
+* update Antigravity Manager to support Antigravity IDE (2.0) ([#179](https://github.com/Draculabo/AntigravityManager/issues/179)) ([5a89e3d](https://github.com/Draculabo/AntigravityManager/commit/5a89e3d92b0f85ae50259c2d0b987d94254dcb9e))
+
+### 🐛 Bug Fixes
+
+* **i18n:** rename Antigravity switch action label ([55d3a8e](https://github.com/Draculabo/AntigravityManager/commit/55d3a8ef77e95b622be3fd3af21c4b4382cb6e19))
+
+### ♻️ Code Refactoring
+
+* move cloud account code into feature module ([d854df3](https://github.com/Draculabo/AntigravityManager/commit/d854df3317c0724527feb1b3d83e7af201b4e21d))
+
+### ✅ Tests
+
+* cover Antigravity target workflows ([18fdca6](https://github.com/Draculabo/AntigravityManager/commit/18fdca659b9349f8e8728177f0685e7ceb916b12))
+
 ## [0.12.0](https://github.com/Draculabo/AntigravityManager/compare/v0.11.1...v0.12.0) (2026-05-07)
 
 ### ✨ Features
