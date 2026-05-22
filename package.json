@@ -22,7 +22,12 @@
     "test:unit": "vitest",
     "test:e2e": "playwright test",
     "test:all": "vitest run && playwright test",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "server:dev": "tsx src/standalone/main.ts",
+    "server:build": "tsc -p tsconfig.standalone.json",
+    "server:start": "node dist-server/standalone/main.js",
+    "web:dev": "vite --config vite.web-ui.config.mts",
+    "web:build": "vite build --config vite.web-ui.config.mts"
   },
   "author": "Draculabo",
   "license": "CC-BY-NC-SA-4.0",
@@ -88,6 +93,7 @@
     "sharp": "^0.34.5",
     "tailwindcss": "^4.1.16",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3",
     "unplugin-swc": "^1.5.9",
@@ -95,6 +101,7 @@
     "vitest": "^4.0.8"
   },
   "dependencies": {
+    "@fastify/rate-limit": "^10.3.0",
     "@grpc/grpc-js": "^1.14.3",
     "@grpc/proto-loader": "^0.8.0",
     "@icons-pack/react-simple-icons": "^13.8.0",

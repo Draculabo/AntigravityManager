@@ -126,3 +126,9 @@ accounts_backup.json
 
 # Bun lock file
 bun.lock
+# Antigravity Manager standalone build outputs
+dist-web/
+dist-server/
+
+# Claude Code internal
+.claude/

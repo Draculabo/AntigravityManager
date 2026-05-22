@@ -28,9 +28,10 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<boolean>
     // Enable CORS
     app.enableCors();
 
-    await app.listen(port, '0.0.0.0');
+    const bindHost = process.env.AGM_BIND_HOST?.trim() || '0.0.0.0';
+    await app.listen(port, bindHost);
     currentPort = port;
-    logger.info(`NestJS Proxy Server running on http://localhost:${port}`);
+    logger.info(`NestJS Proxy Server running on http://${bindHost}:${port}`);
     return true;
   } catch (error) {
     logger.error('Failed to start NestJS server', error);
