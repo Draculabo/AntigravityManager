@@ -197,6 +197,34 @@ export async function closeAntigravity(target?: AntigravityAppTarget | null): Pr
       } catch {
         logger.warn('AppleScript exit failed, proceeding to next stage');
       }
+    } else if (platform === 'win32') {
+      // Windows: Use taskkill /IM (without /F) for graceful close
+      const exeName = resolvedTarget === 'ide' ? 'Antigravity IDE.exe' : 'Antigravity.exe';
+      try {
+        logger.info('Attempting graceful exit via taskkill...');
+        execSync(`taskkill /IM "${exeName}" /T`, {
+          stdio: 'ignore',
+          timeout: 2000,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch {
+        // Ignore failure, we proceed to force-kill next.
+      }
+    } else if (platform === 'linux') {
+      // Linux: Use wmctrl to gracefully close the application window.
+      // This triggers the IDE's internal 'before-quit' event, allowing it
+      // to flush its SQLite WAL (state.vscdb) before exiting.
+      try {
+        logger.info(`Attempting graceful exit via wmctrl for ${appName}...`);
+        execSync(`wmctrl -c "${appName}"`, {
+          stdio: 'ignore',
+          timeout: 2000,
+        });
+        // Wait to allow IDE enough time to flush state to SQLite
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      } catch {
+        logger.warn('wmctrl exit failed or not available, proceeding to next stage');
+      }
     }
 
     // Stage 2 & 3: Find and Kill remaining processes
@@ -226,13 +254,46 @@ export async function closeAntigravity(target?: AntigravityAppTarget | null): Pr
       return;
     }
 
-    logger.info(`Found ${targetProcesses.length} remaining ${appName} processes. Killing...`);
+    logger.info(`Found ${targetProcesses.length} remaining ${appName} processes. Sending SIGTERM...`);
 
     for (const processInfo of targetProcesses) {
       try {
-        process.kill(processInfo.pid, 'SIGKILL');
+        process.kill(processInfo.pid, 'SIGTERM');
       } catch {
         // Ignore if already dead
+      }
+    }
+
+    // Wait for graceful shutdown (up to 15 seconds)
+    for (let i = 0; i < 30; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      let stillAlive = false;
+      for (const processInfo of targetProcesses) {
+        try {
+          // Sending signal 0 checks if process exists without killing it
+          process.kill(processInfo.pid, 0);
+          stillAlive = true;
+          break;
+        } catch {
+          // Process is dead
+        }
+      }
+
+      if (!stillAlive) {
+        logger.info(`All ${appName} processes closed gracefully.`);
+        break;
+      }
+    }
+
+    // Force kill any remaining processes that didn't exit gracefully
+    for (const processInfo of targetProcesses) {
+      try {
+        process.kill(processInfo.pid, 0); // Check if still alive
+        logger.warn(`Process ${processInfo.pid} did not exit gracefully. Force killing...`);
+        process.kill(processInfo.pid, 'SIGKILL');
+      } catch {
+        // Process is already dead
       }
     }
   } catch (error) {
