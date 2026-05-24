@@ -1119,8 +1119,17 @@ export class TokenManagerService implements OnModuleInit {
       }
     };
 
-    // Keep requested model first, then fallback across the same family.
-    pushCandidate(normalizedModel);
+    // When the requested model is gemini-3.1-pro-high or gemini-3.1-pro,
+    // prioritize gemini-3.1-pro-preview as the first candidate. The upstream
+    // API rejects the '-high' suffix with 400 INVALID_ARGUMENT.
+    if (normalizedModel === 'gemini-3.1-pro-high' || normalizedModel === 'gemini-3.1-pro') {
+      pushCandidate('gemini-3.1-pro-preview');
+      pushCandidate('gemini-3.1-pro');
+      pushCandidate(normalizedModel);
+    } else {
+      pushCandidate(normalizedModel);
+    }
+
     pushCandidate('gemini-3.1-pro-preview');
     pushCandidate('gemini-3-pro-preview');
     pushCandidate('gemini-3.1-pro-high');

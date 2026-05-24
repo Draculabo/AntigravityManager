@@ -12,7 +12,7 @@
     },
     "gemini-3.1-pro-high": {
       "max_output_tokens": 65536,
-      "thinking_budget": 49152,
+      "thinking_budget": 32768,
       "is_thinking": true
     },
     "gemini-3-pro-image": {
