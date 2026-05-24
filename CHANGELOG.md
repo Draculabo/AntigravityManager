@@ -2,6 +2,28 @@
 
 # Changelog
 
+## [0.14.0](https://github.com/Draculabo/AntigravityManager/compare/v0.13.0...v0.14.0) (2026-05-24)
+
+### ✨ Features
+
+* **config:** split Antigravity IDE launch args ([1cca976](https://github.com/Draculabo/AntigravityManager/commit/1cca97655191f422fbdf5fd43afb8a93b975f315))
+* remove max-width from HomePage container for improved layout ([686b299](https://github.com/Draculabo/AntigravityManager/commit/686b299837ada0ccfaa18e2e64e061fbf39d182e))
+* update FALLBACK_VERSION to 2.0.3 ([f081f72](https://github.com/Draculabo/AntigravityManager/commit/f081f7248296a9fdf51337c2c54f2ff891f4c7ad))
+
+### 🐛 Bug Fixes
+
+* **cloud-account:** track active account per target ([5129a0b](https://github.com/Draculabo/AntigravityManager/commit/5129a0b98d98783c927a7b7ebf2d0258d8bc03b3))
+* **runtime:** harden Antigravity process restart ([91ea8a7](https://github.com/Draculabo/AntigravityManager/commit/91ea8a792a368f72f96c767eae5be5d4884f2315))
+
+### 📝 Documentation
+
+* update AGENTS guide for current project structure ([0b90e5d](https://github.com/Draculabo/AntigravityManager/commit/0b90e5dde53ec8c88654f7358526d7716925b13b))
+
+### ♻️ Code Refactoring
+
+* **GoogleAPIService:** remove fetchCredits method and fallback to loadCodeAssist for credit retrieval ([82c44c7](https://github.com/Draculabo/AntigravityManager/commit/82c44c7b72aa2b63550068bbb98124dad6cf55e2))
+* src module structure ([50289c0](https://github.com/Draculabo/AntigravityManager/commit/50289c04d20bb2f33ec035df3df438fb999d2163))
+
 ## [0.13.0](https://github.com/Draculabo/AntigravityManager/compare/v0.12.0...v0.13.0) (2026-05-22)
 
 ### ✨ Features
