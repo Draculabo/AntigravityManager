@@ -446,9 +446,8 @@ export async function refreshAntigravityProcessCache(
       const matches = await withTimeout(
         findProcess('name', searchName, {
           strict: false,
-          skipSelf: true,
           logLevel: 'error',
-        } as any),
+        }),
         PROCESS_SCAN_TIMEOUT_MS,
       );
 

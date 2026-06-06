@@ -50,6 +50,7 @@ function writeViaPythonSecretStorage(payload: string): void {
   const pythonScript = `
 import sys
 try:
+    data = sys.stdin.read()
     import secretstorage
     bus = secretstorage.dbus_init()
     collection = secretstorage.get_default_collection(bus)
@@ -63,7 +64,7 @@ try:
     collection.create_item(
         'gemini',
         {'service': 'gemini', 'username': 'antigravity'},
-        sys.argv[1].encode('utf-8'),
+        data.encode('utf-8'),
         replace=True
     )
     print('OK:secretstorage')
@@ -83,7 +84,7 @@ except ImportError:
             {'service': 'gemini', 'username': 'antigravity'},
             Secret.COLLECTION_DEFAULT,
             'gemini',
-            sys.argv[1],
+            data,
             None
         )
         print('OK:gi.Secret')
@@ -95,7 +96,8 @@ except Exception as e:
     sys.exit(1)
 `;
 
-  const result = spawnSync('python3', ['-c', pythonScript, payload], {
+  const result = spawnSync('python3', ['-c', pythonScript], {
+    input: payload,
     encoding: 'utf-8',
     timeout: 10000,
   });
