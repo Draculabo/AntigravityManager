@@ -448,7 +448,7 @@ export async function refreshAntigravityProcessCache(
           strict: false,
           skipSelf: true,
           logLevel: 'error',
-        }),
+        } as any),
         PROCESS_SCAN_TIMEOUT_MS,
       );
 

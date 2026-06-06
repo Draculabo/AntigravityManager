@@ -198,7 +198,11 @@ describe('writeAntigravityCredentialStoreToken', () => {
 
     writeAntigravityCredentialStoreToken(token);
 
-    const options = childProcessMock.spawnSync.mock.calls[0]?.[2] as { input: string };
+    const storeCall = childProcessMock.spawnSync.mock.calls.find(
+      (call) => call[1] && call[1].includes('store'),
+    );
+    const options = storeCall?.[2] as { input: string };
+    expect(options).toBeDefined();
     expect(options.input).toContain('"access_token":"access-token"');
     expect(options.input).not.toContain('go-keyring-base64');
   });
