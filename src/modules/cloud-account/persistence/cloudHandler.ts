@@ -1208,8 +1208,11 @@ export class CloudAccountRepo {
     try {
       const version = getAntigravityVersion(appTarget);
 
-      // If version looks like a Chromium version (1.XXX.X), it's unreliable.
-      // Chromium versions have a major component > 100 for the second part.
+      // Heuristic Check:
+      // If version looks like a Chromium/Electron engine version (e.g., 1.107.0)
+      // instead of the product version (e.g., 2.0.6), the second version part
+      // (the Chromium major component) will be > 50. Since modern Antigravity Classic (v2+)
+      // runs on Chromium versions > 50 and uses the credential store, we default to true.
       const parts = version.shortVersion.split('.');
       if (parts.length >= 2) {
         const secondPart = parseInt(parts[1], 10);

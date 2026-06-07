@@ -56,6 +56,8 @@ try:
     collection = secretstorage.get_default_collection(bus)
     if collection.is_locked():
         collection.unlock()
+    if collection.is_locked():
+        raise Exception('Failed to unlock default keyring collection')
     # Delete existing
     items = list(collection.search_items({'service': 'gemini', 'username': 'antigravity'}))
     for item in items:
