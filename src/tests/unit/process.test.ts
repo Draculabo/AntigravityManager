@@ -374,10 +374,15 @@ describe('Process Handler', () => {
   describe('startAntigravity', () => {
     it('should fall back to executable launch when Classic URI launch does not start a process', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-      childProcessMock.exec.mockImplementation((command: string, callback: Function) => {
-        callback(null, { stdout: '', stderr: '' });
-        return { unref: vi.fn(), kill: vi.fn() };
-      });
+      childProcessMock.exec.mockImplementation(
+        (
+          command: string,
+          callback: (err: Error | null, stdout: any, stderr?: any) => void,
+        ) => {
+          callback(null, { stdout: '', stderr: '' });
+          return { unref: vi.fn(), kill: vi.fn() };
+        },
+      );
       mockFindProcess.mockResolvedValue([]);
       vi.mocked(getAntigravityExecutablePath).mockReturnValue(
         'C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe',
