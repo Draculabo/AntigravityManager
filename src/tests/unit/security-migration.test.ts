@@ -189,7 +189,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
     );
   });
 
-  it('writes raw JSON payload to Linux secret-tool', async () => {
+  it('writes raw JSON payload to Linux secret-tool first', async () => {
     childProcessMock.spawnSync.mockReturnValue({ status: 0, stderr: '' });
     setPlatform('linux');
 
@@ -203,9 +203,47 @@ describe('writeAntigravityCredentialStoreToken', () => {
     );
     expect(storeCall).toBeDefined();
     const options = storeCall![2] as { input: string };
-    expect(options).toBeDefined();
     expect(options.input).toContain('"access_token":"access-token"');
     expect(options.input).not.toContain('go-keyring-base64');
+    expect(keyringMock.setSecret).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Linux keyring when secret-tool is unavailable', async () => {
+    childProcessMock.spawnSync.mockReturnValue({
+      status: null,
+      error: new Error('ENOENT'),
+      stderr: '',
+    });
+    setPlatform('linux');
+
+    const { writeAntigravityCredentialStoreToken } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    writeAntigravityCredentialStoreToken(token);
+
+    const secret = keyringMock.setSecret.mock.calls[0]?.[0] as Buffer;
+    expect(keyringMock.withTarget).toHaveBeenCalledWith(
+      'gemini:antigravity',
+      'gemini',
+      'antigravity',
+    );
+    expect(keyringMock.deleteCredential).toHaveBeenCalledTimes(1);
+    expect(secret.toString('utf-8')).toContain('"access_token":"access-token"');
+    expect(secret.toString('utf-8')).not.toContain('go-keyring-base64');
+  });
+
+  it('falls back to Linux keyring when secret-tool store fails', async () => {
+    childProcessMock.spawnSync
+      .mockReturnValueOnce({ status: 0, stderr: '' })
+      .mockReturnValueOnce({ status: 1, stderr: 'store failed' });
+    setPlatform('linux');
+
+    const { writeAntigravityCredentialStoreToken } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    writeAntigravityCredentialStoreToken(token);
+
+    expect(keyringMock.setSecret).toHaveBeenCalledTimes(1);
   });
 
   it('writes raw JSON payload to Windows gemini:antigravity credential', async () => {

@@ -24,93 +24,37 @@ function buildCredentialStorePayload(token: CredentialStoreTokenInput): string {
 }
 
 function isSecretToolAvailable(): boolean {
+  const versionResult = spawnSync('secret-tool', ['--version'], {
+    stdio: 'ignore',
+    timeout: 3000,
+  });
+  return !versionResult.error && versionResult.status === 0;
+}
+
+function writeViaNativeKeyring(payload: string): void {
+  const entry = Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
   try {
-    spawnSync('secret-tool', ['--version'], { stdio: 'ignore', timeout: 3000 });
-    return true;
+    entry.deleteCredential();
   } catch {
-    return false;
+    // Missing previous credential is acceptable.
   }
+
+  entry.setSecret(Buffer.from(payload, 'utf-8'));
 }
 
 function writeViaSecretTool(payload: string): void {
-  const result = spawnSync(
+  const storeResult = spawnSync(
     'secret-tool',
     ['store', '--label=gemini', 'service', 'gemini', 'username', 'antigravity'],
-    { input: payload, encoding: 'utf-8' },
+    { input: payload, encoding: 'utf-8', timeout: 10000 },
   );
-
-  if (result.status !== 0) {
-    throw new Error(
-      `Linux secret-tool failed: ${result.stderr || result.error?.message || 'unknown error'}`,
-    );
-  }
-}
-
-function writeViaPythonSecretStorage(payload: string): void {
-  const pythonScript = `
-import sys
-try:
-    data = sys.stdin.read()
-    import secretstorage
-    bus = secretstorage.dbus_init()
-    collection = secretstorage.get_default_collection(bus)
-    if collection.is_locked():
-        collection.unlock()
-    if collection.is_locked():
-        raise Exception('Failed to unlock default keyring collection')
-    # Delete existing
-    items = list(collection.search_items({'service': 'gemini', 'username': 'antigravity'}))
-    for item in items:
-        item.delete()
-    # Store new
-    collection.create_item(
-        'gemini',
-        {'service': 'gemini', 'username': 'antigravity'},
-        data.encode('utf-8'),
-        replace=True
-    )
-    print('OK:secretstorage')
-except ImportError:
-    try:
-        import gi
-        gi.require_version('Secret', '1')
-        from gi.repository import Secret
-        schema = Secret.Schema.new(
-            'org.gnome.keyring.NetworkPassword',
-            Secret.SchemaFlags.NONE,
-            {'service': Secret.SchemaAttributeType.STRING,
-             'username': Secret.SchemaAttributeType.STRING}
-        )
-        Secret.password_store_sync(
-            schema,
-            {'service': 'gemini', 'username': 'antigravity'},
-            Secret.COLLECTION_DEFAULT,
-            'gemini',
-            data,
-            None
-        )
-        print('OK:gi.Secret')
-    except Exception as e:
-        print(f'FAIL:{e}', file=sys.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f'FAIL:{e}', file=sys.stderr)
-    sys.exit(1)
-`;
-
-  const result = spawnSync('python3', ['-c', pythonScript], {
-    input: payload,
-    encoding: 'utf-8',
-    timeout: 10000,
-  });
-
-  if (result.status !== 0) {
-    throw new Error(
-      `Python credential store write failed: ${result.stderr || result.error?.message || 'unknown error'}`,
-    );
+  if (!storeResult.error && storeResult.status === 0) {
+    return;
   }
 
-  logger.info(`Credential store written via Python: ${result.stdout.trim()}`);
+  throw new Error(
+    `Linux secret-tool failed: ${storeResult.stderr || storeResult.error?.message || 'unknown error'}`,
+  );
 }
 
 export function writeAntigravityCredentialStoreToken(token: CredentialStoreTokenInput): void {
@@ -135,24 +79,14 @@ export function writeAntigravityCredentialStoreToken(token: CredentialStoreToken
     return;
   }
 
-  if (process.platform === 'win32') {
-    const entry = Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
+  if (process.platform === 'linux' && isSecretToolAvailable()) {
     try {
-      entry.deleteCredential();
-    } catch {
-      // Missing previous credential is acceptable.
+      writeViaSecretTool(payload);
+      return;
+    } catch (error) {
+      logger.warn('Linux secret-tool failed; falling back to native keyring', error);
     }
-
-    entry.setSecret(Buffer.from(payload, 'utf-8'));
-    return;
   }
 
-  // Linux: try secret-tool first, then fall back to python3
-  if (isSecretToolAvailable()) {
-    writeViaSecretTool(payload);
-    return;
-  }
-
-  logger.info('secret-tool not found, falling back to python3 secretstorage/gi.Secret');
-  writeViaPythonSecretStorage(payload);
+  writeViaNativeKeyring(payload);
 }
