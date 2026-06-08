@@ -407,7 +407,7 @@ async function startAntigravityByExecutable(
     const child = spawn(executablePath, configuredArgs, {
       detached: true,
       stdio: 'ignore',
-      cwd: path.dirname(executablePath),
+      cwd: path.win32.dirname(executablePath),
     });
     child.unref();
     return;

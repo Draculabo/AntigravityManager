@@ -1206,7 +1206,26 @@ export class CloudAccountRepo {
     }
 
     try {
-      return isCredentialStoreVersion(getAntigravityVersion(appTarget));
+      const version = getAntigravityVersion(appTarget);
+
+      // Heuristic Check:
+      // If version looks like a Chromium/Electron engine version (e.g., 1.107.0)
+      // instead of the product version (e.g., 2.0.6), the second version part
+      // (the Chromium major component) will be > 50. Since modern Antigravity Classic (v2+)
+      // runs on Chromium versions > 50 and uses the credential store, we default to true.
+      const parts = version.shortVersion.split('.');
+      if (parts.length >= 2) {
+        const secondPart = parseInt(parts[1], 10);
+        if (secondPart > 50) {
+          logger.info(
+            `Version ${version.shortVersion} appears to be a Chromium engine version, ` +
+              `defaulting to credential store for Classic Antigravity`,
+          );
+          return true;
+        }
+      }
+
+      return isCredentialStoreVersion(version);
     } catch (error) {
       logger.warn(
         'Version detection failed; defaulting to credential store for Classic Antigravity',

@@ -23,6 +23,40 @@ function buildCredentialStorePayload(token: CredentialStoreTokenInput): string {
   });
 }
 
+function isSecretToolAvailable(): boolean {
+  const versionResult = spawnSync('secret-tool', ['--version'], {
+    stdio: 'ignore',
+    timeout: 3000,
+  });
+  return !versionResult.error && versionResult.status === 0;
+}
+
+function writeViaNativeKeyring(payload: string): void {
+  const entry = Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
+  try {
+    entry.deleteCredential();
+  } catch {
+    // Missing previous credential is acceptable.
+  }
+
+  entry.setSecret(Buffer.from(payload, 'utf-8'));
+}
+
+function writeViaSecretTool(payload: string): void {
+  const storeResult = spawnSync(
+    'secret-tool',
+    ['store', '--label=gemini', 'service', 'gemini', 'username', 'antigravity'],
+    { input: payload, encoding: 'utf-8', timeout: 10000 },
+  );
+  if (!storeResult.error && storeResult.status === 0) {
+    return;
+  }
+
+  throw new Error(
+    `Linux secret-tool failed: ${storeResult.stderr || storeResult.error?.message || 'unknown error'}`,
+  );
+}
+
 export function writeAntigravityCredentialStoreToken(token: CredentialStoreTokenInput): void {
   const payload = buildCredentialStorePayload(token);
   logger.info('Writing Antigravity token to system credential store');
@@ -45,27 +79,14 @@ export function writeAntigravityCredentialStoreToken(token: CredentialStoreToken
     return;
   }
 
-  if (process.platform === 'win32') {
-    const entry = Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
+  if (process.platform === 'linux' && isSecretToolAvailable()) {
     try {
-      entry.deleteCredential();
-    } catch {
-      // Missing previous credential is acceptable.
+      writeViaSecretTool(payload);
+      return;
+    } catch (error) {
+      logger.warn('Linux secret-tool failed; falling back to native keyring', error);
     }
-
-    entry.setSecret(Buffer.from(payload, 'utf-8'));
-    return;
   }
 
-  const result = spawnSync(
-    'secret-tool',
-    ['store', '--label=gemini', 'service', 'gemini', 'username', 'antigravity'],
-    { input: payload, encoding: 'utf-8' },
-  );
-
-  if (result.status !== 0) {
-    throw new Error(
-      `Linux secret-tool failed: ${result.stderr || result.error?.message || 'unknown error'}`,
-    );
-  }
+  writeViaNativeKeyring(payload);
 }

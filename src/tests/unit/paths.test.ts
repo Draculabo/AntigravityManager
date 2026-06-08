@@ -3,6 +3,21 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 
+const p = {
+  get join() {
+    return process.platform === 'win32' ? path.win32.join : path.posix.join;
+  },
+  get normalize() {
+    return process.platform === 'win32' ? path.win32.normalize : path.posix.normalize;
+  },
+  get resolve() {
+    return process.platform === 'win32' ? path.win32.resolve : path.posix.resolve;
+  },
+  get dirname() {
+    return process.platform === 'win32' ? path.win32.dirname : path.posix.dirname;
+  }
+};
+
 const childProcessMock = vi.hoisted(() => ({
   execSync: vi.fn(() => ''),
 }));
@@ -121,7 +136,7 @@ describe('Path Utilities', () => {
 
     const paths = await import('../../shared/platform/paths');
     await paths.refreshAntigravityProcessCache('ide');
-    const userDataDir = path.resolve('D:\\Profiles\\AG IDE');
+    const userDataDir = p.resolve('D:\\Profiles\\AG IDE');
 
     expect(paths.getAntigravityArgsFromRunningProcess('ide')).toEqual([
       [
@@ -131,10 +146,10 @@ describe('Path Utilities', () => {
       ],
     ]);
     expect(paths.getAntigravityDbPath('ide')).toBe(
-      path.join(userDataDir, 'User', 'globalStorage', 'state.vscdb'),
+      p.join(userDataDir, 'User', 'globalStorage', 'state.vscdb'),
     );
     expect(paths.getAntigravityStoragePath('ide')).toBe(
-      path.join(userDataDir, 'User', 'globalStorage', 'storage.json'),
+      p.join(userDataDir, 'User', 'globalStorage', 'storage.json'),
     );
   });
 
@@ -152,13 +167,13 @@ describe('Path Utilities', () => {
     childProcessMock.execSync.mockReturnValue('');
 
     const paths = await import('../../shared/platform/paths');
-    const portableUserDataDir = path.join('C:\\Portable', 'Antigravity IDE', 'data', 'user-data');
+    const portableUserDataDir = p.join('C:\\Portable', 'Antigravity IDE', 'data', 'user-data');
 
     expect(paths.getAntigravityDbPath('ide')).toBe(
-      path.join(portableUserDataDir, 'User', 'globalStorage', 'state.vscdb'),
+      p.join(portableUserDataDir, 'User', 'globalStorage', 'state.vscdb'),
     );
     expect(paths.getAntigravityStoragePath('ide')).toBe(
-      path.join(portableUserDataDir, 'User', 'globalStorage', 'storage.json'),
+      p.join(portableUserDataDir, 'User', 'globalStorage', 'storage.json'),
     );
   });
 
@@ -169,7 +184,7 @@ describe('Path Utilities', () => {
     process.env.LOCALAPPDATA = 'C:\\Users\\Alice\\AppData\\Local';
 
     const configuredExecutablePath = 'D:\\Apps\\Antigravity\\Antigravity.exe';
-    const configPath = path.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
+    const configPath = p.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);
@@ -184,14 +199,14 @@ describe('Path Utilities', () => {
     });
 
     const paths = await import('../../shared/platform/paths');
-    const portableUserDataDir = path.join('D:\\Apps', 'Antigravity', 'data', 'user-data');
+    const portableUserDataDir = p.join('D:\\Apps', 'Antigravity', 'data', 'user-data');
 
     expect(paths.getAntigravityExecutablePath()).toBe(configuredExecutablePath);
     expect(paths.getAntigravityDbPath()).toBe(
-      path.join(portableUserDataDir, 'User', 'globalStorage', 'state.vscdb'),
+      p.join(portableUserDataDir, 'User', 'globalStorage', 'state.vscdb'),
     );
     expect(paths.getAntigravityStoragePath()).toBe(
-      path.join(portableUserDataDir, 'User', 'globalStorage', 'storage.json'),
+      p.join(portableUserDataDir, 'User', 'globalStorage', 'storage.json'),
     );
   });
 
@@ -202,7 +217,7 @@ describe('Path Utilities', () => {
 
     const classicPath = 'D:\\Apps\\Antigravity\\Antigravity.exe';
     const idePath = 'D:\\Apps\\Antigravity IDE\\Antigravity IDE.exe';
-    const configPath = path.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
+    const configPath = p.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);
@@ -236,8 +251,8 @@ describe('Path Utilities', () => {
 
     const legacyIdePath = 'D:\\Legacy\\Antigravity IDE\\Antigravity IDE.exe';
     const managerIdePath = 'D:\\Manager\\Antigravity IDE\\Antigravity IDE.exe';
-    const legacyConfigPath = path.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
-    const managerConfigPath = path.join(os.homedir(), '.antigravity-agent', 'gui_config.json');
+    const legacyConfigPath = p.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
+    const managerConfigPath = p.join(os.homedir(), '.antigravity-agent', 'gui_config.json');
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);
@@ -272,7 +287,7 @@ describe('Path Utilities', () => {
     const classicPath = 'D:\\Apps\\Antigravity\\Antigravity.exe';
     const idePath = 'D:\\Apps\\Antigravity IDE\\Antigravity IDE.exe';
     const fuzzyClassicPath = 'D:\\Other\\Antigravity\\Antigravity.exe';
-    const configPath = path.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
+    const configPath = p.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);
@@ -430,7 +445,7 @@ describe('Path Utilities', () => {
 
     const missingClassicPath = 'D:\\Missing\\Antigravity\\Antigravity.exe';
     const fuzzyClassicPath = 'D:\\Other\\Antigravity\\Antigravity.exe';
-    const configPath = path.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
+    const configPath = p.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);
@@ -468,7 +483,7 @@ describe('Path Utilities', () => {
 
     const configuredExecutablePath = 'D:\\Apps\\Antigravity\\Antigravity.exe';
     const configuredUserDataDir = 'E:\\Profiles\\Antigravity';
-    const configPath = path.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
+    const configPath = p.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);
@@ -496,10 +511,10 @@ describe('Path Utilities', () => {
       configuredUserDataDir,
     ]);
     expect(paths.getAntigravityDbPath()).toBe(
-      path.join(configuredUserDataDir, 'User', 'globalStorage', 'state.vscdb'),
+      p.join(configuredUserDataDir, 'User', 'globalStorage', 'state.vscdb'),
     );
     expect(paths.getAntigravityStoragePath()).toBe(
-      path.join(configuredUserDataDir, 'User', 'globalStorage', 'storage.json'),
+      p.join(configuredUserDataDir, 'User', 'globalStorage', 'storage.json'),
     );
   });
 
@@ -510,7 +525,7 @@ describe('Path Utilities', () => {
 
     const classicUserDataDir = 'E:\\Profiles\\AntigravityClassic';
     const ideUserDataDir = 'E:\\Profiles\\AntigravityIde';
-    const configPath = path.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
+    const configPath = p.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);
@@ -539,7 +554,7 @@ describe('Path Utilities', () => {
     ]);
     expect(paths.getConfiguredAntigravityArgs('ide')).toEqual(['--user-data-dir', ideUserDataDir]);
     expect(paths.getAntigravityDbPath('ide')).toBe(
-      path.join(ideUserDataDir, 'User', 'globalStorage', 'state.vscdb'),
+      p.join(ideUserDataDir, 'User', 'globalStorage', 'state.vscdb'),
     );
   });
 
@@ -549,7 +564,7 @@ describe('Path Utilities', () => {
     process.env.APPDATA = 'C:\\Users\\Alice\\AppData\\Roaming';
 
     const classicUserDataDir = 'E:\\Profiles\\AntigravityClassic';
-    const configPath = path.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
+    const configPath = p.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);
@@ -601,7 +616,7 @@ describe('Path Utilities', () => {
     process.env.APPDATA = 'C:\\Users\\Alice\\AppData\\Roaming';
 
     const executablePath = 'D:\\Custom\\MyEditor.exe';
-    const configPath = path.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
+    const configPath = p.join(process.env.APPDATA, 'Antigravity', 'gui_config.json');
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);
