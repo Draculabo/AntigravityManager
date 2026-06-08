@@ -1,0 +1,29 @@
+{
+  "id": "msg_123",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-3-5-sonnet",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "Need to call the weather tool."
+    },
+    {
+      "type": "text",
+      "text": "I will check that."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_weather",
+      "name": "get_weather",
+      "input": {
+        "city": "Paris"
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "usage": {
+    "input_tokens": 12,
+    "output_tokens": 8
+  }
+}

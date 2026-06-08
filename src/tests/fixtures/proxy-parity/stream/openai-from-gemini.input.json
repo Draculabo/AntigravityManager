@@ -1,0 +1,30 @@
+{
+  "model": "gemini-2.5-pro",
+  "upstream": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "thought": true,
+              "text": "I should use the weather tool."
+            },
+            {
+              "functionCall": {
+                "id": "weather_call",
+                "name": "get_weather",
+                "args": {
+                  "city": "Paris"
+                }
+              }
+            },
+            {
+              "text": "The weather is cloudy."
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ]
+  }
+}

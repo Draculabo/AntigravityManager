@@ -1,0 +1,52 @@
+{
+  "model": "gpt-4.1",
+  "temperature": 0.2,
+  "max_tokens": 256,
+  "messages": [
+    {
+      "role": "system",
+      "content": "Use concise answers."
+    },
+    {
+      "role": "user",
+      "content": "What is the weather in Paris?"
+    },
+    {
+      "role": "assistant",
+      "content": "I will check the weather.",
+      "tool_calls": [
+        {
+          "id": "call_weather",
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "arguments": "{\"city\":\"Paris\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_weather",
+      "content": "18 C and cloudy"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get the current weather for a city.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string"
+            }
+          },
+          "required": ["city"]
+        }
+      }
+    }
+  ]
+}

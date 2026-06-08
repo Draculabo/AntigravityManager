@@ -1,0 +1,10 @@
+{
+  "contains": [
+    "\"reasoning_content\":\"I should use the weather tool.\"",
+    "\"name\":\"get_weather\"",
+    "\"arguments\":\"{\\\"city\\\":\\\"Paris\\\"}\"",
+    "\"content\":\"The weather is cloudy.\"",
+    "\"finish_reason\":\"stop\"",
+    "data: [DONE]"
+  ]
+}

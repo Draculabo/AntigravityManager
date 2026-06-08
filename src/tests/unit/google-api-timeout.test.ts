@@ -214,29 +214,22 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     vi.resetModules();
   });
 
-  it('falls back to loadCodeAssist credits when fetchCredits returns 404', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        text: vi.fn().mockResolvedValue('NOT_FOUND'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue({
-          paidTier: {
-            availableCredits: [
-              {
-                creditType: 'GOOGLE_ONE_AI',
-                creditAmount: '1000',
-                minimumCreditAmountForUsage: '50',
-              },
-            ],
-          },
-        }),
-      });
+  it('loads AI credits from loadCodeAssist project context', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({
+        paidTier: {
+          availableCredits: [
+            {
+              creditType: 'GOOGLE_ONE_AI',
+              creditAmount: '1000',
+              minimumCreditAmountForUsage: '50',
+            },
+          ],
+        },
+      }),
+    });
 
     vi.stubGlobal('fetch', fetchMock);
 
@@ -259,15 +252,12 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
       expiryDate: '',
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      'https://cloudcode-pa.googleapis.com/v1internal:fetchCredits',
-    );
-    expect(fetchMock.mock.calls[1]?.[0]).toBe(
       'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
     );
-    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('POST');
-    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
       JSON.stringify({
         metadata: {
           ide_type: 'ANTIGRAVITY',

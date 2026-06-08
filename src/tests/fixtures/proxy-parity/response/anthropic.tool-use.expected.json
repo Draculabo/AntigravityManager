@@ -1,0 +1,23 @@
+{
+  "model": "claude-3-5-sonnet",
+  "message": {
+    "content": "I will check that.",
+    "reasoning_content": "Need to call the weather tool.",
+    "tool_calls": [
+      {
+        "id": "toolu_weather",
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "arguments": "{\"city\":\"Paris\"}"
+        }
+      }
+    ]
+  },
+  "finish_reason": "tool_calls",
+  "usage": {
+    "prompt_tokens": 12,
+    "completion_tokens": 8,
+    "total_tokens": 20
+  }
+}
