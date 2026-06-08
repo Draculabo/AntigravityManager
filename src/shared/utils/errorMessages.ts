@@ -8,6 +8,7 @@ const KEYCHAIN_HINT_SIGN_NOTARIZE = 'HINT_SIGN_NOTARIZE';
 const DATA_MIGRATION_ERROR_CODE = 'ERR_DATA_MIGRATION_FAILED';
 const DATA_MIGRATION_HINT_RELOGIN = 'HINT_RELOGIN';
 const DATA_MIGRATION_HINT_CLEAR_DATA = 'HINT_CLEAR_DATA';
+const ANTIGRAVITY_STORAGE_JSON_NOT_FOUND = 'storage_json_not_found';
 
 const KEYCHAIN_HINT_I18N_MAP: Record<string, string> = {
   [KEYCHAIN_HINT_TRANSLOCATION]: 'error.keychainHint.translocation',
@@ -48,6 +49,17 @@ function resolveDataMigrationMessage(hintCode: string | undefined, t: TFunction)
   return `${base} ${t(hintKey)}`;
 }
 
+function resolveApplicationMessage(rawMessage: string, t: TFunction): string | null {
+  if (rawMessage.includes(ANTIGRAVITY_STORAGE_JSON_NOT_FOUND)) {
+    return t('error.antigravityStorageJsonNotFound', {
+      defaultValue:
+        'Antigravity storage.json was not found. Open the target Antigravity app and sign in once, then try switching again.',
+    });
+  }
+
+  return null;
+}
+
 export function getLocalizedErrorMessage(error: unknown, t: TFunction): string {
   if (error instanceof Error) {
     const rawMessage = error.message;
@@ -57,6 +69,10 @@ export function getLocalizedErrorMessage(error: unknown, t: TFunction): string {
     }
     if (code === DATA_MIGRATION_ERROR_CODE) {
       return resolveDataMigrationMessage(hint, t);
+    }
+    const applicationMessage = resolveApplicationMessage(rawMessage, t);
+    if (applicationMessage) {
+      return applicationMessage;
     }
     return rawMessage;
   }
@@ -69,6 +85,10 @@ export function getLocalizedErrorMessage(error: unknown, t: TFunction): string {
     }
     if (code === DATA_MIGRATION_ERROR_CODE) {
       return resolveDataMigrationMessage(hint, t);
+    }
+    const applicationMessage = resolveApplicationMessage(rawMessage, t);
+    if (applicationMessage) {
+      return applicationMessage;
     }
     if (rawMessage) {
       return rawMessage;

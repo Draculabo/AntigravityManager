@@ -45,6 +45,8 @@ const vi = {
       relogin: 'Hãy đăng nhập lại hoặc thêm lại tài khoản của bạn.',
       clearData: 'Nếu lỗi vẫn tiếp diễn, hãy xóa dữ liệu tài khoản cục bộ rồi đăng nhập lại.',
     },
+    antigravityStorageJsonNotFound:
+      'Không tìm thấy storage.json của Antigravity. Hãy mở ứng dụng Antigravity mục tiêu và đăng nhập một lần, rồi thử chuyển lại.',
   },
   nav: {
     accounts: 'Tài khoản',

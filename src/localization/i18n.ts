@@ -65,6 +65,8 @@ i18n
               relogin: 'Please re-login or re-add your accounts.',
               clearData: 'If the issue persists, clear local account data and sign in again.',
             },
+            antigravityStorageJsonNotFound:
+              'Antigravity storage.json was not found. Open the target Antigravity app and sign in once, then try switching again.',
           },
           nav: {
             accounts: 'Accounts',
@@ -601,6 +603,8 @@ i18n
               relogin: '请重新登录或重新添加账号。',
               clearData: '如仍失败，请清理本地账号数据后再登录。',
             },
+            antigravityStorageJsonNotFound:
+              '未找到 Antigravity 的 storage.json。请先打开目标 Antigravity 应用并登录一次，生成身份存储后再重试切换。',
           },
           nav: {
             accounts: '账号',
@@ -1118,6 +1122,8 @@ i18n
               relogin: 'Пожалуйста, перезайдите в аккаунт или добавьте его заново.',
               clearData: 'Если ошибка сохраняется, очистите локальные данные и войдите снова.',
             },
+            antigravityStorageJsonNotFound:
+              'Файл Antigravity storage.json не найден. Откройте целевое приложение Antigravity и войдите один раз, затем повторите переключение.',
           },
           nav: {
             accounts: 'Аккаунты',

@@ -45,6 +45,8 @@ const tr = {
       relogin: 'Lütfen yeniden giriş yapın veya hesaplarınızı tekrar ekleyin.',
       clearData: 'Sorun devam ederse yerel hesap verilerini temizleyip tekrar giriş yapın.',
     },
+    antigravityStorageJsonNotFound:
+      "Antigravity storage.json bulunamadı. Hedef Antigravity uygulamasını açıp bir kez giriş yapın, ardından değiştirmeyi tekrar deneyin.",
   },
   nav: {
     accounts: 'Hesaplar',
