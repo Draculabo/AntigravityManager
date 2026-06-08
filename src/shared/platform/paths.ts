@@ -6,20 +6,11 @@ import findProcess, { type ProcessInfo } from 'find-process';
 import type { AntigravityAppTarget } from '@/modules/account/types';
 import { resolveAntigravityAppTarget } from '@/modules/account/types';
 
-const p = {
-  get join() {
-    return process.platform === 'win32' ? path.win32.join : path.posix.join;
-  },
-  get normalize() {
-    return process.platform === 'win32' ? path.win32.normalize : path.posix.normalize;
-  },
-  get resolve() {
-    return process.platform === 'win32' ? path.win32.resolve : path.posix.resolve;
-  },
-  get dirname() {
-    return process.platform === 'win32' ? path.win32.dirname : path.posix.dirname;
-  }
-};
+type PathApi = Pick<typeof path, 'dirname' | 'join' | 'normalize' | 'resolve'>;
+
+function getCurrentPlatformPathApi(): PathApi {
+  return process.platform === 'win32' ? path.win32 : path.posix;
+}
 
 /**
  * Checks if the current platform is WSL.
@@ -42,7 +33,9 @@ let cachedWindowsUser: string | null = null;
  * @returns {string} The Windows username.
  */
 function getWindowsUser(): string {
-  if (cachedWindowsUser) return cachedWindowsUser;
+  if (cachedWindowsUser) {
+    return cachedWindowsUser;
+  }
 
   // Strategy 1: Try cmd.exe to get actual Windows username (most reliable for WSL)
   try {
@@ -78,7 +71,7 @@ function getWindowsUser(): string {
       .filter(
         (u) =>
           !['Public', 'Default', 'Default User', 'All Users', 'desktop.ini'].includes(u) &&
-          fs.statSync(p.join('/mnt/c/Users', u)).isDirectory(),
+          fs.statSync(path.posix.join('/mnt/c/Users', u)).isDirectory(),
       );
     if (users.length > 0) {
       cachedWindowsUser = users[0];
@@ -113,7 +106,9 @@ function normalizeExecutablePath(executablePath: string): string {
     pathForComparison = executablePath;
   }
 
-  const normalizedPath = p.normalize(pathForComparison).toLowerCase();
+  const pathApi = getCurrentPlatformPathApi();
+  const normalizedPath = pathApi.normalize(pathForComparison).toLowerCase();
+
   if (process.platform === 'win32') {
     return normalizedPath.replace(/\//g, '\\');
   }
@@ -329,17 +324,19 @@ function parseCommandLineArguments(commandLine: string): string[] {
 }
 
 function extractUserDataDirectoryFromArgs(commandLineArguments: string[]): string | null {
+  const pathApi = getCurrentPlatformPathApi();
+
   for (let index = 0; index < commandLineArguments.length; index += 1) {
     const argument = commandLineArguments[index];
 
     if (argument === '--user-data-dir' && commandLineArguments[index + 1]) {
-      return p.resolve(commandLineArguments[index + 1]);
+      return pathApi.resolve(commandLineArguments[index + 1]);
     }
 
     if (argument.startsWith('--user-data-dir=')) {
       const userDataDir = argument.slice('--user-data-dir='.length);
       if (userDataDir) {
-        return p.resolve(userDataDir);
+        return pathApi.resolve(userDataDir);
       }
     }
   }
@@ -369,9 +366,10 @@ function readAntigravityManagerConfig(): {
   antigravity_args?: unknown;
   antigravity_ide_args?: unknown;
 } | null {
+  const pathApi = getCurrentPlatformPathApi();
   const configPaths = [
-    p.join(getAgentDir(), CONFIG_FILENAME),
-    p.join(getAppDataDir(), CONFIG_FILENAME),
+    pathApi.join(getAgentDir(), CONFIG_FILENAME),
+    pathApi.join(getAppDataDir(), CONFIG_FILENAME),
   ];
 
   for (const configPath of configPaths) {
@@ -584,16 +582,16 @@ function getConfiguredAntigravityExecutablePath(
   return executablePath;
 }
 
-function pushUserDataDbPaths(paths: string[], userDataDir: string): void {
-  appendUniquePath(paths, p.join(userDataDir, 'User', 'globalStorage', 'state.vscdb'));
-  appendUniquePath(paths, p.join(userDataDir, 'User', 'state.vscdb'));
-  appendUniquePath(paths, p.join(userDataDir, 'state.vscdb'));
+function pushUserDataDbPaths(paths: string[], userDataDir: string, pathApi: PathApi): void {
+  appendUniquePath(paths, pathApi.join(userDataDir, 'User', 'globalStorage', 'state.vscdb'));
+  appendUniquePath(paths, pathApi.join(userDataDir, 'User', 'state.vscdb'));
+  appendUniquePath(paths, pathApi.join(userDataDir, 'state.vscdb'));
 }
 
-function pushUserDataStoragePaths(paths: string[], userDataDir: string): void {
-  appendUniquePath(paths, p.join(userDataDir, 'User', 'globalStorage', 'storage.json'));
-  appendUniquePath(paths, p.join(userDataDir, 'User', 'storage.json'));
-  appendUniquePath(paths, p.join(userDataDir, 'storage.json'));
+function pushUserDataStoragePaths(paths: string[], userDataDir: string, pathApi: PathApi): void {
+  appendUniquePath(paths, pathApi.join(userDataDir, 'User', 'globalStorage', 'storage.json'));
+  appendUniquePath(paths, pathApi.join(userDataDir, 'User', 'storage.json'));
+  appendUniquePath(paths, pathApi.join(userDataDir, 'storage.json'));
 }
 
 function getPortableUserDataDir(target?: AntigravityAppTarget | null): string | null {
@@ -602,7 +600,8 @@ function getPortableUserDataDir(target?: AntigravityAppTarget | null): string | 
     return null;
   }
 
-  return p.join(p.dirname(executablePath), 'data', 'user-data');
+  const pathApi = getCurrentPlatformPathApi();
+  return pathApi.join(pathApi.dirname(executablePath), 'data', 'user-data');
 }
 
 export function getAppDataDir(target?: AntigravityAppTarget | null): string {
@@ -616,30 +615,33 @@ export function getAppDataDir(target?: AntigravityAppTarget | null): string {
 
   switch (process.platform) {
     case 'darwin':
-      return p.join(home, 'Library', 'Application Support', folderName);
+      return path.posix.join(home, 'Library', 'Application Support', folderName);
     case 'win32':
-      return p.join(process.env.APPDATA || p.join(home, 'AppData', 'Roaming'), folderName);
+      return path.win32.join(
+        process.env.APPDATA || path.win32.join(home, 'AppData', 'Roaming'),
+        folderName,
+      );
     case 'linux':
-      return p.join(home, '.config', folderName);
+      return path.posix.join(home, '.config', folderName);
     default:
-      return p.join(home, '.antigravity');
+      return path.posix.join(home, '.antigravity');
   }
 }
 
 export function getAgentDir(): string {
-  return p.join(os.homedir(), '.antigravity-agent');
+  return getCurrentPlatformPathApi().join(os.homedir(), '.antigravity-agent');
 }
 
 export function getAccountsFilePath(): string {
-  return p.join(getAgentDir(), 'antigravity_accounts.json');
+  return getCurrentPlatformPathApi().join(getAgentDir(), 'antigravity_accounts.json');
 }
 
 export function getBackupsDir(): string {
-  return p.join(getAgentDir(), 'backups');
+  return getCurrentPlatformPathApi().join(getAgentDir(), 'backups');
 }
 
 export function getCloudAccountsDbPath(): string {
-  return p.join(getAgentDir(), 'cloud_accounts.db');
+  return getCurrentPlatformPathApi().join(getAgentDir(), 'cloud_accounts.db');
 }
 
 export function getAntigravityDbPaths(target?: AntigravityAppTarget | null): string[] {
@@ -647,26 +649,27 @@ export function getAntigravityDbPaths(target?: AntigravityAppTarget | null): str
   const paths: string[] = [];
   const home = os.homedir();
   const folderName = getAntigravityAppFolderName(target);
+  const pathApi = getCurrentPlatformPathApi();
   const userDataDir = getUserDataDirFromRunningProcess(target);
   const portableUserDataDir = getPortableUserDataDir(target);
 
   if (userDataDir) {
-    pushUserDataDbPaths(paths, userDataDir);
+    pushUserDataDbPaths(paths, userDataDir, pathApi);
   }
 
   if (portableUserDataDir) {
-    pushUserDataDbPaths(paths, portableUserDataDir);
+    pushUserDataDbPaths(paths, portableUserDataDir, pathApi);
   }
 
   if (isWsl()) {
     // Assume standard structure: AppData/Roaming/Antigravity/User/globalStorage/state.vscdb
     // appData is already resolved to Roaming/Antigravity in getAppDataDir()
-    pushUserDataDbPaths(paths, appData);
+    pushUserDataDbPaths(paths, appData, path.posix);
     return paths;
   }
 
   if (process.platform === 'linux') {
-    pushUserDataDbPaths(paths, appData);
+    pushUserDataDbPaths(paths, appData, path.posix);
     return paths;
   }
 
@@ -674,7 +677,7 @@ export function getAntigravityDbPaths(target?: AntigravityAppTarget | null): str
     // Standard path
     appendUniquePath(
       paths,
-      p.join(
+      path.posix.join(
         home,
         'Library',
         'Application Support',
@@ -687,17 +690,17 @@ export function getAntigravityDbPaths(target?: AntigravityAppTarget | null): str
     // Fallback path
     appendUniquePath(
       paths,
-      p.join(home, 'Library', 'Application Support', folderName, 'state.vscdb'),
+      path.posix.join(home, 'Library', 'Application Support', folderName, 'state.vscdb'),
     );
     return paths;
   }
 
   // Windows
   // Standard path
-  appendUniquePath(paths, p.join(appData, 'User', 'globalStorage', 'state.vscdb'));
+  appendUniquePath(paths, path.win32.join(appData, 'User', 'globalStorage', 'state.vscdb'));
   // Fallback paths
-  appendUniquePath(paths, p.join(appData, 'User', 'state.vscdb'));
-  appendUniquePath(paths, p.join(appData, 'state.vscdb'));
+  appendUniquePath(paths, path.win32.join(appData, 'User', 'state.vscdb'));
+  appendUniquePath(paths, path.win32.join(appData, 'state.vscdb'));
 
   return paths;
 }
@@ -707,31 +710,32 @@ export function getAntigravityStoragePaths(target?: AntigravityAppTarget | null)
   const paths: string[] = [];
   const home = os.homedir();
   const folderName = getAntigravityAppFolderName(target);
+  const pathApi = getCurrentPlatformPathApi();
   const userDataDir = getUserDataDirFromRunningProcess(target);
   const portableUserDataDir = getPortableUserDataDir(target);
 
   if (userDataDir) {
-    pushUserDataStoragePaths(paths, userDataDir);
+    pushUserDataStoragePaths(paths, userDataDir, pathApi);
   }
 
   if (portableUserDataDir) {
-    pushUserDataStoragePaths(paths, portableUserDataDir);
+    pushUserDataStoragePaths(paths, portableUserDataDir, pathApi);
   }
 
   if (isWsl()) {
-    pushUserDataStoragePaths(paths, appData);
+    pushUserDataStoragePaths(paths, appData, path.posix);
     return paths;
   }
 
   if (process.platform === 'linux') {
-    pushUserDataStoragePaths(paths, appData);
+    pushUserDataStoragePaths(paths, appData, path.posix);
     return paths;
   }
 
   if (process.platform === 'darwin') {
     appendUniquePath(
       paths,
-      p.join(
+      path.posix.join(
         home,
         'Library',
         'Application Support',
@@ -743,14 +747,14 @@ export function getAntigravityStoragePaths(target?: AntigravityAppTarget | null)
     );
     appendUniquePath(
       paths,
-      p.join(home, 'Library', 'Application Support', folderName, 'storage.json'),
+      path.posix.join(home, 'Library', 'Application Support', folderName, 'storage.json'),
     );
     return paths;
   }
 
-  appendUniquePath(paths, p.join(appData, 'User', 'globalStorage', 'storage.json'));
-  appendUniquePath(paths, p.join(appData, 'User', 'storage.json'));
-  appendUniquePath(paths, p.join(appData, 'storage.json'));
+  appendUniquePath(paths, path.win32.join(appData, 'User', 'globalStorage', 'storage.json'));
+  appendUniquePath(paths, path.win32.join(appData, 'User', 'storage.json'));
+  appendUniquePath(paths, path.win32.join(appData, 'storage.json'));
   return paths;
 }
 
@@ -793,9 +797,9 @@ export function getAntigravityExecutablePath(target?: AntigravityAppTarget | nul
       const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
 
       const possiblePaths = [
-        p.join(localAppData, 'Programs', executableName, `${executableName}.exe`),
-        p.join(programFiles, executableName, `${executableName}.exe`),
-        p.join(programFilesX86, executableName, `${executableName}.exe`),
+        path.win32.join(localAppData, 'Programs', executableName, `${executableName}.exe`),
+        path.win32.join(programFiles, executableName, `${executableName}.exe`),
+        path.win32.join(programFilesX86, executableName, `${executableName}.exe`),
       ];
 
       for (const possiblePath of possiblePaths) {
@@ -815,7 +819,13 @@ export function getAntigravityExecutablePath(target?: AntigravityAppTarget | nul
               '/usr/local/bin/antigravity-ide',
               '/opt/Antigravity IDE/antigravity-ide',
               '/opt/antigravity-ide/antigravity-ide',
-              p.join(os.homedir(), '.local', 'share', 'antigravity-ide', 'antigravity-ide'),
+              path.posix.join(
+                os.homedir(),
+                '.local',
+                'share',
+                'antigravity-ide',
+                'antigravity-ide',
+              ),
             ]
           : [
               '/usr/bin/antigravity',
@@ -823,7 +833,7 @@ export function getAntigravityExecutablePath(target?: AntigravityAppTarget | nul
               '/usr/share/antigravity/antigravity',
               '/opt/Antigravity/antigravity',
               '/opt/antigravity/antigravity',
-              p.join(os.homedir(), '.local', 'share', 'antigravity', 'antigravity'),
+              path.posix.join(os.homedir(), '.local', 'share', 'antigravity', 'antigravity'),
             ];
 
       for (const possiblePath of possibleLinuxPaths) {
@@ -835,8 +845,8 @@ export function getAntigravityExecutablePath(target?: AntigravityAppTarget | nul
       // Fallback: try `which antigravity` via path lookup
       const binaryName = resolvedTarget === 'ide' ? 'antigravity-ide' : 'antigravity';
       const fromPath = process.env.PATH?.split(':')
-        .map((dir) => p.join(dir, binaryName))
-        .find((p) => fs.existsSync(p));
+        .map((dir) => path.posix.join(dir, binaryName))
+        .find((possiblePath) => fs.existsSync(possiblePath));
       if (fromPath) {
         return fromPath;
       }

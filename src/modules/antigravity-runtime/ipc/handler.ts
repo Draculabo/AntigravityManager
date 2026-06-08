@@ -404,11 +404,10 @@ async function startAntigravityByExecutable(
     if (!executablePath) {
       throw new Error(`Unable to locate Antigravity executable path`);
     }
-    const p = process.platform === 'win32' ? path.win32 : path.posix;
     const child = spawn(executablePath, configuredArgs, {
       detached: true,
       stdio: 'ignore',
-      cwd: p.dirname(executablePath),
+      cwd: path.win32.dirname(executablePath),
     });
     child.unref();
     return;
