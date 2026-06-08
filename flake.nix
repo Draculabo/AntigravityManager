@@ -12,16 +12,16 @@
     supportedSystems = ["x86_64-linux" "aarch64-linux"];
     forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
-    version = "0.10.0";
+    version = "0.16.0";
 
     sources = {
       "x86_64-linux" = {
         url = "https://github.com/Draculabo/AntigravityManager/releases/download/v${version}/Antigravity.Manager_${version}_amd64.deb";
-        sha256 = "5fc08b4a9308c71fc00e44b95d4fb3178182aea8821708fa51fdf2bf5dbbb856";
+        sha256 = "e24145abaab10b8e29c4715e59dfc4abb1d9775365dfa2f4dd008fc6232f2ac3";
       };
       "aarch64-linux" = {
         url = "https://github.com/Draculabo/AntigravityManager/releases/download/v${version}/Antigravity.Manager_${version}_arm64.deb";
-        sha256 = "666c9659efa66bb6be6a8e7fb0c384ceb799a17245eab374bf9b3d7901c5c4cb";
+        sha256 = "dca896b6b68ab9972981fbeab44489343b74207f8ae006c12c8027f1a3f6298c";
       };
     };
 
