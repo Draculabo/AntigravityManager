@@ -499,6 +499,40 @@ describe('CloudAccountRepo.syncFromIde', () => {
     expect(updatedOldKey).toBe(true);
   });
 
+  it('should keep pre-2.0 product versions out of the credential store', async () => {
+    vi.resetModules();
+    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
+      getAntigravityVersion: () => ({
+        shortVersion: '1.99.9',
+        bundleVersion: '1.99.9',
+      }),
+      isCredentialStoreVersion: () => false,
+      isNewVersion: () => true,
+    }));
+
+    const { CloudAccountRepo: RepoWithMock } =
+      await import('@/modules/cloud-account/persistence/cloudHandler');
+
+    expect(RepoWithMock.shouldInjectTokenIntoCredentialStore('classic')).toBe(false);
+  });
+
+  it('should allow the known Linux Chromium version output workaround', async () => {
+    vi.resetModules();
+    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
+      getAntigravityVersion: () => ({
+        shortVersion: '1.107.0',
+        bundleVersion: '1.107.0',
+      }),
+      isCredentialStoreVersion: () => false,
+      isNewVersion: () => true,
+    }));
+
+    const { CloudAccountRepo: RepoWithMock } =
+      await import('@/modules/cloud-account/persistence/cloudHandler');
+
+    expect(RepoWithMock.shouldInjectTokenIntoCredentialStore('classic')).toBe(true);
+  });
+
   it('should route Classic Antigravity 2.0+ token injection to credential store', () => {
     const shouldInjectTokenIntoCredentialStoreSpy = vi
       .spyOn(CloudAccountRepo, 'shouldInjectTokenIntoCredentialStore')
