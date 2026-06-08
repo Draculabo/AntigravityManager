@@ -2,6 +2,31 @@
 
 # Changelog
 
+## [0.16.0](https://github.com/Draculabo/AntigravityManager/compare/v0.15.0...v0.16.0) (2026-06-08)
+
+### ✨ Features
+
+* add versioned encrypted payload prefix ([feb934c](https://github.com/Draculabo/AntigravityManager/commit/feb934cf5e8df9b69eb7bedd7745e41584fd6332))
+* surface backend errors with details in cloud account UI ([dc5c2bc](https://github.com/Draculabo/AntigravityManager/commit/dc5c2bcb9ee597ca440e37d7989a53fb87a4e40e))
+
+### 🐛 Bug Fixes
+
+* **account-switching:** resolve Linux credential store and mic issues… ([#193](https://github.com/Draculabo/AntigravityManager/issues/193)) ([15f2fa8](https://github.com/Draculabo/AntigravityManager/commit/15f2fa8bc73909f24835b5b0a808f3e27617b2f5))
+* **ci:** limit flake update PR to flake.nix ([3f9ba02](https://github.com/Draculabo/AntigravityManager/commit/3f9ba02e6a207e3a3f5ba9c66b41a0fe3075d8af))
+* export NotFoundJsonError ([2b09169](https://github.com/Draculabo/AntigravityManager/commit/2b091691e9edbb72ae2db14e822c34729342ded3))
+* **proxy:** resolve 400 Bad Request for gemini-3.1-pro-high model ([#187](https://github.com/Draculabo/AntigravityManager/issues/187)) ([bcd49bd](https://github.com/Draculabo/AntigravityManager/commit/bcd49bd5392322369e2fc44188e6b5811e8e3131))
+* refine classic credential store version detection ([767168e](https://github.com/Draculabo/AntigravityManager/commit/767168e891990c071fd5d3b1859e0af034cde14d))
+* surface cloud account decryption repair guidance ([5eb589c](https://github.com/Draculabo/AntigravityManager/commit/5eb589c60481ebdca703654a2d226cb2bc56cbd9))
+* use semver for antigravity version comparison ([fb8f92a](https://github.com/Draculabo/AntigravityManager/commit/fb8f92ab6bd8c914bd345074c86f772f6aff684a))
+
+### ✅ Tests
+
+* restore proxy parity fixtures and align AI credits test ([7787f8e](https://github.com/Draculabo/AntigravityManager/commit/7787f8e3f7c6248a966908317a8c8f9e433918a6))
+
+### 🔧 Continuous Integration
+
+* name lint and format jobs for branch protection ([d5374ba](https://github.com/Draculabo/AntigravityManager/commit/d5374ba531ed4984ba0a7e6a223b720f3e7b205e))
+
 ## [0.15.0](https://github.com/Draculabo/AntigravityManager/compare/v0.14.0...v0.15.0) (2026-06-04)
 
 ### ✨ Features
