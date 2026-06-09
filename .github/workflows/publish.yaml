@@ -102,6 +102,10 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
 
+      - name: Audit Windows x64 package size
+        if: matrix.platform == 'win32' && matrix.arch == 'x64'
+        run: npm run audit:size:win32:x64
+
       # DMG creation may be flaky on GitHub macOS runners, so retry the full darwin make.
       - name: Make Artifacts (darwin with retry)
         if: matrix.platform == 'darwin'

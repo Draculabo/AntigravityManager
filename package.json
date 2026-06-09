@@ -16,6 +16,7 @@
     "start:otel:off": "node scripts/run-with-otel.mjs off -- npm start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "audit:size:win32:x64": "node scripts/audit-windows-x64-size.mjs",
     "publish": "electron-forge publish",
     "lint": "eslint .",
     "format": "prettier --check .",
