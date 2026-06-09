@@ -21,6 +21,7 @@ import setLanguages from 'electron-packager-languages';
 import * as fs from 'fs';
 import * as path from 'path';
 import { stringify as yamlStringify } from 'yaml';
+import { packageIgnorePatterns } from './src/shared/packaging/forgeIgnore';
 
 const nativeModules = ['better-sqlite3', 'keytar', 'bindings', 'file-uri-to-path'];
 const ResolvedMakerAppImage = MakerAppImage;
@@ -40,19 +41,6 @@ const ymlBaseNameMap: Record<string, string> = {
   linux: 'latest-linux',
   win32: 'latest',
 };
-const ignorePatterns = [
-  /^\/\.git/,
-  /^\/\.github/,
-  /^\/\.vscode/,
-  /^\/\.idea/,
-  /^\/openspec/,
-  /^\/docs?/,
-  /^\/scripts?/,
-  /^\/tests?/,
-  /^\/mocks?/,
-  /^\/src/,
-  /^\/node_modules\/\.cache/,
-];
 const setLanguagesHook = setLanguages([...keepLanguages.values()]);
 const packagerAfterCopy: HookFunction[] = [
   (
@@ -209,7 +197,7 @@ const config: ForgeConfig = {
     icon: 'images/icon', // Electron Forge automatically adds .icns/.ico
     extraResource: ['src/assets'], // Copy assets folder to resources/assets
     afterCopy: packagerAfterCopy,
-    ignore: ignorePatterns,
+    ignore: packageIgnorePatterns,
     prune: true,
   },
   rebuildConfig: {},

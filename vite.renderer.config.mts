@@ -49,12 +49,12 @@ export default defineConfig(({ mode }) => {
         autoCodeSplitting: true,
       }),
       tailwindcss(),
+      ...(mode === 'production' ? [] : [codeInspectorPlugin({ bundler: 'vite' })]),
       react({
         babel: {
           plugins: ['babel-plugin-react-compiler'],
         },
       }),
-      codeInspectorPlugin({ bundler: 'vite' }),
     ],
     optimizeDeps: {
       entries: ['index.html'],
