@@ -1529,36 +1529,110 @@ export class CloudAccountRepo {
     }
   }
 
+  private static shouldRefreshAccessTokenForUserInfo(error: unknown, accessToken: string): boolean {
+    if (accessToken.trim() === '') {
+      return true;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    const normalizedMessage = message.toLowerCase();
+
+    return (
+      normalizedMessage.includes('"code":401') ||
+      normalizedMessage.includes('http 401') ||
+      normalizedMessage.includes('unauthenticated') ||
+      normalizedMessage.includes('unauthorized') ||
+      normalizedMessage.includes('missing required authentication credential')
+    );
+  }
+
+  private static isMissingIdeTokenError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    const normalizedMessage = message.toLowerCase();
+
+    return (
+      normalizedMessage.includes('no cloud account found in ide') ||
+      normalizedMessage.includes('no oauth token found in ide state')
+    );
+  }
+
   static async syncFromIde(appTarget?: AntigravityAppTarget): Promise<CloudAccount | null> {
     // Try all possible database paths
     const dbPaths = getAntigravityDbPaths(appTarget);
     logger.info(`SyncLocal: Checking database paths: ${JSON.stringify(dbPaths)}`);
 
-    const dbPath =
-      dbPaths.find((candidatePath) => {
-        const pathExists = fs.existsSync(candidatePath);
-        logger.info(`SyncLocal: Checking path: ${candidatePath}, exists: ${pathExists}`);
-        return pathExists;
-      }) ?? null;
+    const existingDbPaths = dbPaths.filter((candidatePath) => {
+      const pathExists = fs.existsSync(candidatePath);
+      logger.info(`SyncLocal: Checking path: ${candidatePath}, exists: ${pathExists}`);
+      return pathExists;
+    });
 
-    if (!dbPath) {
+    if (existingDbPaths.length === 0) {
       const message = `Antigravity database not found. Please ensure Antigravity IDE is installed. Checked paths: ${dbPaths.join(', ')}`;
       logger.error(message);
       throw new Error(message);
     }
 
-    logger.info(`SyncLocal: Using Antigravity database at: ${dbPath}`);
     try {
-      const tokenInfo = this.readTokenInfoWithRetry(dbPath);
+      let dbPath = '';
+      let tokenInfo: {
+        accessToken: string;
+        refreshToken: string;
+        idToken?: string;
+        projectId?: string;
+      } | null = null;
+      let lastTokenReadError: unknown;
+
+      for (const candidatePath of existingDbPaths) {
+        try {
+          tokenInfo = this.readTokenInfoWithRetry(candidatePath);
+          dbPath = candidatePath;
+          break;
+        } catch (error) {
+          lastTokenReadError = error;
+          if (this.isMissingIdeTokenError(error)) {
+            logger.warn(
+              `SyncLocal: No cloud token found at ${candidatePath}, trying next database path`,
+            );
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      if (!tokenInfo) {
+        throw lastTokenReadError;
+      }
+
+      logger.info(`SyncLocal: Using Antigravity database at: ${dbPath}`);
+      const effectiveTokenInfo = { ...tokenInfo };
 
       let googleUserInfo;
       try {
+        if (tokenInfo.accessToken.trim() === '') {
+          throw new Error('IDE OAuth access token is empty');
+        }
         googleUserInfo = await GoogleAPIService.getUserInfo(tokenInfo.accessToken);
       } catch (apiError: unknown) {
-        const apiErrorMessage = apiError instanceof Error ? apiError.message : String(apiError);
-        const message = `Failed to validate token with Google API. The token may be expired. Please re-login in Antigravity IDE. Error: ${apiErrorMessage}`;
-        logger.error(`SyncLocal: ${message}`, apiError);
-        throw new Error(message);
+        if (!this.shouldRefreshAccessTokenForUserInfo(apiError, tokenInfo.accessToken)) {
+          const apiErrorMessage = apiError instanceof Error ? apiError.message : String(apiError);
+          const message = `Failed to validate token with Google API. The token may be expired. Please re-login in Antigravity IDE. Error: ${apiErrorMessage}`;
+          logger.error(`SyncLocal: ${message}`, apiError);
+          throw new Error(message);
+        }
+
+        try {
+          const refreshedToken = await GoogleAPIService.refreshAccessToken(tokenInfo.refreshToken);
+          effectiveTokenInfo.accessToken = refreshedToken.access_token;
+          effectiveTokenInfo.refreshToken = refreshedToken.refresh_token || tokenInfo.refreshToken;
+          effectiveTokenInfo.idToken = refreshedToken.id_token ?? tokenInfo.idToken;
+          googleUserInfo = await GoogleAPIService.getUserInfo(effectiveTokenInfo.accessToken);
+        } catch (refreshError: unknown) {
+          const refreshErrorMessage =
+            refreshError instanceof Error ? refreshError.message : String(refreshError);
+          const message = `Failed to refresh IDE token with Google API. Please re-login in Antigravity IDE. Error: ${refreshErrorMessage}`;
+          logger.error(`SyncLocal: ${message}`, refreshError);
+          throw new Error(message);
+        }
       }
 
       const now = Math.floor(Date.now() / 1000);
@@ -1569,15 +1643,15 @@ export class CloudAccountRepo {
         name: googleUserInfo.name,
         avatar_url: googleUserInfo.picture,
         token: {
-          access_token: tokenInfo.accessToken,
-          refresh_token: tokenInfo.refreshToken,
+          access_token: effectiveTokenInfo.accessToken,
+          refresh_token: effectiveTokenInfo.refreshToken,
           expires_in: 3600, // Unknown, assume 1 hour validity or let it refresh
           expiry_timestamp: now + 3600,
           token_type: 'Bearer',
           email: googleUserInfo.email,
-          project_id: tokenInfo.projectId,
+          project_id: effectiveTokenInfo.projectId,
           is_gcp_tos: false,
-          id_token: tokenInfo.idToken,
+          id_token: effectiveTokenInfo.idToken,
         },
         created_at: now,
         last_used: now,
@@ -1602,15 +1676,15 @@ export class CloudAccountRepo {
         account.status_reason = undefined;
         account.token = {
           ...existingAccount.token,
-          access_token: tokenInfo.accessToken,
-          refresh_token: tokenInfo.refreshToken || existingAccount.token.refresh_token,
+          access_token: effectiveTokenInfo.accessToken,
+          refresh_token: effectiveTokenInfo.refreshToken || existingAccount.token.refresh_token,
           expires_in: 3600,
           expiry_timestamp: now + 3600,
           token_type: 'Bearer',
           email: googleUserInfo.email,
-          project_id: existingProjectId || tokenInfo.projectId,
+          project_id: existingProjectId || effectiveTokenInfo.projectId,
           is_gcp_tos: existingAccount.token.is_gcp_tos ?? false,
-          id_token: tokenInfo.idToken ?? existingAccount.token.id_token,
+          id_token: effectiveTokenInfo.idToken ?? existingAccount.token.id_token,
         };
       }
 

@@ -102,20 +102,21 @@ export function toSyncLocalAccountORPCError(
   error: unknown,
 ): ORPCError<string, Record<string, unknown>> {
   const message = extractErrorMessage(error);
+  const normalizedMessage = message.toLowerCase();
 
   if (
-    message.includes('unauthenticated') ||
-    message.includes('unauthorized') ||
-    message.includes('token may be expired') ||
-    message.includes('re-login in antigravity ide')
+    normalizedMessage.includes('unauthenticated') ||
+    normalizedMessage.includes('unauthorized') ||
+    normalizedMessage.includes('token may be expired') ||
+    normalizedMessage.includes('re-login in antigravity ide')
   ) {
     return createSyncLocalAccountORPCError('UNAUTHORIZED', error);
   }
 
   if (
-    message.includes('no cloud account found in ide') ||
-    message.includes('no oauth token found in ide state') ||
-    message.includes('antigravity database not found')
+    normalizedMessage.includes('no cloud account found in ide') ||
+    normalizedMessage.includes('no oauth token found in ide state') ||
+    normalizedMessage.includes('antigravity database not found')
   ) {
     return createSyncLocalAccountORPCError('BAD_REQUEST', error);
   }
