@@ -2,6 +2,7 @@ import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandl
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { switchCloudAccount } from '@/modules/cloud-account/ipc/handler';
 import { logger } from '@/shared/logging/logger';
+import { AntigravityAppTarget } from '@/modules/account/types';
 
 export class AutoSwitchService {
   /**
@@ -57,13 +58,16 @@ export class AutoSwitchService {
    * Triggered by Monitor Service or UI.
    * Checks if we need to switch from the current account.
    */
-  static async checkAndSwitchIfNeeded(): Promise<boolean> {
+  static async checkAndSwitchIfNeeded(appTarget?: AntigravityAppTarget | undefined): Promise<boolean> {
     const enabled = CloudAccountRepo.getSetting<boolean>('auto_switch_enabled', false);
     if (!enabled) return false;
 
-    // Get current active account
+    // Get current active account for the target
     const accounts = await CloudAccountRepo.getAccounts();
-    const currentAccount = accounts.find((a) => a.is_active);
+    const activeAccountId = CloudAccountRepo.getActiveAccountIdForTarget(appTarget);
+    const currentAccount = activeAccountId
+      ? accounts.find((a) => a.id === activeAccountId)
+      : accounts.find((a) => a.is_active);
 
     // If no active account, maybe we should pick one?
     // For now, assume user manually picked first one.
@@ -85,7 +89,7 @@ export class AutoSwitchService {
         // Ideally we send an IPC event to renderer.
         // For now, logic first.
 
-        await switchCloudAccount(nextAccount.id);
+        await switchCloudAccount(nextAccount.id, appTarget);
 
         // We might want to send a notification to user desktop?
         // require('electron').Notification ...

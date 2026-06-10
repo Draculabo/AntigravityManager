@@ -5,6 +5,7 @@ import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '@/shared/logging/logger';
 import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { AntigravityAppTargetSchema } from '@/modules/account/types';
 
 type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi';
 
@@ -264,7 +265,9 @@ export class CloudMonitorService {
       }
 
       // 5. Check for Auto-Switch
-      await AutoSwitchService.checkAndSwitchIfNeeded();
+      for (const target of AntigravityAppTargetSchema.options) {
+        await AutoSwitchService.checkAndSwitchIfNeeded(target);
+      }
     } finally {
       this.isPolling = false;
     }
