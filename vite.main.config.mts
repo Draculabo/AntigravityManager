@@ -31,14 +31,29 @@ const openTelemetryBuildEnvKeys = [
   'OTEL_TRACES_EXPORTER',
 ] as const;
 
+function getOpenTelemetryBuildEnv(mode: string, env: Record<string, string>) {
+  return Object.fromEntries(
+    openTelemetryBuildEnvKeys.map((key) => {
+      const valueFromProcess = process.env[key];
+      if (valueFromProcess !== undefined) {
+        return [key, valueFromProcess];
+      }
+
+      if (mode === 'development') {
+        return [key, ''];
+      }
+
+      return [key, env[key] || ''];
+    }),
+  ) as OpenTelemetryBuildEnv;
+}
+
 // https://vitejs.dev/config
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN || env.SENTRY_AUTH_TOKEN;
   const shouldEnableSentry = mode === 'production' && Boolean(sentryAuthToken);
-  const openTelemetryBuildEnv = Object.fromEntries(
-    openTelemetryBuildEnvKeys.map((key) => [key, process.env[key] || env[key] || '']),
-  ) as OpenTelemetryBuildEnv;
+  const openTelemetryBuildEnv = getOpenTelemetryBuildEnv(mode, env);
 
   return {
     plugins: shouldEnableSentry
