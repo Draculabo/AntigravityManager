@@ -168,11 +168,24 @@ function getIdeDb(
   dbPath: string,
   readOnly: boolean,
 ): { raw: Database.Database; orm: BetterSQLite3Database<typeof drizzleSchema> } {
-  return openDrizzleConnection(
+  const result = openDrizzleConnection(
     dbPath,
     { readonly: readOnly },
     { readOnly, busyTimeoutMs: SQLITE_BUSY_TIMEOUT_MS },
   );
+
+  // Flush any pending WAL data to the main database file.
+  // This prevents stale reads after an unclean IDE shutdown where
+  // conversation data may still be stuck in the WAL journal.
+  if (!readOnly) {
+    try {
+      result.raw.pragma('wal_checkpoint(TRUNCATE)');
+    } catch (e) {
+      logger.warn('Failed to checkpoint WAL for IDE db', e);
+    }
+  }
+
+  return result;
 }
 
 interface MigrationStats {
