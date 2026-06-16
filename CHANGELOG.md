@@ -2,6 +2,22 @@
 
 # Changelog
 
+## [0.17.1](https://github.com/Draculabo/AntigravityManager/compare/v0.17.0...v0.17.1) (2026-06-16)
+
+### 🐛 Bug Fixes
+
+* **auto-switch:** support target-aware account switching ([#198](https://github.com/Draculabo/AntigravityManager/issues/198)) ([90dfcc4](https://github.com/Draculabo/AntigravityManager/commit/90dfcc4b3fc95604c82d4ca613bc38c06dc46762))
+* avoid macOS EPERM when resolving Antigravity data path ([943a1c6](https://github.com/Draculabo/AntigravityManager/commit/943a1c625b75c85849728674e8ac142e84cf1e74))
+* **ci:** upload Squirrel update assets for Windows auto-update ([07a6666](https://github.com/Draculabo/AntigravityManager/commit/07a666643e25fd03c9774158c052fc6d4e56abac))
+* **electron:** avoid disabling hardware acceleration on Windows ([120e778](https://github.com/Draculabo/AntigravityManager/commit/120e77815ce14fe8549ccb84997e141ac4a4b461))
+* **proxy:** show port conflict instead of reporting gateway startup error ([2d618cf](https://github.com/Draculabo/AntigravityManager/commit/2d618cf3571d849b4bc01704c672de9f8b8e6827))
+* tolerate project context lookup failures during quota refresh ([69d7f53](https://github.com/Draculabo/AntigravityManager/commit/69d7f53fec8c89a362a51e54dbbc985be7c1bacf))
+* use structured app errors for user-facing failures ([c003ce8](https://github.com/Draculabo/AntigravityManager/commit/c003ce8203626ac48007bd2cec27af7117bafbec))
+
+### 📝 Documentation
+
+* strengthen TypeScript type safety guidelines ([8c6a61f](https://github.com/Draculabo/AntigravityManager/commit/8c6a61fde22e11e8b32fd622007cd97207079e46))
+
 ## [0.17.0](https://github.com/Draculabo/AntigravityManager/compare/v0.16.1...v0.17.0) (2026-06-10)
 
 ### ✨ Features
