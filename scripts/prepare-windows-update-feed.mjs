@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -39,6 +39,8 @@ function hasPathSegment(filePath, segment) {
 
 function parseArgs(argv) {
   const result = {
+    releaseTag: process.env.RELEASE_TAG,
+    repository: process.env.GITHUB_REPOSITORY,
     sourceDir: 'release-assets',
     outputDir: 'windows-update-feed',
   };
@@ -52,17 +54,76 @@ function parseArgs(argv) {
     } else if (arg === '--output') {
       result.outputDir = value;
       index += 1;
+    } else if (arg === '--release-tag') {
+      result.releaseTag = value;
+      index += 1;
+    } else if (arg === '--repository') {
+      result.repository = value;
+      index += 1;
     }
   }
 
   return result;
 }
 
+function getPackageFileName(value) {
+  if (URL.canParse(value)) {
+    return path.basename(new URL(value).pathname);
+  }
+
+  return path.basename(value);
+}
+
+function getReleaseAssetBaseUrl({ releaseTag, repository }) {
+  if (!releaseTag) {
+    throw new Error('Missing release tag for Windows update feed package URLs');
+  }
+
+  if (!repository) {
+    throw new Error('Missing GitHub repository for Windows update feed package URLs');
+  }
+
+  return `https://github.com/${repository}/releases/download/${releaseTag}`;
+}
+
+function rewriteReleasePackageUrls({ content, packages, releaseAssetBaseUrl }) {
+  const packageNames = new Set(packages.map((file) => path.basename(file)));
+  let replacementCount = 0;
+
+  const rewritten = content
+    .split('\n')
+    .map((line) => {
+      const match = line.match(/^([0-9a-fA-F]{40}\s+)(\S+)(\s+\d+(?:\s+#.*)?\r?)$/);
+      if (!match) {
+        return line;
+      }
+
+      const packageFileName = getPackageFileName(match[2]);
+      if (!packageNames.has(packageFileName)) {
+        return line;
+      }
+
+      replacementCount += 1;
+      const packageUrl = `${releaseAssetBaseUrl}/${encodeURIComponent(packageFileName)}`;
+      return `${match[1]}${packageUrl}${match[3]}`;
+    })
+    .join('\n');
+
+  if (replacementCount === 0) {
+    throw new Error('Windows RELEASES file does not reference any matching .nupkg package');
+  }
+
+  return rewritten;
+}
+
 export function prepareWindowsUpdateFeed({
+  releaseTag,
+  repository,
   sourceDir = 'release-assets',
   outputDir = 'windows-update-feed',
 } = {}) {
   const files = listFilesRecursive(sourceDir);
+  const releaseAssetBaseUrl = getReleaseAssetBaseUrl({ releaseTag, repository });
   const result = {};
 
   rmSync(outputDir, { recursive: true, force: true });
@@ -84,17 +145,16 @@ export function prepareWindowsUpdateFeed({
     mkdirSync(targetDir, { recursive: true });
 
     const targetReleases = path.join(targetDir, 'RELEASES');
-    cpSync(releases, targetReleases);
-
-    const targetPackages = packages.map((file) => {
-      const targetPackage = path.join(targetDir, path.basename(file));
-      cpSync(file, targetPackage);
-      return targetPackage;
+    const rewrittenReleases = rewriteReleasePackageUrls({
+      content: readFileSync(releases, 'utf8'),
+      packages,
+      releaseAssetBaseUrl,
     });
+    writeFileSync(targetReleases, rewrittenReleases);
 
     result[arch] = {
       releases: targetReleases,
-      packages: targetPackages,
+      packages: packages.map((file) => path.basename(file)),
     };
   }
 

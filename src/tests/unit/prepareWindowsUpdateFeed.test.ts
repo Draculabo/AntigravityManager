@@ -11,14 +11,14 @@ function writeTextFile(filePath: string, content: string) {
 }
 
 describe('prepareWindowsUpdateFeed', () => {
-  it('copies Squirrel RELEASES and full nupkg files into per-arch static storage directories', async () => {
+  it('writes per-arch RELEASES files that point to GitHub Release package assets', async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), 'agm-update-feed-'));
     const sourceDir = path.join(rootDir, 'release-assets');
     const outputDir = path.join(rootDir, 'windows-update-feed');
 
     writeTextFile(
       path.join(sourceDir, 'squirrel.windows/x64/RELEASES'),
-      'hash antigravity_manager-0.17.1-full.nupkg 123\n',
+      'd7b597ce68a0bcbfd6413eaceda20a097a50fc26 antigravity_manager-0.17.1-full.nupkg 123\n',
     );
     writeTextFile(
       path.join(sourceDir, 'squirrel.windows/x64/antigravity_manager-0.17.1-full.nupkg'),
@@ -26,29 +26,37 @@ describe('prepareWindowsUpdateFeed', () => {
     );
     writeTextFile(
       path.join(sourceDir, 'squirrel.windows/arm64/RELEASES'),
-      'hash antigravity_manager-0.17.1-arm64-full.nupkg 123\n',
+      'e4d909c290d0fb1ca068ffaddf22cbd0de474d54 antigravity_manager-0.17.1-arm64-full.nupkg 123\n',
     );
     writeTextFile(
       path.join(sourceDir, 'squirrel.windows/arm64/antigravity_manager-0.17.1-arm64-full.nupkg'),
       'arm64 package',
     );
 
-    const result = prepareWindowsUpdateFeed({ sourceDir, outputDir });
+    const result = prepareWindowsUpdateFeed({
+      releaseTag: 'v0.17.1',
+      repository: 'Draculabo/AntigravityManager',
+      sourceDir,
+      outputDir,
+    });
 
     expect(result).toEqual({
       x64: {
         releases: path.join(outputDir, 'win32/x64/RELEASES'),
-        packages: [path.join(outputDir, 'win32/x64/antigravity_manager-0.17.1-full.nupkg')],
+        packages: ['antigravity_manager-0.17.1-full.nupkg'],
       },
       arm64: {
         releases: path.join(outputDir, 'win32/arm64/RELEASES'),
-        packages: [path.join(outputDir, 'win32/arm64/antigravity_manager-0.17.1-arm64-full.nupkg')],
+        packages: ['antigravity_manager-0.17.1-arm64-full.nupkg'],
       },
     });
     expect(existsSync(path.join(outputDir, 'win32/x64/RELEASES'))).toBe(true);
     expect(existsSync(path.join(outputDir, 'win32/arm64/RELEASES'))).toBe(true);
+    expect(
+      existsSync(path.join(outputDir, 'win32/x64/antigravity_manager-0.17.1-full.nupkg')),
+    ).toBe(false);
     expect(readFileSync(path.join(outputDir, 'win32/arm64/RELEASES'), 'utf8')).toContain(
-      'antigravity_manager-0.17.1-arm64-full.nupkg',
+      'https://github.com/Draculabo/AntigravityManager/releases/download/v0.17.1/antigravity_manager-0.17.1-arm64-full.nupkg',
     );
   });
 });

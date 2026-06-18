@@ -287,7 +287,14 @@ jobs:
           EOF
 
       - name: Prepare Windows static update feed
-        run: node scripts/prepare-windows-update-feed.mjs --source release-assets --output windows-update-feed
+        env:
+          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+        run: |
+          node scripts/prepare-windows-update-feed.mjs \
+            --source release-assets \
+            --output windows-update-feed \
+            --release-tag "$RELEASE_TAG" \
+            --repository "$GITHUB_REPOSITORY"
 
       - name: Prepare legacy Windows x64 release feed
         run: |
