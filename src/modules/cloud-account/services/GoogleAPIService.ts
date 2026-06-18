@@ -826,7 +826,7 @@ export class GoogleAPIService {
             logger.warn(
               '[GoogleAPIService] Prod loadCodeAssist returned 429, falling back to sandbox endpoint',
             );
-            break;
+            continue;
           }
         }
       } catch (error) {

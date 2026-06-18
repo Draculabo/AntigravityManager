@@ -131,4 +131,35 @@ describe('RateLimitTracker parity replay', () => {
     expect(parseRetryDelayMilliseconds('retry after 1s')).toBe(1000);
     expect(shouldGraceRetry(parseRetryDelayMilliseconds('retry after 1s') ?? 0)).toBe(true);
   });
+
+  it('does not let server errors advance quota exhausted backoff', () => {
+    const tracker = new RateLimitTracker();
+    const backoffSteps = [60, 300, 1800, 7200];
+
+    for (let i = 0; i < 3; i += 1) {
+      const serverError = tracker.parseAndMarkFromError({
+        accountId: 'acc-5',
+        status: 503,
+        body: 'Service Unavailable',
+        backoffSteps,
+      });
+
+      expect(serverError?.reason).toBe(RateLimitReason.ServerError);
+      expect(serverError?.retryAfterSec).toBe(8);
+    }
+
+    const quotaError = tracker.parseAndMarkFromError({
+      accountId: 'acc-5',
+      status: 429,
+      body: JSON.stringify({
+        error: {
+          details: [{ reason: 'QUOTA_EXHAUSTED' }],
+        },
+      }),
+      backoffSteps,
+    });
+
+    expect(quotaError?.reason).toBe(RateLimitReason.QuotaExhausted);
+    expect(quotaError?.retryAfterSec).toBe(60);
+  });
 });
