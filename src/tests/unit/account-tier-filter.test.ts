@@ -15,6 +15,7 @@ function createAccount(
     lastUsed?: number;
     active?: boolean;
     models?: CloudQuotaData['models'];
+    quotaGroups?: CloudQuotaData['quota_groups'];
   } = {},
 ): CloudAccount {
   return {
@@ -29,10 +30,11 @@ function createAccount(
       token_type: 'Bearer',
     },
     quota:
-      options.tier || options.models
+      options.tier || options.models || options.quotaGroups
         ? {
             subscription_tier: options.tier,
             models: options.models ?? {},
+            quota_groups: options.quotaGroups,
           }
         : undefined,
     created_at: 1,
@@ -141,6 +143,60 @@ describe('account tier filtering', () => {
       'visible-high',
       'hidden-high',
       'only-hidden-quota',
+    ]);
+  });
+
+  it('uses Claude and GPT grouped quota as a lower bound for Claude quota sorting', () => {
+    const accounts = [
+      createAccount('model-high-group-low', {
+        tier: 'Pro',
+        models: {
+          'claude-sonnet-4-5': { percentage: 90, resetTime: '' },
+        },
+        quotaGroups: [
+          {
+            display_name: 'Claude and GPT models',
+            buckets: [
+              {
+                bucket_id: '3p-5h',
+                window: '5h',
+                remaining_fraction: 0.02,
+                reset_time: '',
+              },
+            ],
+          },
+        ],
+      }),
+      createAccount('model-medium-group-healthy', {
+        tier: 'Pro',
+        models: {
+          'claude-sonnet-4-5': { percentage: 45, resetTime: '' },
+        },
+        quotaGroups: [
+          {
+            display_name: 'Claude and GPT models',
+            buckets: [
+              {
+                bucket_id: '3p-5h',
+                window: '5h',
+                remaining_fraction: 0.8,
+                reset_time: '',
+              },
+            ],
+          },
+        ],
+      }),
+    ];
+
+    const result = filterAndSortCloudAccounts(accounts, {
+      selectedTierKeys: ['pro'],
+      sortKey: 'quota-claude',
+      modelVisibility: {},
+    });
+
+    expect(result.map((account) => account.id)).toEqual([
+      'model-medium-group-healthy',
+      'model-high-group-low',
     ]);
   });
 

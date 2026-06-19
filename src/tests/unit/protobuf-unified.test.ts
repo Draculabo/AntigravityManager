@@ -117,4 +117,47 @@ describe('ProtobufUtils Unified OAuth', () => {
 
     expect(hasVarintField(oauthInfo, 6, 1n)).toBe(false);
   });
+
+  it('removes only the requested entry from a multi-entry unified topic', () => {
+    const oauthInfo = ProtobufUtils.createOAuthInfo('old-access', 'old-refresh', 1700000000);
+    const authStatePayload = new Uint8Array([9, 8, 7, 6]);
+    const topic = ProtobufUtils.concatUnifiedTopicEntries(
+      ProtobufUtils.createUnifiedTopicEntry('oauthTokenInfoSentinelKey', oauthInfo),
+      ProtobufUtils.createUnifiedTopicEntry('authStateWithContextSentinelKey', authStatePayload),
+    );
+
+    const withoutOauth = ProtobufUtils.removeUnifiedTopicEntry(topic, 'oauthTokenInfoSentinelKey');
+    const decoded = ProtobufUtils.decodeUnifiedStateTopicEntries(withoutOauth);
+
+    expect(decoded).toHaveLength(1);
+    expect(decoded[0]?.sentinelKey).toBe('authStateWithContextSentinelKey');
+    expect(Array.from(decoded[0]?.payload ?? [])).toEqual([9, 8, 7, 6]);
+  });
+
+  it('replaces OAuth in a unified topic while preserving unrelated state entries', () => {
+    const oldOauthInfo = ProtobufUtils.createOAuthInfo('old-access', 'old-refresh', 1700000000);
+    const authStatePayload = new Uint8Array([1, 3, 5, 7]);
+    const topic = ProtobufUtils.concatUnifiedTopicEntries(
+      ProtobufUtils.createUnifiedTopicEntry('oauthTokenInfoSentinelKey', oldOauthInfo),
+      ProtobufUtils.createUnifiedTopicEntry('authStateWithContextSentinelKey', authStatePayload),
+    );
+    const newOauthInfo = ProtobufUtils.createOAuthInfo('new-access', 'new-refresh', 1700001000);
+
+    const replaced = ProtobufUtils.replaceUnifiedTopicEntry(
+      topic,
+      'oauthTokenInfoSentinelKey',
+      newOauthInfo,
+    );
+    const decoded = ProtobufUtils.decodeUnifiedStateTopicEntries(replaced);
+
+    expect(decoded.map((entry) => entry.sentinelKey)).toEqual([
+      'authStateWithContextSentinelKey',
+      'oauthTokenInfoSentinelKey',
+    ]);
+    expect(Array.from(decoded[0]?.payload ?? [])).toEqual([1, 3, 5, 7]);
+    expect(ProtobufUtils.extractOAuthTokenInfoFromUnifiedState(replaced)).toEqual({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+    });
+  });
 });

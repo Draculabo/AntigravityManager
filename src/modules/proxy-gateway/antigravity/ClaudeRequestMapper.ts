@@ -89,6 +89,13 @@ export function transformClaudeRequestIn(
   let isThinkingEnabled =
     thinkingType === 'enabled' || thinkingType === 'adaptive' || autoThinkingEnabled;
 
+  if (isThinkingEnabled && !targetModelSupportsThinking(requestConfig.finalModel)) {
+    logger.warn(
+      `[Thinking-Mode] Target model ${requestConfig.finalModel} does not support thinking. Disabling thinking mode.`,
+    );
+    isThinkingEnabled = false;
+  }
+
   if (isThinkingEnabled) {
     const globalSig = SignatureStore.get();
     const hasFunctionCalls = claudeReq.messages.some((m) => {
@@ -304,6 +311,23 @@ function isGeminiImageModel(modelName: string): boolean {
 function isGeminiFlashModel(modelName: string): boolean {
   const normalized = modelName.toLowerCase();
   return normalized.includes('gemini-3-flash') || normalized.includes('gemini-3.1-flash');
+}
+
+function targetModelSupportsThinking(modelName: string): boolean {
+  const normalized = modelName.toLowerCase();
+  const isTieredGeminiPro = /^gemini-3(?:\.1)?-pro-(high|low)$/.test(normalized);
+  const isUntieredGeminiPro =
+    (normalized.includes('gemini-3-pro') || normalized.includes('gemini-3.1-pro')) &&
+    !isTieredGeminiPro &&
+    !isGeminiImageModel(normalized);
+
+  return (
+    normalized.includes('-thinking') ||
+    isClaudeModel(normalized) ||
+    normalized.includes('gemini-2.0-pro') ||
+    isUntieredGeminiPro ||
+    isGeminiFlashModel(normalized)
+  );
 }
 
 function shouldEnableThinkingByDefault(mappedModel: string, originalModel: string): boolean {

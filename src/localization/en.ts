@@ -387,6 +387,8 @@ const en = {
       resetPrefix: 'reset',
       resetTime: 'Reset time',
       resetUnknown: 'Unknown',
+      detailedQuota: 'Detailed quota',
+      quotaGroupUnknown: 'Quota group',
       gemini3Ready: 'Gemini 3 Ready',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',

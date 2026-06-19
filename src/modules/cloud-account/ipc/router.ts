@@ -24,7 +24,10 @@ import {
   exportCloudAccounts,
   importCloudAccounts,
 } from './handler';
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import {
+  AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE,
+  CloudAccountRepo,
+} from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountSchema } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/modules/account/types';
 import {
@@ -116,7 +119,8 @@ export function toSyncLocalAccountORPCError(
   if (
     normalizedMessage.includes('no cloud account found in ide') ||
     normalizedMessage.includes('no oauth token found in ide state') ||
-    normalizedMessage.includes('antigravity database not found')
+    normalizedMessage.includes('antigravity database not found') ||
+    normalizedMessage.includes(AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE.toLowerCase())
   ) {
     return createSyncLocalAccountORPCError('BAD_REQUEST', error);
   }

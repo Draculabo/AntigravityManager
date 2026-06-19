@@ -35,6 +35,12 @@ const QUOTA_API_ENDPOINTS = [
   'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
 ] as const;
 
+const QUOTA_SUMMARY_ENDPOINTS = [
+  'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
+  'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+  'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+] as const;
+
 // Request timeout in milliseconds (30 seconds)
 const REQUEST_TIMEOUT_MS = 30000;
 
@@ -256,6 +262,7 @@ export interface QuotaData {
   subscription_tier?: string;
   is_forbidden?: boolean;
   ai_credits?: { credits: number; expiryDate: string };
+  quota_groups?: QuotaGroup[];
 }
 
 export interface ModelQuotaInfo {
@@ -269,6 +276,21 @@ export interface ModelQuotaInfo {
   max_tokens?: number;
   max_output_tokens?: number;
   supported_mime_types?: Record<string, boolean>;
+}
+
+export interface QuotaBucket {
+  bucket_id: string;
+  window: string;
+  remaining_fraction: number;
+  reset_time: string;
+  display_name?: string;
+  description?: string;
+}
+
+export interface QuotaGroup {
+  display_name: string;
+  description?: string;
+  buckets: QuotaBucket[];
 }
 
 // Internal types for API parsing
@@ -321,6 +343,25 @@ interface LoadProjectResponse {
 interface FetchModelsResponse {
   models?: Record<string, ModelInfoRaw>;
   deprecatedModelIds?: Record<string, DeprecatedModelInfoRaw>;
+}
+
+interface QuotaSummaryBucketRaw {
+  bucketId?: string;
+  window?: string;
+  remainingFraction?: number;
+  resetTime?: string;
+  displayName?: string;
+  description?: string;
+}
+
+interface QuotaSummaryGroupRaw {
+  displayName?: string;
+  description?: string;
+  buckets?: QuotaSummaryBucketRaw[];
+}
+
+interface QuotaSummaryResponse {
+  groups?: QuotaSummaryGroupRaw[];
 }
 
 interface ProjectContext {
@@ -416,6 +457,29 @@ function toModelForwardingRules(
   }
 
   return Object.keys(forwardingRules).length > 0 ? forwardingRules : undefined;
+}
+
+function toQuotaGroups(data: QuotaSummaryResponse): QuotaGroup[] | undefined {
+  if (!Array.isArray(data.groups) || data.groups.length === 0) {
+    return undefined;
+  }
+
+  const groups = data.groups.map((group) => ({
+    display_name: group.displayName || '',
+    description: group.description,
+    buckets: Array.isArray(group.buckets)
+      ? group.buckets.map((bucket) => ({
+          bucket_id: bucket.bucketId || '',
+          window: bucket.window || '',
+          remaining_fraction: bucket.remainingFraction ?? 0,
+          reset_time: bucket.resetTime || '',
+          display_name: bucket.displayName,
+          description: bucket.description,
+        }))
+      : [],
+  }));
+
+  return groups;
 }
 
 function parseCreditAmount(value: string | number | undefined): number {
@@ -999,6 +1063,10 @@ export class GoogleAPIService {
 
           const data = (await response.json()) as FetchModelsResponse;
           const result = this.toQuotaData(data, subscriptionTier);
+          const quotaGroups = await this.fetchQuotaSummary(accessToken, projectId, fetchOptions);
+          if (quotaGroups) {
+            result.quota_groups = quotaGroups;
+          }
 
           if (endpointIndex > 0) {
             logger.info(
@@ -1030,5 +1098,41 @@ export class GoogleAPIService {
     }
 
     throw lastError || new Error('Quota check failed');
+  }
+
+  private static async fetchQuotaSummary(
+    accessToken: string,
+    projectId: string | undefined,
+    fetchOptions: ReturnType<typeof GoogleAPIService.getFetchOptions>,
+  ): Promise<QuotaGroup[] | undefined> {
+    const payload: Record<string, unknown> = projectId ? { project: projectId } : {};
+
+    for (const endpoint of QUOTA_SUMMARY_ENDPOINTS) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: buildInternalApiHeaders(accessToken),
+          body: JSON.stringify(payload),
+          signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
+          ...fetchOptions,
+        });
+
+        if (!response.ok) {
+          logger.warn(
+            `[GoogleAPIService] Quota summary API ${endpoint} returned ${response.status}`,
+          );
+          if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+            return undefined;
+          }
+          continue;
+        }
+
+        return toQuotaGroups((await response.json()) as QuotaSummaryResponse);
+      } catch (error) {
+        logger.warn(`[GoogleAPIService] Quota summary API request failed at ${endpoint}`, error);
+      }
+    }
+
+    return undefined;
   }
 }

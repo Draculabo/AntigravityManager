@@ -393,6 +393,8 @@ const fr = {
       resetPrefix: 'reset',
       resetTime: 'Heure de reinitialisation',
       resetUnknown: 'Inconnue',
+      detailedQuota: 'Quota detaille',
+      quotaGroupUnknown: 'Groupe de quota',
       gemini3Ready: 'Pret pour Gemini 3',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',

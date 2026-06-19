@@ -6,6 +6,7 @@ import { logger } from '@/shared/logging/logger';
 import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/modules/account/types';
 
 type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi' | 'fr' | 'tr';
 
@@ -55,6 +56,10 @@ const CLOUD_MONITOR_NOTIFICATION_TEXT: Record<
     lowAICreditsBody: (email, credits) => `${email}: AI kredi bakiyesi düşük (${credits})`,
   },
 };
+
+const AUTO_SWITCH_TARGETS: AntigravityAppTarget[] = AntigravityAppTargetSchema.options.filter(
+  (target) => target !== 'agy',
+);
 
 function getCloudMonitorLanguage(language: string | null | undefined): CloudMonitorLanguage {
   const normalizedLanguage = language?.toLowerCase() ?? 'en';
@@ -292,32 +297,8 @@ export class CloudMonitorService {
         }
       }
 
-      // 5. Check for AI Credits Alerts
-      const aiCreditsAlertEnabled = CloudAccountRepo.getSetting<boolean>(
-        'ai_credits_alert_enabled',
-        false,
-      );
-      const aiCreditsAlertThreshold = CloudAccountRepo.getSetting<number>(
-        'ai_credits_alert_threshold',
-        5000,
-      );
-
-      if (aiCreditsAlertEnabled) {
-        for (const account of accounts) {
-          const credits = account.quota?.ai_credits?.credits;
-          if (credits === undefined || credits === null) continue;
-          if (credits <= aiCreditsAlertThreshold) {
-            new Notification({
-              title: notificationText.lowAICreditsTitle,
-              body: notificationText.lowAICreditsBody(account.email, credits),
-              silent: false,
-            }).show();
-          }
-        }
-      }
-
-      // 6. Check for Auto-Switch
-      for (const target of AntigravityAppTargetSchema.options) {
+      // 5. Check for Auto-Switch
+      for (const target of AUTO_SWITCH_TARGETS) {
         await AutoSwitchService.checkAndSwitchIfNeeded(target);
       }
     } finally {

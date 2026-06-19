@@ -3,6 +3,7 @@ import { CloudAccount } from '@/modules/cloud-account/types';
 
 const HIGH_QUOTA_PERCENTAGE = 80;
 const MEDIUM_QUOTA_PERCENTAGE = 20;
+const CLAUDE_GROUP_PATTERN = /claude|gpt|3p/i;
 
 export type QuotaStatus = 'high' | 'medium' | 'low';
 export type AccountSortKey =
@@ -117,6 +118,59 @@ function getAveragePercentage(
   return modelEntries.reduce((sum, [, model]) => sum + model.percentage, 0) / modelEntries.length;
 }
 
+function getQuotaGroupBucketPercentages(account: CloudAccount, pattern?: RegExp): number[] {
+  const groups = account.quota?.quota_groups ?? [];
+  const percentages: number[] = [];
+
+  for (const group of groups) {
+    const groupText = [group.display_name, group.description].filter(Boolean).join(' ');
+    const groupMatches = pattern ? pattern.test(groupText) : true;
+
+    for (const bucket of group.buckets) {
+      const bucketText = [bucket.bucket_id, bucket.window, bucket.display_name, bucket.description]
+        .filter(Boolean)
+        .join(' ');
+
+      if (!groupMatches && pattern && !pattern.test(bucketText)) {
+        continue;
+      }
+
+      percentages.push(Math.round(bucket.remaining_fraction * 100));
+    }
+  }
+
+  return percentages;
+}
+
+function getMinimumPercentage(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  return Math.min(...values);
+}
+
+function applyQuotaGroupLowerBound(modelScore: number, groupScore: number | null): number {
+  if (groupScore === null) {
+    return modelScore;
+  }
+
+  if (modelScore === 0) {
+    return groupScore;
+  }
+
+  return Math.min(modelScore, groupScore);
+}
+
+export function getLowestEffectiveQuotaPercentage(account: CloudAccount): number | null {
+  const modelPercentages = Object.values(account.quota?.models ?? {}).map(
+    (model) => model.percentage,
+  );
+  const groupPercentages = getQuotaGroupBucketPercentages(account);
+
+  return getMinimumPercentage([...modelPercentages, ...groupPercentages]);
+}
+
 function modelMatchesText(modelName: string, displayName: string | undefined, pattern: RegExp) {
   return pattern.test(modelName) || pattern.test(displayName || '');
 }
@@ -133,12 +187,18 @@ export function getAccountSortValue(
 
   switch (sortKey) {
     case 'quota-overall':
-      return getAveragePercentage(visibleModelEntries);
+      return applyQuotaGroupLowerBound(
+        getAveragePercentage(visibleModelEntries),
+        getMinimumPercentage(getQuotaGroupBucketPercentages(account)),
+      );
     case 'quota-claude': {
       const claude = visibleModelEntries.filter(([modelName, model]) =>
         modelMatchesText(modelName, model.display_name, /claude/i),
       );
-      return getAveragePercentage(claude);
+      return applyQuotaGroupLowerBound(
+        getAveragePercentage(claude),
+        getMinimumPercentage(getQuotaGroupBucketPercentages(account, CLAUDE_GROUP_PATTERN)),
+      );
     }
     case 'quota-pro3': {
       const pro3 = visibleModelEntries.filter(([modelName, model]) =>

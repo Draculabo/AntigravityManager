@@ -385,6 +385,8 @@ const tr = {
       resetPrefix: 'sıfırlama',
       resetTime: 'Sıfırlanma zamanı',
       resetUnknown: 'Bilinmeyen',
+      detailedQuota: 'Ayrıntılı kota',
+      quotaGroupUnknown: 'Kota grubu',
       gemini3Ready: 'Gemini 3 Hazır',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',

@@ -1,7 +1,10 @@
 import fs from 'fs';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ProtobufUtils } from '../../shared/serialization/protobuf';
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import {
+  AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE,
+  CloudAccountRepo,
+} from '@/modules/cloud-account/persistence/cloudHandler';
 import { writeAntigravityCredentialStoreToken } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
 import type { UserInfo } from '@/modules/cloud-account/services/GoogleAPIService';
 import { toSyncLocalAccountORPCError } from '@/modules/cloud-account/ipc/router';
@@ -185,6 +188,14 @@ describe('CloudAccountRepo.syncFromIde', () => {
     await CloudAccountRepo.syncFromIde('ide');
 
     expect(getAntigravityDbPathsCalls).toEqual(['ide']);
+  });
+
+  it('should reject agy CLI sync before reading IDE SQLite paths', async () => {
+    await expect(CloudAccountRepo.syncFromIde('agy')).rejects.toThrow(
+      AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE,
+    );
+
+    expect(getAntigravityDbPathsCalls).toEqual([]);
   });
 
   it('should prefer unified oauth token when present', async () => {
@@ -613,6 +624,231 @@ describe('CloudAccountRepo.syncFromIde', () => {
     expect(updatedOldKey).toBe(true);
   });
 
+  it('preserves existing unified topic state when injecting a new OAuth token', async () => {
+    vi.resetModules();
+    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
+      getAntigravityVersion: () => ({
+        shortVersion: '2.0.1',
+        bundleVersion: '2.0.1',
+      }),
+      isCredentialStoreVersion: () => false,
+      isNewVersion: () => true,
+    }));
+
+    const existingTopic = ProtobufUtils.concatUnifiedTopicEntries(
+      ProtobufUtils.createUnifiedTopicEntry(
+        'oauthTokenInfoSentinelKey',
+        ProtobufUtils.createOAuthInfo('old-access', 'old-refresh', 1699999999),
+      ),
+      ProtobufUtils.createUnifiedTopicEntry(
+        'authStateWithContextSentinelKey',
+        new Uint8Array([4, 5, 6]),
+      ),
+    );
+    mockData['antigravityUnifiedStateSync.oauthToken'] =
+      Buffer.from(existingTopic).toString('base64');
+
+    const { CloudAccountRepo: RepoWithMock } =
+      await import('@/modules/cloud-account/persistence/cloudHandler');
+
+    RepoWithMock.injectCloudToken(
+      {
+        id: 'id',
+        provider: 'google',
+        email: 'test@example.com',
+        name: 'Test',
+        avatar_url: '',
+        token: {
+          access_token: 'new-access',
+          refresh_token: 'new-refresh',
+          expires_in: 3600,
+          expiry_timestamp: 1700000000,
+          token_type: 'Bearer',
+          email: 'test@example.com',
+        },
+        created_at: 1700000000,
+        last_used: 1700000000,
+        status: 'active',
+        is_active: true,
+      },
+      'ide',
+    );
+
+    const unifiedWrite = runCalls.find(
+      (call) =>
+        call.sql === 'insert' &&
+        (call.args[0] as { key?: string })?.key === 'antigravityUnifiedStateSync.oauthToken',
+    );
+    const writtenValue = (unifiedWrite?.args[0] as { value?: string } | undefined)?.value;
+    expect(writtenValue).toBeTruthy();
+
+    const writtenTopic = new Uint8Array(Buffer.from(writtenValue!, 'base64'));
+    const entries = ProtobufUtils.decodeUnifiedStateTopicEntries(writtenTopic);
+
+    expect(entries.map((entry) => entry.sentinelKey)).toEqual([
+      'authStateWithContextSentinelKey',
+      'oauthTokenInfoSentinelKey',
+    ]);
+    expect(Array.from(entries[0]?.payload ?? [])).toEqual([4, 5, 6]);
+    expect(ProtobufUtils.extractOAuthTokenInfoFromUnifiedState(writtenTopic)).toEqual({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+    });
+  });
+
+  it('clears legacy IDE OAuth state when injecting new-format unified state', async () => {
+    vi.resetModules();
+    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
+      getAntigravityVersion: () => ({
+        shortVersion: '2.0.1',
+        bundleVersion: '2.0.1',
+      }),
+      isCredentialStoreVersion: () => false,
+      isNewVersion: () => true,
+    }));
+
+    mockData['antigravityUnifiedStateSync.oauthToken'] = ProtobufUtils.createUnifiedOAuthToken(
+      'old-access',
+      'old-refresh',
+      1699999999,
+    );
+    mockData['jetskiStateSync.agentManagerInitState'] = Buffer.from(
+      ProtobufUtils.createOAuthTokenInfo('legacy-access', 'legacy-refresh', 1699999999),
+    ).toString('base64');
+
+    const { CloudAccountRepo: RepoWithMock } =
+      await import('@/modules/cloud-account/persistence/cloudHandler');
+
+    RepoWithMock.injectCloudToken(
+      {
+        id: 'id',
+        provider: 'google',
+        email: 'test@example.com',
+        name: 'Test',
+        avatar_url: '',
+        token: {
+          access_token: 'new-access',
+          refresh_token: 'new-refresh',
+          expires_in: 3600,
+          expiry_timestamp: 1700000000,
+          token_type: 'Bearer',
+          email: 'test@example.com',
+        },
+        created_at: 1700000000,
+        last_used: 1700000000,
+        status: 'active',
+        is_active: true,
+      },
+      'ide',
+    );
+
+    const deletedLegacyState = runCalls.some(
+      (call) =>
+        call.sql === 'delete' &&
+        (call.args[0] as { __key?: string } | undefined)?.__key ===
+          'jetskiStateSync.agentManagerInitState',
+    );
+
+    expect(deletedLegacyState).toBe(true);
+  });
+
+  it('exports account metadata without tokens when stripping sensitive data', async () => {
+    vi.resetModules();
+    const account = {
+      id: 'id',
+      provider: 'google' as const,
+      email: 'test@example.com',
+      name: 'Test',
+      avatar_url: '',
+      token: {
+        access_token: 'access',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+        expiry_timestamp: 1700000000,
+        token_type: 'Bearer',
+        email: 'test@example.com',
+      },
+      created_at: 1700000000,
+      last_used: 1700000000,
+      status: 'active' as const,
+      is_active: true,
+    };
+    const { CloudAccountRepo: RepoWithMock } =
+      await import('@/modules/cloud-account/persistence/cloudHandler');
+    vi.spyOn(RepoWithMock, 'getAccounts').mockResolvedValue([account]);
+
+    const { exportCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
+
+    const exported = JSON.parse(await exportCloudAccounts(true)) as {
+      accounts: Array<{ token?: unknown; email: string }>;
+    };
+
+    expect(exported.accounts).toHaveLength(1);
+    expect(exported.accounts[0]?.email).toBe('test@example.com');
+    expect(exported.accounts[0]).not.toHaveProperty('token');
+  });
+
+  it('preserves existing tokens and skips new accounts when importing stripped exports', async () => {
+    vi.resetModules();
+    const existingAccount = {
+      id: 'existing-id',
+      provider: 'google' as const,
+      email: 'existing@example.com',
+      name: 'Existing',
+      avatar_url: '',
+      token: {
+        access_token: 'existing-access',
+        refresh_token: 'existing-refresh',
+        expires_in: 3600,
+        expiry_timestamp: 1700000000,
+        token_type: 'Bearer',
+        email: 'existing@example.com',
+      },
+      created_at: 1700000000,
+      last_used: 1700000000,
+      status: 'active' as const,
+      is_active: true,
+    };
+    const { CloudAccountRepo: RepoWithMock } =
+      await import('@/modules/cloud-account/persistence/cloudHandler');
+    vi.spyOn(RepoWithMock, 'getAccounts').mockResolvedValue([existingAccount]);
+    const addAccountSpy = vi.spyOn(RepoWithMock, 'addAccount').mockResolvedValue();
+
+    const { importCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
+
+    const result = await importCloudAccounts(
+      JSON.stringify({
+        version: '1.0',
+        exportedAt: 1700000000,
+        accounts: [
+          {
+            provider: 'google',
+            email: 'existing@example.com',
+            name: 'Renamed',
+          },
+          {
+            provider: 'google',
+            email: 'new@example.com',
+            name: 'New',
+          },
+        ],
+      }),
+    );
+
+    expect(result.updated).toBe(1);
+    expect(result.imported).toBe(0);
+    expect(result.errors).toEqual([
+      'Failed to import new@example.com: export file does not include tokens',
+    ]);
+    expect(addAccountSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'existing@example.com',
+        name: 'Renamed',
+        token: existingAccount.token,
+      }),
+    );
+  });
+
   it('should keep pre-2.0 product versions out of the credential store', async () => {
     vi.resetModules();
     vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
@@ -628,6 +864,23 @@ describe('CloudAccountRepo.syncFromIde', () => {
       await import('@/modules/cloud-account/persistence/cloudHandler');
 
     expect(RepoWithMock.shouldInjectTokenIntoCredentialStore('classic')).toBe(false);
+  });
+
+  it('should always route agy CLI token injection to credential store', async () => {
+    vi.resetModules();
+    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
+      getAntigravityVersion: () => ({
+        shortVersion: '1.99.9',
+        bundleVersion: '1.99.9',
+      }),
+      isCredentialStoreVersion: () => false,
+      isNewVersion: () => true,
+    }));
+
+    const { CloudAccountRepo: RepoWithMock } =
+      await import('@/modules/cloud-account/persistence/cloudHandler');
+
+    expect(RepoWithMock.shouldInjectTokenIntoCredentialStore('agy')).toBe(true);
   });
 
   it('should allow the known Linux Chromium version output workaround', async () => {
@@ -717,6 +970,13 @@ describe('syncLocalAccount ORPC error mapping', () => {
         'No cloud account found in IDE. Please login to a Google account in Antigravity IDE first.',
       ),
     );
+
+    expect(error.code).toBe('BAD_REQUEST');
+    expect(error.status).toBe(400);
+  });
+
+  it('maps unsupported agy CLI sync to a bad request error', () => {
+    const error = toSyncLocalAccountORPCError(new Error(AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE));
 
     expect(error.code).toBe('BAD_REQUEST');
     expect(error.status).toBe(400);

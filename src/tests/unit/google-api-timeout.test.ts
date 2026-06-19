@@ -318,6 +318,11 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
             },
           },
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: vi.fn().mockResolvedValue('INVALID_ARGUMENT'),
       });
 
     vi.stubGlobal('fetch', fetchMock);
@@ -347,10 +352,137 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
       },
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[1]?.[0]).toBe(fetchMock.mock.calls[0]?.[0]);
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ project: 'project-1' }));
     expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({}));
+  });
+
+  it('adds grouped quota summary when the auxiliary quota summary endpoint succeeds', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          models: {
+            'claude-sonnet-4-5': {
+              quotaInfo: {
+                remainingFraction: 0.5,
+                resetTime: '2026-05-05T00:00:00Z',
+              },
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          groups: [
+            {
+              displayName: 'Claude and GPT models',
+              description: 'Shared quota',
+              buckets: [
+                {
+                  bucketId: '3p-5h',
+                  window: '5h',
+                  remainingFraction: 0.25,
+                  resetTime: '2026-05-05T05:00:00Z',
+                  displayName: '5 hour',
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue({
+      proxy: {
+        upstream_proxy: {
+          enabled: false,
+        },
+      },
+    } as any);
+
+    const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+    vi.spyOn(GoogleAPIService, 'fetchProjectContext').mockResolvedValue({
+      projectId: 'project-1',
+      subscriptionTier: 'pro',
+    });
+
+    await expect(GoogleAPIService.fetchQuota('access-token')).resolves.toMatchObject({
+      quota_groups: [
+        {
+          display_name: 'Claude and GPT models',
+          description: 'Shared quota',
+          buckets: [
+            {
+              bucket_id: '3p-5h',
+              window: '5h',
+              remaining_fraction: 0.25,
+              reset_time: '2026-05-05T05:00:00Z',
+              display_name: '5 hour',
+            },
+          ],
+        },
+      ],
+    });
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('retrieveUserQuotaSummary');
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ project: 'project-1' }));
+  });
+
+  it('keeps model quota results when grouped quota summary fails', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          models: {
+            'gemini-3-flash': {
+              quotaInfo: {
+                remainingFraction: 0.65,
+                resetTime: '2026-05-05T00:00:00Z',
+              },
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: vi.fn().mockResolvedValue('INVALID_ARGUMENT'),
+      });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue({
+      proxy: {
+        upstream_proxy: {
+          enabled: false,
+        },
+      },
+    } as any);
+
+    const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+    vi.spyOn(GoogleAPIService, 'fetchProjectContext').mockResolvedValue({
+      projectId: 'project-1',
+      subscriptionTier: 'pro',
+    });
+
+    await expect(GoogleAPIService.fetchQuota('access-token')).resolves.toMatchObject({
+      models: {
+        'gemini-3-flash': {
+          percentage: 65,
+          resetTime: '2026-05-05T00:00:00Z',
+        },
+      },
+    });
   });
 
   it('keeps forbidden behavior when quota still returns 403 without project', async () => {
@@ -468,6 +600,11 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
             },
           },
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: vi.fn().mockResolvedValue('INVALID_ARGUMENT'),
       });
 
     vi.stubGlobal('fetch', fetchMock);
@@ -492,7 +629,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
       },
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({}));
   });
 

@@ -378,6 +378,8 @@ const ru = {
       resetPrefix: 'Сброс',
       resetTime: 'Время сброса',
       resetUnknown: 'Неизвестно',
+      detailedQuota: 'Подробная квота',
+      quotaGroupUnknown: 'Группа квот',
       gemini3Ready: 'Gemini 3 готов',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',

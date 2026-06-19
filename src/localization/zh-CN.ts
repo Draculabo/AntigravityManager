@@ -360,6 +360,8 @@ const zhCn = {
       resetPrefix: '重置',
       resetTime: '重置时间',
       resetUnknown: '未知',
+      detailedQuota: '详细配额',
+      quotaGroupUnknown: '配额组',
       gemini3Ready: 'Gemini 3 就绪',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',

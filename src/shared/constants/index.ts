@@ -10,5 +10,6 @@ export const IPC_CHANNELS = {
   DISMISS_MANUAL_UPDATE: 'dismiss-manual-update',
   MANUAL_UPDATE_AVAILABLE: 'manual-update-available',
   MANUAL_UPDATE_RENDERER_READY: 'manual-update-renderer-ready',
+  GET_OBSERVABILITY_CONFIG: 'get-observability-config',
   OPEN_EXTERNAL_URL: 'open-external-url',
 };

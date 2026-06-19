@@ -36,6 +36,7 @@ interface GetNextTokenOptions {
 }
 
 type TokenEntry = [string, TokenData];
+const THIRD_PARTY_QUOTA_GROUP_PATTERN = /claude|gpt|3p/i;
 
 function normalizeProjectId(projectId: string | null | undefined): string | undefined {
   if (!isString(projectId)) {
@@ -673,6 +674,22 @@ export class TokenManagerService implements OnModuleInit {
       }
     }
 
+    const thirdPartyQuotaFloor = this.extractThirdPartyQuotaFloor(quota);
+    if (thirdPartyQuotaFloor) {
+      for (const modelName of Object.keys(modelQuotas)) {
+        if (!this.isThirdPartyModel(modelName)) {
+          continue;
+        }
+
+        if (thirdPartyQuotaFloor.percentage < modelQuotas[modelName]) {
+          modelQuotas[modelName] = thirdPartyQuotaFloor.percentage;
+          if (!isEmpty(thirdPartyQuotaFloor.resetTime)) {
+            modelResetTimes[modelName] = thirdPartyQuotaFloor.resetTime;
+          }
+        }
+      }
+    }
+
     for (const [oldModel, newModel] of Object.entries(quota?.model_forwarding_rules ?? {})) {
       const normalizedOld = normalizeModelId(oldModel);
       const normalizedNew = normalizeModelId(newModel);
@@ -689,6 +706,54 @@ export class TokenManagerService implements OnModuleInit {
       modelResetTimes,
       modelForwardingRules,
     };
+  }
+
+  private extractThirdPartyQuotaFloor(
+    quota: CloudQuotaData | undefined,
+  ): { percentage: number; resetTime: string } | null {
+    let lowest: { percentage: number; resetTime: string } | null = null;
+
+    for (const group of quota?.quota_groups ?? []) {
+      const groupText = [group.display_name, group.description].filter(Boolean).join(' ');
+      const groupMatches = THIRD_PARTY_QUOTA_GROUP_PATTERN.test(groupText);
+
+      for (const bucket of group.buckets) {
+        const bucketText = [
+          bucket.bucket_id,
+          bucket.window,
+          bucket.display_name,
+          bucket.description,
+        ]
+          .filter(Boolean)
+          .join(' ');
+        if (!groupMatches && !THIRD_PARTY_QUOTA_GROUP_PATTERN.test(bucketText)) {
+          continue;
+        }
+
+        const percentage = Math.floor(bucket.remaining_fraction * 100);
+        if (!Number.isFinite(percentage)) {
+          continue;
+        }
+
+        if (
+          !lowest ||
+          percentage < lowest.percentage ||
+          (percentage === lowest.percentage && bucket.reset_time < lowest.resetTime)
+        ) {
+          lowest = {
+            percentage,
+            resetTime: bucket.reset_time,
+          };
+        }
+      }
+    }
+
+    return lowest;
+  }
+
+  private isThirdPartyModel(modelName: string): boolean {
+    const normalizedModelName = modelName.toLowerCase();
+    return normalizedModelName.includes('claude') || normalizedModelName.includes('gpt');
   }
 
   private findEarliestQuotaResetTime(modelResetTimes: Record<string, string>): string | null {

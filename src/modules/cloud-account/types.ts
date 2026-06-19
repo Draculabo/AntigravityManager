@@ -41,6 +41,22 @@ export interface CloudQuotaData {
   is_forbidden?: boolean;
   isForbidden?: boolean;
   ai_credits?: { credits: number; expiryDate: string };
+  quota_groups?: CloudQuotaGroup[];
+}
+
+export interface CloudQuotaBucket {
+  bucket_id: string;
+  window: string;
+  remaining_fraction: number;
+  reset_time: string;
+  display_name?: string;
+  description?: string;
+}
+
+export interface CloudQuotaGroup {
+  display_name: string;
+  description?: string;
+  buckets: CloudQuotaBucket[];
 }
 
 export interface CloudAccount {
@@ -60,6 +76,7 @@ export interface CloudAccount {
   is_active?: boolean;
   is_active_classic?: boolean;
   is_active_ide?: boolean;
+  is_active_agy?: boolean;
   proxy_url?: string;
 }
 
@@ -92,6 +109,21 @@ export const CloudQuotaModelInfoSchema = z.object({
   supported_mime_types: z.record(z.string(), z.boolean()).optional(),
 });
 
+export const CloudQuotaBucketSchema = z.object({
+  bucket_id: z.string(),
+  window: z.string(),
+  remaining_fraction: z.number(),
+  reset_time: z.string(),
+  display_name: z.string().optional(),
+  description: z.string().optional(),
+});
+
+export const CloudQuotaGroupSchema = z.object({
+  display_name: z.string(),
+  description: z.string().optional(),
+  buckets: z.array(CloudQuotaBucketSchema),
+});
+
 export const CloudQuotaDataSchema = z.object({
   models: z.record(z.string(), CloudQuotaModelInfoSchema),
   model_forwarding_rules: z.record(z.string(), z.string()).optional(),
@@ -99,6 +131,7 @@ export const CloudQuotaDataSchema = z.object({
   is_forbidden: z.boolean().optional(),
   isForbidden: z.boolean().optional(),
   ai_credits: z.object({ credits: z.number(), expiryDate: z.string() }).optional(),
+  quota_groups: z.array(CloudQuotaGroupSchema).optional(),
 });
 
 export const CloudAccountSchema = z.object({
@@ -118,6 +151,7 @@ export const CloudAccountSchema = z.object({
   is_active: z.boolean().optional(),
   is_active_classic: z.boolean().optional(),
   is_active_ide: z.boolean().optional(),
+  is_active_agy: z.boolean().optional(),
   proxy_url: z.string().optional(),
 });
 
@@ -130,7 +164,7 @@ export const CloudAccountExportSchema = z.object({
       email: z.string(),
       name: z.string().optional().nullable(),
       avatar_url: z.string().optional().nullable(),
-      token: CloudTokenDataSchema,
+      token: CloudTokenDataSchema.optional(),
       quota: CloudQuotaDataSchema.optional(),
       device_profile: z.any().optional(),
       device_history: z.any().optional(),

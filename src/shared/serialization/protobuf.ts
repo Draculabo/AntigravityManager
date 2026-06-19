@@ -354,26 +354,41 @@ export class ProtobufUtils {
   static extractOAuthTokenInfoFromUnifiedState(
     data: Uint8Array,
   ): { accessToken: string; refreshToken: string; idToken?: string } | null {
-    let decoded: { sentinelKey: string; payload: Uint8Array };
     try {
-      decoded = this.decodeTopicRowPayload(data);
+      for (const decoded of this.decodeUnifiedStateTopicEntries(data)) {
+        if (decoded.sentinelKey !== 'oauthTokenInfoSentinelKey') {
+          continue;
+        }
+
+        const parsed = this.extractOAuthTokenInfoFromUnifiedPayload(decoded.payload);
+        if (parsed) {
+          return parsed;
+        }
+      }
+
+      return null;
     } catch {
       try {
-        decoded = this.decodeLegacyUnifiedStateEntry(data);
+        const decoded = this.decodeLegacyUnifiedStateEntry(data);
+        if (decoded.sentinelKey !== 'oauthTokenInfoSentinelKey') {
+          return null;
+        }
+
+        return this.extractOAuthTokenInfoFromUnifiedPayload(decoded.payload);
       } catch {
         return null;
       }
     }
+  }
 
-    if (decoded.sentinelKey !== 'oauthTokenInfoSentinelKey') {
-      return null;
-    }
-
-    const directParsed = this.extractOAuthTokenInfoFromOAuthInfo(decoded.payload);
+  private static extractOAuthTokenInfoFromUnifiedPayload(
+    payload: Uint8Array,
+  ): { accessToken: string; refreshToken: string; idToken?: string } | null {
+    const directParsed = this.extractOAuthTokenInfoFromOAuthInfo(payload);
     if (directParsed) {
       return directParsed;
     }
-    const nestedOauthInfoB64Bytes = this.getField(decoded.payload, 1);
+    const nestedOauthInfoB64Bytes = this.getField(payload, 1);
     if (!nestedOauthInfoB64Bytes) {
       return null;
     }
@@ -481,13 +496,123 @@ export class ProtobufUtils {
   }
 
   static createUnifiedStateEntry(sentinelKey: string, payload: Uint8Array): string {
+    const topic = this.createUnifiedTopicEntry(sentinelKey, payload);
+    return Buffer.from(topic).toString('base64');
+  }
+
+  static createUnifiedTopicEntry(sentinelKey: string, payload: Uint8Array): Uint8Array {
     const row = this.encodeStringField(1, Buffer.from(payload).toString('base64'));
     const dataEntry = this.concatBytes(
       this.encodeStringField(1, sentinelKey),
       this.encodeLenDelimField(2, row),
     );
-    const topic = this.encodeLenDelimField(1, dataEntry);
-    return Buffer.from(topic).toString('base64');
+    return this.encodeLenDelimField(1, dataEntry);
+  }
+
+  static concatUnifiedTopicEntries(...entries: Uint8Array[]): Uint8Array {
+    return this.concatBytes(...entries);
+  }
+
+  static decodeUnifiedStateTopicEntries(
+    topicBlob: Uint8Array,
+  ): Array<{ sentinelKey: string; payload: Uint8Array }> {
+    const entries: Array<{ sentinelKey: string; payload: Uint8Array }> = [];
+    let offset = 0;
+
+    while (offset < topicBlob.length) {
+      const fieldStartOffset = offset;
+      const { value: tag, nextOffset } = this.readVarint(topicBlob, offset);
+      const wireType = Number(tag & 7n);
+      const currentField = Number(tag >> 3n);
+      const fieldEndOffset = this.skipField(topicBlob, nextOffset, wireType);
+
+      if (currentField === 1 && wireType === 2) {
+        const { value: length, nextOffset: dataStart } = this.readVarint(topicBlob, nextOffset);
+        const dataEnd = dataStart + Number(length);
+        const dataEntry = topicBlob.slice(dataStart, dataEnd);
+        entries.push(this.decodeTopicDataEntry(dataEntry));
+      }
+
+      offset = fieldEndOffset;
+      if (offset <= fieldStartOffset) {
+        throw new Error('Failed to advance while decoding unified topic entries');
+      }
+    }
+
+    return entries;
+  }
+
+  static removeUnifiedTopicEntry(topicBlob: Uint8Array, targetSentinelKey: string): Uint8Array {
+    const chunks: Uint8Array[] = [];
+    let offset = 0;
+
+    while (offset < topicBlob.length) {
+      const fieldStartOffset = offset;
+      const { value: tag, nextOffset } = this.readVarint(topicBlob, offset);
+      const wireType = Number(tag & 7n);
+      const currentField = Number(tag >> 3n);
+      const fieldEndOffset = this.skipField(topicBlob, nextOffset, wireType);
+      let shouldRemove = false;
+
+      if (currentField === 1 && wireType === 2) {
+        const { value: length, nextOffset: dataStart } = this.readVarint(topicBlob, nextOffset);
+        const dataEntry = topicBlob.slice(dataStart, dataStart + Number(length));
+        shouldRemove = this.getUnifiedTopicEntryKey(dataEntry) === targetSentinelKey;
+      }
+
+      if (!shouldRemove) {
+        chunks.push(topicBlob.slice(fieldStartOffset, fieldEndOffset));
+      }
+
+      offset = fieldEndOffset;
+    }
+
+    return this.concatBytes(...chunks);
+  }
+
+  static replaceUnifiedTopicEntry(
+    topicBlob: Uint8Array,
+    sentinelKey: string,
+    payload: Uint8Array,
+  ): Uint8Array {
+    return this.concatBytes(
+      this.removeUnifiedTopicEntry(topicBlob, sentinelKey),
+      this.createUnifiedTopicEntry(sentinelKey, payload),
+    );
+  }
+
+  private static decodeTopicDataEntry(dataEntry: Uint8Array): {
+    sentinelKey: string;
+    payload: Uint8Array;
+  } {
+    const sentinelKeyBytes = this.getField(dataEntry, 1);
+    if (!sentinelKeyBytes) {
+      throw new Error('Topic data entry key not found');
+    }
+
+    const rowBlob = this.getField(dataEntry, 2);
+    if (!rowBlob) {
+      throw new Error('Topic row not found');
+    }
+
+    const encodedPayloadBytes = this.getField(rowBlob, 1);
+    if (!encodedPayloadBytes) {
+      throw new Error('Topic row value not found');
+    }
+
+    return {
+      sentinelKey: this.readString(sentinelKeyBytes),
+      payload: new Uint8Array(Buffer.from(this.readString(encodedPayloadBytes), 'base64')),
+    };
+  }
+
+  private static getUnifiedTopicEntryKey(dataEntry: Uint8Array): string | null {
+    const sentinelKeyBytes = this.getField(dataEntry, 1);
+    if (!sentinelKeyBytes) {
+      return null;
+    }
+
+    return this.readString(sentinelKeyBytes);
   }
 
   static decodeUnifiedStateEntry(outerB64: string): { sentinelKey: string; payload: Uint8Array } {

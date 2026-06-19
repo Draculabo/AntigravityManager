@@ -3,6 +3,10 @@ import { CloudAccount } from '@/modules/cloud-account/types';
 import { switchCloudAccount } from '@/modules/cloud-account/ipc/handler';
 import { logger } from '@/shared/logging/logger';
 import { AntigravityAppTarget } from '@/modules/account/types';
+import {
+  getAccountSortValue,
+  getLowestEffectiveQuotaPercentage,
+} from '@/modules/cloud-account/utils/quota-display';
 
 export class AutoSwitchService {
   /**
@@ -47,18 +51,16 @@ export class AutoSwitchService {
   }
 
   private static calculateAverageQuota(account: CloudAccount): number {
-    if (!account.quota) return 0;
-    const values = Object.values(account.quota.models).map((m) => m.percentage);
-    if (values.length === 0) return 0;
-    const sum = values.reduce((a, b) => a + b, 0);
-    return sum / values.length;
+    return getAccountSortValue(account, 'quota-overall');
   }
 
   /**
    * Triggered by Monitor Service or UI.
    * Checks if we need to switch from the current account.
    */
-  static async checkAndSwitchIfNeeded(appTarget?: AntigravityAppTarget | undefined): Promise<boolean> {
+  static async checkAndSwitchIfNeeded(
+    appTarget?: AntigravityAppTarget | undefined,
+  ): Promise<boolean> {
     const enabled = CloudAccountRepo.getSetting<boolean>('auto_switch_enabled', false);
     if (!enabled) return false;
 
@@ -107,6 +109,7 @@ export class AutoSwitchService {
     if (!account.quota) return false; // Unknown, assume fine or let fetchQuota find out
     // Threshold = 5%
     const THRESHOLD = 5;
-    return Object.values(account.quota.models).some((m) => m.percentage < THRESHOLD);
+    const lowestQuotaPercentage = getLowestEffectiveQuotaPercentage(account);
+    return lowestQuotaPercentage !== null && lowestQuotaPercentage < THRESHOLD;
   }
 }

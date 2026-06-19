@@ -383,6 +383,8 @@ const vi = {
       resetPrefix: 'reset',
       resetTime: 'Thời điểm reset',
       resetUnknown: 'Không rõ',
+      detailedQuota: 'Quota chi tiết',
+      quotaGroupUnknown: 'Nhóm quota',
       gemini3Ready: 'Sẵn sàng cho Gemini 3',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',

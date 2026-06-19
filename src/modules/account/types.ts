@@ -38,13 +38,17 @@ export interface AccountInfo {
 
 // Zod Schemas for validation
 
-export const AntigravityAppTargetSchema = z.enum(['classic', 'ide']);
+export const AntigravityAppTargetSchema = z.enum(['classic', 'ide', 'agy']);
 export type AntigravityAppTarget = z.infer<typeof AntigravityAppTargetSchema>;
 
 export function resolveAntigravityAppTarget(
   target?: AntigravityAppTarget | null,
 ): AntigravityAppTarget {
-  return target === 'ide' ? 'ide' : 'classic';
+  if (target === 'ide' || target === 'agy') {
+    return target;
+  }
+
+  return 'classic';
 }
 
 export const AccountSchema = z.object({

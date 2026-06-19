@@ -389,6 +389,7 @@ export async function listCloudAccounts(): Promise<CloudAccount[]> {
     logger.warn('Failed to read current ide account info during listing', err);
   }
   const activeIdeAccountId = ideEmail ? '' : CloudAccountRepo.getActiveAccountIdForTarget('ide');
+  const activeAgyAccountId = CloudAccountRepo.getActiveAccountIdForTarget('agy');
 
   return accounts.map((account) => {
     const accountEmail = normalizeAccountEmail(account.email);
@@ -398,11 +399,13 @@ export async function listCloudAccounts(): Promise<CloudAccount[]> {
         : classicEmail === accountEmail;
     const isIdeActive =
       ideEmail === accountEmail || (!!activeIdeAccountId && activeIdeAccountId === account.id);
+    const isAgyActive = activeAgyAccountId === account.id;
     return {
       ...account,
-      is_active: isClassicActive || isIdeActive,
+      is_active: isClassicActive || isIdeActive || isAgyActive,
       is_active_classic: isClassicActive,
       is_active_ide: isIdeActive,
+      is_active_agy: isAgyActive,
     };
   });
 }
@@ -910,7 +913,7 @@ export async function importCloudAccounts(
           provider: importedAccount.provider,
           name: importedAccount.name ?? existing.name,
           avatar_url: importedAccount.avatar_url ?? existing.avatar_url,
-          token: importedAccount.token,
+          token: importedAccount.token ?? existing.token,
           quota: importedAccount.quota ?? existing.quota,
           device_profile: importedAccount.device_profile ?? existing.device_profile,
           device_history: importedAccount.device_history ?? existing.device_history,
@@ -923,6 +926,13 @@ export async function importCloudAccounts(
         await CloudAccountRepo.addAccount(updatedAccount);
         result.updated++;
       } else {
+        if (!importedAccount.token) {
+          result.errors.push(
+            `Failed to import ${importedAccount.email}: export file does not include tokens`,
+          );
+          continue;
+        }
+
         const newAccount: CloudAccount = {
           id: uuidv4(),
           provider: importedAccount.provider,

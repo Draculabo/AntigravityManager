@@ -40,6 +40,8 @@ const SQLITE_RETRY_DELAY_MS = 150;
 const SQLITE_MAX_RETRIES = 3;
 const DEVICE_PAYLOAD_SCHEMA_VERSION = 1;
 const ACTIVE_ACCOUNT_SETTING_PREFIX = 'active_cloud_account';
+export const AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE =
+  'Antigravity CLI accounts are stored in the system credential store and cannot be synced from IDE SQLite state.';
 type DrizzleExecutor = Pick<
   BetterSQLite3Database<typeof drizzleSchema>,
   'insert' | 'update' | 'delete' | 'select'
@@ -1103,7 +1105,7 @@ export class CloudAccountRepo {
     orm: BetterSQLite3Database<typeof drizzleSchema>,
     account: CloudAccount,
   ): void {
-    const oauthToken = ProtobufUtils.createUnifiedOAuthToken(
+    const oauthInfo = ProtobufUtils.createOAuthInfo(
       account.token.access_token,
       account.token.refresh_token,
       account.token.expiry_timestamp,
@@ -1119,8 +1121,38 @@ export class CloudAccountRepo {
     const normalizedProjectId = account.token.project_id?.trim();
 
     orm.transaction((transaction) => {
+      const existingOauthToken = this.getItemValue(
+        transaction,
+        'antigravityUnifiedStateSync.oauthToken',
+        'ide.itemTable.antigravityUnifiedStateSync.oauthToken',
+      );
+      let oauthToken = ProtobufUtils.createUnifiedStateEntry(
+        'oauthTokenInfoSentinelKey',
+        oauthInfo,
+      );
+      if (existingOauthToken) {
+        try {
+          const existingTopic = new Uint8Array(Buffer.from(existingOauthToken, 'base64'));
+          const mergedTopic = ProtobufUtils.replaceUnifiedTopicEntry(
+            existingTopic,
+            'oauthTokenInfoSentinelKey',
+            oauthInfo,
+          );
+          oauthToken = Buffer.from(mergedTopic).toString('base64');
+        } catch (error) {
+          logger.warn(
+            'Failed to merge existing unified OAuth topic; replacing OAuth token entry',
+            error,
+          );
+        }
+      }
+
       this.upsertItemValue(transaction, 'antigravityUnifiedStateSync.oauthToken', oauthToken);
       this.upsertItemValue(transaction, 'antigravityUnifiedStateSync.userStatus', userStatusEntry);
+      transaction
+        .delete(itemTable)
+        .where(eq(itemTable.key, 'jetskiStateSync.agentManagerInitState'))
+        .run();
       if (normalizedProjectId) {
         const projectPayload = ProtobufUtils.createStringValuePayload(normalizedProjectId);
         const projectEntry = ProtobufUtils.createUnifiedStateEntry(
@@ -1220,7 +1252,11 @@ export class CloudAccountRepo {
   }
 
   static shouldInjectTokenIntoCredentialStore(appTarget?: AntigravityAppTarget): boolean {
-    if (resolveAntigravityAppTarget(appTarget) === 'ide') {
+    const resolvedTarget = resolveAntigravityAppTarget(appTarget);
+    if (resolvedTarget === 'agy') {
+      return true;
+    }
+    if (resolvedTarget === 'ide') {
       return false;
     }
 
@@ -1555,6 +1591,10 @@ export class CloudAccountRepo {
   }
 
   static async syncFromIde(appTarget?: AntigravityAppTarget): Promise<CloudAccount | null> {
+    if (resolveAntigravityAppTarget(appTarget) === 'agy') {
+      throw new Error(AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE);
+    }
+
     // Try all possible database paths
     const dbPaths = getAntigravityDbPaths(appTarget);
     logger.info(`SyncLocal: Checking database paths: ${JSON.stringify(dbPaths)}`);

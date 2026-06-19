@@ -31,6 +31,7 @@ import {
   Eye,
   EyeOff,
   Repeat2,
+  Terminal,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
@@ -198,7 +199,11 @@ export function CloudAccountCard({
   const [proxyUrl, setProxyUrl] = useState(account.proxy_url || '');
   const [proxySaved, setProxySaved] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const isActiveAnywhere = !!(account.is_active_classic || account.is_active_ide);
+  const isActiveAnywhere = !!(
+    account.is_active_classic ||
+    account.is_active_ide ||
+    account.is_active_agy
+  );
 
   const getQuotaTextColorClass = (percentage: number) => {
     const quotaStatus = getQuotaStatus(percentage);
@@ -245,6 +250,10 @@ export function CloudAccountCard({
     .sort((a, b) => b[1].percentage - a[1].percentage);
 
   const hasVisibleQuotaModels = geminiModels.length > 0 || claudeModels.length > 0;
+  const quotaGroups = (account.quota?.quota_groups || []).filter(
+    (group) => group.buckets.length > 0,
+  );
+  const hasQuotaGroups = quotaGroups.length > 0;
 
   const renderQuotaModelGroup = (title: string, models: ModelQuotaEntry[]) => {
     if (models.length === 0) return null;
@@ -287,6 +296,76 @@ export function CloudAccountCard({
                   />
                 </div>
               </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderQuotaGroups = () => {
+    if (!hasQuotaGroups) {
+      return null;
+    }
+
+    return (
+      <div className="border-border/60 mt-3 space-y-2 border-t pt-3">
+        <div className="flex items-center gap-1.5 px-2">
+          <span className="text-muted-foreground/70 text-[10px] font-bold tracking-wider uppercase">
+            {t('cloud.card.detailedQuota', 'Detailed quota')}
+          </span>
+          <div className="bg-border/50 h-px flex-1" />
+        </div>
+        {quotaGroups.map((group) => (
+          <div key={group.display_name} className="bg-muted/25 rounded-lg border px-2 py-2">
+            <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-xs font-semibold" title={group.display_name}>
+                {group.display_name || t('cloud.card.quotaGroupUnknown', 'Quota group')}
+              </span>
+              {group.description && (
+                <span
+                  className="text-muted-foreground max-w-[45%] truncate text-[9px]"
+                  title={group.description}
+                >
+                  {group.description}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {group.buckets.map((bucket) => {
+                const percentage = Math.round(bucket.remaining_fraction * 100);
+                const bucketLabel = bucket.display_name || bucket.window || bucket.bucket_id;
+
+                return (
+                  <div
+                    key={`${group.display_name}-${bucket.bucket_id}-${bucket.window}`}
+                    className="bg-background/70 rounded-md border px-2 py-1.5"
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground min-w-0 truncate text-[10px] font-bold tracking-wide uppercase">
+                        {bucketLabel}
+                      </span>
+                      <span
+                        className={`font-mono text-[10px] font-bold ${getQuotaTextColorClass(percentage)}`}
+                      >
+                        {percentage}%
+                      </span>
+                    </div>
+                    <div className="bg-muted h-1.5 overflow-hidden rounded-full">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${getQuotaBarColorClass(percentage)}`}
+                        style={{ width: `${clampQuotaPercentage(percentage)}%` }}
+                      />
+                    </div>
+                    <div
+                      className="text-muted-foreground mt-1 truncate text-[9px]"
+                      title={formatResetTimeTitleText(bucket.reset_time)}
+                    >
+                      {formatResetTimeLabelText(bucket.reset_time)}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}
@@ -391,7 +470,7 @@ export function CloudAccountCard({
             {account.email}
           </CardDescription>
 
-          {(account.is_active_classic || account.is_active_ide) && (
+          {(account.is_active_classic || account.is_active_ide || account.is_active_agy) && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {account.is_active_classic && (
                 <span className="flex items-center gap-1 rounded border border-green-500/20 bg-green-500/10 px-1.5 py-0.5 text-[9px] font-bold text-green-600 dark:text-green-400">
@@ -409,6 +488,15 @@ export function CloudAccountCard({
                     <span className="relative inline-flex h-1 w-1 rounded-full bg-indigo-500"></span>
                   </span>
                   {t('cloud.card.ideLabel', 'Antigravity IDE')}
+                </span>
+              )}
+              {account.is_active_agy && (
+                <span className="flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                  <span className="relative flex h-1 w-1">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-1 w-1 rounded-full bg-emerald-500"></span>
+                  </span>
+                  {t('cloud.card.agyLabel', 'Antigravity CLI')}
                 </span>
               )}
             </div>
@@ -577,6 +665,21 @@ export function CloudAccountCard({
                     </Badge>
                   )}
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onSwitch(account.id, 'agy')}
+                  disabled={isSwitching || account.is_active_agy}
+                  className="flex cursor-pointer items-center justify-between py-2 text-xs"
+                >
+                  <span className="flex items-center gap-2">
+                    <Terminal className="text-primary h-3.5 w-3.5" />
+                    <span>{t('account.switchToAgy', 'Switch to Antigravity CLI')}</span>
+                  </span>
+                  {account.is_active_agy && (
+                    <Badge className="h-4 border-none bg-emerald-500/20 px-1 text-[9px] font-semibold text-emerald-600 hover:bg-emerald-500/20">
+                      Active
+                    </Badge>
+                  )}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -584,15 +687,19 @@ export function CloudAccountCard({
 
         <div className="space-y-2">
           {providerGroupingsEnabled ? (
-            providerGroupedQuotaSection
+            <>
+              {providerGroupedQuotaSection}
+              {renderQuotaGroups()}
+            </>
           ) : hasVisibleQuotaModels ? (
             <div className="space-y-3">
               {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
               <div className="pt-1" />
               {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
+              {renderQuotaGroups()}
             </div>
           ) : (
-            emptyQuotaState
+            renderQuotaGroups() || emptyQuotaState
           )}
         </div>
       </CardContent>
@@ -735,7 +842,11 @@ export function CompactCloudAccountCard({
   const { t } = useTranslation();
   const { config } = useAppConfig();
   const [menuOpen, setMenuOpen] = useState(false);
-  const isActiveAnywhere = !!(account.is_active_classic || account.is_active_ide);
+  const isActiveAnywhere = !!(
+    account.is_active_classic ||
+    account.is_active_ide ||
+    account.is_active_agy
+  );
 
   const getQuotaBarColorClass = (percentage: number) => {
     const quotaStatus = getQuotaStatus(percentage);
@@ -808,6 +919,11 @@ export function CompactCloudAccountCard({
           {account.is_active_ide && (
             <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-400">
               IDE
+            </span>
+          )}
+          {account.is_active_agy && (
+            <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+              CLI
             </span>
           )}
           {validationBlockedStatusLabel && (
@@ -924,6 +1040,21 @@ export function CompactCloudAccountCard({
                 </span>
                 {account.is_active_ide && (
                   <Badge className="h-4 border-none bg-indigo-500/20 px-1 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-500/20">
+                    Active
+                  </Badge>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onSwitch(account.id, 'agy')}
+                disabled={isSwitching || account.is_active_agy}
+                className="flex cursor-pointer items-center justify-between py-2 text-xs"
+              >
+                <span className="flex items-center gap-2">
+                  <Terminal className="text-primary h-3.5 w-3.5" />
+                  <span>{t('account.switchToAgy', 'Switch to Antigravity CLI')}</span>
+                </span>
+                {account.is_active_agy && (
+                  <Badge className="h-4 border-none bg-emerald-500/20 px-1 text-[9px] font-semibold text-emerald-600 hover:bg-emerald-500/20">
                     Active
                   </Badge>
                 )}

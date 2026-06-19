@@ -73,6 +73,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
   let failureReason: SwitchFailureReason | null = null;
   let waitExitTimedOut = false;
   let stage = 'close';
+  const isCliTarget = appTarget === 'agy';
   await withTimingTrace(
     'switch.execute',
     {
@@ -82,44 +83,50 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
     },
     async (trace) => {
       try {
-        if (!skipRefreshProcessCache) {
-          await trace.phase('refreshProcessCacheMs', async () => {
-            await refreshAntigravityProcessCache(appTarget);
-          });
-        }
-        await trace.phase('closeMs', async () => {
-          await closeAntigravity(appTarget);
-        });
-        try {
-          await trace.phase('waitExitMs', async () => {
-            await _waitForProcessExit(processExitTimeoutMs, 100, appTarget);
-          });
-        } catch (error) {
-          waitExitTimedOut = true;
-          logger.warn('Process did not exit cleanly within timeout, but proceeding...', error);
-        }
-
-        stage = 'apply';
-        if (applyFingerprint) {
-          if (!targetProfile) {
-            stage = 'missing_profile';
-            throw new Error('Account has no bound identity profile');
-          }
-          trace.phaseSync('applyProfileMs', () => {
-            applyDeviceProfile(targetProfile, appTarget);
-          });
+        if (isCliTarget) {
+          logger.info('Skipping GUI process and device profile steps for agy CLI switch');
         } else {
-          logger.warn(
-            'Identity profile apply is disabled by CRACK_IDENTITY_PROFILE_APPLY_ENABLED / CRACK_DEVICE_FINGERPRINT_ENABLED',
-          );
+          if (!skipRefreshProcessCache) {
+            await trace.phase('refreshProcessCacheMs', async () => {
+              await refreshAntigravityProcessCache(appTarget);
+            });
+          }
+          await trace.phase('closeMs', async () => {
+            await closeAntigravity(appTarget);
+          });
+          try {
+            await trace.phase('waitExitMs', async () => {
+              await _waitForProcessExit(processExitTimeoutMs, 100, appTarget);
+            });
+          } catch (error) {
+            waitExitTimedOut = true;
+            logger.warn('Process did not exit cleanly within timeout, but proceeding...', error);
+          }
+
+          stage = 'apply';
+          if (applyFingerprint) {
+            if (!targetProfile) {
+              stage = 'missing_profile';
+              throw new Error('Account has no bound identity profile');
+            }
+            trace.phaseSync('applyProfileMs', () => {
+              applyDeviceProfile(targetProfile, appTarget);
+            });
+          } else {
+            logger.warn(
+              'Identity profile apply is disabled by CRACK_IDENTITY_PROFILE_APPLY_ENABLED / CRACK_DEVICE_FINGERPRINT_ENABLED',
+            );
+          }
         }
 
         stage = 'switch';
         await trace.phase('performSwitchMs', performSwitch);
-        stage = 'start';
-        await trace.phase('startMs', async () => {
-          await startAntigravity(appTarget);
-        });
+        if (!isCliTarget) {
+          stage = 'start';
+          await trace.phase('startMs', async () => {
+            await startAntigravity(appTarget);
+          });
+        }
         recordSwitchSuccess(scope);
       } catch (error) {
         const reason = toSwitchFailureReason(stage, error);
