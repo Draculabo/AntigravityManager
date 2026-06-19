@@ -5,6 +5,7 @@ import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIServ
 import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchService';
 import { TokenManagerService } from '../../modules/proxy-gateway/server/token-manager.service';
 import { logger } from '../../shared/logging/logger';
+import * as electronMock from 'electron';
 
 // Mock dependencies
 vi.mock('@/modules/cloud-account/persistence/cloudHandler');
@@ -204,6 +205,123 @@ describe('CloudMonitorService', () => {
       // 1 for start (initial), 1 for reset = 2
       expect(setIntervalSpy).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe('CloudMonitorService AI credits alert', () => {
+  let notificationShowSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    CloudMonitorService.resetStateForTesting();
+
+    // Spy on the Notification class exported from the electron mock (same binding used by CloudMonitorService)
+    notificationShowSpy = vi.spyOn(
+      (electronMock as { Notification: typeof electronMock.Notification }).Notification.prototype,
+      'show',
+    );
+  });
+
+  afterEach(() => {
+    CloudMonitorService.stop();
+    vi.useRealTimers();
+    notificationShowSpy.mockRestore();
+  });
+
+  function makeAccount(id: string, email: string, credits?: number) {
+    return {
+      id,
+      email,
+      token: { access_token: 'tok', expiry_timestamp: 9999999999 },
+      quota: credits !== undefined ? { ai_credits: { credits } } : undefined,
+    };
+  }
+
+  function setupPoll(
+    accounts: ReturnType<typeof makeAccount>[],
+    alertEnabled: boolean,
+    threshold: number,
+  ) {
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue(accounts as never);
+    vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue({ models: {} } as never);
+    vi.mocked(GoogleAPIService.fetchAICredits).mockResolvedValue(null as never);
+    vi.mocked(CloudAccountRepo.getSetting).mockImplementation((key: string, def: unknown) => {
+      if (key === 'ai_credits_alert_enabled') return alertEnabled;
+      if (key === 'ai_credits_alert_threshold') return threshold;
+      if (key === 'quota_alert_enabled') return false;
+      if (key === 'language') return 'en';
+      return def;
+    });
+  }
+
+  it('fires a notification when credits are below threshold', async () => {
+    setupPoll([makeAccount('acc1', 'user@example.com', 4000)], true, 5000);
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    expect(notificationShowSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires a notification when credits are exactly at threshold (boundary)', async () => {
+    setupPoll([makeAccount('acc1', 'user@example.com', 5000)], true, 5000);
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    expect(notificationShowSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT fire when credits are above threshold', async () => {
+    setupPoll([makeAccount('acc1', 'user@example.com', 6000)], true, 5000);
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    expect(notificationShowSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire when alert is disabled', async () => {
+    setupPoll([makeAccount('acc1', 'user@example.com', 1000)], false, 5000);
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    expect(notificationShowSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT crash and does NOT fire when account has no ai_credits data', async () => {
+    setupPoll([makeAccount('acc1', 'user@example.com', undefined)], true, 5000);
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    expect(notificationShowSpy).not.toHaveBeenCalled();
+  });
+
+  it('only fires for accounts with credits at or below threshold in multi-account scenario', async () => {
+    setupPoll(
+      [
+        makeAccount('acc1', 'low@example.com', 3000),
+        makeAccount('acc2', 'high@example.com', 8000),
+        makeAccount('acc3', 'exact@example.com', 5000),
+      ],
+      true,
+      5000,
+    );
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(3000); // 3 accounts * 1s sleep each
+    await pollPromise;
+
+    // acc1 (3000 <= 5000) and acc3 (5000 <= 5000) should fire; acc2 (8000 > 5000) should not
+    expect(notificationShowSpy).toHaveBeenCalledTimes(2);
   });
 });
 

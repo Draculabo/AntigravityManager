@@ -206,6 +206,11 @@ const tr = {
       quotaThresholdDesc: 'Uyarının tetikleneceği yüzde değeri',
       saveFailed: 'Bildirim ayarları kaydedilemedi',
       thresholdSaveFailed: 'Eşik ayarı kaydedilemedi',
+      aiCreditsAlert: 'Düşük AI Kredisi Uyarısı',
+      aiCreditsAlertDesc: 'AI kredi bakiyesi belirlenen miktara ulaştığında veya altına düştüğünde bildirim alın',
+      aiCreditsThreshold: 'AI Kredisi Uyarı Eşiği',
+      aiCreditsThresholdDesc: 'Uyarının tetikleneceği kredi miktarı',
+      aiCreditsThresholdSaveFailed: 'AI kredisi eşiği kaydedilemedi',
     },
     proxy: {
       title: 'Üst Akış (Upstream) Proxy',

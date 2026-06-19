@@ -214,6 +214,11 @@ const fr = {
       quotaThresholdDesc: 'Pourcentage en dessous duquel declencher une alerte',
       saveFailed: 'Echec de l enregistrement des parametres de notification',
       thresholdSaveFailed: 'Echec de l enregistrement du seuil',
+      aiCreditsAlert: 'Alerte de credits IA faibles',
+      aiCreditsAlertDesc: 'Recevoir une notification quand le solde de credits IA atteint ou passe sous le seuil defini',
+      aiCreditsThreshold: 'Seuil d alerte de credits IA',
+      aiCreditsThresholdDesc: 'Montant de credits en dessous ou egal auquel declencher une alerte',
+      aiCreditsThresholdSaveFailed: 'Echec de l enregistrement du seuil de credits IA',
     },
     proxy: {
       title: 'Proxy amont',

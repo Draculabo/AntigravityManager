@@ -207,6 +207,11 @@ const en = {
       quotaThresholdDesc: 'Percentage below which to trigger an alert',
       saveFailed: 'Failed to save notification settings',
       thresholdSaveFailed: 'Failed to save threshold setting',
+      aiCreditsAlert: 'Low AI Credits Alert',
+      aiCreditsAlertDesc: 'Get notified when the AI credits balance falls at or below the set amount',
+      aiCreditsThreshold: 'AI Credits Alert Threshold',
+      aiCreditsThresholdDesc: 'Credit amount at or below which to trigger an alert',
+      aiCreditsThresholdSaveFailed: 'Failed to save AI credits threshold setting',
     },
     proxy: {
       title: 'Upstream Proxy',

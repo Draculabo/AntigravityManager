@@ -184,6 +184,11 @@ const zhCn = {
       quotaThresholdDesc: '触发提醒的百分比阈值',
       saveFailed: '保存通知设置失败',
       thresholdSaveFailed: '保存阈值设置失败',
+      aiCreditsAlert: 'AI 积分不足提醒',
+      aiCreditsAlertDesc: '当 AI 积分余额降至或低于设定值时收到提醒',
+      aiCreditsThreshold: 'AI 积分提醒阈值',
+      aiCreditsThresholdDesc: '触发提醒的积分余额阈值',
+      aiCreditsThresholdSaveFailed: '保存 AI 积分阈值设置失败',
     },
     proxy: {
       title: '上游代理',

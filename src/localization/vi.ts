@@ -204,6 +204,11 @@ const vi = {
       quotaThresholdDesc: 'Phần trăm dùng để kích hoạt cảnh báo',
       saveFailed: 'Không thể lưu cài đặt thông báo',
       thresholdSaveFailed: 'Không thể lưu ngưỡng cảnh báo',
+      aiCreditsAlert: 'Cảnh báo tín dụng AI thấp',
+      aiCreditsAlertDesc: 'Nhận thông báo khi số dư tín dụng AI đạt hoặc thấp hơn mức đã đặt',
+      aiCreditsThreshold: 'Ngưỡng cảnh báo tín dụng AI',
+      aiCreditsThresholdDesc: 'Mức tín dụng tại hoặc dưới đó sẽ kích hoạt cảnh báo',
+      aiCreditsThresholdSaveFailed: 'Không thể lưu ngưỡng tín dụng AI',
     },
     proxy: {
       title: 'Proxy trung gian',

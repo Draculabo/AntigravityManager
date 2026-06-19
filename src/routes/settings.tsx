@@ -707,6 +707,63 @@ function SettingsPage() {
                   <span className="text-muted-foreground text-sm">%</span>
                 </div>
               </div>
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label>{t('settings.notifications.aiCreditsAlert')}</Label>
+                  <p className="text-xs text-gray-500">
+                    {t('settings.notifications.aiCreditsAlertDesc')}
+                  </p>
+                </div>
+                <Switch
+                  checked={config?.ai_credits_alert_enabled || false}
+                  onCheckedChange={async (checked) => {
+                    if (config) {
+                      try {
+                        await saveConfig({ ...config, ai_credits_alert_enabled: checked });
+                      } catch {
+                        toast({
+                          title: t('common.error'),
+                          description: t('settings.notifications.saveFailed'),
+                          variant: 'destructive',
+                        });
+                      }
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label>{t('settings.notifications.aiCreditsThreshold')}</Label>
+                  <p className="text-xs text-gray-500">
+                    {t('settings.notifications.aiCreditsThresholdDesc')}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={config?.ai_credits_alert_threshold ?? 5000}
+                    onChange={async (e) => {
+                      const rawValue = e.target.value;
+                      const parsed = parseInt(rawValue, 10);
+                      if (isNaN(parsed) || parsed < 0) return;
+
+                      if (config) {
+                        try {
+                          await saveConfig({ ...config, ai_credits_alert_threshold: parsed });
+                        } catch {
+                          toast({
+                            title: t('common.error'),
+                            description: t('settings.notifications.aiCreditsThresholdSaveFailed'),
+                            variant: 'destructive',
+                          });
+                        }
+                      }
+                    }}
+                    className="w-24 rounded-md border bg-transparent px-2 py-1 text-center text-sm"
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

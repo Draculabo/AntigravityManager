@@ -7,34 +7,52 @@ import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/ac
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/modules/account/types';
 
-type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi' | 'fr';
+type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi' | 'fr' | 'tr';
 
 const CLOUD_MONITOR_NOTIFICATION_TEXT: Record<
   CloudMonitorLanguage,
   {
     lowQuotaTitle: string;
     lowQuotaBody: (email: string, models: string) => string;
+    lowAICreditsTitle: string;
+    lowAICreditsBody: (email: string, credits: number) => string;
   }
 > = {
   en: {
     lowQuotaTitle: 'Low Quota Alert',
     lowQuotaBody: (email, models) => `${email}: ${models} are low on quota`,
+    lowAICreditsTitle: 'Low AI Credits Alert',
+    lowAICreditsBody: (email, credits) => `${email}: AI credits balance is low (${credits})`,
   },
   'zh-CN': {
     lowQuotaTitle: '额度不足提醒',
     lowQuotaBody: (email, models) => `${email}：${models} 的额度较低`,
+    lowAICreditsTitle: 'AI 积分不足提醒',
+    lowAICreditsBody: (email, credits) => `${email}：AI 积分余额不足（${credits}）`,
   },
   ru: {
     lowQuotaTitle: 'Предупреждение о низкой квоте',
     lowQuotaBody: (email, models) => `${email}: низкая квота у ${models}`,
+    lowAICreditsTitle: 'Предупреждение о низком балансе AI-кредитов',
+    lowAICreditsBody: (email, credits) => `${email}: низкий баланс AI-кредитов (${credits})`,
   },
   vi: {
     lowQuotaTitle: 'Cảnh báo quota thấp',
     lowQuotaBody: (email, models) => `${email}: ${models} đang có quota thấp`,
+    lowAICreditsTitle: 'Cảnh báo số dư tín dụng AI thấp',
+    lowAICreditsBody: (email, credits) => `${email}: số dư tín dụng AI thấp (${credits})`,
   },
   fr: {
     lowQuotaTitle: 'Alerte de quota faible',
     lowQuotaBody: (email, models) => `${email} : quota faible pour ${models}`,
+    lowAICreditsTitle: 'Alerte de crédits IA faibles',
+    lowAICreditsBody: (email, credits) => `${email} : solde de crédits IA faible (${credits})`,
+  },
+  tr: {
+    lowQuotaTitle: 'Düşük Kota Uyarısı',
+    lowQuotaBody: (email, models) => `${email}: ${models} için kota düşük`,
+    lowAICreditsTitle: 'Düşük AI Kredisi Uyarısı',
+    lowAICreditsBody: (email, credits) => `${email}: AI kredi bakiyesi düşük (${credits})`,
   },
 };
 
@@ -51,6 +69,9 @@ function getCloudMonitorLanguage(language: string | null | undefined): CloudMoni
   }
   if (normalizedLanguage.startsWith('fr')) {
     return 'fr';
+  }
+  if (normalizedLanguage.startsWith('tr')) {
+    return 'tr';
   }
   return 'en';
 }
@@ -271,7 +292,31 @@ export class CloudMonitorService {
         }
       }
 
-      // 5. Check for Auto-Switch
+      // 5. Check for AI Credits Alerts
+      const aiCreditsAlertEnabled = CloudAccountRepo.getSetting<boolean>(
+        'ai_credits_alert_enabled',
+        false,
+      );
+      const aiCreditsAlertThreshold = CloudAccountRepo.getSetting<number>(
+        'ai_credits_alert_threshold',
+        5000,
+      );
+
+      if (aiCreditsAlertEnabled) {
+        for (const account of accounts) {
+          const credits = account.quota?.ai_credits?.credits;
+          if (credits === undefined || credits === null) continue;
+          if (credits <= aiCreditsAlertThreshold) {
+            new Notification({
+              title: notificationText.lowAICreditsTitle,
+              body: notificationText.lowAICreditsBody(account.email, credits),
+              silent: false,
+            }).show();
+          }
+        }
+      }
+
+      // 6. Check for Auto-Switch
       for (const target of AntigravityAppTargetSchema.options) {
         await AutoSwitchService.checkAndSwitchIfNeeded(target);
       }
