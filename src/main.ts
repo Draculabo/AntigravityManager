@@ -39,6 +39,7 @@ import {
 import { isManualUpdateSnoozed } from '@/modules/app-shell/update/manualUpdatePolicy';
 import type { ManualUpdateInfo } from '@/modules/app-shell/update/types';
 import { getWindowsUpdateBaseUrl } from '@/modules/app-shell/update/windowsUpdateSource';
+import { getQuickObservabilityConfig } from '@/shared/observability/observabilityConfig';
 
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
 
@@ -259,6 +260,12 @@ ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL_URL, async (_event, url: unknown) => {
   await shell.openExternal(url);
 });
 
+ipcMain.handle(IPC_CHANNELS.GET_OBSERVABILITY_CONFIG, () => {
+  return getQuickObservabilityConfig((message, error) => {
+    logger.error(message, error);
+  });
+});
+
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 if (isDev) {
@@ -335,6 +342,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
     autoHideMenuBar: true,
     webPreferences: {
       devTools: inDevelopment,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       nodeIntegrationInSubFrames: false,
