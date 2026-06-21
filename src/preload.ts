@@ -9,7 +9,7 @@ window.addEventListener('message', (event) => {
   }
 });
 
-contextBridge.exposeInMainWorld('electron', {
+const electronBridge = {
   getObservabilityConfig: () => {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_OBSERVABILITY_CONFIG);
   },
@@ -36,4 +36,10 @@ contextBridge.exposeInMainWorld('electron', {
   openExternalUrl: (url: string) => {
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL_URL, url);
   },
-});
+};
+
+if (process.contextIsolated) {
+  contextBridge.exposeInMainWorld('electron', electronBridge);
+} else {
+  window.electron = electronBridge;
+}

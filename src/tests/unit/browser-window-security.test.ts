@@ -3,12 +3,14 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 
 describe('BrowserWindow security settings', () => {
-  it('keeps renderer sandboxed with Node integration disabled', () => {
+  it('uses the same unsandboxed renderer model as Folo for Windows compatibility', () => {
     const mainSource = readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf-8');
 
-    expect(mainSource).toContain('sandbox: true');
-    expect(mainSource).toContain('contextIsolation: true');
-    expect(mainSource).toContain('nodeIntegration: false');
+    expect(mainSource).toContain('sandbox: false');
+    expect(mainSource).toContain('webviewTag: true');
+    expect(mainSource).toContain('webSecurity: !inDevelopment');
+    expect(mainSource).toContain('contextIsolation: false');
+    expect(mainSource).toContain('nodeIntegration: true');
   });
 
   it('does not allow unsafe eval in the renderer content security policy', () => {
@@ -16,5 +18,13 @@ describe('BrowserWindow security settings', () => {
 
     expect(indexHtml).toContain('Content-Security-Policy');
     expect(indexHtml).not.toContain('unsafe-eval');
+  });
+
+  it('does not use no-sandbox or Windows GPU startup switches as the compatibility fix', () => {
+    const mainSource = readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf-8');
+
+    expect(mainSource).toContain("if (process.platform === 'linux')");
+    expect(mainSource).not.toContain("app.commandLine.appendSwitch('no-sandbox')");
+    expect(mainSource).not.toMatch(/process\.platform === 'linux' \|\| process\.platform === 'win32'/);
   });
 });

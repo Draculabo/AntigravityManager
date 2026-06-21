@@ -62,10 +62,6 @@ ipcMain.on(IPC_CHANNELS.CHANGE_LANGUAGE, (event, lang) => {
 
 if (process.platform === 'linux') {
   app.disableHardwareAcceleration();
-  logger.info('Hardware acceleration disabled for Linux startup stability');
-}
-
-if (process.platform === 'linux') {
   app.commandLine.appendSwitch('disable-gpu');
   app.commandLine.appendSwitch('disable-gpu-compositing');
   logger.info('Applied Linux GPU-safe Chromium switches for Antigravity Manager startup');
@@ -342,9 +338,11 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
     autoHideMenuBar: true,
     webPreferences: {
       devTools: inDevelopment,
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
+      sandbox: false,
+      webviewTag: true,
+      webSecurity: !inDevelopment,
+      contextIsolation: false,
+      nodeIntegration: true,
       nodeIntegrationInSubFrames: false,
       preload: preload,
     },
