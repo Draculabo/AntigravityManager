@@ -49,18 +49,15 @@ describe('applyStartupGpuSwitches', () => {
     expect(result.appliedSwitches).toEqual(['disable-gpu', 'disable-gpu-compositing']);
   });
 
-  it('keeps Windows hardware acceleration on by default while disabling GPU compositing', () => {
+  it('applies no startup GPU switches on Windows by default', () => {
     const target = createTarget();
 
     const result = applyStartupGpuSwitches(target, 'win32', {});
 
     expect(target.disableHardwareAcceleration).not.toHaveBeenCalled();
-    expect(target.commandLine.appendSwitch).toHaveBeenCalledOnce();
-    expect(target.commandLine.appendSwitch).toHaveBeenCalledWith(
-      'disable-gpu-compositing',
-    );
+    expect(target.commandLine.appendSwitch).not.toHaveBeenCalled();
     expect(result.disabledHardwareAcceleration).toBe(false);
-    expect(result.appliedSwitches).toEqual(['disable-gpu-compositing']);
+    expect(result.appliedSwitches).toEqual([]);
   });
 
   it('fully disables Windows GPU startup when ANTIGRAVITY_DISABLE_GPU is true', () => {
