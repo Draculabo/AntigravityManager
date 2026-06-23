@@ -16,6 +16,7 @@ import {
   isRunningFromExpectedInstallDir as isRunningFromExpectedInstallDirUtil,
   resolveInstallNoticeLanguage,
 } from './modules/app-shell/utils/installNotice';
+import { applyStartupGpuSwitches } from '@/modules/app-shell/utils/startupGpuSwitches';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { initDatabase } from '@/shared/persistence/database/handler';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
@@ -60,11 +61,13 @@ ipcMain.on(IPC_CHANNELS.CHANGE_LANGUAGE, (event, lang) => {
   setTrayLanguage(lang);
 });
 
-if (process.platform === 'linux') {
-  app.disableHardwareAcceleration();
-  app.commandLine.appendSwitch('disable-gpu');
-  app.commandLine.appendSwitch('disable-gpu-compositing');
-  logger.info('Applied Linux GPU-safe Chromium switches for Antigravity Manager startup');
+const gpuSwitchResult = applyStartupGpuSwitches(app, process.platform, process.env);
+if (gpuSwitchResult.disabledHardwareAcceleration || gpuSwitchResult.appliedSwitches.length > 0) {
+  logger.info(
+    `Applied GPU-safe Chromium startup switches for ${process.platform}: ` +
+      `hardwareAccelerationDisabled=${gpuSwitchResult.disabledHardwareAcceleration}, ` +
+      `switches=[${gpuSwitchResult.appliedSwitches.join(', ')}]`,
+  );
 }
 
 if (squirrelStartup) {

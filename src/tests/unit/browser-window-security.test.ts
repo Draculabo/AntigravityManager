@@ -22,9 +22,16 @@ describe('BrowserWindow security settings', () => {
 
   it('does not use no-sandbox or Windows GPU startup switches as the compatibility fix', () => {
     const mainSource = readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf-8');
+    const gpuSwitchesSource = readFileSync(
+      path.join(process.cwd(), 'src/modules/app-shell/utils/startupGpuSwitches.ts'),
+      'utf-8',
+    );
 
-    expect(mainSource).toContain("if (process.platform === 'linux')");
+    expect(mainSource).toContain('applyStartupGpuSwitches');
+    expect(gpuSwitchesSource).toContain("if (platform === 'linux')");
     expect(mainSource).not.toContain("app.commandLine.appendSwitch('no-sandbox')");
-    expect(mainSource).not.toMatch(/process\.platform === 'linux' \|\| process\.platform === 'win32'/);
+    expect(mainSource).not.toMatch(
+      /process\.platform === 'linux' \|\| process\.platform === 'win32'/,
+    );
   });
 });
