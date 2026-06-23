@@ -42,6 +42,7 @@ export const AppConfigSchema = z.object({
   auto_sync: z.boolean(),
   sync_interval: z.number(), // minutes
   auto_startup: z.boolean(),
+  start_in_tray: z.boolean().default(false),
   error_reporting_enabled: z.boolean(),
   telemetry_enabled: z.boolean().default(true),
   clarity_enabled: z.boolean().default(true),
@@ -78,6 +79,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   auto_sync: false,
   sync_interval: 5,
   auto_startup: false,
+  start_in_tray: false,
   error_reporting_enabled: true,
   telemetry_enabled: true,
   clarity_enabled: true,

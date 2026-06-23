@@ -177,6 +177,8 @@ const vi = {
       description: 'Điều khiển hành vi khởi động cùng hệ thống.',
       auto_startup: 'Khởi động cùng hệ thống',
       auto_startup_desc: 'Chạy khi đăng nhập và ẩn vào khay hệ thống',
+      start_in_tray: 'Khởi động trong khay hệ thống',
+      start_in_tray_desc: 'Khởi động ứng dụng thu nhỏ trong khay hệ thống',
       macos_hint:
         'macOS cần bản ký ứng dụng để Login Items hoạt động. Nếu tự động khởi động thất bại, hãy ký ứng dụng hoặc bật thủ công trong System Settings.',
     },

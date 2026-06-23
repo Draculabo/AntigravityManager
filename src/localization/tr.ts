@@ -178,6 +178,8 @@ const tr = {
       description: 'Sistem başlangıcında uygulamanın nasıl davranacağını kontrol edin.',
       auto_startup: 'Sistemle birlikte başlat',
       auto_startup_desc: 'Oturum açıldığında başlat ve sistem tepsisinde tut',
+      start_in_tray: 'Sistem tepsisinde başlat',
+      start_in_tray_desc: 'Uygulamayı sistem tepsisinde simge durumuna küçültülmüş olarak başlat',
       macos_hint:
         'macOS, Oturum Açma Öğelerinin çalışması için imzalanmış bir uygulama gerektirir. Otomatik başlatma başarısız olursa, lütfen uygulamayı imzalayın veya Sistem Ayarlarından manuel olarak etkinleştirin.',
     },

@@ -14,8 +14,8 @@ function getLinuxAutoStartPath() {
 }
 
 export function isAutoStartLaunch(argv = process.argv) {
-  if (process.platform === 'linux') {
-    return argv.includes(AUTO_START_ARG);
+  if (argv.includes(AUTO_START_ARG)) {
+    return true;
   }
 
   if (process.platform === 'win32' || process.platform === 'darwin') {

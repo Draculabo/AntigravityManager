@@ -573,7 +573,7 @@ app
     const config = ConfigManager.loadConfig();
     startupConfig = config;
     syncAutoStart(config);
-    shouldStartHidden = isAutoStartLaunch() && config.auto_startup;
+    shouldStartHidden = isAutoStartLaunch() && config.auto_startup && config.start_in_tray;
     if (shouldStartHidden) {
       logger.info('Startup: Auto-start detected, window will start hidden');
     }

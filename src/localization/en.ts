@@ -180,6 +180,8 @@ const en = {
       description: 'Control application launch behavior at system startup.',
       auto_startup: 'Start with system',
       auto_startup_desc: 'Launch at sign-in and keep the app in the system tray',
+      start_in_tray: 'Start in tray',
+      start_in_tray_desc: 'Start the application minimized in the system tray',
       macos_hint:
         'macOS requires a signed app for Login Items to work. If auto-start fails, please sign the app or enable it manually in System Settings.',
     },

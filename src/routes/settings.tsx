@@ -525,6 +525,23 @@ function SettingsPage() {
                     }}
                   />
                 </div>
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-1">
+                    <Label>{t('settings.startup.start_in_tray')}</Label>
+                    <p className="text-xs text-gray-500">
+                      {t('settings.startup.start_in_tray_desc')}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={config?.start_in_tray || false}
+                    disabled={!config?.auto_startup}
+                    onCheckedChange={async (checked) => {
+                      if (config) {
+                        await saveConfig({ ...config, start_in_tray: checked });
+                      }
+                    }}
+                  />
+                </div>
                 {isMac && (
                   <p className="text-muted-foreground text-xs">
                     {t('settings.startup.macos_hint')}

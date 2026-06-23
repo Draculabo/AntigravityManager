@@ -161,6 +161,8 @@ const zhCn = {
       description: '控制系统启动时的应用行为。',
       auto_startup: '随系统启动',
       auto_startup_desc: '登录时自动启动并保持在托盘里',
+      start_in_tray: '启动时最小化到系统托盘',
+      start_in_tray_desc: '在系统托盘中最小化启动应用程序',
       macos_hint: 'macOS 需要应用已签名才可生效。如自启动失败，请自行签名或在系统设置中手动启用。',
     },
     privacy: {
