@@ -186,7 +186,7 @@ const fr = {
       auto_startup: 'Demarrer avec le systeme',
       auto_startup_desc: 'Lancer a la connexion et garder l app dans la zone de notification',
       start_in_tray: 'Demarrer dans la zone de notification',
-      start_in_tray_desc: 'Demarrer l\'application reduite dans la zone de notification',
+      start_in_tray_desc: "Demarrer l'application reduite dans la zone de notification",
       macos_hint:
         'macOS exige une app signee pour que les elements de connexion fonctionnent. Si le demarrage automatique echoue, signez l app ou activez-la manuellement dans les reglages systeme.',
     },
@@ -217,7 +217,8 @@ const fr = {
       saveFailed: 'Echec de l enregistrement des parametres de notification',
       thresholdSaveFailed: 'Echec de l enregistrement du seuil',
       aiCreditsAlert: 'Alerte de credits IA faibles',
-      aiCreditsAlertDesc: 'Recevoir une notification quand le solde de credits IA atteint ou passe sous le seuil defini',
+      aiCreditsAlertDesc:
+        'Recevoir une notification quand le solde de credits IA atteint ou passe sous le seuil defini',
       aiCreditsThreshold: 'Seuil d alerte de credits IA',
       aiCreditsThresholdDesc: 'Montant de credits en dessous ou egal auquel declencher une alerte',
       aiCreditsThresholdSaveFailed: 'Echec de l enregistrement du seuil de credits IA',
