@@ -2,6 +2,17 @@
 
 # Changelog
 
+## [0.19.0](https://github.com/Draculabo/AntigravityManager/compare/v0.18.1...v0.19.0) (2026-06-23)
+
+### ✨ Features
+
+* add start in tray option with localization ([#211](https://github.com/Draculabo/AntigravityManager/issues/211)) ([afa8bf4](https://github.com/Draculabo/AntigravityManager/commit/afa8bf491700b8cc8de2879593560323e876df02))
+
+### 🐛 Bug Fixes
+
+* opt-in GPU-safe Chromium switches to stop Windows white-screen-then-close startup crash ([#212](https://github.com/Draculabo/AntigravityManager/issues/212)) ([0194b20](https://github.com/Draculabo/AntigravityManager/commit/0194b20bd7ec59f938c39d248acde58311ef5c23))
+* tolerate missing storage.json for credential-store switches ([e130ba6](https://github.com/Draculabo/AntigravityManager/commit/e130ba6aed9f431548b583b8ecc3a851f9f7ba7a))
+
 ## [0.18.1](https://github.com/Draculabo/AntigravityManager/compare/v0.18.0...v0.18.1) (2026-06-21)
 
 ### 🐛 Bug Fixes
