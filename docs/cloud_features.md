@@ -14,6 +14,7 @@ This document explains the cloud AI account management and switching capabilitie
 ### 1.2 Real-Time Quota Monitoring
 
 - **Multi-model support**: Track quota usage for models such as `gemini-pro`, `claude-3-5-sonnet`, and more.
+- **Grouped quota support**: Track shared quota buckets returned by `retrieveUserQuotaSummary`, including Claude/GPT third-party quota groups.
 - **Visual indicators**: Use progress bars and color states (green/yellow/red) to show remaining quota percentage.
 - **Auto/manual refresh**: Support manual quota refresh; the system also checks quota automatically before switching.
 
@@ -65,14 +66,16 @@ The backend exposes the following oRPC interfaces via `src/ipc/cloud`:
 
 ### 2.3 Token Injection Mechanism (`ProtobufUtils`)
 
-The IDE stores authentication data in the `ItemTable` table of `state.vscdb`, under the key `jetskiStateSync.agentManagerInitState`.
-The value is Base64-encoded Protobuf binary.
+The IDE stores authentication data in the `ItemTable` table of `state.vscdb`.
+Older versions use `jetskiStateSync.agentManagerInitState`; newer versions use unified state keys such as `antigravityUnifiedStateSync.oauthToken`.
+Values are Base64-encoded Protobuf binary.
 
-We implemented `src/utils/protobuf.ts`, which can:
+We implemented `src/shared/serialization/protobuf.ts`, which can:
 
 1. **Decode**: Parse Varint and length-delimited fields.
 2. **Modify**: Locate and remove old Field 6 (`OAuthTokenInfo`).
-3. **Rebuild**: Build a new Field 6 using new access/refresh tokens and insert it.
+3. **Merge**: Replace only the OAuth topic entry inside unified state while preserving unrelated topic entries.
+4. **Rebuild**: Build a new Field 6 using new access/refresh tokens and insert it for legacy state.
 
 ### 2.4 Switching Workflow
 
@@ -85,7 +88,7 @@ We implemented `src/utils/protobuf.ts`, which can:
 ### 2.5 Auto-Switch Logic (`AutoSwitchService`)
 
 1. **Monitor**: `CloudMonitorService` polls quotas for all accounts every 5 minutes.
-2. **Evaluate**: If all key model quotas of the active account are below `5%`, or status is `rate_limited`.
+2. **Evaluate**: If all key model quotas or shared grouped quota buckets of the active account are below `5%`, or status is `rate_limited`.
 3. **Select**: Filter accounts with `active` status and sufficient quota, then sort by remaining quota.
 4. **Execute**: Automatically call `switchCloudAccount` and notify the user.
 
