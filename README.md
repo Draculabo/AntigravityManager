@@ -194,6 +194,7 @@ Download the latest release for your platform from the [Releases](https://github
 | Windows (x64/ARM64) | [.exe installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | macOS | [.dmg installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
 | Linux | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest) |
+| Arch Linux (AUR) | `yay -S antigravity-manager-bin` |
 | NixOS / Nix | `nix run github:Draculabo/AntigravityManager` |
 
 ### ❄️ Nix Integration
