@@ -1,5 +1,4 @@
 import { desc, eq } from 'drizzle-orm';
-import { isString } from 'lodash-es';
 import { logger } from '@/shared/logging/logger';
 import {
   CloudAccount,

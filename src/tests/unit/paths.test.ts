@@ -106,6 +106,15 @@ describe('Path Utilities', () => {
   });
 
   it('should get correct executable path', async () => {
+    vi.spyOn(fs, 'existsSync').mockImplementation((candidate) => {
+      const candidateStr = String(candidate);
+      if (process.platform === 'linux') {
+        return candidateStr === '/usr/share/antigravity/antigravity';
+      } else if (process.platform === 'darwin') {
+        return candidateStr === '/Applications/Antigravity.app/Contents/MacOS/Antigravity';
+      }
+      return false;
+    });
     const paths = await import('../../shared/platform/paths');
     const execPath = paths.getAntigravityExecutablePath();
     if (process.platform === 'linux') {

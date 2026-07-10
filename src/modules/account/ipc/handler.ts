@@ -19,7 +19,6 @@ import {
   restoreAccount as dbRestore,
   getCurrentAccountInfo,
 } from '@/shared/persistence/database/handler';
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CredentialStoreInjectionAdapter } from '@/modules/cloud-account/persistence/credential-store-injection-adapter';
 import { writeAntigravityCredentialStoreToken } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
 import {
