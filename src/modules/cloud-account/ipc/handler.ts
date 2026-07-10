@@ -146,29 +146,28 @@ async function ensureEnterpriseProjectReady(account: CloudAccount): Promise<void
     `[OAuth] Account ${account.email} is using enterprise OAuth client but missing project_id. Resolving before switch...`,
   );
 
-  let resolvedProjectId: string | null = null;
   try {
-    resolvedProjectId = await GoogleAPIService.fetchProjectId(
+    const resolvedProjectId = await GoogleAPIService.fetchProjectId(
       account.token.access_token,
       account.proxy_url,
     );
+    const normalizedProjectId = normalizeProjectId(resolvedProjectId ?? undefined);
+    if (normalizedProjectId) {
+      account.token.project_id = normalizedProjectId;
+      await CloudAccountRepo.updateToken(account.id, account.token);
+      logger.info(`[OAuth] Successfully resolved and saved project_id for ${account.email}`);
+    } else {
+      logger.warn(
+        `[OAuth] Project ID is unavailable for ${account.email}; continuing switch without blocking.`,
+      );
+    }
   } catch (error) {
-    throw new Error(
-      `Account ${account.email} cannot be switched safely: missing enterprise project_id and auto-resolve failed (${extractErrorMessage(
+    logger.warn(
+      `[OAuth] Failed to auto-resolve project ID for ${account.email} during switch: ${extractErrorMessage(
         error,
-      )}). Please re-login with a non-enterprise OAuth client or a project-enabled token.`,
+      )}. Continuing switch without blocking.`,
     );
   }
-
-  const normalizedProjectId = normalizeProjectId(resolvedProjectId ?? undefined);
-  if (!normalizedProjectId) {
-    throw new Error(
-      `Account ${account.email} cannot be switched safely: enterprise OAuth requires a valid project_id.`,
-    );
-  }
-
-  account.token.project_id = normalizedProjectId;
-  await CloudAccountRepo.updateToken(account.id, account.token);
 }
 
 async function markAccountStatusFromError(account: CloudAccount, error: unknown): Promise<void> {

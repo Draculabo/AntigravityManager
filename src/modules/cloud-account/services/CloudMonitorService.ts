@@ -304,6 +304,29 @@ export class CloudMonitorService {
         }
       }
 
+      // Check for AI Credits Alerts
+      const aiCreditsAlertEnabled = CloudAccountSettingsStore.getSetting<boolean>(
+        'ai_credits_alert_enabled',
+        false,
+      );
+      const aiCreditsAlertThreshold = CloudAccountSettingsStore.getSetting<number>(
+        'ai_credits_alert_threshold',
+        5000,
+      );
+
+      if (aiCreditsAlertEnabled) {
+        for (const account of accounts) {
+          const credits = account.quota?.ai_credits?.credits;
+          if (typeof credits === 'number' && credits <= aiCreditsAlertThreshold) {
+            new Notification({
+              title: notificationText.lowAICreditsTitle,
+              body: notificationText.lowAICreditsBody(account.email, credits),
+              silent: false,
+            }).show();
+          }
+        }
+      }
+
       // 5. Check for Auto-Switch
       for (const target of AUTO_SWITCH_TARGETS) {
         await AutoSwitchService.checkAndSwitchIfNeeded(target);
