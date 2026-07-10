@@ -279,6 +279,9 @@ export async function addGoogleAccount(
   oauthClientKey?: string,
 ): Promise<CloudAccount> {
   try {
+    logger.info(
+      `[OAuth] addGoogleAccount invoked with clientKey=${oauthClientKey}, authCode length=${authCode?.length}`,
+    );
     if (isString(oauthClientKey) && !isEmpty(oauthClientKey.trim())) {
       setActiveOAuthClient(oauthClientKey);
     } else {
@@ -286,10 +289,14 @@ export async function addGoogleAccount(
     }
 
     // 1. Exchange code for tokens
+    logger.info('[OAuth] Exchanging auth code for tokens...');
     const tokenResp = await GoogleAPIService.exchangeCode(authCode, undefined, oauthClientKey);
+    logger.info(`[OAuth] Token exchange successful for client=${tokenResp.oauth_client_key}`);
 
     // 2. Get User Info
+    logger.info('[OAuth] Requesting user info...');
     const userInfo = await GoogleAPIService.getUserInfo(tokenResp.access_token);
+    logger.info(`[OAuth] Retreived user info: email=${userInfo.email}`);
 
     // 3. Check for existing account
     const existing = await CloudAccountRepo.getAccountByEmail(userInfo.email);

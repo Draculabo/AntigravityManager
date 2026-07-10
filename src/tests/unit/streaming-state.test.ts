@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PartProcessor, StreamingState } from '../../modules/proxy-gateway/antigravity/ClaudeStreamingMapper';
+import {
+  PartProcessor,
+  StreamingState,
+} from '../../modules/proxy-gateway/antigravity/ClaudeStreamingMapper';
 
 describe('StreamingState', () => {
   let state: StreamingState;

@@ -1,15 +1,15 @@
 {
-    "keep": {
-        "days": true,
-        "amount": 30
-    },
-    "auditLog": "\\Users\\stepan\\.antigravity-agent/.app-log-audit.json",
-    "files": [
-        {
-            "date": 1783647934336,
-            "name": "\\Users\\stepan\\.antigravity-agent/app-2026-07-10.log",
-            "hash": "f5e148ec7701669e2b6ba201e38f37a46676b3ceaaddff52dafaa7c9a9fe56bc"
-        }
-    ],
-    "hashType": "sha256"
+  "keep": {
+    "days": true,
+    "amount": 30
+  },
+  "auditLog": "\\Users\\stepan\\.antigravity-agent/.app-log-audit.json",
+  "files": [
+    {
+      "date": 1783647934336,
+      "name": "\\Users\\stepan\\.antigravity-agent/app-2026-07-10.log",
+      "hash": "f5e148ec7701669e2b6ba201e38f37a46676b3ceaaddff52dafaa7c9a9fe56bc"
+    }
+  ],
+  "hashType": "sha256"
 }

@@ -24,10 +24,7 @@ describe('applyStartupGpuSwitches', () => {
 
     expect(target.disableHardwareAcceleration).toHaveBeenCalledOnce();
     expect(target.commandLine.appendSwitch).toHaveBeenNthCalledWith(1, 'disable-gpu');
-    expect(target.commandLine.appendSwitch).toHaveBeenNthCalledWith(
-      2,
-      'disable-gpu-compositing',
-    );
+    expect(target.commandLine.appendSwitch).toHaveBeenNthCalledWith(2, 'disable-gpu-compositing');
     expect(result.disabledHardwareAcceleration).toBe(true);
     expect(result.appliedSwitches).toEqual(['disable-gpu', 'disable-gpu-compositing']);
   });
@@ -41,10 +38,7 @@ describe('applyStartupGpuSwitches', () => {
 
     expect(target.disableHardwareAcceleration).toHaveBeenCalledOnce();
     expect(target.commandLine.appendSwitch).toHaveBeenNthCalledWith(1, 'disable-gpu');
-    expect(target.commandLine.appendSwitch).toHaveBeenNthCalledWith(
-      2,
-      'disable-gpu-compositing',
-    );
+    expect(target.commandLine.appendSwitch).toHaveBeenNthCalledWith(2, 'disable-gpu-compositing');
     expect(result.disabledHardwareAcceleration).toBe(true);
     expect(result.appliedSwitches).toEqual(['disable-gpu', 'disable-gpu-compositing']);
   });
@@ -69,10 +63,7 @@ describe('applyStartupGpuSwitches', () => {
 
     expect(target.disableHardwareAcceleration).toHaveBeenCalledOnce();
     expect(target.commandLine.appendSwitch).toHaveBeenNthCalledWith(1, 'disable-gpu');
-    expect(target.commandLine.appendSwitch).toHaveBeenNthCalledWith(
-      2,
-      'disable-gpu-compositing',
-    );
+    expect(target.commandLine.appendSwitch).toHaveBeenNthCalledWith(2, 'disable-gpu-compositing');
     expect(result.disabledHardwareAcceleration).toBe(true);
     expect(result.appliedSwitches).toEqual(['disable-gpu', 'disable-gpu-compositing']);
   });

@@ -138,7 +138,9 @@ export class QuotaService {
                 continue;
               }
 
-              logger.warn('Quota API returned 403 without project fallback; marking account as forbidden');
+              logger.warn(
+                'Quota API returned 403 without project fallback; marking account as forbidden',
+              );
               return {
                 quotaData: this.createForbiddenQuotaData(subscriptionTier),
                 projectId,

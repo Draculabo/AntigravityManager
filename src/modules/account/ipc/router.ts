@@ -15,10 +15,7 @@ import {
   switchAccount,
   openIdentityStorageFolder,
 } from './handler';
-import {
-  AccountSchema,
-  AntigravityAppTargetSchema,
-} from '@/modules/account/types';
+import { AccountSchema, AntigravityAppTargetSchema } from '@/modules/account/types';
 import {
   DeviceProfileSchema,
   DeviceProfilesSnapshotSchema,

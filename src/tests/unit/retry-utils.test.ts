@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { applyJitter, calculateRetryDelay } from '../../modules/proxy-gateway/antigravity/retry-utils';
+import {
+  applyJitter,
+  calculateRetryDelay,
+} from '../../modules/proxy-gateway/antigravity/retry-utils';
 
 describe('applyJitter', () => {
   it('should return values within ±20% range', () => {

@@ -81,15 +81,13 @@ function isElectronUpdaterEnabled(): boolean {
     return true;
   }
 
-  return (
-    isRunningFromExpectedInstallDir({
-      platform: process.platform,
-      isPackaged: app.isPackaged,
-      localAppData: process.env.LOCALAPPDATA,
-      appName: app.getName(),
-      execPath: process.execPath,
-    })
-  );
+  return isRunningFromExpectedInstallDir({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    localAppData: process.env.LOCALAPPDATA,
+    appName: app.getName(),
+    execPath: process.execPath,
+  });
 }
 
 function getUpdater(): AppUpdater {
