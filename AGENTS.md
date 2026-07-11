@@ -167,7 +167,6 @@ Use `npm` for all commands:
   - Services: `ServiceName.service.ts`
   - Types: `type-name.ts`
 
-
 ## 🏷️ Markdown Writing
 
 - Always specify a language for fenced code blocks; use `plaintext` if unsure.
@@ -219,7 +218,6 @@ export enum BudgetType {
 - Avoid premature optimization: implement simple and direct first; optimize only when justified.
 - Always use braces for control flow (`if`, `while`, and similar statements).
 
-
 ### New Feature Implementation
 
 - Code should be clear, readable, reusable, efficient, and testable.
@@ -258,8 +256,6 @@ Summary / output:
 - \[ ] List deviations from plan and key decisions for human review
 - \[ ] Provide optimization suggestions
 - \[ ] Include full references at the end
-
-
 
 ## 🚨 Local Quality Checks (Optional Flow)
 
