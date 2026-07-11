@@ -139,7 +139,7 @@ export function updateDynamicForwardingRules(oldModel: string, newModel: string)
   if (!isString(oldModel) || !isString(newModel)) {
     return;
   }
-  const normalizedOld = oldModel.trim();
+  const normalizedOld = oldModel.trim().toLowerCase();
   const normalizedNew = newModel.trim();
   if (!normalizedOld || !normalizedNew) {
     return;
@@ -153,7 +153,7 @@ export function updateDynamicForwardingRules(oldModel: string, newModel: string)
 }
 
 export function getDynamicForwardingTarget(modelId: string): string | undefined {
-  return DYNAMIC_MODEL_FORWARDING_RULES.get(modelId);
+  return DYNAMIC_MODEL_FORWARDING_RULES.get(modelId.trim().toLowerCase());
 }
 
 export function getAllDynamicModels(
@@ -347,5 +347,5 @@ function shouldHideDeprecatedModelFromList(modelId: string): boolean {
 
 function shouldHideNonChatModelFromOpenAIList(modelId: string): boolean {
   const normalized = modelId.toLowerCase();
-  return normalized.includes('-image') || normalized.includes('image-');
+  return /(^|-)image($|-)/.test(normalized);
 }

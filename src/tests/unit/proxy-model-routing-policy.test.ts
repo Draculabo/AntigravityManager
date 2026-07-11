@@ -37,7 +37,7 @@ describe('ProxyModelRoutingPolicy', () => {
   });
 
   it('applies dynamic deprecated-model forwarding to quota-provided targets', () => {
-    updateDynamicForwardingRules('gemini-deprecated-test', 'gemini-future-test');
+    updateDynamicForwardingRules('Gemini-Deprecated-Test', 'gemini-future-test');
     const policy = new ProxyModelRoutingPolicy();
 
     expect(policy.resolveTargetModel('gemini-deprecated-test')).toBe('gemini-future-test');

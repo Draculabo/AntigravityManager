@@ -19,7 +19,13 @@ describe('ProxyController Integration', () => {
     };
     const accountLeaseService = {
       getAllCollectedModels: vi.fn(
-        () => new Set(['gemini-3.5-flash-low', 'gemini-3-flash', 'gemini-3-pro-image']),
+        () =>
+          new Set([
+            'gemini-3.5-flash-low',
+            'gemini-3-flash',
+            'gemini-3-pro-image',
+            'gemini-imagecraft-chat',
+          ]),
       ),
     };
     const controller = new ProxyController(proxyService as any, accountLeaseService as any);
@@ -42,7 +48,8 @@ describe('ProxyController Integration', () => {
         'gpt-oss-120b-medium',
       ]),
     );
-    expect(ids.some((id: string) => id.includes('-image'))).toBe(false);
+    expect(ids).not.toContain('gemini-3-pro-image');
+    expect(ids).toContain('gemini-imagecraft-chat');
   });
 
   it('routes Claude OpenAI requests to protocol parity path', async () => {
