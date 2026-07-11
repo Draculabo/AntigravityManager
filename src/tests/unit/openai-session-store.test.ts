@@ -1,4 +1,4 @@
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { OpenAISessionStore } from '@/modules/proxy-gateway/server/openai-session-store';
 import type {
@@ -36,26 +36,33 @@ function response(content: string): OpenAIChatResponse {
 }
 
 describe('OpenAISessionStore', () => {
-  it('keeps earlier turns when the client sends only the newest message', () => {
+  it('keeps earlier turns when the client sends only the newest message', async () => {
     const store = new OpenAISessionStore();
-    const first = store.prepareRequest(request([{ role: 'user', content: 'first question' }]));
+    const first = await store.prepareRequest(
+      request([{ role: 'user', content: 'first question' }]),
+    );
     store.recordResponse(first, response('first answer'));
 
-    const second = store.prepareRequest(request([{ role: 'user', content: 'second question' }]));
+    const second = await store.prepareRequest(
+      request([{ role: 'user', content: 'second question' }]),
+    );
 
     expect(second.request.messages).toEqual([
       { role: 'user', content: 'first question' },
       { role: 'assistant', content: 'first answer' },
       { role: 'user', content: 'second question' },
     ]);
+    store.abandonRequest(second);
   });
 
-  it('does not duplicate history when the client resends the full conversation', () => {
+  it('does not duplicate history when the client resends the full conversation', async () => {
     const store = new OpenAISessionStore();
-    const first = store.prepareRequest(request([{ role: 'user', content: 'first question' }]));
+    const first = await store.prepareRequest(
+      request([{ role: 'user', content: 'first question' }]),
+    );
     store.recordResponse(first, response('first answer'));
 
-    const second = store.prepareRequest(
+    const second = await store.prepareRequest(
       request([
         { role: 'user', content: 'first question' },
         { role: 'assistant', content: 'first answer' },
@@ -64,27 +71,33 @@ describe('OpenAISessionStore', () => {
     );
 
     expect(second.request.messages).toHaveLength(3);
+    store.abandonRequest(second);
   });
 
-  it('resets or disables history only through explicit session controls', () => {
+  it('resets or disables history only through explicit session controls', async () => {
     const store = new OpenAISessionStore();
-    const first = store.prepareRequest(request([{ role: 'user', content: 'first question' }]));
+    const first = await store.prepareRequest(
+      request([{ role: 'user', content: 'first question' }]),
+    );
     store.recordResponse(first, response('first answer'));
 
-    const reset = store.prepareRequest(
+    const reset = await store.prepareRequest(
       request([{ role: 'user', content: 'new conversation' }], { session_reset: true }),
     );
-    const disabled = store.prepareRequest(
+    const disabled = await store.prepareRequest(
       request([{ role: 'user', content: 'stateless' }], { session_store: false }),
     );
 
     expect(reset.request.messages).toEqual([{ role: 'user', content: 'new conversation' }]);
     expect(disabled.shouldStore).toBe(false);
+    store.abandonRequest(reset);
   });
 
   it('reconstructs streamed tool calls for the next turn', async () => {
     const store = new OpenAISessionStore();
-    const prepared = store.prepareRequest(request([{ role: 'user', content: 'check weather' }]));
+    const prepared = await store.prepareRequest(
+      request([{ role: 'user', content: 'check weather' }]),
+    );
     const stream = of(
       'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"weather","arguments":"{\\"city\\":"}}]}}]}\n\n',
       'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"Samara\\"}"}}]}}]}\n\n',
@@ -92,7 +105,7 @@ describe('OpenAISessionStore', () => {
     );
 
     await consume(store.recordStreamResponse(prepared, stream));
-    const next = store.prepareRequest(
+    const next = await store.prepareRequest(
       request([{ role: 'tool', tool_call_id: 'call-1', content: 'sunny' }]),
     );
 
@@ -107,11 +120,12 @@ describe('OpenAISessionStore', () => {
         },
       ],
     });
+    store.abandonRequest(next);
   });
 
-  it('keeps stored history within the configured character budget', () => {
+  it('keeps stored history within the configured character budget', async () => {
     const store = new OpenAISessionStore({ maxHistoryChars: 120 });
-    const first = store.prepareRequest(
+    const first = await store.prepareRequest(
       request([
         { role: 'system', content: 'stable instructions' },
         { role: 'user', content: 'x'.repeat(100) },
@@ -119,7 +133,7 @@ describe('OpenAISessionStore', () => {
     );
     store.recordResponse(first, response('y'.repeat(100)));
 
-    const next = store.prepareRequest(request([{ role: 'user', content: 'latest' }]));
+    const next = await store.prepareRequest(request([{ role: 'user', content: 'latest' }]));
     const serializedLength = next.request.messages.reduce(
       (total, message) => total + JSON.stringify(message).length,
       0,
@@ -131,6 +145,73 @@ describe('OpenAISessionStore', () => {
       content: 'stable instructions',
     });
     expect(next.request.messages.at(-1)).toEqual({ role: 'user', content: 'latest' });
+    store.abandonRequest(next);
+  });
+
+  it('serializes concurrent turns that use the same session ID', async () => {
+    const store = new OpenAISessionStore();
+    const first = await store.prepareRequest(
+      request([{ role: 'user', content: 'first question' }]),
+    );
+    let secondPrepared = false;
+    const secondPromise = store
+      .prepareRequest(request([{ role: 'user', content: 'second question' }]))
+      .then((prepared) => {
+        secondPrepared = true;
+        return prepared;
+      });
+
+    await Promise.resolve();
+    expect(secondPrepared).toBe(false);
+
+    store.recordResponse(first, response('first answer'));
+    const second = await secondPromise;
+
+    expect(second.request.messages).toEqual([
+      { role: 'user', content: 'first question' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'second question' },
+    ]);
+    store.abandonRequest(second);
+  });
+
+  it('does not serialize requests from different session IDs', async () => {
+    const store = new OpenAISessionStore();
+    const first = await store.prepareRequest(request([{ role: 'user', content: 'first session' }]));
+    const second = await store.prepareRequest(
+      request([{ role: 'user', content: 'second session' }], { session_id: 'session-2' }),
+    );
+
+    expect(second.request.messages).toEqual([{ role: 'user', content: 'second session' }]);
+    store.abandonRequest(first);
+    store.abandonRequest(second);
+  });
+
+  it('releases a queued session when a request is abandoned', async () => {
+    const store = new OpenAISessionStore();
+    const first = await store.prepareRequest(request([{ role: 'user', content: 'failed turn' }]));
+    const secondPromise = store.prepareRequest(request([{ role: 'user', content: 'retry turn' }]));
+
+    store.abandonRequest(first);
+    const second = await secondPromise;
+
+    expect(second.request.messages).toEqual([{ role: 'user', content: 'retry turn' }]);
+    store.abandonRequest(second);
+  });
+
+  it('releases a queued session when a stream fails', async () => {
+    const store = new OpenAISessionStore();
+    const first = await store.prepareRequest(request([{ role: 'user', content: 'stream turn' }]));
+    const stream = store.recordStreamResponse(
+      first,
+      throwError(() => new Error('stream failed')),
+    );
+
+    await expect(consume(stream)).rejects.toThrow('stream failed');
+    const second = await store.prepareRequest(request([{ role: 'user', content: 'next turn' }]));
+
+    expect(second.request.messages).toEqual([{ role: 'user', content: 'next turn' }]);
+    store.abandonRequest(second);
   });
 });
 

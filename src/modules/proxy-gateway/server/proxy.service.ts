@@ -692,14 +692,25 @@ export class ProxyService {
   async handleChatCompletions(
     request: OpenAIChatRequest,
   ): Promise<OpenAIChatResponse | Observable<string>> {
-    const preparedSessionRequest = this.openaiSessionStore.prepareRequest(request);
+    const preparedSessionRequest = await this.openaiSessionStore.prepareRequest(request);
+    try {
+      return await this.handlePreparedChatCompletions(preparedSessionRequest);
+    } catch (error) {
+      this.openaiSessionStore.abandonRequest(preparedSessionRequest);
+      throw error;
+    }
+  }
+
+  private async handlePreparedChatCompletions(
+    preparedSessionRequest: PreparedOpenAISessionRequest,
+  ): Promise<OpenAIChatResponse | Observable<string>> {
     const effectiveRequest = preparedSessionRequest.request;
     const sessionKey = this.extractOpenAISessionKey(effectiveRequest);
 
     const targetModel = this.resolveTargetModel(effectiveRequest.model);
     const extraHeaders = this.createModelSpecificHeaders(effectiveRequest.model);
     this.logger.log(
-      `OpenAI-compatible request received: model=${effectiveRequest.model}, mappedModel=${targetModel}, stream=${effectiveRequest.stream}, session=${preparedSessionRequest.sessionId ?? 'none'}`,
+      `OpenAI-compatible request received: model=${effectiveRequest.model}, mappedModel=${targetModel}, stream=${effectiveRequest.stream}, session=${preparedSessionRequest.shouldStore ? 'enabled' : 'none'}`,
     );
 
     // Retry loop for account selection

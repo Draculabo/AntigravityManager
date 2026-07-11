@@ -23,6 +23,7 @@ export interface PreparedOpenAISessionRequest {
   sessionId?: string;
   shouldStore: boolean;
   newMessages: OpenAIMessage[];
+  releaseSession: () => void;
 }
 
 interface MergeResult {
@@ -55,6 +56,7 @@ const DEFAULT_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
  */
 export class OpenAISessionStore {
   private readonly sessions = new Map<string, SessionState>();
+  private readonly sessionTails = new Map<string, Promise<void>>();
   private readonly maxHistoryChars: number;
   private readonly maxSessions: number;
   private readonly sessionTtlMs: number;
@@ -65,41 +67,61 @@ export class OpenAISessionStore {
     this.sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
   }
 
-  prepareRequest(request: OpenAIChatRequest): PreparedOpenAISessionRequest {
+  async prepareRequest(request: OpenAIChatRequest): Promise<PreparedOpenAISessionRequest> {
     const sessionId = this.extractSessionId(request);
     if (!sessionId || this.isStoreDisabled(request)) {
-      return { request, shouldStore: false, newMessages: [] };
+      return {
+        request,
+        shouldStore: false,
+        newMessages: [],
+        releaseSession: () => undefined,
+      };
     }
 
-    this.pruneExpiredSessions();
-    if (this.shouldResetSession(request)) {
-      this.sessions.delete(sessionId);
+    const releaseSession = await this.acquireSession(sessionId);
+    try {
+      this.pruneExpiredSessions();
+      if (this.shouldResetSession(request)) {
+        this.sessions.delete(sessionId);
+      }
+
+      const state = this.getOrCreateSession(sessionId);
+      const incomingMessages = [
+        ...this.extractBootstrapMessages(request),
+        ...this.cloneMessages(request.messages ?? []),
+      ];
+      const merged = this.mergeMessages(state.messages, incomingMessages);
+      state.lastAccessedAt = Date.now();
+      this.enforceMaxSessions();
+
+      return {
+        request: {
+          ...request,
+          messages: merged.messages,
+          extra: this.cleanSessionControls(request.extra, sessionId),
+        },
+        sessionId,
+        shouldStore: true,
+        newMessages: merged.newMessages,
+        releaseSession,
+      };
+    } catch (error) {
+      releaseSession();
+      throw error;
     }
-
-    const state = this.getOrCreateSession(sessionId);
-    const incomingMessages = [
-      ...this.extractBootstrapMessages(request),
-      ...this.cloneMessages(request.messages ?? []),
-    ];
-    const merged = this.mergeMessages(state.messages, incomingMessages);
-    state.lastAccessedAt = Date.now();
-    this.enforceMaxSessions();
-
-    return {
-      request: {
-        ...request,
-        messages: merged.messages,
-        extra: this.cleanSessionControls(request.extra, sessionId),
-      },
-      sessionId,
-      shouldStore: true,
-      newMessages: merged.newMessages,
-    };
   }
 
   recordResponse(prepared: PreparedOpenAISessionRequest, response: OpenAIChatResponse): void {
-    const assistantMessage = this.assistantMessageFromResponse(response);
-    this.commitMessages(prepared, assistantMessage ? [assistantMessage] : []);
+    try {
+      const assistantMessage = this.assistantMessageFromResponse(response);
+      this.commitMessages(prepared, assistantMessage ? [assistantMessage] : []);
+    } finally {
+      prepared.releaseSession();
+    }
+  }
+
+  abandonRequest(prepared: PreparedOpenAISessionRequest): void {
+    prepared.releaseSession();
   }
 
   recordStreamResponse(
@@ -120,16 +142,57 @@ export class OpenAISessionStore {
           this.accumulateStreamChunk(chunk, assistant);
           subscriber.next(chunk);
         },
-        error: (error) => subscriber.error(error),
+        error: (error) => {
+          prepared.releaseSession();
+          subscriber.error(error);
+        },
         complete: () => {
-          const assistantMessage = this.assistantMessageFromStream(assistant);
-          this.commitMessages(prepared, assistantMessage ? [assistantMessage] : []);
-          subscriber.complete();
+          try {
+            const assistantMessage = this.assistantMessageFromStream(assistant);
+            this.commitMessages(prepared, assistantMessage ? [assistantMessage] : []);
+            subscriber.complete();
+          } catch (error) {
+            subscriber.error(error);
+          } finally {
+            prepared.releaseSession();
+          }
         },
       });
 
-      return () => subscription.unsubscribe();
+      return () => {
+        subscription.unsubscribe();
+        prepared.releaseSession();
+      };
     });
+  }
+
+  /**
+   * Serialize turns within one conversation so every request observes the response from the
+   * preceding turn. Separate session IDs retain full concurrency.
+   */
+  private async acquireSession(sessionId: string): Promise<() => void> {
+    const previous = this.sessionTails.get(sessionId) ?? Promise.resolve();
+    let resolveCurrent: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+      resolveCurrent = resolve;
+    });
+    const tail = previous.then(() => current);
+    this.sessionTails.set(sessionId, tail);
+    await previous;
+
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      resolveCurrent();
+      void tail.then(() => {
+        if (this.sessionTails.get(sessionId) === tail) {
+          this.sessionTails.delete(sessionId);
+        }
+      });
+    };
   }
 
   private commitMessages(

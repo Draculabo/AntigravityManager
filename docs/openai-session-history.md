@@ -20,6 +20,10 @@ stored user, assistant, and tool-call messages before forwarding the request ups
 Use an unguessable ID per logical conversation. Requests that share a `session_id` intentionally share
 the same history.
 
+Requests for the same session are processed in order. A later turn waits until the preceding response
+has completed, including consumption or cancellation of a streaming response. Different session IDs
+remain independent and can run concurrently.
+
 ## Controls
 
 - `session_reset: true` clears the stored history before the current turn.
@@ -30,6 +34,10 @@ the same history.
 History is process-local, expires after six hours of inactivity, and is bounded by both session count
 and serialized character size. Restarting Antigravity Manager clears it. Use client-managed `messages`
 when history must survive restarts or be stored durably.
+
+The gateway uses `session_id` as the sole history key and does not authenticate ownership of that ID.
+Treat it as a secret, keep the gateway bound to a trusted interface or place authentication in front of
+it, and never reuse a session ID between clients that must not share context.
 
 This is an Antigravity extension, not a standard Chat Completions field. The standard OpenAI guidance
 is to manage Chat Completions history in the client or use the stateful Responses and Conversations
