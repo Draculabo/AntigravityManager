@@ -232,7 +232,8 @@ export class CloudMonitorService {
           }
 
           await new Promise((r) => setTimeout(r, 1000));
-          const quota = await GoogleAPIService.fetchQuota(accessToken, account.proxy_url);
+          const fetchedQuota = await GoogleAPIService.fetchQuota(accessToken, account.proxy_url);
+          const quota = { ...fetchedQuota };
           const previousAICredits = account.quota?.ai_credits;
 
           try {
