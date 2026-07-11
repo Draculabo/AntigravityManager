@@ -1,5 +1,25 @@
 const modelSpecs = {
   models: {
+    'gemini-3.5-flash-high': {
+      max_output_tokens: 65536,
+      thinking_budget: 10000,
+      is_thinking: true,
+    },
+    'gemini-3.5-flash-medium': {
+      max_output_tokens: 65536,
+      thinking_budget: 4000,
+      is_thinking: true,
+    },
+    'gemini-3.5-flash-low': {
+      max_output_tokens: 65536,
+      thinking_budget: 1000,
+      is_thinking: true,
+    },
+    'gemini-3.5-flash-extra-low': {
+      max_output_tokens: 65536,
+      thinking_budget: 1000,
+      is_thinking: true,
+    },
     'gemini-3-flash': {
       max_output_tokens: 65536,
       thinking_budget: 32768,

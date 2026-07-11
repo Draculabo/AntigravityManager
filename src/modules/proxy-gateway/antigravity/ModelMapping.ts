@@ -1,18 +1,37 @@
 import { isEmpty, isString } from 'lodash-es';
 import { logger } from '@/shared/logging/logger';
 
+const PUBLIC_MODEL_PRESET_DISPLAY_NAMES = {
+  'gemini-3.5-flash-medium': 'Gemini 3.5 Flash (Medium)',
+  'gemini-3.5-flash-high': 'Gemini 3.5 Flash (High)',
+  'gemini-3.5-flash-low': 'Gemini 3.5 Flash (Low)',
+  'gemini-3.1-pro-low': 'Gemini 3.1 Pro (Low)',
+  'gemini-3.1-pro-high': 'Gemini 3.1 Pro (High)',
+  'claude-sonnet-4-6-thinking': 'Claude Sonnet 4.6 (Thinking)',
+  'claude-opus-4-6-thinking': 'Claude Opus 4.6 (Thinking)',
+  'gpt-oss-120b-medium': 'GPT-OSS 120B (Medium)',
+} as const;
+
+const PUBLIC_MODEL_BY_DISPLAY_NAME = new Map(
+  Object.entries(PUBLIC_MODEL_PRESET_DISPLAY_NAMES).map(([modelId, displayName]) => [
+    displayName.toLowerCase(),
+    modelId,
+  ]),
+);
+
 const PUBLIC_SUPPORTED_MODELS = [
-  'gemini-3.1-pro-high',
-  'gemini-3.1-pro-low',
+  ...Object.keys(PUBLIC_MODEL_PRESET_DISPLAY_NAMES),
   'gemini-3-flash',
-  'claude-sonnet-4-6-thinking',
-  'claude-opus-4-6-thinking',
 ] as const;
 
 const CLAUDE_TO_GEMINI: Record<string, string> = {
   // Directly supported models
   'claude-sonnet-4-6-thinking': 'claude-sonnet-4-6-thinking',
   'claude-opus-4-6-thinking': 'claude-opus-4-6-thinking',
+  'gemini-3.5-flash-high': 'gemini-3.5-flash-high',
+  'gemini-3.5-flash-medium': 'gemini-3.5-flash-medium',
+  'gemini-3.5-flash-low': 'gemini-3.5-flash-low',
+  'gemini-3.5-flash-extra-low': 'gemini-3.5-flash-extra-low',
   'gemini-3.1-pro-low': 'gemini-3.1-pro-low',
   'gemini-3.1-pro-high': 'gemini-3.1-pro-high',
   'gemini-3-flash': 'gemini-3-flash',
@@ -83,6 +102,21 @@ export const MODEL_LIST_CREATED_AT = 1770652800;
 
 export const MODEL_LIST_OWNER = 'antigravity';
 
+function collectDynamicModelIds(dynamicModelIds?: Iterable<string>): Set<string> {
+  const modelIds = new Set<string>();
+  if (!dynamicModelIds) {
+    return modelIds;
+  }
+
+  for (const dynamicModelId of dynamicModelIds) {
+    if (isString(dynamicModelId) && !isEmpty(dynamicModelId.trim())) {
+      modelIds.add(dynamicModelId.trim());
+    }
+  }
+
+  return modelIds;
+}
+
 const GEMINI_MODEL_ALIASES: Record<string, string> = {
   'gemini-3-pro-image-preview': 'gemini-3-pro-image',
   'gemini-3-flash-preview': 'gemini-3-flash',
@@ -92,6 +126,13 @@ const GEMINI_MODEL_ALIASES: Record<string, string> = {
 
 export function getSupportedModels(): string[] {
   return [...PUBLIC_SUPPORTED_MODELS];
+}
+
+export function getPublicModelIdForDisplayName(displayName: unknown): string | undefined {
+  if (!isString(displayName) || isEmpty(displayName.trim())) {
+    return undefined;
+  }
+  return PUBLIC_MODEL_BY_DISPLAY_NAME.get(displayName.trim().toLowerCase());
 }
 
 export function updateDynamicForwardingRules(oldModel: string, newModel: string): void {
@@ -119,7 +160,8 @@ export function getAllDynamicModels(
   customMapping: Record<string, string> = {},
   dynamicModelIds?: Iterable<string>,
 ): string[] {
-  const modelIds = new Set<string>();
+  const modelIds = collectDynamicModelIds(dynamicModelIds);
+  const shouldUseStaticFallback = modelIds.size === 0;
 
   for (const modelId of getSupportedModels()) {
     modelIds.add(modelId);
@@ -129,25 +171,28 @@ export function getAllDynamicModels(
     modelIds.add(customModelId);
   }
 
-  for (const resolution of DYNAMIC_IMAGE_RESOLUTIONS) {
-    for (const ratio of DYNAMIC_IMAGE_RATIOS) {
-      modelIds.add(`${DYNAMIC_IMAGE_BASE_MODEL}${resolution}${ratio}`);
-    }
-  }
-
-  for (const modelId of EXTRA_DYNAMIC_MODELS) {
-    modelIds.add(modelId);
-  }
-
-  if (dynamicModelIds) {
-    for (const dynamicModelId of dynamicModelIds) {
-      if (isString(dynamicModelId) && !isEmpty(dynamicModelId.trim())) {
-        modelIds.add(dynamicModelId.trim());
+  if (shouldUseStaticFallback) {
+    for (const resolution of DYNAMIC_IMAGE_RESOLUTIONS) {
+      for (const ratio of DYNAMIC_IMAGE_RATIOS) {
+        modelIds.add(`${DYNAMIC_IMAGE_BASE_MODEL}${resolution}${ratio}`);
       }
+    }
+
+    for (const modelId of EXTRA_DYNAMIC_MODELS) {
+      modelIds.add(modelId);
     }
   }
 
   return [...modelIds].filter((id) => !shouldHideDeprecatedModelFromList(id)).sort();
+}
+
+export function getOpenAICompatibleModels(
+  customMapping: Record<string, string> = {},
+  dynamicModelIds?: Iterable<string>,
+): string[] {
+  return getAllDynamicModels(customMapping, dynamicModelIds).filter(
+    (id) => !shouldHideNonChatModelFromOpenAIList(id),
+  );
 }
 
 export function mapClaudeModelToGemini(input: string): string {
@@ -178,7 +223,7 @@ export function resolveModelRoute(
   anthropicMapping: Record<string, string>,
 ): string {
   const dynamicForwarded = getDynamicForwardingTarget(originalModel);
-  if (dynamicForwarded && getSupportedModels().includes(dynamicForwarded)) {
+  if (dynamicForwarded) {
     logger.info(
       `[Router] Dynamic deprecated-model forwarding: ${originalModel} -> ${dynamicForwarded}`,
     );
@@ -298,4 +343,9 @@ function shouldHideDeprecatedModelFromList(modelId: string): boolean {
   }
 
   return false;
+}
+
+function shouldHideNonChatModelFromOpenAIList(modelId: string): boolean {
+  const normalized = modelId.toLowerCase();
+  return normalized.includes('-image') || normalized.includes('image-');
 }

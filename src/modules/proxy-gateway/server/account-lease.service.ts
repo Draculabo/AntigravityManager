@@ -184,11 +184,17 @@ export class AccountLeaseService implements OnModuleInit {
       this.rateLimitTracker.cleanupExpired();
 
       const fullAccountPool = Array.from(this.tokens.entries());
-      const filteredAccountPool = fullAccountPool.filter(
+      const modelCapableAccountPool = this.selectModelCapableAccounts(fullAccountPool, model);
+      if (modelCapableAccountPool.length === 0) {
+        this.logger.warn(`No account advertises requested model: ${model ?? 'unknown'}`);
+        return null;
+      }
+
+      const filteredAccountPool = modelCapableAccountPool.filter(
         ([accountId]) => !excludedAccountIds.has(accountId),
       );
       const candidateAccountPool =
-        filteredAccountPool.length > 0 ? filteredAccountPool : fullAccountPool;
+        filteredAccountPool.length > 0 ? filteredAccountPool : modelCapableAccountPool;
 
       if (filteredAccountPool.length === 0 && excludedAccountIds.size > 0) {
         this.logger.warn(
@@ -222,6 +228,25 @@ export class AccountLeaseService implements OnModuleInit {
       this.logger.error('Failed to select the next account token', error);
       return null;
     }
+  }
+
+  private selectModelCapableAccounts(allTokens: TokenEntry[], model?: string): TokenEntry[] {
+    if (!model) {
+      return allTokens;
+    }
+
+    const available: TokenEntry[] = [];
+    const unknown: TokenEntry[] = [];
+    for (const entry of allTokens) {
+      const availability = this.modelPolicy.getModelAvailabilityForAccount(entry[0], model);
+      if (availability === 'available') {
+        available.push(entry);
+      } else if (availability === 'unknown') {
+        unknown.push(entry);
+      }
+    }
+
+    return available.length > 0 ? available : unknown;
   }
 
   public resetSelectionState(): void {
