@@ -34,6 +34,7 @@ import {
   type ProxyUpstreamFailureClassification,
 } from './proxy-retry-policy';
 import { ProxyModelRoutingPolicy } from './proxy-model-routing-policy';
+import { OpenAISessionStore, type PreparedOpenAISessionRequest } from './openai-session-store';
 
 interface StreamIdleTimer {
   reset: () => void;
@@ -48,6 +49,7 @@ export class ProxyService {
   private readonly generationConstraints: ProxyGenerationConstraints;
   private readonly retryPolicy: ProxyRetryPolicy;
   private readonly modelRoutingPolicy = new ProxyModelRoutingPolicy();
+  private readonly openaiSessionStore = new OpenAISessionStore();
 
   constructor(
     @Inject(AccountLeaseService) private readonly accountLeaseService: AccountLeaseService,
@@ -690,12 +692,14 @@ export class ProxyService {
   async handleChatCompletions(
     request: OpenAIChatRequest,
   ): Promise<OpenAIChatResponse | Observable<string>> {
-    const sessionKey = this.extractOpenAISessionKey(request);
+    const preparedSessionRequest = this.openaiSessionStore.prepareRequest(request);
+    const effectiveRequest = preparedSessionRequest.request;
+    const sessionKey = this.extractOpenAISessionKey(effectiveRequest);
 
-    const targetModel = this.resolveTargetModel(request.model);
-    const extraHeaders = this.createModelSpecificHeaders(request.model);
+    const targetModel = this.resolveTargetModel(effectiveRequest.model);
+    const extraHeaders = this.createModelSpecificHeaders(effectiveRequest.model);
     this.logger.log(
-      `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}`,
+      `OpenAI-compatible request received: model=${effectiveRequest.model}, mappedModel=${targetModel}, stream=${effectiveRequest.stream}, session=${preparedSessionRequest.sessionId ?? 'none'}`,
     );
 
     // Retry loop for account selection
@@ -722,7 +726,7 @@ export class ProxyService {
       );
 
       try {
-        const claudeRequest = this.convertOpenAIToClaude(request);
+        const claudeRequest = this.convertOpenAIToClaude(effectiveRequest);
         const projectId = token.token.project_id ?? '';
         const requestUserAgent = await resolveRequestUserAgent();
         const geminiBody = transformClaudeRequestIn(claudeRequest, projectId, requestUserAgent);
@@ -730,7 +734,7 @@ export class ProxyService {
         this.applyInternalGenerationConstraints(geminiBody, effectiveTargetModel, token.id);
 
         // Use v1internal API (same as Anthropic handler)
-        if (request.stream) {
+        if (effectiveRequest.stream) {
           try {
             const stream = await this.geminiClient.streamGenerateInternal(
               geminiBody,
@@ -738,10 +742,13 @@ export class ProxyService {
               token.token.upstream_proxy_url,
               extraHeaders,
             );
-            return this.processStreamResponse(stream, request.model);
+            return this.recordOpenAIStream(
+              preparedSessionRequest,
+              this.processStreamResponse(stream, effectiveRequest.model),
+            );
           } catch (streamError) {
             this.logger.warn(
-              `Stream path failed for model=${request.model}; falling back to non-stream generation: ${
+              `Stream path failed for model=${effectiveRequest.model}; falling back to non-stream generation: ${
                 streamError instanceof Error ? streamError.message : String(streamError)
               }`,
             );
@@ -758,9 +765,12 @@ export class ProxyService {
             const claudeResponse = transformResponse(response);
             const openaiResponse = this.convertClaudeToOpenAIResponse(
               claudeResponse,
-              request.model,
+              effectiveRequest.model,
             );
-            return this.createSyntheticOpenAIStream(openaiResponse);
+            return this.recordOpenAIStream(
+              preparedSessionRequest,
+              this.createSyntheticOpenAIStream(openaiResponse),
+            );
           }
         } else {
           const response = await this.generateInternalWithStreamFallback(
@@ -777,7 +787,10 @@ export class ProxyService {
           this.logger.log(
             `Transformed Claude response snippet: ${JSON.stringify(claudeResponse).substring(0, 500)}`,
           );
-          return this.convertClaudeToOpenAIResponse(claudeResponse, request.model);
+          return this.recordOpenAIResponse(
+            preparedSessionRequest,
+            this.convertClaudeToOpenAIResponse(claudeResponse, effectiveRequest.model),
+          );
         }
       } catch (err) {
         if (err instanceof Error && this.isProjectContextError(err.message)) {
@@ -785,19 +798,22 @@ export class ProxyService {
             `OpenAI compatibility request hit project context issue, retrying without project: ${err.message}`,
           );
           try {
-            const claudeRequest = this.convertOpenAIToClaude(request);
+            const claudeRequest = this.convertOpenAIToClaude(effectiveRequest);
             const requestUserAgent = await resolveRequestUserAgent();
             const fallbackBody = transformClaudeRequestIn(claudeRequest, '', requestUserAgent);
             fallbackBody.model = effectiveTargetModel;
             this.applyInternalGenerationConstraints(fallbackBody, effectiveTargetModel, token.id);
-            if (request.stream) {
+            if (effectiveRequest.stream) {
               const stream = await this.geminiClient.streamGenerateInternal(
                 fallbackBody,
                 token.token.access_token,
                 token.token.upstream_proxy_url,
                 extraHeaders,
               );
-              return this.processStreamResponse(stream, request.model);
+              return this.recordOpenAIStream(
+                preparedSessionRequest,
+                this.processStreamResponse(stream, effectiveRequest.model),
+              );
             }
 
             const response = await this.generateInternalWithStreamFallback(
@@ -807,7 +823,10 @@ export class ProxyService {
               extraHeaders,
             );
             const claudeResponse = transformResponse(response);
-            return this.convertClaudeToOpenAIResponse(claudeResponse, request.model);
+            return this.recordOpenAIResponse(
+              preparedSessionRequest,
+              this.convertClaudeToOpenAIResponse(claudeResponse, effectiveRequest.model),
+            );
           } catch (fallbackErr) {
             lastError = fallbackErr;
           }
@@ -822,6 +841,21 @@ export class ProxyService {
       }
     }
     throw lastError || new Error('Request failed after retries');
+  }
+
+  private recordOpenAIResponse(
+    preparedSessionRequest: PreparedOpenAISessionRequest,
+    response: OpenAIChatResponse,
+  ): OpenAIChatResponse {
+    this.openaiSessionStore.recordResponse(preparedSessionRequest, response);
+    return response;
+  }
+
+  private recordOpenAIStream(
+    preparedSessionRequest: PreparedOpenAISessionRequest,
+    stream: Observable<string>,
+  ): Observable<string> {
+    return this.openaiSessionStore.recordStreamResponse(preparedSessionRequest, stream);
   }
 
   private async generateInternalWithStreamFallback(
@@ -1647,7 +1681,11 @@ export class ProxyService {
   private extractOpenAISessionKey(request: OpenAIChatRequest): string | undefined {
     const extra = request.extra;
     const sessionCandidate =
-      extra?.session_id ?? extra?.sessionId ?? extra?.user_id ?? extra?.userId;
+      request.session_id ??
+      extra?.session_id ??
+      extra?.sessionId ??
+      extra?.user_id ??
+      extra?.userId;
     if (!isString(sessionCandidate) || isEmpty(sessionCandidate.trim())) {
       return undefined;
     }

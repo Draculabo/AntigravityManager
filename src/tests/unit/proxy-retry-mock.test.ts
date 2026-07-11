@@ -433,6 +433,39 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(internalPayload).not.toHaveProperty('sessionId');
   });
 
+  it('retains OpenAI chat history for an explicit session_id', async () => {
+    const service = new TestableProxyService();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
+    mockGeminiClient.generateInternal
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: 'first answer' }] }, finishReason: 'STOP' }],
+        usageMetadata: { totalTokenCount: 5 },
+      })
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: 'second answer' }] }, finishReason: 'STOP' }],
+        usageMetadata: { totalTokenCount: 5 },
+      });
+
+    await service.handleChatCompletions({
+      model: 'gemini-3-flash',
+      messages: [{ role: 'user', content: 'first question' }],
+      session_id: 'interview-1',
+    });
+    await service.handleChatCompletions({
+      model: 'gemini-3-flash',
+      messages: [{ role: 'user', content: 'second question' }],
+      session_id: 'interview-1',
+    });
+
+    const secondRequest = JSON.stringify(mockGeminiClient.generateInternal.mock.calls[1][0]);
+    expect(secondRequest).toContain('first question');
+    expect(secondRequest).toContain('first answer');
+    expect(secondRequest).toContain('second question');
+    expect(mockAccountLeaseService.getNextToken).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionKey: 'openai:interview-1' }),
+    );
+  });
+
   it('normalizes Gemini 3.1 preview alias to Gemini 3.1 Pro High for upstream', async () => {
     const service = new TestableProxyService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));

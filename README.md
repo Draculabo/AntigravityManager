@@ -141,6 +141,9 @@ When using Antigravity IDE, have you ever encountered these problems?
         <li>OpenAI & Anthropic API compatible</li>
         <li>Configurable port and request timeout</li>
         <li>Model mapping (e.g. Claude → Gemini)</li>
+        <li>
+          <a href="docs/openai-session-history.md">Optional server-managed OpenAI session history</a>
+        </li>
       </ul>
     </td>
     <td width="50%">

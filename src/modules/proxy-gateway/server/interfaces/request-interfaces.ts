@@ -11,6 +11,12 @@ export interface OpenAIChatRequest {
   tool_choice?: string | { type: string; function?: { name: string } };
   response_format?: { type?: string };
   extra?: Record<string, unknown>;
+  /** Opt-in Antigravity extension for server-managed Chat Completions history. */
+  session_id?: string;
+  /** Clears the stored history before processing this turn. */
+  session_reset?: boolean;
+  /** Set to false to keep this request stateless even when session_id is present. */
+  session_store?: boolean;
 }
 
 export interface OpenAIMessage {
