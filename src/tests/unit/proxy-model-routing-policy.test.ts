@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { ProxyModelRoutingPolicy } from '@/modules/proxy-gateway/server/proxy-model-routing-policy';
 import { setServerConfig } from '../../server/server-config';
+import { updateDynamicForwardingRules } from '@/modules/proxy-gateway/antigravity/ModelMapping';
 
 function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   return {
@@ -33,6 +34,13 @@ describe('ProxyModelRoutingPolicy', () => {
     const policy = new ProxyModelRoutingPolicy();
 
     expect(policy.resolveTargetModel('custom-fast')).toBe('gemini-3-flash');
+  });
+
+  it('applies dynamic deprecated-model forwarding to quota-provided targets', () => {
+    updateDynamicForwardingRules('Gemini-Deprecated-Test', 'gemini-future-test');
+    const policy = new ProxyModelRoutingPolicy();
+
+    expect(policy.resolveTargetModel('gemini-deprecated-test')).toBe('gemini-future-test');
   });
 
   it('adds Claude beta headers only for Claude-compatible models', () => {

@@ -117,12 +117,8 @@ describe('Path Utilities', () => {
     });
     const paths = await import('../../shared/platform/paths');
     const execPath = paths.getAntigravityExecutablePath();
-    if (process.platform === 'linux') {
-      expect(execPath).toBe('/usr/share/antigravity/antigravity');
-    } else if (process.platform === 'darwin') {
-      expect(execPath).toBe('/Applications/Antigravity.app/Contents/MacOS/Antigravity');
-    }
-    // Windows path depends on env vars, harder to test strictly without mocking
+
+    expect(execPath).toBe('/usr/share/antigravity/antigravity');
   });
 
   it('should skip non-writable derived portable user-data paths on Linux', async () => {

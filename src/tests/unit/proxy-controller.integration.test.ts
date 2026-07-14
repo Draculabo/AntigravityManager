@@ -12,6 +12,46 @@ function createReplyMock() {
 }
 
 describe('ProxyController Integration', () => {
+  it('lists Antigravity public presets alongside discovered chat models', () => {
+    const proxyService = {
+      handleChatCompletions: vi.fn(),
+      handleAnthropicMessages: vi.fn(),
+    };
+    const accountLeaseService = {
+      getAllCollectedModels: vi.fn(
+        () =>
+          new Set([
+            'gemini-3.5-flash-low',
+            'gemini-3-flash',
+            'gemini-3-pro-image',
+            'gemini-imagecraft-chat',
+          ]),
+      ),
+    };
+    const controller = new ProxyController(proxyService as any, accountLeaseService as any);
+    const reply = createReplyMock();
+
+    controller.listModels(reply as any);
+
+    expect(reply.status).toHaveBeenCalledWith(200);
+    const payload = reply.send.mock.calls[0][0];
+    const ids = payload.data.map((model: { id: string }) => model.id);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'gemini-3.5-flash-medium',
+        'gemini-3.5-flash-high',
+        'gemini-3.5-flash-low',
+        'gemini-3.1-pro-low',
+        'gemini-3.1-pro-high',
+        'claude-sonnet-4-6-thinking',
+        'claude-opus-4-6-thinking',
+        'gpt-oss-120b-medium',
+      ]),
+    );
+    expect(ids).not.toContain('gemini-3-pro-image');
+    expect(ids).toContain('gemini-imagecraft-chat');
+  });
+
   it('routes Claude OpenAI requests to protocol parity path', async () => {
     const proxyService = {
       handleChatCompletions: vi.fn().mockResolvedValue({ ok: true }),
