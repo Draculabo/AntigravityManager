@@ -91,6 +91,48 @@ describe('AccountLeaseService parity scheduling replay', () => {
     expect(resolved).toBe('gemini-3-flash');
   });
 
+  it('selects an account that advertises the requested dynamic model', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    (service as any).tokens = new Map([
+      [
+        'acc-1',
+        {
+          account_id: 'acc-1',
+          email: 'acc-1@test.dev',
+          access_token: 'token-1',
+          refresh_token: 'refresh-1',
+          token_type: 'Bearer',
+          expires_in: 3600,
+          expiry_timestamp: nowSec + 3600,
+          model_quotas: { 'gemini-3-flash': 80 },
+          model_limits: {},
+          model_reset_times: {},
+          model_forwarding_rules: {},
+        },
+      ],
+      [
+        'acc-2',
+        {
+          account_id: 'acc-2',
+          email: 'acc-2@test.dev',
+          access_token: 'token-2',
+          refresh_token: 'refresh-2',
+          token_type: 'Bearer',
+          expires_in: 3600,
+          expiry_timestamp: nowSec + 3600,
+          model_quotas: { 'gpt-oss-120b-medium': 80 },
+          model_limits: {},
+          model_reset_times: {},
+          model_forwarding_rules: {},
+        },
+      ],
+    ]);
+
+    const selected = await service.getNextToken({ model: 'gpt-oss-120b-medium' });
+
+    expect(selected?.id).toBe('acc-2');
+  });
+
   it('passes oauth_client_key when refreshing token and persists refreshed key', async () => {
     const nowSec = Math.floor(Date.now() / 1000);
     const tokenData = {

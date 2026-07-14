@@ -14,7 +14,12 @@ function createReplyMock() {
 describe('GeminiController Integration', () => {
   it('supports list and get model endpoints', () => {
     const proxyService = {};
-    const controller = new GeminiController(proxyService as any);
+    const accountLeaseService = {
+      getAllCollectedModels: vi.fn(
+        () => new Set(['gemini-3-flash', 'gemini-3.1-pro-high', 'gemini-3.5-flash-extra-low']),
+      ),
+    };
+    const controller = new GeminiController(proxyService as any, accountLeaseService as any);
     const replyList = createReplyMock();
     const replyGet = createReplyMock();
 
@@ -44,6 +49,9 @@ describe('GeminiController Integration', () => {
             outputTokenLimit: 8192,
             supportedGenerationMethods: ['generateContent', 'countTokens'],
           }),
+          expect.objectContaining({
+            name: 'models/gemini-3.5-flash-extra-low',
+          }),
         ]),
       }),
     );
@@ -53,6 +61,28 @@ describe('GeminiController Integration', () => {
         name: 'models/gemini-2.5-flash',
         displayName: 'gemini-2.5-flash',
       }),
+    );
+  });
+
+  it('keeps Antigravity public presets before dynamic quota cache is available', () => {
+    const controller = new GeminiController({} as any);
+    const reply = createReplyMock();
+
+    controller.listModels(reply as any);
+
+    const payload = reply.send.mock.calls[0][0];
+    const names = payload.models.map((model: { name: string }) => model.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'models/gemini-3.5-flash-medium',
+        'models/gemini-3.5-flash-high',
+        'models/gemini-3.5-flash-low',
+        'models/gemini-3.1-pro-low',
+        'models/gemini-3.1-pro-high',
+        'models/claude-sonnet-4-6-thinking',
+        'models/claude-opus-4-6-thinking',
+        'models/gpt-oss-120b-medium',
+      ]),
     );
   });
 

@@ -25,7 +25,7 @@ import {
 } from './interfaces/request-interfaces';
 import { ProxyGuard } from './proxy.guard';
 import {
-  getAllDynamicModels,
+  getOpenAICompatibleModels,
   MODEL_LIST_CREATED_AT,
   MODEL_LIST_OWNER,
 } from '../antigravity/ModelMapping';
@@ -49,7 +49,7 @@ export class ProxyController {
     try {
       const config = getServerConfig();
       const customMapping = config?.custom_mapping ?? {};
-      const modelIds = getAllDynamicModels(
+      const modelIds = getOpenAICompatibleModels(
         customMapping,
         this.accountLeaseService?.getAllCollectedModels(),
       );

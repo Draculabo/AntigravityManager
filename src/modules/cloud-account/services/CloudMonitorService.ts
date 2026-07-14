@@ -232,7 +232,8 @@ export class CloudMonitorService {
           }
 
           await new Promise((r) => setTimeout(r, 1000));
-          const quota = await GoogleAPIService.fetchQuota(accessToken, account.proxy_url);
+          const fetchedQuota = await GoogleAPIService.fetchQuota(accessToken, account.proxy_url);
+          const quota = { ...fetchedQuota };
           const previousAICredits = account.quota?.ai_credits;
 
           try {
@@ -251,6 +252,7 @@ export class CloudMonitorService {
 
           // 3. Update DB
           await CloudAccountRepo.updateQuota(account.id, quota);
+          account.quota = quota;
           await CloudAccountRepo.updateLastUsed(account.id);
           await CloudAccountRepo.setAccountStatus(account.id, 'active', null);
         } catch (error) {
@@ -317,13 +319,15 @@ export class CloudMonitorService {
       if (aiCreditsAlertEnabled) {
         for (const account of accounts) {
           const credits = account.quota?.ai_credits?.credits;
-          if (typeof credits === 'number' && credits <= aiCreditsAlertThreshold) {
-            new Notification({
-              title: notificationText.lowAICreditsTitle,
-              body: notificationText.lowAICreditsBody(account.email, credits),
-              silent: false,
-            }).show();
+          if (credits === undefined || credits > aiCreditsAlertThreshold) {
+            continue;
           }
+
+          new Notification({
+            title: notificationText.lowAICreditsTitle,
+            body: notificationText.lowAICreditsBody(account.email, credits),
+            silent: false,
+          }).show();
         }
       }
 
