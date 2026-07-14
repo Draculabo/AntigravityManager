@@ -529,13 +529,22 @@ export class GoogleAPIService {
         grant_type: 'authorization_code',
       });
 
+      logger.info(
+        `[GoogleAPIService] Attempting token exchange with client=${client.key}, endpoint=${URLS.TOKEN}`,
+      );
+      const fetchOpts = this.getFetchOptions(proxyUrl);
+      logger.info(
+        `[GoogleAPIService] Fetch options: ${JSON.stringify(fetchOpts ? { hasDispatcher: !!fetchOpts.dispatcher } : {})}`,
+      );
+
       const response = await fetch(URLS.TOKEN, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params,
         signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
-        ...this.getFetchOptions(proxyUrl),
+        ...fetchOpts,
       }).catch((err: unknown) => {
+        logger.error(`[GoogleAPIService] Fetch error for client=${client.key}:`, err);
         if (err instanceof Error && err.name === 'AbortError') {
           throw new Error(
             'Token exchange timed out. Please check your network connection and try again.',
@@ -543,6 +552,10 @@ export class GoogleAPIService {
         }
         throw err;
       });
+
+      logger.info(
+        `[GoogleAPIService] Fetch response received for client=${client.key}: ok=${response.ok}, status=${response.status}`,
+      );
 
       if (response.ok) {
         const tokenResponse = (await response.json()) as TokenResponse;

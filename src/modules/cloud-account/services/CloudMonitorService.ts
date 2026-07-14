@@ -306,6 +306,7 @@ export class CloudMonitorService {
         }
       }
 
+      // Check for AI Credits Alerts
       const aiCreditsAlertEnabled = CloudAccountSettingsStore.getSetting<boolean>(
         'ai_credits_alert_enabled',
         false,

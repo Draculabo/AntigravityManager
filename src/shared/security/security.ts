@@ -326,6 +326,25 @@ async function generatePrimaryMasterKey(): Promise<MasterKeyState> {
         .then(() => true)
         .catch(() => false);
       if (fileExists) {
+        if (!app || !app.isPackaged) {
+          logger.warn(
+            'Security (Dev Mode): Decryption failed but file exists. Renaming key file to generate a new dev key.',
+            error,
+          );
+          try {
+            const backupPath = `${keyPath}.bak.${Date.now()}`;
+            await fs.rename(keyPath, backupPath);
+            logger.info(`Security (Dev Mode): Renamed key file to ${backupPath}`);
+            const result = await getOrCreateSafeStorageKey(keyPath);
+            cacheMasterKey(result.key, 'safeStorage');
+            return { key: result.key, source: 'safeStorage' };
+          } catch (renameError) {
+            logger.error(
+              'Security (Dev Mode): Failed to auto-recover/rename key file',
+              renameError,
+            );
+          }
+        }
         logger.error(
           'Security: safeStorage key file exists but decryption failed. Keyring might be locked. Stopping to prevent data loss.',
           error,
