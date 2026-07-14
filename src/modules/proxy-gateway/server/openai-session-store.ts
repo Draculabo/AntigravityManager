@@ -47,6 +47,7 @@ interface StreamToolCallDelta {
 }
 
 const DEFAULT_MAX_HISTORY_CHARS = 1_000_000;
+const MAX_SYSTEM_HISTORY_SHARE = 0.5;
 const DEFAULT_MAX_SESSIONS = 64;
 const DEFAULT_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -370,11 +371,24 @@ export class OpenAISessionStore {
     const systemMessages = messages.filter((message) => message.role === 'system');
     const nonSystemMessages = messages.filter((message) => message.role !== 'system');
     const keptSystem: OpenAIMessage[] = [];
+    // Cap system context and reserve the latest turn whenever it can fit in the total budget.
+    const latestNonSystemMessage = nonSystemMessages.at(-1);
+    const latestNonSystemChars = latestNonSystemMessage
+      ? this.measureMessage(latestNonSystemMessage)
+      : 0;
+    const reservedNonSystemChars =
+      latestNonSystemChars <= this.maxHistoryChars ? latestNonSystemChars : 0;
+    const systemBudget = latestNonSystemMessage
+      ? Math.min(
+          Math.floor(this.maxHistoryChars * MAX_SYSTEM_HISTORY_SHARE),
+          this.maxHistoryChars - reservedNonSystemChars,
+        )
+      : this.maxHistoryChars;
     let usedChars = 0;
 
     for (const message of systemMessages) {
       const size = this.measureMessage(message);
-      if (usedChars + size <= this.maxHistoryChars) {
+      if (usedChars + size <= systemBudget) {
         keptSystem.push(message);
         usedChars += size;
       }

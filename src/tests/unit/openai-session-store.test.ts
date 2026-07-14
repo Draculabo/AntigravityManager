@@ -148,22 +148,38 @@ describe('OpenAISessionStore', () => {
     store.abandonRequest(next);
   });
 
+  it('reserves enough history budget for the latest conversation turn', async () => {
+    const store = new OpenAISessionStore({ maxHistoryChars: 120 });
+    const latestMessage = { role: 'user', content: 'x'.repeat(50) };
+    const prepared = await store.prepareRequest(
+      request([
+        { role: 'system', content: 'a'.repeat(20) },
+        { role: 'system', content: 'b'.repeat(20) },
+        latestMessage,
+      ]),
+    );
+    const serializedLength = prepared.request.messages.reduce(
+      (total, message) => total + JSON.stringify(message).length,
+      0,
+    );
+
+    expect(serializedLength).toBeLessThanOrEqual(120);
+    expect(prepared.request.messages.at(-1)).toEqual(latestMessage);
+    store.abandonRequest(prepared);
+  });
+
   it('serializes concurrent turns that use the same session ID', async () => {
     const store = new OpenAISessionStore();
     const first = await store.prepareRequest(
       request([{ role: 'user', content: 'first question' }]),
     );
-    let secondPrepared = false;
-    const secondPromise = store
-      .prepareRequest(request([{ role: 'user', content: 'second question' }]))
-      .then((prepared) => {
-        secondPrepared = true;
-        return prepared;
-      });
+    const secondStarted = createSignal();
+    const secondPromise = (async () => {
+      secondStarted.resolve();
+      return store.prepareRequest(request([{ role: 'user', content: 'second question' }]));
+    })();
 
-    await Promise.resolve();
-    expect(secondPrepared).toBe(false);
-
+    await secondStarted.promise;
     store.recordResponse(first, response('first answer'));
     const second = await secondPromise;
 
@@ -214,6 +230,14 @@ describe('OpenAISessionStore', () => {
     store.abandonRequest(second);
   });
 });
+
+function createSignal(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 async function consume(stream: Observable<string>): Promise<void> {
   await new Promise<void>((resolve, reject) => {

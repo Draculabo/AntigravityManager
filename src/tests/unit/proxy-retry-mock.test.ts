@@ -466,6 +466,33 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     );
   });
 
+  it('releases an OpenAI session after request processing fails', async () => {
+    const service = new TestableProxyService();
+    mockAccountLeaseService.getNextToken
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(createToken('acc-1'));
+    mockGeminiClient.generateInternal.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: 'recovered' }] }, finishReason: 'STOP' }],
+      usageMetadata: { totalTokenCount: 5 },
+    });
+
+    await expect(
+      service.handleChatCompletions({
+        model: 'gemini-3-flash',
+        messages: [{ role: 'user', content: 'failed turn' }],
+        session_id: 'recoverable-session',
+      }),
+    ).rejects.toThrow('No available accounts');
+
+    await service.handleChatCompletions({
+      model: 'gemini-3-flash',
+      messages: [{ role: 'user', content: 'retry turn' }],
+      session_id: 'recoverable-session',
+    });
+
+    expect(mockGeminiClient.generateInternal).toHaveBeenCalledTimes(1);
+  });
+
   it('normalizes Gemini 3.1 preview alias to Gemini 3.1 Pro High for upstream', async () => {
     const service = new TestableProxyService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
