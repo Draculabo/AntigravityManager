@@ -85,6 +85,8 @@ import {
   switchCloudAccount,
   getAutoSwitchEnabled,
   setAutoSwitchEnabled,
+  getAutoSwitchModelsConfig,
+  setAutoSwitchModelsConfig,
   forcePollCloudMonitor,
 } from '@/modules/cloud-account/actions/cloud';
 
@@ -116,6 +118,26 @@ export function useSetAutoSwitchEnabled() {
     mutationFn: setAutoSwitchEnabled,
     onSuccess: (_, variables) => {
       queryClient.setQueryData(AUTO_SWITCH_KEY, variables.enabled);
+    },
+  });
+}
+
+export const AUTO_SWITCH_MODELS_KEY = ['autoSwitchModelsConfig'];
+
+export function useAutoSwitchModelsConfig() {
+  return useQuery<Record<string, { enabled: boolean; priority: boolean }>>({
+    queryKey: AUTO_SWITCH_MODELS_KEY,
+    queryFn: getAutoSwitchModelsConfig,
+    staleTime: Infinity,
+  });
+}
+
+export function useSetAutoSwitchModelsConfig() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setAutoSwitchModelsConfig,
+    onSuccess: (_, variables) => {
+      queryClient.setQueryData(AUTO_SWITCH_MODELS_KEY, variables);
     },
   });
 }

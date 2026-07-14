@@ -118,7 +118,7 @@ function getAveragePercentage(
   return modelEntries.reduce((sum, [, model]) => sum + model.percentage, 0) / modelEntries.length;
 }
 
-function getQuotaGroupBucketPercentages(account: CloudAccount, pattern?: RegExp): number[] {
+export function getQuotaGroupBucketPercentages(account: CloudAccount, pattern?: RegExp): number[] {
   const groups = account.quota?.quota_groups ?? [];
   const percentages: number[] = [];
 

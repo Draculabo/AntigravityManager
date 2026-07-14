@@ -822,6 +822,19 @@ export async function setAutoSwitchEnabled(enabled: boolean): Promise<void> {
   }
 }
 
+export interface AutoSwitchModelConfig {
+  enabled: boolean;
+  priority: boolean;
+}
+
+export function getAutoSwitchModelsConfig(): Record<string, AutoSwitchModelConfig> {
+  return CloudAccountSettingsStore.getSetting<Record<string, AutoSwitchModelConfig>>('auto_switch_models', {});
+}
+
+export function setAutoSwitchModelsConfig(config: Record<string, AutoSwitchModelConfig>): void {
+  CloudAccountSettingsStore.setSetting('auto_switch_models', config);
+}
+
 export async function forcePollCloudMonitor(): Promise<void> {
   const { CloudMonitorService } =
     await import('@/modules/cloud-account/services/CloudMonitorService');

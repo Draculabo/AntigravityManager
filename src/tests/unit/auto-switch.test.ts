@@ -95,4 +95,70 @@ describe('AutoSwitchService', () => {
       id: 'model-medium-group-healthy',
     });
   });
+
+  it('respects enabled model configuration when checking depletion', async () => {
+    await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } = await import(
+      '@/modules/cloud-account/persistence/cloud-account-settings-store'
+    );
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    const config = {
+      'claude-sonnet-4-5': { enabled: false, priority: false },
+      'gemini-pro': { enabled: true, priority: false },
+    };
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue(config);
+
+    const testAccount = createAccount('test-acc', {
+      models: {
+        'claude-sonnet-4-5': { percentage: 2, resetTime: '' },
+        'gemini-pro': { percentage: 90, resetTime: '' },
+      },
+    });
+
+    // Depleted should be false because claude-sonnet-4-5 is disabled!
+    expect(AutoSwitchService.isAccountDepleted(testAccount)).toBe(false);
+  });
+
+  it('prioritizes priority models during best account selection', async () => {
+    await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } = await import(
+      '@/modules/cloud-account/persistence/cloud-account-settings-store'
+    );
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    const config = {
+      'claude-sonnet-4-5': { enabled: true, priority: true },
+      'gemini-pro': { enabled: true, priority: false },
+    };
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue(config);
+
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createAccount('current', {
+        models: {
+          'claude-sonnet-4-5': { percentage: 50, resetTime: '' },
+          'gemini-pro': { percentage: 90, resetTime: '' },
+        },
+      }),
+      // Acc A has lower overall average (45% vs 75%) but HIGHER priority model percentage (80% vs 60%)
+      createAccount('acc-a', {
+        models: {
+          'claude-sonnet-4-5': { percentage: 80, resetTime: '' },
+          'gemini-pro': { percentage: 10, resetTime: '' },
+        },
+      }),
+      createAccount('acc-b', {
+        models: {
+          'claude-sonnet-4-5': { percentage: 60, resetTime: '' },
+          'gemini-pro': { percentage: 90, resetTime: '' },
+        },
+      }),
+    ]);
+
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
+      id: 'acc-a',
+    });
+  });
 });

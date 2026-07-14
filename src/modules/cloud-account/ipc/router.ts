@@ -16,6 +16,9 @@ import {
   switchCloudAccount,
   getAutoSwitchEnabled,
   setAutoSwitchEnabled,
+  getAutoSwitchModelsConfig,
+  setAutoSwitchModelsConfig,
+  type AutoSwitchModelConfig,
   forcePollCloudMonitor,
   startAuthFlow,
   listOAuthClients,
@@ -171,6 +174,35 @@ export const cloudRouter = os.router({
     .output(z.void())
     .handler(async ({ input }) => {
       await setAutoSwitchEnabled(input.enabled);
+    }),
+
+  getAutoSwitchModelsConfig: os
+    .output(
+      z.record(
+        z.string(),
+        z.object({
+          enabled: z.boolean(),
+          priority: z.boolean(),
+        }),
+      ),
+    )
+    .handler(async () => {
+      return getAutoSwitchModelsConfig();
+    }),
+
+  setAutoSwitchModelsConfig: os
+    .input(
+      z.record(
+        z.string(),
+        z.object({
+          enabled: z.boolean(),
+          priority: z.boolean(),
+        }),
+      ),
+    )
+    .output(z.void())
+    .handler(async ({ input }) => {
+      setAutoSwitchModelsConfig(input as Record<string, AutoSwitchModelConfig>);
     }),
 
   forcePollCloudMonitor: os.output(z.void()).handler(async () => {

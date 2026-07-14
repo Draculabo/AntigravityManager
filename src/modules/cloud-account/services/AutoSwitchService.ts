@@ -1,13 +1,10 @@
+import { Notification } from 'electron';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { switchCloudAccount } from '@/modules/cloud-account/ipc/handler';
 import { logger } from '@/shared/logging/logger';
 import { AntigravityAppTarget } from '@/modules/account/types';
-import {
-  getAccountSortValue,
-  getLowestEffectiveQuotaPercentage,
-} from '@/modules/cloud-account/utils/quota-display';
 
 export class AutoSwitchService {
   /**
@@ -15,44 +12,68 @@ export class AutoSwitchService {
    * Criteria:
    * 1. Not the current account (unless it's the only one).
    * 2. Status is 'active'.
-   * 3. Has quota > 5% for all models (or at least gemini-pro).
-   * 4. Sorted by highest quota then last_used (least recently used preferred for rotation? or most? Let's say highest quota first).
+   * 3. Has quota > 5% for all enabled models.
+   * 4. Sorted by priority models quota first, falling back to enabled models.
    */
   static async findBestAccount(currentAccountId: string): Promise<CloudAccount | null> {
     const accounts = await CloudAccountRepo.getAccounts();
+    const config = CloudAccountSettingsStore.getSetting<Record<string, { enabled: boolean; priority: boolean }>>(
+      'auto_switch_models',
+      {},
+    ) || {};
 
     // Filter potential candidates
     const candidates = accounts.filter((acc) => {
       if (acc.id === currentAccountId) return false;
       if (acc.status !== 'active') return false; // Rate limited or expired accounts are skipped
-
-      // Check quota
-      // We assume simple check: if any model has < 5%, we skip it.
-      // Or better: check average? NO, check critical models.
-      // For now, let's just check if quota object exists.
       if (!acc.quota) return false; // No quota data means risky
 
-      const models = Object.values(acc.quota.models);
-      // If any model is depleted (< 5%), skip.
-      const isDepleted = models.some((m) => m.percentage < 5);
-      return !isDepleted;
+      return !this.isAccountDepleted(acc);
     });
 
     if (candidates.length === 0) return null;
 
-    // Sort by "Best"
-    // Heuristic: Highest average quota availability
+    // Sort by "Best" score
     candidates.sort((a, b) => {
-      const avgA = this.calculateAverageQuota(a);
-      const avgB = this.calculateAverageQuota(b);
-      return avgB - avgA; // Descending
+      const scoreA = this.calculateAccountScore(a, config);
+      const scoreB = this.calculateAccountScore(b, config);
+      return scoreB - scoreA; // Descending
     });
 
     return candidates[0];
   }
 
-  private static calculateAverageQuota(account: CloudAccount): number {
-    return getAccountSortValue(account, 'quota-overall');
+  private static calculateAccountScore(
+    account: CloudAccount,
+    config: Record<string, { enabled: boolean; priority: boolean }>,
+  ): number {
+    if (!account.quota?.models) return 0;
+
+    const entries = Object.entries(account.quota.models);
+
+    // 1. Get priority models that are enabled and exist in this account
+    const priorityEntries = entries.filter(([modelId]) => {
+      const modelConfig = config[modelId];
+      return modelConfig?.enabled && modelConfig?.priority;
+    });
+
+    if (priorityEntries.length > 0) {
+      const sum = priorityEntries.reduce((acc, [, m]) => acc + m.percentage, 0);
+      return sum / priorityEntries.length;
+    }
+
+    // 2. Fall back to all enabled models
+    const enabledEntries = entries.filter(([modelId]) => {
+      const modelConfig = config[modelId];
+      return modelConfig ? modelConfig.enabled : true;
+    });
+
+    if (enabledEntries.length > 0) {
+      const sum = enabledEntries.reduce((acc, [, m]) => acc + m.percentage, 0);
+      return sum / enabledEntries.length;
+    }
+
+    return 0;
   }
 
   /**
@@ -73,7 +94,6 @@ export class AutoSwitchService {
       : accounts.find((a) => a.is_active);
 
     // If no active account, maybe we should pick one?
-    // For now, assume user manually picked first one.
     if (!currentAccount) return false;
 
     // Check if current is depleted
@@ -88,14 +108,18 @@ export class AutoSwitchService {
       if (nextAccount) {
         logger.info(`AutoSwitch: Switching to ${nextAccount.email}...`);
 
-        // Notify user (via toast? we are in main process... IPC event?)
-        // Ideally we send an IPC event to renderer.
-        // For now, logic first.
-
+        // Perform the switch
         await switchCloudAccount(nextAccount.id, appTarget);
 
-        // We might want to send a notification to user desktop?
-        // require('electron').Notification ...
+        // Show Desktop Notification to alert the user of the switch
+        try {
+          new Notification({
+            title: 'Antigravity Manager: Auto-Switch',
+            body: `Switched account to ${nextAccount.email} due to quota limit. Reopen IDE and type "continue" if needed!`,
+          }).show();
+        } catch (err) {
+          logger.error('Failed to show auto-switch desktop notification', err);
+        }
 
         return true;
       } else {
@@ -107,10 +131,47 @@ export class AutoSwitchService {
   }
 
   static isAccountDepleted(account: CloudAccount): boolean {
-    if (!account.quota) return false; // Unknown, assume fine or let fetchQuota find out
-    // Threshold = 5%
+    if (!account.quota) return false;
     const THRESHOLD = 5;
-    const lowestQuotaPercentage = getLowestEffectiveQuotaPercentage(account);
-    return lowestQuotaPercentage !== null && lowestQuotaPercentage < THRESHOLD;
+
+    const config = CloudAccountSettingsStore.getSetting<Record<string, { enabled: boolean; priority: boolean }>>(
+      'auto_switch_models',
+      {},
+    ) || {};
+
+    const enabledModels = Object.entries(account.quota.models).filter(([modelId]) => {
+      const modelConfig = config[modelId];
+      return modelConfig ? modelConfig.enabled : true;
+    });
+
+    if (enabledModels.length === 0) {
+      return false; // No enabled models, so not depleted
+    }
+
+    const anyModelDepleted = enabledModels.some(([, m]) => m.percentage < THRESHOLD);
+    if (anyModelDepleted) {
+      return true;
+    }
+
+    // Check quota groups
+    const depletedGroups = (account.quota.quota_groups || []).filter((g) => {
+      const lowestBucket = g.buckets.reduce((min, b) => Math.min(min, b.remaining_fraction * 100), 100);
+      return lowestBucket < THRESHOLD;
+    });
+
+    if (depletedGroups.length > 0) {
+      const anyAffected = depletedGroups.some((group) => {
+        const groupText = [group.display_name, group.description].filter(Boolean).join(' ').toLowerCase();
+        return enabledModels.some(([modelId]) => {
+          const modelPart = modelId.split('-')[0].toLowerCase(); // 'claude' or 'gemini' etc.
+          return groupText.includes(modelPart) || groupText.includes(modelId.toLowerCase());
+        });
+      });
+      if (anyAffected) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }
