@@ -17,10 +17,11 @@ export class AutoSwitchService {
    */
   static async findBestAccount(currentAccountId: string): Promise<CloudAccount | null> {
     const accounts = await CloudAccountRepo.getAccounts();
-    const config = CloudAccountSettingsStore.getSetting<Record<string, { enabled: boolean; priority: boolean }>>(
-      'auto_switch_models',
-      {},
-    ) || {};
+    const config =
+      CloudAccountSettingsStore.getSetting<Record<string, { enabled: boolean; priority: boolean }>>(
+        'auto_switch_models',
+        {},
+      ) || {};
 
     // Filter potential candidates
     const candidates = accounts.filter((acc) => {
@@ -134,10 +135,11 @@ export class AutoSwitchService {
     if (!account.quota) return false;
     const THRESHOLD = 5;
 
-    const config = CloudAccountSettingsStore.getSetting<Record<string, { enabled: boolean; priority: boolean }>>(
-      'auto_switch_models',
-      {},
-    ) || {};
+    const config =
+      CloudAccountSettingsStore.getSetting<Record<string, { enabled: boolean; priority: boolean }>>(
+        'auto_switch_models',
+        {},
+      ) || {};
 
     const enabledModels = Object.entries(account.quota.models).filter(([modelId]) => {
       const modelConfig = config[modelId];
@@ -155,13 +157,19 @@ export class AutoSwitchService {
 
     // Check quota groups
     const depletedGroups = (account.quota.quota_groups || []).filter((g) => {
-      const lowestBucket = g.buckets.reduce((min, b) => Math.min(min, b.remaining_fraction * 100), 100);
+      const lowestBucket = g.buckets.reduce(
+        (min, b) => Math.min(min, b.remaining_fraction * 100),
+        100,
+      );
       return lowestBucket < THRESHOLD;
     });
 
     if (depletedGroups.length > 0) {
       const anyAffected = depletedGroups.some((group) => {
-        const groupText = [group.display_name, group.description].filter(Boolean).join(' ').toLowerCase();
+        const groupText = [group.display_name, group.description]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
         return enabledModels.some(([modelId]) => {
           const modelPart = modelId.split('-')[0].toLowerCase(); // 'claude' or 'gemini' etc.
           return groupText.includes(modelPart) || groupText.includes(modelId.toLowerCase());

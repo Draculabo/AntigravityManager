@@ -828,7 +828,10 @@ export interface AutoSwitchModelConfig {
 }
 
 export function getAutoSwitchModelsConfig(): Record<string, AutoSwitchModelConfig> {
-  return CloudAccountSettingsStore.getSetting<Record<string, AutoSwitchModelConfig>>('auto_switch_models', {});
+  return CloudAccountSettingsStore.getSetting<Record<string, AutoSwitchModelConfig>>(
+    'auto_switch_models',
+    {},
+  );
 }
 
 export function setAutoSwitchModelsConfig(config: Record<string, AutoSwitchModelConfig>): void {

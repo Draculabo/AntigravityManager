@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCloudAccounts, useAutoSwitchModelsConfig, useSetAutoSwitchModelsConfig } from '@/modules/cloud-account/hooks/useCloudAccounts';
+import {
+  useCloudAccounts,
+  useAutoSwitchModelsConfig,
+  useSetAutoSwitchModelsConfig,
+} from '@/modules/cloud-account/hooks/useCloudAccounts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +48,8 @@ function AutoSwitchModelSettingsInner({ accounts, initialConfig }: InnerProps) {
   const setConfigMutation = useSetAutoSwitchModelsConfig();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [modelConfigMap, setModelConfigMap] = useState<Record<string, { enabled: boolean; priority: boolean }>>(initialConfig);
+  const [modelConfigMap, setModelConfigMap] =
+    useState<Record<string, { enabled: boolean; priority: boolean }>>(initialConfig);
 
   // Get all unique models from all accounts
   const availableModelIds = useMemo(() => {
@@ -161,11 +166,9 @@ function AutoSwitchModelSettingsInner({ accounts, initialConfig }: InnerProps) {
                   className="hover:bg-muted/50 flex items-center justify-between rounded p-2"
                 >
                   <div className="flex flex-1 items-center space-x-3">
-                    <label className="text-sm font-medium">
-                      {modelId}
-                    </label>
+                    <label className="text-sm font-medium">{modelId}</label>
                   </div>
-                  
+
                   <div className="flex items-center space-x-6">
                     <div className="flex items-center space-x-2">
                       <Checkbox
@@ -195,7 +198,9 @@ function AutoSwitchModelSettingsInner({ accounts, initialConfig }: InnerProps) {
                       <label
                         htmlFor={`switch-priority-${modelId}`}
                         className={`cursor-pointer text-xs font-medium ${
-                          isEnabled ? 'text-gray-600 dark:text-gray-400' : 'text-gray-300 dark:text-gray-700'
+                          isEnabled
+                            ? 'text-gray-600 dark:text-gray-400'
+                            : 'text-gray-300 dark:text-gray-700'
                         }`}
                       >
                         {t('settings.autoSwitchModels.priorityLabel')}
@@ -203,7 +208,10 @@ function AutoSwitchModelSettingsInner({ accounts, initialConfig }: InnerProps) {
                     </div>
 
                     {isEnabled && isPriority && (
-                      <Badge variant="default" className="bg-blue-600 text-white dark:bg-blue-700 text-xs">
+                      <Badge
+                        variant="default"
+                        className="bg-blue-600 text-xs text-white dark:bg-blue-700"
+                      >
                         {t('settings.autoSwitchModels.priorityLabel')}
                       </Badge>
                     )}

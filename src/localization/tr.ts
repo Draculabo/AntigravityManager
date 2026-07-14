@@ -262,7 +262,8 @@ const tr = {
     },
     autoSwitchModels: {
       title: 'Auto-Switch Models Config',
-      description: 'Configure which models trigger auto-switch when depleted, and prioritize specific models when selecting the next active account.',
+      description:
+        'Configure which models trigger auto-switch when depleted, and prioritize specific models when selecting the next active account.',
       searchPlaceholder: 'Search models...',
       noModels: 'No models found.',
       noModelsFound: 'No models found.',

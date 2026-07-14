@@ -32,12 +32,16 @@ export function setAutoSwitchEnabled(input: { enabled: boolean }) {
   return ipc.client.cloud.setAutoSwitchEnabled(input);
 }
 
-export async function getAutoSwitchModelsConfig(): Promise<Record<string, { enabled: boolean; priority: boolean }>> {
+export async function getAutoSwitchModelsConfig(): Promise<
+  Record<string, { enabled: boolean; priority: boolean }>
+> {
   const result = await ipc.client.cloud.getAutoSwitchModelsConfig();
   return result as Record<string, { enabled: boolean; priority: boolean }>;
 }
 
-export function setAutoSwitchModelsConfig(config: Record<string, { enabled: boolean; priority: boolean }>) {
+export function setAutoSwitchModelsConfig(
+  config: Record<string, { enabled: boolean; priority: boolean }>,
+) {
   return ipc.client.cloud.setAutoSwitchModelsConfig(config);
 }
 

@@ -99,9 +99,8 @@ describe('AutoSwitchService', () => {
   it('respects enabled model configuration when checking depletion', async () => {
     // eslint-disable-next-line unused-imports/no-unused-vars
     const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
-    const { CloudAccountSettingsStore } = await import(
-      '@/modules/cloud-account/persistence/cloud-account-settings-store'
-    );
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
     const { AutoSwitchService } =
       await import('@/modules/cloud-account/services/AutoSwitchService');
 
@@ -124,9 +123,8 @@ describe('AutoSwitchService', () => {
 
   it('prioritizes priority models during best account selection', async () => {
     const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
-    const { CloudAccountSettingsStore } = await import(
-      '@/modules/cloud-account/persistence/cloud-account-settings-store'
-    );
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
     const { AutoSwitchService } =
       await import('@/modules/cloud-account/services/AutoSwitchService');
 
