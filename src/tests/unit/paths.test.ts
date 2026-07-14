@@ -118,7 +118,11 @@ describe('Path Utilities', () => {
     const paths = await import('../../shared/platform/paths');
     const execPath = paths.getAntigravityExecutablePath();
 
-    expect(execPath).toBe('/usr/share/antigravity/antigravity');
+    const expectedPath =
+      process.platform === 'darwin'
+        ? '/Applications/Antigravity.app/Contents/MacOS/Antigravity'
+        : '/usr/share/antigravity/antigravity';
+    expect(execPath).toBe(expectedPath);
   });
 
   it('should skip non-writable derived portable user-data paths on Linux', async () => {
