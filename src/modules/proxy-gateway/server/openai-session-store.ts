@@ -88,7 +88,7 @@ export class OpenAISessionStore {
 
       const state = this.getOrCreateSession(sessionId);
       const incomingMessages = [
-        ...this.extractBootstrapMessages(request),
+        ...(state.messages.length === 0 ? this.extractBootstrapMessages(request) : []),
         ...this.cloneMessages(request.messages ?? []),
       ];
       const merged = this.mergeMessages(state.messages, incomingMessages);
@@ -475,6 +475,16 @@ export class OpenAISessionStore {
   }
 
   private fingerprint(message: OpenAIMessage): string {
-    return JSON.stringify(message);
+    // Ignore object key order without changing JSON's treatment of omitted undefined fields.
+    return JSON.stringify(message, (_key, value: unknown) => {
+      if (!isPlainObject(value)) {
+        return value;
+      }
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).sort(([left], [right]) =>
+          left.localeCompare(right),
+        ),
+      );
+    });
   }
 }

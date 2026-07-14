@@ -74,6 +74,50 @@ describe('OpenAISessionStore', () => {
     store.abandonRequest(second);
   });
 
+  it('does not duplicate bootstrap messages on subsequent turns', async () => {
+    const store = new OpenAISessionStore();
+    const bootstrap = { extra: { session_bootstrap: 'system instructions' } };
+    const first = await store.prepareRequest(
+      request([{ role: 'user', content: 'first question' }], bootstrap),
+    );
+    store.recordResponse(first, response('first answer'));
+
+    const second = await store.prepareRequest(
+      request([{ role: 'user', content: 'second question' }], bootstrap),
+    );
+
+    expect(second.request.messages).toEqual([
+      { role: 'system', content: 'system instructions' },
+      { role: 'user', content: 'first question' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'second question' },
+    ]);
+    store.abandonRequest(second);
+  });
+
+  it('matches resent messages regardless of object key order', async () => {
+    const store = new OpenAISessionStore();
+    const first = await store.prepareRequest(
+      request([{ role: 'user', content: 'first question' }]),
+    );
+    store.recordResponse(first, response('first answer'));
+
+    const second = await store.prepareRequest(
+      request([
+        { content: 'first question', role: 'user' },
+        { content: 'first answer', role: 'assistant' },
+        { content: 'second question', role: 'user' },
+      ]),
+    );
+
+    expect(second.request.messages).toEqual([
+      { role: 'user', content: 'first question' },
+      { role: 'assistant', content: 'first answer' },
+      { content: 'second question', role: 'user' },
+    ]);
+    store.abandonRequest(second);
+  });
+
   it('resets or disables history only through explicit session controls', async () => {
     const store = new OpenAISessionStore();
     const first = await store.prepareRequest(
