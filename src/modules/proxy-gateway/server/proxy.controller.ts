@@ -140,7 +140,7 @@ export class ProxyController {
     const request = this.buildResponsesChatRequest(body);
 
     try {
-      const result = await this.proxyService.handleChatCompletions(request);
+      const result = await this.proxyService.handleChatCompletions(request, 'responses');
       if (body.stream && this.isObservableLike(result)) {
         this.writeSseResponse(res, result);
         return;

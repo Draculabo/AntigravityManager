@@ -263,6 +263,10 @@ describe('ProxyController Integration', () => {
     expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'no-cache');
     expect(reply.header).toHaveBeenCalledWith('Connection', 'keep-alive');
     expect(reply.send).toHaveBeenCalledWith(stream);
+    expect(proxyService.handleChatCompletions).toHaveBeenCalledWith(
+      expect.any(Object),
+      'responses',
+    );
   });
 
   it('normalizes web_search_call in /v1/responses into builtin_web_search tool messages', async () => {
