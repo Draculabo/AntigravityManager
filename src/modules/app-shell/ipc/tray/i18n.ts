@@ -70,6 +70,18 @@ const fr: TrayTexts = {
   forbidden: 'Compte bloque',
 };
 
+const tr: TrayTexts = {
+  current: 'Mevcut',
+  quota: 'Kota',
+  switch_next: 'Sonraki Hesaba Geç',
+  refresh_current: 'Mevcut Kotayı Yenile',
+  show_window: 'Ana Pencereyi Göster',
+  quit: 'Uygulamadan Çık',
+  no_account: 'Hesap Yok',
+  unknown_quota: 'Bilinmiyor',
+  forbidden: 'Hesap Yasaklandı',
+};
+
 export function getTrayTexts(lang: string = 'en'): TrayTexts {
   if (lang.startsWith('zh')) {
     return zh;
@@ -82,6 +94,9 @@ export function getTrayTexts(lang: string = 'en'): TrayTexts {
   }
   if (lang.startsWith('fr')) {
     return fr;
+  }
+  if (lang.startsWith('tr')) {
+    return tr;
   }
   return en;
 }
