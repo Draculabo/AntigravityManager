@@ -12,6 +12,7 @@ import {
   GeminiInternalRequest,
   GeminiContent,
   GeminiToolDeclaration,
+  GeminiPart,
   GenerationConfig,
   ImageConfig,
   FunctionDeclaration,
@@ -548,14 +549,7 @@ function buildContents(
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     const role = msg.role === 'assistant' ? 'model' : msg.role;
-    const parts: {
-      text?: string;
-      inlineData?: {
-        mimeType: string;
-        data: string;
-      };
-      thought?: boolean;
-    }[] = [];
+    const parts: GeminiPart[] = [];
     const contentBlocks = Array.isArray(msg.content)
       ? msg.content
       : msg.content
@@ -567,11 +561,12 @@ function buildContents(
         if (block.text && block.text !== '(no content)' && !isEmpty(block.text.trim()))
           parts.push({ text: block.text.trim() });
       } else if (block.type === 'thinking') {
-        const part: any = { text: block.thinking, thought: true };
+        const part: GeminiPart = { text: block.thinking, thought: true };
         cleanJsonSchema(part);
         if (block.signature) {
           lastThoughtSignature = block.signature;
           part.thoughtSignature = block.signature;
+          part.thought_signature = block.signature;
         }
         parts.push(part);
       } else if (block.type === 'image') {
@@ -580,14 +575,18 @@ function buildContents(
             inlineData: { mimeType: block.source.media_type, data: block.source.data },
           });
       } else if (block.type === 'tool_use') {
-        const part: any = { functionCall: { name: block.name, args: block.input, id: block.id } };
+        const part: GeminiPart = {
+          functionCall: { name: block.name, args: block.input, id: block.id },
+        };
         cleanJsonSchema(part);
         toolIdToName.set(block.id, block.name);
         const finalSig = block.signature || lastThoughtSignature || SignatureStore.get();
         if (finalSig) {
           part.thoughtSignature = finalSig;
+          part.thought_signature = finalSig;
         } else if (isThinkingEnabled && isGeminiFlashModel(mappedModel)) {
           part.thoughtSignature = 'skip_thought_signature_validator';
+          part.thought_signature = 'skip_thought_signature_validator';
         }
         parts.push(part);
       } else if (block.type === 'tool_result') {
@@ -610,7 +609,10 @@ function buildContents(
             id: block.tool_use_id,
           },
         };
-        if (lastThoughtSignature) part.thoughtSignature = lastThoughtSignature;
+        if (lastThoughtSignature) {
+          part.thoughtSignature = lastThoughtSignature;
+          part.thought_signature = lastThoughtSignature;
+        }
         parts.push(part);
       } else if (block.type === 'redacted_thinking') {
         parts.push({ text: `[Redacted Thinking: ${block.data}]`, thought: true });

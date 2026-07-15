@@ -119,6 +119,7 @@ export interface GeminiPart {
   text?: string;
   inlineData?: GeminiInlineData;
   thoughtSignature?: string;
+  thought_signature?: string;
 }
 
 export interface GeminiInlineData {

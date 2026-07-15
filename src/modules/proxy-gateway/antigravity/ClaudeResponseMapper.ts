@@ -56,7 +56,7 @@ class NonStreamingProcessor {
   }
 
   private processPart(part: GeminiPart) {
-    const signature = decodeSignature(part.thoughtSignature) || null;
+    const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature) || null;
 
     // 1. Handle FunctionCall
     if (part.functionCall) {

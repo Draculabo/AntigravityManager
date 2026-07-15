@@ -306,7 +306,7 @@ export class PartProcessor {
 
   public process(part: GeminiPart): string[] {
     const chunks: string[] = [];
-    const signature = decodeSignature(part.thoughtSignature);
+    const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature);
 
     // 1. Handle FunctionCall
     if (part.functionCall) {

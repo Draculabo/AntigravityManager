@@ -293,6 +293,8 @@ export interface GeminiPart {
   thought?: boolean;
   /** Thought signature */
   thoughtSignature?: string;
+  /** Snake-case thought signature required by strict Gemini internal endpoints */
+  thought_signature?: string;
   /** Function call */
   functionCall?: FunctionCall;
   /** Function response */

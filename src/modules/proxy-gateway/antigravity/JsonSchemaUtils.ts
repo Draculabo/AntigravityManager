@@ -115,7 +115,30 @@ function cleanJsonSchemaRecursive(value: any) {
   } else {
     const map = value;
 
-    // 1. Recursively process all children first to ensure nested structures are cleaned
+    if (isObjectLike(map.properties) && !isArray(map.properties)) {
+      const properties = map.properties as Record<string, unknown>;
+      const droppedKeys = Object.keys(properties).filter(
+        (key) => !isObjectLike(properties[key]) || isArray(properties[key]),
+      );
+
+      for (const key of droppedKeys) {
+        delete properties[key];
+      }
+
+      if (droppedKeys.length > 0 && isArray(map.required)) {
+        map.required = map.required.filter(
+          (requiredKey: unknown) => !isString(requiredKey) || !droppedKeys.includes(requiredKey),
+        );
+        if (map.required.length === 0) {
+          delete map.required;
+        }
+      }
+    }
+
+    if (map.items !== undefined && (!isObjectLike(map.items) || isArray(map.items))) {
+      delete map.items;
+      // 1. Recursively process all children first to ensure nested structures are cleaned
+    }
     for (const k in map) {
       if (Object.prototype.hasOwnProperty.call(map, k)) {
         cleanJsonSchemaRecursive(map[k]);
