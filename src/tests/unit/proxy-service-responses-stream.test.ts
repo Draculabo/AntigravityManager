@@ -9,7 +9,10 @@ function parseEvent(serializedEvent: string): Record<string, unknown> {
   return JSON.parse(serializedEvent.slice('data: '.length)) as Record<string, unknown>;
 }
 
-function createResponsesStream(service: ProxyService, upstreamStream: NodeJS.ReadableStream): Observable<unknown> {
+function createResponsesStream(
+  service: ProxyService,
+  upstreamStream: NodeJS.ReadableStream,
+): Observable<unknown> {
   const method: unknown = Reflect.get(service, 'processResponsesStreamResponse');
   if (typeof method !== 'function') {
     throw new Error('Responses stream processor is unavailable');
