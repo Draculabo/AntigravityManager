@@ -11,6 +11,24 @@ interface AccountLeaseModelPolicyOptions {
   logger: AccountLeaseModelLogger;
 }
 
+/**
+ * Upstream quota metadata advertises preset ids (e.g. gemini-3.6-flash-low)
+ * before the generation API accepts them, so a listed model can still fail
+ * with NOT_FOUND. Variant families share a base id and differ only in the
+ * trailing effort suffix; when one variant is rejected we reroute to a
+ * sibling variant that is still advertised, preferring the self-routing
+ * "tiered" preset over explicit effort levels.
+ */
+const MODEL_VARIANT_SUFFIX_PATTERN = /^(?<base>.+)-(?<variant>tiered|extra-low|low|medium|high)$/;
+
+const MODEL_VARIANT_PRIORITY: Record<string, number> = {
+  tiered: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  'extra-low': 1,
+};
+
 const GEMINI_PRO_FAMILY = new Set([
   'gemini-3-pro',
   'gemini-3-pro-preview',
@@ -31,7 +49,67 @@ type TieredModelSuffix = (typeof TIER_PREFERENCE)[number];
 export type AccountModelAvailability = 'unknown' | 'available' | 'unavailable';
 
 export class AccountLeaseModelPolicy {
+  private readonly unrequestableModels = new Set<string>();
+
   constructor(private readonly options: AccountLeaseModelPolicyOptions) {}
+
+  markModelUnrequestable(modelId: string): void {
+    const normalized = normalizeModelId(modelId)?.toLowerCase();
+    if (!normalized || this.unrequestableModels.has(normalized)) {
+      return;
+    }
+    this.unrequestableModels.add(normalized);
+    this.options.logger.log(
+      `[Unrequestable-Model] upstream rejected ${normalized}; future requests will use a family sibling when available`,
+    );
+  }
+
+  isModelUnrequestable(modelId: string): boolean {
+    const normalized = normalizeModelId(modelId)?.toLowerCase();
+    return normalized ? this.unrequestableModels.has(normalized) : false;
+  }
+
+  resolveUnrequestableSibling(
+    modelId: string,
+    tokenData?: AccountLeaseTokenData,
+  ): string | undefined {
+    const normalized = normalizeModelId(modelId)?.toLowerCase();
+    if (!normalized || !this.unrequestableModels.has(normalized)) {
+      return undefined;
+    }
+
+    const match = MODEL_VARIANT_SUFFIX_PATTERN.exec(normalized);
+    const base = match?.groups?.base;
+    if (!base) {
+      return undefined;
+    }
+
+    // Restrict sibling candidates to the leased account's own models when
+    // token data is available, so one account is never rewritten to a variant
+    // that only a different account advertises.
+    const candidateModels = tokenData
+      ? this.getAvailableModelsFromToken(tokenData)
+      : this.getAllCollectedModels();
+
+    const siblings: Array<{ priority: number; modelId: string }> = [];
+    for (const collectedModel of candidateModels) {
+      const collectedNormalized = normalizeModelId(collectedModel)?.toLowerCase();
+      if (!collectedNormalized || this.unrequestableModels.has(collectedNormalized)) {
+        continue;
+      }
+      const collectedMatch = MODEL_VARIANT_SUFFIX_PATTERN.exec(collectedNormalized);
+      if (collectedMatch?.groups?.base !== base) {
+        continue;
+      }
+      siblings.push({
+        priority: MODEL_VARIANT_PRIORITY[collectedMatch.groups.variant] ?? 0,
+        modelId: collectedNormalized,
+      });
+    }
+
+    siblings.sort((a, b) => b.priority - a.priority);
+    return siblings[0]?.modelId;
+  }
 
   getAllCollectedModels(): Set<string> {
     const allModels = new Set<string>();
@@ -135,11 +213,21 @@ export class AccountLeaseModelPolicy {
 
   resolveDynamicModelForAccount(accountId: string, mappedModel: string): string {
     const tokenData = this.options.getTokenCache().get(accountId);
+    const unrequestableSibling = this.resolveUnrequestableSibling(mappedModel, tokenData);
+    if (unrequestableSibling) {
+      this.options.logger.log(
+        `[Unrequestable-Model-Rewrite] account=${accountId} ${mappedModel} -> ${unrequestableSibling}`,
+      );
+      return unrequestableSibling;
+    }
+
     if (!tokenData) {
       return mappedModel;
     }
 
-    const availableModels = this.getAvailableModelsFromToken(tokenData);
+    const availableModels = this.filterRequestableModels(
+      this.getAvailableModelsFromToken(tokenData),
+    );
     if (availableModels.size === 0) {
       return mappedModel;
     }
@@ -168,7 +256,9 @@ export class AccountLeaseModelPolicy {
       return 'unknown';
     }
 
-    const availableModels = this.getAvailableModelsFromToken(tokenData);
+    const availableModels = this.filterRequestableModels(
+      this.getAvailableModelsFromToken(tokenData),
+    );
     if (availableModels.size === 0) {
       return 'unknown';
     }
@@ -181,6 +271,24 @@ export class AccountLeaseModelPolicy {
     return this.resolveAvailableModel(tokenData, normalizedMappedModel, availableModels)
       ? 'available'
       : 'unavailable';
+  }
+
+  /**
+   * Drop upstream-rejected ids from a candidate set so no selection path
+   * (forwarding rules, display presets, dynamic candidates, tiered family)
+   * can land on a model the generation API refuses to serve.
+   */
+  private filterRequestableModels(models: Set<string>): Set<string> {
+    if (this.unrequestableModels.size === 0) {
+      return models;
+    }
+    const filtered = new Set<string>();
+    for (const modelId of models) {
+      if (!this.unrequestableModels.has(modelId)) {
+        filtered.add(modelId);
+      }
+    }
+    return filtered;
   }
 
   private resolveAvailableModel(

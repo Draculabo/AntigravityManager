@@ -278,4 +278,131 @@ describe('AccountLeaseModelPolicy', () => {
     expect(policy.getModelOutputLimitForAccount('acc-1', 'models/gemini-3-pro')).toBe(8192);
     expect(policy.getModelThinkingBudgetForAccount('acc-1', 'gemini-3-pro')).toBe(32768);
   });
+
+  it('reroutes an upstream-rejected variant to the best advertised family sibling', () => {
+    const tokenCache = new Map([
+      [
+        'acc-1',
+        createToken({
+          model_quotas: {
+            'gemini-3.6-flash-low': 80,
+            'gemini-3.6-flash-medium': 80,
+            'gemini-3.6-flash-tiered': 80,
+            'gemini-3.5-flash-low': 80,
+          },
+        }),
+      ],
+    ]);
+    const { logger, policy } = createPolicy(tokenCache);
+
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.6-flash-low')).toBe(
+      'gemini-3.6-flash-low',
+    );
+
+    policy.markModelUnrequestable('gemini-3.6-flash-low');
+
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.6-flash-low')).toBe(
+      'gemini-3.6-flash-tiered',
+    );
+    expect(logger.log).toHaveBeenCalledWith(
+      '[Unrequestable-Model-Rewrite] account=acc-1 gemini-3.6-flash-low -> gemini-3.6-flash-tiered',
+    );
+  });
+
+  it('skips unrequestable siblings and stays cross-family safe', () => {
+    const tokenCache = new Map([
+      [
+        'acc-1',
+        createToken({
+          model_quotas: {
+            'gemini-3.6-flash-low': 80,
+            'gemini-3.6-flash-medium': 80,
+            'gemini-3.5-flash-high': 80,
+          },
+        }),
+      ],
+    ]);
+    const { policy } = createPolicy(tokenCache);
+
+    policy.markModelUnrequestable('gemini-3.6-flash-low');
+    policy.markModelUnrequestable('gemini-3.6-flash-medium');
+
+    // Both 3.6 variants are rejected and 3.5 belongs to another family base,
+    // so the requested id passes through unchanged.
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.6-flash-low')).toBe(
+      'gemini-3.6-flash-low',
+    );
+  });
+
+  it('never reroutes to a sibling only advertised by a different account', () => {
+    const tokenCache = new Map([
+      [
+        'acc-1',
+        createToken({
+          model_quotas: {
+            'gemini-3.6-flash-low': 80,
+          },
+        }),
+      ],
+      [
+        'acc-2',
+        createToken({
+          account_id: 'acc-2',
+          model_quotas: {
+            'gemini-3.6-flash-tiered': 80,
+          },
+        }),
+      ],
+    ]);
+    const { policy } = createPolicy(tokenCache);
+
+    policy.markModelUnrequestable('gemini-3.6-flash-low');
+
+    // acc-1 does not advertise the tiered sibling itself, so it must not be
+    // rewritten to a model that only acc-2 can serve.
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.6-flash-low')).toBe(
+      'gemini-3.6-flash-low',
+    );
+    expect(policy.resolveDynamicModelForAccount('acc-2', 'gemini-3.6-flash-low')).toBe(
+      'gemini-3.6-flash-tiered',
+    );
+  });
+
+  it('never selects an unrequestable model through fallback candidate paths', () => {
+    const tokenCache = new Map([
+      [
+        'acc-1',
+        createToken({
+          model_quotas: {
+            'gemini-3.1-pro-preview': 80,
+            'gemini-3.1-pro-low': 80,
+          },
+        }),
+      ],
+    ]);
+    const { policy } = createPolicy(tokenCache);
+
+    // The pro-candidate chain prefers the preview id; once upstream rejects
+    // it, fallback selection must skip it instead of re-serving it.
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3-pro')).toBe(
+      'gemini-3.1-pro-preview',
+    );
+
+    policy.markModelUnrequestable('gemini-3.1-pro-preview');
+
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3-pro')).toBe(
+      'gemini-3.1-pro-low',
+    );
+  });
+
+  it('keeps unknown models untouched when marked unrequestable without siblings', () => {
+    const tokenCache = new Map([['acc-1', createToken()]]);
+    const { policy } = createPolicy(tokenCache);
+
+    policy.markModelUnrequestable('claude-opus-4-6-thinking');
+
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'claude-opus-4-6-thinking')).toBe(
+      'claude-opus-4-6-thinking',
+    );
+  });
 });
