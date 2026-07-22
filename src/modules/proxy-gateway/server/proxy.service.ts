@@ -1,7 +1,8 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, Inject } from '@nestjs/common';
 import { isEmpty, isFunction, isNil, isNumber, isPlainObject, isString } from 'lodash-es';
 import { AccountLeaseService } from './account-lease.service';
 import { GeminiClient } from './clients/gemini.client';
+import { UpstreamRequestError } from './clients/upstream-error';
 import { v4 as uuidv4 } from 'uuid';
 import { Observable } from 'rxjs';
 import { transformClaudeRequestIn } from '../antigravity/ClaudeRequestMapper';
@@ -1005,7 +1006,11 @@ export class ProxyService {
           subscriber.next(': ping\n\n');
         }
       }, 15_000);
-      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'OpenAI-Responses-SSE', complete);
+      const idleTimer = this.createStreamIdleTimer(
+        upstreamStream,
+        'OpenAI-Responses-SSE',
+        complete,
+      );
       idleTimer.reset();
 
       upstreamStream.on('data', (chunk: Buffer) => {
@@ -1077,7 +1082,8 @@ export class ProxyService {
       upstreamStream.on('error', (error: unknown) => {
         idleTimer.clear();
         clearHeartbeat();
-        const cleanError = error instanceof Error ? new Error(error.message) : new Error(String(error));
+        const cleanError =
+          error instanceof Error ? new Error(error.message) : new Error(String(error));
         this.logger.error(`OpenAI Responses stream error: ${cleanError.message}`);
         subscriber.error(cleanError);
       });
@@ -1843,7 +1849,25 @@ export class ProxyService {
     model: string,
     error: unknown,
   ): Promise<void> {
+    if (this.isModelNotFoundError(error)) {
+      // Quota metadata can advertise ids the generation API rejects; mark the
+      // id so the in-flight retry loop and later requests reroute to a sibling.
+      this.accountLeaseService.markModelUnrequestable(model);
+    }
     await this.retryPolicy.applyUpstreamPenalty(accountId, model, error);
+  }
+
+  private isModelNotFoundError(error: unknown): boolean {
+    const notFoundMarker = 'Requested entity was not found';
+    if (error instanceof UpstreamRequestError) {
+      return (
+        error.status === HttpStatus.NOT_FOUND ||
+        error.message.includes(notFoundMarker) ||
+        Boolean(error.body?.includes(notFoundMarker))
+      );
+    }
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    return message.includes(notFoundMarker);
   }
 
   private resolveGraceRetryDelay(error: unknown): number | null {

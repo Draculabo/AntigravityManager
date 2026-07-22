@@ -354,6 +354,10 @@ export class AccountLeaseService implements OnModuleInit {
     return this.modelPolicy.resolveDynamicModelForAccount(accountId, mappedModel);
   }
 
+  markModelUnrequestable(modelId: string): void {
+    this.modelPolicy.markModelUnrequestable(modelId);
+  }
+
   getModelOutputLimitForAccount(accountId: string, modelName: string): number | undefined {
     return this.modelPolicy.getModelOutputLimitForAccount(accountId, modelName);
   }
