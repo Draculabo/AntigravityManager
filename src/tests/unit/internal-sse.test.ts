@@ -129,6 +129,26 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
     });
   });
 
+  it('still routes undecodable payloads through the parse-error recovery', async () => {
+    const service = new ProxyService({} as never, {} as never);
+    const upstreamStream = Readable.from(
+      Array.from({ length: 5 }, () => Buffer.from('data: {"response":\n\n')),
+    );
+
+    const serializedEvents = await lastValueFrom(
+      createAnthropicStream(service, upstreamStream).pipe(toArray()),
+    );
+    const events = serializedEvents.map((event) => parseEvent(String(event)));
+
+    // StreamingState only emits this once its consecutive-error counter passes
+    // its threshold, so seeing it proves handleParseError still runs for
+    // payloads the helper resolves to null instead of throwing on.
+    const errorEvent = events.find((event) => event.type === 'error');
+    expect(errorEvent).toMatchObject({
+      error: expect.objectContaining({ code: 'stream_decode_error' }),
+    });
+  });
+
   it('emits a message_delta for a wrapped finishReason-only chunk', async () => {
     const service = new ProxyService({} as never, {} as never);
     const upstreamStream = Readable.from([

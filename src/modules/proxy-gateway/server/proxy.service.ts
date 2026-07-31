@@ -344,6 +344,12 @@ export class ProxyService {
           try {
             const json = parseInternalSseChunk(dataStr);
             if (!json) {
+              // The helper returns null instead of throwing, so route the
+              // undecodable payload through the same recovery the catch block
+              // used to perform: StreamingState needs it to close any open
+              // block and keep its consecutive-error count accurate.
+              const errorChunks = state.handleParseError(dataStr);
+              errorChunks.forEach((c) => subscriber.next(c));
               continue;
             }
 
