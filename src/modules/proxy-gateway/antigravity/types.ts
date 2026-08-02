@@ -57,7 +57,14 @@ export interface ClaudeRequest {
   temperature?: number;
   top_p?: number;
   top_k?: number;
+  tool_choice?: string | { type: string; name?: string; function?: { name: string } };
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  seed?: number;
   thinking?: ThinkingConfig;
+  output_config?: {
+    effort?: string;
+  };
   metadata?: Metadata;
 }
 
@@ -173,6 +180,12 @@ export interface GenerationConfig {
   topP?: number;
   /** Top-K sampling parameter */
   topK?: number;
+  /** Penalizes tokens already present in the generated text. */
+  presencePenalty?: number;
+  /** Penalizes tokens proportionally to their generated frequency. */
+  frequencyPenalty?: number;
+  /** Deterministic sampling seed where supported upstream. */
+  seed?: number;
   /** Maximum output tokens */
   maxOutputTokens?: number;
   /** List of stop sequences */
@@ -263,12 +276,21 @@ export interface GeminiRequest {
   contents: GeminiContent[];
   /** List of tool declarations */
   tools?: GeminiToolDeclaration[];
+  /** Function calling configuration shared by the cached tool declarations. */
+  toolConfig?: {
+    functionCallingConfig: {
+      mode: string;
+      allowedFunctionNames?: string[];
+    };
+  };
   /** Safety settings */
   safetySettings?: SafetySetting[];
   /** System instruction */
   systemInstruction?: { parts: { text: string }[] };
   /** Generation config */
   generationConfig?: GenerationConfig;
+  /** Server-created explicit context cache resource name. */
+  cachedContent?: string;
 }
 
 export interface GeminiInternalRequest {
@@ -372,6 +394,7 @@ export interface ClaudeResponse {
   stop_reason: string;
   stop_sequence?: string | null;
   usage: Usage;
+  refusal?: string;
 }
 
 export interface Usage {
@@ -379,6 +402,7 @@ export interface Usage {
   output_tokens: number;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
+  reasoning_tokens?: number;
   /** Server tool usage stats */
   server_tool_use?: ServerToolUse;
 }
@@ -394,6 +418,10 @@ export interface GeminiResponse {
   usageMetadata?: UsageMetadata;
   modelVersion?: string;
   responseId?: string;
+  promptFeedback?: {
+    blockReason?: string;
+    blockReasonMessage?: string;
+  };
 }
 
 export interface Candidate {
@@ -407,6 +435,16 @@ export interface UsageMetadata {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   totalTokenCount?: number;
+  cachedContentTokenCount?: number;
+  thoughtsTokenCount?: number;
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_cached_tokens?: number;
+  total_thought_tokens?: number;
+  totalThoughtTokens?: number;
+  total_tokens?: number;
+  total_tool_use_tokens?: number;
+  cachedTokens?: number;
 }
 
 export interface GroundingMetadata {

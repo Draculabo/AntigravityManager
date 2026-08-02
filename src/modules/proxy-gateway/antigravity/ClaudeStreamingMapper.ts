@@ -47,7 +47,10 @@ export class StreamingState {
 
   private parseErrorCount: number = 0;
 
-  constructor() {}
+  constructor(
+    public readonly signatureSessionKey?: string,
+    public readonly messageCount?: number,
+  ) {}
 
   public emit(eventType: string, data: any): string {
     return `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -59,8 +62,18 @@ export class StreamingState {
     const usageMeta = rawJson.usageMetadata;
     const usage: Usage | undefined = usageMeta
       ? {
-          input_tokens: usageMeta.promptTokenCount || 0,
-          output_tokens: usageMeta.candidatesTokenCount || 0,
+          input_tokens: usageMeta.total_input_tokens ?? usageMeta.promptTokenCount ?? 0,
+          output_tokens: usageMeta.total_output_tokens ?? usageMeta.candidatesTokenCount ?? 0,
+          cache_read_input_tokens:
+            usageMeta.total_cached_tokens ??
+            usageMeta.cachedContentTokenCount ??
+            usageMeta.cachedTokens ??
+            0,
+          reasoning_tokens:
+            usageMeta.total_thought_tokens ??
+            usageMeta.totalThoughtTokens ??
+            usageMeta.thoughtsTokenCount ??
+            0,
         }
       : undefined;
 
@@ -214,8 +227,19 @@ export class StreamingState {
 
     const usage: Usage = usageMetadata
       ? {
-          input_tokens: usageMetadata.promptTokenCount || 0,
-          output_tokens: usageMetadata.candidatesTokenCount || 0,
+          input_tokens: usageMetadata.total_input_tokens ?? usageMetadata.promptTokenCount ?? 0,
+          output_tokens:
+            usageMetadata.total_output_tokens ?? usageMetadata.candidatesTokenCount ?? 0,
+          cache_read_input_tokens:
+            usageMetadata.total_cached_tokens ??
+            usageMetadata.cachedContentTokenCount ??
+            usageMetadata.cachedTokens ??
+            0,
+          reasoning_tokens:
+            usageMetadata.total_thought_tokens ??
+            usageMetadata.totalThoughtTokens ??
+            usageMetadata.thoughtsTokenCount ??
+            0,
         }
       : { input_tokens: 0, output_tokens: 0 };
 
@@ -467,7 +491,7 @@ export class PartProcessor {
     if (signature) {
       toolUse.signature = signature;
       // Store signature to global storage for replay in subsequent requests
-      SignatureStore.store(signature);
+      SignatureStore.store(signature, this.state.signatureSessionKey, this.state.messageCount);
     }
 
     chunks.push(...this.state.startBlock('Function', toolUse));

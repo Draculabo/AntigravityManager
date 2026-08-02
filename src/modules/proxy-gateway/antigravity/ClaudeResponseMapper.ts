@@ -8,6 +8,7 @@ import {
   GroundingMetadata,
 } from './types';
 import { decodeSignature } from './signature-utils';
+import { SignatureStore } from './SignatureStore';
 
 /**
  * Non-streaming response processor (Gemini -> Claude)
@@ -21,7 +22,10 @@ class NonStreamingProcessor {
   private trailingSignature: string | null = null;
   private hasToolCall: boolean = false;
 
-  constructor() {}
+  constructor(
+    private readonly signatureSessionKey?: string,
+    private readonly signatureMessageCount?: number,
+  ) {}
 
   public process(geminiResponse: GeminiResponse): ClaudeResponse {
     const candidate = geminiResponse.candidates?.[0];
@@ -57,6 +61,9 @@ class NonStreamingProcessor {
 
   private processPart(part: GeminiPart) {
     const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature) || null;
+    if (signature) {
+      SignatureStore.store(signature, this.signatureSessionKey, this.signatureMessageCount);
+    }
 
     // 1. Handle FunctionCall
     if (part.functionCall) {
@@ -215,19 +222,40 @@ class NonStreamingProcessor {
 
   private buildResponse(geminiResponse: GeminiResponse): ClaudeResponse {
     const finishReason = geminiResponse.candidates?.[0]?.finishReason;
+    const blockReason = geminiResponse.promptFeedback?.blockReason;
+    const refusal = blockReason
+      ? `Request blocked by safety policy (blockReason: ${blockReason})`
+      : undefined;
 
     let stopReason = 'end_turn';
     if (this.hasToolCall) {
       stopReason = 'tool_use';
     } else if (finishReason === 'MAX_TOKENS') {
       stopReason = 'max_tokens';
+    } else if (refusal) {
+      stopReason = 'content_filter';
     }
 
     const usage: Usage = {
-      input_tokens: geminiResponse.usageMetadata?.promptTokenCount || 0,
-      output_tokens: geminiResponse.usageMetadata?.candidatesTokenCount || 0,
+      input_tokens:
+        geminiResponse.usageMetadata?.total_input_tokens ??
+        geminiResponse.usageMetadata?.promptTokenCount ??
+        0,
+      output_tokens:
+        geminiResponse.usageMetadata?.total_output_tokens ??
+        geminiResponse.usageMetadata?.candidatesTokenCount ??
+        0,
       cache_creation_input_tokens: 0,
-      cache_read_input_tokens: 0,
+      cache_read_input_tokens:
+        geminiResponse.usageMetadata?.total_cached_tokens ??
+        geminiResponse.usageMetadata?.cachedContentTokenCount ??
+        geminiResponse.usageMetadata?.cachedTokens ??
+        0,
+      reasoning_tokens:
+        geminiResponse.usageMetadata?.total_thought_tokens ??
+        geminiResponse.usageMetadata?.totalThoughtTokens ??
+        geminiResponse.usageMetadata?.thoughtsTokenCount ??
+        0,
     };
 
     return {
@@ -238,6 +266,7 @@ class NonStreamingProcessor {
       content: this.contentBlocks,
       stop_reason: stopReason,
       usage: usage,
+      refusal,
     };
   }
 }
@@ -245,7 +274,11 @@ class NonStreamingProcessor {
 /**
  * Public API: Transform Gemini Response to Claude Response
  */
-export function transformResponse(geminiResponse: GeminiResponse): ClaudeResponse {
-  const processor = new NonStreamingProcessor();
+export function transformResponse(
+  geminiResponse: GeminiResponse,
+  signatureSessionKey?: string,
+  signatureMessageCount?: number,
+): ClaudeResponse {
+  const processor = new NonStreamingProcessor(signatureSessionKey, signatureMessageCount);
   return processor.process(geminiResponse);
 }

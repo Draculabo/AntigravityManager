@@ -1,9 +1,14 @@
+import { createHash } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { isEmpty, isPlainObject, isString } from 'lodash-es';
+import { isEmpty, isPlainObject, isString, sortBy } from 'lodash-es';
 import { mapClaudeModelToGemini, normalizeGeminiModelAlias } from './ModelMapping';
 import { getMaxOutputTokens, getThinkingBudget } from './ModelSpecs';
 import { cleanJsonSchema, normalizeObjectJsonSchema } from './JsonSchemaUtils';
 import { SignatureStore } from './SignatureStore';
+import { sanitizeSystemInstructionForCache } from './StablePromptPrefix';
+import { buildOfficialSystemInstruction } from './OfficialSystemInstruction';
+import { parseMarkdownImagesToGeminiParts } from './MarkdownImageParts';
+import { enhanceGeminiSkillsPrompt } from './SkillPromptEnhancer';
 import { logger } from '@/shared/logging/logger';
 import {
   ClaudeRequest,
@@ -42,6 +47,8 @@ interface ResolvedRequestConfig {
 type RequestType = 'agent' | 'web_search' | 'image_gen';
 
 const AGENT_CREDIT_TYPES = ['GOOGLE_ONE_AI'];
+const TOOL_SCHEMA_CACHE_LIMIT = 100;
+const TOOL_SCHEMA_CACHE_TTL_MS = 30 * 60 * 1000;
 const SAFETY_SETTINGS: SafetySetting[] = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'OFF' },
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'OFF' },
@@ -49,6 +56,14 @@ const SAFETY_SETTINGS: SafetySetting[] = [
   { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'OFF' },
   { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'OFF' },
 ];
+
+interface ToolSchemaCacheEntry {
+  declarationsJson: string;
+  hitCount: number;
+  timestamp: number;
+}
+
+const toolSchemaCache = new Map<string, ToolSchemaCacheEntry>();
 
 /**
  * Transforms Claude request into Gemini internal request format
@@ -60,7 +75,12 @@ export function transformClaudeRequestIn(
   claudeReq: ClaudeRequest,
   projectId?: string,
   userAgent?: string,
+  resolvedModel?: string,
 ): GeminiInternalRequest {
+  const { extraSystemMessages, messages } = extractEmbeddedSystemMessages(claudeReq.messages);
+  const signatureSessionKey = isString(claudeReq.metadata?.signature_session_key)
+    ? claudeReq.metadata.signature_session_key
+    : undefined;
   // Check for networking tools (server tool or built-in tool)
   const hasWebSearchTool = detectsNetworkingTool(claudeReq.tools);
 
@@ -68,10 +88,16 @@ export function transformClaudeRequestIn(
   const toolIdToName = new Map<string, string>();
 
   // 1. System Instruction
-  const systemInstruction = buildSystemInstruction(claudeReq.system);
+  const systemInstruction = buildSystemInstruction(
+    claudeReq.system,
+    extraSystemMessages,
+    claudeReq.tools,
+  );
 
   // Map model name
-  const mappedModel = hasWebSearchTool ? 'gemini-3-flash' : mapClaudeModelToGemini(claudeReq.model);
+  const mappedModel = resolvedModel
+    ? normalizeGeminiModelAlias(resolvedModel)
+    : mapClaudeModelToGemini(claudeReq.model);
 
   // Convert Claude tools to Tool array for networking detection
   const normalizedTools: Tool[] | undefined = claudeReq.tools
@@ -98,15 +124,15 @@ export function transformClaudeRequestIn(
   }
 
   if (isThinkingEnabled) {
-    const globalSig = SignatureStore.get();
-    const hasFunctionCalls = claudeReq.messages.some((m) => {
+    const sessionSignature = SignatureStore.get(signatureSessionKey);
+    const hasFunctionCalls = messages.some((m) => {
       if (Array.isArray(m.content)) {
         return m.content.some((b) => b.type === 'tool_use');
       }
       return false;
     });
 
-    if (hasFunctionCalls && !hasValidSignatureForFunctionCalls(claudeReq.messages, globalSig)) {
+    if (hasFunctionCalls && !hasValidSignatureForFunctionCalls(messages, sessionSignature)) {
       if (!isGeminiFlashModel(requestConfig.finalModel)) {
         isThinkingEnabled = false;
       }
@@ -126,11 +152,12 @@ export function transformClaudeRequestIn(
 
   // 2. Contents (Messages)
   const contents = buildContents(
-    claudeReq.messages,
+    messages,
     toolIdToName,
     isThinkingEnabled,
     allowDummyThought,
     requestConfig.finalModel,
+    signatureSessionKey,
   );
 
   // 3. Tools
@@ -143,7 +170,12 @@ export function transformClaudeRequestIn(
     systemInstruction?: { parts: { text: string }[] };
     generationConfig?: GenerationConfig;
     tools?: GeminiToolDeclaration[];
-    toolConfig?: { functionCallingConfig: { mode: string } };
+    toolConfig?: {
+      functionCallingConfig: {
+        mode: string;
+        allowedFunctionNames?: string[];
+      };
+    };
   } = {
     contents,
     safetySettings: [...SAFETY_SETTINGS],
@@ -161,7 +193,7 @@ export function transformClaudeRequestIn(
 
   if (tools) {
     innerRequest.tools = tools;
-    innerRequest.toolConfig = { functionCallingConfig: { mode: 'VALIDATED' } };
+    innerRequest.toolConfig = buildToolConfig(claudeReq.tool_choice);
   }
 
   // Inject googleSearch tool if needed (and not already done by buildTools)
@@ -185,16 +217,16 @@ export function transformClaudeRequestIn(
     innerRequest.generationConfig = imageGenerationConfig;
   }
 
+  const reorderedInnerRequest = reorderInnerRequestForCache(
+    innerRequest as GeminiInternalRequest['request'],
+  );
   const body = buildInternalRequestBody({
     requestConfig,
-    innerRequest: innerRequest as GeminiInternalRequest['request'],
+    innerRequest: reorderedInnerRequest,
     projectId,
+    sessionId: claudeReq.metadata?.user_id,
     userAgent,
   });
-
-  if (claudeReq.metadata?.user_id) {
-    body.sessionId = claudeReq.metadata.user_id;
-  }
 
   return body;
 }
@@ -203,28 +235,89 @@ function buildInternalRequestBody(params: {
   requestConfig: ResolvedRequestConfig;
   innerRequest: GeminiInternalRequest['request'];
   projectId?: string;
+  sessionId?: string;
   userAgent?: string;
 }): GeminiInternalRequest {
   const normalizedProjectId = params.projectId?.trim();
   const discoveryVersion = resolveLocalInstalledVersion() ?? FALLBACK_VERSION;
   const isAgentRequest = params.requestConfig.requestType !== 'image_gen';
   const body: GeminiInternalRequest = {
-    requestId: createOfficialRequestId(),
+    ...(normalizedProjectId ? { project: normalizedProjectId } : {}),
     request: params.innerRequest,
     model: params.requestConfig.finalModel,
     userAgent: params.userAgent?.trim() || buildUserAgent(discoveryVersion),
     requestType: isAgentRequest ? 'agent' : 'image_gen',
+    ...(isAgentRequest ? { enabledCreditTypes: [...AGENT_CREDIT_TYPES] } : {}),
+    ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+    requestId: createOfficialRequestId(),
   };
 
-  if (normalizedProjectId) {
-    body.project = normalizedProjectId;
-  }
-
-  if (isAgentRequest) {
-    body.enabledCreditTypes = [...AGENT_CREDIT_TYPES];
-  }
-
   return body;
+}
+
+/**
+ * Keep the large, repeatable request prefix before dynamic conversation contents.
+ * Property order is preserved by JSON.stringify in the request transport.
+ */
+function reorderInnerRequestForCache(
+  innerRequest: GeminiInternalRequest['request'],
+): GeminiInternalRequest['request'] {
+  const reordered: Partial<GeminiInternalRequest['request']> = {};
+
+  if (innerRequest.systemInstruction) {
+    reordered.systemInstruction = innerRequest.systemInstruction;
+  }
+  if (innerRequest.tools) {
+    reordered.tools = innerRequest.tools;
+  }
+  if (innerRequest.toolConfig) {
+    reordered.toolConfig = innerRequest.toolConfig;
+  }
+  if (innerRequest.generationConfig) {
+    reordered.generationConfig = innerRequest.generationConfig;
+  }
+  if (innerRequest.safetySettings) {
+    reordered.safetySettings = innerRequest.safetySettings;
+  }
+
+  reordered.contents = innerRequest.contents ?? [];
+
+  const reorderedRecord = reordered as Record<string, unknown>;
+  for (const [key, value] of Object.entries(innerRequest)) {
+    if (!(key in reorderedRecord)) {
+      reorderedRecord[key] = value;
+    }
+  }
+
+  return reordered as GeminiInternalRequest['request'];
+}
+
+function extractEmbeddedSystemMessages(messages: Message[]): {
+  extraSystemMessages: string[];
+  messages: Message[];
+} {
+  const extraSystemMessages: string[] = [];
+  const filteredMessages: Message[] = [];
+
+  for (const message of messages) {
+    if (message.role !== 'system') {
+      filteredMessages.push(message);
+      continue;
+    }
+
+    if (isString(message.content)) {
+      extraSystemMessages.push(message.content);
+      continue;
+    }
+
+    for (const block of message.content) {
+      if (block.type === 'text') {
+        extraSystemMessages.push(block.text);
+      }
+    }
+  }
+
+  return { extraSystemMessages, messages: filteredMessages };
 }
 
 function createOfficialRequestId(): string {
@@ -263,10 +356,8 @@ function resolveRequestConfig(
   let finalModel = mappedModel.replace(/-online$/, '');
   finalModel = normalizeGeminiModelAlias(finalModel);
 
-  if (enableNetworking) {
-    if (finalModel !== 'gemini-3-flash') {
-      finalModel = 'gemini-3-flash';
-    }
+  if (enableNetworking && !supportsWebSearchModel(finalModel)) {
+    finalModel = 'gemini-3-flash';
   }
 
   return {
@@ -277,6 +368,27 @@ function resolveRequestConfig(
   };
 }
 
+function supportsWebSearchModel(modelName: string): boolean {
+  const normalized = modelName.toLowerCase();
+  return (
+    normalized === 'gemini-2.5-flash' ||
+    normalized === 'gemini-1.5-pro' ||
+    normalized.startsWith('gemini-1.5-pro-') ||
+    normalized.startsWith('gemini-2.5-flash-') ||
+    normalized.startsWith('gemini-2.0-flash') ||
+    normalized.startsWith('gemini-3-') ||
+    normalized.startsWith('gemini-3.') ||
+    normalized.startsWith('gemini-3.5-') ||
+    normalized.startsWith('gemini-pro-') ||
+    normalized.startsWith('agent') ||
+    normalized.includes('claude-3-5-sonnet') ||
+    normalized.includes('claude-3-opus') ||
+    normalized.includes('claude-sonnet') ||
+    normalized.includes('claude-opus') ||
+    normalized.includes('claude-4')
+  );
+}
+
 /**
  * Parses image generation configuration
  * Extracts aspect ratio and resolution settings from model name
@@ -285,6 +397,7 @@ function parseImageConfig(modelName: string): {
   imageConfig: ImageConfig;
   parsedBaseModel: string;
 } {
+  const normalizedModel = modelName.toLowerCase();
   let aspectRatio = '1:1';
   if (modelName.includes('-16x9')) aspectRatio = '16:9';
   else if (modelName.includes('-9x16')) aspectRatio = '9:16';
@@ -299,19 +412,41 @@ function parseImageConfig(modelName: string): {
     config.imageSize = '4K';
   }
 
-  return { imageConfig: config, parsedBaseModel: 'gemini-3-pro-image' };
+  const parsedBaseModel =
+    normalizedModel.startsWith('gemini-3.1-flash-image') ||
+    normalizedModel.startsWith('gemini-3-flash-image')
+      ? 'gemini-3.1-flash-image'
+      : normalizedModel.startsWith('gemini-3.1-pro-image')
+        ? 'gemini-3.1-pro-image'
+        : 'gemini-3-pro-image';
+
+  return { imageConfig: config, parsedBaseModel };
 }
 
 function isGeminiImageModel(modelName: string): boolean {
   const normalized = modelName.toLowerCase();
   return (
-    normalized.startsWith('gemini-3-pro-image') || normalized.startsWith('gemini-3.1-pro-image')
+    normalized.startsWith('gemini-3-pro-image') ||
+    normalized.startsWith('gemini-3.1-pro-image') ||
+    normalized.startsWith('gemini-3-flash-image') ||
+    normalized.startsWith('gemini-3.1-flash-image')
   );
 }
 
 function isGeminiFlashModel(modelName: string): boolean {
   const normalized = modelName.toLowerCase();
-  return normalized.includes('gemini-3-flash') || normalized.includes('gemini-3.1-flash');
+  return normalized.includes('gemini') && normalized.includes('flash');
+}
+
+function isGeminiAgentThinkingModel(modelName: string): boolean {
+  const normalized = modelName.toLowerCase();
+  return (
+    normalized.includes('gemini') &&
+    !normalized.includes('claude') &&
+    (normalized.includes('gemini-pro') ||
+      normalized.includes('-pro-agent') ||
+      normalized.includes('-flash-agent'))
+  );
 }
 
 function targetModelSupportsThinking(modelName: string): boolean {
@@ -327,6 +462,7 @@ function targetModelSupportsThinking(modelName: string): boolean {
     isClaudeModel(normalized) ||
     normalized.includes('gemini-2.0-pro') ||
     isUntieredGeminiPro ||
+    isGeminiAgentThinkingModel(normalized) ||
     isGeminiFlashModel(normalized)
   );
 }
@@ -339,6 +475,7 @@ function shouldEnableThinkingByDefault(mappedModel: string, originalModel: strin
     originalLower.includes('claude-opus-4-6') ||
     mappedLower.includes('-thinking') ||
     mappedLower.includes('gemini-3.1-pro') ||
+    isGeminiAgentThinkingModel(mappedLower) ||
     mappedLower.includes('gemini-3-flash') ||
     mappedLower.includes('gemini-3.1-flash')
   );
@@ -442,53 +579,36 @@ function injectGoogleSearchTool(body: { tools?: GeminiToolDeclaration[] }, mappe
  */
 function buildSystemInstruction(
   system: ClaudeRequest['system'],
+  extraSystemMessages: string[],
+  tools?: Tool[],
 ): { parts: { text: string }[] } | null {
   const assistantIdentityDirective =
     'You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.\n' +
     'You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.\n' +
     '**Absolute paths only**\n' +
     '**Proactiveness**';
-  const identityMarker = 'You are Antigravity';
-
-  const parts: { text: string }[] = [];
-
-  let hasIdentityDirective = false;
+  const instructions: string[] = [];
 
   if (system) {
     if (isString(system)) {
-      if (system.includes(identityMarker)) {
-        hasIdentityDirective = true;
-      }
+      instructions.push(sanitizeSystemInstructionForCache(system));
     } else if (Array.isArray(system)) {
       for (const block of system) {
-        if (block.type === 'text' && block.text.includes(identityMarker)) {
-          hasIdentityDirective = true;
-          break;
+        if (block.type === 'text') {
+          instructions.push(sanitizeSystemInstructionForCache(block.text));
         }
       }
     }
   }
 
-  if (!hasIdentityDirective) {
-    parts.push({ text: assistantIdentityDirective });
-  }
-
-  if (system) {
-    if (isString(system)) {
-      parts.push({ text: system });
-    } else if (Array.isArray(system)) {
-      for (const block of system) {
-        if (block.type === 'text') parts.push({ text: block.text });
-      }
+  for (const extraText of extraSystemMessages) {
+    if (!isEmpty(extraText.trim())) {
+      instructions.push(sanitizeSystemInstructionForCache(extraText));
     }
   }
 
-  // If we pushed at least something
-  if (parts.length > 0) {
-    return { parts };
-  }
-
-  return null;
+  const text = buildOfficialSystemInstruction(instructions, assistantIdentityDirective);
+  return text ? { parts: [{ text: enhanceGeminiSkillsPrompt(text, tools) }] } : null;
 }
 
 /**
@@ -499,15 +619,15 @@ const MIN_SIGNATURE_LENGTH = 10;
 /**
  * Check if we have any valid signature available for function calls
  * @param messages  Messages from ClaudeRequest
- * @param globalSig  Global signature from SignatureStore
+ * @param sessionSignature  Signature from session-scoped storage
  * @returns  True if any valid signature is available for function calls
  */
 function hasValidSignatureForFunctionCalls(
   messages: Message[],
-  globalSig: string | null | undefined,
+  sessionSignature: string | null | undefined,
 ): boolean {
-  // 1. Check global store
-  if (globalSig && globalSig.length >= MIN_SIGNATURE_LENGTH) {
+  // 1. Check session-scoped store
+  if (sessionSignature && sessionSignature.length >= MIN_SIGNATURE_LENGTH) {
     return true;
   }
 
@@ -542,6 +662,7 @@ function buildContents(
   isThinkingEnabled: boolean,
   allowDummyThought: boolean,
   mappedModel: string,
+  signatureSessionKey?: string,
 ): GeminiContent[] {
   const contents: GeminiContent[] = [];
   let lastThoughtSignature: string | null = null;
@@ -558,8 +679,9 @@ function buildContents(
 
     for (const block of contentBlocks) {
       if (block.type === 'text') {
-        if (block.text && block.text !== '(no content)' && !isEmpty(block.text.trim()))
-          parts.push({ text: block.text.trim() });
+        if (block.text && block.text !== '(no content)' && !isEmpty(block.text.trim())) {
+          parts.push(...parseMarkdownImagesToGeminiParts(block.text.trim()));
+        }
       } else if (block.type === 'thinking') {
         const part: GeminiPart = { text: block.thinking, thought: true };
         cleanJsonSchema(part);
@@ -580,7 +702,11 @@ function buildContents(
         };
         cleanJsonSchema(part);
         toolIdToName.set(block.id, block.name);
-        const finalSig = block.signature || lastThoughtSignature || SignatureStore.get();
+        const finalSig =
+          block.signature ||
+          lastThoughtSignature ||
+          SignatureStore.getAt(signatureSessionKey, i) ||
+          SignatureStore.get(signatureSessionKey);
         if (finalSig) {
           part.thoughtSignature = finalSig;
           part.thought_signature = finalSig;
@@ -636,32 +762,36 @@ function buildTools(
   hasWebSearch: boolean,
   mappedModel: string,
 ): GeminiToolDeclaration[] | null {
-  if (!tools) {
+  if (!tools || tools.length === 0) {
     return null;
   }
-  const functionDeclarations: FunctionDeclaration[] = [];
-  let hasGoogleSearch = hasWebSearch;
 
-  for (const tool of tools) {
-    if (
-      tool.name === 'web_search' ||
-      tool.name === 'google_search' ||
-      tool.name === 'builtin_web_search' ||
-      tool.type === 'web_search_20250305' ||
-      tool.type === 'builtin_web_search'
-    ) {
-      hasGoogleSearch = true;
-      continue;
+  const hasGoogleSearch = hasWebSearch || tools.some(isGoogleSearchTool);
+  const cacheKey = computeToolSchemaCacheKey(tools);
+  let functionDeclarations = cacheKey ? lookupToolSchemaCache(cacheKey) : null;
+
+  if (!functionDeclarations) {
+    functionDeclarations = [];
+    for (const tool of tools) {
+      if (isGoogleSearchTool(tool)) {
+        continue;
+      }
+      if (tool.name) {
+        const inputSchema = toToolSchema(tool.input_schema);
+        functionDeclarations.push({
+          name: tool.name,
+          description: tool.description,
+          parameters: inputSchema,
+        });
+      }
     }
-    if (tool.name) {
-      const inputSchema = toToolSchema(tool.input_schema);
-      functionDeclarations.push({
-        name: tool.name,
-        description: tool.description,
-        parameters: inputSchema,
-      });
+
+    if (cacheKey) {
+      cacheToolSchemas(cacheKey, functionDeclarations);
     }
   }
+
+  functionDeclarations = sortBy(functionDeclarations, (declaration) => declaration.name);
 
   const toolList: GeminiToolDeclaration[] = [];
   if (functionDeclarations.length > 0) {
@@ -679,6 +809,90 @@ function buildTools(
     return toolList;
   }
   return null;
+}
+
+function isGoogleSearchTool(tool: Tool): boolean {
+  return (
+    tool.name === 'web_search' ||
+    tool.name === 'google_search' ||
+    tool.name === 'builtin_web_search' ||
+    tool.type === 'web_search_20250305' ||
+    tool.type === 'builtin_web_search'
+  );
+}
+
+function computeToolSchemaCacheKey(tools: Tool[]): string | null {
+  try {
+    const rawJson = JSON.stringify(tools);
+    if (!rawJson) {
+      return null;
+    }
+    return createHash('sha256').update(rawJson).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+function lookupToolSchemaCache(key: string): FunctionDeclaration[] | null {
+  const entry = toolSchemaCache.get(key);
+  if (!entry) {
+    return null;
+  }
+
+  if (Date.now() - entry.timestamp > TOOL_SCHEMA_CACHE_TTL_MS) {
+    toolSchemaCache.delete(key);
+    return null;
+  }
+
+  try {
+    const declarations = JSON.parse(entry.declarationsJson) as FunctionDeclaration[];
+    if (!Array.isArray(declarations)) {
+      toolSchemaCache.delete(key);
+      return null;
+    }
+    entry.hitCount += 1;
+    logger.debug(
+      `[ToolSchemaCache] HIT hash=${key.slice(0, 16)} hitCount=${entry.hitCount} declarations=${declarations.length}`,
+    );
+    return declarations;
+  } catch {
+    toolSchemaCache.delete(key);
+    return null;
+  }
+}
+
+function cacheToolSchemas(key: string, declarations: FunctionDeclaration[]): void {
+  try {
+    toolSchemaCache.set(key, {
+      declarationsJson: JSON.stringify(declarations),
+      hitCount: 0,
+      timestamp: Date.now(),
+    });
+  } catch {
+    return;
+  }
+
+  evictToolSchemaCache();
+  logger.debug(
+    `[ToolSchemaCache] INSERT hash=${key.slice(0, 16)} declarations=${declarations.length}`,
+  );
+}
+
+function evictToolSchemaCache(): void {
+  const oldestAllowed = Date.now() - TOOL_SCHEMA_CACHE_TTL_MS;
+  for (const [key, entry] of toolSchemaCache) {
+    if (entry.timestamp < oldestAllowed) {
+      toolSchemaCache.delete(key);
+    }
+  }
+
+  while (toolSchemaCache.size > TOOL_SCHEMA_CACHE_LIMIT) {
+    const oldestKey = toolSchemaCache.keys().next().value;
+    if (!oldestKey) {
+      return;
+    }
+    toolSchemaCache.delete(oldestKey);
+  }
 }
 
 /**
@@ -720,6 +934,9 @@ function buildGenerationConfig(
   if (isOpenAIPath) {
     config.temperature = claudeReq.temperature ?? 1.0;
     config.topP = claudeReq.top_p ?? 0.95;
+    config.presencePenalty = claudeReq.presence_penalty;
+    config.frequencyPenalty = claudeReq.frequency_penalty;
+    config.seed = claudeReq.seed;
     if (claudeReq.max_tokens !== undefined) {
       config.maxOutputTokens = claudeReq.max_tokens;
     } else {
@@ -751,6 +968,32 @@ function buildGenerationConfig(
   }
   config.stopSequences = ['<|user|>', '<|endoftext|>', '<|end_of_turn|>', '[DONE]', '\n\nHuman:'];
   return config;
+}
+
+function buildToolConfig(toolChoice: ClaudeRequest['tool_choice']): {
+  functionCallingConfig: {
+    mode: string;
+    allowedFunctionNames?: string[];
+  };
+} {
+  let mode = 'VALIDATED';
+  if (typeof toolChoice === 'string') {
+    if (toolChoice === 'none') {
+      mode = 'NONE';
+    } else if (toolChoice === 'auto') {
+      mode = 'AUTO';
+    } else {
+      mode = 'ANY';
+    }
+  } else if (toolChoice) {
+    mode = 'ANY';
+  }
+
+  return {
+    functionCallingConfig: {
+      mode,
+    },
+  };
 }
 
 /**
