@@ -9,6 +9,7 @@ import { ProxyService } from '../../modules/proxy-gateway/server/proxy.service';
 const mockAccountLeaseService = {
   getNextToken: vi.fn(),
   markAsRateLimited: vi.fn(),
+  markModelSuccess: vi.fn(),
   markAsForbidden: vi.fn(),
   markFromUpstreamError: vi.fn(),
   recordParityError: vi.fn(),
@@ -24,8 +25,8 @@ class TestableProxyService extends ProxyService {
     return (this as any).convertOpenAIToClaude(request);
   }
 
-  public toOpenAI(response: any, model: string): any {
-    return (this as any).convertClaudeToOpenAIResponse(response, model);
+  public toOpenAI(response: any, model: string, clientToolNames?: ReadonlySet<string>): any {
+    return (this as any).convertClaudeToOpenAIResponse(response, model, clientToolNames);
   }
 
   public streamToOpenAI(upstreamStream: any, model: string): Observable<string> {
@@ -54,6 +55,27 @@ describe('Proxy Parity Fixtures', () => {
     expect(actual.messages[0]).toEqual(expected.messages[0]);
     expect(actual.messages[1].content[1]).toEqual(expected.messages[1].content[1]);
     expect(actual.messages[2].content[0]).toEqual(expected.messages[2].content[0]);
+  });
+
+  it('keeps developer instructions in the system prompt and removes duplicates', () => {
+    const service = new TestableProxyService();
+    const actual = service.toAnthropic({
+      model: 'gpt-5-codex',
+      messages: [
+        { role: 'system', content: 'Shared policy.' },
+        { role: 'developer', content: '  Shared   policy.  ' },
+        { role: 'developer', content: 'Developer-only policy.' },
+        { role: 'user', content: 'Implement the requested change.' },
+      ],
+    });
+
+    expect(actual.system).toBe('Shared policy.\nDeveloper-only policy.');
+    expect(actual.messages).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'Implement the requested change.' }],
+      },
+    ]);
   });
 
   it('removes Codex-injected tools from function parameter schemas', () => {
@@ -101,6 +123,70 @@ describe('Proxy Parity Fixtures', () => {
     expect(actual.choices[0].message.tool_calls?.[0]).toEqual(expected.message.tool_calls[0]);
     expect(actual.choices[0].finish_reason).toBe(expected.finish_reason);
     expect(actual.usage).toEqual(expected.usage);
+  });
+
+  it('returns the shell tool name declared by the OpenAI client', () => {
+    const service = new TestableProxyService();
+
+    const actual = service.toOpenAI(
+      {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'call_shell',
+            name: 'shell',
+            input: { command: 'pwd' },
+          },
+        ],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+      'gpt-5-codex',
+      new Set(['bash']),
+    );
+
+    expect(actual.choices[0].message.tool_calls[0].function.name).toBe('bash');
+  });
+
+  it('normalizes non-stream apply_patch arguments to repaired freeform input', () => {
+    const service = new TestableProxyService();
+    const patch = [
+      '*** Begin Patch',
+      '--- a/src/example.ts',
+      '+++ b/src/example.ts',
+      '@@ -1 +1 @@',
+      '-const value = 1;',
+      '+const value = 2;',
+      '*** End Patch',
+    ].join('\n');
+    const repairedPatch = [
+      '*** Begin Patch',
+      '*** Update File: src/example.ts',
+      '@@',
+      '-const value = 1;',
+      '+const value = 2;',
+      '*** End Patch',
+    ].join('\n');
+
+    const actual = service.toOpenAI(
+      {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'call_patch',
+            name: 'apply_patch',
+            input: { command: ['apply_patch', patch] },
+          },
+        ],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+      'gpt-5-codex',
+    );
+
+    expect(actual.choices[0].message.tool_calls[0].function.arguments).toBe(
+      JSON.stringify({ input: repairedPatch }),
+    );
   });
 
   it('maps upstream stream fixture into expected OpenAI SSE semantics', async () => {

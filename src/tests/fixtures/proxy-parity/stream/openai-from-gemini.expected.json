@@ -4,7 +4,8 @@
     "\"name\":\"get_weather\"",
     "\"arguments\":\"{\\\"city\\\":\\\"Paris\\\"}\"",
     "\"content\":\"The weather is cloudy.\"",
-    "\"finish_reason\":\"stop\"",
+    "\"finish_reason\":\"tool_calls\"",
+    "\"usage\":{\"prompt_tokens\":15,\"completion_tokens\":9,\"total_tokens\":24,\"prompt_tokens_details\":{\"cached_tokens\":4},\"completion_tokens_details\":{\"reasoning_tokens\":3}}",
     "data: [DONE]"
   ]
 }

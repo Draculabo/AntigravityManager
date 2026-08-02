@@ -3,6 +3,7 @@ import { CloudAccount } from '@/modules/cloud-account/types';
 import { calculateRetryDelay, sleep } from '../antigravity/retry-utils';
 import {
   GRACE_RETRY_BUFFER_MS,
+  hasExplicitQuotaExhaustedSignal,
   parseRetryDelayMilliseconds,
   shouldGraceRetry,
 } from './rate-limit-tracker';
@@ -30,6 +31,8 @@ export interface ProxyRetryAccountLeaseService {
     body?: string;
     model?: string;
   }): Promise<void>;
+  getRemainingRateLimitWait(accountIdOrEmail: string, model?: string): number;
+  markModelSuccess(accountIdOrEmail: string, model: string): void;
 }
 
 interface ProxyRetryLogger {
@@ -124,26 +127,29 @@ export class ProxyRetryPolicy {
       const status = error.status;
       const isImageModel = model.toLowerCase().includes('-image');
       if (isImageModel && status === 404) {
-        proxyModelAvailabilityStore.mark(accountId, model, 'model_not_supported');
+        proxyModelAvailabilityStore.mark(accountId, model, 'model_not_supported', undefined, {
+          status,
+          message: error.body ?? error.message,
+        });
         return;
       }
       if (isImageModel && status === 403) {
-        proxyModelAvailabilityStore.mark(accountId, model, 'model_forbidden');
+        proxyModelAvailabilityStore.mark(accountId, model, 'model_forbidden', undefined, {
+          status,
+          message: error.body ?? error.message,
+        });
         return;
       }
       if (status === 429) {
-        const retryDelayMs = parseRetryDelayMilliseconds(
-          [error.body, error.message].filter(isString).join('\n'),
-        );
-        const lowerBody = error.body?.toLowerCase() ?? '';
-        proxyModelAvailabilityStore.mark(
-          accountId,
+        await this.accountLeaseService.markFromUpstreamError({
+          accountIdOrEmail: accountId,
+          status,
+          retryAfter: error.headers?.retryAfter,
+          body: error.body,
           model,
-          lowerBody.includes('quota') || lowerBody.includes('exhausted')
-            ? 'quota_exhausted'
-            : 'rate_limited',
-          retryDelayMs === null ? undefined : Date.now() + retryDelayMs,
-        );
+        });
+        this.persistModelRateLimit(accountId, model, error.body ?? error.message, status);
+        return;
       }
       if (status === 401 || status === 403) {
         this.accountLeaseService.markAsForbidden(accountId);
@@ -176,8 +182,41 @@ export class ProxyRetryPolicy {
     }
 
     if (penaltyDecision.markAsRateLimited) {
-      this.accountLeaseService.markAsRateLimited(accountId);
+      await this.accountLeaseService.markFromUpstreamError({
+        accountIdOrEmail: accountId,
+        status: 429,
+        body: error.message,
+        model,
+      });
+      this.persistModelRateLimit(accountId, model, error.message, 429);
     }
+  }
+
+  markUpstreamSuccess(accountId: string, model: string): void {
+    this.accountLeaseService.markModelSuccess(accountId, model);
+    proxyModelAvailabilityStore.clearModel(accountId, model);
+  }
+
+  private persistModelRateLimit(
+    accountId: string,
+    model: string,
+    message: string,
+    status: number,
+  ): void {
+    const waitSeconds = this.accountLeaseService.getRemainingRateLimitWait(accountId, model);
+    if (waitSeconds <= 0) {
+      return;
+    }
+    proxyModelAvailabilityStore.mark(
+      accountId,
+      model,
+      hasExplicitQuotaExhaustedSignal(message) ? 'quota_exhausted' : 'rate_limited',
+      Date.now() + waitSeconds * 1000,
+      {
+        status,
+        message,
+      },
+    );
   }
 
   resolveGraceRetryDelay(error: unknown): number | null {

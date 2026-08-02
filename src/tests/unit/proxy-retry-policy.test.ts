@@ -28,6 +28,8 @@ function createPolicy() {
     markAsForbidden: vi.fn(),
     markAsRateLimited: vi.fn(),
     markFromUpstreamError: vi.fn().mockResolvedValue(undefined),
+    getRemainingRateLimitWait: vi.fn().mockReturnValue(30),
+    markModelSuccess: vi.fn(),
   };
   const logger = {
     log: vi.fn(),
@@ -118,6 +120,93 @@ describe('ProxyRetryPolicy', () => {
     });
   });
 
+  it('persists the tracker-clamped wait instead of the raw upstream retry delay', async () => {
+    proxyModelAvailabilityStore.clearAccount('acc-clamped');
+    const { policy, accountLeaseService } = createPolicy();
+    accountLeaseService.getRemainingRateLimitWait.mockReturnValue(300);
+    const startedAt = Date.now();
+
+    await policy.applyUpstreamPenalty(
+      'acc-clamped',
+      'gemini-3.1-pro-high',
+      new UpstreamRequestError({
+        message: 'quota exhausted',
+        status: 429,
+        headers: { retryAfter: '3600' },
+        body: 'quota_exhausted',
+      }),
+    );
+
+    const entry = proxyModelAvailabilityStore
+      .getSnapshot()
+      .find((candidate) => candidate.accountId === 'acc-clamped');
+    expect(accountLeaseService.markFromUpstreamError).toHaveBeenCalledBefore(
+      accountLeaseService.getRemainingRateLimitWait,
+    );
+    expect(entry).toEqual(
+      expect.objectContaining({
+        accountId: 'acc-clamped',
+        modelId: 'gemini-3.1-pro-high',
+        reason: 'quota_exhausted',
+      }),
+    );
+    expect(entry?.unavailableUntil).toBeGreaterThanOrEqual(startedAt + 300_000);
+    expect(entry?.unavailableUntil).toBeLessThanOrEqual(Date.now() + 300_000);
+    proxyModelAvailabilityStore.clearAccount('acc-clamped');
+  });
+
+  it('classifies generic RESOURCE_EXHAUSTED availability as a transient rate limit', async () => {
+    proxyModelAvailabilityStore.clearAccount('acc-resource');
+    const { policy } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-resource',
+      'gemini-3.1-pro-high',
+      new UpstreamRequestError({
+        message: 'Resource has been exhausted',
+        status: 429,
+        body: JSON.stringify({
+          error: {
+            message: 'Resource has been exhausted (e.g. check quota).',
+            status: 'RESOURCE_EXHAUSTED',
+          },
+        }),
+      }),
+    );
+
+    expect(proxyModelAvailabilityStore.getSnapshot()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountId: 'acc-resource',
+          modelId: 'gemini-3.1-pro-high',
+          reason: 'rate_limited',
+        }),
+      ]),
+    );
+    proxyModelAvailabilityStore.clearAccount('acc-resource');
+  });
+
+  it('clears model-scoped retry state after a successful upstream request', () => {
+    proxyModelAvailabilityStore.clearAccount('acc-success');
+    proxyModelAvailabilityStore.mark('acc-success', 'gemini-3.1-pro-high', 'rate_limited');
+    const { policy, accountLeaseService } = createPolicy();
+
+    policy.markUpstreamSuccess('acc-success', 'gemini-3.1-pro-high');
+
+    expect(accountLeaseService.markModelSuccess).toHaveBeenCalledWith(
+      'acc-success',
+      'gemini-3.1-pro-high',
+    );
+    expect(proxyModelAvailabilityStore.getSnapshot()).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountId: 'acc-success',
+          modelId: 'gemini-3.1-pro-high',
+        }),
+      ]),
+    );
+  });
+
   it.each([
     [404, 'model_not_supported'],
     [403, 'model_forbidden'],
@@ -157,6 +246,12 @@ describe('ProxyRetryPolicy', () => {
     await policy.applyUpstreamPenalty('acc-1', 'gemini-3-flash', new Error('429 quota exceeded'));
 
     expect(accountLeaseService.recordParityError).toHaveBeenCalledOnce();
-    expect(accountLeaseService.markAsRateLimited).toHaveBeenCalledWith('acc-1');
+    expect(accountLeaseService.markAsRateLimited).not.toHaveBeenCalled();
+    expect(accountLeaseService.markFromUpstreamError).toHaveBeenCalledWith({
+      accountIdOrEmail: 'acc-1',
+      status: 429,
+      body: '429 quota exceeded',
+      model: 'gemini-3-flash',
+    });
   });
 });

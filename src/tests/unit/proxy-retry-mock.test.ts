@@ -7,13 +7,16 @@ import { Observable } from 'rxjs';
 import { GeminiClient } from '../../modules/proxy-gateway/server/clients/gemini.client';
 import { setServerConfig } from '../../server/server-config';
 import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
+import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 
 // Mock dependencies
 const mockAccountLeaseService = {
   getNextToken: vi.fn(),
   markAsRateLimited: vi.fn(),
+  markModelSuccess: vi.fn(),
   markAsForbidden: vi.fn(),
   markFromUpstreamError: vi.fn(),
+  getRemainingRateLimitWait: vi.fn().mockReturnValue(30),
   recordParityError: vi.fn(),
   getModelOutputLimitForAccount: vi.fn(),
   getModelThinkingBudgetForAccount: vi.fn(),
@@ -370,8 +373,66 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     } as any);
 
     expect(mockAccountLeaseService.getNextToken).toHaveBeenCalledTimes(2);
-    expect(mockAccountLeaseService.markAsRateLimited).toHaveBeenCalledWith('acc-1');
+    expect(mockAccountLeaseService.markFromUpstreamError).toHaveBeenCalledWith({
+      accountIdOrEmail: 'acc-1',
+      status: 429,
+      body: '429 quota exceeded',
+      model: 'gemini-3-flash',
+    });
     expect((result as any).choices?.[0]?.message?.content).toBeDefined();
+  });
+
+  it('restores Markdown Base64 images on the public OpenAI chat path', async () => {
+    const service = new TestableProxyService();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
+    mockGeminiClient.generateInternal.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+      usageMetadata: { totalTokenCount: 5 },
+    });
+
+    await service.handleChatCompletions({
+      model: 'gemini-3-flash',
+      stream: false,
+      messages: [
+        {
+          role: 'user',
+          content: 'Inspect ![screen](data:image/png;base64,AAAABBBB) carefully.',
+        },
+      ],
+    });
+
+    const internalRequest = mockGeminiClient.generateInternal.mock.calls[0][0];
+    expect(internalRequest.request.contents[0].parts).toEqual([
+      { text: 'Inspect ' },
+      { inlineData: { mimeType: 'image/png', data: 'AAAABBBB' } },
+      { text: ' carefully.' },
+    ]);
+  });
+
+  it('keeps the web-search fallback selected by the request mapper', async () => {
+    setServerConfig(
+      createProxyConfig({
+        custom_mapping: {
+          'custom-search-model': 'custom-search-model',
+        },
+      }),
+    );
+    const service = new TestableProxyService();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
+    mockGeminiClient.generateInternal.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+      usageMetadata: { totalTokenCount: 5 },
+    });
+
+    await service.handleChatCompletions({
+      model: 'custom-search-model',
+      stream: false,
+      messages: [{ role: 'user', content: 'Search the documentation.' }],
+      tools: [{ type: 'web_search_20250305' }],
+    });
+
+    const internalRequest = mockGeminiClient.generateInternal.mock.calls[0][0];
+    expect(internalRequest.model).toBe('gemini-3-flash');
   });
 
   it('retries Anthropic flow with the same error classification matrix', async () => {
@@ -396,7 +457,12 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     } as any);
 
     expect(mockAccountLeaseService.getNextToken).toHaveBeenCalledTimes(2);
-    expect(mockAccountLeaseService.markAsRateLimited).toHaveBeenCalledWith('acc-1');
+    expect(mockAccountLeaseService.markFromUpstreamError).toHaveBeenCalledWith({
+      accountIdOrEmail: 'acc-1',
+      status: 429,
+      body: '429 rate limit exceeded',
+      model: 'claude-sonnet-4-6-thinking',
+    });
     expect((result as any).type).toBe('message');
   });
 
@@ -419,7 +485,12 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     } as any);
 
     expect(mockAccountLeaseService.getNextToken).toHaveBeenCalledTimes(2);
-    expect(mockAccountLeaseService.markAsRateLimited).toHaveBeenCalledWith('acc-1');
+    expect(mockAccountLeaseService.markFromUpstreamError).toHaveBeenCalledWith({
+      accountIdOrEmail: 'acc-1',
+      status: 429,
+      body: '429 quota exceeded',
+      model: 'gemini-3-flash',
+    });
     expect((result as any).candidates?.[0]?.content?.parts?.[0]?.text).toBe('ok');
   });
 
@@ -714,10 +785,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
     expect(openaiResponse.choices[0].finish_reason).toBe('tool_calls');
   });
 
-  it('converts a wrapped internal stream into OpenAI Chat Completions chunks', async () => {
-    vi.clearAllMocks();
-    setServerConfig(createProxyConfig());
-
+  it('unwraps internal SSE responses and keeps reasoning separate from content', async () => {
     const service = new TestableProxyService();
     const stream = new EventEmitter();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
@@ -748,14 +816,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
             {
               content: {
                 parts: [
-                  { thought: true, text: 'reasoning text' },
-                  {
-                    functionCall: {
-                      id: 'fc1',
-                      name: 'search_docs',
-                      args: { query: 'api key' },
-                    },
-                  },
+                  { thought: true, text: '<think>\nreasoning text\n</think>' },
                   { text: 'final answer' },
                 ],
               },
@@ -769,12 +830,131 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       stream.emit('end');
     });
 
-    const output = chunks.join('');
-    expect(output).not.toContain('__cloudCodeMeta');
-    expect(output).toContain('"reasoning_content":"reasoning text"');
-    expect(output).toContain('"tool_calls"');
-    expect(output).toContain('"content":"final answer"');
-    expect(output).toContain('data: [DONE]');
+    const payloads = chunks
+      .flatMap((chunk) => chunk.split('\n'))
+      .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
+      .map((line) => JSON.parse(line.slice('data: '.length)));
+    const deltas = payloads.flatMap((payload) =>
+      payload.choices.map((choice: { delta: Record<string, unknown> }) => choice.delta),
+    );
+
+    expect(payloads.some((payload) => '__cloudCodeMeta' in payload)).toBe(false);
+    expect(deltas).toContainEqual({
+      role: 'assistant',
+      content: null,
+      reasoning_content: 'reasoning text',
+    });
+    expect(deltas).toContainEqual({ content: 'final answer' });
+    expect(
+      deltas.some(
+        (delta) => 'content' in delta && delta.content !== null && 'reasoning_content' in delta,
+      ),
+    ).toBe(false);
+    expect(chunks.filter((chunk) => chunk.includes('data: [DONE]'))).toHaveLength(1);
+  });
+
+  it('matches stable tool-call ordering, deduplication, signatures, and finish semantics', async () => {
+    const service = new TestableProxyService();
+    const stream = new EventEmitter();
+    const sessionKey = 'chat-stream-parity-session';
+    SignatureStore.clear(sessionKey);
+    const observable = (service as any).processStreamResponse(
+      stream,
+      'gpt-4o-mini',
+      undefined,
+      sessionKey,
+      6,
+    );
+
+    const chunks: string[] = [];
+    await new Promise<void>((resolve, reject) => {
+      observable.subscribe({
+        next: (chunk: string) => {
+          chunks.push(chunk);
+        },
+        error: reject,
+        complete: resolve,
+      });
+
+      const firstToolCall = {
+        id: 'fc1',
+        name: 'search_docs',
+        args: { query: 'api key' },
+      };
+      const payload = JSON.stringify({
+        response: {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    thought: true,
+                    text: 'reasoning text',
+                    thoughtSignature: Buffer.from('stable signature').toString('base64'),
+                  },
+                  { functionCall: firstToolCall },
+                  { functionCall: firstToolCall },
+                  {
+                    functionCall: {
+                      id: 'fc2',
+                      name: 'open_document',
+                      args: { path: '/docs/api.md' },
+                    },
+                  },
+                  { text: 'final answer' },
+                ],
+              },
+              finishReason: 'STOP',
+            },
+          ],
+          usageMetadata: {
+            promptTokenCount: 10,
+            candidatesTokenCount: 4,
+            totalTokenCount: 14,
+          },
+        },
+      });
+
+      stream.emit('data', Buffer.from(`data: ${payload}\n`));
+      stream.emit('end');
+    });
+
+    const payloads = chunks
+      .flatMap((chunk) => chunk.split('\n'))
+      .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
+      .map((line) => JSON.parse(line.slice('data: '.length)));
+    const choices = payloads.flatMap((payload) => payload.choices);
+    const deltas = choices.map((choice: { delta: Record<string, unknown> }) => choice.delta);
+    const toolDeltas = deltas.filter((delta) => 'tool_calls' in delta);
+    const toolCalls = toolDeltas.flatMap(
+      (delta) =>
+        delta.tool_calls as Array<{
+          index: number;
+          id: string;
+          function: { name: string };
+        }>,
+    );
+
+    expect(toolCalls.map((toolCall) => toolCall.id)).toEqual(['fc1', 'fc2']);
+    expect(toolCalls.map((toolCall) => toolCall.index)).toEqual([0, 1]);
+    expect(toolDeltas.every((delta) => delta.role === 'assistant')).toBe(true);
+    expect(deltas.findIndex((delta) => 'tool_calls' in delta)).toBeLessThan(
+      deltas.findIndex((delta) => 'reasoning_content' in delta),
+    );
+    expect(deltas.findIndex((delta) => 'reasoning_content' in delta)).toBeLessThan(
+      deltas.findIndex((delta) => delta.content === 'final answer'),
+    );
+    expect(choices.at(-1)?.finish_reason).toBe('tool_calls');
+    expect(payloads.at(-1)?.usage).toMatchObject({
+      prompt_tokens: 10,
+      completion_tokens: 4,
+      total_tokens: 14,
+    });
+    expect(SignatureStore.get(sessionKey)).toBe('stable signature');
+    expect(SignatureStore.getAt(sessionKey, 6)).toBe('stable signature');
+    expect(chunks.filter((chunk) => chunk.includes('data: [DONE]'))).toHaveLength(1);
+
+    SignatureStore.clear(sessionKey);
   });
 
   it('prepends legacy Cloud Code metadata only when explicitly enabled', async () => {

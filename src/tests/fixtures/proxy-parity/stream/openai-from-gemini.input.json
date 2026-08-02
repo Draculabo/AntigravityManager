@@ -1,6 +1,12 @@
 {
   "model": "gemini-2.5-pro",
   "upstream": {
+    "usageMetadata": {
+      "cachedContentTokenCount": 4,
+      "candidatesTokenCount": 9,
+      "promptTokenCount": 15,
+      "thoughtsTokenCount": 3
+    },
     "candidates": [
       {
         "content": {

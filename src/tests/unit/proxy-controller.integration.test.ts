@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 
 import { ProxyController } from '../../modules/proxy-gateway/server/proxy.controller';
+import { OpenAIResponsesSessionStore } from '../../modules/proxy-gateway/server/openai-responses-session.store';
+import { UpstreamRequestError } from '../../modules/proxy-gateway/server/clients/upstream-error';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};
@@ -11,7 +13,192 @@ function createReplyMock() {
   return reply;
 }
 
+function createMultipartRequest(
+  parts: Array<
+    | { fieldname: string; type: 'field'; value: string }
+    | {
+        data: Buffer;
+        fieldname: string;
+        filename: string;
+        mimetype: string;
+        type: 'file';
+      }
+  >,
+) {
+  return {
+    headers: {
+      'content-type': 'multipart/form-data; boundary=----parity',
+    },
+    isMultipart: () => true,
+    async *parts() {
+      for (const part of parts) {
+        if (part.type === 'field') {
+          yield {
+            ...part,
+            encoding: '7bit',
+            fields: {},
+            fieldnameTruncated: false,
+            mimetype: 'text/plain',
+            valueTruncated: false,
+          };
+        } else {
+          yield {
+            ...part,
+            encoding: '7bit',
+            fields: {},
+            toBuffer: async () => part.data,
+          };
+        }
+      }
+    },
+  };
+}
+
 describe('ProxyController Integration', () => {
+  afterEach(() => {
+    OpenAIResponsesSessionStore.clear();
+  });
+
+  it('preserves Responses tool choice and sampling compatibility fields', () => {
+    const proxyService = {
+      handleChatCompletions: vi.fn(),
+      handleAnthropicMessages: vi.fn(),
+    };
+    const controller = new ProxyController(proxyService as any);
+
+    const prepared = controller.prepareResponsesRequest({
+      model: 'gpt-5-codex',
+      input: 'update the file',
+      tool_choice: { type: 'function', function: { name: 'apply_patch' } },
+      presence_penalty: 0.25,
+      frequency_penalty: 0.5,
+      seed: 42,
+    });
+
+    expect(prepared?.request).toMatchObject({
+      tool_choice: { type: 'function', function: { name: 'apply_patch' } },
+      presence_penalty: 0.25,
+      frequency_penalty: 0.5,
+      seed: 42,
+    });
+  });
+
+  it('drops incomplete custom calls and their matching outputs from Responses history', () => {
+    const controller = new ProxyController({
+      handleChatCompletions: vi.fn(),
+      handleAnthropicMessages: vi.fn(),
+    } as any);
+
+    const prepared = controller.prepareResponsesRequest({
+      model: 'gpt-5-codex',
+      input: [
+        {
+          type: 'custom_tool_call',
+          call_id: 'call_incomplete',
+          name: 'apply_patch',
+          input: '*** Begin Patch\n*** End Patch',
+          status: 'incomplete',
+        },
+        {
+          type: 'custom_tool_call_output',
+          call_id: 'call_incomplete',
+          output: 'failed',
+        },
+        {
+          type: 'message',
+          role: 'user',
+          content: 'Continue without the incomplete call.',
+        },
+      ],
+    });
+
+    expect(prepared?.request.messages).toEqual([
+      {
+        role: 'user',
+        content: 'Continue without the incomplete call.',
+      },
+    ]);
+  });
+
+  it('drops orphan custom tool outputs from Responses history', () => {
+    const controller = new ProxyController({
+      handleChatCompletions: vi.fn(),
+      handleAnthropicMessages: vi.fn(),
+    } as any);
+
+    const prepared = controller.prepareResponsesRequest({
+      model: 'gpt-5-codex',
+      input: [
+        {
+          type: 'custom_tool_call_output',
+          call_id: 'call_missing',
+          output: 'No matching call exists.',
+        },
+        {
+          type: 'message',
+          role: 'user',
+          content: 'Continue without the orphan output.',
+        },
+      ],
+    });
+
+    expect(prepared?.request.messages).toEqual([
+      {
+        role: 'user',
+        content: 'Continue without the orphan output.',
+      },
+    ]);
+  });
+
+  it('compacts repeated apply_patch failures in Responses history', () => {
+    const controller = new ProxyController({
+      handleChatCompletions: vi.fn(),
+      handleAnthropicMessages: vi.fn(),
+    } as any);
+    const failure = [
+      'apply_patch verification failed',
+      'Failed to find expected lines in src/example.ts:',
+      'const value = 1;',
+    ].join('\n');
+
+    const prepared = controller.prepareResponsesRequest({
+      model: 'gpt-5-codex',
+      input: [
+        {
+          type: 'custom_tool_call',
+          call_id: 'call_failure_1',
+          name: 'apply_patch',
+          input: '*** Begin Patch\n*** End Patch',
+        },
+        {
+          type: 'custom_tool_call_output',
+          call_id: 'call_failure_1',
+          output: failure,
+        },
+        {
+          type: 'custom_tool_call',
+          call_id: 'call_failure_2',
+          name: 'apply_patch',
+          input: '*** Begin Patch\n*** End Patch',
+        },
+        {
+          type: 'custom_tool_call_output',
+          call_id: 'call_failure_2',
+          output: failure,
+        },
+      ],
+    });
+
+    const toolMessages = prepared?.request.messages.filter((message) => message.role === 'tool');
+    expect(toolMessages).toEqual([
+      expect.objectContaining({ content: failure }),
+      expect.objectContaining({
+        content:
+          '[Repeated apply_patch failure omitted: the same error was already provided earlier in this request.]',
+      }),
+    ]);
+  });
+
   it('lists Antigravity public presets alongside discovered chat models', () => {
     const proxyService = {
       handleChatCompletions: vi.fn(),
@@ -187,6 +374,7 @@ describe('ProxyController Integration', () => {
       {
         model: 'gpt-4o',
         instructions: 'Follow the tool protocol',
+        metadata: { session_id: 'responses-session-1' },
         input: [
           {
             type: 'message',
@@ -214,6 +402,7 @@ describe('ProxyController Integration', () => {
       role: 'system',
       content: 'Follow the tool protocol',
     });
+    expect(callArg.extra).toMatchObject({ session_id: 'responses-session-1' });
     expect(callArg.messages.some((message: { role: string }) => message.role === 'assistant')).toBe(
       true,
     );
@@ -223,17 +412,24 @@ describe('ProxyController Integration', () => {
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        object: 'text_completion',
+        object: 'response',
         model: 'gpt-4o',
-        choices: [
+        output: [
           expect.objectContaining({
-            text: 'normalized response',
-            logprobs: null,
+            content: [
+              expect.objectContaining({
+                text: 'normalized response',
+                type: 'output_text',
+              }),
+            ],
+            type: 'message',
           }),
         ],
+        status: 'completed',
+        type: 'response',
         usage: expect.objectContaining({
-          prompt_tokens: 10,
-          completion_tokens: 6,
+          input_tokens: 10,
+          output_tokens: 6,
           total_tokens: 16,
         }),
       }),
@@ -262,7 +458,9 @@ describe('ProxyController Integration', () => {
     expect(reply.header).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
     expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'no-cache');
     expect(reply.header).toHaveBeenCalledWith('Connection', 'keep-alive');
-    expect(reply.send).toHaveBeenCalledWith(stream);
+    expect(reply.send).toHaveBeenCalledWith(
+      expect.objectContaining({ subscribe: expect.any(Function) }),
+    );
     expect(proxyService.handleChatCompletions).toHaveBeenCalledWith(
       expect.any(Object),
       'responses',
@@ -315,6 +513,255 @@ describe('ProxyController Integration', () => {
     expect(toolMessage?.name).toBe('builtin_web_search');
   });
 
+  it('preserves apply_patch custom tool calls in /v1/responses', async () => {
+    const patch = '*** Begin Patch\n*** Update File: src/example.ts\n*** End Patch';
+    const proxyService = {
+      handleChatCompletions: vi.fn().mockResolvedValue({
+        id: 'chatcmpl_resp_patch',
+        object: 'chat.completion',
+        created: 1700000003,
+        model: 'gpt-4o',
+        choices: [
+          {
+            index: 0,
+            finish_reason: 'tool_calls',
+            message: {
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call_patch_2',
+                  type: 'function',
+                  function: {
+                    name: 'apply_patch',
+                    arguments: JSON.stringify({ command: ['apply_patch', patch] }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }),
+    };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.responses(
+      {
+        model: 'gpt-4o',
+        input: [
+          {
+            type: 'custom_tool_call',
+            call_id: 'call_patch_1',
+            name: 'apply_patch',
+            input: patch,
+          },
+          {
+            type: 'custom_tool_call_output',
+            call_id: 'call_patch_1',
+            output: 'Done',
+          },
+        ],
+      },
+      reply as any,
+    );
+
+    const callArg = proxyService.handleChatCompletions.mock.calls[0][0];
+    const assistantMessage = callArg.messages.find(
+      (message: { role: string }) => message.role === 'assistant',
+    );
+    const toolMessage = callArg.messages.find(
+      (message: { role: string }) => message.role === 'tool',
+    );
+
+    expect(assistantMessage?.tool_calls?.[0]).toMatchObject({
+      custom_input: patch,
+      function: { name: 'apply_patch' },
+    });
+    expect(toolMessage).toMatchObject({
+      content: 'Done',
+      name: 'apply_patch',
+      tool_call_id: 'call_patch_1',
+    });
+    expect(reply.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: [
+          expect.objectContaining({
+            call_id: 'call_patch_2',
+            input: patch,
+            name: 'apply_patch',
+            type: 'custom_tool_call',
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('continues a Responses conversation from previous_response_id', async () => {
+    const proxyService = {
+      handleChatCompletions: vi
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'resp_previous_1',
+          object: 'chat.completion',
+          created: 1700000004,
+          model: 'gpt-4o',
+          choices: [
+            {
+              index: 0,
+              finish_reason: 'stop',
+              message: { content: 'First answer' },
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        })
+        .mockResolvedValueOnce({
+          id: 'resp_previous_2',
+          object: 'chat.completion',
+          created: 1700000005,
+          model: 'gpt-4o',
+          choices: [
+            {
+              index: 0,
+              finish_reason: 'stop',
+              message: { content: 'Second answer' },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+        }),
+    };
+    const controller = new ProxyController(proxyService as any);
+
+    await controller.responses(
+      { input: 'First question', model: 'gpt-4o' },
+      createReplyMock() as any,
+    );
+    await controller.responses(
+      { input: 'Second question', previous_response_id: 'resp_previous_1' },
+      createReplyMock() as any,
+    );
+
+    const continuationRequest = proxyService.handleChatCompletions.mock.calls[1][0];
+    expect(continuationRequest).toMatchObject({ model: 'gpt-4o' });
+    expect(continuationRequest.messages).toEqual([
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer' },
+      { role: 'user', content: 'Second question' },
+    ]);
+  });
+
+  it('repairs an apply_patch call when a compacted continuation only sends its output', async () => {
+    const patch = '*** Begin Patch\n*** Add File: src/new.ts\n+export {};\n*** End Patch';
+    const proxyService = {
+      handleChatCompletions: vi
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'resp_compaction_1',
+          object: 'chat.completion',
+          created: 1700000006,
+          model: 'gpt-4o',
+          choices: [
+            {
+              index: 0,
+              finish_reason: 'tool_calls',
+              message: {
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'call_patch_compacted',
+                    type: 'function',
+                    function: {
+                      name: 'apply_patch',
+                      arguments: JSON.stringify({ command: ['apply_patch', patch] }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        })
+        .mockResolvedValueOnce({
+          id: 'resp_compaction_2',
+          object: 'chat.completion',
+          created: 1700000007,
+          model: 'gpt-4o',
+          choices: [
+            {
+              index: 0,
+              finish_reason: 'stop',
+              message: { content: 'Applied' },
+            },
+          ],
+          usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+        }),
+    };
+    const controller = new ProxyController(proxyService as any);
+
+    await controller.responses(
+      { input: 'Create the file', model: 'gpt-4o' },
+      createReplyMock() as any,
+    );
+    await controller.responses(
+      {
+        previous_response_id: 'resp_compaction_1',
+        input: [
+          { type: 'compaction_summary', content: 'Earlier context was compacted.' },
+          {
+            type: 'custom_tool_call_output',
+            call_id: 'call_patch_compacted',
+            output: 'Done',
+          },
+        ],
+      },
+      createReplyMock() as any,
+    );
+
+    const continuationRequest = proxyService.handleChatCompletions.mock.calls[1][0];
+    expect(continuationRequest.messages).toEqual([
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          expect.objectContaining({
+            custom_input: patch,
+            id: 'call_patch_compacted',
+            function: {
+              name: 'apply_patch',
+              arguments: JSON.stringify({ input: patch }),
+            },
+          }),
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_patch_compacted',
+        name: 'apply_patch',
+        content: 'Done',
+      },
+    ]);
+  });
+
+  it('rejects an unknown previous_response_id', async () => {
+    const proxyService = { handleChatCompletions: vi.fn() };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.responses(
+      { input: 'Continue', previous_response_id: 'resp_missing' },
+      reply as any,
+    );
+
+    expect(proxyService.handleChatCompletions).not.toHaveBeenCalled();
+    expect(reply.status).toHaveBeenCalledWith(400);
+    expect(reply.send).toHaveBeenCalledWith({
+      error: {
+        message: 'Unknown or expired previous_response_id: resp_missing',
+        type: 'invalid_request_error',
+      },
+    });
+  });
+
   it('supports image generations endpoint', async () => {
     const proxyService = {
       handleChatCompletions: vi.fn().mockResolvedValue({
@@ -327,17 +774,22 @@ describe('ProxyController Integration', () => {
         ],
       }),
     };
-    const controller = new ProxyController(proxyService as any);
+    const imageQuotaRefresh = vi.fn().mockResolvedValue(undefined);
+    const controller = new ProxyController(proxyService as any, undefined, imageQuotaRefresh);
     const reply = createReplyMock();
 
     await controller.imageGenerations(
       {
-        model: 'gemini-3-pro-image',
         prompt: 'draw a cat',
       },
       reply as any,
     );
 
+    expect(proxyService.handleChatCompletions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gemini-3.1-flash-image',
+      }),
+    );
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.send).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -348,6 +800,7 @@ describe('ProxyController Integration', () => {
         ],
       }),
     );
+    expect(imageQuotaRefresh).toHaveBeenCalledOnce();
   });
 
   it('maps image generation upstream quota errors to 429', async () => {
@@ -366,6 +819,28 @@ describe('ProxyController Integration', () => {
     );
 
     expect(reply.status).toHaveBeenCalledWith(429);
+  });
+
+  it('preserves a structured image upstream status when the message has no status hint', async () => {
+    const proxyService = {
+      handleChatCompletions: vi.fn().mockRejectedValue(
+        new UpstreamRequestError({
+          message: 'Temporary upstream failure',
+          status: 503,
+        }),
+      ),
+    };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.imageGenerations(
+      {
+        prompt: 'draw a dog',
+      },
+      reply as any,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(503);
   });
 
   it('falls back to Gemini image generation when chat path hits project context error', async () => {
@@ -394,7 +869,8 @@ describe('ProxyController Integration', () => {
         ],
       }),
     };
-    const controller = new ProxyController(proxyService as any);
+    const imageQuotaRefresh = vi.fn().mockResolvedValue(undefined);
+    const controller = new ProxyController(proxyService as any, undefined, imageQuotaRefresh);
     const reply = createReplyMock();
 
     await controller.imageGenerations(
@@ -417,6 +893,33 @@ describe('ProxyController Integration', () => {
         ],
       }),
     );
+    expect(imageQuotaRefresh).toHaveBeenCalledOnce();
+  });
+
+  it('returns 502 when the direct Gemini image fallback has no inline image', async () => {
+    const proxyService = {
+      handleChatCompletions: vi
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            'You are currently configured to use a Google Cloud Project but lack a Gemini Code Assist license. (#3501)',
+          ),
+        ),
+      handleGeminiGenerateContent: vi.fn().mockResolvedValue({
+        candidates: [],
+      }),
+    };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.imageGenerations(
+      {
+        prompt: 'draw a fox',
+      },
+      reply as any,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(502);
   });
 
   it('supports image edits endpoint with supplementary image payload', async () => {
@@ -435,22 +938,65 @@ describe('ProxyController Integration', () => {
     const reply = createReplyMock();
 
     await controller.imageEdits(
-      {
-        model: 'gemini-3-pro-image',
-        prompt: 'make it brighter',
-        image: 'data:image/png;base64,IMGBASE64',
-        reference_images: ['data:image/jpeg;base64,REFBASE64'],
-      },
-      {
-        headers: {
-          'content-type': 'multipart/form-data; boundary=----parity',
+      createMultipartRequest([
+        { type: 'field', fieldname: 'prompt', value: 'make it brighter' },
+        {
+          type: 'file',
+          fieldname: 'image',
+          filename: 'main.png',
+          mimetype: 'image/png',
+          data: Buffer.from('main-image'),
         },
-      } as any,
+        {
+          type: 'file',
+          fieldname: 'mask',
+          filename: 'mask.webp',
+          mimetype: 'image/webp',
+          data: Buffer.from('mask-image'),
+        },
+        {
+          type: 'file',
+          fieldname: 'image1',
+          filename: 'reference.jpg',
+          mimetype: 'image/jpeg',
+          data: Buffer.from('reference-image'),
+        },
+      ]) as any,
       reply as any,
     );
 
     const request = proxyService.handleChatCompletions.mock.calls[0][0];
-    expect(Array.isArray(request.messages[0].content)).toBe(true);
+    expect(request).toMatchObject({
+      model: 'gemini-3.1-flash-image',
+      messages: [
+        {
+          content: [
+            {
+              type: 'text',
+              text: 'make it brighter',
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/png;base64,${Buffer.from('main-image').toString('base64')}`,
+              },
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/webp;base64,${Buffer.from('mask-image').toString('base64')}`,
+              },
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${Buffer.from('reference-image').toString('base64')}`,
+              },
+            },
+          ],
+        },
+      ],
+    });
     expect(reply.status).toHaveBeenCalledWith(200);
   });
 
@@ -462,11 +1008,6 @@ describe('ProxyController Integration', () => {
     const reply = createReplyMock();
 
     await controller.imageEdits(
-      {
-        model: 'gemini-3-pro-image',
-        prompt: 'make it brighter',
-        image: 'data:image/png;base64,IMGBASE64',
-      },
       {
         headers: {
           'content-type': 'application/json',

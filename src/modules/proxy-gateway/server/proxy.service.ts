@@ -7,6 +7,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { Observable } from 'rxjs';
 import { transformClaudeRequestIn } from '../antigravity/ClaudeRequestMapper';
 import { transformResponse } from '../antigravity/ClaudeResponseMapper';
+import {
+  toOpenAIResponsesUsage,
+  toOpenAIUsage,
+  toOpenAIUsageFromGeminiUsageMetadata,
+} from '../antigravity/OpenAIUsageMapper';
 import { StreamingState, PartProcessor } from '../antigravity/ClaudeStreamingMapper';
 import {
   type GeminiResponsesGroundingMetadata,
@@ -21,7 +26,18 @@ import {
   type UsageMetadata,
 } from '../antigravity/types';
 import { normalizeObjectJsonSchema } from '../antigravity/JsonSchemaUtils';
+import {
+  extractCustomToolInput,
+  isCustomToolCall,
+  toCustomToolArguments,
+} from '../antigravity/CustomToolCall';
+import { optimizeApplyPatch } from '../antigravity/ApplyPatchPreflight';
+import { flattenOpenAITools, splitNamespaceToolName } from '../antigravity/ToolNamespace';
+import { resolveShellToolName } from '../antigravity/ShellToolName';
+import { sanitizeSystemInstructionForCache } from '../antigravity/StablePromptPrefix';
 import { classifyStreamError } from '../antigravity/stream-error-utils';
+import { SignatureStore } from '../antigravity/SignatureStore';
+import { decodeSignature } from '../antigravity/signature-utils';
 import { parseInternalSseChunk } from '../antigravity/internal-sse';
 import {
   OpenAIChatRequest,
@@ -31,17 +47,30 @@ import {
   AnthropicChatResponse,
   OpenAIChatResponse,
   AnthropicContent,
+  GeminiUsageMetadata,
+  OpenAIUsage,
 } from './interfaces/request-interfaces';
 import { getServerConfig } from '../../../server/server-config';
 import { resolveRequestUserAgent } from './request-user-agent';
 import { CloudAccount } from '@/modules/cloud-account/types';
-import { ProxyGenerationConstraints } from './proxy-generation-constraints';
+import {
+  ProxyGenerationConstraints,
+  type RegisteredGenerationConstraints,
+} from './proxy-generation-constraints';
 import {
   ProxyRetryPolicy,
   type ProxyTokenRetryState,
   type ProxyUpstreamFailureClassification,
 } from './proxy-retry-policy';
 import { ProxyModelRoutingPolicy } from './proxy-model-routing-policy';
+import {
+  applyAnthropicModelVariant,
+  applyOpenAIModelVariant,
+  rebindAnthropicModelVariant,
+  rebindOpenAIModelVariant,
+} from './model-variant-request-policy';
+import { hasExplicitQuotaExhaustedSignal } from './rate-limit-tracker';
+import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 
 interface StreamIdleTimer {
   reset: () => void;
@@ -161,14 +190,23 @@ export class ProxyService {
     return this.retryPolicy.prepareGraceRetry(retryState, token, error, label);
   }
 
+  private markUpstreamSuccess(accountId: string, model: string): void {
+    this.retryPolicy.markUpstreamSuccess(accountId, model);
+  }
+
   // --- Anthropic Handlers ---
 
   async handleAnthropicMessages(
     request: AnthropicChatRequest,
   ): Promise<AnthropicChatResponse | Observable<string>> {
+    const appliedVariantRequest = applyAnthropicModelVariant(request);
+    const routedRequest = appliedVariantRequest.request;
     const sessionKey = this.extractAnthropicSessionKey(request);
+    const signatureMessageCount = request.messages.filter(
+      (message) => message.role !== 'system',
+    ).length;
 
-    const targetModel = this.resolveTargetModel(request.model);
+    const targetModel = this.resolveTargetModel(routedRequest.model);
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
       `Anthropic request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}`,
@@ -190,17 +228,30 @@ export class ProxyService {
         token.id,
         targetModel,
       );
+      const effectiveVariantRequest = rebindAnthropicModelVariant(
+        appliedVariantRequest,
+        effectiveTargetModel,
+      );
+      const accountRequest = effectiveVariantRequest.request;
+      const accountTargetModel = effectiveVariantRequest.variant
+        ? accountRequest.model
+        : effectiveTargetModel;
 
       try {
         const projectId = token.token.project_id ?? '';
         const requestUserAgent = await resolveRequestUserAgent();
         const geminiBody = transformClaudeRequestIn(
-          this.toClaudeRequest(request),
+          this.toClaudeRequest(accountRequest, sessionKey),
           projectId,
           requestUserAgent,
+          accountTargetModel,
         );
-        geminiBody.model = effectiveTargetModel;
-        this.applyInternalGenerationConstraints(geminiBody, effectiveTargetModel, token.id);
+        this.applyInternalGenerationConstraints(
+          geminiBody,
+          geminiBody.model,
+          token.id,
+          effectiveVariantRequest.variant ?? undefined,
+        );
 
         if (request.stream) {
           const stream = await this.geminiClient.streamGenerateInternal(
@@ -209,7 +260,13 @@ export class ProxyService {
             token.token.upstream_proxy_url,
             extraHeaders,
           );
-          return this.processAnthropicInternalStream(stream, geminiBody.model);
+          this.markUpstreamSuccess(token.id, geminiBody.model);
+          return this.processAnthropicInternalStream(
+            stream,
+            geminiBody.model,
+            sessionKey,
+            signatureMessageCount,
+          );
         } else {
           const response = await this.generateInternalWithStreamFallback(
             geminiBody,
@@ -217,7 +274,10 @@ export class ProxyService {
             token.token.upstream_proxy_url,
             extraHeaders,
           );
-          return this.toAnthropicChatResponse(transformResponse(response));
+          this.markUpstreamSuccess(token.id, geminiBody.model);
+          return this.toAnthropicChatResponse(
+            transformResponse(response, sessionKey, signatureMessageCount),
+          );
         }
       } catch (error) {
         if (error instanceof Error && this.isProjectContextError(error.message)) {
@@ -227,12 +287,17 @@ export class ProxyService {
           try {
             const requestUserAgent = await resolveRequestUserAgent();
             const fallbackBody = transformClaudeRequestIn(
-              this.toClaudeRequest(request),
+              this.toClaudeRequest(accountRequest, sessionKey),
               '',
               requestUserAgent,
+              accountTargetModel,
             );
-            fallbackBody.model = effectiveTargetModel;
-            this.applyInternalGenerationConstraints(fallbackBody, effectiveTargetModel, token.id);
+            this.applyInternalGenerationConstraints(
+              fallbackBody,
+              fallbackBody.model,
+              token.id,
+              effectiveVariantRequest.variant ?? undefined,
+            );
             if (request.stream) {
               const stream = await this.geminiClient.streamGenerateInternal(
                 fallbackBody,
@@ -240,7 +305,13 @@ export class ProxyService {
                 token.token.upstream_proxy_url,
                 extraHeaders,
               );
-              return this.processAnthropicInternalStream(stream, fallbackBody.model);
+              this.markUpstreamSuccess(token.id, fallbackBody.model);
+              return this.processAnthropicInternalStream(
+                stream,
+                fallbackBody.model,
+                sessionKey,
+                signatureMessageCount,
+              );
             } else {
               const response = await this.generateInternalWithStreamFallback(
                 fallbackBody,
@@ -248,29 +319,48 @@ export class ProxyService {
                 token.token.upstream_proxy_url,
                 extraHeaders,
               );
-              return this.toAnthropicChatResponse(transformResponse(response));
+              this.markUpstreamSuccess(token.id, fallbackBody.model);
+              return this.toAnthropicChatResponse(
+                transformResponse(response, sessionKey, signatureMessageCount),
+              );
             }
           } catch (fallbackErr) {
             lastError = fallbackErr;
           }
         }
 
-        if (error instanceof Error && this.isQuotaExhaustedError(error.message)) {
+        // Registered families must exhaust account rotation for their exact tier before
+        // the lease policy may rebind to another registered tier with a full parameter tuple.
+        if (
+          !appliedVariantRequest.variant &&
+          error instanceof Error &&
+          this.isQuotaExhaustedError(error.message)
+        ) {
           this.logger.warn(
             `Anthropic request hit quota exhaustion on mapped model, retrying with fallback model gemini-3-flash: ${error.message}`,
           );
           try {
-            const downgradedRequest: ClaudeRequest = {
-              ...this.toClaudeRequest(request),
+            const downgradedVariant = applyAnthropicModelVariant({
+              ...request,
               model: 'gemini-3-flash',
-            };
+              output_config: {
+                effort: 'high',
+              },
+            });
+            const downgradedRequest = this.toClaudeRequest(downgradedVariant.request, sessionKey);
             const requestUserAgent = await resolveRequestUserAgent();
             const downgradedBody = transformClaudeRequestIn(
               downgradedRequest,
               token.token.project_id ?? '',
               requestUserAgent,
+              downgradedVariant.request.model,
             );
-            this.applyInternalGenerationConstraints(downgradedBody, 'gemini-3-flash', token.id);
+            this.applyInternalGenerationConstraints(
+              downgradedBody,
+              downgradedVariant.request.model,
+              token.id,
+              downgradedVariant.variant ?? undefined,
+            );
             if (request.stream) {
               const stream = await this.geminiClient.streamGenerateInternal(
                 downgradedBody,
@@ -278,7 +368,13 @@ export class ProxyService {
                 token.token.upstream_proxy_url,
                 extraHeaders,
               );
-              return this.processAnthropicInternalStream(stream, downgradedBody.model);
+              this.markUpstreamSuccess(token.id, downgradedBody.model);
+              return this.processAnthropicInternalStream(
+                stream,
+                downgradedBody.model,
+                sessionKey,
+                signatureMessageCount,
+              );
             } else {
               const response = await this.generateInternalWithStreamFallback(
                 downgradedBody,
@@ -286,7 +382,10 @@ export class ProxyService {
                 token.token.upstream_proxy_url,
                 extraHeaders,
               );
-              const transformed = this.toAnthropicChatResponse(transformResponse(response));
+              this.markUpstreamSuccess(token.id, downgradedBody.model);
+              const transformed = this.toAnthropicChatResponse(
+                transformResponse(response, sessionKey, signatureMessageCount),
+              );
               return {
                 ...transformed,
                 model: request.model,
@@ -298,10 +397,13 @@ export class ProxyService {
         }
 
         lastError = error;
-        if (await this.prepareGraceRetry(retryState, token, lastError, 'Anthropic')) {
+        if (
+          !appliedVariantRequest.variant &&
+          (await this.prepareGraceRetry(retryState, token, lastError, 'Anthropic'))
+        ) {
           continue;
         }
-        await this.applyUpstreamPenalty(token.id, effectiveTargetModel, error);
+        await this.applyUpstreamPenalty(token.id, accountTargetModel, error);
       }
     }
     throw lastError || new Error('Request failed after retries');
@@ -310,12 +412,14 @@ export class ProxyService {
   private processAnthropicInternalStream(
     upstreamStream: NodeJS.ReadableStream,
     _model: string,
+    signatureSessionKey?: string,
+    signatureMessageCount?: number,
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      const state = new StreamingState();
+      const state = new StreamingState(signatureSessionKey, signatureMessageCount);
       const processor = new PartProcessor(state);
 
       let lastFinishReason: string | undefined;
@@ -459,6 +563,7 @@ export class ProxyService {
           extraHeaders,
         );
 
+        this.markUpstreamSuccess(token.id, effectiveTargetModel);
         return this.normalizeGeminiGenerateResponse(response);
       } catch (err) {
         if (err instanceof Error && this.isProjectContextError(err.message)) {
@@ -481,6 +586,7 @@ export class ProxyService {
               token.token.upstream_proxy_url,
               extraHeaders,
             );
+            this.markUpstreamSuccess(token.id, effectiveTargetModel);
             return this.normalizeGeminiGenerateResponse(response);
           } catch (fallbackErr) {
             lastError = fallbackErr;
@@ -548,6 +654,7 @@ export class ProxyService {
           token.token.upstream_proxy_url,
           extraHeaders,
         );
+        this.markUpstreamSuccess(token.id, effectiveTargetModel);
         return this.passthroughSseStream(stream);
       } catch (err) {
         if (err instanceof Error && this.isProjectContextError(err.message)) {
@@ -570,6 +677,7 @@ export class ProxyService {
               token.token.upstream_proxy_url,
               extraHeaders,
             );
+            this.markUpstreamSuccess(token.id, effectiveTargetModel);
             return this.passthroughSseStream(stream);
           } catch (fallbackErr) {
             lastError = fallbackErr;
@@ -633,8 +741,14 @@ export class ProxyService {
     body: GeminiInternalRequest,
     model: string,
     accountId: string,
+    registered?: RegisteredGenerationConstraints,
   ): void {
-    this.generationConstraints.applyInternalGenerationConstraints(body, model, accountId);
+    this.generationConstraints.applyInternalGenerationConstraints(
+      body,
+      model,
+      accountId,
+      registered,
+    );
   }
 
   private createGeminiInternalRequest(
@@ -676,6 +790,7 @@ export class ProxyService {
 
     const normalized: GeminiResponse = {
       candidates,
+      promptFeedback: response.promptFeedback,
     };
 
     const usage = response.usageMetadata;
@@ -711,9 +826,12 @@ export class ProxyService {
     request: OpenAIChatRequest,
     outputProtocol: OpenAIOutputProtocol = 'chat-completions',
   ): Promise<OpenAIChatResponse | Observable<string>> {
+    const appliedVariantRequest = applyOpenAIModelVariant(request);
+    const routedRequest = appliedVariantRequest.request;
     const sessionKey = this.extractOpenAISessionKey(request);
+    const clientToolNames = this.extractOpenAIToolNames(routedRequest.tools);
 
-    const targetModel = this.resolveTargetModel(request.model);
+    const targetModel = this.resolveTargetModel(routedRequest.model);
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
       `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}`,
@@ -741,14 +859,31 @@ export class ProxyService {
         token.id,
         targetModel,
       );
+      const effectiveVariantRequest = rebindOpenAIModelVariant(
+        appliedVariantRequest,
+        effectiveTargetModel,
+      );
+      const accountRequest = effectiveVariantRequest.request;
+      const accountTargetModel = effectiveVariantRequest.variant
+        ? accountRequest.model
+        : effectiveTargetModel;
 
       try {
-        const claudeRequest = this.convertOpenAIToClaude(request);
+        const claudeRequest = this.convertOpenAIToClaude(accountRequest, sessionKey);
         const projectId = token.token.project_id ?? '';
         const requestUserAgent = await resolveRequestUserAgent();
-        const geminiBody = transformClaudeRequestIn(claudeRequest, projectId, requestUserAgent);
-        geminiBody.model = effectiveTargetModel;
-        this.applyInternalGenerationConstraints(geminiBody, effectiveTargetModel, token.id);
+        const geminiBody = transformClaudeRequestIn(
+          claudeRequest,
+          projectId,
+          requestUserAgent,
+          accountTargetModel,
+        );
+        this.applyInternalGenerationConstraints(
+          geminiBody,
+          geminiBody.model,
+          token.id,
+          effectiveVariantRequest.variant ?? undefined,
+        );
 
         // Use v1internal API (same as Anthropic handler)
         if (request.stream) {
@@ -759,7 +894,15 @@ export class ProxyService {
               token.token.upstream_proxy_url,
               extraHeaders,
             );
-            return this.createOpenAIProtocolStream(stream, request.model, outputProtocol);
+            this.markUpstreamSuccess(token.id, geminiBody.model);
+            return this.createOpenAIProtocolStream(
+              stream,
+              request.model,
+              outputProtocol,
+              sessionKey,
+              clientToolNames,
+              claudeRequest.messages.length,
+            );
           } catch (streamError) {
             this.logger.warn(
               `Stream path failed for model=${request.model}; falling back to non-stream generation: ${
@@ -773,16 +916,27 @@ export class ProxyService {
               token.token.upstream_proxy_url,
               extraHeaders,
             );
+            this.markUpstreamSuccess(token.id, geminiBody.model);
             this.logger.log(
-              `Upstream response snippet after stream fallback: ${JSON.stringify(response).substring(0, 500)}`,
+              `Upstream response snippet after stream fallback: ${safeStringifyPacket(response).substring(0, 500)}`,
             );
-            const claudeResponse = transformResponse(response);
+            const claudeResponse = transformResponse(
+              response,
+              sessionKey,
+              claudeRequest.messages.length,
+            );
             const openaiResponse = this.convertClaudeToOpenAIResponse(
               claudeResponse,
               request.model,
+              clientToolNames,
             );
             return outputProtocol === 'responses'
-              ? this.createSyntheticResponsesStream(openaiResponse)
+              ? this.createSyntheticResponsesStream(
+                  openaiResponse,
+                  sessionKey,
+                  clientToolNames,
+                  claudeRequest.messages.length,
+                )
               : this.createSyntheticOpenAIStream(openaiResponse);
           }
         } else {
@@ -792,15 +946,20 @@ export class ProxyService {
             token.token.upstream_proxy_url,
             extraHeaders,
           );
+          this.markUpstreamSuccess(token.id, geminiBody.model);
           this.logger.log(
-            `Upstream response snippet (non-stream): ${JSON.stringify(response).substring(0, 500)}`,
+            `Upstream response snippet (non-stream): ${safeStringifyPacket(response).substring(0, 500)}`,
           );
           // Transform Gemini response to OpenAI format
-          const claudeResponse = transformResponse(response);
-          this.logger.log(
-            `Transformed Claude response snippet: ${JSON.stringify(claudeResponse).substring(0, 500)}`,
+          const claudeResponse = transformResponse(
+            response,
+            sessionKey,
+            claudeRequest.messages.length,
           );
-          return this.convertClaudeToOpenAIResponse(claudeResponse, request.model);
+          this.logger.log(
+            `Transformed Claude response snippet: ${safeStringifyPacket(claudeResponse).substring(0, 500)}`,
+          );
+          return this.convertClaudeToOpenAIResponse(claudeResponse, request.model, clientToolNames);
         }
       } catch (err) {
         if (err instanceof Error && this.isProjectContextError(err.message)) {
@@ -808,11 +967,20 @@ export class ProxyService {
             `OpenAI compatibility request hit project context issue, retrying without project: ${err.message}`,
           );
           try {
-            const claudeRequest = this.convertOpenAIToClaude(request);
+            const claudeRequest = this.convertOpenAIToClaude(accountRequest, sessionKey);
             const requestUserAgent = await resolveRequestUserAgent();
-            const fallbackBody = transformClaudeRequestIn(claudeRequest, '', requestUserAgent);
-            fallbackBody.model = effectiveTargetModel;
-            this.applyInternalGenerationConstraints(fallbackBody, effectiveTargetModel, token.id);
+            const fallbackBody = transformClaudeRequestIn(
+              claudeRequest,
+              '',
+              requestUserAgent,
+              accountTargetModel,
+            );
+            this.applyInternalGenerationConstraints(
+              fallbackBody,
+              fallbackBody.model,
+              token.id,
+              effectiveVariantRequest.variant ?? undefined,
+            );
             if (request.stream) {
               const stream = await this.geminiClient.streamGenerateInternal(
                 fallbackBody,
@@ -820,7 +988,15 @@ export class ProxyService {
                 token.token.upstream_proxy_url,
                 extraHeaders,
               );
-              return this.createOpenAIProtocolStream(stream, request.model, outputProtocol);
+              this.markUpstreamSuccess(token.id, fallbackBody.model);
+              return this.createOpenAIProtocolStream(
+                stream,
+                request.model,
+                outputProtocol,
+                sessionKey,
+                clientToolNames,
+                claudeRequest.messages.length,
+              );
             }
 
             const response = await this.generateInternalWithStreamFallback(
@@ -829,8 +1005,17 @@ export class ProxyService {
               token.token.upstream_proxy_url,
               extraHeaders,
             );
-            const claudeResponse = transformResponse(response);
-            return this.convertClaudeToOpenAIResponse(claudeResponse, request.model);
+            this.markUpstreamSuccess(token.id, fallbackBody.model);
+            const claudeResponse = transformResponse(
+              response,
+              sessionKey,
+              claudeRequest.messages.length,
+            );
+            return this.convertClaudeToOpenAIResponse(
+              claudeResponse,
+              request.model,
+              clientToolNames,
+            );
           } catch (fallbackErr) {
             lastError = fallbackErr;
           }
@@ -838,10 +1023,13 @@ export class ProxyService {
           lastError = err;
         }
 
-        if (await this.prepareGraceRetry(retryState, token, lastError, 'OpenAI-compatible')) {
+        if (
+          !appliedVariantRequest.variant &&
+          (await this.prepareGraceRetry(retryState, token, lastError, 'OpenAI-compatible'))
+        ) {
           continue;
         }
-        await this.applyUpstreamPenalty(token.id, effectiveTargetModel, lastError);
+        await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
       }
     }
     throw lastError || new Error('Request failed after retries');
@@ -874,6 +1062,9 @@ export class ProxyService {
   }
 
   private hasUsableGeminiCandidate(response: GeminiResponse): boolean {
+    if (response.promptFeedback?.blockReason) {
+      return true;
+    }
     const candidates = response?.candidates;
     if (!Array.isArray(candidates) || candidates.length === 0) {
       return false;
@@ -972,24 +1163,45 @@ export class ProxyService {
     upstreamStream: NodeJS.ReadableStream,
     model: string,
     outputProtocol: OpenAIOutputProtocol,
+    signatureSessionKey?: string,
+    clientToolNames?: ReadonlySet<string>,
+    signatureMessageCount?: number,
   ): Observable<string> {
     if (outputProtocol === 'responses') {
-      return this.processResponsesStreamResponse(upstreamStream, model);
+      return this.processResponsesStreamResponse(
+        upstreamStream,
+        model,
+        signatureSessionKey,
+        clientToolNames,
+        signatureMessageCount,
+      );
     }
-    return this.processStreamResponse(upstreamStream, model);
+    return this.processStreamResponse(
+      upstreamStream,
+      model,
+      clientToolNames,
+      signatureSessionKey,
+      signatureMessageCount,
+    );
   }
 
   private processResponsesStreamResponse(
     upstreamStream: NodeJS.ReadableStream,
     model: string,
+    signatureSessionKey?: string,
+    clientToolNames?: ReadonlySet<string>,
+    signatureMessageCount?: number,
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
       let buffer = '';
       let completed = false;
       const mapper = new OpenAIResponsesStreamingMapper({
+        clientToolNames,
         model,
         responseId: `resp_${uuidv4()}`,
+        signatureMessageCount,
+        signatureSessionKey,
       });
       let heartbeatTimer: NodeJS.Timeout | undefined;
 
@@ -1013,6 +1225,7 @@ export class ProxyService {
       };
 
       subscriber.next(mapper.createResponseCreatedEvent());
+      subscriber.next(mapper.createResponseInProgressEvent());
       heartbeatTimer = setInterval(() => {
         if (!completed) {
           subscriber.next(': ping\n\n');
@@ -1046,11 +1259,16 @@ export class ProxyService {
           }
 
           try {
-            const normalized = parseInternalSseChunk(dataString);
-            if (!normalized) {
-              continue;
+            const parsed: unknown = JSON.parse(dataString);
+            const payload = this.toUnknownRecord(parsed);
+            const responsePayload = this.toUnknownRecord(payload?.response) ?? payload;
+            const usageMetadata = this.toGeminiUsageMetadata(responsePayload?.usageMetadata);
+            if (usageMetadata) {
+              mapper.setUsage(
+                toOpenAIResponsesUsage(toOpenAIUsageFromGeminiUsageMetadata(usageMetadata)),
+              );
             }
-            const candidates = normalized.candidates;
+            const candidates = responsePayload?.candidates;
             if (!Array.isArray(candidates)) {
               continue;
             }
@@ -1175,6 +1393,51 @@ export class ProxyService {
     return { groundingChunks, webSearchQueries };
   }
 
+  private toGeminiUsageMetadata(value: unknown): GeminiUsageMetadata | undefined {
+    const usageMetadata = this.toUnknownRecord(value);
+    if (!usageMetadata) {
+      return undefined;
+    }
+
+    return {
+      cachedContentTokenCount: isNumber(usageMetadata.cachedContentTokenCount)
+        ? usageMetadata.cachedContentTokenCount
+        : undefined,
+      candidatesTokenCount: isNumber(usageMetadata.candidatesTokenCount)
+        ? usageMetadata.candidatesTokenCount
+        : undefined,
+      promptTokenCount: isNumber(usageMetadata.promptTokenCount)
+        ? usageMetadata.promptTokenCount
+        : undefined,
+      thoughtsTokenCount: isNumber(usageMetadata.thoughtsTokenCount)
+        ? usageMetadata.thoughtsTokenCount
+        : undefined,
+      totalTokenCount: isNumber(usageMetadata.totalTokenCount)
+        ? usageMetadata.totalTokenCount
+        : undefined,
+      total_input_tokens: isNumber(usageMetadata.total_input_tokens)
+        ? usageMetadata.total_input_tokens
+        : undefined,
+      total_output_tokens: isNumber(usageMetadata.total_output_tokens)
+        ? usageMetadata.total_output_tokens
+        : undefined,
+      total_cached_tokens: isNumber(usageMetadata.total_cached_tokens)
+        ? usageMetadata.total_cached_tokens
+        : undefined,
+      total_thought_tokens: isNumber(usageMetadata.total_thought_tokens)
+        ? usageMetadata.total_thought_tokens
+        : undefined,
+      totalThoughtTokens: isNumber(usageMetadata.totalThoughtTokens)
+        ? usageMetadata.totalThoughtTokens
+        : undefined,
+      total_tokens: isNumber(usageMetadata.total_tokens) ? usageMetadata.total_tokens : undefined,
+      total_tool_use_tokens: isNumber(usageMetadata.total_tool_use_tokens)
+        ? usageMetadata.total_tool_use_tokens
+        : undefined,
+      cachedTokens: isNumber(usageMetadata.cachedTokens) ? usageMetadata.cachedTokens : undefined,
+    };
+  }
+
   private toUnknownRecord(value: unknown): Record<string, unknown> | null {
     if (!isPlainObject(value)) {
       return null;
@@ -1186,12 +1449,18 @@ export class ProxyService {
   private processStreamResponse(
     upstreamStream: NodeJS.ReadableStream,
     model: string,
+    clientToolNames?: ReadonlySet<string>,
+    signatureSessionKey?: string,
+    signatureMessageCount?: number,
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
       let buffer = '';
       let hasEmittedChunk = false;
       let hasSentDone = false;
+      let lastUsage: OpenAIUsage | undefined;
+      let toolCallIndex = 0;
+      const emittedToolCalls = new Set<string>();
 
       const streamId = `chatcmpl-${uuidv4()}`;
       const created = Math.floor(Date.now() / 1000);
@@ -1228,121 +1497,185 @@ export class ProxyService {
           if (dataStr === '[DONE]') continue;
 
           try {
-            const json = parseInternalSseChunk(dataStr);
-            if (!json) {
+            const parsed: unknown = JSON.parse(dataStr);
+            const payload = this.toUnknownRecord(parsed);
+            const responsePayload = this.toUnknownRecord(payload?.response) ?? payload;
+            if (!responsePayload) {
               continue;
             }
-            const candidate = json.candidates?.[0];
-            const parts = candidate?.content?.parts || [];
 
-            for (const part of parts) {
-              if (part.thought && part.text) {
+            const usageMetadata = this.toGeminiUsageMetadata(responsePayload.usageMetadata);
+            if (usageMetadata) {
+              lastUsage = toOpenAIUsageFromGeminiUsageMetadata(usageMetadata);
+            }
+
+            const candidates = Array.isArray(responsePayload.candidates)
+              ? responsePayload.candidates
+              : [];
+            for (const [candidateIndex, candidateValue] of candidates.entries()) {
+              const candidate = this.toUnknownRecord(candidateValue);
+              const content = this.toUnknownRecord(candidate?.content);
+              const parts = Array.isArray(content?.parts) ? content.parts : [];
+              // Keep these streams separate because clients can render thought text twice when
+              // reasoning_content and content are present in the same delta.
+              let reasoningContent = '';
+              let responseContent = '';
+
+              for (const partValue of parts) {
+                const part = this.toUnknownRecord(partValue);
+                if (!part) {
+                  continue;
+                }
+
+                if (isString(part.text)) {
+                  const cleanText = part.text
+                    .replaceAll('<think>\n', '')
+                    .replaceAll('<think>', '')
+                    .replaceAll('\n</think>', '')
+                    .replaceAll('</think>', '');
+                  if (part.thought === true) {
+                    reasoningContent += cleanText;
+                  } else {
+                    responseContent += cleanText;
+                  }
+                }
+
+                const rawSignature = isString(part.thoughtSignature)
+                  ? part.thoughtSignature
+                  : isString(part.thought_signature)
+                    ? part.thought_signature
+                    : undefined;
+                const signature = decodeSignature(rawSignature);
+                if (signature) {
+                  SignatureStore.store(signature, signatureSessionKey, signatureMessageCount);
+                }
+
+                const functionCall = this.toUnknownRecord(part.functionCall);
+                if (functionCall && isString(functionCall.name)) {
+                  const dedupeKey = JSON.stringify(functionCall);
+                  if (emittedToolCalls.has(dedupeKey)) {
+                    continue;
+                  }
+                  emittedToolCalls.add(dedupeKey);
+
+                  const splitName = splitNamespaceToolName(functionCall.name);
+                  const functionName = clientToolNames
+                    ? resolveShellToolName(splitName.name, clientToolNames)
+                    : splitName.name;
+                  const rawArguments = this.toUnknownRecord(functionCall.args) ?? {};
+                  const functionArguments = isCustomToolCall(functionName)
+                    ? toCustomToolArguments(
+                        functionName,
+                        optimizeApplyPatch(extractCustomToolInput(functionName, rawArguments))
+                          .input,
+                      )
+                    : rawArguments;
+                  const toolCallChunk = {
+                    id: streamId,
+                    object: 'chat.completion.chunk',
+                    created,
+                    model,
+                    choices: [
+                      {
+                        index: candidateIndex,
+                        delta: {
+                          role: 'assistant',
+                          tool_calls: [
+                            {
+                              index: toolCallIndex,
+                              id: isString(functionCall.id)
+                                ? functionCall.id
+                                : `${functionName}-${uuidv4()}`,
+                              type: 'function',
+                              function: {
+                                name: functionName,
+                                arguments: JSON.stringify(functionArguments),
+                              },
+                            },
+                          ],
+                        },
+                        finish_reason: null,
+                      },
+                    ],
+                  };
+                  pushChunk(toolCallChunk);
+                  toolCallIndex += 1;
+                }
+
+                const inlineData = this.toUnknownRecord(part.inlineData);
+                if (inlineData) {
+                  const mimeType = isString(inlineData.mimeType)
+                    ? inlineData.mimeType
+                    : 'image/jpeg';
+                  const data = isString(inlineData.data) ? inlineData.data : '';
+                  responseContent += `\n\n![Generated Image](data:${mimeType};base64,${data})\n\n`;
+                }
+              }
+
+              if (reasoningContent) {
                 const reasoningChunk = {
                   id: streamId,
                   object: 'chat.completion.chunk',
-                  created: created,
-                  model: model,
+                  created,
+                  model,
                   choices: [
                     {
-                      index: 0,
-                      delta: { reasoning_content: part.text },
-                      finish_reason: null,
-                    },
-                  ],
-                };
-                pushChunk(reasoningChunk);
-                continue;
-              }
-
-              if (part.functionCall) {
-                const toolCallChunk = {
-                  id: streamId,
-                  object: 'chat.completion.chunk',
-                  created: created,
-                  model: model,
-                  choices: [
-                    {
-                      index: 0,
+                      index: candidateIndex,
                       delta: {
-                        tool_calls: [
-                          {
-                            index: 0,
-                            id: part.functionCall.id || `${part.functionCall.name}-${uuidv4()}`,
-                            type: 'function',
-                            function: {
-                              name: part.functionCall.name,
-                              arguments: JSON.stringify(part.functionCall.args || {}),
-                            },
-                          },
-                        ],
+                        role: 'assistant',
+                        content: null,
+                        reasoning_content: reasoningContent,
                       },
                       finish_reason: null,
                     },
                   ],
                 };
-                pushChunk(toolCallChunk);
-                continue;
+                pushChunk(reasoningChunk);
               }
 
-              if (part.inlineData) {
-                const mimeType = part.inlineData.mimeType || 'image/jpeg';
-                const data = part.inlineData.data || '';
-                const imageMarkdown = `\n\n![Generated Image](data:${mimeType};base64,${data})\n\n`;
-                const imageChunk = {
-                  id: streamId,
-                  object: 'chat.completion.chunk',
-                  created: created,
-                  model: model,
-                  choices: [
-                    {
-                      index: 0,
-                      delta: { content: imageMarkdown },
-                      finish_reason: null,
-                    },
-                  ],
-                };
-                pushChunk(imageChunk);
-                continue;
-              }
-
-              if (part.text) {
+              if (responseContent) {
                 const contentChunk = {
                   id: streamId,
                   object: 'chat.completion.chunk',
-                  created: created,
-                  model: model,
+                  created,
+                  model,
                   choices: [
                     {
-                      index: 0,
-                      delta: { content: part.text },
+                      index: candidateIndex,
+                      delta: { content: responseContent },
                       finish_reason: null,
                     },
                   ],
                 };
                 pushChunk(contentChunk);
               }
-            }
 
-            if (candidate?.finishReason) {
-              const finishChunk = {
-                id: streamId,
-                object: 'chat.completion.chunk',
-                created: created,
-                model: model,
-                choices: [
-                  {
-                    index: 0,
-                    delta: {},
-                    finish_reason: this.mapGeminiFinishReasonToOpenAIFinishReason(
-                      candidate.finishReason,
-                    ),
-                  },
-                ],
-              };
-              pushChunk(finishChunk);
-              subscriber.next('data: [DONE]\n\n');
-              hasSentDone = true;
-              subscriber.complete();
+              if (candidate && isString(candidate.finishReason)) {
+                const finishChunk = {
+                  id: streamId,
+                  object: 'chat.completion.chunk',
+                  created,
+                  model,
+                  choices: [
+                    {
+                      index: candidateIndex,
+                      delta: {},
+                      // OpenAI clients only continue the tool loop when the finish reason reflects
+                      // the emitted tool call, even if Gemini reports a generic STOP.
+                      finish_reason:
+                        emittedToolCalls.size > 0
+                          ? 'tool_calls'
+                          : this.mapGeminiFinishReasonToOpenAIFinishReason(candidate.finishReason),
+                    },
+                  ],
+                  usage: lastUsage,
+                };
+                pushChunk(finishChunk);
+                subscriber.next('data: [DONE]\n\n');
+                hasSentDone = true;
+                subscriber.complete();
+                return;
+              }
             }
           } catch {
             // ignore parse errors
@@ -1451,17 +1784,27 @@ export class ProxyService {
     });
   }
 
-  private createSyntheticResponsesStream(response: OpenAIChatResponse): Observable<string> {
+  private createSyntheticResponsesStream(
+    response: OpenAIChatResponse,
+    signatureSessionKey?: string,
+    clientToolNames?: ReadonlySet<string>,
+    signatureMessageCount?: number,
+  ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const mapper = new OpenAIResponsesStreamingMapper({
+        clientToolNames,
         model: response.model,
         responseId: `resp_${uuidv4()}`,
+        signatureMessageCount,
+        signatureSessionKey,
       });
       const choice = response.choices?.[0];
       const content =
         choice?.message && isString(choice.message.content) ? choice.message.content : undefined;
 
       subscriber.next(mapper.createResponseCreatedEvent());
+      subscriber.next(mapper.createResponseInProgressEvent());
+      mapper.setUsage(toOpenAIResponsesUsage(response.usage));
       if (content) {
         for (const event of mapper.processPart({ text: content })) {
           subscriber.next(event);
@@ -1469,11 +1812,19 @@ export class ProxyService {
       }
 
       for (const toolCall of choice?.message?.tool_calls ?? []) {
+        const functionName =
+          toolCall.function?.name ??
+          (toolCall.operation || toolCall.type === 'apply_patch_call' ? 'apply_patch' : null);
+        if (!functionName) {
+          continue;
+        }
         for (const event of mapper.processPart({
           functionCall: {
-            args: this.parseOpenAIFunctionArguments(toolCall.function.arguments),
-            id: toolCall.id,
-            name: toolCall.function.name,
+            args:
+              toolCall.operation ??
+              this.parseOpenAIFunctionArguments(toolCall.function?.arguments ?? '{}'),
+            id: toolCall.call_id || toolCall.id,
+            name: functionName,
           },
         })) {
           subscriber.next(event);
@@ -1487,7 +1838,10 @@ export class ProxyService {
     });
   }
 
-  private toClaudeRequest(request: AnthropicChatRequest): ClaudeRequest {
+  private toClaudeRequest(
+    request: AnthropicChatRequest,
+    signatureSessionKey?: string,
+  ): ClaudeRequest {
     return {
       model: request.model,
       messages: request.messages.map((message) => ({
@@ -1508,7 +1862,11 @@ export class ProxyService {
       top_p: request.top_p,
       top_k: request.top_k,
       thinking: request.thinking,
-      metadata: request.metadata,
+      output_config: request.output_config,
+      metadata: {
+        ...(request.metadata ?? {}),
+        signature_session_key: signatureSessionKey,
+      },
     };
   }
 
@@ -1548,16 +1906,28 @@ export class ProxyService {
   }
 
   // Convert OpenAI request format to Claude/Anthropic format
-  private convertOpenAIToClaude(request: OpenAIChatRequest): ClaudeRequest {
+  private convertOpenAIToClaude(
+    request: OpenAIChatRequest,
+    signatureSessionKey?: string,
+  ): ClaudeRequest {
     const messages = request.messages || [];
     const systemPromptParts: string[] = [];
+    const seenSystemPromptKeys = new Set<string>();
     const anthropicMessages: ClaudeRequest['messages'] = [];
+    const addSystemPrompt = (text: string) => {
+      const trimmed = text.trim();
+      const key = sanitizeSystemInstructionForCache(trimmed).split(/\s+/).join(' ');
+      if (key && !seenSystemPromptKeys.has(key)) {
+        seenSystemPromptKeys.add(key);
+        systemPromptParts.push(trimmed);
+      }
+    };
 
     for (const msg of messages) {
-      if (msg.role === 'system') {
+      if (msg.role === 'system' || msg.role === 'developer') {
         const systemText = this.extractOpenAITextContent(msg.content);
         if (systemText) {
-          systemPromptParts.push(systemText);
+          addSystemPrompt(systemText);
         }
         continue;
       }
@@ -1582,11 +1952,21 @@ export class ProxyService {
 
       if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
         for (const toolCall of msg.tool_calls) {
+          const functionName =
+            toolCall.function?.name ??
+            (toolCall.operation || toolCall.type === 'apply_patch_call' ? 'apply_patch' : null);
+          if (!functionName) {
+            continue;
+          }
           contentBlocks.push({
             type: 'tool_use',
-            id: toolCall.id,
-            name: toolCall.function.name,
-            input: this.parseOpenAIFunctionArguments(toolCall.function.arguments),
+            id: toolCall.call_id || toolCall.id,
+            name: functionName,
+            input:
+              toolCall.custom_input === undefined
+                ? (toolCall.operation ??
+                  this.parseOpenAIFunctionArguments(toolCall.function?.arguments ?? '{}'))
+                : toCustomToolArguments(functionName, toolCall.custom_input),
           });
         }
       }
@@ -1604,13 +1984,25 @@ export class ProxyService {
       messages: anthropicMessages,
       system: systemPrompt,
       tools: this.convertOpenAIToolsToAnthropicTools(request.tools),
+      thinking: request.thinking
+        ? {
+            type: request.thinking.type ?? 'enabled',
+            budget_tokens: request.thinking.budget_tokens,
+            effort: request.thinking.effort,
+          }
+        : undefined,
       max_tokens: request.max_tokens,
       temperature: request.temperature,
       top_p: request.top_p,
+      presence_penalty: request.presence_penalty,
+      frequency_penalty: request.frequency_penalty,
+      seed: request.seed,
+      tool_choice: request.tool_choice,
       stream: request.stream,
       metadata: {
         ...(request.extra ?? {}),
         source: 'openai',
+        signature_session_key: signatureSessionKey,
       },
     };
   }
@@ -1620,6 +2012,9 @@ export class ProxyService {
   ): AnthropicContent[] {
     if (isString(content)) {
       return content.trim() ? [{ type: 'text', text: content }] : [];
+    }
+    if (!Array.isArray(content)) {
+      return [];
     }
 
     const blocks: AnthropicContent[] = [];
@@ -1655,6 +2050,9 @@ export class ProxyService {
     if (isString(content)) {
       return content;
     }
+    if (!Array.isArray(content)) {
+      return '';
+    }
 
     return content
       .filter((part) => part.type === 'text')
@@ -1678,6 +2076,23 @@ export class ProxyService {
     }
   }
 
+  private extractOpenAIToolNames(tools: OpenAIChatRequest['tools']): ReadonlySet<string> {
+    const names = new Set<string>();
+
+    for (const tool of flattenOpenAITools(tools) ?? []) {
+      const name = isString(tool.function?.name)
+        ? tool.function.name
+        : isString(tool.name)
+          ? tool.name
+          : undefined;
+      if (name) {
+        names.add(name);
+      }
+    }
+
+    return names;
+  }
+
   private convertOpenAIToolsToAnthropicTools(
     tools: OpenAIChatRequest['tools'],
   ): AnthropicChatRequest['tools'] {
@@ -1693,13 +2108,17 @@ export class ProxyService {
       'builtin_web_search',
     ]);
 
-    for (const tool of tools) {
+    for (const tool of flattenOpenAITools(tools) ?? []) {
       if (!tool) {
         continue;
       }
 
       const toolType = isString(tool.type) ? tool.type.toLowerCase() : '';
-      const functionName = isString(tool.function?.name) ? tool.function.name : '';
+      const functionName = isString(tool.function?.name)
+        ? tool.function.name
+        : isString(tool.name)
+          ? tool.name
+          : '';
       const normalizedFunctionName = functionName.toLowerCase();
       const isSearchTool =
         searchToolTypes.has(toolType) || searchToolTypes.has(normalizedFunctionName);
@@ -1716,15 +2135,41 @@ export class ProxyService {
         continue;
       }
 
-      if (!tool.function || !functionName) {
+      if (!functionName) {
         continue;
       }
 
-      const inputSchema = normalizeObjectJsonSchema(tool.function.parameters);
+      const parameters = isCustomToolCall(functionName)
+        ? {
+            type: 'object',
+            properties: {
+              input: {
+                type: 'string',
+                description:
+                  'The exact freeform V4A patch text to pass to Codex apply_patch. It must start with *** Begin Patch and end with *** End Patch. Do not wrap it in a shell command or command array.',
+              },
+            },
+            required: ['input'],
+          }
+        : (tool.function?.parameters ??
+          (isPlainObject(tool.parameters)
+            ? (tool.parameters as Record<string, unknown>)
+            : {
+                type: 'object',
+                properties: {
+                  content: {
+                    type: 'string',
+                    description: 'The raw content or patch to be applied',
+                  },
+                },
+                required: ['content'],
+              }));
+      const inputSchema = normalizeObjectJsonSchema(parameters);
 
       result.push({
         name: functionName,
-        description: tool.function.description,
+        description:
+          tool.function?.description ?? (isString(tool.description) ? tool.description : undefined),
         input_schema: inputSchema,
       });
     }
@@ -1788,6 +2233,7 @@ export class ProxyService {
   private convertClaudeToOpenAIResponse(
     claudeResponse: ClaudeResponse,
     model: string,
+    clientToolNames?: ReadonlySet<string>,
   ): OpenAIChatResponse {
     const contentBlocks = Array.isArray(claudeResponse?.content) ? claudeResponse.content : [];
 
@@ -1822,14 +2268,27 @@ export class ProxyService {
           { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
         > => block?.type === 'tool_use',
       )
-      .map((block, index: number) => ({
-        id: block.id || `tool-call-${index}`,
-        type: 'function' as const,
-        function: {
-          name: block.name || 'unknown_tool',
-          arguments: this.normalizeToolCallArguments(block.input),
-        },
-      }));
+      .map((block, index: number) => {
+        const splitName = splitNamespaceToolName(block.name || 'unknown_tool');
+        const functionName = clientToolNames
+          ? resolveShellToolName(splitName.name, clientToolNames)
+          : splitName.name;
+        const argumentsInput = isCustomToolCall(functionName)
+          ? toCustomToolArguments(
+              functionName,
+              optimizeApplyPatch(extractCustomToolInput(functionName, block.input)).input,
+            )
+          : block.input;
+        return {
+          id: block.id || `tool-call-${index}`,
+          type: 'function' as const,
+          function: {
+            name: functionName,
+            arguments: this.normalizeToolCallArguments(argumentsInput),
+          },
+          namespace: splitName.namespace,
+        };
+      });
 
     return {
       id: `chatcmpl-${uuidv4()}`,
@@ -1844,18 +2303,14 @@ export class ProxyService {
             content: textContent || null,
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
             reasoning_content: reasoningContent || undefined,
+            refusal: claudeResponse.refusal,
           },
           finish_reason: this.mapAnthropicStopReasonToOpenAIFinishReason(
             claudeResponse.stop_reason,
           ),
         },
       ],
-      usage: {
-        prompt_tokens: claudeResponse.usage?.input_tokens || 0,
-        completion_tokens: claudeResponse.usage?.output_tokens || 0,
-        total_tokens:
-          (claudeResponse.usage?.input_tokens || 0) + (claudeResponse.usage?.output_tokens || 0),
-      },
+      usage: toOpenAIUsage(claudeResponse.usage),
     };
   }
 
@@ -1923,12 +2378,7 @@ export class ProxyService {
   }
 
   private isQuotaExhaustedError(errorMessage: string): boolean {
-    const msg = errorMessage.toLowerCase();
-    return (
-      msg.includes('resource has been exhausted') ||
-      msg.includes('resource_exhausted') ||
-      msg.includes('quota')
-    );
+    return hasExplicitQuotaExhaustedSignal(errorMessage);
   }
 
   private extractAnthropicSessionKey(request: AnthropicChatRequest): string | undefined {

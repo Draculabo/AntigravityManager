@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { bootstrapNestServer, getNestServerStatus, stopNestServer } from '@/server/main';
 
-const { mockCreate, mockLogger } = vi.hoisted(() => ({
+const { mockAttachResponsesWebSocketServer, mockCreate, mockLogger } = vi.hoisted(() => ({
+  mockAttachResponsesWebSocketServer: vi.fn(() => vi.fn()),
   mockCreate: vi.fn(),
   mockLogger: {
     info: vi.fn(),
@@ -24,13 +26,16 @@ vi.mock('@/shared/logging/logger', () => ({
   logger: mockLogger,
 }));
 
+vi.mock('@/modules/proxy-gateway/server/openai-responses-websocket.server', () => ({
+  attachOpenAIResponsesWebSocketServer: mockAttachResponsesWebSocketServer,
+}));
+
 describe('gateway server startup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(async () => {
-    const { stopNestServer } = await import('@/server/main');
     await stopNestServer();
   });
 
@@ -42,12 +47,12 @@ describe('gateway server startup', () => {
       }),
     );
     mockCreate.mockResolvedValue({
+      register: vi.fn().mockResolvedValue(undefined),
       enableCors: vi.fn(),
       listen,
       close,
     });
 
-    const { bootstrapNestServer, getNestServerStatus } = await import('@/server/main');
     const result = await bootstrapNestServer(DEFAULT_APP_CONFIG.proxy);
 
     expect(result).toEqual({
@@ -76,15 +81,16 @@ describe('gateway server startup', () => {
   it('returns the actual configured port when startup succeeds', async () => {
     const listen = vi.fn().mockResolvedValue(undefined);
     mockCreate.mockResolvedValue({
+      register: vi.fn().mockResolvedValue(undefined),
       enableCors: vi.fn(),
       listen,
       close: vi.fn().mockResolvedValue(undefined),
       get: vi.fn(() => ({
         getAccountCount: () => 0,
       })),
+      getHttpServer: vi.fn(() => ({})),
     });
 
-    const { bootstrapNestServer, getNestServerStatus } = await import('@/server/main');
     const result = await bootstrapNestServer({
       ...DEFAULT_APP_CONFIG.proxy,
       port: 8123,
@@ -96,6 +102,7 @@ describe('gateway server startup', () => {
       base_url: 'http://localhost:8123',
     });
     expect(listen).toHaveBeenCalledWith(8123, '0.0.0.0');
+    expect(mockAttachResponsesWebSocketServer).toHaveBeenCalledOnce();
 
     await expect(getNestServerStatus()).resolves.toMatchObject({
       running: true,

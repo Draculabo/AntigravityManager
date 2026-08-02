@@ -4,8 +4,26 @@
  */
 import { os } from '@orpc/server';
 import { z } from 'zod';
-import { startGateway, stopGateway, getGatewayStatus, generateApiKey } from './handlers';
+import {
+  startGateway,
+  stopGateway,
+  getGatewayStatus,
+  getContextCacheStatus,
+  generateApiKey,
+} from './handlers';
 import { proxyModelAvailabilityStore } from '../server/proxy-model-availability-store';
+import { openCodeCredentialService } from '../opencode-sync/opencode-credentials';
+import { openCodeSyncService } from '../opencode-sync/opencode-sync';
+
+const OpenCodeModelInputSchema = z.object({
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1).optional(),
+});
+
+const OpenCodeSyncInputSchema = z.object({
+  baseUrl: z.string().url(),
+  models: z.array(OpenCodeModelInputSchema).optional(),
+});
 
 export const gatewayRouter = os.prefix('/gateway').router({
   start: os
@@ -26,9 +44,42 @@ export const gatewayRouter = os.prefix('/gateway').router({
     return getGatewayStatus();
   }),
 
+  contextCacheStats: os
+    .output(
+      z.object({
+        enabled: z.boolean(),
+        stats: z.object({
+          activeEntries: z.number().int().nonnegative(),
+          creationFailures: z.number().int().nonnegative(),
+          creations: z.number().int().nonnegative(),
+          hits: z.number().int().nonnegative(),
+          invalidations: z.number().int().nonnegative(),
+          lookups: z.number().int().nonnegative(),
+        }),
+      }),
+    )
+    .handler(() => getContextCacheStatus()),
+
   generateKey: os.handler(async () => {
     const newKey = await generateApiKey();
     return { api_key: newKey };
+  }),
+
+  openCodeStatus: os.input(z.object({ baseUrl: z.string().url() })).handler(async ({ input }) => {
+    return openCodeSyncService.getStatus(input.baseUrl);
+  }),
+
+  syncOpenCode: os.input(OpenCodeSyncInputSchema).handler(async ({ input }) => {
+    return openCodeSyncService.sync(input);
+  }),
+
+  restoreOpenCode: os.handler(async () => {
+    return openCodeSyncService.restore();
+  }),
+
+  revokeOpenCodeKey: os.handler(() => {
+    openCodeCredentialService.revoke();
+    return { success: true };
   }),
 
   modelAvailability: os
@@ -44,6 +95,9 @@ export const gatewayRouter = os.prefix('/gateway').router({
             'rate_limited',
           ]),
           unavailableUntil: z.number(),
+          status: z.number().int().min(100).max(599).optional(),
+          detectedAt: z.number(),
+          message: z.string().optional(),
         }),
       ),
     )

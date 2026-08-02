@@ -17,12 +17,21 @@ import { ProxyService } from './proxy.service';
 import { Observable } from 'rxjs';
 import {
   OpenAIChatRequest,
+  OpenAIToolCall,
   AnthropicChatRequest,
   OpenAIChatResponse,
   OpenAIContentPart,
   GeminiRequest,
   GeminiResponse,
 } from './interfaces/request-interfaces';
+import { toCustomToolArguments } from '../antigravity/CustomToolCall';
+import { ApplyPatchFailureCompactor } from '../antigravity/ApplyPatchFailureCompaction';
+import { toOpenAIResponsesResponse } from '../antigravity/OpenAIResponsesResponseMapper';
+import {
+  mergeOpenAIResponsesInputItems,
+  OpenAIResponsesSessionStore,
+  type OpenAIResponsesSession,
+} from './openai-responses-session.store';
 import { ProxyGuard } from './proxy.guard';
 import {
   getOpenAICompatibleModels,
@@ -31,6 +40,41 @@ import {
 } from '../antigravity/ModelMapping';
 import { getServerConfig } from '../../../server/server-config';
 import { AccountLeaseService } from './account-lease.service';
+import { UpstreamRequestError } from './clients/upstream-error';
+import {
+  type ImageMonitoringRequest,
+  type OpenAIImageResponse,
+  summarizeImageRequest,
+  summarizeImageResponse,
+} from './image-monitoring-summary';
+import { parseImageMultipartRequest } from './image-multipart-request';
+import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
+
+export const IMAGE_QUOTA_REFRESH = Symbol('IMAGE_QUOTA_REFRESH');
+export type ImageQuotaRefresh = () => Promise<void>;
+
+export interface ResponsesRequestBody {
+  model?: string;
+  instructions?: string;
+  input?: unknown;
+  metadata?: Record<string, unknown>;
+  previous_response_id?: string;
+  tools?: OpenAIChatRequest['tools'];
+  max_output_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  seed?: number;
+  tool_choice?: OpenAIChatRequest['tool_choice'];
+  stream?: boolean;
+  user?: string;
+}
+
+export interface PreparedResponsesRequest {
+  request: OpenAIChatRequest;
+  session: OpenAIResponsesSession;
+}
 
 @Controller('v1')
 @UseGuards(ProxyGuard)
@@ -42,6 +86,9 @@ export class ProxyController {
     @Optional()
     @Inject(AccountLeaseService)
     private readonly accountLeaseService?: AccountLeaseService,
+    @Optional()
+    @Inject(IMAGE_QUOTA_REFRESH)
+    private readonly imageQuotaRefresh?: ImageQuotaRefresh,
   ) {}
 
   @Get('models')
@@ -123,31 +170,29 @@ export class ProxyController {
   }
 
   @Post('responses')
-  async responses(
-    @Body()
-    body: {
-      model?: string;
-      instructions?: string;
-      input?: unknown;
-      tools?: OpenAIChatRequest['tools'];
-      max_output_tokens?: number;
-      temperature?: number;
-      top_p?: number;
-      stream?: boolean;
-    },
-    @Res() res: FastifyReply,
-  ) {
-    const request = this.buildResponsesChatRequest(body);
+  async responses(@Body() body: ResponsesRequestBody, @Res() res: FastifyReply) {
+    const prepared = this.prepareResponsesRequest(body);
+    if (!prepared) {
+      res.status(HttpStatus.BAD_REQUEST).send({
+        error: {
+          message: `Unknown or expired previous_response_id: ${body.previous_response_id}`,
+          type: 'invalid_request_error',
+        },
+      });
+      return;
+    }
 
     try {
-      const result = await this.proxyService.handleChatCompletions(request, 'responses');
+      const result = await this.proxyService.handleChatCompletions(prepared.request, 'responses');
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, result);
+        this.writeSseResponse(res, this.cacheResponsesStream(result, prepared.session));
         return;
       }
 
       const response = result as OpenAIChatResponse;
-      res.status(HttpStatus.OK).send(this.toLegacyTextCompletionsResponse(response));
+      const responsesResponse = toOpenAIResponsesResponse(response);
+      this.saveResponsesSession(responsesResponse, prepared.session);
+      res.status(HttpStatus.OK).send(responsesResponse);
     } catch (error) {
       this.sendOpenAIErrorResponse(res, '/v1/responses', error);
     }
@@ -156,16 +201,13 @@ export class ProxyController {
   @Post('images/generations')
   async imageGenerations(
     @Body()
-    body: {
-      model?: string;
-      prompt?: string;
-      size?: string;
-      quality?: string;
-    },
+    body: ImageMonitoringRequest,
     @Res() res: FastifyReply,
   ) {
+    const path = '/v1/images/generations';
+    this.logImageMonitoringSummary('request', summarizeImageRequest(path, body));
     const request: OpenAIChatRequest = {
-      model: body.model ?? 'gemini-3-pro-image',
+      model: body.model ?? 'gemini-3.1-flash-image',
       messages: [
         {
           role: 'user',
@@ -177,39 +219,36 @@ export class ProxyController {
       quality: body.quality,
     };
 
-    await this.sendOpenAIImageGenerationResponse(request, body.prompt ?? '', res);
+    await this.sendOpenAIImageGenerationResponse(request, body.prompt ?? '', path, res);
   }
 
   @Post('images/edits')
-  async imageEdits(
-    @Body()
-    body: {
-      model?: string;
-      prompt?: string;
-      size?: string;
-      quality?: string;
-      image?: string | { data?: string; mimeType?: string };
-      reference_images?: Array<string | { data?: string; mimeType?: string }>;
-      mask?: string | { data?: string; mimeType?: string };
-    },
-    @Req() req: FastifyRequest,
-    @Res() res: FastifyReply,
-  ) {
+  async imageEdits(@Req() req: FastifyRequest, @Res() res: FastifyReply) {
+    const path = '/v1/images/edits';
     if (!this.hasMultipartBoundary(req)) {
       res
         .status(HttpStatus.BAD_REQUEST)
         .send('Invalid `boundary` for `multipart/form-data` request');
       return;
     }
+    let body: ImageMonitoringRequest;
+    try {
+      body = await parseImageMultipartRequest(req);
+    } catch (error) {
+      res
+        .status(HttpStatus.BAD_REQUEST)
+        .send(error instanceof Error ? error.message : 'Invalid multipart request');
+      return;
+    }
+    this.logImageMonitoringSummary('request', summarizeImageRequest(path, body));
 
-    const imageParts = this.collectImageContentParts([
-      body.image,
-      body.mask,
-      ...(body.reference_images ?? []),
-    ]);
+    const imageParts = [
+      ...this.collectImageContentParts([body.image, body.mask], 'image/png'),
+      ...this.collectImageContentParts(body.reference_images ?? [], 'image/jpeg'),
+    ];
 
     const request: OpenAIChatRequest = {
-      model: body.model ?? 'gemini-3-pro-image',
+      model: body.model ?? 'gemini-3.1-flash-image',
       messages: [
         {
           role: 'user',
@@ -231,7 +270,7 @@ export class ProxyController {
       quality: body.quality,
     };
 
-    await this.sendOpenAIImageGenerationResponse(request, body.prompt ?? '', res);
+    await this.sendOpenAIImageGenerationResponse(request, body.prompt ?? '', path, res);
   }
 
   @Post('audio/transcriptions')
@@ -253,7 +292,7 @@ export class ProxyController {
       return;
     }
 
-    const inlineAudio = this.resolveInlineData(body.file ?? body.audio);
+    const inlineAudio = this.resolveInlineData(body.file ?? body.audio, 'audio/mpeg');
     if (!inlineAudio) {
       res.status(HttpStatus.BAD_REQUEST).send({
         error: {
@@ -360,6 +399,110 @@ export class ProxyController {
     };
   }
 
+  public prepareResponsesRequest(body: ResponsesRequestBody): PreparedResponsesRequest | null {
+    const currentInputItems = this.normalizeResponsesInputItems(body.input);
+    const previousSession = body.previous_response_id
+      ? OpenAIResponsesSessionStore.get(body.previous_response_id)
+      : null;
+    if (body.previous_response_id && !previousSession) {
+      return null;
+    }
+
+    const inputItems = mergeOpenAIResponsesInputItems(
+      previousSession?.inputItems ?? [],
+      currentInputItems,
+      previousSession?.toolCallItems,
+    );
+    const model = body.model ?? previousSession?.model ?? 'gemini-3-flash';
+    const instructions = body.instructions ?? previousSession?.instructions;
+    const tools = body.tools ?? previousSession?.tools;
+    const request = this.buildResponsesChatRequest({
+      ...body,
+      input: inputItems,
+      instructions,
+      model,
+      tools,
+    });
+
+    return {
+      request,
+      session: {
+        inputItems,
+        instructions,
+        model,
+        tools,
+      },
+    };
+  }
+
+  private normalizeResponsesInputItems(input: unknown): unknown[] {
+    if (Array.isArray(input)) {
+      return input;
+    }
+    if (isNil(input)) {
+      return [];
+    }
+
+    const content = isString(input) ? input : this.normalizeResponsesInput(input);
+    return [
+      {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: content }],
+      },
+    ];
+  }
+
+  private cacheResponsesStream(
+    stream: Observable<unknown>,
+    session: OpenAIResponsesSession,
+  ): Observable<unknown> {
+    return new Observable<unknown>((subscriber) => {
+      const subscription = stream.subscribe({
+        next: (event) => {
+          this.saveResponsesSession(this.extractCompletedResponsesEvent(event), session);
+          subscriber.next(event);
+        },
+        error: (error: unknown) => subscriber.error(error),
+        complete: () => subscriber.complete(),
+      });
+
+      return () => subscription.unsubscribe();
+    });
+  }
+
+  private extractCompletedResponsesEvent(event: unknown): unknown | null {
+    if (!isString(event)) {
+      return null;
+    }
+
+    const dataLine = event.split(/\r?\n/).find((line) => line.startsWith('data:'));
+    if (!dataLine) {
+      return null;
+    }
+
+    try {
+      const parsed = this.toRecord(JSON.parse(dataLine.slice('data:'.length).trimStart()));
+      return parsed?.type === 'response.completed' ? (parsed.response ?? null) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private saveResponsesSession(response: unknown, session: OpenAIResponsesSession): void {
+    const responseRecord = this.toRecord(response);
+    const responseId = this.asString(responseRecord?.id);
+    const output = responseRecord?.output;
+    if (!responseId || !Array.isArray(output)) {
+      return;
+    }
+
+    OpenAIResponsesSessionStore.save(responseId, {
+      ...session,
+      inputItems: [...session.inputItems, ...output],
+    });
+  }
+
   private normalizeResponsesInput(input: unknown): string {
     if (isString(input)) {
       return input;
@@ -388,16 +531,7 @@ export class ProxyController {
     return JSON.stringify(input);
   }
 
-  private buildResponsesChatRequest(body: {
-    model?: string;
-    instructions?: string;
-    input?: unknown;
-    tools?: OpenAIChatRequest['tools'];
-    max_output_tokens?: number;
-    temperature?: number;
-    top_p?: number;
-    stream?: boolean;
-  }): OpenAIChatRequest {
+  private buildResponsesChatRequest(body: ResponsesRequestBody): OpenAIChatRequest {
     const messages: OpenAIChatRequest['messages'] = [];
     if (isString(body.instructions) && !isEmpty(body.instructions.trim())) {
       messages.push({
@@ -407,6 +541,8 @@ export class ProxyController {
     }
 
     const callIdToToolName = new Map<string, string>();
+    const incompleteCustomCallIds = new Set<string>();
+    const applyPatchFailureCompactor = new ApplyPatchFailureCompactor();
     const inputItems = Array.isArray(body.input) ? body.input : null;
 
     if (inputItems) {
@@ -421,9 +557,22 @@ export class ProxyController {
           continue;
         }
 
-        if (type === 'function_call' || type === 'local_shell_call' || type === 'web_search_call') {
+        if (
+          type === 'function_call' ||
+          type === 'local_shell_call' ||
+          type === 'web_search_call' ||
+          type === 'custom_tool_call'
+        ) {
           const callId =
             this.asString(itemObj.call_id) ?? this.asString(itemObj.id) ?? `call_${Date.now()}`;
+          if (
+            type === 'custom_tool_call' &&
+            this.asString(itemObj.status)?.toLowerCase() === 'incomplete'
+          ) {
+            incompleteCustomCallIds.add(callId);
+            continue;
+          }
+
           const toolName =
             type === 'local_shell_call'
               ? 'shell'
@@ -452,36 +601,64 @@ export class ProxyController {
           continue;
         }
 
-        if (type === 'function_call' || type === 'local_shell_call' || type === 'web_search_call') {
+        if (
+          type === 'function_call' ||
+          type === 'local_shell_call' ||
+          type === 'web_search_call' ||
+          type === 'custom_tool_call'
+        ) {
           const callId =
             this.asString(itemObj.call_id) ?? this.asString(itemObj.id) ?? `call_${Date.now()}`;
+          if (incompleteCustomCallIds.has(callId)) {
+            continue;
+          }
+
           const toolName = callIdToToolName.get(callId) ?? 'unknown';
-          const args = this.resolveToolArguments(type, itemObj);
+          const customInput =
+            type === 'custom_tool_call' ? (this.asString(itemObj.input) ?? '') : undefined;
+          const args =
+            customInput === undefined
+              ? this.resolveToolArguments(type, itemObj)
+              : toCustomToolArguments(toolName, customInput);
+          const toolCall: OpenAIToolCall = {
+            id: callId,
+            type: 'function',
+            function: {
+              name: toolName,
+              arguments: JSON.stringify(args),
+            },
+          };
+          if (customInput !== undefined) {
+            toolCall.custom_input = customInput;
+          }
           messages.push({
             role: 'assistant',
             content: '',
-            tool_calls: [
-              {
-                id: callId,
-                type: 'function',
-                function: {
-                  name: toolName,
-                  arguments: JSON.stringify(args),
-                },
-              },
-            ],
+            tool_calls: [toolCall],
           });
           continue;
         }
 
         if (type === 'function_call_output' || type === 'custom_tool_call_output') {
           const callId = this.asString(itemObj.call_id) ?? this.asString(itemObj.id) ?? 'unknown';
-          const output = itemObj.output;
+          if (incompleteCustomCallIds.has(callId)) {
+            continue;
+          }
+          if (type === 'custom_tool_call_output' && !callIdToToolName.has(callId)) {
+            continue;
+          }
+
+          const toolName = callIdToToolName.get(callId) ?? 'unknown';
+          const normalizedOutput = this.normalizeResponsesOutput(itemObj.output);
+          const output =
+            toolName === 'apply_patch'
+              ? applyPatchFailureCompactor.compact(normalizedOutput)
+              : normalizedOutput;
           messages.push({
             role: 'tool',
             tool_call_id: callId,
-            name: callIdToToolName.get(callId) ?? 'unknown',
-            content: this.normalizeResponsesOutput(output),
+            name: toolName,
+            content: output,
           });
           continue;
         }
@@ -512,7 +689,16 @@ export class ProxyController {
       max_tokens: body.max_output_tokens,
       temperature: body.temperature,
       top_p: body.top_p,
+      presence_penalty: body.presence_penalty,
+      frequency_penalty: body.frequency_penalty,
+      seed: body.seed,
+      tool_choice: body.tool_choice,
       stream: body.stream,
+      extra: {
+        ...(body.metadata ?? {}),
+        previous_response_id: body.previous_response_id,
+        user_id: body.user,
+      },
     };
   }
 
@@ -647,10 +833,11 @@ export class ProxyController {
 
   private collectImageContentParts(
     entries: Array<string | { data?: string; mimeType?: string } | undefined>,
+    defaultMimeType: string,
   ): OpenAIContentPart[] {
     const parts: OpenAIContentPart[] = [];
     for (const entry of entries) {
-      const inlineData = this.resolveInlineData(entry);
+      const inlineData = this.resolveInlineData(entry, defaultMimeType);
       if (!inlineData) {
         continue;
       }
@@ -664,7 +851,10 @@ export class ProxyController {
     return parts;
   }
 
-  private resolveInlineData(input: unknown): {
+  private resolveInlineData(
+    input: unknown,
+    defaultMimeType: string,
+  ): {
     mimeType: string;
     data: string;
   } | null {
@@ -684,7 +874,7 @@ export class ProxyController {
       const cleaned = input.replace(/\s+/g, '');
       if (cleaned.length > 0) {
         return {
-          mimeType: 'audio/mpeg',
+          mimeType: defaultMimeType,
           data: cleaned,
         };
       }
@@ -698,7 +888,7 @@ export class ProxyController {
         return null;
       }
       return {
-        mimeType: this.asString(inputRecord.mimeType) ?? 'audio/mpeg',
+        mimeType: this.asString(inputRecord.mimeType) ?? defaultMimeType,
         data,
       };
     }
@@ -778,13 +968,14 @@ export class ProxyController {
   private async sendOpenAIImageGenerationResponse(
     request: OpenAIChatRequest,
     prompt: string,
+    path: '/v1/images/generations' | '/v1/images/edits',
     res: FastifyReply,
   ): Promise<void> {
     try {
       const result = await this.proxyService.handleChatCompletions(request);
       if (result instanceof Observable) {
         this.logProxyEndpointError(
-          '/v1/images/generations',
+          path,
           HttpStatus.INTERNAL_SERVER_ERROR,
           'Streaming image generation is not supported by this endpoint',
         );
@@ -801,7 +992,7 @@ export class ProxyController {
       const image = this.extractInlineBase64Image(isString(content) ? content : '');
       if (!image) {
         this.logProxyEndpointError(
-          '/v1/images/generations',
+          path,
           HttpStatus.BAD_GATEWAY,
           'Upstream did not return inline image data',
         );
@@ -814,44 +1005,74 @@ export class ProxyController {
         return;
       }
 
-      res.status(HttpStatus.OK).send({
+      const response: OpenAIImageResponse = {
         created: Math.floor(Date.now() / 1000),
         data: [
           {
             b64_json: image.data,
           },
         ],
-      });
+      };
+      this.logImageMonitoringSummary('response', summarizeImageResponse(response));
+      this.scheduleImageQuotaRefresh();
+      res.status(HttpStatus.OK).send(response);
     } catch (error) {
       let message = error instanceof Error ? error.message : 'Internal Server Error';
+      let resolvedError = error;
 
       if (this.isProjectContextErrorMessage(message)) {
         try {
           const geminiRequest = this.buildGeminiImageRequest(request, prompt);
           const geminiResult = await this.proxyService.handleGeminiGenerateContent(
-            request.model ?? 'gemini-3-pro-image',
+            request.model ?? 'gemini-3.1-flash-image',
             geminiRequest,
           );
           const fallbackImage = this.extractInlineBase64ImageFromGeminiResponse(geminiResult);
           if (fallbackImage) {
-            res.status(HttpStatus.OK).send({
+            const response: OpenAIImageResponse = {
               created: Math.floor(Date.now() / 1000),
               data: [
                 {
                   b64_json: fallbackImage.data,
                 },
               ],
-            });
+            };
+            this.logImageMonitoringSummary('response', summarizeImageResponse(response));
+            this.scheduleImageQuotaRefresh();
+            res.status(HttpStatus.OK).send(response);
             return;
           }
           message = 'Upstream did not return inline image data';
+          resolvedError = new UpstreamRequestError({
+            message,
+            status: HttpStatus.BAD_GATEWAY,
+          });
         } catch (fallbackError) {
+          resolvedError = fallbackError;
           message = fallbackError instanceof Error ? fallbackError.message : message;
         }
       }
 
-      this.sendOpenAIErrorResponse(res, '/v1/images/generations', error, message);
+      this.sendOpenAIErrorResponse(res, path, resolvedError, message);
     }
+  }
+
+  private logImageMonitoringSummary(direction: 'request' | 'response', summary: unknown): void {
+    this.logger.log(`[ImageMonitor] ${direction} ${safeStringifyPacket(summary)}`);
+  }
+
+  /**
+   * Image requests can consume quota outside the regular account-lease refresh cadence.
+   * Keep this asynchronous so a successful image response is never delayed by monitoring I/O.
+   */
+  private scheduleImageQuotaRefresh(): void {
+    if (!this.imageQuotaRefresh) {
+      return;
+    }
+
+    this.imageQuotaRefresh().catch((error: unknown) => {
+      this.logger.warn('Failed to refresh quotas after image generation', error);
+    });
   }
 
   private extractInlineBase64Image(content: string): {
@@ -909,14 +1130,14 @@ export class ProxyController {
           fallbackPrompt ||
           'Please generate an image based on this request.',
       });
-    } else {
+    } else if (Array.isArray(userMessage.content)) {
       for (const block of userMessage.content) {
         if (block.type === 'text' && isString(block.text) && !isEmpty(block.text.trim())) {
           textParts.push(block.text);
         }
         if (block.type === 'image_url') {
           const imageUrl = this.resolveImageUrl(block as unknown as Record<string, unknown>);
-          const inlineData = this.resolveInlineData(imageUrl);
+          const inlineData = this.resolveInlineData(imageUrl, 'image/png');
           if (inlineData) {
             parts.push({
               inlineData: {
@@ -930,6 +1151,8 @@ export class ProxyController {
       if (textParts.length > 0) {
         parts.unshift({ text: textParts.join('\n') });
       }
+    } else {
+      parts.push({ text: fallbackPrompt || 'Please generate an image based on this request.' });
     }
 
     if (parts.length === 0) {
@@ -977,7 +1200,7 @@ export class ProxyController {
     overrideMessage?: string,
   ): void {
     const message = overrideMessage ?? this.resolveErrorMessageText(error);
-    const status = this.resolveErrorHttpStatus(message);
+    const status = this.resolveErrorHttpStatus(message, error);
     this.logProxyEndpointError(endpoint, status, message, error);
     res.status(status).send({
       error: {
@@ -994,7 +1217,7 @@ export class ProxyController {
     overrideMessage?: string,
   ): void {
     const message = overrideMessage ?? this.resolveErrorMessageText(error);
-    const status = this.resolveErrorHttpStatus(message);
+    const status = this.resolveErrorHttpStatus(message, error);
     this.logProxyEndpointError(endpoint, status, message, error);
     res.status(status).send({
       type: 'error',
@@ -1005,7 +1228,17 @@ export class ProxyController {
     });
   }
 
-  private resolveErrorHttpStatus(message: string): HttpStatus {
+  private resolveErrorHttpStatus(message: string, error?: unknown): HttpStatus {
+    if (
+      error instanceof UpstreamRequestError &&
+      Number.isInteger(error.status) &&
+      error.status !== undefined &&
+      error.status >= 400 &&
+      error.status <= 599
+    ) {
+      return error.status as HttpStatus;
+    }
+
     const lowered = message.toLowerCase();
     if (lowered.includes('all accounts failed or unhealthy')) {
       return HttpStatus.SERVICE_UNAVAILABLE;

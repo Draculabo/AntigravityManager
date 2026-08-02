@@ -1,5 +1,10 @@
 import { SignatureStore } from './SignatureStore';
 import { decodeSignature } from './signature-utils';
+import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight';
+import { extractCustomToolInput, isCustomToolCall } from './CustomToolCall';
+import { resolveShellToolName } from './ShellToolName';
+import { splitNamespaceToolName } from './ToolNamespace';
+import type { OpenAIResponsesUsage } from './OpenAIUsageMapper';
 
 export interface GeminiResponsesStreamPart {
   functionCall?: {
@@ -33,6 +38,7 @@ interface ResponsesMessageOutputItem {
     type: 'output_text';
   }>;
   id: string;
+  phase: 'commentary' | 'final_answer';
   role: 'assistant';
   status: 'completed';
   type: 'message';
@@ -43,30 +49,55 @@ interface ResponsesFunctionCallOutputItem {
   call_id: string;
   id: string;
   name: string;
+  namespace?: string;
   status: 'completed';
   type: 'function_call';
 }
 
-type ResponsesOutputItem = ResponsesMessageOutputItem | ResponsesFunctionCallOutputItem;
+interface ResponsesCustomToolCallOutputItem {
+  call_id: string;
+  id: string;
+  input: string;
+  name: string;
+  namespace?: string;
+  status: 'completed';
+  type: 'custom_tool_call';
+}
+
+type ResponsesOutputItem =
+  | ResponsesMessageOutputItem
+  | ResponsesFunctionCallOutputItem
+  | ResponsesCustomToolCallOutputItem;
+
+interface ActiveMessageOutput {
+  item: ResponsesMessageOutputItem;
+  itemId: string;
+  outputIndex: number;
+  text: string;
+}
 
 interface OpenAIResponsesStreamingMapperOptions {
+  clientToolNames?: ReadonlySet<string>;
   model: string;
   responseId: string;
+  signatureMessageCount?: number;
+  signatureSessionKey?: string;
 }
 
 export class OpenAIResponsesStreamingMapper {
   private readonly emittedToolCallIds = new Set<string>();
-  private readonly messageItemId: string;
   private readonly outputItems: ResponsesOutputItem[] = [];
-  private accumulatedText = '';
+  private activeMessage: ActiveMessageOutput | null = null;
+  private activeThought: ActiveMessageOutput | null = null;
   private completed = false;
-  private messageOutputItem: ResponsesMessageOutputItem | null = null;
+  private hasSeenRegularText = false;
+  private hasToolCall = false;
+  private messageCounter = 0;
   private nextOutputIndex = 0;
-  private textOutputIndex: number | null = null;
+  private sequenceNumber = 0;
+  private usage: OpenAIResponsesUsage | undefined;
 
-  constructor(private readonly options: OpenAIResponsesStreamingMapperOptions) {
-    this.messageItemId = `msg_${options.responseId}`;
-  }
+  constructor(private readonly options: OpenAIResponsesStreamingMapperOptions) {}
 
   public createResponseCreatedEvent(): string {
     return this.serialize({
@@ -81,6 +112,19 @@ export class OpenAIResponsesStreamingMapper {
     });
   }
 
+  public createResponseInProgressEvent(): string {
+    return this.serialize({
+      response: {
+        id: this.options.responseId,
+        model: this.options.model,
+        object: 'response',
+        output: [],
+        status: 'in_progress',
+      },
+      type: 'response.in_progress',
+    });
+  }
+
   public processPart(part: GeminiResponsesStreamPart): string[] {
     if (this.completed) {
       return [];
@@ -88,15 +132,19 @@ export class OpenAIResponsesStreamingMapper {
 
     const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature);
     if (signature) {
-      SignatureStore.store(signature);
+      SignatureStore.store(
+        signature,
+        this.options.signatureSessionKey,
+        this.options.signatureMessageCount,
+      );
     }
 
     if (part.functionCall) {
       return this.processFunctionCall(part.functionCall);
     }
 
-    if (part.thought) {
-      return [];
+    if (part.thought && part.text) {
+      return this.processThought(part.text);
     }
 
     if (part.inlineData?.data) {
@@ -136,49 +184,20 @@ export class OpenAIResponsesStreamingMapper {
     return groundingText ? this.processText(groundingText) : [];
   }
 
+  public setUsage(usage: OpenAIResponsesUsage): void {
+    this.usage = usage;
+  }
+
   public complete(): string[] {
     if (this.completed) {
       return [];
     }
 
     this.completed = true;
-    const events: string[] = [];
-    if (this.textOutputIndex !== null) {
-      events.push(
-        this.serialize({
-          content_index: 0,
-          item_id: this.messageItemId,
-          output_index: this.textOutputIndex,
-          text: this.accumulatedText,
-          type: 'response.output_text.done',
-        }),
-      );
-      events.push(
-        this.serialize({
-          content_index: 0,
-          item_id: this.messageItemId,
-          output_index: this.textOutputIndex,
-          part: {
-            text: this.accumulatedText,
-            type: 'output_text',
-          },
-          type: 'response.content_part.done',
-        }),
-      );
-
-      const messageItem = this.messageOutputItem;
-      if (!messageItem) {
-        throw new Error('Responses text item is missing its final output record');
-      }
-      messageItem.content = [{ text: this.accumulatedText, type: 'output_text' }];
-      events.push(
-        this.serialize({
-          item: messageItem,
-          output_index: this.textOutputIndex,
-          type: 'response.output_item.done',
-        }),
-      );
-    }
+    const events = [
+      ...this.closeThought(),
+      ...this.closeMessage(this.hasToolCall ? 'commentary' : 'final_answer'),
+    ];
 
     events.push(
       this.serialize({
@@ -188,6 +207,7 @@ export class OpenAIResponsesStreamingMapper {
           object: 'response',
           output: this.outputItems,
           status: 'completed',
+          usage: this.usage,
         },
         type: 'response.completed',
       }),
@@ -195,37 +215,57 @@ export class OpenAIResponsesStreamingMapper {
     return events;
   }
 
-  private ensureTextStarted(): string[] {
-    if (this.textOutputIndex !== null) {
+  private startMessage(kind: 'message' | 'thought'): string[] {
+    const existing = kind === 'thought' ? this.activeThought : this.activeMessage;
+    if (existing) {
       return [];
     }
 
-    this.textOutputIndex = this.nextOutputIndex;
+    const outputIndex = this.nextOutputIndex;
     this.nextOutputIndex += 1;
-    this.messageOutputItem = {
+    const itemId =
+      kind === 'thought'
+        ? `msg_thought_${this.options.responseId}_${this.messageCounter}`
+        : `msg_${this.options.responseId}_${this.messageCounter}`;
+    this.messageCounter += 1;
+    const item: ResponsesMessageOutputItem = {
       content: [{ text: '', type: 'output_text' }],
-      id: this.messageItemId,
+      id: itemId,
+      phase: 'commentary',
       role: 'assistant',
       status: 'completed',
       type: 'message',
     };
-    this.outputItems.push(this.messageOutputItem);
+    const activeOutput = {
+      item,
+      itemId,
+      outputIndex,
+      text: '',
+    };
+    if (kind === 'thought') {
+      this.activeThought = activeOutput;
+    } else {
+      this.activeMessage = activeOutput;
+    }
+    this.outputItems.push(item);
+
     return [
       this.serialize({
         item: {
           content: [],
-          id: this.messageItemId,
+          id: itemId,
+          phase: 'commentary',
           role: 'assistant',
           status: 'in_progress',
           type: 'message',
         },
-        output_index: this.textOutputIndex,
+        output_index: outputIndex,
         type: 'response.output_item.added',
       }),
       this.serialize({
         content_index: 0,
-        item_id: this.messageItemId,
-        output_index: this.textOutputIndex,
+        item_id: itemId,
+        output_index: outputIndex,
         part: {
           text: '',
           type: 'output_text',
@@ -235,9 +275,63 @@ export class OpenAIResponsesStreamingMapper {
     ];
   }
 
+  private closeThought(): string[] {
+    const thought = this.activeThought;
+    if (!thought) {
+      return [];
+    }
+    this.activeThought = null;
+    return this.finishMessage(thought, 'commentary');
+  }
+
+  private closeMessage(phase: 'commentary' | 'final_answer'): string[] {
+    const message = this.activeMessage;
+    if (!message) {
+      return [];
+    }
+    this.activeMessage = null;
+    return this.finishMessage(message, phase);
+  }
+
+  private finishMessage(
+    message: ActiveMessageOutput,
+    phase: 'commentary' | 'final_answer',
+  ): string[] {
+    message.item.content = [{ text: message.text, type: 'output_text' }];
+    message.item.phase = phase;
+    return [
+      this.serialize({
+        content_index: 0,
+        item_id: message.itemId,
+        output_index: message.outputIndex,
+        text: message.text,
+        type: 'response.output_text.done',
+      }),
+      this.serialize({
+        content_index: 0,
+        item_id: message.itemId,
+        output_index: message.outputIndex,
+        part: {
+          text: message.text,
+          type: 'output_text',
+        },
+        type: 'response.content_part.done',
+      }),
+      this.serialize({
+        item: message.item,
+        output_index: message.outputIndex,
+        type: 'response.output_item.done',
+      }),
+    ];
+  }
+
   private processFunctionCall(
     functionCall: NonNullable<GeminiResponsesStreamPart['functionCall']>,
   ): string[] {
+    const splitName = splitNamespaceToolName(functionCall.name);
+    const functionName = this.options.clientToolNames
+      ? resolveShellToolName(splitName.name, this.options.clientToolNames)
+      : splitName.name;
     const callId = functionCall.id || `call_${this.options.responseId}_${this.nextOutputIndex}`;
     if (functionCall.id && this.emittedToolCallIds.has(callId)) {
       return [];
@@ -246,65 +340,171 @@ export class OpenAIResponsesStreamingMapper {
       this.emittedToolCallIds.add(callId);
     }
 
-    const argumentsString = JSON.stringify(
-      this.normalizeShellArguments(functionCall.name, functionCall.args),
-    );
+    const normalizedArguments = this.normalizeShellArguments(functionName, functionCall.args);
+    const isCustomTool = isCustomToolCall(functionName) || functionName === 'shell';
+    const argumentsString = JSON.stringify(normalizedArguments);
+    let input = isCustomTool
+      ? isCustomToolCall(functionName)
+        ? extractCustomToolInput(functionName, normalizedArguments)
+        : argumentsString
+      : undefined;
+    if (isCustomToolCall(functionName) && input !== undefined) {
+      const optimizedPatch = optimizeApplyPatch(input);
+      const validationError = validateApplyPatchV4A(optimizedPatch.input);
+      if (validationError) {
+        return this.processText(
+          `[apply_patch rejected: invalid V4A syntax at line ${validationError.line}: ${validationError.message}]`,
+        );
+      }
+      input = optimizedPatch.input;
+    }
+
     const outputIndex = this.nextOutputIndex;
     this.nextOutputIndex += 1;
+    const itemId = `item_${this.options.responseId}_${outputIndex}`;
 
-    const inProgressItem = {
-      arguments: '',
-      call_id: callId,
-      id: callId,
-      name: functionCall.name,
-      status: 'in_progress',
-      type: 'function_call' as const,
-    };
-    const completedItem: ResponsesFunctionCallOutputItem = {
-      arguments: argumentsString,
-      call_id: callId,
-      id: callId,
-      name: functionCall.name,
-      status: 'completed',
-      type: 'function_call',
-    };
+    const inProgressItem = isCustomTool
+      ? {
+          call_id: callId,
+          id: itemId,
+          input: '',
+          name: functionName,
+          ...(splitName.namespace ? { namespace: splitName.namespace } : {}),
+          status: 'in_progress' as const,
+          type: 'custom_tool_call' as const,
+        }
+      : {
+          arguments: '',
+          call_id: callId,
+          id: itemId,
+          name: functionName,
+          ...(splitName.namespace ? { namespace: splitName.namespace } : {}),
+          status: 'in_progress' as const,
+          type: 'function_call' as const,
+        };
+    const completedItem: ResponsesFunctionCallOutputItem | ResponsesCustomToolCallOutputItem =
+      isCustomTool
+        ? {
+            call_id: callId,
+            id: itemId,
+            input: input ?? '',
+            name: functionName,
+            ...(splitName.namespace ? { namespace: splitName.namespace } : {}),
+            status: 'completed',
+            type: 'custom_tool_call',
+          }
+        : {
+            arguments: argumentsString,
+            call_id: callId,
+            id: itemId,
+            name: functionName,
+            ...(splitName.namespace ? { namespace: splitName.namespace } : {}),
+            status: 'completed',
+            type: 'function_call',
+          };
     this.outputItems.push(completedItem);
 
-    return [
+    this.hasToolCall = true;
+    const events = [
+      ...this.closeThought(),
+      ...this.closeMessage('commentary'),
       this.serialize({
         item: inProgressItem,
         output_index: outputIndex,
         type: 'response.output_item.added',
       }),
-      this.serialize({
-        delta: argumentsString,
-        item_id: callId,
-        output_index: outputIndex,
-        type: 'response.function_call_arguments.delta',
-      }),
-      this.serialize({
-        arguments: argumentsString,
-        item_id: callId,
-        output_index: outputIndex,
-        type: 'response.function_call_arguments.done',
-      }),
+    ];
+
+    if (isCustomTool) {
+      events.push(
+        this.serialize({
+          call_id: callId,
+          delta: input ?? '',
+          item_id: itemId,
+          output_index: outputIndex,
+          type: 'response.custom_tool_call_input.delta',
+        }),
+        this.serialize({
+          call_id: callId,
+          input: input ?? '',
+          item_id: itemId,
+          output_index: outputIndex,
+          type: 'response.custom_tool_call_input.done',
+        }),
+      );
+    } else {
+      events.push(
+        this.serialize({
+          delta: argumentsString,
+          item_id: itemId,
+          output_index: outputIndex,
+          type: 'response.function_call_arguments.delta',
+        }),
+        this.serialize({
+          arguments: argumentsString,
+          item_id: itemId,
+          output_index: outputIndex,
+          type: 'response.function_call_arguments.done',
+        }),
+      );
+    }
+
+    events.push(
       this.serialize({
         item: completedItem,
         output_index: outputIndex,
         type: 'response.output_item.done',
       }),
-    ];
+    );
+
+    return events;
   }
 
   private processText(text: string): string[] {
-    const events = this.ensureTextStarted();
-    this.accumulatedText += text;
+    const events = [...this.closeThought(), ...this.startMessage('message')];
+    const message = this.activeMessage;
+    if (!message) {
+      throw new Error('Responses text item failed to start');
+    }
+    this.hasSeenRegularText = true;
+    message.text += text;
     events.push(
       this.serialize({
         content_index: 0,
         delta: text,
-        item_id: this.messageItemId,
-        output_index: this.textOutputIndex,
+        item_id: message.itemId,
+        output_index: message.outputIndex,
+        type: 'response.output_text.delta',
+      }),
+    );
+    return events;
+  }
+
+  private processThought(text: string): string[] {
+    const cleanText = text
+      .replaceAll('<think>\n', '')
+      .replaceAll('<think>', '')
+      .replaceAll('\n</think>', '')
+      .replaceAll('</think>', '');
+    if (!cleanText) {
+      return [];
+    }
+    if (this.hasSeenRegularText) {
+      return [];
+    }
+
+    const events = this.startMessage('thought');
+    const thought = this.activeThought;
+    if (!thought) {
+      throw new Error('Responses thought item failed to start');
+    }
+    thought.text += cleanText;
+    events.push(
+      this.serialize({
+        content_index: 0,
+        delta: cleanText,
+        item_id: thought.itemId,
+        output_index: thought.outputIndex,
         type: 'response.output_text.delta',
       }),
     );
@@ -332,6 +532,12 @@ export class OpenAIResponsesStreamingMapper {
   }
 
   private serialize(event: Record<string, unknown>): string {
-    return `data: ${JSON.stringify(event)}\n\n`;
+    const type = typeof event.type === 'string' ? event.type : 'message';
+    const sequencedEvent = {
+      ...event,
+      sequence_number: this.sequenceNumber,
+    };
+    this.sequenceNumber += 1;
+    return `event: ${type}\ndata: ${JSON.stringify(sequencedEvent)}\n\n`;
   }
 }

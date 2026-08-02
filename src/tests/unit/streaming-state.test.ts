@@ -83,6 +83,29 @@ describe('StreamingState', () => {
       expect(output).toContain('"message_stop"');
     });
 
+    it('includes cache-read tokens in the final Anthropic usage event', () => {
+      const chunks = state.emitFinish('STOP', {
+        cachedContentTokenCount: 5,
+        candidatesTokenCount: 3,
+        promptTokenCount: 10,
+      });
+
+      expect(chunks.join('')).toContain('"cache_read_input_tokens":5');
+    });
+
+    it('preserves Interactions usage fields in the final Anthropic event', () => {
+      const chunks = state.emitFinish('STOP', {
+        total_input_tokens: 100,
+        total_output_tokens: 12,
+        total_cached_tokens: 40,
+        total_thought_tokens: 7,
+      });
+
+      expect(chunks.join('')).toContain(
+        '"input_tokens":100,"output_tokens":12,"cache_read_input_tokens":40,"reasoning_tokens":7',
+      );
+    });
+
     it('aggregates grounding metadata into final text block', () => {
       state.webSearchQuery = 'gemini api';
       state.groundingChunks = [

@@ -1,15 +1,29 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { logger } from '../shared/logging/logger';
 import { AccountLeaseService } from '../modules/proxy-gateway/server/account-lease.service';
+import {
+  ProxyController,
+  type ResponsesRequestBody,
+} from '../modules/proxy-gateway/server/proxy.controller';
+import { ProxyService } from '../modules/proxy-gateway/server/proxy.service';
+import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/openai-responses-websocket.server';
+import {
+  extractApiKeyToken,
+  hasConfiguredApiKey,
+  type RequestHeaders,
+} from '../modules/proxy-gateway/server/guards/api-key-auth.util';
+import { isObservable } from 'rxjs';
 
 import { ProxyConfig } from '@/modules/config/types';
-import { setServerConfig } from './server-config';
+import { getServerConfig, setServerConfig } from './server-config';
 
 let app: NestFastifyApplication | null = null;
 let currentPort: number = 0;
+let detachResponsesWebSocketServer: (() => void) | null = null;
 
 export type NestServerStartResult =
   | {
@@ -38,6 +52,8 @@ async function cleanupFailedServerStart() {
   }
 
   try {
+    detachResponsesWebSocketServer?.();
+    detachResponsesWebSocketServer = null;
     await app.close();
   } catch (closeError) {
     logger.warn('Failed to clean up NestJS server after startup failure', closeError);
@@ -65,10 +81,45 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
       logger: ['error', 'warn', 'log'],
     });
 
+    await app.register(fastifyMultipart, {
+      limits: {
+        files: 16,
+        fileSize: 100 * 1024 * 1024,
+        fields: 32,
+      },
+    });
+
     // Enable CORS
     app.enableCors();
 
     await app.listen(port, '0.0.0.0');
+    const proxyController = app.get(ProxyController);
+    const proxyService = app.get(ProxyService);
+    detachResponsesWebSocketServer = attachOpenAIResponsesWebSocketServer(app.getHttpServer(), {
+      isAuthorized: (request) => {
+        const configuredApiKey = getConfiguredApiKey();
+        return (
+          !hasConfiguredApiKey(configuredApiKey) ||
+          extractApiKeyToken(request.headers as RequestHeaders) === configuredApiKey
+        );
+      },
+      streamRequest: async (request) => {
+        const prepared = proxyController.prepareResponsesRequest(
+          request as unknown as ResponsesRequestBody,
+        );
+        if (!prepared) {
+          throw new Error(
+            `Unknown or expired previous_response_id: ${String(request.previous_response_id ?? '')}`,
+          );
+        }
+
+        const result = await proxyService.handleChatCompletions(prepared.request, 'responses');
+        if (!isObservable(result)) {
+          throw new Error('Responses WebSocket request did not produce a stream');
+        }
+        return result;
+      },
+    });
     currentPort = port;
     logger.info(`NestJS Proxy Server running on http://localhost:${port}`);
     return {
@@ -103,6 +154,8 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
 export async function stopNestServer(): Promise<boolean> {
   if (app) {
     try {
+      detachResponsesWebSocketServer?.();
+      detachResponsesWebSocketServer = null;
       await app.close();
       app = null;
       currentPort = 0;
@@ -120,6 +173,20 @@ export function isNestServerRunning(): boolean {
   return app !== null;
 }
 
+export async function reloadNestServerAccountLeaseCache(): Promise<boolean> {
+  if (!app) {
+    return false;
+  }
+
+  const accountLeaseService = app.get(AccountLeaseService);
+  await accountLeaseService.reloadAllAccountsOrThrow();
+  return true;
+}
+
+function getConfiguredApiKey(): string | undefined {
+  return getServerConfig()?.api_key;
+}
+
 export async function getNestServerStatus(): Promise<{
   running: boolean;
   port: number;
@@ -133,7 +200,7 @@ export async function getNestServerStatus(): Promise<{
     try {
       const accountLeaseService = app.get(AccountLeaseService);
       activeAccounts = accountLeaseService.getAccountCount();
-    } catch (e) {
+    } catch {
       // AccountLeaseService might not be available
     }
   }

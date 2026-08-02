@@ -6,7 +6,11 @@ import { lastValueFrom, Observable, toArray } from 'rxjs';
 import { ProxyService } from '@/modules/proxy-gateway/server/proxy.service';
 
 function parseEvent(serializedEvent: string): Record<string, unknown> {
-  return JSON.parse(serializedEvent.slice('data: '.length)) as Record<string, unknown>;
+  const dataLine = serializedEvent.split('\n').find((line) => line.startsWith('data: '));
+  if (!dataLine) {
+    throw new Error(`Missing SSE data line: ${serializedEvent}`);
+  }
+  return JSON.parse(dataLine.slice('data: '.length)) as Record<string, unknown>;
 }
 
 function createResponsesStream(
@@ -61,25 +65,32 @@ describe('ProxyService Responses streaming', () => {
 
     expect(events.map((event) => event.type)).toEqual([
       'response.created',
+      'response.in_progress',
       'response.output_item.added',
       'response.content_part.added',
       'response.output_text.delta',
+      'response.output_text.done',
+      'response.content_part.done',
+      'response.output_item.done',
       'response.output_item.added',
       'response.function_call_arguments.delta',
       'response.function_call_arguments.done',
       'response.output_item.done',
+      'response.output_item.added',
+      'response.content_part.added',
       'response.output_text.delta',
       'response.output_text.done',
       'response.content_part.done',
       'response.output_item.done',
       'response.completed',
     ]);
-    expect(events[8]).toMatchObject({ delta: expect.stringContaining('Gemini API') });
+    expect(events[14]).toMatchObject({ delta: expect.stringContaining('Gemini API') });
     expect(events.at(-1)).toMatchObject({
       response: {
         output: [
-          expect.objectContaining({ type: 'message' }),
+          expect.objectContaining({ phase: 'commentary', type: 'message' }),
           expect.objectContaining({ call_id: 'call_search_1', type: 'function_call' }),
+          expect.objectContaining({ phase: 'commentary', type: 'message' }),
         ],
       },
     });
