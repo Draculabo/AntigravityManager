@@ -277,3 +277,14 @@ Task(subagent_type: "run-related-tests", description: "Run tests", prompt: "[sam
 Flow: initial check -> fix key issues -> re-check -> iterate until key issues are resolved.
 
 Note: these tools are read-only analyzers; you still need to apply fixes manually. Pass precise file paths, not broad directories.
+
+When writing tests, prefer comparing the equality of entire objects over fields one by one.
+Do not add negative tests for logic that was removed.
+Do not add tests for values that are statically defined.
+Do not create small helper methods that are referenced only once.
+
+### Avoid large modules:
+- Prefer adding new modules instead of growing existing ones.
+- Target  modules under 500 LoC, excluding tests.
+- If a file exceeds roughly 800 LoC, add new functionality in a new module instead of extending the existing file unless there is a strong documented reason not to.
+- When extracting code from a large module, move the related tests and module/type docs toward the new implementation so the invariants stay close to the code that owns them.
