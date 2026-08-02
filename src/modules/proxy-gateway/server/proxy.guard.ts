@@ -11,6 +11,7 @@ import {
   hasConfiguredApiKey,
   RequestHeaders,
 } from './guards/api-key-auth.util';
+import { openCodeCredentialService } from '../opencode-sync/opencode-credentials';
 
 @Injectable()
 export class ProxyGuard implements CanActivate {
@@ -26,6 +27,12 @@ export class ProxyGuard implements CanActivate {
 
     const headers = request.headers as RequestHeaders;
     const clientToken = extractApiKeyToken(headers);
+
+    // The OpenCode credential is accepted only by this model-proxy guard.
+    // AdminGuard intentionally knows nothing about it, so revocation and scope stay independent.
+    if (openCodeCredentialService.matches(clientToken)) {
+      return true;
+    }
 
     // 2. Bypass if no api_key set (Open Mode) or config missing
     if (!hasConfiguredApiKey(apiKey)) {

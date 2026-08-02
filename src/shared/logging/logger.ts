@@ -5,6 +5,7 @@ import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import { getAgentDir } from '@/shared/platform/paths';
 import { shouldReportErrorToSentry } from '@/shared/errors/appError';
+import { safeStringifyPacket, sanitizeObject } from '@/shared/security/sensitiveDataMasking';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
@@ -33,25 +34,11 @@ type SentryReporter = (payload: {
  * when logging objects like axios errors that contain socket references
  */
 function safeStringify(obj: unknown): string {
-  const seen = new WeakSet();
-  return JSON.stringify(obj, (key, value) => {
-    // Handle Error objects specially
-    if (value instanceof Error) {
-      return {
-        name: value.name,
-        message: value.message,
-        stack: value.stack,
-      };
-    }
-    // Handle circular references
-    if (isObjectLike(value)) {
-      if (seen.has(value)) {
-        return '[Circular]';
-      }
-      seen.add(value);
-    }
-    return value;
-  });
+  try {
+    return safeStringifyPacket(obj);
+  } catch {
+    return '[Unserializable]';
+  }
 }
 
 class Logger {
@@ -144,12 +131,15 @@ class Logger {
   }
 
   private formatArgs(args: unknown[]): string {
-    return args.map((arg) => (isObjectLike(arg) ? safeStringify(arg) : String(arg))).join(' ');
+    return args
+      .map((arg) => (isObjectLike(arg) ? safeStringify(arg) : String(sanitizeObject(arg))))
+      .join(' ');
   }
 
   log(level: LogLevel, message: string, ...args: unknown[]) {
     const formattedArgs = this.formatArgs(args);
-    const mergedMessage = formattedArgs ? `${message} ${formattedArgs}` : message;
+    const sanitizedMessage = String(sanitizeObject(message));
+    const mergedMessage = formattedArgs ? `${sanitizedMessage} ${formattedArgs}` : sanitizedMessage;
     const now = Date.now();
     const formattedMessage = `[${new Date(now).toISOString()}] [${level.toUpperCase()}] ${mergedMessage}`;
 

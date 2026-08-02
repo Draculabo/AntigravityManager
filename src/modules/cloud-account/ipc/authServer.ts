@@ -126,11 +126,22 @@ export class AuthServer {
     return `http://localhost:${this.PORT}/oauth-callback`;
   }
 
-  static stop() {
-    if (this.server) {
-      this.server.close();
-      this.server = null;
-      logger.info('AuthServer: Stopped');
+  static async stop(): Promise<void> {
+    const server = this.server;
+    this.server = null;
+    if (!server) {
+      return;
     }
+
+    await new Promise<void>((resolve) => {
+      server.close((error) => {
+        if (error) {
+          logger.warn('AuthServer: Failed to close cleanly', error);
+        }
+        resolve();
+      });
+      server.closeAllConnections();
+    });
+    logger.info('AuthServer: Stopped');
   }
 }

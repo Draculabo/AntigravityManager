@@ -56,6 +56,40 @@ describe('sensitive data masking', () => {
       expect(sanitizeObject('not valid json ]')).toBe('not valid json ]');
     });
 
+    it('redacts inline image data URLs while preserving safe metadata', () => {
+      const raw = `prefix data:image/png;base64,${'QUJD'.repeat(160)} suffix`;
+      const sanitized = sanitizeObject(raw);
+
+      expect(sanitized).toContain('[data URL redacted mime=image/png bytes=480]');
+      expect(sanitized).not.toContain('QUJDQUJD');
+    });
+
+    it('redacts inlineData base64 while preserving its MIME type', () => {
+      const sanitized = sanitizeObject({
+        inlineData: {
+          mimeType: 'image/webp',
+          data: 'QUJD'.repeat(160),
+        },
+      });
+
+      expect(sanitized).toEqual({
+        inlineData: {
+          mimeType: 'image/webp',
+          data: '[base64 redacted mime=image/webp bytes=480]',
+        },
+      });
+    });
+
+    it('redacts OpenAI b64_json image responses even when the fixture is short', () => {
+      expect(
+        sanitizeObject({
+          data: [{ b64_json: 'QUJDRA==' }],
+        }),
+      ).toEqual({
+        data: [{ b64_json: '[base64 redacted bytes=4]' }],
+      });
+    });
+
     it('handles circular references without infinite loops', () => {
       const circular: Record<string, unknown> = { name: 'a', password: 'secret' };
       circular.self = circular;
