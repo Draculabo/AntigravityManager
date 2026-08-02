@@ -35,6 +35,73 @@ function createPolicy(tokenCache: Map<string, AccountLeaseTokenData>) {
 }
 
 describe('AccountLeaseModelPolicy', () => {
+  it('distinguishes an exact model from a compatible family fallback', () => {
+    const tokenCache = new Map([
+      [
+        'exact',
+        createToken({
+          model_quotas: {
+            'gemini-3.1-pro-low': 80,
+          },
+        }),
+      ],
+      [
+        'fallback',
+        createToken({
+          model_quotas: {
+            'gemini-pro-agent': 80,
+          },
+        }),
+      ],
+    ]);
+    const { policy } = createPolicy(tokenCache);
+
+    expect([
+      policy.getExactModelAvailabilityForAccount('exact', 'gemini-3.1-pro-low'),
+      policy.getExactModelAvailabilityForAccount('fallback', 'gemini-3.1-pro-low'),
+    ]).toEqual(['available', 'unavailable']);
+  });
+
+  it('rejects an unregistered same-family preview as a physical fallback', () => {
+    const tokenCache = new Map([
+      [
+        'acc-1',
+        createToken({
+          model_quotas: {
+            'gemini-3.1-pro-preview': 80,
+          },
+        }),
+      ],
+    ]);
+    const { policy } = createPolicy(tokenCache);
+
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3.1-pro-low')).toBe(
+      'unavailable',
+    );
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.1-pro-low')).toBe(
+      'gemini-3.1-pro-low',
+    );
+  });
+
+  it('allows a registered same-family physical fallback with complete parameters', () => {
+    const tokenCache = new Map([
+      [
+        'acc-1',
+        createToken({
+          model_quotas: {
+            'gemini-pro-agent': 80,
+          },
+        }),
+      ],
+    ]);
+    const { policy } = createPolicy(tokenCache);
+
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3.1-pro-low')).toBe('available');
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.1-pro-low')).toBe(
+      'gemini-pro-agent',
+    );
+  });
+
   it('rewrites gemini pro requests to the first available account candidate', () => {
     const tokenCache = new Map([
       [
@@ -175,7 +242,7 @@ describe('AccountLeaseModelPolicy', () => {
     expect(policy.getModelAvailabilityForAccount('missing', 'gemini-3-flash')).toBe('unknown');
   });
 
-  it('keeps Gemini Pro preview preference ahead of a rejected high suffix', () => {
+  it('keeps the registered Gemini Pro suffix instead of an unregistered preview', () => {
     const tokenCache = new Map([
       [
         'acc-1',
@@ -190,8 +257,28 @@ describe('AccountLeaseModelPolicy', () => {
     const { policy } = createPolicy(tokenCache);
 
     expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.1-pro-high')).toBe(
-      'gemini-3.1-pro-preview',
+      'gemini-3.1-pro-high',
     );
+  });
+
+  it('uses gemini-pro-agent when the leased account advertises it', () => {
+    const tokenCache = new Map([
+      [
+        'acc-1',
+        createToken({
+          model_quotas: {
+            'gemini-pro-agent': 80,
+            'gemini-3.1-pro-preview': 80,
+          },
+        }),
+      ],
+    ]);
+    const { policy } = createPolicy(tokenCache);
+
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-pro-agent')).toBe(
+      'gemini-pro-agent',
+    );
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-pro-agent')).toBe('available');
   });
 
   it('rewrites image models only within their requested quality tier', () => {

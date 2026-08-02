@@ -5,6 +5,10 @@
 
 import { flatMap, groupBy, keys, map, min, sortBy, sumBy } from 'lodash-es';
 import { roundQuotaPercentage } from '@/modules/cloud-account/utils/quota-display';
+import {
+  aggregateQuotaModelFamilies,
+  aggregateVisibleQuotaModelFamilies,
+} from '@/modules/cloud-account/utils/quota-model-families';
 
 export interface ProviderInfo {
   name: string;
@@ -168,7 +172,15 @@ export function groupModelsByProvider(
   models: Record<string, { percentage: number; resetTime: string }>,
   visibilitySettings: Record<string, boolean>,
 ): AccountStats {
-  const modelQuotas = map(models, (info, modelName) => ({
+  const aggregatedModels = aggregateQuotaModelFamilies(models);
+  const visibleAggregatedModels = aggregateVisibleQuotaModelFamilies(models, visibilitySettings);
+  const aggregatedVisibility = Object.fromEntries(
+    Object.keys(aggregatedModels).map((modelName) => [
+      modelName,
+      Object.prototype.hasOwnProperty.call(visibleAggregatedModels, modelName),
+    ]),
+  );
+  const modelQuotas = map(aggregatedModels, (info, modelName) => ({
     providerKey: detectProvider(modelName),
     quota: {
       id: modelName,
@@ -182,7 +194,7 @@ export function groupModelsByProvider(
     const providerKey = key as ProviderKey;
     const providerModels = map(groupedQuotas, (groupedQuota) => groupedQuota.quota);
 
-    return calculateProviderStats(providerKey, providerModels, visibilitySettings);
+    return calculateProviderStats(providerKey, providerModels, aggregatedVisibility);
   });
 
   // Sort: known providers first (claude-, gemini-), then others

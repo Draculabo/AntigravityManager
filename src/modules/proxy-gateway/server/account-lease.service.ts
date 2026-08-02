@@ -15,7 +15,7 @@ import { AccountLeaseHydrationPolicy } from './account-lease-hydration-policy';
 import { AccountLeaseFulfillmentPolicy } from './account-lease-fulfillment-policy';
 import { AccountLeaseSelectionPolicy } from './account-lease-selection-policy';
 import { AccountLeaseModelPolicy } from './account-lease-model-policy';
-import { type AccountLeaseTokenData } from './account-lease-token-types';
+import { type AccountLeaseTokenData, normalizeModelId } from './account-lease-token-types';
 import {
   AccountLeaseLimitPolicy,
   type AccountLeaseUpstreamErrorParams,
@@ -62,6 +62,8 @@ export class AccountLeaseService implements OnModuleInit {
       getTokenCache: () => this.tokens,
       setLockoutUntilIso: (accountId, resetTime, reason, model) =>
         this.rateLimitTracker.setLockoutUntilIso(accountId, resetTime, reason, model),
+      clearRecoveredQuotaLocks: (accountId, recoveredModels, isAccountRecovered) =>
+        this.limitPolicy.clearRecoveredQuotaLocks(accountId, recoveredModels, isAccountRecovered),
       logger: this.logger,
     });
     this.tokenCache = new AccountLeaseTokenCache({
@@ -95,8 +97,8 @@ export class AccountLeaseService implements OnModuleInit {
       forbiddenCooldownMs: this.forbiddenCooldownMs,
       resolveAccountId: (accountIdOrEmail) => this.resolveAccountId(accountIdOrEmail),
       getCircuitBreakerBackoffSteps: () => this.configPolicy.getCircuitBreakerBackoffSteps(),
-      refreshRealtimeQuotaAndSetPreciseLockout: (accountId, reason, model) =>
-        this.quotaRefreshPolicy.refreshRealtimeQuotaAndSetPreciseLockout(accountId, reason, model),
+      refreshRealtimeQuotaAndReconcileLimit: (accountId, reason, model) =>
+        this.quotaRefreshPolicy.refreshRealtimeQuotaAndReconcileLimit(accountId, reason, model),
       setPreciseLockoutFromCachedQuota: (accountId, reason, model) =>
         this.quotaRefreshPolicy.setPreciseLockoutFromCachedQuota(accountId, reason, model),
       logger: this.logger,
@@ -134,6 +136,13 @@ export class AccountLeaseService implements OnModuleInit {
     return count;
   }
 
+  async reloadAllAccountsOrThrow(): Promise<number> {
+    const count = await this.tokenCache.loadAccountsOrThrow();
+    this.clearAllRateLimits();
+    this.clearAllSessions();
+    return count;
+  }
+
   clearAllSessions(): void {
     this.selectionPolicy.clearSessions();
   }
@@ -160,6 +169,18 @@ export class AccountLeaseService implements OnModuleInit {
 
   markAsForbidden(accountIdOrEmail: string) {
     this.limitPolicy.markAsForbidden(accountIdOrEmail);
+  }
+
+  markModelSuccess(accountIdOrEmail: string, model: string): void {
+    this.limitPolicy.markModelSuccess(accountIdOrEmail, model);
+  }
+
+  getRemainingRateLimitWait(accountIdOrEmail: string, model?: string): number {
+    const accountId = this.resolveAccountId(accountIdOrEmail) ?? accountIdOrEmail;
+    return this.rateLimitTracker.getRemainingWaitSeconds(
+      accountId,
+      normalizeModelId(model) ?? model,
+    );
   }
 
   async markFromUpstreamError(params: AccountLeaseUpstreamErrorParams): Promise<void> {
@@ -235,18 +256,35 @@ export class AccountLeaseService implements OnModuleInit {
       return allTokens;
     }
 
-    const available: TokenEntry[] = [];
+    const exact: TokenEntry[] = [];
+    const compatible: TokenEntry[] = [];
     const unknown: TokenEntry[] = [];
     for (const entry of allTokens) {
+      const exactAvailability = this.modelPolicy.getExactModelAvailabilityForAccount(
+        entry[0],
+        model,
+      );
+      if (exactAvailability === 'available') {
+        exact.push(entry);
+        continue;
+      }
+
       const availability = this.modelPolicy.getModelAvailabilityForAccount(entry[0], model);
       if (availability === 'available') {
-        available.push(entry);
+        compatible.push(entry);
       } else if (availability === 'unknown') {
         unknown.push(entry);
       }
     }
 
-    return available.length > 0 ? available : unknown;
+    if (exact.length > 0) {
+      return exact;
+    }
+    if (compatible.length > 0) {
+      return compatible;
+    }
+
+    return unknown;
   }
 
   public resetSelectionState(): void {

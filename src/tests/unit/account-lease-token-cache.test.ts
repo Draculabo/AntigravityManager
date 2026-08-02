@@ -114,4 +114,16 @@ describe('AccountLeaseTokenCache', () => {
       expect.any(Error),
     );
   });
+
+  it('rethrows account storage failures through the strict reload boundary', async () => {
+    const store = createStore([]);
+    vi.mocked(store.getAccounts).mockRejectedValue(new Error('storage failed'));
+    const { cache, logger } = createTokenCache(store);
+
+    await expect(cache.loadAccountsOrThrow()).rejects.toThrow('storage failed');
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to load cloud accounts into token cache',
+      expect.any(Error),
+    );
+  });
 });

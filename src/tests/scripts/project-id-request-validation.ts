@@ -8,6 +8,7 @@ import { AccountLeaseService } from '../../modules/proxy-gateway/server/account-
 const mockAccountLease: any = {
   getNextToken: async () => null,
   markAsRateLimited: () => undefined,
+  markModelSuccess: () => undefined,
   markAsForbidden: () => undefined,
   markFromUpstreamError: () => undefined,
   recordParityError: () => undefined,
@@ -239,6 +240,8 @@ async function validateRuntimeAnthropicRequestFromRealAccountLease(): Promise<vo
     },
     markAsRateLimited: (accountIdOrEmail: string) =>
       realAccountLease.markAsRateLimited(accountIdOrEmail),
+    markModelSuccess: (accountIdOrEmail: string, model: string) =>
+      realAccountLease.markModelSuccess(accountIdOrEmail, model),
     markAsForbidden: (accountIdOrEmail: string) =>
       realAccountLease.markAsForbidden(accountIdOrEmail),
     markFromUpstreamError: (args: {

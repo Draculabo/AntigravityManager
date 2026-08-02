@@ -1,5 +1,6 @@
 import { differenceInHours, differenceInMinutes, isBefore } from 'date-fns';
 import { CloudAccount } from '@/modules/cloud-account/types';
+import { aggregateVisibleQuotaModelFamilies } from '@/modules/cloud-account/utils/quota-model-families';
 
 const HIGH_QUOTA_PERCENTAGE = 80;
 const MEDIUM_QUOTA_PERCENTAGE = 20;
@@ -103,9 +104,7 @@ function getVisibleModelEntries(
   modelVisibility: Record<string, boolean>,
 ): Array<[string, NonNullable<CloudAccount['quota']>['models'][string]]> {
   if (!account.quota?.models) return [];
-  return Object.entries(account.quota.models).filter(
-    ([modelName]) => modelVisibility[modelName] !== false,
-  );
+  return Object.entries(aggregateVisibleQuotaModelFamilies(account.quota.models, modelVisibility));
 }
 
 function getAveragePercentage(

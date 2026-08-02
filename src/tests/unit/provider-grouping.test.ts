@@ -183,6 +183,21 @@ describe('groupModelsByProvider', () => {
     expect(stats.overallPercentage).toBe(80);
   });
 
+  it('uses the conservative family quota instead of averaging routed variants', () => {
+    const models = {
+      'gemini-3.1-pro-low': { percentage: 80, resetTime: '2026-07-30T10:00:00Z' },
+      'gemini-pro-agent': { percentage: 5, resetTime: '2026-07-30T08:00:00Z' },
+    };
+
+    const stats = groupModelsByProvider(models, {
+      'gemini-3.1-pro-low': false,
+    });
+
+    expect(stats.visibleModels).toBe(1);
+    expect(stats.overallPercentage).toBe(5);
+    expect(stats.providers[0].earliestReset).toBe('2026-07-30T08:00:00.000Z');
+  });
+
   it('should sort providers: claude first, gemini second, others last', () => {
     const models = {
       'gpt-4': { percentage: 50, resetTime: '' },

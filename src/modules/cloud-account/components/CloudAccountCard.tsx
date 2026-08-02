@@ -32,6 +32,7 @@ import {
   EyeOff,
   Repeat2,
   Terminal,
+  TriangleAlert,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
@@ -55,8 +56,12 @@ import { isValidProxyUrl } from '@/shared/utils/url';
 import { getValidationBlockedStatusLabel } from '@/modules/cloud-account/utils/accountValidationStatus';
 import type { AntigravityAppTarget } from '@/modules/account/types';
 import { AccountTierBadge } from '@/modules/cloud-account/components/AccountTierBadge';
+import { aggregateVisibleQuotaModelFamilies } from '@/modules/cloud-account/utils/quota-model-families';
 
 type ModelQuotaEntry = [string, CloudQuotaModelInfo];
+type LiveModelAvailability = Awaited<
+  ReturnType<typeof ipc.client.gateway.modelAvailability>
+>[number];
 
 const GEMINI_LEGACY_MODEL_PATTERN = /gemini-[12](\.|$|-)/i;
 const GEMINI_PRO_COMBINED_MODEL_ID = 'gemini-3.1-pro-low/high';
@@ -89,16 +94,6 @@ const QUOTA_BAR_COLOR_CLASS_BY_STATUS: Record<QuotaStatus, string> = {
   low: 'bg-gradient-to-r from-rose-500 to-red-600 shadow-[0_0_8px_rgba(239,68,68,0.3)]',
 };
 
-function isGeminiProLowModel(modelName: string): boolean {
-  const normalizedModelName = modelName.toLowerCase();
-  return normalizedModelName.includes('gemini-3.1-pro-low');
-}
-
-function isGeminiProHighModel(modelName: string): boolean {
-  const normalizedModelName = modelName.toLowerCase();
-  return normalizedModelName.includes('gemini-3.1-pro-high');
-}
-
 function formatCreditsExpiry(expiryDate: string): string {
   if (!expiryDate) {
     return '';
@@ -112,45 +107,6 @@ function formatCreditsExpiry(expiryDate: string): string {
   }
 }
 
-function mergeGeminiProQuotaEntries(
-  entries: ModelQuotaEntry[],
-): Record<string, CloudQuotaModelInfo> {
-  const mergedModels: Record<string, CloudQuotaModelInfo> = {};
-  const hasProLowModel = entries.some(([modelName]) => isGeminiProLowModel(modelName));
-  const hasProHighModel = entries.some(([modelName]) => isGeminiProHighModel(modelName));
-  const proLowModelInfo = entries.find(([modelName]) => isGeminiProLowModel(modelName))?.[1];
-
-  for (const [modelName, modelInfo] of entries) {
-    if (isGeminiProLowModel(modelName) && hasProHighModel) {
-      continue;
-    }
-
-    if (isGeminiProHighModel(modelName) && hasProLowModel) {
-      const mergedPercentage = proLowModelInfo
-        ? Math.min(modelInfo.percentage, proLowModelInfo.percentage)
-        : modelInfo.percentage;
-
-      mergedModels[GEMINI_PRO_COMBINED_MODEL_ID] = {
-        ...modelInfo,
-        ...proLowModelInfo,
-        percentage: mergedPercentage,
-        display_name: 'Gemini 3.1 Pro',
-        resetTime:
-          modelInfo.resetTime && proLowModelInfo?.resetTime
-            ? modelInfo.resetTime < proLowModelInfo.resetTime
-              ? modelInfo.resetTime
-              : proLowModelInfo.resetTime
-            : modelInfo.resetTime || proLowModelInfo?.resetTime || '',
-      };
-      continue;
-    }
-
-    mergedModels[modelName] = modelInfo;
-  }
-
-  return mergedModels;
-}
-
 function formatModelDisplayName(modelName: string): string {
   let displayName = modelName.replace('models/', '');
   for (const [source, target] of MODEL_DISPLAY_REPLACEMENTS) {
@@ -162,6 +118,72 @@ function formatModelDisplayName(modelName: string): string {
     .split(' ')
     .map((word) => (word.length > 2 ? word.charAt(0).toUpperCase() + word.slice(1) : word))
     .join(' ');
+}
+
+function formatCompactDuration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+  return `${remainingSeconds}s`;
+}
+
+function getAvailabilityModelCandidates(modelName: string): Set<string> {
+  const normalized = modelName.replace(/^models\//i, '').toLowerCase();
+  const candidates = new Set([normalized]);
+
+  if (
+    normalized === GEMINI_PRO_COMBINED_MODEL_ID ||
+    normalized === 'gemini-3.1-pro' ||
+    normalized === 'gemini-3.1-pro-high' ||
+    normalized === 'gemini-3-pro-high'
+  ) {
+    candidates.add('gemini-pro-agent');
+    candidates.add('gemini-3.1-pro-low');
+    candidates.add('gemini-3.1-pro-high');
+    candidates.add('gemini-3.1-pro-preview');
+    candidates.add('gemini-3-pro-preview');
+  }
+
+  if (normalized === 'gemini-3.5-flash') {
+    candidates.add('gemini-3.5-flash-extra-low');
+    candidates.add('gemini-3.5-flash-low');
+    candidates.add('gemini-3-flash-agent');
+  }
+
+  if (normalized === 'gemini-3.1-flash-image' || normalized === 'gemini-3-flash-image') {
+    candidates.add('gemini-3.1-flash-image');
+    candidates.add('gemini-3-flash-image');
+  }
+
+  if (normalized === 'gemini-3-pro-image' || normalized === 'gemini-3.1-pro-image') {
+    candidates.add('gemini-3-pro-image');
+    candidates.add('gemini-3.1-pro-image');
+  }
+
+  return candidates;
+}
+
+function findModelAvailability(
+  availabilityEntries: LiveModelAvailability[],
+  accountId: string,
+  modelName: string,
+): LiveModelAvailability | undefined {
+  const candidates = getAvailabilityModelCandidates(modelName);
+  return availabilityEntries
+    .filter(
+      (entry) =>
+        entry.accountId === accountId &&
+        candidates.has(entry.modelId.replace(/^models\//i, '').toLowerCase()),
+    )
+    .sort((left, right) => right.detectedAt - left.detectedAt)[0];
 }
 
 interface CloudAccountCardProps {
@@ -242,11 +264,10 @@ export function CloudAccountCard({
 
   const allModelEntries = Object.entries(account.quota?.models || {}) as ModelQuotaEntry[];
 
-  const visibleModelEntries = Object.entries(account.quota?.models || {}).filter(
-    ([modelName]) => config?.model_visibility?.[modelName] !== false,
-  ) as ModelQuotaEntry[];
-
-  const mergedModelQuotas = mergeGeminiProQuotaEntries(visibleModelEntries);
+  const mergedModelQuotas = aggregateVisibleQuotaModelFamilies(
+    account.quota?.models || {},
+    config?.model_visibility || {},
+  );
 
   const geminiModels = Object.entries(mergedModelQuotas)
     .filter(([name]) => name.includes('gemini') && !GEMINI_LEGACY_MODEL_PATTERN.test(name))
@@ -273,42 +294,95 @@ export function CloudAccountCard({
           <div className="bg-border/50 h-px flex-1" />
         </div>
         {models.map(([modelName, info]) => {
-          const availability = modelAvailability.find(
-            (entry) =>
-              entry.accountId === account.id &&
-              entry.modelId === modelName.replace(/^models\//i, '').toLowerCase(),
-          );
-          const availabilityLabel =
+          const availability = findModelAvailability(modelAvailability, account.id, modelName);
+          const now = Date.now();
+          const isLiveLimitActive = !!availability && availability.unavailableUntil > now;
+          const statusLabel = availability?.status ? `HTTP ${availability.status}` : 'ERR';
+          const reasonLabel =
             availability?.reason === 'model_not_supported'
-              ? t('cloud.card.modelNotSupported', 'This account does not support this model.')
+              ? t('cloud.card.liveLimitModelNotSupported', 'Model not supported')
               : availability?.reason === 'model_forbidden'
-                ? t(
-                    'cloud.card.modelForbidden',
-                    'This model is disabled or unavailable for this account.',
-                  )
-                : availability
+                ? t('cloud.card.liveLimitModelForbidden', 'Model forbidden')
+                : availability?.reason === 'quota_exhausted'
+                  ? t('cloud.card.liveLimitQuotaExhausted', 'Quota exhausted')
+                  : t('cloud.card.liveLimitRateLimited', 'Rate limited');
+          const liveLimitTimingLabel = availability
+            ? isLiveLimitActive
+              ? t('cloud.card.liveLimitRemaining', '{{duration}} remaining', {
+                  duration: formatCompactDuration(availability.unavailableUntil - now),
+                })
+              : t('cloud.card.liveLimitDetectedAgo', 'detected {{duration}} ago', {
+                  duration: formatCompactDuration(now - availability.detectedAt),
+                })
+            : null;
+          const availabilityTitle = availability
+            ? [
+                isLiveLimitActive
                   ? t(
-                      'cloud.card.modelTemporarilyUnavailable',
-                      'Temporarily unavailable until {{time}}.',
-                      { time: new Date(availability.unavailableUntil).toLocaleTimeString() },
+                      'cloud.card.liveLimitActiveTitle',
+                      'The live upstream endpoint is temporarily unavailable.',
                     )
-                  : null;
+                  : t(
+                      'cloud.card.liveLimitRecentTitle',
+                      'The live upstream endpoint recently returned an error.',
+                    ),
+                `${statusLabel}: ${reasonLabel}.`,
+                t(
+                  'cloud.card.liveLimitQuotaSnapshot',
+                  'The quota snapshot can still show {{percentage}}%.',
+                  { percentage: info.percentage },
+                ),
+                availability.message
+                  ? t('cloud.card.liveLimitMessage', 'Message: {{message}}', {
+                      message: availability.message,
+                    })
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' ')
+            : modelName;
           return (
             <div
               key={modelName}
-              className="group/item hover:bg-muted/60 hover:border-border/60 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-lg border border-transparent px-2 py-1.5 text-sm transition-all"
+              className={cn(
+                'group/item hover:bg-muted/60 hover:border-border/60 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-lg border border-transparent px-2 py-1.5 text-sm transition-all',
+                availability &&
+                  'border-amber-400/60 bg-amber-50/70 ring-1 ring-amber-400/20 dark:border-amber-500/60 dark:bg-amber-950/25',
+                isLiveLimitActive &&
+                  'border-rose-400/70 bg-rose-50/80 ring-rose-400/25 dark:border-rose-500/70 dark:bg-rose-950/30',
+              )}
+              title={availabilityTitle}
             >
-              <span
-                className="text-muted-foreground group-hover/item:text-foreground min-w-0 truncate font-semibold"
-                title={modelName}
-              >
-                {formatModelDisplayName(modelName)}
-                {availabilityLabel && (
-                  <span className="text-destructive ml-1 text-[9px]" title={availabilityLabel}>
-                    {t('cloud.card.modelUnavailable', 'Unavailable')}
+              <div className="min-w-0">
+                <span
+                  className={cn(
+                    'text-muted-foreground group-hover/item:text-foreground flex min-w-0 items-center gap-1 truncate font-semibold',
+                    availability && 'text-amber-700 dark:text-amber-300',
+                    isLiveLimitActive && 'text-rose-700 dark:text-rose-300',
+                  )}
+                >
+                  {availability && (
+                    <TriangleAlert
+                      className={cn(
+                        'size-3 shrink-0 text-amber-500',
+                        isLiveLimitActive && 'text-rose-500',
+                      )}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span className="truncate">{formatModelDisplayName(modelName)}</span>
+                </span>
+                {availability && liveLimitTimingLabel && (
+                  <span
+                    className={cn(
+                      'mt-0.5 block truncate text-[9px] leading-tight text-amber-700/80 dark:text-amber-300/80',
+                      isLiveLimitActive && 'text-rose-700/80 dark:text-rose-300/80',
+                    )}
+                  >
+                    {reasonLabel} · {liveLimitTimingLabel}
                   </span>
                 )}
-              </span>
+              </div>
               <div className="flex flex-col items-end gap-0.5">
                 <span
                   className="text-muted-foreground text-[9px] leading-none opacity-80"
@@ -317,8 +391,25 @@ export function CloudAccountCard({
                   {formatResetTimeLabelText(info.resetTime)}
                 </span>
                 <div className="flex items-baseline gap-1">
+                  {availability && (
+                    <span
+                      className={cn(
+                        'rounded bg-amber-500/15 px-1 py-px font-mono text-[9px] leading-none font-bold text-amber-700 dark:text-amber-300',
+                        isLiveLimitActive && 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+                      )}
+                    >
+                      {statusLabel}
+                    </span>
+                  )}
                   <span
-                    className={`font-mono text-xs leading-none font-bold ${getQuotaTextColorClass(info.percentage)}`}
+                    className={cn(
+                      'font-mono text-xs leading-none font-bold',
+                      availability
+                        ? isLiveLimitActive
+                          ? 'text-rose-700 dark:text-rose-300'
+                          : 'text-amber-700 dark:text-amber-300'
+                        : getQuotaTextColorClass(info.percentage),
+                    )}
                   >
                     {info.percentage}%
                   </span>
@@ -887,11 +978,10 @@ export function CompactCloudAccountCard({
     return QUOTA_BAR_COLOR_CLASS_BY_STATUS[quotaStatus];
   };
 
-  const visibleModelEntries = Object.entries(account.quota?.models || {}).filter(
-    ([modelName]) => config?.model_visibility?.[modelName] !== false,
-  ) as ModelQuotaEntry[];
-
-  const mergedModelQuotas = mergeGeminiProQuotaEntries(visibleModelEntries);
+  const mergedModelQuotas = aggregateVisibleQuotaModelFamilies(
+    account.quota?.models || {},
+    config?.model_visibility || {},
+  );
 
   const compactModels = Object.entries(mergedModelQuotas).sort(
     (a, b) => b[1].percentage - a[1].percentage,

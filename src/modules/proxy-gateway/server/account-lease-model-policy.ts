@@ -1,5 +1,6 @@
 import { isNumber } from 'lodash-es';
 import { getPublicModelIdForDisplayName } from '../antigravity/ModelMapping';
+import { rebindModelVariant, resolveModelVariant } from '../antigravity/model-variant-registry';
 import { type AccountLeaseTokenData, normalizeModelId } from './account-lease-token-types';
 
 interface AccountLeaseModelLogger {
@@ -30,6 +31,7 @@ const MODEL_VARIANT_PRIORITY: Record<string, number> = {
 };
 
 const GEMINI_PRO_FAMILY = new Set([
+  'gemini-pro-agent',
   'gemini-3-pro',
   'gemini-3-pro-preview',
   'gemini-3-pro-high',
@@ -191,9 +193,13 @@ export class AccountLeaseModelPolicy {
       }
     };
 
-    // Upstream rejects the '-high' suffix for gemini-3.1-pro requests, so
-    // prefer the preview model before falling back to the requested variant.
-    if (normalizedModel === 'gemini-3.1-pro-high' || normalizedModel === 'gemini-3.1-pro') {
+    // Antigravity routes the public high-effort preset through its self-routing
+    // agent id. Keep that id first when it is advertised by the leased account.
+    if (normalizedModel === 'gemini-pro-agent') {
+      pushCandidate(normalizedModel);
+    } else if (normalizedModel === 'gemini-3.1-pro-high' || normalizedModel === 'gemini-3.1-pro') {
+      // Older quota snapshots may not advertise the agent id, so retain the
+      // proven preview fallback chain used by those accounts.
       pushCandidate('gemini-3.1-pro-preview');
       pushCandidate('gemini-3.1-pro');
       pushCandidate(normalizedModel);
@@ -201,6 +207,7 @@ export class AccountLeaseModelPolicy {
       pushCandidate(normalizedModel);
     }
 
+    pushCandidate('gemini-pro-agent');
     pushCandidate('gemini-3.1-pro-preview');
     pushCandidate('gemini-3-pro-preview');
     pushCandidate('gemini-3.1-pro-high');
@@ -214,7 +221,7 @@ export class AccountLeaseModelPolicy {
   resolveDynamicModelForAccount(accountId: string, mappedModel: string): string {
     const tokenData = this.options.getTokenCache().get(accountId);
     const unrequestableSibling = this.resolveUnrequestableSibling(mappedModel, tokenData);
-    if (unrequestableSibling) {
+    if (unrequestableSibling && this.isSafeRegisteredFallback(mappedModel, unrequestableSibling)) {
       this.options.logger.log(
         `[Unrequestable-Model-Rewrite] account=${accountId} ${mappedModel} -> ${unrequestableSibling}`,
       );
@@ -233,12 +240,19 @@ export class AccountLeaseModelPolicy {
     }
 
     const normalizedMappedModel = normalizeModelId(mappedModel)?.toLowerCase() ?? mappedModel;
-    const resolvedModel = this.resolveAvailableModel(
-      tokenData,
+    const safeAvailableModels = this.filterSafeRegisteredFallbacks(
       normalizedMappedModel,
       availableModels,
     );
+    const resolvedModel = this.resolveAvailableModel(
+      tokenData,
+      normalizedMappedModel,
+      safeAvailableModels,
+    );
     if (!resolvedModel) {
+      return mappedModel;
+    }
+    if (!this.isSafeRegisteredFallback(mappedModel, resolvedModel)) {
       return mappedModel;
     }
 
@@ -268,9 +282,42 @@ export class AccountLeaseModelPolicy {
       return 'unavailable';
     }
 
-    return this.resolveAvailableModel(tokenData, normalizedMappedModel, availableModels)
+    const safeAvailableModels = this.filterSafeRegisteredFallbacks(
+      normalizedMappedModel,
+      availableModels,
+    );
+    const resolvedModel = this.resolveAvailableModel(
+      tokenData,
+      normalizedMappedModel,
+      safeAvailableModels,
+    );
+    return resolvedModel && this.isSafeRegisteredFallback(normalizedMappedModel, resolvedModel)
       ? 'available'
       : 'unavailable';
+  }
+
+  getExactModelAvailabilityForAccount(
+    accountId: string,
+    mappedModel: string,
+  ): AccountModelAvailability {
+    const tokenData = this.options.getTokenCache().get(accountId);
+    if (!tokenData) {
+      return 'unknown';
+    }
+
+    const availableModels = this.filterRequestableModels(
+      this.getAvailableModelsFromToken(tokenData),
+    );
+    if (availableModels.size === 0) {
+      return 'unknown';
+    }
+
+    const normalizedMappedModel = normalizeModelId(mappedModel)?.toLowerCase();
+    if (!normalizedMappedModel) {
+      return 'unavailable';
+    }
+
+    return availableModels.has(normalizedMappedModel) ? 'available' : 'unavailable';
   }
 
   /**
@@ -289,6 +336,33 @@ export class AccountLeaseModelPolicy {
       }
     }
     return filtered;
+  }
+
+  /**
+   * Registered variants may fall back only to another physical model with a
+   * registered full parameter tuple. Unregistered requests keep the legacy
+   * dynamic-family behavior.
+   */
+  private isSafeRegisteredFallback(requestedModel: string, physicalModel: string): boolean {
+    if (requestedModel.trim().toLowerCase() === physicalModel.trim().toLowerCase()) {
+      return true;
+    }
+    const requestedVariant = resolveModelVariant({ model: requestedModel });
+    if (!requestedVariant) {
+      return true;
+    }
+    return rebindModelVariant(requestedVariant, physicalModel) !== null;
+  }
+
+  private filterSafeRegisteredFallbacks(
+    requestedModel: string,
+    availableModels: Set<string>,
+  ): Set<string> {
+    return new Set(
+      [...availableModels].filter((physicalModel) =>
+        this.isSafeRegisteredFallback(requestedModel, physicalModel),
+      ),
+    );
   }
 
   private resolveAvailableModel(

@@ -89,4 +89,44 @@ describe('AccountLeaseSelectionPolicy', () => {
     );
     expect(blockedSelected?.[0]).toBe('acc-1');
   });
+
+  it('applies model-scoped rate limits in legacy scheduling mode', async () => {
+    const policy = new AccountLeaseSelectionPolicy();
+    const isRateLimited = vi.fn((accountId: string, model?: string) => {
+      expect(model).toBe('gemini-3.1-pro-high');
+      return accountId === 'acc-1';
+    });
+
+    const selected = await policy.selectCandidate(
+      createRequest({
+        model: 'gemini-3.1-pro-high',
+        rateLimitTracker: {
+          isRateLimited,
+          getRemainingWaitSeconds: vi.fn().mockReturnValue(30),
+        },
+      }),
+    );
+
+    expect(selected?.[0]).toBe('acc-2');
+    expect(isRateLimited).toHaveBeenCalledWith('acc-1', 'gemini-3.1-pro-high');
+  });
+
+  it('reads the requested model wait when every account is rate limited', async () => {
+    const policy = new AccountLeaseSelectionPolicy();
+    const getRemainingWaitSeconds = vi.fn().mockReturnValue(30);
+
+    const selected = await policy.selectCandidate(
+      createRequest({
+        model: 'gemini-3.1-flash-image',
+        rateLimitTracker: {
+          isRateLimited: vi.fn().mockReturnValue(true),
+          getRemainingWaitSeconds,
+        },
+      }),
+    );
+
+    expect(selected).toBeNull();
+    expect(getRemainingWaitSeconds).toHaveBeenCalledWith('acc-1', 'gemini-3.1-flash-image');
+    expect(getRemainingWaitSeconds).toHaveBeenCalledWith('acc-2', 'gemini-3.1-flash-image');
+  });
 });

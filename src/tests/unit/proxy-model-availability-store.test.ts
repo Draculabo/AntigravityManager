@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { ProxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/proxy-model-availability-store';
+import {
+  type ProxyModelAvailability,
+  type ProxyModelAvailabilityPersistence,
+  ProxyModelAvailabilityStore,
+} from '@/modules/proxy-gateway/server/proxy-model-availability-store';
+
+function createPersistence(initial: ProxyModelAvailability[] = []): {
+  persistence: ProxyModelAvailabilityPersistence;
+  read: () => ProxyModelAvailability[];
+} {
+  let entries = structuredClone(initial);
+  return {
+    persistence: {
+      load: () => structuredClone(entries),
+      save: (nextEntries) => {
+        entries = structuredClone(nextEntries);
+      },
+    },
+    read: () => structuredClone(entries),
+  };
+}
 
 describe('ProxyModelAvailabilityStore', () => {
   it('clears only image capability failures when an account is manually refreshed', () => {
@@ -17,5 +37,67 @@ describe('ProxyModelAvailabilityStore', () => {
         reason: 'quota_exhausted',
       }),
     ]);
+  });
+
+  it('clears only the successful model entry', () => {
+    const store = new ProxyModelAvailabilityStore();
+
+    store.mark('acc-1', 'models/gemini-3.1-pro-high', 'rate_limited');
+    store.mark('acc-1', 'gemini-3.1-flash-lite', 'quota_exhausted');
+
+    expect(store.clearModel('acc-1', 'gemini-3.1-pro-high')).toBe(true);
+    expect(store.getSnapshot()).toEqual([
+      expect.objectContaining({
+        accountId: 'acc-1',
+        modelId: 'gemini-3.1-flash-lite',
+        reason: 'quota_exhausted',
+      }),
+    ]);
+  });
+
+  it('persists live status details and restores them after restart', () => {
+    const durableState = createPersistence();
+    const firstStore = new ProxyModelAvailabilityStore(durableState.persistence);
+    const unavailableUntil = Date.now() + 60_000;
+
+    firstStore.mark('acc-1', 'gemini-pro-agent', 'rate_limited', unavailableUntil, {
+      status: 429,
+      detectedAt: 1_777_000_000_000,
+      message: 'Resource has been exhausted',
+    });
+
+    expect(durableState.read()).toEqual([
+      {
+        accountId: 'acc-1',
+        modelId: 'gemini-pro-agent',
+        reason: 'rate_limited',
+        unavailableUntil,
+        status: 429,
+        detectedAt: 1_777_000_000_000,
+        message: 'Resource has been exhausted',
+      },
+    ]);
+
+    const restartedStore = new ProxyModelAvailabilityStore(durableState.persistence);
+    expect(restartedStore.getSnapshot()).toEqual(durableState.read());
+
+    restartedStore.clearModel('acc-1', 'gemini-pro-agent');
+    expect(durableState.read()).toEqual([]);
+  });
+
+  it('drops expired persisted entries during hydration', () => {
+    const durableState = createPersistence([
+      {
+        accountId: 'acc-1',
+        modelId: 'gemini-3-flash',
+        reason: 'rate_limited',
+        unavailableUntil: Date.now() - 1,
+        detectedAt: Date.now() - 11 * 60_000,
+      },
+    ]);
+    const store = new ProxyModelAvailabilityStore(durableState.persistence);
+
+    expect(store.getSnapshot()).toEqual([]);
+    expect(durableState.read()).toEqual([]);
   });
 });

@@ -12,7 +12,7 @@ export class AutoSwitchService {
    * Criteria:
    * 1. Not the current account (unless it's the only one).
    * 2. Status is 'active'.
-   * 3. Has quota > 5% for all enabled models.
+   * 3. Has quota >= 5% in the best available model of every enabled quota group.
    * 4. Sorted by priority models quota first, falling back to enabled models.
    */
   static async findBestAccount(currentAccountId: string): Promise<CloudAccount | null> {
@@ -150,8 +150,38 @@ export class AutoSwitchService {
       return false; // No enabled models, so not depleted
     }
 
-    const anyModelDepleted = enabledModels.some(([, m]) => m.percentage < THRESHOLD);
-    if (anyModelDepleted) {
+    const maxPercentageByQuotaGroup = new Map<string, number>();
+    for (const [modelId, model] of enabledModels) {
+      const normalizedModelId = modelId.replace(/^models\//i, '').toLowerCase();
+      let quotaGroupId = normalizedModelId;
+
+      if (normalizedModelId.includes('image')) {
+        quotaGroupId = normalizedModelId.includes('flash')
+          ? 'gemini-3.1-flash-image'
+          : 'gemini-3-pro-image';
+      } else if (normalizedModelId.includes('flash')) {
+        quotaGroupId = 'gemini-3-flash';
+      } else if (normalizedModelId.includes('pro')) {
+        quotaGroupId = 'gemini-3-pro-high';
+      } else if (
+        normalizedModelId.includes('claude') ||
+        normalizedModelId.includes('opus') ||
+        normalizedModelId.includes('sonnet') ||
+        normalizedModelId.includes('haiku')
+      ) {
+        quotaGroupId = 'claude';
+      }
+
+      const currentMaximum = maxPercentageByQuotaGroup.get(quotaGroupId) ?? -1;
+      if (model.percentage > currentMaximum) {
+        maxPercentageByQuotaGroup.set(quotaGroupId, model.percentage);
+      }
+    }
+
+    const anyQuotaGroupDepleted = [...maxPercentageByQuotaGroup.values()].some(
+      (percentage) => percentage < THRESHOLD,
+    );
+    if (anyQuotaGroupDepleted) {
       return true;
     }
 

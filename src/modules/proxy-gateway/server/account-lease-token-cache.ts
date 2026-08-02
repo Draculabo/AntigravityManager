@@ -23,25 +23,19 @@ export class AccountLeaseTokenCache {
 
   async loadAccounts(): Promise<number> {
     try {
-      const accounts = await this.options.accountStore.getAccounts();
-      let count = 0;
-      const tokenCache = this.options.getTokenCache();
-
-      tokenCache.clear();
-
-      for (const account of accounts) {
-        const tokenData = this.mapAccountToTokenData(account);
-        if (tokenData) {
-          tokenCache.set(account.id, tokenData);
-          count++;
-        }
-      }
-
-      this.options.logger.log(`Account lease loaded ${count} cloud accounts into cache`);
-      return count;
+      return await this.replaceAccounts();
     } catch (error) {
       this.options.logger.error('Failed to load cloud accounts into token cache', error);
       return 0;
+    }
+  }
+
+  async loadAccountsOrThrow(): Promise<number> {
+    try {
+      return await this.replaceAccounts();
+    } catch (error) {
+      this.options.logger.error('Failed to load cloud accounts into token cache', error);
+      throw error;
     }
   }
 
@@ -81,5 +75,24 @@ export class AccountLeaseTokenCache {
     const range = max - min;
     const rand = BigInt(Math.floor(Math.random() * Number(range)));
     return (-(min + rand)).toString();
+  }
+
+  private async replaceAccounts(): Promise<number> {
+    const accounts = await this.options.accountStore.getAccounts();
+    let count = 0;
+    const tokenCache = this.options.getTokenCache();
+
+    tokenCache.clear();
+
+    for (const account of accounts) {
+      const tokenData = this.mapAccountToTokenData(account);
+      if (tokenData) {
+        tokenCache.set(account.id, tokenData);
+        count++;
+      }
+    }
+
+    this.options.logger.log(`Account lease loaded ${count} cloud accounts into cache`);
+    return count;
   }
 }

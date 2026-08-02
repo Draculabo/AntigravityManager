@@ -1,4 +1,5 @@
 import { isEmpty, isNumber, isObjectLike, isString } from 'lodash-es';
+import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 
 export enum RateLimitReason {
   QuotaExhausted = 'quota_exhausted',
@@ -39,6 +40,7 @@ interface ParsedGoogleErrorBody {
 
 const FAILURE_COUNT_EXPIRY_MS = 60 * 60 * 1000;
 const MAX_RETRY_DELAY_SEARCH_DEPTH = 8;
+const MAX_LOCKOUT_SECONDS = 300;
 const GRACE_RETRY_WINDOW_MS = 2000;
 export const GRACE_RETRY_BUFFER_MS = 1500;
 const DURATION_UNIT_TO_MS = {
@@ -56,6 +58,27 @@ const QUOTA_RETRY_PATTERNS = [
 
 function toLowerText(value: string | undefined): string {
   return (value ?? '').toLowerCase();
+}
+
+export function hasGenericResourceExhaustedSignal(body: string | undefined): boolean {
+  const lowerBody = toLowerText(body);
+  return (
+    lowerBody.includes('resource has been exhausted') || lowerBody.includes('resource_exhausted')
+  );
+}
+
+export function hasExplicitQuotaExhaustedSignal(body: string | undefined): boolean {
+  const lowerBody = toLowerText(body);
+  return (
+    lowerBody.includes('quota_exhausted') ||
+    lowerBody.includes('quota exceeded') ||
+    lowerBody.includes('quotaresetdelay') ||
+    lowerBody.includes('quota reset') ||
+    lowerBody.includes('quota limit') ||
+    lowerBody.includes('quota will reset') ||
+    lowerBody.includes('per day') ||
+    lowerBody.includes('daily quota')
+  );
 }
 
 function parseDurationToMilliseconds(text: string): number | null {
@@ -279,10 +302,14 @@ export class RateLimitTracker {
     reason: RateLimitReason,
     model?: string,
   ): void {
-    const retryAfterSec = Math.max(2, Math.ceil((resetTimeMs - Date.now()) / 1000));
+    const now = Date.now();
+    const retryAfterSec = Math.min(
+      MAX_LOCKOUT_SECONDS,
+      Math.max(2, Math.ceil((resetTimeMs - now) / 1000)),
+    );
     const key = !isEmpty(model?.trim() ?? '') ? this.buildLockoutKey(accountId, model) : accountId;
     this.lockoutByKey.set(key, {
-      resetTimeMs,
+      resetTimeMs: now + retryAfterSec * 1000,
       retryAfterSec,
       reason,
       model,
@@ -291,6 +318,35 @@ export class RateLimitTracker {
 
   clear(accountId: string): boolean {
     return this.lockoutByKey.delete(accountId);
+  }
+
+  clearModel(accountId: string, model: string): boolean {
+    return this.lockoutByKey.delete(this.buildLockoutKey(accountId, model));
+  }
+
+  /**
+   * Quota responses use canonical model ids while request failures can be keyed by a routed alias.
+   * Compare known routing families so a recovered canonical model also releases its alias lock.
+   */
+  clearModelFamilies(accountId: string, models: Iterable<string>): number {
+    const recoveredFamilies = new Set(Array.from(models, (model) => getQuotaModelFamilyId(model)));
+    if (recoveredFamilies.size === 0) {
+      return 0;
+    }
+
+    let deleted = 0;
+    for (const [key, info] of this.lockoutByKey.entries()) {
+      if (!info.model || key !== this.buildLockoutKey(accountId, info.model)) {
+        continue;
+      }
+
+      if (recoveredFamilies.has(getQuotaModelFamilyId(info.model))) {
+        this.lockoutByKey.delete(key);
+        deleted += 1;
+      }
+    }
+
+    return deleted;
   }
 
   clearAll(): number {
@@ -316,6 +372,11 @@ export class RateLimitTracker {
     this.lockoutByKey.delete(accountId);
   }
 
+  markModelSuccess(accountId: string, model: string): void {
+    this.failureCounts.delete(accountId);
+    this.clearModel(accountId, model);
+  }
+
   trackFromUpstreamError(params: {
     accountId: string;
     status?: number;
@@ -330,14 +391,17 @@ export class RateLimitTracker {
     }
 
     const reason = this.detectRateLimitReason(status, params.body);
-    const retryAfterSec = this.computeRetryAfterSeconds({
-      reason,
-      status,
-      retryAfter: params.retryAfter,
-      body: params.body,
-      accountId: params.accountId,
-      backoffSteps: params.backoffSteps,
-    });
+    const retryAfterSec = Math.min(
+      MAX_LOCKOUT_SECONDS,
+      this.computeRetryAfterSeconds({
+        reason,
+        status,
+        retryAfter: params.retryAfter,
+        body: params.body,
+        accountId: params.accountId,
+        backoffSteps: params.backoffSteps,
+      }),
+    );
 
     const info: RateLimitInfo = {
       reason,
@@ -346,7 +410,11 @@ export class RateLimitTracker {
       model: params.model,
     };
 
-    const useModelKey = reason === RateLimitReason.QuotaExhausted && Boolean(params.model);
+    const useModelKey =
+      Boolean(params.model) &&
+      (reason === RateLimitReason.QuotaExhausted ||
+        reason === RateLimitReason.RateLimitExceeded ||
+        reason === RateLimitReason.ModelCapacityExhausted);
     const key = useModelKey
       ? this.buildLockoutKey(params.accountId, params.model)
       : params.accountId;
@@ -380,9 +448,6 @@ export class RateLimitTracker {
     }
 
     const statusFromBody = parsedBody?.error?.status?.trim().toUpperCase();
-    if (statusFromBody === 'RESOURCE_EXHAUSTED') {
-      return RateLimitReason.QuotaExhausted;
-    }
     if (statusFromBody === 'UNAVAILABLE') {
       const loweredBody = toLowerText(body);
       if (loweredBody.includes('no capacity available') || loweredBody.includes('model capacity')) {
@@ -395,11 +460,15 @@ export class RateLimitTracker {
     }
 
     const lowerBody = toLowerText(body);
+    const hasGenericResourceExhausted =
+      statusFromBody === 'RESOURCE_EXHAUSTED' || hasGenericResourceExhaustedSignal(body);
+    const hasExplicitQuotaExhausted = hasExplicitQuotaExhaustedSignal(body);
     if (
       lowerBody.includes('per minute') ||
       lowerBody.includes('rate limit') ||
       lowerBody.includes('rate_limit') ||
-      lowerBody.includes('too many requests')
+      lowerBody.includes('too many requests') ||
+      (hasGenericResourceExhausted && !hasExplicitQuotaExhausted)
     ) {
       return RateLimitReason.RateLimitExceeded;
     }
@@ -409,7 +478,7 @@ export class RateLimitTracker {
     ) {
       return RateLimitReason.ModelCapacityExhausted;
     }
-    if (lowerBody.includes('quota') || lowerBody.includes('exhausted')) {
+    if (hasExplicitQuotaExhausted || lowerBody.includes('quota')) {
       return RateLimitReason.QuotaExhausted;
     }
 
@@ -457,7 +526,7 @@ export class RateLimitTracker {
     }
 
     if (params.reason === RateLimitReason.RateLimitExceeded) {
-      return 5;
+      return hasGenericResourceExhaustedSignal(params.body) ? 30 : 5;
     }
 
     if (params.reason === RateLimitReason.ModelCapacityExhausted) {

@@ -121,6 +121,33 @@ describe('AutoSwitchService', () => {
     expect(AutoSwitchService.isAccountDepleted(testAccount)).toBe(false);
   });
 
+  it('uses the best quota in an alias group and keeps the threshold comparison strict', async () => {
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    const accountWithHealthySibling = createAccount('healthy-sibling', {
+      models: {
+        'gemini-3.1-pro-low': { percentage: 0, resetTime: '' },
+        'gemini-3.1-pro-high': { percentage: 80, resetTime: '' },
+        'gemini-3.1-flash-image': { percentage: 5, resetTime: '' },
+      },
+    });
+    const accountWithDepletedGroup = createAccount('depleted-group', {
+      models: {
+        'gemini-3.1-pro-low': { percentage: 0, resetTime: '' },
+        'gemini-3.1-pro-high': { percentage: 4, resetTime: '' },
+      },
+    });
+
+    expect({
+      healthySibling: AutoSwitchService.isAccountDepleted(accountWithHealthySibling),
+      depletedGroup: AutoSwitchService.isAccountDepleted(accountWithDepletedGroup),
+    }).toEqual({
+      healthySibling: false,
+      depletedGroup: true,
+    });
+  });
+
   it('prioritizes priority models during best account selection', async () => {
     const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
     const { CloudAccountSettingsStore } =

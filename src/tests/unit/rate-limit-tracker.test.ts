@@ -26,7 +26,99 @@ describe('RateLimitTracker parity replay', () => {
     expect(info).not.toBeNull();
     expect(info?.reason).toBe(RateLimitReason.RateLimitExceeded);
     expect(info?.retryAfterSec).toBe(30);
-    expect(tracker.isRateLimited('acc-1')).toBe(true);
+    expect(tracker.isRateLimited('acc-1', 'gemini-2.5-pro')).toBe(true);
+    expect(tracker.isRateLimited('acc-1', 'gemini-2.5-flash')).toBe(false);
+  });
+
+  it('treats generic RESOURCE_EXHAUSTED as a short model-level rate limit', () => {
+    const tracker = new RateLimitTracker();
+    const info = tracker.parseAndMarkFromError({
+      accountId: 'acc-resource',
+      status: 429,
+      body: JSON.stringify({
+        error: {
+          code: 429,
+          message: 'Resource has been exhausted (e.g. check quota).',
+          status: 'RESOURCE_EXHAUSTED',
+        },
+      }),
+      model: 'gemini-3.1-pro-high',
+      backoffSteps: [60, 300, 1800, 7200],
+    });
+
+    expect(info).toMatchObject({
+      reason: RateLimitReason.RateLimitExceeded,
+      retryAfterSec: 30,
+      model: 'gemini-3.1-pro-high',
+    });
+    expect(tracker.isRateLimited('acc-resource', 'gemini-3.1-pro-high')).toBe(true);
+    expect(tracker.isRateLimited('acc-resource', 'gemini-3.1-flash-lite')).toBe(false);
+  });
+
+  it('keeps explicit daily quota failures classified as quota exhausted', () => {
+    const tracker = new RateLimitTracker();
+    const info = tracker.parseAndMarkFromError({
+      accountId: 'acc-daily',
+      status: 429,
+      body: JSON.stringify({
+        error: {
+          message: 'Resource exhausted: daily quota limit reached; quota will reset tomorrow.',
+          status: 'RESOURCE_EXHAUSTED',
+        },
+      }),
+      model: 'gemini-3.1-pro-high',
+      backoffSteps: [60, 300, 1800, 7200],
+    });
+
+    expect(info?.reason).toBe(RateLimitReason.QuotaExhausted);
+    expect(info?.retryAfterSec).toBe(60);
+  });
+
+  it('clears only the successful model lockout', () => {
+    const tracker = new RateLimitTracker();
+    const commonError = {
+      status: 429,
+      body: 'Resource has been exhausted.',
+      backoffSteps: [60, 300, 1800, 7200],
+    };
+
+    tracker.parseAndMarkFromError({
+      ...commonError,
+      accountId: 'acc-success',
+      model: 'gemini-3.1-pro-high',
+    });
+    tracker.parseAndMarkFromError({
+      ...commonError,
+      accountId: 'acc-success',
+      model: 'gemini-3.1-flash-lite',
+    });
+
+    tracker.markModelSuccess('acc-success', 'gemini-3.1-pro-high');
+
+    expect(tracker.isRateLimited('acc-success', 'gemini-3.1-pro-high')).toBe(false);
+    expect(tracker.isRateLimited('acc-success', 'gemini-3.1-flash-lite')).toBe(true);
+  });
+
+  it('clears recovered model aliases without clearing another model family', () => {
+    const tracker = new RateLimitTracker();
+    const resetTime = new Date(Date.now() + 60_000).toISOString();
+
+    tracker.setLockoutUntilIso(
+      'acc-recovered',
+      resetTime,
+      RateLimitReason.QuotaExhausted,
+      'gemini-3.1-pro-high',
+    );
+    tracker.setLockoutUntilIso(
+      'acc-recovered',
+      resetTime,
+      RateLimitReason.QuotaExhausted,
+      'gemini-3.1-flash-lite',
+    );
+
+    expect(tracker.clearModelFamilies('acc-recovered', ['gemini-3.1-pro'])).toBe(1);
+    expect(tracker.isRateLimited('acc-recovered', 'gemini-3.1-pro-high')).toBe(false);
+    expect(tracker.isRateLimited('acc-recovered', 'gemini-3.1-flash-lite')).toBe(true);
   });
 
   it('uses model-level key for quota exhausted', () => {
@@ -77,6 +169,34 @@ describe('RateLimitTracker parity replay', () => {
     expect(second?.retryAfterSec).toBe(300);
   });
 
+  it('caps upstream and precise quota lockouts at five minutes', () => {
+    const tracker = new RateLimitTracker();
+    const info = tracker.parseAndMarkFromError({
+      accountId: 'acc-long-retry',
+      status: 429,
+      retryAfter: '3600',
+      body: 'quota limit reached',
+      model: 'gemini-3.1-pro-high',
+      backoffSteps: [60, 300, 1800, 7200],
+    });
+
+    expect(info?.retryAfterSec).toBe(300);
+    expect(
+      tracker.getRemainingWaitSeconds('acc-long-retry', 'gemini-3.1-pro-high'),
+    ).toBeLessThanOrEqual(300);
+
+    tracker.setLockoutUntilIso(
+      'acc-precise-reset',
+      new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      RateLimitReason.QuotaExhausted,
+      'gemini-3.1-pro-high',
+    );
+
+    expect(
+      tracker.getRemainingWaitSeconds('acc-precise-reset', 'gemini-3.1-pro-high'),
+    ).toBeLessThanOrEqual(300);
+  });
+
   it('parses MODEL_CAPACITY_EXHAUSTED and RetryInfo.retryDelay from 503 payload', () => {
     const tracker = new RateLimitTracker();
     const info = tracker.parseAndMarkFromError({
@@ -108,7 +228,8 @@ describe('RateLimitTracker parity replay', () => {
     expect(info).not.toBeNull();
     expect(info?.reason).toBe(RateLimitReason.ModelCapacityExhausted);
     expect(info?.retryAfterSec).toBe(32);
-    expect(tracker.isRateLimited('acc-4')).toBe(true);
+    expect(tracker.isRateLimited('acc-4', 'gemini-3.1-pro-high')).toBe(true);
+    expect(tracker.isRateLimited('acc-4', 'gemini-3.1-flash-lite')).toBe(false);
   });
 
   it('parses short retry hints for same-account grace retry', () => {

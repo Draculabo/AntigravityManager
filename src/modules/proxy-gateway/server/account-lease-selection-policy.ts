@@ -101,9 +101,33 @@ export class AccountLeaseSelectionPolicy {
       this.executeShadowComparison(request);
     }
 
-    const selectedTokenEntry = this.isParitySchedulingEnabled(request.config)
+    let selectedTokenEntry = this.isParitySchedulingEnabled(request.config)
       ? await this.selectParityTokenCandidate(request)
       : this.selectLegacyTokenCandidate(request);
+
+    if (!selectedTokenEntry) {
+      const minWaitSeconds = request.allTokens
+        .map(([accountId]) =>
+          request.rateLimitTracker.getRemainingWaitSeconds(accountId, request.model),
+        )
+        .filter((waitSeconds) => waitSeconds > 0)
+        .reduce<number | undefined>(
+          (minimum, waitSeconds) =>
+            minimum === undefined ? waitSeconds : Math.min(minimum, waitSeconds),
+          undefined,
+        );
+
+      if (minWaitSeconds !== undefined && minWaitSeconds <= 2) {
+        await delay(minWaitSeconds * 1000);
+        const retryRequest = {
+          ...request,
+          now: Date.now(),
+        };
+        selectedTokenEntry = this.isParitySchedulingEnabled(request.config)
+          ? await this.selectParityTokenCandidate(retryRequest)
+          : this.selectLegacyTokenCandidate(retryRequest);
+      }
+    }
 
     if (selectedTokenEntry && this.isParitySchedulingEnabled(request.config)) {
       this.parityRequestCount++;
@@ -188,25 +212,20 @@ export class AccountLeaseSelectionPolicy {
   private selectLegacyTokenCandidate<T>(
     request: AccountLeaseSelectionRequest<T>,
   ): AccountLeaseSelectionEntry<T> | null {
-    const availableByCooldown = request.allTokens.filter(([accountId]) => {
+    const availableTokens = request.allTokens.filter(([accountId]) => {
       const cooldownUntil = request.accountCooldowns.get(accountId);
-      return !cooldownUntil || cooldownUntil <= request.now;
+      if (cooldownUntil && cooldownUntil > request.now) {
+        return false;
+      }
+      return !request.rateLimitTracker.isRateLimited(accountId, request.model);
     });
 
-    const candidateAccountPool =
-      availableByCooldown.length > 0 ? availableByCooldown : request.allTokens;
-    if (candidateAccountPool.length === 0) {
+    if (availableTokens.length === 0) {
       return null;
     }
 
-    if (availableByCooldown.length === 0) {
-      request.logger.warn(
-        'All accounts are cooling down; temporarily bypassing cooldown gate to preserve availability',
-      );
-    }
-
     const stickyToken = this.findStickySessionToken(
-      candidateAccountPool,
+      availableTokens,
       request.sessionKey,
       request.now,
     );
@@ -214,7 +233,7 @@ export class AccountLeaseSelectionPolicy {
       return stickyToken;
     }
 
-    return this.pickRoundRobinEntry(candidateAccountPool);
+    return this.pickRoundRobinEntry(availableTokens);
   }
 
   private async selectParityTokenCandidate<T>(
@@ -281,18 +300,19 @@ export class AccountLeaseSelectionPolicy {
   private predictLegacyAccountCandidateId<T>(
     request: AccountLeaseSelectionRequest<T>,
   ): string | null {
-    const availableByCooldown = request.allTokens.filter(([accountId]) => {
+    const availableTokens = request.allTokens.filter(([accountId]) => {
       const cooldownUntil = request.accountCooldowns.get(accountId);
-      return !cooldownUntil || cooldownUntil <= request.now;
+      if (cooldownUntil && cooldownUntil > request.now) {
+        return false;
+      }
+      return !request.rateLimitTracker.isRateLimited(accountId, request.model);
     });
-    const candidateAccountPool =
-      availableByCooldown.length > 0 ? availableByCooldown : request.allTokens;
-    if (candidateAccountPool.length === 0) {
+    if (availableTokens.length === 0) {
       return null;
     }
 
     const stickyToken = this.findStickySessionToken(
-      candidateAccountPool,
+      availableTokens,
       request.sessionKey,
       request.now,
     );
@@ -300,7 +320,7 @@ export class AccountLeaseSelectionPolicy {
       return stickyToken[0];
     }
 
-    return this.peekRoundRobinCandidateAccountId(candidateAccountPool);
+    return this.peekRoundRobinCandidateAccountId(availableTokens);
   }
 
   private predictParityAccountCandidateId<T>(

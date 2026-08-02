@@ -1,6 +1,12 @@
 import { isEmpty, isString } from 'lodash-es';
-import { RateLimitReason, RateLimitTracker } from './rate-limit-tracker';
+import {
+  hasExplicitQuotaExhaustedSignal,
+  hasGenericResourceExhaustedSignal,
+  RateLimitReason,
+  RateLimitTracker,
+} from './rate-limit-tracker';
 import { normalizeModelId } from './account-lease-token-types';
+import type { AccountLeaseQuotaRefreshOutcome } from './account-lease-quota-refresh-policy';
 
 export interface AccountLeaseUpstreamErrorParams {
   accountIdOrEmail: string;
@@ -19,11 +25,11 @@ interface AccountLeaseLimitPolicyOptions {
   forbiddenCooldownMs: number;
   resolveAccountId: (accountIdOrEmail: string) => string | null;
   getCircuitBreakerBackoffSteps: () => number[];
-  refreshRealtimeQuotaAndSetPreciseLockout: (
+  refreshRealtimeQuotaAndReconcileLimit: (
     accountId: string,
     reason: RateLimitReason,
     model?: string,
-  ) => Promise<boolean>;
+  ) => Promise<AccountLeaseQuotaRefreshOutcome>;
   setPreciseLockoutFromCachedQuota: (
     accountId: string,
     reason: RateLimitReason,
@@ -49,6 +55,25 @@ export class AccountLeaseLimitPolicy {
   clearAllRateLimits(): void {
     this.accountCooldowns.clear();
     this.rateLimitTracker.clearAll();
+  }
+
+  clearRecoveredQuotaLocks(
+    accountId: string,
+    recoveredModels: readonly string[],
+    isAccountRecovered: boolean,
+  ): void {
+    this.rateLimitTracker.clearModelFamilies(accountId, recoveredModels);
+    if (!isAccountRecovered) {
+      return;
+    }
+
+    this.accountCooldowns.delete(accountId);
+    this.rateLimitTracker.markSuccess(accountId);
+  }
+
+  markModelSuccess(accountIdOrEmail: string, model: string): void {
+    const accountId = this.resolveAccountId(accountIdOrEmail);
+    this.rateLimitTracker.markModelSuccess(accountId, normalizeModelId(model) ?? model);
   }
 
   isRateLimited(accountIdOrEmail: string, model?: string): boolean {
@@ -86,12 +111,12 @@ export class AccountLeaseLimitPolicy {
         return;
       }
 
-      const isLockedByRealtimeQuota = await this.options.refreshRealtimeQuotaAndSetPreciseLockout(
+      const refreshOutcome = await this.options.refreshRealtimeQuotaAndReconcileLimit(
         accountId,
         reason,
         normalizedModel,
       );
-      if (isLockedByRealtimeQuota) {
+      if (refreshOutcome !== 'unavailable') {
         return;
       }
 
@@ -127,11 +152,12 @@ export class AccountLeaseLimitPolicy {
       return;
     }
 
-    if (
-      parsed.reason !== RateLimitReason.QuotaExhausted ||
-      !parsed.model ||
-      isEmpty(parsed.model.trim())
-    ) {
+    const isModelScoped =
+      Boolean(parsed.model && !isEmpty(parsed.model.trim())) &&
+      (parsed.reason === RateLimitReason.QuotaExhausted ||
+        parsed.reason === RateLimitReason.RateLimitExceeded ||
+        parsed.reason === RateLimitReason.ModelCapacityExhausted);
+    if (!isModelScoped) {
       this.accountCooldowns.set(accountId, Date.now() + parsed.retryAfterSec * 1000);
     }
 
@@ -147,15 +173,16 @@ export class AccountLeaseLimitPolicy {
     if (lowerBody.includes('model_capacity')) {
       return RateLimitReason.ModelCapacityExhausted;
     }
-    if (lowerBody.includes('exhausted') || lowerBody.includes('quota')) {
-      return RateLimitReason.QuotaExhausted;
-    }
     if (
       lowerBody.includes('per minute') ||
       lowerBody.includes('rate limit') ||
-      lowerBody.includes('rate_limit')
+      lowerBody.includes('rate_limit') ||
+      (hasGenericResourceExhaustedSignal(body) && !hasExplicitQuotaExhaustedSignal(body))
     ) {
       return RateLimitReason.RateLimitExceeded;
+    }
+    if (hasExplicitQuotaExhaustedSignal(body) || lowerBody.includes('quota')) {
+      return RateLimitReason.QuotaExhausted;
     }
     return RateLimitReason.Unknown;
   }
