@@ -111,7 +111,7 @@ export function useAppConfig() {
       }
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
-      void flushPendingSave();
+      flushPendingSave();
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);

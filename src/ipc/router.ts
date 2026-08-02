@@ -6,6 +6,8 @@ import { accountRouter } from '@/modules/account/ipc/router';
 import { cloudRouter } from '@/modules/cloud-account/ipc/router';
 import { configRouter } from '@/modules/config/ipc/router';
 import { gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
+import { antigravityClientCacheRouter } from '@/modules/antigravity-runtime/ipc/cacheRouter';
+import { agyBinaryPatchRouter } from '@/modules/antigravity-runtime/ipc/agyBinaryPatchRouter';
 
 import { ORPCError, os } from '@orpc/server';
 import { isPlainObject, isString } from 'lodash-es';
@@ -138,6 +140,8 @@ export const router = os.use(logMiddleware).router({
   window,
   app,
   database: databaseRouter,
+  antigravityClientCache: antigravityClientCacheRouter,
+  agyBinaryPatch: agyBinaryPatchRouter,
 
   // Inline process router to ensure structure
   proc: os.router({

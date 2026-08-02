@@ -61,6 +61,7 @@ export const AppConfigSchema = z.object({
   ai_credits_alert_threshold: z.number().default(5000),
   antigravity_executable: z.string().nullable().optional().default(null),
   antigravity_ide_executable: z.string().nullable().optional().default(null),
+  antigravity_cli_executable: z.string().nullable().optional().default(null),
   antigravity_args: z.array(z.string()).optional().default([]),
   antigravity_ide_args: z.array(z.string()).optional().default([]),
   proxy: ProxyConfigSchema,
@@ -96,6 +97,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   ai_credits_alert_threshold: 5000,
   antigravity_executable: null,
   antigravity_ide_executable: null,
+  antigravity_cli_executable: null,
   antigravity_args: [],
   antigravity_ide_args: [],
   proxy: {

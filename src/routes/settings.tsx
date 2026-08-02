@@ -25,11 +25,15 @@ import { AutoSwitchModelSettings } from '@/modules/cloud-account/components/Auto
 import { useEffect, useState } from 'react';
 import { ProxyConfig } from '@/modules/config/types';
 import {
+  detectAgyCliExecutable,
   getAntigravityArgs,
   openLogDirectory,
+  patchConfiguredAgyBinary,
+  selectAgyCliExecutable,
   selectAntigravityExecutable,
 } from '@/modules/antigravity-runtime/actions/system';
 import { isClarityAvailable } from '@/shared/analytics/clarity';
+import { AntigravityClientCacheSettings } from '@/modules/antigravity-runtime/components/AntigravityClientCacheSettings';
 
 function parseArgsInput(value: string): string[] {
   const args: string[] = [];
@@ -75,9 +79,12 @@ function SettingsPage() {
   const [proxyConfig, setProxyConfig] = useState<ProxyConfig | undefined>(undefined);
   const [antigravityExecutable, setAntigravityExecutable] = useState('');
   const [antigravityIdeExecutable, setAntigravityIdeExecutable] = useState('');
+  const [antigravityCliExecutable, setAntigravityCliExecutable] = useState('');
   const [antigravityArgs, setAntigravityArgs] = useState('');
   const [antigravityIdeArgs, setAntigravityIdeArgs] = useState('');
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [isDetectingAgy, setIsDetectingAgy] = useState(false);
+  const [isPatchingAgy, setIsPatchingAgy] = useState(false);
   const clarityAvailable = isClarityAvailable();
 
   // Sync config to local state when loaded
@@ -86,6 +93,7 @@ function SettingsPage() {
       setProxyConfig(config.proxy);
       setAntigravityExecutable(config.antigravity_executable || '');
       setAntigravityIdeExecutable(config.antigravity_ide_executable || '');
+      setAntigravityCliExecutable(config.antigravity_cli_executable || '');
       setAntigravityArgs((config.antigravity_args || []).join(' '));
       setAntigravityIdeArgs((config.antigravity_ide_args || []).join(' '));
     }
@@ -162,6 +170,72 @@ function SettingsPage() {
     const selectedPath = await selectAntigravityExecutable('ide');
     if (selectedPath) {
       await saveAntigravityIdeExecutable(selectedPath);
+    }
+  };
+
+  const saveAntigravityCliExecutable = async (value: string) => {
+    const executablePath = value.trim();
+    setAntigravityCliExecutable(executablePath);
+    if (config) {
+      await saveConfig({
+        ...config,
+        antigravity_cli_executable: executablePath || null,
+      });
+    }
+  };
+
+  const handleSelectAntigravityCliExecutable = async () => {
+    const selectedPath = await selectAgyCliExecutable();
+    if (selectedPath) {
+      await saveAntigravityCliExecutable(selectedPath);
+    }
+  };
+
+  const handleDetectAntigravityCliExecutable = async () => {
+    setIsDetectingAgy(true);
+    try {
+      const detectedPath = await detectAgyCliExecutable();
+      await saveAntigravityCliExecutable(detectedPath);
+      toast({
+        title: t('settings.account.agy_cli_detected'),
+        description: detectedPath,
+      });
+    } catch (error) {
+      toast({
+        title: t('settings.account.agy_cli_detect_failed'),
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDetectingAgy(false);
+    }
+  };
+
+  const handlePatchAgyBinary = async () => {
+    setIsPatchingAgy(true);
+    try {
+      await saveAntigravityCliExecutable(antigravityCliExecutable);
+      const result = await patchConfiguredAgyBinary();
+      const statusKey =
+        result.status === 'patched'
+          ? 'settings.account.agy_patch_success'
+          : 'settings.account.agy_patch_already_applied';
+      toast({
+        title: t(statusKey),
+        description: t('settings.account.agy_patch_result', {
+          architectures: result.architectures.join(', '),
+          backupPath: result.backupPath || t('settings.account.agy_patch_no_backup'),
+          format: result.format,
+        }),
+      });
+    } catch (error) {
+      toast({
+        title: t('settings.account.agy_patch_failed'),
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsPatchingAgy(false);
     }
   };
 
@@ -428,6 +502,70 @@ function SettingsPage() {
                 </div>
               </div>
 
+              <div className="space-y-3 rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label htmlFor="antigravity-cli-executable">
+                    {t('settings.account.antigravity_cli_executable')}
+                  </Label>
+                  <p className="text-xs text-gray-500">
+                    {t('settings.account.antigravity_cli_executable_desc')}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    id="antigravity-cli-executable"
+                    value={antigravityCliExecutable}
+                    placeholder={t('settings.account.antigravity_cli_executable_placeholder')}
+                    onChange={(event) => setAntigravityCliExecutable(event.target.value)}
+                    onBlur={() => saveAntigravityCliExecutable(antigravityCliExecutable)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isDetectingAgy}
+                    onClick={handleDetectAntigravityCliExecutable}
+                  >
+                    {isDetectingAgy ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    {t('settings.account.detect_antigravity_cli')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleSelectAntigravityCliExecutable}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                  {antigravityCliExecutable && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => saveAntigravityCliExecutable('')}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <div className="bg-muted/50 flex items-center justify-between gap-4 rounded-md p-3">
+                  <p className="text-muted-foreground text-xs">
+                    {t('settings.account.agy_patch_desc')}
+                  </p>
+                  <Button
+                    type="button"
+                    disabled={!antigravityCliExecutable.trim() || isPatchingAgy}
+                    onClick={handlePatchAgyBinary}
+                  >
+                    {isPatchingAgy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {t('settings.account.agy_patch_action')}
+                  </Button>
+                </div>
+              </div>
+
               <div className="space-y-2 rounded-lg border p-4">
                 <div className="space-y-1">
                   <Label htmlFor="antigravity-args">{t('settings.account.antigravity_args')}</Label>
@@ -552,6 +690,8 @@ function SettingsPage() {
               </CardContent>
             </Card>
           )}
+
+          <AntigravityClientCacheSettings />
 
           <Card>
             <CardHeader>

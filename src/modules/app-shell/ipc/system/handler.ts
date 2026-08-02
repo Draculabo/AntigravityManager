@@ -90,6 +90,20 @@ export const systemHandler = os.router({
       return result.canceled ? null : result.filePaths[0] || null;
     }),
 
+  selectAgyCliExecutable: os.output(z.string().nullable()).handler(async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        {
+          name: 'Antigravity CLI executable',
+          extensions: process.platform === 'win32' ? ['exe'] : ['*'],
+        },
+      ],
+    });
+
+    return result.canceled ? null : result.filePaths[0] || null;
+  }),
+
   getAntigravityArgs: os
     .input(z.object({ target: AntigravityAppTargetSchema.optional() }).optional())
     .output(z.array(z.string()))
