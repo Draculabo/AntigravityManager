@@ -11,6 +11,7 @@ import {
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '@/shared/logging/logger';
+import { explicitContextCacheManager } from '../server/clients/explicit-context-cache';
 
 /**
  * Start the gateway server (NestJS)
@@ -53,6 +54,17 @@ export const stopGateway = async (): Promise<boolean> => {
  */
 export const getGatewayStatus = async () => {
   return getNestServerStatus();
+};
+
+/**
+ * Returns diagnostic counters only; cache resource names and prompt contents
+ * intentionally remain inside the gateway process.
+ */
+export const getContextCacheStatus = () => {
+  return {
+    enabled: process.env.PROXY_CONTEXT_CACHE_ENABLED?.trim().toLowerCase() !== 'false',
+    stats: explicitContextCacheManager.getStats(),
+  };
 };
 
 /**

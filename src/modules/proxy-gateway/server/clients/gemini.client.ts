@@ -6,7 +6,18 @@ import { GeminiRequest, GeminiResponse } from '../interfaces/request-interfaces'
 import { GeminiInternalRequest } from '../../antigravity/types';
 import { getServerConfig } from '../../../../server/server-config';
 import { resolveRequestUserAgent } from '../request-user-agent';
+import {
+  explicitContextCacheManager,
+  type ExplicitContextCacheCandidate,
+  type ExplicitContextCacheResource,
+} from './explicit-context-cache';
 import { UpstreamRequestError } from './upstream-error';
+import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
+
+interface PreparedInternalRequest {
+  body: GeminiInternalRequest;
+  cacheKey?: string;
+}
 
 @Injectable()
 export class GeminiClient {
@@ -99,7 +110,7 @@ export class GeminiClient {
     upstreamProxyUrl?: string,
     extraHeaders?: Record<string, string>,
   ): Promise<NodeJS.ReadableStream> {
-    const response = await this.executeRequestWithEndpointFailover<NodeJS.ReadableStream>(
+    const response = await this.executeInternalWithExplicitContextCache<NodeJS.ReadableStream>(
       ':streamGenerateContent?alt=sse',
       body,
       accessToken,
@@ -120,7 +131,7 @@ export class GeminiClient {
     upstreamProxyUrl?: string,
     extraHeaders?: Record<string, string>,
   ): Promise<GeminiResponse> {
-    const response = await this.executeRequestWithEndpointFailover<
+    const response = await this.executeInternalWithExplicitContextCache<
       GeminiResponse | { response: GeminiResponse }
     >(
       ':generateContent',
@@ -136,6 +147,169 @@ export class GeminiClient {
       return (payload as { response: GeminiResponse }).response;
     }
     return payload as GeminiResponse;
+  }
+
+  private async executeInternalWithExplicitContextCache<T>(
+    path: string,
+    body: GeminiInternalRequest,
+    accessToken: string,
+    upstreamProxyUrl: string | undefined,
+    config: AxiosRequestConfig,
+    operation: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<AxiosResponse<T>> {
+    const prepared = await this.applyExplicitContextCache(body, accessToken, upstreamProxyUrl);
+    try {
+      return await this.executeRequestWithEndpointFailover<T>(
+        path,
+        prepared.body,
+        accessToken,
+        upstreamProxyUrl,
+        config,
+        operation,
+        extraHeaders,
+      );
+    } catch (error) {
+      if (!prepared.cacheKey || !this.shouldRetryWithoutExplicitContextCache(error)) {
+        throw error;
+      }
+
+      explicitContextCacheManager.invalidate(prepared.cacheKey);
+      this.logger.warn(
+        `[ContextCache] Cached resource was rejected; retrying once without cache ${prepared.cacheKey.slice(0, 16)}`,
+      );
+      return this.executeRequestWithEndpointFailover<T>(
+        path,
+        body,
+        accessToken,
+        upstreamProxyUrl,
+        config,
+        operation,
+        extraHeaders,
+      );
+    }
+  }
+
+  private async applyExplicitContextCache(
+    body: GeminiInternalRequest,
+    accessToken: string,
+    upstreamProxyUrl?: string,
+  ): Promise<PreparedInternalRequest> {
+    if (!this.isExplicitContextCacheEnabled()) {
+      return { body };
+    }
+
+    const candidate = explicitContextCacheManager.createCandidate(body);
+    if (!candidate) {
+      return { body };
+    }
+
+    const cacheName = await explicitContextCacheManager.resolve(candidate, () =>
+      this.createExplicitContextCache(candidate, accessToken, upstreamProxyUrl),
+    );
+    if (!cacheName) {
+      return { body };
+    }
+
+    const requestWithoutStaticPrefix = { ...body.request };
+    delete requestWithoutStaticPrefix.systemInstruction;
+    delete requestWithoutStaticPrefix.toolConfig;
+    delete requestWithoutStaticPrefix.tools;
+    this.logger.debug(`[ContextCache] Reusing explicit cache ${candidate.key.slice(0, 16)}`);
+    return {
+      body: {
+        ...body,
+        request: {
+          ...requestWithoutStaticPrefix,
+          cachedContent: cacheName,
+        },
+      },
+      cacheKey: candidate.key,
+    };
+  }
+
+  private shouldRetryWithoutExplicitContextCache(error: unknown): boolean {
+    if (!(error instanceof UpstreamRequestError)) {
+      return false;
+    }
+
+    const details = `${error.message}\n${error.body ?? ''}`.toLowerCase();
+    return (
+      error.status === 404 ||
+      (error.status === 400 &&
+        (details.includes('cachedcontent') ||
+          details.includes('cached content') ||
+          details.includes('context cache')))
+    );
+  }
+
+  private async createExplicitContextCache(
+    candidate: ExplicitContextCacheCandidate,
+    accessToken: string,
+    upstreamProxyUrl?: string,
+  ): Promise<ExplicitContextCacheResource | null> {
+    const location = this.getExplicitContextCacheLocation();
+    const baseUrl = this.getExplicitContextCacheBaseUrl(location);
+    const url = `${baseUrl}/v1/projects/${encodeURIComponent(
+      candidate.source.project,
+    )}/locations/${encodeURIComponent(location)}/cachedContents`;
+    const requestUserAgent = await resolveRequestUserAgent();
+    const body = {
+      displayName: `agm-${candidate.key.slice(0, 24)}`,
+      model: `projects/${candidate.source.project}/locations/${location}/publishers/google/models/${candidate.source.model}`,
+      systemInstruction: candidate.source.systemInstruction,
+      toolConfig: candidate.source.toolConfig,
+      tools: candidate.source.tools,
+      ttl: `${this.getExplicitContextCacheTtlSeconds()}s`,
+    };
+
+    try {
+      const response = await axios.post<ExplicitContextCacheResource>(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': requestUserAgent,
+        },
+        proxy: this.resolveUpstreamAxiosProxy(upstreamProxyUrl),
+        timeout: Math.min(this.getInternalTimeoutMs(), 20_000),
+      });
+      if (!isString(response.data?.name) || isEmpty(response.data.name.trim())) {
+        this.logger.warn(
+          '[ContextCache] Upstream returned a cache response without a resource name.',
+        );
+        return null;
+      }
+
+      this.logger.log(`[ContextCache] Created explicit cache ${candidate.key.slice(0, 16)}`);
+      return {
+        expireTime: response.data.expireTime,
+        name: response.data.name,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[ContextCache] Create failed; bypassing cache: ${message}`);
+      return null;
+    }
+  }
+
+  private isExplicitContextCacheEnabled(): boolean {
+    return process.env.PROXY_CONTEXT_CACHE_ENABLED?.trim().toLowerCase() !== 'false';
+  }
+
+  private getExplicitContextCacheLocation(): string {
+    return process.env.PROXY_CONTEXT_CACHE_LOCATION?.trim() || 'us-central1';
+  }
+
+  private getExplicitContextCacheBaseUrl(location: string): string {
+    return (
+      process.env.PROXY_CONTEXT_CACHE_BASE_URL?.trim().replace(/\/+$/, '') ||
+      `https://${location}-aiplatform.googleapis.com`
+    );
+  }
+
+  private getExplicitContextCacheTtlSeconds(): number {
+    const configured = Number.parseInt(process.env.PROXY_CONTEXT_CACHE_TTL_SECONDS ?? '', 10);
+    return configured > 0 ? configured : 3600;
   }
 
   private getInternalBaseUrls(): string[] {
@@ -489,14 +663,7 @@ export class GeminiClient {
       return String(obj);
     }
     try {
-      const seen = new WeakSet();
-      return JSON.stringify(obj, (key, value) => {
-        if (isObjectLike(value)) {
-          if (seen.has(value)) return '[Circular]';
-          seen.add(value);
-        }
-        return value;
-      });
+      return safeStringifyPacket(obj);
     } catch {
       return '[Unserializable]';
     }
