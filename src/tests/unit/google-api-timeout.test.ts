@@ -176,6 +176,65 @@ describe('GoogleAPIService user info parsing', () => {
       }),
     );
   });
+
+  it('preserves the HTTP status for user-info authentication failures', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      }),
+    );
+
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue({
+      proxy: {
+        upstream_proxy: {
+          enabled: false,
+        },
+      },
+    } as any);
+
+    const { GoogleAPIService, GoogleUserInfoHttpError } =
+      await import('@/modules/cloud-account/services/GoogleAPIService');
+
+    await expect(GoogleAPIService.getUserInfo('expired-access-token')).rejects.toEqual(
+      expect.objectContaining({
+        name: 'GoogleUserInfoHttpError',
+        status: 401,
+        message: 'Failed to fetch user info: HTTP 401',
+      }),
+    );
+    expect(GoogleUserInfoHttpError).toBeDefined();
+  });
+
+  it('propagates an external abort signal into the user-info request', async () => {
+    const fetchMock = vi.fn((_url: string, options: { signal: AbortSignal }) => {
+      expect(options.signal.aborted).toBe(true);
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      return Promise.reject(error);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue({
+      proxy: {
+        upstream_proxy: {
+          enabled: false,
+        },
+      },
+    } as any);
+
+    const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      GoogleAPIService.getUserInfo('access-token', undefined, controller.signal),
+    ).rejects.toThrow('User info request timed out');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('CloudAccountList auth code auto-submit guard', () => {

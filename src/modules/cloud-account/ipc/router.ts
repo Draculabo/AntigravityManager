@@ -42,6 +42,7 @@ import { logger } from '@/shared/logging/logger';
 import { getSwitchMetricsSnapshot } from '@/modules/antigravity-runtime/switch/switchMetrics';
 import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { getDeviceHardeningSnapshot } from '@/modules/identity-profile/ipc/handler';
+import { localAccountImportRouter } from '@/modules/cloud-account/local-import/ipc/router';
 
 const switchOwnerSchema = z.enum(['local-account-switch', 'cloud-account-switch']);
 const switchMetricBucketSchema = z.object({
@@ -133,6 +134,8 @@ export function toSyncLocalAccountORPCError(
 }
 
 export const cloudRouter = os.router({
+  localImport: localAccountImportRouter,
+
   addGoogleAccount: os
     .input(z.object({ authCode: z.string(), oauthClientKey: z.string().optional() }))
     .output(CloudAccountSchema)

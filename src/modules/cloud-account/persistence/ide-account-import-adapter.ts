@@ -70,7 +70,7 @@ function getItemValue(db: DrizzleExecutor, key: string, context: string): string
   return row?.value ?? null;
 }
 
-interface IdeTokenInfo {
+export interface IdeTokenInfo {
   accessToken: string;
   refreshToken: string;
   idToken?: string;
@@ -129,7 +129,7 @@ export class IdeAccountImportAdapter {
     };
   }
 
-  private static readTokenInfoWithRetry(dbPath: string): IdeTokenInfo {
+  static readTokenInfoFromPath(dbPath: string): IdeTokenInfo {
     let lastError: unknown;
     for (let attempt = 1; attempt <= SQLITE_MAX_RETRIES; attempt += 1) {
       const { raw, orm } = getIdeDb(dbPath, true);
@@ -238,7 +238,7 @@ export class IdeAccountImportAdapter {
 
       for (const candidatePath of existingDbPaths) {
         try {
-          tokenInfo = this.readTokenInfoWithRetry(candidatePath);
+          tokenInfo = this.readTokenInfoFromPath(candidatePath);
           dbPath = candidatePath;
           break;
         } catch (error) {

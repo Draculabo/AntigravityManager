@@ -56,6 +56,7 @@ import type { OAuthClientDescriptor } from '@/modules/cloud-account/actions/clou
 import type { AntigravityAppTarget } from '@/modules/account/types';
 import type { AccountTierOption } from '@/modules/cloud-account/utils/account-tier-filter';
 import type { AccountSortKey } from '@/modules/cloud-account/utils/quota-display';
+import { LocalAccountImportDialog } from '@/modules/cloud-account/local-import/components/LocalAccountImportDialog';
 
 type ImportStrategy = 'merge' | 'overwrite' | 'skip-existing';
 
@@ -236,6 +237,8 @@ export function CloudAccountToolbar({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <LocalAccountImportDialog />
 
       <Dialog open={isExportDialogOpen} onOpenChange={onExportDialogOpenChange}>
         <DialogTrigger asChild>

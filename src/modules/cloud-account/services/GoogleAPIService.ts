@@ -56,10 +56,9 @@ function isClientMismatchError(status: number, errorText: string): boolean {
 /**
  * Creates an AbortSignal that times out after the specified duration.
  */
-function createTimeoutSignal(ms: number): AbortSignal {
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), ms);
-  return controller.signal;
+function createTimeoutSignal(ms: number, externalSignal?: AbortSignal): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(ms);
+  return externalSignal ? AbortSignal.any([timeoutSignal, externalSignal]) : timeoutSignal;
 }
 
 // --- Types ---
@@ -84,6 +83,13 @@ export interface UserInfo {
   given_name?: string;
   family_name?: string;
   picture?: string;
+}
+
+export class GoogleUserInfoHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`Failed to fetch user info: HTTP ${status}`);
+    this.name = 'GoogleUserInfoHttpError';
+  }
 }
 
 export const UserInfoSchema = z.object({
@@ -585,6 +591,7 @@ export class GoogleAPIService {
     refreshToken: string,
     proxyUrl?: string,
     preferredClientKey?: string,
+    requestSignal?: AbortSignal,
   ): Promise<TokenResponse> {
     const candidates = OAuthClientRegistryService.getCandidateClients(preferredClientKey);
     if (candidates.length === 0) {
@@ -605,7 +612,7 @@ export class GoogleAPIService {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params,
-        signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
+        signal: createTimeoutSignal(REQUEST_TIMEOUT_MS, requestSignal),
         ...this.getFetchOptions(proxyUrl),
       }).catch((err: unknown) => {
         if (err instanceof Error && err.name === 'AbortError') {
@@ -640,10 +647,14 @@ export class GoogleAPIService {
   /**
    * Fetches user profile information.
    */
-  static async getUserInfo(accessToken: string, proxyUrl?: string): Promise<UserInfo> {
+  static async getUserInfo(
+    accessToken: string,
+    proxyUrl?: string,
+    requestSignal?: AbortSignal,
+  ): Promise<UserInfo> {
     const response = await fetch(URLS.USER_INFO, {
       headers: { Authorization: `Bearer ${accessToken}` },
-      signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
+      signal: createTimeoutSignal(REQUEST_TIMEOUT_MS, requestSignal),
       ...this.getFetchOptions(proxyUrl),
     }).catch((err: unknown) => {
       if (err instanceof Error) {
@@ -657,8 +668,7 @@ export class GoogleAPIService {
     });
 
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Failed to fetch user info: ${text}`);
+      throw new GoogleUserInfoHttpError(response.status);
     }
 
     const data = await response.json();

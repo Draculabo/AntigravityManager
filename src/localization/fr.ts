@@ -1,4 +1,4 @@
-import type en from './en';
+import en from './en';
 
 const fr = {
   appName: 'Antigravity Manager',
@@ -146,6 +146,24 @@ const fr = {
       title: 'A propos',
       description: 'Informations sur l application.',
     },
+    cache: {
+      title: 'Cache Antigravity',
+      description:
+        'Effacez les dossiers de cache connus d Antigravity et d Antigravity IDE pour résoudre les problèmes de connexion ou de validation de version.',
+      clear: 'Effacer le cache Antigravity',
+      dialogTitle: 'Effacer le cache Antigravity ?',
+      dialogDescription: 'Les dossiers de cache existants suivants seront supprimés.',
+      pathsLabel: 'Dossiers de cache',
+      noPaths: 'Aucun dossier de cache Antigravity connu n a été trouvé.',
+      warning: 'Fermez Antigravity avant le nettoyage afin d éviter les fichiers verrouillés.',
+      cancel: 'Annuler',
+      confirm: 'Effacer le cache',
+      clearing: 'Nettoyage...',
+      clearedTitle: 'Cache effacé',
+      clearedDescription: '{{size}} Mo ont été supprimés des dossiers de cache Antigravity.',
+      failedTitle: 'Échec du nettoyage du cache',
+      notFoundTitle: 'Aucun cache Antigravity trouvé',
+    },
     version: 'Version',
     platform: 'Plateforme',
     license: 'Licence',
@@ -171,6 +189,22 @@ const fr = {
         'Chemin facultatif utilise pour trouver les donnees du mode portable et lancer Antigravity.',
       antigravity_executable_placeholder:
         'Exemple : C:\\Program Files\\Antigravity\\Antigravity.exe',
+      antigravity_cli_executable: 'Exécutable Antigravity CLI',
+      antigravity_cli_executable_desc:
+        'Chemin vers le CLI agy. Le correctif d’éligibilité est limité à ce fichier.',
+      antigravity_cli_executable_placeholder: 'Exemple : C:\\Program Files\\Antigravity\\agy.exe',
+      detect_antigravity_cli: 'Détecter',
+      agy_cli_detected: 'CLI Antigravity détecté',
+      agy_cli_detect_failed: 'CLI Antigravity introuvable',
+      agy_patch_desc:
+        'Sauvegarde le CLI, vérifie un motif ARM64 ou x86_64 unique, applique le correctif et signe à nouveau les fichiers Mach-O sur macOS.',
+      agy_patch_action: 'Appliquer le correctif d’éligibilité',
+      agy_patch_success: 'Antigravity CLI corrigé',
+      agy_patch_already_applied: 'Correctif déjà appliqué',
+      agy_patch_failed: 'Impossible de corriger Antigravity CLI',
+      agy_patch_result:
+        'Format : {{format}} ; architectures : {{architectures}} ; sauvegarde : {{backupPath}}',
+      agy_patch_no_backup: 'non requise',
       antigravity_ide_executable: 'Executable Antigravity IDE',
       antigravity_ide_executable_desc:
         'Chemin facultatif de l executable Antigravity IDE. Lors du basculement de comptes Classic, les processus a ce chemin sont proteges contre l arret.',
@@ -396,6 +430,7 @@ const fr = {
         'Le navigateur par defaut s ouvrira pour la connexion Google. Copiez le code depuis la page localhost et collez-le ici.',
       verify: 'Verifier et ajouter',
     },
+    localImport: en.cloud.localImport,
     card: {
       active: 'Actif',
       use: 'Utiliser',
@@ -413,6 +448,16 @@ const fr = {
       delete: 'Supprimer le compte',
       noQuota: 'Aucune donnee de quota',
       rateLimitedQuota: 'Limite par le debit',
+      liveLimitModelNotSupported: 'Modèle non pris en charge',
+      liveLimitModelForbidden: 'Modèle interdit',
+      liveLimitQuotaExhausted: 'Quota épuisé',
+      liveLimitRateLimited: 'Débit limité',
+      liveLimitRemaining: '{{duration}} restantes',
+      liveLimitDetectedAgo: 'détecté il y a {{duration}}',
+      liveLimitActiveTitle: 'Le point de terminaison amont est temporairement indisponible.',
+      liveLimitRecentTitle: 'Le point de terminaison amont a récemment renvoyé une erreur.',
+      liveLimitQuotaSnapshot: 'Le quota affiché peut encore indiquer {{percentage}} %.',
+      liveLimitMessage: 'Message : {{message}}',
       resetPrefix: 'reset',
       resetTime: 'Heure de reinitialisation',
       resetUnknown: 'Inconnue',
@@ -609,6 +654,25 @@ const fr = {
       description: 'Mapper les modeles Claude vers les modeles Gemini pour le routage.',
       maps_to: 'Mappe vers',
       restore: 'Restaurer les valeurs par defaut',
+    },
+    'open-code': {
+      title: 'Synchronisation OpenCode',
+      description:
+        'Synchronise le fournisseur géré sans réécrire les commentaires ni le format JSONC personnalisé.',
+      synced: 'Synchronisé',
+      'not-synced': 'Non synchronisé',
+      'config-path': 'Configuration',
+      credential: 'Identifiant dédié',
+      'key-stored': "Stocké dans le coffre d'identifiants du système",
+      'key-missing': 'Créé lors de la prochaine synchronisation',
+      'backup-notice':
+        "Les sauvegardes conservent les commentaires et le format. L'identifiant est remplacé par un espace réservé invalide, puis la clé actuelle est injectée lors de la restauration.",
+      sync: 'Synchroniser OpenCode',
+      restore: 'Restaurer la sauvegarde',
+      revoke: 'Révoquer la clé dédiée',
+      'success-title': 'Configuration OpenCode mise à jour',
+      'error-title': 'Échec de la mise à jour OpenCode',
+      'unknown-error': 'Erreur de configuration OpenCode inconnue',
     },
     examples: {
       title: 'Exemples d utilisation',
