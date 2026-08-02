@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
+import { OpenCodeSyncCard } from '@/modules/proxy-gateway/components/OpenCodeSyncCard';
 import {
   Select,
   SelectContent,
@@ -610,6 +611,8 @@ print(response.choices[0].message.content)`;
           </div>
         </CardContent>
       </Card>
+
+      <OpenCodeSyncCard baseUrl={baseUrl} />
 
       {/* Usage Examples Card */}
       <Card>

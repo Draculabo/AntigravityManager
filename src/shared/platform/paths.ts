@@ -662,6 +662,30 @@ function pushUserDataStoragePaths(paths: string[], userDataDir: string, pathApi:
   appendUniquePath(paths, pathApi.join(userDataDir, 'storage.json'));
 }
 
+function pushExistingUserDataDbPaths(paths: string[], userDataDir: string, pathApi: PathApi): void {
+  const candidates: string[] = [];
+  pushUserDataDbPaths(candidates, userDataDir, pathApi);
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      appendUniquePath(paths, candidate);
+    }
+  }
+}
+
+function pushExistingUserDataStoragePaths(
+  paths: string[],
+  userDataDir: string,
+  pathApi: PathApi,
+): void {
+  const candidates: string[] = [];
+  pushUserDataStoragePaths(candidates, userDataDir, pathApi);
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      appendUniquePath(paths, candidate);
+    }
+  }
+}
+
 function getPortableUserDataDir(target?: AntigravityAppTarget | null): string | null {
   const executablePath = getAntigravityExecutablePath(target);
   if (!executablePath) {
@@ -732,11 +756,11 @@ export function getAntigravityDbPaths(target?: AntigravityAppTarget | null): str
   const portableUserDataDir = getPortableUserDataDir(target);
 
   if (userDataDir) {
-    pushUserDataDbPaths(paths, userDataDir, pathApi);
+    pushExistingUserDataDbPaths(paths, userDataDir, pathApi);
   }
 
   if (portableUserDataDir) {
-    pushUserDataDbPaths(paths, portableUserDataDir, pathApi);
+    pushExistingUserDataDbPaths(paths, portableUserDataDir, pathApi);
   }
 
   if (isWsl()) {
@@ -793,11 +817,11 @@ export function getAntigravityStoragePaths(target?: AntigravityAppTarget | null)
   const portableUserDataDir = getPortableUserDataDir(target);
 
   if (userDataDir) {
-    pushUserDataStoragePaths(paths, userDataDir, pathApi);
+    pushExistingUserDataStoragePaths(paths, userDataDir, pathApi);
   }
 
   if (portableUserDataDir) {
-    pushUserDataStoragePaths(paths, portableUserDataDir, pathApi);
+    pushExistingUserDataStoragePaths(paths, portableUserDataDir, pathApi);
   }
 
   if (isWsl()) {
