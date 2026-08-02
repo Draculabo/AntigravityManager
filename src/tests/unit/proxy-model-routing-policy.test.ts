@@ -21,6 +21,22 @@ describe('ProxyModelRoutingPolicy', () => {
 
     expect(policy.normalizeGeminiModel('models/gemini-2.5-flash')).toBe('gemini-2.5-flash');
     expect(policy.resolveTargetModel('models/gemini-3.1-pro-preview')).toBe('gemini-3.1-pro-high');
+    expect(policy.resolveTargetModel('gemini-3-flash-image')).toBe('gemini-3.1-flash-image');
+  });
+
+  it('maps dotted Opus 4.6 aliases to the verified thinking model', () => {
+    const policy = new ProxyModelRoutingPolicy();
+
+    expect(policy.resolveTargetModel('claude-opus-4.6')).toBe('claude-opus-4-6-thinking');
+    expect(policy.resolveTargetModel('claude-opus-4.6-thinking')).toBe('claude-opus-4-6-thinking');
+  });
+
+  it('routes Gemini Pro high presets through the upstream agent model', () => {
+    const policy = new ProxyModelRoutingPolicy();
+
+    expect(policy.resolveTargetModel('gemini-3.1-pro-high')).toBe('gemini-pro-agent');
+    expect(policy.resolveTargetModel('gemini-3-pro-high')).toBe('gemini-pro-agent');
+    expect(policy.resolveTargetModel('gemini-pro-agent')).toBe('gemini-pro-agent');
   });
 
   it('applies configured wildcard mappings before default model routing', () => {

@@ -26,6 +26,36 @@ function createInternalRequest(generationConfig: Record<string, unknown>): Gemin
 }
 
 describe('ProxyGenerationConstraints', () => {
+  it('keeps registered variant parameters authoritative over legacy model constraints', () => {
+    const policy = createPolicy({
+      outputLimit: 64_000,
+      thinkingBudget: 32_768,
+    });
+    const request = createInternalRequest({
+      maxOutputTokens: 64_000,
+      stopSequences: ['Human:'],
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 1024,
+      },
+    });
+
+    policy.applyInternalGenerationConstraints(request, 'claude-opus-4-6-thinking', 'acc-1', {
+      thinkingBudget: 1024,
+      maxOutputTokens: 64_000,
+      includeThoughts: true,
+    });
+
+    expect(request.request.generationConfig).toEqual({
+      maxOutputTokens: 64_000,
+      stopSequences: ['Human:'],
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 1024,
+      },
+    });
+  });
+
   it('converts Gemini thinking levels into budgets and reserves output tokens', () => {
     const policy = createPolicy({
       outputLimit: 20_000,
@@ -96,5 +126,52 @@ describe('ProxyGenerationConstraints', () => {
       thinkingLevel: 'high',
     });
     expect(request.request.generationConfig?.maxOutputTokens).toBe(9000);
+  });
+
+  it('enforces the verified Opus 4.6 thinking recipe and removes stop sequences', () => {
+    const policy = createPolicy({
+      outputLimit: 64_000,
+      thinkingBudget: 32_768,
+    });
+    const request = createInternalRequest({
+      maxOutputTokens: 4096,
+      stopSequences: ['Human:'],
+      thinkingConfig: {
+        thinkingLevel: 'high',
+        thinkingBudget: 32_768,
+      },
+    });
+
+    policy.applyInternalGenerationConstraints(request, 'claude-opus-4-6-thinking', 'acc-1');
+
+    expect(request.request.generationConfig).toEqual({
+      maxOutputTokens: 57_344,
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 24_576,
+      },
+    });
+  });
+
+  it('caps the Opus 4.6 recipe by account capabilities', () => {
+    const policy = createPolicy({
+      outputLimit: 20_000,
+      thinkingBudget: 12_000,
+    });
+    const request = createInternalRequest({
+      thinkingConfig: {
+        thinkingBudget: 24_576,
+      },
+    });
+
+    policy.applyInternalGenerationConstraints(request, 'models/claude-opus-4-6-thinking', 'acc-1');
+
+    expect(request.request.generationConfig).toEqual({
+      maxOutputTokens: 20_000,
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 12_000,
+      },
+    });
   });
 });

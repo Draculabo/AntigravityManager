@@ -33,7 +33,8 @@ const CLAUDE_TO_GEMINI: Record<string, string> = {
   'gemini-3.5-flash-low': 'gemini-3.5-flash-low',
   'gemini-3.5-flash-extra-low': 'gemini-3.5-flash-extra-low',
   'gemini-3.1-pro-low': 'gemini-3.1-pro-low',
-  'gemini-3.1-pro-high': 'gemini-3.1-pro-high',
+  'gemini-3.1-pro-high': 'gemini-pro-agent',
+  'gemini-pro-agent': 'gemini-pro-agent',
   'gemini-3-flash': 'gemini-3-flash',
 
   // Alias mappings
@@ -48,6 +49,8 @@ const CLAUDE_TO_GEMINI: Record<string, string> = {
   'claude-opus-4-5-thinking': 'claude-opus-4-6-thinking',
   'claude-opus-4-5-20251101': 'claude-opus-4-6-thinking',
   'claude-opus-4-6': 'claude-opus-4-6-thinking',
+  'claude-opus-4.6': 'claude-opus-4-6-thinking',
+  'claude-opus-4.6-thinking': 'claude-opus-4-6-thinking',
   'claude-opus-4-6-20260201': 'claude-opus-4-6-thinking',
   'claude-haiku-4': 'claude-sonnet-4-6-thinking',
   'claude-3-haiku-20240307': 'claude-sonnet-4-6-thinking',
@@ -82,19 +85,26 @@ const CLAUDE_TO_GEMINI: Record<string, string> = {
   'gemini-3-pro': 'gemini-3-pro-preview',
   'gemini-3-pro-preview': 'gemini-3-pro-preview',
   'gemini-3-pro-low': 'gemini-3-pro-low',
-  'gemini-3-pro-high': 'gemini-3-pro-high',
+  'gemini-3-pro-high': 'gemini-pro-agent',
   'gemini-2.5-flash': 'gemini-3-flash',
   'gemini-2.5-pro': 'gemini-3.1-pro-high',
   'gemini-2.0-flash': 'gemini-3-flash',
   'gemini-2.0-flash-online': 'gemini-3-flash',
   'gemini-3-pro-image': 'gemini-3-pro-image',
+  'gemini-3.1-flash-image': 'gemini-3.1-flash-image',
+  'gemini-3-flash-image': 'gemini-3.1-flash-image',
   'internal-background-task': 'gemini-3-flash',
 };
 
 const DYNAMIC_IMAGE_BASE_MODEL = 'gemini-3-pro-image';
 const DYNAMIC_IMAGE_RESOLUTIONS = ['', '-2k', '-4k'];
 const DYNAMIC_IMAGE_RATIOS = ['', '-1x1', '-4x3', '-3x4', '-16x9', '-9x16', '-21x9'];
-const EXTRA_DYNAMIC_MODELS = ['gemini-3-flash', 'gemini-3.1-pro-high', 'gemini-3.1-pro-low'];
+const EXTRA_DYNAMIC_MODELS = [
+  'gemini-3-flash',
+  'gemini-3.1-pro-high',
+  'gemini-3.1-pro-low',
+  'gemini-3.1-flash-image',
+];
 
 const DYNAMIC_MODEL_FORWARDING_RULES = new Map<string, string>();
 
@@ -119,6 +129,8 @@ function collectDynamicModelIds(dynamicModelIds?: Iterable<string>): Set<string>
 
 const GEMINI_MODEL_ALIASES: Record<string, string> = {
   'gemini-3-pro-image-preview': 'gemini-3-pro-image',
+  'gemini-3-flash-image': 'gemini-3.1-flash-image',
+  'gemini-3.1-flash-image-preview': 'gemini-3.1-flash-image',
   'gemini-3-flash-preview': 'gemini-3-flash',
   'gemini-3.1-pro-preview': 'gemini-3.1-pro-high',
   'gemini-3.1-pro': 'gemini-3.1-pro-high',

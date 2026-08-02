@@ -5,19 +5,31 @@ export interface OpenAIChatRequest {
   messages: OpenAIMessage[];
   temperature?: number;
   top_p?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  seed?: number;
   max_tokens?: number;
   stream?: boolean;
   size?: string;
   quality?: string;
   tools?: OpenAITool[];
   tool_choice?: string | { type: string; function?: { name: string } };
+  thinking?: OpenAIThinkingConfig;
+  reasoning_effort?: string;
   response_format?: { type?: string };
   extra?: Record<string, unknown>;
 }
 
+export interface OpenAIThinkingConfig {
+  type?: string;
+  budget_tokens?: number;
+  effort?: string;
+}
+
 export interface OpenAIMessage {
   role: string;
-  content: string | OpenAIContentPart[];
+  content: string | OpenAIContentPart[] | null;
+  refusal?: string;
   name?: string;
   tool_calls?: OpenAIToolCall[];
   tool_call_id?: string;
@@ -33,6 +45,8 @@ export interface OpenAIContentPart {
 
 export interface OpenAITool {
   type: string;
+  name?: string;
+  tools?: OpenAITool[];
   function?: {
     name: string;
     description?: string;
@@ -43,11 +57,24 @@ export interface OpenAITool {
 
 export interface OpenAIToolCall {
   id: string;
-  type: 'function';
-  function: {
+  type: 'function' | 'apply_patch_call' | string;
+  function?: {
     name: string;
     arguments: string;
   };
+  status?: string;
+  call_id?: string;
+  operation?: {
+    type: string;
+    diff: string;
+    path: string;
+  };
+  /**
+   * Preserves Responses custom tool payloads such as apply_patch without
+   * forcing format-sensitive input through the normal JSON arguments path.
+   */
+  custom_input?: string;
+  namespace?: string;
 }
 
 export interface AnthropicChatRequest {
@@ -57,12 +84,21 @@ export interface AnthropicChatRequest {
   max_tokens?: number;
   tools?: AnthropicTool[];
   thinking?: AnthropicThinkingConfig;
+  output_config?: AnthropicOutputConfig;
   metadata?: Record<string, unknown>;
   stop_sequences?: string[];
   stream?: boolean;
   temperature?: number;
   top_p?: number;
   top_k?: number;
+  tool_choice?: string | { type: string; name?: string; function?: { name: string } };
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  seed?: number;
+}
+
+export interface AnthropicOutputConfig {
+  effort?: string;
 }
 
 export interface AnthropicTool {
@@ -146,6 +182,10 @@ export interface GeminiGenerationConfig {
 export interface GeminiResponse {
   candidates?: GeminiCandidate[];
   usageMetadata?: GeminiUsageMetadata;
+  promptFeedback?: {
+    blockReason?: string;
+    blockReasonMessage?: string;
+  };
 }
 
 export interface GeminiCandidate {
@@ -158,7 +198,16 @@ export interface GeminiUsageMetadata {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   totalTokenCount?: number;
+  cachedContentTokenCount?: number;
   thoughtsTokenCount?: number;
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_cached_tokens?: number;
+  total_thought_tokens?: number;
+  totalThoughtTokens?: number;
+  total_tokens?: number;
+  total_tool_use_tokens?: number;
+  cachedTokens?: number;
   promptTokensDetails?: Array<{
     modality?: string;
     tokenCount?: number;
@@ -170,17 +219,25 @@ export interface GeminiUsageMetadata {
   trafficType?: string;
 }
 
+export interface OpenAIUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+  };
+}
+
 export interface OpenAIChatResponse {
   id: string;
   object: string;
   created: number;
   model: string;
   choices: OpenAIChoice[];
-  usage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
+  usage: OpenAIUsage;
 }
 
 export interface OpenAIChoice {
@@ -190,6 +247,7 @@ export interface OpenAIChoice {
     content: string | null;
     tool_calls?: OpenAIToolCall[];
     reasoning_content?: string;
+    refusal?: string;
   };
   finish_reason: string | null;
 }

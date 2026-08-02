@@ -205,6 +205,7 @@ export class GeminiController {
 
     const normalized: GeminiResponse = {
       candidates,
+      promptFeedback: response.promptFeedback,
     };
 
     if (response.usageMetadata) {

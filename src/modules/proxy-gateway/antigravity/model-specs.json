@@ -47,7 +47,7 @@
     },
     "claude-opus-4-6-thinking": {
       "max_output_tokens": 64000,
-      "thinking_budget": 32768,
+      "thinking_budget": 24576,
       "is_thinking": true
     },
     "gpt-oss-120b-medium": {
@@ -67,6 +67,9 @@
     "claude-sonnet-4-5": "claude-sonnet-4-6-thinking",
     "claude-3-5-sonnet": "claude-sonnet-4-6-thinking",
     "claude-3-7-sonnet": "claude-sonnet-4-6-thinking",
-    "claude-opus-4-5-thinking": "claude-opus-4-6-thinking"
+    "claude-opus-4-5-thinking": "claude-opus-4-6-thinking",
+    "claude-opus-4-6": "claude-opus-4-6-thinking",
+    "claude-opus-4.6": "claude-opus-4-6-thinking",
+    "claude-opus-4.6-thinking": "claude-opus-4-6-thinking"
   }
 }

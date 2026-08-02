@@ -7,6 +7,12 @@ export interface ProxyModelCapabilityReader {
   getModelThinkingBudgetForAccount(accountId: string, modelName: string): number | undefined;
 }
 
+export interface RegisteredGenerationConstraints {
+  thinkingBudget: number;
+  maxOutputTokens: number;
+  includeThoughts: boolean;
+}
+
 export class ProxyGenerationConstraints {
   constructor(private readonly modelCapabilities: ProxyModelCapabilityReader) {}
 
@@ -14,9 +20,23 @@ export class ProxyGenerationConstraints {
     body: GeminiInternalRequest,
     model: string,
     accountId: string,
+    registered?: RegisteredGenerationConstraints,
   ): void {
     const generationConfig = body.request.generationConfig;
     if (!generationConfig) {
+      return;
+    }
+
+    if (registered) {
+      generationConfig.maxOutputTokens = registered.maxOutputTokens;
+      if (registered.thinkingBudget === 0) {
+        delete generationConfig.thinkingConfig;
+      } else {
+        generationConfig.thinkingConfig = {
+          includeThoughts: registered.includeThoughts,
+          thinkingBudget: registered.thinkingBudget,
+        };
+      }
       return;
     }
 
@@ -24,6 +44,7 @@ export class ProxyGenerationConstraints {
     const thinkingBudgetCap = this.getModelThinkingBudget(accountId, model);
     const normalizedModel = this.normalizeModelIdentifier(model).toLowerCase();
     const isClaudeModel = normalizedModel.includes('claude');
+    const isClaudeOpus46Thinking = normalizedModel === 'claude-opus-4-6-thinking';
     const thinkingConfig = generationConfig.thinkingConfig as
       | ({ thinkingLevel?: string; thinkingBudget?: number } & Record<string, unknown>)
       | undefined;
@@ -32,6 +53,23 @@ export class ProxyGenerationConstraints {
       (isString(thinkingConfig.thinkingLevel) ||
         thinkingConfig.thinkingBudget === -1 ||
         thinkingConfig.thinkingBudget === 32768);
+
+    /**
+     * Opus 4.6 rejects otherwise-valid combinations observed with generic thinking
+     * defaults. Keep this verified upstream recipe exact across compatible protocols.
+     */
+    if (isClaudeOpus46Thinking && thinkingConfig) {
+      thinkingConfig.includeThoughts = true;
+      thinkingConfig.thinkingBudget = Math.min(
+        24_576,
+        thinkingBudgetCap,
+        Math.max(0, outputCap - 1),
+      );
+      delete thinkingConfig.thinkingLevel;
+      generationConfig.maxOutputTokens = Math.min(57_344, outputCap);
+      delete generationConfig.stopSequences;
+      return;
+    }
 
     if (thinkingConfig) {
       if (!isClaudeModel && isString(thinkingConfig.thinkingLevel)) {
