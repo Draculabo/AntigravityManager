@@ -10,6 +10,7 @@ let tray: Tray | null = null;
 let globalMainWindow: BrowserWindow | null = null;
 let lastAccount: CloudAccount | null = null;
 let lastLanguage: string = 'en';
+let onQuitRequested: (() => void | Promise<void>) | null = null;
 
 function getQuotaText(account: CloudAccount | null, texts: any): string[] {
   if (!account) return [`${texts.quota}: --`];
@@ -36,8 +37,9 @@ function getQuotaText(account: CloudAccount | null, texts: any): string[] {
   return lines;
 }
 
-export function initTray(mainWindow: BrowserWindow) {
+export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | Promise<void>) {
   globalMainWindow = mainWindow;
+  onQuitRequested = quitHandler ?? null;
 
   // PATCH 3: Destroy existing tray before creating new one (prevents zombie tray icons)
   if (tray) {
@@ -170,6 +172,10 @@ export function updateTrayMenu(account: CloudAccount | null, language?: string) 
     {
       label: texts.quit,
       click: () => {
+        if (onQuitRequested) {
+          onQuitRequested();
+          return;
+        }
         app.quit();
       },
     },
@@ -191,6 +197,7 @@ export function destroyTray() {
       logger.error('Failed to destroy tray', e);
     }
     tray = null;
+    onQuitRequested = null;
     logger.info('Tray destroyed');
   }
 }

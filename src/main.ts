@@ -24,6 +24,7 @@ import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonit
 
 // Static Imports to fix Bundle Resolution Errors
 import { AuthServer } from '@/modules/cloud-account/ipc/authServer';
+import { disableWindowsPowerThrottling } from '@/shared/platform/windowsPowerThrottling';
 import { bootstrapNestServer, stopNestServer } from './server/main';
 import { initTray, setTrayLanguage, destroyTray } from '@/modules/app-shell/ipc/tray/handler';
 import { rpcHandler } from './ipc/handler';
@@ -124,6 +125,7 @@ configureDebugProxy();
 let globalMainWindow: BrowserWindow | null = null;
 // let tray: Tray | null = null; // Moved to tray/handler.ts
 let isQuitting = false;
+let trayShutdownPromise: Promise<void> | null = null;
 let startupConfig: AppConfig | null = null;
 let shouldStartHidden = false;
 let hasShownInstallNotice = false;
@@ -381,6 +383,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
     show: !startHidden,
     autoHideMenuBar: true,
     webPreferences: {
+      backgroundThrottling: false,
       devTools: inDevelopment,
       sandbox: false,
       webviewTag: true,
@@ -497,6 +500,43 @@ app.on('child-process-gone', (event, details) => {
   logger.error('Child process gone:', details);
 });
 
+function requestTrayShutdown(): Promise<void> {
+  if (trayShutdownPromise) {
+    return trayShutdownPromise;
+  }
+
+  isQuitting = true;
+  trayShutdownPromise = (async () => {
+    logger.info('Tray exit requested - stopping background services');
+    CloudMonitorService.stop();
+
+    const cleanup = Promise.allSettled([AuthServer.stop(), stopNestServer()]);
+    let timeout: NodeJS.Timeout | undefined;
+    const timeoutReached = new Promise<void>((resolve) => {
+      timeout = setTimeout(resolve, 3000);
+    });
+
+    const result = await Promise.race([
+      cleanup.then(() => 'cleaned' as const),
+      timeoutReached.then(() => 'timeout' as const),
+    ]);
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    if (result === 'timeout') {
+      logger.warn('Tray exit cleanup timed out after 3000ms; forcing application exit');
+    }
+
+    destroyTray();
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 100);
+    });
+    app.exit(0);
+  })();
+
+  return trayShutdownPromise;
+}
+
 app.on('before-quit', () => {
   isQuitting = true;
   logger.info('App before-quit event triggered - isQuitting set to true');
@@ -607,6 +647,16 @@ process.on('unhandledRejection', (reason) => {
 app
   .whenReady()
   .then(async () => {
+    if (process.platform === 'win32') {
+      disableWindowsPowerThrottling()
+        .then(() => {
+          logger.info('Disabled Windows Power Throttling / EcoQoS for the Electron main process');
+        })
+        .catch((error) => {
+          logger.warn('Failed to disable Windows Power Throttling / EcoQoS', error);
+        });
+    }
+
     logger.info('Step: Load Config');
     const config = ConfigManager.loadConfig();
     startupConfig = config;
@@ -683,7 +733,7 @@ app
   .then(async () => {
     logger.info('Step: Startup Complete');
     if (globalMainWindow) {
-      initTray(globalMainWindow);
+      initTray(globalMainWindow, requestTrayShutdown);
     }
   })
   .catch((error) => {
