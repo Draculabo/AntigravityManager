@@ -138,7 +138,7 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
     if (!open) {
       return;
     }
-    void refreshProfiles();
+    refreshProfiles();
   }, [open, refreshProfiles]);
 
   const runAction = async (key: string, action: () => Promise<void>) => {

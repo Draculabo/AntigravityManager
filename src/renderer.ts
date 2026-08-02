@@ -20,6 +20,6 @@ async function initializeRendererSentry() {
   }
 }
 
-void initializeRendererSentry();
+initializeRendererSentry();
 
 import '@/App';
