@@ -68,6 +68,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@types/semver": "^7.7.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/coverage-v8": "^4.1.8",
     "babel-plugin-react-compiler": "1.0.0",
@@ -102,6 +103,7 @@
     "vitest": "^4.0.8"
   },
   "dependencies": {
+    "@fastify/multipart": "^9.4.0",
     "@grpc/grpc-js": "^1.14.3",
     "@grpc/proto-loader": "^0.8.0",
     "@icons-pack/react-simple-icons": "^13.8.0",
@@ -156,6 +158,7 @@
     "find-process": "^2.0.0",
     "i18next": "^25.6.3",
     "i18next-browser-languagedetector": "^8.2.0",
+    "jsonc-parser": "^3.3.1",
     "keytar": "^7.9.0",
     "lodash-es": "^4.18.1",
     "lucide-react": "^0.553.0",
@@ -172,6 +175,7 @@
     "uuid": "^13.0.0",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
+    "ws": "^8.18.3",
     "yaml": "^2.8.2",
     "zod": "^4.1.12"
   },
