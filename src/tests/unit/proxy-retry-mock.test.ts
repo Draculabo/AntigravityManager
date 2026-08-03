@@ -191,6 +191,162 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     // We just care that it didn't error with "Empty response stream"
   });
 
+  it('preserves every part from a multi-part Anthropic stream event', async () => {
+    const service = new TestableProxyService();
+    const stream = new EventEmitter();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
+    mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
+
+    const result = (await service.handleAnthropicMessages({
+      model: 'gemini-3.5-flash',
+      stream: true,
+      max_tokens: 256,
+      messages: [{ role: 'user', content: 'hello' }],
+    } as any)) as Observable<string>;
+    const receivedChunks: string[] = [];
+    const done = new Promise<void>((resolve, reject) => {
+      result.subscribe({
+        next: (chunk) => receivedChunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
+
+    const payload = JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [{ text: 'reasoning', thought: true }, { text: 'final answer' }],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+    });
+    stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
+    stream.emit('end');
+    await done;
+
+    const response = receivedChunks.join('');
+    expect(response).toContain('"type":"thinking_delta"');
+    expect(response).toContain('"text":"final answer"');
+  });
+
+  it('preserves text from wrapped Anthropic stream events', async () => {
+    const service = new TestableProxyService();
+    const stream = new EventEmitter();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
+    mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
+
+    const result = (await service.handleAnthropicMessages({
+      model: 'gemini-3.5-flash',
+      stream: true,
+      max_tokens: 256,
+      messages: [{ role: 'user', content: 'hello' }],
+    } as any)) as Observable<string>;
+    const receivedChunks: string[] = [];
+    const done = new Promise<void>((resolve, reject) => {
+      result.subscribe({
+        next: (chunk) => receivedChunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
+
+    const payload = JSON.stringify({
+      response: {
+        candidates: [
+          {
+            content: { parts: [{ text: 'wrapped answer' }] },
+            finishReason: 'STOP',
+          },
+        ],
+      },
+    });
+    stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
+    stream.emit('end');
+    await done;
+
+    expect(receivedChunks.join('')).toContain('"text":"wrapped answer"');
+  });
+
+  it('preserves every part from a multi-part Anthropic stream event', async () => {
+    const service = new TestableProxyService();
+    const stream = new EventEmitter();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
+    mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
+
+    const result = (await service.handleAnthropicMessages({
+      model: 'gemini-3.5-flash',
+      stream: true,
+      max_tokens: 256,
+      messages: [{ role: 'user', content: 'hello' }],
+    } as any)) as Observable<string>;
+    const receivedChunks: string[] = [];
+    const done = new Promise<void>((resolve, reject) => {
+      result.subscribe({
+        next: (chunk) => receivedChunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
+
+    const payload = JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [{ text: 'reasoning', thought: true }, { text: 'final answer' }],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+    });
+    stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
+    stream.emit('end');
+    await done;
+
+    const response = receivedChunks.join('');
+    expect(response).toContain('"type":"thinking_delta"');
+    expect(response).toContain('"text":"final answer"');
+  });
+
+  it('preserves text from wrapped Anthropic stream events', async () => {
+    const service = new TestableProxyService();
+    const stream = new EventEmitter();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
+    mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
+
+    const result = (await service.handleAnthropicMessages({
+      model: 'gemini-3.5-flash',
+      stream: true,
+      max_tokens: 256,
+      messages: [{ role: 'user', content: 'hello' }],
+    } as any)) as Observable<string>;
+    const receivedChunks: string[] = [];
+    const done = new Promise<void>((resolve, reject) => {
+      result.subscribe({
+        next: (chunk) => receivedChunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
+
+    const payload = JSON.stringify({
+      response: {
+        candidates: [
+          {
+            content: { parts: [{ text: 'wrapped answer' }] },
+            finishReason: 'STOP',
+          },
+        ],
+      },
+    });
+    stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
+    stream.emit('end');
+    await done;
+
+    expect(receivedChunks.join('')).toContain('"text":"wrapped answer"');
+  });
+
   it('aggregates a wrapped stream when the non-stream Gemini response is empty', async () => {
     const service = new TestableProxyService();
     const stream = new EventEmitter();

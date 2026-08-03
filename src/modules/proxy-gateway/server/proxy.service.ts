@@ -447,35 +447,30 @@ export class ProxyService {
           if (dataStr === '[DONE]') continue;
 
           try {
-            const json = parseInternalSseChunk(dataStr);
-            if (!json) {
-              // The helper returns null instead of throwing, so route the
-              // undecodable payload through the same recovery the catch block
-              // used to perform: StreamingState needs it to close any open
-              // block and keep its consecutive-error count accurate.
-              const errorChunks = state.handleParseError(dataStr);
-              errorChunks.forEach((c) => subscriber.next(c));
-              continue;
+            const json = JSON.parse(dataStr);
+            const response = json.response ?? json;
+
+            if (response) {
+              const startMsg = state.emitMessageStart(response);
+              if (startMsg) subscriber.next(startMsg);
             }
 
-            const startMsg = state.emitMessageStart(json);
-            if (startMsg) subscriber.next(startMsg);
-
-            const candidate = json.candidates?.[0];
+            const candidate = response.candidates?.[0];
             const parts = candidate?.content?.parts;
 
             if (candidate?.finishReason) {
               lastFinishReason = candidate.finishReason;
             }
-            if (json.usageMetadata) {
-              lastUsageMetadata = json.usageMetadata;
+            if (response.usageMetadata) {
+              lastUsageMetadata = response.usageMetadata;
             }
 
             if (Array.isArray(parts)) {
               for (const part of parts) {
-                if (!this.isGeminiPart(part)) continue;
-                const chunks = processor.process(part);
-                chunks.forEach((c) => subscriber.next(c));
+                if (this.isGeminiPart(part)) {
+                  const chunks = processor.process(part);
+                  chunks.forEach((c) => subscriber.next(c));
+                }
               }
             }
 
