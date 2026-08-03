@@ -7,6 +7,7 @@ import {
 } from './src/shared/observability/openTelemetryConfig';
 
 const mainProcessExternals = [
+  'bufferutil',
   'better-sqlite3',
   'keytar',
   '@napi-rs/keyring',
@@ -17,6 +18,7 @@ const mainProcessExternals = [
   '@opentelemetry/sdk-metrics',
   '@opentelemetry/sdk-node',
   '@opentelemetry/sdk-trace-node',
+  'utf-8-validate',
 ];
 
 const openTelemetryBuildEnvKeys = [
