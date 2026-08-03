@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   OPEN_CODE_API_KEY_PLACEHOLDER,
+  clearOpenCodeConfigJsonc,
   injectOpenCodeApiKeyAfterRestore,
   redactOpenCodeApiKeyForBackup,
   updateOpenCodeConfigJsonc,
@@ -151,5 +152,58 @@ describe('OpenCode JSONC config editing', () => {
     expect(updated).toContain('// retain this alias comment');
     expect(updated).toContain('"custom": "canonical"');
     expect(updated).toContain('"aliasOnly": true');
+  });
+
+  it('clears the managed provider and legacy entries without deleting unrelated settings', () => {
+    const clearSource = [
+      '{',
+      '  // root comment remains',
+      '  "theme": "dark",',
+      '  "provider": {',
+      '    "antigravity-manager": { "options": { "apiKey": "managed-key" } },',
+      '    "google": {',
+      '      "options": { "baseURL": "http://127.0.0.1:8045", "apiKey": "legacy-key" },',
+      '      "models": {',
+      '        "gemini-3-flash": { "name": "Managed" },',
+      '        "gemini-3.5-flash": { "name": "Canonical user entry" },',
+      '        "user-model": { "name": "Keep" }',
+      '      }',
+      '    },',
+      '    "anthropic": {',
+      '      "options": { "baseURL": "https://unrelated.example/v1", "apiKey": "keep-key" },',
+      '      "models": { "claude-sonnet-4-6": {}, "user-claude": {} }',
+      '    }',
+      '  }',
+      '}',
+      '',
+    ].join('\n');
+
+    const cleared = clearOpenCodeConfigJsonc(clearSource, {
+      baseUrl: 'http://127.0.0.1:8045/v1',
+      clearLegacy: true,
+    });
+
+    expect(cleared).toContain('// root comment remains');
+    expect(cleared).toContain('"theme": "dark"');
+    expect(cleared).not.toContain('"antigravity-manager"');
+    expect(cleared).not.toContain('"gemini-3-flash"');
+    expect(cleared).toContain('"gemini-3.5-flash"');
+    expect(cleared).not.toContain('"claude-sonnet-4-6"');
+    expect(cleared).not.toContain('"legacy-key"');
+    expect(cleared).toContain('"user-model"');
+    expect(cleared).toContain('"user-claude"');
+    expect(cleared).toContain('"keep-key"');
+  });
+
+  it('keeps an emptied legacy provider object after clearing managed models', () => {
+    const cleared = clearOpenCodeConfigJsonc(
+      '{ "provider": { "google": { "models": { "gemini-3-flash": {} } } } }\n',
+      {
+        baseUrl: 'http://127.0.0.1:8045',
+        clearLegacy: true,
+      },
+    );
+
+    expect(cleared).toMatch(/"google"\s*:\s*\{\s*\}/);
   });
 });

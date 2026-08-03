@@ -23,6 +23,12 @@ const OpenCodeModelInputSchema = z.object({
 const OpenCodeSyncInputSchema = z.object({
   baseUrl: z.string().url(),
   models: z.array(OpenCodeModelInputSchema).optional(),
+  syncAccounts: z.boolean().default(false),
+});
+
+const OpenCodeClearInputSchema = z.object({
+  baseUrl: z.string().url(),
+  clearLegacy: z.boolean(),
 });
 
 export const gatewayRouter = os.prefix('/gateway').router({
@@ -73,8 +79,16 @@ export const gatewayRouter = os.prefix('/gateway').router({
     return openCodeSyncService.sync(input);
   }),
 
+  readOpenCodeConfig: os.handler(async () => {
+    return openCodeSyncService.readConfigForDisplay();
+  }),
+
   restoreOpenCode: os.handler(async () => {
     return openCodeSyncService.restore();
+  }),
+
+  clearOpenCode: os.input(OpenCodeClearInputSchema).handler(async ({ input }) => {
+    return openCodeSyncService.clear(input);
   }),
 
   revokeOpenCodeKey: os.handler(() => {

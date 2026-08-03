@@ -71,6 +71,7 @@ vi.mock('@/shared/persistence/database/dbConnection', () => ({
 }));
 
 vi.mock('../../shared/platform/paths', () => ({
+  getAgentDir: () => 'mock-agent-dir',
   getAntigravityDbPaths: (target?: unknown) => {
     getAntigravityDbPathsCalls.push(target);
     return mockAntigravityDbPaths;
@@ -96,6 +97,7 @@ vi.mock('@/modules/cloud-account/services/GoogleAPIService', () => ({
 }));
 
 vi.mock('@/modules/cloud-account/persistence/antigravityCredentialStore', () => ({
+  readAntigravityCredentialStoreToken: vi.fn(() => null),
   writeAntigravityCredentialStoreToken: vi.fn(),
 }));
 

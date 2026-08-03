@@ -12,6 +12,10 @@ import {
   SyntaxKind,
 } from 'jsonc-parser';
 import { isEqual } from 'lodash-es';
+import {
+  canonicalizeOpenCodeModelId,
+  OPEN_CODE_MODEL_ALIASES,
+} from './opencode-model-normalization';
 
 export const OPEN_CODE_PROVIDER_ID = 'antigravity-manager';
 export const OPEN_CODE_API_KEY_PLACEHOLDER = '__ANTIGRAVITY_MANAGER_OPENCODE_KEY__';
@@ -25,6 +29,11 @@ export interface UpdateOpenCodeConfigInput {
   apiKey: string;
   baseUrl: string;
   models?: OpenCodeModelInput[];
+}
+
+export interface ClearOpenCodeConfigInput {
+  baseUrl: string;
+  clearLegacy: boolean;
 }
 
 interface OpenCodeModelDefinition {
@@ -164,15 +173,23 @@ const MODEL_CATALOG: Record<string, OpenCodeModelDefinition> = {
   },
 };
 
-const MODEL_ALIASES: Record<string, string> = {
-  'gemini-3.1-pro-high': 'gemini-3.1-pro',
-  'gemini-3.1-pro-low': 'gemini-3.1-pro',
-  'gemini-pro': 'gemini-3.1-pro',
-  'gemini-3.5-flash-high': 'gemini-3.5-flash',
-  'gemini-3.5-flash-medium': 'gemini-3.5-flash',
-  'gemini-3.5-flash-low': 'gemini-3.5-flash',
-  'gemini-3-flash': 'gemini-3.5-flash',
-};
+const LEGACY_MANAGED_MODEL_IDS = [
+  'claude-sonnet-4-6',
+  'claude-sonnet-4-6-thinking',
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-5-thinking',
+  'claude-opus-4-5-thinking',
+  'gemini-3.1-pro-high',
+  'gemini-3.1-pro-low',
+  'gemini-3-pro-high',
+  'gemini-3-pro-low',
+  'gemini-3-flash',
+  'gemini-3-pro-image',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash-thinking',
+  'gemini-2.5-pro',
+] as const;
 
 function validateJsoncObject(source: string): Record<string, unknown> {
   const errors: ParseError[] = [];
@@ -269,13 +286,8 @@ function normalizeBaseUrl(baseUrl: string): string {
   return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`;
 }
 
-function canonicalizeModelId(modelId: string): string {
-  const normalized = modelId.trim().toLowerCase();
-  return MODEL_ALIASES[normalized] ?? normalized;
-}
-
 function buildFallbackModel(input: OpenCodeModelInput): OpenCodeModelDefinition {
-  const id = canonicalizeModelId(input.id);
+  const id = canonicalizeOpenCodeModelId(input.id);
   const name =
     input.name?.trim() || id.replaceAll('-', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
   const definition: OpenCodeModelDefinition = { name };
@@ -293,7 +305,7 @@ function buildFallbackModel(input: OpenCodeModelInput): OpenCodeModelDefinition 
 function normalizeModelInputs(models: OpenCodeModelInput[]): OpenCodeModelInput[] {
   const normalized = new Map<string, OpenCodeModelInput>();
   for (const model of models) {
-    const id = canonicalizeModelId(model.id);
+    const id = canonicalizeOpenCodeModelId(model.id);
     if (!id) {
       continue;
     }
@@ -392,7 +404,7 @@ function appendMissingCommentsToObject(
 
 function migrateGeminiAliasModels(source: string, formattingOptions: FormattingOptions): string {
   let updated = source;
-  for (const [alias, canonical] of Object.entries(MODEL_ALIASES)) {
+  for (const [alias, canonical] of Object.entries(OPEN_CODE_MODEL_ALIASES)) {
     const aliasPath = [...PROVIDER_PATH, 'models', alias];
     const canonicalPath = [...PROVIDER_PATH, 'models', canonical];
     const root = validateJsoncObject(updated);
@@ -420,6 +432,51 @@ function migrateGeminiAliasModels(source: string, formattingOptions: FormattingO
     updated = appendMissingCommentsToObject(updated, canonicalPath, comments, formattingOptions);
   }
   return updated;
+}
+
+function removeJsoncObjectIfEmpty(
+  source: string,
+  path: JSONPath,
+  formattingOptions: FormattingOptions,
+): string {
+  const value = getPathValue(validateJsoncObject(source), path);
+  return isUnknownRecord(value) && Object.keys(value).length === 0
+    ? setJsoncValue(source, path, undefined, formattingOptions)
+    : source;
+}
+
+export function clearOpenCodeConfigJsonc(source: string, input: ClearOpenCodeConfigInput): string {
+  validateJsoncObject(source);
+  const formattingOptions = detectFormatting(source);
+  let updated = setJsoncValue(source, PROVIDER_PATH, undefined, formattingOptions);
+
+  if (input.clearLegacy) {
+    for (const providerId of ['anthropic', 'google']) {
+      const providerPath: JSONPath = ['provider', providerId];
+      const modelsPath: JSONPath = [...providerPath, 'models'];
+      for (const modelId of LEGACY_MANAGED_MODEL_IDS) {
+        const modelPath = [...modelsPath, modelId];
+        if (getPathValue(validateJsoncObject(updated), modelPath) !== undefined) {
+          updated = setJsoncValue(updated, modelPath, undefined, formattingOptions);
+        }
+      }
+      updated = removeJsoncObjectIfEmpty(updated, modelsPath, formattingOptions);
+
+      const optionsPath: JSONPath = [...providerPath, 'options'];
+      const options = getPathValue(validateJsoncObject(updated), optionsPath);
+      const configuredBaseUrl = isUnknownRecord(options) ? options.baseURL : undefined;
+      if (
+        typeof configuredBaseUrl === 'string' &&
+        normalizeBaseUrl(configuredBaseUrl) === normalizeBaseUrl(input.baseUrl)
+      ) {
+        updated = setJsoncValue(updated, [...optionsPath, 'baseURL'], undefined, formattingOptions);
+        updated = setJsoncValue(updated, [...optionsPath, 'apiKey'], undefined, formattingOptions);
+      }
+      updated = removeJsoncObjectIfEmpty(updated, optionsPath, formattingOptions);
+    }
+  }
+
+  return removeJsoncObjectIfEmpty(updated, ['provider'], formattingOptions);
 }
 
 export function updateOpenCodeConfigJsonc(
