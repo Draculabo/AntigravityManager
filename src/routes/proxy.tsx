@@ -6,8 +6,9 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { ipc } from '@/ipc/manager';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
+import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
 import { ProxyConfig } from '@/modules/config/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { OpenCodeSyncCard } from '@/modules/proxy-gateway/components/OpenCodeSyncCard';
+import {
+  buildProxyExampleModels,
+  isImageProxyExampleModel,
+} from '@/modules/proxy-gateway/components/proxy-example-models';
 import {
   Select,
   SelectContent,
@@ -35,6 +40,7 @@ import {
   Terminal,
   Eye,
   EyeOff,
+  ImageIcon,
 } from 'lucide-react';
 import {
   Dialog,
@@ -47,27 +53,22 @@ import {
 
 type ProxyProtocol = 'openai' | 'anthropic';
 
-interface ExampleModel {
-  id: string;
-  name: string;
-  icon: ReactNode;
+function getExampleModelIcon(modelId: string): ReactNode {
+  const normalizedId = modelId.toLowerCase();
+  if (isImageProxyExampleModel(normalizedId)) {
+    return <ImageIcon size={14} />;
+  }
+  if (normalizedId.includes('claude-opus')) {
+    return <BrainCircuit size={14} />;
+  }
+  if (normalizedId.includes('claude')) {
+    return <Sparkles size={14} />;
+  }
+  if (normalizedId.includes('flash')) {
+    return <Zap size={14} />;
+  }
+  return <Cpu size={14} />;
 }
-
-const EXAMPLE_MODELS: ExampleModel[] = [
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', icon: <Zap size={14} /> },
-  { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro (Low)', icon: <Cpu size={14} /> },
-  { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)', icon: <Cpu size={14} /> },
-  {
-    id: 'claude-sonnet-4-6-thinking',
-    name: 'Claude Sonnet 4.6 (Thinking)',
-    icon: <Sparkles size={14} />,
-  },
-  {
-    id: 'claude-opus-4-6-thinking',
-    name: 'Claude Opus 4.6 (Thinking)',
-    icon: <BrainCircuit size={14} />,
-  },
-];
 
 const ANTHROPIC_ROUTE_OPTIONS = [
   'claude-sonnet-4-6-thinking',
@@ -101,6 +102,7 @@ function resolveAnthropicMappingValue(
 function ProxyPage() {
   const { t } = useTranslation();
   const { config, isLoading, saveConfig } = useAppConfig();
+  const { data: cloudAccounts = [] } = useCloudAccounts();
   const { toast } = useToast();
 
   // Query all available local IPs
@@ -186,6 +188,17 @@ function ProxyPage() {
   const [selectedProtocol, setSelectedProtocol] = useState<ProxyProtocol>('openai');
   const [activeModelTab, setActiveModelTab] = useState('gemini-3.1-pro-high');
   const [copied, setCopied] = useState<string | null>(null);
+  const exampleModels = useMemo(() => buildProxyExampleModels(cloudAccounts), [cloudAccounts]);
+  const visibleExampleModels = useMemo(
+    () =>
+      selectedProtocol === 'anthropic'
+        ? exampleModels.filter((model) => !isImageProxyExampleModel(model.id))
+        : exampleModels,
+    [exampleModels, selectedProtocol],
+  );
+  const effectiveModelId = visibleExampleModels.some((model) => model.id === activeModelTab)
+    ? activeModelTab
+    : (visibleExampleModels[0]?.id ?? activeModelTab);
 
   // Computed values for examples
   const apiKey = proxyConfig?.api_key || 'YOUR_API_KEY';
@@ -220,6 +233,16 @@ function ProxyPage() {
     "model": "${modelId}",
     "max_tokens": 1024,
     "messages": [{"role": "user", "content": "Hello"}]
+  }'`;
+    }
+    if (isImageProxyExampleModel(modelId)) {
+      return `curl ${baseUrl}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer ${apiKey}" \\
+  -d '{
+    "model": "${modelId}",
+    "size": "1024x1024",
+    "messages": [{"role": "user", "content": "Draw a futuristic city"}]
   }'`;
     }
     return `curl ${baseUrl}/v1/chat/completions \\
@@ -612,7 +635,7 @@ print(response.choices[0].message.content)`;
         </CardContent>
       </Card>
 
-      <OpenCodeSyncCard baseUrl={baseUrl} />
+      <OpenCodeSyncCard baseUrl={baseUrl} models={exampleModels} />
 
       {/* Usage Examples Card */}
       <Card>
@@ -675,13 +698,13 @@ print(response.choices[0].message.content)`;
 
           {/* Model Tabs */}
           <div className="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700">
-            {EXAMPLE_MODELS.map((model) => (
+            {visibleExampleModels.map((model) => (
               <button
                 key={model.id}
                 onClick={() => setActiveModelTab(model.id)}
-                className={`flex items-center gap-1 rounded-t-lg px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors ${activeModelTab === model.id ? 'border-b-2 border-blue-600 bg-blue-50/50 text-blue-600 dark:border-blue-400 dark:bg-blue-900/10 dark:text-blue-400' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'}`}
+                className={`flex items-center gap-1 rounded-t-lg px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors ${effectiveModelId === model.id ? 'border-b-2 border-blue-600 bg-blue-50/50 text-blue-600 dark:border-blue-400 dark:bg-blue-900/10 dark:text-blue-400' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'}`}
               >
-                {model.icon}
+                {getExampleModelIcon(model.id)}
                 <span>{model.name}</span>
               </button>
             ))}
@@ -695,7 +718,7 @@ print(response.choices[0].message.content)`;
                 cURL
               </span>
               <button
-                onClick={() => copyToClipboard(getCurlExample(activeModelTab), 'curl')}
+                onClick={() => copyToClipboard(getCurlExample(effectiveModelId), 'curl')}
                 className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
               >
                 {copied === 'curl' ? <CheckCircle size={14} /> : <Copy size={14} />}
@@ -703,7 +726,7 @@ print(response.choices[0].message.content)`;
               </button>
             </div>
             <pre className="overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-xs whitespace-pre-wrap text-gray-100">
-              {getCurlExample(activeModelTab)}
+              {getCurlExample(effectiveModelId)}
             </pre>
           </div>
 
@@ -715,7 +738,7 @@ print(response.choices[0].message.content)`;
                 Python
               </span>
               <button
-                onClick={() => copyToClipboard(getPythonExample(activeModelTab), 'python')}
+                onClick={() => copyToClipboard(getPythonExample(effectiveModelId), 'python')}
                 className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
               >
                 {copied === 'python' ? <CheckCircle size={14} /> : <Copy size={14} />}
@@ -723,7 +746,7 @@ print(response.choices[0].message.content)`;
               </button>
             </div>
             <pre className="overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-xs whitespace-pre-wrap text-gray-100">
-              {getPythonExample(activeModelTab)}
+              {getPythonExample(effectiveModelId)}
             </pre>
           </div>
         </CardContent>
