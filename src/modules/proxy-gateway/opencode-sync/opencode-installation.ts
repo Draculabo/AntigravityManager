@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { access, readdir } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
-import { delimiter, extname, join } from 'node:path';
+import { extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { compact, uniq } from 'lodash-es';
 
@@ -111,22 +111,28 @@ async function getFallbackCandidates(
   ];
 }
 
-async function findPathCandidates(currentPlatform: NodeJS.Platform): Promise<string[]> {
-  const executable = currentPlatform === 'win32' ? 'where.exe' : 'which';
-  try {
-    const { stdout } = await execFileAsync(executable, ['opencode'], {
-      encoding: 'utf8',
-      maxBuffer: MAX_OUTPUT_BYTES,
-      timeout: VERSION_TIMEOUT_MS,
-      windowsHide: true,
-    });
-    return stdout
-      .split(/\r?\n/)
-      .map((path) => path.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
+export async function findInPath(
+  executable: string,
+  currentPlatform: NodeJS.Platform,
+  pathValue: string | undefined = process.env.PATH,
+) {
+  if (pathValue === undefined) {
+    return null;
   }
+
+  const separator = currentPlatform === 'win32' ? ';' : ':';
+  const extensions = currentPlatform === 'win32' ? ['exe', 'cmd', 'bat'] : [null];
+  for (const directory of pathValue.split(separator)) {
+    for (const extension of extensions) {
+      const fileName = extension ? `${executable}.${extension}` : executable;
+      const fullPath = join(directory, fileName);
+      if (await pathExists(fullPath)) {
+        return fullPath;
+      }
+    }
+  }
+
+  return null;
 }
 
 async function runVersionCommand(
@@ -153,21 +159,10 @@ async function runVersionCommand(
 
 export async function detectOpenCodeInstallation(): Promise<OpenCodeInstallationStatus> {
   const currentPlatform = platform();
-  const pathCandidates = await findPathCandidates(currentPlatform);
-  const fallbackCandidates = await getFallbackCandidates(homedir(), currentPlatform);
-  const environmentCandidates = (process.env.PATH ?? '')
-    .split(delimiter)
-    .filter(Boolean)
-    .flatMap((directory) =>
-      currentPlatform === 'win32'
-        ? [
-            join(directory, 'opencode.exe'),
-            join(directory, 'opencode.cmd'),
-            join(directory, 'opencode.bat'),
-          ]
-        : [join(directory, 'opencode')],
-    );
-  const candidates = uniq([...pathCandidates, ...environmentCandidates, ...fallbackCandidates]);
+  const pathCandidate = await findInPath('opencode', currentPlatform);
+  const candidates = pathCandidate
+    ? [pathCandidate]
+    : uniq(await getFallbackCandidates(homedir(), currentPlatform));
 
   const existingCandidates = (
     await Promise.all(
