@@ -38,10 +38,7 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
   const shouldShowDataRepairGuidance = isDataMigrationError(error);
 
   return (
-    <div
-      className="border-destructive/40 bg-destructive/5 col-span-full rounded-lg border p-6"
-      data-testid="cloud-load-error-fallback"
-    >
+    <div className="border-destructive/40 bg-destructive/5 col-span-full rounded-lg border p-6">
       <div className="flex items-start gap-3">
         <AlertTriangle className="text-destructive mt-0.5 h-5 w-5" />
         <div className="min-w-0 flex-1">
@@ -76,19 +73,14 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
             </div>
           ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onRetry}
-              data-testid="cloud-load-error-retry"
-            >
+            <Button variant="outline" size="sm" onClick={onRetry}>
               <RefreshCw className="h-4 w-4" />
               {t('action.retry')}
             </Button>
             {details ? (
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" data-testid="cloud-load-error-details">
+                  <Button variant="outline" size="sm">
                     <FileText className="h-4 w-4" />
                     {t('action.details')}
                   </Button>

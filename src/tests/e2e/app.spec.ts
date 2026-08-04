@@ -90,7 +90,7 @@ test.describe('Antigravity Manager', () => {
   test('should navigate to settings', async () => {
     const window = await electronApp.firstWindow();
 
-    // Click settings link (use data-testid or aria-label for reliability)
+    // Navigate through the stable route target instead of translated copy.
     await window.click('a[href="/settings"]');
     await window.waitForLoadState('domcontentloaded');
 
@@ -110,10 +110,12 @@ test.describe('Antigravity Manager', () => {
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
     const mainContent = page.getByRole('main');
-    await expect(mainContent.getByTestId('cloud-load-error-fallback')).toBeVisible({
+    await expect(
+      mainContent.getByText('Failed to load cloud accounts.', { exact: true }),
+    ).toBeVisible({
       timeout: 15000,
     });
-    await expect(mainContent.getByTestId('cloud-load-error-retry')).toBeVisible();
+    await expect(mainContent.getByRole('button', { exact: true, name: 'Retry' })).toBeVisible();
   });
 
   // More detailed tests would require mocking IPC or having a real environment

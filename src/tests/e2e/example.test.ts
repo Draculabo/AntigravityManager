@@ -32,8 +32,7 @@ test.beforeAll(async () => {
 test('renders page name', async () => {
   const page: Page = await electronApp.firstWindow();
 
-  await page.waitForSelector('h1');
-  const pageName = page.getByTestId('pageTitle');
-  const text = await pageName.textContent();
-  expect(text).toBe('Home Page');
+  await expect(
+    page.getByRole('heading', { exact: true, level: 1, name: 'Home Page' }),
+  ).toBeVisible();
 });
