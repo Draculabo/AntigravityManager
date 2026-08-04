@@ -80,10 +80,12 @@ function getWindowsTargetImageNames(target?: AntigravityAppTarget | null): strin
   return Array.from(imageNames).filter(isSafeWindowsImageName);
 }
 
-function isAnyWindowsTargetImageRunning(target?: AntigravityAppTarget | null): boolean | null {
+async function isAnyWindowsTargetImageRunning(
+  target?: AntigravityAppTarget | null,
+): Promise<boolean | null> {
   let sawCommandFailure = false;
   for (const imageName of getWindowsTargetImageNames(target)) {
-    const isRunning = isWindowsImageRunning(imageName);
+    const isRunning = await isWindowsImageRunning(imageName);
     if (isRunning === true) {
       return true;
     }
@@ -95,10 +97,10 @@ function isAnyWindowsTargetImageRunning(target?: AntigravityAppTarget | null): b
   return sawCommandFailure ? null : false;
 }
 
-function killWindowsTargetImages(target?: AntigravityAppTarget | null): boolean {
+async function killWindowsTargetImages(target?: AntigravityAppTarget | null): Promise<boolean> {
   let killedAny = false;
   for (const imageName of getWindowsTargetImageNames(target)) {
-    if (killWindowsImageTree(imageName)) {
+    if (await killWindowsImageTree(imageName)) {
       killedAny = true;
     }
   }
@@ -351,7 +353,7 @@ async function findClosableTargetProcesses(
 export async function isProcessRunning(target?: AntigravityAppTarget | null): Promise<boolean> {
   try {
     if (process.platform === 'win32') {
-      const isRunning = isAnyWindowsTargetImageRunning(target);
+      const isRunning = await isAnyWindowsTargetImageRunning(target);
       if (isRunning !== null) {
         return isRunning;
       }
@@ -423,7 +425,7 @@ export async function closeAntigravity(target?: AntigravityAppTarget | null): Pr
       }
     }
 
-    if (platform === 'win32' && killWindowsTargetImages(target)) {
+    if (platform === 'win32' && (await killWindowsTargetImages(target))) {
       return;
     }
 
@@ -466,7 +468,7 @@ export async function _waitForProcessExit(
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
     if (process.platform === 'win32') {
-      const isRunning = isAnyWindowsTargetImageRunning(target);
+      const isRunning = await isAnyWindowsTargetImageRunning(target);
       if (isRunning === false) {
         return;
       }

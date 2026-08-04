@@ -142,7 +142,7 @@ appImageMaker.name = '@pengx17/electron-forge-maker-appimage';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/{better-sqlite3,keytar}/**/*',
+      unpack: '**/{better-sqlite3,keytar,ps-list}/**/*',
     },
     name: 'Antigravity Manager',
     executableName: windowsExecutableName,

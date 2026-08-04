@@ -18,6 +18,7 @@ const mainProcessExternals = [
   '@opentelemetry/sdk-metrics',
   '@opentelemetry/sdk-node',
   '@opentelemetry/sdk-trace-node',
+  'ps-list',
   'utf-8-validate',
 ];
 

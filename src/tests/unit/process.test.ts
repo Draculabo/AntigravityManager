@@ -2,15 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const childProcessMock = vi.hoisted(() => ({
   exec: vi.fn(),
+  execFile: vi.fn(),
   execSync: vi.fn(),
   spawn: vi.fn(() => ({
     unref: vi.fn(),
   })),
 }));
 
+const psListMock = vi.hoisted(() => vi.fn());
+
 vi.mock('child_process', () => ({
   default: childProcessMock,
   exec: childProcessMock.exec,
+  execFile: childProcessMock.execFile,
   execSync: childProcessMock.execSync,
   spawn: childProcessMock.spawn,
 }));
@@ -18,6 +22,10 @@ vi.mock('child_process', () => ({
 // Mock find-process module
 vi.mock('find-process', () => ({
   default: vi.fn(),
+}));
+
+vi.mock('ps-list', () => ({
+  default: psListMock,
 }));
 
 // Mock logger to avoid console output during tests
@@ -108,6 +116,19 @@ describe('Process Handler', () => {
     vi.clearAllMocks();
     mockFindProcess.mockReset();
     mockFindProcess.mockResolvedValue([]);
+    psListMock.mockReset();
+    psListMock.mockRejectedValue(new Error('native process list unavailable'));
+    childProcessMock.execFile.mockImplementation(
+      (
+        _file: string,
+        _arguments: string[],
+        _options: unknown,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(new Error('process command unavailable'), '', '');
+        return { kill: vi.fn() };
+      },
+    );
     childProcessMock.execSync.mockImplementation(() => {
       throw new Error('process command unavailable');
     });
@@ -117,21 +138,43 @@ describe('Process Handler', () => {
   });
 
   describe('isProcessRunning', () => {
-    it('should use a Windows image-name check for Classic running state', async () => {
+    it('should use ps-list for the Windows Classic running state', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
-      childProcessMock.execSync.mockReturnValue(
-        '"Image Name","PID","Session Name","Session#","Mem Usage"\r\n"Antigravity.exe","12345","Console","1","100 K"\r\n',
-      );
+      psListMock.mockResolvedValue([{ name: 'Antigravity.exe', pid: 12345, ppid: 1000 }]);
 
       const result = await isProcessRunning('classic');
 
       expect(result).toBe(true);
-      expect(childProcessMock.execSync).toHaveBeenCalledWith(
-        'tasklist /FI "IMAGENAME eq Antigravity.exe" /FO CSV /NH',
-        expect.objectContaining({ encoding: 'utf-8' }),
-      );
+      expect(psListMock).toHaveBeenCalledTimes(1);
+      expect(childProcessMock.execFile).not.toHaveBeenCalled();
+      expect(childProcessMock.execSync).not.toHaveBeenCalled();
       expect(mockFindProcess).not.toHaveBeenCalled();
+    });
+
+    it('should coalesce concurrent Windows image-name checks', async () => {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
+      let completeProcessList: ((processes: Array<{ name: string }>) => void) | undefined;
+      psListMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            completeProcessList = resolve;
+          }),
+      );
+
+      const firstCheck = isProcessRunning('classic');
+      const secondCheck = isProcessRunning('classic');
+      await Promise.resolve();
+
+      expect(psListMock).toHaveBeenCalledTimes(1);
+      expect(childProcessMock.execFile).not.toHaveBeenCalled();
+      expect(childProcessMock.execSync).not.toHaveBeenCalled();
+      if (!completeProcessList) {
+        throw new Error('Expected ps-list query to be pending');
+      }
+      completeProcessList([]);
+      await expect(Promise.all([firstCheck, secondCheck])).resolves.toEqual([false, false]);
     });
 
     it('should return true when Antigravity main process is found on macOS', async () => {
@@ -300,9 +343,6 @@ describe('Process Handler', () => {
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
 
       childProcessMock.execSync.mockImplementation((command: string) => {
-        if (command.startsWith('tasklist')) {
-          throw new Error('tasklist unavailable');
-        }
         if (command.startsWith('wmic')) {
           return `
 CommandLine="C:\\Program Files\\Antigravity\\Antigravity.exe"
@@ -381,15 +421,13 @@ ProcessId=12345
       expect(killSpy).not.toHaveBeenCalled();
     });
 
-    it('should not fall back to process scanning when taskkill fails after closing the Windows image', async () => {
+    it('should not fall back to broad process scanning when taskkill finds no running image', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
+      psListMock.mockResolvedValue([]);
       childProcessMock.execSync.mockImplementation((command: string) => {
         if (command.startsWith('taskkill')) {
           throw new Error('taskkill timeout');
-        }
-        if (command.startsWith('tasklist')) {
-          return 'INFO: No tasks are running which match the specified criteria.';
         }
         return '';
       });
@@ -400,10 +438,7 @@ ProcessId=12345
         'taskkill /F /T /IM "Antigravity.exe"',
         expect.objectContaining({ stdio: 'ignore' }),
       );
-      expect(childProcessMock.execSync).toHaveBeenCalledWith(
-        'tasklist /FI "IMAGENAME eq Antigravity.exe" /FO CSV /NH',
-        expect.objectContaining({ encoding: 'utf-8' }),
-      );
+      expect(psListMock).toHaveBeenCalledTimes(1);
       expect(mockFindProcess).not.toHaveBeenCalled();
     });
 
@@ -517,19 +552,16 @@ ProcessId=12345
   });
 
   describe('_waitForProcessExit', () => {
-    it('should use tasklist for default Windows Classic wait checks', async () => {
+    it('should use ps-list for default Windows Classic wait checks', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
-      childProcessMock.execSync.mockReturnValue(
-        'INFO: No tasks are running which match the specified criteria.',
-      );
+      psListMock.mockResolvedValue([]);
 
       await _waitForProcessExit(1, 1, 'classic');
 
-      expect(childProcessMock.execSync).toHaveBeenCalledWith(
-        'tasklist /FI "IMAGENAME eq Antigravity.exe" /FO CSV /NH',
-        expect.objectContaining({ encoding: 'utf-8' }),
-      );
+      expect(psListMock).toHaveBeenCalledTimes(1);
+      expect(childProcessMock.execFile).not.toHaveBeenCalled();
+      expect(childProcessMock.execSync).not.toHaveBeenCalled();
       expect(mockFindProcess).not.toHaveBeenCalled();
     });
 

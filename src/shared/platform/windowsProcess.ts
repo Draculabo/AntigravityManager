@@ -1,7 +1,10 @@
 import { execSync } from 'child_process';
 import path from 'path';
+import findProcess from 'find-process';
+import psList from 'ps-list';
 
 const WINDOWS_PROCESS_COMMAND_TIMEOUT_MS = 3000;
+const runningImageQueries = new Map<string, Promise<boolean | null>>();
 
 export interface WindowsProcessInfo {
   pid: number;
@@ -14,20 +17,42 @@ export function isSafeWindowsImageName(imageName: string): boolean {
   return /^[^"'&|<>]+\.exe$/i.test(imageName);
 }
 
-export function isWindowsImageRunning(imageName: string): boolean | null {
+async function queryWindowsImageRunning(imageName: string): Promise<boolean | null> {
   try {
-    const output = execSync(`tasklist /FI "IMAGENAME eq ${imageName}" /FO CSV /NH`, {
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: WINDOWS_PROCESS_COMMAND_TIMEOUT_MS,
-    });
-    return output.toLowerCase().includes(imageName.toLowerCase());
+    const normalizedImageName = imageName.toLowerCase();
+    if (process.arch === 'arm64') {
+      const processes = await findProcess('name', imageName, { strict: true });
+      return processes.some(
+        (processInfo) => processInfo.name.toLowerCase() === normalizedImageName,
+      );
+    }
+
+    const processes = await psList();
+    return processes.some((processInfo) => processInfo.name.toLowerCase() === normalizedImageName);
   } catch {
     return null;
   }
 }
 
-export function killWindowsImageTree(imageName: string): boolean {
+/**
+ * Keep status polling off Electron's main event loop and reuse an in-flight query when rapid UI
+ * mounts request the same image before the native process scan has returned.
+ */
+export function isWindowsImageRunning(imageName: string): Promise<boolean | null> {
+  const queryKey = imageName.toLowerCase();
+  const activeQuery = runningImageQueries.get(queryKey);
+  if (activeQuery) {
+    return activeQuery;
+  }
+
+  const query = queryWindowsImageRunning(imageName).finally(() => {
+    runningImageQueries.delete(queryKey);
+  });
+  runningImageQueries.set(queryKey, query);
+  return query;
+}
+
+export async function killWindowsImageTree(imageName: string): Promise<boolean> {
   try {
     execSync(`taskkill /F /T /IM "${imageName}"`, {
       stdio: 'ignore',
@@ -35,7 +60,7 @@ export function killWindowsImageTree(imageName: string): boolean {
     });
     return true;
   } catch {
-    return isWindowsImageRunning(imageName) === false;
+    return (await isWindowsImageRunning(imageName)) === false;
   }
 }
 

@@ -162,6 +162,7 @@
     "keytar": "^7.9.0",
     "lodash-es": "^4.18.1",
     "lucide-react": "^0.553.0",
+    "ps-list": "^9.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-error-boundary": "^6.1.0",
