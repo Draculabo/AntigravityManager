@@ -1518,6 +1518,9 @@ export class ProxyService {
     return {
       contents: request.contents,
       generationConfig: request.generationConfig,
+      // Forwarded verbatim: without this the `/v1beta` passthrough silently
+      // strips tool declarations, so the model can never call a tool.
+      tools: request.tools,
       systemInstruction: request.systemInstruction
         ? {
             parts: request.systemInstruction.parts
