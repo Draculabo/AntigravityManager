@@ -49,6 +49,8 @@ import {
 } from '@/modules/app-shell/update/electronUpdaterService';
 import { selectWindowsUpdateResult } from '@/modules/app-shell/update/windowsUpdateFallbackPolicy';
 import { getQuickObservabilityConfig } from '@/shared/observability/observabilityConfig';
+import { registerPerformanceRecorderIpc } from '@/modules/app-shell/performance-recorder/ipc';
+import { configurePerformanceRecorderCommandLine } from '@/modules/app-shell/performance-recorder/main-recorder';
 
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
 
@@ -119,6 +121,7 @@ function configureDebugProxy() {
 }
 
 configureDebugProxy();
+configurePerformanceRecorderCommandLine();
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -307,6 +310,8 @@ ipcMain.handle(IPC_CHANNELS.GET_OBSERVABILITY_CONFIG, () => {
     logger.error(message, error);
   });
 });
+
+registerPerformanceRecorderIpc();
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 

@@ -1,4 +1,5 @@
 import { ipcRenderer, contextBridge } from 'electron';
+import type { RendererPerformanceSnapshot } from './modules/app-shell/performance-recorder/types';
 import { IPC_CHANNELS } from './shared/constants';
 
 window.addEventListener('message', (event) => {
@@ -42,6 +43,16 @@ const electronBridge = {
   openExternalUrl: (url: string) => {
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL_URL, url);
   },
+  ...(import.meta.env.ANTIGRAVITY_ENABLE_PERFORMANCE_RECORDER === '1'
+    ? {
+        startPerformanceRecording: (label: string) => {
+          return ipcRenderer.invoke(IPC_CHANNELS.START_PERFORMANCE_RECORDING, label);
+        },
+        stopPerformanceRecording: (snapshot: RendererPerformanceSnapshot) => {
+          return ipcRenderer.invoke(IPC_CHANNELS.STOP_PERFORMANCE_RECORDING, snapshot);
+        },
+      }
+    : {}),
 };
 
 if (process.contextIsolated) {

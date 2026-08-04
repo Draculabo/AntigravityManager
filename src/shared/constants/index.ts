@@ -14,4 +14,6 @@ export const IPC_CHANNELS = {
   MANUAL_UPDATE_RENDERER_READY: 'manual-update-renderer-ready',
   GET_OBSERVABILITY_CONFIG: 'get-observability-config',
   OPEN_EXTERNAL_URL: 'open-external-url',
+  START_PERFORMANCE_RECORDING: 'start-performance-recording',
+  STOP_PERFORMANCE_RECORDING: 'stop-performance-recording',
 };

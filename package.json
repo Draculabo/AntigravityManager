@@ -11,6 +11,7 @@
   },
   "scripts": {
     "start": "electron-forge start",
+    "start:performance": "node scripts/start-performance-recorder.mjs",
     "start:otel:console": "node scripts/run-with-otel.mjs console -- npm start",
     "start:otel:otlp": "node scripts/run-with-otel.mjs otlp -- npm start",
     "start:otel:off": "node scripts/run-with-otel.mjs off -- npm start",
@@ -26,6 +27,7 @@
     "test:watch": "vitest watch",
     "test:unit": "vitest",
     "test:e2e": "playwright test",
+    "test:performance": "playwright test --config=playwright.performance.config.ts",
     "test:all": "vitest run && playwright test",
     "type-check": "tsc --noEmit"
   },

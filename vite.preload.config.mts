@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
   const shouldEnableSentry = mode === 'production' && Boolean(sentryAuthToken);
 
   return {
+    envPrefix: ['VITE_', 'ANTIGRAVITY_ENABLE_PERFORMANCE_RECORDER'],
     plugins: shouldEnableSentry
       ? [
           sentryVitePlugin({
