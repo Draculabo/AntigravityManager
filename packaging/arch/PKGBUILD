@@ -12,7 +12,7 @@ depends=('nss' 'alsa-lib' 'gtk3')
 provides=("${_pkgname}")
 conflicts=("${_pkgname}")
 source=("https://github.com/Draculabo/AntigravityManager/releases/download/v${pkgver}/Antigravity.Manager_${pkgver}_amd64.deb")
-sha256sums=('SKIP')
+sha256sums=('337b7a21796c1d97660d195296723781adf2daee882e265b4c4d00b1a5194761')
 
 package() {
   # makepkg automatically extracts the .deb file into data.tar.* and control.tar.*

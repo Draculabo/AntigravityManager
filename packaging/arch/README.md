@@ -13,10 +13,14 @@ If you want to build and install the package locally using `makepkg`:
 
 ## Publishing to the AUR
 
+The release workflow automatically updates `pkgver`, `pkgrel`, and `sha256sums` in this directory
+from the checksum file generated for the published `.deb` artifact.
+
 To deploy to the AUR (so users can install it using `yay -S antigravity-manager-bin`), you should:
 1. Initialize an AUR git repository for `antigravity-manager-bin`.
 2. Add the `PKGBUILD` file to it.
 3. Generate `.SRCINFO` by running: `makepkg --printsrcinfo > .SRCINFO`
 4. Commit and push both files to the AUR repository.
 
-Note: Remember to update `pkgver` and regenerate `.SRCINFO` for each new version you release.
+After the automated metadata pull request is merged, regenerate `.SRCINFO` before pushing the
+updated files to the AUR repository.

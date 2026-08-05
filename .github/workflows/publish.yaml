@@ -359,7 +359,7 @@ jobs:
           git -C "$branch_dir" commit -m "chore: update Windows update feed for ${RELEASE_TAG}"
           git -C "$branch_dir" push origin HEAD:release-updates
 
-      - name: Update flake.nix from release checksums
+      - name: Update Linux package metadata from release checksums
         env:
           RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
         run: |
@@ -368,7 +368,7 @@ jobs:
           aarch64_checksums="$(find release-assets -type f -name 'sha256sums-linux-aarch64.txt' | head -n 1)"
 
           if [ -z "$amd64_checksums" ] || [ -z "$aarch64_checksums" ]; then
-            echo "::error::Missing Linux checksum files required to update flake.nix"
+            echo "::error::Missing Linux checksum files required to update package metadata"
             exit 1
           fi
 
@@ -377,20 +377,27 @@ jobs:
             --amd64-checksums "$amd64_checksums" \
             --arm64-checksums "$aarch64_checksums"
 
+          node scripts/update-arch-release.mjs \
+            --version "$version" \
+            --amd64-checksums "$amd64_checksums" \
+            --pkgbuild packaging/arch/PKGBUILD
+
       - name: Remove downloaded release assets
         run: rm -rf release-assets
 
-      - name: Create flake update pull request
+      - name: Create Linux package metadata pull request
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GH_TOKEN }}
           base: main
-          branch: chore/update-flake-${{ steps.release_tag.outputs.tag }}
-          add-paths: flake.nix
+          branch: chore/update-linux-packaging-${{ steps.release_tag.outputs.tag }}
+          add-paths: |
+            flake.nix
+            packaging/arch/PKGBUILD
           delete-branch: true
-          title: 'chore(nix): update flake to ${{ steps.release_tag.outputs.tag }}'
-          commit-message: 'chore(nix): update flake to ${{ steps.release_tag.outputs.tag }}'
+          title: 'chore(linux): update package metadata to ${{ steps.release_tag.outputs.tag }}'
+          commit-message: 'chore(linux): update package metadata to ${{ steps.release_tag.outputs.tag }}'
           body: |
-            Update `flake.nix` to match `${{ steps.release_tag.outputs.tag }}` release assets.
+            Update `flake.nix` and the Arch Linux `PKGBUILD` to match `${{ steps.release_tag.outputs.tag }}` release assets.
 
             The hashes come from the Linux checksum files generated during the release build.
