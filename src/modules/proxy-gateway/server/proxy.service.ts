@@ -21,6 +21,7 @@ import {
 } from '../antigravity/types';
 import { normalizeObjectJsonSchema } from '../antigravity/JsonSchemaUtils';
 import { classifyStreamError } from '../antigravity/stream-error-utils';
+import { parseInternalSseChunk } from '../antigravity/internal-sse';
 import {
   OpenAIChatRequest,
   AnthropicChatRequest,
@@ -341,15 +342,22 @@ export class ProxyService {
           if (dataStr === '[DONE]') continue;
 
           try {
-            const json = JSON.parse(dataStr);
-
-            if (json) {
-              const startMsg = state.emitMessageStart(json);
-              if (startMsg) subscriber.next(startMsg);
+            const json = parseInternalSseChunk(dataStr);
+            if (!json) {
+              // The helper returns null instead of throwing, so route the
+              // undecodable payload through the same recovery the catch block
+              // used to perform: StreamingState needs it to close any open
+              // block and keep its consecutive-error count accurate.
+              const errorChunks = state.handleParseError(dataStr);
+              errorChunks.forEach((c) => subscriber.next(c));
+              continue;
             }
 
+            const startMsg = state.emitMessageStart(json);
+            if (startMsg) subscriber.next(startMsg);
+
             const candidate = json.candidates?.[0];
-            const part = candidate?.content?.parts?.[0];
+            const parts = candidate?.content?.parts;
 
             if (candidate?.finishReason) {
               lastFinishReason = candidate.finishReason;
@@ -358,9 +366,12 @@ export class ProxyService {
               lastUsageMetadata = json.usageMetadata;
             }
 
-            if (this.isGeminiPart(part)) {
-              const chunks = processor.process(part);
-              chunks.forEach((c) => subscriber.next(c));
+            if (Array.isArray(parts)) {
+              for (const part of parts) {
+                if (!this.isGeminiPart(part)) continue;
+                const chunks = processor.process(part);
+                chunks.forEach((c) => subscriber.next(c));
+              }
             }
 
             // Reset error state on successful parse
@@ -907,7 +918,7 @@ export class ProxyService {
           }
 
           try {
-            const parsed = JSON.parse(dataStr);
+            const parsed = parseInternalSseChunk(dataStr);
             const candidate = parsed?.candidates?.[0];
             const parts = candidate?.content?.parts;
             if (Array.isArray(parts)) {
@@ -1034,10 +1045,11 @@ export class ProxyService {
           }
 
           try {
-            const parsed: unknown = JSON.parse(dataString);
-            const payload = this.toUnknownRecord(parsed);
-            const responsePayload = this.toUnknownRecord(payload?.response) ?? payload;
-            const candidates = responsePayload?.candidates;
+            const normalized = parseInternalSseChunk(dataString);
+            if (!normalized) {
+              continue;
+            }
+            const candidates = normalized.candidates;
             if (!Array.isArray(candidates)) {
               continue;
             }
@@ -1215,7 +1227,10 @@ export class ProxyService {
           if (dataStr === '[DONE]') continue;
 
           try {
-            const json = JSON.parse(dataStr);
+            const json = parseInternalSseChunk(dataStr);
+            if (!json) {
+              continue;
+            }
             const candidate = json.candidates?.[0];
             const parts = candidate?.content?.parts || [];
 
