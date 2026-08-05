@@ -188,37 +188,43 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     // We just care that it didn't error with "Empty response stream"
   });
 
-  it('falls back to stream aggregation when non-stream response is empty', async () => {
+  it('aggregates a wrapped stream when the non-stream Gemini response is empty', async () => {
     const service = new TestableProxyService();
     const stream = new EventEmitter();
 
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.generateInternal.mockResolvedValueOnce({ candidates: [] });
     mockGeminiClient.streamGenerateInternal.mockResolvedValueOnce(stream);
 
-    const promise = (service as any).generateInternalWithStreamFallback(
-      { model: 'gemini-2.5-flash' },
-      'token',
-      undefined,
-    );
+    const promise = service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+      contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+    });
 
     setTimeout(() => {
       const payload = JSON.stringify({
-        candidates: [
-          {
-            content: { parts: [{ text: 'fallback text' }] },
-            finishReason: 'STOP',
-          },
-        ],
-        usageMetadata: { totalTokenCount: 5 },
+        response: {
+          candidates: [
+            {
+              content: { parts: [{ text: 'fallback text' }] },
+              finishReason: 'STOP',
+            },
+          ],
+          usageMetadata: { totalTokenCount: 5 },
+        },
       });
       stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
       stream.emit('end');
     }, 10);
 
     const result = await promise;
+    const candidate = result.candidates?.[0];
+    if (!candidate) {
+      throw new Error('Expected the wrapped fallback stream to produce a candidate');
+    }
+
     expect(mockGeminiClient.streamGenerateInternal).toHaveBeenCalledOnce();
-    expect(result.candidates[0].content.parts[0].text).toBe('fallback text');
-    expect(result.candidates[0].finishReason).toBe('STOP');
+    expect(candidate.content?.parts[0]?.text).toBe('fallback text');
+    expect(candidate.finishReason).toBe('STOP');
   });
 
   it('injects Claude beta headers when handling Gemini-compatible Claude models', async () => {
@@ -708,14 +714,27 @@ describe('ProxyService Protocol Parity Fixtures', () => {
     expect(openaiResponse.choices[0].finish_reason).toBe('tool_calls');
   });
 
-  it('converts internal SSE stream into OpenAI SSE chunks', async () => {
+  it('converts a wrapped internal stream into OpenAI Chat Completions chunks', async () => {
+    vi.clearAllMocks();
+    setServerConfig(createProxyConfig());
+
     const service = new TestableProxyService();
     const stream = new EventEmitter();
-    const observable = (service as any).processStreamResponse(stream, 'gpt-4o-mini');
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
+    mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
+
+    const result = await service.handleChatCompletions({
+      model: 'gpt-4o-mini',
+      stream: true,
+      messages: [{ role: 'user', content: 'Find the API key docs' }],
+    });
+    if (!(result instanceof Observable)) {
+      throw new Error('Expected an OpenAI-compatible SSE stream');
+    }
 
     const chunks: string[] = [];
     await new Promise<void>((resolve, reject) => {
-      observable.subscribe({
+      result.subscribe({
         next: (chunk: string) => {
           chunks.push(chunk);
         },
@@ -724,18 +743,26 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       });
 
       const payload = JSON.stringify({
-        candidates: [
-          {
-            content: {
-              parts: [
-                { thought: true, text: 'reasoning text' },
-                { functionCall: { id: 'fc1', name: 'search_docs', args: { query: 'api key' } } },
-                { text: 'final answer' },
-              ],
+        response: {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  { thought: true, text: 'reasoning text' },
+                  {
+                    functionCall: {
+                      id: 'fc1',
+                      name: 'search_docs',
+                      args: { query: 'api key' },
+                    },
+                  },
+                  { text: 'final answer' },
+                ],
+              },
+              finishReason: 'STOP',
             },
-            finishReason: 'STOP',
-          },
-        ],
+          ],
+        },
       });
 
       stream.emit('data', Buffer.from(`data: ${payload}\n`));

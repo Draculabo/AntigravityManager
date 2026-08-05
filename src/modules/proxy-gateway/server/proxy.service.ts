@@ -18,6 +18,7 @@ import {
   ClaudeResponse,
   GeminiInternalRequest,
   GeminiPart as InternalGeminiPart,
+  type UsageMetadata,
 } from '../antigravity/types';
 import { normalizeObjectJsonSchema } from '../antigravity/JsonSchemaUtils';
 import { classifyStreamError } from '../antigravity/stream-error-utils';
@@ -318,7 +319,7 @@ export class ProxyService {
       const processor = new PartProcessor(state);
 
       let lastFinishReason: string | undefined;
-      let lastUsageMetadata: Record<string, unknown> | undefined;
+      let lastUsageMetadata: UsageMetadata | undefined;
 
       let receivedData = false;
       const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Claude-SSE', () => {
