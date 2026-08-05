@@ -1,104 +1,133 @@
-import { execFile } from 'node:child_process';
+import type { KoffiFunc } from 'koffi';
 
-const WINDOWS_POWER_THROTTLING_COMMAND_TIMEOUT_MS = 15_000;
+const PROCESS_SET_INFORMATION = 0x0200;
+const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+const PROCESS_POWER_THROTTLING = 4;
+const PROCESS_POWER_THROTTLING_CURRENT_VERSION = 1;
+const PROCESS_POWER_THROTTLING_EXECUTION_SPEED = 0x1;
+const MAX_WINDOWS_PROCESS_ID = 0xffff_ffff;
 
-export function buildDisablePowerThrottlingScript(pid: number): string {
-  if (!Number.isSafeInteger(pid) || pid <= 0) {
+/**
+ * Field order and 32-bit widths must match the native structure.
+ * @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/ns-processthreadsapi-process_power_throttling_state
+ */
+interface ProcessPowerThrottlingState {
+  Version: number;
+  ControlMask: number;
+  StateMask: number;
+}
+
+interface WindowsPowerApi {
+  closeHandle: KoffiFunc<(handle: bigint) => number>;
+  getLastError: KoffiFunc<() => number>;
+  openProcess: KoffiFunc<
+    (desiredAccess: number, inheritHandle: number, processId: number) => bigint | null
+  >;
+  processPowerThrottlingStateSize: number;
+  setProcessInformation: KoffiFunc<
+    (
+      processHandle: bigint,
+      processInformationClass: number,
+      processInformation: ProcessPowerThrottlingState,
+      processInformationSize: number,
+    ) => number
+  >;
+}
+
+let windowsPowerApiPromise: Promise<WindowsPowerApi> | null = null;
+
+async function createWindowsPowerApi(): Promise<WindowsPowerApi> {
+  const { default: koffi } = await import('koffi');
+  const kernel32 = koffi.load('kernel32.dll');
+  const processPowerThrottlingState = koffi.struct('PROCESS_POWER_THROTTLING_STATE', {
+    Version: 'uint32_t',
+    ControlMask: 'uint32_t',
+    StateMask: 'uint32_t',
+  });
+  const processPowerThrottlingStatePointer = koffi.pointer(processPowerThrottlingState);
+
+  const openProcess: WindowsPowerApi['openProcess'] = kernel32.func(
+    '__stdcall',
+    'OpenProcess',
+    'void *',
+    ['uint32_t', 'int32_t', 'uint32_t'],
+  );
+  const setProcessInformation: WindowsPowerApi['setProcessInformation'] = kernel32.func(
+    '__stdcall',
+    'SetProcessInformation',
+    'int32_t',
+    ['void *', 'int32_t', processPowerThrottlingStatePointer, 'uint32_t'],
+  );
+  const closeHandle: WindowsPowerApi['closeHandle'] = kernel32.func(
+    '__stdcall',
+    'CloseHandle',
+    'int32_t',
+    ['void *'],
+  );
+  const getLastError: WindowsPowerApi['getLastError'] = kernel32.func(
+    '__stdcall',
+    'GetLastError',
+    'uint32_t',
+    [],
+  );
+
+  return {
+    closeHandle,
+    getLastError,
+    openProcess,
+    processPowerThrottlingStateSize: koffi.sizeof(processPowerThrottlingState),
+    setProcessInformation,
+  };
+}
+
+function getWindowsPowerApi(): Promise<WindowsPowerApi> {
+  windowsPowerApiPromise ??= createWindowsPowerApi();
+  return windowsPowerApiPromise;
+}
+
+function validateWindowsProcessId(pid: number): void {
+  if (!Number.isSafeInteger(pid) || pid <= 0 || pid > MAX_WINDOWS_PROCESS_ID) {
     throw new Error(`Invalid process ID: ${pid}`);
   }
-
-  return `
-Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-
-public static class AntigravityPowerThrottling {
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ProcessPowerThrottlingState {
-        public UInt32 Version;
-        public UInt32 ControlMask;
-        public UInt32 StateMask;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(UInt32 desiredAccess, bool inheritHandle, UInt32 processId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool SetProcessInformation(
-        IntPtr processHandle,
-        Int32 processInformationClass,
-        ref ProcessPowerThrottlingState processInformation,
-        UInt32 processInformationSize
-    );
-
-    [DllImport("kernel32.dll")]
-    private static extern bool CloseHandle(IntPtr handle);
-
-    public static Int32 Disable(UInt32 processId) {
-        const UInt32 ProcessSetInformation = 0x0200;
-        const UInt32 ProcessQueryLimitedInformation = 0x1000;
-        const UInt32 ProcessPowerThrottlingExecutionSpeed = 0x1;
-        const Int32 ProcessPowerThrottling = 4;
-
-        IntPtr handle = OpenProcess(
-            ProcessSetInformation | ProcessQueryLimitedInformation,
-            false,
-            processId
-        );
-        if (handle == IntPtr.Zero) {
-            return Marshal.GetLastWin32Error();
-        }
-
-        try {
-            ProcessPowerThrottlingState state = new ProcessPowerThrottlingState {
-                Version = 1,
-                ControlMask = ProcessPowerThrottlingExecutionSpeed,
-                StateMask = 0
-            };
-            bool succeeded = SetProcessInformation(
-                handle,
-                ProcessPowerThrottling,
-                ref state,
-                (UInt32)Marshal.SizeOf(state)
-            );
-            return succeeded ? 0 : Marshal.GetLastWin32Error();
-        } finally {
-            CloseHandle(handle);
-        }
-    }
-}
-'@
-
-$result = [AntigravityPowerThrottling]::Disable(${pid})
-if ($result -ne 0) {
-    Write-Error "SetProcessInformation failed with Win32 error $result"
-    exit $result
-}
-`.trim();
 }
 
+/**
+ * Disable execution-speed throttling for a Windows process without changing the system sleep policy.
+ */
 export async function disableWindowsPowerThrottling(pid = process.pid): Promise<void> {
   if (process.platform !== 'win32') {
     return;
   }
 
-  const script = buildDisablePowerThrottlingScript(pid);
-  await new Promise<void>((resolve, reject) => {
-    execFile(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script],
-      {
-        encoding: 'utf8',
-        timeout: WINDOWS_POWER_THROTTLING_COMMAND_TIMEOUT_MS,
-        windowsHide: true,
-      },
-      (error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
-      },
+  validateWindowsProcessId(pid);
+  const windowsPowerApi = await getWindowsPowerApi();
+  const processHandle = windowsPowerApi.openProcess(
+    PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION,
+    0,
+    pid,
+  );
+  if (!processHandle) {
+    throw new Error(`OpenProcess failed with Win32 error ${windowsPowerApi.getLastError()}`);
+  }
+
+  try {
+    const state: ProcessPowerThrottlingState = {
+      Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+      ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+      StateMask: 0,
+    };
+    const succeeded = windowsPowerApi.setProcessInformation(
+      processHandle,
+      PROCESS_POWER_THROTTLING,
+      state,
+      windowsPowerApi.processPowerThrottlingStateSize,
     );
-  });
+    if (succeeded === 0) {
+      throw new Error(
+        `SetProcessInformation failed with Win32 error ${windowsPowerApi.getLastError()}`,
+      );
+    }
+  } finally {
+    windowsPowerApi.closeHandle(processHandle);
+  }
 }

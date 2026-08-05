@@ -154,27 +154,39 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   hooks: {
-    packageAfterCopy: async (_config, buildPath) => {
+    packageAfterCopy: async (_config, buildPath, _electronVersion, platform, arch) => {
       // Copy native modules to the packaged app
       const nodeModulesPath = path.join(buildPath, 'node_modules');
       if (!fs.existsSync(nodeModulesPath)) {
         fs.mkdirSync(nodeModulesPath, { recursive: true });
       }
 
-      const copyModuleRecursive = (moduleName: string) => {
+      const copyModuleRecursive = (moduleName: string, required = false) => {
         const srcPath = path.join(process.cwd(), 'node_modules', moduleName);
         const destPath = path.join(nodeModulesPath, moduleName);
 
         if (fs.existsSync(srcPath)) {
           fs.cpSync(srcPath, destPath, { recursive: true });
           console.log(`Copied native module: ${moduleName}`);
-        } else {
-          console.warn(`Native module not found: ${moduleName}`);
+          return;
         }
+
+        if (required) {
+          throw new Error(
+            `Required native module ${moduleName} is not installed for ${platform}-${arch}`,
+          );
+        }
+
+        console.warn(`Native module not found: ${moduleName}`);
       };
 
       for (const moduleName of nativeModules) {
         copyModuleRecursive(moduleName);
+      }
+
+      if (platform === 'win32') {
+        copyModuleRecursive('koffi', true);
+        copyModuleRecursive(`@koromix/koffi-${platform}-${arch}`, true);
       }
 
       // Copy assets to resources folder

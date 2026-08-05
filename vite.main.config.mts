@@ -10,6 +10,7 @@ const mainProcessExternals = [
   'bufferutil',
   'better-sqlite3',
   'keytar',
+  'koffi',
   '@napi-rs/keyring',
   '@opentelemetry/api',
   '@opentelemetry/exporter-metrics-otlp-http',
