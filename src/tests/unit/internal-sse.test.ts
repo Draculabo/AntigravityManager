@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Readable } from 'node:stream';
 import { lastValueFrom, Observable, toArray } from 'rxjs';
 
-import { parseInternalSseChunk } from '@/modules/proxy-gateway/antigravity/internal-sse';
+import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
 import { ProxyService } from '@/modules/proxy-gateway/server/proxy.service';
 
-describe('parseInternalSseChunk', () => {
+describe('decodeInternalSseData', () => {
   it('unwraps a v1internal-wrapped chunk so candidates/usage/model/id are reachable at the top level', () => {
     const raw = JSON.stringify({
       response: {
@@ -18,13 +18,17 @@ describe('parseInternalSseChunk', () => {
       metadata: {},
     });
 
-    const result = parseInternalSseChunk(raw);
+    const result = decodeInternalSseData(raw);
 
-    expect(result).not.toBeNull();
-    expect(result?.candidates).toEqual([{ content: { role: 'model', parts: [{ text: 'PONG' }] } }]);
-    expect(result?.usageMetadata).toEqual({ promptTokenCount: 9, candidatesTokenCount: 2 });
-    expect(result?.modelVersion).toBe('gemini-3-flash');
-    expect(result?.responseId).toBe('xmJrapmCPdC5vdIP1t_bwA8');
+    expect(result).toEqual({
+      kind: 'response',
+      response: {
+        candidates: [{ content: { role: 'model', parts: [{ text: 'PONG' }] } }],
+        usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 2 },
+        modelVersion: 'gemini-3-flash',
+        responseId: 'xmJrapmCPdC5vdIP1t_bwA8',
+      },
+    });
   });
 
   it('returns an already-bare chunk unchanged', () => {
@@ -35,44 +39,48 @@ describe('parseInternalSseChunk', () => {
       responseId: 'resp_1',
     };
 
-    const result = parseInternalSseChunk(JSON.stringify(bare));
+    const result = decodeInternalSseData(JSON.stringify(bare));
 
-    expect(result).toEqual(bare);
+    expect(result).toEqual({ kind: 'response', response: bare });
   });
 
   it('does not double-unwrap a payload carrying both response and a top-level candidates', () => {
-    const raw = JSON.stringify({
+    const payload = {
       candidates: [{ content: { role: 'model', parts: [{ text: 'top-level' }] } }],
       response: {
         candidates: [{ content: { role: 'model', parts: [{ text: 'nested' }] } }],
       },
-    });
+    };
 
-    const result = parseInternalSseChunk(raw);
+    const result = decodeInternalSseData(JSON.stringify(payload));
 
-    expect(result?.candidates).toEqual([
-      { content: { role: 'model', parts: [{ text: 'top-level' }] } },
-    ]);
+    expect(result).toEqual({ kind: 'response', response: payload });
   });
 
-  it('is total: malformed JSON, [DONE], and empty strings never throw', () => {
-    expect(() => parseInternalSseChunk('not json')).not.toThrow();
-    expect(parseInternalSseChunk('not json')).toBeNull();
+  it('keeps valid response metadata when a chunk has no candidates', () => {
+    const payload = {
+      usageMetadata: { promptTokenCount: 3, totalTokenCount: 3 },
+      modelVersion: 'gemini-3-flash',
+      responseId: 'metadata-only',
+    };
 
-    expect(() => parseInternalSseChunk('[DONE]')).not.toThrow();
-    expect(parseInternalSseChunk('[DONE]')).toBeNull();
+    expect(decodeInternalSseData(JSON.stringify(payload))).toEqual({
+      kind: 'response',
+      response: payload,
+    });
+  });
 
-    expect(() => parseInternalSseChunk('')).not.toThrow();
-    expect(parseInternalSseChunk('')).toBeNull();
+  it('ignores terminal markers and empty payloads', () => {
+    expect(decodeInternalSseData('[DONE]')).toEqual({ kind: 'ignored' });
+    expect(decodeInternalSseData('')).toEqual({ kind: 'ignored' });
+    expect(decodeInternalSseData('   ')).toEqual({ kind: 'ignored' });
+  });
 
-    expect(() => parseInternalSseChunk('   ')).not.toThrow();
-    expect(parseInternalSseChunk('   ')).toBeNull();
-
-    expect(() => parseInternalSseChunk('42')).not.toThrow();
-    expect(parseInternalSseChunk('42')).toBeNull();
-
-    expect(() => parseInternalSseChunk('[1,2,3]')).not.toThrow();
-    expect(parseInternalSseChunk('[1,2,3]')).toBeNull();
+  it('classifies malformed and non-object payloads as invalid without throwing', () => {
+    expect(decodeInternalSseData('not json')).toEqual({ kind: 'invalid' });
+    expect(decodeInternalSseData('null')).toEqual({ kind: 'invalid' });
+    expect(decodeInternalSseData('42')).toEqual({ kind: 'invalid' });
+    expect(decodeInternalSseData('[1,2,3]')).toEqual({ kind: 'invalid' });
   });
 });
 
@@ -142,7 +150,7 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
 
     // StreamingState only emits this once its consecutive-error counter passes
     // its threshold, so seeing it proves handleParseError still runs for
-    // payloads the helper resolves to null instead of throwing on.
+    // payloads the decoder classifies as invalid without throwing.
     const errorEvent = events.find((event) => event.type === 'error');
     expect(errorEvent).toMatchObject({
       error: expect.objectContaining({ code: 'stream_decode_error' }),

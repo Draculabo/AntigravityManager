@@ -38,7 +38,7 @@ import { sanitizeSystemInstructionForCache } from '../antigravity/StablePromptPr
 import { classifyStreamError } from '../antigravity/stream-error-utils';
 import { SignatureStore } from '../antigravity/SignatureStore';
 import { decodeSignature } from '../antigravity/signature-utils';
-import { parseInternalSseChunk } from '../antigravity/internal-sse';
+import { decodeInternalSseData } from '../antigravity/internal-sse';
 import {
   OpenAIChatRequest,
   AnthropicChatRequest,
@@ -444,16 +444,23 @@ export class ProxyService {
           const trimmed = line.trim();
           if (!trimmed.startsWith('data: ')) continue;
           const dataStr = trimmed.slice(6);
-          if (dataStr === '[DONE]') continue;
+
+          const decoded = decodeInternalSseData(dataStr);
+          if (decoded.kind === 'ignored') {
+            continue;
+          }
+          if (decoded.kind === 'invalid') {
+            this.logger.error('Stream parse error: invalid v1internal SSE payload');
+            const errorChunks = state.handleParseError(dataStr);
+            errorChunks.forEach((c) => subscriber.next(c));
+            continue;
+          }
 
           try {
-            const json = JSON.parse(dataStr);
-            const response = json.response ?? json;
+            const response = decoded.response;
 
-            if (response) {
-              const startMsg = state.emitMessageStart(response);
-              if (startMsg) subscriber.next(startMsg);
-            }
+            const startMsg = state.emitMessageStart(response);
+            if (startMsg) subscriber.next(startMsg);
 
             const candidate = response.candidates?.[0];
             const parts = candidate?.content?.parts;
@@ -1100,13 +1107,15 @@ export class ProxyService {
           }
 
           const dataStr = trimmed.slice(6);
-          if (dataStr === '[DONE]') {
-            continue;
-          }
 
           try {
-            const parsed = parseInternalSseChunk(dataStr);
-            const candidate = parsed?.candidates?.[0];
+            const decoded = decodeInternalSseData(dataStr);
+            if (decoded.kind !== 'response') {
+              continue;
+            }
+
+            const response = decoded.response;
+            const candidate = response.candidates?.[0];
             const parts = candidate?.content?.parts;
             if (Array.isArray(parts)) {
               mergedParts.push(
@@ -1117,11 +1126,11 @@ export class ProxyService {
             if (candidate?.finishReason) {
               finishReason = candidate.finishReason;
             }
-            if (parsed?.usageMetadata) {
-              usageMetadata = parsed.usageMetadata;
+            if (response.usageMetadata) {
+              usageMetadata = response.usageMetadata;
             }
           } catch {
-            // Ignore malformed chunks and continue collecting valid parts.
+            // Preserve compatibility: ignore malformed response fields and keep collecting.
           }
         }
       });
@@ -1249,21 +1258,21 @@ export class ProxyService {
           }
 
           const dataString = trimmed.slice(6);
-          if (dataString === '[DONE]') {
-            continue;
-          }
 
           try {
-            const parsed: unknown = JSON.parse(dataString);
-            const payload = this.toUnknownRecord(parsed);
-            const responsePayload = this.toUnknownRecord(payload?.response) ?? payload;
-            const usageMetadata = this.toGeminiUsageMetadata(responsePayload?.usageMetadata);
+            const decoded = decodeInternalSseData(dataString);
+            if (decoded.kind !== 'response') {
+              continue;
+            }
+
+            const responsePayload = decoded.response;
+            const usageMetadata = this.toGeminiUsageMetadata(responsePayload.usageMetadata);
             if (usageMetadata) {
               mapper.setUsage(
                 toOpenAIResponsesUsage(toOpenAIUsageFromGeminiUsageMetadata(usageMetadata)),
               );
             }
-            const candidates = responsePayload?.candidates;
+            const candidates = responsePayload.candidates;
             if (!Array.isArray(candidates)) {
               continue;
             }
@@ -1295,7 +1304,7 @@ export class ProxyService {
               return;
             }
           } catch {
-            // Preserve the existing compatibility behavior: malformed upstream chunks are ignored.
+            // Preserve compatibility: ignore per-chunk mapping failures.
           }
         }
       });
@@ -1489,16 +1498,14 @@ export class ProxyService {
           if (!trimmed.startsWith('data: ')) continue;
 
           const dataStr = trimmed.slice(6);
-          if (dataStr === '[DONE]') continue;
 
           try {
-            const parsed: unknown = JSON.parse(dataStr);
-            const payload = this.toUnknownRecord(parsed);
-            const responsePayload = this.toUnknownRecord(payload?.response) ?? payload;
-            if (!responsePayload) {
+            const decoded = decodeInternalSseData(dataStr);
+            if (decoded.kind !== 'response') {
               continue;
             }
 
+            const responsePayload = decoded.response;
             const usageMetadata = this.toGeminiUsageMetadata(responsePayload.usageMetadata);
             if (usageMetadata) {
               lastUsage = toOpenAIUsageFromGeminiUsageMetadata(usageMetadata);
@@ -1673,7 +1680,7 @@ export class ProxyService {
               }
             }
           } catch {
-            // ignore parse errors
+            // Preserve compatibility: ignore per-chunk mapping failures.
           }
         }
       });

@@ -269,84 +269,6 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(receivedChunks.join('')).toContain('"text":"wrapped answer"');
   });
 
-  it('preserves every part from a multi-part Anthropic stream event', async () => {
-    const service = new TestableProxyService();
-    const stream = new EventEmitter();
-    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
-    mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
-
-    const result = (await service.handleAnthropicMessages({
-      model: 'gemini-3.5-flash',
-      stream: true,
-      max_tokens: 256,
-      messages: [{ role: 'user', content: 'hello' }],
-    } as any)) as Observable<string>;
-    const receivedChunks: string[] = [];
-    const done = new Promise<void>((resolve, reject) => {
-      result.subscribe({
-        next: (chunk) => receivedChunks.push(chunk),
-        error: reject,
-        complete: resolve,
-      });
-    });
-
-    const payload = JSON.stringify({
-      candidates: [
-        {
-          content: {
-            parts: [{ text: 'reasoning', thought: true }, { text: 'final answer' }],
-          },
-          finishReason: 'STOP',
-        },
-      ],
-    });
-    stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
-    stream.emit('end');
-    await done;
-
-    const response = receivedChunks.join('');
-    expect(response).toContain('"type":"thinking_delta"');
-    expect(response).toContain('"text":"final answer"');
-  });
-
-  it('preserves text from wrapped Anthropic stream events', async () => {
-    const service = new TestableProxyService();
-    const stream = new EventEmitter();
-    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
-    mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
-
-    const result = (await service.handleAnthropicMessages({
-      model: 'gemini-3.5-flash',
-      stream: true,
-      max_tokens: 256,
-      messages: [{ role: 'user', content: 'hello' }],
-    } as any)) as Observable<string>;
-    const receivedChunks: string[] = [];
-    const done = new Promise<void>((resolve, reject) => {
-      result.subscribe({
-        next: (chunk) => receivedChunks.push(chunk),
-        error: reject,
-        complete: resolve,
-      });
-    });
-
-    const payload = JSON.stringify({
-      response: {
-        candidates: [
-          {
-            content: { parts: [{ text: 'wrapped answer' }] },
-            finishReason: 'STOP',
-          },
-        ],
-      },
-    });
-    stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
-    stream.emit('end');
-    await done;
-
-    expect(receivedChunks.join('')).toContain('"text":"wrapped answer"');
-  });
-
   it('aggregates a wrapped stream when the non-stream Gemini response is empty', async () => {
     const service = new TestableProxyService();
     const stream = new EventEmitter();
@@ -371,6 +293,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
           usageMetadata: { totalTokenCount: 5 },
         },
       });
+      stream.emit('data', Buffer.from('data: not json\n\n'));
       stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
       stream.emit('end');
     }, 10);
@@ -401,17 +324,18 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(headers['anthropic-beta']).toContain('claude-code-20250219');
   });
 
-  it('tolerates malformed partial chunks and still completes Anthropic stream', async () => {
+  it('resets Anthropic parse-error recovery after a valid chunk', async () => {
     const service = new TestableProxyService();
     const stream = new EventEmitter();
     const resultObservable = service.testProcessStream(stream);
 
     let completed = false;
     let errored = false;
+    const receivedChunks: string[] = [];
 
     const done = new Promise<void>((resolve) => {
       resultObservable.subscribe({
-        next: () => {},
+        next: (chunk) => receivedChunks.push(chunk),
         error: () => {
           errored = true;
           resolve();
@@ -424,11 +348,16 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     });
 
     setTimeout(() => {
-      stream.emit('data', Buffer.from('data: {"invalid_json":\n\n'));
+      for (let index = 0; index < 3; index++) {
+        stream.emit('data', Buffer.from('data: {"invalid_json":\n\n'));
+      }
       const validPayload = JSON.stringify({
         candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
       });
       stream.emit('data', Buffer.from(`data: ${validPayload}\n\n`));
+      for (let index = 0; index < 3; index++) {
+        stream.emit('data', Buffer.from('data: {"invalid_json":\n\n'));
+      }
       stream.emit('end');
     }, 10);
 
@@ -436,6 +365,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
 
     expect(errored).toBe(false);
     expect(completed).toBe(true);
+    expect(receivedChunks.join('')).not.toContain('stream_decode_error');
   });
 
   it('raises error for empty Gemini passthrough stream', async () => {
@@ -982,6 +912,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
         },
       });
 
+      stream.emit('data', Buffer.from('data: not json\n'));
       stream.emit('data', Buffer.from(`data: ${payload}\n`));
       stream.emit('end');
     });

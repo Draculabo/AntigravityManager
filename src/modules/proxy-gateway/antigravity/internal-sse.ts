@@ -1,11 +1,17 @@
 import { isObjectLike } from 'lodash-es';
 import type { GeminiResponse } from './types';
 
-/**
- * A single normalised Gemini response object decoded from one `v1internal`
- * SSE `data:` payload.
- */
-export type NormalizedInternalSseChunk = GeminiResponse;
+export type InternalSseDecodeResult =
+  | {
+      kind: 'response';
+      response: GeminiResponse;
+    }
+  | {
+      kind: 'ignored';
+    }
+  | {
+      kind: 'invalid';
+    };
 
 type ParsedInternalSsePayload = GeminiResponse & {
   response?: unknown;
@@ -23,28 +29,30 @@ type ParsedInternalSsePayload = GeminiResponse & {
  * read `candidates` / `usageMetadata` / `modelVersion` / `responseId` off the
  * top level unconditionally.
  *
- * Total: never throws. Malformed JSON, `[DONE]`, empty strings and non-object
- * payloads all resolve to `null` ("nothing here").
+ * Only the root and envelope containers are validated here. Protocol adapters
+ * keep responsibility for narrowing nested response fields before use.
+ *
+ * Total: never throws. Protocol-specific recovery remains with each caller.
  */
-export function parseInternalSseChunk(rawData: string): NormalizedInternalSseChunk | null {
+export function decodeInternalSseData(rawData: string): InternalSseDecodeResult {
   if (typeof rawData !== 'string') {
-    return null;
+    return { kind: 'invalid' };
   }
 
   const trimmed = rawData.trim();
   if (!trimmed || trimmed === '[DONE]') {
-    return null;
+    return { kind: 'ignored' };
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    return null;
+    return { kind: 'invalid' };
   }
 
   if (!isObjectLike(parsed) || Array.isArray(parsed)) {
-    return null;
+    return { kind: 'invalid' };
   }
 
   const payload = parsed as ParsedInternalSsePayload;
@@ -54,8 +62,14 @@ export function parseInternalSseChunk(rawData: string): NormalizedInternalSseChu
   // already unwrapped, so both `v1internal` (wrapped) and
   // `generativelanguage` (bare) shapes survive this same helper.
   if (isObjectLike(envelope) && !Array.isArray(envelope) && !('candidates' in payload)) {
-    return envelope as NormalizedInternalSseChunk;
+    return {
+      kind: 'response',
+      response: envelope as GeminiResponse,
+    };
   }
 
-  return payload;
+  return {
+    kind: 'response',
+    response: payload,
+  };
 }

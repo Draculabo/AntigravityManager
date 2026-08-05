@@ -52,6 +52,7 @@ describe('ProxyService Responses streaming', () => {
   it('converts nested Gemini SSE payloads into Responses events', async () => {
     const service = new ProxyService({} as never, {} as never);
     const upstreamStream = Readable.from([
+      Buffer.from('data: not json\n\n'),
       Buffer.from(
         'data: {"response":{"candidates":[{"content":{"parts":[{"text":"Checking docs"},{"functionCall":{"id":"call_search_1","name":"search_docs","args":{"query":"Gemini API"}}}]},"groundingMetadata":{"webSearchQueries":["Gemini API"]}}]}}\n\n',
       ),
