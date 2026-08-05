@@ -98,32 +98,39 @@ async function isAnyWindowsTargetImageRunning(
 }
 
 async function killWindowsTargetImages(target?: AntigravityAppTarget | null): Promise<boolean> {
-  let killedAny = false;
   for (const imageName of getWindowsTargetImageNames(target)) {
-    if (await killWindowsImageTree(imageName)) {
-      killedAny = true;
+    if (!(await killWindowsImageTree(imageName))) {
+      return false;
     }
   }
 
-  return killedAny;
+  return true;
 }
 
-function findWindowsAntigravityProcesses(target?: AntigravityAppTarget | null): ProcessInfo[] {
+async function findWindowsAntigravityProcesses(
+  target?: AntigravityAppTarget | null,
+): Promise<ProcessInfo[]> {
   const processMap = new Map<number, ProcessInfo>();
+  const targetExecutablePath = getAntigravityExecutablePath(target);
 
   for (const imageName of getWindowsTargetImageNames(target)) {
-    const processes = queryWindowsProcessesByImageName(imageName);
+    const processes = await queryWindowsProcessesByImageName(imageName);
     if (!processes) {
       continue;
     }
 
     for (const processItem of processes) {
+      const executablePath =
+        targetExecutablePath &&
+        path.win32.basename(targetExecutablePath).toLowerCase() === processItem.name.toLowerCase()
+          ? targetExecutablePath
+          : '';
       processMap.set(processItem.pid, {
         pid: processItem.pid,
-        ppid: 0,
+        ppid: processItem.ppid,
         name: processItem.name,
-        bin: processItem.executablePath,
-        cmd: processItem.commandLine,
+        bin: executablePath,
+        cmd: executablePath ? `"${executablePath}"` : processItem.name,
       });
     }
   }

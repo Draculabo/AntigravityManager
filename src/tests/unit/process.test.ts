@@ -108,16 +108,118 @@ import {
   isTargetAntigravityProcessCandidate,
 } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
+import {
+  isSafeWindowsImageName,
+  killWindowsImageTree,
+  queryWindowsProcessesByImageName,
+} from '@/shared/platform/windowsProcess';
+
+describe('Windows process utilities', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(process, 'arch', { value: 'x64', configurable: true });
+  });
+
+  it('should execute taskkill through the Windows system binary with argument isolation', async () => {
+    psListMock
+      .mockResolvedValueOnce([
+        { name: 'Antigravity IDE.exe', pid: 12345, ppid: 1000 },
+        { name: 'Unrelated.exe', pid: 23456, ppid: 1000 },
+      ])
+      .mockResolvedValueOnce([]);
+    childProcessMock.execFile.mockImplementation(
+      (
+        _file: string,
+        _arguments: string[],
+        _options: unknown,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(null, '', '');
+        return { kill: vi.fn() };
+      },
+    );
+
+    await expect(killWindowsImageTree('Antigravity IDE.exe')).resolves.toBe(true);
+
+    expect(childProcessMock.execFile).toHaveBeenCalledWith(
+      expect.stringMatching(/[\\/]System32[\\/]taskkill\.exe$/i),
+      ['/F', '/T', '/PID', '12345'],
+      expect.objectContaining({ timeout: 3_000, windowsHide: true }),
+      expect.any(Function),
+    );
+    expect(childProcessMock.execSync).not.toHaveBeenCalled();
+    expect(psListMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('should report failure when a matching process starts during termination', async () => {
+    psListMock
+      .mockResolvedValueOnce([{ name: 'Antigravity.exe', pid: 12345, ppid: 1000 }])
+      .mockResolvedValueOnce([{ name: 'Antigravity.exe', pid: 23456, ppid: 1000 }]);
+    childProcessMock.execFile.mockImplementation(
+      (
+        _file: string,
+        _arguments: string[],
+        _options: unknown,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(null, '', '');
+        return { kill: vi.fn() };
+      },
+    );
+
+    await expect(killWindowsImageTree('Antigravity.exe')).resolves.toBe(false);
+
+    expect(childProcessMock.execFile).toHaveBeenCalledTimes(1);
+    expect(psListMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('should use find-process for Windows ARM64 process queries', async () => {
+    Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+    vi.mocked(findProcess).mockResolvedValue([
+      {
+        name: 'Antigravity.exe',
+        pid: 12345,
+        ppid: 1000,
+        cmd: 'Antigravity.exe',
+      },
+    ]);
+
+    await expect(queryWindowsProcessesByImageName('Antigravity.exe')).resolves.toEqual([
+      {
+        name: 'Antigravity.exe',
+        pid: 12345,
+        ppid: 1000,
+      },
+    ]);
+    expect(findProcess).toHaveBeenCalledWith('name', 'Antigravity.exe', { strict: true });
+    expect(psListMock).not.toHaveBeenCalled();
+  });
+
+  it('should reject invalid Windows image names before starting taskkill', async () => {
+    expect(isSafeWindowsImageName('Antigravity.exe')).toBe(true);
+    expect(isSafeWindowsImageName("O'Brien & Company.exe")).toBe(true);
+    expect(isSafeWindowsImageName('..\\Antigravity.exe')).toBe(false);
+    expect(isSafeWindowsImageName('*.exe')).toBe(false);
+
+    await expect(killWindowsImageTree('..\\Antigravity.exe')).rejects.toThrow(
+      'Invalid Windows executable image name',
+    );
+    expect(childProcessMock.execFile).not.toHaveBeenCalled();
+    expect(childProcessMock.execSync).not.toHaveBeenCalled();
+  });
+});
 
 describe('Process Handler', () => {
   const mockFindProcess = findProcess as unknown as ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(process, 'arch', { value: 'x64', configurable: true });
     mockFindProcess.mockReset();
     mockFindProcess.mockResolvedValue([]);
+    vi.mocked(getAntigravityExecutablePath).mockReturnValue('/path/to/antigravity');
     psListMock.mockReset();
-    psListMock.mockRejectedValue(new Error('native process list unavailable'));
+    psListMock.mockRejectedValue(new Error('ps-list unavailable'));
     childProcessMock.execFile.mockImplementation(
       (
         _file: string,
@@ -141,7 +243,9 @@ describe('Process Handler', () => {
     it('should use ps-list for the Windows Classic running state', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
-      psListMock.mockResolvedValue([{ name: 'Antigravity.exe', pid: 12345, ppid: 1000 }]);
+      psListMock
+        .mockResolvedValueOnce([{ name: 'Antigravity.exe', pid: 12345, ppid: 1000 }])
+        .mockResolvedValueOnce([]);
 
       const result = await isProcessRunning('classic');
 
@@ -278,13 +382,15 @@ describe('Process Handler', () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
 
-      mockFindProcess.mockResolvedValue([
-        {
-          pid: 12345,
-          name: 'Antigravity.exe',
-          cmd: '"C:\\Program Files\\Antigravity\\Antigravity.exe" --user-data-dir "D:\\AG Profile"',
-        },
-      ]);
+      mockFindProcess.mockImplementation(async () => {
+        return [
+          {
+            pid: 12345,
+            name: 'Antigravity.exe',
+            cmd: '"C:\\Program Files\\Antigravity\\Antigravity.exe" --user-data-dir "D:\\AG Profile"',
+          },
+        ];
+      });
 
       await isProcessRunning();
 
@@ -342,16 +448,9 @@ describe('Process Handler', () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
 
-      childProcessMock.execSync.mockImplementation((command: string) => {
-        if (command.startsWith('wmic')) {
-          return `
-CommandLine="C:\\Program Files\\Antigravity\\Antigravity.exe"
-ExecutablePath=C:\\Program Files\\Antigravity\\Antigravity.exe
-ProcessId=12345
-`;
-        }
-        return '';
-      });
+      psListMock
+        .mockRejectedValueOnce(new Error('ps-list unavailable'))
+        .mockResolvedValueOnce([{ name: 'Antigravity.exe', pid: 12345, ppid: 1000 }]);
       childProcessMock.exec.mockImplementation(
         (
           _command: string,
@@ -362,11 +461,10 @@ ProcessId=12345
           return { kill: vi.fn() };
         },
       );
-      mockFindProcess.mockRejectedValue(
-        new Error(
-          "Command '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance -className win32_process | select Name,ProcessId,ParentProcessId,CommandLine,ExecutablePath' terminated with code: 1",
-        ),
+      const processScanError = new Error(
+        "Command '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance -className win32_process | select Name,ProcessId,ParentProcessId,CommandLine,ExecutablePath' terminated with code: 1",
       );
+      mockFindProcess.mockRejectedValue(processScanError);
 
       const result = await isProcessRunning('classic');
 
@@ -405,41 +503,75 @@ ProcessId=12345
   });
 
   describe('closeAntigravity', () => {
-    it('should use taskkill for default Windows Classic close without process scanning', async () => {
+    it('should use taskkill for the matching Windows Classic process', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
-      childProcessMock.execSync.mockReturnValue('');
+      psListMock
+        .mockResolvedValueOnce([{ name: 'Antigravity.exe', pid: 12345, ppid: 1000 }])
+        .mockResolvedValueOnce([]);
+      childProcessMock.execFile.mockImplementation(
+        (
+          _file: string,
+          _arguments: string[],
+          _options: unknown,
+          callback: (error: Error | null, stdout: string, stderr: string) => void,
+        ) => {
+          callback(null, '', '');
+          return { kill: vi.fn() };
+        },
+      );
       const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
 
       await closeAntigravity('classic');
 
-      expect(childProcessMock.execSync).toHaveBeenCalledWith(
-        'taskkill /F /T /IM "Antigravity.exe"',
-        expect.objectContaining({ stdio: 'ignore' }),
+      expect(childProcessMock.execFile).toHaveBeenCalledWith(
+        expect.stringMatching(/[\\/]System32[\\/]taskkill\.exe$/i),
+        ['/F', '/T', '/PID', '12345'],
+        expect.objectContaining({ timeout: 3_000, windowsHide: true }),
+        expect.any(Function),
       );
+      expect(childProcessMock.execSync).not.toHaveBeenCalled();
+      expect(psListMock).toHaveBeenCalledTimes(2);
       expect(mockFindProcess).not.toHaveBeenCalled();
       expect(killSpy).not.toHaveBeenCalled();
     });
 
-    it('should not fall back to broad process scanning when taskkill finds no running image', async () => {
+    it('should not run taskkill or broad process scans when no matching image is running', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
       psListMock.mockResolvedValue([]);
-      childProcessMock.execSync.mockImplementation((command: string) => {
-        if (command.startsWith('taskkill')) {
-          throw new Error('taskkill timeout');
-        }
-        return '';
-      });
 
       await closeAntigravity('classic');
 
-      expect(childProcessMock.execSync).toHaveBeenCalledWith(
-        'taskkill /F /T /IM "Antigravity.exe"',
-        expect.objectContaining({ stdio: 'ignore' }),
-      );
+      expect(childProcessMock.execFile).not.toHaveBeenCalled();
       expect(psListMock).toHaveBeenCalledTimes(1);
       expect(mockFindProcess).not.toHaveBeenCalled();
+      expect(mockFindProcess).not.toHaveBeenCalledWith('name', '', false);
+    });
+
+    it('should fall back when any configured Windows image query fails', async () => {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
+      vi.mocked(getAntigravityExecutablePath).mockReturnValue('C:\\Custom\\CustomAntigravity.exe');
+      psListMock.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('ps-list unavailable'));
+      mockFindProcess.mockImplementation(async () => {
+        return [
+          {
+            pid: 12345,
+            ppid: 1000,
+            name: 'CustomAntigravity.exe',
+            bin: 'C:\\Custom\\CustomAntigravity.exe',
+            cmd: '"C:\\Custom\\CustomAntigravity.exe"',
+          },
+        ];
+      });
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+
+      await closeAntigravity('classic');
+
+      expect(psListMock).toHaveBeenCalledTimes(2);
+      expect(mockFindProcess).toHaveBeenCalled();
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGKILL');
     });
 
     it('should avoid all-process scans when named target processes are found', async () => {
@@ -473,14 +605,16 @@ ProcessId=12345
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
       const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
 
-      mockFindProcess.mockResolvedValue([
-        {
-          pid: 12345,
-          name: 'Antigravity Helper.exe',
-          bin: 'C:\\Program Files\\Antigravity\\Antigravity.exe',
-          cmd: '"C:\\Program Files\\Antigravity\\Antigravity.exe" --type=renderer',
-        },
-      ]);
+      mockFindProcess.mockImplementation(async () => {
+        return [
+          {
+            pid: 12345,
+            name: 'Antigravity Helper.exe',
+            bin: 'C:\\Program Files\\Antigravity\\Antigravity.exe',
+            cmd: '"C:\\Program Files\\Antigravity\\Antigravity.exe" --type=renderer',
+          },
+        ];
+      });
 
       await closeAntigravity('classic');
 
@@ -510,14 +644,16 @@ ProcessId=12345
       Object.defineProperty(process, 'pid', { value: 1000, configurable: true });
       const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
 
-      mockFindProcess.mockResolvedValue([
-        {
-          pid: 12345,
-          name: 'Antigravity IDE.exe',
-          bin: 'C:\\Program Files\\Antigravity IDE\\Antigravity IDE.exe',
-          cmd: '"C:\\Program Files\\Antigravity IDE\\Antigravity IDE.exe" --type=renderer',
-        },
-      ]);
+      mockFindProcess.mockImplementation(async () => {
+        return [
+          {
+            pid: 12345,
+            name: 'Antigravity IDE.exe',
+            bin: 'C:\\Program Files\\Antigravity IDE\\Antigravity IDE.exe',
+            cmd: '"C:\\Program Files\\Antigravity IDE\\Antigravity IDE.exe" --type=renderer',
+          },
+        ];
+      });
 
       await closeAntigravity('ide');
 

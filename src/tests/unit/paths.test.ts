@@ -718,12 +718,6 @@ describe('Path Utilities', () => {
     vi.resetModules();
     setPlatform('win32');
 
-    childProcessMock.execSync.mockReturnValue(`
-CommandLine="C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe" "antigravity://oauth-success/"
-ExecutablePath=C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe
-ProcessId=12345
-`);
-
     const paths = await import('../../shared/platform/paths');
     await paths.refreshAntigravityProcessCache('classic');
 
@@ -734,52 +728,22 @@ ProcessId=12345
     );
   });
 
-  it('should use Windows process image queries for normal process cache refresh', async () => {
+  it('should preserve Windows process arguments during normal process cache refresh', async () => {
     vi.resetModules();
     setPlatform('win32');
 
-    childProcessMock.execSync.mockReturnValue(`
-CommandLine="C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe" --user-data-dir "D:\\Profiles\\AG"
-ExecutablePath=C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe
-ProcessId=12345
-`);
+    findProcessMock.mockResolvedValue([
+      {
+        pid: 12345,
+        ppid: 1,
+        name: 'Antigravity.exe',
+        bin: 'C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe',
+        cmd: '"C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe" --user-data-dir "D:\\Profiles\\AG"',
+      },
+    ]);
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       return String(candidatePath) === 'D:\\Profiles\\AG';
     });
-
-    const paths = await import('../../shared/platform/paths');
-    await paths.refreshAntigravityProcessCache('classic');
-
-    expect(childProcessMock.execSync).toHaveBeenCalledWith(
-      expect.stringContaining('wmic process where "name='),
-      expect.objectContaining({ encoding: 'utf-8' }),
-    );
-    expect(findProcessMock).not.toHaveBeenCalled();
-    expect(paths.getAntigravityArgsFromRunningProcess('classic')).toEqual([
-      [
-        'C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe',
-        '--user-data-dir',
-        'D:\\Profiles\\AG',
-      ],
-    ]);
-  });
-
-  it('should fall back to find-process when Windows process cache queries fail', async () => {
-    vi.resetModules();
-    setPlatform('win32');
-
-    childProcessMock.execSync.mockImplementation(() => {
-      throw new Error('Windows process command unavailable');
-    });
-    findProcessMock.mockResolvedValue([
-      {
-        pid: 456,
-        ppid: 1,
-        name: 'Antigravity.exe',
-        bin: 'C:\\Program Files\\Antigravity\\Antigravity.exe',
-        cmd: '"C:\\Program Files\\Antigravity\\Antigravity.exe"',
-      },
-    ]);
 
     const paths = await import('../../shared/platform/paths');
     await paths.refreshAntigravityProcessCache('classic');
@@ -790,7 +754,11 @@ ProcessId=12345
       expect.objectContaining({ strict: false }),
     );
     expect(paths.getAntigravityArgsFromRunningProcess('classic')).toEqual([
-      ['C:\\Program Files\\Antigravity\\Antigravity.exe'],
+      [
+        'C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe',
+        '--user-data-dir',
+        'D:\\Profiles\\AG',
+      ],
     ]);
   });
 

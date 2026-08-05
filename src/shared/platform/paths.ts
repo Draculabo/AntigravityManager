@@ -5,10 +5,6 @@ import { execSync } from 'child_process';
 import findProcess, { type ProcessInfo } from 'find-process';
 import type { AntigravityAppTarget } from '@/modules/account/types';
 import { resolveAntigravityAppTarget } from '@/modules/account/types';
-import {
-  isSafeWindowsImageName,
-  queryWindowsProcessesByImageName,
-} from '@/shared/platform/windowsProcess';
 
 type PathApi = Pick<typeof path, 'dirname' | 'join' | 'normalize' | 'resolve'>;
 
@@ -443,46 +439,6 @@ function getProcessSearchNames(
   return searchNames;
 }
 
-function getWindowsProcessImageNames(target?: AntigravityAppTarget | null): string[] {
-  const imageNames = new Set<string>();
-  const appName = getAntigravityAppFolderName(target);
-  imageNames.add(`${appName}.exe`);
-
-  const configuredExecutablePath = getConfiguredAntigravityExecutablePath(target, false);
-  if (configuredExecutablePath) {
-    imageNames.add(path.win32.basename(configuredExecutablePath));
-  }
-
-  return Array.from(imageNames).filter(isSafeWindowsImageName);
-}
-
-function queryWindowsTargetProcesses(
-  target?: AntigravityAppTarget | null,
-): RunningAntigravityProcess[] | null {
-  const processMap = new Map<number, RunningAntigravityProcess>();
-  let sawQueryFailure = false;
-
-  for (const imageName of getWindowsProcessImageNames(target)) {
-    const processes = queryWindowsProcessesByImageName(imageName);
-    if (!processes) {
-      sawQueryFailure = true;
-      continue;
-    }
-
-    for (const processItem of processes) {
-      if (isTargetAntigravityProcessCandidate(processItem, target)) {
-        processMap.set(processItem.pid, processItem);
-      }
-    }
-  }
-
-  if (sawQueryFailure && processMap.size === 0) {
-    return null;
-  }
-
-  return Array.from(processMap.values());
-}
-
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -506,19 +462,6 @@ export async function refreshAntigravityProcessCache(
   options: RefreshProcessCacheOptions = {},
 ): Promise<void> {
   const resolvedTarget = resolveAntigravityAppTarget(target);
-
-  if (process.platform === 'win32' && !options.includeAllProcesses) {
-    const windowsProcesses = queryWindowsTargetProcesses(target);
-    if (windowsProcesses && windowsProcesses.length > 0) {
-      runningProcessCache = {
-        platform: process.platform,
-        target: resolvedTarget,
-        checkedAt: Date.now(),
-        processes: windowsProcesses,
-      };
-      return;
-    }
-  }
 
   const processMap = new Map<number, RunningAntigravityProcess>();
 
