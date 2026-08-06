@@ -3,7 +3,7 @@ import {
   AccountLeaseSelectionPolicy,
   type AccountLeaseSelectionConfig,
   type AccountLeaseSelectionRequest,
-} from '@/modules/proxy-gateway/server/account-lease-selection-policy';
+} from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-selection-policy';
 
 interface TestToken {
   email: string;

@@ -1,4 +1,4 @@
-import type { OpenAIChatRequest } from './interfaces/request-interfaces';
+import type { OpenAIChatRequest } from '../../../common/interfaces/request-interfaces';
 
 export interface OpenAIResponsesSession {
   inputItems: unknown[];

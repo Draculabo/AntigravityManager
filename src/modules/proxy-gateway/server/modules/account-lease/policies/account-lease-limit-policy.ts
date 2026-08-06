@@ -3,9 +3,9 @@ import {
   hasExplicitQuotaExhaustedSignal,
   hasGenericResourceExhaustedSignal,
   RateLimitReason,
-  RateLimitTracker,
-} from './rate-limit-tracker';
-import { normalizeModelId } from './account-lease-token-types';
+  RateLimitTrackerService,
+} from '../../shared/services/rate-limit-tracker.service';
+import { normalizeModelId } from '../interfaces/account-lease-token-types';
 import type { AccountLeaseQuotaRefreshOutcome } from './account-lease-quota-refresh-policy';
 
 export interface AccountLeaseUpstreamErrorParams {
@@ -40,7 +40,7 @@ interface AccountLeaseLimitPolicyOptions {
 
 export class AccountLeaseLimitPolicy {
   private readonly accountCooldowns = new Map<string, number>();
-  private readonly rateLimitTracker = new RateLimitTracker();
+  private readonly rateLimitTracker = new RateLimitTrackerService();
 
   constructor(private readonly options: AccountLeaseLimitPolicyOptions) {}
 
@@ -48,7 +48,7 @@ export class AccountLeaseLimitPolicy {
     return this.accountCooldowns;
   }
 
-  getRateLimitTracker(): RateLimitTracker {
+  getRateLimitTracker(): RateLimitTrackerService {
     return this.rateLimitTracker;
   }
 

@@ -1,7 +1,7 @@
 import { isNumber } from 'lodash-es';
-import { getPublicModelIdForDisplayName } from '../antigravity/ModelMapping';
-import { rebindModelVariant, resolveModelVariant } from '../antigravity/model-variant-registry';
-import { type AccountLeaseTokenData, normalizeModelId } from './account-lease-token-types';
+import { getPublicModelIdForDisplayName } from '../../../../antigravity/ModelMapping';
+import { rebindModelVariant, resolveModelVariant } from '../../../../antigravity/model-variant-registry';
+import { type AccountLeaseTokenData, normalizeModelId } from '../interfaces/account-lease-token-types';
 
 interface AccountLeaseModelLogger {
   log(message: string): void;

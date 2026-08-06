@@ -1,14 +1,14 @@
 import { isString } from 'lodash-es';
 import { CloudAccount } from '@/modules/cloud-account/types';
-import { calculateRetryDelay, sleep } from '../antigravity/retry-utils';
+import { calculateRetryDelay, sleep } from '../../../../antigravity/retry-utils';
 import {
   GRACE_RETRY_BUFFER_MS,
   hasExplicitQuotaExhaustedSignal,
   parseRetryDelayMilliseconds,
   shouldGraceRetry,
-} from './rate-limit-tracker';
-import { UpstreamRequestError } from './clients/upstream-error';
-import { proxyModelAvailabilityStore } from './proxy-model-availability-store';
+} from './rate-limit-tracker.service';
+import { UpstreamRequestError } from '../../../common/exceptions/upstream-request-exception';
+import { proxyModelAvailabilityStore } from './model-availability.service';
 
 export interface ProxyTokenRetryState {
   attemptedAccountIds: Set<string>;
@@ -46,7 +46,7 @@ export interface ProxyUpstreamFailureClassification {
   markAsRateLimited: boolean;
 }
 
-export class ProxyRetryPolicy {
+export class ProxyRetryService {
   constructor(
     private readonly accountLeaseService: ProxyRetryAccountLeaseService,
     private readonly logger: ProxyRetryLogger,

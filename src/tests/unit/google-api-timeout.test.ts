@@ -303,7 +303,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
 
     const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
     const { FALLBACK_VERSION, resolveLocalInstalledVersion } =
-      await import('../../modules/proxy-gateway/server/request-user-agent');
+      await import('../../modules/proxy-gateway/server/common/utils/request-user-agent');
     const expectedVersion = resolveLocalInstalledVersion() ?? FALLBACK_VERSION;
 
     await expect(GoogleAPIService.fetchAICredits('access-token')).resolves.toEqual({

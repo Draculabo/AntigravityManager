@@ -6,7 +6,7 @@ import {
   buildUserAgent,
   FALLBACK_VERSION,
   resolveLocalInstalledVersion,
-} from '@/modules/proxy-gateway/server/request-user-agent';
+} from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
 import { isEmpty, isNumber, isString, isUndefined } from 'lodash-es';
 import { v4 } from 'uuid';
 import { logger } from '@/shared/logging/logger';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
-import { ProxyModelRoutingPolicy } from '@/modules/proxy-gateway/server/proxy-model-routing-policy';
+import { ModelRoutingService } from '@/modules/proxy-gateway/server/modules/shared/services/model-routing.service';
 import { setServerConfig } from '../../server/server-config';
 import { updateDynamicForwardingRules } from '@/modules/proxy-gateway/antigravity/ModelMapping';
 
@@ -15,9 +15,9 @@ function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   };
 }
 
-describe('ProxyModelRoutingPolicy', () => {
+describe('ModelRoutingService', () => {
   it('normalizes Gemini model path prefixes and known Gemini aliases', () => {
-    const policy = new ProxyModelRoutingPolicy();
+    const policy = new ModelRoutingService();
 
     expect(policy.normalizeGeminiModel('models/gemini-2.5-flash')).toBe('gemini-2.5-flash');
     expect(policy.resolveTargetModel('models/gemini-3.1-pro-preview')).toBe('gemini-3.1-pro-high');
@@ -25,14 +25,14 @@ describe('ProxyModelRoutingPolicy', () => {
   });
 
   it('maps dotted Opus 4.6 aliases to the verified thinking model', () => {
-    const policy = new ProxyModelRoutingPolicy();
+    const policy = new ModelRoutingService();
 
     expect(policy.resolveTargetModel('claude-opus-4.6')).toBe('claude-opus-4-6-thinking');
     expect(policy.resolveTargetModel('claude-opus-4.6-thinking')).toBe('claude-opus-4-6-thinking');
   });
 
   it('routes Gemini Pro high presets through the upstream agent model', () => {
-    const policy = new ProxyModelRoutingPolicy();
+    const policy = new ModelRoutingService();
 
     expect(policy.resolveTargetModel('gemini-3.1-pro-high')).toBe('gemini-pro-agent');
     expect(policy.resolveTargetModel('gemini-3-pro-high')).toBe('gemini-pro-agent');
@@ -47,20 +47,20 @@ describe('ProxyModelRoutingPolicy', () => {
         },
       }),
     );
-    const policy = new ProxyModelRoutingPolicy();
+    const policy = new ModelRoutingService();
 
     expect(policy.resolveTargetModel('custom-fast')).toBe('gemini-3-flash');
   });
 
   it('applies dynamic deprecated-model forwarding to quota-provided targets', () => {
     updateDynamicForwardingRules('Gemini-Deprecated-Test', 'gemini-future-test');
-    const policy = new ProxyModelRoutingPolicy();
+    const policy = new ModelRoutingService();
 
     expect(policy.resolveTargetModel('gemini-deprecated-test')).toBe('gemini-future-test');
   });
 
   it('adds Claude beta headers only for Claude-compatible models', () => {
-    const policy = new ProxyModelRoutingPolicy();
+    const policy = new ModelRoutingService();
 
     expect(policy.createModelSpecificHeaders('claude-sonnet-4-5')).toEqual({
       'anthropic-beta':

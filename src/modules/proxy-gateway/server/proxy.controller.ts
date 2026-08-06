@@ -23,7 +23,7 @@ import {
   OpenAIContentPart,
   GeminiRequest,
   GeminiResponse,
-} from './interfaces/request-interfaces';
+} from './common/interfaces/request-interfaces';
 import { toCustomToolArguments } from '../antigravity/CustomToolCall';
 import { ApplyPatchFailureCompactor } from '../antigravity/ApplyPatchFailureCompaction';
 import { toOpenAIResponsesResponse } from '../antigravity/OpenAIResponsesResponseMapper';
@@ -31,23 +31,23 @@ import {
   mergeOpenAIResponsesInputItems,
   OpenAIResponsesSessionStore,
   type OpenAIResponsesSession,
-} from './openai-responses-session.store';
-import { ProxyGuard } from './proxy.guard';
+} from './modules/openai/responses/openai-responses-session.store';
+import { ProxyGuard } from './guards/proxy.guard';
 import {
   getOpenAICompatibleModels,
   MODEL_LIST_CREATED_AT,
   MODEL_LIST_OWNER,
 } from '../antigravity/ModelMapping';
 import { getServerConfig } from '../../../server/server-config';
-import { AccountLeaseService } from './account-lease.service';
-import { UpstreamRequestError } from './clients/upstream-error';
+import { AccountLeaseService } from './modules/account-lease/account-lease.service';
+import { UpstreamRequestError } from './common/exceptions/upstream-request-exception';
 import {
   type ImageMonitoringRequest,
   type OpenAIImageResponse,
   summarizeImageRequest,
   summarizeImageResponse,
-} from './image-monitoring-summary';
-import { parseImageMultipartRequest } from './image-multipart-request';
+} from './modules/openai/media/image-monitoring-summary';
+import { parseImageMultipartRequest } from './modules/openai/media/image-multipart-request';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 
 export const IMAGE_QUOTA_REFRESH = Symbol('IMAGE_QUOTA_REFRESH');

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   type ProxyModelAvailability,
   type ProxyModelAvailabilityPersistence,
-  ProxyModelAvailabilityStore,
-} from '@/modules/proxy-gateway/server/proxy-model-availability-store';
+  ModelAvailabilityService,
+} from '@/modules/proxy-gateway/server/modules/shared/services/model-availability.service';
 
 function createPersistence(initial: ProxyModelAvailability[] = []): {
   persistence: ProxyModelAvailabilityPersistence;
@@ -21,9 +21,9 @@ function createPersistence(initial: ProxyModelAvailability[] = []): {
   };
 }
 
-describe('ProxyModelAvailabilityStore', () => {
+describe('ModelAvailabilityService', () => {
   it('clears only image capability failures when an account is manually refreshed', () => {
-    const store = new ProxyModelAvailabilityStore();
+    const store = new ModelAvailabilityService();
 
     store.mark('acc-1', 'gemini-3-pro-image', 'model_not_supported');
     store.mark('acc-1', 'gemini-3-flash-image', 'model_forbidden');
@@ -40,7 +40,7 @@ describe('ProxyModelAvailabilityStore', () => {
   });
 
   it('clears only the successful model entry', () => {
-    const store = new ProxyModelAvailabilityStore();
+    const store = new ModelAvailabilityService();
 
     store.mark('acc-1', 'models/gemini-3.1-pro-high', 'rate_limited');
     store.mark('acc-1', 'gemini-3.1-flash-lite', 'quota_exhausted');
@@ -57,7 +57,7 @@ describe('ProxyModelAvailabilityStore', () => {
 
   it('persists live status details and restores them after restart', () => {
     const durableState = createPersistence();
-    const firstStore = new ProxyModelAvailabilityStore(durableState.persistence);
+    const firstStore = new ModelAvailabilityService(durableState.persistence);
     const unavailableUntil = Date.now() + 60_000;
 
     firstStore.mark('acc-1', 'gemini-pro-agent', 'rate_limited', unavailableUntil, {
@@ -78,7 +78,7 @@ describe('ProxyModelAvailabilityStore', () => {
       },
     ]);
 
-    const restartedStore = new ProxyModelAvailabilityStore(durableState.persistence);
+    const restartedStore = new ModelAvailabilityService(durableState.persistence);
     expect(restartedStore.getSnapshot()).toEqual(durableState.read());
 
     restartedStore.clearModel('acc-1', 'gemini-pro-agent');
@@ -95,7 +95,7 @@ describe('ProxyModelAvailabilityStore', () => {
         detectedAt: Date.now() - 11 * 60_000,
       },
     ]);
-    const store = new ProxyModelAvailabilityStore(durableState.persistence);
+    const store = new ModelAvailabilityService(durableState.persistence);
 
     expect(store.getSnapshot()).toEqual([]);
     expect(durableState.read()).toEqual([]);

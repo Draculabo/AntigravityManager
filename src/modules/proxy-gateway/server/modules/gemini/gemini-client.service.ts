@@ -2,16 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosProxyConfig, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { isEmpty, isFunction, isNil, isObjectLike, isString } from 'lodash-es';
 import { Readable } from 'node:stream';
-import { GeminiRequest, GeminiResponse } from '../interfaces/request-interfaces';
-import { GeminiInternalRequest } from '../../antigravity/types';
-import { getServerConfig } from '../../../../server/server-config';
-import { resolveRequestUserAgent } from '../request-user-agent';
+import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
+import { GeminiInternalRequest } from '../../../antigravity/types';
+import { getServerConfig } from '../../../../../server/server-config';
+import { resolveRequestUserAgent } from '../../common/utils/request-user-agent';
 import {
   explicitContextCacheManager,
   type ExplicitContextCacheCandidate,
   type ExplicitContextCacheResource,
-} from './explicit-context-cache';
-import { UpstreamRequestError } from './upstream-error';
+} from './explicit-context-cache.store';
+import { UpstreamRequestError } from '../../common/exceptions/upstream-request-exception';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 
 interface PreparedInternalRequest {

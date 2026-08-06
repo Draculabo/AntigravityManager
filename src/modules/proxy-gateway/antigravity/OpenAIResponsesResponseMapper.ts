@@ -1,4 +1,4 @@
-import type { OpenAIChatResponse, OpenAIToolCall } from '../server/interfaces/request-interfaces';
+import type { OpenAIChatResponse, OpenAIToolCall } from '../server/common/interfaces/request-interfaces';
 import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight';
 import { extractCustomToolInput, isCustomToolCall } from './CustomToolCall';
 import { toOpenAIResponsesUsage } from './OpenAIUsageMapper';

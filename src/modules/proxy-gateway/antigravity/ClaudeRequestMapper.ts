@@ -27,7 +27,7 @@ import {
   buildUserAgent,
   FALLBACK_VERSION,
   resolveLocalInstalledVersion,
-} from '@/modules/proxy-gateway/server/request-user-agent';
+} from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
 
 /**
  * Request Configuration

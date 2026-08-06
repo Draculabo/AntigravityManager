@@ -1,7 +1,7 @@
 import fastifyMultipart from '@fastify/multipart';
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parseImageMultipartRequest } from '@/modules/proxy-gateway/server/image-multipart-request';
+import { parseImageMultipartRequest } from '@/modules/proxy-gateway/server/modules/openai/media/image-multipart-request';
 
 const servers: Array<ReturnType<typeof Fastify>> = [];
 

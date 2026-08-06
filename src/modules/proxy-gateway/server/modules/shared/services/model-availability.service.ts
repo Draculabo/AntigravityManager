@@ -56,7 +56,7 @@ function shouldRetainEntry(entry: ProxyModelAvailability, now: number): boolean 
   return entry.unavailableUntil > now || entry.detectedAt + RECENT_FAILURE_DISPLAY_MS > now;
 }
 
-export class ProxyModelAvailabilityStore {
+export class ModelAvailabilityService {
   private readonly entries = new Map<string, ProxyModelAvailability>();
   private isHydrated = false;
 
@@ -206,6 +206,6 @@ const persistentAvailabilityAdapter: ProxyModelAvailabilityPersistence | undefin
         save: (entries) => CloudAccountSettingsStore.setSetting(PERSISTENCE_KEY, entries),
       };
 
-export const proxyModelAvailabilityStore = new ProxyModelAvailabilityStore(
+export const proxyModelAvailabilityStore = new ModelAvailabilityService(
   persistentAvailabilityAdapter,
 );

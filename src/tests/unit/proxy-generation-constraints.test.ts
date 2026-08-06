@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ProxyGenerationConstraints } from '@/modules/proxy-gateway/server/proxy-generation-constraints';
+import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/modules/shared/services/generation-constraints.service';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 function createPolicy(overrides?: {
   outputLimit?: number;
   thinkingBudget?: number;
-}): ProxyGenerationConstraints {
-  return new ProxyGenerationConstraints({
+}): GenerationConstraintsService {
+  return new GenerationConstraintsService({
     getModelOutputLimitForAccount: vi.fn().mockReturnValue(overrides?.outputLimit),
     getModelThinkingBudgetForAccount: vi.fn().mockReturnValue(overrides?.thinkingBudget),
   });
@@ -25,7 +25,7 @@ function createInternalRequest(generationConfig: Record<string, unknown>): Gemin
   } as unknown as GeminiInternalRequest;
 }
 
-describe('ProxyGenerationConstraints', () => {
+describe('GenerationConstraintsService', () => {
   it('keeps registered variant parameters authoritative over legacy model constraints', () => {
     const policy = createPolicy({
       outputLimit: 64_000,

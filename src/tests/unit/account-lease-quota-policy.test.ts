@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAccountLeaseQuotaSnapshot } from '@/modules/proxy-gateway/server/account-lease-quota-policy';
+import { buildAccountLeaseQuotaSnapshot } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-quota-policy';
 
 describe('account lease quota policy', () => {
   it('uses grouped Claude/GPT quota as a lower bound in quota snapshots', () => {

@@ -4,7 +4,7 @@ import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandl
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchService';
-import { AccountLeaseService } from '../../modules/proxy-gateway/server/account-lease.service';
+import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { logger } from '../../shared/logging/logger';
 import * as electronMock from 'electron';
 

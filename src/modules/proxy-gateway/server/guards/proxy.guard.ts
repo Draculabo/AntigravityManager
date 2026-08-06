@@ -5,13 +5,13 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { getServerConfig } from '../../../server/server-config';
+import { getServerConfig } from '../../../../server/server-config';
 import {
   extractApiKeyToken,
   hasConfiguredApiKey,
   RequestHeaders,
-} from './guards/api-key-auth.util';
-import { openCodeCredentialService } from '../opencode-sync/opencode-credentials';
+} from './api-key-auth.util';
+import { openCodeCredentialService } from '../../opencode-sync/opencode-credentials';
 
 @Injectable()
 export class ProxyGuard implements CanActivate {

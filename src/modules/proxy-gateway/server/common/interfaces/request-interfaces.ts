@@ -1,4 +1,4 @@
-import type { GeminiToolDeclaration } from '../../antigravity/types';
+import type { GeminiToolDeclaration } from '../../../antigravity/types';
 
 export interface OpenAIChatRequest {
   model: string;

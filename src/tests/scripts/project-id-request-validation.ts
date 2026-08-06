@@ -3,7 +3,7 @@ import { isEmpty, isString } from 'lodash-es';
 
 import { transformClaudeRequestIn } from '../../modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { ProxyService } from '../../modules/proxy-gateway/server/proxy.service';
-import { AccountLeaseService } from '../../modules/proxy-gateway/server/account-lease.service';
+import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 
 const mockAccountLease: any = {
   getNextToken: async () => null,

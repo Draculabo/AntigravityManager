@@ -1,12 +1,12 @@
-import type { AccountLeaseAccountStore, AccountLeaseUpstream } from './account-lease-adapters';
+import type { AccountLeaseAccountStore, AccountLeaseUpstream } from '../interfaces/account-lease-adapters';
 import {
   buildAccountLeaseQuotaSnapshot,
   findEarliestQuotaResetTime,
   type AccountLeaseQuotaSnapshot,
 } from './account-lease-quota-policy';
-import { type AccountLeaseTokenData, normalizeModelId } from './account-lease-token-types';
-import { RateLimitReason } from './rate-limit-tracker';
-import { updateDynamicForwardingRules } from '../antigravity/ModelMapping';
+import { type AccountLeaseTokenData, normalizeModelId } from '../interfaces/account-lease-token-types';
+import { RateLimitReason } from '../../shared/services/rate-limit-tracker.service';
+import { updateDynamicForwardingRules } from '../../../../antigravity/ModelMapping';
 import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 
 interface AccountLeaseQuotaRefreshLogger {

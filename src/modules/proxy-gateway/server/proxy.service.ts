@@ -1,197 +1,64 @@
-import { HttpStatus, Injectable, Logger, Inject } from '@nestjs/common';
-import { isEmpty, isFunction, isNil, isNumber, isPlainObject, isString } from 'lodash-es';
-import { AccountLeaseService } from './account-lease.service';
-import { GeminiClient } from './clients/gemini.client';
-import { UpstreamRequestError } from './clients/upstream-error';
-import { v4 as uuidv4 } from 'uuid';
-import { Observable } from 'rxjs';
-import { transformClaudeRequestIn } from '../antigravity/ClaudeRequestMapper';
-import { transformResponse } from '../antigravity/ClaudeResponseMapper';
+import {Inject, Injectable} from '@nestjs/common';
+import {isEmpty, isNil, isNumber, isPlainObject, isString} from 'lodash-es';
+import {AccountLeaseService} from './modules/account-lease/account-lease.service';
+import {GeminiClient} from './modules/gemini/gemini-client.service';
+import {v4 as uuidv4} from 'uuid';
+import {Observable} from 'rxjs';
+import {transformClaudeRequestIn} from '../antigravity/ClaudeRequestMapper';
+import {transformResponse} from '../antigravity/ClaudeResponseMapper';
 import {
   toOpenAIResponsesUsage,
   toOpenAIUsage,
   toOpenAIUsageFromGeminiUsageMetadata,
 } from '../antigravity/OpenAIUsageMapper';
-import { StreamingState, PartProcessor } from '../antigravity/ClaudeStreamingMapper';
+import {PartProcessor, StreamingState} from '../antigravity/ClaudeStreamingMapper';
 import {
   type GeminiResponsesGroundingMetadata,
   type GeminiResponsesStreamPart,
   OpenAIResponsesStreamingMapper,
 } from '../antigravity/OpenAIResponsesStreamingMapper';
+import {ClaudeRequest, ClaudeResponse, GeminiInternalRequest, type UsageMetadata,} from '../antigravity/types';
+import {normalizeObjectJsonSchema} from '../antigravity/JsonSchemaUtils';
+import {extractCustomToolInput, isCustomToolCall, toCustomToolArguments,} from '../antigravity/CustomToolCall';
+import {optimizeApplyPatch} from '../antigravity/ApplyPatchPreflight';
+import {flattenOpenAITools, splitNamespaceToolName} from '../antigravity/ToolNamespace';
+import {resolveShellToolName} from '../antigravity/ShellToolName';
+import {sanitizeSystemInstructionForCache} from '../antigravity/StablePromptPrefix';
+import {classifyStreamError} from '../antigravity/stream-error-utils';
+import {SignatureStore} from '../antigravity/SignatureStore';
+import {decodeSignature} from '../antigravity/signature-utils';
+import {decodeInternalSseData} from '../antigravity/internal-sse';
 import {
-  ClaudeRequest,
-  ClaudeResponse,
-  GeminiInternalRequest,
-  GeminiPart as InternalGeminiPart,
-  type UsageMetadata,
-} from '../antigravity/types';
-import { normalizeObjectJsonSchema } from '../antigravity/JsonSchemaUtils';
-import {
-  extractCustomToolInput,
-  isCustomToolCall,
-  toCustomToolArguments,
-} from '../antigravity/CustomToolCall';
-import { optimizeApplyPatch } from '../antigravity/ApplyPatchPreflight';
-import { flattenOpenAITools, splitNamespaceToolName } from '../antigravity/ToolNamespace';
-import { resolveShellToolName } from '../antigravity/ShellToolName';
-import { sanitizeSystemInstructionForCache } from '../antigravity/StablePromptPrefix';
-import { classifyStreamError } from '../antigravity/stream-error-utils';
-import { SignatureStore } from '../antigravity/SignatureStore';
-import { decodeSignature } from '../antigravity/signature-utils';
-import { decodeInternalSseData } from '../antigravity/internal-sse';
-import {
-  OpenAIChatRequest,
   AnthropicChatRequest,
-  GeminiResponse,
-  GeminiRequest,
   AnthropicChatResponse,
-  OpenAIChatResponse,
   AnthropicContent,
+  GeminiRequest,
+  GeminiResponse,
   GeminiUsageMetadata,
+  OpenAIChatRequest,
+  OpenAIChatResponse,
   OpenAIUsage,
-} from './interfaces/request-interfaces';
-import { getServerConfig } from '../../../server/server-config';
-import { resolveRequestUserAgent } from './request-user-agent';
-import { CloudAccount } from '@/modules/cloud-account/types';
-import {
-  ProxyGenerationConstraints,
-  type RegisteredGenerationConstraints,
-} from './proxy-generation-constraints';
-import {
-  ProxyRetryPolicy,
-  type ProxyTokenRetryState,
-  type ProxyUpstreamFailureClassification,
-} from './proxy-retry-policy';
-import { ProxyModelRoutingPolicy } from './proxy-model-routing-policy';
+} from './common/interfaces/request-interfaces';
+import {resolveRequestUserAgent} from './common/utils/request-user-agent';
 import {
   applyAnthropicModelVariant,
   applyOpenAIModelVariant,
   rebindAnthropicModelVariant,
   rebindOpenAIModelVariant,
-} from './model-variant-request-policy';
-import { hasExplicitQuotaExhaustedSignal } from './rate-limit-tracker';
-import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
-
-interface StreamIdleTimer {
-  reset: () => void;
-  clear: () => void;
-  dispose: () => void;
-}
+} from './modules/shared/services/model-variant-request.service';
+import {safeStringifyPacket} from '@/shared/security/sensitiveDataMasking';
+import {BaseProxyService} from "@/modules/proxy-gateway/server/common/base-proxy.service";
 
 type OpenAIOutputProtocol = 'chat-completions' | 'responses';
 
 @Injectable()
-export class ProxyService {
-  private readonly logger = new Logger(ProxyService.name);
-  private readonly streamIdleTimeoutMs = 300_000;
-  private readonly generationConstraints: ProxyGenerationConstraints;
-  private readonly retryPolicy: ProxyRetryPolicy;
-  private readonly modelRoutingPolicy = new ProxyModelRoutingPolicy();
+export class ProxyService extends BaseProxyService {
 
   constructor(
-    @Inject(AccountLeaseService) private readonly accountLeaseService: AccountLeaseService,
-    @Inject(GeminiClient) private readonly geminiClient: GeminiClient,
+    @Inject(AccountLeaseService)  readonly accountLeaseService: AccountLeaseService,
+    @Inject(GeminiClient)  readonly geminiClient: GeminiClient,
   ) {
-    this.generationConstraints = new ProxyGenerationConstraints(this.accountLeaseService);
-    this.retryPolicy = new ProxyRetryPolicy(this.accountLeaseService, this.logger);
-  }
-
-  private createOfficialRequestId(): string {
-    const timestampMs = Date.now();
-    const randomHex = uuidv4().replace(/-/g, '').slice(0, 8);
-    return `agent/${timestampMs}/${randomHex}`;
-  }
-
-  private createCloudCodeTraceId(): string {
-    return `req_${uuidv4().replace(/-/g, '').slice(0, 12)}`;
-  }
-
-  private shouldEmitCloudCodeMeta(): boolean {
-    return Boolean(getServerConfig()?.experimental?.enable_cloud_code_meta);
-  }
-
-  private createCloudCodeMetaChunk(traceId: string): string {
-    const payload = {
-      __cloudCodeMeta: {
-        traceId,
-      },
-    };
-
-    return `data: ${JSON.stringify(payload)}\n\n`;
-  }
-
-  private destroyUpstreamStream(upstreamStream: NodeJS.ReadableStream): void {
-    const destroy = (upstreamStream as { destroy?: () => void }).destroy;
-    if (isFunction(destroy)) {
-      destroy.call(upstreamStream);
-    }
-  }
-
-  private createStreamIdleTimer(
-    upstreamStream: NodeJS.ReadableStream,
-    label: string,
-    onTimeout: () => void,
-  ): StreamIdleTimer {
-    let idleTimer: NodeJS.Timeout | undefined;
-
-    const clear = (): void => {
-      if (idleTimer) {
-        clearTimeout(idleTimer);
-        idleTimer = undefined;
-      }
-    };
-
-    const reset = (): void => {
-      clear();
-      idleTimer = setTimeout(() => {
-        this.logger.error(`[${label}] Idle timeout after 300s, terminating stream`);
-        onTimeout();
-        this.destroyUpstreamStream(upstreamStream);
-      }, this.streamIdleTimeoutMs);
-    };
-
-    return {
-      reset,
-      clear,
-      dispose: () => {
-        clear();
-        this.destroyUpstreamStream(upstreamStream);
-      },
-    };
-  }
-
-  private createTokenRetryState(): ProxyTokenRetryState {
-    return this.retryPolicy.createTokenRetryState();
-  }
-
-  private async selectRetryToken(
-    retryState: ProxyTokenRetryState,
-    model: string,
-    sessionKey?: string,
-  ): Promise<CloudAccount | null> {
-    return this.retryPolicy.selectRetryToken(retryState, model, sessionKey);
-  }
-
-  private async waitBeforeRetry(
-    attemptIndex: number,
-    maxRetries: number,
-    label: string,
-    shouldSkipBackoff: boolean,
-  ): Promise<void> {
-    await this.retryPolicy.waitBeforeRetry(attemptIndex, maxRetries, label, shouldSkipBackoff);
-  }
-
-  private async prepareGraceRetry(
-    retryState: ProxyTokenRetryState,
-    token: CloudAccount,
-    error: unknown,
-    label: string,
-  ): Promise<boolean> {
-    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label);
-  }
-
-  private markUpstreamSuccess(accountId: string, model: string): void {
-    this.retryPolicy.markUpstreamSuccess(accountId, model);
+    super(accountLeaseService, geminiClient)
   }
 
   // --- Anthropic Handlers ---
@@ -739,20 +606,6 @@ export class ProxyService {
     return this.modelRoutingPolicy.normalizeGeminiModel(model);
   }
 
-  private applyInternalGenerationConstraints(
-    body: GeminiInternalRequest,
-    model: string,
-    accountId: string,
-    registered?: RegisteredGenerationConstraints,
-  ): void {
-    this.generationConstraints.applyInternalGenerationConstraints(
-      body,
-      model,
-      accountId,
-      registered,
-    );
-  }
-
   private createGeminiInternalRequest(
     model: string,
     request: GeminiRequest,
@@ -1035,132 +888,6 @@ export class ProxyService {
       }
     }
     throw lastError || new Error('Request failed after retries');
-  }
-
-  private async generateInternalWithStreamFallback(
-    body: GeminiInternalRequest,
-    accessToken: string,
-    upstreamProxyUrl?: string,
-    extraHeaders?: Record<string, string>,
-  ): Promise<GeminiResponse> {
-    const direct = await this.geminiClient.generateInternal(
-      body,
-      accessToken,
-      upstreamProxyUrl,
-      extraHeaders,
-    );
-    if (this.hasUsableGeminiCandidate(direct)) {
-      return direct;
-    }
-
-    this.logger.warn('Empty non-stream response detected, falling back to stream aggregation.');
-    const stream = await this.geminiClient.streamGenerateInternal(
-      body,
-      accessToken,
-      upstreamProxyUrl,
-      extraHeaders,
-    );
-    return this.collectGeminiStreamAsResponse(stream);
-  }
-
-  private hasUsableGeminiCandidate(response: GeminiResponse): boolean {
-    if (response.promptFeedback?.blockReason) {
-      return true;
-    }
-    const candidates = response?.candidates;
-    if (!Array.isArray(candidates) || candidates.length === 0) {
-      return false;
-    }
-
-    const first = candidates[0];
-    const parts = first?.content?.parts;
-    return Array.isArray(parts) && parts.length > 0;
-  }
-
-  private collectGeminiStreamAsResponse(
-    upstreamStream: NodeJS.ReadableStream,
-  ): Promise<GeminiResponse> {
-    return new Promise((resolve, reject) => {
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let receivedData = false;
-      const mergedParts: InternalGeminiPart[] = [];
-      let finishReason: string | undefined;
-      let usageMetadata: GeminiResponse['usageMetadata'];
-      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Gemini-Collect', () => {
-        reject(new Error('Stream idle timeout'));
-      });
-
-      idleTimer.reset();
-
-      upstreamStream.on('data', (chunk: Buffer) => {
-        receivedData = true;
-        idleTimer.reset();
-        buffer += decoder.decode(chunk, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data: ')) {
-            continue;
-          }
-
-          const dataStr = trimmed.slice(6);
-
-          try {
-            const decoded = decodeInternalSseData(dataStr);
-            if (decoded.kind !== 'response') {
-              continue;
-            }
-
-            const response = decoded.response;
-            const candidate = response.candidates?.[0];
-            const parts = candidate?.content?.parts;
-            if (Array.isArray(parts)) {
-              mergedParts.push(
-                ...parts.filter((part): part is InternalGeminiPart => this.isGeminiPart(part)),
-              );
-            }
-
-            if (candidate?.finishReason) {
-              finishReason = candidate.finishReason;
-            }
-            if (response.usageMetadata) {
-              usageMetadata = response.usageMetadata;
-            }
-          } catch {
-            // Preserve compatibility: ignore malformed response fields and keep collecting.
-          }
-        }
-      });
-
-      upstreamStream.on('end', () => {
-        idleTimer.clear();
-        if (!receivedData) {
-          reject(new Error('Empty response stream'));
-          return;
-        }
-
-        resolve({
-          candidates: [
-            {
-              content: {
-                role: 'model',
-                parts: mergedParts,
-              },
-              finishReason,
-            },
-          ],
-          usageMetadata,
-        });
-      });
-
-      upstreamStream.on('error', (error: unknown) => {
-        idleTimer.clear();
-        reject(error instanceof Error ? error : new Error(String(error)));
-      });
-    });
   }
 
   private createOpenAIProtocolStream(
@@ -2316,73 +2043,6 @@ export class ProxyService {
     };
   }
 
-  private resolveTargetModel(model: string): string {
-    return this.modelRoutingPolicy.resolveTargetModel(model);
-  }
-
-  private async applyUpstreamPenalty(
-    accountId: string,
-    model: string,
-    error: unknown,
-  ): Promise<void> {
-    if (this.isModelNotFoundError(error)) {
-      // Quota metadata can advertise ids the generation API rejects; mark the
-      // id so the in-flight retry loop and later requests reroute to a sibling.
-      this.accountLeaseService.markModelUnrequestable(model);
-    }
-    await this.retryPolicy.applyUpstreamPenalty(accountId, model, error);
-  }
-
-  private isModelNotFoundError(error: unknown): boolean {
-    const notFoundMarker = 'Requested entity was not found';
-    if (error instanceof UpstreamRequestError) {
-      return (
-        error.status === HttpStatus.NOT_FOUND ||
-        error.message.includes(notFoundMarker) ||
-        Boolean(error.body?.includes(notFoundMarker))
-      );
-    }
-    const message = error instanceof Error ? error.message : String(error ?? '');
-    return message.includes(notFoundMarker);
-  }
-
-  private resolveGraceRetryDelay(error: unknown): number | null {
-    return this.retryPolicy.resolveGraceRetryDelay(error);
-  }
-
-  private classifyUpstreamFailure(errorMessage: string): ProxyUpstreamFailureClassification {
-    return this.retryPolicy.classifyUpstreamFailure(errorMessage);
-  }
-
-  private createModelSpecificHeaders(model: string | undefined): Record<string, string> {
-    return this.modelRoutingPolicy.createModelSpecificHeaders(model);
-  }
-
-  private isProjectLicenseError(errorMessage: string): boolean {
-    const msg = errorMessage.toLowerCase();
-    return (
-      msg.includes('#3501') ||
-      (msg.includes('google cloud project') && msg.includes('code assist license'))
-    );
-  }
-
-  private isProjectNotFoundError(errorMessage: string): boolean {
-    const msg = errorMessage.toLowerCase();
-    return (
-      msg.includes('invalid project resource name projects/') ||
-      (msg.includes('resource projects/') && msg.includes('could not be found')) ||
-      (msg.includes('project') && msg.includes('not found'))
-    );
-  }
-
-  private isProjectContextError(errorMessage: string): boolean {
-    return this.isProjectLicenseError(errorMessage) || this.isProjectNotFoundError(errorMessage);
-  }
-
-  private isQuotaExhaustedError(errorMessage: string): boolean {
-    return hasExplicitQuotaExhaustedSignal(errorMessage);
-  }
-
   private extractAnthropicSessionKey(request: AnthropicChatRequest): string | undefined {
     const metadata = request.metadata;
     const sessionCandidate =
@@ -2401,9 +2061,5 @@ export class ProxyService {
       return undefined;
     }
     return `openai:${sessionCandidate.trim()}`;
-  }
-
-  private isGeminiPart(value: unknown): value is InternalGeminiPart {
-    return isPlainObject(value);
   }
 }

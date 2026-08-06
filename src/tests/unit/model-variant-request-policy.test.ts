@@ -4,11 +4,11 @@ import {
   applyOpenAIModelVariant,
   rebindAnthropicModelVariant,
   rebindOpenAIModelVariant,
-} from '@/modules/proxy-gateway/server/model-variant-request-policy';
+} from '@/modules/proxy-gateway/server/modules/shared/services/model-variant-request.service';
 import type {
   AnthropicChatRequest,
   OpenAIChatRequest,
-} from '@/modules/proxy-gateway/server/interfaces/request-interfaces';
+} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
 describe('applyAnthropicModelVariant', () => {
   it('applies Anthropic effort before forwarding a canonical Gemini request', () => {

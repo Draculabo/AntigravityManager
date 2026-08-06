@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
-import { GeminiClient } from '@/modules/proxy-gateway/server/clients/gemini.client';
+import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 
 const axiosMock = vi.hoisted(() => ({
   post: vi.fn(),

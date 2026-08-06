@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   summarizeImageRequest,
   summarizeImageResponse,
-} from '@/modules/proxy-gateway/server/image-monitoring-summary';
+} from '@/modules/proxy-gateway/server/modules/openai/media/image-monitoring-summary';
 
 describe('image monitoring summaries', () => {
   it('summarizes image-edit fields and files without retaining base64 data', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseModelPolicy } from '@/modules/proxy-gateway/server/account-lease-model-policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/account-lease-token-types';
+import { AccountLeaseModelPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-model-policy';
+import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
 
 function createToken(overrides: Partial<AccountLeaseTokenData> = {}): AccountLeaseTokenData {
   return {

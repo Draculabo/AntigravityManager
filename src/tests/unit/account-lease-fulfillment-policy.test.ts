@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseFulfillmentPolicy } from '@/modules/proxy-gateway/server/account-lease-fulfillment-policy';
-import type { AccountLeaseHydrationPolicy } from '@/modules/proxy-gateway/server/account-lease-hydration-policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/account-lease-token-types';
+import { AccountLeaseFulfillmentPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-fulfillment-policy';
+import type { AccountLeaseHydrationPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration-policy';
+import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
 
 function createToken(overrides: Partial<AccountLeaseTokenData> = {}): AccountLeaseTokenData {
   return {

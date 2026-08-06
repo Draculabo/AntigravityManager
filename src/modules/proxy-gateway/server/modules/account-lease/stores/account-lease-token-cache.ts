@@ -1,10 +1,10 @@
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import type { AccountLeaseAccountStore } from './account-lease-adapters';
+import type { AccountLeaseAccountStore } from '../interfaces/account-lease-adapters';
 import {
   buildAccountLeaseQuotaSnapshot,
   type AccountLeaseQuotaSnapshot,
-} from './account-lease-quota-policy';
-import { type AccountLeaseTokenData, normalizeClientKey } from './account-lease-token-types';
+} from '../policies/account-lease-quota-policy';
+import { type AccountLeaseTokenData, normalizeClientKey } from '../interfaces/account-lease-token-types';
 
 interface AccountLeaseTokenCacheLogger {
   error(message: string, error?: unknown): void;

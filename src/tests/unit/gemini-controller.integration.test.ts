@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 
-import { GeminiController } from '../../modules/proxy-gateway/server/gemini.controller';
+import { GeminiController } from '../../modules/proxy-gateway/server/modules/gemini/gemini.controller';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};

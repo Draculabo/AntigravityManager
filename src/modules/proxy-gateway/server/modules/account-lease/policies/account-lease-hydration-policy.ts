@@ -1,10 +1,10 @@
 import type { Logger } from '@nestjs/common';
-import type { AccountLeaseAccountStore, AccountLeaseUpstream } from './account-lease-adapters';
+import type { AccountLeaseAccountStore, AccountLeaseUpstream } from '../interfaces/account-lease-adapters';
 import {
   type AccountLeaseTokenData,
   normalizeClientKey,
   normalizeProjectId,
-} from './account-lease-token-types';
+} from '../interfaces/account-lease-token-types';
 
 type AccountLeaseHydrationLogger = Pick<Logger, 'debug' | 'error' | 'log' | 'warn'>;
 

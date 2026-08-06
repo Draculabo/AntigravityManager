@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/account-lease.service';
+import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/account-lease-adapters';
+} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 
 describe('AccountLeaseService adapters', () => {

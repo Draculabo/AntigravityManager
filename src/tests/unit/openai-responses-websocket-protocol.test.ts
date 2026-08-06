@@ -3,8 +3,8 @@ import { createServer } from 'node:http';
 import WebSocket from 'ws';
 import { of } from 'rxjs';
 
-import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/openai-responses-websocket-protocol';
-import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/openai-responses-websocket.server';
+import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket-protocol';
+import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
 
 describe('OpenAIResponsesWebSocketProtocol', () => {
   it('handles the initial generate=false request locally and reuses it for the next append', () => {

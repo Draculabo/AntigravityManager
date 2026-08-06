@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ProxyRetryPolicy } from '@/modules/proxy-gateway/server/proxy-retry-policy';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/clients/upstream-error';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/proxy-model-availability-store';
+import { ProxyRetryService } from '@/modules/proxy-gateway/server/modules/shared/services/proxy-retry.service';
+import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request-exception';
+import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/modules/shared/services/model-availability.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 
 function createToken(id: string): CloudAccount {
@@ -35,7 +35,7 @@ function createPolicy() {
     log: vi.fn(),
     warn: vi.fn(),
   };
-  const policy = new ProxyRetryPolicy(accountLeaseService, logger);
+  const policy = new ProxyRetryService(accountLeaseService, logger);
 
   return {
     logger,
@@ -44,7 +44,7 @@ function createPolicy() {
   };
 }
 
-describe('ProxyRetryPolicy', () => {
+describe('ProxyRetryService', () => {
   it('classifies retryable upstream failures consistently', () => {
     const { policy } = createPolicy();
 

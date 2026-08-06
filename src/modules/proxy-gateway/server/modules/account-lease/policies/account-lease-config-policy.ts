@@ -1,9 +1,9 @@
-import { getServerConfig } from '../../../server/server-config';
+import { getServerConfig } from '../../../../../../server/server-config';
 import {
   type AccountLeaseSelectionConfig,
   type AccountLeaseSelectionMode,
 } from './account-lease-selection-policy';
-import { normalizeProjectId } from './account-lease-token-types';
+import { normalizeProjectId } from '../interfaces/account-lease-token-types';
 
 const DEFAULT_FALLBACK_PROJECT_ID = 'silver-orbit-5m7qc';
 const DEFAULT_BACKOFF_STEPS = [60, 300, 1800, 7200];

@@ -11,7 +11,7 @@ import {
   getContextCacheStatus,
   generateApiKey,
 } from './handlers';
-import { proxyModelAvailabilityStore } from '../server/proxy-model-availability-store';
+import { proxyModelAvailabilityStore } from '../server/modules/shared/services/model-availability.service';
 import { openCodeCredentialService } from '../opencode-sync/opencode-credentials';
 import { openCodeSyncService } from '../opencode-sync/opencode-sync';
 

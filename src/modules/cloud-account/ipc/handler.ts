@@ -15,7 +15,7 @@ import { shell } from 'electron';
 import fs from 'fs';
 import { isEmpty, isString } from 'lodash-es';
 import { updateTrayMenu } from '@/modules/app-shell/ipc/tray/handler';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/proxy-model-availability-store';
+import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/modules/shared/services/model-availability.service';
 import {
   ensureGlobalOriginalFromCurrentStorage,
   generateDeviceProfile,

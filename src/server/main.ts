@@ -4,13 +4,13 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { logger } from '../shared/logging/logger';
-import { AccountLeaseService } from '../modules/proxy-gateway/server/account-lease.service';
+import { AccountLeaseService } from '../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import {
   ProxyController,
   type ResponsesRequestBody,
 } from '../modules/proxy-gateway/server/proxy.controller';
 import { ProxyService } from '../modules/proxy-gateway/server/proxy.service';
-import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/openai-responses-websocket.server';
+import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
 import {
   extractApiKeyToken,
   hasConfiguredApiKey,

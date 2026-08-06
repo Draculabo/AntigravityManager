@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { CloudAccount } from '@/modules/cloud-account/types';
-import { RateLimitTracker } from './rate-limit-tracker';
+import { RateLimitTrackerService } from '../shared/services/rate-limit-tracker.service';
 import {
   ACCOUNT_LEASE_ACCOUNT_STORE,
   ACCOUNT_LEASE_UPSTREAM,
@@ -8,19 +8,19 @@ import {
   type AccountLeaseUpstream,
   cloudAccountStoreAdapter,
   googleAccountLeaseUpstreamAdapter,
-} from './account-lease-adapters';
-import { AccountLeaseQuotaRefreshPolicy } from './account-lease-quota-refresh-policy';
-import { AccountLeaseTokenCache } from './account-lease-token-cache';
-import { AccountLeaseHydrationPolicy } from './account-lease-hydration-policy';
-import { AccountLeaseFulfillmentPolicy } from './account-lease-fulfillment-policy';
-import { AccountLeaseSelectionPolicy } from './account-lease-selection-policy';
-import { AccountLeaseModelPolicy } from './account-lease-model-policy';
-import { type AccountLeaseTokenData, normalizeModelId } from './account-lease-token-types';
+} from './interfaces/account-lease-adapters';
+import { AccountLeaseQuotaRefreshPolicy } from './policies/account-lease-quota-refresh-policy';
+import { AccountLeaseTokenCache } from './stores/account-lease-token-cache';
+import { AccountLeaseHydrationPolicy } from './policies/account-lease-hydration-policy';
+import { AccountLeaseFulfillmentPolicy } from './policies/account-lease-fulfillment-policy';
+import { AccountLeaseSelectionPolicy } from './policies/account-lease-selection-policy';
+import { AccountLeaseModelPolicy } from './policies/account-lease-model-policy';
+import { type AccountLeaseTokenData, normalizeModelId } from './interfaces/account-lease-token-types';
 import {
   AccountLeaseLimitPolicy,
   type AccountLeaseUpstreamErrorParams,
-} from './account-lease-limit-policy';
-import { AccountLeaseConfigPolicy } from './account-lease-config-policy';
+} from './policies/account-lease-limit-policy';
+import { AccountLeaseConfigPolicy } from './policies/account-lease-config-policy';
 
 interface GetNextTokenOptions {
   sessionKey?: string;
@@ -109,7 +109,7 @@ export class AccountLeaseService implements OnModuleInit {
     return this.limitPolicy.getAccountCooldowns();
   }
 
-  private get rateLimitTracker(): RateLimitTracker {
+  private get rateLimitTracker(): RateLimitTrackerService {
     return this.limitPolicy.getRateLimitTracker();
   }
 

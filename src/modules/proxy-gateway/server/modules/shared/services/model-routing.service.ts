@@ -1,7 +1,7 @@
-import { getServerConfig } from '../../../server/server-config';
-import { normalizeGeminiModelAlias, resolveModelRoute } from '../antigravity/ModelMapping';
+import { getServerConfig } from '../../../../../../server/server-config';
+import { normalizeGeminiModelAlias, resolveModelRoute } from '../../../../antigravity/ModelMapping';
 
-export class ProxyModelRoutingPolicy {
+export class ModelRoutingService {
   normalizeGeminiModel(model: string): string {
     return model.replace(/^models\//i, '');
   }

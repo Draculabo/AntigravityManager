@@ -1,6 +1,6 @@
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import type { AccountLeaseHydrationPolicy } from './account-lease-hydration-policy';
-import type { AccountLeaseTokenData } from './account-lease-token-types';
+import type { AccountLeaseTokenData } from '../interfaces/account-lease-token-types';
 
 interface AccountLeaseFulfillmentLogger {
   error(message: string, error?: unknown): void;

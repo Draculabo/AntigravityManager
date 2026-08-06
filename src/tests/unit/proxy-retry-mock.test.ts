@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 import { Readable } from 'node:stream';
 import { ProxyService } from '../../modules/proxy-gateway/server/proxy.service';
 import { Observable } from 'rxjs';
-import { GeminiClient } from '../../modules/proxy-gateway/server/clients/gemini.client';
+import { GeminiClient } from '../../modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { setServerConfig } from '../../server/server-config';
 import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';

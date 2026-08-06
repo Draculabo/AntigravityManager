@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/clients/explicit-context-cache';
-import { GeminiClient } from '@/modules/proxy-gateway/server/clients/gemini.client';
+import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
+import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 
 describe('GeminiClient explicit context cache', () => {
   afterEach(() => {

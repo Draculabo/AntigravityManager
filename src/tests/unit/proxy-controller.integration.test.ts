@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 
 import { ProxyController } from '../../modules/proxy-gateway/server/proxy.controller';
-import { OpenAIResponsesSessionStore } from '../../modules/proxy-gateway/server/openai-responses-session.store';
-import { UpstreamRequestError } from '../../modules/proxy-gateway/server/clients/upstream-error';
+import { OpenAIResponsesSessionStore } from '../../modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/exceptions/upstream-request-exception';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};

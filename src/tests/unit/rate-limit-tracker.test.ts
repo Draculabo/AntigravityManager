@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   parseRetryDelayMilliseconds,
   RateLimitReason,
-  RateLimitTracker,
+  RateLimitTrackerService,
   shouldGraceRetry,
-} from '../../modules/proxy-gateway/server/rate-limit-tracker';
+} from '../../modules/proxy-gateway/server/modules/shared/services/rate-limit-tracker.service';
 
-describe('RateLimitTracker parity replay', () => {
+describe('RateLimitTrackerService parity replay', () => {
   it('uses Retry-After header before body/default', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     const info = tracker.parseAndMarkFromError({
       accountId: 'acc-1',
       status: 429,
@@ -31,7 +31,7 @@ describe('RateLimitTracker parity replay', () => {
   });
 
   it('treats generic RESOURCE_EXHAUSTED as a short model-level rate limit', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     const info = tracker.parseAndMarkFromError({
       accountId: 'acc-resource',
       status: 429,
@@ -56,7 +56,7 @@ describe('RateLimitTracker parity replay', () => {
   });
 
   it('keeps explicit daily quota failures classified as quota exhausted', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     const info = tracker.parseAndMarkFromError({
       accountId: 'acc-daily',
       status: 429,
@@ -75,7 +75,7 @@ describe('RateLimitTracker parity replay', () => {
   });
 
   it('clears only the successful model lockout', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     const commonError = {
       status: 429,
       body: 'Resource has been exhausted.',
@@ -100,7 +100,7 @@ describe('RateLimitTracker parity replay', () => {
   });
 
   it('clears recovered model aliases without clearing another model family', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     const resetTime = new Date(Date.now() + 60_000).toISOString();
 
     tracker.setLockoutUntilIso(
@@ -122,7 +122,7 @@ describe('RateLimitTracker parity replay', () => {
   });
 
   it('uses model-level key for quota exhausted', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     tracker.parseAndMarkFromError({
       accountId: 'acc-2',
       status: 429,
@@ -145,7 +145,7 @@ describe('RateLimitTracker parity replay', () => {
   });
 
   it('uses backoff steps when no header/body retry hint', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     const steps = [60, 300, 1800, 7200];
 
     const first = tracker.parseAndMarkFromError({
@@ -170,7 +170,7 @@ describe('RateLimitTracker parity replay', () => {
   });
 
   it('caps upstream and precise quota lockouts at five minutes', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     const info = tracker.parseAndMarkFromError({
       accountId: 'acc-long-retry',
       status: 429,
@@ -198,7 +198,7 @@ describe('RateLimitTracker parity replay', () => {
   });
 
   it('parses MODEL_CAPACITY_EXHAUSTED and RetryInfo.retryDelay from 503 payload', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     const info = tracker.parseAndMarkFromError({
       accountId: 'acc-4',
       status: 503,
@@ -254,7 +254,7 @@ describe('RateLimitTracker parity replay', () => {
   });
 
   it('does not let server errors advance quota exhausted backoff', () => {
-    const tracker = new RateLimitTracker();
+    const tracker = new RateLimitTrackerService();
     const backoffSteps = [60, 300, 1800, 7200];
 
     for (let i = 0; i < 3; i += 1) {

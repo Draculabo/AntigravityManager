@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ExplicitContextCacheManager,
   type ExplicitContextCacheCandidate,
-} from '@/modules/proxy-gateway/server/clients/explicit-context-cache';
+} from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
 
 function createCandidate(manager: ExplicitContextCacheManager): ExplicitContextCacheCandidate {
   const candidate = manager.createCandidate({

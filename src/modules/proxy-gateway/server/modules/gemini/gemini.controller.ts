@@ -14,12 +14,12 @@ import { FastifyReply } from 'fastify';
 import { isEmpty, isFunction, isNumber, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 
-import { ProxyGuard } from './proxy.guard';
-import { ProxyService } from './proxy.service';
-import { GeminiRequest, GeminiResponse } from './interfaces/request-interfaces';
-import { getServerConfig } from '../../../server/server-config';
-import { getAllDynamicModels } from '../antigravity/ModelMapping';
-import { AccountLeaseService } from './account-lease.service';
+import { ProxyGuard } from '../../guards/proxy.guard';
+import { ProxyService } from '../../proxy.service';
+import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
+import { getServerConfig } from '../../../../../server/server-config';
+import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
+import { AccountLeaseService } from '../account-lease/account-lease.service';
 
 type GeminiModelMetadata = {
   name: string;

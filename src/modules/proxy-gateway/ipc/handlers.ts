@@ -11,7 +11,7 @@ import {
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '@/shared/logging/logger';
-import { explicitContextCacheManager } from '../server/clients/explicit-context-cache';
+import { explicitContextCacheManager } from '../server/modules/gemini/explicit-context-cache.store';
 
 /**
  * Start the gateway server (NestJS)

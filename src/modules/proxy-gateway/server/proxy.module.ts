@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ProxyController } from './proxy.controller';
 import { ProxyService } from './proxy.service';
-import { AccountLeaseService } from './account-lease.service';
-import { GeminiClient } from './clients/gemini.client';
-import { GeminiController } from './gemini.controller';
-import { ProxyGuard } from './proxy.guard';
+import { AccountLeaseService } from './modules/account-lease/account-lease.service';
+import { GeminiClient } from './modules/gemini/gemini-client.service';
+import { GeminiController } from './modules/gemini/gemini.controller';
+import { ProxyGuard } from './guards/proxy.guard';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 import { IMAGE_QUOTA_REFRESH } from './proxy.controller';
 

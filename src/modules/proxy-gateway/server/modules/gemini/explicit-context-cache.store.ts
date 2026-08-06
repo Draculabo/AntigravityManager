@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import type { GeminiInternalRequest, GeminiRequest } from '../../antigravity/types';
+import type { GeminiInternalRequest, GeminiRequest } from '../../../antigravity/types';
 
 const DEFAULT_TTL_MS = 60 * 60 * 1000;
 const FAILURE_COOLDOWN_MS = 5 * 60 * 1000;

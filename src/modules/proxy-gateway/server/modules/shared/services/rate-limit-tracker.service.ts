@@ -244,7 +244,7 @@ export function shouldGraceRetry(delayMs: number): boolean {
   return delayMs > 0 && delayMs <= GRACE_RETRY_WINDOW_MS;
 }
 
-export class RateLimitTracker {
+export class RateLimitTrackerService {
   private readonly lockoutByKey = new Map<string, RateLimitInfo>();
   private readonly failureCounts = new Map<string, FailureCountEntry>();
 

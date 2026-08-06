@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '../../server/server-config';
-import { AccountLeaseService } from '../../modules/proxy-gateway/server/account-lease.service';
+import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 
 function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {

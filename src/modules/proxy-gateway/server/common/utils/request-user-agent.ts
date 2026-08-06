@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { isString } from 'lodash-es';
 import { getAntigravityVersion } from '@/modules/antigravity-runtime/utils/antigravityVersion';
-import { logger } from '../../../shared/logging/logger';
+import { logger } from '../../../../../shared/logging/logger';
 
 const REMOTE_VERSION_URL = 'https://antigravity-auto-updater-974169037036.us-central1.run.app';
 const CHANGELOG_URL = 'https://antigravity.google/changelog';
