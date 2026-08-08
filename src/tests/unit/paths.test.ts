@@ -178,12 +178,23 @@ describe('Path Utilities', () => {
       },
     ];
 
-    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+    const userDataDir = p.resolve('D:\\Profiles\\AG IDE');
+    const expectedDbPath = p.join(userDataDir, 'User', 'globalStorage', 'state.vscdb');
+    const expectedStoragePath = p.join(userDataDir, 'User', 'globalStorage', 'storage.json');
+
+    vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
+      const normalizedPath = String(candidatePath);
+      return (
+        normalizedPath === userDataDir ||
+        normalizedPath === expectedDbPath ||
+        normalizedPath === expectedStoragePath
+      );
+    });
+    vi.spyOn(fs, 'readFileSync').mockReturnValue('');
     findProcessMock.mockResolvedValue(runningProcesses);
 
     const paths = await import('../../shared/platform/paths');
     await paths.refreshAntigravityProcessCache('ide');
-    const userDataDir = p.resolve('D:\\Profiles\\AG IDE');
 
     expect(paths.getAntigravityArgsFromRunningProcess('ide')).toEqual([
       [
