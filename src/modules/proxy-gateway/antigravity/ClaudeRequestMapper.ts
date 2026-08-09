@@ -224,18 +224,27 @@ export function transformClaudeRequestIn(
     requestConfig,
     innerRequest: reorderedInnerRequest,
     projectId,
-    sessionId: claudeReq.metadata?.user_id,
     userAgent,
   });
 
   return body;
 }
 
+/**
+ * Builds the `v1internal` envelope.
+ *
+ * Deliberately carries no session identifier. An Anthropic client's advisory
+ * `metadata.user_id` used to be forwarded as `sessionId`, which the provider
+ * answers with `Invalid JSON payload received. Unknown name "sessionId":
+ * Cannot find field.`, failing the whole request. There is no accepted
+ * destination for it on this transport, and the field is advisory in
+ * Anthropic's own API, so it is dropped here rather than costing the caller
+ * the request.
+ */
 function buildInternalRequestBody(params: {
   requestConfig: ResolvedRequestConfig;
   innerRequest: GeminiInternalRequest['request'];
   projectId?: string;
-  sessionId?: string;
   userAgent?: string;
 }): GeminiInternalRequest {
   const normalizedProjectId = params.projectId?.trim();
@@ -248,7 +257,6 @@ function buildInternalRequestBody(params: {
     userAgent: params.userAgent?.trim() || buildUserAgent(discoveryVersion),
     requestType: isAgentRequest ? 'agent' : 'image_gen',
     ...(isAgentRequest ? { enabledCreditTypes: [...AGENT_CREDIT_TYPES] } : {}),
-    ...(params.sessionId ? { sessionId: params.sessionId } : {}),
     requestId: createOfficialRequestId(),
   };
 
