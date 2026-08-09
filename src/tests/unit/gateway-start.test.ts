@@ -26,9 +26,12 @@ vi.mock('@/shared/logging/logger', () => ({
   logger: mockLogger,
 }));
 
-vi.mock('@/modules/proxy-gateway/server/openai-responses-websocket.server', () => ({
-  attachOpenAIResponsesWebSocketServer: mockAttachResponsesWebSocketServer,
-}));
+vi.mock(
+  '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server',
+  () => ({
+    attachOpenAIResponsesWebSocketServer: mockAttachResponsesWebSocketServer,
+  }),
+);
 
 describe('gateway server startup', () => {
   beforeEach(() => {
