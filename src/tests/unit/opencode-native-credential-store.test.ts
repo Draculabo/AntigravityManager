@@ -60,4 +60,18 @@ describe('OpenCodeNativeCredentialStore', () => {
 
     expect(() => store.delete()).not.toThrow();
   });
+
+  /**
+   * Opening the keyring used to fail in the constructor, where nothing hid it.
+   * Now that it happens on first use, `delete()` must not fold that failure
+   * into the idempotent "already gone" case.
+   */
+  it('still reports a keyring that cannot be opened at all', () => {
+    keyringMocks.withTarget.mockImplementation(() => {
+      throw new Error("Value of 'target' is invalid: unknown key");
+    });
+    const store = new OpenCodeNativeCredentialStore();
+
+    expect(() => store.delete()).toThrow("Value of 'target' is invalid: unknown key");
+  });
 });

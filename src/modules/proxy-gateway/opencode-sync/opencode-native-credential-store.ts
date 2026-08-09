@@ -38,8 +38,13 @@ export class OpenCodeNativeCredentialStore implements OpenCodeCredentialStore {
   }
 
   delete(): void {
+    // Resolved before the try: opening the keyring used to fail loudly in the
+    // constructor, and a failure to open it is not the same thing as a
+    // credential that was already gone.
+    const entry = this.entry;
+
     try {
-      this.entry.deleteCredential();
+      entry.deleteCredential();
     } catch {
       // Revoking a key that does not exist is idempotent.
     }
