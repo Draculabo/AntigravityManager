@@ -284,7 +284,8 @@ Do not add tests for values that are statically defined.
 Do not create small helper methods that are referenced only once.
 
 ### Avoid large modules:
+
 - Prefer adding new modules instead of growing existing ones.
-- Target  modules under 500 LoC, excluding tests.
+- Target modules under 500 LoC, excluding tests.
 - If a file exceeds roughly 800 LoC, add new functionality in a new module instead of extending the existing file unless there is a strong documented reason not to.
 - When extracting code from a large module, move the related tests and module/type docs toward the new implementation so the invariants stay close to the code that owns them.

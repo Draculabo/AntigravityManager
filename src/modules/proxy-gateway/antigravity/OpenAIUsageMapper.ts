@@ -1,5 +1,8 @@
 import type { Usage } from './types';
-import type { GeminiUsageMetadata, OpenAIUsage } from '../server/common/interfaces/request-interfaces';
+import type {
+  GeminiUsageMetadata,
+  OpenAIUsage,
+} from '../server/common/interfaces/request-interfaces';
 
 export interface OpenAIResponsesUsage {
   input_tokens: number;
