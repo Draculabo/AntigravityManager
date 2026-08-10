@@ -11,6 +11,17 @@ vi.mock('@/shared/logging/logger', () => ({
 }));
 
 const originalPlatform = process.platform;
+
+/**
+ * The cases below pin Windows path semantics and touch the real filesystem, so
+ * they only mean anything on Windows. Elsewhere `path.win32.join` turns the
+ * fixture into one relative name full of backslashes: `mkdir -p` then creates a
+ * single directory under the working tree instead of a nested path, the code
+ * under test finds nothing, and the leftovers are never cleaned up because
+ * `afterEach` removes the temp directory rather than the working tree.
+ */
+const itOnWindows = originalPlatform === 'win32' ? it : it.skip;
+
 const originalLocalAppData = process.env.LOCALAPPDATA;
 const originalAppData = process.env.APPDATA;
 const originalXdgCacheHome = process.env.XDG_CACHE_HOME;
@@ -42,7 +53,7 @@ describe('Antigravity client cache', () => {
     vi.restoreAllMocks();
   });
 
-  it('lists existing Windows IDE cache paths in priority order', async () => {
+  itOnWindows('lists existing Windows IDE cache paths in priority order', async () => {
     const localIdeCache = path.win32.join(process.env.LOCALAPPDATA!, 'Antigravity IDE', 'Cache');
     const roamingIdeCache = path.win32.join(process.env.APPDATA!, 'Antigravity IDE', 'Cache');
     fs.mkdirSync(localIdeCache, { recursive: true });
@@ -92,7 +103,7 @@ describe('Antigravity client cache', () => {
     ]);
   });
 
-  it('removes an existing cache directory and reports the freed bytes', async () => {
+  itOnWindows('removes an existing cache directory and reports the freed bytes', async () => {
     const localIdeCache = path.win32.join(process.env.LOCALAPPDATA!, 'Antigravity IDE', 'Cache');
     const nestedCache = path.win32.join(localIdeCache, 'Code Cache');
     fs.mkdirSync(nestedCache, { recursive: true });
@@ -111,7 +122,7 @@ describe('Antigravity client cache', () => {
     expect(fs.existsSync(localIdeCache)).toBe(false);
   });
 
-  it('continues clearing later paths when one cache directory fails', async () => {
+  itOnWindows('continues clearing later paths when one cache directory fails', async () => {
     const localClassicCache = path.win32.join(process.env.LOCALAPPDATA!, 'Antigravity', 'Cache');
     const localIdeCache = path.win32.join(process.env.LOCALAPPDATA!, 'Antigravity IDE', 'Cache');
     fs.mkdirSync(localClassicCache, { recursive: true });
