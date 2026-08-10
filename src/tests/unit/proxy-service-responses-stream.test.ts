@@ -3,7 +3,7 @@ import { PassThrough, Readable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { lastValueFrom, Observable, toArray } from 'rxjs';
 
-import { ProxyService } from '@/modules/proxy-gateway/server/proxy.service';
+import { OpenAIService as ProxyService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
 
 function parseEvent(serializedEvent: string): Record<string, unknown> {
   const dataLine = serializedEvent.split('\n').find((line) => line.startsWith('data: '));
@@ -33,7 +33,7 @@ describe('ProxyService Responses streaming', () => {
   it('keeps an otherwise idle Responses connection alive with SSE comments', async () => {
     vi.useFakeTimers();
     try {
-      const service = new ProxyService({} as never, {} as never);
+      const service = new ProxyService({} as never, {} as never, {} as never);
       const upstreamStream = new PassThrough();
       const events: string[] = [];
       const subscription = createResponsesStream(service, upstreamStream).subscribe((event) => {
@@ -50,7 +50,7 @@ describe('ProxyService Responses streaming', () => {
   });
 
   it('converts nested Gemini SSE payloads into Responses events', async () => {
-    const service = new ProxyService({} as never, {} as never);
+    const service = new ProxyService({} as never, {} as never, {} as never);
     const upstreamStream = Readable.from([
       Buffer.from('data: not json\n\n'),
       Buffer.from(

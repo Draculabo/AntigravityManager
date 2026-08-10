@@ -1,5 +1,8 @@
 import type { Logger } from '@nestjs/common';
-import type { AccountLeaseAccountStore, AccountLeaseUpstream } from '../interfaces/account-lease-adapters';
+import type {
+  AccountLeaseAccountStore,
+  AccountLeaseUpstream,
+} from '../interfaces/account-lease-adapters';
 import {
   type AccountLeaseTokenData,
   normalizeClientKey,

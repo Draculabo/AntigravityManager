@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 
-import { ProxyController } from '../../modules/proxy-gateway/server/proxy.controller';
+import { AnthropicController } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
+import { OpenAIController as ProxyController } from '../../modules/proxy-gateway/server/modules/openai/openai.controller';
 import { OpenAIResponsesSessionStore } from '../../modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/exceptions/upstream-request-exception';
+import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};
@@ -1086,7 +1087,7 @@ describe('ProxyController Integration', () => {
         type: 'message',
       }),
     };
-    const controller = new ProxyController(proxyService as any);
+    const controller = new AnthropicController(proxyService as any);
     const reply = createReplyMock();
 
     await controller.anthropicMessages(

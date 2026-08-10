@@ -1,6 +1,6 @@
 import { isNumber, isString } from 'lodash-es';
-import { getMaxOutputTokens, getThinkingBudget } from '../../../../antigravity/ModelSpecs';
-import type { GeminiInternalRequest } from '../../../../antigravity/types';
+import { getMaxOutputTokens, getThinkingBudget } from '../../../antigravity/ModelSpecs';
+import type { GeminiInternalRequest } from '../../../antigravity/types';
 
 export interface ProxyModelCapabilityReader {
   getModelOutputLimitForAccount(accountId: string, modelName: string): number | undefined;

@@ -1,358 +1,357 @@
-import {HttpStatus, Injectable, Logger} from '@nestjs/common';
-import {GeminiClient} from '../modules/gemini/gemini-client.service';
-import {AccountLeaseService} from '../modules/account-lease/account-lease.service';
-import {v4 as uuidv4} from "uuid";
-import {getServerConfig} from "@/server/server-config";
-import {isFunction, isPlainObject} from "lodash-es";
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { GeminiClient } from '../modules/gemini/gemini-client.service';
+import { AccountLeaseService } from '../modules/account-lease/account-lease.service';
+import { v4 as uuidv4 } from 'uuid';
+import { getServerConfig } from '@/server/server-config';
+import { isFunction, isPlainObject } from 'lodash-es';
 import {
-    ProxyRetryService,
-    ProxyTokenRetryState,
-    type ProxyUpstreamFailureClassification
-} from "@/modules/proxy-gateway/server/modules/shared/services/proxy-retry.service";
-import {CloudAccount} from "@/modules/cloud-account/types";
+  ProxyRetryService,
+  ProxyTokenRetryState,
+  type ProxyUpstreamFailureClassification,
+} from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { CloudAccount } from '@/modules/cloud-account/types';
 import {
-    GenerationConstraintsService,
-    type RegisteredGenerationConstraints
-} from "@/modules/proxy-gateway/server/modules/shared/services/generation-constraints.service";
-import {ModelRoutingService} from "@/modules/proxy-gateway/server/modules/shared/services/model-routing.service";
-import {ProxyService} from "@/modules/proxy-gateway/server/proxy.service";
-import {hasExplicitQuotaExhaustedSignal} from "@/modules/proxy-gateway/server/modules/shared/services/rate-limit-tracker.service";
-import {UpstreamRequestError} from "@/modules/proxy-gateway/server/common/exceptions/upstream-request-exception";
-import {GeminiInternalRequest, GeminiPart as InternalGeminiPart} from "@/modules/proxy-gateway/antigravity/types";
-import {GeminiResponse} from "@/modules/proxy-gateway/server/common/interfaces/request-interfaces";
-import {decodeInternalSseData} from "@/modules/proxy-gateway/antigravity/internal-sse";
+  GenerationConstraintsService,
+  type RegisteredGenerationConstraints,
+} from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { hasExplicitQuotaExhaustedSignal } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import {
+  GeminiInternalRequest,
+  GeminiPart as InternalGeminiPart,
+} from '@/modules/proxy-gateway/antigravity/types';
+import { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
 
 interface StreamIdleTimer {
-    reset: () => void;
-    clear: () => void;
-    dispose: () => void;
+  reset: () => void;
+  clear: () => void;
+  dispose: () => void;
 }
 
 @Injectable()
 export abstract class BaseProxyService {
+  protected readonly logger = new Logger(this.constructor.name);
+  private readonly streamIdleTimeoutMs = 300_000;
+  protected readonly generationConstraints: GenerationConstraintsService;
+  protected readonly retryPolicy: ProxyRetryService;
+  protected readonly modelRoutingPolicy = new ModelRoutingService();
 
-    // 空类即可，方法和属性会通过重构工具自动移进来
-    // 先预留构造器参数，和 ProxyService 保持一致
-    protected readonly logger = new Logger(ProxyService.name);
-    private readonly streamIdleTimeoutMs = 300_000;
-    protected readonly generationConstraints: GenerationConstraintsService;
-    protected readonly retryPolicy: ProxyRetryService;
-    protected readonly modelRoutingPolicy = new ModelRoutingService();
+  constructor(
+    protected readonly accountLeaseService: AccountLeaseService,
+    protected readonly geminiClient: GeminiClient,
+  ) {
+    this.generationConstraints = new GenerationConstraintsService(this.accountLeaseService);
+    this.retryPolicy = new ProxyRetryService(this.accountLeaseService, this.logger);
+  }
 
-    constructor(
-        protected readonly accountLeaseService: AccountLeaseService,
-        protected readonly geminiClient: GeminiClient,
-    ) {
-        this.generationConstraints = new GenerationConstraintsService(this.accountLeaseService);
-        this.retryPolicy = new ProxyRetryService(this.accountLeaseService, this.logger);
+  protected createOfficialRequestId(): string {
+    const timestampMs = Date.now();
+    const randomHex = uuidv4().replace(/-/g, '').slice(0, 8);
+    return `agent/${timestampMs}/${randomHex}`;
+  }
+
+  protected createCloudCodeTraceId(): string {
+    return `req_${uuidv4().replace(/-/g, '').slice(0, 12)}`;
+  }
+
+  protected shouldEmitCloudCodeMeta(): boolean {
+    return Boolean(getServerConfig()?.experimental?.enable_cloud_code_meta);
+  }
+
+  protected createCloudCodeMetaChunk(traceId: string): string {
+    const payload = {
+      __cloudCodeMeta: {
+        traceId,
+      },
+    };
+
+    return `data: ${JSON.stringify(payload)}\n\n`;
+  }
+
+  private destroyUpstreamStream(upstreamStream: NodeJS.ReadableStream): void {
+    const destroy = (upstreamStream as { destroy?: () => void }).destroy;
+    if (isFunction(destroy)) {
+      destroy.call(upstreamStream);
+    }
+  }
+
+  protected createStreamIdleTimer(
+    upstreamStream: NodeJS.ReadableStream,
+    label: string,
+    onTimeout: () => void,
+  ): StreamIdleTimer {
+    let idleTimer: NodeJS.Timeout | undefined;
+
+    const clear = (): void => {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = undefined;
+      }
+    };
+
+    const reset = (): void => {
+      clear();
+      idleTimer = setTimeout(() => {
+        this.logger.error(`[${label}] Idle timeout after 300s, terminating stream`);
+        onTimeout();
+        this.destroyUpstreamStream(upstreamStream);
+      }, this.streamIdleTimeoutMs);
+    };
+
+    return {
+      reset,
+      clear,
+      dispose: () => {
+        clear();
+        this.destroyUpstreamStream(upstreamStream);
+      },
+    };
+  }
+
+  protected createTokenRetryState(): ProxyTokenRetryState {
+    return this.retryPolicy.createTokenRetryState();
+  }
+
+  protected async selectRetryToken(
+    retryState: ProxyTokenRetryState,
+    model: string,
+    sessionKey?: string,
+  ): Promise<CloudAccount | null> {
+    return this.retryPolicy.selectRetryToken(retryState, model, sessionKey);
+  }
+
+  protected async waitBeforeRetry(
+    attemptIndex: number,
+    maxRetries: number,
+    label: string,
+    shouldSkipBackoff: boolean,
+  ): Promise<void> {
+    await this.retryPolicy.waitBeforeRetry(attemptIndex, maxRetries, label, shouldSkipBackoff);
+  }
+
+  protected async prepareGraceRetry(
+    retryState: ProxyTokenRetryState,
+    token: CloudAccount,
+    error: unknown,
+    label: string,
+  ): Promise<boolean> {
+    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label);
+  }
+
+  protected markUpstreamSuccess(accountId: string, model: string): void {
+    this.retryPolicy.markUpstreamSuccess(accountId, model);
+  }
+
+  private isProjectLicenseError(errorMessage: string): boolean {
+    const msg = errorMessage.toLowerCase();
+    return (
+      msg.includes('#3501') ||
+      (msg.includes('google cloud project') && msg.includes('code assist license'))
+    );
+  }
+
+  private isProjectNotFoundError(errorMessage: string): boolean {
+    const msg = errorMessage.toLowerCase();
+    return (
+      msg.includes('invalid project resource name projects/') ||
+      (msg.includes('resource projects/') && msg.includes('could not be found')) ||
+      (msg.includes('project') && msg.includes('not found'))
+    );
+  }
+
+  protected isProjectContextError(errorMessage: string): boolean {
+    return this.isProjectLicenseError(errorMessage) || this.isProjectNotFoundError(errorMessage);
+  }
+
+  protected isQuotaExhaustedError(errorMessage: string): boolean {
+    return hasExplicitQuotaExhaustedSignal(errorMessage);
+  }
+
+  protected resolveTargetModel(model: string): string {
+    return this.modelRoutingPolicy.resolveTargetModel(model);
+  }
+
+  protected async applyUpstreamPenalty(
+    accountId: string,
+    model: string,
+    error: unknown,
+  ): Promise<void> {
+    if (this.isModelNotFoundError(error)) {
+      // Quota metadata can advertise ids the generation API rejects; mark the
+      // id so the in-flight retry loop and later requests reroute to a sibling.
+      this.accountLeaseService.markModelUnrequestable(model);
+    }
+    await this.retryPolicy.applyUpstreamPenalty(accountId, model, error);
+  }
+
+  private isModelNotFoundError(error: unknown): boolean {
+    const notFoundMarker = 'Requested entity was not found';
+    if (error instanceof UpstreamRequestError) {
+      return (
+        error.status === HttpStatus.NOT_FOUND ||
+        error.message.includes(notFoundMarker) ||
+        Boolean(error.body?.includes(notFoundMarker))
+      );
+    }
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    return message.includes(notFoundMarker);
+  }
+
+  private resolveGraceRetryDelay(error: unknown): number | null {
+    return this.retryPolicy.resolveGraceRetryDelay(error);
+  }
+
+  private classifyUpstreamFailure(errorMessage: string): ProxyUpstreamFailureClassification {
+    return this.retryPolicy.classifyUpstreamFailure(errorMessage);
+  }
+
+  protected createModelSpecificHeaders(model: string | undefined): Record<string, string> {
+    return this.modelRoutingPolicy.createModelSpecificHeaders(model);
+  }
+
+  protected applyInternalGenerationConstraints(
+    body: GeminiInternalRequest,
+    model: string,
+    accountId: string,
+    registered?: RegisteredGenerationConstraints,
+  ): void {
+    this.generationConstraints.applyInternalGenerationConstraints(
+      body,
+      model,
+      accountId,
+      registered,
+    );
+  }
+
+  protected async generateInternalWithStreamFallback(
+    body: GeminiInternalRequest,
+    accessToken: string,
+    upstreamProxyUrl?: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<GeminiResponse> {
+    const direct = await this.geminiClient.generateInternal(
+      body,
+      accessToken,
+      upstreamProxyUrl,
+      extraHeaders,
+    );
+    if (this.hasUsableGeminiCandidate(direct)) {
+      return direct;
     }
 
-    protected createOfficialRequestId(): string {
-        const timestampMs = Date.now();
-        const randomHex = uuidv4().replace(/-/g, '').slice(0, 8);
-        return `agent/${timestampMs}/${randomHex}`;
+    this.logger.warn('Empty non-stream response detected, falling back to stream aggregation.');
+    const stream = await this.geminiClient.streamGenerateInternal(
+      body,
+      accessToken,
+      upstreamProxyUrl,
+      extraHeaders,
+    );
+    return this.collectGeminiStreamAsResponse(stream);
+  }
+
+  private hasUsableGeminiCandidate(response: GeminiResponse): boolean {
+    if (response.promptFeedback?.blockReason) {
+      return true;
+    }
+    const candidates = response?.candidates;
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return false;
     }
 
-    protected createCloudCodeTraceId(): string {
-        return `req_${uuidv4().replace(/-/g, '').slice(0, 12)}`;
-    }
+    const first = candidates[0];
+    const parts = first?.content?.parts;
+    return Array.isArray(parts) && parts.length > 0;
+  }
 
-    protected shouldEmitCloudCodeMeta(): boolean {
-        return Boolean(getServerConfig()?.experimental?.enable_cloud_code_meta);
-    }
+  private collectGeminiStreamAsResponse(
+    upstreamStream: NodeJS.ReadableStream,
+  ): Promise<GeminiResponse> {
+    return new Promise((resolve, reject) => {
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let receivedData = false;
+      const mergedParts: InternalGeminiPart[] = [];
+      let finishReason: string | undefined;
+      let usageMetadata: GeminiResponse['usageMetadata'];
+      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Gemini-Collect', () => {
+        reject(new Error('Stream idle timeout'));
+      });
 
-    protected createCloudCodeMetaChunk(traceId: string): string {
-        const payload = {
-            __cloudCodeMeta: {
-                traceId,
-            },
-        };
+      idleTimer.reset();
 
-        return `data: ${JSON.stringify(payload)}\n\n`;
-    }
+      upstreamStream.on('data', (chunk: Buffer) => {
+        receivedData = true;
+        idleTimer.reset();
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-    private destroyUpstreamStream(upstreamStream: NodeJS.ReadableStream): void {
-        const destroy = (upstreamStream as { destroy?: () => void }).destroy;
-        if (isFunction(destroy)) {
-            destroy.call(upstreamStream);
-        }
-    }
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) {
+            continue;
+          }
 
-    protected createStreamIdleTimer(
-        upstreamStream: NodeJS.ReadableStream,
-        label: string,
-        onTimeout: () => void,
-    ): StreamIdleTimer {
-        let idleTimer: NodeJS.Timeout | undefined;
+          const dataStr = trimmed.slice(6);
 
-        const clear = (): void => {
-            if (idleTimer) {
-                clearTimeout(idleTimer);
-                idleTimer = undefined;
+          try {
+            const decoded = decodeInternalSseData(dataStr);
+            if (decoded.kind !== 'response') {
+              continue;
             }
-        };
 
-        const reset = (): void => {
-            clear();
-            idleTimer = setTimeout(() => {
-                this.logger.error(`[${label}] Idle timeout after 300s, terminating stream`);
-                onTimeout();
-                this.destroyUpstreamStream(upstreamStream);
-            }, this.streamIdleTimeoutMs);
-        };
+            const response = decoded.response;
+            const candidate = response.candidates?.[0];
+            const parts = candidate?.content?.parts;
+            if (Array.isArray(parts)) {
+              mergedParts.push(
+                ...parts.filter((part): part is InternalGeminiPart => this.isGeminiPart(part)),
+              );
+            }
 
-        return {
-            reset,
-            clear,
-            dispose: () => {
-                clear();
-                this.destroyUpstreamStream(upstreamStream);
+            if (candidate?.finishReason) {
+              finishReason = candidate.finishReason;
+            }
+            if (response.usageMetadata) {
+              usageMetadata = response.usageMetadata;
+            }
+          } catch {
+            // Preserve compatibility: ignore malformed response fields and keep collecting.
+          }
+        }
+      });
+
+      upstreamStream.on('end', () => {
+        idleTimer.clear();
+        if (!receivedData) {
+          reject(new Error('Empty response stream'));
+          return;
+        }
+
+        resolve({
+          candidates: [
+            {
+              content: {
+                role: 'model',
+                parts: mergedParts,
+              },
+              finishReason,
             },
-        };
-    }
-
-    protected createTokenRetryState(): ProxyTokenRetryState {
-        return this.retryPolicy.createTokenRetryState();
-    }
-
-    protected async selectRetryToken(
-        retryState: ProxyTokenRetryState,
-        model: string,
-        sessionKey?: string,
-    ): Promise<CloudAccount | null> {
-        return this.retryPolicy.selectRetryToken(retryState, model, sessionKey);
-    }
-
-    protected async waitBeforeRetry(
-        attemptIndex: number,
-        maxRetries: number,
-        label: string,
-        shouldSkipBackoff: boolean,
-    ): Promise<void> {
-        await this.retryPolicy.waitBeforeRetry(attemptIndex, maxRetries, label, shouldSkipBackoff);
-    }
-
-    protected async prepareGraceRetry(
-        retryState: ProxyTokenRetryState,
-        token: CloudAccount,
-        error: unknown,
-        label: string,
-    ): Promise<boolean> {
-        return this.retryPolicy.prepareGraceRetry(retryState, token, error, label);
-    }
-
-    protected markUpstreamSuccess(accountId: string, model: string): void {
-        this.retryPolicy.markUpstreamSuccess(accountId, model);
-    }
-
-    private isProjectLicenseError(errorMessage: string): boolean {
-        const msg = errorMessage.toLowerCase();
-        return (
-            msg.includes('#3501') ||
-            (msg.includes('google cloud project') && msg.includes('code assist license'))
-        );
-    }
-
-    private isProjectNotFoundError(errorMessage: string): boolean {
-        const msg = errorMessage.toLowerCase();
-        return (
-            msg.includes('invalid project resource name projects/') ||
-            (msg.includes('resource projects/') && msg.includes('could not be found')) ||
-            (msg.includes('project') && msg.includes('not found'))
-        );
-    }
-
-    protected isProjectContextError(errorMessage: string): boolean {
-        return this.isProjectLicenseError(errorMessage) || this.isProjectNotFoundError(errorMessage);
-    }
-
-    protected isQuotaExhaustedError(errorMessage: string): boolean {
-        return hasExplicitQuotaExhaustedSignal(errorMessage);
-    }
-
-    protected resolveTargetModel(model: string): string {
-        return this.modelRoutingPolicy.resolveTargetModel(model);
-    }
-
-    protected async applyUpstreamPenalty(
-        accountId: string,
-        model: string,
-        error: unknown,
-    ): Promise<void> {
-        if (this.isModelNotFoundError(error)) {
-            // Quota metadata can advertise ids the generation API rejects; mark the
-            // id so the in-flight retry loop and later requests reroute to a sibling.
-            this.accountLeaseService.markModelUnrequestable(model);
-        }
-        await this.retryPolicy.applyUpstreamPenalty(accountId, model, error);
-    }
-
-    private isModelNotFoundError(error: unknown): boolean {
-        const notFoundMarker = 'Requested entity was not found';
-        if (error instanceof UpstreamRequestError) {
-            return (
-                error.status === HttpStatus.NOT_FOUND ||
-                error.message.includes(notFoundMarker) ||
-                Boolean(error.body?.includes(notFoundMarker))
-            );
-        }
-        const message = error instanceof Error ? error.message : String(error ?? '');
-        return message.includes(notFoundMarker);
-    }
-
-    private resolveGraceRetryDelay(error: unknown): number | null {
-        return this.retryPolicy.resolveGraceRetryDelay(error);
-    }
-
-    private classifyUpstreamFailure(errorMessage: string): ProxyUpstreamFailureClassification {
-        return this.retryPolicy.classifyUpstreamFailure(errorMessage);
-    }
-
-    protected createModelSpecificHeaders(model: string | undefined): Record<string, string> {
-        return this.modelRoutingPolicy.createModelSpecificHeaders(model);
-    }
-
-    protected applyInternalGenerationConstraints(
-        body: GeminiInternalRequest,
-        model: string,
-        accountId: string,
-        registered?: RegisteredGenerationConstraints,
-    ): void {
-        this.generationConstraints.applyInternalGenerationConstraints(
-            body,
-            model,
-            accountId,
-            registered,
-        );
-    }
-
-    protected async generateInternalWithStreamFallback(
-        body: GeminiInternalRequest,
-        accessToken: string,
-        upstreamProxyUrl?: string,
-        extraHeaders?: Record<string, string>,
-    ): Promise<GeminiResponse> {
-        const direct = await this.geminiClient.generateInternal(
-            body,
-            accessToken,
-            upstreamProxyUrl,
-            extraHeaders,
-        );
-        if (this.hasUsableGeminiCandidate(direct)) {
-            return direct;
-        }
-
-        this.logger.warn('Empty non-stream response detected, falling back to stream aggregation.');
-        const stream = await this.geminiClient.streamGenerateInternal(
-            body,
-            accessToken,
-            upstreamProxyUrl,
-            extraHeaders,
-        );
-        return this.collectGeminiStreamAsResponse(stream);
-    }
-
-    private hasUsableGeminiCandidate(response: GeminiResponse): boolean {
-        if (response.promptFeedback?.blockReason) {
-            return true;
-        }
-        const candidates = response?.candidates;
-        if (!Array.isArray(candidates) || candidates.length === 0) {
-            return false;
-        }
-
-        const first = candidates[0];
-        const parts = first?.content?.parts;
-        return Array.isArray(parts) && parts.length > 0;
-    }
-
-    private collectGeminiStreamAsResponse(
-        upstreamStream: NodeJS.ReadableStream,
-    ): Promise<GeminiResponse> {
-        return new Promise((resolve, reject) => {
-            const decoder = new TextDecoder();
-            let buffer = '';
-            let receivedData = false;
-            const mergedParts: InternalGeminiPart[] = [];
-            let finishReason: string | undefined;
-            let usageMetadata: GeminiResponse['usageMetadata'];
-            const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Gemini-Collect', () => {
-                reject(new Error('Stream idle timeout'));
-            });
-
-            idleTimer.reset();
-
-            upstreamStream.on('data', (chunk: Buffer) => {
-                receivedData = true;
-                idleTimer.reset();
-                buffer += decoder.decode(chunk, {stream: true});
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed.startsWith('data: ')) {
-                        continue;
-                    }
-
-                    const dataStr = trimmed.slice(6);
-
-                    try {
-                        const decoded = decodeInternalSseData(dataStr);
-                        if (decoded.kind !== 'response') {
-                            continue;
-                        }
-
-                        const response = decoded.response;
-                        const candidate = response.candidates?.[0];
-                        const parts = candidate?.content?.parts;
-                        if (Array.isArray(parts)) {
-                            mergedParts.push(
-                                ...parts.filter((part): part is InternalGeminiPart => this.isGeminiPart(part)),
-                            );
-                        }
-
-                        if (candidate?.finishReason) {
-                            finishReason = candidate.finishReason;
-                        }
-                        if (response.usageMetadata) {
-                            usageMetadata = response.usageMetadata;
-                        }
-                    } catch {
-                        // Preserve compatibility: ignore malformed response fields and keep collecting.
-                    }
-                }
-            });
-
-            upstreamStream.on('end', () => {
-                idleTimer.clear();
-                if (!receivedData) {
-                    reject(new Error('Empty response stream'));
-                    return;
-                }
-
-                resolve({
-                    candidates: [
-                        {
-                            content: {
-                                role: 'model',
-                                parts: mergedParts,
-                            },
-                            finishReason,
-                        },
-                    ],
-                    usageMetadata,
-                });
-            });
-
-            upstreamStream.on('error', (error: unknown) => {
-                idleTimer.clear();
-                reject(error instanceof Error ? error : new Error(String(error)));
-            });
+          ],
+          usageMetadata,
         });
-    }
+      });
 
-    protected isGeminiPart(value: unknown): value is InternalGeminiPart {
-        return isPlainObject(value);
-    }
+      upstreamStream.on('error', (error: unknown) => {
+        idleTimer.clear();
+        reject(error instanceof Error ? error : new Error(String(error)));
+      });
+    });
+  }
+
+  protected isGeminiPart(value: unknown): value is InternalGeminiPart {
+    return isPlainObject(value);
+  }
 }

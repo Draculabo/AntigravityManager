@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
-import { ModelRoutingService } from '@/modules/proxy-gateway/server/modules/shared/services/model-routing.service';
+import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import { setServerConfig } from '../../server/server-config';
 import { updateDynamicForwardingRules } from '@/modules/proxy-gateway/antigravity/ModelMapping';
 

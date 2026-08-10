@@ -1,13 +1,13 @@
 import { isString } from 'lodash-es';
 import { CloudAccount } from '@/modules/cloud-account/types';
-import { calculateRetryDelay, sleep } from '../../../../antigravity/retry-utils';
+import { calculateRetryDelay, sleep } from '../../../antigravity/retry-utils';
 import {
   GRACE_RETRY_BUFFER_MS,
   hasExplicitQuotaExhaustedSignal,
   parseRetryDelayMilliseconds,
   shouldGraceRetry,
 } from './rate-limit-tracker.service';
-import { UpstreamRequestError } from '../../../common/exceptions/upstream-request-exception';
+import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
 import { proxyModelAvailabilityStore } from './model-availability.service';
 
 export interface ProxyTokenRetryState {

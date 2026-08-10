@@ -4,7 +4,7 @@ import {
   RateLimitReason,
   RateLimitTrackerService,
   shouldGraceRetry,
-} from '../../modules/proxy-gateway/server/modules/shared/services/rate-limit-tracker.service';
+} from '../../modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
 
 describe('RateLimitTrackerService parity replay', () => {
   it('uses Retry-After header before body/default', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ProxyService } from '@/modules/proxy-gateway/server/proxy.service';
+import { GeminiService as ProxyService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
 import type { GeminiRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 

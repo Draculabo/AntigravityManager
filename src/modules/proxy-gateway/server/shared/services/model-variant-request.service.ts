@@ -1,5 +1,11 @@
-import { rebindModelVariant, resolveModelVariant } from '../../../../antigravity/model-variant-registry';
-import type { AnthropicChatRequest, OpenAIChatRequest } from '../../../common/interfaces/request-interfaces';
+import {
+  rebindModelVariant,
+  resolveModelVariant,
+} from '../../../antigravity/model-variant-registry';
+import type {
+  AnthropicChatRequest,
+  OpenAIChatRequest,
+} from '../../common/interfaces/request-interfaces';
 
 export interface AppliedAnthropicModelVariant {
   request: AnthropicChatRequest;

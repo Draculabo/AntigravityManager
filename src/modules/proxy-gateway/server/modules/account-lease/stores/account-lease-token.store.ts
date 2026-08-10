@@ -3,8 +3,11 @@ import type { AccountLeaseAccountStore } from '../interfaces/account-lease-adapt
 import {
   buildAccountLeaseQuotaSnapshot,
   type AccountLeaseQuotaSnapshot,
-} from '../policies/account-lease-quota-policy';
-import { type AccountLeaseTokenData, normalizeClientKey } from '../interfaces/account-lease-token-types';
+} from '../policies/account-lease-quota.policy';
+import {
+  type AccountLeaseTokenData,
+  normalizeClientKey,
+} from '../interfaces/account-lease-token-types';
 
 interface AccountLeaseTokenCacheLogger {
   error(message: string, error?: unknown): void;

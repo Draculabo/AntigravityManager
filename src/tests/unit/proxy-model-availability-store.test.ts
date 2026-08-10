@@ -3,7 +3,7 @@ import {
   type ProxyModelAvailability,
   type ProxyModelAvailabilityPersistence,
   ModelAvailabilityService,
-} from '@/modules/proxy-gateway/server/modules/shared/services/model-availability.service';
+} from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 
 function createPersistence(initial: ProxyModelAvailability[] = []): {
   persistence: ProxyModelAvailabilityPersistence;

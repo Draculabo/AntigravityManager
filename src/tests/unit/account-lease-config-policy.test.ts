@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
-import { AccountLeaseConfigPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-config-policy';
+import { AccountLeaseConfigPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-config.policy';
 import { setServerConfig } from '../../server/server-config';
 
 function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {

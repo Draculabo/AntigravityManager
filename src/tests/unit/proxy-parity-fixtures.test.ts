@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 import { describe, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
 
-import { ProxyService } from '../../modules/proxy-gateway/server/proxy.service';
+import { OpenAIService as ProxyService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
 
 const mockAccountLeaseService = {
   getNextToken: vi.fn(),
@@ -18,7 +18,7 @@ const mockGeminiClient = { streamGenerateInternal: vi.fn(), generateInternal: vi
 
 class TestableProxyService extends ProxyService {
   constructor() {
-    super(mockAccountLeaseService as any, mockGeminiClient as any);
+    super(mockAccountLeaseService as any, mockGeminiClient as any, {} as any);
   }
 
   public toAnthropic(request: any): any {

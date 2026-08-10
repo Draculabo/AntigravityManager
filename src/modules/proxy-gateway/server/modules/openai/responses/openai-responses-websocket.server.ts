@@ -7,7 +7,7 @@ import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import {
   OpenAIResponsesWebSocketProtocol,
   type OpenAIResponsesWebSocketEvent,
-} from './openai-responses-websocket-protocol';
+} from './openai-responses-websocket.protocol';
 
 export interface OpenAIResponsesWebSocketServerDependencies {
   isAuthorized: (request: IncomingMessage) => boolean;

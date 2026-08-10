@@ -3,9 +3,9 @@ import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
 } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
-import { AccountLeaseQuotaRefreshPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-quota-refresh-policy';
+import { AccountLeaseQuotaRefreshPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-quota-refresh.policy';
 import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
-import { RateLimitReason } from '@/modules/proxy-gateway/server/modules/shared/services/rate-limit-tracker.service';
+import { RateLimitReason } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
 
 function createToken(overrides: Partial<AccountLeaseTokenData> = {}): AccountLeaseTokenData {
   return {

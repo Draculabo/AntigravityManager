@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseHydrationPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration-policy';
+import { AccountLeaseHydrationPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration.policy';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,

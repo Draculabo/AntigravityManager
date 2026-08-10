@@ -2,7 +2,9 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import axios, { AxiosError } from 'axios';
 import { EventEmitter } from 'events';
 import { Readable } from 'node:stream';
-import { ProxyService } from '../../modules/proxy-gateway/server/proxy.service';
+import { AnthropicService } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.service';
+import { GeminiService } from '../../modules/proxy-gateway/server/modules/gemini/gemini.service';
+import { OpenAIService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
 import { Observable } from 'rxjs';
 import { GeminiClient } from '../../modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { setServerConfig } from '../../server/server-config';
@@ -40,22 +42,37 @@ function createProxyConfig(overrides: Partial<ProxyConfig> = {}): ProxyConfig {
 }
 
 // Subclass to access private method
-class TestableProxyService extends ProxyService {
+class TestableOpenAIService extends OpenAIService {
+  constructor() {
+    super(
+      mockAccountLeaseService as any,
+      mockGeminiClient as any,
+      new GeminiService(mockAccountLeaseService as any, mockGeminiClient as any),
+    );
+  }
+
+  public testModelHeaders(model: string): Record<string, string> {
+    return (this as any).createModelSpecificHeaders(model);
+  }
+}
+
+class TestableAnthropicService extends AnthropicService {
   constructor() {
     super(mockAccountLeaseService as any, mockGeminiClient as any);
   }
 
   public testProcessStream(stream: any, model: string = 'model'): Observable<string> {
-    // Access private method using type assertion
-    return (this as any).processAnthropicInternalStream(stream, model);
+    return (this as any).processAnthropicInternalStream(stream, model) as Observable<string>;
+  }
+}
+
+class TestableGeminiService extends GeminiService {
+  constructor() {
+    super(mockAccountLeaseService as any, mockGeminiClient as any);
   }
 
   public testPassthroughStream(stream: any): Observable<string> {
-    return (this as any).passthroughSseStream(stream);
-  }
-
-  public testModelHeaders(model: string): Record<string, string> {
-    return (this as any).createModelSpecificHeaders(model);
+    return (this as any).passthroughSseStream(stream) as Observable<string>;
   }
 }
 
@@ -82,7 +99,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('classifies retry matrix consistently', () => {
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
     const classify = (message: string) => (service as any).classifyUpstreamFailure(message);
 
     expect(classify('401 unauthorized token')).toEqual({
@@ -113,7 +130,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('builds Claude-specific beta headers consistently', () => {
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
     const claudeHeaders = service.testModelHeaders('claude-sonnet-4-5');
     const geminiHeaders = service.testModelHeaders('gemini-2.5-flash');
 
@@ -122,7 +139,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('should emit error when stream ends without data', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableAnthropicService();
     const stream = new EventEmitter();
 
     const resultObservable = service.testProcessStream(stream);
@@ -150,7 +167,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('should NOT emit error when stream has data', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableAnthropicService();
     const stream = new EventEmitter();
 
     const resultObservable = service.testProcessStream(stream);
@@ -192,7 +209,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('preserves every part from a multi-part Anthropic stream event', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableAnthropicService();
     const stream = new EventEmitter();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
@@ -232,7 +249,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('preserves text from wrapped Anthropic stream events', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableAnthropicService();
     const stream = new EventEmitter();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
@@ -270,7 +287,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('aggregates a wrapped stream when the non-stream Gemini response is empty', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     const stream = new EventEmitter();
 
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
@@ -310,7 +327,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('injects Claude beta headers when handling Gemini-compatible Claude models', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.generateInternal.mockResolvedValue({
       candidates: [{ content: { parts: [{ text: 'ok' }] } }],
@@ -325,7 +342,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('resets Anthropic parse-error recovery after a valid chunk', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableAnthropicService();
     const stream = new EventEmitter();
     const resultObservable = service.testProcessStream(stream);
 
@@ -369,7 +386,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('raises error for empty Gemini passthrough stream', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     const stream = new EventEmitter();
 
     const observable = service.testPassthroughStream(stream);
@@ -393,7 +410,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('propagates Anthropic stream interruption errors', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableAnthropicService();
     const stream = new EventEmitter();
     const observable = service.testProcessStream(stream);
     let errorMessage = '';
@@ -416,7 +433,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('propagates Gemini passthrough interruption errors', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     const stream = new EventEmitter();
     const observable = service.testPassthroughStream(stream);
     let errorMessage = '';
@@ -439,7 +456,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('retries OpenAI flow with the same error classification matrix', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
     const token1 = createToken('acc-1');
     const token2 = createToken('acc-2');
     mockAccountLeaseService.getNextToken
@@ -469,7 +486,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('restores Markdown Base64 images on the public OpenAI chat path', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.generateInternal.mockResolvedValue({
       candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
@@ -503,7 +520,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         },
       }),
     );
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.generateInternal.mockResolvedValue({
       candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
@@ -522,7 +539,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('retries Anthropic flow with the same error classification matrix', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableAnthropicService();
     const token1 = createToken('acc-1');
     const token2 = createToken('acc-2');
     mockAccountLeaseService.getNextToken
@@ -553,7 +570,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('retries Gemini flow with the same error classification matrix', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     const token1 = createToken('acc-1');
     const token2 = createToken('acc-2');
     mockAccountLeaseService.getNextToken
@@ -581,7 +598,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('does not include sessionId in Gemini internal generate payload', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.generateInternal.mockResolvedValue({
       candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
@@ -597,7 +614,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('normalizes Gemini 3.1 preview alias to Gemini 3.1 Pro High for upstream', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.generateInternal.mockResolvedValue({
       candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
@@ -613,7 +630,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('strips non-parity Gemini usage metadata fields', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.generateInternal.mockResolvedValue({
       candidates: [
@@ -645,7 +662,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('retries Gemini generate-content without project when project context is invalid', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.generateInternal
       .mockRejectedValueOnce(
@@ -671,7 +688,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('omits empty project id in Gemini internal payload', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     const token = createToken('acc-1');
     token.token.project_id = '';
     mockAccountLeaseService.getNextToken.mockResolvedValue(token);
@@ -690,7 +707,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('uses generate-content requestType for Gemini stream internal payload', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.streamGenerateInternal.mockResolvedValue(new EventEmitter());
 
@@ -774,7 +791,7 @@ describe('GeminiClient internal request parity', () => {
 
 describe('ProxyService Protocol Parity Fixtures', () => {
   it('maps OpenAI request to Anthropic request with tools and tool result', () => {
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
 
     const openaiRequest = {
       model: 'claude-sonnet-4-5',
@@ -839,7 +856,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
   });
 
   it('maps Anthropic response to OpenAI response with reasoning and tool_calls', () => {
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
 
     const anthropicResponse = {
       content: [
@@ -872,7 +889,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
   });
 
   it('unwraps internal SSE responses and keeps reasoning separate from content', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
     const stream = new EventEmitter();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
@@ -941,7 +958,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
   });
 
   it('matches stable tool-call ordering, deduplication, signatures, and finish semantics', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
     const stream = new EventEmitter();
     const sessionKey = 'chat-stream-parity-session';
     SignatureStore.clear(sessionKey);
@@ -1053,7 +1070,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       }),
     );
 
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
     const stream = new EventEmitter();
     const observable = (service as any).processStreamResponse(stream, 'gpt-4o-mini');
 
@@ -1088,7 +1105,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
   });
 
   it('propagates OpenAI-compatible upstream stream errors instead of completing with [DONE]', async () => {
-    const service = new TestableProxyService();
+    const service = new TestableOpenAIService();
     const stream = new EventEmitter();
     const observable = (service as any).processStreamResponse(stream, 'gpt-4o-mini');
     const chunks: string[] = [];

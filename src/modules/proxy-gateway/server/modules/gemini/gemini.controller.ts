@@ -15,7 +15,7 @@ import { isEmpty, isFunction, isNumber, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
-import { ProxyService } from '../../proxy.service';
+import { GeminiService } from './gemini.service';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
@@ -38,7 +38,7 @@ type GeminiModelMetadata = {
 @UseGuards(ProxyGuard)
 export class GeminiController {
   constructor(
-    @Inject(ProxyService) private readonly proxyService: ProxyService,
+    @Inject(GeminiService) private readonly proxyService: GeminiService,
     @Optional()
     @Inject(AccountLeaseService)
     private readonly accountLeaseService?: AccountLeaseService,

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { isEmpty, isString } from 'lodash-es';
 
 import { transformClaudeRequestIn } from '../../modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { ProxyService } from '../../modules/proxy-gateway/server/proxy.service';
+import { AnthropicService } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.service';
+import { GeminiService as ProxyService } from '../../modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 
 const mockAccountLease: any = {
@@ -255,7 +256,7 @@ async function validateRuntimeAnthropicRequestFromRealAccountLease(): Promise<vo
   };
 
   try {
-    const service = new ProxyService(AccountLeaseProxy as any, mockGeminiClient as any);
+    const service = new AnthropicService(AccountLeaseProxy as any, mockGeminiClient as any);
     await service.handleAnthropicMessages({
       model: 'claude-sonnet-4-5',
       stream: false,

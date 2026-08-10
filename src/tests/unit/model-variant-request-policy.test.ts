@@ -4,7 +4,7 @@ import {
   applyOpenAIModelVariant,
   rebindAnthropicModelVariant,
   rebindOpenAIModelVariant,
-} from '@/modules/proxy-gateway/server/modules/shared/services/model-variant-request.service';
+} from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import type {
   AnthropicChatRequest,
   OpenAIChatRequest,

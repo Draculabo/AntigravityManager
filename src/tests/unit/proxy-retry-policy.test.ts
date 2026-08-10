@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/modules/shared/services/proxy-retry.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request-exception';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/modules/shared/services/model-availability.service';
+import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 
 function createToken(id: string): CloudAccount {

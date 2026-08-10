@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseLimitPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-limit-policy';
-import { RateLimitReason } from '@/modules/proxy-gateway/server/modules/shared/services/rate-limit-tracker.service';
+import { AccountLeaseLimitPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-limit.policy';
+import { RateLimitReason } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
 
 function createPolicy() {
   const logger = {

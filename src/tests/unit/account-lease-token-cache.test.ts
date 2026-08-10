@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseTokenCache } from '@/modules/proxy-gateway/server/modules/account-lease/stores/account-lease-token-cache';
+import { AccountLeaseTokenCache } from '@/modules/proxy-gateway/server/modules/account-lease/stores/account-lease-token.store';
 import type { AccountLeaseAccountStore } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
 import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
 import type { CloudAccount } from '@/modules/cloud-account/types';

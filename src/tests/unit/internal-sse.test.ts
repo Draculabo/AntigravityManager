@@ -3,7 +3,7 @@ import { Readable } from 'node:stream';
 import { lastValueFrom, Observable, toArray } from 'rxjs';
 
 import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
-import { ProxyService } from '@/modules/proxy-gateway/server/proxy.service';
+import { AnthropicService as ProxyService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
 
 describe('decodeInternalSseData', () => {
   it('unwraps a v1internal-wrapped chunk so candidates/usage/model/id are reachable at the top level', () => {

@@ -11,7 +11,7 @@ import {
   type ExplicitContextCacheCandidate,
   type ExplicitContextCacheResource,
 } from './explicit-context-cache.store';
-import { UpstreamRequestError } from '../../common/exceptions/upstream-request-exception';
+import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 
 interface PreparedInternalRequest {

@@ -4,9 +4,9 @@ import {
   hasGenericResourceExhaustedSignal,
   RateLimitReason,
   RateLimitTrackerService,
-} from '../../shared/services/rate-limit-tracker.service';
+} from '../../../shared/services/rate-limit-tracker.service';
 import { normalizeModelId } from '../interfaces/account-lease-token-types';
-import type { AccountLeaseQuotaRefreshOutcome } from './account-lease-quota-refresh-policy';
+import type { AccountLeaseQuotaRefreshOutcome } from './account-lease-quota-refresh.policy';
 
 export interface AccountLeaseUpstreamErrorParams {
   accountIdOrEmail: string;

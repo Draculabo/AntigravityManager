@@ -6,9 +6,9 @@ import { AppModule } from './app.module';
 import { logger } from '../shared/logging/logger';
 import { AccountLeaseService } from '../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import {
-  ProxyController,
+  OpenAIController,
   type ResponsesRequestBody,
-} from '../modules/proxy-gateway/server/proxy.controller';
+} from '../modules/proxy-gateway/server/modules/openai/openai.controller';
 import { ProxyService } from '../modules/proxy-gateway/server/proxy.service';
 import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
 import {
@@ -93,7 +93,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
     app.enableCors();
 
     await app.listen(port, '0.0.0.0');
-    const proxyController = app.get(ProxyController);
+    const openAIController = app.get(OpenAIController);
     const proxyService = app.get(ProxyService);
     detachResponsesWebSocketServer = attachOpenAIResponsesWebSocketServer(app.getHttpServer(), {
       isAuthorized: (request) => {
@@ -104,7 +104,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
         );
       },
       streamRequest: async (request) => {
-        const prepared = proxyController.prepareResponsesRequest(
+        const prepared = openAIController.prepareResponsesRequest(
           request as unknown as ResponsesRequestBody,
         );
         if (!prepared) {

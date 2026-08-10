@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import WebSocket from 'ws';
 import { of } from 'rxjs';
 
-import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket-protocol';
+import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.protocol';
 import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
 
 describe('OpenAIResponsesWebSocketProtocol', () => {

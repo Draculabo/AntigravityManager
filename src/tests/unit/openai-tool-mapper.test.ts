@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ProxyService } from '../../modules/proxy-gateway/server/proxy.service';
+import { OpenAIService as ProxyService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
 
 describe('OpenAI tool mapper compatibility', () => {
   it('maps a Responses apply_patch custom tool to the upstream freeform input schema', () => {
