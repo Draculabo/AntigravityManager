@@ -2,6 +2,76 @@
 
 # Changelog
 
+## [0.20.0](https://github.com/Draculabo/AntigravityManager/compare/v0.19.0...v0.20.0) (2026-08-10)
+
+### ✨ Features
+
+* add Arch Linux PKGBUILD for AUR deployment ([#217](https://github.com/Draculabo/AntigravityManager/issues/217)) ([9c6d263](https://github.com/Draculabo/AntigravityManager/commit/9c6d263e308b149aaae544d68f8e8d8d25b383b1))
+* **antigravity-runtime:** add cache and AGY binary tools ([0112e60](https://github.com/Draculabo/AntigravityManager/commit/0112e60c5d141753eb3a08cd09b801d918cbccfe))
+* **cloud-account:** add configurable auto-switch models and priorities ([#225](https://github.com/Draculabo/AntigravityManager/issues/225)) ([f3728c4](https://github.com/Draculabo/AntigravityManager/commit/f3728c4776d0dc8fae020caf2181e3a8ba74d1fb))
+* **cloud-account:** import verified local accounts ([b88bb67](https://github.com/Draculabo/AntigravityManager/commit/b88bb67c2c3f1b8391c9dd5ec5b573bc0569371c))
+* **proxy-gateway:** add dynamic proxy example model catalog ([841c4ee](https://github.com/Draculabo/AntigravityManager/commit/841c4ee479069fb6e6d5c51b3fbe9a589aec6913))
+* **proxy-gateway:** add OpenCode management UI and dynamic API examples ([38db462](https://github.com/Draculabo/AntigravityManager/commit/38db462b54b7e33a7c193c6f81171cc078efbf73))
+* **proxy-gateway:** add Responses sessions and protocol integration ([d823042](https://github.com/Draculabo/AntigravityManager/commit/d8230421b066fec94a1fd5cd3a9a5536f62eba99))
+* **proxy-gateway:** cache explicit Gemini contexts ([9aeb00d](https://github.com/Draculabo/AntigravityManager/commit/9aeb00d21d5d725b89ab88b9b3622731e5f2dfc6))
+* **proxy-gateway:** expand OpenCode sync lifecycle ([5214ff5](https://github.com/Draculabo/AntigravityManager/commit/5214ff5be22e9bb40754035c2ecff6dcd4369c8b))
+* **proxy-gateway:** normalize prompts and tool-call mappings ([a34496a](https://github.com/Draculabo/AntigravityManager/commit/a34496a24606985edaf67ecd00363b949ccdd7f5))
+* **proxy-gateway:** route model variants and image requests ([9301d4b](https://github.com/Draculabo/AntigravityManager/commit/9301d4b5cd8127a31b53c567209b778a18a72789))
+* **proxy-gateway:** surface model-specific availability failures ([fcfa40d](https://github.com/Draculabo/AntigravityManager/commit/fcfa40daafc743c775fcefd94a82ff62a8d9624e))
+* **proxy-gateway:** sync OpenCode config and credentials ([848e6f8](https://github.com/Draculabo/AntigravityManager/commit/848e6f80cc282bda3adab3ed17e4e6e49bd3f699))
+* **proxy:** support Responses API tool-call streaming ([7ec1ee7](https://github.com/Draculabo/AntigravityManager/commit/7ec1ee7e26f4745bfbc5bbad0fe0345ff3d1b3e2))
+* **tray:** add Turkish translations ([95400f9](https://github.com/Draculabo/AntigravityManager/commit/95400f9797986ad4b3ff98ddd96ffcc60418e359))
+* **updater:** migrate Windows updates to electron-updater ([1bda2fe](https://github.com/Draculabo/AntigravityManager/commit/1bda2fe47046d11d6b8522c192b15c8c8e8c5b48))
+
+### 🐛 Bug Fixes
+
+* **app-shell:** improve shutdown and Windows background execution ([0591cba](https://github.com/Draculabo/AntigravityManager/commit/0591cba828eb33a8a9b2c82216dd3c3716ce0c17))
+* **build:** externalize optional WebSocket native modules ([4d0ace1](https://github.com/Draculabo/AntigravityManager/commit/4d0ace13d058d51f6ef5901a93af68a6bf3f937c))
+* **cloud-account:** reconcile quota families and live model limits ([883dddb](https://github.com/Draculabo/AntigravityManager/commit/883dddb6443cf5d22ab20d60b5d255eb52615f34))
+* **opencode:** open the keyring on first use, not during import ([#241](https://github.com/Draculabo/AntigravityManager/issues/241)) ([c32fd51](https://github.com/Draculabo/AntigravityManager/commit/c32fd5116d74cf87d86cdcc69400c51e8a621f91))
+* **opencode:** resolve executable directly from PATH ([52795be](https://github.com/Draculabo/AntigravityManager/commit/52795be9b97a11af4dc39c8e3ab9ba2707901821))
+* **packaging:** sync Arch release checksums ([854a43d](https://github.com/Draculabo/AntigravityManager/commit/854a43dc9e22867f82a7c92277b56a9931d93c22))
+* **proxy-gateway:** preserve wrapped multi-part Anthropic streams ([5458849](https://github.com/Draculabo/AntigravityManager/commit/54588498f4bfe1f426f42836c09c60fa6fbefa79))
+* **proxy:** advertise and route Antigravity model presets ([#223](https://github.com/Draculabo/AntigravityManager/issues/223)) ([1dcbc09](https://github.com/Draculabo/AntigravityManager/commit/1dcbc0976061519897fa92412127d1ea5f93ca4e))
+* **proxy:** align raw model listing and thinking signatures ([8a17a61](https://github.com/Draculabo/AntigravityManager/commit/8a17a61981209d3c2745b7aca6a1583dc84162c1))
+* **proxy:** forward tool declarations on the /v1beta passthrough ([#235](https://github.com/Draculabo/AntigravityManager/issues/235)) ([8f9a36f](https://github.com/Draculabo/AntigravityManager/commit/8f9a36fa58c26999f4ff6f0b53a3a2cd44f4c6de))
+* **proxy:** reroute upstream-rejected model variants to advertised family siblings ([#230](https://github.com/Draculabo/AntigravityManager/issues/230)) ([de8d68d](https://github.com/Draculabo/AntigravityManager/commit/de8d68d062d6d1eaaabe58da3c04a9a743f77c5e))
+* **proxy:** sanitize Gemini tool schemas and thought signatures ([3eece25](https://github.com/Draculabo/AntigravityManager/commit/3eece25c8abf0be6577680f64bb8bfb619a68692))
+* **proxy:** stop sending sessionId in the v1internal envelope ([#240](https://github.com/Draculabo/AntigravityManager/issues/240)) ([9cf2c00](https://github.com/Draculabo/AntigravityManager/commit/9cf2c00980f78f6cb9ba46448b904b5b04c03126))
+* **proxy:** unwrap the v1internal SSE envelope in every stream parser ([#234](https://github.com/Draculabo/AntigravityManager/issues/234)) ([7cea22e](https://github.com/Draculabo/AntigravityManager/commit/7cea22ec3d63689c3a2eb7dfbcf490a6e71c852e))
+* **runtime:** harden Windows process discovery and termination ([7e94f28](https://github.com/Draculabo/AntigravityManager/commit/7e94f28fc998ac0369d1b7bca862afafb2625bce))
+* **runtime:** replace PowerShell throttling with Koffi ([239e78b](https://github.com/Draculabo/AntigravityManager/commit/239e78b21ff79ac452ce0487a980b7cbe3d1478f))
+* **runtime:** replace tasklist polling with ps-list ([f8ecec3](https://github.com/Draculabo/AntigravityManager/commit/f8ecec3581d7e9906aaf0991902210ff2eefac6f))
+* **security:** auto-recover dev safeStorage keys, remove deprecated electron-updater, add diagnostic logging ([#222](https://github.com/Draculabo/AntigravityManager/issues/222)) ([1979ec4](https://github.com/Draculabo/AntigravityManager/commit/1979ec485cc78f38758ffa466d2241497e622eb5))
+* **security:** harden proxy credentials and sensitive logging ([e90d9fe](https://github.com/Draculabo/AntigravityManager/commit/e90d9fe7572c7e3c450e7ffeadf1da3e9420607b))
+* **updater:** fall back to manual release checks on Windows ([9b7d622](https://github.com/Draculabo/AntigravityManager/commit/9b7d622ef1c8756e2de107e46b0b6fefc39a7ceb))
+* **updater:** generate electron-updater metadata for setup exe only ([2b0a55c](https://github.com/Draculabo/AntigravityManager/commit/2b0a55ce905165e30166a7308fb4527da0b9aea7))
+
+### 📝 Documentation
+
+* add Arch Linux AUR installation instructions ([#218](https://github.com/Draculabo/AntigravityManager/issues/218)) ([7b6aa1c](https://github.com/Draculabo/AntigravityManager/commit/7b6aa1c990956ea55791de6061ca6c62f7688591))
+* define architecture direction ([5be805f](https://github.com/Draculabo/AntigravityManager/commit/5be805f0e56312f1282b13d39c69da1eae0c7985))
+* **proxy-gateway:** add server module README and architecture guide ([d5eac44](https://github.com/Draculabo/AntigravityManager/commit/d5eac4422b1af8ce717bf56e4e8bedfb8df0ee99))
+
+### ♻️ Code Refactoring
+
+* **cloud-account:** extract storage adapters ([51edd21](https://github.com/Draculabo/AntigravityManager/commit/51edd2187d4a9cc70e9ece7eb487296a637ae5fc))
+* extract account lease and cloud account adapters ([b09b17b](https://github.com/Draculabo/AntigravityManager/commit/b09b17beeb2dbd6acdfa0451bc6e0d5dc6f83c12))
+* **proxy-gateway:** complete sub-module function-level migration, root files kept as-is ([beb9f62](https://github.com/Draculabo/AntigravityManager/commit/beb9f62ea69b067269ff57971eabfd96cfadcb8b))
+* **proxy-gateway:** split protocol controllers and services ([1b6c555](https://github.com/Draculabo/AntigravityManager/commit/1b6c5553252808ff6dc52dd8896073801dd6a27a))
+* **proxy:** tighten internal SSE types and regression coverage ([e63d8da](https://github.com/Draculabo/AntigravityManager/commit/e63d8da61b85b34311c9b33710b31de53160092a))
+* **proxy:** unify internal SSE envelope decoding ([550e9cc](https://github.com/Draculabo/AntigravityManager/commit/550e9cceaad6932d55d8e556597cf8ee93eea93e))
+
+### ✅ Tests
+
+* **e2e:** use accessible locators ([3dca407](https://github.com/Draculabo/AntigravityManager/commit/3dca407253eb48061ae64ff517ec5a118d0b7c2d))
+* isolate IDE process cache fixture from host Antigravity config ([#243](https://github.com/Draculabo/AntigravityManager/issues/243)) ([4bb5d9b](https://github.com/Draculabo/AntigravityManager/commit/4bb5d9bfd35649123bacad975c290ba6570aa649))
+* **performance:** add Electron responsiveness recorder ([3949bb7](https://github.com/Draculabo/AntigravityManager/commit/3949bb728bbe941668e4e2bf8a75af2ea12fd27d))
+
+### 👷 Build System
+
+* **deps:** add multipart, JSONC, and WebSocket dependencies ([2b2f3a9](https://github.com/Draculabo/AntigravityManager/commit/2b2f3a9900d3d392bc71ca57b45ac18404ebe310))
+
 ## [0.19.0](https://github.com/Draculabo/AntigravityManager/compare/v0.18.1...v0.19.0) (2026-06-23)
 
 ### ✨ Features
