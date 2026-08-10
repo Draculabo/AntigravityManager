@@ -300,7 +300,6 @@ export interface GeminiInternalRequest {
   model: string;
   userAgent: string;
   requestType?: string;
-  sessionId?: string;
   enabledCreditTypes?: string[];
 }
 
