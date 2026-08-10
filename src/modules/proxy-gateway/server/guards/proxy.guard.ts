@@ -6,11 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { getServerConfig } from '../../../../server/server-config';
-import {
-  extractApiKeyToken,
-  hasConfiguredApiKey,
-  RequestHeaders,
-} from './api-key-auth.util';
+import { extractApiKeyToken, hasConfiguredApiKey, RequestHeaders } from './api-key-auth.util';
 import { openCodeCredentialService } from '../../opencode-sync/opencode-credentials';
 
 @Injectable()

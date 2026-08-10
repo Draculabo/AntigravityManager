@@ -193,10 +193,7 @@ export class ExplicitContextCacheManager {
   }
 
   private getMinimumStaticPrefixCharacters(): number {
-    const configured = Number.parseInt(
-      process.env.PROXY_CONTEXT_CACHE_MIN_CHARACTERS ?? '',
-      10,
-    );
+    const configured = Number.parseInt(process.env.PROXY_CONTEXT_CACHE_MIN_CHARACTERS ?? '', 10);
     return configured > 0 ? configured : MIN_STATIC_PREFIX_CHARACTERS;
   }
 
