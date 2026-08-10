@@ -675,6 +675,8 @@ const zhCn = {
       description: '将 Claude 模型映射到 Gemini 模型进行路由。',
       maps_to: '映射到',
       restore: '恢复默认',
+      'only-raw-quota-models': '仅暴露真实配额模型',
+      'only-raw-quota-models-desc': '模型列表接口仅返回已连接账号配额缓存中发现的物理模型。',
     },
     'open-code': {
       title: 'OpenCode 同步',

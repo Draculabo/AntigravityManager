@@ -133,7 +133,7 @@ export function transformClaudeRequestIn(
     });
 
     if (hasFunctionCalls && !hasValidSignatureForFunctionCalls(messages, sessionSignature)) {
-      if (!isGeminiFlashModel(requestConfig.finalModel)) {
+      if (!modelKeepsThinkingWithoutSignature(requestConfig.finalModel)) {
         isThinkingEnabled = false;
       }
     }
@@ -446,6 +446,15 @@ function isGeminiFlashModel(modelName: string): boolean {
   return normalized.includes('gemini') && normalized.includes('flash');
 }
 
+/**
+ * Keep forced-thinking targets enabled when tool history has no reusable signature.
+ * These models accept the provider sentinel injected into unsigned function calls.
+ */
+function modelKeepsThinkingWithoutSignature(modelName: string): boolean {
+  const normalized = modelName.toLowerCase();
+  return isGeminiFlashModel(normalized) || normalized.includes('gemini-pro-agent');
+}
+
 function isGeminiAgentThinkingModel(modelName: string): boolean {
   const normalized = modelName.toLowerCase();
   return (
@@ -718,7 +727,7 @@ function buildContents(
         if (finalSig) {
           part.thoughtSignature = finalSig;
           part.thought_signature = finalSig;
-        } else if (isThinkingEnabled && isGeminiFlashModel(mappedModel)) {
+        } else if (isThinkingEnabled && modelKeepsThinkingWithoutSignature(mappedModel)) {
           part.thoughtSignature = 'skip_thought_signature_validator';
           part.thought_signature = 'skip_thought_signature_validator';
         }

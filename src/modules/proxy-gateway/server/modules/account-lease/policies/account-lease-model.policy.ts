@@ -142,6 +142,30 @@ export class AccountLeaseModelPolicy {
     return allModels;
   }
 
+  /**
+   * Return quota keys without projecting provider display names to public aliases.
+   * Raw model discovery must expose physical upstream IDs from every loaded account.
+   */
+  getAllRawQuotaModels(): Set<string> {
+    const allModels = new Set<string>();
+    for (const tokenData of this.options.getTokenCache().values()) {
+      for (const modelId of Object.keys(tokenData.quota?.models ?? {})) {
+        const normalizedModelId = normalizeModelId(modelId)?.toLowerCase();
+        if (normalizedModelId) {
+          allModels.add(normalizedModelId);
+        }
+      }
+
+      for (const modelId of Object.keys(tokenData.model_quotas)) {
+        const normalizedModelId = normalizeModelId(modelId)?.toLowerCase();
+        if (normalizedModelId) {
+          allModels.add(normalizedModelId);
+        }
+      }
+    }
+    return allModels;
+  }
+
   getAvailableModelsFromToken(tokenData: AccountLeaseTokenData): Set<string> {
     const availableModels = new Set<string>();
 

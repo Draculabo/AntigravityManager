@@ -654,6 +654,9 @@ const fr = {
       description: 'Mapper les modeles Claude vers les modeles Gemini pour le routage.',
       maps_to: 'Mappe vers',
       restore: 'Restaurer les valeurs par defaut',
+      'only-raw-quota-models': 'Afficher uniquement les modèles avec quota',
+      'only-raw-quota-models-desc':
+        'Les API de liste renvoient uniquement les modèles physiques détectés dans les caches de quota des comptes connectés.',
     },
     'open-code': {
       title: 'Synchronisation OpenCode',

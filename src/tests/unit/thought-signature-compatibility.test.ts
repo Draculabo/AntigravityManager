@@ -10,6 +10,7 @@ import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureSto
 import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 const THOUGHT_SIGNATURE = 'thought-signature-for-tool-call';
+const SKIP_THOUGHT_SIGNATURE = 'skip_thought_signature_validator';
 
 describe('thought signature compatibility', () => {
   afterEach(() => {
@@ -55,6 +56,50 @@ describe('thought signature compatibility', () => {
       expect(part.thoughtSignature).toBe(THOUGHT_SIGNATURE);
       expect(part.thought_signature).toBe(THOUGHT_SIGNATURE);
     }
+  });
+
+  it('keeps gemini-pro-agent thinking enabled and injects both sentinel signature fields', () => {
+    const request: ClaudeRequest = {
+      model: 'gemini-3.1-pro-high',
+      max_tokens: 1024,
+      thinking: { type: 'enabled', budget_tokens: 256 },
+      messages: [
+        {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call_without_signature',
+              name: 'get_weather',
+              input: { location: 'London' },
+            },
+          ],
+        },
+      ],
+    };
+
+    const body = transformClaudeRequestIn(request);
+
+    expect(body.model).toBe('gemini-pro-agent');
+    expect(body.request.generationConfig?.thinkingConfig).toEqual({
+      includeThoughts: true,
+      thinkingBudget: 256,
+    });
+    expect(body.request.contents[0].parts).toEqual([
+      {
+        text: 'Thinking...',
+        thought: true,
+      },
+      {
+        functionCall: {
+          name: 'get_weather',
+          args: { location: 'London' },
+          id: 'call_without_signature',
+        },
+        thoughtSignature: SKIP_THOUGHT_SIGNATURE,
+        thought_signature: SKIP_THOUGHT_SIGNATURE,
+      },
+    ]);
   });
 
   it('accepts snake-case signatures from non-streaming Gemini responses', () => {

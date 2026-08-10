@@ -383,6 +383,10 @@ export class AccountLeaseService implements OnModuleInit {
     return this.modelPolicy.getAllCollectedModels();
   }
 
+  getAllRawQuotaModels(): Set<string> {
+    return this.modelPolicy.getAllRawQuotaModels();
+  }
+
   private getAvailableModelsFromToken(tokenData: TokenData): Set<string> {
     return this.modelPolicy.getAvailableModelsFromToken(tokenData);
   }

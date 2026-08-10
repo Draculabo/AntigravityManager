@@ -635,6 +635,9 @@ const ru = {
       description: 'Настройка маршрутизации моделей.',
       maps_to: '->',
       restore: 'Сброс',
+      'only-raw-quota-models': 'Показывать только модели квоты',
+      'only-raw-quota-models-desc':
+        'API списка моделей возвращают только физические модели из кешей квот подключённых аккаунтов.',
     },
     'open-code': {
       title: 'Синхронизация OpenCode',

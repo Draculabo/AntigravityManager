@@ -624,6 +624,9 @@ const vi = {
       description: 'Ánh xạ model Claude sang Gemini để định tuyến.',
       maps_to: 'Ánh xạ tới',
       restore: 'Khôi phục mặc định',
+      'only-raw-quota-models': 'Chỉ hiển thị model quota',
+      'only-raw-quota-models-desc':
+        'API danh sách model chỉ trả về các model vật lý được phát hiện trong bộ nhớ đệm quota của tài khoản đã kết nối.',
     },
     'open-code': {
       title: 'Đồng bộ OpenCode',

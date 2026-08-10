@@ -171,8 +171,16 @@ export function getDynamicForwardingTarget(modelId: string): string | undefined 
 export function getAllDynamicModels(
   customMapping: Record<string, string> = {},
   dynamicModelIds?: Iterable<string>,
+  onlyRawQuotaModels = false,
 ): string[] {
   const modelIds = collectDynamicModelIds(dynamicModelIds);
+
+  if (onlyRawQuotaModels) {
+    // Raw discovery is a physical cache view. Adding aliases, fallbacks, or
+    // compatibility filters here would make clients cache models that quota never advertised.
+    return [...modelIds].sort();
+  }
+
   const shouldUseStaticFallback = modelIds.size === 0;
 
   for (const modelId of getSupportedModels()) {
@@ -201,10 +209,12 @@ export function getAllDynamicModels(
 export function getOpenAICompatibleModels(
   customMapping: Record<string, string> = {},
   dynamicModelIds?: Iterable<string>,
+  onlyRawQuotaModels = false,
 ): string[] {
-  return getAllDynamicModels(customMapping, dynamicModelIds).filter(
-    (id) => !shouldHideNonChatModelFromOpenAIList(id),
-  );
+  const modelIds = getAllDynamicModels(customMapping, dynamicModelIds, onlyRawQuotaModels);
+  return onlyRawQuotaModels
+    ? modelIds
+    : modelIds.filter((id) => !shouldHideNonChatModelFromOpenAIList(id));
 }
 
 export function mapClaudeModelToGemini(input: string): string {

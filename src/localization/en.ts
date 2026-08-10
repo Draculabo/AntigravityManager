@@ -706,6 +706,9 @@ const en = {
       description: 'Map Claude models to Gemini models for routing.',
       maps_to: 'Maps to',
       restore: 'Restore Defaults',
+      'only-raw-quota-models': 'Only expose quota models',
+      'only-raw-quota-models-desc':
+        'Model list APIs return only physical models discovered from connected account quota caches.',
     },
     'open-code': {
       title: 'OpenCode sync',

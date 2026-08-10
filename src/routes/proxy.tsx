@@ -542,6 +542,21 @@ print(response.choices[0].message.content)`;
           <CardDescription>{t('proxy.mapping.description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-1">
+              <Label>{t('proxy.mapping.only-raw-quota-models')}</Label>
+              <p className="text-xs text-gray-500">
+                {t('proxy.mapping.only-raw-quota-models-desc')}
+              </p>
+            </div>
+            <Switch
+              checked={proxyConfig.only_raw_quota_models}
+              onCheckedChange={(checked) =>
+                updateProxyConfig({ ...proxyConfig, only_raw_quota_models: checked })
+              }
+            />
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {/* Sonnet 4.6 Card */}
             <div className="flex flex-col rounded-lg border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100/50 p-4 dark:border-blue-800/50 dark:from-blue-950/30 dark:to-blue-900/20">

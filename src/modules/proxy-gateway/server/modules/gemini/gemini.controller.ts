@@ -172,9 +172,14 @@ export class GeminiController {
 
   private buildGeminiModelList(): GeminiModelMetadata[] {
     const config = getServerConfig();
+    const onlyRawQuotaModels = config?.only_raw_quota_models ?? false;
+    const collectedModelIds = onlyRawQuotaModels
+      ? this.accountLeaseService?.getAllRawQuotaModels()
+      : this.accountLeaseService?.getAllCollectedModels();
     const dynamicModelIds = getAllDynamicModels(
       config?.custom_mapping ?? {},
-      this.accountLeaseService?.getAllCollectedModels(),
+      collectedModelIds,
+      onlyRawQuotaModels,
     );
 
     return dynamicModelIds.map((id) => this.toGeminiModelMetadata(`models/${id}`));

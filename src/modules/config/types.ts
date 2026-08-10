@@ -25,6 +25,7 @@ export const ProxyConfigSchema = z.object({
   preferred_account_id: z.string().default(''),
   circuit_breaker_enabled: z.boolean().default(true),
   circuit_breaker_backoff_steps: z.array(z.number()).default([60, 300, 1800, 7200]),
+  only_raw_quota_models: z.boolean().default(false),
   custom_mapping: z.record(z.string(), z.string()).default({}),
   anthropic_mapping: z.record(z.string(), z.string()), // Mapping table
   request_timeout: z.number().default(120), // Timeout in seconds
@@ -116,6 +117,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     preferred_account_id: '',
     circuit_breaker_enabled: true,
     circuit_breaker_backoff_steps: [60, 300, 1800, 7200],
+    only_raw_quota_models: false,
     custom_mapping: {},
     anthropic_mapping: {},
     request_timeout: 120,

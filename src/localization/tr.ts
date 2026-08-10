@@ -627,6 +627,9 @@ const tr = {
       description: 'Yönlendirme için Claude modellerini Gemini modelleriyle eşleyin.',
       maps_to: 'Şu modele eşlenir:',
       restore: 'Varsayılanlara Sıfırla',
+      'only-raw-quota-models': 'Yalnızca kota modellerini göster',
+      'only-raw-quota-models-desc':
+        'Model listeleme API’leri yalnızca bağlı hesapların kota önbelleklerinde bulunan fiziksel modelleri döndürür.',
     },
     'open-code': {
       title: 'OpenCode eşitleme',

@@ -5,6 +5,8 @@ import { AnthropicController } from '../../modules/proxy-gateway/server/modules/
 import { OpenAIController as ProxyController } from '../../modules/proxy-gateway/server/modules/openai/openai.controller';
 import { OpenAIResponsesSessionStore } from '../../modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
 import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import { DEFAULT_APP_CONFIG } from '../../modules/config/types';
+import { setServerConfig } from '../../server/server-config';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};
@@ -238,6 +240,53 @@ describe('ProxyController Integration', () => {
     );
     expect(ids).not.toContain('gemini-3-pro-image');
     expect(ids).toContain('gemini-imagecraft-chat');
+  });
+
+  it('lists the exact raw quota models, including physical image models', () => {
+    setServerConfig({
+      ...DEFAULT_APP_CONFIG.proxy,
+      only_raw_quota_models: true,
+      custom_mapping: {
+        'gpt-4o': 'gemini-3-flash',
+      },
+    });
+
+    const accountLeaseService = {
+      getAllRawQuotaModels: vi.fn(
+        () => new Set(['gemini-3-pro-image', 'gemini-2.5-flash', 'gemini-pro-agent']),
+      ),
+    };
+    const controller = new ProxyController({} as any, accountLeaseService as any);
+    const reply = createReplyMock();
+
+    controller.listModels(reply as any);
+    setServerConfig(DEFAULT_APP_CONFIG.proxy);
+
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(accountLeaseService.getAllRawQuotaModels).toHaveBeenCalledOnce();
+    expect(reply.send).toHaveBeenCalledWith({
+      object: 'list',
+      data: [
+        {
+          id: 'gemini-2.5-flash',
+          object: 'model',
+          created: 1770652800,
+          owned_by: 'antigravity',
+        },
+        {
+          id: 'gemini-3-pro-image',
+          object: 'model',
+          created: 1770652800,
+          owned_by: 'antigravity',
+        },
+        {
+          id: 'gemini-pro-agent',
+          object: 'model',
+          created: 1770652800,
+          owned_by: 'antigravity',
+        },
+      ],
+    });
   });
 
   it('routes Claude OpenAI requests to protocol parity path', async () => {

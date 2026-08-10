@@ -130,6 +130,43 @@ describe('AccountLeaseModelPolicy', () => {
     expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3-flash')).toBe('gemini-3-flash');
   });
 
+  it('collects raw physical quota IDs from every loaded account without display aliases', () => {
+    const tokenCache = new Map([
+      [
+        'acc-1',
+        createToken({
+          model_quotas: {
+            'gemini-3-flash-agent': 80,
+            'gemini-3-pro-image': 80,
+          },
+          quota: {
+            models: {
+              'gemini-3-flash-agent': {
+                percentage: 80,
+                resetTime: '',
+                display_name: 'Gemini 3.5 Flash (High)',
+              },
+            },
+          },
+        }),
+      ],
+      [
+        'acc-2',
+        createToken({
+          account_id: 'acc-2',
+          model_quotas: {
+            'gemini-pro-agent': 80,
+          },
+        }),
+      ],
+    ]);
+    const { policy } = createPolicy(tokenCache);
+
+    expect(policy.getAllRawQuotaModels()).toEqual(
+      new Set(['gemini-3-flash-agent', 'gemini-3-pro-image', 'gemini-pro-agent']),
+    );
+  });
+
   it('uses quota forwarding rules before family candidates', () => {
     const tokenCache = new Map([
       [

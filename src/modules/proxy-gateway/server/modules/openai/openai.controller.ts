@@ -96,9 +96,14 @@ export class OpenAIController extends BaseProxyController {
     try {
       const config = getServerConfig();
       const customMapping = config?.custom_mapping ?? {};
+      const onlyRawQuotaModels = config?.only_raw_quota_models ?? false;
+      const dynamicModelIds = onlyRawQuotaModels
+        ? this.accountLeaseService?.getAllRawQuotaModels()
+        : this.accountLeaseService?.getAllCollectedModels();
       const modelIds = getOpenAICompatibleModels(
         customMapping,
-        this.accountLeaseService?.getAllCollectedModels(),
+        dynamicModelIds,
+        onlyRawQuotaModels,
       );
 
       const data = modelIds.map((id) => ({

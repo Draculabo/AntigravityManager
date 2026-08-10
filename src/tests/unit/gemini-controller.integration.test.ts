@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 
 import { GeminiController } from '../../modules/proxy-gateway/server/modules/gemini/gemini.controller';
+import { DEFAULT_APP_CONFIG } from '../../modules/config/types';
+import { setServerConfig } from '../../server/server-config';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};
@@ -84,6 +86,70 @@ describe('GeminiController Integration', () => {
         'models/gpt-oss-120b-medium',
       ]),
     );
+  });
+
+  it('lists only raw physical quota models when configured', () => {
+    setServerConfig({
+      ...DEFAULT_APP_CONFIG.proxy,
+      only_raw_quota_models: true,
+      custom_mapping: {
+        'gpt-4o': 'gemini-3-flash',
+      },
+    });
+
+    const accountLeaseService = {
+      getAllRawQuotaModels: vi.fn(
+        () => new Set(['gemini-3-pro-image', 'gemini-2.5-flash', 'gemini-pro-agent']),
+      ),
+    };
+    const controller = new GeminiController({} as any, accountLeaseService as any);
+    const reply = createReplyMock();
+
+    controller.listModels(reply as any);
+    setServerConfig(DEFAULT_APP_CONFIG.proxy);
+
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(accountLeaseService.getAllRawQuotaModels).toHaveBeenCalledOnce();
+    expect(reply.send).toHaveBeenCalledWith({
+      models: [
+        {
+          name: 'models/gemini-2.5-flash',
+          displayName: 'gemini-2.5-flash',
+          description: '',
+          inputTokenLimit: 128000,
+          outputTokenLimit: 8192,
+          supportedGenerationMethods: ['generateContent', 'countTokens'],
+          temperature: 1,
+          topK: 64,
+          topP: 0.95,
+          version: '001',
+        },
+        {
+          name: 'models/gemini-3-pro-image',
+          displayName: 'gemini-3-pro-image',
+          description: '',
+          inputTokenLimit: 128000,
+          outputTokenLimit: 8192,
+          supportedGenerationMethods: ['generateContent', 'countTokens'],
+          temperature: 1,
+          topK: 64,
+          topP: 0.95,
+          version: '001',
+        },
+        {
+          name: 'models/gemini-pro-agent',
+          displayName: 'gemini-pro-agent',
+          description: '',
+          inputTokenLimit: 128000,
+          outputTokenLimit: 8192,
+          supportedGenerationMethods: ['generateContent', 'countTokens'],
+          temperature: 1,
+          topK: 64,
+          topP: 0.95,
+          version: '001',
+        },
+      ],
+    });
   });
 
   it('handles generateContent action from colon endpoint format', async () => {
