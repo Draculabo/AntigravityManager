@@ -26,14 +26,26 @@ import {
   rebindAnthropicModelVariant,
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 
 @Injectable()
 export class AnthropicService extends BaseProxyService {
   constructor(
     @Inject(AccountLeaseService) accountLeaseService: AccountLeaseService,
     @Inject(GeminiClient) geminiClient: GeminiClient,
+    @Inject(GenerationConstraintsService) generationConstraints: GenerationConstraintsService,
+    @Inject(ProxyRetryService) retryPolicy: ProxyRetryService,
+    @Inject(ModelRoutingService) modelRoutingPolicy: ModelRoutingService,
   ) {
-    super(accountLeaseService, geminiClient);
+    super(
+      accountLeaseService,
+      geminiClient,
+      generationConstraints,
+      retryPolicy,
+      modelRoutingPolicy,
+    );
   }
   async handleAnthropicMessages(
     request: AnthropicChatRequest,

@@ -1,6 +1,8 @@
+import { Injectable } from '@nestjs/common';
 import { getServerConfig } from '../../../../../server/server-config';
 import { normalizeGeminiModelAlias, resolveModelRoute } from '../../../antigravity/ModelMapping';
 
+@Injectable()
 export class ModelRoutingService {
   normalizeGeminiModel(model: string): string {
     return model.replace(/^models\//i, '');

@@ -36,13 +36,20 @@ interface AccountLeaseLimitPolicyOptions {
     model?: string,
   ) => boolean;
   logger: AccountLeaseLimitLogger;
+  /**
+   * Owned by `AccountLeaseModule` and handed in, not constructed here. The tracker holds the
+   * lockout and failure-count maps, so a second instance would split rate-limit state.
+   */
+  rateLimitTracker: RateLimitTrackerService;
 }
 
 export class AccountLeaseLimitPolicy {
   private readonly accountCooldowns = new Map<string, number>();
-  private readonly rateLimitTracker = new RateLimitTrackerService();
+  private readonly rateLimitTracker: RateLimitTrackerService;
 
-  constructor(private readonly options: AccountLeaseLimitPolicyOptions) {}
+  constructor(private readonly options: AccountLeaseLimitPolicyOptions) {
+    this.rateLimitTracker = options.rateLimitTracker;
+  }
 
   getAccountCooldowns(): Map<string, number> {
     return this.accountCooldowns;

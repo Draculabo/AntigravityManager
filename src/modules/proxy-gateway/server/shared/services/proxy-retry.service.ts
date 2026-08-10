@@ -1,3 +1,4 @@
+import { Inject, Injectable } from '@nestjs/common';
 import { isString } from 'lodash-es';
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { calculateRetryDelay, sleep } from '../../../antigravity/retry-utils';
@@ -35,10 +36,18 @@ export interface ProxyRetryAccountLeaseService {
   markModelSuccess(accountIdOrEmail: string, model: string): void;
 }
 
-interface ProxyRetryLogger {
+export interface ProxyRetryLogger {
   log(message: string): void;
   warn(message: string): void;
 }
+
+/**
+ * Injection tokens. Tokens rather than the concrete `AccountLeaseService` and `Logger` keep
+ * `shared/` free of an import back into `modules/account-lease/`, and keep the retry service
+ * testable with a plain fake.
+ */
+export const PROXY_RETRY_ACCOUNT_LEASE = 'PROXY_RETRY_ACCOUNT_LEASE';
+export const PROXY_RETRY_LOGGER = 'PROXY_RETRY_LOGGER';
 
 export interface ProxyUpstreamFailureClassification {
   retry: boolean;
@@ -46,9 +55,12 @@ export interface ProxyUpstreamFailureClassification {
   markAsRateLimited: boolean;
 }
 
+@Injectable()
 export class ProxyRetryService {
   constructor(
+    @Inject(PROXY_RETRY_ACCOUNT_LEASE)
     private readonly accountLeaseService: ProxyRetryAccountLeaseService,
+    @Inject(PROXY_RETRY_LOGGER)
     private readonly logger: ProxyRetryLogger,
   ) {}
 

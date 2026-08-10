@@ -110,7 +110,13 @@ function createAnthropicStream(
 
 describe('ProxyService Anthropic streaming envelope handling', () => {
   it('unwraps a wrapped two-part chunk and does not drop the second part', async () => {
-    const service = new ProxyService({} as never, {} as never);
+    const service = new ProxyService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
     const upstreamStream = Readable.from([
       Buffer.from(
         'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"c2ln","text":"first"},{"text":"second"}]}}],"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":2},"modelVersion":"gemini-3-flash","responseId":"resp_wrapped"}}\n\n',
@@ -138,7 +144,13 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
   });
 
   it('still routes undecodable payloads through the parse-error recovery', async () => {
-    const service = new ProxyService({} as never, {} as never);
+    const service = new ProxyService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
     const upstreamStream = Readable.from(
       Array.from({ length: 5 }, () => Buffer.from('data: {"response":\n\n')),
     );
@@ -158,7 +170,13 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
   });
 
   it('emits a message_delta for a wrapped finishReason-only chunk', async () => {
-    const service = new ProxyService({} as never, {} as never);
+    const service = new ProxyService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
     const upstreamStream = Readable.from([
       Buffer.from('data: {"response":{"candidates":[{"finishReason":"STOP"}]}}\n\n'),
     ]);

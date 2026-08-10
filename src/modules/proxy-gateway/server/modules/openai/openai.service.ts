@@ -50,6 +50,9 @@ import {
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
 
 export type OpenAIOutputProtocol = 'chat-completions' | 'responses';
@@ -60,8 +63,17 @@ export class OpenAIService extends BaseProxyService {
     @Inject(AccountLeaseService) accountLeaseService: AccountLeaseService,
     @Inject(GeminiClient) geminiClient: GeminiClient,
     @Inject(GeminiService) private readonly geminiService: GeminiService,
+    @Inject(GenerationConstraintsService) generationConstraints: GenerationConstraintsService,
+    @Inject(ProxyRetryService) retryPolicy: ProxyRetryService,
+    @Inject(ModelRoutingService) modelRoutingPolicy: ModelRoutingService,
   ) {
-    super(accountLeaseService, geminiClient);
+    super(
+      accountLeaseService,
+      geminiClient,
+      generationConstraints,
+      retryPolicy,
+      modelRoutingPolicy,
+    );
   }
 
   async handleChatCompletions(
