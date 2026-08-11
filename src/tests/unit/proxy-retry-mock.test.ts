@@ -13,6 +13,7 @@ import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureSto
 import { GenerationConstraintsService } from '../../modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import { ModelRoutingService } from '../../modules/proxy-gateway/server/shared/services/model-routing.service';
 import { ProxyRetryService } from '../../modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { proxyModelAvailabilityStore } from '../../modules/proxy-gateway/server/shared/services/model-availability.service';
 
 // The three services the protocol services used to build for themselves. Real instances:
 // these tests drive the retry path, so a placeholder would change what is under test.
@@ -23,7 +24,11 @@ function sharedProxyServices(): [
 ] {
   return [
     new GenerationConstraintsService(mockAccountLeaseService as any),
-    new ProxyRetryService(mockAccountLeaseService as any, { log: () => {}, warn: () => {} }),
+    new ProxyRetryService(
+      mockAccountLeaseService as any,
+      { log: () => {}, warn: () => {} },
+      proxyModelAvailabilityStore,
+    ),
     new ModelRoutingService(),
   ];
 }

@@ -35,7 +35,7 @@ function createPolicy() {
     log: vi.fn(),
     warn: vi.fn(),
   };
-  const policy = new ProxyRetryService(accountLeaseService, logger);
+  const policy = new ProxyRetryService(accountLeaseService, logger, proxyModelAvailabilityStore);
 
   return {
     logger,

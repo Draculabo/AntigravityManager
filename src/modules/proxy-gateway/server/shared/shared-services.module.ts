@@ -6,6 +6,10 @@ import {
   GenerationConstraintsService,
   PROXY_MODEL_CAPABILITY_READER,
 } from './services/generation-constraints.service';
+import {
+  ModelAvailabilityService,
+  proxyModelAvailabilityStore,
+} from './services/model-availability.service';
 import { ModelRoutingService } from './services/model-routing.service';
 import {
   PROXY_RETRY_ACCOUNT_LEASE,
@@ -40,7 +44,21 @@ import {
       provide: PROXY_RETRY_LOGGER,
       useValue: new Logger('ProxyRetryService'),
     },
+    // Deliberately `useValue` rather than letting the container construct it. The store is
+    // application-scoped, not container-scoped: `proxy-gateway/ipc/router.ts` and
+    // `cloud-account/ipc/handler.ts` read and clear it from the Electron side, where there is
+    // no Nest container and the proxy server may be stopped. Handing the same instance to the
+    // container makes the dependency explicit and injectable without moving its lifetime.
+    {
+      provide: ModelAvailabilityService,
+      useValue: proxyModelAvailabilityStore,
+    },
   ],
-  exports: [ModelRoutingService, GenerationConstraintsService, ProxyRetryService],
+  exports: [
+    ModelRoutingService,
+    GenerationConstraintsService,
+    ProxyRetryService,
+    ModelAvailabilityService,
+  ],
 })
 export class SharedServicesModule {}

@@ -12,6 +12,10 @@ import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthrop
 import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
 import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import {
+  ModelAvailabilityService,
+  proxyModelAvailabilityStore,
+} from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import {
@@ -82,6 +86,21 @@ describe('proxy gateway state ownership', () => {
       );
     expect(tracker.isRateLimited('acc-di-probe')).toBe(true);
     tracker.clear('acc-di-probe');
+
+    await context.close();
+  });
+
+  it('hands the container the same availability store the IPC layer reads', async () => {
+    const context = await createContext();
+
+    // The store is application-scoped on purpose: `proxy-gateway/ipc/router.ts` and
+    // `cloud-account/ipc/handler.ts` reach it from the Electron side, where no container
+    // exists. What matters is that the container does not build a second one, or the retry
+    // path would mark models unavailable where the UI could never see it.
+    expect(context.get(ModelAvailabilityService)).toBe(proxyModelAvailabilityStore);
+
+    const retry = context.get(ProxyRetryService);
+    expect(Reflect.get(retry, 'modelAvailability')).toBe(proxyModelAvailabilityStore);
 
     await context.close();
   });

@@ -9,7 +9,7 @@ import {
   shouldGraceRetry,
 } from './rate-limit-tracker.service';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
-import { proxyModelAvailabilityStore } from './model-availability.service';
+import { ModelAvailabilityService } from './model-availability.service';
 
 export interface ProxyTokenRetryState {
   attemptedAccountIds: Set<string>;
@@ -62,6 +62,8 @@ export class ProxyRetryService {
     private readonly accountLeaseService: ProxyRetryAccountLeaseService,
     @Inject(PROXY_RETRY_LOGGER)
     private readonly logger: ProxyRetryLogger,
+    @Inject(ModelAvailabilityService)
+    private readonly modelAvailability: ModelAvailabilityService,
   ) {}
 
   createTokenRetryState(): ProxyTokenRetryState {
@@ -139,14 +141,14 @@ export class ProxyRetryService {
       const status = error.status;
       const isImageModel = model.toLowerCase().includes('-image');
       if (isImageModel && status === 404) {
-        proxyModelAvailabilityStore.mark(accountId, model, 'model_not_supported', undefined, {
+        this.modelAvailability.mark(accountId, model, 'model_not_supported', undefined, {
           status,
           message: error.body ?? error.message,
         });
         return;
       }
       if (isImageModel && status === 403) {
-        proxyModelAvailabilityStore.mark(accountId, model, 'model_forbidden', undefined, {
+        this.modelAvailability.mark(accountId, model, 'model_forbidden', undefined, {
           status,
           message: error.body ?? error.message,
         });
@@ -206,7 +208,7 @@ export class ProxyRetryService {
 
   markUpstreamSuccess(accountId: string, model: string): void {
     this.accountLeaseService.markModelSuccess(accountId, model);
-    proxyModelAvailabilityStore.clearModel(accountId, model);
+    this.modelAvailability.clearModel(accountId, model);
   }
 
   private persistModelRateLimit(
@@ -219,7 +221,7 @@ export class ProxyRetryService {
     if (waitSeconds <= 0) {
       return;
     }
-    proxyModelAvailabilityStore.mark(
+    this.modelAvailability.mark(
       accountId,
       model,
       hasExplicitQuotaExhaustedSignal(message) ? 'quota_exhausted' : 'rate_limited',

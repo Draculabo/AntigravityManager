@@ -6,6 +6,7 @@ import { AnthropicService } from '../../modules/proxy-gateway/server/modules/ant
 import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { GeminiService as ProxyService } from '../../modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 
@@ -29,7 +30,11 @@ class TestableProxyService extends ProxyService {
       mockAccountLease,
       mockGeminiClient,
       new GenerationConstraintsService(mockAccountLease as never),
-      new ProxyRetryService(mockAccountLease as never, { log: () => {}, warn: () => {} }),
+      new ProxyRetryService(
+        mockAccountLease as never,
+        { log: () => {}, warn: () => {} },
+        proxyModelAvailabilityStore,
+      ),
       new ModelRoutingService(),
     );
   }
@@ -269,7 +274,11 @@ async function validateRuntimeAnthropicRequestFromRealAccountLease(): Promise<vo
       AccountLeaseProxy as any,
       mockGeminiClient as any,
       new GenerationConstraintsService(AccountLeaseProxy as never),
-      new ProxyRetryService(AccountLeaseProxy as never, { log: () => {}, warn: () => {} }),
+      new ProxyRetryService(
+        AccountLeaseProxy as never,
+        { log: () => {}, warn: () => {} },
+        proxyModelAvailabilityStore,
+      ),
       new ModelRoutingService(),
     );
     await service.handleAnthropicMessages({
