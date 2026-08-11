@@ -208,11 +208,11 @@ export class CloudAccountRepo {
             );
           } catch (error) {
             migrationStats.failedFields += 1;
-            logger.error(`Failed to decrypt token for account ${normalizedRow.id}`, error);
-            if (isDataMigrationError(error)) {
-              throw error;
-            }
-            continue; // Skip corrupted account
+            logger.warn(
+              `Failed to decrypt token for account ${normalizedRow.id}, skipping corrupted account`,
+              error,
+            );
+            continue; // Skip corrupted/unmigratable account
           }
 
           let quotaResult: DecryptFieldResult;
@@ -225,10 +225,10 @@ export class CloudAccountRepo {
             );
           } catch (error) {
             migrationStats.failedFields += 1;
-            logger.error(`Failed to decrypt quota for account ${normalizedRow.id}`, error);
-            if (isDataMigrationError(error)) {
-              throw error;
-            }
+            logger.warn(
+              `Failed to decrypt quota for account ${normalizedRow.id}, continuing without quota`,
+              error,
+            );
             quotaResult = { value: null, migrated: false }; // Quota is optional, proceed
           }
 
@@ -281,9 +281,6 @@ export class CloudAccountRepo {
             proxy_url: normalizedRow.proxyUrl ?? undefined,
           });
         } catch (rowError) {
-          if (isDataMigrationError(rowError)) {
-            throw rowError;
-          }
           logger.error(`Unexpected error processing row for account ${normalizedRow.id}`, rowError);
           continue;
         }
