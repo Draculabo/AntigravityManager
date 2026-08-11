@@ -330,12 +330,9 @@ export class CloudAccountRepo {
         );
       } catch (error) {
         logger.error(
-          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for token`,
+          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for token, returning undefined`,
           error,
         );
-        if (isDataMigrationError(error)) {
-          throw error;
-        }
         return undefined;
       }
 
@@ -349,12 +346,9 @@ export class CloudAccountRepo {
         );
       } catch (error) {
         logger.error(
-          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for quota`,
+          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for quota, proceeding without quota`,
           error,
         );
-        if (isDataMigrationError(error)) {
-          throw error;
-        }
         quotaResult = { value: null, migrated: false };
       }
 
