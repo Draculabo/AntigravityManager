@@ -251,4 +251,46 @@ describe('CloudAccountRepo migration fallback', () => {
     expect(result?.id).toBe('acc-quota-fail');
     expect(result?.quota).toBeUndefined();
   });
+
+  it('should return undefined from getAccount(id) when decrypted token contains malformed JSON', async () => {
+    const mockAccount = {
+      id: 'acc-invalid-json',
+      provider: 'google',
+      email: 'invalid-json@example.com',
+      tokenJson: 'encrypted_malformed_json_token',
+      quotaJson: null,
+      deviceProfileJson: null,
+      deviceHistoryJson: null,
+      createdAt: 1000,
+      lastUsed: 2000,
+      status: 'active',
+      statusReason: null,
+      isActive: 1,
+      proxyUrl: null,
+    };
+
+    const mockOrm = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            all: () => [mockAccount],
+          }),
+        }),
+      }),
+    };
+
+    vi.mocked(getCloudDb).mockReturnValue({
+      raw: { close: vi.fn() } as any,
+      orm: mockOrm as any,
+    });
+
+    vi.mocked(security.decryptWithMigration).mockResolvedValue({
+      value: '{ invalid_json_content }',
+      reencrypted: undefined,
+    });
+
+    const result = await CloudAccountRepo.getAccount('acc-invalid-json');
+
+    expect(result).toBeUndefined();
+  });
 });

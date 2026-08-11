@@ -7,7 +7,6 @@ import {
   CloudTokenDataSchema,
 } from '@/modules/cloud-account/types';
 import { decryptWithMigration, encrypt, type KeySource } from '@/shared/security/security';
-import { getAppErrorData } from '@/shared/errors/appError';
 import { accounts } from '@/shared/persistence/database/schema';
 import { type DrizzleExecutor, getCloudDb } from './cloud-account-db';
 import {
@@ -16,10 +15,6 @@ import {
   serializeDeviceHistory,
   serializeDeviceProfile,
 } from './cloud-account-device-profile-codec';
-
-function isDataMigrationError(error: unknown): boolean {
-  return getAppErrorData(error)?.appErrorCode === 'DATA_MIGRATION_FAILED';
-}
 
 interface MigrationStats {
   totalFields: number;
@@ -357,14 +352,37 @@ export class CloudAccountRepo {
         return undefined;
       }
 
+      let parsedToken: any;
+      try {
+        parsedToken = JSON.parse(tokenValue);
+      } catch (parseError) {
+        logger.error(
+          `[CloudAccountRepo] getAccount ${id} failed - Invalid JSON in decrypted token`,
+          parseError,
+        );
+        return undefined;
+      }
+
+      let parsedQuota: any = undefined;
+      if (quotaResult.value) {
+        try {
+          parsedQuota = JSON.parse(quotaResult.value);
+        } catch (parseError) {
+          logger.warn(
+            `[CloudAccountRepo] getAccount ${id} - Invalid JSON in decrypted quota, proceeding without quota`,
+            parseError,
+          );
+        }
+      }
+
       return {
         id: normalizedRow.id,
         provider: normalizedRow.provider as CloudAccount['provider'],
         email: normalizedRow.email,
         name: normalizedRow.name ?? undefined,
         avatar_url: normalizedRow.avatarUrl ?? undefined,
-        token: JSON.parse(tokenValue),
-        quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
+        token: parsedToken,
+        quota: parsedQuota,
         device_profile: parseDeviceProfileColumn(normalizedRow.deviceProfileJson),
         device_history: parseDeviceHistoryColumn(normalizedRow.deviceHistoryJson),
         created_at: normalizedRow.createdAt,
