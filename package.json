@@ -189,5 +189,9 @@
     "@sentry/cli",
     "@swc/core",
     "protobufjs"
-  ]
+  ],
+  "overrides": {
+    "handlebars": "^4.7.9",
+    "tar": "^7.5.22"
+  }
 }
