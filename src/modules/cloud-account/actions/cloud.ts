@@ -11,6 +11,10 @@ export function listCloudAccounts() {
   return ipc.client.cloud.listCloudAccounts();
 }
 
+export function getCloudAccountSecurityStatus() {
+  return ipc.client.cloud.getSecurityStatus();
+}
+
 export function deleteCloudAccount(input: { accountId: string }) {
   return ipc.client.cloud.deleteCloudAccount(input);
 }

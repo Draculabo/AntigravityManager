@@ -11,6 +11,16 @@ export interface AppErrorMetadataByCode {
   DATA_MIGRATION_FAILED: {
     hint: 'HINT_RELOGIN' | 'HINT_CLEAR_DATA';
   };
+  MASTER_KEY_UNAVAILABLE: {
+    hint:
+      | 'HINT_APP_TRANSLOCATION'
+      | 'HINT_KEYCHAIN_DENIED'
+      | 'HINT_MANUAL_SIGN'
+      | 'HINT_RECOVERY'
+      | null;
+    reason: 'NO_MATCHING_KEY' | 'PROVIDER_UNAVAILABLE' | 'NOT_INITIALIZED';
+    storedAccountCount: number;
+  };
 }
 
 export type AppErrorCode = keyof AppErrorMetadataByCode;
@@ -19,6 +29,7 @@ const APP_ERROR_CODES = new Set<string>([
   'CLOUD_ACCOUNT_LOGIN_EXPIRED',
   'KEYCHAIN_UNAVAILABLE',
   'DATA_MIGRATION_FAILED',
+  'MASTER_KEY_UNAVAILABLE',
 ]);
 
 export type AppErrorTransportCode =
@@ -112,6 +123,8 @@ function normalizeAppErrorMetadata(
   const accountId = getObjectProperty(metadata, 'accountId');
   const email = getObjectProperty(metadata, 'email');
   const hint = getObjectProperty(metadata, 'hint');
+  const reason = getObjectProperty(metadata, 'reason');
+  const storedAccountCount = getObjectProperty(metadata, 'storedAccountCount');
 
   if (appErrorCode === 'CLOUD_ACCOUNT_LOGIN_EXPIRED') {
     return isString(accountId) && isString(email) ? { accountId, email } : undefined;
@@ -126,6 +139,24 @@ function normalizeAppErrorMetadata(
     ) {
       return { hint };
     }
+    return undefined;
+  }
+
+  if (appErrorCode === 'MASTER_KEY_UNAVAILABLE') {
+    const isValidHint =
+      hint === 'HINT_APP_TRANSLOCATION' ||
+      hint === 'HINT_KEYCHAIN_DENIED' ||
+      hint === 'HINT_MANUAL_SIGN' ||
+      hint === 'HINT_RECOVERY' ||
+      hint === null;
+    const isValidReason =
+      reason === 'NO_MATCHING_KEY' ||
+      reason === 'PROVIDER_UNAVAILABLE' ||
+      reason === 'NOT_INITIALIZED';
+    if (isValidHint && isValidReason && typeof storedAccountCount === 'number') {
+      return { hint, reason, storedAccountCount };
+    }
+
     return undefined;
   }
 

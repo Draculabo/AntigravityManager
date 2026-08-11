@@ -6,7 +6,14 @@ import {
   CloudQuotaDataSchema,
   CloudTokenDataSchema,
 } from '@/modules/cloud-account/types';
-import { decryptWithMigration, encrypt, type KeySource } from '@/shared/security/security';
+import {
+  decryptWithMigration,
+  encrypt,
+  initializeMasterKey,
+  type KeySource,
+} from '@/shared/security/security';
+import { isEncryptedPayloadCandidate } from '@/shared/security/crypto';
+import { AppError, getAppErrorData } from '@/shared/errors/appError';
 import { accounts } from '@/shared/persistence/database/schema';
 import { type DrizzleExecutor, getCloudDb } from './cloud-account-db';
 import {
@@ -33,6 +40,9 @@ function createMigrationStats(): MigrationStats {
       safeStorage: 0,
       keytar: 0,
       file: 0,
+      'legacy-safeStorage': 0,
+      'legacy-keytar': 0,
+      'legacy-file': 0,
     },
     failedFields: 0,
   };
@@ -77,12 +87,49 @@ async function decryptAndMigrateField(
 
 type DecryptFieldResult = Awaited<ReturnType<typeof decryptAndMigrateField>>;
 
+function parseCloudToken(accountId: string, value: string): CloudAccount['token'] {
+  try {
+    return CloudTokenDataSchema.parse(JSON.parse(value));
+  } catch (error) {
+    logger.error(`Invalid token data for account ${accountId}`, error);
+    throw error;
+  }
+}
+
+function parseCloudQuota(
+  accountId: string,
+  value: string | null,
+): CloudAccount['quota'] | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return CloudQuotaDataSchema.parse(JSON.parse(value));
+  } catch (error) {
+    logger.warn(`Invalid quota for account ${accountId}, continuing without quota`, error);
+    return undefined;
+  }
+}
+
 export class CloudAccountRepo {
   private static versionFailureLogged = false;
 
   static async init(): Promise<void> {
-    const { raw } = getCloudDb();
+    const { raw, orm } = getCloudDb();
+    const rows = orm
+      .select({ tokenJson: accounts.tokenJson, quotaJson: accounts.quotaJson })
+      .from(accounts)
+      .all();
     raw.close();
+
+    const encryptedSamples = rows.flatMap((row) => {
+      return [row.tokenJson, row.quotaJson].filter(isEncryptedPayloadCandidate);
+    });
+    await initializeMasterKey({
+      encryptedSamples,
+      storedAccountCount: rows.filter((row) => Boolean(row.tokenJson)).length,
+    });
     await this.migrateToEncrypted();
   }
 
@@ -124,6 +171,7 @@ export class CloudAccountRepo {
       }
     } catch (error) {
       logger.error('Failed to migrate data', error);
+      throw error;
     } finally {
       raw.close();
     }
@@ -182,6 +230,10 @@ export class CloudAccountRepo {
   static async getAccounts(): Promise<CloudAccount[]> {
     const { raw, orm } = getCloudDb();
     const migrationStats = createMigrationStats();
+    let tokenCandidates = 0;
+    let successfulTokens = 0;
+    let migrationFailures = 0;
+    let firstMigrationError: unknown;
 
     try {
       const rows = orm.select().from(accounts).orderBy(desc(accounts.lastUsed)).all();
@@ -193,6 +245,10 @@ export class CloudAccountRepo {
       const cloudAccounts: CloudAccount[] = [];
       for (const normalizedRow of rows) {
         try {
+          if (normalizedRow.tokenJson) {
+            tokenCandidates += 1;
+          }
+
           let tokenResult: DecryptFieldResult;
           try {
             tokenResult = await decryptAndMigrateField(
@@ -202,12 +258,23 @@ export class CloudAccountRepo {
               normalizedRow.tokenJson,
             );
           } catch (error) {
+            const appErrorCode = getAppErrorData(error)?.appErrorCode;
+            if (appErrorCode === 'MASTER_KEY_UNAVAILABLE') {
+              throw error;
+            }
+            if (appErrorCode === 'DATA_MIGRATION_FAILED') {
+              migrationFailures += 1;
+              firstMigrationError ??= error;
+            }
             migrationStats.failedFields += 1;
             logger.warn(
               `Failed to decrypt token for account ${normalizedRow.id}, skipping corrupted account`,
               error,
             );
             continue; // Skip corrupted/unmigratable account
+          }
+          if (tokenResult.value) {
+            successfulTokens += 1;
           }
 
           let quotaResult: DecryptFieldResult;
@@ -219,6 +286,9 @@ export class CloudAccountRepo {
               normalizedRow.quotaJson,
             );
           } catch (error) {
+            if (getAppErrorData(error)?.appErrorCode === 'MASTER_KEY_UNAVAILABLE') {
+              throw error;
+            }
             migrationStats.failedFields += 1;
             logger.warn(
               `Failed to decrypt quota for account ${normalizedRow.id}, continuing without quota`,
@@ -264,8 +334,8 @@ export class CloudAccountRepo {
             email: normalizedRow.email,
             name: normalizedRow.name ?? undefined,
             avatar_url: normalizedRow.avatarUrl ?? undefined,
-            token: JSON.parse(tokenResult.value),
-            quota: quotaResult.value ? JSON.parse(quotaResult.value) : undefined,
+            token: parseCloudToken(normalizedRow.id, tokenResult.value),
+            quota: parseCloudQuota(normalizedRow.id, quotaResult.value),
             device_profile: parseDeviceProfileColumn(normalizedRow.deviceProfileJson),
             device_history: parseDeviceHistoryColumn(normalizedRow.deviceHistoryJson),
             created_at: normalizedRow.createdAt,
@@ -276,9 +346,24 @@ export class CloudAccountRepo {
             proxy_url: normalizedRow.proxyUrl ?? undefined,
           });
         } catch (rowError) {
+          if (getAppErrorData(rowError)?.appErrorCode === 'MASTER_KEY_UNAVAILABLE') {
+            throw rowError;
+          }
           logger.error(`Unexpected error processing row for account ${normalizedRow.id}`, rowError);
           continue;
         }
+      }
+
+      if (tokenCandidates > 0 && successfulTokens === 0 && migrationFailures === tokenCandidates) {
+        throw new AppError('MASTER_KEY_UNAVAILABLE', 'Unable to decrypt stored accounts', {
+          messageKey: 'error.masterKeyUnavailable',
+          metadata: {
+            hint: 'HINT_RECOVERY',
+            reason: 'NO_MATCHING_KEY',
+            storedAccountCount: rows.length,
+          },
+          cause: firstMigrationError,
+        });
       }
 
       return cloudAccounts;
@@ -325,10 +410,10 @@ export class CloudAccountRepo {
         );
       } catch (error) {
         logger.error(
-          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for token, returning undefined`,
+          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for token`,
           error,
         );
-        return undefined;
+        throw error;
       }
 
       let quotaResult: DecryptFieldResult;
@@ -352,28 +437,8 @@ export class CloudAccountRepo {
         return undefined;
       }
 
-      let parsedToken: any;
-      try {
-        parsedToken = JSON.parse(tokenValue);
-      } catch (parseError) {
-        logger.error(
-          `[CloudAccountRepo] getAccount ${id} failed - Invalid JSON in decrypted token`,
-          parseError,
-        );
-        return undefined;
-      }
-
-      let parsedQuota: any = undefined;
-      if (quotaResult.value) {
-        try {
-          parsedQuota = JSON.parse(quotaResult.value);
-        } catch (parseError) {
-          logger.warn(
-            `[CloudAccountRepo] getAccount ${id} - Invalid JSON in decrypted quota, proceeding without quota`,
-            parseError,
-          );
-        }
-      }
+      const parsedToken = parseCloudToken(normalizedRow.id, tokenValue);
+      const parsedQuota = parseCloudQuota(normalizedRow.id, quotaResult.value);
 
       return {
         id: normalizedRow.id,

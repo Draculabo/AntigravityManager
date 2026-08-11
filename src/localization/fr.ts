@@ -70,6 +70,8 @@ const fr = {
       signNotarize: 'Utilisez une version signee et notarisee lorsqu elle est disponible.',
     },
     dataMigrationFailed: 'Impossible de dechiffrer les donnees de compte heritees.',
+    masterKeyUnavailable:
+      'Des comptes stockes ont ete trouves, mais leur cle de chiffrement est actuellement indisponible. Aucune donnee de compte ni aucun fichier de cle n a ete modifie.',
     dataMigrationHint: {
       relogin: 'Reconnectez-vous ou ajoutez de nouveau vos comptes.',
       clearData:
@@ -404,6 +406,13 @@ const fr = {
   cloud: {
     title: 'Comptes',
     description: 'Gerez votre pool de comptes Google Gemini.',
+    security: {
+      compatibilityMode: {
+        title: 'Le stockage de cle de compatibilite est actif',
+        description:
+          'Les donnees du compte restent chiffrees avec AES-256-GCM, mais la cle principale est stockee localement au lieu d etre protegee par le service d identifiants du systeme.',
+      },
+    },
     autoSwitch: 'Basculement auto',
     providerGroupings: 'Groupements de fournisseurs',
     addAccount: 'Ajouter un compte',
@@ -510,7 +519,8 @@ const fr = {
         title: 'Les donnees de compte chiffrees doivent etre reparees',
         description:
           'L app n a pas pu dechiffrer les donnees de compte locales. Cela signifie generalement que les donnees ont ete creees avec une autre cle de chiffrement ou qu elles sont corrompues.',
-        stepReLogin: 'Reconnectez-vous ou ajoutez de nouveau les comptes affectes d abord.',
+        stepReLogin:
+          'Si la cle ne peut toujours pas etre recuperee, reconnectez-vous ou ajoutez de nouveau les comptes affectes sans supprimer la base de donnees existante.',
         stepMacPrivacy:
           'Sur macOS, verifiez les invites du trousseau et de confidentialite. Si l app n est pas signee ou a ete resignee, signez-la de nouveau, deplacez-la vers /Applications, puis rouvrez-la.',
         stepCheckGithub:

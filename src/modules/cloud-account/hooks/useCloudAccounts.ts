@@ -7,6 +7,7 @@ import {
   setAccountProxy,
   listOAuthClients,
   setActiveOAuthClient,
+  getCloudAccountSecurityStatus,
   type OAuthClientDescriptor,
 } from '@/modules/cloud-account/actions/cloud';
 import { CloudAccount } from '@/modules/cloud-account/types';
@@ -14,6 +15,7 @@ import type { AntigravityAppTarget } from '@/modules/account/types';
 
 export const QUERY_KEYS = {
   cloudAccounts: ['cloudAccounts'],
+  securityStatus: ['cloudAccountSecurityStatus'],
   oauthClients: ['oauthClients'],
 };
 
@@ -22,6 +24,14 @@ export function useCloudAccounts() {
     queryKey: QUERY_KEYS.cloudAccounts,
     queryFn: listCloudAccounts,
     staleTime: 1000 * 60, // 1 minute
+  });
+}
+
+export function useCloudAccountSecurityStatus() {
+  return useQuery({
+    queryKey: QUERY_KEYS.securityStatus,
+    queryFn: getCloudAccountSecurityStatus,
+    staleTime: Infinity,
   });
 }
 

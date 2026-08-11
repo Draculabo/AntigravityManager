@@ -1,5 +1,6 @@
 import {
   useCloudAccounts,
+  useCloudAccountSecurityStatus,
   useRefreshQuota,
   useDeleteCloudAccount,
   useAddGoogleAccount,
@@ -43,6 +44,7 @@ import { CloudAccountToolbar } from '@/modules/cloud-account/components/CloudAcc
 export function CloudAccountList() {
   const { t } = useTranslation();
   const { data: accounts, isLoading, isError, error, errorUpdatedAt, refetch } = useCloudAccounts();
+  const { data: securityStatus } = useCloudAccountSecurityStatus();
   const { config, saveConfig } = useAppConfig();
   const refreshMutation = useRefreshQuota();
   const deleteMutation = useDeleteCloudAccount();
@@ -668,6 +670,14 @@ export function CloudAccountList() {
 
   return (
     <div className="space-y-5 pb-20">
+      {securityStatus?.state === 'degraded' ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+          <div className="text-sm font-medium">{t('cloud.security.compatibilityMode.title')}</div>
+          <p className="text-muted-foreground mt-1 text-sm">
+            {t('cloud.security.compatibilityMode.description')}
+          </p>
+        </div>
+      ) : null}
       <CloudAccountListSummary
         totalAccounts={totalAccounts}
         activeAccounts={activeAccounts}

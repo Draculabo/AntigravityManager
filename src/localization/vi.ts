@@ -67,6 +67,8 @@ const vi = {
       signNotarize: 'Hãy ưu tiên dùng bản dựng đã được ký và công chứng khi có thể.',
     },
     dataMigrationFailed: 'Không thể giải mã dữ liệu tài khoản cũ.',
+    masterKeyUnavailable:
+      'Đã tìm thấy tài khoản đã lưu nhưng khóa mã hóa hiện không khả dụng. Không có dữ liệu tài khoản hoặc tệp khóa nào bị thay đổi.',
     dataMigrationHint: {
       relogin: 'Hãy đăng nhập lại hoặc thêm lại tài khoản của bạn.',
       clearData: 'Nếu lỗi vẫn tiếp diễn, hãy xóa dữ liệu tài khoản cục bộ rồi đăng nhập lại.',
@@ -393,6 +395,13 @@ const vi = {
   cloud: {
     title: 'Tài khoản',
     description: 'Quản lý pool tài khoản Google Gemini của bạn.',
+    security: {
+      compatibilityMode: {
+        title: 'Đang sử dụng kho khóa tương thích',
+        description:
+          'Dữ liệu tài khoản vẫn được mã hóa bằng AES-256-GCM, nhưng khóa chính được lưu cục bộ thay vì được dịch vụ thông tin xác thực của hệ điều hành bảo vệ.',
+      },
+    },
     autoSwitch: 'Tự động chuyển',
     providerGroupings: 'Nhóm theo nhà cung cấp',
     addAccount: 'Thêm tài khoản',

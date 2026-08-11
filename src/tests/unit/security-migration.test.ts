@@ -3,7 +3,12 @@ import fs from 'fs/promises';
 import keytar from 'keytar';
 import { safeStorage } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { decryptWithMigration, encrypt } from '../../shared/security/security';
+import {
+  decryptWithMigration,
+  encrypt,
+  getSecurityStatus,
+  initializeMasterKey,
+} from '../../shared/security/security';
 
 const primaryHex = '11'.repeat(32);
 const fallbackHex = '22'.repeat(32);
@@ -74,18 +79,32 @@ function encryptWithKey(key: Buffer, text: string): string {
   return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
 
   safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
   safeStorageMock.decryptString.mockReturnValue(primaryHex);
 
-  fsMock.readFile.mockImplementation(async (_path, encoding) => {
+  fsMock.readFile.mockImplementation(async (filePath, encoding) => {
+    const normalizedPath = String(filePath);
+    if (normalizedPath.endsWith('master-key.v2.safe')) {
+      return Buffer.from('encrypted');
+    }
+    if (normalizedPath.endsWith('master-key.v2.file')) {
+      const missingError = new Error('missing') as NodeJS.ErrnoException;
+      missingError.code = 'ENOENT';
+      throw missingError;
+    }
+    if (normalizedPath.endsWith('.mk') && encoding !== 'utf8') {
+      return Buffer.from('encrypted');
+    }
     if (encoding === 'utf8') {
       return 'not-hex';
     }
 
-    return Buffer.from('encrypted');
+    const missingError = new Error('missing') as NodeJS.ErrnoException;
+    missingError.code = 'ENOENT';
+    throw missingError;
   });
   fsMock.writeFile.mockResolvedValue(undefined);
   fsMock.rename.mockResolvedValue(undefined);
@@ -102,6 +121,15 @@ beforeEach(() => {
     deleteCredential: keyringMock.deleteCredential,
     setSecret: keyringMock.setSecret,
   });
+
+  await initializeMasterKey({
+    encryptedSamples: [
+      encryptWithKey(Buffer.from(primaryHex, 'hex'), '{"token":"primary-sample"}'),
+      encryptWithKey(Buffer.from(fallbackHex, 'hex'), '{"token":"fallback-sample"}'),
+    ],
+    storedAccountCount: 2,
+  });
+  expect(getSecurityStatus().masterKeySource).toBe('safeStorage');
 });
 
 function setPlatform(platformName: NodeJS.Platform): void {
@@ -131,10 +159,10 @@ describe('decryptWithMigration', () => {
     const result = await decryptWithMigration(ciphertext);
 
     expect(result.value).toBe(plaintext);
-    expect(result.reencrypted).toMatch(/^agm_enc_v1:/);
+    expect(result.reencrypted).toBe(`agm_enc_v1:${ciphertext}`);
   });
 
-  it('falls back to legacy key and re-encrypts', async () => {
+  it('uses a recovered historical key without changing the DEK', async () => {
     const plaintext = '{"token":"legacy"}';
     const ciphertext = encryptWithKey(Buffer.from(fallbackHex, 'hex'), plaintext);
 
@@ -142,14 +170,11 @@ describe('decryptWithMigration', () => {
 
     expect(result.value).toBe(plaintext);
     expect(result.usedFallback).toBe('keytar');
-    expect(result.reencrypted).toBeTypeOf('string');
-    expect(result.reencrypted).not.toBe(ciphertext);
-    expect(keytarMock.getPassword).toHaveBeenCalledTimes(1);
-
+    expect(result.reencrypted).toBe(`agm_enc_v1:${ciphertext}`);
     if (result.reencrypted) {
       const migrated = await decryptWithMigration(result.reencrypted);
       expect(migrated.value).toBe(plaintext);
-      expect(migrated.usedFallback).toBeUndefined();
+      expect(migrated.usedFallback).toBe('keytar');
     }
   });
 

@@ -66,6 +66,8 @@ const en = {
       signNotarize: 'Please use a signed and notarized build when available.',
     },
     dataMigrationFailed: 'Unable to decrypt legacy account data.',
+    masterKeyUnavailable:
+      'Stored accounts were found, but their encryption key is currently unavailable. No account data or key files were changed.',
     dataMigrationHint: {
       relogin: 'Please re-login or re-add your accounts.',
       clearData: 'If the issue persists, clear local account data and sign in again.',
@@ -398,6 +400,13 @@ const en = {
   cloud: {
     title: 'Accounts',
     description: 'Manage your Google Gemini account pool.',
+    security: {
+      compatibilityMode: {
+        title: 'Compatibility key storage is active',
+        description:
+          'Account data remains encrypted with AES-256-GCM, but the master key is stored locally instead of being protected by the operating system credential service.',
+      },
+    },
     autoSwitch: 'Auto-Switch',
     providerGroupings: 'Provider Groupings',
     addAccount: 'Add Account',
@@ -565,7 +574,8 @@ const en = {
         title: 'Encrypted account data needs repair',
         description:
           'The app could not decrypt local account data. This usually means the data was created with a different encryption key or the local data is corrupted.',
-        stepReLogin: 'Re-login or re-add the affected accounts first.',
+        stepReLogin:
+          'If key recovery still fails, re-login or re-add affected accounts without deleting the existing database.',
         stepMacPrivacy:
           'On macOS, check Keychain/privacy prompts. If the app is unsigned or was re-signed, sign it again, move it to /Applications, then reopen it.',
         stepCheckGithub: 'Check the GitHub repository README for the latest troubleshooting steps.',

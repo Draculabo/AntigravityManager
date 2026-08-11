@@ -7,6 +7,14 @@ import { AppError } from '@/shared/errors/appError';
 vi.mock('@/modules/cloud-account/persistence/cloud-account-db');
 vi.mock('@/shared/security/security');
 
+const validToken = {
+  access_token: 'valid_token',
+  refresh_token: 'refresh_token',
+  expires_in: 3600,
+  expiry_timestamp: 4102444800,
+  token_type: 'Bearer',
+};
+
 describe('CloudAccountRepo migration fallback', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -76,7 +84,7 @@ describe('CloudAccountRepo migration fallback', () => {
         });
       }
       return {
-        value: JSON.stringify({ access_token: 'valid_token' }),
+        value: JSON.stringify(validToken),
         reencrypted: undefined,
       };
     });
@@ -86,6 +94,49 @@ describe('CloudAccountRepo migration fallback', () => {
     expect(accounts).toHaveLength(1);
     expect(accounts[0].id).toBe('acc-valid');
     expect(accounts[0].email).toBe('valid@example.com');
+  });
+
+  it('throws MASTER_KEY_UNAVAILABLE when every persisted token fails authentication', async () => {
+    const mockAccount = {
+      id: 'acc-locked',
+      provider: 'google',
+      email: 'locked@example.com',
+      tokenJson: 'encrypted_locked_token',
+      quotaJson: null,
+      deviceProfileJson: null,
+      deviceHistoryJson: null,
+      createdAt: 1000,
+      lastUsed: 2000,
+      status: 'active',
+      statusReason: null,
+      isActive: 1,
+      proxyUrl: null,
+    };
+    const mockOrm = {
+      select: () => ({
+        from: () => ({
+          orderBy: () => ({ all: () => [mockAccount] }),
+        }),
+      }),
+    };
+    vi.mocked(getCloudDb).mockReturnValue({
+      raw: { close: vi.fn() },
+      orm: mockOrm,
+    } as unknown as ReturnType<typeof getCloudDb>);
+    vi.mocked(security.decryptWithMigration).mockRejectedValue(
+      new AppError('DATA_MIGRATION_FAILED', 'Data migration failed', {
+        messageKey: 'error.dataMigrationFailed',
+        metadata: { hint: 'HINT_RELOGIN' },
+      }),
+    );
+
+    await expect(CloudAccountRepo.getAccounts()).rejects.toMatchObject({
+      code: 'MASTER_KEY_UNAVAILABLE',
+      metadata: {
+        reason: 'NO_MATCHING_KEY',
+        storedAccountCount: 1,
+      },
+    });
   });
 
   it('should gracefully handle quota decryption failure with DATA_MIGRATION_FAILED in getAccounts', async () => {
@@ -137,7 +188,7 @@ describe('CloudAccountRepo migration fallback', () => {
         });
       }
       return {
-        value: JSON.stringify({ access_token: 'valid_token' }),
+        value: JSON.stringify(validToken),
         reencrypted: undefined,
       };
     });
@@ -149,7 +200,50 @@ describe('CloudAccountRepo migration fallback', () => {
     expect(accounts[0].quota).toBeUndefined();
   });
 
-  it('should return undefined from getAccount(id) when token decryption fails with DATA_MIGRATION_FAILED', async () => {
+  it('preserves an account when decrypted quota contains malformed JSON', async () => {
+    const mockAccount = {
+      id: 'acc-malformed-quota',
+      provider: 'google',
+      email: 'malformed-quota@example.com',
+      tokenJson: 'encrypted_valid_token',
+      quotaJson: 'encrypted_malformed_quota',
+      deviceProfileJson: null,
+      deviceHistoryJson: null,
+      createdAt: 1000,
+      lastUsed: 2000,
+      status: 'active',
+      statusReason: null,
+      isActive: 1,
+      proxyUrl: null,
+    };
+    const mockOrm = {
+      select: () => ({
+        from: () => ({
+          orderBy: () => ({ all: () => [mockAccount] }),
+        }),
+      }),
+    };
+    vi.mocked(getCloudDb).mockReturnValue({
+      raw: { close: vi.fn() },
+      orm: mockOrm,
+    } as unknown as ReturnType<typeof getCloudDb>);
+    vi.mocked(security.decryptWithMigration).mockImplementation(async (text: string) => {
+      return {
+        value: text === 'encrypted_valid_token' ? JSON.stringify(validToken) : '{invalid-json',
+      };
+    });
+
+    const result = await CloudAccountRepo.getAccounts();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: 'acc-malformed-quota',
+      quota: undefined,
+      token: validToken,
+    });
+  });
+
+  it('should preserve the decryption error when a persisted account token is unreadable', async () => {
     const mockAccount = {
       id: 'acc-token-fail',
       provider: 'google',
@@ -188,9 +282,9 @@ describe('CloudAccountRepo migration fallback', () => {
       });
     });
 
-    const result = await CloudAccountRepo.getAccount('acc-token-fail');
-
-    expect(result).toBeUndefined();
+    await expect(CloudAccountRepo.getAccount('acc-token-fail')).rejects.toMatchObject({
+      code: 'DATA_MIGRATION_FAILED',
+    });
   });
 
   it('should return account with quota undefined from getAccount(id) when quota decryption fails with DATA_MIGRATION_FAILED', async () => {
@@ -240,7 +334,7 @@ describe('CloudAccountRepo migration fallback', () => {
         });
       }
       return {
-        value: JSON.stringify({ access_token: 'valid_token' }),
+        value: JSON.stringify(validToken),
         reencrypted: undefined,
       };
     });
@@ -252,7 +346,7 @@ describe('CloudAccountRepo migration fallback', () => {
     expect(result?.quota).toBeUndefined();
   });
 
-  it('should return undefined from getAccount(id) when decrypted token contains malformed JSON', async () => {
+  it('should preserve token parsing errors for a persisted account', async () => {
     const mockAccount = {
       id: 'acc-invalid-json',
       provider: 'google',
@@ -289,8 +383,6 @@ describe('CloudAccountRepo migration fallback', () => {
       reencrypted: undefined,
     });
 
-    const result = await CloudAccountRepo.getAccount('acc-invalid-json');
-
-    expect(result).toBeUndefined();
+    await expect(CloudAccountRepo.getAccount('acc-invalid-json')).rejects.toThrow();
   });
 });
