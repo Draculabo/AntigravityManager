@@ -43,6 +43,8 @@ server/
 │  │  ├─ openai.module.ts                  # NestJS OpenAI module registration
 │  │  ├─ responses/                        # OpenAI Responses WebSocket protocol and session store
 │  │  │  ├─ openai-responses-session.store.ts
+│  │  │  ├─ openai-responses-session.service.ts   # Injectable, restart-surviving session store
+│  │  │  ├─ openai-responses-store.controller.ts  # GET/DELETE /v1/responses/{id}
 │  │  │  ├─ openai-responses-websocket.protocol.ts
 │  │  │  └─ openai-responses-websocket.server.ts
 │  │  └─ media/                            # Image and audio multipart input parsing & monitoring summary
@@ -121,6 +123,22 @@ When reading, updating, or refactoring code within this directory, strictly foll
 
 5. **NestJS Dependency Injection Standard**
    - All Services and Policies must be annotated with `@Injectable()` and provided via module metadata. Do not use `new` to instantiate Nest-managed services manually.
+
+---
+
+## 4a. Durable Proxy State
+
+State a client can still reference after the process goes away is kept in `~/.antigravity-agent/proxy-state/`, one JSON file per owner, through `shared/persistence/durable-record-store.ts`. Writes are atomic (temp file plus rename) and coalesced, records are bounded by both count and age, and a damaged file costs the affected records rather than the app's start.
+
+| owner | file | bounds | overrides |
+| :--- | :--- | :--- | :--- |
+| Responses sessions | `openai-responses-sessions.json` | 500 sessions, 1 hour since last use | `AGM_RESPONSES_SESSION_MAX_ENTRIES`, `AGM_RESPONSES_SESSION_TTL_MS` |
+
+`OpenAIResponsesSessionService` owns the file; the store class it extends defaults to memory only, and under the test runner the service takes no path at all, so no test can write into the real data directory.
+
+`GET /v1/responses/{id}` replays the payload the create call answered with and `DELETE /v1/responses/{id}` removes it; both answer 404 in OpenAI's error envelope for an id that is unknown, has aged out, or was created with `store: false`. A `previous_response_id` that cannot be resolved is answered the same way, because a client reads that as "start a fresh conversation" while an empty chain reads to the user as the assistant losing its memory.
+
+Deliberate deviation: `store: false` suppresses retrieval but not continuation. OpenAI refuses both, and this gateway's clients chain with `previous_response_id` while sending `store: false`, so refusing the chain would break them silently for a property they do not use.
 
 ---
 

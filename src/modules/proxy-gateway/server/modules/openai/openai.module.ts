@@ -8,10 +8,11 @@ import { GeminiModule } from '../gemini/gemini.module';
 import { IMAGE_QUOTA_REFRESH, OpenAIController } from './openai.controller';
 import { OpenAIService } from './openai.service';
 import { OpenAIResponsesSessionService } from './responses/openai-responses-session.service';
+import { OpenAIResponsesStoreController } from './responses/openai-responses-store.controller';
 
 @Module({
   imports: [AccountLeaseModule, GeminiModule, SharedServicesModule],
-  controllers: [OpenAIController],
+  controllers: [OpenAIController, OpenAIResponsesStoreController],
   providers: [
     OpenAIResponsesSessionService,
     OpenAIService,

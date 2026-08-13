@@ -21,6 +21,7 @@ export interface ResponsesRequestBody {
   input?: unknown;
   metadata?: Record<string, unknown>;
   previous_response_id?: string;
+  store?: boolean;
   tools?: OpenAIChatRequest['tools'];
   max_output_tokens?: number;
   temperature?: number;
@@ -31,6 +32,38 @@ export interface ResponsesRequestBody {
   tool_choice?: OpenAIChatRequest['tool_choice'];
   stream?: boolean;
   user?: string;
+}
+
+export interface OpenAIResponsesErrorBody {
+  error: {
+    code: string;
+    message: string;
+    param: string;
+    type: string;
+  };
+}
+
+/**
+ * The answer to a response id this gateway cannot serve.
+ *
+ * OpenAI reports an unknown or aged-out id as 404 in the standard error
+ * envelope, and clients read that as "start a fresh conversation". Answering
+ * 400 instead reads as a malformed request, and serving an empty chain reads to
+ * the user as the assistant losing its memory. The `code` is ours: the status,
+ * the envelope and `param` are the parts the API documents.
+ */
+export function buildResponseNotFoundError(
+  responseId: string,
+  param: 'id' | 'previous_response_id' = 'previous_response_id',
+): OpenAIResponsesErrorBody {
+  return {
+    error: {
+      code: param === 'id' ? 'response_not_found' : 'previous_response_not_found',
+      message: `${param === 'id' ? 'Response' : 'Previous response'} with id '${responseId}' not found.`,
+      param,
+      type: 'invalid_request_error',
+    },
+  };
 }
 
 export function normalizeResponsesInputItems(input: unknown): unknown[] {

@@ -105,7 +105,7 @@ describe('Responses continuation across a restart', () => {
     );
 
     expect(after.handleChatCompletions).not.toHaveBeenCalled();
-    expect(reply.status).toHaveBeenCalledWith(400);
+    expect(reply.status).toHaveBeenCalledWith(404);
   });
 
   it('keeps the stored history bounded and the file its only artifact', async () => {
@@ -135,7 +135,7 @@ describe('Responses continuation across a restart', () => {
       createReplyMock() as never,
     );
 
-    expect(evictedReply.status).toHaveBeenCalledWith(400);
+    expect(evictedReply.status).toHaveBeenCalledWith(404);
     expect(kept.handleChatCompletions).toHaveBeenCalledTimes(1);
     expect(fs.readdirSync(directory)).toEqual(['openai-responses-sessions.json']);
   });
@@ -175,7 +175,7 @@ describe('Responses continuation across a restart', () => {
     );
 
     expect(damaged.handleChatCompletions).not.toHaveBeenCalled();
-    expect(damagedReply.status).toHaveBeenCalledWith(400);
+    expect(damagedReply.status).toHaveBeenCalledWith(404);
     expect(intact.handleChatCompletions).toHaveBeenCalledTimes(1);
   });
 

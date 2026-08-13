@@ -5,6 +5,10 @@ export interface OpenAIResponsesSession {
   inputItems: unknown[];
   instructions?: string;
   model: string;
+  /** The completed Responses payload, so `GET /v1/responses/{id}` can replay it. */
+  response?: Record<string, unknown>;
+  /** What the request asked for. `false` means the payload is never retained. */
+  store?: boolean;
   tools?: OpenAIChatRequest['tools'];
   toolCallItems?: unknown[];
 }
@@ -12,6 +16,7 @@ export interface OpenAIResponsesSession {
 /** What the Responses surface needs from the store, so a caller can be handed either. */
 export interface OpenAIResponsesSessionStoreLike {
   clear(): void;
+  delete(responseId: string): boolean;
   get(responseId: string): OpenAIResponsesSession | null;
   save(responseId: string, session: OpenAIResponsesSession): void;
 }
@@ -62,6 +67,10 @@ export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionSt
     });
   }
 
+  public delete(responseId: string): boolean {
+    return this.sessions.delete(responseId);
+  }
+
   public clear(): void {
     this.sessions.clear();
   }
@@ -85,6 +94,8 @@ function cloneOpenAIResponsesSession(session: OpenAIResponsesSession): OpenAIRes
     inputItems: [...session.inputItems],
     instructions: session.instructions,
     model: session.model,
+    response: session.response,
+    store: session.store,
     tools: session.tools,
     toolCallItems: [...(session.toolCallItems ?? [])],
   };

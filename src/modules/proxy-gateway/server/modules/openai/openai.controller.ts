@@ -51,6 +51,7 @@ import { OpenAIService } from './openai.service';
 export type { ResponsesRequestBody } from './responses/openai-responses-request';
 import {
   asString,
+  buildResponseNotFoundError,
   buildResponsesChatRequest,
   type ResponsesRequestBody,
   extractCompletedResponsesEvent,
@@ -242,12 +243,9 @@ export class OpenAIController extends BaseProxyController {
   async responses(@Body() body: ResponsesRequestBody, @Res() res: FastifyReply) {
     const prepared = this.prepareResponsesRequest(body);
     if (!prepared) {
-      res.status(HttpStatus.BAD_REQUEST).send({
-        error: {
-          message: `Unknown or expired previous_response_id: ${body.previous_response_id}`,
-          type: 'invalid_request_error',
-        },
-      });
+      res
+        .status(HttpStatus.NOT_FOUND)
+        .send(buildResponseNotFoundError(body.previous_response_id ?? ''));
       return;
     }
 
@@ -524,6 +522,7 @@ export class OpenAIController extends BaseProxyController {
         inputItems,
         instructions,
         model,
+        store: body.store,
         tools,
       },
     };
@@ -558,6 +557,9 @@ export class OpenAIController extends BaseProxyController {
     this.responsesSessions.save(responseId, {
       ...session,
       inputItems: [...session.inputItems, ...output],
+      // `store: false` asks for nothing retrievable, so the payload is dropped
+      // while the continuation history this gateway needs is kept.
+      response: session.store === false ? undefined : (responseRecord ?? undefined),
     });
   }
 
