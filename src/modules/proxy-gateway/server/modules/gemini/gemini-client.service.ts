@@ -1,9 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosProxyConfig, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { isEmpty, isFunction, isNil, isObjectLike, isString } from 'lodash-es';
+import { isEmpty, isFunction, isNil, isNumber, isObjectLike, isString } from 'lodash-es';
 import { Readable } from 'node:stream';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
-import { GeminiInternalRequest } from '../../../antigravity/types';
+import {
+  GeminiCountTokensRequest,
+  GeminiCountTokensResponse,
+  GeminiInternalRequest,
+} from '../../../antigravity/types';
 import { getServerConfig } from '../../../../../server/server-config';
 import { resolveRequestUserAgent } from '../../common/utils/request-user-agent';
 import {
@@ -14,6 +18,9 @@ import {
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
 import { extractGoogleErrorDetails } from '../../common/google-error-details';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
+
+/** The two envelopes that travel the internal endpoints: generation, and the narrower count. */
+type InternalEndpointRequestBody = GeminiInternalRequest | GeminiCountTokensRequest;
 
 interface PreparedInternalRequest {
   body: GeminiInternalRequest;
@@ -150,6 +157,59 @@ export class GeminiClient {
       return (payload as { response: GeminiResponse }).response;
     }
     return payload as GeminiResponse;
+  }
+
+  /**
+   * Counts prompt tokens through the CodeAssist internal gateway.
+   *
+   * The explicit context cache is deliberately bypassed: caching rewrites the request by moving
+   * the static prefix out of the payload, which would change the very thing the caller asked us
+   * to measure.
+   */
+  async countTokensInternal(
+    body: GeminiCountTokensRequest,
+    accessToken: string,
+    upstreamProxyUrl?: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<GeminiCountTokensResponse> {
+    const response = await this.executeRequestWithEndpointFailover<unknown>(
+      ':countTokens',
+      body,
+      accessToken,
+      upstreamProxyUrl,
+      {},
+      'count-tokens',
+      extraHeaders,
+    );
+
+    return this.toCountTokensResponse(response.data);
+  }
+
+  /**
+   * Narrows the upstream payload without inventing a count. `generateContent` arrives wrapped in
+   * a `response` envelope on this transport while `countTokens` is read flat by gemini-cli, so
+   * both shapes are accepted; anything else yields an empty result and the caller decides how to
+   * surface the missing count.
+   */
+  private toCountTokensResponse(payload: unknown): GeminiCountTokensResponse {
+    if (!isObjectLike(payload)) {
+      return {};
+    }
+
+    const flat = (payload as { totalTokens?: unknown }).totalTokens;
+    if (isNumber(flat)) {
+      return { totalTokens: flat };
+    }
+
+    const wrapped = (payload as { response?: unknown }).response;
+    if (isObjectLike(wrapped)) {
+      const nested = (wrapped as { totalTokens?: unknown }).totalTokens;
+      if (isNumber(nested)) {
+        return { totalTokens: nested };
+      }
+    }
+
+    return {};
   }
 
   private async executeInternalWithExplicitContextCache<T>(
@@ -359,7 +419,7 @@ export class GeminiClient {
 
   private async executeRequestWithEndpointFailover<T>(
     path: string,
-    body: GeminiInternalRequest,
+    body: InternalEndpointRequestBody,
     accessToken: string,
     upstreamProxyUrl: string | undefined,
     config: AxiosRequestConfig,
@@ -432,7 +492,10 @@ export class GeminiClient {
     return await this.throwUpstreamRequestError(lastError, operation);
   }
 
-  private createInternalRequestBody(path: string, body: GeminiInternalRequest): string | Readable {
+  private createInternalRequestBody(
+    path: string,
+    body: InternalEndpointRequestBody,
+  ): string | Readable {
     const bodyText = JSON.stringify(body);
     if (path.startsWith(':streamGenerateContent')) {
       return Readable.from([bodyText]);
@@ -441,8 +504,9 @@ export class GeminiClient {
     return bodyText;
   }
 
-  private createProjectHeaders(body: GeminiInternalRequest): Record<string, string> {
-    const project = body.project?.trim();
+  private createProjectHeaders(body: InternalEndpointRequestBody): Record<string, string> {
+    // The countTokens envelope carries no project by design, so it simply sends no header.
+    const project = 'project' in body ? body.project?.trim() : undefined;
     if (!project) {
       return {};
     }

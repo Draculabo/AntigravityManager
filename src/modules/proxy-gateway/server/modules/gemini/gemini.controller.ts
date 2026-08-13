@@ -16,6 +16,7 @@ import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
 import { GeminiService } from './gemini.service';
+import { InvalidCountTokensRequestError } from './gemini-count-tokens';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
@@ -107,14 +108,13 @@ export class GeminiController {
     body: GeminiRequest,
     res: FastifyReply,
   ): Promise<void> {
-    if (action === 'countTokens') {
-      res.status(HttpStatus.OK).send({
-        totalTokens: 0,
-      });
-      return;
-    }
-
     try {
+      if (action === 'countTokens') {
+        const totalTokens = await this.proxyService.handleGeminiCountTokens(model, body);
+        res.status(HttpStatus.OK).send({ totalTokens });
+        return;
+      }
+
       if (action === 'streamGenerateContent') {
         const stream = await this.proxyService.handleGeminiStreamGenerateContent(model, body);
         if (stream instanceof Observable) {
@@ -137,6 +137,17 @@ export class GeminiController {
         },
       });
     } catch (error) {
+      if (error instanceof InvalidCountTokensRequestError) {
+        res.status(HttpStatus.BAD_REQUEST).send({
+          error: {
+            code: HttpStatus.BAD_REQUEST,
+            message: error.message,
+            status: 'INVALID_ARGUMENT',
+          },
+        });
+        return;
+      }
+
       const message = error instanceof Error ? error.message : 'Internal Server Error';
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
         error: {

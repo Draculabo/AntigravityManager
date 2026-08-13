@@ -303,6 +303,24 @@ export interface GeminiInternalRequest {
   enabledCreditTypes?: string[];
 }
 
+/**
+ * CodeAssist `v1internal:countTokens` request envelope.
+ *
+ * Deliberately narrower than {@link GeminiInternalRequest}: the endpoint accepts only the
+ * conversation plus a `models/`-prefixed id, and carries no `project`, `requestId`, `userAgent`
+ * or `requestType`.
+ */
+export interface GeminiCountTokensRequest {
+  request: {
+    contents: GeminiContent[];
+    model: string;
+  };
+}
+
+export interface GeminiCountTokensResponse {
+  totalTokens?: number;
+}
+
 export interface GeminiContent {
   role: string;
   parts: GeminiPart[];

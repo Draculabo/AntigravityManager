@@ -37,6 +37,11 @@ export interface UpstreamCall {
   kind: 'generate' | 'stream';
 }
 
+export interface UpstreamCountTokensCall {
+  accessToken: string;
+  body: unknown;
+}
+
 export function createAccount(id: string, projectId = 'test-project'): CloudAccount {
   return {
     created_at: 1,
@@ -57,14 +62,25 @@ export function createAccount(id: string, projectId = 'test-project'): CloudAcco
 
 /** An upstream that replays what the test hands it and records what the gateway sent. */
 export function createUpstream(options: {
+  countTokens?: unknown | (() => unknown);
   generate?: unknown | (() => unknown);
   streamError?: Error;
   streamFrames?: unknown[];
 }) {
   const calls: UpstreamCall[] = [];
+  const countTokensCalls: UpstreamCountTokensCall[] = [];
 
   return {
     calls,
+    countTokensCalls,
+    countTokensInternal: vi.fn(async (body: unknown, accessToken: string): Promise<unknown> => {
+      countTokensCalls.push({ accessToken, body });
+      const armed = options.countTokens;
+      if (armed === undefined) {
+        throw new Error('the test did not arm a countTokens upstream response');
+      }
+      return typeof armed === 'function' ? (armed as () => unknown)() : armed;
+    }),
     generateInternal: vi.fn(
       async (body: GeminiInternalRequest, accessToken: string): Promise<unknown> => {
         calls.push({ accessToken, body, kind: 'generate' });
