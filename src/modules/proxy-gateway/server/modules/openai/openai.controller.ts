@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Inject,
   Optional,
+  Param,
   Post,
   Req,
   Res,
@@ -84,24 +85,9 @@ export class OpenAIController extends BaseProxyController {
   @Get('models')
   listModels(@Res() res: FastifyReply) {
     try {
-      const config = getServerConfig();
-      const customMapping = config?.custom_mapping ?? {};
-      const onlyRawQuotaModels = config?.only_raw_quota_models ?? false;
-      const dynamicModelIds = onlyRawQuotaModels
-        ? this.accountLeaseService?.getAllRawQuotaModels()
-        : this.accountLeaseService?.getAllCollectedModels();
-      const modelIds = getOpenAICompatibleModels(
-        customMapping,
-        dynamicModelIds,
-        onlyRawQuotaModels,
+      const data = this.listOpenAICompatibleModelIds().map((id) =>
+        this.toOpenAIModelObjectEntry(id),
       );
-
-      const data = modelIds.map((id) => ({
-        id,
-        object: 'model',
-        created: MODEL_LIST_CREATED_AT,
-        owned_by: MODEL_LIST_OWNER,
-      }));
 
       res.status(HttpStatus.OK).send({
         object: 'list',
@@ -109,6 +95,72 @@ export class OpenAIController extends BaseProxyController {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to list models';
+      this.logger.error(message, error instanceof Error ? error.stack : undefined);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
+        error: {
+          message,
+          type: 'server_error',
+        },
+      });
+    }
+  }
+
+  /**
+   * The published catalog, shared by the list and the retrieve route so the two cannot
+   * disagree about which models this gateway serves.
+   */
+  private listOpenAICompatibleModelIds(): string[] {
+    const config = getServerConfig();
+    const onlyRawQuotaModels = config?.only_raw_quota_models ?? false;
+    const dynamicModelIds = onlyRawQuotaModels
+      ? this.accountLeaseService?.getAllRawQuotaModels()
+      : this.accountLeaseService?.getAllCollectedModels();
+
+    return getOpenAICompatibleModels(
+      config?.custom_mapping ?? {},
+      dynamicModelIds,
+      onlyRawQuotaModels,
+    );
+  }
+
+  /** Exactly the entry `GET /v1/models` puts in its `data` array. */
+  private toOpenAIModelObjectEntry(id: string): Record<string, unknown> {
+    return {
+      id,
+      object: 'model',
+      created: MODEL_LIST_CREATED_AT,
+      owned_by: MODEL_LIST_OWNER,
+    };
+  }
+
+  /**
+   * `GET /v1/models/{id}`, what an OpenAI SDK calls through `client.models.retrieve()`.
+   *
+   * Answers out of the same catalog `GET /v1/models` publishes, so a client that has just read
+   * the list gets the identical entry back for anything in it. No near match is ever
+   * substituted: an id this gateway does not serve is `model_not_found` rather than a
+   * silently different model, and that code rather than a bare 404 is how a client tells "this
+   * proxy has no such model" from "this proxy has no such endpoint".
+   */
+  @Get('models/:model')
+  retrieveModel(@Param('model') model: string, @Res() res: FastifyReply) {
+    try {
+      const served = this.listOpenAICompatibleModelIds().includes(model);
+      if (!served) {
+        res.status(HttpStatus.NOT_FOUND).send({
+          error: {
+            code: 'model_not_found',
+            message: `The model '${model}' does not exist or you do not have access to it.`,
+            param: 'model',
+            type: 'invalid_request_error',
+          },
+        });
+        return;
+      }
+
+      res.status(HttpStatus.OK).send(this.toOpenAIModelObjectEntry(model));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to retrieve model';
       this.logger.error(message, error instanceof Error ? error.stack : undefined);
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
         error: {
