@@ -339,13 +339,13 @@ export class OpenAIService extends BaseProxyService {
         }
       };
 
-      const complete = (): void => {
+      const complete = (finishReason?: string | null): void => {
         if (completed) {
           return;
         }
         completed = true;
         clearHeartbeat();
-        for (const event of mapper.complete()) {
+        for (const event of mapper.complete(finishReason)) {
           subscriber.next(event);
         }
         subscriber.complete();
@@ -423,7 +423,7 @@ export class OpenAIService extends BaseProxyService {
             }
 
             if (isString(candidate?.finishReason) && candidate.finishReason.length > 0) {
-              complete();
+              complete(candidate.finishReason);
               return;
             }
           } catch {
@@ -836,7 +836,7 @@ export class OpenAIService extends BaseProxyService {
         }
       }
 
-      for (const event of mapper.complete()) {
+      for (const event of mapper.complete(choice?.finish_reason)) {
         subscriber.next(event);
       }
       subscriber.complete();

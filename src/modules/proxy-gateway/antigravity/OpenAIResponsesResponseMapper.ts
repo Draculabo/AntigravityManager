@@ -5,6 +5,7 @@ import type {
 import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight';
 import { extractCustomToolInput, isCustomToolCall } from './CustomToolCall';
 import { toOpenAIResponsesUsage } from './OpenAIUsageMapper';
+import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
 
 type ResponsesToolOutput =
   | {
@@ -83,6 +84,10 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
   const output: Record<string, unknown>[] = [];
   const content = choice?.message.content;
   const refusal = choice?.message.refusal;
+  // Upstream already said whether the answer ran out of output budget; a response
+  // that reports `completed` regardless makes a truncated answer look final.
+  const incompleteReason = toIncompleteReason(choice?.finish_reason);
+  const status: ResponsesOutputStatus = incompleteReason ? 'incomplete' : 'completed';
 
   if ((typeof content === 'string' && content.length > 0) || refusal) {
     output.push({
@@ -101,7 +106,7 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
           ],
       id: `msg_${response.id}`,
       role: 'assistant',
-      status: 'completed',
+      status,
       type: 'message',
     });
   }
@@ -113,7 +118,7 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
         content: [{ text: mapped.diagnostic, type: 'output_text' }],
         id: `msg_${toolCall.id}`,
         role: 'assistant',
-        status: 'completed',
+        status,
         type: 'message',
       });
     } else {
@@ -124,10 +129,11 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
   return {
     created_at: response.created,
     id: response.id,
+    incomplete_details: incompleteReason ? { reason: incompleteReason } : null,
     model: response.model,
     object: 'response',
     output,
-    status: 'completed',
+    status,
     type: 'response',
     usage: toOpenAIResponsesUsage(response.usage),
   };
