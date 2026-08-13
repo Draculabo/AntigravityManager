@@ -168,6 +168,57 @@ Compare the HTTP status and the raw body rather than a locally rendered wrapper:
 
 ---
 
+## 4c. Local Batch Runner (core only, no protocol surfaces yet)
+
+`modules/batch/` is a **local deferred-job runner** over the same `generateContent`-family
+calls the proxy already makes for interactive traffic. The provider (`v1internal` on
+`cloudcode-pa`) has no batch plane at all -- no batch resource, no deferred submission, no
+server-side job -- so this exists to give a client that only speaks batch a real
+implementation of the client-facing contract: submit a set of requests, poll, collect
+results line by line, survive a dropped connection and an app restart.
+
+**It is not the economics of a real batch API.** There is no 50% discount, no separate
+quota pool, and no separate rate limit. Every request costs exactly what it would cost sent
+normally, right now, against the same account leases and the same rate-limit tracking
+interactive traffic uses. Do not describe it to a client as cheaper or faster than a
+unary call.
+
+This module currently has **zero controllers** and is not reachable from any HTTP route. It
+ports only the runner's core:
+
+| file | responsibility |
+| :--- | :--- |
+| `batch-job.types.ts` | Job/request vocabulary, `BatchJobError`, defaults, id parsing/validation. |
+| `batch-job-transitions.ts` | Pure state transitions: restart recovery, cancellation, expiry, claiming, recording an outcome. |
+| `batch-request-executor.ts` | Runs one request line against a `BatchExecutionTarget`, isolating a failure to its own `custom_id`. |
+| `batch-runner.service.ts` | The durable, bounded, restartable job queue: concurrency, scheduling, persistence. |
+| `batch-store-location.ts` | Resolves the backing file under `getProxyStateDir()`, with the usual test-runner path suppression. |
+| `batch.module.ts` | Wires the runner to `OpenAIService` / `AnthropicService` / `GeminiService` through a `BATCH_EXECUTION_TARGET` DI token, so the runner itself never imports a protocol service directly. |
+
+State lives in one `DurableRecordStore` at `proxy-state/proxy-batches.json`, bounded by count
+(`AGM_BATCH_MAX_BATCHES`, default 200) and age (`AGM_BATCH_TTL_MS`, default 48h). Concurrency
+defaults to 2 in-flight requests (`AGM_BATCH_MAX_CONCURRENCY`) because the proxy has no global
+concurrency limiter: account leasing hands out an account per request and rate-limit tracking
+only reacts to upstream 429s by locking that account out -- a lockout the interactive path then
+shares. A batch is by definition not urgent, so it deliberately leaves most of an account's
+headroom to whoever is waiting on a live response.
+
+A request that fails is recorded against its own `custom_id` and the batch keeps going; a
+cancel stops everything not yet dispatched and discards the answer of anything already in
+flight; a batch that outlives its completion window (`AGM_BATCH_MAX_REQUESTS`,
+`DEFAULT_COMPLETION_WINDOW_MS`) is expired on read rather than on a timer, and whatever never
+ran is marked `expired` while whatever did keeps its real outcome. A kill mid-flight is survived:
+a fresh `BatchRunnerService` over the same file resets whatever was `running` back to `pending`
+and retries it from the top.
+
+Client-facing protocol surfaces -- `POST /v1/batches`, `/v1/messages/batches`,
+`:batchGenerateContent`, `/v1beta/operations` -- are a separate task. They need a local Files
+API this branch does not have yet, and OpenAI's `/v1/responses` batch endpoint is refused by the
+executor today for the same reason: claiming an endpoint works before the conversion it needs is
+wired would be exactly the kind of promise this port refuses to make.
+
+---
+
 ## 5. Verification & Development Checklist
 
 After modifying files in `server/`, execute the following verification steps in order:
