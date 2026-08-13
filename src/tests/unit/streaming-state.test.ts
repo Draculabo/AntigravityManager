@@ -128,4 +128,42 @@ describe('StreamingState', () => {
       expect(output).toContain('https://example.com/gemini');
     });
   });
+  describe('thought parts that carry nothing', () => {
+    it('opens no thinking block for a thought with neither text nor signature', () => {
+      const processor = new PartProcessor(state);
+
+      const payload = [
+        ...processor.process({ thought: true, text: '' }),
+        ...state.emitFinish('STOP'),
+      ].join('');
+
+      expect(payload).not.toContain('"content_block":{"type":"thinking"');
+      expect(payload).not.toContain('"thinking_delta"');
+    });
+
+    it('still opens a thinking block for an empty thought that carries a signature', () => {
+      const processor = new PartProcessor(state);
+      const signature = Buffer.from('empty-thought-signature').toString('base64');
+
+      const payload = [
+        ...processor.process({ thought: true, text: '', thoughtSignature: signature }),
+        ...state.emitFinish('STOP'),
+      ].join('');
+
+      expect(payload).toContain('"content_block":{"type":"thinking"');
+      expect(payload).toContain('"signature_delta"');
+    });
+
+    it('keeps the thinking text of a thought that has content', () => {
+      const processor = new PartProcessor(state);
+
+      const payload = [
+        ...processor.process({ thought: true, text: 'weighing the options' }),
+        ...state.emitFinish('STOP'),
+      ].join('');
+
+      expect(payload).toContain('"content_block":{"type":"thinking"');
+      expect(payload).toContain('"thinking":"weighing the options"');
+    });
+  });
 });

@@ -398,6 +398,14 @@ export class PartProcessor {
       chunks.push(...this.state.endBlock());
     }
 
+    // A thought with no text and no signature has nothing to put in a block. The
+    // unary mapper already refuses to materialise that case (flushThinking), while
+    // this path opened a thinking block that carried neither content nor signature
+    // and that the client feeds back upstream on the next turn.
+    if (!text && !signature) {
+      return chunks;
+    }
+
     if (this.state.currentBlockType() !== 'Thinking') {
       chunks.push(...this.state.startBlock('Thinking', { type: 'thinking', thinking: '' }));
     }
