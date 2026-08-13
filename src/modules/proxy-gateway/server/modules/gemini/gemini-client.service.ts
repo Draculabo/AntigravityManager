@@ -12,6 +12,7 @@ import {
   type ExplicitContextCacheResource,
 } from './explicit-context-cache.store';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
+import { extractGoogleErrorDetails } from '../../common/google-error-details';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 
 interface PreparedInternalRequest {
@@ -59,6 +60,7 @@ export class GeminiClient {
             retryAfter: this.extractRetryAfterHeader(error.response?.headers),
           },
           body: this.describeAxiosErrorData(error.response?.data),
+          details: extractGoogleErrorDetails(error.response?.data),
         });
       }
       this.throwAsCleanError(error);
@@ -96,6 +98,7 @@ export class GeminiClient {
             retryAfter: this.extractRetryAfterHeader(error.response?.headers),
           },
           body: this.describeAxiosErrorData(error.response?.data),
+          details: extractGoogleErrorDetails(error.response?.data),
         });
       }
       this.throwAsCleanError(error);
@@ -476,6 +479,7 @@ export class GeminiClient {
           retryAfter: this.extractRetryAfterHeader(error.response?.headers),
         },
         body: this.describeAxiosErrorData(responseData),
+        details: extractGoogleErrorDetails(responseData),
       });
     }
     this.throwAsCleanError(error);
