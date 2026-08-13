@@ -6,6 +6,7 @@ import { BatchModule } from './modules/batch/batch.module';
 import { FilesModule } from './modules/files/files.module';
 import { GeminiModule } from './modules/gemini/gemini.module';
 import { OpenAIModule } from './modules/openai/openai.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import { V1InternalPassthroughModule } from './modules/v1internal-passthrough/v1internal-passthrough.module';
 import { ProxyService } from './proxy.service';
 
@@ -17,6 +18,7 @@ import { ProxyService } from './proxy.service';
     GeminiModule,
     AnthropicModule,
     OpenAIModule,
+    UploadsModule,
     V1InternalPassthroughModule,
   ],
   providers: [ProxyService],

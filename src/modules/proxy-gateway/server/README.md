@@ -198,6 +198,16 @@ Handles are expanded into inline content on the way upstream, in one place for a
 Expansion is **fail-closed**. A handle this proxy never issued, one that has expired, and a request arriving when no store is wired are all errors in the caller's own dialect. None of them is dropped, forwarded upstream as an opaque reference, or replaced with an empty part -- upstream would answer any of those with a confusing provider error about content it never received.
 
 `POST /upload/v1beta/files` accepts Google's simple media form, where the whole body is the file. That needs a raw body parser, registered at boot for media content types only and with its own body limit: `application/json` and `multipart/form-data` already have exact-match parsers and Fastify prefers an exact match over a matcher, so every existing route keeps both its parser and its current ceiling.
+
+### OpenAI Uploads protocol
+
+`modules/uploads/` serves `POST /v1/uploads`, `POST /v1/uploads/{id}/parts`, `POST /v1/uploads/{id}/complete` and `POST /v1/uploads/{id}/cancel`. It is not a second capability -- it is a session protocol over the same store above: `create` opens an expiring, in-memory session that only remembers the declared byte count, filename, MIME type and purpose; `parts` retains multipart chunks against that session; `complete` names their ids in assembly order, checks that the concatenated bytes match what was declared, and writes exactly one ordinary `file-…` record through `FileContentStore`. The session and its part buffers are discarded the moment `complete` or `cancel` runs.
+
+Pending sessions are bounded three ways, matching the store they feed into: by size (a declared byte count over the per-file ceiling is refused at `create`, before any bytes are accepted), by time (a session expires one hour after `create` and answers `upload_expired` rather than silently taking more parts), and by count (a fixed ceiling on sessions held in memory at once, refused with `429` once reached). A sweep on the same interval as the file store's own reclaims sessions abandoned past their expiry, so an incomplete upload has no durable footprint and cannot accumulate.
+
+`bytes` at `complete` is a claim the assembled parts must match exactly; a short or long result is `byte_count_mismatch` in OpenAI's envelope with `param: "bytes"`, never a silent concatenation. `upload_id` and `part_id` are opaque server-issued strings, checked the same way a file handle is -- never built into a path.
+
+As with Files, this is **local** session state, not provider-side storage: the file `complete` produces is read back through the ordinary `/v1/files` surface, and every later reference to it still travels to Google inline. No token saving is claimed here either.
 ## 4d. Local Batch Runner (core only, no protocol surfaces yet)
 
 `modules/batch/` is a **local deferred-job runner** over the same `generateContent`-family

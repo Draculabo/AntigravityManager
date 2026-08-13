@@ -11,6 +11,7 @@ import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/acco
 import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
 import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
+import { OpenAIUploadsService } from '@/modules/proxy-gateway/server/modules/uploads/openai-uploads.service';
 import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import {
   ModelAvailabilityService,
@@ -141,6 +142,7 @@ describe('proxy gateway explicit injection', () => {
     ['GeminiService', GeminiService],
     ['GenerationConstraintsService', GenerationConstraintsService],
     ['ProxyRetryService', ProxyRetryService],
+    ['OpenAIUploadsService', OpenAIUploadsService],
   ])('names a token on every constructor parameter of %s', (name, target) => {
     const withToken = indicesWithExplicitToken(target);
     const parameterCount = target.length;
