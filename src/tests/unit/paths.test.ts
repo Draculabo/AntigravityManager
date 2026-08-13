@@ -54,6 +54,32 @@ function setPlatform(platformName: NodeJS.Platform): void {
   });
 }
 
+/**
+ * Makes the Linux expectations below hold wherever the suite runs.
+ *
+ * `isWsl()` reads `/proc/version`, and under WSL it takes precedence over every
+ * plain-Linux branch, so a test asserting the Linux answer while running on WSL
+ * asserts a branch it never reaches. Faking the kernel banner pins the platform
+ * each test is actually about.
+ */
+function pretendKernel(banner: string): void {
+  const realReadFileSync = fs.readFileSync;
+  vi.spyOn(fs, 'readFileSync').mockImplementation(((target: unknown, ...args: unknown[]) => {
+    if (String(target) === '/proc/version') {
+      return banner;
+    }
+    return (realReadFileSync as (...callArgs: unknown[]) => unknown)(target, ...args);
+  }) as unknown as typeof fs.readFileSync);
+}
+
+function pretendPlainLinux(): void {
+  pretendKernel('Linux version 6.6.0 #1 SMP');
+}
+
+function pretendWsl(): void {
+  pretendKernel('Linux version 6.6.87.2-microsoft-standard-WSL2 #1 SMP');
+}
+
 function restoreEnvValue(key: string, value: string | undefined): void {
   if (value === undefined) {
     delete process.env[key];
@@ -106,6 +132,7 @@ describe('Path Utilities', () => {
   });
 
   it('should get correct executable path', async () => {
+    pretendPlainLinux();
     vi.spyOn(fs, 'existsSync').mockImplementation((candidate) => {
       const candidateStr = String(candidate);
       if (process.platform === 'linux') {
@@ -130,6 +157,7 @@ describe('Path Utilities', () => {
   it('should skip non-writable derived portable user-data paths on Linux', async () => {
     vi.resetModules();
     setPlatform('linux');
+    pretendPlainLinux();
     vi.spyOn(os, 'homedir').mockReturnValue('/home/alice');
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       return String(candidatePath) === '/usr/bin/antigravity';
@@ -142,6 +170,21 @@ describe('Path Utilities', () => {
     );
     expect(paths.getAntigravityStoragePath()).toBe(
       '/home/alice/.config/Antigravity/User/globalStorage/storage.json',
+    );
+  });
+
+  it('points at the Windows install when Linux is really WSL', async () => {
+    vi.resetModules();
+    setPlatform('linux');
+    pretendWsl();
+    childProcessMock.execSync.mockReturnValue('alice\r\n');
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+    const paths = await import('../../shared/platform/paths');
+
+    expect(paths.isWsl()).toBe(true);
+    expect(paths.getAntigravityExecutablePath()).toBe(
+      '/mnt/c/Users/alice/AppData/Local/Programs/Antigravity/Antigravity.exe',
     );
   });
 
