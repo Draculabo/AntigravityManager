@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { isEmpty, isNumber, isPlainObject, isString } from 'lodash-es';
+import { isEmpty, isString } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,11 +10,7 @@ import {
   toOpenAIResponsesUsage,
   toOpenAIUsageFromGeminiUsageMetadata,
 } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
-import {
-  type GeminiResponsesGroundingMetadata,
-  type GeminiResponsesStreamPart,
-  OpenAIResponsesStreamingMapper,
-} from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
 import {
   extractCustomToolInput,
   isCustomToolCall,
@@ -29,7 +25,6 @@ import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/inter
 import {
   GeminiRequest,
   GeminiResponse,
-  GeminiUsageMetadata,
   OpenAIChatRequest,
   OpenAIChatResponse,
   OpenAIUsage,
@@ -41,6 +36,12 @@ import {
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import {
+  toGeminiUsageMetadata,
+  toResponsesGroundingMetadata,
+  toResponsesStreamPart,
+  toUnknownRecord,
+} from './responses/openai-responses-adapters';
 import { ClaudeRequest, ClaudeResponse } from '@/modules/proxy-gateway/antigravity/types';
 import {
   convertClaudeToOpenAIResponse,
@@ -388,7 +389,7 @@ export class OpenAIService extends BaseProxyService {
             }
 
             const responsePayload = decoded.response;
-            const usageMetadata = this.toGeminiUsageMetadata(responsePayload.usageMetadata);
+            const usageMetadata = toGeminiUsageMetadata(responsePayload.usageMetadata);
             if (usageMetadata) {
               mapper.setUsage(
                 toOpenAIResponsesUsage(toOpenAIUsageFromGeminiUsageMetadata(usageMetadata)),
@@ -399,12 +400,12 @@ export class OpenAIService extends BaseProxyService {
               continue;
             }
 
-            const candidate = this.toUnknownRecord(candidates[0]);
-            const content = this.toUnknownRecord(candidate?.content);
+            const candidate = toUnknownRecord(candidates[0]);
+            const content = toUnknownRecord(candidate?.content);
             const parts = content?.parts;
             if (Array.isArray(parts)) {
               for (const part of parts) {
-                const normalizedPart = this.toResponsesStreamPart(part);
+                const normalizedPart = toResponsesStreamPart(part);
                 if (!normalizedPart) {
                   continue;
                 }
@@ -414,7 +415,7 @@ export class OpenAIService extends BaseProxyService {
               }
             }
 
-            const grounding = this.toResponsesGroundingMetadata(candidate?.groundingMetadata);
+            const grounding = toResponsesGroundingMetadata(candidate?.groundingMetadata);
             if (grounding) {
               for (const event of mapper.processGrounding(grounding)) {
                 subscriber.next(event);
@@ -452,126 +453,6 @@ export class OpenAIService extends BaseProxyService {
     });
   }
 
-  private toResponsesStreamPart(value: unknown): GeminiResponsesStreamPart | null {
-    const part = this.toUnknownRecord(value);
-    if (!part) {
-      return null;
-    }
-
-    const functionCallRecord = this.toUnknownRecord(part.functionCall);
-    const functionName = isString(functionCallRecord?.name) ? functionCallRecord.name : null;
-    const functionArgs = this.toUnknownRecord(functionCallRecord?.args) ?? {};
-    const functionId = isString(functionCallRecord?.id) ? functionCallRecord.id : undefined;
-    const inlineDataRecord = this.toUnknownRecord(part.inlineData);
-    const inlineData =
-      isString(inlineDataRecord?.mimeType) && isString(inlineDataRecord.data)
-        ? {
-            data: inlineDataRecord.data,
-            mimeType: inlineDataRecord.mimeType,
-          }
-        : undefined;
-
-    return {
-      functionCall: functionName
-        ? {
-            args: functionArgs,
-            id: functionId,
-            name: functionName,
-          }
-        : undefined,
-      inlineData,
-      text: isString(part.text) ? part.text : undefined,
-      thought: part.thought === true,
-      thoughtSignature: isString(part.thoughtSignature) ? part.thoughtSignature : undefined,
-      thought_signature: isString(part.thought_signature) ? part.thought_signature : undefined,
-    };
-  }
-
-  private toResponsesGroundingMetadata(value: unknown): GeminiResponsesGroundingMetadata | null {
-    const grounding = this.toUnknownRecord(value);
-    if (!grounding) {
-      return null;
-    }
-
-    const webSearchQueries = Array.isArray(grounding.webSearchQueries)
-      ? grounding.webSearchQueries.filter(isString)
-      : undefined;
-    const groundingChunks = Array.isArray(grounding.groundingChunks)
-      ? grounding.groundingChunks.flatMap((chunk) => {
-          const web = this.toUnknownRecord(this.toUnknownRecord(chunk)?.web);
-          if (!web) {
-            return [];
-          }
-          return [
-            {
-              web: {
-                title: isString(web.title) ? web.title : undefined,
-                uri: isString(web.uri) ? web.uri : undefined,
-              },
-            },
-          ];
-        })
-      : undefined;
-
-    if (!webSearchQueries?.length && !groundingChunks?.length) {
-      return null;
-    }
-    return { groundingChunks, webSearchQueries };
-  }
-
-  private toGeminiUsageMetadata(value: unknown): GeminiUsageMetadata | undefined {
-    const usageMetadata = this.toUnknownRecord(value);
-    if (!usageMetadata) {
-      return undefined;
-    }
-
-    return {
-      cachedContentTokenCount: isNumber(usageMetadata.cachedContentTokenCount)
-        ? usageMetadata.cachedContentTokenCount
-        : undefined,
-      candidatesTokenCount: isNumber(usageMetadata.candidatesTokenCount)
-        ? usageMetadata.candidatesTokenCount
-        : undefined,
-      promptTokenCount: isNumber(usageMetadata.promptTokenCount)
-        ? usageMetadata.promptTokenCount
-        : undefined,
-      thoughtsTokenCount: isNumber(usageMetadata.thoughtsTokenCount)
-        ? usageMetadata.thoughtsTokenCount
-        : undefined,
-      totalTokenCount: isNumber(usageMetadata.totalTokenCount)
-        ? usageMetadata.totalTokenCount
-        : undefined,
-      total_input_tokens: isNumber(usageMetadata.total_input_tokens)
-        ? usageMetadata.total_input_tokens
-        : undefined,
-      total_output_tokens: isNumber(usageMetadata.total_output_tokens)
-        ? usageMetadata.total_output_tokens
-        : undefined,
-      total_cached_tokens: isNumber(usageMetadata.total_cached_tokens)
-        ? usageMetadata.total_cached_tokens
-        : undefined,
-      total_thought_tokens: isNumber(usageMetadata.total_thought_tokens)
-        ? usageMetadata.total_thought_tokens
-        : undefined,
-      totalThoughtTokens: isNumber(usageMetadata.totalThoughtTokens)
-        ? usageMetadata.totalThoughtTokens
-        : undefined,
-      total_tokens: isNumber(usageMetadata.total_tokens) ? usageMetadata.total_tokens : undefined,
-      total_tool_use_tokens: isNumber(usageMetadata.total_tool_use_tokens)
-        ? usageMetadata.total_tool_use_tokens
-        : undefined,
-      cachedTokens: isNumber(usageMetadata.cachedTokens) ? usageMetadata.cachedTokens : undefined,
-    };
-  }
-
-  private toUnknownRecord(value: unknown): Record<string, unknown> | null {
-    if (!isPlainObject(value)) {
-      return null;
-    }
-    return value as Record<string, unknown>;
-  }
-
-  // Handle SSE Stream conversion
   private processStreamResponse(
     upstreamStream: NodeJS.ReadableStream,
     model: string,
@@ -628,7 +509,7 @@ export class OpenAIService extends BaseProxyService {
             }
 
             const responsePayload = decoded.response;
-            const usageMetadata = this.toGeminiUsageMetadata(responsePayload.usageMetadata);
+            const usageMetadata = toGeminiUsageMetadata(responsePayload.usageMetadata);
             if (usageMetadata) {
               lastUsage = toOpenAIUsageFromGeminiUsageMetadata(usageMetadata);
             }
@@ -637,8 +518,8 @@ export class OpenAIService extends BaseProxyService {
               ? responsePayload.candidates
               : [];
             for (const [candidateIndex, candidateValue] of candidates.entries()) {
-              const candidate = this.toUnknownRecord(candidateValue);
-              const content = this.toUnknownRecord(candidate?.content);
+              const candidate = toUnknownRecord(candidateValue);
+              const content = toUnknownRecord(candidate?.content);
               const parts = Array.isArray(content?.parts) ? content.parts : [];
               // Keep these streams separate because clients can render thought text twice when
               // reasoning_content and content are present in the same delta.
@@ -646,7 +527,7 @@ export class OpenAIService extends BaseProxyService {
               let responseContent = '';
 
               for (const partValue of parts) {
-                const part = this.toUnknownRecord(partValue);
+                const part = toUnknownRecord(partValue);
                 if (!part) {
                   continue;
                 }
@@ -674,7 +555,7 @@ export class OpenAIService extends BaseProxyService {
                   SignatureStore.store(signature, signatureSessionKey, signatureMessageCount);
                 }
 
-                const functionCall = this.toUnknownRecord(part.functionCall);
+                const functionCall = toUnknownRecord(part.functionCall);
                 if (functionCall && isString(functionCall.name)) {
                   const dedupeKey = JSON.stringify(functionCall);
                   if (emittedToolCalls.has(dedupeKey)) {
@@ -686,7 +567,7 @@ export class OpenAIService extends BaseProxyService {
                   const functionName = clientToolNames
                     ? resolveShellToolName(splitName.name, clientToolNames)
                     : splitName.name;
-                  const rawArguments = this.toUnknownRecord(functionCall.args) ?? {};
+                  const rawArguments = toUnknownRecord(functionCall.args) ?? {};
                   const functionArguments = isCustomToolCall(functionName)
                     ? toCustomToolArguments(
                         functionName,
@@ -726,7 +607,7 @@ export class OpenAIService extends BaseProxyService {
                   toolCallIndex += 1;
                 }
 
-                const inlineData = this.toUnknownRecord(part.inlineData);
+                const inlineData = toUnknownRecord(part.inlineData);
                 if (inlineData) {
                   const mimeType = isString(inlineData.mimeType)
                     ? inlineData.mimeType
