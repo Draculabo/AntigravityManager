@@ -122,6 +122,7 @@ export function convertOpenAIToClaude(
     presence_penalty: request.presence_penalty,
     frequency_penalty: request.frequency_penalty,
     seed: request.seed,
+    response_format: request.response_format,
     tool_choice: request.tool_choice,
     stream: request.stream,
     metadata: {

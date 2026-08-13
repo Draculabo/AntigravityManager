@@ -65,6 +65,12 @@ export interface ClaudeRequest {
   output_config?: {
     effort?: string;
   };
+  /**
+   * The OpenAI `response_format`, carried through so JSON mode reaches the upstream
+   * `generationConfig`. Declared on the client contract but dropped in the mapping until now,
+   * which meant a client that asked for JSON and parsed the answer got prose.
+   */
+  response_format?: { type?: string };
   metadata?: Metadata;
 }
 

@@ -948,6 +948,12 @@ function buildGenerationConfig(
     return thinkingConfig;
   };
 
+  // JSON mode is a request-shaping flag, not an OpenAI-only nicety: whoever asks for it parses
+  // the answer, so the model has to be told before it answers rather than corrected afterwards.
+  if (String(claudeReq.response_format?.type ?? '').toLowerCase() === 'json_object') {
+    config.responseMimeType = 'application/json';
+  }
+
   if (isOpenAIPath) {
     config.temperature = claudeReq.temperature ?? 1.0;
     config.topP = claudeReq.top_p ?? 0.95;
