@@ -10,6 +10,8 @@ export interface OpenAIChatRequest {
   seed?: number;
   max_tokens?: number;
   stream?: boolean;
+  /** Ask the gateway to keep the completion so its GET route can replay it. */
+  store?: boolean;
   size?: string;
   quality?: string;
   tools?: OpenAITool[];

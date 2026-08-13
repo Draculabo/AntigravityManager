@@ -133,10 +133,17 @@ State a client can still reference after the process goes away is kept in `~/.an
 | owner | file | bounds | overrides |
 | :--- | :--- | :--- | :--- |
 | Responses sessions | `openai-responses-sessions.json` | 500 sessions, 1 hour since last use | `AGM_RESPONSES_SESSION_MAX_ENTRIES`, `AGM_RESPONSES_SESSION_TTL_MS` |
+| Stored chat completions | `openai-chat-completions.json` | 500 completions, 1 hour since last read | `AGM_STORED_COMPLETION_MAX_ENTRIES`, `AGM_STORED_COMPLETION_TTL_MS` |
 
 `OpenAIResponsesSessionService` owns the file; the store class it extends defaults to memory only, and under the test runner the service takes no path at all, so no test can write into the real data directory.
 
 `GET /v1/responses/{id}` replays the payload the create call answered with and `DELETE /v1/responses/{id}` removes it; both answer 404 in OpenAI's error envelope for an id that is unknown, has aged out, or was created with `store: false`. A `previous_response_id` that cannot be resolved is answered the same way, because a client reads that as "start a fresh conversation" while an empty chain reads to the user as the assistant losing its memory.
+
+`POST /v1/chat/completions` accepts `store: true` on a unary request and keeps the `chat.completion` object it answered with, so `GET /v1/chat/completions/{id}` replays exactly that object -- choices, finish reasons, usage, model and creation time -- and a client that lost the connection reads its answer instead of paying for it twice. An id that was never stored or has aged out is 404, never an empty completion. `store: true` together with `stream: true` is refused with `param: "store"`, because a streamed answer is passed through chunk by chunk and no completion object is assembled to keep; answering 200 and keeping nothing would be a promise this route cannot fulfil.
+
+The two stores are separate files with separate ceilings. They have unrelated lifetimes and unrelated volumes, so a burst of stored completions must not evict live conversation state.
+
+This store is local. It preserves the client contract, but it is no provider-side cache: it saves no tokens and is unreadable from another machine.
 
 Deliberate deviation: `store: false` suppresses retrieval but not continuation. OpenAI refuses both, and this gateway's clients chain with `previous_response_id` while sending `store: false`, so refusing the chain would break them silently for a property they do not use.
 

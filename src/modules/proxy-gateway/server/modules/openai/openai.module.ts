@@ -7,6 +7,7 @@ import { AccountLeaseModule } from '../account-lease/account-lease.module';
 import { GeminiModule } from '../gemini/gemini.module';
 import { IMAGE_QUOTA_REFRESH, OpenAIController } from './openai.controller';
 import { OpenAIService } from './openai.service';
+import { OpenAIChatCompletionService } from './chat/openai-chat-completion.service';
 import { OpenAIResponsesSessionService } from './responses/openai-responses-session.service';
 import { OpenAIResponsesStoreController } from './responses/openai-responses-store.controller';
 
@@ -14,6 +15,7 @@ import { OpenAIResponsesStoreController } from './responses/openai-responses-sto
   imports: [AccountLeaseModule, GeminiModule, SharedServicesModule],
   controllers: [OpenAIController, OpenAIResponsesStoreController],
   providers: [
+    OpenAIChatCompletionService,
     OpenAIResponsesSessionService,
     OpenAIService,
     ProxyGuard,
@@ -22,6 +24,6 @@ import { OpenAIResponsesStoreController } from './responses/openai-responses-sto
       useValue: () => CloudMonitorService.poll(),
     },
   ],
-  exports: [OpenAIResponsesSessionService, OpenAIService],
+  exports: [OpenAIChatCompletionService, OpenAIResponsesSessionService, OpenAIService],
 })
 export class OpenAIModule {}

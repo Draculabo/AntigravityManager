@@ -22,6 +22,11 @@ import {
   GeminiResponse,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
+import { OpenAIChatCompletionService } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-chat-completion.service';
+import {
+  OpenAIChatCompletionStore,
+  type OpenAIChatCompletionStoreLike,
+} from '@/modules/proxy-gateway/server/modules/openai/chat/openai-chat-completion.store';
 import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
 import {
   mergeOpenAIResponsesInputItems,
@@ -89,6 +94,9 @@ export class OpenAIController extends BaseProxyController {
    */
   private readonly responsesSessions: OpenAIResponsesSessionStoreLike;
 
+  /** Completions a client asked to keep. Same ownership rule as the sessions above. */
+  private readonly storedCompletions: OpenAIChatCompletionStoreLike;
+
   constructor(
     @Inject(OpenAIService) private readonly proxyService: OpenAIService,
     @Optional()
@@ -100,9 +108,13 @@ export class OpenAIController extends BaseProxyController {
     @Optional()
     @Inject(OpenAIResponsesSessionService)
     responsesSessions?: OpenAIResponsesSessionStoreLike,
+    @Optional()
+    @Inject(OpenAIChatCompletionService)
+    storedCompletions?: OpenAIChatCompletionStoreLike,
   ) {
     super();
     this.responsesSessions = responsesSessions ?? OpenAIResponsesSessionStore;
+    this.storedCompletions = storedCompletions ?? OpenAIChatCompletionStore;
   }
 
   @Get('models')
@@ -196,7 +208,51 @@ export class OpenAIController extends BaseProxyController {
 
   @Post('chat/completions')
   async chatCompletions(@Body() body: OpenAIChatRequest, @Res() res: FastifyReply) {
+    if (body.store === true && body.stream === true) {
+      res.status(HttpStatus.BAD_REQUEST).send({
+        error: {
+          code: 'unsupported_parameter',
+          message:
+            'store is not supported together with stream by this proxy: a streamed answer is ' +
+            'passed through chunk by chunk and no completion object is assembled to keep.',
+          param: 'store',
+          type: 'invalid_request_error',
+        },
+      });
+      return;
+    }
+
     await this.respondOpenAIChatCompletions(body, res);
+  }
+
+  /**
+   * `GET /v1/chat/completions/{id}`, the replay half of `store: true`.
+   *
+   * It answers with the exact object the create call returned, so a client that
+   * lost the connection can read its answer instead of paying for it twice. An
+   * id that was never stored, or has aged out, is `404` rather than an empty
+   * completion, because a client cannot tell an invented empty answer from a
+   * real one.
+   */
+  @Get('chat/completions/:completionId')
+  getStoredChatCompletion(
+    @Param('completionId') completionId: string,
+    @Res() res: FastifyReply,
+  ): void {
+    const stored = this.storedCompletions.get(completionId);
+    if (!stored) {
+      res.status(HttpStatus.NOT_FOUND).send({
+        error: {
+          code: 'completion_not_found',
+          message: `Completion with id '${completionId}' not found.`,
+          param: 'completion_id',
+          type: 'invalid_request_error',
+        },
+      });
+      return;
+    }
+
+    res.status(HttpStatus.OK).send(stored);
   }
 
   @Post('completions')
@@ -452,6 +508,9 @@ export class OpenAIController extends BaseProxyController {
         this.writeSseResponse(res, result);
         return;
       } else {
+        if (body.store === true) {
+          this.storedCompletions.save(result as OpenAIChatResponse);
+        }
         res.status(HttpStatus.OK).send(result);
       }
     } catch (error) {
