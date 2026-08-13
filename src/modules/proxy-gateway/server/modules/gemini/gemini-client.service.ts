@@ -19,8 +19,17 @@ import { UpstreamRequestError } from '../../common/exceptions/upstream-request.e
 import { extractGoogleErrorDetails } from '../../common/google-error-details';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 
-/** The two envelopes that travel the internal endpoints: generation, and the narrower count. */
-type InternalEndpointRequestBody = GeminiInternalRequest | GeminiCountTokensRequest;
+/**
+ * What travels the internal endpoints: generation, the narrower count, and -- only through the
+ * gated diagnostic passthrough -- a body this gateway deliberately does not model.
+ */
+type InternalEndpointRequestBody = GeminiInternalRequest | GeminiCountTokensRequest | unknown;
+
+interface V1InternalRawResponse {
+  body: string;
+  headers: Record<string, string>;
+  status: number;
+}
 
 interface PreparedInternalRequest {
   body: GeminiInternalRequest;
@@ -210,6 +219,46 @@ export class GeminiClient {
     }
 
     return {};
+  }
+
+  /**
+   * Sends an intentionally unmodelled `v1internal` request through the normal authorised
+   * transport.
+   *
+   * Diagnostic only: unlike every product-facing method it preserves the upstream status and the
+   * raw text payload, so an operator can measure what a vendor verb actually answers instead of
+   * reading a mapper's compatibility rendering of it. That is the point -- claims about the
+   * upstream envelope are otherwise unfalsifiable from inside this codebase.
+   */
+  async postV1InternalRaw(
+    verb: string,
+    body: unknown,
+    accessToken: string,
+    upstreamProxyUrl?: string,
+  ): Promise<V1InternalRawResponse> {
+    const response = await this.executeRequestWithEndpointFailover<string>(
+      `:${verb}`,
+      body,
+      accessToken,
+      upstreamProxyUrl,
+      {
+        responseType: 'text',
+        transformResponse: [(value) => value],
+        validateStatus: () => true,
+      },
+      `v1internal-${verb}`,
+    );
+
+    return {
+      body: response.data,
+      headers: Object.fromEntries(
+        Object.entries(response.headers).map(([key, value]) => [
+          key,
+          Array.isArray(value) ? value.join(', ') : String(value),
+        ]),
+      ),
+      status: response.status,
+    };
   }
 
   private async executeInternalWithExplicitContextCache<T>(
@@ -505,8 +554,12 @@ export class GeminiClient {
   }
 
   private createProjectHeaders(body: InternalEndpointRequestBody): Record<string, string> {
-    // The countTokens envelope carries no project by design, so it simply sends no header.
-    const project = 'project' in body ? body.project?.trim() : undefined;
+    // The countTokens envelope carries no project by design, and a passthrough body is not ours
+    // to interpret, so either simply sends no header.
+    const project =
+      isObjectLike(body) && isString((body as { project?: unknown }).project)
+        ? (body as { project: string }).project.trim()
+        : undefined;
     if (!project) {
       return {};
     }

@@ -124,6 +124,25 @@ When reading, updating, or refactoring code within this directory, strictly foll
 
 ---
 
+## 4b. v1internal Diagnostic Passthrough
+
+This surface is absent by default. Set `AGM_V1INTERNAL_PASSTHROUGH=1` **before the proxy starts** to register `POST /v1internal/{verb}`; the variable is read once while Nest assembles its controller graph, so changing it afterwards cannot open the route. It exists to measure what a vendor method actually answers and must not be enabled for normal proxy use.
+
+It forwards the JSON body unchanged to `https://cloudcode-pa.googleapis.com/v1internal:{verb}` through the existing authorised transport, and it is behind `ProxyGuard` like every other route. The reply preserves Google's status and raw text body, reflects only the correlation headers (`content-type`, `retry-after`, `x-cloud-trace-context`, `x-goog-request-id`, `x-request-id`), and adds `x-antigravity-v1internal-account-id` / `x-antigravity-v1internal-account-email` so it is clear whose quota was charged. The account comes from the normal lease.
+
+Why it is worth having: a claim about the upstream envelope -- that it carries a `traceId`, that a verb is unimplemented -- cannot be checked from inside this codebase, because every product path renders the answer through a mapper first. Verbs are restricted to a plain method name, so nothing but a method name can be appended to the upstream URL.
+
+```bash
+curl -i http://127.0.0.1:8045/v1internal/countTokens \
+  -H 'authorization: Bearer <the proxy api key>' \
+  -H 'content-type: application/json' \
+  --data '{"request":{"model":"models/gemini-3-flash","contents":[{"role":"user","parts":[{"text":"hi"}]}]}}'
+```
+
+Compare the HTTP status and the raw body rather than a locally rendered wrapper: a rejected verb comes back as Google's own error envelope.
+
+---
+
 ## 5. Verification & Development Checklist
 
 After modifying files in `server/`, execute the following verification steps in order:
