@@ -12,6 +12,16 @@ export class AnthropicController extends BaseProxyController {
     super();
   }
 
+  @Post('messages/count_tokens')
+  async countTokens(@Body() body: AnthropicChatRequest, @Res() res: FastifyReply) {
+    try {
+      const inputTokens = await this.proxyService.handleAnthropicCountTokens(body);
+      res.status(HttpStatus.OK).send({ input_tokens: inputTokens });
+    } catch (error) {
+      this.sendAnthropicErrorResponse(res, '/v1/messages/count_tokens', error);
+    }
+  }
+
   @Post('messages')
   async anthropicMessages(@Body() body: AnthropicChatRequest, @Res() res: FastifyReply) {
     try {
