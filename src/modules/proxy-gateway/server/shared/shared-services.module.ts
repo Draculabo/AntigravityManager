@@ -10,6 +10,7 @@ import {
   ModelAvailabilityService,
   proxyModelAvailabilityStore,
 } from './services/model-availability.service';
+import { ModelRouteMissJournalService } from './services/model-route-miss-journal.service';
 import { ModelRoutingService } from './services/model-routing.service';
 import {
   PROXY_RETRY_ACCOUNT_LEASE,
@@ -30,6 +31,7 @@ import {
   imports: [AccountLeaseModule],
   providers: [
     ModelRoutingService,
+    ModelRouteMissJournalService,
     GenerationConstraintsService,
     ProxyRetryService,
     {
@@ -56,6 +58,7 @@ import {
   ],
   exports: [
     ModelRoutingService,
+    ModelRouteMissJournalService,
     GenerationConstraintsService,
     ProxyRetryService,
     ModelAvailabilityService,
