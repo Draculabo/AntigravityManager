@@ -191,6 +191,10 @@ Two rules that are properties, not preferences, each covered by a test verified 
 
 OpenAI purposes are limited to `user_data`, `vision` and `assistants_input`. `fine-tune`, `batch` and the Assistants output purposes are refused at upload rather than accepted and left quietly useless, because there is no fine-tuning, batching or Assistants runtime behind this proxy.
 
+Handles are expanded into inline content on the way upstream, in one place for all four request surfaces (`modules/files/file-reference-expander.ts`), because the provider has no file plane to forward a reference to. Gemini's `fileData.fileUri` becomes `inlineData`; an Anthropic `image` or `document` block with a `file` source becomes a base64 source, which the Claude mapper already turns into the same `inlineData`; an OpenAI chat `file` part becomes an image or a `file_data` data URL by MIME type; and `input_image` / `input_file` do the same on the Responses surface. A request that names no handle is returned untouched, so the ordinary path pays one walk and no copy.
+
+Expansion is **fail-closed**. A handle this proxy never issued, one that has expired, and a request arriving when no store is wired are all errors in the caller's own dialect. None of them is dropped, forwarded upstream as an opaque reference, or replaced with an empty part -- upstream would answer any of those with a confusing provider error about content it never received.
+
 `POST /upload/v1beta/files` accepts Google's simple media form, where the whole body is the file. That needs a raw body parser, registered at boot for media content types only and with its own body limit: `application/json` and `multipart/form-data` already have exact-match parsers and Fastify prefers an exact match over a matcher, so every existing route keeps both its parser and its current ceiling.
 
 ---

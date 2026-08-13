@@ -22,6 +22,11 @@ import {
   GeminiResponse,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
+import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import {
+  expandFileReferences,
+  FileReferenceError,
+} from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
 import { OpenAIChatCompletionService } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-chat-completion.service';
 import {
   OpenAIChatCompletionStore,
@@ -111,6 +116,7 @@ export class OpenAIController extends BaseProxyController {
     @Optional()
     @Inject(OpenAIChatCompletionService)
     storedCompletions?: OpenAIChatCompletionStoreLike,
+    @Optional() @Inject(FileContentStore) private readonly fileStore?: FileContentStore,
   ) {
     super();
     this.responsesSessions = responsesSessions ?? OpenAIResponsesSessionStore;
@@ -297,7 +303,18 @@ export class OpenAIController extends BaseProxyController {
 
   @Post('responses')
   async responses(@Body() body: ResponsesRequestBody, @Res() res: FastifyReply) {
-    const prepared = this.prepareResponsesRequest(body);
+    let expanded: ResponsesRequestBody;
+    try {
+      expanded = await expandFileReferences(body, 'openai-responses', this.fileStore);
+    } catch (error) {
+      if (error instanceof FileReferenceError) {
+        this.sendFileReferenceError(res, 'openai', error);
+        return;
+      }
+      throw error;
+    }
+
+    const prepared = this.prepareResponsesRequest(expanded);
     if (!prepared) {
       res
         .status(HttpStatus.NOT_FOUND)
@@ -502,7 +519,10 @@ export class OpenAIController extends BaseProxyController {
 
   private async respondOpenAIChatCompletions(body: OpenAIChatRequest, res: FastifyReply) {
     try {
-      const result = await this.proxyService.handleChatCompletions(body);
+      // Handles become inline content before the request is mapped: upstream
+      // has no file plane, so a `file_id` left in place reaches nothing.
+      const request = await expandFileReferences(body, 'openai-chat', this.fileStore);
+      const result = await this.proxyService.handleChatCompletions(request);
 
       if (body.stream && this.isObservableLike(result)) {
         this.writeSseResponse(res, result);
@@ -514,6 +534,10 @@ export class OpenAIController extends BaseProxyController {
         res.status(HttpStatus.OK).send(result);
       }
     } catch (error) {
+      if (error instanceof FileReferenceError) {
+        this.sendFileReferenceError(res, 'openai', error);
+        return;
+      }
       this.sendOpenAIErrorResponse(res, '/v1/chat/completions', error);
     }
   }

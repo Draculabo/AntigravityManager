@@ -129,6 +129,9 @@ export type AnthropicContent =
   | { type: 'text'; text: string }
   | { type: 'thinking'; thinking: string; signature?: string }
   | { type: 'image'; source: AnthropicImageSource }
+  // A document is an image block by another name on the wire: same inline
+  // source, and the upstream transport has one representation for both.
+  | { type: 'document'; source: AnthropicImageSource; title?: string }
   | {
       type: 'tool_use';
       id: string;

@@ -708,7 +708,9 @@ function buildContents(
           part.thought_signature = block.signature;
         }
         parts.push(part);
-      } else if (block.type === 'image') {
+      } else if (block.type === 'image' || block.type === 'document') {
+        // Images and documents differ only in what the client called them; the
+        // provider takes both as one inline part carrying its own MIME type.
         if (block.source.type === 'base64')
           parts.push({
             inlineData: { mimeType: block.source.media_type, data: block.source.data },

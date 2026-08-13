@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { logger } from '@/shared/logging/logger';
 import { isStoreFileId, type StoredFileRecord } from './file-store.types';
 
 /**
@@ -115,9 +116,23 @@ export class FileStoreDisk {
     this.pendingWrite = this.pendingWrite
       .catch(() => undefined)
       .then(async () => {
-        const temporaryPath = this.temporaryPath('index.json');
-        await writeFile(temporaryPath, JSON.stringify(snapshot), 'utf8');
-        await rename(temporaryPath, join(this.rootDirectory, INDEX_FILE_NAME));
+        // Retried once, then given up on: on Windows a rename over the index can
+        // lose a race with a scanner or another handle, and the in-memory map is
+        // authoritative for this run either way. Failing the write must not fail
+        // the request that triggered it.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const temporaryPath = this.temporaryPath('index.json');
+          try {
+            await writeFile(temporaryPath, JSON.stringify(snapshot), 'utf8');
+            await rename(temporaryPath, join(this.rootDirectory, INDEX_FILE_NAME));
+            return;
+          } catch (error) {
+            await rm(temporaryPath, { force: true }).catch(() => undefined);
+            if (attempt === 1) {
+              logger.warn(`Failed to persist the file store index in ${this.rootDirectory}`, error);
+            }
+          }
+        }
       });
     return this.pendingWrite;
   }
