@@ -44,6 +44,8 @@ export interface CreateBatchInput {
   completionWindowMs?: number;
   displayName?: string;
   metadata?: Record<string, string>;
+  /** OpenAI only: the `FileContentStore` handle the input JSONL was read from. */
+  inputFileId?: string;
 }
 
 /**
@@ -134,6 +136,7 @@ export class BatchRunnerService {
       createdAtMs: now,
       expiresAtMs: now + (input.completionWindowMs ?? DEFAULT_COMPLETION_WINDOW_MS),
       ...(input.completionWindow ? { completionWindow: input.completionWindow } : {}),
+      ...(input.inputFileId ? { inputFileId: input.inputFileId } : {}),
       ...(input.displayName ? { displayName: input.displayName } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {}),
     };

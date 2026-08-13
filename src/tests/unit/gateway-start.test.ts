@@ -18,6 +18,11 @@ vi.mock('@nestjs/core', () => ({
   NestFactory: {
     create: mockCreate,
   },
+  // `GeminiController` reflects `ModuleRef` as a constructor parameter type
+  // (to resolve `BatchRunnerService` lazily without a circular module import;
+  // see `gemini.controller.ts`), so decorator metadata evaluation needs a
+  // real export here even though this test never constructs the controller.
+  ModuleRef: class ModuleRef {},
 }));
 
 vi.mock('@nestjs/platform-fastify', () => ({

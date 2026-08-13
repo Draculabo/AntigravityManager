@@ -15,12 +15,12 @@
  * what it would cost sent normally, right now, against the same account leases
  * and the same rate-limit tracking interactive traffic uses.
  *
- * This module ports only the runner's core -- job vocabulary, state
- * transitions, request execution and the durable queue itself. The client-facing
- * protocol surfaces (`/v1/batches`, `/v1/messages/batches`,
- * `:batchGenerateContent`, `/v1beta/operations`) are a separate task: they need
- * a local Files API this branch does not have yet. This module has zero
- * controllers and is not reachable from any HTTP route.
+ * This file owns the runner's vocabulary -- job/request shape, state values,
+ * error codes, id parsing. The client-facing protocol surfaces
+ * (`/v1/batches`, `/v1/messages/batches`, `:batchGenerateContent`,
+ * `/v1beta/operations`) each live in their own controller and resource module
+ * beside `batch-runner.service.ts`, one per dialect, wired up in
+ * `batch.module.ts`.
  */
 
 /** Which client dialect created the batch. Fixed at creation, never inferred later. */
@@ -47,16 +47,31 @@ export type BatchRequestOutcome = 'succeeded' | 'errored' | 'canceled' | 'expire
 export type BatchRequestState = 'pending' | 'running' | BatchRequestOutcome;
 
 /**
- * OpenAI batch endpoints this proxy can genuinely execute today.
+ * Every endpoint this proxy's batch runner can genuinely execute, one per
+ * dialect, now that the local Files API exists to carry OpenAI's JSONL input
+ * and output.
  *
- * `/v1/responses` is deliberately absent: OpenAI documents it as a valid batch
- * endpoint, but running it here needs the Responses request/response
- * conversion that lives behind a controller, and claiming it works before that
- * is wired would be exactly the kind of promise this port refuses to make.
- * Anthropic and Gemini batches are not endpoint-scoped this way; they are
- * routed by {@link BatchDialect} instead.
+ * `/v1/responses` is still deliberately absent from the OpenAI slot: it needs
+ * the Responses request/response conversion that lives behind a controller,
+ * and claiming it works before that conversion is wired would be exactly the
+ * kind of promise this port refuses to make. Anthropic and Gemini are not
+ * endpoint-scoped the way OpenAI is -- {@link BatchDialect} alone routes a job
+ * to the right handler -- so their entries here document, and their
+ * surface-level tests prove, the one execution path each dialect's protocol
+ * surface actually wires up rather than gating dispatch a second time.
  */
-export const SERVABLE_BATCH_ENDPOINTS = ['/v1/chat/completions'] as const;
+export const SERVABLE_BATCH_ENDPOINTS = [
+  '/v1/chat/completions',
+  '/v1/messages',
+  'generateContent',
+] as const;
+
+/** The one OpenAI batch endpoint this proxy serves. */
+export const OPENAI_SERVABLE_BATCH_ENDPOINT = SERVABLE_BATCH_ENDPOINTS[0];
+/** The one Anthropic batch endpoint this proxy serves. */
+export const ANTHROPIC_SERVABLE_BATCH_ENDPOINT = SERVABLE_BATCH_ENDPOINTS[1];
+/** The Gemini action a batch request line is ultimately dispatched to. */
+export const GEMINI_SERVABLE_BATCH_ACTION = SERVABLE_BATCH_ENDPOINTS[2];
 
 export interface BatchRequestError {
   message: string;
@@ -103,6 +118,12 @@ export interface BatchJobRecord {
   metadata?: Record<string, string>;
   /** Set when the whole batch failed before any request ran. */
   error?: BatchRequestError;
+  /** OpenAI only: the `FileContentStore` handle the input JSONL was read from. */
+  inputFileId?: string;
+  /** OpenAI only: the `FileContentStore` handle the succeeded-line JSONL was written to. */
+  outputFileId?: string;
+  /** OpenAI only: the `FileContentStore` handle the failed-line JSONL was written to. */
+  errorFileId?: string;
 }
 
 export type BatchErrorCode =

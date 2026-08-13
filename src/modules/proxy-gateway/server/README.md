@@ -208,7 +208,8 @@ Pending sessions are bounded three ways, matching the store they feed into: by s
 `bytes` at `complete` is a claim the assembled parts must match exactly; a short or long result is `byte_count_mismatch` in OpenAI's envelope with `param: "bytes"`, never a silent concatenation. `upload_id` and `part_id` are opaque server-issued strings, checked the same way a file handle is -- never built into a path.
 
 As with Files, this is **local** session state, not provider-side storage: the file `complete` produces is read back through the ordinary `/v1/files` surface, and every later reference to it still travels to Google inline. No token saving is claimed here either.
-## 4d. Local Batch Runner (core only, no protocol surfaces yet)
+
+## 4d. Local Batch Runner and its Protocol Surfaces
 
 `modules/batch/` is a **local deferred-job runner** over the same `generateContent`-family
 calls the proxy already makes for interactive traffic. The provider (`v1internal` on
@@ -223,17 +224,16 @@ normally, right now, against the same account leases and the same rate-limit tra
 interactive traffic uses. Do not describe it to a client as cheaper or faster than a
 unary call.
 
-This module currently has **zero controllers** and is not reachable from any HTTP route. It
-ports only the runner's core:
+The core is protocol-neutral and knows nothing about HTTP:
 
 | file | responsibility |
 | :--- | :--- |
-| `batch-job.types.ts` | Job/request vocabulary, `BatchJobError`, defaults, id parsing/validation. |
+| `batch-job.types.ts` | Job/request vocabulary, `BatchJobError`, defaults, id parsing/validation, and `SERVABLE_BATCH_ENDPOINTS` -- the exact endpoints this runner can genuinely execute. |
 | `batch-job-transitions.ts` | Pure state transitions: restart recovery, cancellation, expiry, claiming, recording an outcome. |
 | `batch-request-executor.ts` | Runs one request line against a `BatchExecutionTarget`, isolating a failure to its own `custom_id`. |
 | `batch-runner.service.ts` | The durable, bounded, restartable job queue: concurrency, scheduling, persistence. |
 | `batch-store-location.ts` | Resolves the backing file under `getProxyStateDir()`, with the usual test-runner path suppression. |
-| `batch.module.ts` | Wires the runner to `OpenAIService` / `AnthropicService` / `GeminiService` through a `BATCH_EXECUTION_TARGET` DI token, so the runner itself never imports a protocol service directly. |
+| `batch.module.ts` | Wires the runner to `OpenAIService` / `AnthropicService` / `GeminiService` through a `BATCH_EXECUTION_TARGET` DI token, and registers the OpenAI and Anthropic batch controllers plus the Gemini operations controller (see below). |
 
 State lives in one `DurableRecordStore` at `proxy-state/proxy-batches.json`, bounded by count
 (`AGM_BATCH_MAX_BATCHES`, default 200) and age (`AGM_BATCH_TTL_MS`, default 48h). Concurrency
@@ -251,11 +251,66 @@ ran is marked `expired` while whatever did keeps its real outcome. A kill mid-fl
 a fresh `BatchRunnerService` over the same file resets whatever was `running` back to `pending`
 and retries it from the top.
 
-Client-facing protocol surfaces -- `POST /v1/batches`, `/v1/messages/batches`,
-`:batchGenerateContent`, `/v1beta/operations` -- are a separate task. They need a local Files
-API this branch does not have yet, and OpenAI's `/v1/responses` batch endpoint is refused by the
-executor today for the same reason: claiming an endpoint works before the conversion it needs is
-wired would be exactly the kind of promise this port refuses to make.
+### Protocol surfaces
+
+Each dialect gets its own controller and resource module -- no cross-protocol batch service,
+matching the rest of this directory's protocol isolation rule (section 5.3).
+
+| Surface | Routes | Files |
+| :--- | :--- | :--- |
+| **OpenAI** | `POST /v1/batches`, `GET /v1/batches`, `GET /v1/batches/{id}`, `POST /v1/batches/{id}/cancel` | `openai-batch-resource.ts`, `openai-batches.controller.ts` |
+| **Anthropic** | `POST /v1/messages/batches`, `GET /v1/messages/batches`, `GET /v1/messages/batches/{id}`, `POST /v1/messages/batches/{id}/cancel`, `GET /v1/messages/batches/{id}/results` | `anthropic-batch-resource.ts`, `anthropic-message-batches.controller.ts` |
+| **Gemini** | `POST /v1beta/models/{model}:batchGenerateContent` (dispatched from `GeminiController`'s existing model-actions route), `GET /v1beta/operations`, `GET /v1beta/operations/{name}` | `gemini-batch-resource.ts`, `gemini-batch-submit.ts`, `gemini-operations.controller.ts` |
+
+**`SERVABLE_BATCH_ENDPOINTS`.** OpenAI batches are gated at both creation and dispatch to
+`/v1/chat/completions` only; `/v1/responses` is refused for the same reason it always was --
+running it needs the Responses request/response conversion that lives behind a controller,
+and claiming it works before that is wired would be a promise this port refuses to make.
+Anthropic and Gemini are not endpoint-scoped the same way: `BatchDialect` alone routes a job
+to the right handler, so their entries in `SERVABLE_BATCH_ENDPOINTS` (`/v1/messages` and the
+`generateContent` action every Gemini batch line ultimately dispatches to) document, and their
+own tests prove, the one path each surface actually wires up.
+
+**OpenAI input/output go through the local Files API.** A client uploads its JSONL request
+file through `/v1/files` first (purpose `batch`), references it as `input_file_id`, and the
+runner reads it back with `FileContentStore.get()` -- never by treating the client-supplied id
+as a filesystem path; every handle is parsed through `parseFileHandle` first. Once a batch ends,
+succeeded and failed lines are written back into the same store and referenced as
+`output_file_id` / `error_file_id`, so the client fetches them with the same
+`GET /v1/files/{id}/content` route it already uses for anything else it uploaded.
+
+**Anthropic and Gemini requests are inline**, not file-backed: Anthropic's `requests` array and
+Gemini's `batch.input_config.requests.requests` (or the flatter `{requests: [...]}` form) both
+arrive in the request body. Gemini's file-input form of `:batchGenerateContent` is not
+supported for the same reason `/v1/responses` is not: this runner's inputs are request bodies,
+not stored blobs, and accepting a handle it would have to reject at execution time would be
+worse than refusing it at submission.
+
+**Errors are answered in the caller's own dialect**, reusing the established per-protocol
+envelope builders (`openAIBatchErrorResponse`, `anthropicBatchErrorResponse` --
+which wraps the Files surface's own `anthropicFileErrorResponse` --, and `geminiBatchErrorResponse`).
+An unknown or expired batch id, or an id created by a different dialect, is always a `404` in
+that envelope, never an empty `200`.
+
+**Wiring note.** `GeminiController` needs `BatchRunnerService` to serve
+`:batchGenerateContent`, and `BatchModule` needs `GeminiService` to build its execution target.
+`GeminiModule` does not import `BatchModule` back to get it -- that static import would recreate
+the exact ES-module load-order cycle `forwardRef` only solves at the NestJS DI level, not at
+`import` evaluation time. Instead `GeminiController` resolves `BatchRunnerService` lazily through
+`ModuleRef.get(BatchRunnerService, { strict: false })`, which walks the whole application's DI
+graph rather than `GeminiModule`'s own declared imports.
+
+### Legacy `/v1/complete`
+
+Anthropic's deprecated Text Completions endpoint, served as a thin adapter over the Messages
+path (`modules/anthropic/anthropic-complete.controller.ts`,
+`modules/anthropic/anthropic-text-completion.ts`) rather than left as a bare 404. The
+`\n\nHuman: ... \n\nAssistant:` prompt is parsed back into turns (a prefilled assistant turn is
+kept, because that is what it meant on the old endpoint; a prompt with no markers at all becomes
+a single user turn), `max_tokens_to_sample` becomes `max_tokens`, and the Messages response is
+rendered back as `{type, id, completion, stop_reason, stop, model}` with the leading space the
+old API always emitted. Streaming is refused with a `400` rather than half-served: the old
+`completion` event stream is a different wire format from the Messages SSE this proxy produces.
 
 ---
 
