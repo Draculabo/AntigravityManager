@@ -139,7 +139,7 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
 
     const messageStart = events.find((event) => event.type === 'message_start');
     expect(messageStart).toMatchObject({
-      message: expect.objectContaining({ id: 'resp_wrapped', model: 'gemini-3-flash' }),
+      message: expect.objectContaining({ id: 'msg_resp_wrapped', model: 'gemini-3-flash' }),
     });
   });
 

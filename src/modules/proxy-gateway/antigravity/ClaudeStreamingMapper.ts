@@ -1,6 +1,7 @@
 import { GeminiPart, Usage, UsageMetadata } from './types';
 import { SignatureStore } from './SignatureStore';
 import { decodeSignature } from './signature-utils';
+import { toAnthropicMessageId } from './anthropic-message-id';
 import { logger } from '@/shared/logging/logger';
 
 type BlockType = 'None' | 'Text' | 'Thinking' | 'Function';
@@ -78,7 +79,7 @@ export class StreamingState {
       : undefined;
 
     const message = {
-      id: rawJson.responseId || 'msg_unknown',
+      id: toAnthropicMessageId(rawJson.responseId),
       type: 'message',
       role: 'assistant',
       content: [],

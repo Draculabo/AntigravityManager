@@ -3,6 +3,7 @@ import {
   PartProcessor,
   StreamingState,
 } from '../../modules/proxy-gateway/antigravity/ClaudeStreamingMapper';
+import { transformResponse } from '../../modules/proxy-gateway/antigravity/ClaudeResponseMapper';
 
 describe('StreamingState', () => {
   let state: StreamingState;
@@ -164,6 +165,44 @@ describe('StreamingState', () => {
 
       expect(payload).toContain('"content_block":{"type":"thinking"');
       expect(payload).toContain('"thinking":"weighing the options"');
+    });
+  });
+  describe('Anthropic message identity', () => {
+    function messageIdOf(streamStart: string): string | undefined {
+      const dataLine = streamStart.split('\n').find((line) => line.startsWith('data: '));
+      const payload = JSON.parse(dataLine?.slice('data: '.length) ?? '{}') as {
+        message?: { id?: string };
+      };
+      return payload.message?.id;
+    }
+
+    it('gives a raw upstream identifier the msg_ prefix an Anthropic client expects', () => {
+      expect(messageIdOf(state.emitMessageStart({ responseId: 'wOx3aunrMOLfxs0P' }))).toBe(
+        'msg_wOx3aunrMOLfxs0P',
+      );
+    });
+
+    it('leaves an upstream identifier that already carries the prefix alone', () => {
+      expect(messageIdOf(state.emitMessageStart({ responseId: 'msg_existing' }))).toBe(
+        'msg_existing',
+      );
+    });
+
+    it('mints a unique prefixed id instead of one shared constant', () => {
+      const first = messageIdOf(state.emitMessageStart({ modelVersion: 'gemini-3-flash' }));
+      const second = messageIdOf(
+        new StreamingState().emitMessageStart({ modelVersion: 'gemini-3-flash' }),
+      );
+
+      expect(first).toMatch(/^msg_[0-9a-f-]{36}$/u);
+      expect(first).not.toBe(second);
+    });
+
+    it('names the same upstream response the same way streamed and unary', () => {
+      const streamed = messageIdOf(state.emitMessageStart({ responseId: 'vux3arD5GLnT28oP' }));
+      const unary = transformResponse({ responseId: 'vux3arD5GLnT28oP' });
+
+      expect(streamed).toBe(unary.id);
     });
   });
 });
