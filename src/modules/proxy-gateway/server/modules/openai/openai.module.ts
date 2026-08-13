@@ -7,11 +7,13 @@ import { AccountLeaseModule } from '../account-lease/account-lease.module';
 import { GeminiModule } from '../gemini/gemini.module';
 import { IMAGE_QUOTA_REFRESH, OpenAIController } from './openai.controller';
 import { OpenAIService } from './openai.service';
+import { OpenAIResponsesSessionService } from './responses/openai-responses-session.service';
 
 @Module({
   imports: [AccountLeaseModule, GeminiModule, SharedServicesModule],
   controllers: [OpenAIController],
   providers: [
+    OpenAIResponsesSessionService,
     OpenAIService,
     ProxyGuard,
     {
@@ -19,6 +21,6 @@ import { OpenAIService } from './openai.service';
       useValue: () => CloudMonitorService.poll(),
     },
   ],
-  exports: [OpenAIService],
+  exports: [OpenAIResponsesSessionService, OpenAIService],
 })
 export class OpenAIModule {}

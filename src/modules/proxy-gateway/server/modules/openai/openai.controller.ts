@@ -22,10 +22,12 @@ import {
   GeminiResponse,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
+import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
 import {
   mergeOpenAIResponsesInputItems,
   OpenAIResponsesSessionStore,
   type OpenAIResponsesSession,
+  type OpenAIResponsesSessionStoreLike,
 } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
 import {
   getOpenAICompatibleModels,
@@ -78,6 +80,14 @@ export interface PreparedResponsesRequest {
 @Controller('v1')
 @UseGuards(ProxyGuard)
 export class OpenAIController extends BaseProxyController {
+  /**
+   * Continuation state for the Responses surface.
+   *
+   * Nest hands over the durable store; a controller assembled by hand falls back
+   * to the process-wide in-memory one, which is what the unit tests want.
+   */
+  private readonly responsesSessions: OpenAIResponsesSessionStoreLike;
+
   constructor(
     @Inject(OpenAIService) private readonly proxyService: OpenAIService,
     @Optional()
@@ -86,8 +96,12 @@ export class OpenAIController extends BaseProxyController {
     @Optional()
     @Inject(IMAGE_QUOTA_REFRESH)
     private readonly imageQuotaRefresh?: ImageQuotaRefresh,
+    @Optional()
+    @Inject(OpenAIResponsesSessionService)
+    responsesSessions?: OpenAIResponsesSessionStoreLike,
   ) {
     super();
+    this.responsesSessions = responsesSessions ?? OpenAIResponsesSessionStore;
   }
 
   @Get('models')
@@ -482,7 +496,7 @@ export class OpenAIController extends BaseProxyController {
   public prepareResponsesRequest(body: ResponsesRequestBody): PreparedResponsesRequest | null {
     const currentInputItems = normalizeResponsesInputItems(body.input);
     const previousSession = body.previous_response_id
-      ? OpenAIResponsesSessionStore.get(body.previous_response_id)
+      ? this.responsesSessions.get(body.previous_response_id)
       : null;
     if (body.previous_response_id && !previousSession) {
       return null;
@@ -541,7 +555,7 @@ export class OpenAIController extends BaseProxyController {
       return;
     }
 
-    OpenAIResponsesSessionStore.save(responseId, {
+    this.responsesSessions.save(responseId, {
       ...session,
       inputItems: [...session.inputItems, ...output],
     });
