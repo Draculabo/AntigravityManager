@@ -168,6 +168,33 @@ Compare the HTTP status and the raw body rather than a locally rendered wrapper:
 
 ---
 
+## 4c. Local Files API -- a Local Store, Not a Provider File Plane
+
+The provider surface this proxy speaks to (`v1internal` on `cloudcode-pa`) has no file plane at all: no upload method, no `files/*` resource, no `fileUri` fetch. What its generate call does accept is `inlineData`. So `modules/files/` is a **local** content-addressed store: a client uploads once and references the handle afterwards, and the bytes still travel to Google inline on every reference. None of the token savings a provider-side file cache would give are claimed here.
+
+The store is protocol-agnostic and Nest-injectable. It lives in `<agent dir>/proxy-files` (`index.json`, `blobs/<aa>/<sha256>`, `tmp/`), addresses content by sha256 so identical bytes cost one blob, holds 20 MiB per file and 512 MiB per store with `413`-shaped errors, expires handles after 48 hours and sweeps at startup, on a timer and before every listing. Both blobs and index are written to `tmp/` and renamed into place, so a kill mid-write can leave a stray temp file but never a half-written blob the index already advertises.
+
+Three thin adapters sit over one store, so a file uploaded through any surface can be read from the others:
+
+| surface | routes | id spelling |
+| :--- | :--- | :--- |
+| Gemini | `POST /upload/v1beta/files`, `GET /v1beta/files`, `GET|DELETE /v1beta/files/{name}` | `files/{id}` |
+| OpenAI | `POST|GET /v1/files`, `GET|DELETE /v1/files/{id}`, `GET /v1/files/{id}/content` | `file-{id}` |
+| Anthropic | same `/v1/files` routes | `file_{id}` |
+
+OpenAI and Anthropic publish at exactly the same path, so the dialect is chosen per request from the headers: any `anthropic-version` or `anthropic-beta` means Anthropic, everything else is OpenAI. The Anthropic Files beta `files-api-2025-04-14` is required and named in the error when it is missing -- it doubles as the signal that says which dialect the caller wants, and guessing wrong would return an OpenAI-shaped body to an Anthropic SDK.
+
+Two rules that are properties, not preferences, each covered by a test verified to fail without it:
+
+- **Handles are generated, never client strings.** A supplied id is matched against the issued pattern before anything opens the store, so `../secrets` is reported as never issued rather than sanitised, and no client string reaches the filesystem.
+- **The declared MIME type is a claim, and magic bytes overrule it.** Upstream rejects a mislabelled `inlineData` part at generation time with an opaque provider error; sniffing at upload means the mismatch is corrected once, where the client can still see it.
+
+OpenAI purposes are limited to `user_data`, `vision` and `assistants_input`. `fine-tune`, `batch` and the Assistants output purposes are refused at upload rather than accepted and left quietly useless, because there is no fine-tuning, batching or Assistants runtime behind this proxy.
+
+`POST /upload/v1beta/files` accepts Google's simple media form, where the whole body is the file. That needs a raw body parser, registered at boot for media content types only and with its own body limit: `application/json` and `multipart/form-data` already have exact-match parsers and Fastify prefers an exact match over a matcher, so every existing route keeps both its parser and its current ceiling.
+
+---
+
 ## 5. Verification & Development Checklist
 
 After modifying files in `server/`, execute the following verification steps in order:

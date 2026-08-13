@@ -10,6 +10,7 @@ import {
   type ResponsesRequestBody,
 } from '../modules/proxy-gateway/server/modules/openai/openai.controller';
 import { ProxyService } from '../modules/proxy-gateway/server/proxy.service';
+import { DEFAULT_MAX_FILE_BYTES } from '../modules/proxy-gateway/server/modules/files/file-store.types';
 import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
 import {
   extractApiKeyToken,
@@ -37,6 +38,33 @@ export type NestServerStartResult =
       port: number;
       message: string;
     };
+
+interface RawMediaBodyParserHost {
+  addContentTypeParser: (
+    matcher: RegExp,
+    options: { bodyLimit: number; parseAs: 'buffer' },
+    handler: (request: unknown, body: Buffer, done: (error: null, body: Buffer) => void) => void,
+  ) => void;
+}
+
+/**
+ * Lets `POST /upload/v1beta/files` accept Google's simple media form, where the
+ * whole request body is the file and `Content-Type` names its type.
+ *
+ * Registered for media families only, and with its own body limit rather than
+ * the server's: `application/json` and `multipart/form-data` already have
+ * exact-match parsers, Fastify prefers an exact match over a matcher, so every
+ * existing route keeps both its parser and its current ceiling.
+ */
+function registerRawMediaBodyParser(instance: RawMediaBodyParserHost): void {
+  instance.addContentTypeParser(
+    /^(?:application|audio|font|image|model|text|video)\//u,
+    { bodyLimit: DEFAULT_MAX_FILE_BYTES + 1024 * 1024, parseAs: 'buffer' },
+    (_request, body, done) => {
+      done(null, body);
+    },
+  );
+}
 
 function isAddressInUseError(error: unknown): boolean {
   if ((typeof error !== 'object' && typeof error !== 'function') || error === null) {
@@ -77,7 +105,8 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
   setServerConfig(config);
 
   try {
-    app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+    const fastifyAdapter = new FastifyAdapter();
+    app = await NestFactory.create<NestFastifyApplication>(AppModule, fastifyAdapter, {
       logger: ['error', 'warn', 'log'],
     });
 
@@ -88,6 +117,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
         fields: 32,
       },
     });
+    registerRawMediaBodyParser(fastifyAdapter.getInstance() as RawMediaBodyParserHost);
 
     // Enable CORS
     app.enableCors();
