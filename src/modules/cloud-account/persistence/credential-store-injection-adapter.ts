@@ -23,6 +23,11 @@ const SQLITE_BUSY_CODES = new Set(['SQLITE_BUSY', 'SQLITE_LOCKED']);
 const SQLITE_BUSY_TIMEOUT_MS = 3000;
 const SQLITE_RETRY_DELAY_MS = 150;
 const SQLITE_MAX_RETRIES = 3;
+const UNIFIED_AUTH_KEYS = [
+  'antigravityUnifiedStateSync.oauthToken',
+  'antigravityUnifiedStateSync.userStatus',
+  'antigravityUnifiedStateSync.enterprisePreferences',
+] as const;
 
 type DrizzleExecutor = Pick<
   BetterSQLite3Database<typeof drizzleSchema>,
@@ -98,6 +103,12 @@ function writeAuthStatusAndCleanup(db: DrizzleExecutor, account: CloudAccount): 
   upsertItemValue(db, 'antigravityAuthStatus', JSON.stringify(authStatus));
   upsertItemValue(db, 'antigravityOnboarding', 'true');
   db.delete(itemTable).where(eq(itemTable.key, 'google.antigravity')).run();
+}
+
+function clearUnifiedAuthState(db: DrizzleExecutor): void {
+  for (const key of UNIFIED_AUTH_KEYS) {
+    db.delete(itemTable).where(eq(itemTable.key, key)).run();
+  }
 }
 
 export class CredentialStoreInjectionAdapter {
@@ -179,6 +190,7 @@ export class CredentialStoreInjectionAdapter {
   private static injectOldFormat(
     orm: BetterSQLite3Database<typeof drizzleSchema>,
     account: CloudAccount,
+    clearUnifiedState = true,
   ): void {
     const encodedAgentState = getItemValue(
       orm,
@@ -187,6 +199,10 @@ export class CredentialStoreInjectionAdapter {
     );
 
     orm.transaction((transaction) => {
+      if (clearUnifiedState) {
+        clearUnifiedAuthState(transaction);
+      }
+
       if (!encodedAgentState) {
         logger.warn(
           'jetskiStateSync.agentManagerInitState not found. ' +
@@ -348,7 +364,7 @@ export class CredentialStoreInjectionAdapter {
           }
 
           try {
-            this.injectOldFormat(orm, account);
+            this.injectOldFormat(orm, account, false);
             oldInjected = true;
           } catch (oldError) {
             logger.warn('Failed to inject old format', oldError);
