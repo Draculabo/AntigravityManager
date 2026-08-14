@@ -34,6 +34,24 @@ function normalizeModelId(model: string): string {
   return model.replace(/^models\//i, '').trim();
 }
 
+function resolveAnthropicFamilyMapping(
+  model: string,
+  configuredMapping: Record<string, string>,
+): string | undefined {
+  const normalizedModel = model.toLowerCase();
+  if (!normalizedModel.startsWith('claude-')) {
+    return undefined;
+  }
+
+  const familyKey =
+    normalizedModel.includes('4-5') || normalizedModel.includes('4.5')
+      ? 'claude-4.5-series'
+      : normalizedModel.includes('3-5') || normalizedModel.includes('3.5')
+        ? 'claude-3.5-series'
+        : 'claude-default';
+  return configuredMapping[familyKey];
+}
+
 @Injectable()
 export class ModelRoutingService {
   public constructor(
@@ -107,9 +125,15 @@ export class ModelRoutingService {
       };
     }
 
-    // Family-group mapping (OpenAI/Anthropic series keyed config) is part of the underlying
-    // compat routing but is never reached here: this call site only ever has exact and wildcard
-    // user mappings, never the family-keyed maps that path checks.
+    const anthropicFamilyTarget = resolveAnthropicFamilyMapping(normalizedModel, configuredMapping);
+    if (anthropicFamilyTarget) {
+      return {
+        requestedModel: model,
+        normalizedModel,
+        resolvedModel: normalizeGeminiModelAlias(anthropicFamilyTarget),
+        source: 'configured',
+      };
+    }
 
     const builtIn = lookupBuiltInModelMapping(normalizedModel);
     if (builtIn !== undefined) {
