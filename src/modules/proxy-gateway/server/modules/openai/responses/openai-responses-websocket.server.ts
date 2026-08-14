@@ -59,6 +59,7 @@ function handleConnection(
 ): void {
   const protocol = new OpenAIResponsesWebSocketProtocol();
   let activeSubscription: Subscription | null = null;
+  let closed = false;
   let processing = Promise.resolve();
 
   socket.on('message', (rawData) => {
@@ -74,6 +75,9 @@ function handleConnection(
         }
 
         const stream = await dependencies.streamRequest(action.request);
+        if (closed) {
+          return;
+        }
         if (!isObservable(stream)) {
           throw new Error('Responses WebSocket upstream did not return a stream');
         }
@@ -109,6 +113,7 @@ function handleConnection(
   });
 
   socket.once('close', () => {
+    closed = true;
     activeSubscription?.unsubscribe();
     activeSubscription = null;
   });
