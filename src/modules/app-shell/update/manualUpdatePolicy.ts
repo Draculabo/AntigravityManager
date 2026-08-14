@@ -1,11 +1,5 @@
 import semver from 'semver';
-import type {
-  GitHubRelease,
-  ManualUpdateInfo,
-  ManualUpdatePlatform,
-  PackageJsonVersion,
-  UpdaterJson,
-} from './types';
+import type { GitHubRelease, ManualUpdateInfo, ManualUpdatePlatform, UpdaterJson } from './types';
 
 const MANUAL_UPDATE_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 const RELEASE_TAG_URL_PREFIX = 'https://github.com/Draculabo/AntigravityManager/releases/tag/';
@@ -64,24 +58,6 @@ export function buildGitHubReleaseFromUpdaterJson(updaterJson: UpdaterJson): Git
     tag_name: tagName,
     name: tagName,
     html_url: updaterJson.url || fallbackReleaseUrl,
-    draft: false,
-    prerelease: false,
-  };
-}
-
-export function buildGitHubReleaseFromPackageJson(
-  packageJson: PackageJsonVersion,
-): GitHubRelease | null {
-  const tagName = getReleaseTagName(packageJson.version);
-  const releaseUrl = getReleaseUrlForVersion(packageJson.version);
-  if (!tagName || !releaseUrl) {
-    return null;
-  }
-
-  return {
-    tag_name: tagName,
-    name: tagName,
-    html_url: releaseUrl,
     draft: false,
     prerelease: false,
   };
