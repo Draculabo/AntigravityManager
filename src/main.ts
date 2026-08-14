@@ -377,7 +377,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
       ? path.join(process.cwd(), 'images/icon.ico')
       : inDevelopment
         ? path.join(process.cwd(), 'src/assets/icon.png')
-        : path.join(__dirname, '../assets/icon.png');
+        : path.join(process.resourcesPath, 'assets', 'icon.png');
   logger.info(`createWindow: preload path: ${preload}`);
   logger.info(`createWindow: window icon path: ${windowIcon}`);
 
