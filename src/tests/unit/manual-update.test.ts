@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildGitHubReleaseFromLatestRedirect,
-  buildGitHubReleaseFromPackageJson,
   buildGitHubReleaseFromUpdaterJson,
   buildManualUpdateInfo,
   isManualUpdateSnoozed,
@@ -148,15 +147,6 @@ describe('manual update policy', () => {
       draft: false,
       prerelease: false,
     });
-  });
-
-  it('normalizes package.json into release metadata', () => {
-    const release = buildGitHubReleaseFromPackageJson({ version: '0.18.0' });
-
-    expect(release?.tag_name).toBe('v0.18.0');
-    expect(release?.html_url).toBe(
-      'https://github.com/Draculabo/AntigravityManager/releases/tag/v0.18.0',
-    );
   });
 
   it('normalizes GitHub latest redirect URL into release metadata', () => {
