@@ -132,9 +132,9 @@ describe('credential store SQLite auth format injection', () => {
     );
     writeItem(
       LEGACY_AUTH_KEY,
-      Buffer.from(ProtobufUtils.createOAuthTokenInfo('access-a', 'refresh-a', 2_000_000_000)).toString(
-        'base64',
-      ),
+      Buffer.from(
+        ProtobufUtils.createOAuthTokenInfo('access-a', 'refresh-a', 2_000_000_000),
+      ).toString('base64'),
     );
 
     CredentialStoreInjectionAdapter.injectCloudToken(account, 'ide');
