@@ -9,9 +9,10 @@ export class ModelRoutingService {
   resolveTargetModel(model: string): string {
     const normalizedModel = model.replace(/^models\//i, '').trim();
     const config = getServerConfig();
+    const anthropicMapping = config?.anthropic_mapping ?? {};
     const configuredMapping = {
       ...(config?.custom_mapping ?? {}),
-      ...(config?.anthropic_mapping ?? {}),
+      ...anthropicMapping,
     };
 
     const customExactMapping: Record<string, string> = {};
@@ -43,7 +44,7 @@ export class ModelRoutingService {
       }
     }
 
-    const routedModel = resolveModelRoute(normalizedModel, customExactMapping, {}, {});
+    const routedModel = resolveModelRoute(normalizedModel, customExactMapping, {}, anthropicMapping);
     return normalizeGeminiModelAlias(routedModel);
   }
 
