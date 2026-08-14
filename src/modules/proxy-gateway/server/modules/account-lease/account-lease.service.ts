@@ -214,17 +214,9 @@ export class AccountLeaseService implements OnModuleInit {
         return null;
       }
 
-      const filteredAccountPool = modelCapableAccountPool.filter(
+      const candidateAccountPool = modelCapableAccountPool.filter(
         ([accountId]) => !excludedAccountIds.has(accountId),
       );
-      const candidateAccountPool =
-        filteredAccountPool.length > 0 ? filteredAccountPool : modelCapableAccountPool;
-
-      if (filteredAccountPool.length === 0 && excludedAccountIds.size > 0) {
-        this.logger.warn(
-          'Exclusion filter removed all accounts; retrying with the full account pool',
-        );
-      }
 
       if (candidateAccountPool.length === 0) {
         this.logger.warn('No eligible account found after exclusion filtering');
