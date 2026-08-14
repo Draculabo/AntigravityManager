@@ -80,6 +80,20 @@ function ensureDatabaseInitialized(dbPath: string): void {
         value TEXT NOT NULL
       );
     `);
+
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS cleanup_active_cloud_account_settings
+      AFTER DELETE ON accounts
+      BEGIN
+        DELETE FROM settings
+        WHERE key IN (
+          'active_cloud_account.classic',
+          'active_cloud_account.ide',
+          'active_cloud_account.agy'
+        )
+        AND value = json_quote(OLD.id);
+      END;
+    `);
   } catch (error) {
     logger.error('Failed to initialize cloud database schema', error);
     throw error;
