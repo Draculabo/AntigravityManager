@@ -129,4 +129,23 @@ describe('AccountLeaseHydrationPolicy', () => {
     expect(token.access_token).toBe('access-token-new');
     expect(persistTokenState).toHaveBeenCalledTimes(1);
   });
+
+  it('rejects refresh failures instead of returning a stale access token', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const token = createToken({
+      expiry_timestamp: nowSeconds - 1,
+    });
+    const tokenCache = new Map([['acc-1', token]]);
+    const { persistTokenState, policy, upstream } = createPolicyContext(tokenCache);
+    const refreshError = new Error('refresh failed');
+
+    vi.mocked(upstream.refreshAccessToken).mockRejectedValue(refreshError);
+
+    await expect(
+      policy.refreshSelectedTokenIfNeeded('acc-1', token, nowSeconds),
+    ).rejects.toBe(refreshError);
+
+    expect(token.access_token).toBe('access-token');
+    expect(persistTokenState).not.toHaveBeenCalled();
+  });
 });
