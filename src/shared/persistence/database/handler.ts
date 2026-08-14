@@ -69,7 +69,6 @@ function ensureDatabaseExists(dbPath: string): void {
   let db: Database.Database | null = null;
   try {
     db = new Database(dbPath);
-    // NOTE Initialize schema
     db.exec(`
       CREATE TABLE IF NOT EXISTS ItemTable (
         key TEXT PRIMARY KEY,
@@ -137,7 +136,6 @@ function readCurrentAccountInfoFromDbPath(
     const { orm } = connection;
     const contextPrefix = `${target ?? 'default'}.itemTable`;
 
-    // Query for auth status
     const authValue = readItemValue(
       orm,
       'antigravityAuthStatus',
@@ -148,11 +146,9 @@ function readCurrentAccountInfoFromDbPath(
       try {
         authStatus = JSON.parse(authValue);
       } catch {
-        // NOTE Ignore JSON parse errors
       }
     }
 
-    // NOTE Query for user info (usually in jetskiStateSync.agentManagerInitState or similar)
     const initValue = readItemValue(
       orm,
       'jetskiStateSync.agentManagerInitState',
@@ -163,11 +159,9 @@ function readCurrentAccountInfoFromDbPath(
       try {
         initState = JSON.parse(initValue);
       } catch {
-        // Ignore JSON parse errors (this key often contains non-JSON data)
       }
     }
 
-    // Query for google.antigravity
     const googleValue = readItemValue(
       orm,
       'google.antigravity',
@@ -178,11 +172,9 @@ function readCurrentAccountInfoFromDbPath(
       try {
         googleState = JSON.parse(googleValue);
       } catch {
-        // Ignore JSON parse errors
       }
     }
 
-    // Query for antigravityUserSettings.allUserSettings
     const settingsValue = readItemValue(
       orm,
       'antigravityUserSettings.allUserSettings',
@@ -193,11 +185,9 @@ function readCurrentAccountInfoFromDbPath(
       try {
         settingsState = JSON.parse(settingsValue);
       } catch {
-        // Ignore JSON parse errors
       }
     }
 
-    // Helper to find email in object
     const findEmail = (obj: { email?: string; user?: { email?: string } }): string => {
       if (!obj) {
         return '';
@@ -276,7 +266,6 @@ export function backupAccount(account: AccountBackupData['account']): AccountBac
     connection = getDatabaseConnection(undefined);
     const { orm } = connection;
 
-    // NOTE Backup only specific keys
     const data: Record<string, unknown> = {};
 
     for (const key of KEYS_TO_BACKUP) {
@@ -293,7 +282,6 @@ export function backupAccount(account: AccountBackupData['account']): AccountBac
       }
     }
 
-    // NOTE Add metadata
     data['account_email'] = account.email;
     data['backup_time'] = new Date().toISOString();
 
@@ -346,12 +334,10 @@ export function restoreAccount(backup: AccountBackupData, appTarget?: Antigravit
   let successCount = 0;
 
   for (const dbPath of dbPaths) {
-    // NOTE Restore main DB
     if (restoreSingleDatabase(dbPath, backup)) {
       successCount++;
     }
 
-    // NOTE Restore backup DB (if exists)
     const backupDbPath = dbPath.replace(/\.vscdb$/, '.vscdb.backup');
     if (fs.existsSync(backupDbPath)) {
       if (restoreSingleDatabase(backupDbPath, backup)) {
@@ -385,7 +371,10 @@ function restoreSingleDatabase(dbPath: string, backup: AccountBackupData): boole
     connection = getDatabaseConnection(dbPath);
     const { orm } = connection;
     orm.transaction((tx) => {
-      // NOTE Only restore the keys that were backed up
+      for (const key of KEYS_TO_BACKUP) {
+        tx.delete(itemTable).where(eq(itemTable.key, key)).run();
+      }
+
       for (const key of KEYS_TO_BACKUP) {
         if (key in backup.data) {
           const value = backup.data[key];
