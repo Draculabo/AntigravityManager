@@ -262,17 +262,9 @@ export function writeAntigravityCredentialStoreToken(token: CredentialStoreToken
 
   if (process.platform === 'darwin') {
     const value = `go-keyring-base64:${Buffer.from(payload, 'utf-8').toString('base64')}`;
-    try {
-      execFileSync('security', ['delete-generic-password', '-s', 'gemini', '-a', 'antigravity'], {
-        stdio: 'ignore',
-      });
-    } catch {
-      // Missing previous credential is acceptable.
-    }
-
     execFileSync(
       'security',
-      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w', value, '-A'],
+      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w', value, '-A', '-U'],
       { stdio: 'ignore' },
     );
     return;
