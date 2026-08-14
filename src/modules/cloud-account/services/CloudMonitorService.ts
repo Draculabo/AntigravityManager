@@ -253,7 +253,6 @@ export class CloudMonitorService {
           // 3. Update DB
           await CloudAccountRepo.updateQuota(account.id, quota);
           account.quota = quota;
-          await CloudAccountRepo.updateLastUsed(account.id);
           await CloudAccountRepo.setAccountStatus(account.id, 'active', null);
         } catch (error) {
           logger.error(`Monitor: Failed to update ${account.email}`, error);
