@@ -365,7 +365,7 @@ describe('AccountLeaseService parity scheduling replay', () => {
     expect(otherModel?.id).toBe('acc-1');
   });
 
-  it('falls back to excluded pool when retry exclusions would empty all candidates', async () => {
+  it('returns null when retry exclusions remove every candidate', async () => {
     setServerConfig(
       createProxyConfig({
         parity_enabled: false,
@@ -392,6 +392,6 @@ describe('AccountLeaseService parity scheduling replay', () => {
     ]);
 
     const token = await service.getNextToken({ excludeAccountIds: ['acc-1'] });
-    expect(token?.id).toBe('acc-1');
+    expect(token).toBeNull();
   });
 });
