@@ -13,6 +13,15 @@ describe('BrowserWindow security settings', () => {
     expect(mainSource).toContain('nodeIntegration: true');
   });
 
+  it('resolves the packaged window icon from Electron resources', () => {
+    const mainSource = readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf-8');
+    const forgeSource = readFileSync(path.join(process.cwd(), 'forge.config.ts'), 'utf-8');
+
+    expect(forgeSource).toContain("extraResource: ['src/assets']");
+    expect(mainSource).toContain("path.join(process.resourcesPath, 'assets', 'icon.png')");
+    expect(mainSource).not.toContain("path.join(__dirname, '../assets/icon.png')");
+  });
+
   it('does not allow unsafe eval in the renderer content security policy', () => {
     const indexHtml = readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
 
