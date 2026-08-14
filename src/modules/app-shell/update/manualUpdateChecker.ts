@@ -1,6 +1,5 @@
 import {
   buildGitHubReleaseFromLatestRedirect,
-  buildGitHubReleaseFromPackageJson,
   buildGitHubReleaseFromUpdaterJson,
   buildManualUpdateInfo,
 } from './manualUpdatePolicy';
@@ -9,7 +8,6 @@ import type {
   ManualUpdateCheckResult,
   ManualUpdatePlatform,
   ManualUpdateSnooze,
-  PackageJsonVersion,
   UpdaterJson,
 } from './types';
 import { getAppSetting, setAppSetting } from '@/shared/persistence/appSettingsStore';
@@ -21,10 +19,6 @@ const LATEST_RELEASE_UPDATER_JSON_URL =
   'https://github.com/Draculabo/AntigravityManager/releases/latest/download/updater.json';
 const LATEST_RELEASE_REDIRECT_URL =
   'https://github.com/Draculabo/AntigravityManager/releases/latest';
-const GITHUB_RAW_PACKAGE_JSON_URL =
-  'https://raw.githubusercontent.com/Draculabo/AntigravityManager/main/package.json';
-const JSDELIVR_PACKAGE_JSON_URL =
-  'https://cdn.jsdelivr.net/gh/Draculabo/AntigravityManager@main/package.json';
 const MANUAL_UPDATE_SNOOZE_KEY = 'manual_update_snooze';
 const MANUAL_UPDATE_MOCK_VERSION = '9.9.9';
 
@@ -96,25 +90,11 @@ async function fetchLatestReleaseFromRedirect(): Promise<GitHubRelease | null> {
   return buildGitHubReleaseFromLatestRedirect(response.url);
 }
 
-async function fetchLatestReleaseFromPackageJson(url: string): Promise<GitHubRelease | null> {
-  const packageJson = await fetchJson<PackageJsonVersion>(url);
-  if (!packageJson) {
-    return null;
-  }
-
-  return buildGitHubReleaseFromPackageJson(packageJson);
-}
-
 async function fetchLatestRelease(): Promise<GitHubRelease | null> {
   const sources: Array<[string, () => Promise<GitHubRelease | null>]> = [
     ['updater.json', fetchLatestReleaseFromUpdaterJson],
     ['GitHub API', fetchLatestReleaseFromGitHubApi],
     ['GitHub latest redirect', fetchLatestReleaseFromRedirect],
-    [
-      'GitHub raw package.json',
-      () => fetchLatestReleaseFromPackageJson(GITHUB_RAW_PACKAGE_JSON_URL),
-    ],
-    ['jsDelivr package.json', () => fetchLatestReleaseFromPackageJson(JSDELIVR_PACKAGE_JSON_URL)],
   ];
 
   for (const [sourceName, fetchSource] of sources) {
