@@ -112,6 +112,7 @@ export class AccountLeaseHydrationPolicy {
         `Failed to refresh access token for ${tokenToRefresh.email}`,
         error,
       );
+      throw error;
     }
   }
 
