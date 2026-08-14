@@ -145,7 +145,10 @@ export function updateTrayMenu(account: CloudAccount | null, language?: string) 
 
           logger.info(`Tray: Refreshing quota for ${current.email}`);
 
-          const quota = await GoogleAPIService.fetchQuota(current.token.access_token);
+          const quota = await GoogleAPIService.fetchQuota(
+            current.token.access_token,
+            current.proxy_url,
+          );
           await CloudAccountRepo.updateQuota(current.id, quota);
 
           // Reload account to get updated obj
