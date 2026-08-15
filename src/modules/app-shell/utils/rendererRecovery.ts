@@ -7,13 +7,15 @@ export type RendererGoneReason =
   | 'crashed'
   | 'oom'
   | 'launch-failed'
-  | 'integrity-failure';
+  | 'integrity-failure'
+  | 'memory-eviction';
 
 const RECOVERABLE_REASONS = new Set<RendererGoneReason>([
   'abnormal-exit',
   'killed',
   'crashed',
   'oom',
+  'memory-eviction',
 ]);
 
 export function shouldRecoverRenderer(reason: RendererGoneReason, isQuitting: boolean): boolean {
