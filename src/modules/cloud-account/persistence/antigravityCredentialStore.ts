@@ -222,12 +222,12 @@ export function readAntigravityCredentialStoreToken(): CredentialStoreToken | nu
   return null;
 }
 
-function isSecretToolAvailable(): boolean {
-  const versionResult = spawnSync('secret-tool', ['--version'], {
+export function isSecretToolAvailable(): boolean {
+  const probeResult = spawnSync('secret-tool', [], {
     stdio: 'ignore',
     timeout: 3000,
   });
-  return !versionResult.error && versionResult.status === 0;
+  return !probeResult.error;
 }
 
 function writeViaNativeKeyring(payload: string): void {
