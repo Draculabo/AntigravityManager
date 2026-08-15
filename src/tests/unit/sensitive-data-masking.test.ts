@@ -16,6 +16,24 @@ describe('sensitive data masking', () => {
       expect(sanitizeObject({ refresh_token: 'rt' })).toEqual({ refresh_token: '[REDACTED]' });
     });
 
+    it('masks conversational and tool payloads', () => {
+      const sanitized = sanitizeObject({
+        prompt: 'private prompt',
+        messages: [{ role: 'user', content: 'private message' }],
+        instructions: 'private instructions',
+        tool_output: 'private tool result',
+        metadata: { content: 'private nested content' },
+      });
+
+      expect(sanitized).toEqual({
+        prompt: '[REDACTED]',
+        messages: '[REDACTED]',
+        instructions: '[REDACTED]',
+        tool_output: '[REDACTED]',
+        metadata: { content: '[REDACTED]' },
+      });
+    });
+
     it('masks nested keys', () => {
       expect(
         sanitizeObject({
@@ -125,6 +143,22 @@ describe('sensitive data masking', () => {
       expect(out).toContain('"user":"a"');
       expect(out).toContain('"password":"[REDACTED]"');
       expect(() => JSON.parse(out)).not.toThrow();
+    });
+
+    it('does not retain conversational content in packet logs', () => {
+      const out = safeStringifyPacket({
+        method: 'chat',
+        input: {
+          messages: [{ role: 'user', content: 'customer secret' }],
+          instructions: 'internal system prompt',
+        },
+      });
+
+      expect(out).toContain('"method":"chat"');
+      expect(out).not.toContain('customer secret');
+      expect(out).not.toContain('internal system prompt');
+      expect(out).toContain('"messages":"[REDACTED]"');
+      expect(out).toContain('"instructions":"[REDACTED]"');
     });
   });
 });
