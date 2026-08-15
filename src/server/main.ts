@@ -89,10 +89,13 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
       },
     });
 
-    // Enable CORS
-    app.enableCors();
+    const apiKeyConfigured = hasConfiguredApiKey(config.api_key);
+    if (apiKeyConfigured) {
+      app.enableCors();
+    }
 
-    await app.listen(port, '0.0.0.0');
+    const listenHost = apiKeyConfigured ? '0.0.0.0' : '127.0.0.1';
+    await app.listen(port, listenHost);
     const openAIController = app.get(OpenAIController);
     const proxyService = app.get(ProxyService);
     detachResponsesWebSocketServer = attachOpenAIResponsesWebSocketServer(app.getHttpServer(), {
