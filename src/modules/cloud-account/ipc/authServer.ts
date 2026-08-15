@@ -63,14 +63,23 @@ export class AuthServer {
               `AuthServer: Received authorization code: ${escapedCode.substring(0, 10)}...`,
             );
 
-            // Send code to renderer
-            if (ipcContext.mainWindow) {
-              logger.info('AuthServer: Sending code to renderer via IPC');
-              ipcContext.mainWindow.webContents.send('GOOGLE_AUTH_CODE', code);
-              logger.info('AuthServer: Code sent successfully');
-            } else {
-              logger.error('AuthServer: Main window not found, cannot send code');
+            if (!ipcContext.mainWindow) {
+              logger.error('AuthServer: Main window not found, cannot deliver authorization code');
+              res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+              res.end(`
+            <html>
+              <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
+                <h1>Login Failed</h1>
+                <p>Antigravity Manager is not ready to receive the authorization result. Return to the app and try again.</p>
+              </body>
+            </html>
+          `);
+              return;
             }
+
+            logger.info('AuthServer: Sending code to renderer via IPC');
+            ipcContext.mainWindow.webContents.send('GOOGLE_AUTH_CODE', code);
+            logger.info('AuthServer: Code sent successfully');
 
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(`
