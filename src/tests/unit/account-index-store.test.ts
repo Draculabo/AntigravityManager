@@ -50,12 +50,11 @@ describe('account index store', () => {
     const original = '{"existing":{"id":"existing"}}\n';
     fs.writeFileSync(indexPath, original, 'utf-8');
 
-    const realWriteFileSync = fs.writeFileSync.bind(fs);
-    vi.spyOn(fs, 'writeFileSync').mockImplementation((file, data, options) => {
+    vi.spyOn(fs, 'writeFileSync').mockImplementation((file) => {
       if (String(file).startsWith(`${indexPath}.tmp-`)) {
         throw new Error('disk full');
       }
-      return realWriteFileSync(file, data, options as never);
+      throw new Error(`unexpected write target: ${String(file)}`);
     });
 
     expect(() => saveAccountIndex(indexPath, {})).toThrow('disk full');
