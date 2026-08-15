@@ -52,6 +52,14 @@ export class CloudAccountSettingsStore {
 
   static getActiveAccountIdForTarget(target: AntigravityAppTarget | undefined): string {
     const normalizedTarget = resolveAntigravityAppTarget(target);
-    return this.getSetting(`${ACTIVE_ACCOUNT_SETTING_PREFIX}.${normalizedTarget}`, '');
+    const key = `${ACTIVE_ACCOUNT_SETTING_PREFIX}.${normalizedTarget}`;
+    const value = this.getSetting<unknown>(key, '');
+
+    if (typeof value !== 'string') {
+      logger.warn(`Ignored invalid active account setting ${key}: expected a string`);
+      return '';
+    }
+
+    return value.trim();
   }
 }
