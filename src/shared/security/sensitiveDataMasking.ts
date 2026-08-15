@@ -32,6 +32,12 @@ const SENSITIVE_KEYS = [
   'pin',
   'verificationcode',
   'verification_code',
+  'prompt',
+  'messages',
+  'content',
+  'instructions',
+  'tool_output',
+  'tooloutput',
 ];
 
 const CIRCULAR_PLACEHOLDER = '[Circular]';
