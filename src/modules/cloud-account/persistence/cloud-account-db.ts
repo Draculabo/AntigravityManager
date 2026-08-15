@@ -19,7 +19,7 @@ export type DrizzleExecutor = Pick<
   'insert' | 'update' | 'delete' | 'select'
 >;
 
-function ensureDatabaseInitialized(dbPath: string): void {
+export function ensureDatabaseInitialized(dbPath: string): void {
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -73,6 +73,35 @@ function ensureDatabaseInitialized(dbPath: string): void {
     }
 
     db.exec(`CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);`);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS prevent_duplicate_provider_email_insert
+      BEFORE INSERT ON accounts
+      WHEN EXISTS (
+        SELECT 1
+        FROM accounts
+        WHERE provider = NEW.provider
+          AND LOWER(email) = LOWER(NEW.email)
+          AND id <> NEW.id
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'duplicate cloud account email');
+      END;
+    `);
+
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS prevent_duplicate_provider_email_update
+      BEFORE UPDATE OF provider, email ON accounts
+      WHEN EXISTS (
+        SELECT 1
+        FROM accounts
+        WHERE provider = NEW.provider
+          AND LOWER(email) = LOWER(NEW.email)
+          AND id <> NEW.id
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'duplicate cloud account email');
+      END;
+    `);
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS settings (
