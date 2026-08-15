@@ -2,6 +2,7 @@ import http from 'http';
 import { logger } from '@/shared/logging/logger';
 import { ipcContext } from '@/ipc/context';
 import { escapeHtml } from '@/shared/utils/url';
+import { OAuthStateStore } from '@/modules/cloud-account/services/OAuthStateStore';
 
 export class AuthServer {
   private static server: http.Server | null = null;
@@ -54,6 +55,21 @@ export class AuthServer {
         const url = new URL(req.url || '', `http://localhost:${this.PORT}`);
 
         if (url.pathname === '/oauth-callback') {
+          const state = url.searchParams.get('state');
+          if (!OAuthStateStore.consume(state)) {
+            logger.warn('AuthServer: Rejected OAuth callback with invalid or expired state');
+            res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(`
+            <html>
+              <body>
+                <h1>Login Failed</h1>
+                <p>The OAuth session is invalid or has expired. Please start sign-in again.</p>
+              </body>
+            </html>
+          `);
+            return;
+          }
+
           const code = url.searchParams.get('code');
           const error = url.searchParams.get('error');
 
