@@ -20,7 +20,6 @@ import {
   setAutoSwitchModelsConfig,
   type AutoSwitchModelConfig,
   forcePollCloudMonitor,
-  startAuthFlow,
   listOAuthClients,
   getActiveOAuthClient,
   setActiveOAuthClient,
@@ -44,6 +43,7 @@ import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/swi
 import { getDeviceHardeningSnapshot } from '@/modules/identity-profile/ipc/handler';
 import { localAccountImportRouter } from '@/modules/cloud-account/local-import/ipc/router';
 import { getSecurityStatus } from '@/shared/security/security';
+import { startSecureAuthFlow } from '@/modules/cloud-account/services/oauthFlow';
 
 const switchOwnerSchema = z.enum(['local-account-switch', 'cloud-account-switch']);
 const SecurityStatusSchema = z.object({
@@ -230,7 +230,7 @@ export const cloudRouter = os.router({
     .input(z.object({ oauthClientKey: z.string().optional() }).optional())
     .output(z.void())
     .handler(async ({ input }) => {
-      await startAuthFlow(input?.oauthClientKey);
+      await startSecureAuthFlow(input?.oauthClientKey);
     }),
 
   listOAuthClients: os
