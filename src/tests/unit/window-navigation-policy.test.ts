@@ -1,3 +1,4 @@
+import type { BrowserWindow } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { applyMainWindowNavigationPolicy } from '@/ipc/windowNavigationPolicy';
 
@@ -14,7 +15,7 @@ function createWindowMock() {
   return {
     handlers,
     webContents,
-    window: { webContents } as any,
+    window: { webContents } as unknown as BrowserWindow,
   };
 }
 
