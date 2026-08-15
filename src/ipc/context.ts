@@ -1,10 +1,12 @@
 import { os } from '@orpc/server';
 import { BrowserWindow } from 'electron';
+import { configureRendererPermissionPolicy } from '@/modules/app-shell/security/rendererPermissionPolicy';
 
 class IPCContext {
   public mainWindow: BrowserWindow | undefined;
 
   public setMainWindow(window: BrowserWindow) {
+    configureRendererPermissionPolicy(window);
     this.mainWindow = window;
   }
 
