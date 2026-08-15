@@ -161,7 +161,8 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
             });
           } catch (error) {
             waitExitTimedOut = true;
-            logger.warn('Process did not exit cleanly within timeout, but proceeding...', error);
+            logger.error('Process did not exit cleanly within timeout; aborting account switch', error);
+            throw error;
           }
         }
 
