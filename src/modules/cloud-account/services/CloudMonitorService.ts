@@ -116,11 +116,15 @@ export class CloudMonitorService {
   private static DEBOUNCE_TIME = 10000; // 10 seconds
   private static lastFocusTime: number = 0;
   private static isPolling: boolean = false;
+  private static lowQuotaAlertKeys = new Set<string>();
+  private static lowAICreditsAlertAccountIds = new Set<string>();
 
   // Helper for testing
   static resetStateForTesting() {
     this.lastFocusTime = 0;
     this.isPolling = false;
+    this.lowQuotaAlertKeys.clear();
+    this.lowAICreditsAlertAccountIds.clear();
     this.stop();
   }
 
@@ -288,22 +292,36 @@ export class CloudMonitorService {
       const notificationText = CLOUD_MONITOR_NOTIFICATION_TEXT[notificationLanguage];
 
       if (alertEnabled) {
+        const activeLowQuotaKeys = new Set<string>();
         for (const account of accounts) {
           if (!account.quota?.models) continue;
-          const lowQuotaModels = Object.entries(account.quota.models)
-            .filter(([_, info]) => info.percentage <= alertThreshold && info.percentage > 0)
-            .map(([name, info]) => {
-              return info.display_name || name.replace('models/', '').replace(/-/g, ' ');
-            });
+          const newlyLowQuotaModels: string[] = [];
 
-          if (lowQuotaModels.length > 0) {
+          for (const [name, info] of Object.entries(account.quota.models)) {
+            if (info.percentage > alertThreshold || info.percentage <= 0) {
+              continue;
+            }
+
+            const alertKey = `${account.id}:${name}`;
+            activeLowQuotaKeys.add(alertKey);
+            if (!this.lowQuotaAlertKeys.has(alertKey)) {
+              newlyLowQuotaModels.push(
+                info.display_name || name.replace('models/', '').replace(/-/g, ' '),
+              );
+            }
+          }
+
+          if (newlyLowQuotaModels.length > 0) {
             new Notification({
               title: notificationText.lowQuotaTitle,
-              body: notificationText.lowQuotaBody(account.email, lowQuotaModels.join(', ')),
+              body: notificationText.lowQuotaBody(account.email, newlyLowQuotaModels.join(', ')),
               silent: false,
             }).show();
           }
         }
+        this.lowQuotaAlertKeys = activeLowQuotaKeys;
+      } else {
+        this.lowQuotaAlertKeys.clear();
       }
 
       // Check for AI Credits Alerts
@@ -317,9 +335,15 @@ export class CloudMonitorService {
       );
 
       if (aiCreditsAlertEnabled) {
+        const activeLowCreditsAccountIds = new Set<string>();
         for (const account of accounts) {
           const credits = account.quota?.ai_credits?.credits;
           if (credits === undefined || credits > aiCreditsAlertThreshold) {
+            continue;
+          }
+
+          activeLowCreditsAccountIds.add(account.id);
+          if (this.lowAICreditsAlertAccountIds.has(account.id)) {
             continue;
           }
 
@@ -329,6 +353,9 @@ export class CloudMonitorService {
             silent: false,
           }).show();
         }
+        this.lowAICreditsAlertAccountIds = activeLowCreditsAccountIds;
+      } else {
+        this.lowAICreditsAlertAccountIds.clear();
       }
 
       // 5. Check for Auto-Switch
