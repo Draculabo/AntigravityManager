@@ -61,6 +61,22 @@ describe('ModelAvailabilityService', () => {
     ]);
   });
 
+  it('preserves sibling image model failures when another image model succeeds', () => {
+    const store = new ModelAvailabilityService();
+
+    store.mark('acc-1', 'gemini-3-pro-image', 'model_not_supported');
+    store.mark('acc-1', 'gemini-3.1-flash-image', 'model_forbidden');
+
+    expect(store.clearModel('acc-1', 'gemini-3.1-flash-image')).toBe(true);
+    expect(store.getSnapshot()).toEqual([
+      expect.objectContaining({
+        accountId: 'acc-1',
+        modelId: 'gemini-3-pro-image',
+        reason: 'model_not_supported',
+      }),
+    ]);
+  });
+
   it('persists live status details and restores them after restart', () => {
     const durableState = createPersistence();
     const firstStore = new ModelAvailabilityService(durableState.persistence);
