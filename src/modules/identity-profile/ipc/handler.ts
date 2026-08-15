@@ -561,14 +561,43 @@ export function loadGlobalOriginalProfile(): DeviceProfile | null {
   }
 }
 
-export function saveGlobalOriginalProfile(profile: DeviceProfile): void {
+function deviceProfilesEqual(left: DeviceProfile, right: DeviceProfile): boolean {
+  return (
+    left.machineId === right.machineId &&
+    left.macMachineId === right.macMachineId &&
+    left.devDeviceId === right.devDeviceId &&
+    left.sqmId === right.sqmId
+  );
+}
+
+export function saveGlobalOriginalProfile(
+  profile: DeviceProfile,
+  sourceStoragePath?: string,
+): void {
   const baselinePath = getGlobalBaselinePath();
+  if (fs.existsSync(baselinePath)) {
+    return;
+  }
+
+  if (!sourceStoragePath) {
+    logger.warn('Refusing to create device baseline without a verified storage source');
+    return;
+  }
+
+  try {
+    const currentProfile = readCurrentDeviceProfile(sourceStoragePath);
+    if (!deviceProfilesEqual(profile, currentProfile)) {
+      logger.warn('Refusing to create device baseline from a profile that differs from storage');
+      return;
+    }
+  } catch (error) {
+    logger.warn('Refusing to create device baseline because storage verification failed', error);
+    return;
+  }
+
   const baselineDir = path.dirname(baselinePath);
   if (!fs.existsSync(baselineDir)) {
     fs.mkdirSync(baselineDir, { recursive: true });
-  }
-  if (fs.existsSync(baselinePath)) {
-    return;
   }
   fs.writeFileSync(baselinePath, JSON.stringify(profile, null, 2), 'utf-8');
 }
@@ -600,8 +629,9 @@ export function ensureGlobalOriginalFromCurrentStorage(appTarget?: AntigravityAp
   }
 
   try {
-    const profile = readCurrentDeviceProfile(getStoragePath(appTarget));
-    saveGlobalOriginalProfile(profile);
+    const storagePath = getStoragePath(appTarget);
+    const profile = readCurrentDeviceProfile(storagePath);
+    saveGlobalOriginalProfile(profile, storagePath);
   } catch (error) {
     logger.warn('Failed to capture baseline device profile from storage.json', error);
   }
