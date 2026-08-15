@@ -119,10 +119,13 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
     });
     registerRawMediaBodyParser(fastifyAdapter.getInstance() as RawMediaBodyParserHost);
 
-    // Enable CORS
-    app.enableCors();
+    const apiKeyConfigured = hasConfiguredApiKey(config.api_key);
+    if (apiKeyConfigured) {
+      app.enableCors();
+    }
 
-    await app.listen(port, '0.0.0.0');
+    const listenHost = apiKeyConfigured ? '0.0.0.0' : '127.0.0.1';
+    await app.listen(port, listenHost);
     const openAIOperations = app.get(OpenAIOperations);
     const proxyService = app.get(ProxyService);
     detachResponsesWebSocketServer = attachOpenAIResponsesWebSocketServer(app.getHttpServer(), {
