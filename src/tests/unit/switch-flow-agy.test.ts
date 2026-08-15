@@ -80,6 +80,38 @@ describe('executeSwitchFlow for agy CLI', () => {
     expect(recordSwitchFailure).not.toHaveBeenCalled();
   });
 
+  it('aborts GUI switching when the target process does not exit', async () => {
+    const performSwitch = vi.fn(async () => undefined);
+    const afterSwitchSuccess = vi.fn(async () => undefined);
+    waitForProcessExit.mockRejectedValueOnce(new Error('process_exit_timeout'));
+
+    await expect(
+      executeSwitchFlow({
+        scope: 'cloud',
+        appTarget: 'classic',
+        targetProfile: null,
+        applyFingerprint: false,
+        useCredentialStore: true,
+        processExitTimeoutMs: 10000,
+        performSwitch,
+        afterSwitchSuccess,
+      }),
+    ).rejects.toThrow('process_exit_timeout');
+
+    expect(closeAntigravity).toHaveBeenCalledWith('classic');
+    expect(waitForProcessExit).toHaveBeenCalledWith(10000, 100, 'classic');
+    expect(performSwitch).not.toHaveBeenCalled();
+    expect(applyDeviceProfile).not.toHaveBeenCalled();
+    expect(startAntigravity).not.toHaveBeenCalled();
+    expect(afterSwitchSuccess).not.toHaveBeenCalled();
+    expect(recordSwitchSuccess).not.toHaveBeenCalled();
+    expect(recordSwitchFailure).toHaveBeenCalledWith(
+      'cloud',
+      'process_close_failed',
+      'process_exit_timeout',
+    );
+  });
+
   it('continues when device profile apply fails for credential-store-backed GUI targets', async () => {
     const performSwitch = vi.fn(async () => undefined);
     const targetProfile = {
