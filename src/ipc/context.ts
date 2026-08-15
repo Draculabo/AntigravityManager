@@ -1,10 +1,12 @@
 import { os } from '@orpc/server';
 import { BrowserWindow } from 'electron';
+import { applyMainWindowNavigationPolicy } from './windowNavigationPolicy';
 
 class IPCContext {
   public mainWindow: BrowserWindow | undefined;
 
   public setMainWindow(window: BrowserWindow) {
+    applyMainWindowNavigationPolicy(window);
     this.mainWindow = window;
   }
 
