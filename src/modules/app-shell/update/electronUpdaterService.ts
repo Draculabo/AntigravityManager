@@ -98,6 +98,11 @@ function getUpdater(): AppUpdater {
   return updater;
 }
 
+function clearAvailableUpdateState(): void {
+  lastAvailableUpdate = null;
+  downloadedUpdate = null;
+}
+
 function logUpdaterError(message: string, error: unknown): void {
   logger.error(message, error instanceof Error ? error : new Error(String(error)));
 }
@@ -163,6 +168,7 @@ export function registerElectronUpdater(notify: NotifyUpdate): void {
   });
 
   appUpdater.on('update-not-available', (updateInfo) => {
+    clearAvailableUpdateState();
     logger.info(`ElectronUpdater: update not available ${updateInfo.version}`);
   });
 
@@ -193,6 +199,7 @@ export async function checkElectronUpdaterUpdate(): Promise<ManualUpdateCheckRes
   try {
     const result: UpdateCheckResult | null = await getUpdater().checkForUpdates();
     if (!result?.isUpdateAvailable) {
+      clearAvailableUpdateState();
       return { status: 'up-to-date' };
     }
 
