@@ -236,4 +236,36 @@ describe('readAntigravityCredentialStoreToken', () => {
       expect(String(error)).not.toContain('refresh-secret-leak');
     }
   });
+
+  it('treats secret-tool as installed even when its usage probe exits non-zero', async () => {
+    mocks.spawnSync.mockReturnValue({
+      error: undefined,
+      status: 2,
+      stdout: '',
+      stderr: '',
+    });
+    const { isSecretToolAvailable } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    expect(isSecretToolAvailable()).toBe(true);
+    expect(mocks.spawnSync).toHaveBeenCalledWith('secret-tool', [], {
+      stdio: 'ignore',
+      timeout: 3000,
+    });
+  });
+
+  it('treats secret-tool as unavailable when the executable cannot be spawned', async () => {
+    mocks.spawnSync.mockReturnValue({
+      error: Object.assign(new Error('spawn secret-tool ENOENT'), {
+        code: 'ENOENT',
+      }),
+      status: null,
+      stdout: '',
+      stderr: '',
+    });
+    const { isSecretToolAvailable } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    expect(isSecretToolAvailable()).toBe(false);
+  });
 });
