@@ -34,4 +34,21 @@ describe('BrowserWindow security settings', () => {
       /process\.platform === 'linux' \|\| process\.platform === 'win32'/,
     );
   });
+
+  it('recovers unexpected renderer exits without reviving the app during quit', () => {
+    const contextSource = readFileSync(path.join(process.cwd(), 'src/ipc/context.ts'), 'utf-8');
+    const recoverySource = readFileSync(
+      path.join(process.cwd(), 'src/modules/app-shell/utils/rendererRecovery.ts'),
+      'utf-8',
+    );
+
+    expect(contextSource).toContain('installRendererRecovery(window)');
+    expect(recoverySource).toContain("app.once('before-quit', markQuitting)");
+    expect(recoverySource).toContain("'abnormal-exit'");
+    expect(recoverySource).toContain("'killed'");
+    expect(recoverySource).toContain("'crashed'");
+    expect(recoverySource).toContain("'oom'");
+    expect(recoverySource).toContain('!shouldRecoverRenderer(details.reason, isQuitting)');
+    expect(recoverySource).toContain('window.webContents.reload()');
+  });
 });
