@@ -3,7 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import { createHash, randomBytes } from 'crypto';
 import { isBoolean, isNumber, isObjectLike, isString } from 'lodash-es';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import {
+  resolveAntigravityAppTarget,
+  type AntigravityAppTarget,
+} from '@/modules/account/types';
 import type { DeviceProfile } from '@/modules/identity-profile/types';
 import { logger } from '@/shared/logging/logger';
 import {
@@ -62,9 +65,11 @@ const DEVICE_PROFILE_TEMPLATES: Record<string, DeviceProfileTemplate[]> = {
 };
 
 interface LastKnownGoodMarker {
-  version: 1;
+  version: 2;
   savedAt: number;
   hasStateDb: boolean;
+  target: AntigravityAppTarget;
+  storageDirectory: string;
 }
 
 interface DeviceHardeningState {
@@ -121,20 +126,24 @@ function randomHex(length: number): string {
     .toLowerCase();
 }
 
-function getLastKnownGoodSnapshotDir(): string {
-  return path.join(getAgentDir(), LAST_KNOWN_GOOD_DIR);
+function getLastKnownGoodSnapshotDir(appTarget?: AntigravityAppTarget): string {
+  return path.join(
+    getAgentDir(),
+    LAST_KNOWN_GOOD_DIR,
+    resolveAntigravityAppTarget(appTarget),
+  );
 }
 
-function getLastKnownGoodStoragePath(): string {
-  return path.join(getLastKnownGoodSnapshotDir(), LAST_KNOWN_GOOD_STORAGE_FILE);
+function getLastKnownGoodStoragePath(appTarget?: AntigravityAppTarget): string {
+  return path.join(getLastKnownGoodSnapshotDir(appTarget), LAST_KNOWN_GOOD_STORAGE_FILE);
 }
 
-function getLastKnownGoodStateDbPath(): string {
-  return path.join(getLastKnownGoodSnapshotDir(), LAST_KNOWN_GOOD_STATE_DB_FILE);
+function getLastKnownGoodStateDbPath(appTarget?: AntigravityAppTarget): string {
+  return path.join(getLastKnownGoodSnapshotDir(appTarget), LAST_KNOWN_GOOD_STATE_DB_FILE);
 }
 
-function getLastKnownGoodMarkerPath(): string {
-  return path.join(getLastKnownGoodSnapshotDir(), LAST_KNOWN_GOOD_MARKER_FILE);
+function getLastKnownGoodMarkerPath(appTarget?: AntigravityAppTarget): string {
+  return path.join(getLastKnownGoodSnapshotDir(appTarget), LAST_KNOWN_GOOD_MARKER_FILE);
 }
 
 function ensureDirectoryExists(dirPath: string): void {
@@ -143,8 +152,8 @@ function ensureDirectoryExists(dirPath: string): void {
   }
 }
 
-function readLastKnownGoodMarker(): LastKnownGoodMarker | null {
-  const markerPath = getLastKnownGoodMarkerPath();
+function readLastKnownGoodMarker(appTarget?: AntigravityAppTarget): LastKnownGoodMarker | null {
+  const markerPath = getLastKnownGoodMarkerPath(appTarget);
   if (!fs.existsSync(markerPath)) {
     return null;
   }
@@ -152,16 +161,22 @@ function readLastKnownGoodMarker(): LastKnownGoodMarker | null {
   try {
     const content = fs.readFileSync(markerPath, 'utf-8');
     const parsed = JSON.parse(content) as Partial<LastKnownGoodMarker>;
+    const resolvedTarget = resolveAntigravityAppTarget(appTarget);
     if (
       parsed &&
-      parsed.version === 1 &&
+      parsed.version === 2 &&
       isNumber(parsed.savedAt) &&
-      isBoolean(parsed.hasStateDb)
+      isBoolean(parsed.hasStateDb) &&
+      parsed.target === resolvedTarget &&
+      isString(parsed.storageDirectory) &&
+      parsed.storageDirectory.length > 0
     ) {
       return {
-        version: 1,
+        version: 2,
         savedAt: parsed.savedAt,
         hasStateDb: parsed.hasStateDb,
+        target: resolvedTarget,
+        storageDirectory: parsed.storageDirectory,
       };
     }
     return null;
@@ -370,13 +385,18 @@ function ensureStorageStateConsistency(
   }
 }
 
-function saveLastKnownGoodSnapshot(storagePath: string, stateDbPath: string): void {
-  const snapshotDir = getLastKnownGoodSnapshotDir();
+function saveLastKnownGoodSnapshot(
+  storagePath: string,
+  stateDbPath: string,
+  appTarget?: AntigravityAppTarget,
+): void {
+  const resolvedTarget = resolveAntigravityAppTarget(appTarget);
+  const snapshotDir = getLastKnownGoodSnapshotDir(resolvedTarget);
   ensureDirectoryExists(snapshotDir);
 
-  const storageSnapshotPath = getLastKnownGoodStoragePath();
-  const stateDbSnapshotPath = getLastKnownGoodStateDbPath();
-  const markerPath = getLastKnownGoodMarkerPath();
+  const storageSnapshotPath = getLastKnownGoodStoragePath(resolvedTarget);
+  const stateDbSnapshotPath = getLastKnownGoodStateDbPath(resolvedTarget);
+  const markerPath = getLastKnownGoodMarkerPath(resolvedTarget);
   const hasStateDb = fs.existsSync(stateDbPath);
 
   fs.copyFileSync(storagePath, storageSnapshotPath);
@@ -387,21 +407,28 @@ function saveLastKnownGoodSnapshot(storagePath: string, stateDbPath: string): vo
   }
 
   const marker: LastKnownGoodMarker = {
-    version: 1,
+    version: 2,
     savedAt: Date.now(),
     hasStateDb,
+    target: resolvedTarget,
+    storageDirectory: path.dirname(storagePath),
   };
   writeJsonAtomically(markerPath, marker);
 }
 
-function restoreLastKnownGoodSnapshot(storagePath: string, stateDbPath: string): boolean {
-  const marker = readLastKnownGoodMarker();
-  if (!marker) {
+function restoreLastKnownGoodSnapshot(
+  storagePath: string,
+  stateDbPath: string,
+  appTarget?: AntigravityAppTarget,
+): boolean {
+  const resolvedTarget = resolveAntigravityAppTarget(appTarget);
+  const marker = readLastKnownGoodMarker(resolvedTarget);
+  if (!marker || marker.storageDirectory !== path.dirname(storagePath)) {
     return false;
   }
 
-  const storageSnapshotPath = getLastKnownGoodStoragePath();
-  const stateDbSnapshotPath = getLastKnownGoodStateDbPath();
+  const storageSnapshotPath = getLastKnownGoodStoragePath(resolvedTarget);
+  const stateDbSnapshotPath = getLastKnownGoodStateDbPath(resolvedTarget);
 
   if (!fs.existsSync(storageSnapshotPath)) {
     return false;
@@ -743,7 +770,7 @@ export function applyDeviceProfile(
 
     stage = 'commit_snapshot';
     try {
-      saveLastKnownGoodSnapshot(storagePath, stateDbPath);
+      saveLastKnownGoodSnapshot(storagePath, stateDbPath, appTarget);
     } catch (snapshotError) {
       logger.warn('Failed to update last known good device snapshot', snapshotError);
     }
@@ -777,7 +804,11 @@ export function applyDeviceProfile(
     }
 
     if (!restoredFromImmediateBackup) {
-      const restoredFromLastKnownGood = restoreLastKnownGoodSnapshot(storagePath, stateDbPath);
+      const restoredFromLastKnownGood = restoreLastKnownGoodSnapshot(
+        storagePath,
+        stateDbPath,
+        appTarget,
+      );
       if (!restoredFromLastKnownGood) {
         logger.error('Failed to restore device profile from last known good snapshot');
         markApplyFailure('rollback_failed', rollbackStage);
