@@ -291,7 +291,7 @@ export class CloudMonitorService {
         for (const account of accounts) {
           if (!account.quota?.models) continue;
           const lowQuotaModels = Object.entries(account.quota.models)
-            .filter(([_, info]) => info.percentage <= alertThreshold && info.percentage > 0)
+            .filter(([_, info]) => info.percentage <= alertThreshold && info.percentage >= 0)
             .map(([name, info]) => {
               return info.display_name || name.replace('models/', '').replace(/-/g, ' ');
             });
