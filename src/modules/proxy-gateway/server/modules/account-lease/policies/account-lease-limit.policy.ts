@@ -2,6 +2,7 @@ import { isEmpty, isString } from 'lodash-es';
 import {
   hasExplicitQuotaExhaustedSignal,
   hasGenericResourceExhaustedSignal,
+  parseRetryDelayMilliseconds,
   RateLimitReason,
   RateLimitTrackerService,
 } from '../../../shared/services/rate-limit-tracker.service';
@@ -99,7 +100,7 @@ export class AccountLeaseLimitPolicy {
     const normalizedModel = normalizeModelId(params.model);
     const hasExplicitRetryWindow =
       Boolean(isString(params.retryAfter) && !isEmpty(params.retryAfter.trim())) ||
-      Boolean(params.body && params.body.includes('quotaResetDelay'));
+      parseRetryDelayMilliseconds(params.body) !== null;
 
     if (!hasExplicitRetryWindow && (params.status ?? 0) === 429) {
       const reason = this.detectRateLimitReasonFromBody(params.body);
