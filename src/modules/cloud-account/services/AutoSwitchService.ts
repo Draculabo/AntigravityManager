@@ -44,6 +44,14 @@ export class AutoSwitchService {
     return candidates[0];
   }
 
+  private static getModelConfig(
+    config: Record<string, { enabled: boolean; priority: boolean }>,
+    modelId: string,
+  ) {
+    const normalizedModelId = modelId.replace(/^models\//i, '');
+    return config[modelId] ?? config[normalizedModelId];
+  }
+
   private static calculateAccountScore(
     account: CloudAccount,
     config: Record<string, { enabled: boolean; priority: boolean }>,
@@ -54,7 +62,7 @@ export class AutoSwitchService {
 
     // 1. Get priority models that are enabled and exist in this account
     const priorityEntries = entries.filter(([modelId]) => {
-      const modelConfig = config[modelId];
+      const modelConfig = this.getModelConfig(config, modelId);
       return modelConfig?.enabled && modelConfig?.priority;
     });
 
@@ -65,7 +73,7 @@ export class AutoSwitchService {
 
     // 2. Fall back to all enabled models
     const enabledEntries = entries.filter(([modelId]) => {
-      const modelConfig = config[modelId];
+      const modelConfig = this.getModelConfig(config, modelId);
       return modelConfig ? modelConfig.enabled : true;
     });
 
@@ -142,7 +150,7 @@ export class AutoSwitchService {
       ) || {};
 
     const enabledModels = Object.entries(account.quota.models).filter(([modelId]) => {
-      const modelConfig = config[modelId];
+      const modelConfig = this.getModelConfig(config, modelId);
       return modelConfig ? modelConfig.enabled : true;
     });
 
