@@ -152,6 +152,12 @@ export class MasterKeyManager {
       .filter(({ coverage }) => coverage > 0)
       .sort((left, right) => right.coverage - left.coverage || left.index - right.index);
     const matchingCandidate = matchingCandidates[0]?.candidate;
+    const hasUnresolvedEncryptedSamples = encryptedSamples.some(
+      (sample) =>
+        !matchingCandidates.some(({ candidate }) =>
+          canDecryptPayloadWithKey(sample, candidate.key),
+        ),
+    );
 
     if (encryptedSamples.length > 0 && !matchingCandidate) {
       this.status = { state: 'locked', recoveryHint: this.recoveryHint };
@@ -177,6 +183,7 @@ export class MasterKeyManager {
       ];
       this.status = {
         state:
+          !hasUnresolvedEncryptedSamples &&
           this.decryptionKeys.length === 1 &&
           (this.resolved.source === 'safeStorage' || this.resolved.source === 'keytar')
             ? 'secure'
@@ -237,7 +244,7 @@ export class MasterKeyManager {
       metadata: {
         hint: this.recoveryHint,
         reason: 'PROVIDER_UNAVAILABLE',
-        storedAccountCount,
+        storedAccountCount: 0,
       },
     });
   }
