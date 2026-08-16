@@ -122,10 +122,9 @@ export function updateTrayMenu(account: CloudAccount | null, language?: string) 
           }
           const next = accounts[nextIndex];
 
-          CloudAccountRepo.setActive(next.id);
+          const { switchCloudAccount } = await import('@/modules/cloud-account/ipc/handler');
+          await switchCloudAccount(next.id);
           logger.info(`Tray: Switched to account ${next.email}`);
-
-          updateTrayMenu(next, lastLanguage);
 
           if (globalMainWindow) {
             globalMainWindow.webContents.send('tray://account-switched', next.id);
