@@ -36,6 +36,7 @@ class OpenAIResponsesSessionStoreImpl {
     }
 
     session.updatedAt = Date.now();
+    this.touch(responseId, session);
     return {
       inputItems: [...session.inputItems],
       instructions: session.instructions,
@@ -51,7 +52,7 @@ class OpenAIResponsesSessionStoreImpl {
       ...(session.toolCallItems ?? []),
       ...session.inputItems,
     ]);
-    this.sessions.set(responseId, {
+    this.touch(responseId, {
       ...session,
       inputItems: [...session.inputItems],
       toolCallItems,
@@ -62,6 +63,11 @@ class OpenAIResponsesSessionStoreImpl {
 
   public clear(): void {
     this.sessions.clear();
+  }
+
+  private touch(responseId: string, session: StoredOpenAIResponsesSession): void {
+    this.sessions.delete(responseId);
+    this.sessions.set(responseId, session);
   }
 
   private evictExpired(): void {
