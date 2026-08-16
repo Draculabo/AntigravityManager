@@ -40,7 +40,7 @@ interface AccountLeaseLimitPolicyOptions {
 
 export class AccountLeaseLimitPolicy {
   private readonly accountCooldowns = new Map<string, number>();
-  private readonly rateLimitTracker = new RateLimitTrackerService();
+  private rateLimitTracker = new RateLimitTrackerService();
 
   constructor(private readonly options: AccountLeaseLimitPolicyOptions) {}
 
@@ -54,7 +54,7 @@ export class AccountLeaseLimitPolicy {
 
   clearAllRateLimits(): void {
     this.accountCooldowns.clear();
-    this.rateLimitTracker.clearAll();
+    this.rateLimitTracker = new RateLimitTrackerService();
   }
 
   clearRecoveredQuotaLocks(
