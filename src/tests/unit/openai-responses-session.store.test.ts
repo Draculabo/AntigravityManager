@@ -24,6 +24,26 @@ describe('OpenAIResponsesSessionStore', () => {
     expect(OpenAIResponsesSessionStore.get('resp_expiring')).toBeNull();
   });
 
+  it('keeps recently accessed sessions when capacity eviction runs', () => {
+    for (let index = 0; index < 500; index += 1) {
+      OpenAIResponsesSessionStore.save(`resp_${index}`, {
+        inputItems: [{ type: 'message', role: 'user', content: `${index}` }],
+        model: 'gpt-4o',
+      });
+    }
+
+    expect(OpenAIResponsesSessionStore.get('resp_0')).not.toBeNull();
+
+    OpenAIResponsesSessionStore.save('resp_500', {
+      inputItems: [{ type: 'message', role: 'user', content: 'new' }],
+      model: 'gpt-4o',
+    });
+
+    expect(OpenAIResponsesSessionStore.get('resp_0')).not.toBeNull();
+    expect(OpenAIResponsesSessionStore.get('resp_1')).toBeNull();
+    expect(OpenAIResponsesSessionStore.get('resp_500')).not.toBeNull();
+  });
+
   it('removes local commentary transcripts while retaining final answers and tool calls', () => {
     const merged = mergeOpenAIResponsesInputItems(
       [
