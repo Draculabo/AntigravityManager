@@ -64,9 +64,6 @@ export function classifyAccountStatusFromError(
     return { status: 'expired', reason };
   }
 
-  if (normalizedReason.includes('forbidden')) {
-    return { status: 'rate_limited', reason };
-  }
   if (normalizedReason.includes('unauthorized')) {
     return { status: 'expired', reason };
   }
