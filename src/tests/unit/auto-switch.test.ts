@@ -187,4 +187,40 @@ describe('AutoSwitchService', () => {
       id: 'acc-a',
     });
   });
+
+  it('prefers an account that exposes a configured priority model over a higher fallback score', async () => {
+    const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({
+      'claude-sonnet-4-5': { enabled: true, priority: true },
+      'gemini-pro': { enabled: true, priority: false },
+    });
+
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createAccount('current', {
+        models: {
+          'claude-sonnet-4-5': { percentage: 50, resetTime: '' },
+        },
+      }),
+      createAccount('priority-present', {
+        models: {
+          'claude-sonnet-4-5': { percentage: 60, resetTime: '' },
+          'gemini-pro': { percentage: 10, resetTime: '' },
+        },
+      }),
+      createAccount('priority-missing', {
+        models: {
+          'gemini-pro': { percentage: 100, resetTime: '' },
+        },
+      }),
+    ]);
+
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
+      id: 'priority-present',
+    });
+  });
 });
