@@ -27,15 +27,16 @@ describe('cloud account device profile codec', () => {
 
   it('does not use the current clock when deriving a legacy history id', () => {
     const legacyHistory = [{ profile }];
+    const now = vi.spyOn(Date, 'now');
 
-    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    now.mockReturnValue(1_700_000_000_000);
     const first = normalizeDeviceHistory(legacyHistory);
 
-    vi.setSystemTime(new Date('2026-02-01T00:00:00Z'));
+    now.mockReturnValue(1_800_000_000_000);
     const second = normalizeDeviceHistory(legacyHistory);
 
     expect(second?.[0].id).toBe(first?.[0].id);
-    vi.useRealTimers();
+    now.mockRestore();
   });
 
   it('preserves explicit ids and distinguishes duplicate legacy entries', () => {
