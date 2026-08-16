@@ -121,6 +121,10 @@ export function syncAutoStart(config: AppConfig) {
   }
 
   if (process.platform === 'linux') {
-    syncLinuxAutoStart(enabled);
+    try {
+      syncLinuxAutoStart(enabled);
+    } catch (error) {
+      logger.error('AutoStart: Failed to update Linux autostart entry', error);
+    }
   }
 }
