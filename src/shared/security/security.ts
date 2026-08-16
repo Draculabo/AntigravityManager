@@ -140,10 +140,15 @@ export async function decryptWithMigration(
     try {
       const value = decryptParsedPayloadWithKey(candidate.key, payload);
       const usedFallback = candidate.key.equals(primary.key) ? undefined : candidate.source;
+      const reencrypted = usedFallback
+        ? encryptWithKey(primary.key, value)
+        : payload.isVersioned
+          ? undefined
+          : `${ENCRYPTED_PAYLOAD_VERSION_PREFIX}${text}`;
 
       return {
         value,
-        reencrypted: payload.isVersioned ? undefined : `${ENCRYPTED_PAYLOAD_VERSION_PREFIX}${text}`,
+        reencrypted,
         usedFallback,
       };
     } catch (error) {
