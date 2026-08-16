@@ -6,6 +6,11 @@ import { switchCloudAccount } from '@/modules/cloud-account/ipc/handler';
 import { logger } from '@/shared/logging/logger';
 import { AntigravityAppTarget } from '@/modules/account/types';
 
+interface AccountSelectionScore {
+  priorityScore: number | null;
+  fallbackScore: number;
+}
+
 export class AutoSwitchService {
   /**
    * Finds the best cloud account to switch to.
@@ -38,7 +43,16 @@ export class AutoSwitchService {
     candidates.sort((a, b) => {
       const scoreA = this.calculateAccountScore(a, config);
       const scoreB = this.calculateAccountScore(b, config);
-      return scoreB - scoreA; // Descending
+
+      if (scoreA.priorityScore !== null || scoreB.priorityScore !== null) {
+        if (scoreA.priorityScore === null) return 1;
+        if (scoreB.priorityScore === null) return -1;
+        if (scoreA.priorityScore !== scoreB.priorityScore) {
+          return scoreB.priorityScore - scoreA.priorityScore;
+        }
+      }
+
+      return scoreB.fallbackScore - scoreA.fallbackScore;
     });
 
     return candidates[0];
@@ -47,8 +61,10 @@ export class AutoSwitchService {
   private static calculateAccountScore(
     account: CloudAccount,
     config: Record<string, { enabled: boolean; priority: boolean }>,
-  ): number {
-    if (!account.quota?.models) return 0;
+  ): AccountSelectionScore {
+    if (!account.quota?.models) {
+      return { priorityScore: null, fallbackScore: 0 };
+    }
 
     const entries = Object.entries(account.quota.models);
 
@@ -57,24 +73,24 @@ export class AutoSwitchService {
       const modelConfig = config[modelId];
       return modelConfig?.enabled && modelConfig?.priority;
     });
+    const priorityScore =
+      priorityEntries.length > 0
+        ? priorityEntries.reduce((acc, [, model]) => acc + model.percentage, 0) /
+          priorityEntries.length
+        : null;
 
-    if (priorityEntries.length > 0) {
-      const sum = priorityEntries.reduce((acc, [, m]) => acc + m.percentage, 0);
-      return sum / priorityEntries.length;
-    }
-
-    // 2. Fall back to all enabled models
+    // 2. Fall back to all enabled models when no candidate exposes a priority model
     const enabledEntries = entries.filter(([modelId]) => {
       const modelConfig = config[modelId];
       return modelConfig ? modelConfig.enabled : true;
     });
+    const fallbackScore =
+      enabledEntries.length > 0
+        ? enabledEntries.reduce((acc, [, model]) => acc + model.percentage, 0) /
+          enabledEntries.length
+        : 0;
 
-    if (enabledEntries.length > 0) {
-      const sum = enabledEntries.reduce((acc, [, m]) => acc + m.percentage, 0);
-      return sum / enabledEntries.length;
-    }
-
-    return 0;
+    return { priorityScore, fallbackScore };
   }
 
   /**
