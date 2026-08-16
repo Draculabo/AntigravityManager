@@ -187,4 +187,41 @@ describe('AutoSwitchService', () => {
       id: 'acc-a',
     });
   });
+
+  it('falls back to the global active account when the target account id is stale', async () => {
+    const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { switchCloudAccount } = await import('@/modules/cloud-account/ipc/handler');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockImplementation((key: string) => {
+      if (key === 'auto_switch_enabled') return true;
+      if (key === 'auto_switch_models') return {};
+      return undefined;
+    });
+    vi.mocked(CloudAccountSettingsStore.getActiveAccountIdForTarget).mockReturnValue(
+      'deleted-account',
+    );
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createAccount(
+        'global-active',
+        {
+          models: {
+            'gemini-pro': { percentage: 1, resetTime: '' },
+          },
+        },
+        { is_active: true },
+      ),
+      createAccount('healthy-next', {
+        models: {
+          'gemini-pro': { percentage: 90, resetTime: '' },
+        },
+      }),
+    ]);
+
+    await expect(AutoSwitchService.checkAndSwitchIfNeeded('classic')).resolves.toBe(true);
+    expect(switchCloudAccount).toHaveBeenCalledWith('healthy-next', 'classic');
+  });
 });
