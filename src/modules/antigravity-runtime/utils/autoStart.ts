@@ -8,9 +8,17 @@ import { AppConfig } from '@/modules/config/types';
 export const AUTO_START_ARG = '--autostart';
 const LINUX_AUTOSTART_FILENAME = 'antigravity-manager.desktop';
 
-function getLinuxAutoStartPath() {
-  const dir = path.join(os.homedir(), '.config', 'autostart');
-  return path.join(dir, LINUX_AUTOSTART_FILENAME);
+export function getLinuxAutoStartPath(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir = os.homedir(),
+) {
+  const configuredHome = env.XDG_CONFIG_HOME?.trim();
+  const configHome =
+    configuredHome && path.isAbsolute(configuredHome)
+      ? configuredHome
+      : path.join(homeDir, '.config');
+
+  return path.join(configHome, 'autostart', LINUX_AUTOSTART_FILENAME);
 }
 
 export function isAutoStartLaunch(argv = process.argv) {
