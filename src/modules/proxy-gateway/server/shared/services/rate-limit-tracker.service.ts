@@ -255,6 +255,19 @@ export class RateLimitTrackerService {
     return accountId;
   }
 
+  private buildFailureCountKey(
+    accountId: string,
+    reason: RateLimitReason,
+    model?: string,
+  ): string {
+    const isModelScoped =
+      !isEmpty(model?.trim() ?? '') &&
+      (reason === RateLimitReason.QuotaExhausted ||
+        reason === RateLimitReason.RateLimitExceeded ||
+        reason === RateLimitReason.ModelCapacityExhausted);
+    return isModelScoped ? this.buildLockoutKey(accountId, model) : accountId;
+  }
+
   getRemainingWaitSeconds(accountId: string, model?: string): number {
     const now = Date.now();
 
@@ -373,7 +386,7 @@ export class RateLimitTrackerService {
   }
 
   markModelSuccess(accountId: string, model: string): void {
-    this.failureCounts.delete(accountId);
+    this.failureCounts.delete(this.buildLockoutKey(accountId, model));
     this.clearModel(accountId, model);
   }
 
@@ -399,6 +412,7 @@ export class RateLimitTrackerService {
         retryAfter: params.retryAfter,
         body: params.body,
         accountId: params.accountId,
+        model: params.model,
         backoffSteps: params.backoffSteps,
       }),
     );
@@ -491,6 +505,7 @@ export class RateLimitTrackerService {
     retryAfter?: string;
     body?: string;
     accountId: string;
+    model?: string;
     backoffSteps: number[];
   }): number {
     const headerRetryRaw = params.retryAfter?.trim() ?? '';
@@ -516,7 +531,9 @@ export class RateLimitTrackerService {
 
     const failureCount =
       params.reason !== RateLimitReason.ServerError
-        ? this.incrementFailureCount(params.accountId)
+        ? this.incrementFailureCount(
+            this.buildFailureCountKey(params.accountId, params.reason, params.model),
+          )
         : 1;
 
     if (params.reason === RateLimitReason.QuotaExhausted) {
@@ -607,21 +624,21 @@ export class RateLimitTrackerService {
     return null;
   }
 
-  private incrementFailureCount(accountId: string): number {
+  private incrementFailureCount(key: string): number {
     const now = Date.now();
-    const entry = this.failureCounts.get(accountId);
+    const entry = this.failureCounts.get(key);
     if (!entry) {
-      this.failureCounts.set(accountId, { count: 1, lastFailureMs: now });
+      this.failureCounts.set(key, { count: 1, lastFailureMs: now });
       return 1;
     }
 
     if (now - entry.lastFailureMs > FAILURE_COUNT_EXPIRY_MS) {
-      this.failureCounts.set(accountId, { count: 1, lastFailureMs: now });
+      this.failureCounts.set(key, { count: 1, lastFailureMs: now });
       return 1;
     }
 
     const nextCount = entry.count + 1;
-    this.failureCounts.set(accountId, { count: nextCount, lastFailureMs: now });
+    this.failureCounts.set(key, { count: nextCount, lastFailureMs: now });
     return nextCount;
   }
 }
