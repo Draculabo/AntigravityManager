@@ -1,5 +1,5 @@
+import { createHash } from 'node:crypto';
 import { isNumber, isPlainObject, isString } from 'lodash-es';
-import { v4 as uuidv4 } from 'uuid';
 import type { DeviceProfile, DeviceProfileVersion } from '@/modules/identity-profile/types';
 
 const DEVICE_PAYLOAD_SCHEMA_VERSION = 1;
@@ -89,6 +89,21 @@ function readVersionedHistoryPayload(value: unknown): unknown {
   return record.history;
 }
 
+function createLegacyDeviceHistoryId(
+  itemRecord: Record<string, unknown>,
+  profile: DeviceProfile,
+  index: number,
+): string {
+  const createdAtCandidate = itemRecord.createdAt;
+  const createdAt =
+    isNumber(createdAtCandidate) && Number.isFinite(createdAtCandidate)
+      ? Math.floor(createdAtCandidate)
+      : null;
+  const label = isString(itemRecord.label) && itemRecord.label.length > 0 ? itemRecord.label : null;
+  const seed = JSON.stringify({ index, createdAt, label, profile });
+  return `legacy-${createHash('sha256').update(seed).digest('hex').slice(0, 32)}`;
+}
+
 export function serializeDeviceProfile(profile: DeviceProfile | undefined): string | null {
   if (!profile) {
     return null;
@@ -114,7 +129,7 @@ export function normalizeDeviceHistory(value: unknown): DeviceProfileVersion[] |
     return undefined;
   }
   const normalized: DeviceProfileVersion[] = [];
-  for (const item of value) {
+  for (const [index, item] of value.entries()) {
     if (!isPlainObject(item)) {
       continue;
     }
@@ -124,7 +139,10 @@ export function normalizeDeviceHistory(value: unknown): DeviceProfileVersion[] |
       continue;
     }
 
-    const id = isString(itemRecord.id) && itemRecord.id.length > 0 ? itemRecord.id : uuidv4();
+    const id =
+      isString(itemRecord.id) && itemRecord.id.length > 0
+        ? itemRecord.id
+        : createLegacyDeviceHistoryId(itemRecord, profile, index);
     const createdAtCandidate = itemRecord.createdAt;
     const createdAt =
       isNumber(createdAtCandidate) && Number.isFinite(createdAtCandidate)
