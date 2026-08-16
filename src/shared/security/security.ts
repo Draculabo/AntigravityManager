@@ -28,6 +28,7 @@ import {
   LegacySafeStorageProvider,
   SafeStorageMasterKeyProvider,
 } from '@/shared/security/key-providers/safe-storage-provider';
+import { normalizeSecurityStatus } from '@/shared/security/security-status';
 
 const SERVICE_NAME = 'AntigravityManager';
 const V2_KEYTAR_ACCOUNT_NAME = 'MasterKeyV2';
@@ -72,6 +73,22 @@ function getRecoveryHint(): NonNullable<SecurityStatus['recoveryHint']> {
   return 'HINT_MANUAL_SIGN';
 }
 
+function getRuntimeSecurityStatus(manager: MasterKeyManager): SecurityStatus {
+  let safeStorageBackend: string | undefined;
+  if (process.platform === 'linux') {
+    try {
+      safeStorageBackend = safeStorage.getSelectedStorageBackend();
+    } catch {
+      safeStorageBackend = undefined;
+    }
+  }
+
+  return normalizeSecurityStatus(manager.getSecurityStatus(), {
+    platform: process.platform,
+    safeStorageBackend,
+  });
+}
+
 function createMasterKeyManager(): MasterKeyManager {
   const userDataPath = app.getPath('userData');
   const legacyKeyPath = path.join(userDataPath, '.mk');
@@ -102,11 +119,11 @@ export async function initializeMasterKey(
 ): Promise<SecurityStatus> {
   const manager = getMasterKeyManager();
   await manager.initialize(options);
-  return manager.getSecurityStatus();
+  return getRuntimeSecurityStatus(manager);
 }
 
 export function getSecurityStatus(): SecurityStatus {
-  return getMasterKeyManager().getSecurityStatus();
+  return getRuntimeSecurityStatus(getMasterKeyManager());
 }
 
 export async function encrypt(text: string): Promise<string> {
