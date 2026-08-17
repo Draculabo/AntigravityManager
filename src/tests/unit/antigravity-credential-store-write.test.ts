@@ -65,14 +65,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
     expect(mocks.execFileSync).toHaveBeenCalledWith(
       'security',
-      expect.arrayContaining([
-        'add-generic-password',
-        '-s',
-        'gemini',
-        '-a',
-        'antigravity',
-        '-U',
-      ]),
+      expect.arrayContaining(['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-U']),
       { stdio: 'ignore' },
     );
     expect(mocks.execFileSync.mock.calls[0][1]).not.toContain('delete-generic-password');
