@@ -49,6 +49,24 @@ type RequestType = 'agent' | 'web_search' | 'image_gen';
 const AGENT_CREDIT_TYPES = ['GOOGLE_ONE_AI'];
 const TOOL_SCHEMA_CACHE_LIMIT = 100;
 const TOOL_SCHEMA_CACHE_TTL_MS = 30 * 60 * 1000;
+const PLACEHOLDER_SIGNATURE = 'skip_thought_signature_validator';
+
+let placeholderSignatureUsageCount = 0;
+
+/**
+ * How often the proxy fell back to the placeholder instead of a real thought
+ * signature, counted once per request that used it at least once (not once per
+ * tool call). This is the metric that tells us whether SignatureStore misses
+ * remain common on live traffic.
+ */
+export function getPlaceholderSignatureUsageCount(): number {
+  return placeholderSignatureUsageCount;
+}
+
+/** Test-only: resets the module-level placeholder counter between assertions. */
+export function resetPlaceholderSignatureUsageCount(): void {
+  placeholderSignatureUsageCount = 0;
+}
 const SAFETY_SETTINGS: SafetySetting[] = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'OFF' },
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'OFF' },
@@ -683,6 +701,7 @@ function buildContents(
 ): GeminiContent[] {
   const contents: GeminiContent[] = [];
   let lastThoughtSignature: string | null = null;
+  let placeholderUsage: { model: string; toolCallId: string } | null = null;
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -721,6 +740,7 @@ function buildContents(
         toolIdToName.set(block.id, block.name);
         const finalSig =
           block.signature ||
+          SignatureStore.getForToolCall(block.id) ||
           lastThoughtSignature ||
           SignatureStore.getAt(signatureSessionKey, i) ||
           SignatureStore.get(signatureSessionKey);
@@ -728,8 +748,9 @@ function buildContents(
           part.thoughtSignature = finalSig;
           part.thought_signature = finalSig;
         } else if (isThinkingEnabled && modelKeepsThinkingWithoutSignature(mappedModel)) {
-          part.thoughtSignature = 'skip_thought_signature_validator';
-          part.thought_signature = 'skip_thought_signature_validator';
+          part.thoughtSignature = PLACEHOLDER_SIGNATURE;
+          part.thought_signature = PLACEHOLDER_SIGNATURE;
+          placeholderUsage ??= { model: mappedModel, toolCallId: block.id };
         }
         parts.push(part);
       } else if (block.type === 'tool_result') {
@@ -767,6 +788,14 @@ function buildContents(
     }
     if (parts.length > 0) contents.push({ role, parts });
   }
+
+  if (placeholderUsage) {
+    placeholderSignatureUsageCount++;
+    logger.warn(
+      `[Signature-Placeholder] No real thought signature available, replaying '${PLACEHOLDER_SIGNATURE}' for model=${placeholderUsage.model} toolCallId=${placeholderUsage.toolCallId}`,
+    );
+  }
+
   return contents;
 }
 
