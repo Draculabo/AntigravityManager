@@ -267,4 +267,107 @@ describe('AnthropicMessageBatchesController', () => {
     expect(batch.processing_status).toBe('ended');
     expect(batch.request_counts.expired).toBe(1);
   });
+
+  describe('list pagination', () => {
+    function createJob(runner: BatchRunnerService, createdAtMs: number) {
+      return runner.create(
+        {
+          dialect: 'anthropic',
+          endpoint: '/v1/messages',
+          requests: [
+            { customId: 'line-1', body: { model: 'claude-3', max_tokens: 8, messages: [] } },
+          ],
+        },
+        createdAtMs,
+      );
+    }
+
+    function makeRunner() {
+      const target = createTarget(async () => reply('unused'));
+      return new BatchRunnerService(
+        { maxConcurrency: 1 },
+        target as unknown as BatchExecutionTarget,
+      );
+    }
+
+    it('walks forward with after_id, reaches the terminal page, and 404s on an unknown after_id instead of restarting at page one', () => {
+      const runner = makeRunner();
+      const controller = new AnthropicMessageBatchesController(runner);
+
+      const base = Date.now();
+      const jobs = [0, 1, 2].map((i) => createJob(runner, base + i * 1000));
+      // `list()` sorts newest-first: job 2 was created last, so it leads.
+      const newestFirst = [jobs[2], jobs[1], jobs[0]];
+
+      const page1Reply = createReplyMock();
+      controller.list(page1Reply as never, '2');
+      const page1 = sent(page1Reply);
+      expect(page1.data.map((batch: any) => batch.id)).toEqual([
+        `msgbatch_${newestFirst[0].id}`,
+        `msgbatch_${newestFirst[1].id}`,
+      ]);
+      expect(page1.has_more).toBe(true);
+
+      const page2Reply = createReplyMock();
+      controller.list(page2Reply as never, '2', page1.last_id);
+      const page2 = sent(page2Reply);
+      expect(page2.data.map((batch: any) => batch.id)).toEqual([`msgbatch_${newestFirst[2].id}`]);
+      expect(page2.has_more).toBe(false);
+
+      const unknownReply = createReplyMock();
+      controller.list(unknownReply as never, '2', `msgbatch_${'f'.repeat(24)}`);
+      expect(statusOf(unknownReply)).toBe(404);
+      expect(sent(unknownReply)).toMatchObject({
+        type: 'error',
+        error: { type: 'not_found_error' },
+      });
+    });
+
+    it('walks backward with before_id and reaches the terminal (newest) page', () => {
+      const runner = makeRunner();
+      const controller = new AnthropicMessageBatchesController(runner);
+
+      const base = Date.now();
+      const jobs = [0, 1, 2].map((i) => createJob(runner, base + i * 1000));
+      const newestFirst = [jobs[2], jobs[1], jobs[0]];
+
+      const step1Reply = createReplyMock();
+      controller.list(step1Reply as never, '1', undefined, `msgbatch_${newestFirst[2].id}`);
+      const step1 = sent(step1Reply);
+      expect(step1.data.map((batch: any) => batch.id)).toEqual([`msgbatch_${newestFirst[1].id}`]);
+      expect(step1.has_more).toBe(true);
+
+      const step2Reply = createReplyMock();
+      controller.list(step2Reply as never, '1', undefined, `msgbatch_${newestFirst[1].id}`);
+      const step2 = sent(step2Reply);
+      expect(step2.data.map((batch: any) => batch.id)).toEqual([`msgbatch_${newestFirst[0].id}`]);
+      expect(step2.has_more).toBe(false);
+    });
+
+    it('rejects after_id and before_id given together', () => {
+      const runner = makeRunner();
+      const controller = new AnthropicMessageBatchesController(runner);
+      const job = createJob(runner, Date.now());
+
+      const reply2 = createReplyMock();
+      controller.list(reply2 as never, undefined, `msgbatch_${job.id}`, `msgbatch_${job.id}`);
+      expect(statusOf(reply2)).toBe(400);
+      expect(sent(reply2)).toMatchObject({ error: { type: 'invalid_request_error' } });
+    });
+
+    it('enforces the documented 1-1000 limit range instead of accepting anything', () => {
+      const runner = makeRunner();
+      const controller = new AnthropicMessageBatchesController(runner);
+
+      const tooLow = createReplyMock();
+      controller.list(tooLow as never, '0');
+      expect(statusOf(tooLow)).toBe(400);
+      expect(sent(tooLow)).toMatchObject({ error: { type: 'invalid_request_error' } });
+
+      const tooHigh = createReplyMock();
+      controller.list(tooHigh as never, '1001');
+      expect(statusOf(tooHigh)).toBe(400);
+      expect(sent(tooHigh)).toMatchObject({ error: { type: 'invalid_request_error' } });
+    });
+  });
 });

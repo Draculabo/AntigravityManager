@@ -77,25 +77,43 @@ export class OpenAIBatchesController {
     }
   }
 
+  /**
+   * `after` is Stripe-style opaque cursor pagination: a page boundary, not a
+   * resource lookup. When `after` names an id this runner never issued, or
+   * one that has since aged out of {@link DEFAULT_MAX_BATCHES} retention,
+   * OpenAI's own list endpoints answer with an empty, terminal page rather
+   * than an error -- so a client that kept the id from an earlier page and
+   * paged past everything this proxy still remembers stops cleanly instead
+   * of silently looping back to page one.
+   */
   @Get()
   list(@Res() res: FastifyReply, @Query('limit') limit?: string, @Query('after') after?: string) {
     try {
       const all = this.runner.list('openai');
-      const startId = after ? parseBatchHandle(after) : null;
-      const offset = startId ? all.findIndex((job) => job.id === startId) + 1 : 0;
+      const offset = this.resolveOffset(all, after);
       const size = Math.min(Math.max(Number(limit) || 20, 1), 100);
-      const page = all.slice(offset, offset + size);
+      const page = offset === null ? [] : all.slice(offset, offset + size);
       const data = page.map((job) => toOpenAIBatchObject(job));
       res.status(HttpStatus.OK).send({
         object: 'list',
         data,
         first_id: data.at(0)?.id ?? null,
         last_id: data.at(-1)?.id ?? null,
-        has_more: all.length > offset + page.length,
+        has_more: offset !== null && all.length > offset + page.length,
       });
     } catch (error) {
       this.sendError(res, error);
     }
+  }
+
+  /** Null means "after" did not resolve to any batch this runner still holds. */
+  private resolveOffset(all: BatchJobRecord[], after?: string): number | null {
+    if (!after) {
+      return 0;
+    }
+    const startId = parseBatchHandle(after);
+    const index = startId ? all.findIndex((job) => job.id === startId) : -1;
+    return index === -1 ? null : index + 1;
   }
 
   @Get(':id')

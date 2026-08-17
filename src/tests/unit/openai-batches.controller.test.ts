@@ -326,4 +326,55 @@ describe('OpenAIBatchesController', () => {
     expect(batch.status).toBe('expired');
     expect(batch.request_counts).toEqual({ total: 1, completed: 0, failed: 1 });
   });
+
+  describe('list pagination', () => {
+    function createJob(runner: BatchRunnerService, createdAtMs: number) {
+      return runner.create(
+        {
+          dialect: 'openai',
+          endpoint: '/v1/chat/completions',
+          requests: [{ customId: 'line-1', body: { model: 'gpt-4o', messages: [] } }],
+        },
+        createdAtMs,
+      );
+    }
+
+    it('walks a real page, reaches the terminal page, and answers an unknown `after` with an empty terminal page instead of restarting at page one', () => {
+      const target = createTarget(async () => ({ id: 'unused' }));
+      const runner = new BatchRunnerService(
+        { maxConcurrency: 1 },
+        target as unknown as BatchExecutionTarget,
+      );
+      const controller = new OpenAIBatchesController(runner);
+
+      const base = Date.now();
+      const jobs = [0, 1, 2].map((i) => createJob(runner, base + i * 1000));
+      // `list()` sorts newest-first: job 2 was created last, so it leads.
+      const newestFirst = [jobs[2], jobs[1], jobs[0]];
+
+      const page1Reply = createReplyMock();
+      controller.list(page1Reply as never, '2');
+      const page1 = sent(page1Reply);
+      expect(page1.data.map((batch: any) => batch.id)).toEqual([
+        `batch_${newestFirst[0].id}`,
+        `batch_${newestFirst[1].id}`,
+      ]);
+      expect(page1.has_more).toBe(true);
+
+      const page2Reply = createReplyMock();
+      controller.list(page2Reply as never, '2', page1.last_id);
+      const page2 = sent(page2Reply);
+      expect(page2.data.map((batch: any) => batch.id)).toEqual([`batch_${newestFirst[2].id}`]);
+      expect(page2.has_more).toBe(false);
+
+      const unknownReply = createReplyMock();
+      controller.list(unknownReply as never, '2', `batch_${'f'.repeat(24)}`);
+      expect(statusOf(unknownReply)).toBe(200);
+      const unknownPage = sent(unknownReply);
+      expect(unknownPage.data).toEqual([]);
+      expect(unknownPage.has_more).toBe(false);
+      expect(unknownPage.first_id).toBeNull();
+      expect(unknownPage.last_id).toBeNull();
+    });
+  });
 });

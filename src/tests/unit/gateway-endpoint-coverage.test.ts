@@ -54,8 +54,7 @@ const CENSUS: readonly CensusEntry[] = [
   {
     method: 'GET',
     routePath: '/v1/messages/batches',
-    testFile: null,
-    reason: 'no test calls AnthropicMessageBatchesController.list',
+    testFile: 'anthropic-message-batches.controller.test.ts',
   },
   {
     method: 'GET',
@@ -89,12 +88,7 @@ const CENSUS: readonly CensusEntry[] = [
 
   // OpenAI batches (src/modules/proxy-gateway/server/modules/batch/openai-batches.controller.ts)
   { method: 'POST', routePath: '/v1/batches', testFile: 'openai-batches.controller.test.ts' },
-  {
-    method: 'GET',
-    routePath: '/v1/batches',
-    testFile: null,
-    reason: 'no test calls OpenAIBatchesController.list',
-  },
+  { method: 'GET', routePath: '/v1/batches', testFile: 'openai-batches.controller.test.ts' },
   { method: 'GET', routePath: '/v1/batches/:id', testFile: 'openai-batches.controller.test.ts' },
   {
     method: 'POST',
@@ -223,9 +217,7 @@ const CENSUS: readonly CensusEntry[] = [
 ];
 
 const EXPECTED_UNCOVERED_ROUTES = [
-  'GET /v1/messages/batches',
   'DELETE /v1/messages/batches/:id',
-  'GET /v1/batches',
   'DELETE /v1beta/files/:name',
   'GET /v1/files',
 ];
@@ -330,6 +322,6 @@ describe('gateway endpoint coverage census', () => {
       .sort();
 
     expect(uncovered).toEqual([...EXPECTED_UNCOVERED_ROUTES].sort());
-    expect(uncovered.length).toBe(5);
+    expect(uncovered.length).toBe(3);
   });
 });
