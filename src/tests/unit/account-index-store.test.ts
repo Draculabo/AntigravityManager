@@ -50,7 +50,7 @@ describe('account index store', () => {
     }
   });
 
-  it('loads a valid account index', () => {
+  it('loads a valid account index without stripping unknown fields', () => {
     const validIndex = {
       'account-a': {
         id: 'account-a',
@@ -58,6 +58,7 @@ describe('account index store', () => {
         email: 'account@example.com',
         created_at: '2026-08-17T00:00:00.000Z',
         last_used: '2026-08-17T00:00:00.000Z',
+        future_field: { enabled: true },
       },
     };
     fs.writeFileSync(indexPath, JSON.stringify(validIndex), 'utf-8');
