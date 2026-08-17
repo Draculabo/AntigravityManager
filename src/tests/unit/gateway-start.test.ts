@@ -12,7 +12,10 @@ const { mockAttachResponsesWebSocketServer, mockCreate, mockLogger } = vi.hoiste
   },
 }));
 
-vi.mock('@nestjs/core', () => ({
+vi.mock('@nestjs/core', async (importOriginal) => ({
+  // Keep the real tokens: the module graph under test registers providers against
+  // APP_INTERCEPTOR, and a mock that only carries NestFactory makes importing it fail.
+  ...(await importOriginal<typeof import('@nestjs/core')>()),
   NestFactory: {
     create: mockCreate,
   },
