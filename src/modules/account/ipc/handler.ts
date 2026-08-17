@@ -33,7 +33,10 @@ import {
 } from '@/modules/identity-profile/ipc/handler';
 import { runWithSwitchGuard } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { executeSwitchFlow } from '@/modules/antigravity-runtime/switch/switchFlow';
-import { loadAccountIndex, saveAccountIndex } from '@/modules/account/persistence/account-index-store';
+import {
+  loadAccountIndex,
+  saveAccountIndex,
+} from '@/modules/account/persistence/account-index-store';
 import { shell } from 'electron';
 import { withTimingTrace } from '@/shared/observability/timingTrace';
 
