@@ -224,15 +224,16 @@ function cleanJsonSchemaRecursive(value: any) {
           (enumValue: unknown) =>
             isString(enumValue) || isNumber(enumValue) || isBoolean(enumValue),
         );
+        const schemaType = isString(map.type) ? map.type.toLowerCase() : '';
+        const supportsGeminiStringEnum = ['string', 'integer', 'number'].includes(schemaType);
 
         if (primitiveEnumValues.length === 0) {
           delete map.enum;
-        } else if (isString(map.type) && map.type.toLowerCase() === 'string') {
-          if (
-            primitiveEnumValues.length !== enumValues.length ||
-            !primitiveEnumValues.every(isString)
-          ) {
-            map.enum = primitiveEnumValues.map(String);
+        } else if (supportsGeminiStringEnum) {
+          map.enum = primitiveEnumValues.map(String);
+        } else if (primitiveEnumValues.every(isString)) {
+          if (primitiveEnumValues.length !== enumValues.length) {
+            map.enum = primitiveEnumValues;
           }
         } else {
           constraints.push(`enum: ${primitiveEnumValues.join(', ')}`);
