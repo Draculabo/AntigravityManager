@@ -75,45 +75,46 @@ class Logger {
   /**
    * Turns on rotating file output. Must be called explicitly by an application entry
    * point, importing this module must stay free of filesystem side effects. Safe to
-   * call more than once; only the first call adds the file transport.
+   * call more than once; only the first successful call adds the file transport.
+   * File logging is optional and must never prevent the application from starting.
    */
   enableFileLogging(directory: string = getAgentDir()): void {
     if (this.fileLoggingEnabled) {
       return;
     }
-    this.fileLoggingEnabled = true;
 
-    if (!fs.existsSync(directory)) {
-      try {
+    try {
+      if (!fs.existsSync(directory)) {
         fs.mkdirSync(directory, { recursive: true });
-      } catch (e) {
-        console.error('Failed to create agent directory for logs', e);
       }
+
+      const fileFormat = winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.printf(({ timestamp, level, message }) => {
+          return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+        }),
+      );
+
+      const rotateTransport = new DailyRotateFile({
+        filename: path.join(directory, 'app-%DATE%.log'),
+        datePattern: 'YYYY-MM-DD',
+        maxSize: LOG_MAX_SIZE,
+        maxFiles: LOG_RETENTION,
+        zippedArchive: false,
+        auditFile: path.join(directory, '.app-log-audit.json'),
+        level: 'debug',
+        format: fileFormat,
+      });
+
+      rotateTransport.on('error', (error) => {
+        console.error('DailyRotateFile transport error', error);
+      });
+
+      this.winstonLogger.add(rotateTransport);
+      this.fileLoggingEnabled = true;
+    } catch (error) {
+      console.error('Failed to enable rotating file logging', error);
     }
-
-    const fileFormat = winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.printf(({ timestamp, level, message }) => {
-        return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-      }),
-    );
-
-    const rotateTransport = new DailyRotateFile({
-      filename: path.join(directory, 'app-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      maxSize: LOG_MAX_SIZE,
-      maxFiles: LOG_RETENTION,
-      zippedArchive: false,
-      auditFile: path.join(directory, '.app-log-audit.json'),
-      level: 'debug',
-      format: fileFormat,
-    });
-
-    rotateTransport.on('error', (error) => {
-      console.error('DailyRotateFile transport error', error);
-    });
-
-    this.winstonLogger.add(rotateTransport);
   }
 
   private pruneLogs(now: number) {
