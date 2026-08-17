@@ -1,10 +1,12 @@
 import fs from 'fs';
 import path from 'path';
+import { z } from 'zod';
 
-import type { Account } from '@/modules/account/types';
+import { AccountSchema, type Account } from '@/modules/account/types';
 import { logger } from '@/shared/logging/logger';
 
 type AccountIndex = Record<string, Account>;
+const AccountIndexSchema = z.record(z.string(), AccountSchema);
 
 export function loadAccountIndex(filePath: string): AccountIndex {
   if (!fs.existsSync(filePath)) {
@@ -13,7 +15,7 @@ export function loadAccountIndex(filePath: string): AccountIndex {
 
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(content) as AccountIndex;
+    return AccountIndexSchema.parse(JSON.parse(content));
   } catch (error) {
     logger.error('Failed to load accounts index', error);
     throw error;
