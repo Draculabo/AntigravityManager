@@ -8,6 +8,7 @@ import { DurableRecordStore } from '@/shared/persistence/durable-record-store';
 import {
   BATCH_EXECUTION_TARGET,
   executeBatchRequest,
+  toBatchRequestError,
   type BatchExecutionTarget,
 } from './batch-request-executor';
 import {
@@ -327,6 +328,12 @@ export class BatchRunnerService {
       Object.assign(job, finalized ?? {});
     } catch (error) {
       logger.warn(`Failed to finalize batch ${job.id}`, error);
+      const settledAt = Date.now();
+      // The batch's own result could not be produced -- this is a batch-level
+      // failure, not a per-request one, so it must not be reported `completed`.
+      endBatch(job, cancelling, settledAt, { error: toBatchRequestError(error) });
+      this.save(job, settledAt);
+      return;
     }
 
     const settledAt = Date.now();

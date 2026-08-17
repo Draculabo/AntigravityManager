@@ -264,6 +264,43 @@ describe('OpenAIBatchesController', () => {
     });
   });
 
+  it('ends a batch as failed, not completed, when the output-file finalizer throws', async () => {
+    const files = createFileStore();
+    const target = createTarget(async () => ({
+      id: 'chatcmpl-1',
+      choices: [{ message: { content: 'ok' } }],
+    }));
+    const { controller, runner } = createController(target, files, 1);
+
+    const inputFileId = await uploadJsonl(files, [
+      { custom_id: 'line-1', url: '/v1/chat/completions', body: { model: 'gpt-4o', messages: [] } },
+    ]);
+    vi.spyOn(files, 'put').mockRejectedValue(new Error('disk is full'));
+
+    const createReply = createReplyMock();
+    await controller.create(
+      { endpoint: '/v1/chat/completions', completion_window: '24h', input_file_id: inputFileId },
+      createReply as never,
+    );
+    const created = sent(createReply);
+    await runner.drain();
+
+    // The request itself succeeded -- only writing its result back out failed --
+    // so the batch's own result does not exist and must not be reported `completed`.
+    const job = runner.require(created.id.replace(/^batch_/u, ''));
+    expect(job.status).toBe('failed');
+    expect(job.error).toMatchObject({ message: 'disk is full' });
+    expect(job.outputFileId).toBeUndefined();
+    expect(job.errorFileId).toBeUndefined();
+
+    const getReply = createReplyMock();
+    controller.get(created.id, getReply as never);
+    const batch = sent(getReply);
+    expect(batch.status).toBe('failed');
+    expect(batch.output_file_id).toBeNull();
+    expect(batch.error_file_id).toBeNull();
+  });
+
   it('expires a batch that outlives its completion window before anything ran', () => {
     const files = createFileStore();
     const target = createTarget(async () => ({ id: 'unused' }));

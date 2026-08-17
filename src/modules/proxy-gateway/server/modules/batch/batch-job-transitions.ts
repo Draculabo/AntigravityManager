@@ -6,6 +6,16 @@ import {
 } from './batch-job.types';
 
 /**
+ * A batch-level failure: the finalizer threw, the store refused to persist, or
+ * some other reason the batch's *result itself* does not exist. Distinct from a
+ * per-request error, which is data recorded against one line while the batch
+ * still ends normally.
+ */
+export interface BatchFailure {
+  error: BatchRequestError;
+}
+
+/**
  * Every state change a batch record can undergo, as plain functions over the
  * record.
  *
@@ -116,8 +126,28 @@ export function recordRequestOutcome(
   request.error = result.error;
 }
 
-/** Closes a batch that has nothing left to run, in the way it was heading. */
-export function endBatch(job: BatchJobRecord, wasCancelling: boolean, now: number): void {
+/**
+ * Closes a batch that has nothing left to run, in the way it was heading.
+ *
+ * A {@link BatchFailure} overrides cancellation and completion alike: if the
+ * batch's own result could not be produced -- the finalizer threw, the store
+ * refused to persist -- there is nothing to report as `completed` or
+ * `cancelled`, so the batch ends `failed` with `job.error` set instead. Per-
+ * request failures never reach here; they are recorded on the request and the
+ * batch still ends normally.
+ */
+export function endBatch(
+  job: BatchJobRecord,
+  wasCancelling: boolean,
+  now: number,
+  failure?: BatchFailure,
+): void {
+  if (failure) {
+    job.status = 'failed';
+    job.failedAtMs = now;
+    job.error = failure.error;
+    return;
+  }
   if (wasCancelling) {
     job.status = 'cancelled';
     job.cancelledAtMs = now;
