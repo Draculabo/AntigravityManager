@@ -46,46 +46,15 @@ class Logger {
   private recentLogs: LogEntry[] = [];
   private sentryReporter: SentryReporter | null = null;
   private sentryEnabled = false;
+  private fileLoggingEnabled = false;
 
   constructor() {
-    const agentDir = getAgentDir();
-
-    if (!fs.existsSync(agentDir)) {
-      try {
-        fs.mkdirSync(agentDir, { recursive: true });
-      } catch (e) {
-        console.error('Failed to create agent directory for logs', e);
-      }
-    }
-
-    const fileFormat = winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.printf(({ timestamp, level, message }) => {
-        return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-      }),
-    );
-
     const consoleFormat = winston.format.combine(
       winston.format.colorize({ all: true }),
       winston.format.printf(({ level, message }) => {
         return `[${level.toUpperCase()}] ${message}`;
       }),
     );
-
-    const rotateTransport = new DailyRotateFile({
-      filename: path.join(agentDir, 'app-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      maxSize: LOG_MAX_SIZE,
-      maxFiles: LOG_RETENTION,
-      zippedArchive: false,
-      auditFile: path.join(agentDir, '.app-log-audit.json'),
-      level: 'debug',
-      format: fileFormat,
-    });
-
-    rotateTransport.on('error', (error) => {
-      console.error('DailyRotateFile transport error', error);
-    });
 
     const consoleTransport = new winston.transports.Console({
       level: 'debug',
@@ -98,9 +67,53 @@ class Logger {
 
     this.winstonLogger = winston.createLogger({
       level: 'debug',
-      transports: [consoleTransport, rotateTransport],
+      transports: [consoleTransport],
       exitOnError: false,
     });
+  }
+
+  /**
+   * Turns on rotating file output. Must be called explicitly by an application entry
+   * point, importing this module must stay free of filesystem side effects. Safe to
+   * call more than once; only the first call adds the file transport.
+   */
+  enableFileLogging(directory: string = getAgentDir()): void {
+    if (this.fileLoggingEnabled) {
+      return;
+    }
+    this.fileLoggingEnabled = true;
+
+    if (!fs.existsSync(directory)) {
+      try {
+        fs.mkdirSync(directory, { recursive: true });
+      } catch (e) {
+        console.error('Failed to create agent directory for logs', e);
+      }
+    }
+
+    const fileFormat = winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.printf(({ timestamp, level, message }) => {
+        return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+      }),
+    );
+
+    const rotateTransport = new DailyRotateFile({
+      filename: path.join(directory, 'app-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      maxSize: LOG_MAX_SIZE,
+      maxFiles: LOG_RETENTION,
+      zippedArchive: false,
+      auditFile: path.join(directory, '.app-log-audit.json'),
+      level: 'debug',
+      format: fileFormat,
+    });
+
+    rotateTransport.on('error', (error) => {
+      console.error('DailyRotateFile transport error', error);
+    });
+
+    this.winstonLogger.add(rotateTransport);
   }
 
   private pruneLogs(now: number) {
