@@ -15,7 +15,8 @@ import {
  *
  * It lives here rather than in `GeminiController` so that controller stays a
  * router: it recognises the action and hands over. The answer is a
- * long-running operation the client polls at `/v1beta/operations/{name}`.
+ * long-running-operation-shaped resource the client polls at
+ * `/v1beta/batches/{name}`.
  *
  * Every request line is dispatched as plain `generateContent` against the
  * named model through the same {@link BatchExecutionTarget} the other two

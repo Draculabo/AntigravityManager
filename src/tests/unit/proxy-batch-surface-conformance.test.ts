@@ -23,7 +23,7 @@ import {
 } from '@/modules/proxy-gateway/server/modules/batch/batch-job.types';
 import { respondGeminiBatchGenerateContent } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-submit';
 import { toGeminiOperation } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-resource';
-import { GeminiOperationsController } from '@/modules/proxy-gateway/server/modules/batch/gemini-operations.controller';
+import { GeminiBatchesController } from '@/modules/proxy-gateway/server/modules/batch/gemini-batches.controller';
 import { toOpenAIBatchObject } from '@/modules/proxy-gateway/server/modules/batch/openai-batch-resource';
 import { OpenAIBatchesController } from '@/modules/proxy-gateway/server/modules/batch/openai-batches.controller';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
@@ -111,7 +111,7 @@ describe('one job, three dialects', () => {
     );
     const openai = new OpenAIBatchesController(runner, files);
     const anthropic = new AnthropicMessageBatchesController(runner);
-    const operations = new GeminiOperationsController(runner);
+    const operations = new GeminiBatchesController(runner);
 
     const inputFileId = await uploadJsonl(files, [
       {
@@ -178,7 +178,7 @@ describe('one job, three dialects', () => {
     // Ids are prefixed the way each vendor prefixes them.
     expect(openaiCreated.id).toMatch(/^batch_[0-9a-f]{24}$/u);
     expect(anthropicCreated.id).toMatch(/^msgbatch_[0-9a-f]{24}$/u);
-    expect(geminiCreated.name).toMatch(/^operations\/[0-9a-f]{24}$/u);
+    expect(geminiCreated.name).toMatch(/^batches\/[0-9a-f]{24}$/u);
 
     const openaiGet = createReplyMock();
     openai.get(openaiCreated.id, openaiGet as never);
@@ -429,7 +429,7 @@ describe("errors stay in the caller's dialect", () => {
       { maxConcurrency: 1 },
       geminiTarget as unknown as BatchExecutionTarget,
     );
-    const geminiOperations = new GeminiOperationsController(geminiRunner);
+    const geminiOperations = new GeminiBatchesController(geminiRunner);
     const geminiCreateReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
       geminiRunner,

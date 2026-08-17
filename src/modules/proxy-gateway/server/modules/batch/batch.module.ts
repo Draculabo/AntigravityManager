@@ -12,7 +12,7 @@ import { AnthropicMessageBatchesController } from './anthropic-message-batches.c
 import { BATCH_EXECUTION_TARGET, type BatchExecutionTarget } from './batch-request-executor';
 import { BATCH_RUNNER_OPTIONS, BatchRunnerService } from './batch-runner.service';
 import { resolveBatchRunnerOptions } from './batch-store-location';
-import { GeminiOperationsController } from './gemini-operations.controller';
+import { GeminiBatchesController } from './gemini-batches.controller';
 import { OpenAIBatchesController } from './openai-batches.controller';
 
 /**
@@ -31,7 +31,7 @@ import { OpenAIBatchesController } from './openai-batches.controller';
  * route table, so that submission logic is dispatched from
  * `GeminiController` itself (`gemini-batch-submit.ts`) rather than duplicated
  * as a second controller here; only the polling half,
- * `GeminiOperationsController` (`/v1beta/operations`), is a genuinely new
+ * `GeminiBatchesController` (`/v1beta/batches`), is a genuinely new
  * resource and lives in this module. `GeminiController` reaches
  * `BatchRunnerService` through `ModuleRef.get(..., { strict: false })`
  * instead of `GeminiModule` importing this module back, so this module's own
@@ -42,7 +42,7 @@ import { OpenAIBatchesController } from './openai-batches.controller';
   controllers: [
     OpenAIBatchesController,
     AnthropicMessageBatchesController,
-    GeminiOperationsController,
+    GeminiBatchesController,
   ],
   providers: [
     {

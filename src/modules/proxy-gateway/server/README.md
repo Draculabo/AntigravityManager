@@ -233,7 +233,7 @@ The core is protocol-neutral and knows nothing about HTTP:
 | `batch-request-executor.ts` | Runs one request line against a `BatchExecutionTarget`, isolating a failure to its own `custom_id`. |
 | `batch-runner.service.ts` | The durable, bounded, restartable job queue: concurrency, scheduling, persistence. |
 | `batch-store-location.ts` | Resolves the backing file under `getProxyStateDir()`, with the usual test-runner path suppression. |
-| `batch.module.ts` | Wires the runner to `OpenAIService` / `AnthropicService` / `GeminiService` through a `BATCH_EXECUTION_TARGET` DI token, and registers the OpenAI and Anthropic batch controllers plus the Gemini operations controller (see below). |
+| `batch.module.ts` | Wires the runner to `OpenAIService` / `AnthropicService` / `GeminiService` through a `BATCH_EXECUTION_TARGET` DI token, and registers the OpenAI and Anthropic batch controllers plus the Gemini batches controller (see below). |
 
 State lives in one `DurableRecordStore` at `proxy-state/proxy-batches.json`, bounded by count
 (`AGM_BATCH_MAX_BATCHES`, default 200) and age (`AGM_BATCH_TTL_MS`, default 48h). Concurrency
@@ -260,7 +260,21 @@ matching the rest of this directory's protocol isolation rule (section 5.3).
 | :--- | :--- | :--- |
 | **OpenAI** | `POST /v1/batches`, `GET /v1/batches`, `GET /v1/batches/{id}`, `POST /v1/batches/{id}/cancel` | `openai-batch-resource.ts`, `openai-batches.controller.ts` |
 | **Anthropic** | `POST /v1/messages/batches`, `GET /v1/messages/batches`, `GET /v1/messages/batches/{id}`, `POST /v1/messages/batches/{id}/cancel`, `GET /v1/messages/batches/{id}/results` | `anthropic-batch-resource.ts`, `anthropic-message-batches.controller.ts` |
-| **Gemini** | `POST /v1beta/models/{model}:batchGenerateContent` (dispatched from `GeminiController`'s existing model-actions route), `GET /v1beta/operations`, `GET /v1beta/operations/{name}` | `gemini-batch-resource.ts`, `gemini-batch-submit.ts`, `gemini-operations.controller.ts` |
+| **Gemini** | `POST /v1beta/models/{model}:batchGenerateContent` (dispatched from `GeminiController`'s existing model-actions route), `GET /v1beta/batches`, `GET /v1beta/batches/{name}` | `gemini-batch-resource.ts`, `gemini-batch-submit.ts`, `gemini-batches.controller.ts` |
+
+**Gemini surface and naming.** `/v1beta/batches` and `batches/{id}` names match the current
+Gemini Batch API's own resource, not the generic `/v1beta/operations` long-running-operation
+path this port originally used. The `/v1beta/operations` alias has been removed rather than kept
+alongside it: no client of this proxy is known to require it, and carrying two names for one
+resource just to have kept the old one would be a second contract maintained for its own sake.
+`parseBatchHandle` (`batch-job.types.ts`) still accepts an `operations/`-prefixed handle on top
+of `batches/`, since that parsing is shared with the other two dialects' id forms and costs
+nothing to leave permissive; it is simply no longer reachable through a registered route.
+`GET /v1beta/batches` supports `pageSize` and cursor-style `pageToken`/`nextPageToken` paging,
+the same pattern `OpenAIBatchesController.list` already uses with `limit`/`after`: `pageToken` is
+the previous page's last `batches/{id}` name, and `nextPageToken` is omitted once there is no
+further page. An unrecognized `pageToken` is a `400 INVALID_ARGUMENT` in the Gemini error
+envelope, not a silently-reset first page.
 
 **`SERVABLE_BATCH_ENDPOINTS`.** OpenAI batches are gated at both creation and dispatch to
 `/v1/chat/completions` only; `/v1/responses` is refused for the same reason it always was --

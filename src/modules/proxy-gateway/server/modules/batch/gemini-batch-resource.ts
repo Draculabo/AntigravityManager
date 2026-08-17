@@ -6,7 +6,7 @@ import {
   type BatchJobRecord,
 } from './batch-job.types';
 
-export const GEMINI_OPERATION_PREFIX = 'operations/';
+export const GEMINI_BATCH_PREFIX = 'batches/';
 const BATCH_METADATA_TYPE =
   'type.googleapis.com/google.ai.generativelanguage.v1beta.GenerateContentBatch';
 const BATCH_RESPONSE_TYPE =
@@ -32,7 +32,7 @@ export function toGeminiOperation(job: BatchJobRecord): GeminiOperationResource 
   const counts = countBatchRequests(job);
   const done = isTerminalBatchStatus(job.status);
   const operation: GeminiOperationResource = {
-    name: `${GEMINI_OPERATION_PREFIX}${job.id}`,
+    name: `${GEMINI_BATCH_PREFIX}${job.id}`,
     metadata: {
       '@type': BATCH_METADATA_TYPE,
       model: job.endpoint.replace(/:generateContent$/u, ''),

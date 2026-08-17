@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
 import { respondGeminiBatchGenerateContent } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-submit';
-import { GeminiOperationsController } from '@/modules/proxy-gateway/server/modules/batch/gemini-operations.controller';
+import { GeminiBatchesController } from '@/modules/proxy-gateway/server/modules/batch/gemini-batches.controller';
 
 function createReplyMock() {
   const reply: Record<string, unknown> = {};
@@ -37,7 +37,7 @@ function geminiReply(text: string) {
   return { candidates: [{ content: { role: 'model', parts: [{ text }] } }] };
 }
 
-describe('Gemini :batchGenerateContent and /v1beta/operations', () => {
+describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
   it('answers 501 UNIMPLEMENTED when no batch runner is wired', async () => {
     const reply = createReplyMock();
     await respondGeminiBatchGenerateContent(
@@ -53,7 +53,7 @@ describe('Gemini :batchGenerateContent and /v1beta/operations', () => {
   it('submits an inlined-requests batch and runs it to completion', async () => {
     const target = createTarget(async () => geminiReply('ok'));
     const runner = createRunner(target);
-    const operations = new GeminiOperationsController(runner);
+    const operations = new GeminiBatchesController(runner);
 
     const submitReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
@@ -72,7 +72,7 @@ describe('Gemini :batchGenerateContent and /v1beta/operations', () => {
 
     expect(statusOf(submitReply)).toBe(200);
     const operation = sent(submitReply);
-    expect(operation.name).toMatch(/^operations\//u);
+    expect(operation.name).toMatch(/^batches\//u);
     expect(operation.done).toBe(false);
     expect(operation.metadata.model).toBe('models/gemini-3-flash');
 
@@ -96,7 +96,7 @@ describe('Gemini :batchGenerateContent and /v1beta/operations', () => {
       return geminiReply('ok');
     });
     const runner = createRunner(target);
-    const operations = new GeminiOperationsController(runner);
+    const operations = new GeminiBatchesController(runner);
 
     const submitReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
@@ -142,10 +142,10 @@ describe('Gemini :batchGenerateContent and /v1beta/operations', () => {
   it('answers an unknown operation name with 404 in the Gemini error envelope, not an empty success', () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target);
-    const operations = new GeminiOperationsController(runner);
+    const operations = new GeminiBatchesController(runner);
 
     const reply = createReplyMock();
-    operations.get(`operations/${'0'.repeat(24)}`, reply as never);
+    operations.get(`batches/${'0'.repeat(24)}`, reply as never);
     expect(statusOf(reply)).toBe(404);
     expect(sent(reply)).toMatchObject({ error: { status: 'NOT_FOUND' } });
   });
@@ -153,7 +153,7 @@ describe('Gemini :batchGenerateContent and /v1beta/operations', () => {
   it('expires a Gemini batch that outlives its completion window, reported through the operation', () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target, 1);
-    const operations = new GeminiOperationsController(runner);
+    const operations = new GeminiBatchesController(runner);
 
     const created = runner.create(
       {
@@ -166,9 +166,61 @@ describe('Gemini :batchGenerateContent and /v1beta/operations', () => {
     );
 
     const getReply = createReplyMock();
-    operations.get(`operations/${created.id}`, getReply as never);
+    operations.get(`batches/${created.id}`, getReply as never);
     const operation = sent(getReply);
     expect(operation.done).toBe(true);
     expect(operation.error).toMatchObject({ status: 'DEADLINE_EXCEEDED' });
+  });
+
+  it('pages the batch list with pageSize/pageToken/nextPageToken, newest first', () => {
+    const target = createTarget(async () => geminiReply('unused'));
+    const runner = createRunner(target, 1);
+    const operations = new GeminiBatchesController(runner);
+
+    const now = Date.now();
+    const makeJob = (id: string, createdAtMs: number) =>
+      runner.create(
+        {
+          dialect: 'gemini',
+          endpoint: 'models/gemini-3-flash:generateContent',
+          requests: [{ customId: id, body: { contents: [] }, target: 'models/gemini-3-flash' }],
+        },
+        createdAtMs,
+      );
+    const oldest = makeJob('oldest', now - 2000);
+    const middle = makeJob('middle', now - 1000);
+    const newest = makeJob('newest', now);
+
+    const page1Reply = createReplyMock();
+    operations.list(page1Reply as never, '1', undefined);
+    const page1 = sent(page1Reply);
+    expect(page1.batches).toHaveLength(1);
+    expect(page1.batches[0].name).toBe(`batches/${newest.id}`);
+    expect(page1.nextPageToken).toBe(`batches/${newest.id}`);
+
+    const page2Reply = createReplyMock();
+    operations.list(page2Reply as never, '1', page1.nextPageToken);
+    const page2 = sent(page2Reply);
+    expect(page2.batches).toHaveLength(1);
+    expect(page2.batches[0].name).toBe(`batches/${middle.id}`);
+    expect(page2.nextPageToken).toBe(`batches/${middle.id}`);
+
+    const page3Reply = createReplyMock();
+    operations.list(page3Reply as never, '1', page2.nextPageToken);
+    const page3 = sent(page3Reply);
+    expect(page3.batches).toHaveLength(1);
+    expect(page3.batches[0].name).toBe(`batches/${oldest.id}`);
+    expect(page3.nextPageToken).toBeUndefined();
+  });
+
+  it('rejects an unrecognized pageToken with the Gemini error envelope', () => {
+    const target = createTarget(async () => geminiReply('unused'));
+    const runner = createRunner(target);
+    const operations = new GeminiBatchesController(runner);
+
+    const reply = createReplyMock();
+    operations.list(reply as never, undefined, 'not-a-real-token');
+    expect(statusOf(reply)).toBe(400);
+    expect(sent(reply)).toMatchObject({ error: { status: 'INVALID_ARGUMENT' } });
   });
 });

@@ -79,14 +79,13 @@ const CENSUS: readonly CensusEntry[] = [
     reason: 'no test calls AnthropicMessageBatchesController.remove',
   },
 
-  // Gemini batch operations (src/modules/proxy-gateway/server/modules/batch/gemini-operations.controller.ts)
+  // Gemini batches (src/modules/proxy-gateway/server/modules/batch/gemini-batches.controller.ts)
   {
     method: 'GET',
-    routePath: '/v1beta/operations',
-    testFile: null,
-    reason: 'no test calls GeminiOperationsController.list',
+    routePath: '/v1beta/batches',
+    testFile: 'gemini-batch.test.ts',
   },
-  { method: 'GET', routePath: '/v1beta/operations/:name', testFile: 'gemini-batch.test.ts' },
+  { method: 'GET', routePath: '/v1beta/batches/:name', testFile: 'gemini-batch.test.ts' },
 
   // OpenAI batches (src/modules/proxy-gateway/server/modules/batch/openai-batches.controller.ts)
   { method: 'POST', routePath: '/v1/batches', testFile: 'openai-batches.controller.test.ts' },
@@ -226,7 +225,6 @@ const CENSUS: readonly CensusEntry[] = [
 const EXPECTED_UNCOVERED_ROUTES = [
   'GET /v1/messages/batches',
   'DELETE /v1/messages/batches/:id',
-  'GET /v1beta/operations',
   'GET /v1/batches',
   'DELETE /v1beta/files/:name',
   'GET /v1/files',
@@ -332,6 +330,6 @@ describe('gateway endpoint coverage census', () => {
       .sort();
 
     expect(uncovered).toEqual([...EXPECTED_UNCOVERED_ROUTES].sort());
-    expect(uncovered.length).toBe(6);
+    expect(uncovered.length).toBe(5);
   });
 });
