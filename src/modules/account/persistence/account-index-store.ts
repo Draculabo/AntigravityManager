@@ -6,7 +6,7 @@ import { AccountSchema, type Account } from '@/modules/account/types';
 import { logger } from '@/shared/logging/logger';
 
 type AccountIndex = Record<string, Account>;
-const AccountIndexSchema = z.record(z.string(), AccountSchema);
+const AccountIndexSchema = z.record(z.string(), AccountSchema.passthrough());
 
 export function loadAccountIndex(filePath: string): AccountIndex {
   if (!fs.existsSync(filePath)) {
