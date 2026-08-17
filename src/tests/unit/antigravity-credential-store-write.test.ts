@@ -52,7 +52,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
     setPlatform(originalPlatform);
   });
 
-  it('updates the macOS keychain item without deleting the existing credential first', async () => {
+  it('updates the macOS keychain item without exposing the credential in process arguments', async () => {
     const { writeAntigravityCredentialStoreToken } =
       await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
 
@@ -65,17 +65,27 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
     expect(mocks.execFileSync).toHaveBeenCalledWith(
       'security',
-      expect.arrayContaining([
+      [
         'add-generic-password',
         '-s',
         'gemini',
         '-a',
         'antigravity',
+        '-A',
         '-U',
-      ]),
-      { stdio: 'ignore' },
+        '-w',
+      ],
+      expect.objectContaining({
+        input: expect.stringContaining('go-keyring-base64:'),
+        encoding: 'utf-8',
+        stdio: ['pipe', 'ignore', 'ignore'],
+      }),
     );
-    expect(mocks.execFileSync.mock.calls[0][1]).not.toContain('delete-generic-password');
+
+    const args = mocks.execFileSync.mock.calls[0][1] as string[];
+    expect(args.join(' ')).not.toContain('access-token');
+    expect(args.join(' ')).not.toContain('refresh-token');
+    expect(args).not.toContain('delete-generic-password');
   });
 
   it('propagates update failures without issuing a destructive delete command', async () => {
