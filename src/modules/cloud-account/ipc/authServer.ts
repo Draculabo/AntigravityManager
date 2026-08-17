@@ -1,5 +1,4 @@
 import http from 'http';
-import type { IncomingMessage, ServerResponse } from 'http';
 import { logger } from '@/shared/logging/logger';
 import { ipcContext } from '@/ipc/context';
 import { escapeHtml } from '@/shared/utils/url';
@@ -8,33 +7,44 @@ export class AuthServer {
   private static server: http.Server | null = null;
   private static PORT = 8888;
 
-  private static handleRequest(req: IncomingMessage, res: ServerResponse, port: number): void {
-    if (req.method !== 'GET') {
-      res.writeHead(405, { Allow: 'GET' });
-      res.end('Method Not Allowed');
+  static async start() {
+    if (this.server) {
+      logger.warn('AuthServer: Server already running');
       return;
     }
 
-    const url = new URL(req.url || '', `http://localhost:${port}`);
+    const tryPorts = [8888, 8889, 8890, 8891, 8892];
 
-    if (url.pathname === '/oauth-callback') {
-      const code = url.searchParams.get('code');
-      const error = url.searchParams.get('error');
+    this.server = http.createServer((req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { Allow: 'GET' });
+        res.end('Method Not Allowed');
+        return;
+      }
 
-      if (code) {
-        const escapedCode = escapeHtml(code);
-        logger.info(`AuthServer: Received authorization code: ${escapedCode.substring(0, 10)}...`);
+      const url = new URL(req.url || '', `http://localhost:${this.PORT}`);
 
-        if (ipcContext.mainWindow) {
-          logger.info('AuthServer: Sending code to renderer via IPC');
-          ipcContext.mainWindow.webContents.send('GOOGLE_AUTH_CODE', code);
-          logger.info('AuthServer: Code sent successfully');
-        } else {
-          logger.error('AuthServer: Main window not found, cannot send code');
-        }
+      if (url.pathname === '/oauth-callback') {
+        const code = url.searchParams.get('code');
+        const error = url.searchParams.get('error');
 
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(`
+        if (code) {
+          const escapedCode = escapeHtml(code);
+          logger.info(
+            `AuthServer: Received authorization code: ${escapedCode.substring(0, 10)}...`,
+          );
+
+          // Send code to renderer
+          if (ipcContext.mainWindow) {
+            logger.info('AuthServer: Sending code to renderer via IPC');
+            ipcContext.mainWindow.webContents.send('GOOGLE_AUTH_CODE', code);
+            logger.info('AuthServer: Code sent successfully');
+          } else {
+            logger.error('AuthServer: Main window not found, cannot send code');
+          }
+
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(`
             <html>
               <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
                 <h1>Login Successful</h1>
@@ -45,11 +55,11 @@ export class AuthServer {
               </body>
             </html>
           `);
-      } else if (error) {
-        const escapedError = escapeHtml(error);
-        logger.error(`AuthServer: OAuth error: ${escapedError}`);
-        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(`
+        } else if (error) {
+          const escapedError = escapeHtml(error);
+          logger.error(`AuthServer: OAuth error: ${escapedError}`);
+          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(`
             <html>
               <body>
                 <h1>Login Failed</h1>
@@ -57,48 +67,32 @@ export class AuthServer {
               </body>
             </html>
           `);
+        } else {
+          res.writeHead(400);
+          res.end('Missing code parameter');
+        }
       } else {
-        res.writeHead(400);
-        res.end('Missing code parameter');
+        res.writeHead(404);
+        res.end('Not Found');
       }
-    } else {
-      res.writeHead(404);
-      res.end('Not Found');
-    }
-  }
-
-  private static async bind(port: number): Promise<http.Server> {
-    const server = http.createServer((req, res) => this.handleRequest(req, res, port));
-
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => {
-        server.off('error', onError);
-        reject(error);
-      };
-
-      server.once('error', onError);
-      server.listen(port, '127.0.0.1', () => {
-        server.off('error', onError);
-        resolve();
-      });
     });
-
-    return server;
-  }
-
-  static async start() {
-    if (this.server) {
-      logger.warn('AuthServer: Server already running');
-      return;
-    }
-
-    const tryPorts = [8888, 8889, 8890, 8891, 8892];
 
     for (const port of tryPorts) {
       try {
-        const server = await this.bind(port);
-        this.server = server;
-        this.PORT = port;
+        const server = this.server;
+        await new Promise<void>((resolve, reject) => {
+          const onError = (error: Error) => {
+            server.off('error', onError);
+            reject(error);
+          };
+
+          server.once('error', onError);
+          server.listen(port, '127.0.0.1', () => {
+            server.off('error', onError);
+            this.PORT = port;
+            resolve();
+          });
+        });
 
         server.on('error', (err) => {
           logger.error('AuthServer: Server error', err);
@@ -114,6 +108,7 @@ export class AuthServer {
       }
     }
 
+    this.server = null;
     logger.error('AuthServer: No available ports found for OAuth callback server');
   }
 
