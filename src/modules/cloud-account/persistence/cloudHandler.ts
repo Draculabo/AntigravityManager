@@ -112,6 +112,36 @@ function parseCloudQuota(
   }
 }
 
+function parseOptionalDeviceProfile(
+  accountId: string,
+  value: string | null | undefined,
+): CloudAccount['device_profile'] | undefined {
+  try {
+    return parseDeviceProfileColumn(value);
+  } catch (error) {
+    logger.warn(
+      `Invalid device profile for account ${accountId}, continuing without device profile`,
+      error,
+    );
+    return undefined;
+  }
+}
+
+function parseOptionalDeviceHistory(
+  accountId: string,
+  value: string | null | undefined,
+): CloudAccount['device_history'] | undefined {
+  try {
+    return parseDeviceHistoryColumn(value);
+  } catch (error) {
+    logger.warn(
+      `Invalid device history for account ${accountId}, continuing without device history`,
+      error,
+    );
+    return undefined;
+  }
+}
+
 export class CloudAccountRepo {
   private static versionFailureLogged = false;
 
@@ -336,8 +366,14 @@ export class CloudAccountRepo {
             avatar_url: normalizedRow.avatarUrl ?? undefined,
             token: parseCloudToken(normalizedRow.id, tokenResult.value),
             quota: parseCloudQuota(normalizedRow.id, quotaResult.value),
-            device_profile: parseDeviceProfileColumn(normalizedRow.deviceProfileJson),
-            device_history: parseDeviceHistoryColumn(normalizedRow.deviceHistoryJson),
+            device_profile: parseOptionalDeviceProfile(
+              normalizedRow.id,
+              normalizedRow.deviceProfileJson,
+            ),
+            device_history: parseOptionalDeviceHistory(
+              normalizedRow.id,
+              normalizedRow.deviceHistoryJson,
+            ),
             created_at: normalizedRow.createdAt,
             last_used: normalizedRow.lastUsed,
             status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
@@ -448,8 +484,14 @@ export class CloudAccountRepo {
         avatar_url: normalizedRow.avatarUrl ?? undefined,
         token: parsedToken,
         quota: parsedQuota,
-        device_profile: parseDeviceProfileColumn(normalizedRow.deviceProfileJson),
-        device_history: parseDeviceHistoryColumn(normalizedRow.deviceHistoryJson),
+        device_profile: parseOptionalDeviceProfile(
+          normalizedRow.id,
+          normalizedRow.deviceProfileJson,
+        ),
+        device_history: parseOptionalDeviceHistory(
+          normalizedRow.id,
+          normalizedRow.deviceHistoryJson,
+        ),
         created_at: normalizedRow.createdAt,
         last_used: normalizedRow.lastUsed,
         status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
