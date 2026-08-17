@@ -103,7 +103,7 @@ class SignatureStoreImpl {
       );
     }
 
-    this.signaturesBySession.set(sessionKey, bucket);
+    this.touchSession(sessionKey, bucket, now);
     this.evictOverflowSessions();
   }
 
@@ -120,6 +120,7 @@ class SignatureStoreImpl {
         this.signaturesBySession.delete(sessionKey);
         return null;
       }
+      this.touchSession(sessionKey, stored);
       let latestMessageCount = -1;
       let latestSignature: string | null = null;
       for (const [messageCount, cached] of stored.signaturesByMessageCount) {
@@ -148,6 +149,7 @@ class SignatureStoreImpl {
       this.signaturesBySession.delete(sessionKey);
       return null;
     }
+    this.touchSession(sessionKey, stored);
     return stored.signaturesByMessageCount.get(messageCount)?.signature ?? null;
   }
 
@@ -175,6 +177,16 @@ class SignatureStoreImpl {
     }
     this.signature = null;
     this.signaturesBySession.clear();
+  }
+
+  private touchSession(
+    sessionKey: string,
+    stored: SessionSignatureBucket,
+    updatedAt = Date.now(),
+  ): void {
+    stored.updatedAt = updatedAt;
+    this.signaturesBySession.delete(sessionKey);
+    this.signaturesBySession.set(sessionKey, stored);
   }
 
   private evictExpiredSessions(): void {
