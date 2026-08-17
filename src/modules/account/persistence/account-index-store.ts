@@ -31,12 +31,7 @@ export function saveAccountIndex(filePath: string, accounts: AccountIndex): void
 
   try {
     fs.writeFileSync(tempPath, content, 'utf-8');
-    try {
-      fs.renameSync(tempPath, filePath);
-    } catch {
-      fs.copyFileSync(tempPath, filePath);
-      fs.unlinkSync(tempPath);
-    }
+    fs.renameSync(tempPath, filePath);
   } catch (error) {
     if (fs.existsSync(tempPath)) {
       try {
