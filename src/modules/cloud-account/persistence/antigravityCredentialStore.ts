@@ -264,8 +264,12 @@ export function writeAntigravityCredentialStoreToken(token: CredentialStoreToken
     const value = `go-keyring-base64:${Buffer.from(payload, 'utf-8').toString('base64')}`;
     execFileSync(
       'security',
-      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w', value, '-A', '-U'],
-      { stdio: 'ignore' },
+      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'],
+      {
+        input: `${value}\n`,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'ignore', 'ignore'],
+      },
     );
     return;
   }
