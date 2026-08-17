@@ -5,12 +5,19 @@ const mocks = vi.hoisted(() => ({
   setSecret: vi.fn(),
   deleteCredential: vi.fn(),
   withTarget: vi.fn(),
+  writeAgyCliToken: vi.fn(),
 }));
 
 vi.mock('@napi-rs/keyring', () => ({
   Entry: {
     withTarget: mocks.withTarget,
   },
+}));
+
+// The real writer targets the Antigravity CLI session file under the user's
+// home, so leaving it unmocked would sign the live CLI out mid-test-run.
+vi.mock('@/modules/cloud-account/persistence/agyCliTokenStore', () => ({
+  writeAgyCliToken: mocks.writeAgyCliToken,
 }));
 
 vi.mock('child_process', async (importOriginal) => {
@@ -41,6 +48,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
     mocks.setSecret.mockReset();
     mocks.deleteCredential.mockReset();
     mocks.withTarget.mockReset();
+    mocks.writeAgyCliToken.mockReset();
     mocks.withTarget.mockReturnValue({
       setSecret: mocks.setSecret,
       deleteCredential: mocks.deleteCredential,
