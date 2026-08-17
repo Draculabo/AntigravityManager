@@ -32,6 +32,12 @@ export function installRendererRecovery(window: BrowserWindow): void {
     isRecovering = false;
   });
 
+  window.webContents.on('did-fail-load', (_event, _errorCode, _errorDescription, _url, isMainFrame) => {
+    if (isMainFrame) {
+      isRecovering = false;
+    }
+  });
+
   window.webContents.on('render-process-gone', (_event, details) => {
     if (
       isRecovering ||
