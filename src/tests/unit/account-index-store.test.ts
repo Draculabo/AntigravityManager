@@ -35,6 +35,36 @@ describe('account index store', () => {
     expect(fs.readFileSync(indexPath, 'utf-8')).toBe(malformed);
   });
 
+  it('fails closed when an existing account index has the wrong JSON shape', () => {
+    const invalidIndexes = [
+      '[]',
+      'null',
+      '{"account-a":{"id":"account-a"}}',
+    ];
+
+    for (const invalidIndex of invalidIndexes) {
+      fs.writeFileSync(indexPath, invalidIndex, 'utf-8');
+
+      expect(() => loadAccountIndex(indexPath)).toThrow();
+      expect(fs.readFileSync(indexPath, 'utf-8')).toBe(invalidIndex);
+    }
+  });
+
+  it('loads a valid account index', () => {
+    const validIndex = {
+      'account-a': {
+        id: 'account-a',
+        name: 'Account A',
+        email: 'account@example.com',
+        created_at: '2026-08-17T00:00:00.000Z',
+        last_used: '2026-08-17T00:00:00.000Z',
+      },
+    };
+    fs.writeFileSync(indexPath, JSON.stringify(validIndex), 'utf-8');
+
+    expect(loadAccountIndex(indexPath)).toEqual(validIndex);
+  });
+
   it('replaces the index through a temporary file', () => {
     const writeSpy = vi.spyOn(fs, 'writeFileSync');
 
