@@ -15,5 +15,6 @@ export default defineConfig({
     globals: true,
     environment: 'happy-dom',
     include: ['src/tests/unit/**/*.test.ts'],
+    setupFiles: ['./src/tests/support/no-app-launch.setup.ts'],
   },
 });
