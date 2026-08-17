@@ -124,7 +124,22 @@ When reading, updating, or refactoring code within this directory, strictly foll
 
 ---
 
-## 5. Verification & Development Checklist
+## 5. Diagnostics
+
+### Upstream 4xx Capture
+
+Set `AGM_UPSTREAM_4XX_CAPTURE=1` to write a redacted JSON pair (the client request and the
+converted upstream request/rejection) to `~/.antigravity-agent/captures/` every time
+`GeminiClient` receives a final 4xx from the upstream (Gemini is the shared transport for
+OpenAI, Anthropic and native Gemini requests). Off by default: capture is a diagnostic aid, not
+something every install should pay disk I/O for on every rejected request. Secrets are masked
+with `sanitizeObject` before anything is written, the directory is pruned to the newest 50
+files, and a capture failure (e.g. disk full) is logged and swallowed — it never turns the
+caller's 4xx into a 5xx.
+
+---
+
+## 6. Verification & Development Checklist
 
 After modifying files in `server/`, execute the following verification steps in order:
 
