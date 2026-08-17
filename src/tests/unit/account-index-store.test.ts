@@ -61,4 +61,19 @@ describe('account index store', () => {
     expect(fs.readFileSync(indexPath, 'utf-8')).toBe(original);
     expect(fs.readdirSync(tempDir)).toEqual(['accounts.json']);
   });
+
+  it('preserves the existing index when atomic replacement fails', () => {
+    const original = '{"existing":{"id":"existing"}}\n';
+    fs.writeFileSync(indexPath, original, 'utf-8');
+
+    vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw new Error('replace failed');
+    });
+    const copySpy = vi.spyOn(fs, 'copyFileSync');
+
+    expect(() => saveAccountIndex(indexPath, {})).toThrow('replace failed');
+    expect(copySpy).not.toHaveBeenCalled();
+    expect(fs.readFileSync(indexPath, 'utf-8')).toBe(original);
+    expect(fs.readdirSync(tempDir)).toEqual(['accounts.json']);
+  });
 });
