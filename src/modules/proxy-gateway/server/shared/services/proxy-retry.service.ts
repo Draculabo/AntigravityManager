@@ -1,3 +1,4 @@
+import { Inject, Injectable } from '@nestjs/common';
 import { isString } from 'lodash-es';
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { calculateRetryDelay, sleep } from '../../../antigravity/retry-utils';
@@ -8,7 +9,8 @@ import {
   shouldGraceRetry,
 } from './rate-limit-tracker.service';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
-import { proxyModelAvailabilityStore } from './model-availability.service';
+import { classifyForbiddenUpstreamError } from '../../common/google-error-details';
+import { ModelAvailabilityService } from './model-availability.service';
 
 export interface ProxyTokenRetryState {
   attemptedAccountIds: Set<string>;
@@ -35,10 +37,18 @@ export interface ProxyRetryAccountLeaseService {
   markModelSuccess(accountIdOrEmail: string, model: string): void;
 }
 
-interface ProxyRetryLogger {
+export interface ProxyRetryLogger {
   log(message: string): void;
   warn(message: string): void;
 }
+
+/**
+ * Injection tokens. Tokens rather than the concrete `AccountLeaseService` and `Logger` keep
+ * `shared/` free of an import back into `modules/account-lease/`, and keep the retry service
+ * testable with a plain fake.
+ */
+export const PROXY_RETRY_ACCOUNT_LEASE = 'PROXY_RETRY_ACCOUNT_LEASE';
+export const PROXY_RETRY_LOGGER = 'PROXY_RETRY_LOGGER';
 
 export interface ProxyUpstreamFailureClassification {
   retry: boolean;
@@ -46,10 +56,15 @@ export interface ProxyUpstreamFailureClassification {
   markAsRateLimited: boolean;
 }
 
+@Injectable()
 export class ProxyRetryService {
   constructor(
+    @Inject(PROXY_RETRY_ACCOUNT_LEASE)
     private readonly accountLeaseService: ProxyRetryAccountLeaseService,
+    @Inject(PROXY_RETRY_LOGGER)
     private readonly logger: ProxyRetryLogger,
+    @Inject(ModelAvailabilityService)
+    private readonly modelAvailability: ModelAvailabilityService,
   ) {}
 
   createTokenRetryState(): ProxyTokenRetryState {
@@ -127,14 +142,14 @@ export class ProxyRetryService {
       const status = error.status;
       const isImageModel = model.toLowerCase().includes('-image');
       if (isImageModel && status === 404) {
-        proxyModelAvailabilityStore.mark(accountId, model, 'model_not_supported', undefined, {
+        this.modelAvailability.mark(accountId, model, 'model_not_supported', undefined, {
           status,
           message: error.body ?? error.message,
         });
         return;
       }
       if (isImageModel && status === 403) {
-        proxyModelAvailabilityStore.mark(accountId, model, 'model_forbidden', undefined, {
+        this.modelAvailability.mark(accountId, model, 'model_forbidden', undefined, {
           status,
           message: error.body ?? error.message,
         });
@@ -149,6 +164,9 @@ export class ProxyRetryService {
           model,
         });
         this.persistModelRateLimit(accountId, model, error.body ?? error.message, status);
+        return;
+      }
+      if (status === 403 && this.isRecoverableForbidden(accountId, error)) {
         return;
       }
       if (status === 401 || status === 403) {
@@ -194,7 +212,34 @@ export class ProxyRetryService {
 
   markUpstreamSuccess(accountId: string, model: string): void {
     this.accountLeaseService.markModelSuccess(accountId, model);
-    proxyModelAvailabilityStore.clearModel(accountId, model);
+    this.modelAvailability.clearModel(accountId, model);
+  }
+
+  /**
+   * A 403 the user can clear (identity verification) or that a VPC Service Controls boundary
+   * produced says nothing about the credential, so the account stays in rotation. Every other 403
+   * still burns it, including any this cannot recognise.
+   */
+  private isRecoverableForbidden(accountId: string, error: UpstreamRequestError): boolean {
+    const classification = classifyForbiddenUpstreamError({
+      body: error.body,
+      details: error.details,
+      message: error.message,
+    });
+    if (classification.kind === 'account_forbidden') {
+      return false;
+    }
+
+    const detail =
+      classification.kind === 'validation_required'
+        ? `validation required${
+            classification.validationLink ? ` (${classification.validationLink})` : ''
+          }`
+        : 'VPC Service Controls policy';
+    this.logger.warn(
+      `Upstream 403 for account ${accountId} is recoverable (${detail}); keeping the account in rotation.`,
+    );
+    return true;
   }
 
   private persistModelRateLimit(
@@ -207,7 +252,7 @@ export class ProxyRetryService {
     if (waitSeconds <= 0) {
       return;
     }
-    proxyModelAvailabilityStore.mark(
+    this.modelAvailability.mark(
       accountId,
       model,
       hasExplicitQuotaExhaustedSignal(message) ? 'quota_exhausted' : 'rate_limited',

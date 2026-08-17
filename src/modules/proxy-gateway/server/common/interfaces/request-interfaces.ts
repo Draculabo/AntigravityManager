@@ -10,6 +10,8 @@ export interface OpenAIChatRequest {
   seed?: number;
   max_tokens?: number;
   stream?: boolean;
+  /** Ask the gateway to keep the completion so its GET route can replay it. */
+  store?: boolean;
   size?: string;
   quality?: string;
   tools?: OpenAITool[];
@@ -127,6 +129,9 @@ export type AnthropicContent =
   | { type: 'text'; text: string }
   | { type: 'thinking'; thinking: string; signature?: string }
   | { type: 'image'; source: AnthropicImageSource }
+  // A document is an image block by another name on the wire: same inline
+  // source, and the upstream transport has one representation for both.
+  | { type: 'document'; source: AnthropicImageSource; title?: string }
   | {
       type: 'tool_use';
       id: string;

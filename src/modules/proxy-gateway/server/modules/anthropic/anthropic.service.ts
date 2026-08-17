@@ -26,15 +26,56 @@ import {
   rebindAnthropicModelVariant,
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 
 @Injectable()
 export class AnthropicService extends BaseProxyService {
   constructor(
     @Inject(AccountLeaseService) accountLeaseService: AccountLeaseService,
     @Inject(GeminiClient) geminiClient: GeminiClient,
+    @Inject(GenerationConstraintsService) generationConstraints: GenerationConstraintsService,
+    @Inject(ProxyRetryService) retryPolicy: ProxyRetryService,
+    @Inject(ModelRoutingService) modelRoutingPolicy: ModelRoutingService,
   ) {
-    super(accountLeaseService, geminiClient);
+    super(
+      accountLeaseService,
+      geminiClient,
+      generationConstraints,
+      retryPolicy,
+      modelRoutingPolicy,
+    );
   }
+  /**
+   * `POST /v1/messages/count_tokens`.
+   *
+   * The body is converted by the same mapper the Messages endpoint uses, so the counted
+   * conversation is the one a real completion would have sent. Everything else that mapper
+   * produces -- generation config, tools, safety settings -- is dropped, because the upstream
+   * counting endpoint accepts only the contents and rejects the rest.
+   */
+  async handleAnthropicCountTokens(request: AnthropicChatRequest): Promise<number> {
+    const targetModel = this.resolveTargetModel(request.model);
+    this.logger.log(
+      `Anthropic count_tokens request received: model=${request.model}, mappedModel=${targetModel}`,
+    );
+
+    const requestUserAgent = await resolveRequestUserAgent();
+    const geminiBody = transformClaudeRequestIn(
+      this.toClaudeRequest(request),
+      '',
+      requestUserAgent,
+      targetModel,
+    );
+
+    return this.countTokensWithLease(
+      request.model,
+      geminiBody.request.contents ?? [],
+      'Anthropic-count_tokens',
+    );
+  }
+
   async handleAnthropicMessages(
     request: AnthropicChatRequest,
   ): Promise<AnthropicChatResponse | Observable<string>> {

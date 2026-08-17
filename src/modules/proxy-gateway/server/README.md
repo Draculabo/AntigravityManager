@@ -43,6 +43,8 @@ server/
 │  │  ├─ openai.module.ts                  # NestJS OpenAI module registration
 │  │  ├─ responses/                        # OpenAI Responses WebSocket protocol and session store
 │  │  │  ├─ openai-responses-session.store.ts
+│  │  │  ├─ openai-responses-session.service.ts   # Injectable, restart-surviving session store
+│  │  │  ├─ openai-responses-store.controller.ts  # GET/DELETE /v1/responses/{id}
 │  │  │  ├─ openai-responses-websocket.protocol.ts
 │  │  │  └─ openai-responses-websocket.server.ts
 │  │  └─ media/                            # Image and audio multipart input parsing & monitoring summary
@@ -121,6 +123,139 @@ When reading, updating, or refactoring code within this directory, strictly foll
 
 5. **NestJS Dependency Injection Standard**
    - All Services and Policies must be annotated with `@Injectable()` and provided via module metadata. Do not use `new` to instantiate Nest-managed services manually.
+
+---
+
+## 4a. Durable Proxy State
+
+State a client can still reference after the process goes away is kept in `~/.antigravity-agent/proxy-state/`, one JSON file per owner, through `shared/persistence/durable-record-store.ts`. Writes are atomic (temp file plus rename) and coalesced, records are bounded by both count and age, and a damaged file costs the affected records rather than the app's start.
+
+| owner | file | bounds | overrides |
+| :--- | :--- | :--- | :--- |
+| Responses sessions | `openai-responses-sessions.json` | 500 sessions, 1 hour since last use | `AGM_RESPONSES_SESSION_MAX_ENTRIES`, `AGM_RESPONSES_SESSION_TTL_MS` |
+| Stored chat completions | `openai-chat-completions.json` | 500 completions, 1 hour since last read | `AGM_STORED_COMPLETION_MAX_ENTRIES`, `AGM_STORED_COMPLETION_TTL_MS` |
+| Model route misses | `model-route-misses.json` | 50 ids, 30 days since last seen | `AGM_ROUTE_MISS_MAX_ENTRIES`, `AGM_ROUTE_MISS_TTL_MS` |
+| Batch jobs | `proxy-batches.json` | 200 batches, 48 hours | `AGM_BATCH_MAX_BATCHES`, `AGM_BATCH_TTL_MS` |
+
+`OpenAIResponsesSessionService` owns the file; the store class it extends defaults to memory only, and under the test runner the service takes no path at all, so no test can write into the real data directory.
+
+`GET /v1/responses/{id}` replays the payload the create call answered with and `DELETE /v1/responses/{id}` removes it; both answer 404 in OpenAI's error envelope for an id that is unknown, has aged out, or was created with `store: false`. A `previous_response_id` that cannot be resolved is answered the same way, because a client reads that as "start a fresh conversation" while an empty chain reads to the user as the assistant losing its memory.
+
+`POST /v1/chat/completions` accepts `store: true` on a unary request and keeps the `chat.completion` object it answered with, so `GET /v1/chat/completions/{id}` replays exactly that object -- choices, finish reasons, usage, model and creation time -- and a client that lost the connection reads its answer instead of paying for it twice. An id that was never stored or has aged out is 404, never an empty completion. `store: true` together with `stream: true` is refused with `param: "store"`, because a streamed answer is passed through chunk by chunk and no completion object is assembled to keep; answering 200 and keeping nothing would be a promise this route cannot fulfil.
+
+The two stores are separate files with separate ceilings. They have unrelated lifetimes and unrelated volumes, so a burst of stored completions must not evict live conversation state.
+
+This store is local. It preserves the client contract, but it is no provider-side cache: it saves no tokens and is unreadable from another machine.
+
+Deliberate deviation: `store: false` suppresses retrieval but not continuation. OpenAI refuses both, and this gateway's clients chain with `previous_response_id` while sending `store: false`, so refusing the chain would break them silently for a property they do not use.
+
+---
+
+## 4b. v1internal Diagnostic Passthrough
+
+This surface is absent by default. Set `AGM_V1INTERNAL_PASSTHROUGH=1` **before the proxy starts** to register `POST /v1internal/{verb}`; the variable is read once while Nest assembles its controller graph, so changing it afterwards cannot open the route. It exists to measure what a vendor method actually answers and must not be enabled for normal proxy use.
+
+It forwards the JSON body unchanged to `https://cloudcode-pa.googleapis.com/v1internal:{verb}` through the existing authorised transport, and it is behind `ProxyGuard` like every other route. The reply preserves Google's status and raw text body, reflects only the correlation headers (`content-type`, `retry-after`, `x-cloud-trace-context`, `x-goog-request-id`, `x-request-id`), and adds `x-antigravity-v1internal-account-id` / `x-antigravity-v1internal-account-email` so it is clear whose quota was charged. The account comes from the normal lease.
+
+Why it is worth having: a claim about the upstream envelope -- that it carries a `traceId`, that a verb is unimplemented -- cannot be checked from inside this codebase, because every product path renders the answer through a mapper first. Verbs are restricted to a plain method name, so nothing but a method name can be appended to the upstream URL.
+
+```bash
+curl -i http://127.0.0.1:8045/v1internal/countTokens \
+  -H 'authorization: Bearer <the proxy api key>' \
+  -H 'content-type: application/json' \
+  --data '{"request":{"model":"models/gemini-3-flash","contents":[{"role":"user","parts":[{"text":"hi"}]}]}}'
+```
+
+Compare the HTTP status and the raw body rather than a locally rendered wrapper: a rejected verb comes back as Google's own error envelope.
+
+---
+
+## 4c. Local Files API -- a Local Store, Not a Provider File Plane
+
+The provider surface this proxy speaks to (`v1internal` on `cloudcode-pa`) has no file plane at all: no upload method, no `files/*` resource, no `fileUri` fetch. What its generate call does accept is `inlineData`. So `modules/files/` is a **local** content-addressed store: a client uploads once and references the handle afterwards, and the bytes still travel to Google inline on every reference. None of the token savings a provider-side file cache would give are claimed here.
+
+The store is protocol-agnostic and Nest-injectable. It lives in `<agent dir>/proxy-files` (`index.json`, `blobs/<aa>/<sha256>`, `tmp/`), addresses content by sha256 so identical bytes cost one blob, holds 20 MiB per file and 512 MiB per store with `413`-shaped errors, expires handles after 48 hours and sweeps at startup, on a timer and before every listing. Both blobs and index are written to `tmp/` and renamed into place, so a kill mid-write can leave a stray temp file but never a half-written blob the index already advertises.
+
+Three thin adapters sit over one store, so a file uploaded through any surface can be read from the others:
+
+| surface | routes | id spelling |
+| :--- | :--- | :--- |
+| Gemini | `POST /upload/v1beta/files`, `GET /v1beta/files`, `GET|DELETE /v1beta/files/{name}` | `files/{id}` |
+| OpenAI | `POST|GET /v1/files`, `GET|DELETE /v1/files/{id}`, `GET /v1/files/{id}/content` | `file-{id}` |
+| Anthropic | same `/v1/files` routes | `file_{id}` |
+
+OpenAI and Anthropic publish at exactly the same path, so the dialect is chosen per request from the headers: any `anthropic-version` or `anthropic-beta` means Anthropic, everything else is OpenAI. The Anthropic Files beta `files-api-2025-04-14` is required and named in the error when it is missing -- it doubles as the signal that says which dialect the caller wants, and guessing wrong would return an OpenAI-shaped body to an Anthropic SDK.
+
+Two rules that are properties, not preferences, each covered by a test verified to fail without it:
+
+- **Handles are generated, never client strings.** A supplied id is matched against the issued pattern before anything opens the store, so `../secrets` is reported as never issued rather than sanitised, and no client string reaches the filesystem.
+- **The declared MIME type is a claim, and magic bytes overrule it.** Upstream rejects a mislabelled `inlineData` part at generation time with an opaque provider error; sniffing at upload means the mismatch is corrected once, where the client can still see it.
+
+OpenAI purposes are limited to `user_data`, `vision` and `assistants_input`. `fine-tune`, `batch` and the Assistants output purposes are refused at upload rather than accepted and left quietly useless, because there is no fine-tuning, batching or Assistants runtime behind this proxy.
+
+Handles are expanded into inline content on the way upstream, in one place for all four request surfaces (`modules/files/file-reference-expander.ts`), because the provider has no file plane to forward a reference to. Gemini's `fileData.fileUri` becomes `inlineData`; an Anthropic `image` or `document` block with a `file` source becomes a base64 source, which the Claude mapper already turns into the same `inlineData`; an OpenAI chat `file` part becomes an image or a `file_data` data URL by MIME type; and `input_image` / `input_file` do the same on the Responses surface. A request that names no handle is returned untouched, so the ordinary path pays one walk and no copy.
+
+Expansion is **fail-closed**. A handle this proxy never issued, one that has expired, and a request arriving when no store is wired are all errors in the caller's own dialect. None of them is dropped, forwarded upstream as an opaque reference, or replaced with an empty part -- upstream would answer any of those with a confusing provider error about content it never received.
+
+`POST /upload/v1beta/files` accepts Google's simple media form, where the whole body is the file. That needs a raw body parser, registered at boot for media content types only and with its own body limit: `application/json` and `multipart/form-data` already have exact-match parsers and Fastify prefers an exact match over a matcher, so every existing route keeps both its parser and its current ceiling.
+
+### OpenAI Uploads protocol
+
+`modules/uploads/` serves `POST /v1/uploads`, `POST /v1/uploads/{id}/parts`, `POST /v1/uploads/{id}/complete` and `POST /v1/uploads/{id}/cancel`. It is not a second capability -- it is a session protocol over the same store above: `create` opens an expiring, in-memory session that only remembers the declared byte count, filename, MIME type and purpose; `parts` retains multipart chunks against that session; `complete` names their ids in assembly order, checks that the concatenated bytes match what was declared, and writes exactly one ordinary `file-…` record through `FileContentStore`. The session and its part buffers are discarded the moment `complete` or `cancel` runs.
+
+Pending sessions are bounded three ways, matching the store they feed into: by size (a declared byte count over the per-file ceiling is refused at `create`, before any bytes are accepted), by time (a session expires one hour after `create` and answers `upload_expired` rather than silently taking more parts), and by count (a fixed ceiling on sessions held in memory at once, refused with `429` once reached). A sweep on the same interval as the file store's own reclaims sessions abandoned past their expiry, so an incomplete upload has no durable footprint and cannot accumulate.
+
+`bytes` at `complete` is a claim the assembled parts must match exactly; a short or long result is `byte_count_mismatch` in OpenAI's envelope with `param: "bytes"`, never a silent concatenation. `upload_id` and `part_id` are opaque server-issued strings, checked the same way a file handle is -- never built into a path.
+
+As with Files, this is **local** session state, not provider-side storage: the file `complete` produces is read back through the ordinary `/v1/files` surface, and every later reference to it still travels to Google inline. No token saving is claimed here either.
+## 4d. Local Batch Runner (core only, no protocol surfaces yet)
+
+`modules/batch/` is a **local deferred-job runner** over the same `generateContent`-family
+calls the proxy already makes for interactive traffic. The provider (`v1internal` on
+`cloudcode-pa`) has no batch plane at all -- no batch resource, no deferred submission, no
+server-side job -- so this exists to give a client that only speaks batch a real
+implementation of the client-facing contract: submit a set of requests, poll, collect
+results line by line, survive a dropped connection and an app restart.
+
+**It is not the economics of a real batch API.** There is no 50% discount, no separate
+quota pool, and no separate rate limit. Every request costs exactly what it would cost sent
+normally, right now, against the same account leases and the same rate-limit tracking
+interactive traffic uses. Do not describe it to a client as cheaper or faster than a
+unary call.
+
+This module currently has **zero controllers** and is not reachable from any HTTP route. It
+ports only the runner's core:
+
+| file | responsibility |
+| :--- | :--- |
+| `batch-job.types.ts` | Job/request vocabulary, `BatchJobError`, defaults, id parsing/validation. |
+| `batch-job-transitions.ts` | Pure state transitions: restart recovery, cancellation, expiry, claiming, recording an outcome. |
+| `batch-request-executor.ts` | Runs one request line against a `BatchExecutionTarget`, isolating a failure to its own `custom_id`. |
+| `batch-runner.service.ts` | The durable, bounded, restartable job queue: concurrency, scheduling, persistence. |
+| `batch-store-location.ts` | Resolves the backing file under `getProxyStateDir()`, with the usual test-runner path suppression. |
+| `batch.module.ts` | Wires the runner to `OpenAIService` / `AnthropicService` / `GeminiService` through a `BATCH_EXECUTION_TARGET` DI token, so the runner itself never imports a protocol service directly. |
+
+State lives in one `DurableRecordStore` at `proxy-state/proxy-batches.json`, bounded by count
+(`AGM_BATCH_MAX_BATCHES`, default 200) and age (`AGM_BATCH_TTL_MS`, default 48h). Concurrency
+defaults to 2 in-flight requests (`AGM_BATCH_MAX_CONCURRENCY`) because the proxy has no global
+concurrency limiter: account leasing hands out an account per request and rate-limit tracking
+only reacts to upstream 429s by locking that account out -- a lockout the interactive path then
+shares. A batch is by definition not urgent, so it deliberately leaves most of an account's
+headroom to whoever is waiting on a live response.
+
+A request that fails is recorded against its own `custom_id` and the batch keeps going; a
+cancel stops everything not yet dispatched and discards the answer of anything already in
+flight; a batch that outlives its completion window (`AGM_BATCH_MAX_REQUESTS`,
+`DEFAULT_COMPLETION_WINDOW_MS`) is expired on read rather than on a timer, and whatever never
+ran is marked `expired` while whatever did keeps its real outcome. A kill mid-flight is survived:
+a fresh `BatchRunnerService` over the same file resets whatever was `running` back to `pending`
+and retries it from the top.
+
+Client-facing protocol surfaces -- `POST /v1/batches`, `/v1/messages/batches`,
+`:batchGenerateContent`, `/v1beta/operations` -- are a separate task. They need a local Files
+API this branch does not have yet, and OpenAI's `/v1/responses` batch endpoint is refused by the
+executor today for the same reason: claiming an endpoint works before the conversion it needs is
+wired would be exactly the kind of promise this port refuses to make.
 
 ---
 

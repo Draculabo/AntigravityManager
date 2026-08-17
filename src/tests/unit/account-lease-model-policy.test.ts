@@ -35,6 +35,72 @@ function createPolicy(tokenCache: Map<string, AccountLeaseTokenData>) {
 }
 
 describe('AccountLeaseModelPolicy', () => {
+  describe('output limit precedence', () => {
+    // Rule: provider `ModelDetails` from the quota payload wins, persisted `model_limits`
+    // is the compatibility layer beneath it, and static specs stay the last resort in
+    // `GenerationConstraintsService`.
+    it('prefers the provider cap over persisted compatibility data', () => {
+      const tokenCache = new Map([
+        [
+          'acc-1',
+          createToken({
+            model_limits: { 'gemini-3-flash': 8192 },
+            quota: {
+              models: {
+                'gemini-3-flash': {
+                  percentage: 100,
+                  resetTime: '',
+                  max_output_tokens: 65536,
+                },
+              },
+            },
+          }),
+        ],
+      ]);
+      const { policy } = createPolicy(tokenCache);
+
+      expect(policy.getModelOutputLimitForAccount('acc-1', 'gemini-3-flash')).toBe(65536);
+    });
+
+    it('falls back to persisted data when the provider declares no cap', () => {
+      const tokenCache = new Map([
+        [
+          'acc-1',
+          createToken({
+            model_limits: { 'gemini-3-flash': 8192 },
+            quota: {
+              models: {
+                'gemini-3-flash': { percentage: 100, resetTime: '' },
+              },
+            },
+          }),
+        ],
+      ]);
+      const { policy } = createPolicy(tokenCache);
+
+      expect(policy.getModelOutputLimitForAccount('acc-1', 'gemini-3-flash')).toBe(8192);
+    });
+
+    it('ignores a non-positive provider cap rather than trusting it', () => {
+      const tokenCache = new Map([
+        [
+          'acc-1',
+          createToken({
+            model_limits: { 'gemini-3-flash': 8192 },
+            quota: {
+              models: {
+                'gemini-3-flash': { percentage: 100, resetTime: '', max_output_tokens: 0 },
+              },
+            },
+          }),
+        ],
+      ]);
+      const { policy } = createPolicy(tokenCache);
+
+      expect(policy.getModelOutputLimitForAccount('acc-1', 'gemini-3-flash')).toBe(8192);
+    });
+  });
+
   it('distinguishes an exact model from a compatible family fallback', () => {
     const tokenCache = new Map([
       [

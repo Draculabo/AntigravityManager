@@ -3,6 +3,7 @@ import { FastifyReply } from 'fastify';
 import { isFunction, isObjectLike, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import type { FileReferenceError } from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
 
 export abstract class BaseProxyController {
   protected readonly logger = new Logger(this.constructor.name);
@@ -77,6 +78,45 @@ export abstract class BaseProxyController {
 
   private resolveErrorMessageText(error: unknown): string {
     return error instanceof Error ? error.message : 'Internal Server Error';
+  }
+
+  /**
+   * Answers a file handle this proxy cannot resolve, in the caller's dialect.
+   *
+   * It is deliberately not routed through the generic error senders: those
+   * report `server_error`, and an unknown or expired handle is the client's
+   * request being wrong about what exists, not this gateway failing.
+   */
+  protected sendFileReferenceError(
+    res: FastifyReply,
+    dialect: 'anthropic' | 'gemini' | 'openai',
+    error: FileReferenceError,
+  ): void {
+    if (dialect === 'anthropic') {
+      res.status(error.httpStatus).send({
+        type: 'error',
+        error: { type: 'invalid_request_error', message: error.message },
+      });
+      return;
+    }
+    if (dialect === 'gemini') {
+      res.status(error.httpStatus).send({
+        error: {
+          code: error.httpStatus,
+          message: error.message,
+          status: error.httpStatus === 404 ? 'NOT_FOUND' : 'INVALID_ARGUMENT',
+        },
+      });
+      return;
+    }
+    res.status(error.httpStatus).send({
+      error: {
+        code: 'file_not_found',
+        message: error.message,
+        param: error.param,
+        type: 'invalid_request_error',
+      },
+    });
   }
 
   protected sendOpenAIErrorResponse(

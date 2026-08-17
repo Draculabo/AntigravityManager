@@ -15,7 +15,13 @@ import { isEmpty, isFunction, isNumber, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
+import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import {
+  expandFileReferences,
+  FileReferenceError,
+} from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
 import { GeminiService } from './gemini.service';
+import { InvalidCountTokensRequestError } from './gemini-count-tokens';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
@@ -42,6 +48,7 @@ export class GeminiController {
     @Optional()
     @Inject(AccountLeaseService)
     private readonly accountLeaseService?: AccountLeaseService,
+    @Optional() @Inject(FileContentStore) private readonly fileStore?: FileContentStore,
   ) {}
 
   @Get('models')
@@ -107,16 +114,34 @@ export class GeminiController {
     body: GeminiRequest,
     res: FastifyReply,
   ): Promise<void> {
-    if (action === 'countTokens') {
-      res.status(HttpStatus.OK).send({
-        totalTokens: 0,
-      });
-      return;
+    let request: GeminiRequest;
+    try {
+      // Handles become inline bytes before anything else reads the request:
+      // the upstream transport has no file plane to forward a `fileUri` to.
+      request = await expandFileReferences(body, 'gemini', this.fileStore);
+    } catch (error) {
+      if (error instanceof FileReferenceError) {
+        res.status(error.httpStatus).send({
+          error: {
+            code: error.httpStatus,
+            message: error.message,
+            status: error.httpStatus === 404 ? 'NOT_FOUND' : 'INVALID_ARGUMENT',
+          },
+        });
+        return;
+      }
+      throw error;
     }
 
     try {
+      if (action === 'countTokens') {
+        const totalTokens = await this.proxyService.handleGeminiCountTokens(model, request);
+        res.status(HttpStatus.OK).send({ totalTokens });
+        return;
+      }
+
       if (action === 'streamGenerateContent') {
-        const stream = await this.proxyService.handleGeminiStreamGenerateContent(model, body);
+        const stream = await this.proxyService.handleGeminiStreamGenerateContent(model, request);
         if (stream instanceof Observable) {
           this.writeObservableSseResponse(res, stream);
           return;
@@ -124,7 +149,7 @@ export class GeminiController {
       }
 
       if (action === 'generateContent') {
-        const result = await this.proxyService.handleGeminiGenerateContent(model, body);
+        const result = await this.proxyService.handleGeminiGenerateContent(model, request);
         res.status(HttpStatus.OK).send(this.buildNormalizedGeminiGenerateResponse(result));
         return;
       }
@@ -137,6 +162,17 @@ export class GeminiController {
         },
       });
     } catch (error) {
+      if (error instanceof InvalidCountTokensRequestError) {
+        res.status(HttpStatus.BAD_REQUEST).send({
+          error: {
+            code: HttpStatus.BAD_REQUEST,
+            message: error.message,
+            status: 'INVALID_ARGUMENT',
+          },
+        });
+        return;
+      }
+
       const message = error instanceof Error ? error.message : 'Internal Server Error';
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
         error: {

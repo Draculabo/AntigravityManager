@@ -10,6 +10,28 @@ import { GeminiClient } from '../../modules/proxy-gateway/server/modules/gemini/
 import { setServerConfig } from '../../server/server-config';
 import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
+import { GenerationConstraintsService } from '../../modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { ModelRoutingService } from '../../modules/proxy-gateway/server/shared/services/model-routing.service';
+import { ProxyRetryService } from '../../modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { proxyModelAvailabilityStore } from '../../modules/proxy-gateway/server/shared/services/model-availability.service';
+
+// The three services the protocol services used to build for themselves. Real instances:
+// these tests drive the retry path, so a placeholder would change what is under test.
+function sharedProxyServices(): [
+  GenerationConstraintsService,
+  ProxyRetryService,
+  ModelRoutingService,
+] {
+  return [
+    new GenerationConstraintsService(mockAccountLeaseService as any),
+    new ProxyRetryService(
+      mockAccountLeaseService as any,
+      { log: () => {}, warn: () => {} },
+      proxyModelAvailabilityStore,
+    ),
+    new ModelRoutingService(),
+  ];
+}
 
 // Mock dependencies
 const mockAccountLeaseService = {
@@ -47,7 +69,12 @@ class TestableOpenAIService extends OpenAIService {
     super(
       mockAccountLeaseService as any,
       mockGeminiClient as any,
-      new GeminiService(mockAccountLeaseService as any, mockGeminiClient as any),
+      new GeminiService(
+        mockAccountLeaseService as any,
+        mockGeminiClient as any,
+        ...sharedProxyServices(),
+      ),
+      ...sharedProxyServices(),
     );
   }
 
@@ -58,7 +85,7 @@ class TestableOpenAIService extends OpenAIService {
 
 class TestableAnthropicService extends AnthropicService {
   constructor() {
-    super(mockAccountLeaseService as any, mockGeminiClient as any);
+    super(mockAccountLeaseService as any, mockGeminiClient as any, ...sharedProxyServices());
   }
 
   public testProcessStream(stream: any, model: string = 'model'): Observable<string> {
@@ -68,7 +95,7 @@ class TestableAnthropicService extends AnthropicService {
 
 class TestableGeminiService extends GeminiService {
   constructor() {
-    super(mockAccountLeaseService as any, mockGeminiClient as any);
+    super(mockAccountLeaseService as any, mockGeminiClient as any, ...sharedProxyServices());
   }
 
   public testPassthroughStream(stream: any): Observable<string> {
