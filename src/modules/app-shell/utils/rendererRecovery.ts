@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import type { RenderProcessGoneDetails } from 'electron';
 
-type RendererGoneReason = RenderProcessGoneDetails['reason'];
+type RendererGoneReason = RenderProcessGoneDetails['reason'] | 'memory-eviction';
 
 const RECOVERABLE_REASONS = new Set<RendererGoneReason>([
   'abnormal-exit',
