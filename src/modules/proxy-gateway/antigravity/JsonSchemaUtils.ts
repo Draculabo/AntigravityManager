@@ -148,6 +148,31 @@ function cleanJsonSchemaRecursive(value: any) {
     // 2. Collect and process validation fields (Migration logic: Downgrade constraints to Hints in description)
     const constraints: string[] = [];
 
+    const enumValues = map.enum;
+    if (enumValues !== undefined) {
+      if (!isArray(enumValues)) {
+        delete map.enum;
+      } else {
+        const primitiveEnumValues = enumValues.filter(
+          (enumValue: unknown) =>
+            isString(enumValue) || isNumber(enumValue) || isBoolean(enumValue),
+        );
+
+        if (primitiveEnumValues.length === 0) {
+          delete map.enum;
+        } else if (primitiveEnumValues.every(isString)) {
+          if (primitiveEnumValues.length !== enumValues.length) {
+            map.enum = primitiveEnumValues;
+          }
+        } else if (isString(map.type) && map.type.toLowerCase() === 'string') {
+          map.enum = primitiveEnumValues.map(String);
+        } else {
+          constraints.push(`enum: ${primitiveEnumValues.join(', ')}`);
+          delete map.enum;
+        }
+      }
+    }
+
     // Validation fields blacklist for migration
     const validationFields = [
       ['pattern', 'pattern'],
