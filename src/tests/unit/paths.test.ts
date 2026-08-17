@@ -106,41 +106,44 @@ describe('Path Utilities', () => {
   });
 
   it('should get correct executable path', async () => {
-    vi.spyOn(fs, 'existsSync').mockImplementation((candidate) => {
-      const candidateStr = String(candidate);
-      if (process.platform === 'linux') {
-        return candidateStr === '/usr/share/antigravity/antigravity';
-      } else if (process.platform === 'darwin') {
-        return candidateStr === '/Applications/Antigravity.app/Contents/MacOS/Antigravity';
-      }
-      return false;
-    });
+    vi.spyOn(fs, 'existsSync').mockImplementation(
+      (candidate) => String(candidate) === '/usr/share/antigravity/antigravity',
+    );
     const paths = await import('../../shared/platform/paths');
-    const execPath = paths.getAntigravityExecutablePath();
 
-    const expectedPath =
-      process.platform === 'darwin'
-        ? '/Applications/Antigravity.app/Contents/MacOS/Antigravity'
-        : process.platform === 'linux'
-          ? '/usr/share/antigravity/antigravity'
-          : '';
-    expect(execPath).toBe(expectedPath);
+    // Stating plain Linux is the point: the case used to branch on the host platform, so on a
+    // WSL host it asserted the Linux install while the code correctly resolved the Windows build.
+    expect(paths.getAntigravityExecutablePath(undefined, { platform: 'linux', isWsl: false })).toBe(
+      '/usr/share/antigravity/antigravity',
+    );
+  });
+
+  it('should resolve the Windows install when Linux is really WSL', async () => {
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+    childProcessMock.execSync.mockReturnValue('alice\r\n');
+    const paths = await import('../../shared/platform/paths');
+
+    expect(paths.getAntigravityExecutablePath(undefined, { platform: 'linux', isWsl: true })).toBe(
+      '/mnt/c/Users/alice/AppData/Local/Programs/Antigravity/Antigravity.exe',
+    );
   });
 
   it('should skip non-writable derived portable user-data paths on Linux', async () => {
     vi.resetModules();
-    setPlatform('linux');
     vi.spyOn(os, 'homedir').mockReturnValue('/home/alice');
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       return String(candidatePath) === '/usr/bin/antigravity';
     });
 
     const paths = await import('../../shared/platform/paths');
+    // Plain Linux is stated, not assumed: under WSL the code resolves the Windows build, so a
+    // case that asserts the Linux answer while running on WSL asserts a branch it never reaches.
+    const options = { platform: 'linux', isWsl: false } as const;
 
-    expect(paths.getAntigravityDbPath()).toBe(
+    expect(paths.getAntigravityDbPath(undefined, options)).toBe(
       '/home/alice/.config/Antigravity/User/globalStorage/state.vscdb',
     );
-    expect(paths.getAntigravityStoragePath()).toBe(
+    expect(paths.getAntigravityStoragePath(undefined, options)).toBe(
       '/home/alice/.config/Antigravity/User/globalStorage/storage.json',
     );
   });
