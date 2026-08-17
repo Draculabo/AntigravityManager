@@ -123,4 +123,43 @@ describe('SERVABLE_BATCH_ENDPOINTS', () => {
       expect.objectContaining({ contents: expect.any(Array) }),
     );
   });
+
+  /**
+   * `/v1/responses` is a declared partial-compatibility boundary, not an oversight, so the refusal
+   * is pinned rather than left to the shape of the constant. Serving it in a batch needs the
+   * Responses request/response conversion and its session resolution, both of which live inside
+   * `OpenAIController` today; lifting the limitation means moving that pipeline into the protocol
+   * module first, which is a separate change with its own review.
+   */
+  it('refuses an OpenAI batch aimed at /v1/responses, naming what it can serve', async () => {
+    const { requireServableEndpoint } =
+      await import('@/modules/proxy-gateway/server/modules/batch/openai-batch-resource');
+
+    expect(() => requireServableEndpoint('/v1/responses')).toThrow(
+      expect.objectContaining({
+        code: 'unservable_endpoint',
+        httpStatus: 400,
+        param: 'endpoint',
+        message: expect.stringContaining('/v1/chat/completions'),
+      }),
+    );
+  });
+
+  it('refuses to dispatch a job that already carries /v1/responses', async () => {
+    // Creation is one gate, dispatch is the other: a record that reached the runner some other
+    // way -- a store written by an older build, a resumed job -- must not slip past it either.
+    const { executeBatchRequest } =
+      await import('@/modules/proxy-gateway/server/modules/batch/batch-request-executor');
+    const target = createTarget(async () => ({ id: 'chatcmpl-1', choices: [] }));
+
+    const result = await executeBatchRequest(
+      { dialect: 'openai', endpoint: '/v1/responses' } as never,
+      { customId: 'line-1', body: { model: 'gpt-4o', messages: [] } } as never,
+      target as unknown as BatchExecutionTarget,
+    );
+
+    expect(result.outcome).toBe('errored');
+    expect(result.outcome === 'errored' && result.error.code).toBe('unservable_endpoint');
+    expect(target.handleChatCompletions).not.toHaveBeenCalled();
+  });
 });

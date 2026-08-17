@@ -23,7 +23,12 @@ describe('migrateLegacyModelAliases', () => {
       { alias: 'claude-sonnet-4-5', target: 'gemini-3-flash', enabled: true },
       { alias: 'gpt-4o', target: 'gemini-3-pro', enabled: true },
     ]);
-    expect(migrated.custom_mapping).toEqual({});
+    // The legacy maps stay as a projection of the enabled routes, so a rollback to a build that
+    // predates model_aliases still finds the aliases where it looks for them.
+    expect(migrated.custom_mapping).toEqual({
+      'claude-sonnet-4-5': 'gemini-3-flash',
+      'gpt-4o': 'gemini-3-pro',
+    });
     expect(migrated.anthropic_mapping).toEqual({});
   });
 
@@ -46,13 +51,32 @@ describe('migrateLegacyModelAliases', () => {
     const migrated = migrateLegacyModelAliases(
       proxyConfig({
         model_aliases: [{ alias: 'my-model', target: 'already-declared', enabled: false }],
-        anthropic_mapping: { 'My-Model': 'from-anthropic' },
+        anthropic_mapping: { 'my-model': 'from-anthropic' },
       }),
     );
 
     expect(migrated.model_aliases).toEqual([
       { alias: 'my-model', target: 'already-declared', enabled: false },
     ]);
+  });
+
+  it('keeps two aliases that differ only by case, because routing keeps them apart', () => {
+    // Routing is an exact object lookup, so both of these resolve today and to different targets.
+    // Case-insensitive dedupe would drop one and silently repoint the requests that used it.
+    const migrated = migrateLegacyModelAliases(
+      proxyConfig({
+        custom_mapping: { 'GPT-4o': 'gemini-3-pro', 'gpt-4o': 'gemini-3-flash' },
+      }),
+    );
+
+    expect(migrated.model_aliases).toEqual([
+      { alias: 'GPT-4o', target: 'gemini-3-pro', enabled: true },
+      { alias: 'gpt-4o', target: 'gemini-3-flash', enabled: true },
+    ]);
+    expect(getConfiguredModelMapping(migrated)).toEqual({
+      'GPT-4o': 'gemini-3-pro',
+      'gpt-4o': 'gemini-3-flash',
+    });
   });
 
   it('drops half-declared routes and trims what it keeps', () => {

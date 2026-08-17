@@ -57,7 +57,10 @@ describe('ConfigManager alias migration', () => {
       { alias: 'my-claude', target: 'gemini-3-flash', enabled: true },
       { alias: 'gpt-4o', target: 'gemini-3-pro', enabled: true },
     ]);
-    expect(loaded.proxy.custom_mapping).toEqual({});
+    expect(loaded.proxy.custom_mapping).toEqual({
+      'my-claude': 'gemini-3-flash',
+      'gpt-4o': 'gemini-3-pro',
+    });
     expect(loaded.proxy.anthropic_mapping).toEqual({});
   });
 
@@ -70,8 +73,40 @@ describe('ConfigManager alias migration', () => {
 
     const written = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     expect(written.proxy.model_aliases).toHaveLength(2);
-    expect(written.proxy.custom_mapping).toEqual({});
+    // Rollback safety: an older build reads custom_mapping and still finds both aliases.
+    expect(written.proxy.custom_mapping).toEqual({
+      'my-claude': 'gemini-3-flash',
+      'gpt-4o': 'gemini-3-pro',
+    });
     expect(written.proxy.anthropic_mapping).toEqual({});
+  });
+
+  it('keeps one pre-migration backup, and does not take a second on the next save', async () => {
+    writeLegacyConfig();
+    const backupPath = `${configPath}.pre-alias-migration.bak`;
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+
+    await ConfigManager.saveConfig(ConfigManager.loadConfig());
+    const firstBackup = fs.readFileSync(backupPath, 'utf-8');
+
+    // The snapshot is of the pre-migration file, so it must not carry the new field...
+    expect(firstBackup).not.toContain('model_aliases');
+    expect(JSON.parse(firstBackup).proxy.custom_mapping).toEqual({ 'gpt-4o': 'gemini-3-pro' });
+
+    // ...and a later save must not overwrite it with an already-migrated config.
+    await ConfigManager.saveConfig(ConfigManager.loadConfig());
+    expect(fs.readFileSync(backupPath, 'utf-8')).toBe(firstBackup);
+  });
+
+  it('leaves no temporary file behind, so a reader never sees a half-written config', async () => {
+    writeLegacyConfig();
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+
+    await ConfigManager.saveConfig(ConfigManager.loadConfig());
+
+    expect(fs.readdirSync(agentDir.value).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+    // The config still parses -- a rename either happened or did not, never halfway.
+    expect(() => JSON.parse(fs.readFileSync(configPath, 'utf-8'))).not.toThrow();
   });
 
   it('migrates a config handed straight to save without a load', async () => {
@@ -88,6 +123,8 @@ describe('ConfigManager alias migration', () => {
     expect(written.proxy.model_aliases).toEqual([
       { alias: 'gpt-4o', target: 'gemini-3-pro', enabled: true },
     ]);
-    expect(ConfigManager.getCachedConfig()?.proxy.custom_mapping).toEqual({});
+    expect(ConfigManager.getCachedConfig()?.proxy.custom_mapping).toEqual({
+      'gpt-4o': 'gemini-3-pro',
+    });
   });
 });

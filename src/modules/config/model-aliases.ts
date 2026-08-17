@@ -13,13 +13,16 @@ function appendRoute(
 ): void {
   const alias = normalizeRoutePart(aliasValue);
   const target = normalizeRoutePart(targetValue);
-  const key = alias.toLowerCase();
 
-  if (!alias || !target || seenAliases.has(key)) {
+  // Case-sensitive, because routing is: `configuredMapping[normalizedModel]` is an exact object
+  // lookup, so `GPT-4o` and `gpt-4o` are two different routes that both work today. Deduplicating
+  // case-insensitively here would drop one of them and silently change where a request goes --
+  // the one thing a migration must never do.
+  if (!alias || !target || seenAliases.has(alias)) {
     return;
   }
 
-  seenAliases.add(key);
+  seenAliases.add(alias);
   routes.push({ alias, target, enabled });
 }
 
@@ -64,9 +67,28 @@ export function migrateLegacyModelAliases(proxy: ProxyConfig): ProxyConfig {
   return {
     ...proxy,
     model_aliases: routes,
-    custom_mapping: {},
+    // The legacy maps are kept as a **derived projection** of the enabled routes rather than
+    // emptied, so a user who rolls back to a build that predates `model_aliases` still finds
+    // their aliases where that build looks for them. They are regenerated from the list on every
+    // save, never merged into it, so deleting a route here deletes it there too. A later release
+    // can drop this projection once rolling back that far stops being supported.
+    custom_mapping: projectRoutesToLegacyMapping(routes),
     anthropic_mapping: {},
   };
+}
+
+function projectRoutesToLegacyMapping(routes: ModelAliasRoute[]): Record<string, string> {
+  const mapping: Record<string, string> = {};
+
+  for (const route of routes) {
+    if (route.enabled === false) {
+      continue;
+    }
+
+    mapping[route.alias] = route.target;
+  }
+
+  return mapping;
 }
 
 /**

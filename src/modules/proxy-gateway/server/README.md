@@ -271,6 +271,15 @@ to the right handler, so their entries in `SERVABLE_BATCH_ENDPOINTS` (`/v1/messa
 `generateContent` action every Gemini batch line ultimately dispatches to) document, and their
 own tests prove, the one path each surface actually wires up.
 
+This is a **declared partial-compatibility surface**, not an omission, and it is pinned as one:
+`batch-servable-endpoints.test.ts` asserts that `/v1/responses` is refused at creation
+(`unservable_endpoint`, `400`, `param: "endpoint"`, naming what can be served) and again at
+dispatch, so a record that reaches the runner some other way -- a store written by an older build,
+a resumed job -- cannot slip past. Lifting the limitation means moving the Responses
+request/response conversion and its `previous_response_id` session resolution out of
+`OpenAIController` and into the protocol module, where the batch executor can reach it; that is a
+change with its own review, not a flag flip here.
+
 **OpenAI input/output go through the local Files API.** A client uploads its JSONL request
 file through `/v1/files` first (purpose `batch`), references it as `input_file_id`, and the
 runner reads it back with `FileContentStore.get()` -- never by treating the client-supplied id
