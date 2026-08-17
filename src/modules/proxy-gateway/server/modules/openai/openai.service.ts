@@ -86,10 +86,13 @@ export class OpenAIService extends BaseProxyService {
     const sessionKey = this.extractOpenAISessionKey(request);
     const clientToolNames = extractOpenAIToolNames(routedRequest.tools);
 
-    const targetModel = this.resolveTargetModel(routedRequest.model);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(
+      routedRequest.model,
+    );
+    const targetModel = routeResolution.resolvedModel;
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
-      `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}`,
+      `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}`,
     );
 
     // Retry loop for account selection

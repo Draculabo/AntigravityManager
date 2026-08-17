@@ -314,6 +314,38 @@ old API always emitted. Streaming is refused with a `400` rather than half-serve
 
 ---
 
+## 4e. Model Aliases and Route Diagnostics
+
+User-declared aliases live in one ordered list, `proxy.model_aliases`, replacing the two maps
+that carried them before (`custom_mapping` and `anthropic_mapping`). A list can say two things
+an object could not: the order the user arranged, and `enabled: false` -- an alias parked
+without losing what it pointed at.
+
+`migrateLegacyModelAliases` (`modules/config/model-aliases.ts`) folds the old maps into the list
+on load and on save, and is idempotent so it can run on both. It folds `anthropic_mapping`
+**first**, because routing merged the two as `{...custom_mapping, ...anthropic_mapping}` and the
+Anthropic entry is therefore the one deciding a request today; first-entry-wins dedupe has to see
+it first or an alias would quietly change target during the migration.
+
+`getConfiguredModelMapping` projects the enabled routes into the exact-map shape the routing
+engine and both model catalogs already consumed, which is why neither signature had to change.
+One projection serves all three call sites on purpose: a retired alias must neither route a
+request nor appear in a published catalog, and asking the same function is what keeps
+`GET /v1/models`, Gemini's `models` listing and the router from disagreeing.
+
+Routing itself answers with a **reason**, not just a target. `ModelRoutingService.resolveModelRoute`
+returns `{requestedModel, normalizedModel, resolvedModel, source}`, where `source` separates
+`canonical` (a rule fired and its target is the key itself) from `built-in`, `configured`,
+`dynamic-legacy` and `miss`. That distinction is the whole point: `mapClaudeModelToGemini`
+returns its input unchanged both for a supported model and for a model nothing knows about, so
+"did any rule fire" could not be asked before.
+
+`miss` is the only case the route-miss journal records, and `resolveModelRouteForRequest` is the
+single per-request entry point that records it. Handlers that need the target again downstream
+(`countTokensWithLease`) call `resolveTargetModel`, so one request is never counted twice.
+
+---
+
 ## 5. Verification & Development Checklist
 
 After modifying files in `server/`, execute the following verification steps in order:

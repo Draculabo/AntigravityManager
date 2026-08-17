@@ -56,9 +56,10 @@ export class AnthropicService extends BaseProxyService {
    * counting endpoint accepts only the contents and rejects the rest.
    */
   async handleAnthropicCountTokens(request: AnthropicChatRequest): Promise<number> {
-    const targetModel = this.resolveTargetModel(request.model);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(request.model);
+    const targetModel = routeResolution.resolvedModel;
     this.logger.log(
-      `Anthropic count_tokens request received: model=${request.model}, mappedModel=${targetModel}`,
+      `Anthropic count_tokens request received: model=${request.model}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
 
     const requestUserAgent = await resolveRequestUserAgent();
@@ -86,10 +87,13 @@ export class AnthropicService extends BaseProxyService {
       (message) => message.role !== 'system',
     ).length;
 
-    const targetModel = this.resolveTargetModel(routedRequest.model);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(
+      routedRequest.model,
+    );
+    const targetModel = routeResolution.resolvedModel;
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
-      `Anthropic request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}`,
+      `Anthropic request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}`,
     );
 
     // Retry loop

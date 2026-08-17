@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { AppConfig, DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { migrateLegacyModelAliases } from '@/modules/config/model-aliases';
 import { getAgentDir } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
 
@@ -56,6 +57,10 @@ export class ConfigManager {
       // Handle Anthropic Mapping Map vs Object
       // In JSON it's object
 
+      // The two legacy mapping objects become alias routes here, so everything downstream of a
+      // load reads one list. The file itself is only rewritten on the next save.
+      merged.proxy = migrateLegacyModelAliases(merged.proxy);
+
       this.cachedConfig = merged;
       return merged;
     } catch (e) {
@@ -71,13 +76,19 @@ export class ConfigManager {
 
   static async saveConfig(config: AppConfig): Promise<void> {
     const configPath = this.getConfigPath();
-    const content = JSON.stringify(config, null, 2);
+    // Migrating on save too is what actually retires the legacy maps on disk; a config that only
+    // ever loads would be rewritten with them still in place.
+    const migratedConfig: AppConfig = {
+      ...config,
+      proxy: migrateLegacyModelAliases(config.proxy),
+    };
+    const content = JSON.stringify(migratedConfig, null, 2);
 
     this.saveQueue = this.saveQueue
       .catch(() => undefined)
       .then(async () => {
         await fs.promises.writeFile(configPath, content, 'utf-8');
-        this.cachedConfig = config;
+        this.cachedConfig = migratedConfig;
         logger.info(`Config: Saved to ${configPath}`);
       })
       .catch((e) => {

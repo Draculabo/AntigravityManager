@@ -1,26 +1,64 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { getServerConfig } from '../../../../../server/server-config';
-import { normalizeGeminiModelAlias, resolveModelRoute } from '../../../antigravity/ModelMapping';
+import {
+  getDynamicForwardingTarget,
+  lookupBuiltInModelMapping,
+  lookupGeminiModelAlias,
+  normalizeGeminiModelAlias,
+} from '../../../antigravity/ModelMapping';
+import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
+import { ModelRouteMissJournalService } from './model-route-miss-journal.service';
+
+/**
+ * How a route was decided.
+ *
+ * `canonical` and `built-in` are both "a rule fired and it lives in the source" -- the
+ * difference is only whether the rule's target equals its own key (a supported model
+ * round-tripping to itself) or actually renames the id. `miss` is the only case where no rule
+ * fired anywhere and the client's string was forwarded unchanged; that is the one case the
+ * route-miss journal records.
+ */
+export type ModelRouteSource = 'canonical' | 'built-in' | 'configured' | 'dynamic-legacy' | 'miss';
+
+export interface ModelRouteResolution {
+  /** The model id exactly as the client sent it (before prefix stripping). */
+  requestedModel: string;
+  /** `requestedModel` with a leading `models/` stripped and whitespace trimmed. */
+  normalizedModel: string;
+  /** The id this gateway will send upstream. */
+  resolvedModel: string;
+  source: ModelRouteSource;
+}
+
+function normalizeModelId(model: string): string {
+  return model.replace(/^models\//i, '').trim();
+}
 
 @Injectable()
 export class ModelRoutingService {
+  public constructor(
+    @Optional()
+    @Inject(ModelRouteMissJournalService)
+    private readonly missJournal?: ModelRouteMissJournalService,
+  ) {}
+
   normalizeGeminiModel(model: string): string {
-    return model.replace(/^models\//i, '');
+    return normalizeModelId(model);
   }
 
-  resolveTargetModel(model: string): string {
-    const normalizedModel = model.replace(/^models\//i, '').trim();
+  /**
+   * Decides where `model` routes and why, without side effects. Safe to call any number of
+   * times for the same request -- unlike {@link resolveModelRouteForRequest}, it never touches
+   * the route-miss journal, so callers that only need the target id (or need to re-derive it
+   * downstream, as `countTokensWithLease` does) can call this freely.
+   */
+  resolveModelRoute(model: string): ModelRouteResolution {
+    const normalizedModel = normalizeModelId(model);
     const config = getServerConfig();
-    const configuredMapping = {
-      ...(config?.custom_mapping ?? {}),
-      ...(config?.anthropic_mapping ?? {}),
-    };
+    const configuredMapping = getConfiguredModelMapping(config);
 
     const customExactMapping: Record<string, string> = {};
-    const wildcardMapping: Array<{
-      pattern: RegExp;
-      target: string;
-    }> = [];
+    const wildcardMapping: Array<{ pattern: RegExp; target: string }> = [];
 
     for (const [key, target] of Object.entries(configuredMapping)) {
       if (!key || !target) {
@@ -41,12 +79,83 @@ export class ModelRoutingService {
 
     for (const wildcardRule of wildcardMapping) {
       if (wildcardRule.pattern.test(normalizedModel)) {
-        return wildcardRule.target;
+        return {
+          requestedModel: model,
+          normalizedModel,
+          resolvedModel: wildcardRule.target,
+          source: 'configured',
+        };
       }
     }
 
-    const routedModel = resolveModelRoute(normalizedModel, customExactMapping, {}, {});
-    return normalizeGeminiModelAlias(routedModel);
+    const dynamicForwarded = getDynamicForwardingTarget(normalizedModel);
+    if (dynamicForwarded) {
+      return {
+        requestedModel: model,
+        normalizedModel,
+        resolvedModel: normalizeGeminiModelAlias(dynamicForwarded),
+        source: 'dynamic-legacy',
+      };
+    }
+
+    if (customExactMapping[normalizedModel]) {
+      return {
+        requestedModel: model,
+        normalizedModel,
+        resolvedModel: normalizeGeminiModelAlias(customExactMapping[normalizedModel]),
+        source: 'configured',
+      };
+    }
+
+    // Family-group mapping (OpenAI/Anthropic series keyed config) is part of the underlying
+    // compat routing but is never reached here: this call site only ever has exact and wildcard
+    // user mappings, never the family-keyed maps that path checks.
+
+    const builtIn = lookupBuiltInModelMapping(normalizedModel);
+    if (builtIn !== undefined) {
+      const resolvedModel = normalizeGeminiModelAlias(builtIn);
+      return {
+        requestedModel: model,
+        normalizedModel,
+        resolvedModel,
+        source: resolvedModel === normalizedModel ? 'canonical' : 'built-in',
+      };
+    }
+
+    const aliasedFallback = lookupGeminiModelAlias(normalizedModel);
+    if (aliasedFallback !== undefined) {
+      return {
+        requestedModel: model,
+        normalizedModel,
+        resolvedModel: aliasedFallback,
+        source: 'built-in',
+      };
+    }
+
+    return {
+      requestedModel: model,
+      normalizedModel,
+      resolvedModel: normalizedModel,
+      source: 'miss',
+    };
+  }
+
+  /**
+   * The single per-request entry point: resolves the route and, if nothing matched, records the
+   * miss. Call this exactly once per incoming request -- protocol handlers that need the target
+   * model again downstream (as `countTokensWithLease` does) should read {@link resolveTargetModel}
+   * instead, so a request the journal already counted is never counted twice.
+   */
+  resolveModelRouteForRequest(model: string): ModelRouteResolution {
+    const resolution = this.resolveModelRoute(model);
+    if (resolution.source === 'miss') {
+      this.missJournal?.record(resolution.requestedModel);
+    }
+    return resolution;
+  }
+
+  resolveTargetModel(model: string): string {
+    return this.resolveModelRoute(model).resolvedModel;
   }
 
   createModelSpecificHeaders(model: string | undefined): Record<string, string> {

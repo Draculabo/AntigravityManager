@@ -16,6 +16,7 @@ import { isEmpty, isFunction, isNumber, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
+import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
 import {
   expandFileReferences,
@@ -244,7 +245,7 @@ export class GeminiController {
       ? this.accountLeaseService?.getAllRawQuotaModels()
       : this.accountLeaseService?.getAllCollectedModels();
     const dynamicModelIds = getAllDynamicModels(
-      config?.custom_mapping ?? {},
+      getConfiguredModelMapping(config),
       collectedModelIds,
       onlyRawQuotaModels,
     );
