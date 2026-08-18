@@ -83,6 +83,22 @@ describe('upstream 4xx capture', () => {
     });
   });
 
+  it('keeps capture files private on POSIX systems', async () => {
+    if (process.platform === 'win32') {
+      return;
+    }
+
+    await writeCapture();
+
+    const [file] = await captureFiles();
+    const captureDirectory = path.join(agentDirectory, CAPTURES_DIRECTORY);
+    const directoryMode = (await fs.stat(captureDirectory)).mode & 0o777;
+    const fileMode = (await fs.stat(path.join(captureDirectory, file))).mode & 0o777;
+
+    expect(directoryMode).toBe(0o700);
+    expect(fileMode).toBe(0o600);
+  });
+
   it('does not write a capture for a 2xx response', async () => {
     await writeCapture({ status: 200 });
 
