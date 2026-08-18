@@ -9,10 +9,8 @@ export class ModelRoutingService {
   resolveTargetModel(model: string): string {
     const normalizedModel = model.replace(/^models\//i, '').trim();
     const config = getServerConfig();
-    const configuredMapping = {
-      ...(config?.custom_mapping ?? {}),
-      ...(config?.anthropic_mapping ?? {}),
-    };
+    const customMapping = config?.custom_mapping ?? {};
+    const anthropicMapping = config?.anthropic_mapping ?? {};
 
     const customExactMapping: Record<string, string> = {};
     const wildcardMapping: Array<{
@@ -20,7 +18,7 @@ export class ModelRoutingService {
       target: string;
     }> = [];
 
-    for (const [key, target] of Object.entries(configuredMapping)) {
+    for (const [key, target] of Object.entries(customMapping)) {
       if (!key || !target) {
         continue;
       }
@@ -43,7 +41,7 @@ export class ModelRoutingService {
       }
     }
 
-    const routedModel = resolveModelRoute(normalizedModel, customExactMapping, {}, {});
+    const routedModel = resolveModelRoute(normalizedModel, customExactMapping, {}, anthropicMapping);
     return normalizeGeminiModelAlias(routedModel);
   }
 
