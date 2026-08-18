@@ -131,16 +131,16 @@ export class OpenAIResponsesStreamingMapper {
     }
 
     const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature);
+    if (part.functionCall) {
+      return this.processFunctionCall(part.functionCall, signature);
+    }
+
     if (signature) {
       SignatureStore.store(
         signature,
         this.options.signatureSessionKey,
         this.options.signatureMessageCount,
       );
-    }
-
-    if (part.functionCall) {
-      return this.processFunctionCall(part.functionCall);
     }
 
     if (part.thought && part.text) {
@@ -327,12 +327,21 @@ export class OpenAIResponsesStreamingMapper {
 
   private processFunctionCall(
     functionCall: NonNullable<GeminiResponsesStreamPart['functionCall']>,
+    signature: string | undefined,
   ): string[] {
     const splitName = splitNamespaceToolName(functionCall.name);
     const functionName = this.options.clientToolNames
       ? resolveShellToolName(splitName.name, this.options.clientToolNames)
       : splitName.name;
     const callId = functionCall.id || `call_${this.options.responseId}_${this.nextOutputIndex}`;
+    if (signature) {
+      SignatureStore.store(
+        signature,
+        this.options.signatureSessionKey,
+        this.options.signatureMessageCount,
+        callId,
+      );
+    }
     if (functionCall.id && this.emittedToolCallIds.has(callId)) {
       return [];
     }

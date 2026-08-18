@@ -2,9 +2,12 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { firstValueFrom, of } from 'rxjs';
 import {
+  getUpstreamCaptureContext,
   runWithUpstreamCaptureContext,
   type UpstreamCaptureContext,
+  UpstreamCaptureContextInterceptor,
 } from '@/modules/proxy-gateway/server/common/upstream-capture-context';
 import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
 
@@ -97,6 +100,45 @@ describe('upstream 4xx capture', () => {
     expect(await captureFiles()).toEqual([]);
   });
 
+  it('does not inspect or snapshot the request when capture is disabled', async () => {
+    delete process.env.AGM_UPSTREAM_4XX_CAPTURE;
+    const switchToHttp = vi.fn();
+    const next = { handle: vi.fn(() => of('ok')) };
+    const interceptor = new UpstreamCaptureContextInterceptor();
+
+    await firstValueFrom(interceptor.intercept({ switchToHttp } as never, next as never));
+
+    expect(switchToHttp).not.toHaveBeenCalled();
+    expect(next.handle).toHaveBeenCalledOnce();
+  });
+
+  it('keeps only diagnostic allowlisted headers in the capture context', async () => {
+    const interceptor = new UpstreamCaptureContextInterceptor();
+    let capturedHeaders: Record<string, unknown> | undefined;
+    const next = {
+      handle: () => {
+        capturedHeaders = getUpstreamCaptureContext()?.clientRequest.headers;
+        return of('ok');
+      },
+    };
+    const request = {
+      body: {},
+      headers: {
+        authorization: 'Bearer secret',
+        'content-type': 'application/json',
+        'x-debug-context': 'private metadata',
+      },
+      url: '/v1/chat/completions',
+    };
+
+    const context = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    };
+    await firstValueFrom(interceptor.intercept(context as never, next as never));
+
+    expect(capturedHeaders).toEqual({ 'content-type': 'application/json' });
+  });
+
   it('redacts secrets in client headers and both request bodies', async () => {
     const secret = 'do-not-write-this-secret';
     const capture = new Upstream4xxCaptureService();
@@ -138,6 +180,21 @@ describe('upstream 4xx capture', () => {
     expect(files).toHaveLength(50);
     expect(files).not.toContain(oldest);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'restricts capture directory and file permissions',
+    async () => {
+      await writeCapture();
+
+      const directory = path.join(agentDirectory, CAPTURES_DIRECTORY);
+      const [file] = await captureFiles();
+      const directoryMode = (await fs.stat(directory)).mode & 0o777;
+      const fileMode = (await fs.stat(path.join(directory, file))).mode & 0o777;
+
+      expect(directoryMode).toBe(0o700);
+      expect(fileMode).toBe(0o600);
+    },
+  );
 
   it('swallows a capture write failure', async () => {
     const writeFile = vi

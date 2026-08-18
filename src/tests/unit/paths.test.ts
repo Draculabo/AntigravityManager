@@ -837,7 +837,7 @@ describe('getAgyCliTokenPaths', () => {
     const exists = (candidate: string) =>
       ['/home/alice/.local/bin/agy', '/home/alice/.gemini/antigravity-cli'].includes(candidate);
 
-    const paths = await import('../../shared/platform/paths');
+    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({ exists, homeDirectory: '/home/alice', platform: 'linux' }),
@@ -850,7 +850,7 @@ describe('getAgyCliTokenPaths', () => {
     // first login, so a fresh install has neither the directory nor a token.
     const exists = (candidate: string) => candidate === '/home/alice/.local/bin/agy';
 
-    const paths = await import('../../shared/platform/paths');
+    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({ exists, homeDirectory: '/home/alice', platform: 'linux' }),
@@ -860,7 +860,7 @@ describe('getAgyCliTokenPaths', () => {
   it('offers no Antigravity CLI token when the CLI was never installed', async () => {
     setPlatform('linux');
 
-    const paths = await import('../../shared/platform/paths');
+    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({
@@ -881,17 +881,14 @@ describe('getAgyCliTokenPaths', () => {
         '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli',
       ].includes(candidate);
 
-    const paths = await import('../../shared/platform/paths');
+    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({
         exists,
         homeDirectory: 'C:\\Users\\Alice',
         listRunningWslDistros: () => ['Ubuntu-24.04'],
-        listWslHomeDirsForDistro: (distroRoot) => [
-          `${distroRoot}\\root`,
-          `${distroRoot}\\home\\alice`,
-        ],
+        resolveWslHomeForDistro: () => '/home/alice',
         platform: 'win32',
       }),
     ).toEqual([
@@ -910,15 +907,38 @@ describe('getAgyCliTokenPaths', () => {
         '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli',
       ].includes(candidate);
 
-    const paths = await import('../../shared/platform/paths');
+    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({
         exists,
         homeDirectory: 'C:\\Users\\Alice',
         listRunningWslDistros: () => ['Ubuntu-24.04'],
-        listWslHomeDirsForDistro: (distroRoot) => [`${distroRoot}\\home\\alice`],
+        resolveWslHomeForDistro: () => '/home/alice',
         platform: 'win32',
+      }),
+    ).toEqual([
+      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli\\antigravity-oauth-token',
+    ]);
+  });
+
+  it('does not target other WSL users when agy is installed system-wide', async () => {
+    setPlatform('win32');
+    const exists = (candidate: string) =>
+      [
+        '\\\\wsl.localhost\\Ubuntu-24.04\\usr\\bin\\agy',
+        '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli',
+        '\\\\wsl.localhost\\Ubuntu-24.04\\home\\bob\\.gemini\\antigravity-cli',
+      ].includes(candidate);
+    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+
+    expect(
+      paths.getAgyCliTokenPaths({
+        exists,
+        homeDirectory: 'C:\\Users\\Alice',
+        listRunningWslDistros: () => ['Ubuntu-24.04'],
+        platform: 'win32',
+        resolveWslHomeForDistro: () => '/home/alice',
       }),
     ).toEqual([
       '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli\\antigravity-oauth-token',
@@ -931,14 +951,14 @@ describe('getAgyCliTokenPaths', () => {
       candidate === 'C:\\Users\\Alice\\.local\\bin\\agy.exe' ||
       candidate === 'C:\\Users\\Alice\\.gemini\\antigravity-cli';
 
-    const paths = await import('../../shared/platform/paths');
+    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({
         exists,
         homeDirectory: 'C:\\Users\\Alice',
         listRunningWslDistros: () => ['Ubuntu-24.04'],
-        listWslHomeDirsForDistro: (distroRoot) => [`${distroRoot}\\home\\alice`],
+        resolveWslHomeForDistro: () => '/home/alice',
         platform: 'win32',
       }),
     ).toEqual(['C:\\Users\\Alice\\.gemini\\antigravity-cli\\antigravity-oauth-token']);
@@ -947,7 +967,7 @@ describe('getAgyCliTokenPaths', () => {
   it('does not create a token path for a directory that has no CLI install', async () => {
     setPlatform('linux');
 
-    const paths = await import('../../shared/platform/paths');
+    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
 
     const exists = vi.fn(() => false);
     expect(
@@ -961,7 +981,7 @@ describe('getAgyCliTokenPaths', () => {
     setPlatform('win32');
     const listRunningWslDistros = vi.fn(() => []);
 
-    const paths = await import('../../shared/platform/paths');
+    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({

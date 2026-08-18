@@ -26,13 +26,14 @@ interface PreparedInternalRequest {
 @Injectable()
 export class GeminiClient {
   private readonly logger = new Logger(GeminiClient.name);
-  private readonly upstream4xxCapture = new Upstream4xxCaptureService();
   // Default to v1beta for most features
   private readonly baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
   private readonly defaultInternalBaseUrls = [
     'https://cloudcode-pa.googleapis.com/v1internal',
     'https://daily-cloudcode-pa.googleapis.com/v1internal',
   ];
+
+  constructor(private readonly upstream4xxCapture: Upstream4xxCaptureService) {}
 
   async streamGenerate(
     model: string,

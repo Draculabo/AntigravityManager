@@ -740,7 +740,7 @@ function buildContents(
         toolIdToName.set(block.id, block.name);
         const finalSig =
           block.signature ||
-          SignatureStore.getForToolCall(block.id) ||
+          SignatureStore.getForToolCall(block.id, signatureSessionKey) ||
           lastThoughtSignature ||
           SignatureStore.getAt(signatureSessionKey, i) ||
           SignatureStore.get(signatureSessionKey);

@@ -133,9 +133,10 @@ converted upstream request/rejection) to `~/.antigravity-agent/captures/` every 
 `GeminiClient` receives a final 4xx from the upstream (Gemini is the shared transport for
 OpenAI, Anthropic and native Gemini requests). Off by default: capture is a diagnostic aid, not
 something every install should pay disk I/O for on every rejected request. Secrets are masked
-with `sanitizeObject` before anything is written, the directory is pruned to the newest 50
-files, and a capture failure (e.g. disk full) is logged and swallowed — it never turns the
-caller's 4xx into a 5xx.
+with `sanitizeObject` before anything is written, only diagnostic allowlisted request headers
+are retained, and POSIX capture directories/files use `0700`/`0600` permissions. The directory
+is pruned to the newest 50 files, and a capture failure (e.g. disk full) is logged and swallowed
+— it never turns the caller's 4xx into a 5xx.
 
 ---
 

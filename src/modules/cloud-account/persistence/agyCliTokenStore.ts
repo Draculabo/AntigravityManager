@@ -1,11 +1,21 @@
 import fs from 'fs';
+import { randomUUID } from 'node:crypto';
 import { logger } from '@/shared/logging/logger';
-import { getAgyCliTokenPaths } from '@/shared/platform/paths';
+import { getAgyCliTokenPaths } from './agyCliTokenPaths';
 
 function writeTokenFile(target: string, payload: string): void {
-  const tempPath = `${target}.agm-tmp`;
-  fs.writeFileSync(tempPath, payload, { encoding: 'utf-8', mode: 0o600 });
-  fs.renameSync(tempPath, target);
+  const tempPath = `${target}.${process.pid}-${randomUUID()}.agm-tmp`;
+  try {
+    fs.writeFileSync(tempPath, payload, { encoding: 'utf-8', mode: 0o600 });
+    fs.renameSync(tempPath, target);
+  } catch (error) {
+    try {
+      fs.rmSync(tempPath, { force: true });
+    } catch {
+      // Best-effort cleanup must not hide the original write failure.
+    }
+    throw error;
+  }
 }
 
 /**

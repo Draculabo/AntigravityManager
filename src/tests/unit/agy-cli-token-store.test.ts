@@ -7,7 +7,7 @@ const pathsMock = vi.hoisted(() => ({
   getAgyCliTokenPaths: vi.fn<() => string[]>(() => []),
 }));
 
-vi.mock('@/shared/platform/paths', () => ({
+vi.mock('@/modules/cloud-account/persistence/agyCliTokenPaths', () => ({
   getAgyCliTokenPaths: pathsMock.getAgyCliTokenPaths,
 }));
 
@@ -74,6 +74,22 @@ describe('writeAgyCliToken', () => {
 
     expect(() => writeAgyCliToken(PAYLOAD)).not.toThrow();
     expect(fs.readFileSync(reachable, 'utf-8')).toBe(PAYLOAD);
+  });
+
+  it('removes the temporary credential when the atomic swap fails', async () => {
+    const target = path.join(workDir, 'token');
+    fs.writeFileSync(target, 'previous account');
+    pathsMock.getAgyCliTokenPaths.mockReturnValue([target]);
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('rename failed');
+    });
+
+    const { writeAgyCliToken } =
+      await import('../../modules/cloud-account/persistence/agyCliTokenStore');
+    writeAgyCliToken(PAYLOAD);
+
+    expect(fs.readFileSync(target, 'utf-8')).toBe('previous account');
+    expect(fs.readdirSync(workDir)).toEqual(['token']);
   });
 
   it('does nothing when no CLI install is present', async () => {

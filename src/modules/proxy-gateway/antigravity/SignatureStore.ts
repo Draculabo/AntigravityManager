@@ -4,17 +4,19 @@
  * Clients that provide a stable session identifier are isolated from one another.
  * Requests without one preserve the legacy shared-signature behavior.
  *
- * Entries are additionally indexed by tool-call id, independent of session key.
- * A tool-call id is unique per conversation, so keying on it directly is the only
- * way to guarantee that two tool calls issued concurrently on the same session (or
- * on the legacy no-session-key path, where storage would otherwise be one shared
- * slot) never read each other's signature back on replay.
+ * Entries are additionally indexed by session and tool-call id. Tool-call ids are
+ * only unique inside a conversation, so indexing them globally would allow one
+ * client's signature to overwrite another client's entry.
  */
 import { logger } from '@/shared/logging/logger';
 
 interface StoredSignature {
   signature: string;
   updatedAt: number;
+}
+
+interface StoredToolCallSignature extends StoredSignature {
+  sessionKey?: string;
 }
 
 interface SessionSignatureBucket {
@@ -30,7 +32,7 @@ class SignatureStoreImpl {
 
   private signature: string | null = null;
   private readonly signaturesBySession = new Map<string, SessionSignatureBucket>();
-  private readonly signaturesByToolCallId = new Map<string, StoredSignature>();
+  private readonly signaturesByToolCallKey = new Map<string, StoredToolCallSignature>();
 
   private constructor() {}
 
@@ -44,8 +46,8 @@ class SignatureStoreImpl {
   /**
    * Stores a signature, preferring the longest value because streaming chunks can
    * contain partial signatures. A supplied session key prevents cross-session reuse.
-   * A supplied tool-call id additionally makes the signature retrievable by that id
-   * alone via {@link getForToolCall}, regardless of session key.
+   * A supplied tool-call id additionally makes the signature retrievable within
+   * the same session via {@link getForToolCall}.
    */
   public store(sig: string, sessionKey?: string, messageCount?: number, toolCallId?: string): void {
     if (!sig) {
@@ -53,7 +55,7 @@ class SignatureStoreImpl {
     }
 
     if (toolCallId) {
-      this.storeByToolCallId(sig, toolCallId);
+      this.storeByToolCallId(sig, toolCallId, sessionKey);
     }
 
     if (!sessionKey) {
@@ -147,19 +149,20 @@ class SignatureStoreImpl {
   }
 
   /**
-   * Get the signature stored for a specific tool-call id, independent of session key.
+   * Get the signature stored for a specific tool-call id in the given session.
    * A miss (no entry, or an expired one) returns null; it is a normal outcome, not an error.
    */
-  public getForToolCall(toolCallId: string | undefined): string | null {
+  public getForToolCall(toolCallId: string | undefined, sessionKey?: string): string | null {
     if (!toolCallId) {
       return null;
     }
-    const stored = this.signaturesByToolCallId.get(toolCallId);
+    const toolCallKey = this.createToolCallKey(toolCallId, sessionKey);
+    const stored = this.signaturesByToolCallKey.get(toolCallKey);
     if (!stored) {
       return null;
     }
     if (Date.now() - stored.updatedAt >= SignatureStoreImpl.SESSION_TTL_MS) {
-      this.signaturesByToolCallId.delete(toolCallId);
+      this.signaturesByToolCallKey.delete(toolCallKey);
       return null;
     }
     return stored.signature;
@@ -189,7 +192,7 @@ class SignatureStoreImpl {
   public take(sessionKey?: string): string | null {
     if (sessionKey) {
       const signature = this.get(sessionKey);
-      this.signaturesBySession.delete(sessionKey);
+      this.clear(sessionKey);
       return signature;
     }
     const sig = this.signature;
@@ -203,38 +206,52 @@ class SignatureStoreImpl {
   public clear(sessionKey?: string): void {
     if (sessionKey) {
       this.signaturesBySession.delete(sessionKey);
+      for (const [toolCallKey, stored] of this.signaturesByToolCallKey) {
+        if (stored.sessionKey === sessionKey) {
+          this.signaturesByToolCallKey.delete(toolCallKey);
+        }
+      }
       return;
     }
     this.signature = null;
     this.signaturesBySession.clear();
-    this.signaturesByToolCallId.clear();
+    this.signaturesByToolCallKey.clear();
   }
 
-  private storeByToolCallId(sig: string, toolCallId: string): void {
+  private storeByToolCallId(sig: string, toolCallId: string, sessionKey?: string): void {
     this.evictExpiredToolCallEntries();
-    const existingLen = this.signaturesByToolCallId.get(toolCallId)?.signature.length ?? 0;
+    const toolCallKey = this.createToolCallKey(toolCallId, sessionKey);
+    const existingLen = this.signaturesByToolCallKey.get(toolCallKey)?.signature.length ?? 0;
     if (sig.length > existingLen) {
-      this.signaturesByToolCallId.set(toolCallId, { signature: sig, updatedAt: Date.now() });
+      this.signaturesByToolCallKey.set(toolCallKey, {
+        sessionKey,
+        signature: sig,
+        updatedAt: Date.now(),
+      });
     }
     this.evictOverflowToolCallEntries();
   }
 
+  private createToolCallKey(toolCallId: string, sessionKey?: string): string {
+    return JSON.stringify([sessionKey ?? null, toolCallId]);
+  }
+
   private evictExpiredToolCallEntries(): void {
     const oldestAllowed = Date.now() - SignatureStoreImpl.SESSION_TTL_MS;
-    for (const [toolCallId, stored] of this.signaturesByToolCallId.entries()) {
+    for (const [toolCallKey, stored] of this.signaturesByToolCallKey.entries()) {
       if (stored.updatedAt < oldestAllowed) {
-        this.signaturesByToolCallId.delete(toolCallId);
+        this.signaturesByToolCallKey.delete(toolCallKey);
       }
     }
   }
 
   private evictOverflowToolCallEntries(): void {
-    while (this.signaturesByToolCallId.size > SignatureStoreImpl.MAX_SESSION_ENTRIES) {
-      const oldestToolCallId = this.signaturesByToolCallId.keys().next().value;
-      if (!oldestToolCallId) {
+    while (this.signaturesByToolCallKey.size > SignatureStoreImpl.MAX_SESSION_ENTRIES) {
+      const oldestToolCallKey = this.signaturesByToolCallKey.keys().next().value;
+      if (!oldestToolCallKey) {
         return;
       }
-      this.signaturesByToolCallId.delete(oldestToolCallId);
+      this.signaturesByToolCallKey.delete(oldestToolCallKey);
     }
   }
 

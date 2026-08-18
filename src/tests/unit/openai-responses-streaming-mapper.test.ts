@@ -417,6 +417,26 @@ describe('OpenAIResponsesStreamingMapper', () => {
     expect(SignatureStore.get()).toBeNull();
   });
 
+  it('indexes a tool signature by both session and tool-call id', () => {
+    const mapper = new OpenAIResponsesStreamingMapper({
+      model: 'gemini-3-pro',
+      responseId: 'resp_tool_signature',
+      signatureMessageCount: 4,
+      signatureSessionKey: 'openai:session-a',
+    });
+    const encodedSignature = Buffer.from('tool-specific signature').toString('base64');
+
+    mapper.processPart({
+      functionCall: { args: {}, id: 'call_shared', name: 'shell' },
+      thoughtSignature: encodedSignature,
+    });
+
+    expect(SignatureStore.getForToolCall('call_shared', 'openai:session-a')).toBe(
+      'tool-specific signature',
+    );
+    expect(SignatureStore.getForToolCall('call_shared', 'openai:session-b')).toBeNull();
+  });
+
   it('emits grounding metadata as visible Responses text', () => {
     const mapper = createMapper();
     const events = [

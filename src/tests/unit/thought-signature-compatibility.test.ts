@@ -313,8 +313,8 @@ describe('thought signature compatibility', () => {
       9,
     );
 
-    expect(SignatureStore.getForToolCall('call_a')).toBe(shortCallSignature);
-    expect(SignatureStore.getForToolCall('call_b')).toBe(longCallSignature);
+    expect(SignatureStore.getForToolCall('call_a', sessionKey)).toBe(shortCallSignature);
+    expect(SignatureStore.getForToolCall('call_b', sessionKey)).toBe(longCallSignature);
 
     // Replay: a client that echoes tool_use blocks back without their signature must
     // still get each call's own signature, not the other call's.
@@ -345,5 +345,25 @@ describe('thought signature compatibility', () => {
     expect(() => SignatureStore.getForToolCall('never-stored-call-id')).not.toThrow();
     expect(SignatureStore.getForToolCall('never-stored-call-id')).toBeNull();
     expect(SignatureStore.getForToolCall(undefined)).toBeNull();
+  });
+
+  it('isolates identical tool-call ids between sessions and clears only the requested session', () => {
+    const toolCallId = 'reused-call-id';
+    SignatureStore.store('signature-alpha', 'anthropic:session-alpha', 1, toolCallId);
+    SignatureStore.store('signature-beta-is-longer', 'anthropic:session-beta', 1, toolCallId);
+
+    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-alpha')).toBe(
+      'signature-alpha',
+    );
+    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-beta')).toBe(
+      'signature-beta-is-longer',
+    );
+
+    SignatureStore.clear('anthropic:session-alpha');
+
+    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-alpha')).toBeNull();
+    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-beta')).toBe(
+      'signature-beta-is-longer',
+    );
   });
 });

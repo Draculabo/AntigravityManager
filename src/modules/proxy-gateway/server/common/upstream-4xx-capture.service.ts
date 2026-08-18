@@ -1,11 +1,11 @@
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { isObjectLike, isString } from 'lodash-es';
 import { getAgentDir } from '@/shared/platform/paths';
 import { sanitizeObject } from '@/shared/security/sensitiveDataMasking';
-import { getUpstreamCaptureContext } from './upstream-capture-context';
+import { getUpstreamCaptureContext, isUpstream4xxCaptureEnabled } from './upstream-capture-context';
 
 const CAPTURE_DIRECTORY = 'captures';
 const CAPTURE_LIMIT = 50;
@@ -22,6 +22,7 @@ export interface Upstream4xxCaptureInput {
  * Capture is diagnostic-only: any filesystem error is logged and deliberately swallowed so it
  * can never turn the caller's upstream 4xx into a 5xx.
  */
+@Injectable()
 export class Upstream4xxCaptureService {
   private readonly logger = new Logger(Upstream4xxCaptureService.name);
 
@@ -32,7 +33,10 @@ export class Upstream4xxCaptureService {
 
     try {
       const captureDirectory = path.join(getAgentDir(), CAPTURE_DIRECTORY);
-      await fs.mkdir(captureDirectory, { recursive: true });
+      await fs.mkdir(captureDirectory, { mode: 0o700, recursive: true });
+      if (process.platform !== 'win32') {
+        await fs.chmod(captureDirectory, 0o700);
+      }
       const context = getUpstreamCaptureContext();
       const capturedAt = new Date().toISOString();
       const document = sanitizeObject({
@@ -58,11 +62,11 @@ export class Upstream4xxCaptureService {
       });
       const filename = `${capturedAt.replace(/[:.]/gu, '-')}-${randomUUID()}.json`;
 
-      await fs.writeFile(
-        path.join(captureDirectory, filename),
-        JSON.stringify(document, null, 2),
-        'utf-8',
-      );
+      await fs.writeFile(path.join(captureDirectory, filename), JSON.stringify(document, null, 2), {
+        encoding: 'utf-8',
+        flag: 'wx',
+        mode: 0o600,
+      });
       await this.prune(captureDirectory);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -86,10 +90,6 @@ export class Upstream4xxCaptureService {
 
     await Promise.all(expired.map(({ filePath }) => fs.unlink(filePath)));
   }
-}
-
-export function isUpstream4xxCaptureEnabled(): boolean {
-  return process.env.AGM_UPSTREAM_4XX_CAPTURE === '1';
 }
 
 function isClientErrorStatus(status: number | undefined): status is number {
