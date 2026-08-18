@@ -9,6 +9,8 @@ import { getUpstreamCaptureContext } from './upstream-capture-context';
 
 const CAPTURE_DIRECTORY = 'captures';
 const CAPTURE_LIMIT = 50;
+const SENSITIVE_QUERY_PARAM_PATTERN =
+  /([?&](?:api[_-]?key|key|access[_-]?token|refresh[_-]?token|token|authorization|auth|secret|client[_-]?secret|code)=)[^&#]*/giu;
 
 export interface Upstream4xxCaptureInput {
   endpoint: string;
@@ -38,7 +40,7 @@ export class Upstream4xxCaptureService {
       const document = sanitizeObject({
         client_request: {
           body: context?.clientRequest.body,
-          endpoint: context?.clientRequest.endpoint,
+          endpoint: redactSensitiveQueryParams(context?.clientRequest.endpoint),
           headers: context?.clientRequest.headers ?? {},
         },
         metadata: {
@@ -48,7 +50,7 @@ export class Upstream4xxCaptureService {
             context?.clientRequest.endpoint,
           ),
           mapped_upstream_model: findModel(input.upstreamRequest),
-          upstream_endpoint: input.endpoint,
+          upstream_endpoint: redactSensitiveQueryParams(input.endpoint),
         },
         upstream_request: input.upstreamRequest,
         upstream_response: {
@@ -94,6 +96,13 @@ export function isUpstream4xxCaptureEnabled(): boolean {
 
 function isClientErrorStatus(status: number | undefined): status is number {
   return status !== undefined && status >= 400 && status < 500;
+}
+
+function redactSensitiveQueryParams(endpoint: string | undefined): string | undefined {
+  if (!endpoint) {
+    return endpoint;
+  }
+  return endpoint.replace(SENSITIVE_QUERY_PARAM_PATTERN, '$1[REDACTED]');
 }
 
 function findModel(value: unknown): string | null {
