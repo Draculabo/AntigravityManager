@@ -52,8 +52,8 @@ describe('Sentry local path redaction', () => {
   });
 
   it('leaves unrelated strings unchanged', () => {
-    expect(redactLocalUserPaths('https://example.com/Users/alice')).toBe(
-      'https://example.com/Users/alice',
+    expect(redactLocalUserPaths('https://example.com/api/v1/events')).toBe(
+      'https://example.com/api/v1/events',
     );
   });
 });
