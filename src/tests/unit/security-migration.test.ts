@@ -21,6 +21,9 @@ const keyringMock = vi.hoisted(() => ({
   setSecret: vi.fn(),
   withTarget: vi.fn(),
 }));
+// The real writer targets the Antigravity CLI session file under the user's
+// home, so leaving it unmocked signs the live CLI out mid-test-run.
+const agyCliMock = vi.hoisted(() => ({ writeAgyCliToken: vi.fn() }));
 
 vi.mock('electron', () => ({
   safeStorage: {
@@ -60,6 +63,10 @@ vi.mock('@napi-rs/keyring', () => ({
   Entry: {
     withTarget: keyringMock.withTarget,
   },
+}));
+
+vi.mock('@/modules/cloud-account/persistence/agyCliTokenStore', () => ({
+  writeAgyCliToken: agyCliMock.writeAgyCliToken,
 }));
 
 const fsMock = vi.mocked(fs, { deep: true });
@@ -117,6 +124,7 @@ beforeEach(async () => {
   keyringMock.deleteCredential.mockReset();
   keyringMock.setSecret.mockReset();
   keyringMock.withTarget.mockReset();
+  agyCliMock.writeAgyCliToken.mockReset();
   keyringMock.withTarget.mockReturnValue({
     deleteCredential: keyringMock.deleteCredential,
     setSecret: keyringMock.setSecret,
@@ -328,5 +336,17 @@ describe('writeAntigravityCredentialStoreToken', () => {
     writeAntigravityCredentialStoreToken(token);
 
     expect(keyringMock.setSecret).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the credential store payload to the Antigravity CLI unchanged', async () => {
+    setPlatform('win32');
+
+    const { writeAntigravityCredentialStoreToken } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    writeAntigravityCredentialStoreToken(token);
+
+    const secret = keyringMock.setSecret.mock.calls[0]?.[0] as Buffer;
+    expect(agyCliMock.writeAgyCliToken).toHaveBeenCalledWith(secret.toString('utf-8'));
   });
 });

@@ -824,3 +824,153 @@ describe('Path Utilities', () => {
     expect(paths.getAntigravityExecutablePath('classic')).toBe(executablePath);
   });
 });
+
+describe('getAgyCliTokenPaths', () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    setPlatform(originalPlatform);
+  });
+
+  it('offers the local Antigravity CLI token when the executable is installed and it has a session', async () => {
+    setPlatform('linux');
+    const exists = (candidate: string) =>
+      ['/home/alice/.local/bin/agy', '/home/alice/.gemini/antigravity-cli'].includes(candidate);
+
+    const paths = await import('../../shared/platform/paths');
+
+    expect(
+      paths.getAgyCliTokenPaths({ exists, homeDirectory: '/home/alice', platform: 'linux' }),
+    ).toEqual(['/home/alice/.gemini/antigravity-cli/antigravity-oauth-token']);
+  });
+
+  it('does not offer a CLI token path when the CLI is installed but was never signed in', async () => {
+    setPlatform('linux');
+    // The executable exists, but agy creates the session directory only on
+    // first login, so a fresh install has neither the directory nor a token.
+    const exists = (candidate: string) => candidate === '/home/alice/.local/bin/agy';
+
+    const paths = await import('../../shared/platform/paths');
+
+    expect(
+      paths.getAgyCliTokenPaths({ exists, homeDirectory: '/home/alice', platform: 'linux' }),
+    ).toEqual([]);
+  });
+
+  it('offers no Antigravity CLI token when the CLI was never installed', async () => {
+    setPlatform('linux');
+
+    const paths = await import('../../shared/platform/paths');
+
+    expect(
+      paths.getAgyCliTokenPaths({
+        exists: () => false,
+        homeDirectory: '/home/alice',
+        platform: 'linux',
+      }),
+    ).toEqual([]);
+  });
+
+  it('reaches the Antigravity CLI inside running WSL distributions from Windows', async () => {
+    setPlatform('win32');
+    const exists = (candidate: string) =>
+      [
+        'C:\\Users\\Alice\\.local\\bin\\agy.exe',
+        'C:\\Users\\Alice\\.gemini\\antigravity-cli',
+        '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.local\\bin\\agy',
+        '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli',
+      ].includes(candidate);
+
+    const paths = await import('../../shared/platform/paths');
+
+    expect(
+      paths.getAgyCliTokenPaths({
+        exists,
+        homeDirectory: 'C:\\Users\\Alice',
+        listRunningWslDistros: () => ['Ubuntu-24.04'],
+        listWslHomeDirsForDistro: (distroRoot) => [
+          `${distroRoot}\\root`,
+          `${distroRoot}\\home\\alice`,
+        ],
+        platform: 'win32',
+      }),
+    ).toEqual([
+      'C:\\Users\\Alice\\.gemini\\antigravity-cli\\antigravity-oauth-token',
+      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli\\antigravity-oauth-token',
+    ]);
+  });
+
+  it('reaches a WSL distribution where agy is installed system-wide, outside ~/.local/bin', async () => {
+    setPlatform('win32');
+    // agy lives in /usr/local/bin, not ~/.local/bin, but the distro still has
+    // a session directory for alice.
+    const exists = (candidate: string) =>
+      [
+        '\\\\wsl.localhost\\Ubuntu-24.04\\usr\\local\\bin\\agy',
+        '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli',
+      ].includes(candidate);
+
+    const paths = await import('../../shared/platform/paths');
+
+    expect(
+      paths.getAgyCliTokenPaths({
+        exists,
+        homeDirectory: 'C:\\Users\\Alice',
+        listRunningWslDistros: () => ['Ubuntu-24.04'],
+        listWslHomeDirsForDistro: (distroRoot) => [`${distroRoot}\\home\\alice`],
+        platform: 'win32',
+      }),
+    ).toEqual([
+      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli\\antigravity-oauth-token',
+    ]);
+  });
+
+  it('skips a running WSL distribution without an agy executable', async () => {
+    setPlatform('win32');
+    const exists = (candidate: string) =>
+      candidate === 'C:\\Users\\Alice\\.local\\bin\\agy.exe' ||
+      candidate === 'C:\\Users\\Alice\\.gemini\\antigravity-cli';
+
+    const paths = await import('../../shared/platform/paths');
+
+    expect(
+      paths.getAgyCliTokenPaths({
+        exists,
+        homeDirectory: 'C:\\Users\\Alice',
+        listRunningWslDistros: () => ['Ubuntu-24.04'],
+        listWslHomeDirsForDistro: (distroRoot) => [`${distroRoot}\\home\\alice`],
+        platform: 'win32',
+      }),
+    ).toEqual(['C:\\Users\\Alice\\.gemini\\antigravity-cli\\antigravity-oauth-token']);
+  });
+
+  it('does not create a token path for a directory that has no CLI install', async () => {
+    setPlatform('linux');
+
+    const paths = await import('../../shared/platform/paths');
+
+    const exists = vi.fn(() => false);
+    expect(
+      paths.getAgyCliTokenPaths({ exists, homeDirectory: '/home/alice', platform: 'linux' }),
+    ).toEqual([]);
+    // Only presence checks happened - nothing was written or created.
+    expect(exists).toHaveBeenCalled();
+  });
+
+  it('never wakes a stopped WSL distribution: only --running distros are scanned', async () => {
+    setPlatform('win32');
+    const listRunningWslDistros = vi.fn(() => []);
+
+    const paths = await import('../../shared/platform/paths');
+
+    expect(
+      paths.getAgyCliTokenPaths({
+        exists: () => true,
+        homeDirectory: 'C:\\Users\\Alice',
+        listRunningWslDistros,
+        platform: 'win32',
+      }),
+    ).toEqual(['C:\\Users\\Alice\\.gemini\\antigravity-cli\\antigravity-oauth-token']);
+    expect(listRunningWslDistros).toHaveBeenCalledTimes(1);
+  });
+});
