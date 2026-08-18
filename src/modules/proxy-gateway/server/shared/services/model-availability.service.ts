@@ -128,6 +128,7 @@ export class ModelAvailabilityService {
     for (const [key, entry] of this.entries) {
       if (
         entry.accountId === accountId &&
+        entry.modelId.includes('image') &&
         (entry.reason === 'model_not_supported' || entry.reason === 'model_forbidden')
       ) {
         this.entries.delete(key);
