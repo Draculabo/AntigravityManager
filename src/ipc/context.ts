@@ -1,6 +1,7 @@
 import { os } from '@orpc/server';
 import { BrowserWindow } from 'electron';
 import { installRendererNavigationPolicy } from '@/modules/app-shell/utils/rendererNavigationPolicy';
+import { installRendererPermissionPolicy } from '@/modules/app-shell/utils/rendererPermissionPolicy';
 import { installRendererRecovery } from '@/modules/app-shell/utils/rendererRecovery';
 
 class IPCContext {
@@ -8,6 +9,7 @@ class IPCContext {
 
   public setMainWindow(window: BrowserWindow) {
     installRendererNavigationPolicy(window);
+    installRendererPermissionPolicy(window);
     installRendererRecovery(window);
     this.mainWindow = window;
   }
