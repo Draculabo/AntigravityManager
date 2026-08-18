@@ -70,15 +70,26 @@ describe('cleanJsonSchema', () => {
 
   it('removes non-string enums from non-string or untyped schemas and preserves their values as hints', () => {
     const integerSchema: Record<string, unknown> = { type: 'integer', enum: [3, 6, 12] };
-    const untypedSchema: Record<string, unknown> = { enum: [true, false] };
+    const stringValuedIntegerSchema: Record<string, unknown> = {
+      type: 'integer',
+      enum: ['3', '6', '12'],
+    };
+    const booleanSchema: Record<string, unknown> = { type: 'boolean', enum: ['true', 'false'] };
+    const untypedSchema: Record<string, unknown> = { enum: ['safe', 'fast'] };
 
     cleanJsonSchema(integerSchema);
+    cleanJsonSchema(stringValuedIntegerSchema);
+    cleanJsonSchema(booleanSchema);
     cleanJsonSchema(untypedSchema);
 
     expect(integerSchema.enum).toBeUndefined();
     expect(integerSchema.description).toContain('enum: 3, 6, 12');
+    expect(stringValuedIntegerSchema.enum).toBeUndefined();
+    expect(stringValuedIntegerSchema.description).toContain('enum: 3, 6, 12');
+    expect(booleanSchema.enum).toBeUndefined();
+    expect(booleanSchema.description).toContain('enum: true, false');
     expect(untypedSchema.enum).toBeUndefined();
-    expect(untypedSchema.description).toContain('enum: true, false');
+    expect(untypedSchema.description).toContain('enum: safe, fast');
   });
 
   it('removes malformed enums and does not coerce union-type enums', () => {

@@ -9,6 +9,15 @@ import { getUpstreamCaptureContext, isUpstream4xxCaptureEnabled } from './upstre
 
 const CAPTURE_DIRECTORY = 'captures';
 const CAPTURE_LIMIT = 50;
+const CAPTURE_MAX_BYTES = 1024 * 1024;
+const CAPTURE_SUMMARY_FIELD_MAX_LENGTH = 1024;
+
+interface CaptureMetadata {
+  captured_at: string;
+  client_visible_model: string | null;
+  mapped_upstream_model: string | null;
+  upstream_endpoint: string;
+}
 
 export interface Upstream4xxCaptureInput {
   endpoint: string;
@@ -39,21 +48,22 @@ export class Upstream4xxCaptureService {
       }
       const context = getUpstreamCaptureContext();
       const capturedAt = new Date().toISOString();
+      const metadata: CaptureMetadata = {
+        captured_at: capturedAt,
+        client_visible_model: findClientModel(
+          context?.clientRequest.body,
+          context?.clientRequest.endpoint,
+        ),
+        mapped_upstream_model: findModel(input.upstreamRequest),
+        upstream_endpoint: input.endpoint,
+      };
       const document = sanitizeObject({
         client_request: {
           body: context?.clientRequest.body,
           endpoint: context?.clientRequest.endpoint,
           headers: context?.clientRequest.headers ?? {},
         },
-        metadata: {
-          captured_at: capturedAt,
-          client_visible_model: findClientModel(
-            context?.clientRequest.body,
-            context?.clientRequest.endpoint,
-          ),
-          mapped_upstream_model: findModel(input.upstreamRequest),
-          upstream_endpoint: input.endpoint,
-        },
+        metadata,
         upstream_request: input.upstreamRequest,
         upstream_response: {
           error_body: input.upstreamErrorBody,
@@ -61,8 +71,9 @@ export class Upstream4xxCaptureService {
         },
       });
       const filename = `${capturedAt.replace(/[:.]/gu, '-')}-${randomUUID()}.json`;
+      const serializedDocument = serializeCaptureDocument(document, metadata, input.status);
 
-      await fs.writeFile(path.join(captureDirectory, filename), JSON.stringify(document, null, 2), {
+      await fs.writeFile(path.join(captureDirectory, filename), serializedDocument, {
         encoding: 'utf-8',
         flag: 'wx',
         mode: 0o600,
@@ -90,6 +101,51 @@ export class Upstream4xxCaptureService {
 
     await Promise.all(expired.map(({ filePath }) => fs.unlink(filePath)));
   }
+}
+
+function serializeCaptureDocument(
+  document: unknown,
+  metadata: CaptureMetadata,
+  status: number,
+): string {
+  const serializedDocument = JSON.stringify(document, null, 2);
+  const originalSizeBytes = Buffer.byteLength(serializedDocument, 'utf-8');
+  if (originalSizeBytes <= CAPTURE_MAX_BYTES) {
+    return serializedDocument;
+  }
+
+  return JSON.stringify(
+    {
+      metadata: {
+        ...mapMetadataStrings(metadata, (value) =>
+          value.slice(0, CAPTURE_SUMMARY_FIELD_MAX_LENGTH),
+        ),
+        capture_truncated: true,
+        max_size_bytes: CAPTURE_MAX_BYTES,
+        original_size_bytes: originalSizeBytes,
+      },
+      upstream_response: { status },
+      warning: 'Oversized request and response payloads were omitted from this capture.',
+    },
+    null,
+    2,
+  );
+}
+
+function mapMetadataStrings(
+  metadata: CaptureMetadata,
+  transform: (value: string) => string,
+): CaptureMetadata {
+  return {
+    captured_at: transform(metadata.captured_at),
+    client_visible_model: metadata.client_visible_model
+      ? transform(metadata.client_visible_model)
+      : null,
+    mapped_upstream_model: metadata.mapped_upstream_model
+      ? transform(metadata.mapped_upstream_model)
+      : null,
+    upstream_endpoint: transform(metadata.upstream_endpoint),
+  };
 }
 
 function isClientErrorStatus(status: number | undefined): status is number {

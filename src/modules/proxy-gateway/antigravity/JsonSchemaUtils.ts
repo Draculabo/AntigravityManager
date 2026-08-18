@@ -160,12 +160,13 @@ function cleanJsonSchemaRecursive(value: any) {
 
         if (primitiveEnumValues.length === 0) {
           delete map.enum;
-        } else if (primitiveEnumValues.every(isString)) {
-          if (primitiveEnumValues.length !== enumValues.length) {
-            map.enum = primitiveEnumValues;
-          }
         } else if (isString(map.type) && map.type.toLowerCase() === 'string') {
-          map.enum = primitiveEnumValues.map(String);
+          if (
+            primitiveEnumValues.length !== enumValues.length ||
+            !primitiveEnumValues.every(isString)
+          ) {
+            map.enum = primitiveEnumValues.map(String);
+          }
         } else {
           constraints.push(`enum: ${primitiveEnumValues.join(', ')}`);
           delete map.enum;

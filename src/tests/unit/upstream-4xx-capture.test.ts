@@ -181,6 +181,30 @@ describe('upstream 4xx capture', () => {
     expect(files).not.toContain(oldest);
   });
 
+  it('replaces an oversized capture with a bounded diagnostic summary', async () => {
+    await writeCapture({
+      upstreamRequest: {
+        request: { model: 'upstream-model', prompt: 'large prompt! '.repeat(200_000) },
+      },
+    });
+
+    const [file] = await captureFiles();
+    const capturePath = path.join(agentDirectory, CAPTURES_DIRECTORY, file);
+    const content = await fs.readFile(capturePath, 'utf-8');
+    const document = JSON.parse(content) as {
+      metadata: Record<string, unknown>;
+      warning?: string;
+    };
+
+    expect(Buffer.byteLength(content)).toBeLessThanOrEqual(1024 * 1024);
+    expect(document.metadata).toMatchObject({
+      capture_truncated: true,
+      max_size_bytes: 1024 * 1024,
+    });
+    expect(document.metadata.original_size_bytes).toEqual(expect.any(Number));
+    expect(document.warning).toContain('omitted');
+  });
+
   it.skipIf(process.platform === 'win32')(
     'restricts capture directory and file permissions',
     async () => {

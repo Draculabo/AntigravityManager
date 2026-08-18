@@ -19,9 +19,15 @@ describe('no-app-launch guard', () => {
     expect(output).toBe('hi');
   });
 
-  it('checks the command, not the arguments', () => {
-    const result = spawnSync('echo', ['/mnt/c/Windows/fake.exe', 'antigravity']);
-    expect(result.error).toBeUndefined();
-    expect(result.status).toBe(0);
+  it('refuses dangerous executable paths passed through command arguments', () => {
+    expect(() => spawnSync('safe-test-runner', ['/mnt/c/Windows/fake.exe'])).toThrowError(
+      /no-app-launch guard: refused child_process\.spawnSync/,
+    );
+  });
+
+  it('refuses known application launchers even when their extension is omitted', () => {
+    expect(() => spawnSync('cmd', ['/c', 'echo hi'])).toThrowError(
+      /no-app-launch guard: refused child_process\.spawnSync/,
+    );
   });
 });

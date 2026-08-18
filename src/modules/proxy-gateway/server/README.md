@@ -135,8 +135,10 @@ OpenAI, Anthropic and native Gemini requests). Off by default: capture is a diag
 something every install should pay disk I/O for on every rejected request. Secrets are masked
 with `sanitizeObject` before anything is written, only diagnostic allowlisted request headers
 are retained, and POSIX capture directories/files use `0700`/`0600` permissions. The directory
-is pruned to the newest 50 files, and a capture failure (e.g. disk full) is logged and swallowed
-— it never turns the caller's 4xx into a 5xx.
+is pruned to the newest 50 files. Captures larger than 1 MiB are replaced with a small diagnostic
+summary containing their original size, so one rejected request cannot consume unbounded disk
+space. A capture failure (e.g. disk full) is logged and swallowed — it never turns the caller's
+4xx into a 5xx.
 
 ---
 

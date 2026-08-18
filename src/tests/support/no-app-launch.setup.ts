@@ -22,8 +22,19 @@ const GUARDED_METHODS = [
 
 type GuardedMethod = (typeof GUARDED_METHODS)[number];
 
-function isBlockedCommand(command: string): boolean {
-  const normalized = command.trim().toLowerCase();
+const BLOCKED_LAUNCHERS = new Set([
+  'cmd',
+  'explorer',
+  'open',
+  'powershell',
+  'pwsh',
+  'start',
+  'wsl',
+  'xdg-open',
+]);
+
+function isBlockedValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
   if (!normalized) {
     return false;
   }
@@ -42,19 +53,47 @@ function isBlockedCommand(command: string): boolean {
   return false;
 }
 
+function isKnownLauncher(command: string): boolean {
+  const executable = command
+    .trim()
+    .match(/^(?:"([^"]+)"|'([^']+)'|([^\s]+))/u)
+    ?.slice(1)
+    .find(Boolean);
+  if (!executable) {
+    return false;
+  }
+
+  const basename = executable.replaceAll('\\', '/').split('/').at(-1)?.toLowerCase();
+  return basename ? BLOCKED_LAUNCHERS.has(basename.replace(/\.exe$/u, '')) : false;
+}
+
+function findBlockedInvocationValue(args: unknown[]): string | null {
+  const command = typeof args[0] === 'string' ? args[0] : '';
+  if (isBlockedValue(command) || isKnownLauncher(command)) {
+    return command;
+  }
+
+  const commandArguments = Array.isArray(args[1]) ? args[1] : [];
+  return (
+    commandArguments.find(
+      (argument): argument is string => typeof argument === 'string' && isBlockedValue(argument),
+    ) ?? null
+  );
+}
+
 function currentTestName(): string {
   return expect.getState().currentTestName ?? 'unknown test';
 }
 
 function guard(method: GuardedMethod, original: (...args: unknown[]) => unknown) {
   return function guarded(this: unknown, ...args: unknown[]) {
-    const command = typeof args[0] === 'string' ? args[0] : '';
-    if (isBlockedCommand(command)) {
+    const blockedValue = findBlockedInvocationValue(args);
+    if (blockedValue) {
       throw new Error(
-        `no-app-launch guard: refused child_process.${method}(${JSON.stringify(command)}) ` +
-          `in test "${currentTestName()}". This command looks like it would launch a Windows ` +
-          'executable or Antigravity itself. Mock child_process in that test instead of ' +
-          'letting it reach the real implementation.',
+        `no-app-launch guard: refused child_process.${method} because ${JSON.stringify(blockedValue)} ` +
+          `in test "${currentTestName()}" looks like an application launcher, a Windows ` +
+          'executable, or Antigravity itself. Mock child_process in that test instead of letting ' +
+          'it reach the real implementation.',
       );
     }
     return original.apply(this, args as never);
