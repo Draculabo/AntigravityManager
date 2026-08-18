@@ -34,6 +34,7 @@ describe('writeAgyCliToken', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     fs.rmSync(workDir, { recursive: true, force: true });
   });
 
@@ -62,6 +63,23 @@ describe('writeAgyCliToken', () => {
     expect(fs.readFileSync(target, 'utf-8')).toBe(PAYLOAD);
     // The temporary file must not survive the swap.
     expect(fs.readdirSync(workDir)).toEqual(['token']);
+  });
+
+  it('removes the temporary credential when replacement fails', async () => {
+    const target = path.join(workDir, 'token');
+    const tempPath = `${target}.agm-tmp`;
+    fs.writeFileSync(target, 'previous account');
+    pathsMock.getAgyCliTokenPaths.mockReturnValue([target]);
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('replace failed');
+    });
+
+    const { writeAgyCliToken } =
+      await import('../../modules/cloud-account/persistence/agyCliTokenStore');
+
+    expect(() => writeAgyCliToken(PAYLOAD)).not.toThrow();
+    expect(fs.readFileSync(target, 'utf-8')).toBe('previous account');
+    expect(fs.existsSync(tempPath)).toBe(false);
   });
 
   it('keeps going when one install cannot be written', async () => {
