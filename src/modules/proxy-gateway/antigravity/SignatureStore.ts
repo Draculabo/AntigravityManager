@@ -162,6 +162,7 @@ class SignatureStoreImpl {
       this.signaturesByToolCallId.delete(toolCallId);
       return null;
     }
+    this.touchToolCallEntry(toolCallId, stored);
     return stored.signature;
   }
 
@@ -212,11 +213,20 @@ class SignatureStoreImpl {
 
   private storeByToolCallId(sig: string, toolCallId: string): void {
     this.evictExpiredToolCallEntries();
-    const existingLen = this.signaturesByToolCallId.get(toolCallId)?.signature.length ?? 0;
+    const existing = this.signaturesByToolCallId.get(toolCallId);
+    const existingLen = existing?.signature.length ?? 0;
     if (sig.length > existingLen) {
-      this.signaturesByToolCallId.set(toolCallId, { signature: sig, updatedAt: Date.now() });
+      this.touchToolCallEntry(toolCallId, { signature: sig, updatedAt: Date.now() });
+    } else if (existing) {
+      this.touchToolCallEntry(toolCallId, existing);
     }
     this.evictOverflowToolCallEntries();
+  }
+
+  private touchToolCallEntry(toolCallId: string, stored: StoredSignature): void {
+    stored.updatedAt = Date.now();
+    this.signaturesByToolCallId.delete(toolCallId);
+    this.signaturesByToolCallId.set(toolCallId, stored);
   }
 
   private evictExpiredToolCallEntries(): void {
