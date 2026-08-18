@@ -3,6 +3,12 @@
  *
  * Clients that provide a stable session identifier are isolated from one another.
  * Requests without one preserve the legacy shared-signature behavior.
+ *
+ * Entries are additionally indexed by tool-call id, independent of session key.
+ * A tool-call id is unique per conversation, so keying on it directly is the only
+ * way to guarantee that two tool calls issued concurrently on the same session (or
+ * on the legacy no-session-key path, where storage would otherwise be one shared
+ * slot) never read each other's signature back on replay.
  */
 import { logger } from '@/shared/logging/logger';
 
@@ -24,6 +30,7 @@ class SignatureStoreImpl {
 
   private signature: string | null = null;
   private readonly signaturesBySession = new Map<string, SessionSignatureBucket>();
+  private readonly signaturesByToolCallId = new Map<string, StoredSignature>();
 
   private constructor() {}
 
@@ -37,10 +44,16 @@ class SignatureStoreImpl {
   /**
    * Stores a signature, preferring the longest value because streaming chunks can
    * contain partial signatures. A supplied session key prevents cross-session reuse.
+   * A supplied tool-call id additionally makes the signature retrievable by that id
+   * alone via {@link getForToolCall}, regardless of session key.
    */
-  public store(sig: string, sessionKey?: string, messageCount?: number): void {
+  public store(sig: string, sessionKey?: string, messageCount?: number, toolCallId?: string): void {
     if (!sig) {
       return;
+    }
+
+    if (toolCallId) {
+      this.storeByToolCallId(sig, toolCallId);
     }
 
     if (!sessionKey) {
@@ -134,6 +147,25 @@ class SignatureStoreImpl {
   }
 
   /**
+   * Get the signature stored for a specific tool-call id, independent of session key.
+   * A miss (no entry, or an expired one) returns null; it is a normal outcome, not an error.
+   */
+  public getForToolCall(toolCallId: string | undefined): string | null {
+    if (!toolCallId) {
+      return null;
+    }
+    const stored = this.signaturesByToolCallId.get(toolCallId);
+    if (!stored) {
+      return null;
+    }
+    if (Date.now() - stored.updatedAt >= SignatureStoreImpl.SESSION_TTL_MS) {
+      this.signaturesByToolCallId.delete(toolCallId);
+      return null;
+    }
+    return stored.signature;
+  }
+
+  /**
    * Get the signature produced for the assistant message at an exact conversation index.
    */
   public getAt(sessionKey: string | undefined, messageCount: number): string | null {
@@ -175,6 +207,35 @@ class SignatureStoreImpl {
     }
     this.signature = null;
     this.signaturesBySession.clear();
+    this.signaturesByToolCallId.clear();
+  }
+
+  private storeByToolCallId(sig: string, toolCallId: string): void {
+    this.evictExpiredToolCallEntries();
+    const existingLen = this.signaturesByToolCallId.get(toolCallId)?.signature.length ?? 0;
+    if (sig.length > existingLen) {
+      this.signaturesByToolCallId.set(toolCallId, { signature: sig, updatedAt: Date.now() });
+    }
+    this.evictOverflowToolCallEntries();
+  }
+
+  private evictExpiredToolCallEntries(): void {
+    const oldestAllowed = Date.now() - SignatureStoreImpl.SESSION_TTL_MS;
+    for (const [toolCallId, stored] of this.signaturesByToolCallId.entries()) {
+      if (stored.updatedAt < oldestAllowed) {
+        this.signaturesByToolCallId.delete(toolCallId);
+      }
+    }
+  }
+
+  private evictOverflowToolCallEntries(): void {
+    while (this.signaturesByToolCallId.size > SignatureStoreImpl.MAX_SESSION_ENTRIES) {
+      const oldestToolCallId = this.signaturesByToolCallId.keys().next().value;
+      if (!oldestToolCallId) {
+        return;
+      }
+      this.signaturesByToolCallId.delete(oldestToolCallId);
+    }
   }
 
   private evictExpiredSessions(): void {

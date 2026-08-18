@@ -61,9 +61,6 @@ class NonStreamingProcessor {
 
   private processPart(part: GeminiPart) {
     const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature) || null;
-    if (signature) {
-      SignatureStore.store(signature, this.signatureSessionKey, this.signatureMessageCount);
-    }
 
     // 1. Handle FunctionCall
     if (part.functionCall) {
@@ -85,6 +82,15 @@ class NonStreamingProcessor {
       const fc = part.functionCall;
       const toolId = fc.id || `${fc.name}-${uuidv4()}`;
 
+      if (signature) {
+        SignatureStore.store(
+          signature,
+          this.signatureSessionKey,
+          this.signatureMessageCount,
+          toolId,
+        );
+      }
+
       const toolUse: ContentBlock = {
         type: 'tool_use',
         id: toolId,
@@ -95,6 +101,10 @@ class NonStreamingProcessor {
 
       this.contentBlocks.push(toolUse);
       return;
+    }
+
+    if (signature) {
+      SignatureStore.store(signature, this.signatureSessionKey, this.signatureMessageCount);
     }
 
     // 2. Handle Text / Thinking
