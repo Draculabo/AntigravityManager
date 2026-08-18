@@ -1,9 +1,11 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   runWithUpstreamCaptureContext,
+  UpstreamCaptureContextInterceptor,
   type UpstreamCaptureContext,
 } from '@/modules/proxy-gateway/server/common/upstream-capture-context';
 import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
@@ -63,6 +65,30 @@ describe('upstream 4xx capture', () => {
     vi.restoreAllMocks();
     delete process.env.AGM_UPSTREAM_4XX_CAPTURE;
     await fs.rm(agentDirectory, { force: true, recursive: true });
+  });
+
+  it('does not snapshot request bodies when capture diagnostics are disabled', () => {
+    delete process.env.AGM_UPSTREAM_4XX_CAPTURE;
+    const structuredCloneSpy = vi.spyOn(globalThis, 'structuredClone');
+    const next = { handle: vi.fn(() => of(undefined)) };
+    const executionContext = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          body: { model: 'large-request' },
+          headers: { authorization: 'Bearer token' },
+          url: '/v1/chat/completions',
+        }),
+      }),
+    };
+
+    const result = new UpstreamCaptureContextInterceptor().intercept(
+      executionContext as never,
+      next as never,
+    );
+
+    expect(result).toBe(next.handle.mock.results[0]?.value);
+    expect(next.handle).toHaveBeenCalledOnce();
+    expect(structuredCloneSpy).not.toHaveBeenCalled();
   });
 
   it('writes one JSON file with the client request, upstream payload, and upstream response', async () => {
