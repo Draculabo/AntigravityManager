@@ -32,6 +32,10 @@ export function runWithUpstreamCaptureContext<T>(
 @Injectable()
 export class UpstreamCaptureContextInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    if (process.env.AGM_UPSTREAM_4XX_CAPTURE !== '1') {
+      return next.handle();
+    }
+
     const request = context.switchToHttp().getRequest<{
       body?: unknown;
       headers?: Record<string, unknown>;
