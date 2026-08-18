@@ -4,17 +4,21 @@
  * Clients that provide a stable session identifier are isolated from one another.
  * Requests without one preserve the legacy shared-signature behavior.
  *
- * Entries are additionally indexed by tool-call id, independent of session key.
- * A tool-call id is unique per conversation, so keying on it directly is the only
- * way to guarantee that two tool calls issued concurrently on the same session (or
- * on the legacy no-session-key path, where storage would otherwise be one shared
- * slot) never read each other's signature back on replay.
+ * Entries are additionally indexed by tool-call id. Tool-call ids are only guaranteed
+ * to be unique within a conversation, while this store is process-global, so a tool id
+ * observed in multiple sessions is treated as ambiguous and falls back to the existing
+ * session/message indexes instead of reusing another conversation's signature.
  */
 import { logger } from '@/shared/logging/logger';
 
 interface StoredSignature {
   signature: string;
   updatedAt: number;
+}
+
+interface StoredToolCallSignature extends StoredSignature {
+  sessionKey?: string;
+  ambiguous?: boolean;
 }
 
 interface SessionSignatureBucket {
@@ -30,7 +34,7 @@ class SignatureStoreImpl {
 
   private signature: string | null = null;
   private readonly signaturesBySession = new Map<string, SessionSignatureBucket>();
-  private readonly signaturesByToolCallId = new Map<string, StoredSignature>();
+  private readonly signaturesByToolCallId = new Map<string, StoredToolCallSignature>();
 
   private constructor() {}
 
@@ -45,7 +49,8 @@ class SignatureStoreImpl {
    * Stores a signature, preferring the longest value because streaming chunks can
    * contain partial signatures. A supplied session key prevents cross-session reuse.
    * A supplied tool-call id additionally makes the signature retrievable by that id
-   * alone via {@link getForToolCall}, regardless of session key.
+   * alone via {@link getForToolCall} as long as the id has not been observed in a
+   * different session.
    */
   public store(sig: string, sessionKey?: string, messageCount?: number, toolCallId?: string): void {
     if (!sig) {
@@ -53,7 +58,7 @@ class SignatureStoreImpl {
     }
 
     if (toolCallId) {
-      this.storeByToolCallId(sig, toolCallId);
+      this.storeByToolCallId(sig, toolCallId, sessionKey);
     }
 
     if (!sessionKey) {
@@ -148,7 +153,8 @@ class SignatureStoreImpl {
 
   /**
    * Get the signature stored for a specific tool-call id, independent of session key.
-   * A miss (no entry, or an expired one) returns null; it is a normal outcome, not an error.
+   * A miss, expired entry, or an id observed in multiple sessions returns null so the
+   * caller can fall back to its session-scoped signature instead of crossing sessions.
    */
   public getForToolCall(toolCallId: string | undefined): string | null {
     if (!toolCallId) {
@@ -160,6 +166,9 @@ class SignatureStoreImpl {
     }
     if (Date.now() - stored.updatedAt >= SignatureStoreImpl.SESSION_TTL_MS) {
       this.signaturesByToolCallId.delete(toolCallId);
+      return null;
+    }
+    if (stored.ambiguous) {
       return null;
     }
     return stored.signature;
@@ -210,11 +219,37 @@ class SignatureStoreImpl {
     this.signaturesByToolCallId.clear();
   }
 
-  private storeByToolCallId(sig: string, toolCallId: string): void {
+  private storeByToolCallId(sig: string, toolCallId: string, sessionKey?: string): void {
     this.evictExpiredToolCallEntries();
-    const existingLen = this.signaturesByToolCallId.get(toolCallId)?.signature.length ?? 0;
+    const now = Date.now();
+    const existing = this.signaturesByToolCallId.get(toolCallId);
+
+    if (existing) {
+      if (existing.ambiguous) {
+        existing.updatedAt = now;
+        return;
+      }
+
+      if (existing.sessionKey !== sessionKey) {
+        logger.warn(
+          `[ThoughtSig] Tool-call id collision across sessions; disabling direct lookup (tool call: ${toolCallId})`,
+        );
+        this.signaturesByToolCallId.set(toolCallId, {
+          signature: existing.signature,
+          updatedAt: now,
+          ambiguous: true,
+        });
+        return;
+      }
+    }
+
+    const existingLen = existing?.signature.length ?? 0;
     if (sig.length > existingLen) {
-      this.signaturesByToolCallId.set(toolCallId, { signature: sig, updatedAt: Date.now() });
+      this.signaturesByToolCallId.set(toolCallId, {
+        signature: sig,
+        updatedAt: now,
+        sessionKey,
+      });
     }
     this.evictOverflowToolCallEntries();
   }
