@@ -8,6 +8,8 @@ import { sanitizeObject } from '@/shared/security/sensitiveDataMasking';
 import { getUpstreamCaptureContext } from './upstream-capture-context';
 
 const CAPTURE_DIRECTORY = 'captures';
+const CAPTURE_DIRECTORY_MODE = 0o700;
+const CAPTURE_FILE_MODE = 0o600;
 const CAPTURE_LIMIT = 50;
 
 export interface Upstream4xxCaptureInput {
@@ -32,7 +34,7 @@ export class Upstream4xxCaptureService {
 
     try {
       const captureDirectory = path.join(getAgentDir(), CAPTURE_DIRECTORY);
-      await fs.mkdir(captureDirectory, { recursive: true });
+      await fs.mkdir(captureDirectory, { recursive: true, mode: CAPTURE_DIRECTORY_MODE });
       const context = getUpstreamCaptureContext();
       const capturedAt = new Date().toISOString();
       const document = sanitizeObject({
@@ -61,7 +63,7 @@ export class Upstream4xxCaptureService {
       await fs.writeFile(
         path.join(captureDirectory, filename),
         JSON.stringify(document, null, 2),
-        'utf-8',
+        { encoding: 'utf-8', mode: CAPTURE_FILE_MODE },
       );
       await this.prune(captureDirectory);
     } catch (error) {
