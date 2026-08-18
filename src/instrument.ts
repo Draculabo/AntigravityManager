@@ -7,6 +7,7 @@ import {
 } from './shared/observability/openTelemetry';
 import { getQuickObservabilityConfig } from './shared/observability/observabilityConfig';
 import { filterCrashSafeSentryIntegrations } from './shared/observability/sentryIntegrations';
+import { redactSentryEventLocalPaths } from './shared/observability/sentryPrivacy';
 
 const quickConfig = getQuickObservabilityConfig((message, error) => {
   logger.error(message, error);
@@ -31,12 +32,7 @@ if (quickConfig.errorReportingEnabled) {
       return filterCrashSafeSentryIntegrations(defaultIntegrations);
     },
     beforeSend(event) {
-      if (event.exception?.values?.[0]?.value) {
-        event.exception.values[0].value = event.exception.values[0].value.replace(
-          /Users\\\\[^\\\\]+/g,
-          'Users\\\\***',
-        );
-      }
+      redactSentryEventLocalPaths(event);
       return event;
     },
   });
