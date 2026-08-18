@@ -83,6 +83,27 @@ describe('upstream 4xx capture', () => {
     });
   });
 
+  it('preserves a capture when the client model path has malformed percent encoding', async () => {
+    const capture = new Upstream4xxCaptureService();
+    await runWithUpstreamCaptureContext(
+      captureContext({ body: {}, endpoint: '/v1beta/models/bad%ZZ:generateContent' }),
+      () =>
+        capture.capture({
+          endpoint: 'https://cloudcode-pa.googleapis.com/v1internal:generateContent',
+          status: 400,
+          upstreamErrorBody: { error: { message: 'rejected' } },
+          upstreamRequest: { request: { model: 'upstream-model' } },
+        }),
+    );
+
+    const files = await captureFiles();
+    expect(files).toHaveLength(1);
+    const document = JSON.parse(
+      await fs.readFile(path.join(agentDirectory, CAPTURES_DIRECTORY, files[0]), 'utf-8'),
+    ) as { metadata?: { client_visible_model?: string } };
+    expect(document.metadata?.client_visible_model).toBe('bad%ZZ');
+  });
+
   it('does not write a capture for a 2xx response', async () => {
     await writeCapture({ status: 200 });
 
