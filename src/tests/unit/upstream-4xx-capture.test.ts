@@ -124,6 +124,29 @@ describe('upstream 4xx capture', () => {
     expect(content).not.toContain(secret);
   });
 
+  it('redacts credentials embedded in client and upstream query strings', async () => {
+    const secret = 'query-secret-value';
+    const capture = new Upstream4xxCaptureService();
+    await runWithUpstreamCaptureContext(
+      captureContext({
+        endpoint: `/v1beta/models/gemini-3.6-flash:generateContent?key=${secret}&alt=sse`,
+      }),
+      () =>
+        capture.capture({
+          endpoint: `https://cloudcode-pa.googleapis.com/v1internal:generateContent?access_token=${secret}&alt=sse`,
+          status: 400,
+          upstreamErrorBody: { error: { message: 'rejected' } },
+          upstreamRequest: { request: { model: 'upstream-model' } },
+        }),
+    );
+
+    const [file] = await captureFiles();
+    const content = await fs.readFile(path.join(agentDirectory, CAPTURES_DIRECTORY, file), 'utf-8');
+    expect(content).not.toContain(secret);
+    expect(content).toContain('key=[REDACTED]&alt=sse');
+    expect(content).toContain('access_token=[REDACTED]&alt=sse');
+  });
+
   it('removes the oldest capture when writing the 51st file', async () => {
     await writeCapture();
     const [oldest] = await captureFiles();
