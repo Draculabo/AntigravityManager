@@ -192,35 +192,33 @@ function readViaSecretTool(): Uint8Array | null {
 }
 
 export function readAntigravityCredentialStoreToken(): CredentialStoreToken | null {
-  let nativeReadError: unknown;
-  try {
-    const secret = readViaNativeKeyring();
-    if (secret) {
-      return parseCredentialStorePayload(decodeCredentialStoreText(secret));
-    }
-  } catch (error) {
-    nativeReadError = error;
-  }
-
   if (process.platform === 'linux') {
     try {
       const secret = readViaSecretTool();
       if (secret) {
         return parseCredentialStorePayload(decodeCredentialStoreText(secret));
       }
-      if (nativeReadError) {
-        throw classifyCredentialStoreReadError(nativeReadError);
+    } catch (error) {
+      const secretToolError = classifyCredentialStoreReadError(error);
+      if (secretToolError.code !== 'unavailable') {
+        throw secretToolError;
       }
-      return null;
+    }
+
+    try {
+      const secret = readViaNativeKeyring();
+      return secret ? parseCredentialStorePayload(decodeCredentialStoreText(secret)) : null;
     } catch (error) {
       throw classifyCredentialStoreReadError(error);
     }
   }
 
-  if (nativeReadError) {
-    throw classifyCredentialStoreReadError(nativeReadError);
+  try {
+    const secret = readViaNativeKeyring();
+    return secret ? parseCredentialStorePayload(decodeCredentialStoreText(secret)) : null;
+  } catch (error) {
+    throw classifyCredentialStoreReadError(error);
   }
-  return null;
 }
 
 function isSecretToolAvailable(): boolean {
