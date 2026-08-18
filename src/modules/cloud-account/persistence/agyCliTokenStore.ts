@@ -4,8 +4,17 @@ import { getAgyCliTokenPaths } from '@/shared/platform/paths';
 
 function writeTokenFile(target: string, payload: string): void {
   const tempPath = `${target}.agm-tmp`;
-  fs.writeFileSync(tempPath, payload, { encoding: 'utf-8', mode: 0o600 });
-  fs.renameSync(tempPath, target);
+  try {
+    fs.writeFileSync(tempPath, payload, { encoding: 'utf-8', mode: 0o600 });
+    fs.renameSync(tempPath, target);
+  } catch (error) {
+    try {
+      fs.rmSync(tempPath, { force: true });
+    } catch {
+      // Preserve the original write/replace failure.
+    }
+    throw error;
+  }
 }
 
 /**
