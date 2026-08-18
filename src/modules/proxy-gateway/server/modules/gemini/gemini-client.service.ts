@@ -12,6 +12,10 @@ import {
   type ExplicitContextCacheResource,
 } from './explicit-context-cache.store';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
+import {
+  Upstream4xxCaptureService,
+  type Upstream4xxCaptureInput,
+} from '../../common/upstream-4xx-capture.service';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 
 interface PreparedInternalRequest {
@@ -22,6 +26,7 @@ interface PreparedInternalRequest {
 @Injectable()
 export class GeminiClient {
   private readonly logger = new Logger(GeminiClient.name);
+  private readonly upstream4xxCapture = new Upstream4xxCaptureService();
   // Default to v1beta for most features
   private readonly baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
   private readonly defaultInternalBaseUrls = [
@@ -51,14 +56,9 @@ export class GeminiClient {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        this.logger.error(`Gemini stream request failed: ${error.message}`);
-        throw new UpstreamRequestError({
-          message: error.response?.data?.error?.message || error.message,
-          status: error.response?.status,
-          headers: {
-            retryAfter: this.extractRetryAfterHeader(error.response?.headers),
-          },
-          body: this.describeAxiosErrorData(error.response?.data),
+        return await this.throwUpstreamRequestError(error, 'gemini-stream-generate', {
+          endpoint: url,
+          upstreamRequest: content,
         });
       }
       this.throwAsCleanError(error);
@@ -86,16 +86,9 @@ export class GeminiClient {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        this.logger.error(
-          `Gemini request failed: ${error.message} - ${this.safeStringify(error.response?.data)}`,
-        );
-        throw new UpstreamRequestError({
-          message: error.response?.data?.error?.message || error.message,
-          status: error.response?.status,
-          headers: {
-            retryAfter: this.extractRetryAfterHeader(error.response?.headers),
-          },
-          body: this.describeAxiosErrorData(error.response?.data),
+        return await this.throwUpstreamRequestError(error, 'gemini-generate', {
+          endpoint: url,
+          upstreamRequest: content,
         });
       }
       this.throwAsCleanError(error);
@@ -366,6 +359,7 @@ export class GeminiClient {
     const requestUserAgent = await resolveRequestUserAgent();
     const axiosProxy = this.resolveUpstreamAxiosProxy(upstreamProxyUrl);
     let lastError: unknown = null;
+    let lastEndpoint = '';
     let hasTriggeredProjectHeaderDowngrade = false;
 
     for (let projectHeaderAttempt = 0; projectHeaderAttempt < 5; projectHeaderAttempt++) {
@@ -377,6 +371,7 @@ export class GeminiClient {
       for (let index = 0; index < baseUrls.length; index++) {
         const baseUrl = baseUrls[index];
         const url = `${baseUrl}${path}`;
+        lastEndpoint = url;
 
         try {
           return await axios.post<T>(url, this.createInternalRequestBody(path, body), {
@@ -406,7 +401,10 @@ export class GeminiClient {
           const hasNextEndpoint = index < baseUrls.length - 1;
 
           if (!hasNextEndpoint || !this.shouldFailoverToNextEndpoint(error)) {
-            await this.throwUpstreamRequestError(error, operation);
+            return await this.throwUpstreamRequestError(error, operation, {
+              endpoint: url,
+              upstreamRequest: body,
+            });
           }
 
           this.logger.warn(
@@ -421,10 +419,16 @@ export class GeminiClient {
         continue;
       }
 
-      return await this.throwUpstreamRequestError(lastError, operation);
+      return await this.throwUpstreamRequestError(lastError, operation, {
+        endpoint: lastEndpoint,
+        upstreamRequest: body,
+      });
     }
 
-    return await this.throwUpstreamRequestError(lastError, operation);
+    return await this.throwUpstreamRequestError(lastError, operation, {
+      endpoint: lastEndpoint,
+      upstreamRequest: body,
+    });
   }
 
   private createInternalRequestBody(path: string, body: GeminiInternalRequest): string | Readable {
@@ -458,22 +462,32 @@ export class GeminiClient {
     );
   }
 
-  private async throwUpstreamRequestError(error: unknown, operation: string): Promise<never> {
+  private async throwUpstreamRequestError(
+    error: unknown,
+    operation: string,
+    captureInput: Pick<Upstream4xxCaptureInput, 'endpoint' | 'upstreamRequest'>,
+  ): Promise<never> {
     if (axios.isAxiosError(error)) {
       const responseData = error.response?.data;
       const upstreamMessage = await this.extractAxiosErrorMessage(responseData);
+      const upstreamErrorBody = this.describeAxiosErrorData(responseData);
       this.logger.error(
         `[${operation}] upstream request error: ${error.message} - ${this.describeAxiosErrorData(
           responseData,
         )}`,
       );
+      await this.upstream4xxCapture.capture({
+        ...captureInput,
+        status: error.response?.status,
+        upstreamErrorBody,
+      });
       throw new UpstreamRequestError({
         message: upstreamMessage || error.message,
         status: error.response?.status,
         headers: {
           retryAfter: this.extractRetryAfterHeader(error.response?.headers),
         },
-        body: this.describeAxiosErrorData(responseData),
+        body: upstreamErrorBody,
       });
     }
     this.throwAsCleanError(error);

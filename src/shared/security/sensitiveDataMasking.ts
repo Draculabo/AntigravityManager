@@ -8,6 +8,8 @@ const SENSITIVE_KEYS = [
   'token',
   'apikey',
   'api_key',
+  'x-api-key',
+  'x-goog-api-key',
   'secret',
   'authorization',
   'credentials',
