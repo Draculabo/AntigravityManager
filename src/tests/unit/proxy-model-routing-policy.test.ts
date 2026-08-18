@@ -52,6 +52,21 @@ describe('ModelRoutingService', () => {
     expect(policy.resolveTargetModel('custom-fast')).toBe('gemini-3-flash');
   });
 
+  it('applies configured Anthropic family mappings', () => {
+    setServerConfig(
+      createProxyConfig({
+        anthropic_mapping: {
+          'claude-4.5-series': 'gemini-3-flash',
+          'claude-default': 'gemini-3.1-pro-high',
+        },
+      }),
+    );
+    const policy = new ModelRoutingService();
+
+    expect(policy.resolveTargetModel('claude-sonnet-4-5-20250929')).toBe('gemini-3-flash');
+    expect(policy.resolveTargetModel('claude-sonnet-4-6')).toBe('gemini-3.1-pro-high');
+  });
+
   it('applies dynamic deprecated-model forwarding to quota-provided targets', () => {
     updateDynamicForwardingRules('Gemini-Deprecated-Test', 'gemini-future-test');
     const policy = new ModelRoutingService();
