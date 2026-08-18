@@ -58,10 +58,7 @@ export class AuthServer {
           const error = url.searchParams.get('error');
 
           if (code) {
-            const escapedCode = escapeHtml(code);
-            logger.info(
-              `AuthServer: Received authorization code: ${escapedCode.substring(0, 10)}...`,
-            );
+            logger.info('AuthServer: Received authorization code');
 
             // Send code to renderer
             if (ipcContext.mainWindow) {
