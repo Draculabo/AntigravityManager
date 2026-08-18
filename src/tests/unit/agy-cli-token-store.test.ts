@@ -76,6 +76,22 @@ describe('writeAgyCliToken', () => {
     expect(fs.readFileSync(reachable, 'utf-8')).toBe(PAYLOAD);
   });
 
+  it('skips ambiguous multi-user WSL targets while keeping local CLI sync', async () => {
+    const localTarget = path.join(workDir, 'local-token');
+    pathsMock.getAgyCliTokenPaths.mockReturnValue([
+      localTarget,
+      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli\\antigravity-oauth-token',
+      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\bob\\.gemini\\antigravity-cli\\antigravity-oauth-token',
+    ]);
+
+    const { writeAgyCliToken } =
+      await import('../../modules/cloud-account/persistence/agyCliTokenStore');
+
+    expect(() => writeAgyCliToken(PAYLOAD)).not.toThrow();
+    expect(fs.readFileSync(localTarget, 'utf-8')).toBe(PAYLOAD);
+    expect(fs.readdirSync(workDir)).toEqual(['local-token']);
+  });
+
   it('does nothing when no CLI install is present', async () => {
     pathsMock.getAgyCliTokenPaths.mockReturnValue([]);
 
