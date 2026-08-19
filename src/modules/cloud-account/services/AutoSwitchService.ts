@@ -100,9 +100,13 @@ export class AutoSwitchService {
     // Check if current is depleted
     const isDepleted = this.isAccountDepleted(currentAccount);
 
-    if (isDepleted || currentAccount.status === 'rate_limited') {
+    if (
+      isDepleted ||
+      currentAccount.status === 'rate_limited' ||
+      currentAccount.status === 'expired'
+    ) {
       logger.info(
-        `AutoSwitch: Current account ${currentAccount.email} is depleted or rate limited.`,
+        `AutoSwitch: Current account ${currentAccount.email} is depleted or unavailable.`,
       );
 
       const nextAccount = await this.findBestAccount(currentAccount.id);
