@@ -117,6 +117,10 @@ export class CloudMonitorService {
   private static lastFocusTime: number = 0;
   private static isPolling: boolean = false;
 
+  private static isAutoSwitchEnabled(): boolean {
+    return CloudAccountSettingsStore.getSetting<boolean>('auto_switch_enabled', false);
+  }
+
   // Helper for testing
   static resetStateForTesting() {
     this.lastFocusTime = 0;
@@ -180,6 +184,10 @@ export class CloudMonitorService {
       clearInterval(this.intervalId);
     }
     this.intervalId = setInterval(() => {
+      if (!this.isAutoSwitchEnabled()) {
+        this.stop();
+        return;
+      }
       this.poll().catch((e) => logger.error('Scheduled poll failed', e));
     }, this.POLL_INTERVAL);
   }
@@ -192,6 +200,10 @@ export class CloudMonitorService {
   }
 
   static async poll() {
+    if (this.isAutoSwitchEnabled() && !this.intervalId) {
+      this.startInterval();
+    }
+
     if (this.isPolling) {
       return; // Extra safety
     }
