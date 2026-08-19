@@ -133,6 +133,16 @@ describe('manual update policy', () => {
     ).toBe(false);
   });
 
+  it('does not honor a snooze timestamp from the future', () => {
+    expect(
+      isManualUpdateSnoozed(
+        { version: '1.3.0', dismissedAt: '2026-06-10T00:00:00.000Z' },
+        '1.3.0',
+        new Date('2026-06-01T00:00:00.000Z'),
+      ),
+    ).toBe(false);
+  });
+
   it('normalizes updater.json into release metadata', () => {
     const release = buildGitHubReleaseFromUpdaterJson({
       version: '0.17.0',
