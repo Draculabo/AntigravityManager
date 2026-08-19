@@ -68,6 +68,11 @@ let lastAvailableUpdate: UpdateInfo | null = null;
 let downloadedUpdate: UpdateDownloadedEvent | null = null;
 let isDownloading = false;
 
+function clearUnavailableUpdateState(): void {
+  lastAvailableUpdate = null;
+  downloadedUpdate = null;
+}
+
 export function isElectronUpdaterSupported(platform = process.platform): boolean {
   return platform === 'win32';
 }
@@ -163,6 +168,7 @@ export function registerElectronUpdater(notify: NotifyUpdate): void {
   });
 
   appUpdater.on('update-not-available', (updateInfo) => {
+    clearUnavailableUpdateState();
     logger.info(`ElectronUpdater: update not available ${updateInfo.version}`);
   });
 
@@ -193,6 +199,7 @@ export async function checkElectronUpdaterUpdate(): Promise<ManualUpdateCheckRes
   try {
     const result: UpdateCheckResult | null = await getUpdater().checkForUpdates();
     if (!result?.isUpdateAvailable) {
+      clearUnavailableUpdateState();
       return { status: 'up-to-date' };
     }
 
