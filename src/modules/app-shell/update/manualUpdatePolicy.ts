@@ -156,5 +156,6 @@ export function isManualUpdateSnoozed(
     return false;
   }
 
-  return now.getTime() - dismissedAt < MANUAL_UPDATE_SNOOZE_MS;
+  const elapsed = now.getTime() - dismissedAt;
+  return elapsed >= 0 && elapsed < MANUAL_UPDATE_SNOOZE_MS;
 }
