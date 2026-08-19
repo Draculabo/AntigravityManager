@@ -34,10 +34,11 @@ export function toOpenAIFileObject(record: StoredFileRecord): OpenAIFileObject {
 /**
  * Purposes this proxy can genuinely serve.
  *
- * `fine-tune`, `batch`, `evals` and the Assistants output purposes are refused
- * at upload rather than accepted and left quietly useless: there is no
- * fine-tuning, batching or Assistants runtime behind this proxy, so a file
- * stored under those purposes could never be used for anything.
+ * `fine-tune`, `evals` and the Assistants output purposes are refused at
+ * upload rather than accepted and left quietly useless: there is no
+ * fine-tuning or Assistants runtime behind this proxy, so a file stored under
+ * those purposes could never be used for anything. `batch` is accepted
+ * because `/v1/batches` reads its input JSONL back out of this store.
  */
 export function normalizeOpenAIPurpose(value: string | undefined): string {
   const purpose = (value ?? '').trim();

@@ -55,7 +55,10 @@ export class GeminiService extends BaseProxyService {
     }
 
     const normalizedModel = this.normalizeGeminiModel(model);
-    this.logger.log(`Gemini countTokens request received: model=${normalizedModel}`);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    this.logger.log(
+      `Gemini countTokens request received: model=${normalizedModel}, routeSource=${routeResolution.source}`,
+    );
 
     return this.countTokensWithLease(normalizedModel, contents, 'Gemini-countTokens');
   }
@@ -65,10 +68,11 @@ export class GeminiService extends BaseProxyService {
     request: GeminiRequest,
   ): Promise<GeminiResponse> {
     const normalizedModel = this.normalizeGeminiModel(model);
-    const targetModel = this.resolveTargetModel(normalizedModel);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    const targetModel = routeResolution.resolvedModel;
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
-      `Gemini generate request received: model=${normalizedModel}, mappedModel=${targetModel}`,
+      `Gemini generate request received: model=${normalizedModel}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
 
     let lastError: unknown = null;
@@ -152,10 +156,11 @@ export class GeminiService extends BaseProxyService {
     request: GeminiRequest,
   ): Promise<Observable<string>> {
     const normalizedModel = this.normalizeGeminiModel(model);
-    const targetModel = this.resolveTargetModel(normalizedModel);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    const targetModel = routeResolution.resolvedModel;
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
-      `Gemini stream request received: model=${normalizedModel}, mappedModel=${targetModel}`,
+      `Gemini stream request received: model=${normalizedModel}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
 
     let lastError: unknown = null;

@@ -9,6 +9,19 @@ export const ProxyExperimentalConfigSchema = z.object({
   enable_cloud_code_meta: z.boolean().default(false),
 });
 
+/**
+ * One user-declared model alias.
+ *
+ * Supersedes the two legacy maps (`custom_mapping`, `anthropic_mapping`), which could not
+ * express order or an alias parked without deleting it. A list can: it keeps the order the
+ * user sees, and `enabled: false` retires a route without losing what it pointed at.
+ */
+export const ModelAliasRouteSchema = z.object({
+  alias: z.string().trim().min(1),
+  target: z.string().trim().min(1),
+  enabled: z.boolean().default(true),
+});
+
 export const ProxyConfigSchema = z.object({
   enabled: z.boolean(),
   port: z.number(),
@@ -26,6 +39,9 @@ export const ProxyConfigSchema = z.object({
   circuit_breaker_enabled: z.boolean().default(true),
   circuit_breaker_backoff_steps: z.array(z.number()).default([60, 300, 1800, 7200]),
   only_raw_quota_models: z.boolean().default(false),
+  model_aliases: z.array(ModelAliasRouteSchema).default([]),
+  // Superseded by `model_aliases`; kept so an existing config still loads, and emptied by the
+  // migration on the first load or save.
   custom_mapping: z.record(z.string(), z.string()).default({}),
   anthropic_mapping: z.record(z.string(), z.string()), // Mapping table
   request_timeout: z.number().default(120), // Timeout in seconds
@@ -68,6 +84,7 @@ export const AppConfigSchema = z.object({
   proxy: ProxyConfigSchema,
 });
 
+export type ModelAliasRoute = z.infer<typeof ModelAliasRouteSchema>;
 export type UpstreamProxyConfig = z.infer<typeof UpstreamProxyConfigSchema>;
 export type ProxyExperimentalConfig = z.infer<typeof ProxyExperimentalConfigSchema>;
 export type ProxyConfig = z.infer<typeof ProxyConfigSchema>;
@@ -117,6 +134,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     preferred_account_id: '',
     circuit_breaker_enabled: true,
     circuit_breaker_backoff_steps: [60, 300, 1800, 7200],
+    model_aliases: [],
     only_raw_quota_models: false,
     custom_mapping: {},
     anthropic_mapping: {},

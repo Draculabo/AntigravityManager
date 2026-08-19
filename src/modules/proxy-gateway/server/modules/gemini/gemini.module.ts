@@ -8,6 +8,17 @@ import { GeminiClient } from './gemini-client.service';
 import { GeminiController } from './gemini.controller';
 import { GeminiService } from './gemini.service';
 
+/**
+ * `BatchModule` needs `GeminiService` to build its execution target, so it
+ * imports this module. `GeminiController` needs `BatchRunnerService` the
+ * other way, to serve `:batchGenerateContent` on its own model-actions route
+ * -- but this module does **not** import `BatchModule` back: that static
+ * import would recreate the exact class-definition cycle `forwardRef` cannot
+ * fix at the ES module level (only NestJS's own DI graph, not `import`
+ * evaluation order). `GeminiController` instead resolves `BatchRunnerService`
+ * lazily through `ModuleRef.get(..., { strict: false })`, which walks the
+ * whole application's DI graph rather than this module's own `imports`.
+ */
 @Module({
   imports: [AccountLeaseModule, FilesModule, SharedServicesModule],
   controllers: [GeminiController],

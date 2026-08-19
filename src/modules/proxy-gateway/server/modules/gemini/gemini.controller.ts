@@ -10,16 +10,20 @@ import {
   UseGuards,
   Optional,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { FastifyReply } from 'fastify';
 import { isEmpty, isFunction, isNumber, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
+import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
 import {
   expandFileReferences,
   FileReferenceError,
 } from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
+import { BatchRunnerService } from '../batch/batch-runner.service';
+import { respondGeminiBatchGenerateContent } from '../batch/gemini-batch-submit';
 import { GeminiService } from './gemini.service';
 import { InvalidCountTokensRequestError } from './gemini-count-tokens';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
@@ -49,7 +53,30 @@ export class GeminiController {
     @Inject(AccountLeaseService)
     private readonly accountLeaseService?: AccountLeaseService,
     @Optional() @Inject(FileContentStore) private readonly fileStore?: FileContentStore,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
+
+  /**
+   * Resolves `BatchRunnerService` outside this module's own `imports`.
+   *
+   * `BatchModule` already imports `GeminiModule` to build its execution
+   * target, so `GeminiModule` cannot import `BatchModule` back without
+   * recreating the ES module load-order cycle `forwardRef` only papers over
+   * at the NestJS DI level, not at `import` evaluation time (see
+   * `gemini.module.ts`). `strict: false` walks the whole application's DI
+   * graph instead of this module's declared imports, which is exactly what a
+   * lazy, optional cross-module lookup like this one needs.
+   */
+  private resolveBatchRunner(): BatchRunnerService | undefined {
+    if (!this.moduleRef) {
+      return undefined;
+    }
+    try {
+      return this.moduleRef.get(BatchRunnerService, { strict: false });
+    } catch {
+      return undefined;
+    }
+  }
 
   @Get('models')
   listModels(@Res() res: FastifyReply) {
@@ -154,6 +181,11 @@ export class GeminiController {
         return;
       }
 
+      if (action === 'batchGenerateContent') {
+        await respondGeminiBatchGenerateContent(this.resolveBatchRunner(), model, request, res);
+        return;
+      }
+
       res.status(HttpStatus.BAD_REQUEST).send({
         error: {
           code: HttpStatus.BAD_REQUEST,
@@ -213,7 +245,7 @@ export class GeminiController {
       ? this.accountLeaseService?.getAllRawQuotaModels()
       : this.accountLeaseService?.getAllCollectedModels();
     const dynamicModelIds = getAllDynamicModels(
-      config?.custom_mapping ?? {},
+      getConfiguredModelMapping(config),
       collectedModelIds,
       onlyRawQuotaModels,
     );

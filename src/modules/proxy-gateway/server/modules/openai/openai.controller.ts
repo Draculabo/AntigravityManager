@@ -21,6 +21,7 @@ import {
   GeminiRequest,
   GeminiResponse,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
 import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
 import {
@@ -158,7 +159,7 @@ export class OpenAIController extends BaseProxyController {
       : this.accountLeaseService?.getAllCollectedModels();
 
     return getOpenAICompatibleModels(
-      config?.custom_mapping ?? {},
+      getConfiguredModelMapping(config),
       dynamicModelIds,
       onlyRawQuotaModels,
     );

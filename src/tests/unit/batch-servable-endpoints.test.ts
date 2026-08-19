@@ -1,0 +1,165 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import {
+  ANTHROPIC_SERVABLE_BATCH_ENDPOINT,
+  GEMINI_SERVABLE_BATCH_ACTION,
+  OPENAI_SERVABLE_BATCH_ENDPOINT,
+  SERVABLE_BATCH_ENDPOINTS,
+} from '@/modules/proxy-gateway/server/modules/batch/batch-job.types';
+import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
+import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
+import { buildGeminiBatchEndpoint } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-resource';
+
+/**
+ * `SERVABLE_BATCH_ENDPOINTS` documents exactly the endpoints this proxy's
+ * batch runner can genuinely execute. It used to be `['/v1/chat/completions']`
+ * only, from a time this branch had no Files API and so no way to build the
+ * OpenAI batch surface end to end. Now that the Files API and all three
+ * protocol surfaces exist, the list grew to include Anthropic's Messages
+ * endpoint and the Gemini action every batch line is dispatched to.
+ *
+ * This is a narrowing the brief explicitly calls out for widening: each
+ * *added* entry must carry its own dedicated test proving a batch actually
+ * completes against it, not just that the constant contains the string.
+ */
+function createTarget(handler: (dialect: string, request: unknown) => Promise<unknown>) {
+  return {
+    handleChatCompletions: vi.fn((request: unknown) => handler('openai', request)),
+    handleAnthropicMessages: vi.fn((request: unknown) => handler('anthropic', request)),
+    handleGeminiGenerateContent: vi.fn((model: string, request: unknown) =>
+      handler('gemini', { model, request }),
+    ),
+  } satisfies Record<keyof BatchExecutionTarget, ReturnType<typeof vi.fn>>;
+}
+
+function createRunner(target: ReturnType<typeof createTarget>): BatchRunnerService {
+  return new BatchRunnerService({ maxConcurrency: 1 }, target as unknown as BatchExecutionTarget);
+}
+
+describe('SERVABLE_BATCH_ENDPOINTS', () => {
+  it('lists exactly the endpoints this port wires up a servable execution path for', () => {
+    expect(SERVABLE_BATCH_ENDPOINTS).toEqual([
+      '/v1/chat/completions',
+      '/v1/messages',
+      'generateContent',
+    ]);
+    expect(OPENAI_SERVABLE_BATCH_ENDPOINT).toBe('/v1/chat/completions');
+    expect(ANTHROPIC_SERVABLE_BATCH_ENDPOINT).toBe('/v1/messages');
+    expect(GEMINI_SERVABLE_BATCH_ACTION).toBe('generateContent');
+  });
+
+  it('serves an OpenAI batch aimed at /v1/chat/completions end to end', async () => {
+    const target = createTarget(async () => ({
+      id: 'chatcmpl-1',
+      choices: [{ message: { content: 'ok' } }],
+    }));
+    const runner = createRunner(target);
+
+    const created = runner.create({
+      dialect: 'openai',
+      endpoint: OPENAI_SERVABLE_BATCH_ENDPOINT,
+      requests: [{ customId: 'line-1', body: { model: 'gpt-4o', messages: [] } }],
+    });
+    await runner.drain();
+
+    const job = runner.require(created.id);
+    expect(job.status).toBe('completed');
+    expect(job.requests[0].state).toBe('succeeded');
+    expect(target.handleChatCompletions).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves an Anthropic batch aimed at /v1/messages end to end', async () => {
+    const target = createTarget(async () => ({
+      id: 'msg_1',
+      type: 'message',
+      content: [{ type: 'text', text: 'ok' }],
+    }));
+    const runner = createRunner(target);
+
+    const created = runner.create({
+      dialect: 'anthropic',
+      endpoint: ANTHROPIC_SERVABLE_BATCH_ENDPOINT,
+      requests: [
+        {
+          customId: 'line-1',
+          body: { model: 'claude-3', max_tokens: 16, messages: [{ role: 'user', content: 'hi' }] },
+        },
+      ],
+    });
+    await runner.drain();
+
+    const job = runner.require(created.id);
+    expect(job.status).toBe('completed');
+    expect(job.requests[0].state).toBe('succeeded');
+    expect(target.handleAnthropicMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves a Gemini batch dispatched as plain generateContent end to end', async () => {
+    const target = createTarget(async () => ({
+      candidates: [{ content: { role: 'model', parts: [{ text: 'ok' }] } }],
+    }));
+    const runner = createRunner(target);
+
+    const model = 'models/gemini-3-flash';
+    const created = runner.create({
+      dialect: 'gemini',
+      endpoint: buildGeminiBatchEndpoint(model),
+      requests: [
+        {
+          customId: 'line-1',
+          body: { contents: [{ role: 'user', parts: [{ text: 'hi' }] }] },
+          target: model,
+        },
+      ],
+    });
+    expect(created.endpoint).toBe(`${model}:generateContent`);
+    await runner.drain();
+
+    const job = runner.require(created.id);
+    expect(job.status).toBe('completed');
+    expect(job.requests[0].state).toBe('succeeded');
+    expect(target.handleGeminiGenerateContent).toHaveBeenCalledWith(
+      model,
+      expect.objectContaining({ contents: expect.any(Array) }),
+    );
+  });
+
+  /**
+   * `/v1/responses` is a declared partial-compatibility boundary, not an oversight, so the refusal
+   * is pinned rather than left to the shape of the constant. Serving it in a batch needs the
+   * Responses request/response conversion and its session resolution, both of which live inside
+   * `OpenAIController` today; lifting the limitation means moving that pipeline into the protocol
+   * module first, which is a separate change with its own review.
+   */
+  it('refuses an OpenAI batch aimed at /v1/responses, naming what it can serve', async () => {
+    const { requireServableEndpoint } =
+      await import('@/modules/proxy-gateway/server/modules/batch/openai-batch-resource');
+
+    expect(() => requireServableEndpoint('/v1/responses')).toThrow(
+      expect.objectContaining({
+        code: 'unservable_endpoint',
+        httpStatus: 400,
+        param: 'endpoint',
+        message: expect.stringContaining('/v1/chat/completions'),
+      }),
+    );
+  });
+
+  it('refuses to dispatch a job that already carries /v1/responses', async () => {
+    // Creation is one gate, dispatch is the other: a record that reached the runner some other
+    // way -- a store written by an older build, a resumed job -- must not slip past it either.
+    const { executeBatchRequest } =
+      await import('@/modules/proxy-gateway/server/modules/batch/batch-request-executor');
+    const target = createTarget(async () => ({ id: 'chatcmpl-1', choices: [] }));
+
+    const result = await executeBatchRequest(
+      { dialect: 'openai', endpoint: '/v1/responses' } as never,
+      { customId: 'line-1', body: { model: 'gpt-4o', messages: [] } } as never,
+      target as unknown as BatchExecutionTarget,
+    );
+
+    expect(result.outcome).toBe('errored');
+    expect(result.outcome === 'errored' && result.error.code).toBe('unservable_endpoint');
+    expect(target.handleChatCompletions).not.toHaveBeenCalled();
+  });
+});

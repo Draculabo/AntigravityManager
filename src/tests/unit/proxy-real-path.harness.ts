@@ -6,6 +6,7 @@ import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthrop
 import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
 import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import type { ModelRouteMissJournalService } from '@/modules/proxy-gateway/server/shared/services/model-route-miss-journal.service';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import {
   ModelAvailabilityService,
@@ -143,10 +144,14 @@ export type FakeUpstream = ReturnType<typeof createUpstream>;
 export type FakeLease = ReturnType<typeof createLease>;
 
 /** The real shared services, wired the way `SharedServicesModule` wires them. */
-export function createGateway(upstream: FakeUpstream, lease: FakeLease) {
+export function createGateway(
+  upstream: FakeUpstream,
+  lease: FakeLease,
+  routeMissJournal?: ModelRouteMissJournalService,
+) {
   const logger = { log: vi.fn(), warn: vi.fn() };
   const availability = proxyModelAvailabilityStore as unknown as ModelAvailabilityService;
-  const routing = new ModelRoutingService();
+  const routing = new ModelRoutingService(routeMissJournal);
   const constraints = new GenerationConstraintsService(lease);
   const retry = new ProxyRetryService(lease, logger, availability);
   const geminiService = new GeminiService(
