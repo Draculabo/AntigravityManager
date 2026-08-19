@@ -49,6 +49,9 @@ describe('BrowserWindow security settings', () => {
     expect(recoverySource).toContain("'crashed'");
     expect(recoverySource).toContain("'oom'");
     expect(recoverySource).toContain("'memory-eviction'");
+    expect(recoverySource).toContain("window.webContents.on(\n    'did-fail-load'");
+    expect(recoverySource).toContain('if (isMainFrame)');
+    expect(recoverySource).toContain('isRecovering = false');
     expect(recoverySource).toContain('!shouldRecoverRenderer(details.reason, isQuitting)');
     expect(recoverySource).toContain('window.webContents.reload()');
   });
