@@ -116,11 +116,15 @@ export class CloudMonitorService {
   private static DEBOUNCE_TIME = 10000; // 10 seconds
   private static lastFocusTime: number = 0;
   private static isPolling: boolean = false;
+  private static lowQuotaAlertAccounts = new Set<string>();
+  private static lowAICreditsAlertAccounts = new Set<string>();
 
   // Helper for testing
   static resetStateForTesting() {
     this.lastFocusTime = 0;
     this.isPolling = false;
+    this.lowQuotaAlertAccounts.clear();
+    this.lowAICreditsAlertAccounts.clear();
     this.stop();
   }
 
@@ -287,23 +291,30 @@ export class CloudMonitorService {
       );
       const notificationText = CLOUD_MONITOR_NOTIFICATION_TEXT[notificationLanguage];
 
-      if (alertEnabled) {
-        for (const account of accounts) {
-          if (!account.quota?.models) continue;
-          const lowQuotaModels = Object.entries(account.quota.models)
-            .filter(([_, info]) => info.percentage <= alertThreshold && info.percentage > 0)
-            .map(([name, info]) => {
-              return info.display_name || name.replace('models/', '').replace(/-/g, ' ');
-            });
+      for (const account of accounts) {
+        const lowQuotaModels = alertEnabled
+          ? Object.entries(account.quota?.models ?? {})
+              .filter(([_, info]) => info.percentage <= alertThreshold && info.percentage > 0)
+              .map(([name, info]) => {
+                return info.display_name || name.replace('models/', '').replace(/-/g, ' ');
+              })
+          : [];
 
-          if (lowQuotaModels.length > 0) {
-            new Notification({
-              title: notificationText.lowQuotaTitle,
-              body: notificationText.lowQuotaBody(account.email, lowQuotaModels.join(', ')),
-              silent: false,
-            }).show();
-          }
+        if (lowQuotaModels.length === 0) {
+          this.lowQuotaAlertAccounts.delete(account.id);
+          continue;
         }
+
+        if (this.lowQuotaAlertAccounts.has(account.id)) {
+          continue;
+        }
+
+        new Notification({
+          title: notificationText.lowQuotaTitle,
+          body: notificationText.lowQuotaBody(account.email, lowQuotaModels.join(', ')),
+          silent: false,
+        }).show();
+        this.lowQuotaAlertAccounts.add(account.id);
       }
 
       // Check for AI Credits Alerts
@@ -316,19 +327,28 @@ export class CloudMonitorService {
         5000,
       );
 
-      if (aiCreditsAlertEnabled) {
-        for (const account of accounts) {
-          const credits = account.quota?.ai_credits?.credits;
-          if (credits === undefined || credits > aiCreditsAlertThreshold) {
-            continue;
-          }
+      for (const account of accounts) {
+        const credits = account.quota?.ai_credits?.credits;
+        const isLow =
+          aiCreditsAlertEnabled &&
+          credits !== undefined &&
+          credits <= aiCreditsAlertThreshold;
 
-          new Notification({
-            title: notificationText.lowAICreditsTitle,
-            body: notificationText.lowAICreditsBody(account.email, credits),
-            silent: false,
-          }).show();
+        if (!isLow) {
+          this.lowAICreditsAlertAccounts.delete(account.id);
+          continue;
         }
+
+        if (this.lowAICreditsAlertAccounts.has(account.id)) {
+          continue;
+        }
+
+        new Notification({
+          title: notificationText.lowAICreditsTitle,
+          body: notificationText.lowAICreditsBody(account.email, credits),
+          silent: false,
+        }).show();
+        this.lowAICreditsAlertAccounts.add(account.id);
       }
 
       // 5. Check for Auto-Switch
