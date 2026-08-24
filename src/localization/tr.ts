@@ -67,6 +67,8 @@ const tr = {
       signNotarize: 'Mümkünse lütfen imzalanmış ve noter onaylı bir sürüm kullanın.',
     },
     dataMigrationFailed: 'Eski hesap verilerinin şifresi çözülemedi.',
+    masterKeyUnavailable:
+      'Kayıtlı hesaplar bulundu ancak şifreleme anahtarına şu anda erişilemiyor. Hesap verileri veya anahtar dosyaları değiştirilmedi.',
     dataMigrationHint: {
       relogin: 'Lütfen yeniden giriş yapın veya hesaplarınızı tekrar ekleyin.',
       clearData: 'Sorun devam ederse yerel hesap verilerini temizleyip tekrar giriş yapın.',
@@ -395,6 +397,13 @@ const tr = {
   cloud: {
     title: 'Hesaplar',
     description: 'Google Gemini hesap havuzunuzu yönetin.',
+    security: {
+      compatibilityMode: {
+        title: 'Uyumluluk anahtarı depolaması etkin',
+        description:
+          'Hesap verileri AES-256-GCM ile şifrelenmeye devam eder, ancak ana anahtar işletim sistemi kimlik bilgisi hizmeti yerine yerel olarak saklanır.',
+      },
+    },
     autoSwitch: 'Otomatik Değiştir',
     providerGroupings: 'Sağlayıcı Grupları',
     addAccount: 'Hesap Ekle',

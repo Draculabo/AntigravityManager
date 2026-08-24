@@ -500,7 +500,12 @@ export class PartProcessor {
     if (signature) {
       toolUse.signature = signature;
       // Store signature to global storage for replay in subsequent requests
-      SignatureStore.store(signature, this.state.signatureSessionKey, this.state.messageCount);
+      SignatureStore.store(
+        signature,
+        this.state.signatureSessionKey,
+        this.state.messageCount,
+        toolId,
+      );
     }
 
     chunks.push(...this.state.startBlock('Function', toolUse));

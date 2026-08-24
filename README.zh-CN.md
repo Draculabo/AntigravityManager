@@ -373,9 +373,9 @@ codesign --force --deep --sign - "/Applications/Antigravity Manager 2.app"
 
 <a href="https://github.com/Draculabo/AntigravityManager/stargazers">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Draculabo/AntigravityManager&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Draculabo/AntigravityManager&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Draculabo/AntigravityManager&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Draculabo/AntigravityManager&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=Draculabo/AntigravityManager&type=Date" />
+    <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Draculabo/AntigravityManager&type=Date" />
   </picture>
 </a>
 

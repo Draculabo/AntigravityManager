@@ -53,6 +53,10 @@ export function isDataMigrationError(error: unknown): boolean {
   return getAppErrorData(error)?.appErrorCode === 'DATA_MIGRATION_FAILED';
 }
 
+export function isMasterKeyUnavailableError(error: unknown): boolean {
+  return getAppErrorData(error)?.appErrorCode === 'MASTER_KEY_UNAVAILABLE';
+}
+
 export function getLocalizedErrorMessage(error: unknown, t: TFunction): string {
   const appErrorData = getAppErrorData(error);
   if (appErrorData) {

@@ -33,6 +33,10 @@ import {
 } from '@/modules/identity-profile/ipc/handler';
 import { runWithSwitchGuard } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { executeSwitchFlow } from '@/modules/antigravity-runtime/switch/switchFlow';
+import {
+  loadAccountIndex,
+  saveAccountIndex,
+} from '@/modules/account/persistence/account-index-store';
 import { shell } from 'electron';
 import { withTimingTrace } from '@/shared/observability/timingTrace';
 
@@ -76,17 +80,7 @@ function bindDeviceProfileToAccount(
  * @returns {AccountIndex} The accounts index.
  */
 function loadAccountsIndex(): AccountIndex {
-  const filePath = getAccountsFilePath();
-  if (!fs.existsSync(filePath)) {
-    return {};
-  }
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(content);
-  } catch (error) {
-    logger.error('Failed to load accounts index', error);
-    return {};
-  }
+  return loadAccountIndex(getAccountsFilePath());
 }
 
 /**
@@ -95,17 +89,7 @@ function loadAccountsIndex(): AccountIndex {
  * @throws {Error} If the accounts index cannot be saved.
  */
 function saveAccountsIndex(accounts: AccountIndex): void {
-  const filePath = getAccountsFilePath();
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  try {
-    fs.writeFileSync(filePath, JSON.stringify(accounts, null, 2));
-  } catch (error) {
-    logger.error('Failed to save accounts index', error);
-    throw error;
-  }
+  saveAccountIndex(getAccountsFilePath(), accounts);
 }
 
 /**

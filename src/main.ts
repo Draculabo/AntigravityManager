@@ -52,6 +52,11 @@ import { getQuickObservabilityConfig } from '@/shared/observability/observabilit
 import { registerPerformanceRecorderIpc } from '@/modules/app-shell/performance-recorder/ipc';
 import { configurePerformanceRecorderCommandLine } from '@/modules/app-shell/performance-recorder/main-recorder';
 
+// Turn on rotating file output as early as possible, before any module-level
+// logging below runs, so the shipped app keeps logging to disk as before.
+// Importing the logger module itself must stay free of filesystem side effects.
+logger.enableFileLogging();
+
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
 
 function logPacket(data: any) {

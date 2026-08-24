@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { logger } from '@/shared/logging/logger';
+import type { PathResolutionOptions } from '@/shared/platform/paths';
 
 export interface AntigravityClientCacheClearResult {
   clearedPaths: string[];
@@ -9,8 +10,10 @@ export interface AntigravityClientCacheClearResult {
   errors: string[];
 }
 
-export function getAntigravityClientCachePaths(): string[] {
-  if (process.platform === 'darwin') {
+export function getAntigravityClientCachePaths(options?: PathResolutionOptions): string[] {
+  const platform = options?.platform ?? process.platform;
+
+  if (platform === 'darwin') {
     const home = os.homedir();
     return [
       path.posix.join(home, 'Library', 'HTTPStorages', 'com.google.antigravity'),
@@ -20,7 +23,7 @@ export function getAntigravityClientCachePaths(): string[] {
     ];
   }
 
-  if (process.platform === 'linux') {
+  if (platform === 'linux') {
     const home = os.homedir();
     const paths = [
       path.posix.join(home, '.cache', 'Antigravity'),
@@ -35,7 +38,7 @@ export function getAntigravityClientCachePaths(): string[] {
     return paths;
   }
 
-  if (process.platform !== 'win32') {
+  if (platform !== 'win32') {
     return [];
   }
 

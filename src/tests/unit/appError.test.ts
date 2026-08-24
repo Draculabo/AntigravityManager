@@ -63,4 +63,29 @@ describe('AppError', () => {
       requestPath: '["cloud","refreshAccountQuota"]',
     });
   });
+
+  it('preserves master-key recovery metadata across the public ORPC boundary', () => {
+    const error = new AppError('MASTER_KEY_UNAVAILABLE', 'Stored account key is unavailable', {
+      messageKey: 'error.masterKeyUnavailable',
+      reportToSentry: false,
+      metadata: {
+        hint: 'HINT_MANUAL_SIGN',
+        reason: 'PROVIDER_UNAVAILABLE',
+        storedAccountCount: 12,
+      },
+    });
+
+    const publicError = toPublicORPCError(error, '["cloud","getAccounts"]');
+
+    expect(getAppErrorData(publicError)).toEqual({
+      appErrorCode: 'MASTER_KEY_UNAVAILABLE',
+      messageKey: 'error.masterKeyUnavailable',
+      reportToSentry: false,
+      metadata: {
+        hint: 'HINT_MANUAL_SIGN',
+        reason: 'PROVIDER_UNAVAILABLE',
+        storedAccountCount: 12,
+      },
+    });
+  });
 });

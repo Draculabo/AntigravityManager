@@ -232,6 +232,8 @@ let registeredRoutes: Array<{ method: string; routePath: string }> = [];
 let previousV1InternalFlag: string | undefined;
 let app: NestFastifyApplication | undefined;
 
+// This boots and transforms the complete Electron/Nest graph; cold WSL and CI workers can take
+// more than Vitest's default hook budget even when application initialization completes normally.
 beforeAll(async () => {
   previousV1InternalFlag = process.env.AGM_V1INTERNAL_PASSTHROUGH;
   process.env.AGM_V1INTERNAL_PASSTHROUGH = '1';
@@ -260,7 +262,7 @@ beforeAll(async () => {
 
   app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, { logger: false });
   await app.init();
-}, 20000);
+}, 60_000);
 
 afterAll(async () => {
   await app?.close();

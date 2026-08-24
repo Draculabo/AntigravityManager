@@ -26,6 +26,8 @@ server/
 ├─ common/                                 # Shared abstractions and common boundaries
 │  ├─ base-proxy.controller.ts             # Base controller for protocol handlers (SSE, error responses, logging)
 │  ├─ base-proxy.service.ts                # Base service for protocol handlers (Request ID, stream timers, error classification)
+│  ├─ upstream-4xx-capture.service.ts       # Bounded, redacted diagnostic capture for final upstream 4xx responses
+│  ├─ upstream-capture-context.ts           # Request context interceptor feeding diagnostic captures
 │  ├─ interfaces/                          # Cross-protocol request, response, and intermediate types
 │  │  └─ request-interfaces.ts
 │  ├─ exceptions/                          # Unified exception types for upstream request errors
@@ -369,7 +371,25 @@ single per-request entry point that records it. Handlers that need the target ag
 
 ---
 
-## 5. Verification & Development Checklist
+## 5. Diagnostics
+
+### Upstream 4xx Capture
+
+Set `AGM_UPSTREAM_4XX_CAPTURE=1` to write a redacted JSON pair (the client request and the
+converted upstream request/rejection) to `~/.antigravity-agent/captures/` every time
+`GeminiClient` receives a final 4xx from the upstream (Gemini is the shared transport for
+OpenAI, Anthropic and native Gemini requests). Off by default: capture is a diagnostic aid, not
+something every install should pay disk I/O for on every rejected request. Secrets are masked
+with `sanitizeObject` before anything is written, only diagnostic allowlisted request headers
+are retained, and POSIX capture directories/files use `0700`/`0600` permissions. The directory
+is pruned to the newest 50 files. Captures larger than 1 MiB are replaced with a small diagnostic
+summary containing their original size, so one rejected request cannot consume unbounded disk
+space. A capture failure (e.g. disk full) is logged and swallowed — it never turns the caller's
+4xx into a 5xx.
+
+---
+
+## 6. Verification & Development Checklist
 
 After modifying files in `server/`, execute the following verification steps in order:
 

@@ -2,6 +2,7 @@ import { Entry } from '@napi-rs/keyring';
 import { execFileSync, spawnSync } from 'child_process';
 import { z } from 'zod';
 import { logger } from '@/shared/logging/logger';
+import { writeAgyCliToken } from './agyCliTokenStore';
 
 export interface CredentialStoreTokenInput {
   access_token: string;
@@ -260,19 +261,19 @@ export function writeAntigravityCredentialStoreToken(token: CredentialStoreToken
   const payload = buildCredentialStorePayload(token);
   logger.info('Writing Antigravity token to system credential store');
 
+  writeToSystemCredentialStore(payload);
+
+  // The CLI keeps the same payload in a file rather than the credential store,
+  // so it has to be updated here or it stays on the previous account.
+  writeAgyCliToken(payload);
+}
+
+function writeToSystemCredentialStore(payload: string): void {
   if (process.platform === 'darwin') {
     const value = `go-keyring-base64:${Buffer.from(payload, 'utf-8').toString('base64')}`;
-    try {
-      execFileSync('security', ['delete-generic-password', '-s', 'gemini', '-a', 'antigravity'], {
-        stdio: 'ignore',
-      });
-    } catch {
-      // Missing previous credential is acceptable.
-    }
-
     execFileSync(
       'security',
-      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w', value, '-A'],
+      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w', value, '-A', '-U'],
       { stdio: 'ignore' },
     );
     return;

@@ -16,6 +16,7 @@ describe('Logger Utilities', () => {
     error: (message: string, ...args: unknown[]) => void;
     setErrorReportingEnabled: (enabled: boolean) => void;
     setSentryReporter: (reporter: ((payload: unknown) => void) | null) => void;
+    enableFileLogging: (directory?: string) => void;
   };
 
   const getLatestLogFile = () => {
@@ -53,6 +54,7 @@ describe('Logger Utilities', () => {
     fs.mkdirSync(testLogDir, { recursive: true });
     const loggerModule = await import('../../shared/logging/logger');
     logger = loggerModule.logger;
+    logger.enableFileLogging(testLogDir);
   });
 
   beforeEach(() => {
@@ -137,5 +139,12 @@ describe('Logger Utilities', () => {
     const filePath = await waitForLogContains(message);
     expect(filePath).not.toBeNull();
     expect(reporter).not.toHaveBeenCalled();
+  });
+});
+
+describe('Logger entry-point wiring', () => {
+  it('turns on file logging from the Electron main entry point', () => {
+    const mainSource = fs.readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf-8');
+    expect(mainSource).toContain('logger.enableFileLogging()');
   });
 });

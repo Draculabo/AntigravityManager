@@ -7,6 +7,7 @@ import { GeminiService } from '../../modules/proxy-gateway/server/modules/gemini
 import { OpenAIService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
 import { Observable } from 'rxjs';
 import { GeminiClient } from '../../modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '../../modules/proxy-gateway/server/common/upstream-4xx-capture.service';
 import { setServerConfig } from '../../server/server-config';
 import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
@@ -758,7 +759,7 @@ describe('GeminiClient internal request parity', () => {
         candidates: [{ content: { parts: [{ text: 'ok' }] } }],
       },
     });
-    const client = new GeminiClient();
+    const client = new GeminiClient(new Upstream4xxCaptureService());
 
     await client.generateInternal({ project: 'project-1', request: {} } as any, 'access-token');
 
@@ -772,7 +773,7 @@ describe('GeminiClient internal request parity', () => {
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
       data: responseStream,
     });
-    const client = new GeminiClient();
+    const client = new GeminiClient(new Upstream4xxCaptureService());
 
     await client.streamGenerateInternal(
       { project: 'project-1', request: {} } as any,
@@ -805,7 +806,7 @@ describe('GeminiClient internal request parity', () => {
           candidates: [{ content: { parts: [{ text: 'ok' }] } }],
         },
       });
-    const client = new GeminiClient();
+    const client = new GeminiClient(new Upstream4xxCaptureService());
 
     await client.generateInternal({ project: 'project-1', request: {} } as any, 'access-token');
 

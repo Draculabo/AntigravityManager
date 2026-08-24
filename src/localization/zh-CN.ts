@@ -55,6 +55,8 @@ const zhCn = {
       signNotarize: '请在可用时使用已签名并公证的版本。',
     },
     dataMigrationFailed: '旧版账号数据无法解密。',
+    masterKeyUnavailable:
+      '检测到已存储账号，但当前无法访问其加密密钥。账号数据和密钥文件均未被修改。',
     dataMigrationHint: {
       relogin: '请重新登录或重新添加账号。',
       clearData: '如仍失败，请清理本地账号数据后再登录。',
@@ -370,6 +372,13 @@ const zhCn = {
   cloud: {
     title: '账号列表',
     description: '管理您的 Google Gemini 账号池。',
+    security: {
+      compatibilityMode: {
+        title: '正在使用兼容密钥存储',
+        description:
+          '账号数据仍使用 AES-256-GCM 加密，但主密钥保存在本地文件中，未受到操作系统凭据服务的保护。',
+      },
+    },
     autoSwitch: '自动切换',
     providerGroupings: '提供商分组',
     addAccount: '添加账号',
@@ -535,7 +544,7 @@ const zhCn = {
         title: '加密账号数据需要修复',
         description:
           '应用无法解密本地账号数据。通常是因为这些数据由另一把加密密钥创建，或本地数据已经损坏。',
-        stepReLogin: '先重新登录或重新添加受影响的账号。',
+        stepReLogin: '如果密钥仍无法恢复，再重新登录或重新添加受影响的账号，不要删除现有数据库。',
         stepMacPrivacy:
           '在 macOS 上，检查钥匙串/隐私权限提示。如果应用未签名或重新签名过，请重新签名、移动到 /Applications 后再打开。',
         stepCheckGithub: '查看 GitHub 仓库首页 README 中最新的排查步骤。',

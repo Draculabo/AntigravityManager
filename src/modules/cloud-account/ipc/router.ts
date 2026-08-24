@@ -43,8 +43,18 @@ import { getSwitchMetricsSnapshot } from '@/modules/antigravity-runtime/switch/s
 import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { getDeviceHardeningSnapshot } from '@/modules/identity-profile/ipc/handler';
 import { localAccountImportRouter } from '@/modules/cloud-account/local-import/ipc/router';
+import { getSecurityStatus } from '@/shared/security/security';
 
 const switchOwnerSchema = z.enum(['local-account-switch', 'cloud-account-switch']);
+const SecurityStatusSchema = z.object({
+  state: z.enum(['secure', 'degraded', 'locked']),
+  masterKeySource: z
+    .enum(['safeStorage', 'keytar', 'file', 'legacy-safeStorage', 'legacy-keytar', 'legacy-file'])
+    .optional(),
+  recoveryHint: z
+    .enum(['HINT_APP_TRANSLOCATION', 'HINT_KEYCHAIN_DENIED', 'HINT_MANUAL_SIGN', 'HINT_RECOVERY'])
+    .optional(),
+});
 const switchMetricBucketSchema = z.object({
   switchSuccess: z.number(),
   switchFailure: z.number(),
@@ -145,6 +155,10 @@ export const cloudRouter = os.router({
 
   listCloudAccounts: os.output(z.array(CloudAccountSchema)).handler(async () => {
     return listCloudAccounts();
+  }),
+
+  getSecurityStatus: os.output(SecurityStatusSchema).handler(async () => {
+    return getSecurityStatus();
   }),
 
   deleteCloudAccount: os

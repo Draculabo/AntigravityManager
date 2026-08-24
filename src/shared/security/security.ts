@@ -1,463 +1,117 @@
-import crypto from 'crypto';
+import path from 'node:path';
+import { app, safeStorage } from 'electron';
 import { logger } from '@/shared/logging/logger';
-import { safeStorage, app } from 'electron';
-import path from 'path';
-import fs from 'fs/promises';
-import { AppError, type AppErrorMetadataByCode } from '@/shared/errors/appError';
+import { AppError } from '@/shared/errors/appError';
+import {
+  decryptParsedPayloadWithKey,
+  encryptWithKey,
+  ENCRYPTED_PAYLOAD_VERSION_PREFIX,
+  isEncryptedPayloadCandidate,
+  parseEncryptedPayload,
+} from '@/shared/security/crypto';
+import {
+  MasterKeyManager,
+  type InitializeMasterKeyOptions,
+  type KeySource,
+  type SecurityStatus,
+} from '@/shared/security/master-key-manager';
+import {
+  FileMasterKeyProvider,
+  LegacyFileMasterKeyProvider,
+} from '@/shared/security/key-providers/file-provider';
+import {
+  KeytarMasterKeyProvider,
+  LegacyKeytarMasterKeyProvider,
+  type KeytarAdapter,
+} from '@/shared/security/key-providers/keytar-provider';
+import {
+  LegacySafeStorageProvider,
+  SafeStorageMasterKeyProvider,
+} from '@/shared/security/key-providers/safe-storage-provider';
 
 const SERVICE_NAME = 'AntigravityManager';
-const ACCOUNT_NAME = 'MasterKey';
-const KEYCHAIN_HINT_TRANSLOCATION = 'HINT_APP_TRANSLOCATION';
-const KEYCHAIN_HINT_KEYCHAIN_DENIED = 'HINT_KEYCHAIN_DENIED';
-const KEYCHAIN_HINT_SIGN_NOTARIZE = 'HINT_SIGN_NOTARIZE';
+const V2_KEYTAR_ACCOUNT_NAME = 'MasterKeyV2';
+const LEGACY_KEYTAR_ACCOUNT_NAME = 'MasterKey';
 
-export type KeySource = 'safeStorage' | 'keytar' | 'file';
-type KeychainAccessHint = AppErrorMetadataByCode['KEYCHAIN_UNAVAILABLE']['hint'];
+export type { KeySource, SecurityStatus };
 
-interface MasterKeyState {
-  key: Buffer;
-  source: KeySource;
-}
+let masterKeyManager: MasterKeyManager | null = null;
 
-// Cache the key in memory to avoid frequent system calls
-let cachedMasterKey: Buffer | null = null;
-let cachedMasterKeySource: KeySource | null = null;
+function createKeytarLoader(): () => Promise<KeytarAdapter> {
+  let loadedKeytar: Promise<KeytarAdapter> | null = null;
 
-function cacheMasterKey(key: Buffer, source: KeySource) {
-  cachedMasterKey = key;
-  cachedMasterKeySource = source;
-}
-
-function getCachedMasterKey() {
-  if (!cachedMasterKey || !cachedMasterKeySource) {
-    return null;
-  }
-
-  return { key: cachedMasterKey, source: cachedMasterKeySource };
-}
-
-function buildKeychainAccessHint(error: unknown): KeychainAccessHint {
-  if (process.platform !== 'darwin') {
-    return null;
-  }
-
-  let appPath = '';
-  try {
-    appPath = app.getAppPath();
-  } catch {
-    appPath = '';
-  }
-
-  const isTranslocated = appPath.includes('/AppTranslocation/');
-  if (isTranslocated) {
-    return KEYCHAIN_HINT_TRANSLOCATION;
-  }
-
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  if (errorMessage.toLowerCase().includes('keychain')) {
-    return KEYCHAIN_HINT_KEYCHAIN_DENIED;
-  }
-
-  return KEYCHAIN_HINT_SIGN_NOTARIZE;
-}
-
-function getKeychainDetailMessageKey(hint: KeychainAccessHint): string | undefined {
-  if (hint === KEYCHAIN_HINT_TRANSLOCATION) {
-    return 'error.keychainHint.translocation';
-  }
-
-  if (hint === KEYCHAIN_HINT_KEYCHAIN_DENIED) {
-    return 'error.keychainHint.keychainDenied';
-  }
-
-  if (hint === KEYCHAIN_HINT_SIGN_NOTARIZE) {
-    return 'error.keychainHint.signNotarize';
-  }
-
-  return undefined;
-}
-
-// Lock to prevent concurrent key generation
-let keyGenerationInProgress: Promise<MasterKeyState> | null = null;
-
-// Fallback key file path (used when keytar and safeStorage both fail)
-function getFallbackKeyPath(): string {
-  const userDataPath = app.getPath('userData');
-  return path.join(userDataPath, '.mk');
-}
-
-/**
- * Try to load keytar dynamically to avoid hard failure if it's not available
- */
-async function tryKeytar(): Promise<typeof import('keytar') | null> {
-  try {
-    // Native modules may fail to load in production builds
-    const keytar = await import('keytar');
-    // Test if keytar is actually working by calling a method
-    await keytar.default.findCredentials(SERVICE_NAME);
-    return keytar.default;
-  } catch (error) {
-    logger.warn('Security: keytar not available, using fallback', error);
-    return null;
-  }
-}
-
-async function readSafeStorageKey(keyPath: string): Promise<Buffer | null> {
-  if (!safeStorage.isEncryptionAvailable()) {
-    return null;
-  }
-
-  let encryptedKey: Buffer;
-  try {
-    encryptedKey = await fs.readFile(keyPath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null;
-    }
-    logger.error('Security: Failed to read safeStorage key file', error);
-    throw error;
-  }
-
-  try {
-    const hexKey = safeStorage.decryptString(encryptedKey);
-
-    if (!/^[a-f0-9]+$/i.test(hexKey) || hexKey.length !== 64) {
-      logger.warn('Security: safeStorage key has invalid format');
-      return null;
-    }
-
-    return Buffer.from(hexKey, 'hex');
-  } catch (error) {
-    logger.error(
-      'Security: Decryption of safeStorage key file failed. Keyring might be locked.',
-      error,
-    );
-    throw error;
-  }
-}
-
-async function getOrCreateSafeStorageKey(
-  keyPath: string,
-): Promise<{ key: Buffer; created: boolean }> {
-  const existingKey = await readSafeStorageKey(keyPath);
-  if (existingKey) {
-    return { key: existingKey, created: false };
-  }
-
-  const buffer = crypto.randomBytes(32);
-  const hexKey = buffer.toString('hex');
-  const encrypted = safeStorage.encryptString(hexKey);
-  await atomicWriteFile(keyPath, encrypted, { mode: 0o600 });
-  return { key: buffer, created: true };
-}
-
-async function readKeytarKey(): Promise<Buffer | null> {
-  const keytar = await tryKeytar();
-  if (!keytar) {
-    return null;
-  }
-
-  const existingKey = await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
-  if (!existingKey) {
-    return null;
-  }
-
-  if (!/^[a-f0-9]+$/i.test(existingKey) || existingKey.length !== 64) {
-    logger.warn('Security: keytar key has unexpected format');
-    return null;
-  }
-
-  return Buffer.from(existingKey, 'hex');
-}
-
-async function getOrCreateKeytarKey(): Promise<{ key: Buffer; created: boolean } | null> {
-  const keytar = await tryKeytar();
-  if (!keytar) {
-    return null;
-  }
-
-  const existingKey = await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
-  if (existingKey) {
-    return { key: Buffer.from(existingKey, 'hex'), created: false };
-  }
-
-  const buffer = crypto.randomBytes(32);
-  const hexKey = buffer.toString('hex');
-  await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, hexKey);
-  return { key: buffer, created: true };
-}
-
-async function readFileFallbackKey(keyPath: string): Promise<Buffer | null> {
-  try {
-    const content = await fs.readFile(keyPath, 'utf8');
-    if (content.length === 64 && /^[a-f0-9]+$/i.test(content)) {
-      return Buffer.from(content, 'hex');
-    }
-
-    // If it's not a valid hex key but file exists, it might be a safeStorage encrypted key
-    return null;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null;
-    }
-
-    logger.error('Security: Error reading fallback key file', error);
-    throw error;
-  }
-}
-
-async function getOrCreateFileFallbackKey(
-  keyPath: string,
-): Promise<{ key: Buffer; created: boolean }> {
-  const existingKey = await readFileFallbackKey(keyPath);
-  if (existingKey) {
-    return { key: existingKey, created: false };
-  }
-
-  const buffer = crypto.randomBytes(32);
-  const hexKey = buffer.toString('hex');
-  await atomicWriteFile(keyPath, hexKey, { mode: 0o600 });
-  return { key: buffer, created: true };
-}
-
-async function getFallbackMasterKeys(
-  keyPath: string,
-  primarySource: KeySource,
-): Promise<MasterKeyState[]> {
-  const fallbackKeys: MasterKeyState[] = [];
-
-  if (primarySource !== 'keytar') {
-    const keytarKey = await readKeytarKey();
-    if (keytarKey) {
-      fallbackKeys.push({ key: keytarKey, source: 'keytar' });
-    }
-  }
-
-  if (primarySource !== 'file') {
-    const fileKey = await readFileFallbackKey(keyPath);
-    if (fileKey) {
-      fallbackKeys.push({ key: fileKey, source: 'file' });
-    }
-  }
-
-  if (primarySource !== 'safeStorage') {
-    const safeStorageKey = await readSafeStorageKey(keyPath);
-    if (safeStorageKey) {
-      fallbackKeys.push({ key: safeStorageKey, source: 'safeStorage' });
-    }
-  }
-
-  return fallbackKeys;
-}
-
-/**
- * Atomic file write to prevent data races
- * Writes to a temp file first, then renames atomically
- */
-async function atomicWriteFile(
-  filePath: string,
-  data: Buffer | string,
-  options?: { mode?: number },
-): Promise<void> {
-  const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  try {
-    await fs.writeFile(tempPath, data, { mode: options?.mode ?? 0o600 });
-    await fs.rename(tempPath, filePath);
-  } catch (error) {
-    // Clean up temp file if rename failed
-    try {
-      await fs.unlink(tempPath);
-    } catch {
-      // Ignore cleanup errors
-    }
-    throw error;
-  }
-}
-
-/**
- * Get or generate master encryption key using multiple fallback strategies:
- * 1. safeStorage (Electron's built-in secure storage) - preferred
- * 2. keytar (system keychain) - fallback
- * 3. File-based with safeStorage encryption - last resort (with security warning)
- *
- * Uses a lock to prevent concurrent key generation (data race prevention)
- */
-async function getPrimaryMasterKey(): Promise<MasterKeyState> {
-  const cached = getCachedMasterKey();
-  if (cached) {
-    return cached;
-  }
-
-  if (keyGenerationInProgress) {
-    return keyGenerationInProgress;
-  }
-
-  keyGenerationInProgress = generatePrimaryMasterKey();
-  try {
-    return await keyGenerationInProgress;
-  } finally {
-    keyGenerationInProgress = null;
-  }
-}
-
-async function generatePrimaryMasterKey(): Promise<MasterKeyState> {
-  const cached = getCachedMasterKey();
-  if (cached) {
-    return cached;
-  }
-
-  const keyPath = getFallbackKeyPath();
-
-  if (safeStorage.isEncryptionAvailable()) {
-    try {
-      const result = await getOrCreateSafeStorageKey(keyPath);
-      cacheMasterKey(result.key, 'safeStorage');
-      if (result.created) {
-        logger.info('Security: Generated new master key via safeStorage');
-      } else {
-        logger.info('Security: Loaded master key via safeStorage');
-      }
-      return { key: result.key, source: 'safeStorage' };
-    } catch (error) {
-      // If we failed to decrypt but the file exists, we should NOT proceed to other fallbacks
-      // as they might overwrite the existing file and cause permanent data loss.
-      const fileExists = await fs
-        .access(keyPath)
-        .then(() => true)
-        .catch(() => false);
-      if (fileExists) {
-        if (!app || !app.isPackaged) {
-          logger.warn(
-            'Security (Dev Mode): Decryption failed but file exists. Renaming key file to generate a new dev key.',
-            error,
-          );
-          try {
-            const backupPath = `${keyPath}.bak.${Date.now()}`;
-            await fs.rename(keyPath, backupPath);
-            logger.info(`Security (Dev Mode): Renamed key file to ${backupPath}`);
-            const result = await getOrCreateSafeStorageKey(keyPath);
-            cacheMasterKey(result.key, 'safeStorage');
-            return { key: result.key, source: 'safeStorage' };
-          } catch (renameError) {
-            logger.error(
-              'Security (Dev Mode): Failed to auto-recover/rename key file',
-              renameError,
-            );
-          }
-        }
-        logger.error(
-          'Security: safeStorage key file exists but decryption failed. Keyring might be locked. Stopping to prevent data loss.',
-          error,
-        );
-        throw error;
-      }
-      logger.warn('Security: safeStorage failed, trying keytar', error);
-    }
-  }
-
-  try {
-    const result = await getOrCreateKeytarKey();
-    if (result) {
-      cacheMasterKey(result.key, 'keytar');
-      if (result.created) {
-        logger.info('Security: Generated new master key via keytar');
-      } else {
-        logger.info('Security: Loaded master key via keytar');
-      }
-      return { key: result.key, source: 'keytar' };
-    }
-  } catch (error) {
-    logger.warn('Security: keytar failed', error);
-  }
-
-  logger.warn(
-    'Security: WARNING - Using file-based key storage. ' +
-      'This is less secure than system keychain. ' +
-      'Ensure the app data directory has restricted permissions.',
-  );
-
-  try {
-    const result = await getOrCreateFileFallbackKey(keyPath);
-    cacheMasterKey(result.key, 'file');
-    if (result.created) {
-      logger.warn('Security: Generating file-based fallback key (less secure)');
-    } else {
-      logger.warn('Security: Using file-based fallback key (less secure)');
-    }
-    return { key: result.key, source: 'file' };
-  } catch (error) {
-    const hint = buildKeychainAccessHint(error);
-    logger.error('Security: Failed to access keychain/credential manager', error);
-    throw new AppError('KEYCHAIN_UNAVAILABLE', 'Keychain is unavailable', {
-      messageKey: 'error.keychainUnavailable',
-      detailMessageKey: getKeychainDetailMessageKey(hint),
-      metadata: { hint },
-      cause: error,
+  return async () => {
+    loadedKeytar ??= import('keytar').then(async ({ default: keytar }) => {
+      await keytar.findCredentials(SERVICE_NAME);
+      return keytar;
     });
-  }
-}
 
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
-const ENCRYPTED_PAYLOAD_VERSION_PREFIX = 'agm_enc_v1:';
-
-/**
- * Encrypts a string using AES-256-GCM.
- * Output format: "agm_enc_v1:iv_hex:auth_tag_hex:ciphertext_hex"
- */
-export async function encrypt(text: string): Promise<string> {
-  try {
-    const { key } = await getPrimaryMasterKey();
-    return encryptWithKey(key, text);
-  } catch (error) {
-    if (error instanceof AppError) {
+    try {
+      return await loadedKeytar;
+    } catch (error) {
+      // Native keyring loading can fail temporarily. A retry must perform a fresh load.
+      loadedKeytar = null;
       throw error;
     }
-    logger.error('Security: Encryption failed', error);
-    throw new Error('Encryption failed');
+  };
+}
+
+function getRecoveryHint(): NonNullable<SecurityStatus['recoveryHint']> {
+  if (process.platform !== 'darwin') {
+    return 'HINT_RECOVERY';
   }
+
+  try {
+    if (app.getAppPath().includes('/AppTranslocation/')) {
+      return 'HINT_APP_TRANSLOCATION';
+    }
+  } catch {
+    return 'HINT_MANUAL_SIGN';
+  }
+
+  return 'HINT_MANUAL_SIGN';
 }
 
-function encryptWithKey(key: Buffer, text: string): string {
-  const iv = crypto.randomBytes(IV_LENGTH);
+function createMasterKeyManager(): MasterKeyManager {
+  const userDataPath = app.getPath('userData');
+  const legacyKeyPath = path.join(userDataPath, '.mk');
+  const safeKeyPath = path.join(userDataPath, 'master-key.v2.safe');
+  const fileKeyPath = path.join(userDataPath, 'master-key.v2.file');
+  const loadKeytar = createKeytarLoader();
 
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-
-  const authTag = cipher.getAuthTag();
-
-  return `${ENCRYPTED_PAYLOAD_VERSION_PREFIX}${iv.toString('hex')}:${authTag.toString(
-    'hex',
-  )}:${encrypted}`;
+  return new MasterKeyManager({
+    recoveryHint: getRecoveryHint(),
+    providers: [
+      new SafeStorageMasterKeyProvider(safeKeyPath, safeStorage),
+      new KeytarMasterKeyProvider(SERVICE_NAME, V2_KEYTAR_ACCOUNT_NAME, loadKeytar),
+      new FileMasterKeyProvider(fileKeyPath),
+      new LegacySafeStorageProvider(legacyKeyPath, safeStorage),
+      new LegacyKeytarMasterKeyProvider(SERVICE_NAME, LEGACY_KEYTAR_ACCOUNT_NAME, loadKeytar),
+      new LegacyFileMasterKeyProvider(legacyKeyPath),
+    ],
+  });
 }
 
-function decryptWithKey(
-  key: Buffer,
-  ivHex: string,
-  authTagHex: string,
-  encryptedHex: string,
-): string {
-  const iv = Buffer.from(ivHex, 'hex');
-  const authTag = Buffer.from(authTagHex, 'hex');
-
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
-
-  let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return decrypted;
+function getMasterKeyManager(): MasterKeyManager {
+  masterKeyManager ??= createMasterKeyManager();
+  return masterKeyManager;
 }
 
-function isAuthTagMismatchError(errorMessage: string): boolean {
-  const normalized = errorMessage.toLowerCase();
-  return (
-    normalized.includes('unable to authenticate data') ||
-    normalized.includes('auth tag') ||
-    normalized.includes('bad decrypt')
-  );
+export async function initializeMasterKey(
+  options: InitializeMasterKeyOptions,
+): Promise<SecurityStatus> {
+  const manager = getMasterKeyManager();
+  await manager.initialize(options);
+  return manager.getSecurityStatus();
+}
+
+export function getSecurityStatus(): SecurityStatus {
+  return getMasterKeyManager().getSecurityStatus();
+}
+
+export async function encrypt(text: string): Promise<string> {
+  const { key } = getMasterKeyManager().getPrimaryKey();
+  return encryptWithKey(key, text);
 }
 
 export async function decryptWithMigration(
@@ -467,90 +121,50 @@ export async function decryptWithMigration(
     return { value: text };
   }
 
-  const isVersionedPayload = text.startsWith(ENCRYPTED_PAYLOAD_VERSION_PREFIX);
-  const encryptedPayload = isVersionedPayload
-    ? text.slice(ENCRYPTED_PAYLOAD_VERSION_PREFIX.length)
-    : text;
-  const parts = encryptedPayload.split(':');
-  if (parts.length !== 3) {
-    if (isVersionedPayload) {
-      logger.warn('Security: Invalid encrypted format - versioned payload is malformed');
+  const payload = parseEncryptedPayload(text);
+  if (!payload) {
+    if (isEncryptedPayloadCandidate(text)) {
+      logger.warn('Security: Invalid encrypted data format');
       throw new Error('Invalid encrypted data format');
     }
+
     return { value: text };
   }
 
-  const [ivHex, authTagHex, encryptedHex] = parts;
+  const manager = getMasterKeyManager();
+  const primary = manager.getPrimaryKey();
+  const candidates = manager.getDecryptionKeys();
+  let firstError: unknown;
 
-  if (
-    !/^[a-f0-9]+$/i.test(ivHex) ||
-    !/^[a-f0-9]+$/i.test(authTagHex) ||
-    !/^[a-f0-9]+$/i.test(encryptedHex)
-  ) {
-    logger.warn('Security: Invalid encrypted format - not valid hex');
-    throw new Error('Invalid encrypted data format');
+  for (const candidate of candidates) {
+    try {
+      const value = decryptParsedPayloadWithKey(candidate.key, payload);
+      const usedFallback = candidate.key.equals(primary.key) ? undefined : candidate.source;
+
+      return {
+        value,
+        reencrypted: payload.isVersioned ? undefined : `${ENCRYPTED_PAYLOAD_VERSION_PREFIX}${text}`,
+        usedFallback,
+      };
+    } catch (error) {
+      firstError ??= error;
+    }
   }
 
-  const primary = await getPrimaryMasterKey();
-  try {
-    const value = decryptWithKey(primary.key, ivHex, authTagHex, encryptedHex);
-    return {
-      value,
-      reencrypted: isVersionedPayload ? undefined : encryptWithKey(primary.key, value),
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-
-    if (errorMessage.includes('Invalid key length') || errorMessage.includes('Invalid IV length')) {
-      logger.error('Security: Decryption failed - corrupted encrypted data');
-      throw new Error('Decryption failed: Corrupted encrypted data');
-    }
-
-    if (!isAuthTagMismatchError(errorMessage)) {
-      logger.error('Security: Decryption failed', error);
-      throw new Error('Decryption failed');
-    }
-
-    const keyPath = getFallbackKeyPath();
-    const fallbackKeys = await getFallbackMasterKeys(keyPath, primary.source);
-    for (const fallback of fallbackKeys) {
-      try {
-        const value = decryptWithKey(fallback.key, ivHex, authTagHex, encryptedHex);
-        let reencrypted: string | undefined;
-        try {
-          reencrypted = encryptWithKey(primary.key, value);
-        } catch (reencryptError) {
-          logger.warn(
-            `Security: Failed to re-encrypt data from ${fallback.source} to ${primary.source}`,
-            reencryptError,
-          );
-        }
-        if (reencrypted) {
-          logger.info(`Security: Re-encrypted data from ${fallback.source} to ${primary.source}`);
-        }
-        return { value, reencrypted, usedFallback: fallback.source };
-      } catch {
-        continue;
-      }
-    }
-
-    logger.error(
-      'Security: Decryption failed - authentication tag mismatch (wrong key or corrupted data)',
-    );
-    throw new AppError('DATA_MIGRATION_FAILED', 'Data migration failed', {
-      messageKey: 'error.dataMigrationFailed',
-      detailMessageKey: 'error.dataMigrationHint.relogin',
-      metadata: { hint: 'HINT_RELOGIN' },
-      cause: error,
-    });
-  }
+  logger.error(
+    'Security: Decryption failed - authentication tag mismatch (wrong key or corrupted data)',
+  );
+  throw new AppError('DATA_MIGRATION_FAILED', 'Data migration failed', {
+    messageKey: 'error.dataMigrationFailed',
+    detailMessageKey: 'error.dataMigrationHint.relogin',
+    metadata: { hint: 'HINT_RELOGIN' },
+    cause: firstError,
+  });
 }
 
-/**
- * Decrypts a string using AES-256-GCM.
- * Input format: "iv_hex:auth_tag_hex:ciphertext_hex"
- */
 export async function decrypt(text: string): Promise<string> {
   const result = await decryptWithMigration(text);
   return result.value;
 }
+
+export { ENCRYPTED_PAYLOAD_VERSION_PREFIX };

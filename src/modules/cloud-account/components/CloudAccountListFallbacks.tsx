@@ -13,6 +13,7 @@ import {
   getErrorDetailsText,
   getLocalizedErrorMessage,
   isDataMigrationError,
+  isMasterKeyUnavailableError,
 } from '@/shared/utils/errorMessages';
 
 const GITHUB_REPOSITORY_URL = 'https://github.com/Draculabo/AntigravityManager';
@@ -35,7 +36,8 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
   const { t } = useTranslation();
   const message = error ? getLocalizedErrorMessage(error, t) : t('cloud.error.loadFailed');
   const details = error ? getErrorDetailsText(error) : '';
-  const shouldShowDataRepairGuidance = isDataMigrationError(error);
+  const shouldShowDataRepairGuidance =
+    isDataMigrationError(error) || isMasterKeyUnavailableError(error);
 
   return (
     <div className="border-destructive/40 bg-destructive/5 col-span-full rounded-lg border p-6">
@@ -51,9 +53,9 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
                 {t('cloud.error.dataRepair.description')}
               </p>
               <ol className="text-muted-foreground mt-3 list-decimal space-y-1 pl-5 text-sm">
-                <li>{t('cloud.error.dataRepair.stepReLogin')}</li>
                 <li>{t('cloud.error.dataRepair.stepMacPrivacy')}</li>
                 <li>{t('cloud.error.dataRepair.stepCheckGithub')}</li>
+                <li>{t('cloud.error.dataRepair.stepReLogin')}</li>
                 <li>{t('cloud.error.dataRepair.stepOpenIssue')}</li>
               </ol>
               <div className="mt-4 flex flex-wrap gap-2">
