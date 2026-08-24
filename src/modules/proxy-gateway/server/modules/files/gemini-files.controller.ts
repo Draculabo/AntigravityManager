@@ -13,8 +13,8 @@ import {
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
-import { FileResourceKernel } from './file-resource.kernel';
 import { FileStoreError } from './file-store.types';
+import { FilesService, sendFilesResponse } from './files.service';
 import {
   geminiFileErrorResponse,
   readGeminiUploadDisplayName,
@@ -26,7 +26,7 @@ import { normalizeUploadError, parseFileUploadRequest } from './file-upload-requ
 @Controller()
 @UseGuards(ProxyGuard)
 export class GeminiFilesController {
-  constructor(@Inject(FileResourceKernel) private readonly files: FileResourceKernel) {}
+  constructor(@Inject(FilesService) private readonly files: FilesService) {}
 
   @Post('upload/v1beta/files')
   async upload(
@@ -34,7 +34,7 @@ export class GeminiFilesController {
     @Res() res: FastifyReply,
     @Query('uploadType') uploadType?: string,
   ): Promise<void> {
-    await this.files.respond(
+    await sendFilesResponse(
       res,
       async () => {
         if (uploadType && !['media', 'multipart'].includes(uploadType)) {
@@ -64,14 +64,14 @@ export class GeminiFilesController {
     @Query('pageSize') pageSize?: string,
     @Query('pageToken') pageToken?: string,
   ): Promise<void> {
-    await this.files.respond(
+    await sendFilesResponse(
       res,
       async () => {
         const page = await this.files.list(pageSize, pageToken);
         const baseUrl = resolveBaseUrl(request);
         return {
           body: {
-            files: page.resources.map((record) => toGeminiFileResource(record, baseUrl)),
+            files: page.files.map((record) => toGeminiFileResource(record, baseUrl)),
             ...(page.nextPageToken ? { nextPageToken: page.nextPageToken } : {}),
           },
         };
@@ -86,7 +86,7 @@ export class GeminiFilesController {
     @Req() request: FastifyRequest,
     @Res() res: FastifyReply,
   ): Promise<void> {
-    await this.files.respond(
+    await sendFilesResponse(
       res,
       async () => ({
         body: toGeminiFileResource(await this.files.stat(name), resolveBaseUrl(request)),
@@ -97,7 +97,7 @@ export class GeminiFilesController {
 
   @Delete('v1beta/files/:name')
   async remove(@Param('name') name: string, @Res() res: FastifyReply): Promise<void> {
-    await this.files.respond(
+    await sendFilesResponse(
       res,
       async () => {
         await this.files.remove(name);

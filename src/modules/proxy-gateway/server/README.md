@@ -178,7 +178,7 @@ The provider surface this proxy speaks to (`v1internal` on `cloudcode-pa`) has n
 
 The store is protocol-agnostic and Nest-injectable. It lives in `<agent dir>/proxy-files` (`index.json`, `blobs/<aa>/<sha256>`, `tmp/`), addresses content by sha256 so identical bytes cost one blob, holds 20 MiB per file and 512 MiB per store with `413`-shaped errors, expires handles after 48 hours and sweeps at startup, on a timer and before every listing. Both blobs and index are written to `tmp/` and renamed into place, so a kill mid-write can leave a stray temp file but never a half-written blob the index already advertises.
 
-`FileResourceKernel` is the shared controller capability over that store. It resolves handles before store access, owns create/list/stat/content/delete orchestration, derives cursor state, and sends the common HTTP success/error flow. The OpenAI/Anthropic and Gemini controllers keep only route validation and their dialect-specific resource, list and error envelopes. A file uploaded through any surface can therefore be read from the others without duplicating controller plumbing:
+`FilesService` is the shared injectable capability over that store. `FilesModule` exports it for dependent modules such as Batch and Uploads; it resolves handles before store access and owns create/list/stat/content/delete operations. The OpenAI/Anthropic and Gemini controllers keep route validation and their dialect-specific resource, list, and error envelopes, while a small response helper applies their results to Fastify. A file uploaded through any surface can therefore be read from the others without duplicating controller plumbing:
 
 | surface | routes | id spelling |
 | :--- | :--- | :--- |

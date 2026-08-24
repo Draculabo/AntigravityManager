@@ -12,15 +12,14 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import type { LocalResourceErrorResponse } from '../../common/local-resource/local-resource-controller.kernel';
 import { ProxyGuard } from '../../guards/proxy.guard';
 import {
   anthropicFileErrorResponse,
   requireAnthropicFilesBeta,
   toAnthropicFileObject,
 } from './anthropic-file-resource';
-import { FileResourceKernel } from './file-resource.kernel';
 import { parseFileHandle, type StoredFileRecord } from './file-store.types';
+import { FilesService, sendFilesResponse, type FilesErrorResponse } from './files.service';
 import {
   normalizeOpenAIPurpose,
   openAIFileErrorResponse,
@@ -34,12 +33,12 @@ type FilesDialect = 'anthropic' | 'openai';
 @Controller('v1/files')
 @UseGuards(ProxyGuard)
 export class ClientFilesController {
-  constructor(@Inject(FileResourceKernel) private readonly files: FileResourceKernel) {}
+  constructor(@Inject(FilesService) private readonly files: FilesService) {}
 
   @Post()
   async upload(@Req() request: FastifyRequest, @Res() res: FastifyReply): Promise<void> {
     const dialect = resolveDialect(request);
-    await this.files.respond(
+    await sendFilesResponse(
       res,
       async () => {
         this.enforceDialectGate(dialect, request);
@@ -67,7 +66,7 @@ export class ClientFilesController {
     @Query('after') after?: string,
   ): Promise<void> {
     const dialect = resolveDialect(request);
-    await this.files.respond(
+    await sendFilesResponse(
       res,
       async () => {
         this.enforceDialectGate(dialect, request);
@@ -75,7 +74,7 @@ export class ClientFilesController {
           limit,
           after ? (parseFileHandle(after) ?? after) : undefined,
         );
-        const data = page.resources.map((record) => this.toResource(dialect, record));
+        const data = page.files.map((record) => this.toResource(dialect, record));
         return {
           body:
             dialect === 'openai'
@@ -99,7 +98,7 @@ export class ClientFilesController {
     @Res() res: FastifyReply,
   ): Promise<void> {
     const dialect = resolveDialect(request);
-    await this.files.respond(
+    await sendFilesResponse(
       res,
       async () => {
         this.enforceDialectGate(dialect, request);
@@ -116,16 +115,16 @@ export class ClientFilesController {
     @Res() res: FastifyReply,
   ): Promise<void> {
     const dialect = resolveDialect(request);
-    await this.files.respond(
+    await sendFilesResponse(
       res,
       async () => {
         this.enforceDialectGate(dialect, request);
-        const { resource, content } = await this.files.content(id);
+        const { record, bytes } = await this.files.content(id);
         return {
-          body: content,
+          body: bytes,
           headers: {
-            'Content-Type': resource.mimeType,
-            'Content-Length': String(resource.sizeBytes),
+            'Content-Type': record.mimeType,
+            'Content-Length': String(record.sizeBytes),
           },
         };
       },
@@ -140,7 +139,7 @@ export class ClientFilesController {
     @Res() res: FastifyReply,
   ): Promise<void> {
     const dialect = resolveDialect(request);
-    await this.files.respond(
+    await sendFilesResponse(
       res,
       async () => {
         this.enforceDialectGate(dialect, request);
@@ -166,7 +165,7 @@ export class ClientFilesController {
     return dialect === 'openai' ? toOpenAIFileObject(record) : toAnthropicFileObject(record);
   }
 
-  private toErrorResponse(dialect: FilesDialect, error: unknown): LocalResourceErrorResponse {
+  private toErrorResponse(dialect: FilesDialect, error: unknown): FilesErrorResponse {
     return dialect === 'openai'
       ? openAIFileErrorResponse(error)
       : anthropicFileErrorResponse(error);

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ClientFilesController } from '@/modules/proxy-gateway/server/modules/files/client-files.controller';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
-import { FileResourceKernel } from '@/modules/proxy-gateway/server/modules/files/file-resource.kernel';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import { GeminiFilesController } from '@/modules/proxy-gateway/server/modules/files/gemini-files.controller';
 import type { FileStoreOptions } from '@/modules/proxy-gateway/server/modules/files/file-store.types';
 
@@ -89,7 +89,7 @@ describe('local files API', () => {
       roots.push(rootDirectory);
     }
     const store = new FileContentStore({ sweepIntervalMs: 0, ...options, rootDirectory });
-    const files = new FileResourceKernel(store);
+    const files = new FilesService(store);
     return {
       client: new ClientFilesController(files),
       files,
@@ -406,7 +406,7 @@ describe('local files API', () => {
     expect(JSON.stringify(sent(viaGemini))).toContain(handle);
   });
 
-  it('routes both controller families through the same file resource kernel', async () => {
+  it('routes both controller families through the same Files service', async () => {
     const { client, files, gemini } = createSurfaces();
     const uploaded = await uploadOpenAI(client, {
       bytes: pdf,

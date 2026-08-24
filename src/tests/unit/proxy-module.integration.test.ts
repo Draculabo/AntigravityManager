@@ -1,9 +1,12 @@
+import { Inject, Injectable, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
 
 import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import { FilesModule } from '@/modules/proxy-gateway/server/modules/files/files.module';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
 import { ModelRouteMissJournalService } from '@/modules/proxy-gateway/server/shared/services/model-route-miss-journal.service';
 import { OpenAIChatCompletionService } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-chat-completion.service';
@@ -12,6 +15,28 @@ import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/mo
 import { OpenAIResponsesStoreController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-store.controller';
 import { ProxyModule } from '@/modules/proxy-gateway/server/proxy.module';
 import { ProxyService } from '@/modules/proxy-gateway/server/proxy.service';
+
+@Injectable()
+class FilesConsumer {
+  constructor(@Inject(FilesService) public readonly files: FilesService) {}
+}
+
+@Module({ imports: [FilesModule], providers: [FilesConsumer] })
+class FilesConsumerModule {}
+
+describe('FilesModule exports', () => {
+  it('makes FilesService injectable by an importing module', async () => {
+    const application = await NestFactory.createApplicationContext(FilesConsumerModule, {
+      logger: false,
+    });
+
+    try {
+      expect(application.get(FilesConsumer).files).toBeInstanceOf(FilesService);
+    } finally {
+      await application.close();
+    }
+  });
+});
 
 describe('ProxyModule dependency graph', () => {
   it('resolves the facade and all protocol controllers', async () => {

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ClientFilesController } from '@/modules/proxy-gateway/server/modules/files/client-files.controller';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
-import { FileResourceKernel } from '@/modules/proxy-gateway/server/modules/files/file-resource.kernel';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import type { FileStoreOptions } from '@/modules/proxy-gateway/server/modules/files/file-store.types';
 import { OpenAIUploadsController } from '@/modules/proxy-gateway/server/modules/uploads/openai-uploads.controller';
 import { OpenAIUploadsService } from '@/modules/proxy-gateway/server/modules/uploads/openai-uploads.service';
@@ -71,7 +71,7 @@ describe('OpenAI Uploads protocol', () => {
     const store = new FileContentStore({ sweepIntervalMs: 0, ...options, rootDirectory });
     const uploadsService = new OpenAIUploadsService(store);
     return {
-      files: new ClientFilesController(new FileResourceKernel(store)),
+      files: new ClientFilesController(new FilesService(store)),
       uploads: new OpenAIUploadsController(uploadsService),
       uploadsService,
       rootDirectory,
