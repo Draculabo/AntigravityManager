@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
+import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
 import { OpenAIBatchesController } from '@/modules/proxy-gateway/server/modules/batch/openai-batches.controller';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import { OPENAI_FILE_ID_PREFIX } from '@/modules/proxy-gateway/server/modules/files/openai-file-resource';
 
 function createReplyMock() {
@@ -57,7 +59,9 @@ function createController(
     { maxConcurrency },
     target as unknown as BatchExecutionTarget,
   );
-  const controller = new OpenAIBatchesController(runner, files);
+  const controller = new OpenAIBatchesController(
+    new BatchService(runner, files ? new FilesService(files) : undefined),
+  );
   return { controller, runner };
 }
 
@@ -308,7 +312,9 @@ describe('OpenAIBatchesController', () => {
       { maxConcurrency: 1 },
       target as unknown as BatchExecutionTarget,
     );
-    const controller = new OpenAIBatchesController(runner, files);
+    const controller = new OpenAIBatchesController(
+      new BatchService(runner, new FilesService(files)),
+    );
 
     const created = runner.create(
       {
@@ -345,7 +351,7 @@ describe('OpenAIBatchesController', () => {
         { maxConcurrency: 1 },
         target as unknown as BatchExecutionTarget,
       );
-      const controller = new OpenAIBatchesController(runner);
+      const controller = new OpenAIBatchesController(new BatchService(runner));
 
       const base = Date.now();
       const jobs = [0, 1, 2].map((i) => createJob(runner, base + i * 1000));

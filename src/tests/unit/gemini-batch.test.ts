@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
+import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
 import { respondGeminiBatchGenerateContent } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-submit';
 import { GeminiBatchesController } from '@/modules/proxy-gateway/server/modules/batch/gemini-batches.controller';
 
@@ -53,7 +54,7 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
   it('submits an inlined-requests batch and runs it to completion', async () => {
     const target = createTarget(async () => geminiReply('ok'));
     const runner = createRunner(target);
-    const operations = new GeminiBatchesController(runner);
+    const operations = new GeminiBatchesController(new BatchService(runner));
 
     const submitReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
@@ -96,7 +97,7 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
       return geminiReply('ok');
     });
     const runner = createRunner(target);
-    const operations = new GeminiBatchesController(runner);
+    const operations = new GeminiBatchesController(new BatchService(runner));
 
     const submitReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
@@ -142,7 +143,7 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
   it('answers an unknown operation name with 404 in the Gemini error envelope, not an empty success', () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target);
-    const operations = new GeminiBatchesController(runner);
+    const operations = new GeminiBatchesController(new BatchService(runner));
 
     const reply = createReplyMock();
     operations.get(`batches/${'0'.repeat(24)}`, reply as never);
@@ -153,7 +154,7 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
   it('expires a Gemini batch that outlives its completion window, reported through the operation', () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target, 1);
-    const operations = new GeminiBatchesController(runner);
+    const operations = new GeminiBatchesController(new BatchService(runner));
 
     const created = runner.create(
       {
@@ -172,10 +173,10 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
     expect(operation.error).toMatchObject({ status: 'DEADLINE_EXCEEDED' });
   });
 
-  it('pages the batch list with pageSize/pageToken/nextPageToken, newest first', () => {
+  it('pages newest first and preserves the first page for an aged-out well-formed token', () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target, 1);
-    const operations = new GeminiBatchesController(runner);
+    const operations = new GeminiBatchesController(new BatchService(runner));
 
     const now = Date.now();
     const makeJob = (id: string, createdAtMs: number) =>
@@ -211,12 +212,19 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
     expect(page3.batches).toHaveLength(1);
     expect(page3.batches[0].name).toBe(`batches/${oldest.id}`);
     expect(page3.nextPageToken).toBeUndefined();
+
+    const agedOutReply = createReplyMock();
+    operations.list(agedOutReply as never, '1', `batches/${'f'.repeat(24)}`);
+    expect(sent(agedOutReply)).toEqual({
+      batches: [page1.batches[0]],
+      nextPageToken: page1.nextPageToken,
+    });
   });
 
   it('rejects an unrecognized pageToken with the Gemini error envelope', () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target);
-    const operations = new GeminiBatchesController(runner);
+    const operations = new GeminiBatchesController(new BatchService(runner));
 
     const reply = createReplyMock();
     operations.list(reply as never, undefined, 'not-a-real-token');

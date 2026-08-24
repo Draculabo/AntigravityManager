@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AnthropicMessageBatchesController } from '@/modules/proxy-gateway/server/modules/batch/anthropic-message-batches.controller';
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
+import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
 
 function createReplyMock() {
   const reply: Record<string, unknown> = {};
@@ -33,7 +34,7 @@ function createController(target: ReturnType<typeof createTarget>, maxConcurrenc
     { maxConcurrency },
     target as unknown as BatchExecutionTarget,
   );
-  return { controller: new AnthropicMessageBatchesController(runner), runner };
+  return { controller: new AnthropicMessageBatchesController(new BatchService(runner)), runner };
 }
 
 function reply(text: string) {
@@ -247,7 +248,7 @@ describe('AnthropicMessageBatchesController', () => {
       { maxConcurrency: 1 },
       target as unknown as BatchExecutionTarget,
     );
-    const controller = new AnthropicMessageBatchesController(runner);
+    const controller = new AnthropicMessageBatchesController(new BatchService(runner));
 
     const created = runner.create(
       {
@@ -292,7 +293,7 @@ describe('AnthropicMessageBatchesController', () => {
 
     it('walks forward with after_id, reaches the terminal page, and 404s on an unknown after_id instead of restarting at page one', () => {
       const runner = makeRunner();
-      const controller = new AnthropicMessageBatchesController(runner);
+      const controller = new AnthropicMessageBatchesController(new BatchService(runner));
 
       const base = Date.now();
       const jobs = [0, 1, 2].map((i) => createJob(runner, base + i * 1000));
@@ -325,7 +326,7 @@ describe('AnthropicMessageBatchesController', () => {
 
     it('walks backward with before_id and reaches the terminal (newest) page', () => {
       const runner = makeRunner();
-      const controller = new AnthropicMessageBatchesController(runner);
+      const controller = new AnthropicMessageBatchesController(new BatchService(runner));
 
       const base = Date.now();
       const jobs = [0, 1, 2].map((i) => createJob(runner, base + i * 1000));
@@ -346,7 +347,7 @@ describe('AnthropicMessageBatchesController', () => {
 
     it('rejects after_id and before_id given together', () => {
       const runner = makeRunner();
-      const controller = new AnthropicMessageBatchesController(runner);
+      const controller = new AnthropicMessageBatchesController(new BatchService(runner));
       const job = createJob(runner, Date.now());
 
       const reply2 = createReplyMock();
@@ -357,7 +358,7 @@ describe('AnthropicMessageBatchesController', () => {
 
     it('enforces the documented 1-1000 limit range instead of accepting anything', () => {
       const runner = makeRunner();
-      const controller = new AnthropicMessageBatchesController(runner);
+      const controller = new AnthropicMessageBatchesController(new BatchService(runner));
 
       const tooLow = createReplyMock();
       controller.list(tooLow as never, '0');

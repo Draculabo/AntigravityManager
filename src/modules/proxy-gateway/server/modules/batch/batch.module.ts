@@ -11,31 +11,16 @@ import { OpenAIService } from '../openai/openai.service';
 import { AnthropicMessageBatchesController } from './anthropic-message-batches.controller';
 import { BATCH_EXECUTION_TARGET, type BatchExecutionTarget } from './batch-request-executor';
 import { BATCH_RUNNER_OPTIONS, BatchRunnerService } from './batch-runner.service';
+import { BatchService } from './batch.service';
 import { resolveBatchRunnerOptions } from './batch-store-location';
 import { GeminiBatchesController } from './gemini-batches.controller';
 import { OpenAIBatchesController } from './openai-batches.controller';
 
 /**
- * Wires the batch runner's core to the already-ported protocol services, and
- * hosts the three per-dialect protocol surfaces that sit on top of it.
- *
- * This module owns the only place that knows the runner's execution target is
- * backed by `OpenAIService` / `AnthropicService` / `GeminiService`: the runner
- * itself depends on {@link BatchExecutionTarget} through
- * {@link BATCH_EXECUTION_TARGET}, never on those classes directly.
- *
- * `OpenAIBatchesController` (`/v1/batches`) and `AnthropicMessageBatchesController`
- * (`/v1/messages/batches`) are registered here because they are new resources
- * with no other natural home. Gemini's `:batchGenerateContent` is different:
- * it answers on the *existing* `/v1beta/models/{model}:generateContent`-style
- * route table, so that submission logic is dispatched from
- * `GeminiController` itself (`gemini-batch-submit.ts`) rather than duplicated
- * as a second controller here; only the polling half,
- * `GeminiBatchesController` (`/v1beta/batches`), is a genuinely new
- * resource and lives in this module. `GeminiController` reaches
- * `BatchRunnerService` through `ModuleRef.get(..., { strict: false })`
- * instead of `GeminiModule` importing this module back, so this module's own
- * import of `GeminiModule` below stays a plain, non-circular import.
+ * Owns the Batch runner, shared controller service, and three protocol adapters.
+ * The execution target token keeps the runner independent of vendor services.
+ * Gemini submission stays on GeminiController's model-action route; this module
+ * provides only its `/v1beta/batches` polling controller.
  */
 @Module({
   imports: [AccountLeaseModule, GeminiModule, AnthropicModule, OpenAIModule, FilesModule],
@@ -64,6 +49,7 @@ import { OpenAIBatchesController } from './openai-batches.controller';
       inject: [OpenAIService, AnthropicService, GeminiService],
     },
     BatchRunnerService,
+    BatchService,
   ],
   exports: [BatchRunnerService],
 })

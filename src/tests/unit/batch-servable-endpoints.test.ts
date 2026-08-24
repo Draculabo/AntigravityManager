@@ -10,18 +10,7 @@ import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
 import { buildGeminiBatchEndpoint } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-resource';
 
-/**
- * `SERVABLE_BATCH_ENDPOINTS` documents exactly the endpoints this proxy's
- * batch runner can genuinely execute. It used to be `['/v1/chat/completions']`
- * only, from a time this branch had no Files API and so no way to build the
- * OpenAI batch surface end to end. Now that the Files API and all three
- * protocol surfaces exist, the list grew to include Anthropic's Messages
- * endpoint and the Gemini action every batch line is dispatched to.
- *
- * This is a narrowing the brief explicitly calls out for widening: each
- * *added* entry must carry its own dedicated test proving a batch actually
- * completes against it, not just that the constant contains the string.
- */
+/** Every advertised endpoint needs a dispatch test proving the Batch runner can execute it. */
 function createTarget(handler: (dialect: string, request: unknown) => Promise<unknown>) {
   return {
     handleChatCompletions: vi.fn((request: unknown) => handler('openai', request)),
@@ -37,7 +26,7 @@ function createRunner(target: ReturnType<typeof createTarget>): BatchRunnerServi
 }
 
 describe('SERVABLE_BATCH_ENDPOINTS', () => {
-  it('lists exactly the endpoints this port wires up a servable execution path for', () => {
+  it('lists exactly the endpoints with a servable execution path', () => {
     expect(SERVABLE_BATCH_ENDPOINTS).toEqual([
       '/v1/chat/completions',
       '/v1/messages',

@@ -18,7 +18,7 @@
  * This file owns the runner's vocabulary -- job/request shape, state values,
  * error codes, id parsing. The client-facing protocol surfaces
  * (`/v1/batches`, `/v1/messages/batches`, `:batchGenerateContent`,
- * `/v1beta/operations`) each live in their own controller and resource module
+ * `/v1beta/batches`) each live in their own controller and resource module
  * beside `batch-runner.service.ts`, one per dialect, wired up in
  * `batch.module.ts`.
  */
@@ -47,14 +47,11 @@ export type BatchRequestOutcome = 'succeeded' | 'errored' | 'canceled' | 'expire
 export type BatchRequestState = 'pending' | 'running' | BatchRequestOutcome;
 
 /**
- * Every endpoint this proxy's batch runner can genuinely execute, one per
- * dialect, now that the local Files API exists to carry OpenAI's JSONL input
- * and output.
+ * Every endpoint this proxy's batch runner can execute, one per dialect.
  *
  * `/v1/responses` is still deliberately absent from the OpenAI slot: it needs
- * the Responses request/response conversion that lives behind a controller,
- * and claiming it works before that conversion is wired would be exactly the
- * kind of promise this port refuses to make. Anthropic and Gemini are not
+ * the Responses request/response conversion that lives behind a controller.
+ * Anthropic and Gemini are not
  * endpoint-scoped the way OpenAI is -- {@link BatchDialect} alone routes a job
  * to the right handler -- so their entries here document, and their
  * surface-level tests prove, the one execution path each dialect's protocol
@@ -118,11 +115,11 @@ export interface BatchJobRecord {
   metadata?: Record<string, string>;
   /** Set when the whole batch failed before any request ran. */
   error?: BatchRequestError;
-  /** OpenAI only: the `FileContentStore` handle the input JSONL was read from. */
+  /** OpenAI only: the local Files handle the input JSONL was read from. */
   inputFileId?: string;
-  /** OpenAI only: the `FileContentStore` handle the succeeded-line JSONL was written to. */
+  /** OpenAI only: the local Files handle the succeeded-line JSONL was written to. */
   outputFileId?: string;
-  /** OpenAI only: the `FileContentStore` handle the failed-line JSONL was written to. */
+  /** OpenAI only: the local Files handle the failed-line JSONL was written to. */
   errorFileId?: string;
 }
 

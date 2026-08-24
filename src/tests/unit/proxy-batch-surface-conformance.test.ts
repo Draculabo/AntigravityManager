@@ -17,6 +17,7 @@ import {
 import { AnthropicMessageBatchesController } from '@/modules/proxy-gateway/server/modules/batch/anthropic-message-batches.controller';
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
+import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
 import {
   type BatchJobRecord,
   type BatchStatus,
@@ -27,6 +28,7 @@ import { GeminiBatchesController } from '@/modules/proxy-gateway/server/modules/
 import { toOpenAIBatchObject } from '@/modules/proxy-gateway/server/modules/batch/openai-batch-resource';
 import { OpenAIBatchesController } from '@/modules/proxy-gateway/server/modules/batch/openai-batches.controller';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import { OPENAI_FILE_ID_PREFIX } from '@/modules/proxy-gateway/server/modules/files/openai-file-resource';
 
 /**
@@ -109,9 +111,10 @@ describe('one job, three dialects', () => {
       { maxConcurrency: 3 },
       target as unknown as BatchExecutionTarget,
     );
-    const openai = new OpenAIBatchesController(runner, files);
-    const anthropic = new AnthropicMessageBatchesController(runner);
-    const operations = new GeminiBatchesController(runner);
+    const batches = new BatchService(runner, new FilesService(files));
+    const openai = new OpenAIBatchesController(batches);
+    const anthropic = new AnthropicMessageBatchesController(batches);
+    const operations = new GeminiBatchesController(batches);
 
     const inputFileId = await uploadJsonl(files, [
       {
@@ -369,7 +372,9 @@ describe("errors stay in the caller's dialect", () => {
       { maxConcurrency: 1 },
       openaiTarget as unknown as BatchExecutionTarget,
     );
-    const openaiController = new OpenAIBatchesController(openaiRunner, files);
+    const openaiController = new OpenAIBatchesController(
+      new BatchService(openaiRunner, new FilesService(files)),
+    );
     const inputFileId = await uploadJsonl(files, [
       { custom_id: 'bad', url: '/v1/chat/completions', body: { model: 'gpt-4o', messages: [] } },
     ]);
@@ -398,7 +403,9 @@ describe("errors stay in the caller's dialect", () => {
       { maxConcurrency: 1 },
       anthropicTarget as unknown as BatchExecutionTarget,
     );
-    const anthropicController = new AnthropicMessageBatchesController(anthropicRunner);
+    const anthropicController = new AnthropicMessageBatchesController(
+      new BatchService(anthropicRunner),
+    );
     const anthropicCreateReply = createReplyMock();
     anthropicController.create(
       {
@@ -429,7 +436,7 @@ describe("errors stay in the caller's dialect", () => {
       { maxConcurrency: 1 },
       geminiTarget as unknown as BatchExecutionTarget,
     );
-    const geminiOperations = new GeminiBatchesController(geminiRunner);
+    const geminiOperations = new GeminiBatchesController(new BatchService(geminiRunner));
     const geminiCreateReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
       geminiRunner,
@@ -462,8 +469,9 @@ describe("errors stay in the caller's dialect", () => {
       { maxConcurrency: 1 },
       target as unknown as BatchExecutionTarget,
     );
-    const openaiController = new OpenAIBatchesController(runner, files);
-    const anthropicController = new AnthropicMessageBatchesController(runner);
+    const batches = new BatchService(runner, new FilesService(files));
+    const openaiController = new OpenAIBatchesController(batches);
+    const anthropicController = new AnthropicMessageBatchesController(batches);
 
     const openaiReply = createReplyMock();
     await openaiController.create(
@@ -519,8 +527,9 @@ describe("errors stay in the caller's dialect", () => {
       { maxConcurrency: 1 },
       target as unknown as BatchExecutionTarget,
     );
-    const openaiController = new OpenAIBatchesController(runner, files);
-    const anthropicController = new AnthropicMessageBatchesController(runner);
+    const batches = new BatchService(runner, new FilesService(files));
+    const openaiController = new OpenAIBatchesController(batches);
+    const anthropicController = new AnthropicMessageBatchesController(batches);
 
     const anthropicCreateReply = createReplyMock();
     anthropicController.create(

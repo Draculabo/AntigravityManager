@@ -226,7 +226,7 @@ normally, right now, against the same account leases and the same rate-limit tra
 interactive traffic uses. Do not describe it to a client as cheaper or faster than a
 unary call.
 
-The core is protocol-neutral and knows nothing about HTTP:
+The runner core is protocol-neutral; `BatchService` is the shared HTTP-adapter boundary above it:
 
 | file | responsibility |
 | :--- | :--- |
@@ -234,6 +234,7 @@ The core is protocol-neutral and knows nothing about HTTP:
 | `batch-job-transitions.ts` | Pure state transitions: restart recovery, cancellation, expiry, claiming, recording an outcome. |
 | `batch-request-executor.ts` | Runs one request line against a `BatchExecutionTarget`, isolating a failure to its own `custom_id`. |
 | `batch-runner.service.ts` | The durable, bounded, restartable job queue: concurrency, scheduling, persistence. |
+| `batch.service.ts` | Shared controller operations: dialect-safe lookup, lifecycle actions, cursor policies, Files integration, and Fastify reply flow. |
 | `batch-store-location.ts` | Resolves the backing file under `getProxyStateDir()`, with the usual test-runner path suppression. |
 | `batch.module.ts` | Wires the runner to `OpenAIService` / `AnthropicService` / `GeminiService` through a `BATCH_EXECUTION_TARGET` DI token, and registers the OpenAI and Anthropic batch controllers plus the Gemini batches controller (see below). |
 
@@ -255,8 +256,9 @@ and retries it from the top.
 
 ### Protocol surfaces
 
-Each dialect gets its own controller and resource module -- no cross-protocol batch service,
-matching the rest of this directory's protocol isolation rule (section 5.3).
+Each dialect keeps its own controller, resource mapping, and error envelope. `BatchService`
+centralizes job lookup, lifecycle actions, the distinct cursor policies, OpenAI Files access,
+and common Fastify reply plumbing.
 
 | Surface | Routes | Files |
 | :--- | :--- | :--- |
@@ -264,24 +266,18 @@ matching the rest of this directory's protocol isolation rule (section 5.3).
 | **Anthropic** | `POST /v1/messages/batches`, `GET /v1/messages/batches`, `GET /v1/messages/batches/{id}`, `POST /v1/messages/batches/{id}/cancel`, `GET /v1/messages/batches/{id}/results` | `anthropic-batch-resource.ts`, `anthropic-message-batches.controller.ts` |
 | **Gemini** | `POST /v1beta/models/{model}:batchGenerateContent` (dispatched from `GeminiController`'s existing model-actions route), `GET /v1beta/batches`, `GET /v1beta/batches/{name}` | `gemini-batch-resource.ts`, `gemini-batch-submit.ts`, `gemini-batches.controller.ts` |
 
-**Gemini surface and naming.** `/v1beta/batches` and `batches/{id}` names match the current
-Gemini Batch API's own resource, not the generic `/v1beta/operations` long-running-operation
-path this port originally used. The `/v1beta/operations` alias has been removed rather than kept
-alongside it: no client of this proxy is known to require it, and carrying two names for one
-resource just to have kept the old one would be a second contract maintained for its own sake.
-`parseBatchHandle` (`batch-job.types.ts`) still accepts an `operations/`-prefixed handle on top
-of `batches/`, since that parsing is shared with the other two dialects' id forms and costs
-nothing to leave permissive; it is simply no longer reachable through a registered route.
+**Gemini surface and naming.** Gemini polling uses `/v1beta/batches` and `batches/{id}` names.
+The shared `parseBatchHandle` accepts both `batches/` and `operations/`-prefixed handles, while
+only the batches route is published.
 `GET /v1beta/batches` supports `pageSize` and cursor-style `pageToken`/`nextPageToken` paging,
 the same pattern `OpenAIBatchesController.list` already uses with `limit`/`after`: `pageToken` is
 the previous page's last `batches/{id}` name, and `nextPageToken` is omitted once there is no
-further page. An unrecognized `pageToken` is a `400 INVALID_ARGUMENT` in the Gemini error
-envelope, not a silently-reset first page.
+further page. A malformed `pageToken` is a `400 INVALID_ARGUMENT`; a well-formed token whose
+batch has aged out restarts at the first retained page.
 
 **`SERVABLE_BATCH_ENDPOINTS`.** OpenAI batches are gated at both creation and dispatch to
-`/v1/chat/completions` only; `/v1/responses` is refused for the same reason it always was --
-running it needs the Responses request/response conversion that lives behind a controller,
-and claiming it works before that is wired would be a promise this port refuses to make.
+`/v1/chat/completions` only. `/v1/responses` requires the Responses request/response conversion
+and `previous_response_id` session resolution to be available outside `OpenAIController`.
 Anthropic and Gemini are not endpoint-scoped the same way: `BatchDialect` alone routes a job
 to the right handler, so their entries in `SERVABLE_BATCH_ENDPOINTS` (`/v1/messages` and the
 `generateContent` action every Gemini batch line ultimately dispatches to) document, and their

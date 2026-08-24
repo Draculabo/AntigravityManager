@@ -45,17 +45,11 @@ export interface CreateBatchInput {
   completionWindowMs?: number;
   displayName?: string;
   metadata?: Record<string, string>;
-  /** OpenAI only: the `FileContentStore` handle the input JSONL was read from. */
+  /** OpenAI only: the local Files handle the input JSONL was read from. */
   inputFileId?: string;
 }
 
-/**
- * Called once a batch reaches a terminal state, before it is persisted.
- * No protocol surface registers one in this port -- there is nothing to
- * finalize yet -- but `settle()` already calls whatever is registered per
- * dialect, so a future batch surface can hook "write the output file" in here
- * without touching the runner itself.
- */
+/** Called once a batch finishes processing, before its terminal state is persisted. */
 export type BatchFinalizer = (job: BatchJobRecord) => Promise<Partial<BatchJobRecord> | void>;
 
 /**
