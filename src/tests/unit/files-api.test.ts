@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ClientFilesController } from '@/modules/proxy-gateway/server/modules/files/client-files.controller';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import { FileResourceKernel } from '@/modules/proxy-gateway/server/modules/files/file-resource.kernel';
 import { GeminiFilesController } from '@/modules/proxy-gateway/server/modules/files/gemini-files.controller';
 import type { FileStoreOptions } from '@/modules/proxy-gateway/server/modules/files/file-store.types';
 
@@ -88,9 +89,11 @@ describe('local files API', () => {
       roots.push(rootDirectory);
     }
     const store = new FileContentStore({ sweepIntervalMs: 0, ...options, rootDirectory });
+    const files = new FileResourceKernel(store);
     return {
-      client: new ClientFilesController(store),
-      gemini: new GeminiFilesController(store),
+      client: new ClientFilesController(files),
+      files,
+      gemini: new GeminiFilesController(files),
       rootDirectory,
       store,
     };
@@ -293,6 +296,100 @@ describe('local files API', () => {
     expect(JSON.stringify(sent(listed))).toContain(resource.file.name);
   });
 
+  it('preserves each client dialect list envelope and shared cursor semantics', async () => {
+    const { client } = createSurfaces();
+    await uploadOpenAI(client, {
+      bytes: png,
+      filename: 'shot.png',
+      mimeType: 'image/png',
+    });
+    await uploadOpenAI(client, {
+      bytes: pdf,
+      filename: 'contract.pdf',
+      mimeType: 'application/pdf',
+    });
+
+    const firstPage = createReplyMock();
+    await client.list(createMultipartRequest([], null) as never, firstPage as never, '1');
+    const firstBody = sent(firstPage) as {
+      object: string;
+      data: Array<{ id: string }>;
+      has_more: boolean;
+    };
+
+    expect(firstBody).toEqual({
+      object: 'list',
+      data: [expect.objectContaining({ id: expect.stringMatching(/^file-[0-9a-f]{32}$/u) })],
+      has_more: true,
+    });
+
+    const secondPage = createReplyMock();
+    await client.list(
+      createMultipartRequest([], null, ANTHROPIC_HEADERS) as never,
+      secondPage as never,
+      '1',
+      firstBody.data[0].id,
+    );
+    const secondBody = sent(secondPage) as {
+      data: Array<{ id: string }>;
+      first_id: string | null;
+      has_more: boolean;
+      last_id: string | null;
+    };
+
+    expect(secondBody).toEqual({
+      data: [expect.objectContaining({ id: expect.stringMatching(/^file_[0-9a-f]{32}$/u) })],
+      has_more: true,
+      first_id: secondBody.data[0].id,
+      last_id: secondBody.data[0].id,
+    });
+  });
+
+  it('uses the shared page token and delete behavior on the Gemini surface', async () => {
+    const { client, gemini } = createSurfaces();
+    const first = await uploadOpenAI(client, {
+      bytes: png,
+      filename: 'shot.png',
+      mimeType: 'image/png',
+    });
+    await uploadOpenAI(client, {
+      bytes: pdf,
+      filename: 'contract.pdf',
+      mimeType: 'application/pdf',
+    });
+
+    const firstPage = createReplyMock();
+    await gemini.list(createRawRequest('image/png', png) as never, firstPage as never, '1');
+    const firstBody = sent(firstPage) as {
+      files: Array<{ name: string }>;
+      nextPageToken: string;
+    };
+    expect(firstBody.files).toHaveLength(1);
+    expect(firstBody.nextPageToken).toMatch(/^[0-9a-f]{32}$/u);
+
+    const secondPage = createReplyMock();
+    await gemini.list(
+      createRawRequest('image/png', png) as never,
+      secondPage as never,
+      '1',
+      firstBody.nextPageToken,
+    );
+    expect((sent(secondPage) as { files: unknown[] }).files).toHaveLength(1);
+
+    const deleted = createReplyMock();
+    await gemini.remove(first.body.id, deleted as never);
+    expect(statusOf(deleted)).toBe(200);
+    expect(sent(deleted)).toEqual({});
+
+    const afterDelete = createReplyMock();
+    await client.get(
+      first.body.id,
+      createMultipartRequest([], null) as never,
+      afterDelete as never,
+    );
+    expect(statusOf(afterDelete)).toBe(404);
+  });
+
   it('lets one surface read what another one uploaded', async () => {
     const { client, gemini } = createSurfaces();
     const uploaded = await uploadOpenAI(client, {
@@ -307,6 +404,33 @@ describe('local files API', () => {
 
     expect(statusOf(viaGemini)).toBe(200);
     expect(JSON.stringify(sent(viaGemini))).toContain(handle);
+  });
+
+  it('routes both controller families through the same file resource kernel', async () => {
+    const { client, files, gemini } = createSurfaces();
+    const uploaded = await uploadOpenAI(client, {
+      bytes: pdf,
+      filename: 'shared.pdf',
+      mimeType: 'application/pdf',
+    });
+    const stat = vi.spyOn(files, 'stat');
+
+    const viaClient = createReplyMock();
+    await client.get(
+      uploaded.body.id,
+      createMultipartRequest([], null) as never,
+      viaClient as never,
+    );
+    const viaGemini = createReplyMock();
+    await gemini.get(
+      uploaded.body.id,
+      createRawRequest('image/png', png) as never,
+      viaGemini as never,
+    );
+
+    expect(stat.mock.calls).toEqual([[uploaded.body.id], [uploaded.body.id]]);
+    expect(statusOf(viaClient)).toBe(200);
+    expect(statusOf(viaGemini)).toBe(200);
   });
 
   it('reports an expired handle as expired and stops serving its content', async () => {

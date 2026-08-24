@@ -178,7 +178,7 @@ The provider surface this proxy speaks to (`v1internal` on `cloudcode-pa`) has n
 
 The store is protocol-agnostic and Nest-injectable. It lives in `<agent dir>/proxy-files` (`index.json`, `blobs/<aa>/<sha256>`, `tmp/`), addresses content by sha256 so identical bytes cost one blob, holds 20 MiB per file and 512 MiB per store with `413`-shaped errors, expires handles after 48 hours and sweeps at startup, on a timer and before every listing. Both blobs and index are written to `tmp/` and renamed into place, so a kill mid-write can leave a stray temp file but never a half-written blob the index already advertises.
 
-Three thin adapters sit over one store, so a file uploaded through any surface can be read from the others:
+`FileResourceKernel` is the shared controller capability over that store. It resolves handles before store access, owns create/list/stat/content/delete orchestration, derives cursor state, and sends the common HTTP success/error flow. The OpenAI/Anthropic and Gemini controllers keep only route validation and their dialect-specific resource, list and error envelopes. A file uploaded through any surface can therefore be read from the others without duplicating controller plumbing:
 
 | surface | routes | id spelling |
 | :--- | :--- | :--- |
@@ -188,12 +188,12 @@ Three thin adapters sit over one store, so a file uploaded through any surface c
 
 OpenAI and Anthropic publish at exactly the same path, so the dialect is chosen per request from the headers: any `anthropic-version` or `anthropic-beta` means Anthropic, everything else is OpenAI. The Anthropic Files beta `files-api-2025-04-14` is required and named in the error when it is missing -- it doubles as the signal that says which dialect the caller wants, and guessing wrong would return an OpenAI-shaped body to an Anthropic SDK.
 
-Two rules that are properties, not preferences, each covered by a test verified to fail without it:
+Two invariants apply to every dialect:
 
 - **Handles are generated, never client strings.** A supplied id is matched against the issued pattern before anything opens the store, so `../secrets` is reported as never issued rather than sanitised, and no client string reaches the filesystem.
 - **The declared MIME type is a claim, and magic bytes overrule it.** Upstream rejects a mislabelled `inlineData` part at generation time with an opaque provider error; sniffing at upload means the mismatch is corrected once, where the client can still see it.
 
-OpenAI purposes are limited to `user_data`, `vision` and `assistants_input`. `fine-tune`, `batch` and the Assistants output purposes are refused at upload rather than accepted and left quietly useless, because there is no fine-tuning, batching or Assistants runtime behind this proxy.
+OpenAI purposes are limited to `user_data`, `vision`, `assistants_input` and `batch`. The local batch runner consumes `batch` JSONL through the same store; fine-tuning, evals and Assistants output purposes are refused because this proxy has no runtime that could consume them.
 
 Handles are expanded into inline content on the way upstream, in one place for all four request surfaces (`modules/files/file-reference-expander.ts`), because the provider has no file plane to forward a reference to. Gemini's `fileData.fileUri` becomes `inlineData`; an Anthropic `image` or `document` block with a `file` source becomes a base64 source, which the Claude mapper already turns into the same `inlineData`; an OpenAI chat `file` part becomes an image or a `file_data` data URL by MIME type; and `input_image` / `input_file` do the same on the Responses surface. A request that names no handle is returned untouched, so the ordinary path pays one walk and no copy.
 

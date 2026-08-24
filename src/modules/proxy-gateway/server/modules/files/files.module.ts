@@ -4,6 +4,7 @@ import { ProxyGuard } from '../../guards/proxy.guard';
 import { ClientFilesController } from './client-files.controller';
 import { FILE_STORE_OPTIONS, FileContentStore } from './file-content-store.service';
 import { GeminiFilesController } from './gemini-files.controller';
+import { FileResourceKernel } from './file-resource.kernel';
 import { resolveFileStoreOptions } from './file-store-location';
 
 /**
@@ -19,6 +20,7 @@ import { resolveFileStoreOptions } from './file-store-location';
   controllers: [ClientFilesController, GeminiFilesController],
   providers: [
     FileContentStore,
+    FileResourceKernel,
     ProxyGuard,
     {
       provide: FILE_STORE_OPTIONS,
