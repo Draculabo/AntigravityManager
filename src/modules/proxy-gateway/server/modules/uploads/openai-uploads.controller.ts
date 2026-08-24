@@ -1,18 +1,9 @@
-import {
-  Body,
-  Controller,
-  HttpStatus,
-  Inject,
-  Param,
-  Post,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Inject, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
 import { normalizeUploadError, parseFileUploadRequest } from '../files/file-upload-request';
+import { sendFilesResponse } from '../files/files.service';
 import { toOpenAIFileObject } from '../files/openai-file-resource';
 import {
   openAIUploadErrorResponse,
@@ -30,13 +21,14 @@ export class OpenAIUploadsController {
   ) {}
 
   @Post()
-  public create(@Body() body: unknown, @Res() res: FastifyReply): void {
-    try {
-      const upload = this.uploads.create(body);
-      res.status(HttpStatus.OK).send(toOpenAIUploadObject(upload));
-    } catch (error) {
-      this.sendError(res, error);
-    }
+  public async create(@Body() body: unknown, @Res() res: FastifyReply): Promise<void> {
+    await sendFilesResponse(
+      res,
+      async () => ({
+        body: toOpenAIUploadObject(this.uploads.create(body)),
+      }),
+      openAIUploadErrorResponse,
+    );
   }
 
   @Post(':id/parts')
@@ -45,13 +37,18 @@ export class OpenAIUploadsController {
     @Req() request: FastifyRequest,
     @Res() res: FastifyReply,
   ): Promise<void> {
-    try {
-      const upload = await parseFileUploadRequest(request, { allowRawBody: false });
-      const part = this.uploads.addPart(id, upload.bytes);
-      res.status(HttpStatus.OK).send(toOpenAIUploadPartObject(id, part));
-    } catch (error) {
-      this.sendError(res, normalizeUploadError(error));
-    }
+    await sendFilesResponse(
+      res,
+      async () => {
+        const upload = await parseFileUploadRequest(request, { allowRawBody: false });
+        const part = this.uploads.addPart(id, upload.bytes);
+        return {
+          body: toOpenAIUploadPartObject(id, part),
+        };
+      },
+      openAIUploadErrorResponse,
+      normalizeUploadError,
+    );
   }
 
   @Post(':id/complete')
@@ -60,26 +57,26 @@ export class OpenAIUploadsController {
     @Body() body: unknown,
     @Res() res: FastifyReply,
   ): Promise<void> {
-    try {
-      const file = await this.uploads.complete(id, body);
-      res.status(HttpStatus.OK).send(toOpenAIFileObject(file));
-    } catch (error) {
-      this.sendError(res, error);
-    }
+    await sendFilesResponse(
+      res,
+      async () => {
+        const file = await this.uploads.complete(id, body);
+        return {
+          body: toOpenAIFileObject(file),
+        };
+      },
+      openAIUploadErrorResponse,
+    );
   }
 
   @Post(':id/cancel')
-  public cancel(@Param('id') id: string, @Res() res: FastifyReply): void {
-    try {
-      const upload = this.uploads.cancel(id);
-      res.status(HttpStatus.OK).send(toOpenAIUploadObject(upload, 'cancelled'));
-    } catch (error) {
-      this.sendError(res, error);
-    }
-  }
-
-  private sendError(res: FastifyReply, error: unknown): void {
-    const { statusCode, body } = openAIUploadErrorResponse(error);
-    res.status(statusCode).send(body);
+  public async cancel(@Param('id') id: string, @Res() res: FastifyReply): Promise<void> {
+    await sendFilesResponse(
+      res,
+      async () => ({
+        body: toOpenAIUploadObject(this.uploads.cancel(id), 'cancelled'),
+      }),
+      openAIUploadErrorResponse,
+    );
   }
 }

@@ -138,6 +138,7 @@ State a client can still reference after the process goes away is kept in `~/.an
 | Stored chat completions | `openai-chat-completions.json` | 500 completions, 1 hour since last read | `AGM_STORED_COMPLETION_MAX_ENTRIES`, `AGM_STORED_COMPLETION_TTL_MS` |
 | Model route misses | `model-route-misses.json` | 50 ids, 30 days since last seen | `AGM_ROUTE_MISS_MAX_ENTRIES`, `AGM_ROUTE_MISS_TTL_MS` |
 | Batch jobs | `proxy-batches.json` | 200 batches, 48 hours | `AGM_BATCH_MAX_BATCHES`, `AGM_BATCH_TTL_MS` |
+| Pending uploads | `proxy-uploads.json` | 256 uploads, 1 hour | `AGM_UPLOADS_MAX_PENDING`, `AGM_UPLOADS_TTL_MS` |
 
 `OpenAIResponsesSessionService` owns the file; the store class it extends defaults to memory only, and under the test runner the service takes no path at all, so no test can write into the real data directory.
 
@@ -203,11 +204,13 @@ Expansion is **fail-closed**. A handle this proxy never issued, one that has exp
 
 ### OpenAI Uploads protocol
 
-`modules/uploads/` serves `POST /v1/uploads`, `POST /v1/uploads/{id}/parts`, `POST /v1/uploads/{id}/complete` and `POST /v1/uploads/{id}/cancel`. It is not a second capability -- it is a session protocol over the same store above: `create` opens an expiring, in-memory session that only remembers the declared byte count, filename, MIME type and purpose; `parts` retains multipart chunks against that session; `complete` names their ids in assembly order, checks that the concatenated bytes match what was declared, and writes exactly one ordinary `file-…` record through `FileContentStore`. The session and its part buffers are discarded the moment `complete` or `cancel` runs.
+`modules/uploads/` serves `POST /v1/uploads`, `POST /v1/uploads/{id}/parts`, `POST /v1/uploads/{id}/complete` and `POST /v1/uploads/{id}/cancel`. It is not a second capability -- it is a session protocol over the shared `FilesService`: `create` opens an expiring session that remembers the declared byte count, filename, MIME type and purpose; `parts` retains multipart chunks against that session; `complete` names their ids in assembly order, checks that the concatenated bytes match what was declared, and writes exactly one ordinary `file-…` record through `FilesService`. The session and its part records are discarded the moment `complete` or `cancel` runs.
 
-Pending sessions are bounded three ways, matching the store they feed into: by size (a declared byte count over the per-file ceiling is refused at `create`, before any bytes are accepted), by time (a session expires one hour after `create` and answers `upload_expired` rather than silently taking more parts), and by count (a fixed ceiling on sessions held in memory at once, refused with `429` once reached). A sweep on the same interval as the file store's own reclaims sessions abandoned past their expiry, so an incomplete upload has no durable footprint and cannot accumulate.
+Pending upload sessions and their parts follow the repository's durable/in-memory storage convention: state is managed by `OpenAIUploadsStore` through `DurableRecordStore` at `~/.antigravity-agent/proxy-state/proxy-uploads.json` with defined restart survival, atomic persistence, and base64-encoded part revival validation. In unit test environments, the backing file path is suppressed by default to run entirely in-memory.
 
-`bytes` at `complete` is a claim the assembled parts must match exactly; a short or long result is `byte_count_mismatch` in OpenAI's envelope with `param: "bytes"`, never a silent concatenation. `upload_id` and `part_id` are opaque server-issued strings, checked the same way a file handle is -- never built into a path.
+Pending sessions are bounded three ways, matching the store they feed into: by size (a declared byte count over the per-file ceiling is refused at `create`, before any bytes are accepted), by time (a session expires one hour after `create` and answers `upload_expired` rather than silently taking more parts), and by count (a fixed ceiling on sessions held at once, configured via `AGM_UPLOADS_MAX_PENDING` / default 256, refused with `429` once reached). A sweep on the same interval as the file store's own reclaims sessions abandoned past their expiry.
+
+`bytes` at `complete` is a claim the assembled parts must match exactly; a short or long result is `byte_count_mismatch` in OpenAI's envelope with `param: "bytes"`, never a silent concatenation. `upload_id` and `part_id` are opaque server-issued strings, checked the same way a file handle is -- never built into a path. `OpenAIUploadsController` acts as a thin adapter delegating to `OpenAIUploadsService` and `sendFilesResponse`.
 
 As with Files, this is **local** session state, not provider-side storage: the file `complete` produces is read back through the ordinary `/v1/files` surface, and every later reference to it still travels to Google inline. No token saving is claimed here either.
 

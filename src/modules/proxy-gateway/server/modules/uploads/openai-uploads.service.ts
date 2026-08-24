@@ -1,43 +1,58 @@
 import { randomUUID } from 'node:crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 
-import { FileContentStore } from '../files/file-content-store.service';
+import { FilesService } from '../files/files.service';
 import type { StoredFileRecord } from '../files/file-store.types';
 import { normalizeOpenAIPurpose } from '../files/openai-file-resource';
+import { defaultOpenAIUploadsStoreOptions, OpenAIUploadsStore } from './openai-uploads.store';
 import {
   DEFAULT_OPENAI_UPLOAD_MAX_PENDING,
   DEFAULT_OPENAI_UPLOAD_SWEEP_INTERVAL_MS,
   DEFAULT_OPENAI_UPLOAD_TTL_MS,
   OPENAI_UPLOAD_ID_PREFIX,
   OPENAI_UPLOAD_PART_ID_PREFIX,
+  OPENAI_UPLOADS_STORE_OPTIONS,
   OpenAIUploadError,
+  type OpenAIUploadsStoreOptions,
   type PendingOpenAIUpload,
   type PendingOpenAIUploadPart,
 } from './openai-uploads.types';
 
 /**
- * Holds incomplete OpenAI uploads in memory until their parts are explicitly
- * completed into the shared local file store. The periodic sweep and every
- * lookup discard expired part buffers, so an abandoned request has no durable
- * footprint and cannot consume memory indefinitely; the pending-session count
- * is capped for the same reason.
+ * Manages incomplete OpenAI multipart upload sessions backed by `OpenAIUploadsStore`.
+ *
+ * Sessions and parts are retained in durable/in-memory storage with defined restart
+ * survival, size ceilings, and TTL expiry. Completed uploads are committed into the
+ * shared `FilesService` and their temporary session records are immediately cleaned up.
  */
 @Injectable()
 export class OpenAIUploadsService {
-  private readonly uploads = new Map<string, PendingOpenAIUpload>();
+  private readonly store: OpenAIUploadsStore;
   private readonly sweepTimer: NodeJS.Timeout;
+  private readonly maxPendingUploads: number;
+  private readonly ttlMs: number;
 
-  public constructor(@Inject(FileContentStore) private readonly fileStore: FileContentStore) {
+  public constructor(
+    @Inject(FilesService) private readonly files: FilesService,
+    @Optional()
+    @Inject(OPENAI_UPLOADS_STORE_OPTIONS)
+    options?: OpenAIUploadsStoreOptions,
+  ) {
+    const resolved = options ?? defaultOpenAIUploadsStoreOptions();
+    this.maxPendingUploads = resolved.maxPendingUploads ?? DEFAULT_OPENAI_UPLOAD_MAX_PENDING;
+    this.ttlMs = resolved.ttlMs ?? DEFAULT_OPENAI_UPLOAD_TTL_MS;
+    this.store = new OpenAIUploadsStore(resolved);
+
     this.sweepTimer = setInterval(() => {
       this.sweep();
     }, DEFAULT_OPENAI_UPLOAD_SWEEP_INTERVAL_MS);
     this.sweepTimer.unref?.();
   }
 
-  public onModuleDestroy(): void {
+  public async onModuleDestroy(): Promise<void> {
     clearInterval(this.sweepTimer);
-    this.uploads.clear();
+    await this.store.flush();
   }
 
   public create(input: unknown): PendingOpenAIUpload {
@@ -45,7 +60,7 @@ export class OpenAIUploadsService {
 
     const body = requireObject(input, 'body');
     const declaredBytes = requirePositiveInteger(body.bytes, 'bytes');
-    const { maxFileBytes } = this.fileStore.getLimits();
+    const { maxFileBytes } = this.files.getLimits();
     if (declaredBytes > maxFileBytes) {
       throw new OpenAIUploadError(
         'file_too_large',
@@ -54,8 +69,8 @@ export class OpenAIUploadsService {
         'bytes',
       );
     }
-    if (this.uploads.size >= DEFAULT_OPENAI_UPLOAD_MAX_PENDING) {
-      throw OpenAIUploadError.tooManyPending(DEFAULT_OPENAI_UPLOAD_MAX_PENDING);
+    if (this.store.size >= this.maxPendingUploads) {
+      throw OpenAIUploadError.tooManyPending(this.maxPendingUploads);
     }
 
     const filename = requireNonEmptyString(body.filename, 'filename');
@@ -71,10 +86,10 @@ export class OpenAIUploadsService {
       purpose,
       mimeType,
       createdAtMs: now,
-      expiresAtMs: now + DEFAULT_OPENAI_UPLOAD_TTL_MS,
+      expiresAtMs: now + this.ttlMs,
       parts: new Map(),
     };
-    this.uploads.set(upload.id, upload);
+    this.store.save(upload, now);
     return upload;
   }
 
@@ -103,6 +118,7 @@ export class OpenAIUploadsService {
       createdAtMs: Date.now(),
     };
     upload.parts.set(part.id, part);
+    this.store.save(upload);
     return part;
   }
 
@@ -126,43 +142,60 @@ export class OpenAIUploadsService {
       throw OpenAIUploadError.byteCountMismatch(upload.bytes, bytes.length);
     }
 
-    const file = await this.fileStore.put({
+    const file = await this.files.create({
       bytes,
       declaredMimeType: upload.mimeType,
       displayName: upload.filename,
       purpose: upload.purpose,
     });
-    // The completed bytes now live in the file store; the session and its
-    // part buffers have no further reason to be held in memory.
-    this.uploads.delete(id);
+    this.store.delete(id);
     return file;
   }
 
   public cancel(id: string): PendingOpenAIUpload {
     const upload = this.requirePending(id);
-    this.uploads.delete(id);
+    this.store.delete(id);
     return upload;
   }
 
+  public get(id: string): PendingOpenAIUpload | null {
+    const upload = this.store.get(id);
+    if (!upload) {
+      return null;
+    }
+    if (upload.expiresAtMs <= Date.now()) {
+      this.store.delete(id);
+      return null;
+    }
+    return upload;
+  }
+
+  public flush(): Promise<void> {
+    return this.store.flush();
+  }
+
+  public sweep(): void {
+    const now = Date.now();
+    for (const upload of this.store.entries(now)) {
+      if (upload.expiresAtMs <= now) {
+        this.store.delete(upload.id);
+      }
+    }
+  }
+
   private requirePending(id: string): PendingOpenAIUpload {
-    const upload = this.uploads.get(id);
+    if (!id.startsWith(OPENAI_UPLOAD_ID_PREFIX)) {
+      throw OpenAIUploadError.notFound(id);
+    }
+    const upload = this.store.get(id);
     if (!upload) {
       throw OpenAIUploadError.notFound(id);
     }
     if (upload.expiresAtMs <= Date.now()) {
-      this.uploads.delete(id);
+      this.store.delete(id);
       throw OpenAIUploadError.expired(id);
     }
     return upload;
-  }
-
-  private sweep(): void {
-    const now = Date.now();
-    for (const [id, upload] of this.uploads.entries()) {
-      if (upload.expiresAtMs <= now) {
-        this.uploads.delete(id);
-      }
-    }
   }
 }
 
