@@ -156,11 +156,11 @@ Deliberate deviation: `store: false` suppresses retrieval but not continuation. 
 
 ## 4b. v1internal Diagnostic Passthrough
 
-This surface is absent by default. Set `AGM_V1INTERNAL_PASSTHROUGH=1` **before the proxy starts** to register `POST /v1internal/{verb}`; the variable is read once while Nest assembles its controller graph, so changing it afterwards cannot open the route. It exists to measure what a vendor method actually answers and must not be enabled for normal proxy use.
+This surface is absent by default. Set `AGM_V1INTERNAL_PASSTHROUGH=1` **before the proxy starts** to register the explicit diagnostic routes (`POST /v1internal/countTokens`, `POST /v1internal/embedContent`, `POST /v1internal/generateChat`); the variable is read once while Nest assembles its controller graph, so changing it afterwards cannot open the routes. It exists to measure what a vendor method actually answers and must not be enabled for normal proxy use.
 
-It forwards the JSON body unchanged to `https://cloudcode-pa.googleapis.com/v1internal:{verb}` through the existing authorised transport, and it is behind `ProxyGuard` like every other route. The reply preserves Google's status and raw text body, reflects only the correlation headers (`content-type`, `retry-after`, `x-cloud-trace-context`, `x-goog-request-id`, `x-request-id`), and adds `x-antigravity-v1internal-account-id` / `x-antigravity-v1internal-account-email` so it is clear whose quota was charged. The account comes from the normal lease.
+It forwards the JSON body unchanged to `https://cloudcode-pa.googleapis.com/v1internal:<verb>` through the existing authorised transport, and it is behind `ProxyGuard` like every other route. The reply preserves Google's status and raw text body, reflects only the correlation headers (`content-type`, `retry-after`, `x-cloud-trace-context`, `x-goog-request-id`, `x-request-id`), and adds `x-antigravity-v1internal-account-id` / `x-antigravity-v1internal-account-email` so it is clear whose quota was charged. The account comes from the normal lease.
 
-Why it is worth having: a claim about the upstream envelope -- that it carries a `traceId`, that a verb is unimplemented -- cannot be checked from inside this codebase, because every product path renders the answer through a mapper first. Verbs are restricted to a plain method name, so nothing but a method name can be appended to the upstream URL.
+Why it is worth having: a claim about the upstream envelope -- that it carries a `traceId`, that a verb is unimplemented -- cannot be checked from inside this codebase, because every product path renders the answer through a mapper first. Only the explicit allowlisted diagnostic routes are registered; undeclared methods return standard 404s.
 
 ```bash
 curl -i http://127.0.0.1:8045/v1internal/countTokens \

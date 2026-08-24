@@ -1,4 +1,4 @@
-import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
 import { V1InternalPassthroughController } from '@/modules/proxy-gateway/server/modules/v1internal-passthrough/v1internal-passthrough.controller';
@@ -85,7 +85,7 @@ describe('v1internal diagnostic passthrough', () => {
     const controller = new V1InternalPassthroughController(service);
     const reply = createReply();
 
-    await controller.post('generateChat', { request: {} }, reply as never);
+    await controller.generateChat({ request: {} }, reply as never);
 
     expect(reply.statusCode).toBe(200);
     expect(reply.body).toBe('{"traceId":"abc","response":{"candidates":[]}}');
@@ -96,7 +96,7 @@ describe('v1internal diagnostic passthrough', () => {
     const controller = new V1InternalPassthroughController(service);
     const reply = createReply();
 
-    await controller.post('generateChat', {}, reply as never);
+    await controller.generateChat({}, reply as never);
 
     expect(reply.headers['x-antigravity-v1internal-account-id']).toBe('acc-probe');
     expect(reply.headers['x-antigravity-v1internal-account-email']).toBe('probe@example.com');
@@ -107,7 +107,7 @@ describe('v1internal diagnostic passthrough', () => {
     const controller = new V1InternalPassthroughController(service);
     const body = { request: { model: 'gemini-3-flash' } };
 
-    await controller.post('countTokens', body, createReply() as never);
+    await controller.countTokens(body, createReply() as never);
 
     expect(geminiClient.postV1InternalRaw).toHaveBeenCalledWith(
       'countTokens',
@@ -128,7 +128,7 @@ describe('v1internal diagnostic passthrough', () => {
     const controller = new V1InternalPassthroughController(service);
     const reply = createReply();
 
-    await controller.post('embedContent', {}, reply as never);
+    await controller.embedContent({}, reply as never);
 
     expect(reply.statusCode).toBe(400);
     expect(reply.body).toBe('{"error":{"code":400,"status":"INVALID_ARGUMENT"}}');
@@ -149,30 +149,49 @@ describe('v1internal diagnostic passthrough', () => {
     const controller = new V1InternalPassthroughController(service);
     const reply = createReply();
 
-    await controller.post('generateChat', {}, reply as never);
+    await controller.generateChat({}, reply as never);
 
     expect(reply.headers['x-goog-request-id']).toBe('req-42');
     expect(reply.headers['content-type']).toBe('application/json');
     expect(reply.headers['set-cookie']).toBeUndefined();
   });
 
-  it('refuses a verb that is not a plain method name', async () => {
+  it('routes each explicit endpoint to its corresponding upstream verb', async () => {
     const { geminiClient, service } = createService({});
     const controller = new V1InternalPassthroughController(service);
 
-    await expect(controller.post('../secrets', {}, createReply() as never)).rejects.toBeInstanceOf(
-      BadRequestException,
+    await controller.countTokens({ test: 'count' }, createReply() as never);
+    expect(geminiClient.postV1InternalRaw).toHaveBeenLastCalledWith(
+      'countTokens',
+      { test: 'count' },
+      'access-acc-probe',
+      undefined,
     );
-    expect(geminiClient.postV1InternalRaw).not.toHaveBeenCalled();
+
+    await controller.embedContent({ test: 'embed' }, createReply() as never);
+    expect(geminiClient.postV1InternalRaw).toHaveBeenLastCalledWith(
+      'embedContent',
+      { test: 'embed' },
+      'access-acc-probe',
+      undefined,
+    );
+
+    await controller.generateChat({ test: 'chat' }, createReply() as never);
+    expect(geminiClient.postV1InternalRaw).toHaveBeenLastCalledWith(
+      'generateChat',
+      { test: 'chat' },
+      'access-acc-probe',
+      undefined,
+    );
   });
 
   it('says so when no account is eligible instead of probing without one', async () => {
     const { geminiClient, service } = createService({ account: null });
     const controller = new V1InternalPassthroughController(service);
 
-    await expect(
-      controller.post('generateChat', {}, createReply() as never),
-    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(controller.generateChat({}, createReply() as never)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
     expect(geminiClient.postV1InternalRaw).not.toHaveBeenCalled();
   });
 });

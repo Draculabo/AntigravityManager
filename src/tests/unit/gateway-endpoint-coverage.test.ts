@@ -16,8 +16,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
  * name it.
  *
  * `AGM_V1INTERNAL_PASSTHROUGH=1` is set before `AppModule` is imported so the
- * gated `/v1internal/:verb` diagnostic route (off by default, see
- * `src/modules/proxy-gateway/server/README.md` section 4b) is included too:
+ * gated `/v1internal/*` diagnostic routes (off by default, see
+ * `src/modules/proxy-gateway/server/README.md` section 4b) are included too:
  * the point of this census is the full route surface the codebase can
  * register, not just today's default configuration.
  *
@@ -213,7 +213,21 @@ const CENSUS: readonly CensusEntry[] = [
 
   // v1internal diagnostic passthrough, gated by AGM_V1INTERNAL_PASSTHROUGH
   // (src/modules/proxy-gateway/server/modules/v1internal-passthrough/v1internal-passthrough.controller.ts)
-  { method: 'POST', routePath: '/v1internal/:verb', testFile: 'v1internal-passthrough.test.ts' },
+  {
+    method: 'POST',
+    routePath: '/v1internal/countTokens',
+    testFile: 'v1internal-passthrough.test.ts',
+  },
+  {
+    method: 'POST',
+    routePath: '/v1internal/embedContent',
+    testFile: 'v1internal-passthrough.test.ts',
+  },
+  {
+    method: 'POST',
+    routePath: '/v1internal/generateChat',
+    testFile: 'v1internal-passthrough.test.ts',
+  },
 ];
 
 const EXPECTED_UNCOVERED_ROUTES = [
