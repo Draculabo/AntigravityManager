@@ -25,7 +25,7 @@ Select evidence according to the behavior a change can affect. Focused tests are
 | Proxy request/response mapper         | Owning protocol mapper and streaming tests                            | Real-path parity or controller integration tests                           |
 | Gateway controller/service            | Owning integration and endpoint-coverage tests                        | E2E or live-provider evidence only when the external provider path changes |
 | Packaging, updater or native artifact | Owning packaging/update tests                                         | `npm run package`, size audit or platform build when artifacts change      |
-| Documentation or agent governance     | `npm run check:agent-contracts` and formatting                        | Link/build checks owned by the affected documentation system               |
+| Documentation or agent governance     | `npm run check:governance` and formatting                             | Link/build checks owned by the affected documentation system               |
 
 ## Focused commands
 

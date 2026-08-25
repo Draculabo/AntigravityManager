@@ -59,6 +59,8 @@ The following reverse dependencies are not allowed:
 
 When a capability genuinely has multiple consumers, expose a narrow shared API or move the capability to `src/shared`. Do not move code pre-emptively based on hypothetical reuse.
 
+`npm run verify:boundaries` derives a runtime import graph from Git-tracked source files and reports violations of these rules. `npm run verify:root-ipc-boundary` enforces the clean root-IPC rule: [src/ipc/router.ts](../src/ipc/router.ts) may compose feature router exports but may not import feature handlers, repositories or services directly. Renderer/preload and shared-direction checks remain report-only until the remaining legacy shared-to-feature dependencies have an approved migration.
+
 ## Feature ownership
 
 Feature-specific components, hooks, IPC routers, services, persistence and types live under `src/modules/<feature>/`. The current feature owners are:

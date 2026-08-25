@@ -1,30 +1,16 @@
-import { app } from '@/modules/app-shell/ipc/app';
-import { theme } from '@/modules/app-shell/ipc/theme';
-import { window } from '@/modules/app-shell/ipc/window';
 import { databaseRouter } from '@/shared/persistence/database/router';
 import { accountRouter } from '@/modules/account/ipc/router';
 import { cloudRouter } from '@/modules/cloud-account/ipc/router';
 import { configRouter } from '@/modules/config/ipc/router';
 import { gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
-import { antigravityClientCacheRouter } from '@/modules/antigravity-runtime/ipc/cacheRouter';
-import { agyBinaryPatchRouter } from '@/modules/antigravity-runtime/ipc/agyBinaryPatchRouter';
+import { antigravityRuntimeRouter } from '@/modules/antigravity-runtime/ipc/router';
+import { appShellRouter } from '@/modules/app-shell/ipc/router';
 
 import { ORPCError, os } from '@orpc/server';
 import { isPlainObject, isString } from 'lodash-es';
 import { z } from 'zod';
-import {
-  isProcessRunning,
-  closeAntigravity,
-  startAntigravity,
-} from '@/modules/antigravity-runtime/ipc/handler';
-import { AntigravityAppTargetSchema } from '@/modules/account/types';
-import { systemHandler } from '@/modules/app-shell/ipc/system/handler';
 import { logger } from '../shared/logging/logger';
 import { AppError, getAppErrorData } from '@/shared/errors/appError';
-
-const ProcessTargetInputSchema = z
-  .object({ target: AntigravityAppTargetSchema.optional() })
-  .optional();
 
 interface BackendErrorDetails {
   [key: string]: unknown;
@@ -136,38 +122,12 @@ const logMiddleware = os.middleware(async (opts: any) => {
 export const router = os.use(logMiddleware).router({
   ping: os.output(z.string()).handler(async () => 'pong'),
 
-  theme,
-  window,
-  app,
+  ...appShellRouter,
   database: databaseRouter,
-  antigravityClientCache: antigravityClientCacheRouter,
-  agyBinaryPatch: agyBinaryPatchRouter,
-
-  // Inline process router to ensure structure
-  proc: os.router({
-    isProcessRunning: os
-      .input(ProcessTargetInputSchema)
-      .output(z.boolean())
-      .handler(async ({ input }) => {
-        return await isProcessRunning(input?.target);
-      }),
-    closeAntigravity: os
-      .input(ProcessTargetInputSchema)
-      .output(z.void())
-      .handler(async ({ input }) => {
-        await closeAntigravity(input?.target);
-      }),
-    startAntigravity: os
-      .input(ProcessTargetInputSchema)
-      .output(z.void())
-      .handler(async ({ input }) => {
-        await startAntigravity(input?.target);
-      }),
-  }),
+  ...antigravityRuntimeRouter,
 
   account: accountRouter,
   cloud: cloudRouter,
   config: configRouter,
   gateway: gatewayRouter,
-  system: systemHandler,
 });

@@ -19,6 +19,10 @@ npm start
 npm run type-check
 npm run lint
 npm run format
+npm run check:governance
+npm run change-scope -- --base origin/main --head HEAD
+npm run analyze:imports
+npm run verify:boundaries
 npm test
 npm run test:e2e
 npm run package
@@ -30,6 +34,10 @@ npm run make
 - `npm run test:e2e` runs Playwright against the Electron application.
 - `npm run package` creates an unpacked application bundle.
 - `npm run make` creates platform distributables and is slower and more environment-sensitive than packaging.
+- `npm run change-scope` prints a versioned, read-only Git change report. Pass explicit `--base` and `--head` revisions when comparing commits; it never fetches or changes Git state.
+- `npm run analyze:imports` prints the Git-tracked TypeScript/JavaScript import graph. Runtime closure ignores type-only imports.
+- `npm run verify:boundaries` reports renderer, preload, shared and root-IPC boundary violations without failing the command. `npm run verify:root-ipc-boundary` enforces the clean root-router rule today; `npm run verify:boundaries:enforce` is reserved for a clean overall baseline and exits non-zero on any violation.
+- `npm run check:governance` runs governance contracts, harness-script tests and the current boundary report. CI runs it before static and unit checks.
 
 Run one unit test with:
 
