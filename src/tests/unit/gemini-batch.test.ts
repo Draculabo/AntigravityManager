@@ -5,6 +5,7 @@ import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/module
 import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
 import { respondGeminiBatchGenerateContent } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-submit';
 import { GeminiBatchesController } from '@/modules/proxy-gateway/server/modules/batch/gemini-batches.controller';
+import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
 
 function createReplyMock() {
   const reply: Record<string, unknown> = {};
@@ -51,6 +52,31 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
     expect(sent(reply)).toMatchObject({ error: { status: 'UNIMPLEMENTED' } });
   });
 
+  it('submits batchGenerateContent through the Batch service injected into GeminiController', async () => {
+    const target = createTarget(async () => geminiReply('ok'));
+    const runner = createRunner(target);
+    const controller = new GeminiController(
+      {} as never,
+      undefined,
+      undefined,
+      new BatchService(runner),
+    );
+    const reply = createReplyMock();
+
+    await controller.modelAction(
+      'gemini-3-flash:batchGenerateContent',
+      { requests: [{ request: { contents: [] }, metadata: { key: 'line-1' } }] } as never,
+      reply as never,
+    );
+
+    expect(statusOf(reply)).toBe(200);
+    expect(sent(reply)).toMatchObject({
+      name: expect.stringMatching(/^batches\/[0-9a-f]{24}$/u),
+      done: false,
+    });
+    await runner.drain();
+  });
+
   it('submits an inlined-requests batch and runs it to completion', async () => {
     const target = createTarget(async () => geminiReply('ok'));
     const runner = createRunner(target);
@@ -58,7 +84,7 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
 
     const submitReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
-      runner,
+      new BatchService(runner),
       'models/gemini-3-flash',
       {
         batch: {
@@ -101,7 +127,7 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
 
     const submitReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
-      runner,
+      new BatchService(runner),
       'models/gemini-3-flash',
       {
         requests: [
@@ -135,7 +161,12 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
     const runner = createRunner(target);
 
     const reply = createReplyMock();
-    await respondGeminiBatchGenerateContent(runner, 'models/gemini-3-flash', {}, reply as never);
+    await respondGeminiBatchGenerateContent(
+      new BatchService(runner),
+      'models/gemini-3-flash',
+      {},
+      reply as never,
+    );
     expect(statusOf(reply)).toBe(400);
     expect(sent(reply)).toMatchObject({ error: { status: 'INVALID_ARGUMENT' } });
   });

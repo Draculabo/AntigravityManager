@@ -7,6 +7,7 @@ import { parseFileHandle } from '../files/file-store.types';
 import { OPENAI_FILE_ID_PREFIX } from '../files/openai-file-resource';
 import { buildOpenAIOutputFiles } from './openai-batch-resource';
 import { BatchRunnerService, type CreateBatchInput } from './batch-runner.service';
+import type { BatchExecutionTarget } from './batch-request-executor';
 import {
   BatchJobError,
   parseBatchHandle,
@@ -41,6 +42,10 @@ export class BatchService {
 
   public create(input: CreateBatchInput): BatchJobRecord {
     return this.runner.create(input);
+  }
+
+  public bindExecutionTarget(target: BatchExecutionTarget): void {
+    this.runner.setExecutionTarget(target);
   }
 
   public get(dialect: BatchDialect, id: string): BatchJobRecord {

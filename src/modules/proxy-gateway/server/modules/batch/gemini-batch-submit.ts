@@ -1,7 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
-import type { BatchRunnerService } from './batch-runner.service';
+import type { BatchService } from './batch.service';
 import {
   buildGeminiBatchEndpoint,
   geminiBatchErrorResponse,
@@ -19,20 +19,19 @@ import {
  * `/v1beta/batches/{name}`.
  *
  * Every request line is dispatched as plain `generateContent` against the
- * named model through the same {@link BatchExecutionTarget} the other two
- * dialects use -- there is no second path upstream.
+ * named model through the same batch execution target the other two dialects use.
  *
  * Without a runner wired in, the route keeps its previous behaviour and
  * reports `501 UNIMPLEMENTED`, so a build without the batch module is not
  * silently broken.
  */
 export async function respondGeminiBatchGenerateContent(
-  runner: BatchRunnerService | undefined,
+  batches: BatchService | undefined,
   model: string,
   body: unknown,
   res: FastifyReply,
 ): Promise<void> {
-  if (!runner) {
+  if (!batches) {
     res.status(HttpStatus.NOT_IMPLEMENTED).send({
       error: {
         code: HttpStatus.NOT_IMPLEMENTED,
@@ -46,7 +45,7 @@ export async function respondGeminiBatchGenerateContent(
   try {
     const requests = parseGeminiBatchRequests(body);
     const displayName = readGeminiBatchDisplayName(body);
-    const job = runner.create({
+    const job = batches.create({
       dialect: 'gemini',
       endpoint: buildGeminiBatchEndpoint(model),
       requests: requests.map((request) => ({ ...request, target: model })),

@@ -150,7 +150,7 @@ describe('one job, three dialects', () => {
 
     const geminiCreate = createReplyMock();
     await respondGeminiBatchGenerateContent(
-      runner,
+      batches,
       'models/gemini-3-flash',
       {
         requests: [
@@ -439,7 +439,7 @@ describe("errors stay in the caller's dialect", () => {
     const geminiOperations = new GeminiBatchesController(new BatchService(geminiRunner));
     const geminiCreateReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
-      geminiRunner,
+      new BatchService(geminiRunner),
       'models/gemini-3-flash',
       { requests: [{ request: { contents: [] }, metadata: { key: 'bad' } }] },
       geminiCreateReply as never,
@@ -500,7 +500,7 @@ describe("errors stay in the caller's dialect", () => {
 
     const geminiReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
-      runner,
+      batches,
       'models/gemini-3-flash',
       {},
       geminiReply as never,

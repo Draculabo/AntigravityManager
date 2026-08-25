@@ -9,6 +9,7 @@ import { GeminiModule } from './modules/gemini/gemini.module';
 import { OpenAIModule } from './modules/openai/openai.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { V1InternalPassthroughModule } from './modules/v1internal-passthrough/v1internal-passthrough.module';
+import { BatchExecutionTargetBinder } from './batch-execution-target.binder';
 import { ProxyService } from './proxy.service';
 import { UpstreamCaptureContextInterceptor } from './common/upstream-capture-context';
 
@@ -25,6 +26,7 @@ import { UpstreamCaptureContextInterceptor } from './common/upstream-capture-con
   ],
   providers: [
     ProxyService,
+    BatchExecutionTargetBinder,
     {
       provide: APP_INTERCEPTOR,
       useClass: UpstreamCaptureContextInterceptor,

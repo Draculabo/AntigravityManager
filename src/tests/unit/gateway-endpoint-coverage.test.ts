@@ -5,6 +5,9 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { getServerConfig, setServerConfig } from '@/server/server-config';
+
 /**
  * A census of every HTTP route this gateway registers, and which test file is
  * responsible for exercising it. The route list below is NOT hand-typed: the
@@ -74,8 +77,7 @@ const CENSUS: readonly CensusEntry[] = [
   {
     method: 'DELETE',
     routePath: '/v1/messages/batches/:id',
-    testFile: null,
-    reason: 'no test calls AnthropicMessageBatchesController.remove',
+    testFile: 'anthropic-message-batches.controller.test.ts',
   },
 
   // Gemini batches (src/modules/proxy-gateway/server/modules/batch/gemini-batches.controller.ts)
@@ -132,8 +134,7 @@ const CENSUS: readonly CensusEntry[] = [
   {
     method: 'DELETE',
     routePath: '/v1beta/files/:name',
-    testFile: null,
-    reason: 'no test calls GeminiFilesController.remove',
+    testFile: 'files-api.test.ts',
   },
 
   // OpenAI/Anthropic client Files API (src/modules/proxy-gateway/server/modules/files/client-files.controller.ts)
@@ -141,9 +142,7 @@ const CENSUS: readonly CensusEntry[] = [
   {
     method: 'GET',
     routePath: '/v1/files',
-    testFile: null,
-    reason:
-      'no test calls ClientFilesController.list (only the underlying FileContentStore.list is tested)',
+    testFile: 'files-api.test.ts',
   },
   { method: 'GET', routePath: '/v1/files/:id', testFile: 'files-api.test.ts' },
   { method: 'GET', routePath: '/v1/files/:id/content', testFile: 'files-api.test.ts' },
@@ -230,11 +229,7 @@ const CENSUS: readonly CensusEntry[] = [
   },
 ];
 
-const EXPECTED_UNCOVERED_ROUTES = [
-  'DELETE /v1/messages/batches/:id',
-  'DELETE /v1beta/files/:name',
-  'GET /v1/files',
-];
+const EXPECTED_UNCOVERED_ROUTES: readonly string[] = [];
 
 const UNIT_TEST_DIR = path.join(process.cwd(), 'src/tests/unit');
 
@@ -244,6 +239,7 @@ function routeKey(entry: { method: string; routePath: string }): string {
 
 let registeredRoutes: Array<{ method: string; routePath: string }> = [];
 let previousV1InternalFlag: string | undefined;
+let previousServerConfig = getServerConfig();
 let app: NestFastifyApplication | undefined;
 
 // This boots and transforms the complete Electron/Nest graph; cold WSL and CI workers can take
@@ -287,6 +283,7 @@ afterAll(async () => {
   } else {
     process.env.AGM_V1INTERNAL_PASSTHROUGH = previousV1InternalFlag;
   }
+  setServerConfig(previousServerConfig ?? DEFAULT_APP_CONFIG.proxy);
 });
 
 describe('gateway endpoint coverage census', () => {
@@ -332,12 +329,66 @@ describe('gateway endpoint coverage census', () => {
     expect(uncoveredWithoutReason, 'UNCOVERED entries missing a reason').toEqual([]);
   });
 
-  it('keeps the exact, deliberately-narrowed set of UNCOVERED routes', () => {
+  it('keeps the exact set of routes without a behavior test', () => {
     const uncovered = CENSUS.filter((entry) => entry.testFile === null)
       .map(routeKey)
       .sort();
 
     expect(uncovered).toEqual([...EXPECTED_UNCOVERED_ROUTES].sort());
-    expect(uncovered.length).toBe(3);
+    expect(uncovered).toHaveLength(0);
+  });
+
+  it('rejects unauthenticated requests on each formerly uncovered route with its protocol envelope', async () => {
+    if (!app) {
+      throw new Error('gateway application was not initialized');
+    }
+    previousServerConfig = getServerConfig();
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, api_key: 'gateway-test-key' });
+
+    try {
+      const server = app.getHttpAdapter().getInstance();
+      const [anthropic, gemini, openAI] = await Promise.all([
+        server.inject({ method: 'DELETE', url: '/v1/messages/batches/missing' }),
+        server.inject({ method: 'DELETE', url: '/v1beta/files/missing' }),
+        server.inject({ method: 'GET', url: '/v1/files' }),
+      ]);
+
+      expect([
+        { statusCode: anthropic.statusCode, body: JSON.parse(anthropic.body) },
+        { statusCode: gemini.statusCode, body: JSON.parse(gemini.body) },
+        { statusCode: openAI.statusCode, body: JSON.parse(openAI.body) },
+      ]).toEqual([
+        {
+          statusCode: 401,
+          body: {
+            type: 'error',
+            error: { message: 'API key validation failed', type: 'authentication_error' },
+          },
+        },
+        {
+          statusCode: 401,
+          body: {
+            error: {
+              code: 401,
+              message: 'API key validation failed',
+              status: 'UNAUTHENTICATED',
+            },
+          },
+        },
+        {
+          statusCode: 401,
+          body: {
+            error: {
+              code: 'invalid_api_key',
+              message: 'API key validation failed',
+              param: null,
+              type: 'invalid_request_error',
+            },
+          },
+        },
+      ]);
+    } finally {
+      setServerConfig(previousServerConfig ?? DEFAULT_APP_CONFIG.proxy);
+    }
   });
 });

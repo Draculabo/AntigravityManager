@@ -231,6 +231,48 @@ describe('AnthropicMessageBatchesController', () => {
     expect(batch.request_counts).toMatchObject({ canceled: 2, succeeded: 0 });
   });
 
+  it('deletes an ended batch and returns the Anthropic not-found envelope on later reads', async () => {
+    const target = createTarget(async () => reply('done'));
+    const { controller, runner } = createController(target);
+    const createReply = createReplyMock();
+
+    controller.create(
+      {
+        requests: [
+          {
+            custom_id: 'line-1',
+            params: {
+              model: 'claude-3',
+              max_tokens: 8,
+              messages: [{ role: 'user', content: 'delete me' }],
+            },
+          },
+        ],
+      },
+      createReply as never,
+    );
+    const created = sent(createReply);
+    await runner.drain();
+
+    const removeReply = createReplyMock();
+    controller.remove(created.id, removeReply as never);
+
+    expect(statusOf(removeReply)).toBe(200);
+    expect(sent(removeReply)).toEqual({
+      id: created.id,
+      type: 'message_batch_deleted',
+    });
+
+    const getReply = createReplyMock();
+    controller.get(created.id, getReply as never);
+
+    expect(statusOf(getReply)).toBe(404);
+    expect(sent(getReply)).toMatchObject({
+      type: 'error',
+      error: { type: 'not_found_error' },
+    });
+  });
+
   it('answers an unknown batch id with a 404 in the Anthropic error envelope, not an empty success', () => {
     const target = createTarget(async () => reply('unused'));
     const { controller } = createController(target);

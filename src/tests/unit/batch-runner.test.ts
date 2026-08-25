@@ -87,6 +87,25 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 describe('batch runner', () => {
+  it('uses the execution target bound by gateway composition', async () => {
+    const target = createTarget(async () => reply('bound target'));
+    const runner = new BatchRunnerService({ maxConcurrency: 1 });
+    runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
+
+    const created = runner.create({
+      dialect: 'anthropic',
+      endpoint: '/v1/messages',
+      requests: anthropicRequests(1),
+    });
+    await runner.drain();
+
+    expect(runner.require(created.id).requests[0]).toMatchObject({
+      state: 'succeeded',
+      response: reply('bound target'),
+    });
+    expect(target.handleAnthropicMessages).toHaveBeenCalledOnce();
+  });
+
   it('reports request_counts honestly as the batch progresses', async () => {
     const gate = deferred();
     const target = createTarget(async (request) => {

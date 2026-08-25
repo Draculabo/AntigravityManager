@@ -79,7 +79,7 @@ export class BatchRunnerService {
     @Optional() @Inject(BATCH_RUNNER_OPTIONS) options?: BatchRunnerOptions,
     @Optional()
     @Inject(BATCH_EXECUTION_TARGET)
-    private readonly target?: BatchExecutionTarget,
+    private target?: BatchExecutionTarget,
   ) {
     this.maxConcurrency = Math.max(1, options?.maxConcurrency ?? DEFAULT_BATCH_CONCURRENCY);
     this.maxBatches = Math.max(1, options?.maxBatches ?? DEFAULT_MAX_BATCHES);
@@ -103,6 +103,13 @@ export class BatchRunnerService {
 
   public getMaxConcurrency(): number {
     return this.maxConcurrency;
+  }
+
+  public setExecutionTarget(target: BatchExecutionTarget): void {
+    if (this.target && this.target !== target) {
+      throw new Error('Batch execution target is already configured');
+    }
+    this.target = target;
   }
 
   public create(input: CreateBatchInput, now: number = Date.now()): BatchJobRecord {
