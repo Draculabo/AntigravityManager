@@ -1,6 +1,6 @@
 import path from 'path';
 
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 
 import {
   isDurableStoreTestEnvironment,
@@ -14,7 +14,6 @@ import {
   type OpenAIChatCompletionStoreOptions,
 } from './openai-chat-completion.store';
 
-export const OPENAI_CHAT_COMPLETION_STORE_OPTIONS = 'OPENAI_CHAT_COMPLETION_STORE_OPTIONS';
 export const OPENAI_CHAT_COMPLETION_FILENAME = 'openai-chat-completions.json';
 
 export function defaultOpenAIChatCompletionStoreOptions(): OpenAIChatCompletionStoreOptions {
@@ -36,11 +35,7 @@ export function defaultOpenAIChatCompletionStoreOptions(): OpenAIChatCompletionS
 /** The injectable, restart-surviving store behind `store: true`. */
 @Injectable()
 export class OpenAIChatCompletionService extends OpenAIChatCompletionStoreImpl {
-  public constructor(
-    @Optional()
-    @Inject(OPENAI_CHAT_COMPLETION_STORE_OPTIONS)
-    options?: OpenAIChatCompletionStoreOptions,
-  ) {
+  public constructor(@Optional() options?: OpenAIChatCompletionStoreOptions) {
     super(options ?? defaultOpenAIChatCompletionStoreOptions());
   }
 }

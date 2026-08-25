@@ -13,8 +13,8 @@ import { resolveFileStoreOptions } from './file-store-location';
  * One store, three dialects: Gemini has its own controller because its routes
  * live outside `/v1`, while OpenAI and Anthropic publish at the same `/v1/files`
  * path and are served by one controller that picks the dialect per request.
- * FilesService is the public operations seam for dependent feature modules.
- * The store remains exported for the existing reference-expansion consumers.
+ * FilesService is the public operations seam for dependent feature modules;
+ * FileContentStore stays private to this module.
  */
 @Module({
   controllers: [ClientFilesController, GeminiFilesController],
@@ -27,6 +27,6 @@ import { resolveFileStoreOptions } from './file-store-location';
       useFactory: resolveFileStoreOptions,
     },
   ],
-  exports: [FileContentStore, FilesService],
+  exports: [FilesService],
 })
 export class FilesModule {}

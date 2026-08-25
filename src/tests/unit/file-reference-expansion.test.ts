@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
 import { OpenAIController } from '@/modules/proxy-gateway/server/modules/openai/openai.controller';
 
@@ -53,6 +54,10 @@ describe('file handles become inline content on the way upstream', () => {
     return record.id;
   }
 
+  function createFiles(store: FileContentStore) {
+    return new FilesService(store);
+  }
+
   it('resolves an OpenAI chat file part into the image the mapper understands', async () => {
     const store = createStore();
     const id = await storeFile(store, png, 'shot.png');
@@ -63,7 +68,7 @@ describe('file handles become inline content on the way upstream', () => {
       undefined,
       undefined,
       undefined,
-      store,
+      createFiles(store),
     );
 
     await controller.chatCompletions(
@@ -88,7 +93,10 @@ describe('file handles become inline content on the way upstream', () => {
     const store = createStore();
     const id = await storeFile(store, pdf, 'contract.pdf');
     const handleAnthropicMessages = vi.fn().mockResolvedValue({ id: 'msg_1', content: [] });
-    const controller = new AnthropicController({ handleAnthropicMessages } as never, store);
+    const controller = new AnthropicController(
+      { handleAnthropicMessages } as never,
+      createFiles(store),
+    );
 
     await controller.anthropicMessages(
       {
@@ -120,7 +128,7 @@ describe('file handles become inline content on the way upstream', () => {
     const controller = new GeminiController(
       { handleGeminiGenerateContent } as never,
       undefined,
-      store,
+      createFiles(store),
     );
 
     await controller.modelAction(
@@ -151,7 +159,7 @@ describe('file handles become inline content on the way upstream', () => {
       undefined,
       undefined,
       undefined,
-      store,
+      createFiles(store),
     );
     const reply = createReplyMock();
 
@@ -182,9 +190,12 @@ describe('file handles become inline content on the way upstream', () => {
     const gemini = new GeminiController(
       { handleGeminiGenerateContent: vi.fn() } as never,
       undefined,
-      store,
+      createFiles(store),
     );
-    const anthropic = new AnthropicController({ handleAnthropicMessages: vi.fn() } as never, store);
+    const anthropic = new AnthropicController(
+      { handleAnthropicMessages: vi.fn() } as never,
+      createFiles(store),
+    );
 
     await gemini.modelAction(
       'gemini-3-flash:generateContent',
@@ -227,7 +238,7 @@ describe('file handles become inline content on the way upstream', () => {
       undefined,
       undefined,
       undefined,
-      store,
+      createFiles(store),
     );
     const reply = createReplyMock();
 
@@ -276,7 +287,7 @@ describe('file handles become inline content on the way upstream', () => {
       undefined,
       undefined,
       undefined,
-      store,
+      createFiles(store),
     );
     const body = {
       model: 'gpt-4o',

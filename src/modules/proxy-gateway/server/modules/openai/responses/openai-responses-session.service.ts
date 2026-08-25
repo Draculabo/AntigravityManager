@@ -1,6 +1,6 @@
 import path from 'path';
 
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 
 import {
   isDurableStoreTestEnvironment,
@@ -14,7 +14,6 @@ import {
   type OpenAIResponsesSessionStoreOptions,
 } from './openai-responses-session.store';
 
-export const OPENAI_RESPONSES_SESSION_STORE_OPTIONS = 'OPENAI_RESPONSES_SESSION_STORE_OPTIONS';
 export const OPENAI_RESPONSES_SESSION_FILENAME = 'openai-responses-sessions.json';
 
 export function defaultOpenAIResponsesSessionStoreOptions(): OpenAIResponsesSessionStoreOptions {
@@ -41,11 +40,7 @@ export function defaultOpenAIResponsesSessionStoreOptions(): OpenAIResponsesSess
  */
 @Injectable()
 export class OpenAIResponsesSessionService extends OpenAIResponsesSessionStoreImpl {
-  public constructor(
-    @Optional()
-    @Inject(OPENAI_RESPONSES_SESSION_STORE_OPTIONS)
-    options?: OpenAIResponsesSessionStoreOptions,
-  ) {
+  public constructor(@Optional() options?: OpenAIResponsesSessionStoreOptions) {
     super(options ?? defaultOpenAIResponsesSessionStoreOptions());
   }
 }

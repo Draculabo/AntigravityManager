@@ -16,7 +16,7 @@ import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
 import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
-import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import {
   expandFileReferences,
   FileReferenceError,
@@ -51,7 +51,7 @@ export class GeminiController {
     @Optional()
     @Inject(AccountLeaseService)
     private readonly accountLeaseService?: AccountLeaseService,
-    @Optional() @Inject(FileContentStore) private readonly fileStore?: FileContentStore,
+    @Optional() @Inject(FilesService) private readonly files?: FilesService,
     @Optional() @Inject(BatchService) private readonly batches?: BatchService,
   ) {}
 
@@ -122,7 +122,7 @@ export class GeminiController {
     try {
       // Handles become inline bytes before anything else reads the request:
       // the upstream transport has no file plane to forward a `fileUri` to.
-      request = await expandFileReferences(body, 'gemini', this.fileStore);
+      request = await expandFileReferences(body, 'gemini', this.files);
     } catch (error) {
       if (error instanceof FileReferenceError) {
         res.status(error.httpStatus).send({

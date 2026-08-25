@@ -1,4 +1,5 @@
 import { Inject, Injectable, Module } from '@nestjs/common';
+import { MODULE_METADATA } from '@nestjs/common/constants';
 import { NestFactory } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
 
@@ -35,6 +36,13 @@ describe('FilesModule exports', () => {
     } finally {
       await application.close();
     }
+  });
+
+  it('keeps FileContentStore private to FilesModule', () => {
+    const exports = Reflect.getMetadata(MODULE_METADATA.EXPORTS, FilesModule) as unknown[];
+
+    expect(exports).toContain(FilesService);
+    expect(exports).not.toContain(FileContentStore);
   });
 });
 

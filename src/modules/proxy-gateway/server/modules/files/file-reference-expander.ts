@@ -1,6 +1,7 @@
 import { isPlainObject, isString } from 'lodash-es';
 
 import { FileStoreError, parseFileHandle, type StoredFileRecord } from './file-store.types';
+import type { FilesService } from './files.service';
 
 /**
  * The single place where a stored file handle becomes request content.
@@ -17,10 +18,6 @@ import { FileStoreError, parseFileHandle, type StoredFileRecord } from './file-s
  */
 
 export type FileReferenceSurface = 'gemini' | 'openai-chat' | 'openai-responses' | 'anthropic';
-
-export interface FileReferenceReader {
-  get(id: string): Promise<{ record: StoredFileRecord; bytes: Buffer }>;
-}
 
 /** A reference the request named that this proxy cannot resolve. */
 export class FileReferenceError extends Error {
@@ -54,14 +51,14 @@ export function isImageMimeType(mimeType: string): boolean {
 export async function expandFileReferences<T>(
   body: T,
   surface: FileReferenceSurface,
-  store: FileReferenceReader | undefined,
+  files: FilesService | undefined,
 ): Promise<T> {
   if (!containsFileReference(body, surface)) {
     return body;
   }
   const cache = new Map<string, Promise<ResolvedFile>>();
   const resolve = (handle: string, param: string): Promise<ResolvedFile> =>
-    resolveHandle(handle, param, store, cache);
+    resolveHandle(handle, param, files, cache);
   return (await transform(body, surface, resolve, 'body')) as T;
 }
 
@@ -251,7 +248,7 @@ function matchOpenAIResponsesFilePart(record: Record<string, unknown>): Referenc
 function resolveHandle(
   handle: string,
   param: string,
-  store: FileReferenceReader | undefined,
+  files: FilesService | undefined,
   cache: Map<string, Promise<ResolvedFile>>,
 ): Promise<ResolvedFile> {
   const cached = cache.get(handle);
@@ -259,7 +256,7 @@ function resolveHandle(
     return cached;
   }
 
-  if (!store) {
+  if (!files) {
     // Fail closed. Without a store there is nothing to resolve against, and a
     // reference forwarded upstream would fail as an unexplained provider error.
     return Promise.reject(
@@ -274,7 +271,7 @@ function resolveHandle(
   const id = parseFileHandle(handle);
   const pending = (
     id
-      ? store.get(id)
+      ? files.content(id)
       : Promise.reject(
           new FileReferenceError(
             `${param} references '${handle}', which is not a file handle issued by this proxy`,

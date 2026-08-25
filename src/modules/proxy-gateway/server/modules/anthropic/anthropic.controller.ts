@@ -12,7 +12,7 @@ import { FastifyReply } from 'fastify';
 import { AnthropicChatRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { BaseProxyController } from '@/modules/proxy-gateway/server/common/base-proxy.controller';
 import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import {
   expandFileReferences,
   FileReferenceError,
@@ -24,7 +24,7 @@ import { AnthropicService } from './anthropic.service';
 export class AnthropicController extends BaseProxyController {
   constructor(
     @Inject(AnthropicService) private readonly proxyService: AnthropicService,
-    @Optional() @Inject(FileContentStore) private readonly fileStore?: FileContentStore,
+    @Optional() @Inject(FilesService) private readonly files?: FilesService,
   ) {
     super();
   }
@@ -70,6 +70,6 @@ export class AnthropicController extends BaseProxyController {
    * upstream transport takes, before anything else looks at the body.
    */
   private expandFileHandles(body: AnthropicChatRequest): Promise<AnthropicChatRequest> {
-    return expandFileReferences(body, 'anthropic', this.fileStore);
+    return expandFileReferences(body, 'anthropic', this.files);
   }
 }

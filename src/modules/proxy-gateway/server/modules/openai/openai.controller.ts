@@ -23,7 +23,7 @@ import {
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
 import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
-import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import {
   expandFileReferences,
   FileReferenceError,
@@ -117,7 +117,7 @@ export class OpenAIController extends BaseProxyController {
     @Optional()
     @Inject(OpenAIChatCompletionService)
     storedCompletions?: OpenAIChatCompletionStoreLike,
-    @Optional() @Inject(FileContentStore) private readonly fileStore?: FileContentStore,
+    @Optional() @Inject(FilesService) private readonly files?: FilesService,
   ) {
     super();
     this.responsesSessions = responsesSessions ?? OpenAIResponsesSessionStore;
@@ -306,7 +306,7 @@ export class OpenAIController extends BaseProxyController {
   async responses(@Body() body: ResponsesRequestBody, @Res() res: FastifyReply) {
     let expanded: ResponsesRequestBody;
     try {
-      expanded = await expandFileReferences(body, 'openai-responses', this.fileStore);
+      expanded = await expandFileReferences(body, 'openai-responses', this.files);
     } catch (error) {
       if (error instanceof FileReferenceError) {
         this.sendFileReferenceError(res, 'openai', error);
@@ -522,7 +522,7 @@ export class OpenAIController extends BaseProxyController {
     try {
       // Handles become inline content before the request is mapped: upstream
       // has no file plane, so a `file_id` left in place reaches nothing.
-      const request = await expandFileReferences(body, 'openai-chat', this.fileStore);
+      const request = await expandFileReferences(body, 'openai-chat', this.files);
       const result = await this.proxyService.handleChatCompletions(request);
 
       if (body.stream && this.isObservableLike(result)) {
