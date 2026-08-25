@@ -1,16 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpStatus,
-  Inject,
-  Optional,
-  Param,
-  Post,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { isEmpty, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
@@ -57,7 +45,6 @@ import {
 import { parseImageMultipartRequest } from '@/modules/proxy-gateway/server/modules/openai/media/image-multipart-request';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 import { BaseProxyController } from '@/modules/proxy-gateway/server/common/base-proxy.controller';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
 import { OpenAIService } from './openai.service';
 export type { ResponsesRequestBody } from './responses/openai-responses-request';
 import {
@@ -77,11 +64,20 @@ export const IMAGE_QUOTA_REFRESH = Symbol('IMAGE_QUOTA_REFRESH');
 export type ImageQuotaRefresh = () => Promise<void>;
 
 /** The audio the two audio endpoints accept: base64 content or a data URL, `file` or `audio`. */
-interface AudioRequestBody {
+export interface AudioRequestBody {
   audio?: string | { data?: string; mimeType?: string };
   file?: string | { data?: string; mimeType?: string };
   model?: string;
   prompt?: string;
+}
+
+export interface OpenAITextCompletionRequest {
+  model?: string;
+  prompt?: string | string[];
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  stream?: boolean;
 }
 
 export interface PreparedResponsesRequest {
@@ -89,9 +85,14 @@ export interface PreparedResponsesRequest {
   session: OpenAIResponsesSession;
 }
 
-@Controller('v1')
-@UseGuards(ProxyGuard)
-export class OpenAIController extends BaseProxyController {
+/**
+ * Shared OpenAI protocol behavior behind the route-specific entry controllers.
+ *
+ * Controllers own route registration, transport decorators, and guard placement;
+ * this provider owns the existing request transformation and response behavior.
+ */
+@Injectable()
+export class OpenAIOperations extends BaseProxyController {
   /**
    * Continuation state for the Responses surface.
    *
@@ -124,8 +125,7 @@ export class OpenAIController extends BaseProxyController {
     this.storedCompletions = storedCompletions ?? OpenAIChatCompletionStore;
   }
 
-  @Get('models')
-  listModels(@Res() res: FastifyReply) {
+  listModels(res: FastifyReply) {
     try {
       const data = this.listOpenAICompatibleModelIds().map((id) =>
         this.toOpenAIModelObjectEntry(id),
@@ -184,8 +184,7 @@ export class OpenAIController extends BaseProxyController {
    * silently different model, and that code rather than a bare 404 is how a client tells "this
    * proxy has no such model" from "this proxy has no such endpoint".
    */
-  @Get('models/:model')
-  retrieveModel(@Param('model') model: string, @Res() res: FastifyReply) {
+  retrieveModel(model: string, res: FastifyReply) {
     try {
       const served = this.listOpenAICompatibleModelIds().includes(model);
       if (!served) {
@@ -213,8 +212,7 @@ export class OpenAIController extends BaseProxyController {
     }
   }
 
-  @Post('chat/completions')
-  async chatCompletions(@Body() body: OpenAIChatRequest, @Res() res: FastifyReply) {
+  async chatCompletions(body: OpenAIChatRequest, res: FastifyReply) {
     if (body.store === true && body.stream === true) {
       res.status(HttpStatus.BAD_REQUEST).send({
         error: {
@@ -241,11 +239,7 @@ export class OpenAIController extends BaseProxyController {
    * completion, because a client cannot tell an invented empty answer from a
    * real one.
    */
-  @Get('chat/completions/:completionId')
-  getStoredChatCompletion(
-    @Param('completionId') completionId: string,
-    @Res() res: FastifyReply,
-  ): void {
+  getStoredChatCompletion(completionId: string, res: FastifyReply): void {
     const stored = this.storedCompletions.get(completionId);
     if (!stored) {
       res.status(HttpStatus.NOT_FOUND).send({
@@ -262,19 +256,7 @@ export class OpenAIController extends BaseProxyController {
     res.status(HttpStatus.OK).send(stored);
   }
 
-  @Post('completions')
-  async completions(
-    @Body()
-    body: {
-      model?: string;
-      prompt?: string | string[];
-      max_tokens?: number;
-      temperature?: number;
-      top_p?: number;
-      stream?: boolean;
-    },
-    @Res() res: FastifyReply,
-  ) {
+  async completions(body: OpenAITextCompletionRequest, res: FastifyReply) {
     const request: OpenAIChatRequest = {
       model: body.model ?? 'gemini-3-flash',
       messages: [
@@ -302,8 +284,7 @@ export class OpenAIController extends BaseProxyController {
     }
   }
 
-  @Post('responses')
-  async responses(@Body() body: ResponsesRequestBody, @Res() res: FastifyReply) {
+  async responses(body: ResponsesRequestBody, res: FastifyReply) {
     let expanded: ResponsesRequestBody;
     try {
       expanded = await expandFileReferences(body, 'openai-responses', this.files);
@@ -339,12 +320,7 @@ export class OpenAIController extends BaseProxyController {
     }
   }
 
-  @Post('images/generations')
-  async imageGenerations(
-    @Body()
-    body: ImageMonitoringRequest,
-    @Res() res: FastifyReply,
-  ) {
+  async imageGenerations(body: ImageMonitoringRequest, res: FastifyReply) {
     const path = '/v1/images/generations';
     this.logImageMonitoringSummary('request', summarizeImageRequest(path, body));
     const request: OpenAIChatRequest = {
@@ -363,8 +339,7 @@ export class OpenAIController extends BaseProxyController {
     await this.sendOpenAIImageGenerationResponse(request, body.prompt ?? '', path, res);
   }
 
-  @Post('images/edits')
-  async imageEdits(@Req() req: FastifyRequest, @Res() res: FastifyReply) {
+  async imageEdits(req: FastifyRequest, res: FastifyReply) {
     const path = '/v1/images/edits';
     if (!this.hasMultipartBoundary(req)) {
       res
@@ -414,13 +389,7 @@ export class OpenAIController extends BaseProxyController {
     await this.sendOpenAIImageGenerationResponse(request, body.prompt ?? '', path, res);
   }
 
-  @Post('audio/transcriptions')
-  async audioTranscriptions(
-    @Body()
-    body: AudioRequestBody,
-    @Req() req: FastifyRequest,
-    @Res() res: FastifyReply,
-  ) {
+  async audioTranscriptions(body: AudioRequestBody, req: FastifyRequest, res: FastifyReply) {
     await this.respondAudioText(
       body,
       req,
@@ -449,13 +418,7 @@ export class OpenAIController extends BaseProxyController {
    * translation of speech, so it carries the accuracy of the model, not of a translation
    * service.
    */
-  @Post('audio/translations')
-  async audioTranslations(
-    @Body()
-    body: AudioRequestBody,
-    @Req() req: FastifyRequest,
-    @Res() res: FastifyReply,
-  ) {
+  async audioTranslations(body: AudioRequestBody, req: FastifyRequest, res: FastifyReply) {
     const guidance = body.prompt ? `\n\nAdditional guidance from the caller:\n${body.prompt}` : '';
 
     await this.respondAudioText(

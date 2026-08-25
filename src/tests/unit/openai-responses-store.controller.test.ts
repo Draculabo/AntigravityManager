@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { OpenAIController } from '@/modules/proxy-gateway/server/modules/openai/openai.controller';
+import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
 import { OpenAIResponsesStoreController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-store.controller';
 
@@ -30,7 +30,7 @@ function createSurface(...answers: unknown[]) {
     handleChatCompletions.mockResolvedValueOnce(answer);
   }
   return {
-    chat: new OpenAIController(
+    chat: new OpenAIOperations(
       { handleChatCompletions } as never,
       undefined,
       undefined,

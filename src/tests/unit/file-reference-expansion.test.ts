@@ -8,7 +8,7 @@ import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anth
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
 import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { OpenAIController } from '@/modules/proxy-gateway/server/modules/openai/openai.controller';
+import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 
 const png = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -62,7 +62,7 @@ describe('file handles become inline content on the way upstream', () => {
     const store = createStore();
     const id = await storeFile(store, png, 'shot.png');
     const handleChatCompletions = vi.fn().mockResolvedValue({ id: 'chatcmpl_1', choices: [] });
-    const controller = new OpenAIController(
+    const controller = new OpenAIOperations(
       { handleChatCompletions } as never,
       undefined,
       undefined,
@@ -153,7 +153,7 @@ describe('file handles become inline content on the way upstream', () => {
   it('refuses a handle it never issued instead of forwarding it upstream', async () => {
     const store = createStore();
     const handleChatCompletions = vi.fn();
-    const controller = new OpenAIController(
+    const controller = new OpenAIOperations(
       { handleChatCompletions } as never,
       undefined,
       undefined,
@@ -232,7 +232,7 @@ describe('file handles become inline content on the way upstream', () => {
     const id = await storeFile(store, png, 'brief.png');
     await new Promise((resolve) => setTimeout(resolve, 25));
     const handleChatCompletions = vi.fn();
-    const controller = new OpenAIController(
+    const controller = new OpenAIOperations(
       { handleChatCompletions } as never,
       undefined,
       undefined,
@@ -257,7 +257,7 @@ describe('file handles become inline content on the way upstream', () => {
 
   it('fails closed when no file store is wired at all', async () => {
     const handleChatCompletions = vi.fn();
-    const controller = new OpenAIController({ handleChatCompletions } as never);
+    const controller = new OpenAIOperations({ handleChatCompletions } as never);
     const reply = createReplyMock();
 
     await controller.chatCompletions(
@@ -281,7 +281,7 @@ describe('file handles become inline content on the way upstream', () => {
   it('leaves a request that names no handle exactly as it arrived', async () => {
     const store = createStore();
     const handleChatCompletions = vi.fn().mockResolvedValue({ id: 'chatcmpl_1', choices: [] });
-    const controller = new OpenAIController(
+    const controller = new OpenAIOperations(
       { handleChatCompletions } as never,
       undefined,
       undefined,

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { OpenAIController } from '@/modules/proxy-gateway/server/modules/openai/openai.controller';
+import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import {
   createAccount,
@@ -43,7 +43,7 @@ describe('OpenAI audio translations', () => {
   it('answers with the English text the model returned', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('The weather is fine.') });
     const lease = createLease([createAccount('acc-1')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
     const reply = createReply();
 
     await controller.audioTranslations(audioBody() as never, MULTIPART_REQUEST, reply as never);
@@ -55,7 +55,7 @@ describe('OpenAI audio translations', () => {
   it('asks for English and sends the audio in the same request', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('ok') });
     const lease = createLease([createAccount('acc-1')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
 
     await controller.audioTranslations(
       audioBody() as never,
@@ -72,7 +72,7 @@ describe('OpenAI audio translations', () => {
   it('carries the caller prompt as guidance, not as the whole instruction', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('ok') });
     const lease = createLease([createAccount('acc-1')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
 
     await controller.audioTranslations(
       audioBody({ prompt: 'keep the medical terms' }) as never,
@@ -88,7 +88,7 @@ describe('OpenAI audio translations', () => {
   it('refuses a request with no audio in it', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('unreachable') });
     const lease = createLease([createAccount('acc-1')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
     const reply = createReply();
 
     await controller.audioTranslations({} as never, MULTIPART_REQUEST, reply as never);
@@ -101,7 +101,7 @@ describe('OpenAI audio translations', () => {
   it('refuses a request that is not multipart, the same way transcriptions does', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('unreachable') });
     const lease = createLease([createAccount('acc-1')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
     const reply = createReply();
 
     await controller.audioTranslations(

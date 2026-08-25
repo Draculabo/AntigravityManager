@@ -117,7 +117,7 @@ describe('SERVABLE_BATCH_ENDPOINTS', () => {
    * `/v1/responses` is a declared partial-compatibility boundary, not an oversight, so the refusal
    * is pinned rather than left to the shape of the constant. Serving it in a batch needs the
    * Responses request/response conversion and its session resolution, both of which live inside
-   * `OpenAIController` today; lifting the limitation means moving that pipeline into the protocol
+   * `OpenAIOperations` today; lifting the limitation means moving that pipeline into the protocol
    * module first, which is a separate change with its own review.
    */
   it('refuses an OpenAI batch aimed at /v1/responses, naming what it can serve', async () => {

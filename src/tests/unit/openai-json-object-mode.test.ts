@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { OpenAIController } from '@/modules/proxy-gateway/server/modules/openai/openai.controller';
+import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import {
   createAccount,
@@ -36,7 +36,7 @@ function chatRequest(responseFormat?: { type?: string }) {
 async function upstreamBodyFor(request: Record<string, unknown>) {
   const upstream = createUpstream({ generate: geminiTextResponse('{"ok":true}') });
   const lease = createLease([createAccount('acc-1')]);
-  const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+  const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
 
   await controller.chatCompletions(request as never, createReply() as never);
 
@@ -71,7 +71,7 @@ describe('OpenAI json_object response format', () => {
   it('still answers the client normally in JSON mode', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('{"ok":true}') });
     const lease = createLease([createAccount('acc-1')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
     const reply = createReply();
 
     await controller.chatCompletions(chatRequest({ type: 'json_object' }) as never, reply as never);

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 
 import { AnthropicController } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { OpenAIController as ProxyController } from '../../modules/proxy-gateway/server/modules/openai/openai.controller';
+import { OpenAIOperations as ProxyController } from '../../modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { OpenAIResponsesSessionStore } from '../../modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
 import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import { DEFAULT_APP_CONFIG } from '../../modules/config/types';

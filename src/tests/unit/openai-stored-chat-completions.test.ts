@@ -5,7 +5,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 
-import { OpenAIController } from '@/modules/proxy-gateway/server/modules/openai/openai.controller';
+import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import {
   defaultOpenAIChatCompletionStoreOptions,
   OpenAIChatCompletionService,
@@ -56,7 +56,7 @@ describe('stored chat completions', () => {
     for (const answer of answers) {
       handleChatCompletions.mockResolvedValueOnce(answer);
     }
-    const controller = new OpenAIController(
+    const controller = new OpenAIOperations(
       { handleChatCompletions } as never,
       undefined,
       undefined,

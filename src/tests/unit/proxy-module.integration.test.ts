@@ -11,7 +11,11 @@ import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files
 import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
 import { ModelRouteMissJournalService } from '@/modules/proxy-gateway/server/shared/services/model-route-miss-journal.service';
 import { OpenAIChatCompletionService } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-chat-completion.service';
-import { OpenAIController } from '@/modules/proxy-gateway/server/modules/openai/openai.controller';
+import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
+import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import { OpenAIMediaController } from '@/modules/proxy-gateway/server/modules/openai/openai-media.controller';
+import { OpenAIModelsController } from '@/modules/proxy-gateway/server/modules/openai/openai-models.controller';
+import { OpenAIResponsesController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses.controller';
 import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
 import { OpenAIResponsesStoreController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-store.controller';
 import { ProxyModule } from '@/modules/proxy-gateway/server/proxy.module';
@@ -47,14 +51,18 @@ describe('FilesModule exports', () => {
 });
 
 describe('ProxyModule dependency graph', () => {
-  it('resolves the facade and all protocol controllers', async () => {
+  it('resolves the OpenAI operations service and all protocol controllers', async () => {
     const application = await NestFactory.createApplicationContext(ProxyModule, {
       logger: false,
     });
 
     try {
       expect(application.get(ProxyService)).toBeInstanceOf(ProxyService);
-      expect(application.get(OpenAIController)).toBeInstanceOf(OpenAIController);
+      expect(application.get(OpenAIOperations)).toBeInstanceOf(OpenAIOperations);
+      expect(application.get(OpenAIModelsController)).toBeInstanceOf(OpenAIModelsController);
+      expect(application.get(OpenAIChatController)).toBeInstanceOf(OpenAIChatController);
+      expect(application.get(OpenAIResponsesController)).toBeInstanceOf(OpenAIResponsesController);
+      expect(application.get(OpenAIMediaController)).toBeInstanceOf(OpenAIMediaController);
       expect(application.get(AnthropicController)).toBeInstanceOf(AnthropicController);
       expect(application.get(GeminiController)).toBeInstanceOf(GeminiController);
     } finally {

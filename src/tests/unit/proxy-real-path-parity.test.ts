@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
 
-import { OpenAIController } from '@/modules/proxy-gateway/server/modules/openai/openai.controller';
+import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import {
@@ -42,7 +42,7 @@ describe('real request path, OpenAI chat surface', () => {
   it('answers an OpenAI client from an upstream fixture, through every real layer', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('The weather is cloudy.') });
     const lease = createLease([createAccount('acc-1')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
     const reply = createReply();
 
     await controller.chatCompletions(
@@ -72,7 +72,7 @@ describe('real request path, OpenAI chat surface', () => {
   it('carries the client request through the mapper into the upstream body', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('ok') });
     const lease = createLease([createAccount('acc-1', 'project-42')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
 
     await controller.chatCompletions(
       {
@@ -139,7 +139,7 @@ describe('real request path, OpenAI chat surface', () => {
       },
     });
     const lease = createLease([createAccount('acc-1'), createAccount('acc-2')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
     const reply = createReply();
 
     await controller.chatCompletions(
@@ -183,7 +183,7 @@ describe('real request path, OpenAI chat surface', () => {
       },
     });
     const lease = createLease([createAccount('acc-1'), createAccount('acc-2')]);
-    const controller = new OpenAIController(createGateway(upstream, lease).openAIService);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
 
     await controller.chatCompletions(
       {

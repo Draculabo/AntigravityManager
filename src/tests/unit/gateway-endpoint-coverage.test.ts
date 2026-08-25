@@ -154,7 +154,7 @@ const CENSUS: readonly CensusEntry[] = [
   { method: 'POST', routePath: '/v1/uploads/:id/complete', testFile: 'openai-uploads.test.ts' },
   { method: 'POST', routePath: '/v1/uploads/:id/cancel', testFile: 'openai-uploads.test.ts' },
 
-  // OpenAI protocol (src/modules/proxy-gateway/server/modules/openai/openai.controller.ts)
+  // OpenAI protocol entry controllers (src/modules/proxy-gateway/server/modules/openai/openai-*.controller.ts)
   { method: 'GET', routePath: '/v1/models', testFile: 'openai-retrieve-model.test.ts' },
   { method: 'GET', routePath: '/v1/models/:model', testFile: 'openai-retrieve-model.test.ts' },
   {
@@ -231,6 +231,19 @@ const CENSUS: readonly CensusEntry[] = [
 
 const EXPECTED_UNCOVERED_ROUTES: readonly string[] = [];
 
+const OPENAI_PROTOCOL_ROUTE_KEYS = [
+  'GET /v1/models',
+  'GET /v1/models/:model',
+  'POST /v1/chat/completions',
+  'GET /v1/chat/completions/:completionId',
+  'POST /v1/completions',
+  'POST /v1/responses',
+  'POST /v1/images/generations',
+  'POST /v1/images/edits',
+  'POST /v1/audio/transcriptions',
+  'POST /v1/audio/translations',
+] as const;
+
 const UNIT_TEST_DIR = path.join(process.cwd(), 'src/tests/unit');
 
 function routeKey(entry: { method: string; routePath: string }): string {
@@ -289,6 +302,12 @@ afterAll(async () => {
 describe('gateway endpoint coverage census', () => {
   it('boots the real gateway and finds at least one route', () => {
     expect(registeredRoutes.length).toBeGreaterThan(0);
+  });
+
+  it('preserves every OpenAI protocol route while its entry controllers are split', () => {
+    const routeKeys = new Set(registeredRoutes.map(routeKey));
+
+    expect(OPENAI_PROTOCOL_ROUTE_KEYS.filter((key) => !routeKeys.has(key))).toEqual([]);
   });
 
   it('has a census entry for every route the gateway actually registers', () => {

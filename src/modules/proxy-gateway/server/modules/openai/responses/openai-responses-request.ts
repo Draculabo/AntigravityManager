@@ -1,9 +1,10 @@
 /**
  * Normalisation of the OpenAI Responses request shape into the chat request the gateway
  * already knows how to serve, plus the small guards it needs. Extracted from
- * `OpenAIController` with no behavior change: this cluster only referenced itself.
+ * `OpenAIOperations` with no behavior change: this cluster only referenced itself.
  *
- * The controller keeps the routes and the orchestration; this module holds the mapping.
+ * Entry controllers keep the routes, `OpenAIOperations` keeps orchestration, and this module
+ * holds the mapping.
  */
 
 import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';

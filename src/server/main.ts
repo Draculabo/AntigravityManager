@@ -6,9 +6,9 @@ import { AppModule } from './app.module';
 import { logger } from '../shared/logging/logger';
 import { AccountLeaseService } from '../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import {
-  OpenAIController,
+  OpenAIOperations,
   type ResponsesRequestBody,
-} from '../modules/proxy-gateway/server/modules/openai/openai.controller';
+} from '../modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { ProxyService } from '../modules/proxy-gateway/server/proxy.service';
 import { DEFAULT_MAX_FILE_BYTES } from '../modules/proxy-gateway/server/modules/files/file-store.types';
 import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
@@ -123,7 +123,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
     app.enableCors();
 
     await app.listen(port, '0.0.0.0');
-    const openAIController = app.get(OpenAIController);
+    const openAIOperations = app.get(OpenAIOperations);
     const proxyService = app.get(ProxyService);
     detachResponsesWebSocketServer = attachOpenAIResponsesWebSocketServer(app.getHttpServer(), {
       isAuthorized: (request) => {
@@ -134,7 +134,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
         );
       },
       streamRequest: async (request) => {
-        const prepared = openAIController.prepareResponsesRequest(
+        const prepared = openAIOperations.prepareResponsesRequest(
           request as unknown as ResponsesRequestBody,
         );
         if (!prepared) {

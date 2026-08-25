@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { OpenAIController } from '@/modules/proxy-gateway/server/modules/openai/openai.controller';
+import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
 
@@ -25,7 +25,7 @@ function createController(models: string[]) {
     getAllCollectedModels: vi.fn(() => models),
     getAllRawQuotaModels: vi.fn(() => models),
   };
-  return new OpenAIController({} as never, accountLeaseService as never);
+  return new OpenAIOperations({} as never, accountLeaseService as never);
 }
 
 describe('OpenAI retrieve model', () => {
