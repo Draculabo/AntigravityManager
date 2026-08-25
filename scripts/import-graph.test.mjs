@@ -63,3 +63,23 @@ test('resolves aliases and excludes type-only imports from runtime reachability'
     'src/value.ts',
   ]);
 });
+
+test('analyzes the current worktree across unstaged deletes and untracked additions', async (context) => {
+  const rootDir = await createImportGraphFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+  await rm(path.join(rootDir, 'src/value.ts'));
+  await writeFixtureFile(rootDir, 'src/replacement.ts', 'export const replacement = 2;\n');
+  await writeFixtureFile(
+    rootDir,
+    'src/entry.ts',
+    "import { replacement } from '@/replacement';\nvoid replacement;\n",
+  );
+
+  const graph = collectImportGraph(rootDir);
+
+  assert.deepEqual(
+    graph.files.map((file) => file.path),
+    ['src/entry.ts', 'src/feature.ts', 'src/lazy.ts', 'src/replacement.ts', 'src/types.ts'],
+  );
+  assert.equal(graph.files[0].dependencies[0].target, 'src/replacement.ts');
+});

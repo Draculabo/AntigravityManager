@@ -7,7 +7,8 @@ import {
   refreshAntigravityProcessCache,
 } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
-import { Account, AccountBackupData, AntigravityAppTarget } from '@/modules/account/types';
+import type { Account, AccountBackupData } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type {
   DeviceProfile,
   DeviceProfilesSnapshot,
@@ -18,7 +19,7 @@ import {
   extractCredentialStoreTokenFromBackup,
   restoreAccount as dbRestore,
   getCurrentAccountInfo,
-} from '@/shared/persistence/database/handler';
+} from '@/modules/account/persistence/antigravity-state-database';
 import { CredentialStoreInjectionAdapter } from '@/modules/cloud-account/persistence/credential-store-injection-adapter';
 import { writeAntigravityCredentialStoreToken } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
 import {

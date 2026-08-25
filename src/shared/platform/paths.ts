@@ -3,8 +3,8 @@ import os from 'os';
 import fs from 'fs';
 import { execSync } from 'child_process';
 import findProcess, { type ProcessInfo } from 'find-process';
-import type { AntigravityAppTarget } from '@/modules/account/types';
-import { resolveAntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 type PathApi = Pick<typeof path, 'dirname' | 'join' | 'normalize' | 'resolve'>;
 

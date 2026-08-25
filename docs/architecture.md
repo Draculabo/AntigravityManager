@@ -35,7 +35,7 @@ The Electron main process is the trusted application host. The renderer is treat
 | Server module composition  | [src/server/app.module.ts](../src/server/app.module.ts)                               | Composition of proxy-gateway server modules                                                                              |
 | Application routes         | [src/routes](../src/routes)                                                           | File-based route definitions                                                                                             |
 | Router construction        | [src/modules/app-shell/routing/routes.ts](../src/modules/app-shell/routing/routes.ts) | TanStack Router instance and history configuration                                                                       |
-| Shared database primitives | [src/shared/persistence/database](../src/shared/persistence/database)                 | SQLite connection, schema, validation and generic database IPC                                                           |
+| Shared database primitives | [src/shared/persistence/database](../src/shared/persistence/database)                 | SQLite connection, schema and generic row validation                                                                     |
 
 ## Dependency direction
 
@@ -59,13 +59,13 @@ The following reverse dependencies are not allowed:
 
 When a capability genuinely has multiple consumers, expose a narrow shared API or move the capability to `src/shared`. Do not move code pre-emptively based on hypothetical reuse.
 
-`npm run verify:boundaries` derives a runtime import graph from Git-tracked source files and reports violations of these rules. `npm run verify:root-ipc-boundary` enforces the clean root-IPC rule: [src/ipc/router.ts](../src/ipc/router.ts) may compose feature router exports but may not import feature handlers, repositories or services directly. Renderer/preload and shared-direction checks remain report-only until the remaining legacy shared-to-feature dependencies have an approved migration.
+`npm run verify:boundaries` derives a runtime import graph from the current Git worktree and reports violations of these rules. `npm run verify:boundaries:enforce` rejects renderer/preload main-process reachability, reverse `shared` dependencies and root IPC imports of feature internals. [src/ipc/router.ts](../src/ipc/router.ts) may compose feature router exports but may not import feature handlers, repositories or services directly.
 
 ## Feature ownership
 
 Feature-specific components, hooks, IPC routers, services, persistence and types live under `src/modules/<feature>/`. The current feature owners are:
 
-- `account`: local account snapshots and account UI.
+- `account`: local account snapshots, Antigravity state backup/restore and account UI.
 - `antigravity-runtime`: process discovery, startup, switching and runtime patching.
 - `app-shell`: window, tray, theme, routing, updates and application-wide UI actions.
 - `cloud-account`: cloud authentication, monitoring, quota, import and persistence.

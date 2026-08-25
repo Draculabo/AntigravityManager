@@ -6,8 +6,8 @@ import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '@/shared/logging/logger';
 import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { AntigravityAppTargetSchema } from '@/modules/account/types';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi' | 'fr' | 'tr';
 

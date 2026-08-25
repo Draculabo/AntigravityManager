@@ -4,7 +4,7 @@ import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/c
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { switchCloudAccount } from '@/modules/cloud-account/ipc/handler';
 import { logger } from '@/shared/logging/logger';
-import { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 export class AutoSwitchService {
   /**

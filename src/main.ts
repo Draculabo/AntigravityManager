@@ -19,7 +19,7 @@ import {
 import { applyStartupGpuSwitches } from '@/modules/app-shell/utils/startupGpuSwitches';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
-import { initDatabase } from '@/shared/persistence/database/handler';
+import { initDatabase } from '@/modules/account/public';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 
 // Static Imports to fix Bundle Resolution Errors

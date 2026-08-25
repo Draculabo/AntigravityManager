@@ -1,6 +1,6 @@
 import { os } from '@orpc/server';
 import { z } from 'zod';
-import { AntigravityAppTargetSchema } from '@/modules/account/types';
+import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 import { closeAntigravity, isProcessRunning, startAntigravity } from './handler';
 
 const ProcessTargetInputSchema = z

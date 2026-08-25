@@ -27,6 +27,8 @@ Select evidence according to the behavior a change can affect. Focused tests are
 | Packaging, updater or native artifact | Owning packaging/update tests                                         | `npm run package`, size audit or platform build when artifacts change      |
 | Documentation or agent governance     | `npm run check:governance` and formatting                             | Link/build checks owned by the affected documentation system               |
 
+`npm run check:governance` analyzes the current worktree, including untracked source files and unstaged deletions, and enforces every runtime boundary rule. It is not a report-only check.
+
 ## Focused commands
 
 Run a specific Vitest file:
@@ -46,6 +48,14 @@ Run a focused Playwright file:
 ```powershell
 npm run test:e2e -- src/tests/e2e/<flow>.spec.ts
 ```
+
+Run the real Windows command-shell smoke test for the performance recorder launcher:
+
+```powershell
+npm run test:performance-recorder-process
+```
+
+This process-level test uses a temporary `npm.cmd` fixture and runs outside Vitest's `no-app-launch` guard. It skips on non-Windows platforms; the default Vitest suite validates only the launch-command contract and does not start child processes.
 
 Run static checks when a shared type, import surface, public export or cross-module contract changes:
 

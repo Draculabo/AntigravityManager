@@ -3,17 +3,42 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const REPORT_FORMAT_VERSION = 1;
+const MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024;
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
 
-function runGit(rootDir, args) {
-  const result = spawnSync('git', args, {
-    cwd: rootDir,
-    encoding: 'utf8',
-    maxBuffer: 1024 * 1024,
+function decodeGitOutput(output, streamName) {
+  try {
+    return utf8Decoder.decode(output ?? new Uint8Array());
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to decode git ${streamName} as UTF-8: ${detail}`);
+  }
+}
+
+function executeGit(rootDir, args) {
+  const result = spawnSync('git', ['-C', rootDir, '-c', 'core.fsmonitor=false', ...args], {
+    env: {
+      ...process.env,
+      GIT_OPTIONAL_LOCKS: '0',
+      LANG: 'C',
+      LC_ALL: 'C',
+    },
+    maxBuffer: MAX_GIT_OUTPUT_BYTES,
   });
 
   if (result.error) {
     throw new Error(`Unable to run git ${args.join(' ')}: ${result.error.message}`);
   }
+
+  return {
+    status: result.status,
+    stderr: decodeGitOutput(result.stderr, 'stderr'),
+    stdout: decodeGitOutput(result.stdout, 'stdout'),
+  };
+}
+
+function runGit(rootDir, args) {
+  const result = executeGit(rootDir, args);
 
   if (result.status !== 0) {
     const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.status}`;
@@ -43,7 +68,26 @@ function resolveCommit(rootDir, revision, label) {
     throw new Error(`${label} revision is required`);
   }
 
-  return runGit(rootDir, ['rev-parse', '--verify', `${revision}^{commit}`]).trim();
+  const args = [
+    '-c',
+    'core.warnAmbiguousRefs=true',
+    'rev-parse',
+    '--verify',
+    '--end-of-options',
+    `${revision}^{commit}`,
+  ];
+  const result = executeGit(rootDir, args);
+
+  if (result.stderr.includes(`refname '${revision}' is ambiguous`)) {
+    throw new Error(`${label} revision "${revision}" is ambiguous`);
+  }
+
+  if (result.status !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.status}`;
+    throw new Error(`Unable to resolve ${label} revision "${revision}": ${detail}`);
+  }
+
+  return result.stdout.trim();
 }
 
 /**
@@ -61,7 +105,7 @@ function resolveCommit(rootDir, revision, label) {
  */
 export function collectChangeScope(rootDir, options = {}) {
   const repositoryRoot = path.resolve(rootDir);
-  const baseInput = options.base ?? 'HEAD';
+  const baseInput = options.base;
   const headInput = options.head ?? 'HEAD';
   const base = resolveCommit(repositoryRoot, baseInput, 'base');
   const head = resolveCommit(repositoryRoot, headInput, 'head');

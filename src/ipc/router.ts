@@ -1,5 +1,4 @@
-import { databaseRouter } from '@/shared/persistence/database/router';
-import { accountRouter } from '@/modules/account/ipc/router';
+import { accountRouter, databaseRouter } from '@/modules/account/ipc/router';
 import { cloudRouter } from '@/modules/cloud-account/ipc/router';
 import { configRouter } from '@/modules/config/ipc/router';
 import { gatewayRouter } from '@/modules/proxy-gateway/ipc/router';

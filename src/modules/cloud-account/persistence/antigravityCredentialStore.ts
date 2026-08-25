@@ -2,13 +2,8 @@ import { Entry } from '@napi-rs/keyring';
 import { execFileSync, spawnSync } from 'child_process';
 import { z } from 'zod';
 import { logger } from '@/shared/logging/logger';
+import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreToken';
 import { writeAgyCliToken } from './agyCliTokenStore';
-
-export interface CredentialStoreTokenInput {
-  access_token: string;
-  refresh_token: string;
-  expiry_timestamp: number;
-}
 
 export interface CredentialStoreToken {
   accessToken?: string;

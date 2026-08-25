@@ -15,7 +15,13 @@ import {
   switchAccount,
   openIdentityStorageFolder,
 } from './handler';
-import { AccountSchema, AntigravityAppTargetSchema } from '@/modules/account/types';
+import { AccountBackupDataSchema, AccountInfoSchema, AccountSchema } from '@/modules/account/types';
+import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
+import {
+  backupAccount,
+  getCurrentAccountInfo,
+  restoreAccount,
+} from '@/modules/account/persistence/antigravity-state-database';
 import {
   DeviceProfileSchema,
   DeviceProfilesSnapshotSchema,
@@ -99,5 +105,25 @@ export const accountRouter = os.router({
 
   openIdentityStorageFolder: os.output(z.void()).handler(async () => {
     await openIdentityStorageFolder();
+  }),
+});
+
+export const databaseRouter = os.router({
+  backupAccount: os
+    .input(AccountSchema)
+    .output(AccountBackupDataSchema)
+    .handler(async ({ input }) => {
+      return backupAccount(input);
+    }),
+
+  restoreAccount: os
+    .input(AccountBackupDataSchema)
+    .output(z.void())
+    .handler(async ({ input }) => {
+      restoreAccount(input);
+    }),
+
+  getCurrentAccountInfo: os.output(AccountInfoSchema).handler(async () => {
+    return getCurrentAccountInfo();
   }),
 });

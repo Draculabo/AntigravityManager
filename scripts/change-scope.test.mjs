@@ -81,7 +81,26 @@ test('rejects a revision that is not a commit', async (context) => {
 
   assert.throws(
     () => collectChangeScope(rootDir, { base: 'does-not-exist', head: 'HEAD' }),
-    /git rev-parse --verify does-not-exist\^\{commit\} failed/,
+    /Unable to resolve base revision "does-not-exist"/,
+  );
+});
+
+test('requires callers to select an explicit base revision', async (context) => {
+  const { rootDir } = await createRepositoryFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+
+  assert.throws(() => collectChangeScope(rootDir, { head: 'HEAD' }), /base revision is required/);
+});
+
+test('rejects an ambiguous base revision', async (context) => {
+  const { base, rootDir } = await createRepositoryFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+  runGit(rootDir, ['branch', 'collision', base]);
+  runGit(rootDir, ['tag', 'collision', 'HEAD']);
+
+  assert.throws(
+    () => collectChangeScope(rootDir, { base: 'collision', head: 'HEAD' }),
+    /base revision "collision" is ambiguous/,
   );
 });
 

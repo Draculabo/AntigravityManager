@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { uniq } from 'lodash-es';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import {
   IdeAccountImportAdapter,
   type IdeTokenInfo,

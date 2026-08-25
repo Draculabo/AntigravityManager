@@ -60,7 +60,7 @@ async function importVersionModule({
     getAntigravityExecutablePath,
     isWsl: () => wsl,
   }));
-  vi.doMock('@/modules/account/types', () => ({
+  vi.doMock('@/shared/platform/antigravityAppTarget', () => ({
     resolveAntigravityAppTarget: (target: unknown) => target ?? 'stable',
   }));
 
@@ -80,7 +80,7 @@ describe('antigravityVersion', () => {
     vi.doUnmock('child_process');
     vi.doUnmock('fs');
     vi.doUnmock('@/shared/platform/paths');
-    vi.doUnmock('@/modules/account/types');
+    vi.doUnmock('@/shared/platform/antigravityAppTarget');
   });
 
   it('reads the version from the manifest under WSL instead of launching the app', async () => {

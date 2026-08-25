@@ -1343,7 +1343,7 @@ describe('cloud oauth client key backfill', () => {
       },
     }));
 
-    vi.doMock('@/shared/persistence/database/handler', () => ({
+    vi.doMock('@/modules/account/persistence/antigravity-state-database', () => ({
       getCurrentAccountInfo: vi.fn((target: string) => {
         if (target === 'classic') {
           return { isAuthenticated: true, email: 'previous@test.dev' };

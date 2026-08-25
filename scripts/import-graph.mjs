@@ -28,10 +28,13 @@ function runGit(rootDir, args) {
   return result.stdout;
 }
 
-function collectTrackedSourcePaths(rootDir) {
-  return runGit(rootDir, ['ls-files', '-z'])
+function collectWorktreeSourcePaths(rootDir) {
+  return runGit(rootDir, ['ls-files', '--cached', '--others', '--exclude-standard', '-z'])
     .split('\0')
-    .filter((filePath) => SOURCE_FILE_PATTERN.test(filePath))
+    .filter(
+      (filePath) =>
+        SOURCE_FILE_PATTERN.test(filePath) && ts.sys.fileExists(path.join(rootDir, filePath)),
+    )
     .map(toPosixPath)
     .sort((left, right) => left.localeCompare(right));
 }
@@ -149,7 +152,7 @@ function resolveInternalTarget(rootDir, sourcePath, specifier, compilerOptions, 
 }
 
 /**
- * Parse the Git-tracked TypeScript and JavaScript source set into a reusable import graph.
+ * Parse the current Git worktree TypeScript and JavaScript source set into a reusable import graph.
  *
  * @param {string} rootDir repository root
  * @returns {{ formatVersion: number, repositoryRoot: string, files: Array<{ path: string, dependencies: Array<{ kind: string, runtime: boolean, specifier: string, target: string | null }> }> }} graph report
@@ -157,13 +160,13 @@ function resolveInternalTarget(rootDir, sourcePath, specifier, compilerOptions, 
 export function collectImportGraph(rootDir) {
   const repositoryRoot = path.resolve(rootDir);
   const compilerOptions = loadCompilerOptions(repositoryRoot);
-  const sourcePaths = collectTrackedSourcePaths(repositoryRoot);
-  const trackedPaths = new Set(sourcePaths);
+  const sourcePaths = collectWorktreeSourcePaths(repositoryRoot);
+  const worktreePaths = new Set(sourcePaths);
   const files = sourcePaths.map((sourcePath) => {
     const sourceText = ts.sys.readFile(path.join(repositoryRoot, sourcePath));
 
     if (sourceText === undefined) {
-      throw new Error(`Unable to read tracked source file: ${sourcePath}`);
+      throw new Error(`Unable to read worktree source file: ${sourcePath}`);
     }
 
     const sourceFile = ts.createSourceFile(sourcePath, sourceText, ts.ScriptTarget.Latest, true);
@@ -174,7 +177,7 @@ export function collectImportGraph(rootDir) {
         sourcePath,
         dependency.specifier,
         compilerOptions,
-        trackedPaths,
+        worktreePaths,
       ),
     }));
 

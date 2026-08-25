@@ -3,8 +3,8 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { compare, coerce, parse } from 'semver';
 import { getAntigravityExecutablePath, isWsl } from '@/shared/platform/paths';
-import type { AntigravityAppTarget } from '@/modules/account/types';
-import { resolveAntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 export interface AntigravityVersion {
   shortVersion: string;
