@@ -167,18 +167,19 @@ describe('upstream 4xx capture', () => {
   });
 
   it('removes the oldest capture when writing the 51st file', async () => {
-    await writeCapture();
-    const [oldest] = await captureFiles();
-    const oldestPath = path.join(agentDirectory, CAPTURES_DIRECTORY, oldest);
-    await fs.utimes(oldestPath, new Date(0), new Date(0));
+    const captureDirectory = path.join(agentDirectory, CAPTURES_DIRECTORY);
+    await fs.mkdir(captureDirectory, { recursive: true });
+    const existingFiles = Array.from({ length: 50 }, (_, index) =>
+      path.join(captureDirectory, `existing-${index}.json`),
+    );
+    await Promise.all(existingFiles.map((file) => fs.writeFile(file, '{}', 'utf-8')));
+    await fs.utimes(existingFiles[0], new Date(0), new Date(0));
 
-    for (let index = 0; index < 50; index++) {
-      await writeCapture({ upstreamErrorBody: { error: { message: `rejected-${index}` } } });
-    }
+    await writeCapture();
 
     const files = await captureFiles();
     expect(files).toHaveLength(50);
-    expect(files).not.toContain(oldest);
+    expect(files).not.toContain(path.basename(existingFiles[0]));
   });
 
   it('replaces an oversized capture with a bounded diagnostic summary', async () => {

@@ -10,12 +10,22 @@ import {
   UseGuards,
   Optional,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { FastifyReply } from 'fastify';
 import { isEmpty, isFunction, isNumber, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
+import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
+import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import {
+  expandFileReferences,
+  FileReferenceError,
+} from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
+import { BatchRunnerService } from '../batch/batch-runner.service';
+import { respondGeminiBatchGenerateContent } from '../batch/gemini-batch-submit';
 import { GeminiService } from './gemini.service';
+import { InvalidCountTokensRequestError } from './gemini-count-tokens';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
@@ -42,7 +52,31 @@ export class GeminiController {
     @Optional()
     @Inject(AccountLeaseService)
     private readonly accountLeaseService?: AccountLeaseService,
+    @Optional() @Inject(FileContentStore) private readonly fileStore?: FileContentStore,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
+
+  /**
+   * Resolves `BatchRunnerService` outside this module's own `imports`.
+   *
+   * `BatchModule` already imports `GeminiModule` to build its execution
+   * target, so `GeminiModule` cannot import `BatchModule` back without
+   * recreating the ES module load-order cycle `forwardRef` only papers over
+   * at the NestJS DI level, not at `import` evaluation time (see
+   * `gemini.module.ts`). `strict: false` walks the whole application's DI
+   * graph instead of this module's declared imports, which is exactly what a
+   * lazy, optional cross-module lookup like this one needs.
+   */
+  private resolveBatchRunner(): BatchRunnerService | undefined {
+    if (!this.moduleRef) {
+      return undefined;
+    }
+    try {
+      return this.moduleRef.get(BatchRunnerService, { strict: false });
+    } catch {
+      return undefined;
+    }
+  }
 
   @Get('models')
   listModels(@Res() res: FastifyReply) {
@@ -107,16 +141,34 @@ export class GeminiController {
     body: GeminiRequest,
     res: FastifyReply,
   ): Promise<void> {
-    if (action === 'countTokens') {
-      res.status(HttpStatus.OK).send({
-        totalTokens: 0,
-      });
-      return;
+    let request: GeminiRequest;
+    try {
+      // Handles become inline bytes before anything else reads the request:
+      // the upstream transport has no file plane to forward a `fileUri` to.
+      request = await expandFileReferences(body, 'gemini', this.fileStore);
+    } catch (error) {
+      if (error instanceof FileReferenceError) {
+        res.status(error.httpStatus).send({
+          error: {
+            code: error.httpStatus,
+            message: error.message,
+            status: error.httpStatus === 404 ? 'NOT_FOUND' : 'INVALID_ARGUMENT',
+          },
+        });
+        return;
+      }
+      throw error;
     }
 
     try {
+      if (action === 'countTokens') {
+        const totalTokens = await this.proxyService.handleGeminiCountTokens(model, request);
+        res.status(HttpStatus.OK).send({ totalTokens });
+        return;
+      }
+
       if (action === 'streamGenerateContent') {
-        const stream = await this.proxyService.handleGeminiStreamGenerateContent(model, body);
+        const stream = await this.proxyService.handleGeminiStreamGenerateContent(model, request);
         if (stream instanceof Observable) {
           this.writeObservableSseResponse(res, stream);
           return;
@@ -124,8 +176,13 @@ export class GeminiController {
       }
 
       if (action === 'generateContent') {
-        const result = await this.proxyService.handleGeminiGenerateContent(model, body);
+        const result = await this.proxyService.handleGeminiGenerateContent(model, request);
         res.status(HttpStatus.OK).send(this.buildNormalizedGeminiGenerateResponse(result));
+        return;
+      }
+
+      if (action === 'batchGenerateContent') {
+        await respondGeminiBatchGenerateContent(this.resolveBatchRunner(), model, request, res);
         return;
       }
 
@@ -137,6 +194,17 @@ export class GeminiController {
         },
       });
     } catch (error) {
+      if (error instanceof InvalidCountTokensRequestError) {
+        res.status(HttpStatus.BAD_REQUEST).send({
+          error: {
+            code: HttpStatus.BAD_REQUEST,
+            message: error.message,
+            status: 'INVALID_ARGUMENT',
+          },
+        });
+        return;
+      }
+
       const message = error instanceof Error ? error.message : 'Internal Server Error';
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
         error: {
@@ -177,7 +245,7 @@ export class GeminiController {
       ? this.accountLeaseService?.getAllRawQuotaModels()
       : this.accountLeaseService?.getAllCollectedModels();
     const dynamicModelIds = getAllDynamicModels(
-      config?.custom_mapping ?? {},
+      getConfiguredModelMapping(config),
       collectedModelIds,
       onlyRawQuotaModels,
     );

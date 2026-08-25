@@ -5,7 +5,7 @@ import type { GeminiRequest } from '@/modules/proxy-gateway/server/common/interf
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 function toInternalRequest(request: GeminiRequest): GeminiInternalRequest['request'] {
-  const service = new ProxyService({} as never, {} as never);
+  const service = new ProxyService({} as never, {} as never, {} as never, {} as never, {} as never);
   const method: unknown = Reflect.get(service, 'toInternalGeminiRequest');
   if (typeof method !== 'function') {
     throw new Error('toInternalGeminiRequest is unavailable');

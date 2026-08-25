@@ -736,6 +736,11 @@ export function getBackupsDir(options?: PathResolutionOptions): string {
   return getCurrentPlatformPathApi(options).join(getAgentDir(options), 'backups');
 }
 
+/** Directory holding proxy state that has to survive an app restart. */
+export function getProxyStateDir(options?: PathResolutionOptions): string {
+  return getCurrentPlatformPathApi(options).join(getAgentDir(options), 'proxy-state');
+}
+
 export function getCloudAccountsDbPath(options?: PathResolutionOptions): string {
   return getCurrentPlatformPathApi(options).join(getAgentDir(options), 'cloud_accounts.db');
 }

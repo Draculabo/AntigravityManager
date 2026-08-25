@@ -65,6 +65,12 @@ export interface ClaudeRequest {
   output_config?: {
     effort?: string;
   };
+  /**
+   * The OpenAI `response_format`, carried through so JSON mode reaches the upstream
+   * `generationConfig`. Declared on the client contract but dropped in the mapping until now,
+   * which meant a client that asked for JSON and parsed the answer got prose.
+   */
+  response_format?: { type?: string };
   metadata?: Metadata;
 }
 
@@ -90,6 +96,7 @@ export type ContentBlock =
   | TextBlock
   | ThinkingBlock
   | ImageBlock
+  | DocumentBlock
   | ToolUseBlock
   | ToolResultBlock
   | RedactedThinkingBlock;
@@ -114,6 +121,21 @@ export interface ImageBlock {
     media_type: string;
     data: string;
   };
+}
+
+/**
+ * Non-image document content, e.g. a PDF. Carries the same inline base64 an
+ * {@link ImageBlock} does, because the upstream transport has one
+ * representation for both: a Gemini `inlineData` part.
+ */
+export interface DocumentBlock {
+  type: 'document';
+  source: {
+    type: 'base64';
+    media_type: string;
+    data: string;
+  };
+  title?: string;
 }
 
 export interface ToolUseBlock {
@@ -301,6 +323,24 @@ export interface GeminiInternalRequest {
   userAgent: string;
   requestType?: string;
   enabledCreditTypes?: string[];
+}
+
+/**
+ * CodeAssist `v1internal:countTokens` request envelope.
+ *
+ * Deliberately narrower than {@link GeminiInternalRequest}: the endpoint accepts only the
+ * conversation plus a `models/`-prefixed id, and carries no `project`, `requestId`, `userAgent`
+ * or `requestType`.
+ */
+export interface GeminiCountTokensRequest {
+  request: {
+    contents: GeminiContent[];
+    model: string;
+  };
+}
+
+export interface GeminiCountTokensResponse {
+  totalTokens?: number;
 }
 
 export interface GeminiContent {

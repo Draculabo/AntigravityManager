@@ -55,4 +55,23 @@ describe('ClaudeResponseMapper usage', () => {
       stop_reason: 'content_filter',
     });
   });
+  it('gives a raw upstream identifier the msg_ prefix an Anthropic client expects', () => {
+    const response = transformResponse({ responseId: 'vux3arD5GLnT28oP' });
+
+    expect(response.id).toBe('msg_vux3arD5GLnT28oP');
+  });
+
+  it('leaves an upstream identifier that already carries the prefix alone', () => {
+    const response = transformResponse({ responseId: 'msg_existing' });
+
+    expect(response.id).toBe('msg_existing');
+  });
+
+  it('mints a unique prefixed id when upstream sent none', () => {
+    const first = transformResponse({});
+    const second = transformResponse({});
+
+    expect(first.id).toMatch(/^msg_[0-9a-f-]{36}$/u);
+    expect(first.id).not.toBe(second.id);
+  });
 });

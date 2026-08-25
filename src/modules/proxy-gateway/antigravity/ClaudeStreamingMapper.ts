@@ -1,6 +1,7 @@
 import { GeminiPart, Usage, UsageMetadata } from './types';
 import { SignatureStore } from './SignatureStore';
 import { decodeSignature } from './signature-utils';
+import { toAnthropicMessageId } from './anthropic-message-id';
 import { logger } from '@/shared/logging/logger';
 
 type BlockType = 'None' | 'Text' | 'Thinking' | 'Function';
@@ -78,7 +79,7 @@ export class StreamingState {
       : undefined;
 
     const message = {
-      id: rawJson.responseId || 'msg_unknown',
+      id: toAnthropicMessageId(rawJson.responseId),
       type: 'message',
       role: 'assistant',
       content: [],
@@ -396,6 +397,14 @@ export class PartProcessor {
       chunks.push(this.state.emitDelta('thinking_delta', { thinking: '' }));
       chunks.push(this.state.emitDelta('signature_delta', { signature: trailingSig }));
       chunks.push(...this.state.endBlock());
+    }
+
+    // A thought with no text and no signature has nothing to put in a block. The
+    // unary mapper already refuses to materialise that case (flushThinking), while
+    // this path opened a thinking block that carried neither content nor signature
+    // and that the client feeds back upstream on the next turn.
+    if (!text && !signature) {
+      return chunks;
     }
 
     if (this.state.currentBlockType() !== 'Thinking') {

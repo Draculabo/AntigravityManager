@@ -20,6 +20,13 @@ interface VersionModuleMockOptions {
   execSync?: ReturnType<typeof vi.fn>;
   existsSync?: ReturnType<typeof vi.fn>;
   readFileSync?: ReturnType<typeof vi.fn>;
+  /**
+   * Whether the Linux this test describes is WSL. It defaults to false so the
+   * Linux expectations below hold wherever the suite runs: on a real WSL host
+   * the module takes the WSL branch instead, and a test asserting the plain
+   * Linux answer would be asserting a branch it never reaches.
+   */
+  wsl?: boolean;
 }
 
 async function importVersionModule({
@@ -28,6 +35,7 @@ async function importVersionModule({
   execSync = vi.fn(),
   existsSync = vi.fn(() => false),
   readFileSync = vi.fn(),
+  wsl = false,
 }: VersionModuleMockOptions) {
   vi.resetModules();
   setPlatform(platform);
@@ -50,6 +58,7 @@ async function importVersionModule({
   }));
   vi.doMock('@/shared/platform/paths', () => ({
     getAntigravityExecutablePath,
+    isWsl: () => wsl,
   }));
   vi.doMock('@/modules/account/types', () => ({
     resolveAntigravityAppTarget: (target: unknown) => target ?? 'stable',
@@ -72,6 +81,34 @@ describe('antigravityVersion', () => {
     vi.doUnmock('fs');
     vi.doUnmock('@/shared/platform/paths');
     vi.doUnmock('@/modules/account/types');
+  });
+
+  it('reads the version from the manifest under WSL instead of launching the app', async () => {
+    // Regression guard with a cost behind it: the resolved executable under WSL
+    // is the Windows build, and running it does not print a version and exit --
+    // the interop launch opens Antigravity on the user's desktop. Once per
+    // version lookup, which a test run does repeatedly.
+    const execSync = vi.fn(() => {
+      throw new Error('the executable must not be run under WSL');
+    });
+    const execPath = '/mnt/c/Users/alice/AppData/Local/Programs/Antigravity/Antigravity.exe';
+    const existsSync = vi.fn((candidate: unknown) => String(candidate).endsWith('package.json'));
+    const readFileSync = vi.fn(() => JSON.stringify({ version: '1.19.3' }));
+
+    const { module } = await importVersionModule({
+      platform: 'linux',
+      wsl: true,
+      execPath,
+      execSync,
+      existsSync,
+      readFileSync,
+    });
+
+    expect(module.getAntigravityVersion()).toEqual({
+      shortVersion: '1.19.3',
+      bundleVersion: '1.19.3',
+    });
+    expect(execSync).not.toHaveBeenCalled();
   });
 
   it('should compare versions correctly', () => {

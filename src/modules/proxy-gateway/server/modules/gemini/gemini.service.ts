@@ -10,26 +10,69 @@ import {
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { resolveRequestUserAgent } from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
 import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import {
+  InvalidCountTokensRequestError,
+  resolveCountTokensContents,
+} from '@/modules/proxy-gateway/server/modules/gemini/gemini-count-tokens';
 
 @Injectable()
 export class GeminiService extends BaseProxyService {
   constructor(
     @Inject(AccountLeaseService) accountLeaseService: AccountLeaseService,
     @Inject(GeminiClient) geminiClient: GeminiClient,
+    @Inject(GenerationConstraintsService) generationConstraints: GenerationConstraintsService,
+    @Inject(ProxyRetryService) retryPolicy: ProxyRetryService,
+    @Inject(ModelRoutingService) modelRoutingPolicy: ModelRoutingService,
   ) {
-    super(accountLeaseService, geminiClient);
+    super(
+      accountLeaseService,
+      geminiClient,
+      generationConstraints,
+      retryPolicy,
+      modelRoutingPolicy,
+    );
   }
 
   // --- OpenAI / Universal Handlers ---
+  /**
+   * `POST /v1beta/models/{model}:countTokens`.
+   *
+   * Only `contents` reach the upstream endpoint, so a system instruction or tool declarations
+   * sent alongside them are not part of the returned count. A response without a usable count is
+   * reported as an upstream failure rather than substituted with a fabricated 0: neither this
+   * contract nor Anthropic's can express "unknown", so any marker would be read back by an SDK
+   * as a real number, and a client budgeting a context window against it would overflow silently.
+   */
+  async handleGeminiCountTokens(model: string, request: GeminiRequest): Promise<number> {
+    const contents = resolveCountTokensContents(request);
+    if (!contents) {
+      throw new InvalidCountTokensRequestError(
+        'countTokens requires contents, either directly or inside generateContentRequest',
+      );
+    }
+
+    const normalizedModel = this.normalizeGeminiModel(model);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    this.logger.log(
+      `Gemini countTokens request received: model=${normalizedModel}, routeSource=${routeResolution.source}`,
+    );
+
+    return this.countTokensWithLease(normalizedModel, contents, 'Gemini-countTokens');
+  }
+
   async handleGeminiGenerateContent(
     model: string,
     request: GeminiRequest,
   ): Promise<GeminiResponse> {
     const normalizedModel = this.normalizeGeminiModel(model);
-    const targetModel = this.resolveTargetModel(normalizedModel);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    const targetModel = routeResolution.resolvedModel;
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
-      `Gemini generate request received: model=${normalizedModel}, mappedModel=${targetModel}`,
+      `Gemini generate request received: model=${normalizedModel}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
 
     let lastError: unknown = null;
@@ -113,10 +156,11 @@ export class GeminiService extends BaseProxyService {
     request: GeminiRequest,
   ): Promise<Observable<string>> {
     const normalizedModel = this.normalizeGeminiModel(model);
-    const targetModel = this.resolveTargetModel(normalizedModel);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    const targetModel = routeResolution.resolvedModel;
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
-      `Gemini stream request received: model=${normalizedModel}, mappedModel=${targetModel}`,
+      `Gemini stream request received: model=${normalizedModel}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
 
     let lastError: unknown = null;

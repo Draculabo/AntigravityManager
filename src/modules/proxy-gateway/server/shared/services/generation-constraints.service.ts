@@ -1,6 +1,13 @@
+import { Inject, Injectable } from '@nestjs/common';
 import { isNumber, isString } from 'lodash-es';
 import { getMaxOutputTokens, getThinkingBudget } from '../../../antigravity/ModelSpecs';
 import type { GeminiInternalRequest } from '../../../antigravity/types';
+
+/**
+ * Injection token for the account-side capability reader. A token rather than the concrete
+ * `AccountLeaseService` keeps `shared/` free of an import back into `modules/account-lease/`.
+ */
+export const PROXY_MODEL_CAPABILITY_READER = 'PROXY_MODEL_CAPABILITY_READER';
 
 export interface ProxyModelCapabilityReader {
   getModelOutputLimitForAccount(accountId: string, modelName: string): number | undefined;
@@ -13,8 +20,12 @@ export interface RegisteredGenerationConstraints {
   includeThoughts: boolean;
 }
 
+@Injectable()
 export class GenerationConstraintsService {
-  constructor(private readonly modelCapabilities: ProxyModelCapabilityReader) {}
+  constructor(
+    @Inject(PROXY_MODEL_CAPABILITY_READER)
+    private readonly modelCapabilities: ProxyModelCapabilityReader,
+  ) {}
 
   applyInternalGenerationConstraints(
     body: GeminiInternalRequest,

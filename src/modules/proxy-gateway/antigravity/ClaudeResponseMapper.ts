@@ -8,6 +8,7 @@ import {
   GroundingMetadata,
 } from './types';
 import { decodeSignature } from './signature-utils';
+import { toAnthropicMessageId } from './anthropic-message-id';
 import { SignatureStore } from './SignatureStore';
 
 /**
@@ -269,7 +270,7 @@ class NonStreamingProcessor {
     };
 
     return {
-      id: geminiResponse.responseId || `msg_${uuidv4()}`,
+      id: toAnthropicMessageId(geminiResponse.responseId),
       type: 'message',
       role: 'assistant',
       model: geminiResponse.modelVersion || '',

@@ -18,7 +18,14 @@ const mockGeminiClient = { streamGenerateInternal: vi.fn(), generateInternal: vi
 
 class TestableProxyService extends ProxyService {
   constructor() {
-    super(mockAccountLeaseService as any, mockGeminiClient as any, {} as any);
+    super(
+      mockAccountLeaseService as any,
+      mockGeminiClient as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
   }
 
   public toAnthropic(request: any): any {

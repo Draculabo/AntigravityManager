@@ -226,20 +226,22 @@ describe('GeminiController Integration', () => {
 
   it('supports countTokens action', async () => {
     const proxyService = {
+      handleGeminiCountTokens: vi.fn().mockResolvedValue(9),
       handleGeminiGenerateContent: vi.fn(),
       handleGeminiStreamGenerateContent: vi.fn(),
     };
     const controller = new GeminiController(proxyService as any);
     const reply = createReplyMock();
+    const body = { contents: [{ role: 'user', parts: [{ text: 'abcd efgh' }] }] };
 
-    await controller.countTokens(
-      'gemini-2.5-flash',
-      { contents: [{ role: 'user', parts: [{ text: 'abcd efgh' }] }] } as any,
-      reply as any,
+    await controller.countTokens('gemini-2.5-flash', body as any, reply as any);
+
+    expect(proxyService.handleGeminiCountTokens).toHaveBeenCalledWith(
+      'models/gemini-2.5-flash',
+      body,
     );
-
     expect(reply.status).toHaveBeenCalledWith(200);
-    expect(reply.send).toHaveBeenCalledWith({ totalTokens: 0 });
+    expect(reply.send).toHaveBeenCalledWith({ totalTokens: 9 });
   });
 
   it('returns bad request for invalid combined endpoint action', async () => {

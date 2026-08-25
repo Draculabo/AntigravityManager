@@ -4,11 +4,78 @@ import { isArray, isBoolean, isNumber, isObjectLike, isString } from 'lodash-es'
  * Recursively cleans JSON Schema to meet Gemini interface requirements
  *
  * 1. [New] Flatten $ref and $defs: Replace references with actual definitions to solve Gemini's lack of $ref support
- * 2. Remove unsupported fields: $schema, additionalProperties, format, default, uniqueItems, validation fields
+ * 2. Collapse allOf/anyOf/oneOf into the node so the declared shape survives removal
+ * 3. Remove unsupported fields: $schema, additionalProperties, format, default, uniqueItems, validation fields
  * 3. Handle Union types: ["string", "null"] -> "string"
  * 4. Convert type field values to lowercase (Gemini v1internal requirement)
  * 5. Remove numeric validation fields: multipleOf, exclusiveMinimum, exclusiveMaximum, etc.
  */
+/**
+ * Merges a branch schema into the node, keeping whatever the node already declares.
+ * `properties` merge key by key and `required` unions, so nothing already present is
+ * overwritten by a branch.
+ */
+function mergeSchemaInto(target: Record<string, any>, source: Record<string, any>) {
+  for (const [key, val] of Object.entries(source)) {
+    if (key === 'properties' && isObjectLike(val) && !isArray(val)) {
+      if (!isObjectLike(target.properties) || isArray(target.properties)) {
+        target.properties = {};
+      }
+      const targetProperties = target.properties as Record<string, unknown>;
+      for (const [propertyName, propertySchema] of Object.entries(val)) {
+        if (targetProperties[propertyName] === undefined) {
+          targetProperties[propertyName] = propertySchema;
+        }
+      }
+      continue;
+    }
+
+    if (key === 'required' && isArray(val)) {
+      const existing = isArray(target.required) ? (target.required as unknown[]) : [];
+      target.required = Array.from(new Set([...existing, ...val]));
+      continue;
+    }
+
+    if (target[key] === undefined) {
+      target[key] = val;
+    }
+  }
+}
+
+/**
+ * Collapses allOf/anyOf/oneOf into the node before the hard blacklist deletes them.
+ * Gemini rejects the keywords, but deleting them outright also deletes the only place a
+ * schema declared its shape, so the tool arrives with no properties at all. `allOf` merges
+ * every branch; `anyOf` and `oneOf` take the first branch that carries a shape.
+ */
+function collapseSchemaBranches(map: Record<string, any>) {
+  const allOf = map['allOf'];
+  if (isArray(allOf)) {
+    for (const branch of allOf) {
+      if (isObjectLike(branch) && !isArray(branch)) {
+        mergeSchemaInto(map, branch as Record<string, any>);
+      }
+    }
+  }
+
+  for (const keyword of ['anyOf', 'oneOf']) {
+    const branches = map[keyword];
+    if (!isArray(branches)) {
+      continue;
+    }
+    const usable = branches.find(
+      (branch) =>
+        isObjectLike(branch) &&
+        !isArray(branch) &&
+        ((branch as Record<string, unknown>).properties !== undefined ||
+          (branch as Record<string, unknown>).type !== undefined),
+    );
+    if (usable) {
+      mergeSchemaInto(map, usable as Record<string, any>);
+    }
+  }
+}
+
 export function cleanJsonSchema(value: any) {
   // 0. Preprocessing: Expand $ref (Schema Flattening)
   if (isObjectLike(value) && !isArray(value)) {
@@ -208,7 +275,10 @@ function cleanJsonSchemaRecursive(value: any) {
       map['description'] = (map['description'] || '') + suffix;
     }
 
-    // 4. Physically remove "hard" blacklist items that interfere with generation
+    // 4. Keep the declared shape before the blacklist removes the keyword that carried it
+    collapseSchemaBranches(map);
+
+    // 5. Physically remove "hard" blacklist items that interfere with generation
     const hardRemoveFields = [
       '$schema',
       'additionalProperties',

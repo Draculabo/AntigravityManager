@@ -8,6 +8,10 @@ import {
   type AccountLeaseTokenData,
   normalizeModelId,
 } from '../interfaces/account-lease-token-types';
+import {
+  type ProviderModelDetails,
+  toProviderModelDetails,
+} from '../model-details/provider-model-details';
 
 interface AccountLeaseModelLogger {
   log(message: string): void;
@@ -548,13 +552,39 @@ export class AccountLeaseModelPolicy {
     return TIER_PREFERENCE.length + requestedIndex - candidateIndex;
   }
 
+  /**
+   * Precedence: provider `ModelDetails` from the quota payload first, then the persisted
+   * `model_limits` compatibility data. Static model specs remain the last resort and stay
+   * where they were, in `GenerationConstraintsService`.
+   *
+   * Before this the provider's own `max_output_tokens` was ignored here, so an account whose
+   * quota declared a cap fell through to compatibility data that may predate it.
+   */
   getModelOutputLimitForAccount(accountId: string, modelName: string): number | undefined {
     const tokenData = this.options.getTokenCache().get(accountId);
     const normalizedModel = normalizeModelId(modelName);
     if (!tokenData || !normalizedModel) {
       return undefined;
     }
+
+    const providerCap = this.getProviderModelDetails(tokenData, normalizedModel)?.maxOutputTokens;
+    if (providerCap !== undefined) {
+      return providerCap;
+    }
+
     return tokenData.model_limits[normalizedModel];
+  }
+
+  private getProviderModelDetails(
+    tokenData: AccountLeaseTokenData,
+    normalizedModel: string,
+  ): ProviderModelDetails | undefined {
+    for (const [quotaModelName, modelInfo] of Object.entries(tokenData.quota?.models ?? {})) {
+      if (normalizeModelId(quotaModelName) === normalizedModel) {
+        return toProviderModelDetails(modelInfo);
+      }
+    }
+    return undefined;
   }
 
   getModelThinkingBudgetForAccount(accountId: string, modelName: string): number | undefined {

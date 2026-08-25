@@ -727,7 +727,9 @@ function buildContents(
           part.thought_signature = block.signature;
         }
         parts.push(part);
-      } else if (block.type === 'image') {
+      } else if (block.type === 'image' || block.type === 'document') {
+        // Images and documents differ only in what the client called them; the
+        // provider takes both as one inline part carrying its own MIME type.
         if (block.source.type === 'base64')
           parts.push({
             inlineData: { mimeType: block.source.media_type, data: block.source.data },
@@ -976,6 +978,12 @@ function buildGenerationConfig(
     }
     return thinkingConfig;
   };
+
+  // JSON mode is a request-shaping flag, not an OpenAI-only nicety: whoever asks for it parses
+  // the answer, so the model has to be told before it answers rather than corrected afterwards.
+  if (String(claudeReq.response_format?.type ?? '').toLowerCase() === 'json_object') {
+    config.responseMimeType = 'application/json';
+  }
 
   if (isOpenAIPath) {
     config.temperature = claudeReq.temperature ?? 1.0;

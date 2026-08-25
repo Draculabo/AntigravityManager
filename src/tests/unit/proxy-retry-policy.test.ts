@@ -35,7 +35,7 @@ function createPolicy() {
     log: vi.fn(),
     warn: vi.fn(),
   };
-  const policy = new ProxyRetryService(accountLeaseService, logger);
+  const policy = new ProxyRetryService(accountLeaseService, logger, proxyModelAvailabilityStore);
 
   return {
     logger,
@@ -253,5 +253,112 @@ describe('ProxyRetryService', () => {
       body: '429 quota exceeded',
       model: 'gemini-3-flash',
     });
+  });
+  it('keeps the account in rotation for a VALIDATION_REQUIRED 403', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-validation',
+      'gemini-3-flash',
+      new UpstreamRequestError({
+        message: 'Permission denied',
+        status: 403,
+        details: [
+          {
+            type: 'type.googleapis.com/google.rpc.ErrorInfo',
+            reason: 'VALIDATION_REQUIRED',
+            domain: 'cloudcode-pa.googleapis.com',
+          },
+          {
+            type: 'type.googleapis.com/google.rpc.Help',
+            links: [{ description: 'Verify your account', url: 'https://example.com/verify' }],
+          },
+        ],
+      }),
+    );
+
+    expect(accountLeaseService.markAsForbidden).not.toHaveBeenCalled();
+    expect(accountLeaseService.markFromUpstreamError).not.toHaveBeenCalled();
+  });
+
+  it('keeps the account in rotation for a SECURITY_POLICY_VIOLATED 403', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-vpcsc',
+      'gemini-3-flash',
+      new UpstreamRequestError({
+        message: 'Request is prohibited by organization policy',
+        status: 403,
+        details: [{ reason: 'SECURITY_POLICY_VIOLATED' }],
+      }),
+    );
+
+    expect(accountLeaseService.markAsForbidden).not.toHaveBeenCalled();
+    expect(accountLeaseService.markFromUpstreamError).not.toHaveBeenCalled();
+  });
+
+  it('recognises a recoverable 403 from a truncated body alone', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-body',
+      'gemini-3-flash',
+      new UpstreamRequestError({
+        message: 'Permission denied',
+        status: 403,
+        body: '{"error":{"details":[{"reason":"VALIDATION_REQUIRED","domain":"cloudcode-pa.googleapis.com"',
+      }),
+    );
+
+    expect(accountLeaseService.markAsForbidden).not.toHaveBeenCalled();
+  });
+
+  it('still burns the account on a 403 that names no recoverable condition', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-dead',
+      'gemini-3-flash',
+      new UpstreamRequestError({
+        message: 'The caller does not have permission',
+        status: 403,
+        body: '{"error":{"status":"PERMISSION_DENIED"}}',
+      }),
+    );
+
+    expect(accountLeaseService.markAsForbidden).toHaveBeenCalledWith('acc-dead');
+  });
+
+  it('still burns the account on a 401', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-401',
+      'gemini-3-flash',
+      new UpstreamRequestError({
+        message: 'Invalid credentials',
+        status: 401,
+        details: [{ reason: 'VALIDATION_REQUIRED', domain: 'cloudcode-pa.googleapis.com' }],
+      }),
+    );
+
+    expect(accountLeaseService.markAsForbidden).toHaveBeenCalledWith('acc-401');
+  });
+
+  it('does not mistake a VALIDATION_REQUIRED 403 from another domain for a recoverable one', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-other-domain',
+      'gemini-3-flash',
+      new UpstreamRequestError({
+        message: 'Permission denied',
+        status: 403,
+        details: [{ reason: 'VALIDATION_REQUIRED', domain: 'example.googleapis.com' }],
+      }),
+    );
+
+    expect(accountLeaseService.markAsForbidden).toHaveBeenCalledWith('acc-other-domain');
   });
 });

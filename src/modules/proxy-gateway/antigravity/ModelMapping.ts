@@ -235,6 +235,22 @@ export function normalizeGeminiModelAlias(modelId: string): string {
 }
 
 /**
+ * Looks up `CLAUDE_TO_GEMINI` without the "no entry" / "entry maps to the input itself" cases
+ * collapsing into the same return value the way {@link mapClaudeModelToGemini} does. Callers
+ * that need to know whether a rule fired at all -- not just what it produced -- read this
+ * instead of comparing `mapClaudeModelToGemini(input) === input`, which is also true for a
+ * canonical model's identity entry.
+ */
+export function lookupBuiltInModelMapping(input: string): string | undefined {
+  return CLAUDE_TO_GEMINI[input];
+}
+
+/** Same distinction as {@link lookupBuiltInModelMapping}, for `GEMINI_MODEL_ALIASES`. */
+export function lookupGeminiModelAlias(modelId: string): string | undefined {
+  return GEMINI_MODEL_ALIASES[modelId.trim().toLowerCase()];
+}
+
+/**
  * Core Model Routing Engine
  * Priority: Custom Mapping (Exact) > Group Mapping (Family) > System Mapping (Built-in Plugin)
  */

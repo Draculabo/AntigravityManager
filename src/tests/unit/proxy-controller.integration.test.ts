@@ -803,10 +803,12 @@ describe('ProxyController Integration', () => {
     );
 
     expect(proxyService.handleChatCompletions).not.toHaveBeenCalled();
-    expect(reply.status).toHaveBeenCalledWith(400);
+    expect(reply.status).toHaveBeenCalledWith(404);
     expect(reply.send).toHaveBeenCalledWith({
       error: {
-        message: 'Unknown or expired previous_response_id: resp_missing',
+        code: 'previous_response_not_found',
+        message: "Previous response with id 'resp_missing' not found.",
+        param: 'previous_response_id',
         type: 'invalid_request_error',
       },
     });

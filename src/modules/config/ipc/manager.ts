@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { AppConfig, DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { migrateLegacyModelAliases } from '@/modules/config/model-aliases';
 import { getAgentDir } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
 
@@ -56,6 +57,10 @@ export class ConfigManager {
       // Handle Anthropic Mapping Map vs Object
       // In JSON it's object
 
+      // The two legacy mapping objects become alias routes here, so everything downstream of a
+      // load reads one list. The file itself is only rewritten on the next save.
+      merged.proxy = migrateLegacyModelAliases(merged.proxy);
+
       this.cachedConfig = merged;
       return merged;
     } catch (e) {
@@ -69,15 +74,51 @@ export class ConfigManager {
     return this.cachedConfig;
   }
 
+  /**
+   * Copies the configuration aside once, before the first write that introduces `model_aliases`.
+   *
+   * The migration itself is reversible -- the legacy maps stay populated as a projection -- but a
+   * one-time snapshot is what makes that claim testable rather than asserted, and it costs one
+   * file the first time only.
+   */
+  private static async backupBeforeMigration(configPath: string): Promise<void> {
+    const backupPath = `${configPath}.pre-alias-migration.bak`;
+
+    try {
+      if (fs.existsSync(backupPath) || !fs.existsSync(configPath)) {
+        return;
+      }
+
+      const existing = await fs.promises.readFile(configPath, 'utf-8');
+      if (!existing.includes('"model_aliases"')) {
+        await fs.promises.writeFile(backupPath, existing, 'utf-8');
+        logger.info(`Config: Wrote pre-migration backup to ${backupPath}`);
+      }
+    } catch (e) {
+      // A missing backup must not stop the user from saving their settings.
+      logger.warn('Config: Failed to write pre-migration backup', e);
+    }
+  }
+
   static async saveConfig(config: AppConfig): Promise<void> {
     const configPath = this.getConfigPath();
-    const content = JSON.stringify(config, null, 2);
+    const migratedConfig: AppConfig = {
+      ...config,
+      proxy: migrateLegacyModelAliases(config.proxy),
+    };
+    const content = JSON.stringify(migratedConfig, null, 2);
 
     this.saveQueue = this.saveQueue
       .catch(() => undefined)
       .then(async () => {
-        await fs.promises.writeFile(configPath, content, 'utf-8');
-        this.cachedConfig = config;
+        await this.backupBeforeMigration(configPath);
+
+        // Write-then-rename: a crash or a full disk mid-write leaves the previous configuration
+        // intact instead of a truncated file the app cannot parse on next start.
+        const tempPath = `${configPath}.tmp`;
+        await fs.promises.writeFile(tempPath, content, 'utf-8');
+        await fs.promises.rename(tempPath, configPath);
+        this.cachedConfig = migratedConfig;
         logger.info(`Config: Saved to ${configPath}`);
       })
       .catch((e) => {
