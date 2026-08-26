@@ -207,6 +207,32 @@ describe('AutoSwitchService', () => {
     });
   });
 
+  it('matches depleted quota groups for models-prefixed identifiers', async () => {
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    const prefixedModelAccount = createAccount('prefixed-model', {
+      models: {
+        'models/gemini-flash': { percentage: 90, resetTime: '' },
+      },
+      quota_groups: [
+        {
+          display_name: 'Gemini models',
+          buckets: [
+            {
+              bucket_id: 'gemini-group',
+              window: '5h',
+              remaining_fraction: 0.01,
+              reset_time: '',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(AutoSwitchService.isAccountDepleted(prefixedModelAccount)).toBe(true);
+  });
+
   it('prioritizes priority models during best account selection', async () => {
     const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
     const { CloudAccountSettingsStore } =
