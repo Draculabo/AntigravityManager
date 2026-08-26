@@ -12,7 +12,10 @@ describe('Google OAuth client error classification', () => {
   });
 
   it.each([
-    ['invalid_grant', '{"error":"invalid_grant","error_description":"Token has been expired or revoked."}'],
+    [
+      'invalid_grant',
+      '{"error":"invalid_grant","error_description":"Token has been expired or revoked."}',
+    ],
     ['invalid_request', '{"error":"invalid_request"}'],
     ['access_denied', '{"error":"access_denied"}'],
     ['org_internal', '{"error":"org_internal"}'],

@@ -77,6 +77,7 @@ function getItemValue(db: DrizzleExecutor, key: string, context: string): string
 export interface IdeTokenInfo {
   accessToken: string;
   refreshToken: string;
+  expiryTimestamp?: number;
   idToken?: string;
   projectId?: string;
 }
@@ -90,12 +91,14 @@ export class IdeAccountImportAdapter {
       'ide.itemTable.antigravityUnifiedStateSync.oauthToken',
     );
 
-    let tokenInfo: { accessToken: string; refreshToken: string; idToken?: string } | null = null;
+    let tokenInfo: IdeTokenInfo | null = null;
     if (unifiedValue) {
       try {
         const unifiedBuffer = Buffer.from(unifiedValue, 'base64');
         const unifiedData = new Uint8Array(unifiedBuffer);
-        tokenInfo = ProtobufUtils.extractOAuthTokenInfoFromUnifiedState(unifiedData);
+        tokenInfo =
+          ProtobufUtils.extractOAuthTokenDetailsFromUnifiedState(unifiedData) ??
+          ProtobufUtils.extractOAuthTokenInfoFromUnifiedState(unifiedData);
       } catch (error) {
         logger.warn('SyncLocal: Failed to parse unified OAuth token', error);
       }
@@ -117,7 +120,9 @@ export class IdeAccountImportAdapter {
 
       const legacyStateBuffer = Buffer.from(encodedLegacyState, 'base64');
       const legacyStateBytes = new Uint8Array(legacyStateBuffer);
-      tokenInfo = ProtobufUtils.extractOAuthTokenInfo(legacyStateBytes);
+      tokenInfo =
+        ProtobufUtils.extractOAuthTokenDetails(legacyStateBytes) ??
+        ProtobufUtils.extractOAuthTokenInfo(legacyStateBytes);
     }
 
     if (!tokenInfo) {
@@ -264,6 +269,7 @@ export class IdeAccountImportAdapter {
       logger.info(`SyncLocal: Using Antigravity database at: ${dbPath}`);
       const effectiveTokenInfo = { ...tokenInfo };
       let refreshedExpiresIn: number | undefined;
+      let hasRefreshedAccessToken = false;
 
       let googleUserInfo;
       try {
@@ -281,6 +287,7 @@ export class IdeAccountImportAdapter {
 
         try {
           const refreshedToken = await GoogleAPIService.refreshAccessToken(tokenInfo.refreshToken);
+          hasRefreshedAccessToken = true;
           effectiveTokenInfo.accessToken = refreshedToken.access_token;
           effectiveTokenInfo.refreshToken = refreshedToken.refresh_token || tokenInfo.refreshToken;
           effectiveTokenInfo.idToken = refreshedToken.id_token ?? tokenInfo.idToken;
@@ -296,7 +303,12 @@ export class IdeAccountImportAdapter {
       }
 
       const now = Math.floor(Date.now() / 1000);
-      const tokenLifetime = resolveImportedTokenLifetime(now, refreshedExpiresIn);
+      const tokenLifetime = resolveImportedTokenLifetime(
+        now,
+        refreshedExpiresIn,
+        tokenInfo.expiryTimestamp,
+        hasRefreshedAccessToken,
+      );
       const account: CloudAccount = {
         id: uuidv4(),
         provider: 'google',

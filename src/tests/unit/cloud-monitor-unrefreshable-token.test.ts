@@ -65,9 +65,6 @@ describe('CloudMonitorService unrefreshable tokens', () => {
     await pollPromise;
 
     expect(GoogleAPIService.refreshAccessToken).not.toHaveBeenCalled();
-    expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith(
-      'still-valid-access-token',
-      undefined,
-    );
+    expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('still-valid-access-token', undefined);
   });
 });

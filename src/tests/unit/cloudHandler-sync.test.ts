@@ -208,7 +208,7 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
     const unifiedB64 = ProtobufUtils.createUnifiedOAuthToken(
       accessToken,
       refreshToken,
-      1700000000,
+      1700001800,
       true,
       'id-new',
     );
@@ -227,12 +227,15 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
 
     vi.spyOn(CloudAccountRepo, 'getAccounts').mockResolvedValue([]);
     vi.spyOn(CloudAccountRepo, 'addAccount').mockResolvedValue();
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
 
     const account = await IdeAccountImportAdapter.syncFromIde();
 
     expect(GoogleAPIService.getUserInfo).toHaveBeenCalledWith(accessToken);
     expect(account?.email).toBe('new@example.com');
     expect(account?.token.id_token).toBe('id-new');
+    expect(account?.token.expires_in).toBe(1800);
+    expect(account?.token.expiry_timestamp).toBe(1_700_001_800);
     expect(account?.token.is_gcp_tos).toBe(false);
   });
 
@@ -849,6 +852,7 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
         email: 'existing@example.com',
         name: 'Renamed',
         token: existingAccount.token,
+        last_used: existingAccount.last_used,
       }),
     );
   });

@@ -267,6 +267,30 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expect(keyringMock.setSecret).not.toHaveBeenCalled();
   });
 
+  it('uses secret-tool when its no-argument usage probe exits non-zero', async () => {
+    childProcessMock.spawnSync
+      .mockReturnValueOnce({ error: undefined, status: 2, stderr: 'usage: secret-tool' })
+      .mockReturnValueOnce({ error: undefined, status: 0, stderr: '' });
+    setPlatform('linux');
+
+    const { writeAntigravityCredentialStoreToken } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    writeAntigravityCredentialStoreToken(token);
+
+    expect(childProcessMock.spawnSync).toHaveBeenNthCalledWith(1, 'secret-tool', [], {
+      stdio: 'ignore',
+      timeout: 3000,
+    });
+    expect(childProcessMock.spawnSync).toHaveBeenNthCalledWith(
+      2,
+      'secret-tool',
+      ['store', '--label=gemini', 'service', 'gemini', 'username', 'antigravity'],
+      expect.objectContaining({ input: expect.stringContaining('"access_token":"access-token"') }),
+    );
+    expect(keyringMock.setSecret).not.toHaveBeenCalled();
+  });
+
   it('falls back to Linux keyring when secret-tool is unavailable', async () => {
     childProcessMock.spawnSync.mockReturnValue({
       status: null,
@@ -286,7 +310,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
       'gemini',
       'antigravity',
     );
-    expect(keyringMock.deleteCredential).toHaveBeenCalledTimes(1);
+    expect(keyringMock.deleteCredential).not.toHaveBeenCalled();
     expect(secret.toString('utf-8')).toContain('"access_token":"access-token"');
     expect(secret.toString('utf-8')).not.toContain('go-keyring-base64');
   });
@@ -319,15 +343,12 @@ describe('writeAntigravityCredentialStoreToken', () => {
       'gemini',
       'antigravity',
     );
-    expect(keyringMock.deleteCredential).toHaveBeenCalledTimes(1);
+    expect(keyringMock.deleteCredential).not.toHaveBeenCalled();
     expect(secret.toString('utf-8')).toContain('"access_token":"access-token"');
     expect(secret.toString('utf-8')).not.toContain('go-keyring-base64');
   });
 
-  it('writes Windows credential when no previous credential can be deleted', async () => {
-    keyringMock.deleteCredential.mockImplementationOnce(() => {
-      throw new Error('NoEntry');
-    });
+  it('updates Windows credentials without deleting the existing entry first', async () => {
     setPlatform('win32');
 
     const { writeAntigravityCredentialStoreToken } =
@@ -336,6 +357,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
     writeAntigravityCredentialStoreToken(token);
 
     expect(keyringMock.setSecret).toHaveBeenCalledTimes(1);
+    expect(keyringMock.deleteCredential).not.toHaveBeenCalled();
   });
 
   it('hands the credential store payload to the Antigravity CLI unchanged', async () => {

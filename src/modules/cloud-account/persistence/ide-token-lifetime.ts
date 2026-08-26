@@ -6,21 +6,42 @@ export interface ImportedTokenLifetime {
 export function resolveImportedTokenLifetime(
   nowSeconds: number,
   refreshedExpiresIn?: number,
+  verifiedExpiryTimestamp?: number,
+  hasRefreshedAccessToken = false,
 ): ImportedTokenLifetime {
   if (
-    typeof refreshedExpiresIn !== 'number' ||
-    !Number.isFinite(refreshedExpiresIn) ||
-    refreshedExpiresIn <= 0
+    typeof refreshedExpiresIn === 'number' &&
+    Number.isFinite(refreshedExpiresIn) &&
+    refreshedExpiresIn > 0
   ) {
+    const expiresIn = Math.floor(refreshedExpiresIn);
+    return {
+      expiresIn,
+      expiryTimestamp: nowSeconds + expiresIn,
+    };
+  }
+
+  if (hasRefreshedAccessToken) {
     return {
       expiresIn: 0,
       expiryTimestamp: 0,
     };
   }
 
-  const expiresIn = Math.floor(refreshedExpiresIn);
+  if (
+    typeof verifiedExpiryTimestamp === 'number' &&
+    Number.isFinite(verifiedExpiryTimestamp) &&
+    verifiedExpiryTimestamp > 0
+  ) {
+    const expiryTimestamp = Math.floor(verifiedExpiryTimestamp);
+    return {
+      expiresIn: Math.max(0, expiryTimestamp - nowSeconds),
+      expiryTimestamp,
+    };
+  }
+
   return {
-    expiresIn,
-    expiryTimestamp: nowSeconds + expiresIn,
+    expiresIn: 0,
+    expiryTimestamp: 0,
   };
 }

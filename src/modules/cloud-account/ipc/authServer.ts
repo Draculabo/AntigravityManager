@@ -5,6 +5,18 @@ import { escapeHtml } from '@/shared/utils/url';
 
 const OAUTH_LOOPBACK_HOST = '127.0.0.1';
 
+function sendAuthorizationDeliveryFailure(res: http.ServerResponse): void {
+  res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(`
+    <html>
+      <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
+        <h1>Login Failed</h1>
+        <p>Antigravity Manager is not ready to receive the authorization result. Return to the app and try again.</p>
+      </body>
+    </html>
+  `);
+}
+
 export class AuthServer {
   private static server: http.Server | null = null;
   private static PORT = 8888;
@@ -65,23 +77,22 @@ export class AuthServer {
               `AuthServer: Received authorization code: ${escapedCode.substring(0, 10)}...`,
             );
 
-            if (!ipcContext.mainWindow) {
-              logger.error('AuthServer: Main window not found, cannot deliver authorization code');
-              res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
-              res.end(`
-            <html>
-              <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
-                <h1>Login Failed</h1>
-                <p>Antigravity Manager is not ready to receive the authorization result. Return to the app and try again.</p>
-              </body>
-            </html>
-          `);
+            const mainWindow = ipcContext.mainWindow;
+            if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
+              logger.error('AuthServer: No live renderer is available for the authorization code');
+              sendAuthorizationDeliveryFailure(res);
               return;
             }
 
-            logger.info('AuthServer: Sending code to renderer via IPC');
-            ipcContext.mainWindow.webContents.send('GOOGLE_AUTH_CODE', code);
-            logger.info('AuthServer: Code sent successfully');
+            try {
+              logger.info('AuthServer: Sending code to renderer via IPC');
+              mainWindow.webContents.send('GOOGLE_AUTH_CODE', code);
+              logger.info('AuthServer: Code sent successfully');
+            } catch (error) {
+              logger.error('AuthServer: Failed to deliver authorization code to renderer', error);
+              sendAuthorizationDeliveryFailure(res);
+              return;
+            }
 
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(`

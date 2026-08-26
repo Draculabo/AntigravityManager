@@ -16,17 +16,19 @@ function buildExport(proxyUrl?: string | null) {
 }
 
 describe('CloudAccountExportSchema proxy validation', () => {
-  it.each([
-    'http://127.0.0.1:8080',
-    'https://proxy.example.com:8443',
-    'socks5://127.0.0.1:1080',
-  ])('accepts supported proxy URL %s', (proxyUrl) => {
-    expect(CloudAccountExportSchema.safeParse(buildExport(proxyUrl)).success).toBe(true);
-  });
+  it.each(['http://127.0.0.1:8080', 'https://proxy.example.com:8443', 'socks5://127.0.0.1:1080'])(
+    'accepts supported proxy URL %s',
+    (proxyUrl) => {
+      expect(CloudAccountExportSchema.safeParse(buildExport(proxyUrl)).success).toBe(true);
+    },
+  );
 
-  it.each(['not-a-url', 'ftp://proxy.example.com:21'])('rejects invalid proxy URL %s', (proxyUrl) => {
-    expect(CloudAccountExportSchema.safeParse(buildExport(proxyUrl)).success).toBe(false);
-  });
+  it.each(['not-a-url', 'ftp://proxy.example.com:21'])(
+    'rejects invalid proxy URL %s',
+    (proxyUrl) => {
+      expect(CloudAccountExportSchema.safeParse(buildExport(proxyUrl)).success).toBe(false);
+    },
+  );
 
   it('continues to allow imports without an account proxy', () => {
     expect(CloudAccountExportSchema.safeParse(buildExport(undefined)).success).toBe(true);

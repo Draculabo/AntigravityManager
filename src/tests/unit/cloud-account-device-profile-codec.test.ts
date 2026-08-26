@@ -25,7 +25,7 @@ describe('cloud account device profile codec', () => {
     expect(second?.[0].id).toBe(first?.[0].id);
   });
 
-  it('does not use the current clock when deriving a legacy history id', () => {
+  it('does not use the current clock when normalizing a legacy history entry', () => {
     const legacyHistory = [{ profile }];
     const now = vi.spyOn(Date, 'now');
 
@@ -35,8 +35,35 @@ describe('cloud account device profile codec', () => {
     now.mockReturnValue(1_800_000_000_000);
     const second = normalizeDeviceHistory(legacyHistory);
 
-    expect(second?.[0].id).toBe(first?.[0].id);
+    expect(second).toEqual(first);
+    expect(first?.[0].createdAt).toBe(0);
     now.mockRestore();
+  });
+
+  it('keeps generated legacy history ids stable when distinct entries are reordered', () => {
+    const firstEntry = {
+      createdAt: 1_700_000_000,
+      label: 'first legacy profile',
+      profile,
+    };
+    const secondEntry = {
+      createdAt: 1_700_000_100,
+      label: 'second legacy profile',
+      profile: {
+        ...profile,
+        machineId: 'second-machine-id',
+      },
+    };
+
+    const initial = normalizeDeviceHistory([firstEntry, secondEntry]);
+    const reordered = normalizeDeviceHistory([secondEntry, firstEntry]);
+
+    expect(reordered?.find((entry) => entry.label === firstEntry.label)?.id).toBe(
+      initial?.find((entry) => entry.label === firstEntry.label)?.id,
+    );
+    expect(reordered?.find((entry) => entry.label === secondEntry.label)?.id).toBe(
+      initial?.find((entry) => entry.label === secondEntry.label)?.id,
+    );
   });
 
   it('preserves explicit ids and distinguishes duplicate legacy entries', () => {

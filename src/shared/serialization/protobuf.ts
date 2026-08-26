@@ -208,6 +208,20 @@ export class ProtobufUtils {
     return null;
   }
 
+  static extractOAuthTokenDetails(data: Uint8Array): {
+    accessToken: string;
+    refreshToken: string;
+    expiryTimestamp: number;
+    idToken?: string;
+  } | null {
+    const field6Data = this.getField(data, 6);
+    if (!field6Data) {
+      return null;
+    }
+
+    return this.extractOAuthTokenDetailsFromOAuthInfo(field6Data);
+  }
+
   static createOAuthTokenInfo(
     accessToken: string,
     refreshToken: string,
@@ -381,6 +395,39 @@ export class ProtobufUtils {
     }
   }
 
+  static extractOAuthTokenDetailsFromUnifiedState(data: Uint8Array): {
+    accessToken: string;
+    refreshToken: string;
+    expiryTimestamp: number;
+    idToken?: string;
+  } | null {
+    try {
+      for (const decoded of this.decodeUnifiedStateTopicEntries(data)) {
+        if (decoded.sentinelKey !== 'oauthTokenInfoSentinelKey') {
+          continue;
+        }
+
+        const parsed = this.extractOAuthTokenDetailsFromUnifiedPayload(decoded.payload);
+        if (parsed) {
+          return parsed;
+        }
+      }
+
+      return null;
+    } catch {
+      try {
+        const decoded = this.decodeLegacyUnifiedStateEntry(data);
+        if (decoded.sentinelKey !== 'oauthTokenInfoSentinelKey') {
+          return null;
+        }
+
+        return this.extractOAuthTokenDetailsFromUnifiedPayload(decoded.payload);
+      } catch {
+        return null;
+      }
+    }
+  }
+
   private static extractOAuthTokenInfoFromUnifiedPayload(
     payload: Uint8Array,
   ): { accessToken: string; refreshToken: string; idToken?: string } | null {
@@ -398,6 +445,31 @@ export class ProtobufUtils {
         Buffer.from(this.readString(nestedOauthInfoB64Bytes), 'base64'),
       );
       return this.extractOAuthTokenInfoFromOAuthInfo(nestedOauthInfoBytes);
+    } catch {
+      return null;
+    }
+  }
+
+  private static extractOAuthTokenDetailsFromUnifiedPayload(payload: Uint8Array): {
+    accessToken: string;
+    refreshToken: string;
+    expiryTimestamp: number;
+    idToken?: string;
+  } | null {
+    const directParsed = this.extractOAuthTokenDetailsFromOAuthInfo(payload);
+    if (directParsed) {
+      return directParsed;
+    }
+    const nestedOauthInfoB64Bytes = this.getField(payload, 1);
+    if (!nestedOauthInfoB64Bytes) {
+      return null;
+    }
+
+    try {
+      const nestedOauthInfoBytes = new Uint8Array(
+        Buffer.from(this.readString(nestedOauthInfoB64Bytes), 'base64'),
+      );
+      return this.extractOAuthTokenDetailsFromOAuthInfo(nestedOauthInfoBytes);
     } catch {
       return null;
     }
@@ -676,22 +748,6 @@ export class ProtobufUtils {
       return null;
     }
 
-    const directParsed = this.extractOAuthTokenDetailsFromOAuthInfo(decoded.payload);
-    if (directParsed) {
-      return directParsed;
-    }
-    const nestedOauthInfoB64Bytes = this.getField(decoded.payload, 1);
-    if (!nestedOauthInfoB64Bytes) {
-      return null;
-    }
-
-    try {
-      const nestedOauthInfoBytes = new Uint8Array(
-        Buffer.from(this.readString(nestedOauthInfoB64Bytes), 'base64'),
-      );
-      return this.extractOAuthTokenDetailsFromOAuthInfo(nestedOauthInfoBytes);
-    } catch {
-      return null;
-    }
+    return this.extractOAuthTokenDetailsFromUnifiedPayload(decoded.payload);
   }
 }

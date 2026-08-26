@@ -109,11 +109,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
       expiry_timestamp: 1_900_000_000,
     });
 
-    expect(mocks.withTarget).toHaveBeenCalledWith(
-      'gemini:antigravity',
-      'gemini',
-      'antigravity',
-    );
+    expect(mocks.withTarget).toHaveBeenCalledWith('gemini:antigravity', 'gemini', 'antigravity');
     expect(mocks.setSecret).toHaveBeenCalledTimes(1);
     expect(mocks.deleteCredential).not.toHaveBeenCalled();
   });

@@ -217,11 +217,11 @@ export function readAntigravityCredentialStoreToken(): CredentialStoreToken | nu
 }
 
 function isSecretToolAvailable(): boolean {
-  const versionResult = spawnSync('secret-tool', ['--version'], {
+  const probeResult = spawnSync('secret-tool', [], {
     stdio: 'ignore',
     timeout: 3000,
   });
-  return !versionResult.error && versionResult.status === 0;
+  return !probeResult.error;
 }
 
 function writeViaNativeKeyring(payload: string): void {

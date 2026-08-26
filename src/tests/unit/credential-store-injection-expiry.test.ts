@@ -39,22 +39,24 @@ describe('CredentialStoreInjectionAdapter token expiry guard', () => {
   it('rejects expired access tokens when no refresh token is available', () => {
     const now = Math.floor(Date.now() / 1000);
     const account = createAccount(now - 1, '');
-    vi.spyOn(CredentialStoreInjectionAdapter, 'shouldInjectTokenIntoCredentialStore').mockReturnValue(
-      true,
-    );
+    vi.spyOn(
+      CredentialStoreInjectionAdapter,
+      'shouldInjectTokenIntoCredentialStore',
+    ).mockReturnValue(true);
 
-    expect(() => CredentialStoreInjectionAdapter.injectCloudTokenWithStorageStrategy(account)).toThrow(
-      /expired access token.*without a refresh token/i,
-    );
+    expect(() =>
+      CredentialStoreInjectionAdapter.injectCloudTokenWithStorageStrategy(account),
+    ).toThrow(/expired access token.*without a refresh token/i);
     expect(writeAntigravityCredentialStoreToken).not.toHaveBeenCalled();
   });
 
   it('keeps valid access tokens usable when no refresh token is available yet', () => {
     const now = Math.floor(Date.now() / 1000);
     const account = createAccount(now + 300, '');
-    vi.spyOn(CredentialStoreInjectionAdapter, 'shouldInjectTokenIntoCredentialStore').mockReturnValue(
-      true,
-    );
+    vi.spyOn(
+      CredentialStoreInjectionAdapter,
+      'shouldInjectTokenIntoCredentialStore',
+    ).mockReturnValue(true);
 
     expect(CredentialStoreInjectionAdapter.injectCloudTokenWithStorageStrategy(account)).toBe(
       'credential-store',

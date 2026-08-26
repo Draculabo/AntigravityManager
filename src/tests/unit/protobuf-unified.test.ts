@@ -34,6 +34,24 @@ describe('ProtobufUtils Unified OAuth', () => {
     });
   });
 
+  it('extracts the verified expiry from legacy OAuth state', () => {
+    const accessToken = 'legacy-access-token';
+    const refreshToken = 'legacy-refresh-token';
+    const expiryTimestamp = 1_700_001_234;
+    const legacyState = ProtobufUtils.createOAuthTokenInfo(
+      accessToken,
+      refreshToken,
+      expiryTimestamp,
+    );
+
+    expect(ProtobufUtils.extractOAuthTokenDetails(legacyState)).toEqual({
+      accessToken,
+      refreshToken,
+      expiryTimestamp,
+      idToken: undefined,
+    });
+  });
+
   it('should round-trip unified oauth token', () => {
     const accessToken = 'access-token-abc';
     const refreshToken = 'refresh-token-def';
@@ -46,6 +64,28 @@ describe('ProtobufUtils Unified OAuth', () => {
     expect(parsed).toEqual({
       accessToken,
       refreshToken,
+    });
+  });
+
+  it('extracts the verified expiry from unified OAuth state', () => {
+    const accessToken = 'unified-access-token';
+    const refreshToken = 'unified-refresh-token';
+    const expiryTimestamp = 1_700_001_234;
+    const unifiedB64 = ProtobufUtils.createUnifiedOAuthToken(
+      accessToken,
+      refreshToken,
+      expiryTimestamp,
+    );
+
+    expect(
+      ProtobufUtils.extractOAuthTokenDetailsFromUnifiedState(
+        new Uint8Array(Buffer.from(unifiedB64, 'base64')),
+      ),
+    ).toEqual({
+      accessToken,
+      refreshToken,
+      expiryTimestamp,
+      idToken: undefined,
     });
   });
 

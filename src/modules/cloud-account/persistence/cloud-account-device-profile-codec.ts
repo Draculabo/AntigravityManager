@@ -89,10 +89,9 @@ function readVersionedHistoryPayload(value: unknown): unknown {
   return record.history;
 }
 
-function createLegacyDeviceHistoryId(
+function createLegacyDeviceHistoryFingerprint(
   itemRecord: Record<string, unknown>,
   profile: DeviceProfile,
-  index: number,
 ): string {
   const createdAtCandidate = itemRecord.createdAt;
   const createdAt =
@@ -100,7 +99,11 @@ function createLegacyDeviceHistoryId(
       ? Math.floor(createdAtCandidate)
       : null;
   const label = isString(itemRecord.label) && itemRecord.label.length > 0 ? itemRecord.label : null;
-  const seed = JSON.stringify({ index, createdAt, label, profile });
+  return JSON.stringify({ createdAt, label, profile });
+}
+
+function createLegacyDeviceHistoryId(fingerprint: string, occurrence: number): string {
+  const seed = JSON.stringify({ fingerprint, occurrence });
   return `legacy-${createHash('sha256').update(seed).digest('hex').slice(0, 32)}`;
 }
 
@@ -129,7 +132,8 @@ export function normalizeDeviceHistory(value: unknown): DeviceProfileVersion[] |
     return undefined;
   }
   const normalized: DeviceProfileVersion[] = [];
-  for (const [index, item] of value.entries()) {
+  const legacyFingerprintOccurrences = new Map<string, number>();
+  for (const item of value) {
     if (!isPlainObject(item)) {
       continue;
     }
@@ -139,15 +143,20 @@ export function normalizeDeviceHistory(value: unknown): DeviceProfileVersion[] |
       continue;
     }
 
-    const id =
-      isString(itemRecord.id) && itemRecord.id.length > 0
-        ? itemRecord.id
-        : createLegacyDeviceHistoryId(itemRecord, profile, index);
+    let id: string;
+    if (isString(itemRecord.id) && itemRecord.id.length > 0) {
+      id = itemRecord.id;
+    } else {
+      const fingerprint = createLegacyDeviceHistoryFingerprint(itemRecord, profile);
+      const occurrence = legacyFingerprintOccurrences.get(fingerprint) ?? 0;
+      legacyFingerprintOccurrences.set(fingerprint, occurrence + 1);
+      id = createLegacyDeviceHistoryId(fingerprint, occurrence);
+    }
     const createdAtCandidate = itemRecord.createdAt;
     const createdAt =
       isNumber(createdAtCandidate) && Number.isFinite(createdAtCandidate)
         ? Math.floor(createdAtCandidate)
-        : Math.floor(Date.now() / 1000);
+        : 0;
     const label =
       isString(itemRecord.label) && itemRecord.label.length > 0 ? itemRecord.label : 'legacy';
     const isCurrent = itemRecord.isCurrent === true;

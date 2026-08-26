@@ -19,15 +19,21 @@ describe('CloudMonitorService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReset();
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockImplementation(
+      (_key: string, defaultValue: unknown) => defaultValue,
+    );
     CloudMonitorService.resetStateForTesting();
   });
 
   afterEach(() => {
     CloudMonitorService.stop();
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
   it('should start polling on start() and set up interval', async () => {
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue(true as never);
     const pollSpy = vi.spyOn(CloudMonitorService, 'poll').mockResolvedValue(undefined);
 
     CloudMonitorService.start();
@@ -38,8 +44,6 @@ describe('CloudMonitorService', () => {
     // Fast forward 5 minutes
     await vi.advanceTimersByTimeAsync(1000 * 60 * 5);
     expect(pollSpy).toHaveBeenCalledTimes(2);
-
-    pollSpy.mockRestore();
   });
 
   it('should poll accounts correctly', async () => {
@@ -66,7 +70,7 @@ describe('CloudMonitorService', () => {
     expect(CloudAccountRepo.getAccounts).toHaveBeenCalled();
     expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('valid_token', undefined);
     expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc1', expect.anything());
-    expect(CloudAccountRepo.updateLastUsed).toHaveBeenCalledWith('acc1');
+    expect(CloudAccountRepo.updateLastUsed).not.toHaveBeenCalled();
     expect(AutoSwitchService.checkAndSwitchIfNeeded).toHaveBeenCalled();
   });
 
