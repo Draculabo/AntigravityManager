@@ -958,7 +958,6 @@ export async function importCloudAccounts(
           proxy_url: importedAccount.proxy_url ?? existing.proxy_url,
           status: importedAccount.status ?? existing.status,
           status_reason: importedAccount.status_reason ?? existing.status_reason,
-          last_used: now,
         };
 
         await CloudAccountRepo.addAccount(updatedAccount);
