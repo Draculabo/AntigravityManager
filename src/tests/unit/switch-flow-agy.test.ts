@@ -125,6 +125,32 @@ describe('executeSwitchFlow for agy CLI', () => {
     );
   });
 
+  it('fails before starting a credential-store-backed GUI target without an identity profile', async () => {
+    const performSwitch = vi.fn(async () => undefined);
+
+    await expect(
+      executeSwitchFlow({
+        scope: 'cloud',
+        appTarget: 'classic',
+        targetProfile: null,
+        applyFingerprint: true,
+        useCredentialStore: true,
+        processExitTimeoutMs: 10000,
+        performSwitch,
+      }),
+    ).rejects.toThrow('Account has no bound identity profile');
+
+    expect(performSwitch).toHaveBeenCalledTimes(1);
+    expect(applyDeviceProfile).not.toHaveBeenCalled();
+    expect(startAntigravity).not.toHaveBeenCalled();
+    expect(recordSwitchSuccess).not.toHaveBeenCalled();
+    expect(recordSwitchFailure).toHaveBeenCalledWith(
+      'cloud',
+      'missing_bound_profile',
+      'Account has no bound identity profile',
+    );
+  });
+
   it('applies the CLI device profile best-effort after credential-store switching', async () => {
     const performSwitch = vi.fn(async () => undefined);
     const afterSwitchSuccess = vi.fn(async () => undefined);
