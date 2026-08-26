@@ -165,6 +165,7 @@ class SignatureStoreImpl {
       this.signaturesByToolCallKey.delete(toolCallKey);
       return null;
     }
+    this.touchToolCallEntry(toolCallKey, stored);
     return stored.signature;
   }
 
@@ -221,19 +222,28 @@ class SignatureStoreImpl {
   private storeByToolCallId(sig: string, toolCallId: string, sessionKey?: string): void {
     this.evictExpiredToolCallEntries();
     const toolCallKey = this.createToolCallKey(toolCallId, sessionKey);
-    const existingLen = this.signaturesByToolCallKey.get(toolCallKey)?.signature.length ?? 0;
+    const existing = this.signaturesByToolCallKey.get(toolCallKey);
+    const existingLen = existing?.signature.length ?? 0;
     if (sig.length > existingLen) {
-      this.signaturesByToolCallKey.set(toolCallKey, {
+      this.touchToolCallEntry(toolCallKey, {
         sessionKey,
         signature: sig,
         updatedAt: Date.now(),
       });
+    } else if (existing) {
+      this.touchToolCallEntry(toolCallKey, existing);
     }
     this.evictOverflowToolCallEntries();
   }
 
   private createToolCallKey(toolCallId: string, sessionKey?: string): string {
     return JSON.stringify([sessionKey ?? null, toolCallId]);
+  }
+
+  private touchToolCallEntry(toolCallKey: string, stored: StoredToolCallSignature): void {
+    stored.updatedAt = Date.now();
+    this.signaturesByToolCallKey.delete(toolCallKey);
+    this.signaturesByToolCallKey.set(toolCallKey, stored);
   }
 
   private evictExpiredToolCallEntries(): void {

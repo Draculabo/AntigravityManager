@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import { setServerConfig } from '../../server/server-config';
-import { updateDynamicForwardingRules } from '@/modules/proxy-gateway/antigravity/ModelMapping';
+import {
+  getAnthropicFamilyMappingKey,
+  updateDynamicForwardingRules,
+} from '@/modules/proxy-gateway/antigravity/ModelMapping';
 
 function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   return {
@@ -15,7 +18,20 @@ function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   };
 }
 
+describe('getAnthropicFamilyMappingKey', () => {
+  it('classifies legacy Claude configuration groups centrally', () => {
+    expect(getAnthropicFamilyMappingKey('claude-sonnet-4-5-20250929')).toBe('claude-4.5-series');
+    expect(getAnthropicFamilyMappingKey('claude-3.5-sonnet')).toBe('claude-3.5-series');
+    expect(getAnthropicFamilyMappingKey('claude-sonnet-4-6')).toBe('claude-default');
+    expect(getAnthropicFamilyMappingKey('gemini-3-flash')).toBeUndefined();
+  });
+});
+
 describe('ModelRoutingService', () => {
+  afterEach(() => {
+    setServerConfig(DEFAULT_APP_CONFIG.proxy);
+  });
+
   it('normalizes Gemini model path prefixes and known Gemini aliases', () => {
     const policy = new ModelRoutingService();
 
@@ -52,6 +68,35 @@ describe('ModelRoutingService', () => {
     expect(policy.resolveTargetModel('custom-fast')).toBe('gemini-3-flash');
   });
 
+  it('applies Anthropic family mappings to Claude requests', () => {
+    setServerConfig(
+      createProxyConfig({
+        anthropic_mapping: {
+          'claude-default': 'gemini-3-flash',
+          'claude-4.5-series': 'gemini-3.1-pro-low',
+        },
+      }),
+    );
+    const policy = new ModelRoutingService();
+
+    expect(policy.resolveTargetModel('claude-sonnet-4-6')).toBe('gemini-3-flash');
+    expect(policy.resolveTargetModel('claude-sonnet-4-5-20250929')).toBe('gemini-3.1-pro-low');
+  });
+
+  it('keeps exact Anthropic mappings ahead of family mappings', () => {
+    setServerConfig(
+      createProxyConfig({
+        anthropic_mapping: {
+          'claude-default': 'gemini-3-flash',
+          'claude-sonnet-4-6': 'gemini-3.1-pro-low',
+        },
+      }),
+    );
+    const policy = new ModelRoutingService();
+
+    expect(policy.resolveTargetModel('claude-sonnet-4-6')).toBe('gemini-3.1-pro-low');
+  });
+
   it('applies dynamic deprecated-model forwarding to quota-provided targets', () => {
     updateDynamicForwardingRules('Gemini-Deprecated-Test', 'gemini-future-test');
     const policy = new ModelRoutingService();
@@ -72,6 +117,10 @@ describe('ModelRoutingService', () => {
 });
 
 describe('ModelRoutingService.resolveModelRoute', () => {
+  afterEach(() => {
+    setServerConfig(DEFAULT_APP_CONFIG.proxy);
+  });
+
   it('labels a model that already is the accepted id as canonical, not a built-in mapping', () => {
     const policy = new ModelRoutingService();
 

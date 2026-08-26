@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { getServerConfig } from '../../../../../server/server-config';
 import {
+  getAnthropicFamilyMappingKey,
   getDynamicForwardingTarget,
   lookupBuiltInModelMapping,
   lookupGeminiModelAlias,
@@ -107,9 +108,18 @@ export class ModelRoutingService {
       };
     }
 
-    // Family-group mapping (OpenAI/Anthropic series keyed config) is part of the underlying
-    // compat routing but is never reached here: this call site only ever has exact and wildcard
-    // user mappings, never the family-keyed maps that path checks.
+    const anthropicFamilyKey = getAnthropicFamilyMappingKey(normalizedModel);
+    const anthropicFamilyTarget = anthropicFamilyKey
+      ? configuredMapping[anthropicFamilyKey]
+      : undefined;
+    if (anthropicFamilyTarget) {
+      return {
+        requestedModel: model,
+        normalizedModel,
+        resolvedModel: normalizeGeminiModelAlias(anthropicFamilyTarget),
+        source: 'configured',
+      };
+    }
 
     const builtIn = lookupBuiltInModelMapping(normalizedModel);
     if (builtIn !== undefined) {

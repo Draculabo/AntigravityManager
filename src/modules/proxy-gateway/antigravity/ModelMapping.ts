@@ -251,6 +251,30 @@ export function lookupGeminiModelAlias(modelId: string): string | undefined {
 }
 
 /**
+ * Returns the legacy Anthropic configuration group that owns a Claude model id.
+ *
+ * These group keys are persisted configuration compatibility keys, not upstream model ids.
+ * Keep this classification here so the compatibility router and the active routing service
+ * cannot diverge when Claude model aliases evolve.
+ */
+export function getAnthropicFamilyMappingKey(modelId: string): string | undefined {
+  const normalizedModelId = modelId.trim().toLowerCase();
+  if (!normalizedModelId.startsWith('claude-')) {
+    return undefined;
+  }
+
+  if (normalizedModelId.includes('4-5') || normalizedModelId.includes('4.5')) {
+    return 'claude-4.5-series';
+  }
+
+  if (normalizedModelId.includes('3-5') || normalizedModelId.includes('3.5')) {
+    return 'claude-3.5-series';
+  }
+
+  return 'claude-default';
+}
+
+/**
  * Core Model Routing Engine
  * Priority: Custom Mapping (Exact) > Group Mapping (Family) > System Mapping (Built-in Plugin)
  */
@@ -330,14 +354,8 @@ export function resolveModelRoute(
   }
 
   // 3. Check family group mapping (Anthropic Series)
-  if (lowerModel.startsWith('claude-')) {
-    let familyKey = 'claude-default';
-    if (lowerModel.includes('4-5') || lowerModel.includes('4.5')) {
-      familyKey = 'claude-4.5-series';
-    } else if (lowerModel.includes('3-5') || lowerModel.includes('3.5')) {
-      familyKey = 'claude-3.5-series';
-    }
-
+  const familyKey = getAnthropicFamilyMappingKey(lowerModel);
+  if (familyKey) {
     if (anthropicMapping[familyKey]) {
       logger.warn(
         `[Router] Using Anthropic series mapping: ${originalModel} -> ${anthropicMapping[familyKey]}`,
