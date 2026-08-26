@@ -97,4 +97,44 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
     expect(mocks.execFileSync.mock.calls[0][1]).not.toContain('delete-generic-password');
   });
+
+  it('updates native keyring credentials without deleting the existing entry first', async () => {
+    setPlatform('win32');
+    const { writeAntigravityCredentialStoreToken } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    writeAntigravityCredentialStoreToken({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expiry_timestamp: 1_900_000_000,
+    });
+
+    expect(mocks.withTarget).toHaveBeenCalledWith(
+      'gemini:antigravity',
+      'gemini',
+      'antigravity',
+    );
+    expect(mocks.setSecret).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteCredential).not.toHaveBeenCalled();
+  });
+
+  it('preserves the existing native keyring entry when an update fails', async () => {
+    setPlatform('win32');
+    mocks.setSecret.mockImplementation(() => {
+      throw new Error('native keyring update failed');
+    });
+    const { writeAntigravityCredentialStoreToken } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    expect(() =>
+      writeAntigravityCredentialStoreToken({
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+        expiry_timestamp: 1_900_000_000,
+      }),
+    ).toThrow('native keyring update failed');
+
+    expect(mocks.setSecret).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteCredential).not.toHaveBeenCalled();
+  });
 });

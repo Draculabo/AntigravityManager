@@ -226,12 +226,6 @@ function isSecretToolAvailable(): boolean {
 
 function writeViaNativeKeyring(payload: string): void {
   const entry = Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
-  try {
-    entry.deleteCredential();
-  } catch {
-    // Missing previous credential is acceptable.
-  }
-
   entry.setSecret(Buffer.from(payload, 'utf-8'));
 }
 
