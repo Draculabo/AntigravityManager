@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import { setServerConfig } from '../../server/server-config';
@@ -16,6 +16,10 @@ function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
 }
 
 describe('ModelRoutingService', () => {
+  afterEach(() => {
+    setServerConfig(DEFAULT_APP_CONFIG.proxy);
+  });
+
   it('normalizes Gemini model path prefixes and known Gemini aliases', () => {
     const policy = new ModelRoutingService();
 
@@ -101,6 +105,10 @@ describe('ModelRoutingService', () => {
 });
 
 describe('ModelRoutingService.resolveModelRoute', () => {
+  afterEach(() => {
+    setServerConfig(DEFAULT_APP_CONFIG.proxy);
+  });
+
   it('labels a model that already is the accepted id as canonical, not a built-in mapping', () => {
     const policy = new ModelRoutingService();
 

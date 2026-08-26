@@ -13,11 +13,13 @@ describe('SignatureStore cross-session tool-call isolation', () => {
     const sessionBSignature = 'signature-from-session-b'.repeat(3);
 
     SignatureStore.store(sessionASignature, 'session-a', 1, toolCallId);
-    expect(SignatureStore.getForToolCall(toolCallId)).toBe(sessionASignature);
+    expect(SignatureStore.getForToolCall(toolCallId, 'session-a')).toBe(sessionASignature);
 
     SignatureStore.store(sessionBSignature, 'session-b', 1, toolCallId);
 
     expect(SignatureStore.getForToolCall(toolCallId)).toBeNull();
+    expect(SignatureStore.getForToolCall(toolCallId, 'session-a')).toBe(sessionASignature);
+    expect(SignatureStore.getForToolCall(toolCallId, 'session-b')).toBe(sessionBSignature);
     expect(SignatureStore.getAt('session-a', 1)).toBe(sessionASignature);
     expect(SignatureStore.getAt('session-b', 1)).toBe(sessionBSignature);
   });
@@ -30,6 +32,6 @@ describe('SignatureStore cross-session tool-call isolation', () => {
     SignatureStore.store(shorterSignature, 'session-a', 1, toolCallId);
     SignatureStore.store(longerSignature, 'session-a', 1, toolCallId);
 
-    expect(SignatureStore.getForToolCall(toolCallId)).toBe(longerSignature);
+    expect(SignatureStore.getForToolCall(toolCallId, 'session-a')).toBe(longerSignature);
   });
 });
