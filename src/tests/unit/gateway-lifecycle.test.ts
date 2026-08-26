@@ -36,7 +36,7 @@ vi.mock('@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.st
   },
 }));
 
-import { startGateway } from '@/modules/proxy-gateway/ipc/handlers';
+import { startGateway, stopGateway } from '@/modules/proxy-gateway/ipc/handlers';
 
 describe('gateway lifecycle serialization', () => {
   beforeEach(() => {
@@ -78,5 +78,43 @@ describe('gateway lifecycle serialization', () => {
     expect(mockBootstrapNestServer).toHaveBeenCalledTimes(2);
     expect(mockBootstrapNestServer.mock.calls[0]?.[0]).toMatchObject({ port: 8045 });
     expect(mockBootstrapNestServer.mock.calls[1]?.[0]).toMatchObject({ port: 8123 });
+  });
+
+  it('queues a stop until the active start has completed', async () => {
+    let releaseBootstrap!: (value: { success: true; port: number; base_url: string }) => void;
+    const firstBootstrap = new Promise<{ success: true; port: number; base_url: string }>((resolve) => {
+      releaseBootstrap = resolve;
+    });
+    mockStopNestServer.mockResolvedValue(true);
+    mockBootstrapNestServer.mockReturnValueOnce(firstBootstrap);
+
+    const start = startGateway(8045);
+    await vi.waitFor(() => {
+      expect(mockBootstrapNestServer).toHaveBeenCalledTimes(1);
+    });
+
+    const stop = stopGateway();
+    expect(mockStopNestServer).toHaveBeenCalledTimes(1);
+
+    releaseBootstrap({ success: true, port: 8045, base_url: 'http://localhost:8045' });
+
+    await expect(start).resolves.toMatchObject({ success: true, port: 8045 });
+    await expect(stop).resolves.toBe(true);
+    expect(mockStopNestServer).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases the queue after a failed start', async () => {
+    mockStopNestServer.mockResolvedValue(true);
+    mockBootstrapNestServer
+      .mockRejectedValueOnce(new Error('bind failed'))
+      .mockResolvedValueOnce({ success: true, port: 8123, base_url: 'http://localhost:8123' });
+
+    const failedStart = startGateway(8045);
+    const succeedingStart = startGateway(8123);
+
+    await expect(failedStart).resolves.toMatchObject({ success: false, port: 8045 });
+    await expect(succeedingStart).resolves.toMatchObject({ success: true, port: 8123 });
+    expect(mockStopNestServer).toHaveBeenCalledTimes(2);
+    expect(mockBootstrapNestServer).toHaveBeenCalledTimes(2);
   });
 });
