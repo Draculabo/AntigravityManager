@@ -188,40 +188,39 @@ describe('AutoSwitchService', () => {
     });
   });
 
-  it('falls back to the global active account when the target account id is stale', async () => {
+  it('prefers an account that exposes a configured priority model over a higher fallback score', async () => {
     const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
     const { CloudAccountSettingsStore } =
       await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
-    const { switchCloudAccount } = await import('@/modules/cloud-account/ipc/handler');
     const { AutoSwitchService } =
       await import('@/modules/cloud-account/services/AutoSwitchService');
 
-    vi.mocked(CloudAccountSettingsStore.getSetting).mockImplementation((key: string) => {
-      if (key === 'auto_switch_enabled') return true;
-      if (key === 'auto_switch_models') return {};
-      return undefined;
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({
+      'claude-sonnet-4-5': { enabled: true, priority: true },
+      'gemini-pro': { enabled: true, priority: false },
     });
-    vi.mocked(CloudAccountSettingsStore.getActiveAccountIdForTarget).mockReturnValue(
-      'deleted-account',
-    );
+
     vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
-      createAccount(
-        'global-active',
-        {
-          models: {
-            'gemini-pro': { percentage: 1, resetTime: '' },
-          },
-        },
-        { is_active: true },
-      ),
-      createAccount('healthy-next', {
+      createAccount('current', {
         models: {
-          'gemini-pro': { percentage: 90, resetTime: '' },
+          'claude-sonnet-4-5': { percentage: 50, resetTime: '' },
+        },
+      }),
+      createAccount('priority-present', {
+        models: {
+          'claude-sonnet-4-5': { percentage: 60, resetTime: '' },
+          'gemini-pro': { percentage: 10, resetTime: '' },
+        },
+      }),
+      createAccount('priority-missing', {
+        models: {
+          'gemini-pro': { percentage: 100, resetTime: '' },
         },
       }),
     ]);
 
-    await expect(AutoSwitchService.checkAndSwitchIfNeeded('classic')).resolves.toBe(true);
-    expect(switchCloudAccount).toHaveBeenCalledWith('healthy-next', 'classic');
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
+      id: 'priority-present',
+    });
   });
 });
