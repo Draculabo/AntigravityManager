@@ -41,16 +41,35 @@ const QUOTA_SUMMARY_ENDPOINTS = [
 
 // Request timeout in milliseconds (30 seconds)
 const REQUEST_TIMEOUT_MS = 30000;
+const OAUTH_CLIENT_ERROR_CODES = new Set([
+  'invalid_client',
+  'unauthorized_client',
+  'deleted_client',
+]);
 
-function isClientMismatchError(status: number, errorText: string): boolean {
+function extractOAuthErrorCode(errorText: string): string | null {
+  try {
+    const parsed = JSON.parse(errorText) as { error?: unknown };
+    if (typeof parsed.error === 'string') {
+      return parsed.error.trim().toLowerCase();
+    }
+  } catch {
+    // Some OAuth endpoints or intermediaries can return plain-text errors.
+  }
+
   const text = errorText.toLowerCase();
-  return (
-    status === 400 ||
-    status === 401 ||
-    status === 403 ||
-    text.includes('unauthorized_client') ||
-    text.includes('invalid_client')
-  );
+  for (const code of OAUTH_CLIENT_ERROR_CODES) {
+    if (text.includes(code)) {
+      return code;
+    }
+  }
+
+  return null;
+}
+
+export function isClientMismatchError(errorText: string): boolean {
+  const errorCode = extractOAuthErrorCode(errorText);
+  return errorCode !== null && OAUTH_CLIENT_ERROR_CODES.has(errorCode);
 }
 
 /**
@@ -571,7 +590,7 @@ export class GoogleAPIService {
 
       const text = await response.text();
       attemptErrors.push(`${client.key} => ${text}`);
-      if (isClientMismatchError(response.status, text)) {
+      if (isClientMismatchError(text)) {
         logger.warn(
           `[GoogleAPIService] Token exchange failed for OAuth client '${client.key}', trying next client`,
         );
@@ -631,7 +650,7 @@ export class GoogleAPIService {
 
       const text = await response.text();
       attemptErrors.push(`${client.key} => ${text}`);
-      if (isClientMismatchError(response.status, text)) {
+      if (isClientMismatchError(text)) {
         logger.warn(
           `[GoogleAPIService] Token refresh failed for OAuth client '${client.key}', trying next client`,
         );
