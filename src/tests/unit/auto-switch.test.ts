@@ -121,6 +121,65 @@ describe('AutoSwitchService', () => {
     expect(AutoSwitchService.isAccountDepleted(testAccount)).toBe(false);
   });
 
+  it('applies unprefixed model settings to prefixed quota model identifiers', async () => {
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({
+      'claude-sonnet-4-5': { enabled: false, priority: false },
+      'gemini-pro': { enabled: true, priority: false },
+    });
+
+    const testAccount = createAccount('prefixed-models', {
+      models: {
+        'models/claude-sonnet-4-5': { percentage: 1, resetTime: '' },
+        'models/gemini-pro': { percentage: 90, resetTime: '' },
+      },
+    });
+
+    expect(AutoSwitchService.isAccountDepleted(testAccount)).toBe(false);
+  });
+
+  it('uses unprefixed priority settings when quota identifiers are prefixed', async () => {
+    const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({
+      'claude-sonnet-4-5': { enabled: true, priority: true },
+      'gemini-pro': { enabled: true, priority: false },
+    });
+
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createAccount('current', {
+        models: {
+          'models/claude-sonnet-4-5': { percentage: 50, resetTime: '' },
+          'models/gemini-pro': { percentage: 90, resetTime: '' },
+        },
+      }),
+      createAccount('priority-high', {
+        models: {
+          'models/claude-sonnet-4-5': { percentage: 80, resetTime: '' },
+          'models/gemini-pro': { percentage: 10, resetTime: '' },
+        },
+      }),
+      createAccount('priority-low', {
+        models: {
+          'models/claude-sonnet-4-5': { percentage: 60, resetTime: '' },
+          'models/gemini-pro': { percentage: 95, resetTime: '' },
+        },
+      }),
+    ]);
+
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
+      id: 'priority-high',
+    });
+  });
+
   it('uses the best quota in an alias group and keeps the threshold comparison strict', async () => {
     const { AutoSwitchService } =
       await import('@/modules/cloud-account/services/AutoSwitchService');
