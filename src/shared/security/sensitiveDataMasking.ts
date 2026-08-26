@@ -40,7 +40,7 @@ const CIRCULAR_PLACEHOLDER = '[Circular]';
 const BASE64_REDACTED_PREFIX = '[base64 redacted';
 const MIN_UNLABELED_BASE64_LENGTH = 512;
 const DATA_URL_PATTERN = /data:(?<mime>[\w.+-]+\/[\w.+-]+);base64,(?<data>[A-Za-z0-9+/=]+)/g;
-const URL_CREDENTIAL_PATTERN = /\b((?:https?|socks5?):\/\/)([^/\s@]+)@/gi;
+const URL_CREDENTIAL_PATTERN = /\b((?:https?|socks5?):\/\/)[^/\s]*@/gi;
 const BASE64_FIELD_KEYS = new Set(['b64_json', 'base64', 'base64_data', 'base64data']);
 
 function estimateBase64ByteLength(value: string): number {

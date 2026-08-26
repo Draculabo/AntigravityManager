@@ -73,16 +73,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
     expect(mocks.execFileSync).toHaveBeenCalledWith(
       'security',
-      [
-        'add-generic-password',
-        '-s',
-        'gemini',
-        '-a',
-        'antigravity',
-        '-A',
-        '-U',
-        '-w',
-      ],
+      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'],
       expect.objectContaining({
         input: expect.stringContaining('go-keyring-base64:'),
         encoding: 'utf-8',

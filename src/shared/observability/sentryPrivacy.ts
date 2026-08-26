@@ -1,5 +1,6 @@
 const LOCAL_USER_PATH_PATTERNS = [
   { pattern: /([A-Za-z]:\\Users\\)[^\\/\r\n]+/gi, replacement: '$1***' },
+  { pattern: /([A-Za-z]:\/Users\/)[^/\r\n]+/gi, replacement: '$1***' },
   { pattern: /(\/Users\/)[^/\r\n]+/g, replacement: '$1***' },
   { pattern: /(\/home\/)[^/\r\n]+/g, replacement: '$1***' },
 ] as const;

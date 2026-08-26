@@ -9,6 +9,9 @@ describe('Sentry local path redaction', () => {
     expect(redactLocalUserPaths('C:\\Users\\alice\\AppData\\Local\\app.log')).toBe(
       'C:\\Users\\***\\AppData\\Local\\app.log',
     );
+    expect(redactLocalUserPaths('C:/Users/alice/AppData/Local/app.log')).toBe(
+      'C:/Users/***/AppData/Local/app.log',
+    );
     expect(redactLocalUserPaths('/Users/bob/Library/Application Support/app.log')).toBe(
       '/Users/***/Library/Application Support/app.log',
     );
@@ -46,9 +49,7 @@ describe('Sentry local path redaction', () => {
     expect(event.contexts.recent_logs.entries[0].message).toBe(
       'preload=/Users/***/project/preload.js',
     );
-    expect(event.extra.log_message).toBe(
-      'config=/home/***/.config/antigravity/settings.json',
-    );
+    expect(event.extra.log_message).toBe('config=/home/***/.config/antigravity/settings.json');
   });
 
   it('leaves unrelated strings unchanged', () => {

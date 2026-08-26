@@ -66,6 +66,12 @@ describe('sensitive data masking', () => {
       );
     });
 
+    it('redacts proxy URL credentials containing a raw at sign', () => {
+      expect(sanitizeObject('proxy=socks5://alice:secr@et@proxy.example:1080')).toBe(
+        'proxy=socks5://[REDACTED]@proxy.example:1080',
+      );
+    });
+
     it('preserves URLs that do not contain userinfo', () => {
       expect(sanitizeObject('proxy=https://proxy.example:8443/path')).toBe(
         'proxy=https://proxy.example:8443/path',
