@@ -1,5 +1,5 @@
 import { ipc } from '@/ipc/manager';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { DeviceProfile } from '@/modules/identity-profile/types';
 
 export function listAccounts() {

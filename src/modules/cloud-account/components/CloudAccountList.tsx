@@ -17,7 +17,7 @@ import {
 } from '@/modules/cloud-account/hooks/useCloudAccounts';
 import { IdentityProfileDialog } from '@/modules/identity-profile/components/IdentityProfileDialog';
 import { CloudAccount } from '@/modules/cloud-account/types';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { useToast } from '@/components/ui/use-toast';
 import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';

@@ -19,7 +19,7 @@ import {
 import { applyStartupGpuSwitches } from '@/modules/app-shell/utils/startupGpuSwitches';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
-import { initDatabase } from '@/shared/persistence/database/handler';
+import { initDatabase } from '@/modules/account/public';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 
 // Static Imports to fix Bundle Resolution Errors
@@ -51,6 +51,11 @@ import { selectWindowsUpdateResult } from '@/modules/app-shell/update/windowsUpd
 import { getQuickObservabilityConfig } from '@/shared/observability/observabilityConfig';
 import { registerPerformanceRecorderIpc } from '@/modules/app-shell/performance-recorder/ipc';
 import { configurePerformanceRecorderCommandLine } from '@/modules/app-shell/performance-recorder/main-recorder';
+
+// Turn on rotating file output as early as possible, before any module-level
+// logging below runs, so the shipped app keeps logging to disk as before.
+// Importing the logger module itself must stay free of filesystem side effects.
+logger.enableFileLogging();
 
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
 

@@ -1,90 +1,122 @@
+import { DurableRecordStore } from '@/shared/persistence/durable-record-store';
 import type { OpenAIChatRequest } from '../../../common/interfaces/request-interfaces';
 
 export interface OpenAIResponsesSession {
   inputItems: unknown[];
   instructions?: string;
   model: string;
+  /** The completed Responses payload, so `GET /v1/responses/{id}` can replay it. */
+  response?: Record<string, unknown>;
+  /** What the request asked for. `false` means the payload is never retained. */
+  store?: boolean;
   tools?: OpenAIChatRequest['tools'];
   toolCallItems?: unknown[];
 }
 
-interface StoredOpenAIResponsesSession extends OpenAIResponsesSession {
-  updatedAt: number;
+/** What the Responses surface needs from the store, so a caller can be handed either. */
+export interface OpenAIResponsesSessionStoreLike {
+  clear(): void;
+  delete(responseId: string): boolean;
+  get(responseId: string): OpenAIResponsesSession | null;
+  save(responseId: string, session: OpenAIResponsesSession): void;
 }
 
+export interface OpenAIResponsesSessionStoreOptions {
+  /** Absolute path of the backing file. Omit to keep the store in memory only. */
+  filePath?: string;
+  maxSessions?: number;
+  ttlMs?: number;
+}
+
+export const DEFAULT_OPENAI_RESPONSES_MAX_SESSIONS = 500;
+export const DEFAULT_OPENAI_RESPONSES_SESSION_TTL_MS = 60 * 60 * 1000;
+
 /**
- * Holds the HTTP-only state needed to support Responses API continuation.
+ * Holds the state needed to support Responses API continuation.
  *
  * Gemini requires complete tool and assistant history, while Responses clients may
- * only send the next input with previous_response_id. Entries are intentionally
- * short-lived and bounded because this is compatibility state, not durable memory.
+ * only send the next input with previous_response_id. Entries stay bounded by age
+ * and by count because this is user content; given a `filePath` they also outlive
+ * the process, so an id handed to a client before a restart still resolves after
+ * one.
  */
-class OpenAIResponsesSessionStoreImpl {
-  private static readonly MAX_SESSIONS = 500;
-  private static readonly SESSION_TTL_MS = 60 * 60 * 1000;
+export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionStoreLike {
+  private readonly sessions: DurableRecordStore<OpenAIResponsesSession>;
 
-  private readonly sessions = new Map<string, StoredOpenAIResponsesSession>();
+  public constructor(options: OpenAIResponsesSessionStoreOptions = {}) {
+    this.sessions = new DurableRecordStore<OpenAIResponsesSession>({
+      filePath: options.filePath,
+      maxEntries: options.maxSessions ?? DEFAULT_OPENAI_RESPONSES_MAX_SESSIONS,
+      ttlMs: options.ttlMs ?? DEFAULT_OPENAI_RESPONSES_SESSION_TTL_MS,
+      revive: reviveOpenAIResponsesSession,
+    });
+  }
 
   public get(responseId: string): OpenAIResponsesSession | null {
     const session = this.sessions.get(responseId);
-    if (!session) {
-      return null;
-    }
-    if (Date.now() - session.updatedAt >= OpenAIResponsesSessionStoreImpl.SESSION_TTL_MS) {
-      this.sessions.delete(responseId);
-      return null;
-    }
-
-    session.updatedAt = Date.now();
-    return {
-      inputItems: [...session.inputItems],
-      instructions: session.instructions,
-      model: session.model,
-      tools: session.tools,
-      toolCallItems: [...(session.toolCallItems ?? [])],
-    };
+    return session ? cloneOpenAIResponsesSession(session) : null;
   }
 
   public save(responseId: string, session: OpenAIResponsesSession): void {
-    this.evictExpired();
-    const toolCallItems = collectResponsesToolCallItems([
-      ...(session.toolCallItems ?? []),
-      ...session.inputItems,
-    ]);
     this.sessions.set(responseId, {
-      ...session,
-      inputItems: [...session.inputItems],
-      toolCallItems,
-      updatedAt: Date.now(),
+      ...cloneOpenAIResponsesSession(session),
+      toolCallItems: collectResponsesToolCallItems([
+        ...(session.toolCallItems ?? []),
+        ...session.inputItems,
+      ]),
     });
-    this.evictOverflow();
+  }
+
+  public delete(responseId: string): boolean {
+    return this.sessions.delete(responseId);
   }
 
   public clear(): void {
     this.sessions.clear();
   }
 
-  private evictExpired(): void {
-    const oldestAllowed = Date.now() - OpenAIResponsesSessionStoreImpl.SESSION_TTL_MS;
-    for (const [responseId, session] of this.sessions.entries()) {
-      if (session.updatedAt < oldestAllowed) {
-        this.sessions.delete(responseId);
-      }
-    }
-  }
-
-  private evictOverflow(): void {
-    while (this.sessions.size > OpenAIResponsesSessionStoreImpl.MAX_SESSIONS) {
-      const oldestResponseId = this.sessions.keys().next().value;
-      if (!oldestResponseId) {
-        return;
-      }
-      this.sessions.delete(oldestResponseId);
-    }
+  /** Resolves once every pending write has reached the disk. */
+  public flush(): Promise<void> {
+    return this.sessions.flush();
   }
 }
 
+/**
+ * The process-wide in-memory store.
+ *
+ * It is the fallback for callers assembled outside Nest; the injectable
+ * `OpenAIResponsesSessionService` is the one that owns a file.
+ */
 export const OpenAIResponsesSessionStore = new OpenAIResponsesSessionStoreImpl();
+
+function cloneOpenAIResponsesSession(session: OpenAIResponsesSession): OpenAIResponsesSession {
+  return {
+    inputItems: [...session.inputItems],
+    instructions: session.instructions,
+    model: session.model,
+    response: session.response,
+    store: session.store,
+    tools: session.tools,
+    toolCallItems: [...(session.toolCallItems ?? [])],
+  };
+}
+
+/**
+ * Accepts a session read back from disk only when the fields the continuation
+ * logic dereferences are present, so a hand-edited or truncated file costs the
+ * affected chains rather than the whole store.
+ */
+function reviveOpenAIResponsesSession(value: unknown): OpenAIResponsesSession | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const inputItems = Reflect.get(value, 'inputItems');
+  const model = Reflect.get(value, 'model');
+  if (!Array.isArray(inputItems) || typeof model !== 'string' || !model) {
+    return null;
+  }
+  return cloneOpenAIResponsesSession(value as OpenAIResponsesSession);
+}
 
 /**
  * Rebuilds a Responses transcript using the same continuation rules used by

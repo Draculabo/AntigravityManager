@@ -54,7 +54,7 @@ import { ipc } from '@/ipc/manager';
 import { useSetAccountProxy } from '@/modules/cloud-account/hooks/useCloudAccounts';
 import { isValidProxyUrl } from '@/shared/utils/url';
 import { getValidationBlockedStatusLabel } from '@/modules/cloud-account/utils/accountValidationStatus';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { AccountTierBadge } from '@/modules/cloud-account/components/AccountTierBadge';
 import { aggregateVisibleQuotaModelFamilies } from '@/modules/cloud-account/utils/quota-model-families';
 

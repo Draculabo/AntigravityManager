@@ -3,7 +3,10 @@ import { z } from 'zod';
 import { networkInterfaces } from 'os';
 import { dialog, shell } from 'electron';
 import { getAgentDir, getAntigravityLaunchArgsFromRunningProcess } from '@/shared/platform/paths';
-import { AntigravityAppTargetSchema, resolveAntigravityAppTarget } from '@/modules/account/types';
+import {
+  AntigravityAppTargetSchema,
+  resolveAntigravityAppTarget,
+} from '@/shared/platform/antigravityAppTarget';
 
 // Schema for IP info
 const IpInfoSchema = z.object({

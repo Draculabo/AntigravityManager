@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
 
 describe('GeminiClient explicit context cache', () => {
   afterEach(() => {
@@ -23,7 +24,7 @@ describe('GeminiClient explicit context cache', () => {
       } as never)
       .mockResolvedValueOnce({ data: { candidates: [] } } as never);
 
-    const client = new GeminiClient();
+    const client = new GeminiClient(new Upstream4xxCaptureService());
     await client.generateInternal(
       {
         model: 'gemini-2.5-pro',
@@ -88,7 +89,7 @@ describe('GeminiClient explicit context cache', () => {
       .mockRejectedValueOnce(missingCacheError)
       .mockResolvedValueOnce({ data: { candidates: [] } } as never);
 
-    const client = new GeminiClient();
+    const client = new GeminiClient(new Upstream4xxCaptureService());
     await client.generateInternal(
       {
         model: 'gemini-2.5-pro',

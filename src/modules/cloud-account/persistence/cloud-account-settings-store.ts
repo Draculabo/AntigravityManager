@@ -1,5 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { type AntigravityAppTarget, resolveAntigravityAppTarget } from '@/modules/account/types';
+import {
+  type AntigravityAppTarget,
+  resolveAntigravityAppTarget,
+} from '@/shared/platform/antigravityAppTarget';
 import { logger } from '@/shared/logging/logger';
 import { settings } from '@/shared/persistence/database/schema';
 import { getCloudDb } from './cloud-account-db';

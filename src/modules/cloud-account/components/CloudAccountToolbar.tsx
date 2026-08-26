@@ -53,7 +53,7 @@ import {
   type GridLayout,
 } from '@/modules/cloud-account/components/CloudAccountList.constants';
 import type { OAuthClientDescriptor } from '@/modules/cloud-account/actions/cloud';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { AccountTierOption } from '@/modules/cloud-account/utils/account-tier-filter';
 import type { AccountSortKey } from '@/modules/cloud-account/utils/quota-display';
 import { LocalAccountImportDialog } from '@/modules/cloud-account/local-import/components/LocalAccountImportDialog';

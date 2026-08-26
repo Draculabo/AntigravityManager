@@ -5,7 +5,7 @@ import {
   switchAccount,
   deleteAccount,
 } from '@/modules/account/ipc/handler';
-import { restoreAccount } from '@/shared/persistence/database/handler';
+import { restoreAccount } from '@/modules/account/persistence/antigravity-state-database';
 import { CredentialStoreInjectionAdapter } from '@/modules/cloud-account/persistence/credential-store-injection-adapter';
 import { writeAntigravityCredentialStoreToken } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
 import { startAntigravity } from '@/modules/antigravity-runtime/ipc/handler';
@@ -28,7 +28,7 @@ vi.mock('../../shared/platform/paths', async () => {
   };
 });
 
-vi.mock('@/shared/persistence/database/handler', () => ({
+vi.mock('@/modules/account/persistence/antigravity-state-database', () => ({
   getCurrentAccountInfo: vi.fn(() => ({
     email: 'test@example.com',
     name: 'Test User',

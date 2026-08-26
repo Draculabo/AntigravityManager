@@ -33,7 +33,14 @@ describe('ProxyService Responses streaming', () => {
   it('keeps an otherwise idle Responses connection alive with SSE comments', async () => {
     vi.useFakeTimers();
     try {
-      const service = new ProxyService({} as never, {} as never, {} as never);
+      const service = new ProxyService(
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      );
       const upstreamStream = new PassThrough();
       const events: string[] = [];
       const subscription = createResponsesStream(service, upstreamStream).subscribe((event) => {
@@ -50,7 +57,14 @@ describe('ProxyService Responses streaming', () => {
   });
 
   it('converts nested Gemini SSE payloads into Responses events', async () => {
-    const service = new ProxyService({} as never, {} as never, {} as never);
+    const service = new ProxyService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
     const upstreamStream = Readable.from([
       Buffer.from('data: not json\n\n'),
       Buffer.from(

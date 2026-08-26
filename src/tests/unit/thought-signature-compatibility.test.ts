@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
+import {
+  transformClaudeRequestIn,
+  getPlaceholderSignatureUsageCount,
+  resetPlaceholderSignatureUsageCount,
+} from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
 import {
   PartProcessor,
@@ -15,6 +19,7 @@ const SKIP_THOUGHT_SIGNATURE = 'skip_thought_signature_validator';
 describe('thought signature compatibility', () => {
   afterEach(() => {
     SignatureStore.clear();
+    resetPlaceholderSignatureUsageCount();
   });
 
   it('sends both signature field names for thinking, function calls, and tool results', () => {
@@ -100,6 +105,7 @@ describe('thought signature compatibility', () => {
         thought_signature: SKIP_THOUGHT_SIGNATURE,
       },
     ]);
+    expect(getPlaceholderSignatureUsageCount()).toBe(1);
   });
 
   it('accepts snake-case signatures from non-streaming Gemini responses', () => {
@@ -272,5 +278,92 @@ describe('thought signature compatibility', () => {
     });
 
     expect(SignatureStore.getAt(sessionKey, 5)).toBe(THOUGHT_SIGNATURE);
+  });
+
+  it("keeps concurrent tool calls in the same turn from reading each other's signature", () => {
+    const sessionKey = 'anthropic:parallel-tool-calls';
+
+    // Two tool calls produced in the same assistant turn (same message count), each with
+    // its own signature. The longer one is what the legacy session+messageCount bucket
+    // would keep, so a fallback keyed only by that bucket would replay it for both calls.
+    const shortCallSignature = 'sig-for-call-a-' + 'x'.repeat(20);
+    const longCallSignature = 'sig-for-call-b-' + 'y'.repeat(60);
+
+    transformResponse(
+      {
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [
+                {
+                  functionCall: { name: 'tool_a', args: {}, id: 'call_a' },
+                  thoughtSignature: shortCallSignature,
+                },
+                {
+                  functionCall: { name: 'tool_b', args: {}, id: 'call_b' },
+                  thoughtSignature: longCallSignature,
+                },
+              ],
+            },
+          },
+        ],
+      },
+      sessionKey,
+      9,
+    );
+
+    expect(SignatureStore.getForToolCall('call_a', sessionKey)).toBe(shortCallSignature);
+    expect(SignatureStore.getForToolCall('call_b', sessionKey)).toBe(longCallSignature);
+
+    // Replay: a client that echoes tool_use blocks back without their signature must
+    // still get each call's own signature, not the other call's.
+    const request: ClaudeRequest = {
+      model: 'gemini-3-flash',
+      max_tokens: 1024,
+      thinking: { type: 'enabled', budget_tokens: 256 },
+      metadata: { signature_session_key: sessionKey },
+      messages: [
+        {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 'call_a', name: 'tool_a', input: {} },
+            { type: 'tool_use', id: 'call_b', name: 'tool_b', input: {} },
+          ],
+        },
+      ],
+    };
+
+    const body = transformClaudeRequestIn(request);
+    const functionCallParts = body.request.contents[0].parts.filter((part) => part.functionCall);
+
+    expect(functionCallParts[0]?.thoughtSignature).toBe(shortCallSignature);
+    expect(functionCallParts[1]?.thoughtSignature).toBe(longCallSignature);
+  });
+
+  it('returns null instead of throwing when no signature was ever stored for a tool-call id', () => {
+    expect(() => SignatureStore.getForToolCall('never-stored-call-id')).not.toThrow();
+    expect(SignatureStore.getForToolCall('never-stored-call-id')).toBeNull();
+    expect(SignatureStore.getForToolCall(undefined)).toBeNull();
+  });
+
+  it('isolates identical tool-call ids between sessions and clears only the requested session', () => {
+    const toolCallId = 'reused-call-id';
+    SignatureStore.store('signature-alpha', 'anthropic:session-alpha', 1, toolCallId);
+    SignatureStore.store('signature-beta-is-longer', 'anthropic:session-beta', 1, toolCallId);
+
+    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-alpha')).toBe(
+      'signature-alpha',
+    );
+    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-beta')).toBe(
+      'signature-beta-is-longer',
+    );
+
+    SignatureStore.clear('anthropic:session-alpha');
+
+    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-alpha')).toBeNull();
+    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-beta')).toBe(
+      'signature-beta-is-longer',
+    );
   });
 });

@@ -3,6 +3,10 @@ import { isEmpty, isString } from 'lodash-es';
 
 import { transformClaudeRequestIn } from '../../modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { AnthropicService } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.service';
+import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { GeminiService as ProxyService } from '../../modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 
@@ -22,7 +26,17 @@ const mockGeminiClient: any = {
 
 class TestableProxyService extends ProxyService {
   constructor() {
-    super(mockAccountLease, mockGeminiClient);
+    super(
+      mockAccountLease,
+      mockGeminiClient,
+      new GenerationConstraintsService(mockAccountLease as never),
+      new ProxyRetryService(
+        mockAccountLease as never,
+        { log: () => {}, warn: () => {} },
+        proxyModelAvailabilityStore,
+      ),
+      new ModelRoutingService(),
+    );
   }
 
   public createGeminiInternal(
@@ -256,7 +270,17 @@ async function validateRuntimeAnthropicRequestFromRealAccountLease(): Promise<vo
   };
 
   try {
-    const service = new AnthropicService(AccountLeaseProxy as any, mockGeminiClient as any);
+    const service = new AnthropicService(
+      AccountLeaseProxy as any,
+      mockGeminiClient as any,
+      new GenerationConstraintsService(AccountLeaseProxy as never),
+      new ProxyRetryService(
+        AccountLeaseProxy as never,
+        { log: () => {}, warn: () => {} },
+        proxyModelAvailabilityStore,
+      ),
+      new ModelRoutingService(),
+    );
     await service.handleAnthropicMessages({
       model: 'claude-sonnet-4-5',
       stream: false,

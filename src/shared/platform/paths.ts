@@ -3,27 +3,41 @@ import os from 'os';
 import fs from 'fs';
 import { execSync } from 'child_process';
 import findProcess, { type ProcessInfo } from 'find-process';
-import type { AntigravityAppTarget } from '@/modules/account/types';
-import { resolveAntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 type PathApi = Pick<typeof path, 'dirname' | 'join' | 'normalize' | 'resolve'>;
 
-function getCurrentPlatformPathApi(): PathApi {
-  return process.platform === 'win32' ? path.win32 : path.posix;
+export interface PathResolutionOptions {
+  platform?: NodeJS.Platform;
+  isWsl?: boolean;
+}
+
+function getCurrentPlatform(options?: PathResolutionOptions): NodeJS.Platform {
+  return options?.platform ?? process.platform;
+}
+
+function getCurrentPlatformPathApi(options?: PathResolutionOptions): PathApi {
+  return getCurrentPlatform(options) === 'win32' ? path.win32 : path.posix;
 }
 
 /**
  * Checks if the current platform is WSL.
+ * @param {NodeJS.Platform} [platform] The platform to check, defaults to `process.platform`.
  * @returns {boolean} True if the current platform is WSL, false otherwise.
  */
-export function isWsl(): boolean {
-  if (process.platform !== 'linux') return false;
+export function isWsl(platform: NodeJS.Platform = process.platform): boolean {
+  if (platform !== 'linux') return false;
   try {
     const version = fs.readFileSync('/proc/version', 'utf-8').toLowerCase();
     return version.includes('microsoft') && version.includes('wsl');
   } catch {
     return false;
   }
+}
+
+function resolveIsWsl(options?: PathResolutionOptions): boolean {
+  return options?.isWsl ?? isWsl(getCurrentPlatform(options));
 }
 
 let cachedWindowsUser: string | null = null;
@@ -96,7 +110,7 @@ function appendUniquePath(paths: string[], targetPath: string | null | undefined
   paths.push(targetPath);
 }
 
-function normalizeExecutablePath(executablePath: string): string {
+function normalizeExecutablePath(executablePath: string, options?: PathResolutionOptions): string {
   let pathForComparison = executablePath;
   try {
     if (fs.existsSync(executablePath)) {
@@ -106,10 +120,10 @@ function normalizeExecutablePath(executablePath: string): string {
     pathForComparison = executablePath;
   }
 
-  const pathApi = getCurrentPlatformPathApi();
+  const pathApi = getCurrentPlatformPathApi(options);
   const normalizedPath = pathApi.normalize(pathForComparison).toLowerCase();
 
-  if (process.platform === 'win32') {
+  if (getCurrentPlatform(options) === 'win32') {
     return normalizedPath.replace(/\//g, '\\');
   }
 
@@ -119,11 +133,12 @@ function normalizeExecutablePath(executablePath: string): string {
 function areExecutablePathsEquivalent(
   leftExecutablePath: string,
   rightExecutablePath: string,
+  options?: PathResolutionOptions,
 ): boolean {
-  const leftNormalized = normalizeExecutablePath(leftExecutablePath);
-  const rightNormalized = normalizeExecutablePath(rightExecutablePath);
+  const leftNormalized = normalizeExecutablePath(leftExecutablePath, options);
+  const rightNormalized = normalizeExecutablePath(rightExecutablePath, options);
 
-  if (process.platform === 'darwin') {
+  if (getCurrentPlatform(options) === 'darwin') {
     const leftAppIndex = leftNormalized.indexOf('.app');
     const rightAppIndex = rightNormalized.indexOf('.app');
     if (leftAppIndex >= 0 && rightAppIndex >= 0) {
@@ -175,24 +190,37 @@ export interface AntigravityProcessCandidate {
 export function isTargetAntigravityProcessCandidate(
   processItem: AntigravityProcessCandidate,
   target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
 ): boolean {
   const normalizedTarget = resolveAntigravityAppTarget(target);
   const nameLower = processItem.name.toLowerCase();
   const cmdLower = processItem.commandLine.toLowerCase();
-  const configuredClassicPath = getConfiguredAntigravityExecutablePath('classic', false);
-  const configuredIdePath = getConfiguredAntigravityExecutablePath('ide', false);
-  const strictConfiguredClassicPath = getConfiguredAntigravityExecutablePath('classic', true);
-  const strictConfiguredIdePath = getConfiguredAntigravityExecutablePath('ide', true);
+  const configuredClassicPath = getConfiguredAntigravityExecutablePath('classic', false, options);
+  const configuredIdePath = getConfiguredAntigravityExecutablePath('ide', false, options);
+  const strictConfiguredClassicPath = getConfiguredAntigravityExecutablePath(
+    'classic',
+    true,
+    options,
+  );
+  const strictConfiguredIdePath = getConfiguredAntigravityExecutablePath('ide', true, options);
   const commandExecutablePath = parseCommandLineArguments(processItem.commandLine)[0] || '';
   const executableIdentity = `${processItem.executablePath || ''} ${commandExecutablePath}`;
   const hasAntigravityProcessIdentity =
     nameLower.includes('antigravity') || executableIdentity.toLowerCase().includes('antigravity');
   const matchesClassicPath =
     Boolean((configuredClassicPath && processItem.executablePath) || '') &&
-    areExecutablePathsEquivalent(configuredClassicPath as string, processItem.executablePath || '');
+    areExecutablePathsEquivalent(
+      configuredClassicPath as string,
+      processItem.executablePath || '',
+      options,
+    );
   const matchesIdePath =
     Boolean((configuredIdePath && processItem.executablePath) || '') &&
-    areExecutablePathsEquivalent(configuredIdePath as string, processItem.executablePath || '');
+    areExecutablePathsEquivalent(
+      configuredIdePath as string,
+      processItem.executablePath || '',
+      options,
+    );
   const isIde =
     hasAntigravityIdeMarker(nameLower) ||
     hasAntigravityIdeMarker(executableIdentity) ||
@@ -233,6 +261,7 @@ export function isTargetAntigravityProcessCandidate(
 export function isConfiguredTargetExecutableProcessCandidate(
   processItem: AntigravityProcessCandidate,
   target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
 ): boolean {
   const normalizedTarget = resolveAntigravityAppTarget(target);
   const executablePath = processItem.executablePath || '';
@@ -240,14 +269,14 @@ export function isConfiguredTargetExecutableProcessCandidate(
     return false;
   }
 
-  const configuredClassicPath = getConfiguredAntigravityExecutablePath('classic', true);
-  const configuredIdePath = getConfiguredAntigravityExecutablePath('ide', true);
+  const configuredClassicPath = getConfiguredAntigravityExecutablePath('classic', true, options);
+  const configuredIdePath = getConfiguredAntigravityExecutablePath('ide', true, options);
   const matchesClassicPath =
     Boolean(configuredClassicPath) &&
-    areExecutablePathsEquivalent(configuredClassicPath as string, executablePath);
+    areExecutablePathsEquivalent(configuredClassicPath as string, executablePath, options);
   const matchesIdePath =
     Boolean(configuredIdePath) &&
-    areExecutablePathsEquivalent(configuredIdePath as string, executablePath);
+    areExecutablePathsEquivalent(configuredIdePath as string, executablePath, options);
 
   if (normalizedTarget === 'ide') {
     return matchesIdePath && !matchesClassicPath;
@@ -259,6 +288,7 @@ export function isConfiguredTargetExecutableProcessCandidate(
 export function isTargetAntigravityExecutableProcessCandidate(
   processItem: AntigravityProcessCandidate,
   target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
 ): boolean {
   const normalizedTarget = resolveAntigravityAppTarget(target);
   const oppositeTarget: AntigravityAppTarget = normalizedTarget === 'ide' ? 'classic' : 'ide';
@@ -270,18 +300,19 @@ export function isTargetAntigravityExecutableProcessCandidate(
     return false;
   }
 
-  const targetExecutablePath = getAntigravityExecutablePath(normalizedTarget);
+  const targetExecutablePath = getAntigravityExecutablePath(normalizedTarget, options);
   if (!targetExecutablePath) {
     return false;
   }
 
-  if (!areExecutablePathsEquivalent(targetExecutablePath, executablePath)) {
+  if (!areExecutablePathsEquivalent(targetExecutablePath, executablePath, options)) {
     return false;
   }
 
-  const oppositeExecutablePath = getAntigravityExecutablePath(oppositeTarget);
+  const oppositeExecutablePath = getAntigravityExecutablePath(oppositeTarget, options);
   return !(
-    oppositeExecutablePath && areExecutablePathsEquivalent(oppositeExecutablePath, executablePath)
+    oppositeExecutablePath &&
+    areExecutablePathsEquivalent(oppositeExecutablePath, executablePath, options)
   );
 }
 
@@ -323,8 +354,11 @@ function parseCommandLineArguments(commandLine: string): string[] {
   return commandLineArguments;
 }
 
-function extractUserDataDirectoryFromArgs(commandLineArguments: string[]): string | null {
-  const pathApi = getCurrentPlatformPathApi();
+function extractUserDataDirectoryFromArgs(
+  commandLineArguments: string[],
+  options?: PathResolutionOptions,
+): string | null {
+  const pathApi = getCurrentPlatformPathApi(options);
 
   for (let index = 0; index < commandLineArguments.length; index += 1) {
     const argument = commandLineArguments[index];
@@ -360,16 +394,16 @@ function resolveExecutablePathFromProcessInfo(
   return executableCandidate;
 }
 
-function readAntigravityManagerConfig(): {
+function readAntigravityManagerConfig(options?: PathResolutionOptions): {
   antigravity_executable?: unknown;
   antigravity_ide_executable?: unknown;
   antigravity_args?: unknown;
   antigravity_ide_args?: unknown;
 } | null {
-  const pathApi = getCurrentPlatformPathApi();
+  const pathApi = getCurrentPlatformPathApi(options);
   const configPaths = [
-    pathApi.join(getAgentDir(), CONFIG_FILENAME),
-    pathApi.join(getAppDataDir(), CONFIG_FILENAME),
+    pathApi.join(getAgentDir(options), CONFIG_FILENAME),
+    pathApi.join(getAppDataDir(undefined, options), CONFIG_FILENAME),
   ];
 
   for (const configPath of configPaths) {
@@ -409,7 +443,7 @@ let runningProcessCache: {
   processes: RunningAntigravityProcess[];
 } | null = null;
 
-interface RefreshProcessCacheOptions {
+interface RefreshProcessCacheOptions extends PathResolutionOptions {
   includeAllProcesses?: boolean;
 }
 
@@ -477,7 +511,10 @@ export async function refreshAntigravityProcessCache(
 
       for (const processInfo of matches) {
         const runningProcess = processInfoToRunningProcess(processInfo);
-        if (runningProcess.pid > 0 && isTargetAntigravityProcessCandidate(runningProcess, target)) {
+        if (
+          runningProcess.pid > 0 &&
+          isTargetAntigravityProcessCandidate(runningProcess, target, options)
+        ) {
           processMap.set(runningProcess.pid, runningProcess);
         }
       }
@@ -512,16 +549,20 @@ function getRunningAntigravityProcesses(
   return [];
 }
 
-function getUserDataDirFromRunningProcess(target?: AntigravityAppTarget | null): string | null {
+function getUserDataDirFromRunningProcess(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): string | null {
   const configuredUserDataDir = extractUserDataDirectoryFromArgs(
-    getConfiguredAntigravityArgs(target),
+    getConfiguredAntigravityArgs(target, options),
+    options,
   );
   if (configuredUserDataDir && fs.existsSync(configuredUserDataDir)) {
     return configuredUserDataDir;
   }
 
   for (const commandLineArguments of getAntigravityArgsFromRunningProcess(target)) {
-    const userDataDir = extractUserDataDirectoryFromArgs(commandLineArguments);
+    const userDataDir = extractUserDataDirectoryFromArgs(commandLineArguments, options);
     if (userDataDir && fs.existsSync(userDataDir)) {
       return userDataDir;
     }
@@ -554,8 +595,11 @@ export function getAntigravityLaunchArgsFromRunningProcess(
   return getAntigravityArgsFromRunningProcess(target)[0]?.slice(1) || [];
 }
 
-export function getConfiguredAntigravityArgs(target?: AntigravityAppTarget | null): string[] {
-  const rawConfig = readAntigravityManagerConfig();
+export function getConfiguredAntigravityArgs(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): string[] {
+  const rawConfig = readAntigravityManagerConfig(options);
   const configKey =
     resolveAntigravityAppTarget(target) === 'ide' ? 'antigravity_ide_args' : 'antigravity_args';
   const configuredArgs = rawConfig?.[configKey];
@@ -570,8 +614,9 @@ export function getConfiguredAntigravityArgs(target?: AntigravityAppTarget | nul
 function getConfiguredAntigravityExecutablePath(
   target?: AntigravityAppTarget | null,
   requireExists = true,
+  options?: PathResolutionOptions,
 ): string | null {
-  const rawConfig = readAntigravityManagerConfig();
+  const rawConfig = readAntigravityManagerConfig(options);
   const configKey =
     resolveAntigravityAppTarget(target) === 'ide'
       ? 'antigravity_ide_executable'
@@ -629,16 +674,19 @@ function pushExistingUserDataStoragePaths(
   }
 }
 
-function getPortableUserDataDir(target?: AntigravityAppTarget | null): string | null {
-  const executablePath = getAntigravityExecutablePath(target);
+function getPortableUserDataDir(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): string | null {
+  const executablePath = getAntigravityExecutablePath(target, options);
   if (!executablePath) {
     return null;
   }
 
-  const pathApi = getCurrentPlatformPathApi();
+  const pathApi = getCurrentPlatformPathApi(options);
   const userDataDir = pathApi.join(pathApi.dirname(executablePath), 'data', 'user-data');
 
-  if (process.platform !== 'win32') {
+  if (getCurrentPlatform(options) !== 'win32') {
     try {
       fs.accessSync(userDataDir, fs.constants.W_OK);
     } catch {
@@ -649,16 +697,19 @@ function getPortableUserDataDir(target?: AntigravityAppTarget | null): string | 
   return userDataDir;
 }
 
-export function getAppDataDir(target?: AntigravityAppTarget | null): string {
+export function getAppDataDir(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): string {
   const home = os.homedir();
   const folderName = getAntigravityAppFolderName(target);
 
-  if (isWsl()) {
+  if (resolveIsWsl(options)) {
     const winUser = getWindowsUser();
     return `/mnt/c/Users/${winUser}/AppData/Roaming/${folderName}`;
   }
 
-  switch (process.platform) {
+  switch (getCurrentPlatform(options)) {
     case 'darwin':
       return path.posix.join(home, 'Library', 'Application Support', folderName);
     case 'win32':
@@ -673,30 +724,38 @@ export function getAppDataDir(target?: AntigravityAppTarget | null): string {
   }
 }
 
-export function getAgentDir(): string {
-  return getCurrentPlatformPathApi().join(os.homedir(), '.antigravity-agent');
+export function getAgentDir(options?: PathResolutionOptions): string {
+  return getCurrentPlatformPathApi(options).join(os.homedir(), '.antigravity-agent');
 }
 
-export function getAccountsFilePath(): string {
-  return getCurrentPlatformPathApi().join(getAgentDir(), 'antigravity_accounts.json');
+export function getAccountsFilePath(options?: PathResolutionOptions): string {
+  return getCurrentPlatformPathApi(options).join(getAgentDir(options), 'antigravity_accounts.json');
 }
 
-export function getBackupsDir(): string {
-  return getCurrentPlatformPathApi().join(getAgentDir(), 'backups');
+export function getBackupsDir(options?: PathResolutionOptions): string {
+  return getCurrentPlatformPathApi(options).join(getAgentDir(options), 'backups');
 }
 
-export function getCloudAccountsDbPath(): string {
-  return getCurrentPlatformPathApi().join(getAgentDir(), 'cloud_accounts.db');
+/** Directory holding proxy state that has to survive an app restart. */
+export function getProxyStateDir(options?: PathResolutionOptions): string {
+  return getCurrentPlatformPathApi(options).join(getAgentDir(options), 'proxy-state');
 }
 
-export function getAntigravityDbPaths(target?: AntigravityAppTarget | null): string[] {
-  const appData = getAppDataDir(target);
+export function getCloudAccountsDbPath(options?: PathResolutionOptions): string {
+  return getCurrentPlatformPathApi(options).join(getAgentDir(options), 'cloud_accounts.db');
+}
+
+export function getAntigravityDbPaths(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): string[] {
+  const appData = getAppDataDir(target, options);
   const paths: string[] = [];
   const home = os.homedir();
   const folderName = getAntigravityAppFolderName(target);
-  const pathApi = getCurrentPlatformPathApi();
-  const userDataDir = getUserDataDirFromRunningProcess(target);
-  const portableUserDataDir = getPortableUserDataDir(target);
+  const pathApi = getCurrentPlatformPathApi(options);
+  const userDataDir = getUserDataDirFromRunningProcess(target, options);
+  const portableUserDataDir = getPortableUserDataDir(target, options);
 
   if (userDataDir) {
     pushExistingUserDataDbPaths(paths, userDataDir, pathApi);
@@ -706,19 +765,19 @@ export function getAntigravityDbPaths(target?: AntigravityAppTarget | null): str
     pushExistingUserDataDbPaths(paths, portableUserDataDir, pathApi);
   }
 
-  if (isWsl()) {
+  if (resolveIsWsl(options)) {
     // Assume standard structure: AppData/Roaming/Antigravity/User/globalStorage/state.vscdb
     // appData is already resolved to Roaming/Antigravity in getAppDataDir()
     pushUserDataDbPaths(paths, appData, path.posix);
     return paths;
   }
 
-  if (process.platform === 'linux') {
+  if (getCurrentPlatform(options) === 'linux') {
     pushUserDataDbPaths(paths, appData, path.posix);
     return paths;
   }
 
-  if (process.platform === 'darwin') {
+  if (getCurrentPlatform(options) === 'darwin') {
     // Standard path
     appendUniquePath(
       paths,
@@ -750,14 +809,17 @@ export function getAntigravityDbPaths(target?: AntigravityAppTarget | null): str
   return paths;
 }
 
-export function getAntigravityStoragePaths(target?: AntigravityAppTarget | null): string[] {
-  const appData = getAppDataDir(target);
+export function getAntigravityStoragePaths(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): string[] {
+  const appData = getAppDataDir(target, options);
   const paths: string[] = [];
   const home = os.homedir();
   const folderName = getAntigravityAppFolderName(target);
-  const pathApi = getCurrentPlatformPathApi();
-  const userDataDir = getUserDataDirFromRunningProcess(target);
-  const portableUserDataDir = getPortableUserDataDir(target);
+  const pathApi = getCurrentPlatformPathApi(options);
+  const userDataDir = getUserDataDirFromRunningProcess(target, options);
+  const portableUserDataDir = getPortableUserDataDir(target, options);
 
   if (userDataDir) {
     pushExistingUserDataStoragePaths(paths, userDataDir, pathApi);
@@ -767,17 +829,17 @@ export function getAntigravityStoragePaths(target?: AntigravityAppTarget | null)
     pushExistingUserDataStoragePaths(paths, portableUserDataDir, pathApi);
   }
 
-  if (isWsl()) {
+  if (resolveIsWsl(options)) {
     pushUserDataStoragePaths(paths, appData, path.posix);
     return paths;
   }
 
-  if (process.platform === 'linux') {
+  if (getCurrentPlatform(options) === 'linux') {
     pushUserDataStoragePaths(paths, appData, path.posix);
     return paths;
   }
 
-  if (process.platform === 'darwin') {
+  if (getCurrentPlatform(options) === 'darwin') {
     appendUniquePath(
       paths,
       path.posix.join(
@@ -803,18 +865,27 @@ export function getAntigravityStoragePaths(target?: AntigravityAppTarget | null)
   return paths;
 }
 
-export function getAntigravityStoragePath(target?: AntigravityAppTarget | null): string {
-  const paths = getAntigravityStoragePaths(target);
+export function getAntigravityStoragePath(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): string {
+  const paths = getAntigravityStoragePaths(target, options);
   return paths.length > 0 ? paths[0] : '';
 }
 
 // Keep for backward compatibility if needed, but prefer getAntigravityDbPaths
-export function getAntigravityDbPath(target?: AntigravityAppTarget | null): string {
-  const paths = getAntigravityDbPaths(target);
+export function getAntigravityDbPath(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): string {
+  const paths = getAntigravityDbPaths(target, options);
   return paths.length > 0 ? paths[0] : '';
 }
 
-export function getAntigravityExecutablePath(target?: AntigravityAppTarget | null): string {
+export function getAntigravityExecutablePath(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): string {
   const resolvedTarget = resolveAntigravityAppTarget(target);
   const executableName = getAntigravityAppFolderName(target);
   const runningExecutablePath = getExecutablePathFromRunningProcess(target);
@@ -823,17 +894,21 @@ export function getAntigravityExecutablePath(target?: AntigravityAppTarget | nul
     return runningExecutablePath;
   }
 
-  const configuredExecutablePath = getConfiguredAntigravityExecutablePath(resolvedTarget);
+  const configuredExecutablePath = getConfiguredAntigravityExecutablePath(
+    resolvedTarget,
+    undefined,
+    options,
+  );
   if (configuredExecutablePath) {
     return configuredExecutablePath;
   }
 
-  if (isWsl()) {
+  if (resolveIsWsl(options)) {
     const winUser = getWindowsUser();
     return `/mnt/c/Users/${winUser}/AppData/Local/Programs/${executableName}/${executableName}.exe`;
   }
 
-  switch (process.platform) {
+  switch (getCurrentPlatform(options)) {
     case 'darwin':
       return `/Applications/${executableName}.app/Contents/MacOS/${executableName}`;
     case 'win32': {

@@ -7,7 +7,8 @@ import {
   refreshAntigravityProcessCache,
 } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
-import { Account, AccountBackupData, AntigravityAppTarget } from '@/modules/account/types';
+import type { Account, AccountBackupData } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type {
   DeviceProfile,
   DeviceProfilesSnapshot,
@@ -18,7 +19,7 @@ import {
   extractCredentialStoreTokenFromBackup,
   restoreAccount as dbRestore,
   getCurrentAccountInfo,
-} from '@/shared/persistence/database/handler';
+} from '@/modules/account/persistence/antigravity-state-database';
 import { CredentialStoreInjectionAdapter } from '@/modules/cloud-account/persistence/credential-store-injection-adapter';
 import { writeAntigravityCredentialStoreToken } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
 import {
@@ -33,6 +34,10 @@ import {
 } from '@/modules/identity-profile/ipc/handler';
 import { runWithSwitchGuard } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { executeSwitchFlow } from '@/modules/antigravity-runtime/switch/switchFlow';
+import {
+  loadAccountIndex,
+  saveAccountIndex,
+} from '@/modules/account/persistence/account-index-store';
 import { shell } from 'electron';
 import { withTimingTrace } from '@/shared/observability/timingTrace';
 
@@ -76,17 +81,7 @@ function bindDeviceProfileToAccount(
  * @returns {AccountIndex} The accounts index.
  */
 function loadAccountsIndex(): AccountIndex {
-  const filePath = getAccountsFilePath();
-  if (!fs.existsSync(filePath)) {
-    return {};
-  }
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(content);
-  } catch (error) {
-    logger.error('Failed to load accounts index', error);
-    return {};
-  }
+  return loadAccountIndex(getAccountsFilePath());
 }
 
 /**
@@ -95,17 +90,7 @@ function loadAccountsIndex(): AccountIndex {
  * @throws {Error} If the accounts index cannot be saved.
  */
 function saveAccountsIndex(accounts: AccountIndex): void {
-  const filePath = getAccountsFilePath();
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  try {
-    fs.writeFileSync(filePath, JSON.stringify(accounts, null, 2));
-  } catch (error) {
-    logger.error('Failed to save accounts index', error);
-    throw error;
-  }
+  saveAccountIndex(getAccountsFilePath(), accounts);
 }
 
 /**

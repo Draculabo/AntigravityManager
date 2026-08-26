@@ -9,7 +9,7 @@ import {
   GRID_LAYOUT_CLASSES,
   type GridLayout,
 } from '@/modules/cloud-account/components/CloudAccountList.constants';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 
 interface CloudAccountGridProps {

@@ -8,6 +8,7 @@ import {
   GroundingMetadata,
 } from './types';
 import { decodeSignature } from './signature-utils';
+import { toAnthropicMessageId } from './anthropic-message-id';
 import { SignatureStore } from './SignatureStore';
 
 /**
@@ -61,9 +62,6 @@ class NonStreamingProcessor {
 
   private processPart(part: GeminiPart) {
     const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature) || null;
-    if (signature) {
-      SignatureStore.store(signature, this.signatureSessionKey, this.signatureMessageCount);
-    }
 
     // 1. Handle FunctionCall
     if (part.functionCall) {
@@ -85,6 +83,15 @@ class NonStreamingProcessor {
       const fc = part.functionCall;
       const toolId = fc.id || `${fc.name}-${uuidv4()}`;
 
+      if (signature) {
+        SignatureStore.store(
+          signature,
+          this.signatureSessionKey,
+          this.signatureMessageCount,
+          toolId,
+        );
+      }
+
       const toolUse: ContentBlock = {
         type: 'tool_use',
         id: toolId,
@@ -95,6 +102,10 @@ class NonStreamingProcessor {
 
       this.contentBlocks.push(toolUse);
       return;
+    }
+
+    if (signature) {
+      SignatureStore.store(signature, this.signatureSessionKey, this.signatureMessageCount);
     }
 
     // 2. Handle Text / Thinking
@@ -259,7 +270,7 @@ class NonStreamingProcessor {
     };
 
     return {
-      id: geminiResponse.responseId || `msg_${uuidv4()}`,
+      id: toAnthropicMessageId(geminiResponse.responseId),
       type: 'message',
       role: 'assistant',
       model: geminiResponse.modelVersion || '',

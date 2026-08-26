@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as handler from '@/shared/persistence/database/handler';
+import * as handler from '@/modules/account/persistence/antigravity-state-database';
 
 let writes: Record<string, string> = {};
 interface MockOrm {

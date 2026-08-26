@@ -11,7 +11,7 @@ import {
   type OAuthClientDescriptor,
 } from '@/modules/cloud-account/actions/cloud';
 import { CloudAccount } from '@/modules/cloud-account/types';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 export const QUERY_KEYS = {
   cloudAccounts: ['cloudAccounts'],

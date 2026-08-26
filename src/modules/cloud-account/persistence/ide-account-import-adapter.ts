@@ -3,7 +3,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { isObjectLike, isString } from 'lodash-es';
-import { type AntigravityAppTarget, resolveAntigravityAppTarget } from '@/modules/account/types';
+import {
+  type AntigravityAppTarget,
+  resolveAntigravityAppTarget,
+} from '@/shared/platform/antigravityAppTarget';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { logger } from '@/shared/logging/logger';
