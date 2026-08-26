@@ -59,7 +59,7 @@ describe('gateway server startup', () => {
   it('reports EADDRINUSE as an expected startup failure and cleans up the server', async () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const listen = vi.fn().mockRejectedValue(
-      Object.assign(new Error('listen EADDRINUSE: address already in use 0.0.0.0:8045'), {
+      Object.assign(new Error('listen EADDRINUSE: address already in use 127.0.0.1:8045'), {
         code: 'EADDRINUSE',
       }),
     );
@@ -78,6 +78,7 @@ describe('gateway server startup', () => {
       port: 8045,
       message: 'Port 8045 is already in use',
     });
+    expect(listen).toHaveBeenCalledWith(8045, '127.0.0.1');
     expect(close).toHaveBeenCalledTimes(1);
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'NestJS Proxy Server could not start: Port 8045 is already in use',
@@ -95,11 +96,12 @@ describe('gateway server startup', () => {
     });
   });
 
-  it('returns the actual configured port when startup succeeds', async () => {
+  it('keeps an open gateway on loopback without browser CORS access', async () => {
     const listen = vi.fn().mockResolvedValue(undefined);
+    const enableCors = vi.fn();
     mockCreate.mockResolvedValue({
       register: vi.fn().mockResolvedValue(undefined),
-      enableCors: vi.fn(),
+      enableCors,
       listen,
       close: vi.fn().mockResolvedValue(undefined),
       get: vi.fn(() => ({
@@ -118,7 +120,8 @@ describe('gateway server startup', () => {
       port: 8123,
       base_url: 'http://localhost:8123',
     });
-    expect(listen).toHaveBeenCalledWith(8123, '0.0.0.0');
+    expect(listen).toHaveBeenCalledWith(8123, '127.0.0.1');
+    expect(enableCors).not.toHaveBeenCalled();
     expect(mockAttachResponsesWebSocketServer).toHaveBeenCalledOnce();
     // The raw media parser is what makes Google's simple file upload possible,
     // and it only applies to media families so no existing route changes.
@@ -135,5 +138,31 @@ describe('gateway server startup', () => {
       port: 8123,
       base_url: 'http://localhost:8123',
     });
+  });
+
+  it('allows LAN binding only when an API key is configured', async () => {
+    const listen = vi.fn().mockResolvedValue(undefined);
+    const enableCors = vi.fn();
+    mockCreate.mockResolvedValue({
+      register: vi.fn().mockResolvedValue(undefined),
+      enableCors,
+      listen,
+      close: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(() => ({
+        getAccountCount: () => 0,
+      })),
+      getHttpServer: vi.fn(() => ({})),
+    });
+
+    await expect(
+      bootstrapNestServer({
+        ...DEFAULT_APP_CONFIG.proxy,
+        port: 8124,
+        api_key: 'test-api-key',
+      }),
+    ).resolves.toMatchObject({ success: true, port: 8124 });
+
+    expect(listen).toHaveBeenCalledWith(8124, '0.0.0.0');
+    expect(enableCors).toHaveBeenCalledOnce();
   });
 });

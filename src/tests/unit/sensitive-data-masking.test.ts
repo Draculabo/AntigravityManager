@@ -56,6 +56,28 @@ describe('sensitive data masking', () => {
       expect(sanitizeObject('not valid json ]')).toBe('not valid json ]');
     });
 
+    it('redacts credentials embedded in logged proxy URLs', () => {
+      expect(
+        sanitizeObject(
+          'http=http://alice:secret@proxy.example:8080 https=socks5://bob:p%40ss@proxy.example:1080',
+        ),
+      ).toBe(
+        'http=http://[REDACTED]@proxy.example:8080 https=socks5://[REDACTED]@proxy.example:1080',
+      );
+    });
+
+    it('redacts proxy URL credentials containing a raw at sign', () => {
+      expect(sanitizeObject('proxy=socks5://alice:secr@et@proxy.example:1080')).toBe(
+        'proxy=socks5://[REDACTED]@proxy.example:1080',
+      );
+    });
+
+    it('preserves URLs that do not contain userinfo', () => {
+      expect(sanitizeObject('proxy=https://proxy.example:8443/path')).toBe(
+        'proxy=https://proxy.example:8443/path',
+      );
+    });
+
     it('redacts inline image data URLs while preserving safe metadata', () => {
       const raw = `prefix data:image/png;base64,${'QUJD'.repeat(160)} suffix`;
       const sanitized = sanitizeObject(raw);
