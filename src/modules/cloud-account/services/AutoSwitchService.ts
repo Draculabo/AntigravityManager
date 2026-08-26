@@ -90,9 +90,17 @@ export class AutoSwitchService {
     // Get current active account for the target
     const accounts = await CloudAccountRepo.getAccounts();
     const activeAccountId = CloudAccountSettingsStore.getActiveAccountIdForTarget(appTarget);
-    const currentAccount = activeAccountId
-      ? accounts.find((a) => a.id === activeAccountId)
-      : accounts.find((a) => a.is_active);
+    const targetAccount = activeAccountId
+      ? accounts.find((account) => account.id === activeAccountId)
+      : undefined;
+
+    if (activeAccountId && !targetAccount) {
+      logger.warn(
+        `AutoSwitch: Active account ${activeAccountId} for target ${appTarget ?? 'default'} no longer exists; falling back to the global active account.`,
+      );
+    }
+
+    const currentAccount = targetAccount ?? accounts.find((account) => account.is_active);
 
     // If no active account, maybe we should pick one?
     if (!currentAccount) return false;
