@@ -12,7 +12,7 @@ Status: implemented
 
 `GeminiModule` imports `BatchModule` and injects `BatchService` for `batchGenerateContent` submission. `ProxyModule` owns a `BatchExecutionTargetBinder`; during application bootstrap it binds the existing OpenAI, Anthropic and Gemini execution methods to the Batch runner through `BatchService`.
 
-The runner still accepts a target in its constructor for focused tests. Production binding happens before the application accepts requests, and lazy runner resumption therefore continues to run against the same protocol execution methods as interactive requests.
+The runner receives its target only through `BatchService.bindExecutionTarget`, which production composition calls before the application accepts requests. Focused tests use the same binding API, so lazy runner resumption continues to run against the same protocol execution methods as interactive requests.
 
 ## Alternatives considered
 

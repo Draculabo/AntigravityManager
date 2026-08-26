@@ -32,7 +32,9 @@ function createTarget(handler: (model: string, request: unknown) => Promise<unkn
 }
 
 function createRunner(target: ReturnType<typeof createTarget>, maxConcurrency = 2) {
-  return new BatchRunnerService({ maxConcurrency }, target as unknown as BatchExecutionTarget);
+  const runner = new BatchRunnerService({ maxConcurrency });
+  runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
+  return runner;
 }
 
 function geminiReply(text: string) {

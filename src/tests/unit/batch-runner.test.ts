@@ -53,10 +53,9 @@ function createRunner(
   target: ReturnType<typeof createTarget>,
   maxConcurrency = 1,
 ): BatchRunnerService {
-  return new BatchRunnerService(
-    { ...(filePath ? { filePath } : {}), maxConcurrency },
-    target as unknown as BatchExecutionTarget,
-  );
+  const runner = new BatchRunnerService({ ...(filePath ? { filePath } : {}), maxConcurrency });
+  runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
+  return runner;
 }
 
 function anthropicRequests(count: number) {

@@ -103,14 +103,17 @@ function createSharedTarget() {
   } satisfies Record<keyof BatchExecutionTarget, ReturnType<typeof vi.fn>>;
 }
 
+function createRunner(target: BatchExecutionTarget, maxConcurrency: number): BatchRunnerService {
+  const runner = new BatchRunnerService({ maxConcurrency });
+  runner.setExecutionTarget(target);
+  return runner;
+}
+
 describe('one job, three dialects', () => {
   it('reaches the same runner and answers each dialect in its own vendor envelope', async () => {
     const files = createFileStore();
     const target = createSharedTarget();
-    const runner = new BatchRunnerService(
-      { maxConcurrency: 3 },
-      target as unknown as BatchExecutionTarget,
-    );
+    const runner = createRunner(target as unknown as BatchExecutionTarget, 3);
     const batches = new BatchService(runner, new FilesService(files));
     const openai = new OpenAIBatchesController(batches);
     const anthropic = new AnthropicMessageBatchesController(batches);
@@ -246,16 +249,7 @@ function baseJob(overrides: Partial<BatchJobRecord>): BatchJobRecord {
   };
 }
 
-/**
- * Every value `BatchStatus` can hold, written out once so the mapping tests
- * below can be driven from it. `BatchStatus` itself has no runtime
- * representation (it is erased at compile time), so this list is the closest
- * thing to "the enum" a test can iterate -- but it is not left to silently go
- * stale: `_ExhaustiveBatchStatusCheck` below fails `tsc --noEmit` the moment
- * `BatchStatus` gains a member this list does not also carry, because a
- * mapped-but-unlisted status would make `_MissingStatus` a non-`never` type
- * that cannot be assigned `true`.
- */
+/** Runtime status list, kept exhaustive against the erased `BatchStatus` union below. */
 const ALL_BATCH_STATUSES = [
   'validating',
   'in_progress',
@@ -368,10 +362,7 @@ describe("errors stay in the caller's dialect", () => {
 
     // OpenAI
     const openaiTarget = createFailingTarget('handleChatCompletions');
-    const openaiRunner = new BatchRunnerService(
-      { maxConcurrency: 1 },
-      openaiTarget as unknown as BatchExecutionTarget,
-    );
+    const openaiRunner = createRunner(openaiTarget as unknown as BatchExecutionTarget, 1);
     const openaiController = new OpenAIBatchesController(
       new BatchService(openaiRunner, new FilesService(files)),
     );
@@ -399,10 +390,7 @@ describe("errors stay in the caller's dialect", () => {
 
     // Anthropic
     const anthropicTarget = createFailingTarget('handleAnthropicMessages');
-    const anthropicRunner = new BatchRunnerService(
-      { maxConcurrency: 1 },
-      anthropicTarget as unknown as BatchExecutionTarget,
-    );
+    const anthropicRunner = createRunner(anthropicTarget as unknown as BatchExecutionTarget, 1);
     const anthropicController = new AnthropicMessageBatchesController(
       new BatchService(anthropicRunner),
     );
@@ -432,10 +420,7 @@ describe("errors stay in the caller's dialect", () => {
 
     // Gemini
     const geminiTarget = createFailingTarget('handleGeminiGenerateContent');
-    const geminiRunner = new BatchRunnerService(
-      { maxConcurrency: 1 },
-      geminiTarget as unknown as BatchExecutionTarget,
-    );
+    const geminiRunner = createRunner(geminiTarget as unknown as BatchExecutionTarget, 1);
     const geminiOperations = new GeminiBatchesController(new BatchService(geminiRunner));
     const geminiCreateReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
@@ -465,10 +450,7 @@ describe("errors stay in the caller's dialect", () => {
   it('a rejected submission answers in the envelope of the surface that was called', async () => {
     const files = createFileStore();
     const target = createSharedTarget();
-    const runner = new BatchRunnerService(
-      { maxConcurrency: 1 },
-      target as unknown as BatchExecutionTarget,
-    );
+    const runner = createRunner(target as unknown as BatchExecutionTarget, 1);
     const batches = new BatchService(runner, new FilesService(files));
     const openaiController = new OpenAIBatchesController(batches);
     const anthropicController = new AnthropicMessageBatchesController(batches);
@@ -523,10 +505,7 @@ describe("errors stay in the caller's dialect", () => {
   it("answers a batch id created by a different dialect with 404 in the calling surface's own envelope", async () => {
     const files = createFileStore();
     const target = createSharedTarget();
-    const runner = new BatchRunnerService(
-      { maxConcurrency: 1 },
-      target as unknown as BatchExecutionTarget,
-    );
+    const runner = createRunner(target as unknown as BatchExecutionTarget, 1);
     const batches = new BatchService(runner, new FilesService(files));
     const openaiController = new OpenAIBatchesController(batches);
     const anthropicController = new AnthropicMessageBatchesController(batches);

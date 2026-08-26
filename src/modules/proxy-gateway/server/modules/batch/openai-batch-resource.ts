@@ -66,18 +66,7 @@ export function toOpenAIBatchObject(job: BatchJobRecord): OpenAIBatchObject {
   };
 }
 
-/**
- * Validates the `endpoint` a batch was created for.
- *
- * Only `/v1/chat/completions` is servable on this surface today; see the
- * comment on {@link OPENAI_SERVABLE_BATCH_ENDPOINT}'s source for why
- * `/v1/responses` is not offered yet, and why `/v1/embeddings` is called out
- * by name below rather than folded into a generic message: there is no
- * embedding RPC on this transport at all, established from the vendor's
- * protobuf descriptors and corroborated by `gemini-cli` implementing
- * `embedContent()` as a `throw`. It cannot be served in a batch because it
- * cannot be served at all.
- */
+/** Validates that an OpenAI batch targets the one endpoint this runner serves. */
 export function requireServableEndpoint(endpoint: unknown): string {
   if (typeof endpoint !== 'string' || !endpoint.trim()) {
     throw BatchJobError.invalid('endpoint is required', 'endpoint');

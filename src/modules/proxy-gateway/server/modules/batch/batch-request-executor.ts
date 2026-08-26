@@ -16,22 +16,12 @@ import {
   type BatchRequestRecord,
 } from './batch-job.types';
 
-/** DI token for {@link BatchExecutionTarget}, resolved by `batch.module.ts`. */
-export const BATCH_EXECUTION_TARGET = Symbol('BATCH_EXECUTION_TARGET');
-
 /**
  * The slice of protocol-service behaviour a batch needs to run one request.
  *
- * This shape is deliberately the same three methods `ProxyService` already
- * exposes, but the executor never imports `ProxyService` (or any of
- * `OpenAIService` / `AnthropicService` / `GeminiService`) directly: it depends
- * on this interface through {@link BATCH_EXECUTION_TARGET} instead, so it stays
- * a protocol-neutral module rather than a fourth cross-protocol service, and so
- * a test can hand it a fake without constructing the real proxy stack. Batches
- * go through exactly the same handlers interactive requests use, so account
- * selection, model routing, retries and rate-limit tracking all apply
- * unchanged -- there is no second path to upstream and no bypass of the lease
- * machinery.
+ * The gateway binds the existing protocol handlers during bootstrap. Batch
+ * execution therefore follows the same account-selection, routing, retry, and
+ * rate-limit path as interactive requests.
  */
 export interface BatchExecutionTarget {
   handleChatCompletions(

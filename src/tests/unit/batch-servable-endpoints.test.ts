@@ -22,7 +22,9 @@ function createTarget(handler: (dialect: string, request: unknown) => Promise<un
 }
 
 function createRunner(target: ReturnType<typeof createTarget>): BatchRunnerService {
-  return new BatchRunnerService({ maxConcurrency: 1 }, target as unknown as BatchExecutionTarget);
+  const runner = new BatchRunnerService({ maxConcurrency: 1 });
+  runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
+  return runner;
 }
 
 describe('SERVABLE_BATCH_ENDPOINTS', () => {
@@ -113,13 +115,6 @@ describe('SERVABLE_BATCH_ENDPOINTS', () => {
     );
   });
 
-  /**
-   * `/v1/responses` is a declared partial-compatibility boundary, not an oversight, so the refusal
-   * is pinned rather than left to the shape of the constant. Serving it in a batch needs the
-   * Responses request/response conversion and its session resolution, both of which live inside
-   * `OpenAIOperations` today; lifting the limitation means moving that pipeline into the protocol
-   * module first, which is a separate change with its own review.
-   */
   it('refuses an OpenAI batch aimed at /v1/responses, naming what it can serve', async () => {
     const { requireServableEndpoint } =
       await import('@/modules/proxy-gateway/server/modules/batch/openai-batch-resource');
@@ -135,8 +130,6 @@ describe('SERVABLE_BATCH_ENDPOINTS', () => {
   });
 
   it('refuses to dispatch a job that already carries /v1/responses', async () => {
-    // Creation is one gate, dispatch is the other: a record that reached the runner some other
-    // way -- a store written by an older build, a resumed job -- must not slip past it either.
     const { executeBatchRequest } =
       await import('@/modules/proxy-gateway/server/modules/batch/batch-request-executor');
     const target = createTarget(async () => ({ id: 'chatcmpl-1', choices: [] }));

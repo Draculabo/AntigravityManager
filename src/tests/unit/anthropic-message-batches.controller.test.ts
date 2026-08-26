@@ -30,10 +30,8 @@ function createTarget(handler: (request: unknown) => Promise<unknown>) {
 }
 
 function createController(target: ReturnType<typeof createTarget>, maxConcurrency = 2) {
-  const runner = new BatchRunnerService(
-    { maxConcurrency },
-    target as unknown as BatchExecutionTarget,
-  );
+  const runner = new BatchRunnerService({ maxConcurrency });
+  runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
   return { controller: new AnthropicMessageBatchesController(new BatchService(runner)), runner };
 }
 
@@ -286,10 +284,8 @@ describe('AnthropicMessageBatchesController', () => {
 
   it('expires a batch that outlives its completion window', () => {
     const target = createTarget(async () => reply('unused'));
-    const runner = new BatchRunnerService(
-      { maxConcurrency: 1 },
-      target as unknown as BatchExecutionTarget,
-    );
+    const runner = new BatchRunnerService({ maxConcurrency: 1 });
+    runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
     const controller = new AnthropicMessageBatchesController(new BatchService(runner));
 
     const created = runner.create(
@@ -327,10 +323,9 @@ describe('AnthropicMessageBatchesController', () => {
 
     function makeRunner() {
       const target = createTarget(async () => reply('unused'));
-      return new BatchRunnerService(
-        { maxConcurrency: 1 },
-        target as unknown as BatchExecutionTarget,
-      );
+      const runner = new BatchRunnerService({ maxConcurrency: 1 });
+      runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
+      return runner;
     }
 
     it('walks forward with after_id, reaches the terminal page, and 404s on an unknown after_id instead of restarting at page one', () => {

@@ -55,10 +55,8 @@ function createController(
   files?: FileContentStore,
   maxConcurrency = 2,
 ) {
-  const runner = new BatchRunnerService(
-    { maxConcurrency },
-    target as unknown as BatchExecutionTarget,
-  );
+  const runner = new BatchRunnerService({ maxConcurrency });
+  runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
   const controller = new OpenAIBatchesController(
     new BatchService(runner, files ? new FilesService(files) : undefined),
   );
@@ -308,10 +306,8 @@ describe('OpenAIBatchesController', () => {
   it('expires a batch that outlives its completion window before anything ran', () => {
     const files = createFileStore();
     const target = createTarget(async () => ({ id: 'unused' }));
-    const runner = new BatchRunnerService(
-      { maxConcurrency: 1 },
-      target as unknown as BatchExecutionTarget,
-    );
+    const runner = new BatchRunnerService({ maxConcurrency: 1 });
+    runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
     const controller = new OpenAIBatchesController(
       new BatchService(runner, new FilesService(files)),
     );
@@ -347,10 +343,8 @@ describe('OpenAIBatchesController', () => {
 
     it('walks a real page, reaches the terminal page, and answers an unknown `after` with an empty terminal page instead of restarting at page one', () => {
       const target = createTarget(async () => ({ id: 'unused' }));
-      const runner = new BatchRunnerService(
-        { maxConcurrency: 1 },
-        target as unknown as BatchExecutionTarget,
-      );
+      const runner = new BatchRunnerService({ maxConcurrency: 1 });
+      runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
       const controller = new OpenAIBatchesController(new BatchService(runner));
 
       const base = Date.now();

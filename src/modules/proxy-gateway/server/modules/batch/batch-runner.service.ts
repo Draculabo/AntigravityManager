@@ -6,7 +6,6 @@ import { logger } from '@/shared/logging/logger';
 import { DurableRecordStore } from '@/shared/persistence/durable-record-store';
 
 import {
-  BATCH_EXECUTION_TARGET,
   executeBatchRequest,
   toBatchRequestError,
   type BatchExecutionTarget,
@@ -72,15 +71,11 @@ export class BatchRunnerService {
   private readonly ttlMs: number;
   private readonly finalizers = new Map<BatchDialect, BatchFinalizer>();
   private readonly settled = new Set<Promise<void>>();
+  private target?: BatchExecutionTarget;
   private running = 0;
   private resumed = false;
 
-  constructor(
-    @Optional() @Inject(BATCH_RUNNER_OPTIONS) options?: BatchRunnerOptions,
-    @Optional()
-    @Inject(BATCH_EXECUTION_TARGET)
-    private target?: BatchExecutionTarget,
-  ) {
+  constructor(@Optional() @Inject(BATCH_RUNNER_OPTIONS) options?: BatchRunnerOptions) {
     this.maxConcurrency = Math.max(1, options?.maxConcurrency ?? DEFAULT_BATCH_CONCURRENCY);
     this.maxBatches = Math.max(1, options?.maxBatches ?? DEFAULT_MAX_BATCHES);
     this.maxRequestsPerBatch = Math.max(
