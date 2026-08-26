@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { getServerConfig } from '../../../../../server/server-config';
 import {
+  getAnthropicFamilyMappingKey,
   getDynamicForwardingTarget,
   lookupBuiltInModelMapping,
   lookupGeminiModelAlias,
@@ -32,24 +33,6 @@ export interface ModelRouteResolution {
 
 function normalizeModelId(model: string): string {
   return model.replace(/^models\//i, '').trim();
-}
-
-function resolveAnthropicFamilyMapping(
-  model: string,
-  configuredMapping: Record<string, string>,
-): string | undefined {
-  const normalizedModel = model.toLowerCase();
-  if (!normalizedModel.startsWith('claude-')) {
-    return undefined;
-  }
-
-  const familyKey =
-    normalizedModel.includes('4-5') || normalizedModel.includes('4.5')
-      ? 'claude-4.5-series'
-      : normalizedModel.includes('3-5') || normalizedModel.includes('3.5')
-        ? 'claude-3.5-series'
-        : 'claude-default';
-  return configuredMapping[familyKey];
 }
 
 @Injectable()
@@ -125,7 +108,10 @@ export class ModelRoutingService {
       };
     }
 
-    const anthropicFamilyTarget = resolveAnthropicFamilyMapping(normalizedModel, configuredMapping);
+    const anthropicFamilyKey = getAnthropicFamilyMappingKey(normalizedModel);
+    const anthropicFamilyTarget = anthropicFamilyKey
+      ? configuredMapping[anthropicFamilyKey]
+      : undefined;
     if (anthropicFamilyTarget) {
       return {
         requestedModel: model,

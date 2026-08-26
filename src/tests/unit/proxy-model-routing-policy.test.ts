@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import { setServerConfig } from '../../server/server-config';
-import { updateDynamicForwardingRules } from '@/modules/proxy-gateway/antigravity/ModelMapping';
+import {
+  getAnthropicFamilyMappingKey,
+  updateDynamicForwardingRules,
+} from '@/modules/proxy-gateway/antigravity/ModelMapping';
 
 function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   return {
@@ -14,6 +17,15 @@ function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
     },
   };
 }
+
+describe('getAnthropicFamilyMappingKey', () => {
+  it('classifies legacy Claude configuration groups centrally', () => {
+    expect(getAnthropicFamilyMappingKey('claude-sonnet-4-5-20250929')).toBe('claude-4.5-series');
+    expect(getAnthropicFamilyMappingKey('claude-3.5-sonnet')).toBe('claude-3.5-series');
+    expect(getAnthropicFamilyMappingKey('claude-sonnet-4-6')).toBe('claude-default');
+    expect(getAnthropicFamilyMappingKey('gemini-3-flash')).toBeUndefined();
+  });
+});
 
 describe('ModelRoutingService', () => {
   afterEach(() => {
