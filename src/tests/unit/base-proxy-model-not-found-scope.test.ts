@@ -3,7 +3,10 @@ import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-pro
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import type { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import type { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import type { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import type { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 
 class TestProxyService extends BaseProxyService {
   applyPenalty(accountId: string, model: string, error: unknown): Promise<void> {
@@ -13,14 +16,30 @@ class TestProxyService extends BaseProxyService {
 
 function createService() {
   const accountLeaseService = {
+    getNextToken: vi.fn(),
     markModelUnrequestable: vi.fn(),
     markFromUpstreamError: vi.fn().mockResolvedValue(undefined),
     recordParityError: vi.fn(),
+    markAsForbidden: vi.fn(),
+    markAsRateLimited: vi.fn(),
+    getRemainingRateLimitWait: vi.fn(),
+    markModelSuccess: vi.fn(),
   } as unknown as AccountLeaseService;
+  const retryPolicy = new ProxyRetryService(
+    accountLeaseService,
+    { log: vi.fn(), warn: vi.fn() },
+    proxyModelAvailabilityStore,
+  );
 
   return {
     accountLeaseService,
-    service: new TestProxyService(accountLeaseService, {} as GeminiClient),
+    service: new TestProxyService(
+      accountLeaseService,
+      {} as GeminiClient,
+      {} as GenerationConstraintsService,
+      retryPolicy,
+      {} as ModelRoutingService,
+    ),
   };
 }
 
