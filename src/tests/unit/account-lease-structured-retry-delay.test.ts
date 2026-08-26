@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AccountLeaseLimitPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-limit.policy';
+import { RateLimitTrackerService } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
 
 describe('AccountLeaseLimitPolicy structured retry delays', () => {
   it('honors an upstream retryDelay without replacing it with a quota refresh decision', async () => {
@@ -14,6 +15,7 @@ describe('AccountLeaseLimitPolicy structured retry delays', () => {
       refreshRealtimeQuotaAndReconcileLimit,
       setPreciseLockoutFromCachedQuota,
       logger,
+      rateLimitTracker: new RateLimitTrackerService(),
     });
 
     await policy.markFromUpstreamError({
@@ -37,7 +39,7 @@ describe('AccountLeaseLimitPolicy structured retry delays', () => {
     expect(setPreciseLockoutFromCachedQuota).not.toHaveBeenCalled();
     expect(policy.isRateLimited('acc-1', 'gemini-3.1-pro')).toBe(true);
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Recorded upstream limit for account acc-1'),
+      expect.stringContaining('Recorded upstream limit for account acc-1: reason=rate_limit_exceeded, wait=14s'),
     );
   });
 });
