@@ -2,7 +2,10 @@ import fs from 'fs';
 import { eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { isObjectLike, isString } from 'lodash-es';
-import { type AntigravityAppTarget, resolveAntigravityAppTarget } from '@/modules/account/types';
+import {
+  type AntigravityAppTarget,
+  resolveAntigravityAppTarget,
+} from '@/shared/platform/antigravityAppTarget';
 import {
   getAntigravityVersion,
   isCredentialStoreVersion,
@@ -102,6 +105,18 @@ function writeAuthStatusAndCleanup(db: DrizzleExecutor, account: CloudAccount): 
 
 export class CredentialStoreInjectionAdapter {
   private static versionFailureLogged = false;
+
+  private static assertTokenUsableForInjection(account: CloudAccount): void {
+    const hasRefreshToken =
+      isString(account.token.refresh_token) && account.token.refresh_token.trim().length > 0;
+    const now = Math.floor(Date.now() / 1000);
+
+    if (!hasRefreshToken && account.token.expiry_timestamp <= now) {
+      throw new Error(
+        `Cannot inject expired access token for ${account.email} without a refresh token. Please re-login.`,
+      );
+    }
+  }
 
   private static injectNewFormat(
     orm: BetterSQLite3Database<typeof drizzleSchema>,
@@ -398,6 +413,8 @@ export class CredentialStoreInjectionAdapter {
     account: CloudAccount,
     appTarget?: AntigravityAppTarget,
   ): 'credential-store' | 'sqlite' {
+    this.assertTokenUsableForInjection(account);
+
     if (this.shouldInjectTokenIntoCredentialStore(appTarget)) {
       writeAntigravityCredentialStoreToken(account.token);
       return 'credential-store';

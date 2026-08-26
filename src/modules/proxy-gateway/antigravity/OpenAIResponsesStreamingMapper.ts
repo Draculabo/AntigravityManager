@@ -4,6 +4,7 @@ import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight
 import { extractCustomToolInput, isCustomToolCall } from './CustomToolCall';
 import { resolveShellToolName } from './ShellToolName';
 import { splitNamespaceToolName } from './ToolNamespace';
+import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
 import type { OpenAIResponsesUsage } from './OpenAIUsageMapper';
 
 export interface GeminiResponsesStreamPart {
@@ -40,7 +41,7 @@ interface ResponsesMessageOutputItem {
   id: string;
   phase: 'commentary' | 'final_answer';
   role: 'assistant';
-  status: 'completed';
+  status: ResponsesOutputStatus;
   type: 'message';
 }
 
@@ -131,16 +132,16 @@ export class OpenAIResponsesStreamingMapper {
     }
 
     const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature);
+    if (part.functionCall) {
+      return this.processFunctionCall(part.functionCall, signature);
+    }
+
     if (signature) {
       SignatureStore.store(
         signature,
         this.options.signatureSessionKey,
         this.options.signatureMessageCount,
       );
-    }
-
-    if (part.functionCall) {
-      return this.processFunctionCall(part.functionCall);
     }
 
     if (part.thought && part.text) {
@@ -188,28 +189,33 @@ export class OpenAIResponsesStreamingMapper {
     this.usage = usage;
   }
 
-  public complete(): string[] {
+  public complete(finishReason?: string | null): string[] {
     if (this.completed) {
       return [];
     }
 
     this.completed = true;
+    // An answer upstream cut short is not a finished answer, and a client that is
+    // told `completed` has no way to know it should continue.
+    const incompleteReason = toIncompleteReason(finishReason);
+    const status: ResponsesOutputStatus = incompleteReason ? 'incomplete' : 'completed';
     const events = [
-      ...this.closeThought(),
-      ...this.closeMessage(this.hasToolCall ? 'commentary' : 'final_answer'),
+      ...this.closeThought(status),
+      ...this.closeMessage(this.hasToolCall ? 'commentary' : 'final_answer', status),
     ];
 
     events.push(
       this.serialize({
         response: {
           id: this.options.responseId,
+          incomplete_details: incompleteReason ? { reason: incompleteReason } : null,
           model: this.options.model,
           object: 'response',
           output: this.outputItems,
-          status: 'completed',
+          status,
           usage: this.usage,
         },
-        type: 'response.completed',
+        type: incompleteReason ? 'response.incomplete' : 'response.completed',
       }),
     );
     return events;
@@ -275,30 +281,35 @@ export class OpenAIResponsesStreamingMapper {
     ];
   }
 
-  private closeThought(): string[] {
+  private closeThought(status: ResponsesOutputStatus = 'completed'): string[] {
     const thought = this.activeThought;
     if (!thought) {
       return [];
     }
     this.activeThought = null;
-    return this.finishMessage(thought, 'commentary');
+    return this.finishMessage(thought, 'commentary', status);
   }
 
-  private closeMessage(phase: 'commentary' | 'final_answer'): string[] {
+  private closeMessage(
+    phase: 'commentary' | 'final_answer',
+    status: ResponsesOutputStatus = 'completed',
+  ): string[] {
     const message = this.activeMessage;
     if (!message) {
       return [];
     }
     this.activeMessage = null;
-    return this.finishMessage(message, phase);
+    return this.finishMessage(message, phase, status);
   }
 
   private finishMessage(
     message: ActiveMessageOutput,
     phase: 'commentary' | 'final_answer',
+    status: ResponsesOutputStatus = 'completed',
   ): string[] {
     message.item.content = [{ text: message.text, type: 'output_text' }];
     message.item.phase = phase;
+    message.item.status = status;
     return [
       this.serialize({
         content_index: 0,
@@ -327,12 +338,21 @@ export class OpenAIResponsesStreamingMapper {
 
   private processFunctionCall(
     functionCall: NonNullable<GeminiResponsesStreamPart['functionCall']>,
+    signature: string | undefined,
   ): string[] {
     const splitName = splitNamespaceToolName(functionCall.name);
     const functionName = this.options.clientToolNames
       ? resolveShellToolName(splitName.name, this.options.clientToolNames)
       : splitName.name;
     const callId = functionCall.id || `call_${this.options.responseId}_${this.nextOutputIndex}`;
+    if (signature) {
+      SignatureStore.store(
+        signature,
+        this.options.signatureSessionKey,
+        this.options.signatureMessageCount,
+        callId,
+      );
+    }
     if (functionCall.id && this.emittedToolCallIds.has(callId)) {
       return [];
     }

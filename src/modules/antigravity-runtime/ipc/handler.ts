@@ -13,8 +13,8 @@ import {
   isWsl,
 } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
-import type { AntigravityAppTarget } from '@/modules/account/types';
-import { resolveAntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import {
   isSafeWindowsImageName,
   isWindowsImageRunning,

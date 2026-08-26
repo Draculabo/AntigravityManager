@@ -4,7 +4,7 @@ import {
   getCurrentAccountInfo,
   backupAccount,
   restoreAccount,
-} from '@/shared/persistence/database/handler';
+} from '@/modules/account/persistence/antigravity-state-database';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';

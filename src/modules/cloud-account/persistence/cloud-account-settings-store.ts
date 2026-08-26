@@ -1,5 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { type AntigravityAppTarget, resolveAntigravityAppTarget } from '@/modules/account/types';
+import {
+  type AntigravityAppTarget,
+  resolveAntigravityAppTarget,
+} from '@/shared/platform/antigravityAppTarget';
 import { logger } from '@/shared/logging/logger';
 import { settings } from '@/shared/persistence/database/schema';
 import { getCloudDb } from './cloud-account-db';
@@ -52,6 +55,14 @@ export class CloudAccountSettingsStore {
 
   static getActiveAccountIdForTarget(target: AntigravityAppTarget | undefined): string {
     const normalizedTarget = resolveAntigravityAppTarget(target);
-    return this.getSetting(`${ACTIVE_ACCOUNT_SETTING_PREFIX}.${normalizedTarget}`, '');
+    const key = `${ACTIVE_ACCOUNT_SETTING_PREFIX}.${normalizedTarget}`;
+    const value = this.getSetting<unknown>(key, '');
+
+    if (typeof value !== 'string') {
+      logger.warn(`Ignored invalid active account setting ${key}: expected a string`);
+      return '';
+    }
+
+    return value.trim();
   }
 }

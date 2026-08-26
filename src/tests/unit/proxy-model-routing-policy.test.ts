@@ -70,3 +70,124 @@ describe('ModelRoutingService', () => {
     expect(policy.createModelSpecificHeaders(undefined)).toEqual({});
   });
 });
+
+describe('ModelRoutingService.resolveModelRoute', () => {
+  it('labels a model that already is the accepted id as canonical, not a built-in mapping', () => {
+    const policy = new ModelRoutingService();
+
+    const resolution = policy.resolveModelRoute('gemini-3-flash');
+
+    expect(resolution).toMatchObject({
+      normalizedModel: 'gemini-3-flash',
+      requestedModel: 'gemini-3-flash',
+      resolvedModel: 'gemini-3-flash',
+      source: 'canonical',
+    });
+  });
+
+  it('labels an alias that changes the id as a built-in mapping', () => {
+    const policy = new ModelRoutingService();
+
+    const resolution = policy.resolveModelRoute('claude-opus-4.6');
+
+    expect(resolution).toMatchObject({
+      resolvedModel: 'claude-opus-4-6-thinking',
+      source: 'built-in',
+    });
+  });
+
+  it('labels a Gemini-alias-only match as a built-in mapping', () => {
+    const policy = new ModelRoutingService();
+
+    const resolution = policy.resolveModelRoute('gemini-3-flash-preview');
+
+    expect(resolution).toMatchObject({
+      resolvedModel: 'gemini-3-flash',
+      source: 'built-in',
+    });
+  });
+
+  it('labels a wildcard user mapping as configured', () => {
+    setServerConfig(
+      createProxyConfig({
+        custom_mapping: {
+          'custom-*': 'gemini-3-flash',
+        },
+      }),
+    );
+    const policy = new ModelRoutingService();
+
+    const resolution = policy.resolveModelRoute('custom-fast');
+
+    expect(resolution).toMatchObject({
+      resolvedModel: 'gemini-3-flash',
+      source: 'configured',
+    });
+  });
+
+  it('labels an exact user mapping as configured', () => {
+    setServerConfig(
+      createProxyConfig({
+        anthropic_mapping: {
+          'claude-legacy-tag': 'gemini-3.1-pro-high',
+        },
+      }),
+    );
+    const policy = new ModelRoutingService();
+
+    const resolution = policy.resolveModelRoute('claude-legacy-tag');
+
+    expect(resolution).toMatchObject({
+      resolvedModel: 'gemini-3.1-pro-high',
+      source: 'configured',
+    });
+  });
+
+  it('labels dynamic deprecated-model forwarding distinctly from a built-in mapping', () => {
+    updateDynamicForwardingRules('Gemini-Deprecated-Policy-Test', 'gemini-future-policy-test');
+    const policy = new ModelRoutingService();
+
+    const resolution = policy.resolveModelRoute('gemini-deprecated-policy-test');
+
+    expect(resolution).toMatchObject({
+      resolvedModel: 'gemini-future-policy-test',
+      source: 'dynamic-legacy',
+    });
+  });
+
+  it('labels a completely unrecognized model as a miss and passes the client string through', () => {
+    const policy = new ModelRoutingService();
+
+    const resolution = policy.resolveModelRoute('totally-unknown-model-xyz');
+
+    expect(resolution).toMatchObject({
+      resolvedModel: 'totally-unknown-model-xyz',
+      source: 'miss',
+    });
+  });
+
+  it('keeps resolveTargetModel exactly in sync with resolveModelRoute().resolvedModel', () => {
+    setServerConfig(
+      createProxyConfig({
+        custom_mapping: { 'custom-*': 'gemini-3-flash' },
+      }),
+    );
+    updateDynamicForwardingRules('Gemini-Deprecated-Sync-Test', 'gemini-future-sync-test');
+    const policy = new ModelRoutingService();
+
+    const samples = [
+      'gemini-3-flash',
+      'claude-opus-4.6',
+      'gemini-3-flash-preview',
+      'custom-fast',
+      'gemini-deprecated-sync-test',
+      'totally-unknown-model-xyz',
+    ];
+
+    for (const sample of samples) {
+      expect(policy.resolveTargetModel(sample)).toBe(
+        policy.resolveModelRoute(sample).resolvedModel,
+      );
+    }
+  });
+});

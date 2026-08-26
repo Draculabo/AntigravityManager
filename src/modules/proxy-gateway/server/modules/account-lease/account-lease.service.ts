@@ -58,6 +58,11 @@ export class AccountLeaseService implements OnModuleInit {
     @Optional()
     @Inject(ACCOUNT_LEASE_UPSTREAM)
     private readonly upstream: AccountLeaseUpstream = googleAccountLeaseUpstreamAdapter,
+    // Under Nest the module provides the singleton and the token wins. The default only
+    // applies when the service is constructed directly, which today is tests alone.
+    @Optional()
+    @Inject(RateLimitTrackerService)
+    private readonly rateLimitTrackerService: RateLimitTrackerService = new RateLimitTrackerService(),
   ) {
     this.quotaRefreshPolicy = new AccountLeaseQuotaRefreshPolicy({
       accountStore: this.accountStore,
@@ -105,6 +110,7 @@ export class AccountLeaseService implements OnModuleInit {
       setPreciseLockoutFromCachedQuota: (accountId, reason, model) =>
         this.quotaRefreshPolicy.setPreciseLockoutFromCachedQuota(accountId, reason, model),
       logger: this.logger,
+      rateLimitTracker: this.rateLimitTrackerService,
     });
   }
 

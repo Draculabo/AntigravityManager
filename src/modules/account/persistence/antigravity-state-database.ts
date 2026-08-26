@@ -3,15 +3,16 @@ import fs from 'fs';
 import path from 'path';
 import { eq } from 'drizzle-orm';
 import { isString } from 'lodash-es';
-import { AccountBackupData, AccountInfo, type AntigravityAppTarget } from '@/modules/account/types';
+import type { AccountBackupData, AccountInfo } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { ItemTableValueRowSchema, type ItemTableKey } from '@/shared/persistence/database/types';
 import { logger } from '@/shared/logging/logger';
 import { getAntigravityDbPaths } from '@/shared/platform/paths';
 import { parseRow } from '@/shared/persistence/database/sqlite';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
-import { openDrizzleConnection } from './dbConnection';
-import { itemTable } from './schema';
-import type { CredentialStoreTokenInput } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
+import { openDrizzleConnection } from '@/shared/persistence/database/dbConnection';
+import { itemTable } from '@/shared/persistence/database/schema';
+import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreToken';
 
 const KEYS_TO_BACKUP: ItemTableKey[] = [
   'antigravityAuthStatus',

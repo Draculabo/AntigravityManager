@@ -1,4 +1,4 @@
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { DeviceProfile } from '@/modules/identity-profile/types';
 import { logger } from '@/shared/logging/logger';
 import { refreshAntigravityProcessCache } from '@/shared/platform/paths';

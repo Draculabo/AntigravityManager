@@ -33,7 +33,7 @@ import {
   IdeAccountImportAdapter,
 } from '@/modules/cloud-account/persistence/ide-account-import-adapter';
 import { CloudAccountSchema } from '@/modules/cloud-account/types';
-import { AntigravityAppTargetSchema } from '@/modules/account/types';
+import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 import {
   DeviceProfileSchema,
   DeviceProfilesSnapshotSchema,

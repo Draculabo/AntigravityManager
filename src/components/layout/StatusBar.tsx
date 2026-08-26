@@ -5,7 +5,7 @@ import {
   startAntigravity,
   closeAntigravity,
 } from '@/modules/antigravity-runtime/actions/process';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/shared/ui/utils';
 import { Activity, ChevronUp, Code2, Loader2, Play, Power, Square, Workflow } from 'lucide-react';

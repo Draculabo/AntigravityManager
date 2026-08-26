@@ -3,6 +3,8 @@ import { logger } from '@/shared/logging/logger';
 import { ipcContext } from '@/ipc/context';
 import { escapeHtml } from '@/shared/utils/url';
 
+const OAUTH_LOOPBACK_HOST = '127.0.0.1';
+
 export class AuthServer {
   private static server: http.Server | null = null;
   private static PORT = 8888;
@@ -21,7 +23,7 @@ export class AuthServer {
         await new Promise<void>((resolve, reject) => {
           const testServer = http.createServer();
           testServer.once('error', reject);
-          testServer.listen(port, '127.0.0.1', () => {
+          testServer.listen(port, OAUTH_LOOPBACK_HOST, () => {
             testServer.close(() => resolve());
           });
         });
@@ -51,7 +53,7 @@ export class AuthServer {
           return;
         }
 
-        const url = new URL(req.url || '', `http://localhost:${this.PORT}`);
+        const url = new URL(req.url || '', `http://${OAUTH_LOOPBACK_HOST}:${this.PORT}`);
 
         if (url.pathname === '/oauth-callback') {
           const code = url.searchParams.get('code');
@@ -110,8 +112,8 @@ export class AuthServer {
         logger.error('AuthServer: Server error', err);
       });
 
-      this.server.listen(this.PORT, '127.0.0.1', () => {
-        logger.info(`AuthServer: Listening on http://localhost:${this.PORT}`);
+      this.server.listen(this.PORT, OAUTH_LOOPBACK_HOST, () => {
+        logger.info(`AuthServer: Listening on http://${OAUTH_LOOPBACK_HOST}:${this.PORT}`);
       });
     } catch (e) {
       logger.error('AuthServer: Failed to create or start server', e);
@@ -123,7 +125,7 @@ export class AuthServer {
   }
 
   static getRedirectUri(): string {
-    return `http://localhost:${this.PORT}/oauth-callback`;
+    return `http://${OAUTH_LOOPBACK_HOST}:${this.PORT}/oauth-callback`;
   }
 
   static async stop(): Promise<void> {

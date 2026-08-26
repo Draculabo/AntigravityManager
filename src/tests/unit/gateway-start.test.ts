@@ -2,24 +2,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { bootstrapNestServer, getNestServerStatus, stopNestServer } from '@/server/main';
 
-const { mockAttachResponsesWebSocketServer, mockCreate, mockLogger } = vi.hoisted(() => ({
-  mockAttachResponsesWebSocketServer: vi.fn(() => vi.fn()),
-  mockCreate: vi.fn(),
-  mockLogger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+const { mockAddContentTypeParser, mockAttachResponsesWebSocketServer, mockCreate, mockLogger } =
+  vi.hoisted(() => ({
+    mockAddContentTypeParser: vi.fn(),
+    mockAttachResponsesWebSocketServer: vi.fn(() => vi.fn()),
+    mockCreate: vi.fn(),
+    mockLogger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }));
 
-vi.mock('@nestjs/core', () => ({
+vi.mock('@nestjs/core', async (importOriginal) => ({
+  // Keep the real tokens: the module graph under test registers providers against
+  // APP_INTERCEPTOR, and a mock that only carries NestFactory makes importing it fail.
+  ...(await importOriginal<typeof import('@nestjs/core')>()),
   NestFactory: {
     create: mockCreate,
   },
+  // `GeminiController` reflects `ModuleRef` as a constructor parameter type
+  // (to resolve `BatchRunnerService` lazily without a circular module import;
+  // see `gemini.controller.ts`), so decorator metadata evaluation needs a
+  // real export here even though this test never constructs the controller.
+  ModuleRef: class ModuleRef {},
 }));
 
 vi.mock('@nestjs/platform-fastify', () => ({
-  FastifyAdapter: vi.fn(),
+  FastifyAdapter: class {
+    getInstance() {
+      return { addContentTypeParser: mockAddContentTypeParser };
+    }
+  },
 }));
 
 vi.mock('@/shared/logging/logger', () => ({
@@ -106,6 +120,15 @@ describe('gateway server startup', () => {
     });
     expect(listen).toHaveBeenCalledWith(8123, '0.0.0.0');
     expect(mockAttachResponsesWebSocketServer).toHaveBeenCalledOnce();
+    // The raw media parser is what makes Google's simple file upload possible,
+    // and it only applies to media families so no existing route changes.
+    expect(mockAddContentTypeParser).toHaveBeenCalledWith(
+      expect.any(RegExp),
+      expect.objectContaining({ parseAs: 'buffer' }),
+      expect.any(Function),
+    );
+    expect(mockAddContentTypeParser.mock.calls[0][0].test('application/json')).toBe(true);
+    expect(mockAddContentTypeParser.mock.calls[0][0].test('multipart/form-data')).toBe(false);
 
     await expect(getNestServerStatus()).resolves.toMatchObject({
       running: true,

@@ -1,291 +1,93 @@
-# User Guide
+# Antigravity Manager Agent Instructions
 
-This document is a user-level guide for AI assistants working in this repository. It standardizes language, tool/script preferences, and development notes for the current tech stack.
+Antigravity Manager is an Electron desktop application with a React renderer and an embedded NestJS/Fastify proxy gateway. Read [docs/architecture.md](docs/architecture.md) before changing process boundaries, IPC, persistence, routing or the gateway. Use [docs/testing.md](docs/testing.md) to select verification and [docs/security.md](docs/security.md) for sensitive changes.
 
-## 💬 Communication Conventions
+Instructions in a deeper `AGENTS.md` supplement this file for that subtree. Keep each rule in its narrowest owning file and link to authoritative detail instead of copying it.
 
-- **Language**: Use English consistently for conversation, TODOs, and code-related content (comments, UI copy, commit messages, PR descriptions, and similar artifacts).
-- **Conclusion first**: Start with the core conclusion/summary, then provide details.
-- **References**: When citing code, always provide full file paths (for example, `src/main.ts:42`).
+## Communication
 
-## 💻 Runtime and Tooling
+- Respond in the user's language unless they request another language.
+- Keep repository artifacts, code comments, UI copy, commit messages and technical documentation in English unless the artifact is an explicit translation.
+- Lead with the outcome. Report changed files, material decisions, commands actually run and remaining risk.
+- Cite code with a full repository path and line number when line-level precision matters.
 
-- **Runtime**: Node.js (Electron environment)
-- **Node**: Node.js `>=22.14.0` and npm `>=10` (matches `package.json`)
-- **Package manager**: `npm` (this project includes `package-lock.json`; use npm only)
-- **Build tools**: Electron Forge + Vite
-- **Terminal**: Windows (PowerShell) / VSCode MCP tools can be used safely
+## Environment and tools
 
-## 🧩 Tech Stack Overview
+- Use Node.js `>=22.14.0`, npm `>=10` and the checked-in `package-lock.json`. Do not use pnpm, Yarn or Bun.
+- Prefer project scripts from `package.json`; do not invent a parallel command when an owning script exists.
+- The primary development shell is PowerShell on Windows. Keep scripts portable when CI or packaged behavior is cross-platform.
+- When `.codegraph/` exists, use CodeGraph before text search to understand symbols and call paths. Use `ast-grep` for syntax-aware structural search, bulk refactoring, custom lint checks, vulnerability patterns and framework/API migrations.
+- Bound commands with unknown output and inspect the smallest relevant context.
 
-- **Frontend**:
-  - React 19, TypeScript
-  - React Compiler via `babel-plugin-react-compiler`
-  - Tailwind CSS v4, `clsx`, `tailwind-merge`, `tailwindcss-animate`
-  - Radix UI (Primitives), Lucide React (Icons), Simple Icons (`@icons-pack/react-simple-icons`)
-  - `class-variance-authority` (CVA), `react-i18next` + `i18next`
-  - TanStack Router (Routing), TanStack Query (State Management)
-  - Feature UI lives inside `src/modules/*/components`; generic UI lives under `src/components`
-- **Backend (Electron Main/Server)**:
-  - Electron (Main/Preload/Renderer architecture)
-  - NestJS + Fastify (internal proxy/gateway service, started by the main process)
-  - Better-SQLite3 (local database), Drizzle ORM / Raw SQL
-  - ORPC (type-safe RPC)
-  - gRPC (`@grpc/grpc-js`, `@grpc/proto-loader`)
-  - OS credential storage via `@napi-rs/keyring` / `keytar`
-  - Logging: `winston` + `winston-daily-rotate-file`
-  - Validation: Zod plus NestJS `class-validator` / `class-transformer`
-  - Observability: Sentry for Electron/renderer builds
-- **Testing**:
-  - Vitest (unit/integration), Testing Library
-  - Playwright (E2E)
+## Standing architecture rules
 
-## 📁 Directory Structure
+- Feature-specific UI, hooks, actions, IPC, services, persistence and types belong in `src/modules`.
+- Cross-feature primitives belong in `src/shared`; generic UI belongs in `src/components`. Require a real second consumer before moving feature code into shared infrastructure.
+- Renderer code must not import main-process, filesystem, database, keyring or server implementation modules. Cross-process operations go through the typed preload/IPC/ORPC surface.
+- Feature modules own their IPC schemas, routers and handlers. `src/ipc/router.ts` composes them and applies global transport behavior; do not put feature business logic there.
+- NestJS proxy behavior belongs under `src/modules/proxy-gateway/server`; `src/server` owns bootstrap and process lifecycle only.
+- Shared database primitives live under `src/shared/persistence/database`; feature repositories and codecs remain in the owning feature.
+- Routes live in `src/routes`. Never edit generated `src/routeTree.gen.ts` manually.
+- Do not create reverse dependencies from `src/shared` to feature modules or deep-import another feature's private implementation.
 
-```plaintext
-.
-├─ src/
-│  ├─ assets/            # Static assets
-│  ├─ components/        # App-wide generic React components
-│  │  ├─ layout/         # Shared layout primitives
-│  │  ├─ shared/         # Cross-feature shared components/providers
-│  │  └─ ui/             # Base UI primitives
-│  ├─ ipc/               # ORPC bridge composition and main-process handler
-│  ├─ localization/      # i18n translation resources
-│  ├─ mocks/             # Mock data for tests and development
-│  ├─ modules/           # Feature modules and vertical slices
-│  │  ├─ account/        # Local account snapshots and account UI
-│  │  ├─ antigravity-runtime/ # Antigravity process/startup/switching logic
-│  │  ├─ app-shell/      # App shell actions, routing, tray, theme, window/system IPC
-│  │  ├─ cloud-account/  # Cloud auth, account monitoring, quota, persistence
-│  │  ├─ config/         # App configuration types, hooks, components, IPC
-│  │  ├─ identity-profile/ # Identity profile dialog and IPC
-│  │  └─ proxy-gateway/  # Local API proxy, model mapping, gateway IPC/server logic
-│  ├─ routes/            # TanStack Router route definitions
-│  ├─ server/            # NestJS bootstrap and server entry points
-│  ├─ shared/            # Cross-cutting constants, logging, persistence, platform, security, serialization, utils
-│  ├─ styles/            # Global styles (Tailwind classes)
-│  ├─ tests/             # Test code
-│  ├─ App.tsx            # React app entry
-│  ├─ instrument.ts      # Sentry/main instrumentation
-│  ├─ main.ts            # Electron main entry
-│  ├─ preload.ts         # Electron preload script
-│  ├─ renderer.ts        # Electron renderer entry
-│  ├─ routeTree.gen.ts   # Generated TanStack Router tree
-│  └─ types.d.ts         # Global renderer/main type declarations
-├─ docs/                 # User/debugging documentation and screenshots
-├─ scripts/              # Build/release/helper scripts
-├─ types/                # External/global declaration files
-├─ vite.main.config.mts
-├─ vite.preload.config.mts
-├─ vite.renderer.config.mts
-├─ vitest.config.mjs
-├─ forge.config.ts       # Electron Forge config
-└─ package.json
-```
+See [src/modules/AGENTS.md](src/modules/AGENTS.md), [src/modules/proxy-gateway/AGENTS.md](src/modules/proxy-gateway/AGENTS.md) and [src/shared/persistence/AGENTS.md](src/shared/persistence/AGENTS.md) for scoped constraints.
 
-## 🧱 Module Architecture
+## Type and API design
 
-- **Feature-first modules**: Put feature-specific actions, components, hooks, IPC handlers, persistence, services, server code, types, and utilities under the owning `src/modules/<feature>/` directory.
-- **Shared capabilities**: Put cross-feature constants, logging, database, platform paths, security, serialization, UI helpers, and generic utilities under `src/shared/`.
-- **Generic components**: Use `src/components/ui`, `src/components/shared`, and `src/components/layout` only for reusable UI that is not owned by a single feature.
-- **IPC composition**: Add module routers under the owning module, then compose them in `src/ipc/router.ts`; keep the main-process ORPC bridge in `src/ipc/handler.ts` and `src/ipc/manager.ts`.
-- **Server code**: Keep NestJS proxy/gateway implementation under `src/modules/proxy-gateway/server/`; keep process bootstrap in `src/server/`.
-- **Routes**: Route files live in `src/routes/`; route creation is centralized in `src/modules/app-shell/routing/routes.ts`. Do not manually edit `src/routeTree.gen.ts`.
-- **Data access**: Database primitives live in `src/shared/persistence/database/`; feature-specific repositories/persistence live in the owning module.
+- Keep `strict` TypeScript and end-to-end domain types. Avoid `any`, broad `Record<string, unknown>` shapes and convenience casts.
+- Use `unknown` only at runtime boundaries, then narrow immediately with Zod, a dedicated codec or a precise type guard.
+- Validate IPC/ORPC input, configuration, persisted data, JSON, external API responses, filesystem content and process/worker messages. Trust precise same-process TypeScript contracts without redundant validation.
+- Prefer discriminated unions, explicit domain types and exhaustive handling for closed variants.
+- Defaults at module or protocol boundaries must be resolved explicitly by the owning implementation, not hidden deep in execution logic.
+- Use named `lodash-es` imports for non-trivial collection/object transformations when they match existing project patterns; do not import the full package.
 
-## 📦 Common Scripts
+## Implementation rules
 
-Use `npm` for all commands:
+- Inspect the owning code and nearby tests before editing. Preserve existing naming, structure and error semantics.
+- Make the smallest complete change. Do not add dependencies, abstractions, compatibility paths or defensive states without a current owner and demonstrated need.
+- Always use braces for control flow. Keep `return`, `throw` and similar statements on their own lines.
+- Comments and JSDoc explain non-obvious contracts, invariants, trade-offs and safe use. Do not restate visible control flow or keep changelog commentary in source.
+- Prefer Radix primitives and Tailwind utilities for UI. Put user-visible strings in `react-i18next` resources using kebab-case keys.
+- Avoid growing large modules. Prefer a new owned module for new behavior when a source file is already near 800 lines; target cohesive production modules below roughly 500 lines where practical.
 
-- **Development (Dev)**:
-  - `npm start` - Start Electron dev environment (Electron Forge)
-  - `npm run lint` - Run ESLint checks
-  - `npm run format` - Run Prettier check
-  - `npm run format:write` - Auto-format with Prettier
-  - `npm run type-check` - Run TypeScript type check
+## Security and data
 
-- **Build**:
-  - `npm run package` - Package app (application bundle only)
-  - `npm run make` - Build and generate distributable installers
-  - `npm run publish` - Publish app
+- Never commit secrets, real credentials, authorization headers, private account data or environment files.
+- Store sensitive credentials through existing OS keyring or encrypted-storage helpers. Do not write plaintext secrets to SQLite, logs, IPC payloads, fixtures or snapshots.
+- Use prepared SQL or Drizzle query construction. Validate data read from SQLite before trusted use.
+- Treat preload exposure, IPC, authentication, credential storage, database formats, updates, installers, binary patching and process execution as high-risk surfaces.
+- Do not change database schemas, durable formats, credential location, authentication, release or deployment behavior without explicit task scope and corresponding migration/recovery evidence.
 
-- **Testing**:
-  - `npm test` - Run Vitest tests
-  - `npm run test:watch` - Run Vitest in watch mode
-  - `npm run test:unit` - Same as above for unit-focused runs
-  - `npm run test:e2e` - Run Playwright E2E tests
-  - `npm run test:all` - Run all tests
+## Change workflow
 
-### Running a Single Test
+1. Identify the owning module and every runtime boundary the change crosses.
+2. Read the nearest instructions, current architecture reference and owning tests.
+3. Inspect relevant consumers before changing a shared or public contract.
+4. Implement the smallest complete slice and update its tests and current documentation together.
+5. Select focused evidence from [docs/testing.md](docs/testing.md); widen only when the affected surface requires it.
+6. Review the final diff for unrelated work, generated output, secrets and documentation drift.
 
-- Unit test: `npm run test:unit -- path/to/test.test.ts`
-- E2E test: `npm run test:e2e -- path/to/test.spec.ts`
-- Type check: `npm run type-check`
+For high-risk or difficult-to-reverse decisions, add or update an [Agent Note](.agents/notes/README.md) in the same change.
 
-## 🧪 Development Notes
+## Verification
 
-- **Build**: Build stage may ignore TS/ESLint errors depending on project/CI configuration.
-- **DevTools**: `code-inspector-plugin` is integrated; use `Shift + Click` on page elements to jump to source code.
-- **React**: React Strict Mode is enabled in `src/App.tsx`.
-- **Routing**: TanStack Router generates `src/routeTree.gen.ts` from `src/routes/`.
-- **NestJS**: The proxy/gateway service is bootstrapped by the Electron main process; logs are visible in the main-process console.
-- **Sentry**: Production renderer builds enable Sentry only when the related environment variables/tokens are present.
+- Focused tests are the local default. Do not run the full E2E, packaging or platform matrix for an unrelated local change.
+- A behavior change needs a test or runnable check that would fail for its regression. Do not weaken assertions, skip failures or use a narrower scope merely to get green.
+- Prefer equality of complete result objects or event sequences when the whole result is the behavior under test.
+- Do not add tests for removed behavior, statically fixed values or impossible hostile inputs at typed same-process boundaries.
+- Run `npm run check:agent-contracts` for changes to agent instructions, governance documentation, Agent Notes or project Skills.
+- Run `npm run type-check` when shared types, public exports, IPC contracts or module boundaries change.
+- Report environment-dependent evidence such as native keyring, Electron packaging, installer and live-provider checks as unverified when it cannot run.
 
-## Security and Data
+## Documentation and decisions
 
-- **Security**: Never commit secrets; use environment variables for sensitive config; validate all user input; encrypt sensitive data.
-- **Database**: Use Better-SQLite3 through `src/shared/persistence/database/`; encapsulate feature-specific persistence in the owning module; always use prepared statements; test DB operations independently.
-- **Credentials**: Store sensitive account credentials in the OS keyring or encrypted storage helpers; never write plaintext secrets to logs, IPC packets, or fixtures.
-- **i18n**: Use `react-i18next`; keys should use kebab-case; translation files are stored in `src/localization/`.
+- Follow [docs/AGENTS.md](docs/AGENTS.md) for documentation placement and writing rules.
+- Current behavior belongs in architecture, testing, security, development or feature references. Rationale and rejected alternatives belong in Agent Notes.
+- Update README/JSDoc and affected reference docs in the same change as their behavior. Do not rely on a future plan document as authority for shipped behavior.
+- Keep Markdown links relative and specify a language for every fenced code block.
 
-## 📝 Conventions
+## Worktree and Git safety
 
-- **File naming**:
-  - Components: PascalCase (for example, `Button.tsx`)
-  - Feature services: PascalCase when matching existing class files (for example, `GoogleAPIService.ts`, `CloudMonitorService.ts`)
-  - Tools/config: camelCase or kebab-case
-- **Import paths**: Use `@/` alias for `src/`.
-- **Type safety**: Avoid `any`, unnecessary `unknown`, and unsafe `as` casts; enforce end-to-end type safety with Zod + TypeScript.
-  - Prefer precise domain types, generics, discriminated unions, typed helper functions, and runtime schemas/type guards.
-  - Use `unknown` only at true runtime boundaries, such as `catch` values, deserialized IPC/ORPC payloads, external API responses before validation, JSON parsing, or third-party untyped data.
-  - Narrow `unknown` as close to the boundary as possible with Zod, runtime checks, or dedicated type guards.
-  - Avoid `as` for convenience. If a cast is unavoidable, keep it local and narrow, and explain why the compiler cannot infer the type safely.
-  - Do not replace a known shape with a broad type such as `Record<string, unknown>`; define an explicit interface/type or a keyed type map instead.
-- **Utility methods**: Prefer `lodash-es` over native JavaScript utilities for array/object/string transformations to improve consistency and maintainability.
-  - Use named imports (for example, `import { get, groupBy, uniqBy } from 'lodash-es'`), and avoid full-package imports.
-- **Component design**:
-  - Prefer Radix UI Primitives.
-  - Use Tailwind utility classes; avoid CSS Modules unless necessary.
-- **API communication**: Frontend should prioritize ORPC client or Electron preload/IPC APIs for strong type inference.
-
-### Naming Specifics
-
-- **Functions/Variables**: camelCase (for example, `handleClick`, `isCurrent`)
-- **Constants**: UPPER_SNAKE_CASE (for example, `LOCAL_STORAGE_KEYS`)
-- **Files**:
-  - Services: `ServiceName.service.ts`
-  - Types: `type-name.ts`
-
-## 🏷️ Markdown Writing
-
-- Always specify a language for fenced code blocks; use `plaintext` if unsure.
-- Keep one blank line after headings for readability.
-
-## Line-Break Rule
-
-`return` and similar statements should not share a line with other statements. Keep them on separate lines.
-
-## 💭 Commenting Rules
-
-- Required comment scenarios: complex business logic/algorithms, non-obvious behaviors, important design tradeoffs, and key reference links.
-- Principles:
-  - Explain **why**, not **what**, and not changelog history.
-  - Update comments whenever related code changes.
-  - Prefer JSDoc; for complex functions, start with high-level overview, then annotate key steps (1, 2, 3...).
-  - Keep spacing between English and Chinese words if both appear for readability; do not comment deleted legacy code.
-
-Quality self-check: six months later, what useful context does a new teammate gain from this comment? If the answer is "none", remove it.
-
-Example:
-
-```typescript
-/**
- * Handle payment request with multi-step validation.
- */
-function processPayment(request: PaymentRequest) {
-  // 1. Input validation
-  // 2. Risk evaluation (low/medium/high paths)
-  // 3. Gateway call
-  // 4. User notification
-}
-
-export enum BudgetType {
-  Free = 'free',
-  /** ✅ Prefer JSDoc over end-of-line comments */
-  Package = 'package',
-}
-```
-
-## 🛠️ Development Guide
-
-### General Principles
-
-- Prioritize stability and maintainability before optimization.
-- For uncertainty, state assumptions/tradeoffs/validation approach clearly, then implement.
-- Trust agreed preconditions; avoid excessive defensive coding against guaranteed invariants.
-- Refactor legacy code conservatively; use modern approaches for new features where appropriate.
-- Avoid premature optimization: implement simple and direct first; optimize only when justified.
-- Always use braces for control flow (`if`, `while`, and similar statements).
-
-### New Feature Implementation
-
-- Code should be clear, readable, reusable, efficient, and testable.
-- Prefer mature and reliable modern APIs.
-
-### Refactoring and Bug Fixing
-
-- Prefer incremental changes; align scope first before large refactors.
-- Preserve existing structure and style; avoid over-abstraction risk.
-
-### Development Lifecycle Checklist
-
-Exploration / planning:
-
-- \[ ] Fully understand requirements; break down into 3-6 steps
-- \[ ] Review documentation and existing solutions first
-- \[ ] Validate ideas by reading actual code
-- \[ ] Build a TODO list
-
-Implementation / refactor / fix:
-
-- [ ] Review related templates and surrounding code; follow existing patterns
-- [ ] Fail fast on invalid inputs/states
-- [ ] Improve frontend interaction and UX within constraints
-
-Acceptance / validation:
-
-- \[ ] Validate implementation through tests or temporary scripts
-- \[ ] After multiple incremental edits, evaluate whether changes should be consolidated
-- \[ ] Run quality checks
-- \[ ] Update related docs
-
-Summary / output:
-
-- \[ ] Verify output formatting requirements
-- \[ ] List deviations from plan and key decisions for human review
-- \[ ] Provide optimization suggestions
-- \[ ] Include full references at the end
-
-## 🚨 Local Quality Checks (Optional Flow)
-
-After a set of changes, run these three checks in parallel instead of full lint immediately:
-
-```plaintext
-Task(subagent_type: "quick-code-review", description: "Code review", prompt: "[change description]")
-Task(subagent_type: "diagnostics", description: "Diagnostics", prompt: "[same as above]")
-Task(subagent_type: "run-related-tests", description: "Run tests", prompt: "[same as above]")
-```
-
-`change description` example:
-
-```plaintext
-- Modified files: list of relative paths
-- Context: requirement/business background
-```
-
-Flow: initial check -> fix key issues -> re-check -> iterate until key issues are resolved.
-
-Note: these tools are read-only analyzers; you still need to apply fixes manually. Pass precise file paths, not broad directories.
-
-When writing tests, prefer comparing the equality of entire objects over fields one by one.
-Do not add negative tests for logic that was removed.
-Do not add tests for values that are statically defined.
-Do not create small helper methods that are referenced only once.
-
-### Avoid large modules:
-
-- Prefer adding new modules instead of growing existing ones.
-- Target modules under 500 LoC, excluding tests.
-- If a file exceeds roughly 800 LoC, add new functionality in a new module instead of extending the existing file unless there is a strong documented reason not to.
-- When extracting code from a large module, move the related tests and module/type docs toward the new implementation so the invariants stay close to the code that owns them.
+- Treat existing tracked and untracked changes as user-owned. Do not modify, delete, stage or format unrelated files.
+- Do not commit, push, rewrite history, publish or deploy unless the user explicitly asks.
+- Never discard work with destructive Git or filesystem commands without explicit authorization and a verified target.

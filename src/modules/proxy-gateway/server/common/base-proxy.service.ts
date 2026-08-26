@@ -3,7 +3,7 @@ import { GeminiClient } from '../modules/gemini/gemini-client.service';
 import { AccountLeaseService } from '../modules/account-lease/account-lease.service';
 import { v4 as uuidv4 } from 'uuid';
 import { getServerConfig } from '@/server/server-config';
-import { isFunction, isPlainObject } from 'lodash-es';
+import { isFunction, isNumber, isPlainObject } from 'lodash-es';
 import {
   ProxyRetryService,
   ProxyTokenRetryState,
@@ -18,6 +18,7 @@ import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/servi
 import { hasExplicitQuotaExhaustedSignal } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import {
+  GeminiContent,
   GeminiInternalRequest,
   GeminiPart as InternalGeminiPart,
 } from '@/modules/proxy-gateway/antigravity/types';
@@ -36,14 +37,18 @@ export abstract class BaseProxyService {
   private readonly streamIdleTimeoutMs = 300_000;
   protected readonly generationConstraints: GenerationConstraintsService;
   protected readonly retryPolicy: ProxyRetryService;
-  protected readonly modelRoutingPolicy = new ModelRoutingService();
+  protected readonly modelRoutingPolicy: ModelRoutingService;
 
   constructor(
     protected readonly accountLeaseService: AccountLeaseService,
     protected readonly geminiClient: GeminiClient,
+    generationConstraints: GenerationConstraintsService,
+    retryPolicy: ProxyRetryService,
+    modelRoutingPolicy: ModelRoutingService,
   ) {
-    this.generationConstraints = new GenerationConstraintsService(this.accountLeaseService);
-    this.retryPolicy = new ProxyRetryService(this.accountLeaseService, this.logger);
+    this.generationConstraints = generationConstraints;
+    this.retryPolicy = retryPolicy;
+    this.modelRoutingPolicy = modelRoutingPolicy;
   }
 
   protected createOfficialRequestId(): string {
@@ -223,6 +228,62 @@ export abstract class BaseProxyService {
       accountId,
       registered,
     );
+  }
+
+  /**
+   * Leases an account and asks the internal endpoint to count the conversation.
+   *
+   * Shared because counting is the same operation on both surfaces that offer it; what differs is
+   * only how each contract states the conversation and renders the number, and that stays in the
+   * protocol service. A response with no usable count is an upstream failure, never a 0 — neither
+   * public contract can say "unknown", so a fabricated number would be read back as a real one.
+   */
+  protected async countTokensWithLease(
+    model: string,
+    contents: GeminiContent[],
+    label: string,
+  ): Promise<number> {
+    const targetModel = this.resolveTargetModel(model);
+    const extraHeaders = this.createModelSpecificHeaders(model);
+    const retryState = this.createTokenRetryState();
+    const maxRetries = 3;
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      await this.waitBeforeRetry(attempt, maxRetries, label, retryState.graceRetryToken !== null);
+
+      const token = await this.selectRetryToken(retryState, targetModel);
+      if (!token) {
+        throw new Error('No available accounts (all exhausted or rate limited)');
+      }
+      const effectiveTargetModel = this.accountLeaseService.resolveDynamicModelForAccount(
+        token.id,
+        targetModel,
+      );
+
+      try {
+        const response = await this.geminiClient.countTokensInternal(
+          { request: { contents, model: `models/${effectiveTargetModel}` } },
+          token.token.access_token,
+          token.token.upstream_proxy_url,
+          extraHeaders,
+        );
+        if (!isNumber(response.totalTokens)) {
+          throw new Error('Upstream returned no token count');
+        }
+
+        this.markUpstreamSuccess(token.id, effectiveTargetModel);
+        return response.totalTokens;
+      } catch (error) {
+        lastError = error;
+        if (await this.prepareGraceRetry(retryState, token, error, label)) {
+          continue;
+        }
+        await this.applyUpstreamPenalty(token.id, effectiveTargetModel, error);
+      }
+    }
+
+    throw lastError || new Error(`${label} request failed after retries`);
   }
 
   protected async generateInternalWithStreamFallback(

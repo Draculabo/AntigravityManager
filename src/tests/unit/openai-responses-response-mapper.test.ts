@@ -146,4 +146,64 @@ describe('OpenAI Responses non-stream mapper', () => {
       }),
     ]);
   });
+  it('reports a truncated answer as incomplete instead of completed', () => {
+    const response = toOpenAIResponsesResponse({
+      id: 'resp_truncated',
+      object: 'chat.completion',
+      created: 1,
+      model: 'gpt-5-codex',
+      choices: [
+        {
+          index: 0,
+          finish_reason: 'length',
+          message: {
+            role: 'assistant',
+            content: 'the answer starts and then run',
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        total_tokens: 2,
+      },
+    });
+
+    expect(response).toMatchObject({
+      incomplete_details: { reason: 'max_output_tokens' },
+      status: 'incomplete',
+    });
+    expect(response.output).toEqual([
+      expect.objectContaining({ status: 'incomplete', type: 'message' }),
+    ]);
+  });
+
+  it('keeps a naturally finished answer completed with no incomplete details', () => {
+    const response = toOpenAIResponsesResponse({
+      id: 'resp_done',
+      object: 'chat.completion',
+      created: 1,
+      model: 'gpt-5-codex',
+      choices: [
+        {
+          index: 0,
+          finish_reason: 'stop',
+          message: {
+            role: 'assistant',
+            content: 'the whole answer',
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        total_tokens: 2,
+      },
+    });
+
+    expect(response).toMatchObject({ incomplete_details: null, status: 'completed' });
+    expect(response.output).toEqual([
+      expect.objectContaining({ status: 'completed', type: 'message' }),
+    ]);
+  });
 });

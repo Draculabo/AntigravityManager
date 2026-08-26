@@ -5,6 +5,7 @@ import {
   type DeviceProfile,
   type DeviceProfileVersion,
 } from '@/modules/identity-profile/types';
+import { isValidProxyUrl } from '@/shared/utils/url';
 
 export interface CloudTokenData {
   access_token: string;
@@ -155,6 +156,10 @@ export const CloudAccountSchema = z.object({
   proxy_url: z.string().optional(),
 });
 
+const ImportedProxyUrlSchema = z.string().refine(isValidProxyUrl, {
+  message: 'Invalid proxy URL',
+});
+
 export const CloudAccountExportSchema = z.object({
   version: z.literal('1.0'),
   exportedAt: z.number(),
@@ -166,9 +171,9 @@ export const CloudAccountExportSchema = z.object({
       avatar_url: z.string().optional().nullable(),
       token: CloudTokenDataSchema.optional(),
       quota: CloudQuotaDataSchema.optional(),
-      device_profile: z.any().optional(),
-      device_history: z.any().optional(),
-      proxy_url: z.string().optional().nullable(),
+      device_profile: DeviceProfileSchema.optional(),
+      device_history: z.array(DeviceProfileVersionSchema).optional(),
+      proxy_url: ImportedProxyUrlSchema.optional().nullable(),
       status: z.enum(['active', 'rate_limited', 'expired']).optional(),
       status_reason: z.string().optional(),
     }),

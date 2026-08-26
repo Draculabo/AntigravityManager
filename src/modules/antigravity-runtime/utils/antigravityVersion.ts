@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { compare, coerce, parse } from 'semver';
-import { getAntigravityExecutablePath } from '@/shared/platform/paths';
-import type { AntigravityAppTarget } from '@/modules/account/types';
-import { resolveAntigravityAppTarget } from '@/modules/account/types';
+import { getAntigravityExecutablePath, isWsl } from '@/shared/platform/paths';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 export interface AntigravityVersion {
   shortVersion: string;
@@ -135,6 +135,19 @@ export function getAntigravityVersion(target?: AntigravityAppTarget | null): Ant
     }
 
     if (process.platform === 'linux') {
+      // Under WSL the resolved executable is the Windows build, and running it
+      // does not print a version and exit: the interop launch hands the request
+      // to Antigravity itself, which opens a window on the user's desktop. The
+      // version is readable from the package manifest beside the binary, so ask
+      // the file rather than the process.
+      if (isWsl()) {
+        const manifestVersion = readPackageJsonVersion(execPath);
+        if (manifestVersion) {
+          return cacheAndReturn(resolvedTarget, manifestVersion);
+        }
+        throw new Error(`Unable to read Antigravity version from ${execPath} under WSL`);
+      }
+
       try {
         const output = execSync(`"${execPath}" --version`, {
           encoding: 'utf-8',

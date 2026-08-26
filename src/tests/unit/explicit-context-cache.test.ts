@@ -5,17 +5,20 @@ import {
   type ExplicitContextCacheCandidate,
 } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
 
-function createCandidate(manager: ExplicitContextCacheManager): ExplicitContextCacheCandidate {
+function createCandidate(
+  manager: ExplicitContextCacheManager,
+  suffix = '',
+): ExplicitContextCacheCandidate {
   const candidate = manager.createCandidate({
     model: 'gemini-2.5-pro',
     project: 'project-a',
-    requestId: 'request-a',
+    requestId: `request-${suffix || 'a'}`,
     requestType: 'agent',
     userAgent: 'test-agent',
     request: {
       contents: [],
       systemInstruction: {
-        parts: [{ text: 'static prefix '.repeat(700) }],
+        parts: [{ text: `${'static prefix '.repeat(700)}${suffix}` }],
       },
     },
   });
@@ -24,6 +27,14 @@ function createCandidate(manager: ExplicitContextCacheManager): ExplicitContextC
     throw new Error('Expected static context to be eligible for explicit caching');
   }
   return candidate;
+}
+
+function getFailureCooldownCount(manager: ExplicitContextCacheManager): number {
+  return (
+    manager as unknown as {
+      failedUntil: Map<string, number>;
+    }
+  ).failedUntil.size;
 }
 
 describe('ExplicitContextCacheManager', () => {
@@ -51,6 +62,29 @@ describe('ExplicitContextCacheManager', () => {
       hits: 1,
       lookups: 3,
     });
+  });
+
+  it('prunes expired failure cooldowns while resolving new cache candidates', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-08-16T00:00:00Z'));
+      const manager = new ExplicitContextCacheManager();
+
+      for (let index = 0; index < 25; index += 1) {
+        await manager.resolve(createCandidate(manager, `-${index}`), async () => null);
+      }
+      expect(getFailureCooldownCount(manager)).toBe(25);
+
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+      await manager.resolve(createCandidate(manager, '-success'), async () => ({
+        expireTime: '2099-01-01T00:00:00Z',
+        name: 'projects/project-a/locations/us-central1/cachedContents/cache-success',
+      }));
+
+      expect(getFailureCooldownCount(manager)).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not create cache candidates for image generation requests', () => {

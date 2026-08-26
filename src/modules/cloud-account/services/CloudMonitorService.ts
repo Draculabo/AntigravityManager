@@ -6,8 +6,8 @@ import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '@/shared/logging/logger';
 import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { AntigravityAppTargetSchema } from '@/modules/account/types';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi' | 'fr' | 'tr';
 
@@ -117,6 +117,10 @@ export class CloudMonitorService {
   private static lastFocusTime: number = 0;
   private static isPolling: boolean = false;
 
+  private static isAutoSwitchEnabled(): boolean {
+    return CloudAccountSettingsStore.getSetting<boolean>('auto_switch_enabled', false);
+  }
+
   // Helper for testing
   static resetStateForTesting() {
     this.lastFocusTime = 0;
@@ -180,6 +184,10 @@ export class CloudMonitorService {
       clearInterval(this.intervalId);
     }
     this.intervalId = setInterval(() => {
+      if (!this.isAutoSwitchEnabled()) {
+        this.stop();
+        return;
+      }
       this.poll().catch((e) => logger.error('Scheduled poll failed', e));
     }, this.POLL_INTERVAL);
   }
@@ -192,6 +200,10 @@ export class CloudMonitorService {
   }
 
   static async poll() {
+    if (this.isAutoSwitchEnabled() && !this.intervalId) {
+      this.startInterval();
+    }
+
     if (this.isPolling) {
       return; // Extra safety
     }
@@ -291,7 +303,9 @@ export class CloudMonitorService {
         for (const account of accounts) {
           if (!account.quota?.models) continue;
           const lowQuotaModels = Object.entries(account.quota.models)
-            .filter(([_, info]) => info.percentage <= alertThreshold && info.percentage > 0)
+            .filter(
+              ([_, info]) => info.percentage >= 0 && info.percentage <= alertThreshold,
+            )
             .map(([name, info]) => {
               return info.display_name || name.replace('models/', '').replace(/-/g, ' ');
             });

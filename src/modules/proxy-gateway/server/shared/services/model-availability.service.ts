@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { logger } from '@/shared/logging/logger';
@@ -56,6 +57,7 @@ function shouldRetainEntry(entry: ProxyModelAvailability, now: number): boolean 
   return entry.unavailableUntil > now || entry.detectedAt + RECENT_FAILURE_DISPLAY_MS > now;
 }
 
+@Injectable()
 export class ModelAvailabilityService {
   private readonly entries = new Map<string, ProxyModelAvailability>();
   private isHydrated = false;

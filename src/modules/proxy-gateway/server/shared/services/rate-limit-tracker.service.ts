@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 import { isEmpty, isNumber, isObjectLike, isString } from 'lodash-es';
 import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 
@@ -244,6 +245,7 @@ export function shouldGraceRetry(delayMs: number): boolean {
   return delayMs > 0 && delayMs <= GRACE_RETRY_WINDOW_MS;
 }
 
+@Injectable()
 export class RateLimitTrackerService {
   private readonly lockoutByKey = new Map<string, RateLimitInfo>();
   private readonly failureCounts = new Map<string, FailureCountEntry>();

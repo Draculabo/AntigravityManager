@@ -28,8 +28,8 @@ import {
 import { getAntigravityDbPaths, refreshAntigravityProcessCache } from '@/shared/platform/paths';
 import { runWithSwitchGuard } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { executeSwitchFlow } from '@/modules/antigravity-runtime/switch/switchFlow';
-import { getCurrentAccountInfo } from '@/shared/persistence/database/handler';
-import type { AntigravityAppTarget } from '@/modules/account/types';
+import { getCurrentAccountInfo } from '@/modules/account/public';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { DeviceProfile, DeviceProfilesSnapshot } from '@/modules/identity-profile/types';
 import {
   classifyAccountStatusFromError,

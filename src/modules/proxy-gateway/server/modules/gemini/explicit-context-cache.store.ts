@@ -99,7 +99,9 @@ export class ExplicitContextCacheManager {
       return existing;
     }
 
-    if ((this.failedUntil.get(candidate.key) ?? 0) > Date.now()) {
+    const now = Date.now();
+    this.evictExpiredFailureCooldowns(now);
+    if ((this.failedUntil.get(candidate.key) ?? 0) > now) {
       return null;
     }
 
@@ -154,6 +156,7 @@ export class ExplicitContextCacheManager {
 
   public getStats(): ExplicitContextCacheStats {
     this.evictExpired();
+    this.evictExpiredFailureCooldowns();
     return { ...this.stats };
   }
 
@@ -190,6 +193,14 @@ export class ExplicitContextCacheManager {
       this.entries.delete(oldestKey);
     }
     this.updateActiveEntryCount();
+  }
+
+  private evictExpiredFailureCooldowns(now = Date.now()): void {
+    for (const [key, failedUntil] of this.failedUntil) {
+      if (failedUntil <= now) {
+        this.failedUntil.delete(key);
+      }
+    }
   }
 
   private getMinimumStaticPrefixCharacters(): number {

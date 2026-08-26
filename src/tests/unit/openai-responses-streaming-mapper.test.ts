@@ -417,6 +417,26 @@ describe('OpenAIResponsesStreamingMapper', () => {
     expect(SignatureStore.get()).toBeNull();
   });
 
+  it('indexes a tool signature by both session and tool-call id', () => {
+    const mapper = new OpenAIResponsesStreamingMapper({
+      model: 'gemini-3-pro',
+      responseId: 'resp_tool_signature',
+      signatureMessageCount: 4,
+      signatureSessionKey: 'openai:session-a',
+    });
+    const encodedSignature = Buffer.from('tool-specific signature').toString('base64');
+
+    mapper.processPart({
+      functionCall: { args: {}, id: 'call_shared', name: 'shell' },
+      thoughtSignature: encodedSignature,
+    });
+
+    expect(SignatureStore.getForToolCall('call_shared', 'openai:session-a')).toBe(
+      'tool-specific signature',
+    );
+    expect(SignatureStore.getForToolCall('call_shared', 'openai:session-b')).toBeNull();
+  });
+
   it('emits grounding metadata as visible Responses text', () => {
     const mapper = createMapper();
     const events = [
@@ -472,5 +492,51 @@ describe('OpenAIResponsesStreamingMapper', () => {
       },
       type: 'response.completed',
     });
+  });
+  it('reports a truncated answer as incomplete instead of completed', () => {
+    const mapper = createMapper();
+    const events = [
+      ...mapper.processPart({ text: 'the answer starts and then run' }),
+      ...mapper.complete('MAX_TOKENS'),
+    ].map(parseEvent);
+    const closing = events.at(-1) ?? {};
+    const itemDone = events.find((event) => event.type === 'response.output_item.done') ?? {};
+
+    expect(closing).toMatchObject({
+      response: {
+        incomplete_details: { reason: 'max_output_tokens' },
+        status: 'incomplete',
+      },
+      type: 'response.incomplete',
+    });
+    expect(itemDone).toMatchObject({ item: { status: 'incomplete', type: 'message' } });
+  });
+
+  it('leaves a safety stop with the refusal shape this gateway already gives it', () => {
+    const mapper = createMapper();
+    const closing = parseEvent(
+      [...mapper.processPart({ text: 'partial' }), ...mapper.complete('SAFETY')].at(-1) ?? '',
+    );
+
+    expect(closing).toMatchObject({
+      response: { incomplete_details: null, status: 'completed' },
+      type: 'response.completed',
+    });
+  });
+
+  it('keeps a naturally finished answer completed with no incomplete details', () => {
+    const mapper = createMapper();
+    const events = [
+      ...mapper.processPart({ text: 'the whole answer' }),
+      ...mapper.complete('STOP'),
+    ].map(parseEvent);
+    const closing = events.at(-1) ?? {};
+    const itemDone = events.find((event) => event.type === 'response.output_item.done') ?? {};
+
+    expect(closing).toMatchObject({
+      response: { incomplete_details: null, status: 'completed' },
+      type: 'response.completed',
+    });
+    expect(itemDone).toMatchObject({ item: { status: 'completed', type: 'message' } });
   });
 });

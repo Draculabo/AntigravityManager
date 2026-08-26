@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
 
 const axiosMock = vi.hoisted(() => ({
   post: vi.fn(),
@@ -33,7 +34,7 @@ describe('GeminiClient upstream proxy config', () => {
   });
 
   it('reads upstream proxy config on each request so runtime changes take effect', async () => {
-    const client = new GeminiClient();
+    const client = new GeminiClient(new Upstream4xxCaptureService());
 
     setServerConfig(createProxyConfig('http://user:pass@127.0.0.1:8080'));
     await client.generate('gemini-3-flash', { contents: [] } as never, 'access-token');
