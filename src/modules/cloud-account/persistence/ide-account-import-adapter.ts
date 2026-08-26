@@ -18,6 +18,7 @@ import { ItemTableValueRowSchema } from '@/shared/persistence/database/types';
 import { parseRow } from '@/shared/persistence/database/sqlite';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
 import { CloudAccountRepo } from './cloudHandler';
+import { resolveImportedTokenLifetime } from './ide-token-lifetime';
 
 export const AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE =
   'Antigravity CLI accounts are stored in the system credential store and cannot be synced from IDE SQLite state.';
@@ -262,6 +263,7 @@ export class IdeAccountImportAdapter {
 
       logger.info(`SyncLocal: Using Antigravity database at: ${dbPath}`);
       const effectiveTokenInfo = { ...tokenInfo };
+      let refreshedExpiresIn: number | undefined;
 
       let googleUserInfo;
       try {
@@ -282,6 +284,7 @@ export class IdeAccountImportAdapter {
           effectiveTokenInfo.accessToken = refreshedToken.access_token;
           effectiveTokenInfo.refreshToken = refreshedToken.refresh_token || tokenInfo.refreshToken;
           effectiveTokenInfo.idToken = refreshedToken.id_token ?? tokenInfo.idToken;
+          refreshedExpiresIn = refreshedToken.expires_in;
           googleUserInfo = await GoogleAPIService.getUserInfo(effectiveTokenInfo.accessToken);
         } catch (refreshError: unknown) {
           const refreshErrorMessage =
@@ -293,6 +296,7 @@ export class IdeAccountImportAdapter {
       }
 
       const now = Math.floor(Date.now() / 1000);
+      const tokenLifetime = resolveImportedTokenLifetime(now, refreshedExpiresIn);
       const account: CloudAccount = {
         id: uuidv4(),
         provider: 'google',
@@ -302,8 +306,8 @@ export class IdeAccountImportAdapter {
         token: {
           access_token: effectiveTokenInfo.accessToken,
           refresh_token: effectiveTokenInfo.refreshToken,
-          expires_in: 3600,
-          expiry_timestamp: now + 3600,
+          expires_in: tokenLifetime.expiresIn,
+          expiry_timestamp: tokenLifetime.expiryTimestamp,
           token_type: 'Bearer',
           email: googleUserInfo.email,
           project_id: effectiveTokenInfo.projectId,
@@ -334,8 +338,8 @@ export class IdeAccountImportAdapter {
           ...existingAccount.token,
           access_token: effectiveTokenInfo.accessToken,
           refresh_token: effectiveTokenInfo.refreshToken || existingAccount.token.refresh_token,
-          expires_in: 3600,
-          expiry_timestamp: now + 3600,
+          expires_in: tokenLifetime.expiresIn,
+          expiry_timestamp: tokenLifetime.expiryTimestamp,
           token_type: 'Bearer',
           email: googleUserInfo.email,
           project_id: existingProjectId || effectiveTokenInfo.projectId,
