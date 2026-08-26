@@ -219,27 +219,43 @@ export class CloudMonitorService {
           // 1. Check/Refresh Token if needed (give it a 10 min buffer here for safety)
           let accessToken = account.token.access_token;
           if (account.token.expiry_timestamp < now + 600) {
-            logger.info(`Monitor: Refreshing token for ${account.email}`);
-            try {
-              const newToken = await GoogleAPIService.refreshAccessToken(
-                account.token.refresh_token,
-                account.proxy_url,
-                account.token.oauth_client_key,
-              );
-              account.token = mergeRefreshedToken(account.token, newToken, now);
-              await CloudAccountRepo.updateToken(account.id, account.token);
-              accessToken = newToken.access_token;
-            } catch (refreshError) {
-              logger.error(`Monitor: Token refresh failed for ${account.email}`, refreshError);
-              const classified = classifyAccountStatusFromError(refreshError);
-              if (classified) {
+            if (!account.token.refresh_token) {
+              if (account.token.expiry_timestamp <= now) {
+                logger.warn(`Monitor: Token expired without refresh token for ${account.email}`);
                 await CloudAccountRepo.setAccountStatus(
                   account.id,
-                  classified.status,
-                  classified.reason,
+                  'expired',
+                  'Access token expired and no refresh token is available',
                 );
+                continue;
               }
-              continue;
+
+              logger.info(
+                `Monitor: Token for ${account.email} is nearing expiry without a refresh token; using it until expiry`,
+              );
+            } else {
+              logger.info(`Monitor: Refreshing token for ${account.email}`);
+              try {
+                const newToken = await GoogleAPIService.refreshAccessToken(
+                  account.token.refresh_token,
+                  account.proxy_url,
+                  account.token.oauth_client_key,
+                );
+                account.token = mergeRefreshedToken(account.token, newToken, now);
+                await CloudAccountRepo.updateToken(account.id, account.token);
+                accessToken = newToken.access_token;
+              } catch (refreshError) {
+                logger.error(`Monitor: Token refresh failed for ${account.email}`, refreshError);
+                const classified = classifyAccountStatusFromError(refreshError);
+                if (classified) {
+                  await CloudAccountRepo.setAccountStatus(
+                    account.id,
+                    classified.status,
+                    classified.reason,
+                  );
+                }
+                continue;
+              }
             }
           }
 
