@@ -4,7 +4,7 @@ import {
   RateLimitTrackerService,
 } from '../../modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
 
-const backoffSteps = [60, 300, 1800, 7200];
+const backoffSteps = [10, 20, 40, 80];
 
 function quotaError(accountId: string, model: string) {
   return {
@@ -45,15 +45,15 @@ describe('RateLimitTrackerService model-scoped backoff', () => {
 
     expect(modelAFirst).toMatchObject({
       reason: RateLimitReason.QuotaExhausted,
-      retryAfterSec: 60,
+      retryAfterSec: 10,
     });
     expect(modelBFirst).toMatchObject({
       reason: RateLimitReason.QuotaExhausted,
-      retryAfterSec: 60,
+      retryAfterSec: 10,
     });
     expect(modelASecond).toMatchObject({
       reason: RateLimitReason.QuotaExhausted,
-      retryAfterSec: 300,
+      retryAfterSec: 20,
     });
   });
 
@@ -69,16 +69,22 @@ describe('RateLimitTrackerService model-scoped backoff', () => {
     const modelANext = tracker.parseAndMarkFromError(quotaError('acc-success-scope', 'model-a'));
     const modelBNext = tracker.parseAndMarkFromError(quotaError('acc-success-scope', 'model-b'));
 
-    expect(modelANext?.retryAfterSec).toBe(60);
-    expect(modelBNext?.retryAfterSec).toBe(1800);
+    expect(modelANext?.retryAfterSec).toBe(10);
+    expect(modelBNext?.retryAfterSec).toBe(40);
   });
 
   it('keeps model capacity escalation independent between models', () => {
     const tracker = new RateLimitTrackerService();
 
-    const modelAFirst = tracker.parseAndMarkFromError(capacityError('acc-capacity-scope', 'model-a'));
-    const modelBFirst = tracker.parseAndMarkFromError(capacityError('acc-capacity-scope', 'model-b'));
-    const modelASecond = tracker.parseAndMarkFromError(capacityError('acc-capacity-scope', 'model-a'));
+    const modelAFirst = tracker.parseAndMarkFromError(
+      capacityError('acc-capacity-scope', 'model-a'),
+    );
+    const modelBFirst = tracker.parseAndMarkFromError(
+      capacityError('acc-capacity-scope', 'model-b'),
+    );
+    const modelASecond = tracker.parseAndMarkFromError(
+      capacityError('acc-capacity-scope', 'model-a'),
+    );
 
     expect(modelAFirst?.retryAfterSec).toBe(5);
     expect(modelBFirst?.retryAfterSec).toBe(5);
