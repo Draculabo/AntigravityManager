@@ -225,8 +225,9 @@ export class AutoSwitchService {
           .join(' ')
           .toLowerCase();
         return enabledModels.some(([modelId]) => {
-          const modelPart = modelId.split('-')[0].toLowerCase(); // 'claude' or 'gemini' etc.
-          return groupText.includes(modelPart) || groupText.includes(modelId.toLowerCase());
+          const normalizedModelId = modelId.replace(/^models\//i, '').toLowerCase();
+          const modelPart = normalizedModelId.split('-')[0]; // 'claude' or 'gemini' etc.
+          return groupText.includes(modelPart) || groupText.includes(normalizedModelId);
         });
       });
       if (anyAffected) {
