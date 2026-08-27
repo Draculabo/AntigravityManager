@@ -170,8 +170,12 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           await trace.phase('performSwitchMs', performSwitch);
           if (applyFingerprint) {
             stage = 'apply';
+            if (!targetProfile) {
+              stage = 'missing_profile';
+              throw new Error('Account has no bound identity profile');
+            }
             trace.phaseSync('applyProfileMs', () => {
-              applyDeviceProfileBestEffort(targetProfile, appTarget);
+              applyDeviceProfile(targetProfile, appTarget);
             });
           }
         } else {
