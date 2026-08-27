@@ -80,8 +80,6 @@ describe('BaseProxyService model-not-found penalty scope', () => {
 
     await service.applyPenalty('acc-a', 'gemini-3.6-flash-low', error);
 
-    expect(accountLeaseService.markModelUnrequestable).toHaveBeenCalledWith(
-      'gemini-3.6-flash-low',
-    );
+    expect(accountLeaseService.markModelUnrequestable).toHaveBeenCalledWith('gemini-3.6-flash-low');
   });
 });
