@@ -117,8 +117,17 @@ export async function encrypt(text: string): Promise<string> {
 export async function decryptWithMigration(
   text: string,
 ): Promise<{ value: string; reencrypted?: string; usedFallback?: KeySource }> {
-  if (text.startsWith('{') || text.startsWith('[')) {
-    return { value: text };
+  const trimmedText = text.trimStart();
+  if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) {
+    if (trimmedText === text) {
+      return { value: text };
+    }
+
+    const { key } = getMasterKeyManager().getPrimaryKey();
+    return {
+      value: text,
+      reencrypted: encryptWithKey(key, text),
+    };
   }
 
   const payload = parseEncryptedPayload(text);
@@ -140,10 +149,15 @@ export async function decryptWithMigration(
     try {
       const value = decryptParsedPayloadWithKey(candidate.key, payload);
       const usedFallback = candidate.key.equals(primary.key) ? undefined : candidate.source;
+      const reencrypted = usedFallback
+        ? encryptWithKey(primary.key, value)
+        : payload.isVersioned
+          ? undefined
+          : `${ENCRYPTED_PAYLOAD_VERSION_PREFIX}${text}`;
 
       return {
         value,
-        reencrypted: payload.isVersioned ? undefined : `${ENCRYPTED_PAYLOAD_VERSION_PREFIX}${text}`,
+        reencrypted,
         usedFallback,
       };
     } catch (error) {
