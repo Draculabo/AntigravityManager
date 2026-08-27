@@ -118,6 +118,84 @@ describe('CloudMonitorService', () => {
     expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('new_token', undefined);
   });
 
+  it('should recover from 401 Unauthorized during quota fetch by refreshing token and retrying', async () => {
+    const mockAccounts = [
+      {
+        id: 'acc-401',
+        email: 'unauthorized@example.com',
+        token: {
+          access_token: 'stale_token',
+          refresh_token: 'valid_refresh_token',
+          expiry_timestamp: Math.floor(Date.now() / 1000) + 3600, // Token looks valid locally
+        },
+      },
+    ];
+
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue(mockAccounts as never);
+    vi.mocked(GoogleAPIService.fetchQuota)
+      .mockRejectedValueOnce(new Error('UNAUTHORIZED'))
+      .mockResolvedValueOnce({
+        models: { 'models/gemini-pro': { percentage: 80, resetTime: '2026-08-27T00:00:00Z' } },
+      } as never);
+
+    vi.mocked(GoogleAPIService.refreshAccessToken).mockResolvedValue({
+      access_token: 'refreshed_access_token',
+      refresh_token: 'valid_refresh_token',
+      id_token: 'refreshed_id_token',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    });
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    expect(GoogleAPIService.refreshAccessToken).toHaveBeenCalledWith(
+      'valid_refresh_token',
+      undefined,
+      undefined,
+    );
+    expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
+      'acc-401',
+      expect.objectContaining({
+        access_token: 'refreshed_access_token',
+      }),
+    );
+    expect(GoogleAPIService.fetchQuota).toHaveBeenNthCalledWith(1, 'stale_token', undefined);
+    expect(GoogleAPIService.fetchQuota).toHaveBeenNthCalledWith(
+      2,
+      'refreshed_access_token',
+      undefined,
+    );
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc-401', expect.anything());
+    expect(CloudAccountRepo.setAccountStatus).toHaveBeenCalledWith('acc-401', 'active', null);
+  });
+
+  it('should share in-flight poll promise for concurrent poll() calls', async () => {
+    let resolveGetAccounts: (value: unknown) => void;
+    const getAccountsPromise = new Promise((resolve) => {
+      resolveGetAccounts = resolve;
+    });
+    vi.mocked(CloudAccountRepo.getAccounts).mockImplementation(() => getAccountsPromise as never);
+    vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue({ models: {} } as never);
+
+    const poll1 = CloudMonitorService.poll();
+    const poll2 = CloudMonitorService.poll();
+
+    resolveGetAccounts!([
+      {
+        id: 'acc1',
+        email: 'concurrent@example.com',
+        token: { access_token: 'tok', expiry_timestamp: Math.floor(Date.now() / 1000) + 3600 },
+      },
+    ]);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await Promise.all([poll1, poll2]);
+
+    expect(CloudAccountRepo.getAccounts).toHaveBeenCalledTimes(1);
+  });
+
   describe('handleAppFocus (Smart Refresh)', () => {
     it('should trigger poll when focused after debounce time', async () => {
       const pollSpy = vi.spyOn(CloudMonitorService, 'poll').mockResolvedValue(undefined);
