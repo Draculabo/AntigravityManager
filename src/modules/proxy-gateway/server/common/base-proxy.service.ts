@@ -183,7 +183,8 @@ export abstract class BaseProxyService {
     model: string,
     error: unknown,
   ): Promise<void> {
-    if (this.isModelNotFoundError(error)) {
+    const isImageModel = model.toLowerCase().includes('-image');
+    if (this.isModelNotFoundError(error) && !isImageModel) {
       // Quota metadata can advertise ids the generation API rejects; mark the
       // id so the in-flight retry loop and later requests reroute to a sibling.
       this.accountLeaseService.markModelUnrequestable(model);

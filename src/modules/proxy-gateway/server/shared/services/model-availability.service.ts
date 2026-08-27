@@ -115,11 +115,7 @@ export class ModelAvailabilityService {
     }
     this.hydrate();
     const normalizedModelId = normalizeModelId(modelId);
-    let changed = this.entries.delete(createKey(accountId, normalizedModelId));
-    if (normalizedModelId.includes('image')) {
-      changed = this.entries.delete(createKey(accountId, 'gemini-3.1-flash-image')) || changed;
-      changed = this.entries.delete(createKey(accountId, 'gemini-3-pro-image')) || changed;
-    }
+    const changed = this.entries.delete(createKey(accountId, normalizedModelId));
     if (changed) {
       this.persist();
     }
@@ -132,6 +128,7 @@ export class ModelAvailabilityService {
     for (const [key, entry] of this.entries) {
       if (
         entry.accountId === accountId &&
+        entry.modelId.includes('image') &&
         (entry.reason === 'model_not_supported' || entry.reason === 'model_forbidden')
       ) {
         this.entries.delete(key);

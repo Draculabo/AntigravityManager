@@ -27,13 +27,19 @@ describe('ModelAvailabilityService', () => {
 
     store.mark('acc-1', 'gemini-3-pro-image', 'model_not_supported');
     store.mark('acc-1', 'gemini-3-flash-image', 'model_forbidden');
-    store.mark('acc-1', 'gemini-3-pro', 'quota_exhausted');
+    store.mark('acc-1', 'gemini-3-pro', 'model_not_supported');
+    store.mark('acc-1', 'gemini-3.1-flash-lite', 'quota_exhausted');
     store.clearCapabilityFailures('acc-1');
 
     expect(store.getSnapshot()).toEqual([
       expect.objectContaining({
         accountId: 'acc-1',
         modelId: 'gemini-3-pro',
+        reason: 'model_not_supported',
+      }),
+      expect.objectContaining({
+        accountId: 'acc-1',
+        modelId: 'gemini-3.1-flash-lite',
         reason: 'quota_exhausted',
       }),
     ]);
@@ -51,6 +57,22 @@ describe('ModelAvailabilityService', () => {
         accountId: 'acc-1',
         modelId: 'gemini-3.1-flash-lite',
         reason: 'quota_exhausted',
+      }),
+    ]);
+  });
+
+  it('preserves sibling image model failures when another image model succeeds', () => {
+    const store = new ModelAvailabilityService();
+
+    store.mark('acc-1', 'gemini-3-pro-image', 'model_not_supported');
+    store.mark('acc-1', 'gemini-3.1-flash-image', 'model_forbidden');
+
+    expect(store.clearModel('acc-1', 'gemini-3.1-flash-image')).toBe(true);
+    expect(store.getSnapshot()).toEqual([
+      expect.objectContaining({
+        accountId: 'acc-1',
+        modelId: 'gemini-3-pro-image',
+        reason: 'model_not_supported',
       }),
     ]);
   });
