@@ -257,11 +257,7 @@ export class RateLimitTrackerService {
     return accountId;
   }
 
-  private buildFailureCountKey(
-    accountId: string,
-    reason: RateLimitReason,
-    model?: string,
-  ): string {
+  private buildFailureCountKey(accountId: string, reason: RateLimitReason, model?: string): string {
     const isModelScoped =
       !isEmpty(model?.trim() ?? '') &&
       (reason === RateLimitReason.QuotaExhausted ||
