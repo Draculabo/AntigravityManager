@@ -42,9 +42,8 @@ describe('OAuth client registry logging', () => {
     const secret = 'custom-client-secret-value';
     process.env[OAUTH_CLIENTS_ENV] = `|client-id|${secret}|Custom Client`;
 
-    const { OAuthClientRegistryService } = await import(
-      '@/modules/cloud-account/services/OAuthClientRegistryService'
-    );
+    const { OAuthClientRegistryService } =
+      await import('@/modules/cloud-account/services/OAuthClientRegistryService');
 
     OAuthClientRegistryService.listOAuthClients();
 
