@@ -82,9 +82,11 @@ describe('gateway lifecycle serialization', () => {
 
   it('queues a stop until the active start has completed', async () => {
     let releaseBootstrap!: (value: { success: true; port: number; base_url: string }) => void;
-    const firstBootstrap = new Promise<{ success: true; port: number; base_url: string }>((resolve) => {
-      releaseBootstrap = resolve;
-    });
+    const firstBootstrap = new Promise<{ success: true; port: number; base_url: string }>(
+      (resolve) => {
+        releaseBootstrap = resolve;
+      },
+    );
     mockStopNestServer.mockResolvedValue(true);
     mockBootstrapNestServer.mockReturnValueOnce(firstBootstrap);
 
