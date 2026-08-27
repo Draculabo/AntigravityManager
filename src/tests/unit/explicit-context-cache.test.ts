@@ -64,6 +64,42 @@ describe('ExplicitContextCacheManager', () => {
     });
   });
 
+  it('keeps recently used cache entries when capacity eviction runs', async () => {
+    const manager = new ExplicitContextCacheManager();
+    const candidates = Array.from({ length: 501 }, (_, index) =>
+      createCandidate(manager, `-capacity-${index}`),
+    );
+
+    for (let index = 0; index < 500; index += 1) {
+      await manager.resolve(candidates[index], async () => ({
+        expireTime: '2099-01-01T00:00:00Z',
+        name: `projects/project-a/locations/us-central1/cachedContents/cache-${index}`,
+      }));
+    }
+
+    const firstCreate = vi.fn(async () => ({
+      expireTime: '2099-01-01T00:00:00Z',
+      name: 'projects/project-a/locations/us-central1/cachedContents/cache-first-recreated',
+    }));
+    await manager.resolve(candidates[0], firstCreate);
+    expect(firstCreate).not.toHaveBeenCalled();
+
+    await manager.resolve(candidates[500], async () => ({
+      expireTime: '2099-01-01T00:00:00Z',
+      name: 'projects/project-a/locations/us-central1/cachedContents/cache-500',
+    }));
+
+    await manager.resolve(candidates[0], firstCreate);
+    expect(firstCreate).not.toHaveBeenCalled();
+
+    const secondCreate = vi.fn(async () => ({
+      expireTime: '2099-01-01T00:00:00Z',
+      name: 'projects/project-a/locations/us-central1/cachedContents/cache-second-recreated',
+    }));
+    await manager.resolve(candidates[1], secondCreate);
+    expect(secondCreate).toHaveBeenCalledTimes(1);
+  });
+
   it('prunes expired failure cooldowns while resolving new cache candidates', async () => {
     vi.useFakeTimers();
     try {

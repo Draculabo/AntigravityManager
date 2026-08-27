@@ -170,7 +170,7 @@ describe('decryptWithMigration', () => {
     expect(result.reencrypted).toBe(`agm_enc_v1:${ciphertext}`);
   });
 
-  it('uses a recovered historical key without changing the DEK', async () => {
+  it('migrates a recovered historical key payload to the primary DEK', async () => {
     const plaintext = '{"token":"legacy"}';
     const ciphertext = encryptWithKey(Buffer.from(fallbackHex, 'hex'), plaintext);
 
@@ -178,11 +178,12 @@ describe('decryptWithMigration', () => {
 
     expect(result.value).toBe(plaintext);
     expect(result.usedFallback).toBe('keytar');
-    expect(result.reencrypted).toBe(`agm_enc_v1:${ciphertext}`);
+    expect(result.reencrypted).toMatch(/^agm_enc_v1:/);
+    expect(result.reencrypted).not.toBe(`agm_enc_v1:${ciphertext}`);
     if (result.reencrypted) {
       const migrated = await decryptWithMigration(result.reencrypted);
       expect(migrated.value).toBe(plaintext);
-      expect(migrated.usedFallback).toBe('keytar');
+      expect(migrated.usedFallback).toBeUndefined();
     }
   });
 
@@ -233,7 +234,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expiry_timestamp: 1_700_000_000,
   };
 
-  it('writes go-keyring-base64 payload on macOS', async () => {
+  it('writes the macOS keychain payload through stdin', async () => {
     setPlatform('darwin');
 
     const { writeAntigravityCredentialStoreToken } =
@@ -243,8 +244,12 @@ describe('writeAntigravityCredentialStoreToken', () => {
 
     expect(childProcessMock.execFileSync).toHaveBeenLastCalledWith(
       'security',
-      expect.arrayContaining(['-w', expect.stringMatching(/^go-keyring-base64:/)]),
-      { stdio: 'ignore' },
+      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'],
+      expect.objectContaining({
+        input: expect.stringMatching(/^go-keyring-base64:/),
+        encoding: 'utf-8',
+        stdio: ['pipe', 'ignore', 'ignore'],
+      }),
     );
   });
 
