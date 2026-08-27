@@ -170,6 +170,9 @@ export class ExplicitContextCacheManager {
       this.updateActiveEntryCount();
       return null;
     }
+
+    this.entries.delete(key);
+    this.entries.set(key, entry);
     return entry.name;
   }
 

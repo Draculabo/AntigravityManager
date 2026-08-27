@@ -187,5 +187,10 @@ function findClientModel(body: unknown, endpoint: string | undefined): string | 
   if (!match) {
     return null;
   }
-  return decodeURIComponent(match[1]);
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }

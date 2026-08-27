@@ -80,27 +80,32 @@ describe('executeSwitchFlow for agy CLI', () => {
     expect(recordSwitchFailure).not.toHaveBeenCalled();
   });
 
-  it('continues when device profile apply fails for credential-store-backed GUI targets', async () => {
+  it('fails when device profile apply fails for credential-store-backed GUI targets', async () => {
     const performSwitch = vi.fn(async () => undefined);
+    const afterSwitchSuccess = vi.fn(async () => undefined);
     const targetProfile = {
       machineId: 'machine-id',
       macMachineId: 'mac-machine-id',
       devDeviceId: 'dev-device-id',
       sqmId: 'sqm-id',
     };
+    const applyError = new Error('storage_write_failed:parse_failed');
     applyDeviceProfile.mockImplementationOnce(() => {
-      throw new Error('storage_write_failed:parse_failed');
+      throw applyError;
     });
 
-    await executeSwitchFlow({
-      scope: 'cloud',
-      appTarget: 'classic',
-      targetProfile,
-      applyFingerprint: true,
-      useCredentialStore: true,
-      processExitTimeoutMs: 10000,
-      performSwitch,
-    });
+    await expect(
+      executeSwitchFlow({
+        scope: 'cloud',
+        appTarget: 'classic',
+        targetProfile,
+        applyFingerprint: true,
+        useCredentialStore: true,
+        processExitTimeoutMs: 10000,
+        performSwitch,
+        afterSwitchSuccess,
+      }),
+    ).rejects.toThrow(applyError);
 
     expect(applyDeviceProfile).toHaveBeenCalledWith(targetProfile, 'classic');
     expect(syncTelemetryServiceMachineIdValue).not.toHaveBeenCalled();
@@ -110,9 +115,40 @@ describe('executeSwitchFlow for agy CLI', () => {
     );
     expect(closeAntigravity).toHaveBeenCalledWith('classic');
     expect(waitForProcessExit).toHaveBeenCalledWith(10000, 100, 'classic');
-    expect(startAntigravity).toHaveBeenCalledWith('classic');
-    expect(recordSwitchSuccess).toHaveBeenCalledWith('cloud');
-    expect(recordSwitchFailure).not.toHaveBeenCalled();
+    expect(startAntigravity).not.toHaveBeenCalled();
+    expect(afterSwitchSuccess).not.toHaveBeenCalled();
+    expect(recordSwitchSuccess).not.toHaveBeenCalled();
+    expect(recordSwitchFailure).toHaveBeenCalledWith(
+      'cloud',
+      'apply_device_profile_failed',
+      applyError.message,
+    );
+  });
+
+  it('fails before starting a credential-store-backed GUI target without an identity profile', async () => {
+    const performSwitch = vi.fn(async () => undefined);
+
+    await expect(
+      executeSwitchFlow({
+        scope: 'cloud',
+        appTarget: 'classic',
+        targetProfile: null,
+        applyFingerprint: true,
+        useCredentialStore: true,
+        processExitTimeoutMs: 10000,
+        performSwitch,
+      }),
+    ).rejects.toThrow('Account has no bound identity profile');
+
+    expect(performSwitch).toHaveBeenCalledTimes(1);
+    expect(applyDeviceProfile).not.toHaveBeenCalled();
+    expect(startAntigravity).not.toHaveBeenCalled();
+    expect(recordSwitchSuccess).not.toHaveBeenCalled();
+    expect(recordSwitchFailure).toHaveBeenCalledWith(
+      'cloud',
+      'missing_bound_profile',
+      'Account has no bound identity profile',
+    );
   });
 
   it('applies the CLI device profile best-effort after credential-store switching', async () => {
