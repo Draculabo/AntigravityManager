@@ -1,13 +1,14 @@
 import { Notification } from 'electron';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
-import { GoogleAPIService, type TokenResponse } from './GoogleAPIService';
+import { GoogleAPIService, type QuotaData, type TokenResponse } from './GoogleAPIService';
 import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '@/shared/logging/logger';
 import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 
 type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi' | 'fr' | 'tr';
 
@@ -115,7 +116,7 @@ export class CloudMonitorService {
   private static POLL_INTERVAL = 1000 * 60 * 5; // 5 minutes
   private static DEBOUNCE_TIME = 10000; // 10 seconds
   private static lastFocusTime: number = 0;
-  private static isPolling: boolean = false;
+  private static activePollPromise: Promise<void> | null = null;
 
   private static isAutoSwitchEnabled(): boolean {
     return CloudAccountSettingsStore.getSetting<boolean>('auto_switch_enabled', false);
@@ -124,7 +125,7 @@ export class CloudMonitorService {
   // Helper for testing
   static resetStateForTesting() {
     this.lastFocusTime = 0;
-    this.isPolling = false;
+    this.activePollPromise = null;
     this.stop();
   }
 
@@ -157,7 +158,7 @@ export class CloudMonitorService {
     const now = Date.now();
 
     // 1. Concurrency Guard: If we are already polling, don't pile up requests
-    if (this.isPolling) {
+    if (this.activePollPromise) {
       logger.info('Monitor: App focused, but polling is already in progress. Skipping.');
       return;
     }
@@ -199,70 +200,86 @@ export class CloudMonitorService {
     }
   }
 
-  static async poll() {
+  static async poll(): Promise<void> {
     if (this.isAutoSwitchEnabled() && !this.intervalId) {
       this.startInterval();
     }
 
-    if (this.isPolling) {
-      return; // Extra safety
+    if (this.activePollPromise) {
+      return this.activePollPromise;
     }
-    this.isPolling = true;
+
+    const pollPromise = this.executePoll();
+    this.activePollPromise = pollPromise;
 
     try {
-      logger.info('CloudMonitor: Polling quotas...');
-      const accounts = await CloudAccountRepo.getAccounts();
-      const now = Math.floor(Date.now() / 1000);
+      await pollPromise;
+    } finally {
+      if (this.activePollPromise === pollPromise) {
+        this.activePollPromise = null;
+      }
+    }
+  }
 
-      for (const account of accounts) {
-        try {
-          // 1. Check/Refresh Token if needed (give it a 10 min buffer here for safety)
-          let accessToken = account.token.access_token;
-          if (account.token.expiry_timestamp < now + 600) {
-            if (!account.token.refresh_token) {
-              if (account.token.expiry_timestamp <= now) {
-                logger.warn(`Monitor: Token expired without refresh token for ${account.email}`);
+  private static async executePoll(): Promise<void> {
+    logger.info('CloudMonitor: Polling quotas...');
+    const accounts = await CloudAccountRepo.getAccounts();
+    let now = Math.floor(Date.now() / 1000);
+
+    for (const account of accounts) {
+      try {
+        now = Math.floor(Date.now() / 1000);
+        // 1. Check/Refresh Token if needed (give it a 10 min buffer here for safety)
+        let accessToken = account.token.access_token;
+        if (account.token.expiry_timestamp < now + 600) {
+          if (!account.token.refresh_token) {
+            if (account.token.expiry_timestamp <= now) {
+              logger.warn(`Monitor: Token expired without refresh token for ${account.email}`);
+              await CloudAccountRepo.setAccountStatus(
+                account.id,
+                'expired',
+                'Access token expired and no refresh token is available',
+              );
+              continue;
+            }
+
+            logger.info(
+              `Monitor: Token for ${account.email} is nearing expiry without a refresh token; using it until expiry`,
+            );
+          } else {
+            logger.info(`Monitor: Refreshing token for ${account.email}`);
+            try {
+              const newToken = await GoogleAPIService.refreshAccessToken(
+                account.token.refresh_token,
+                account.proxy_url,
+                account.token.oauth_client_key,
+              );
+              account.token = mergeRefreshedToken(account.token, newToken, now);
+              await CloudAccountRepo.updateToken(account.id, account.token);
+              accessToken = newToken.access_token;
+            } catch (refreshError) {
+              logger.error(`Monitor: Token refresh failed for ${account.email}`, refreshError);
+              const classified = classifyAccountStatusFromError(refreshError);
+              if (classified) {
                 await CloudAccountRepo.setAccountStatus(
                   account.id,
-                  'expired',
-                  'Access token expired and no refresh token is available',
+                  classified.status,
+                  classified.reason,
                 );
-                continue;
               }
-
-              logger.info(
-                `Monitor: Token for ${account.email} is nearing expiry without a refresh token; using it until expiry`,
-              );
-            } else {
-              logger.info(`Monitor: Refreshing token for ${account.email}`);
-              try {
-                const newToken = await GoogleAPIService.refreshAccessToken(
-                  account.token.refresh_token,
-                  account.proxy_url,
-                  account.token.oauth_client_key,
-                );
-                account.token = mergeRefreshedToken(account.token, newToken, now);
-                await CloudAccountRepo.updateToken(account.id, account.token);
-                accessToken = newToken.access_token;
-              } catch (refreshError) {
-                logger.error(`Monitor: Token refresh failed for ${account.email}`, refreshError);
-                const classified = classifyAccountStatusFromError(refreshError);
-                if (classified) {
-                  await CloudAccountRepo.setAccountStatus(
-                    account.id,
-                    classified.status,
-                    classified.reason,
-                  );
-                }
-                continue;
-              }
+              continue;
             }
           }
+        }
 
-          await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 1000));
+
+        let quota: QuotaData;
+        const previousAICredits = account.quota?.ai_credits;
+
+        try {
           const fetchedQuota = await GoogleAPIService.fetchQuota(accessToken, account.proxy_url);
-          const quota = { ...fetchedQuota };
-          const previousAICredits = account.quota?.ai_credits;
+          quota = { ...fetchedQuota };
 
           try {
             const aiCredits = await GoogleAPIService.fetchAICredits(accessToken, account.proxy_url);
@@ -277,93 +294,130 @@ export class CloudMonitorService {
               quota.ai_credits = previousAICredits;
             }
           }
-
-          // 3. Update DB
-          await CloudAccountRepo.updateQuota(account.id, quota);
-          account.quota = quota;
-          await CloudAccountRepo.setAccountStatus(account.id, 'active', null);
-        } catch (error) {
-          logger.error(`Monitor: Failed to update ${account.email}`, error);
-          const classified = classifyAccountStatusFromError(error);
-          if (classified) {
-            await CloudAccountRepo.setAccountStatus(
-              account.id,
-              classified.status,
-              classified.reason,
+        } catch (fetchError: unknown) {
+          const isUnauthorized =
+            fetchError instanceof Error && fetchError.message === 'UNAUTHORIZED';
+          if (isUnauthorized && account.token.refresh_token) {
+            logger.warn(
+              `Monitor: Received 401 Unauthorized for ${account.email}; forcing token refresh and retry`,
             );
-            if (classified.status === 'rate_limited' && hasReusableCachedQuota(account)) {
-              logger.warn(
-                `Monitor: Quota request rate-limited for ${account.email}, keeping cached quota as fallback.`,
+            const refreshedToken = await GoogleAPIService.refreshAccessToken(
+              account.token.refresh_token,
+              account.proxy_url,
+              account.token.oauth_client_key,
+            );
+            now = Math.floor(Date.now() / 1000);
+            account.token = mergeRefreshedToken(account.token, refreshedToken, now);
+            await CloudAccountRepo.updateToken(account.id, account.token);
+            accessToken = refreshedToken.access_token;
+
+            const retriedQuota = await GoogleAPIService.fetchQuota(accessToken, account.proxy_url);
+            quota = { ...retriedQuota };
+
+            try {
+              const aiCredits = await GoogleAPIService.fetchAICredits(
+                accessToken,
+                account.proxy_url,
               );
+              if (aiCredits) {
+                quota.ai_credits = aiCredits;
+              } else if (previousAICredits) {
+                quota.ai_credits = previousAICredits;
+              }
+            } catch (creditError) {
+              logger.warn(
+                `Monitor: Failed to fetch credits for ${account.email} after token refresh`,
+                creditError,
+              );
+              if (previousAICredits) {
+                quota.ai_credits = previousAICredits;
+              }
             }
+          } else {
+            throw fetchError;
+          }
+        }
+
+        // 3. Update DB & clear failures
+        await CloudAccountRepo.updateQuota(account.id, quota);
+        account.quota = quota;
+        await CloudAccountRepo.setAccountStatus(account.id, 'active', null);
+        proxyModelAvailabilityStore.clearCapabilityFailures(account.id);
+      } catch (error) {
+        logger.error(`Monitor: Failed to update ${account.email}`, error);
+        const classified = classifyAccountStatusFromError(error);
+        if (classified) {
+          await CloudAccountRepo.setAccountStatus(account.id, classified.status, classified.reason);
+          if (classified.status === 'rate_limited' && hasReusableCachedQuota(account)) {
+            logger.warn(
+              `Monitor: Quota request rate-limited for ${account.email}, keeping cached quota as fallback.`,
+            );
           }
         }
       }
+    }
 
-      // 4. Check for Quota Alerts
-      const alertEnabled = CloudAccountSettingsStore.getSetting<boolean>(
-        'quota_alert_enabled',
-        false,
-      );
-      const alertThreshold = CloudAccountSettingsStore.getSetting<number>(
-        'quota_alert_threshold',
-        20,
-      );
-      const notificationLanguage = getCloudMonitorLanguage(
-        CloudAccountSettingsStore.getSetting<string>('language', 'en'),
-      );
-      const notificationText = CLOUD_MONITOR_NOTIFICATION_TEXT[notificationLanguage];
+    // 4. Check for Quota Alerts
+    const alertEnabled = CloudAccountSettingsStore.getSetting<boolean>(
+      'quota_alert_enabled',
+      false,
+    );
+    const alertThreshold = CloudAccountSettingsStore.getSetting<number>(
+      'quota_alert_threshold',
+      20,
+    );
+    const notificationLanguage = getCloudMonitorLanguage(
+      CloudAccountSettingsStore.getSetting<string>('language', 'en'),
+    );
+    const notificationText = CLOUD_MONITOR_NOTIFICATION_TEXT[notificationLanguage];
 
-      if (alertEnabled) {
-        for (const account of accounts) {
-          if (!account.quota?.models) continue;
-          const lowQuotaModels = Object.entries(account.quota.models)
-            .filter(([_, info]) => info.percentage >= 0 && info.percentage <= alertThreshold)
-            .map(([name, info]) => {
-              return info.display_name || name.replace('models/', '').replace(/-/g, ' ');
-            });
+    if (alertEnabled) {
+      for (const account of accounts) {
+        if (!account.quota?.models) continue;
+        const lowQuotaModels = Object.entries(account.quota.models)
+          .filter(([_, info]) => info.percentage >= 0 && info.percentage <= alertThreshold)
+          .map(([name, info]) => {
+            return info.display_name || name.replace('models/', '').replace(/-/g, ' ');
+          });
 
-          if (lowQuotaModels.length > 0) {
-            new Notification({
-              title: notificationText.lowQuotaTitle,
-              body: notificationText.lowQuotaBody(account.email, lowQuotaModels.join(', ')),
-              silent: false,
-            }).show();
-          }
-        }
-      }
-
-      // Check for AI Credits Alerts
-      const aiCreditsAlertEnabled = CloudAccountSettingsStore.getSetting<boolean>(
-        'ai_credits_alert_enabled',
-        false,
-      );
-      const aiCreditsAlertThreshold = CloudAccountSettingsStore.getSetting<number>(
-        'ai_credits_alert_threshold',
-        5000,
-      );
-
-      if (aiCreditsAlertEnabled) {
-        for (const account of accounts) {
-          const credits = account.quota?.ai_credits?.credits;
-          if (credits === undefined || credits > aiCreditsAlertThreshold) {
-            continue;
-          }
-
+        if (lowQuotaModels.length > 0) {
           new Notification({
-            title: notificationText.lowAICreditsTitle,
-            body: notificationText.lowAICreditsBody(account.email, credits),
+            title: notificationText.lowQuotaTitle,
+            body: notificationText.lowQuotaBody(account.email, lowQuotaModels.join(', ')),
             silent: false,
           }).show();
         }
       }
+    }
 
-      // 5. Check for Auto-Switch
-      for (const target of AUTO_SWITCH_TARGETS) {
-        await AutoSwitchService.checkAndSwitchIfNeeded(target);
+    // Check for AI Credits Alerts
+    const aiCreditsAlertEnabled = CloudAccountSettingsStore.getSetting<boolean>(
+      'ai_credits_alert_enabled',
+      false,
+    );
+    const aiCreditsAlertThreshold = CloudAccountSettingsStore.getSetting<number>(
+      'ai_credits_alert_threshold',
+      5000,
+    );
+
+    if (aiCreditsAlertEnabled) {
+      for (const account of accounts) {
+        const credits = account.quota?.ai_credits?.credits;
+        if (credits === undefined || credits > aiCreditsAlertThreshold) {
+          continue;
+        }
+
+        new Notification({
+          title: notificationText.lowAICreditsTitle,
+          body: notificationText.lowAICreditsBody(account.email, credits),
+          silent: false,
+        }).show();
       }
-    } finally {
-      this.isPolling = false;
+    }
+
+    // 5. Check for Auto-Switch
+    for (const target of AUTO_SWITCH_TARGETS) {
+      await AutoSwitchService.checkAndSwitchIfNeeded(target);
     }
   }
 }
