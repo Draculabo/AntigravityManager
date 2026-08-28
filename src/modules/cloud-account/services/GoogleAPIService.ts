@@ -799,12 +799,18 @@ export class GoogleAPIService {
       });
 
       if (!fallbackResponse.ok) {
+        if (fallbackResponse.status === 401) {
+          throw new Error('UNAUTHORIZED');
+        }
         return null;
       }
 
       const fallbackData = (await fallbackResponse.json()) as LoadProjectResponse;
       return extractAiCreditsFromProjectContext(fallbackData);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === 'UNAUTHORIZED') {
+        throw error;
+      }
       return null;
     }
   }

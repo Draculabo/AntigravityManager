@@ -327,6 +327,31 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     );
   });
 
+  it('reports AI credits authentication failures as unauthorized', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      }),
+    );
+
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue({
+      proxy: {
+        upstream_proxy: {
+          enabled: false,
+        },
+      },
+    } as any);
+
+    const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+
+    await expect(GoogleAPIService.fetchAICredits('expired-access-token')).rejects.toThrow(
+      'UNAUTHORIZED',
+    );
+  });
+
   it('does not fall through to the next endpoint on permanent 400 errors', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: false,

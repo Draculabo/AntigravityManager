@@ -92,6 +92,10 @@ function hasReusableCachedQuota(account: {
   return Object.keys(account.quota.models).length > 0;
 }
 
+function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof Error && error.message === 'UNAUTHORIZED';
+}
+
 function mergeRefreshedToken(
   currentToken: CloudAccount['token'],
   newToken: TokenResponse,
@@ -289,15 +293,48 @@ export class CloudMonitorService {
               quota.ai_credits = previousAICredits;
             }
           } catch (creditError) {
-            logger.warn(`Monitor: Failed to fetch credits for ${account.email}`, creditError);
-            if (previousAICredits) {
-              quota.ai_credits = previousAICredits;
+            if (isUnauthorizedError(creditError) && account.token.refresh_token) {
+              logger.warn(
+                `Monitor: Received 401 Unauthorized while fetching credits for ${account.email}; forcing token refresh and retry`,
+              );
+              try {
+                const refreshedToken = await GoogleAPIService.refreshAccessToken(
+                  account.token.refresh_token,
+                  account.proxy_url,
+                  account.token.oauth_client_key,
+                );
+                now = Math.floor(Date.now() / 1000);
+                account.token = mergeRefreshedToken(account.token, refreshedToken, now);
+                await CloudAccountRepo.updateToken(account.id, account.token);
+                accessToken = refreshedToken.access_token;
+
+                const retriedAICredits = await GoogleAPIService.fetchAICredits(
+                  accessToken,
+                  account.proxy_url,
+                );
+                if (retriedAICredits) {
+                  quota.ai_credits = retriedAICredits;
+                } else if (previousAICredits) {
+                  quota.ai_credits = previousAICredits;
+                }
+              } catch (retryError) {
+                logger.warn(
+                  `Monitor: Failed to fetch credits for ${account.email} after token refresh`,
+                  retryError,
+                );
+                if (previousAICredits) {
+                  quota.ai_credits = previousAICredits;
+                }
+              }
+            } else {
+              logger.warn(`Monitor: Failed to fetch credits for ${account.email}`, creditError);
+              if (previousAICredits) {
+                quota.ai_credits = previousAICredits;
+              }
             }
           }
         } catch (fetchError: unknown) {
-          const isUnauthorized =
-            fetchError instanceof Error && fetchError.message === 'UNAUTHORIZED';
-          if (isUnauthorized && account.token.refresh_token) {
+          if (isUnauthorizedError(fetchError) && account.token.refresh_token) {
             logger.warn(
               `Monitor: Received 401 Unauthorized for ${account.email}; forcing token refresh and retry`,
             );

@@ -171,6 +171,54 @@ describe('CloudMonitorService', () => {
     expect(CloudAccountRepo.setAccountStatus).toHaveBeenCalledWith('acc-401', 'active', null);
   });
 
+  it('should recover from 401 Unauthorized during AI credits fetch', async () => {
+    const mockAccounts = [
+      {
+        id: 'credits-401',
+        email: 'credits-unauthorized@example.com',
+        token: {
+          access_token: 'stale_token',
+          refresh_token: 'valid_refresh_token',
+          expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
+        },
+      },
+    ];
+
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue(mockAccounts as never);
+    vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue({ models: {} } as never);
+    vi.mocked(GoogleAPIService.fetchAICredits)
+      .mockRejectedValueOnce(new Error('UNAUTHORIZED'))
+      .mockResolvedValueOnce({ credits: 1234, expiryDate: '2026-09-01T00:00:00Z' });
+    vi.mocked(GoogleAPIService.refreshAccessToken).mockResolvedValue({
+      access_token: 'refreshed_access_token',
+      refresh_token: 'valid_refresh_token',
+      id_token: 'refreshed_id_token',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    });
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
+      'credits-401',
+      expect.objectContaining({ access_token: 'refreshed_access_token' }),
+    );
+    expect(GoogleAPIService.fetchAICredits).toHaveBeenNthCalledWith(1, 'stale_token', undefined);
+    expect(GoogleAPIService.fetchAICredits).toHaveBeenNthCalledWith(
+      2,
+      'refreshed_access_token',
+      undefined,
+    );
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith(
+      'credits-401',
+      expect.objectContaining({
+        ai_credits: { credits: 1234, expiryDate: '2026-09-01T00:00:00Z' },
+      }),
+    );
+  });
+
   it('should share in-flight poll promise for concurrent poll() calls', async () => {
     let resolveGetAccounts: (value: unknown) => void;
     const getAccountsPromise = new Promise((resolve) => {
