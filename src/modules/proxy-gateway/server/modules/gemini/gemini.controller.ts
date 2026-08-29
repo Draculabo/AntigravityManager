@@ -29,6 +29,7 @@ import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-i
 import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
 import { AccountLeaseService } from '../account-lease/account-lease.service';
+import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
 
 type GeminiModelMetadata = {
   name: string;
@@ -183,13 +184,61 @@ export class GeminiController {
       }
 
       const message = error instanceof Error ? error.message : 'Internal Server Error';
-      res.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
+      const status =
+        action === 'countTokens'
+          ? this.resolveCountTokensErrorHttpStatus(error)
+          : HttpStatus.INTERNAL_SERVER_ERROR;
+      res.status(status).send({
         error: {
-          code: HttpStatus.INTERNAL_SERVER_ERROR,
+          code: status,
           message,
-          status: 'INTERNAL',
+          status: this.resolveGeminiErrorStatus(status),
         },
       });
+    }
+  }
+
+  private resolveCountTokensErrorHttpStatus(error: unknown): HttpStatus {
+    if (
+      error instanceof UpstreamRequestError &&
+      Number.isInteger(error.status) &&
+      error.status !== undefined &&
+      error.status >= 400 &&
+      error.status <= 599
+    ) {
+      return error.status as HttpStatus;
+    }
+
+    return HttpStatus.INTERNAL_SERVER_ERROR;
+  }
+
+  private resolveGeminiErrorStatus(status: HttpStatus): string {
+    switch (status) {
+      case HttpStatus.BAD_REQUEST:
+        return 'INVALID_ARGUMENT';
+      case HttpStatus.UNAUTHORIZED:
+        return 'UNAUTHENTICATED';
+      case HttpStatus.FORBIDDEN:
+        return 'PERMISSION_DENIED';
+      case HttpStatus.NOT_FOUND:
+        return 'NOT_FOUND';
+      case HttpStatus.REQUEST_TIMEOUT:
+      case HttpStatus.GATEWAY_TIMEOUT:
+        return 'DEADLINE_EXCEEDED';
+      case HttpStatus.CONFLICT:
+        return 'ABORTED';
+      case HttpStatus.PRECONDITION_FAILED:
+        return 'FAILED_PRECONDITION';
+      case HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE:
+        return 'OUT_OF_RANGE';
+      case HttpStatus.TOO_MANY_REQUESTS:
+        return 'RESOURCE_EXHAUSTED';
+      case HttpStatus.NOT_IMPLEMENTED:
+        return 'UNIMPLEMENTED';
+      case HttpStatus.SERVICE_UNAVAILABLE:
+        return 'UNAVAILABLE';
+      default:
+        return 'INTERNAL';
     }
   }
 

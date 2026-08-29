@@ -117,7 +117,7 @@ describe('Gemini countTokens', () => {
     expect(reply.body).toMatchObject({ error: expect.objectContaining({ code: 500 }) });
   });
 
-  it('penalises the account and reports the failure when upstream rejects the count', async () => {
+  it('penalises the account and preserves an upstream forbidden response', async () => {
     const upstream = createUpstream({
       countTokens: () => {
         throw new UpstreamRequestError({
@@ -137,7 +137,44 @@ describe('Gemini countTokens', () => {
       reply as never,
     );
 
-    expect(reply.body).toMatchObject({ error: expect.objectContaining({ code: 500 }) });
+    expect(reply.status).toHaveBeenCalledWith(403);
+    expect(reply.body).toMatchObject({
+      error: {
+        code: 403,
+        status: 'PERMISSION_DENIED',
+      },
+    });
     expect(lease.penalties).toEqual([{ accountId: 'acc-1', kind: 'forbidden' }]);
+  });
+
+  it.each([
+    [429, 'RESOURCE_EXHAUSTED'],
+    [503, 'UNAVAILABLE'],
+  ])('preserves upstream status %i after retries are exhausted', async (status, errorStatus) => {
+    const upstream = createUpstream({
+      countTokens: () => {
+        throw new UpstreamRequestError({
+          message: `Upstream rejected countTokens with ${status}`,
+          status,
+        });
+      },
+    });
+    const lease = createLease([createAccount('acc-1')]);
+    const controller = new GeminiController(createGateway(upstream, lease).geminiService);
+    const reply = createReply();
+
+    await controller.countTokens(
+      'gemini-3-flash',
+      countTokensBody('hello') as never,
+      reply as never,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(status);
+    expect(reply.body).toMatchObject({
+      error: {
+        code: status,
+        status: errorStatus,
+      },
+    });
   });
 });

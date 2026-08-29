@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
+import { CommitOnBlurNumberInput, Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
@@ -839,13 +839,11 @@ function SettingsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="number"
+                  <CommitOnBlurNumberInput
                     min={0}
                     max={100}
                     value={config?.quota_alert_threshold ?? 20}
-                    onChange={async (e) => {
-                      const rawValue = e.target.value;
+                    onCommit={async (rawValue) => {
                       const parsed = parseInt(rawValue, 10);
                       if (isNaN(parsed) || parsed < 0 || parsed > 100) return;
 
@@ -898,12 +896,10 @@ function SettingsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="number"
+                  <CommitOnBlurNumberInput
                     min={0}
                     value={config?.ai_credits_alert_threshold ?? 5000}
-                    onChange={async (e) => {
-                      const rawValue = e.target.value;
+                    onCommit={async (rawValue) => {
                       const parsed = parseInt(rawValue, 10);
                       if (isNaN(parsed) || parsed < 0) return;
 
@@ -946,13 +942,12 @@ function SettingsPage() {
                   <Label htmlFor="settings-gateway-port">{t('settings.gateway.port')}</Label>
                   <p className="text-muted-foreground text-xs">{t('settings.gateway.port_hint')}</p>
                 </div>
-                <Input
+                <CommitOnBlurNumberInput
                   id="settings-gateway-port"
-                  type="number"
                   min={1024}
                   max={65535}
                   value={proxyConfig.port}
-                  onChange={(event) => updateGatewayPort(event.target.value)}
+                  onCommit={updateGatewayPort}
                 />
               </div>
               <div className="flex items-center justify-between rounded-lg border p-4">

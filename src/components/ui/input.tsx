@@ -3,6 +3,14 @@ import { cn } from '@/shared/ui/utils';
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
 
+export interface CommitOnBlurNumberInputProps extends Omit<
+  InputProps,
+  'defaultValue' | 'onBlur' | 'onChange' | 'type' | 'value'
+> {
+  value: number;
+  onCommit: (value: string) => void | Promise<void>;
+}
+
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, ...props }, ref) => {
     return (
@@ -20,4 +28,17 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 );
 Input.displayName = 'Input';
 
-export { Input };
+const CommitOnBlurNumberInput = React.forwardRef<HTMLInputElement, CommitOnBlurNumberInputProps>(
+  ({ value, onCommit, ...props }, ref) => (
+    <Input
+      {...props}
+      key={value}
+      ref={ref}
+      type="number"
+      defaultValue={value}
+      onBlur={(event) => onCommit(event.currentTarget.value)}
+    />
+  ),
+);
+
+export { CommitOnBlurNumberInput, Input };
