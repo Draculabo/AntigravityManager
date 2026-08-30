@@ -9,6 +9,7 @@ import { sanitizeSystemInstructionForCache } from './StablePromptPrefix';
 import { buildOfficialSystemInstruction } from './OfficialSystemInstruction';
 import { parseMarkdownImagesToGeminiParts } from './MarkdownImageParts';
 import { enhanceGeminiSkillsPrompt } from './SkillPromptEnhancer';
+import { toSnakeToolConfig } from './GeminiToolConfigCompat';
 import { logger } from '@/shared/logging/logger';
 import {
   ClaudeRequest,
@@ -23,6 +24,7 @@ import {
   FunctionDeclaration,
   SafetySetting,
   GeminiToolConfig,
+  GeminiRequest,
 } from './types';
 import {
   buildUserAgent,
@@ -95,6 +97,7 @@ export function transformClaudeRequestIn(
   projectId?: string,
   userAgent?: string,
   resolvedModel?: string,
+  source: 'anthropic' | 'openai' = 'anthropic',
 ): GeminiInternalRequest {
   const { extraSystemMessages, messages } = extractEmbeddedSystemMessages(claudeReq.messages);
   const signatureSessionKey = isString(claudeReq.metadata?.signature_session_key)
@@ -183,14 +186,7 @@ export function transformClaudeRequestIn(
   const tools = buildTools(claudeReq.tools, hasWebSearchTool, requestConfig.finalModel);
 
   // Build inner request
-  const innerRequest: {
-    contents: GeminiContent[];
-    safetySettings: SafetySetting[];
-    systemInstruction?: { parts: { text: string }[] };
-    generationConfig?: GenerationConfig;
-    tools?: GeminiToolDeclaration[];
-    toolConfig?: GeminiToolConfig;
-  } = {
+  const innerRequest: GeminiRequest = {
     contents,
     safetySettings: [...SAFETY_SETTINGS],
   };
@@ -207,7 +203,13 @@ export function transformClaudeRequestIn(
 
   if (tools) {
     innerRequest.tools = tools;
-    innerRequest.toolConfig = buildToolConfig(claudeReq.tool_choice);
+    if (
+      source === 'anthropic' ||
+      tools.some((tool) => (tool.functionDeclarations?.length ?? 0) > 0)
+    ) {
+      innerRequest.toolConfig = buildToolConfig(claudeReq.tool_choice);
+      innerRequest.tool_config = toSnakeToolConfig(innerRequest.toolConfig);
+    }
   }
 
   // Inject googleSearch tool if needed (and not already done by buildTools)
@@ -294,6 +296,9 @@ function reorderInnerRequestForCache(
   }
   if (innerRequest.toolConfig) {
     reordered.toolConfig = innerRequest.toolConfig;
+  }
+  if (innerRequest.tool_config) {
+    reordered.tool_config = innerRequest.tool_config;
   }
   if (innerRequest.generationConfig) {
     reordered.generationConfig = innerRequest.generationConfig;

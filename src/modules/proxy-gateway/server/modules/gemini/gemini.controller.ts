@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -172,7 +173,7 @@ export class GeminiController {
         },
       });
     } catch (error) {
-      if (error instanceof InvalidCountTokensRequestError) {
+      if (error instanceof InvalidCountTokensRequestError || error instanceof BadRequestException) {
         res.status(HttpStatus.BAD_REQUEST).send({
           error: {
             code: HttpStatus.BAD_REQUEST,

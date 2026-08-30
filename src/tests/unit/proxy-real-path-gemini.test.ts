@@ -81,6 +81,58 @@ describe('real request path, Gemini surface', () => {
     expect(upstream.calls[0]?.body.model).toBe('gemini-3-flash');
   });
 
+  it.each(['generateContent', 'streamGenerateContent'])(
+    'rejects malformed aliases before account selection: %s',
+    async (action) => {
+      const upstream = createUpstream({ generate: geminiTextResponse('unreachable') });
+      const lease = createLease([]);
+      const controller = new GeminiController(createGateway(upstream, lease).geminiService);
+      const reply = createReply();
+      await controller.modelAction(
+        `gemini-3-flash:${action}`,
+        {
+          ...geminiRequest('invalid'),
+          tools: [],
+          tool_config: { function_calling_config: [] },
+        } as never,
+        reply as never,
+      );
+      expect(reply.body).toEqual({
+        error: {
+          code: 400,
+          status: 'INVALID_ARGUMENT',
+          message: 'Invalid Gemini tools or tool configuration',
+        },
+      });
+      expect(lease.getNextToken).not.toHaveBeenCalled();
+      expect(upstream.calls).toEqual([]);
+    },
+  );
+
+  it('preserves native tool extensions and normalizes empty tools at the service boundary', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const controller = new GeminiController(
+      createGateway(upstream, createLease([createAccount('acc-1')])).geminiService,
+    );
+    const request = {
+      ...geminiRequest('hello'),
+      tools: [],
+      toolConfig: { extension: { value: 1 }, includeServerSideToolInvocations: false },
+      tool_config: { function_calling_config: { mode: 'ANY', allowed_function_names: ['read'] } },
+    };
+    await controller.modelAction('gemini-3-flash:generateContent', request, createReply() as never);
+    expect(upstream.calls[0]?.body.request.tools).toEqual([]);
+    expect(upstream.calls[0]?.body.request.toolConfig).toEqual({
+      extension: { value: 1 },
+      includeServerSideToolInvocations: true,
+    });
+    expect(upstream.calls[0]?.body.request.tool_config).toEqual({
+      function_calling_config: { mode: 'ANY', allowed_function_names: ['read'] },
+      include_server_side_tool_invocations: true,
+    });
+    expect(request.toolConfig.includeServerSideToolInvocations).toBe(false);
+  });
+
   it('streams generateContent to a Gemini client without reaching the mapper of another surface', async () => {
     const upstream = createUpstream({
       streamFrames: [

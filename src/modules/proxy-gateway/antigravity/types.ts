@@ -295,11 +295,19 @@ export interface FunctionResponse {
 }
 
 export interface GeminiToolConfig {
-  functionCallingConfig: {
-    mode: string;
+  functionCallingConfig?: {
+    mode?: string;
     allowedFunctionNames?: string[];
   };
   includeServerSideToolInvocations?: boolean;
+}
+
+export interface GeminiSnakeToolConfig {
+  function_calling_config?: {
+    mode?: string;
+    allowed_function_names?: string[];
+  };
+  include_server_side_tool_invocations?: boolean;
 }
 
 export interface GeminiRequest {
@@ -308,6 +316,7 @@ export interface GeminiRequest {
   tools?: GeminiToolDeclaration[];
   /** Function calling configuration shared by the cached tool declarations. */
   toolConfig?: GeminiToolConfig;
+  tool_config?: GeminiSnakeToolConfig;
   /** Safety settings */
   safetySettings?: SafetySetting[];
   /** System instruction */

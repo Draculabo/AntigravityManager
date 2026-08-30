@@ -68,6 +68,7 @@ export class AnthropicService extends BaseProxyService {
       '',
       requestUserAgent,
       targetModel,
+      'anthropic',
     );
 
     return this.countTokensWithLease(
@@ -129,6 +130,7 @@ export class AnthropicService extends BaseProxyService {
           projectId,
           requestUserAgent,
           accountTargetModel,
+          'anthropic',
         );
         this.applyInternalGenerationConstraints(
           geminiBody,
@@ -175,6 +177,7 @@ export class AnthropicService extends BaseProxyService {
               '',
               requestUserAgent,
               accountTargetModel,
+              'anthropic',
             );
             this.applyInternalGenerationConstraints(
               fallbackBody,
@@ -238,6 +241,7 @@ export class AnthropicService extends BaseProxyService {
               token.token.project_id ?? '',
               requestUserAgent,
               downgradedVariant.request.model,
+              'anthropic',
             );
             this.applyInternalGenerationConstraints(
               downgradedBody,

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosProxyConfig, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { isEmpty, isFunction, isNil, isNumber, isObjectLike, isString } from 'lodash-es';
 import { Readable } from 'node:stream';
@@ -52,7 +52,10 @@ export class GeminiClient {
     'https://daily-cloudcode-pa.googleapis.com/v1internal',
   ];
 
-  constructor(private readonly upstream4xxCapture: Upstream4xxCaptureService) {}
+  constructor(
+    @Inject(Upstream4xxCaptureService)
+    private readonly upstream4xxCapture: Upstream4xxCaptureService,
+  ) {}
 
   async streamGenerate(
     model: string,
@@ -320,6 +323,7 @@ export class GeminiClient {
     const requestWithoutStaticPrefix = { ...body.request };
     delete requestWithoutStaticPrefix.systemInstruction;
     delete requestWithoutStaticPrefix.toolConfig;
+    delete requestWithoutStaticPrefix.tool_config;
     delete requestWithoutStaticPrefix.tools;
     this.logger.debug(`[ContextCache] Reusing explicit cache ${candidate.key.slice(0, 16)}`);
     return {

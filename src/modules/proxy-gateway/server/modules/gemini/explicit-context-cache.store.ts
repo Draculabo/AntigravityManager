@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { canCacheGeminiToolConfig } from '../../../antigravity/GeminiToolConfigCompat';
 
 import type { GeminiInternalRequest, GeminiRequest } from '../../../antigravity/types';
 
@@ -57,6 +58,9 @@ export class ExplicitContextCacheManager {
   };
 
   public createCandidate(body: GeminiInternalRequest): ExplicitContextCacheCandidate | null {
+    if (!canCacheGeminiToolConfig(body.request)) {
+      return null;
+    }
     const project = typeof body.project === 'string' ? body.project.trim() : '';
     const model = typeof body.model === 'string' ? body.model.trim() : '';
     const { systemInstruction, toolConfig, tools } = body.request;

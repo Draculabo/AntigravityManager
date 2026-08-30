@@ -135,6 +135,7 @@ export class OpenAIService extends BaseProxyService {
           projectId,
           requestUserAgent,
           accountTargetModel,
+          'openai',
         );
         this.applyInternalGenerationConstraints(
           geminiBody,
@@ -232,6 +233,7 @@ export class OpenAIService extends BaseProxyService {
               '',
               requestUserAgent,
               accountTargetModel,
+              'openai',
             );
             this.applyInternalGenerationConstraints(
               fallbackBody,

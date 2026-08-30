@@ -237,6 +237,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
       'systemInstruction',
       'tools',
       'toolConfig',
+      'tool_config',
       'generationConfig',
       'safetySettings',
       'contents',

@@ -1,4 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  GeminiToolConfigAliasesSchema,
+  normalizeGeminiToolConfigAliases,
+} from '../../../antigravity/GeminiToolConfigCompat';
 import { isEmpty, isNumber, isString } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
@@ -67,6 +71,7 @@ export class GeminiService extends BaseProxyService {
     model: string,
     request: GeminiRequest,
   ): Promise<GeminiResponse> {
+    request = this.parseToolConfig(request);
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
     const targetModel = routeResolution.resolvedModel;
@@ -155,6 +160,7 @@ export class GeminiService extends BaseProxyService {
     model: string,
     request: GeminiRequest,
   ): Promise<Observable<string>> {
+    request = this.parseToolConfig(request);
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
     const targetModel = routeResolution.resolvedModel;
@@ -355,24 +361,22 @@ export class GeminiService extends BaseProxyService {
     return normalized;
   }
 
-  private toInternalGeminiRequest(request: GeminiRequest): GeminiInternalRequest['request'] {
-    const toolConfig =
-      request.tools && request.tools.length > 0
-        ? {
-            functionCallingConfig: request.toolConfig?.functionCallingConfig ?? {
-              mode: 'VALIDATED',
-            },
-            includeServerSideToolInvocations: true,
-          }
-        : undefined;
+  private parseToolConfig(request: GeminiRequest): GeminiRequest {
+    const aliases = GeminiToolConfigAliasesSchema.safeParse(request);
+    if (!aliases.success || (request.tools !== undefined && !Array.isArray(request.tools))) {
+      throw new BadRequestException('Invalid Gemini tools or tool configuration');
+    }
+    return { ...request, ...aliases.data };
+  }
 
+  private toInternalGeminiRequest(request: GeminiRequest): GeminiInternalRequest['request'] {
     return {
       contents: request.contents,
       generationConfig: request.generationConfig,
       // Forwarded verbatim: without this the `/v1beta` passthrough silently
       // strips tool declarations, so the model can never call a tool.
       tools: request.tools,
-      toolConfig,
+      ...normalizeGeminiToolConfigAliases(request),
       systemInstruction: request.systemInstruction
         ? {
             parts: request.systemInstruction.parts
