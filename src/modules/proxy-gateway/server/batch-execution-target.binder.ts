@@ -1,4 +1,4 @@
-import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, OnApplicationBootstrap } from '@nestjs/common';
 
 import { AnthropicService } from './modules/anthropic/anthropic.service';
 import { BatchService } from './modules/batch/batch.service';
@@ -9,10 +9,10 @@ import { OpenAIService } from './modules/openai/openai.service';
 @Injectable()
 export class BatchExecutionTargetBinder implements OnApplicationBootstrap {
   constructor(
-    private readonly batches: BatchService,
-    private readonly openAI: OpenAIService,
-    private readonly anthropic: AnthropicService,
-    private readonly gemini: GeminiService,
+    @Inject(BatchService) private readonly batches: BatchService,
+    @Inject(OpenAIService) private readonly openAI: OpenAIService,
+    @Inject(AnthropicService) private readonly anthropic: AnthropicService,
+    @Inject(GeminiService) private readonly gemini: GeminiService,
   ) {}
 
   onApplicationBootstrap(): void {

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
@@ -8,7 +8,7 @@ import { AudioRequestBody, OpenAIOperations } from './openai-operations.service'
 @Controller('v1')
 @UseGuards(ProxyGuard)
 export class OpenAIMediaController {
-  public constructor(private readonly operations: OpenAIOperations) {}
+  public constructor(@Inject(OpenAIOperations) private readonly operations: OpenAIOperations) {}
 
   @Post('images/generations')
   public imageGenerations(

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Res, UseGuards } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
@@ -8,7 +8,7 @@ import type { OpenAIChatRequest } from '../../common/interfaces/request-interfac
 @Controller('v1')
 @UseGuards(ProxyGuard)
 export class OpenAIChatController {
-  public constructor(private readonly operations: OpenAIOperations) {}
+  public constructor(@Inject(OpenAIOperations) private readonly operations: OpenAIOperations) {}
 
   @Post('chat/completions')
   public chatCompletions(@Body() body: OpenAIChatRequest, @Res() res: FastifyReply): Promise<void> {

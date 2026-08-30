@@ -10,7 +10,12 @@ import { ProxyModule } from '@/modules/proxy-gateway/server/proxy.module';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
 import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
+import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
+import { OpenAIMediaController } from '@/modules/proxy-gateway/server/modules/openai/openai-media.controller';
+import { OpenAIModelsController } from '@/modules/proxy-gateway/server/modules/openai/openai-models.controller';
 import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
+import { OpenAIResponsesController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses.controller';
 import { OpenAIUploadsService } from '@/modules/proxy-gateway/server/modules/uploads/openai-uploads.service';
 import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import {
@@ -140,9 +145,14 @@ describe('proxy gateway explicit injection', () => {
     ['OpenAIService', OpenAIService],
     ['AnthropicService', AnthropicService],
     ['GeminiService', GeminiService],
+    ['GeminiClient', GeminiClient],
     ['GenerationConstraintsService', GenerationConstraintsService],
     ['ProxyRetryService', ProxyRetryService],
     ['OpenAIUploadsService', OpenAIUploadsService],
+    ['OpenAIModelsController', OpenAIModelsController],
+    ['OpenAIChatController', OpenAIChatController],
+    ['OpenAIResponsesController', OpenAIResponsesController],
+    ['OpenAIMediaController', OpenAIMediaController],
   ])('names a token on every constructor parameter of %s', (name, target) => {
     const withToken = indicesWithExplicitToken(target);
     const parameterCount = target.length;
