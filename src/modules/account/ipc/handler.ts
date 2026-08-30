@@ -273,7 +273,14 @@ export async function switchAccount(
 
         if (usesCredentialStore) {
           const token = extractCredentialStoreTokenFromBackup(backupData);
-          writeAntigravityCredentialStoreToken(token);
+          if (appTarget === 'agy') {
+            writeAntigravityCredentialStoreToken(token, {
+              email: account.email,
+              syncGoogleOAuthFiles: true,
+            });
+          } else {
+            writeAntigravityCredentialStoreToken(token);
+          }
         } else {
           // NOTE Restore data to DB
           dbRestore(backupData, appTarget);

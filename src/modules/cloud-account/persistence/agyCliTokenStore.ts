@@ -1,7 +1,6 @@
-import fs from 'fs';
-import { randomUUID } from 'node:crypto';
 import { logger } from '@/shared/logging/logger';
 import { getAgyCliTokenPaths } from './agyCliTokenPaths';
+import { writePrivateFileAtomically } from './privateCredentialFile';
 
 const WSL_SHARE_HOST = 'wsl.localhost';
 
@@ -46,21 +45,6 @@ function filterAmbiguousWslTokenTargets(targets: string[]): string[] {
   });
 }
 
-function writeTokenFile(target: string, payload: string): void {
-  const tempPath = `${target}.${process.pid}-${randomUUID()}.agm-tmp`;
-  try {
-    fs.writeFileSync(tempPath, payload, { encoding: 'utf-8', mode: 0o600 });
-    fs.renameSync(tempPath, target);
-  } catch (error) {
-    try {
-      fs.rmSync(tempPath, { force: true });
-    } catch {
-      // Best-effort cleanup must not hide the original write failure.
-    }
-    throw error;
-  }
-}
-
 /**
  * Puts the active account into the Antigravity CLI (`agy`) session file.
  *
@@ -81,7 +65,7 @@ export function writeAgyCliToken(payload: string): void {
 
   for (const target of targets) {
     try {
-      writeTokenFile(target, payload);
+      writePrivateFileAtomically(target, payload);
       logger.info(`Wrote Antigravity CLI token to ${target}`);
     } catch (error) {
       logger.warn(`Failed to write the Antigravity CLI token to ${target}`, error);

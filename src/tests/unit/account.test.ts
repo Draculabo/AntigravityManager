@@ -138,6 +138,27 @@ describe('Account Handler', () => {
     });
   });
 
+  it('should request generic Google OAuth sync for an explicit Agy switch', async () => {
+    vi.mocked(
+      CredentialStoreInjectionAdapter.shouldInjectTokenIntoCredentialStore,
+    ).mockReturnValueOnce(true);
+
+    const account = await addAccountSnapshot();
+    await switchAccount(account.id, 'agy');
+
+    expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledWith(
+      {
+        access_token: 'access',
+        refresh_token: 'refresh',
+        expiry_timestamp: 1700000000,
+      },
+      {
+        email: 'test@example.com',
+        syncGoogleOAuthFiles: true,
+      },
+    );
+  });
+
   it('should reuse existing device profile on switch', async () => {
     const account = await addAccountSnapshot();
     const accountFilePath = path.join(testAgentDir, 'accounts.json');

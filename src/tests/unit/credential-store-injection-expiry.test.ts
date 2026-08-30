@@ -63,4 +63,21 @@ describe('CredentialStoreInjectionAdapter token expiry guard', () => {
     );
     expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledWith(account.token);
   });
+
+  it('passes account identity to the file sync only for an explicit Agy target', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const account = createAccount(now + 300, 'refresh-token');
+    vi.spyOn(
+      CredentialStoreInjectionAdapter,
+      'shouldInjectTokenIntoCredentialStore',
+    ).mockReturnValue(true);
+
+    expect(
+      CredentialStoreInjectionAdapter.injectCloudTokenWithStorageStrategy(account, 'agy'),
+    ).toBe('credential-store');
+    expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledWith(account.token, {
+      email: account.email,
+      syncGoogleOAuthFiles: true,
+    });
+  });
 });

@@ -14,6 +14,7 @@ import {
   type OAuthClientDescriptor,
   OAuthClientRegistryService,
 } from './OAuthClientRegistryService';
+import { GOOGLE_OAUTH_SCOPE } from '../oauthScopes';
 
 // --- Constants & Config ---
 const URLS = {
@@ -503,21 +504,12 @@ export class GoogleAPIService {
    * Generates the OAuth2 authorization URL.
    */
   static getAuthUrl(oauthClientKey?: string): string {
-    const scopes = [
-      'https://www.googleapis.com/auth/cloud-platform',
-      'https://www.googleapis.com/auth/userinfo.email',
-      'https://www.googleapis.com/auth/userinfo.profile',
-      'https://www.googleapis.com/auth/cclog',
-      'https://www.googleapis.com/auth/experimentsandconfigs',
-      'https://www.googleapis.com/auth/aicode',
-    ].join(' ');
-
     const oauthClient = OAuthClientRegistryService.selectAuthClient(oauthClientKey);
     const redirectUri = AuthServer.getRedirectUri();
 
     const params = new URLSearchParams({
       access_type: 'offline',
-      scope: scopes,
+      scope: GOOGLE_OAUTH_SCOPE,
       prompt: 'consent',
       response_type: 'code',
       client_id: oauthClient.client_id,

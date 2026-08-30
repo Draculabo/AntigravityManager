@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   deleteCredential: vi.fn(),
   withTarget: vi.fn(),
   writeAgyCliToken: vi.fn(),
+  writeGoogleOAuthCredentials: vi.fn(),
 }));
 
 vi.mock('@napi-rs/keyring', () => ({
@@ -18,6 +19,10 @@ vi.mock('@napi-rs/keyring', () => ({
 // home, so leaving it unmocked would sign the live CLI out mid-test-run.
 vi.mock('@/modules/cloud-account/persistence/agyCliTokenStore', () => ({
   writeAgyCliToken: mocks.writeAgyCliToken,
+}));
+
+vi.mock('@/modules/cloud-account/persistence/googleOAuthCredentialStore', () => ({
+  writeGoogleOAuthCredentials: mocks.writeGoogleOAuthCredentials,
 }));
 
 vi.mock('child_process', async (importOriginal) => {
@@ -49,6 +54,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
     mocks.deleteCredential.mockReset();
     mocks.withTarget.mockReset();
     mocks.writeAgyCliToken.mockReset();
+    mocks.writeGoogleOAuthCredentials.mockReset();
     mocks.withTarget.mockReturnValue({
       setSecret: mocks.setSecret,
       deleteCredential: mocks.deleteCredential,
@@ -85,6 +91,53 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expect(args.join(' ')).not.toContain('access-token');
     expect(args.join(' ')).not.toContain('refresh-token');
     expect(args).not.toContain('delete-generic-password');
+    expect(mocks.writeGoogleOAuthCredentials).not.toHaveBeenCalled();
+  });
+
+  it('syncs generic Google OAuth files only when the caller marks an explicit Agy switch', async () => {
+    setPlatform('win32');
+    const { writeAntigravityCredentialStoreToken } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+    const token = {
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expiry_timestamp: 1_900_000_000,
+      id_token: 'id-token',
+    };
+
+    writeAntigravityCredentialStoreToken(token, {
+      email: 'active@example.com',
+      syncGoogleOAuthFiles: true,
+    });
+
+    expect(mocks.writeGoogleOAuthCredentials).toHaveBeenCalledWith({
+      ...token,
+      email: 'active@example.com',
+    });
+  });
+
+  it('keeps a successful credential-store switch when generic OAuth file sync fails', async () => {
+    setPlatform('win32');
+    mocks.writeGoogleOAuthCredentials.mockImplementationOnce(() => {
+      throw new Error('file sync failed');
+    });
+    const { writeAntigravityCredentialStoreToken } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    expect(() =>
+      writeAntigravityCredentialStoreToken(
+        {
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expiry_timestamp: 1_900_000_000,
+        },
+        {
+          email: 'active@example.com',
+          syncGoogleOAuthFiles: true,
+        },
+      ),
+    ).not.toThrow();
+    expect(mocks.setSecret).toHaveBeenCalledTimes(1);
   });
 
   it('propagates update failures without issuing a destructive delete command', async () => {

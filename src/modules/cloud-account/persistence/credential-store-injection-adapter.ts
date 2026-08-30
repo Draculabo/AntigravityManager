@@ -416,7 +416,14 @@ export class CredentialStoreInjectionAdapter {
     this.assertTokenUsableForInjection(account);
 
     if (this.shouldInjectTokenIntoCredentialStore(appTarget)) {
-      writeAntigravityCredentialStoreToken(account.token);
+      if (appTarget === 'agy') {
+        writeAntigravityCredentialStoreToken(account.token, {
+          email: account.email,
+          syncGoogleOAuthFiles: true,
+        });
+      } else {
+        writeAntigravityCredentialStoreToken(account.token);
+      }
       return 'credential-store';
     }
 

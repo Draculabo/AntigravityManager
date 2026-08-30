@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { logger } from '@/shared/logging/logger';
 import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreToken';
 import { writeAgyCliToken } from './agyCliTokenStore';
+import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
 
 export interface CredentialStoreToken {
   accessToken?: string;
@@ -244,7 +245,19 @@ function writeViaSecretTool(payload: string): void {
   );
 }
 
-export function writeAntigravityCredentialStoreToken(token: CredentialStoreTokenInput): void {
+export type CredentialStoreWriteOptions =
+  | {
+      syncGoogleOAuthFiles: true;
+      email: string;
+    }
+  | {
+      syncGoogleOAuthFiles?: false;
+    };
+
+export function writeAntigravityCredentialStoreToken(
+  token: CredentialStoreTokenInput,
+  options: CredentialStoreWriteOptions = {},
+): void {
   const payload = buildCredentialStorePayload(token);
   logger.info('Writing Antigravity token to system credential store');
 
@@ -253,6 +266,14 @@ export function writeAntigravityCredentialStoreToken(token: CredentialStoreToken
   // The CLI keeps the same payload in a file rather than the credential store,
   // so it has to be updated here or it stays on the previous account.
   writeAgyCliToken(payload);
+
+  if (options.syncGoogleOAuthFiles) {
+    try {
+      writeGoogleOAuthCredentials({ ...token, email: options.email });
+    } catch (error) {
+      logger.warn('Failed to synchronize generic Google OAuth credential files', error);
+    }
+  }
 }
 
 function writeToSystemCredentialStore(payload: string): void {
