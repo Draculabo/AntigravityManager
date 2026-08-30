@@ -35,6 +35,7 @@ describe('writeGoogleOAuthCredentials', () => {
       expiry_date: 1_900_000_000_000,
       id_token: 'id-token',
       scope: [
+        'openid',
         'https://www.googleapis.com/auth/cloud-platform',
         'https://www.googleapis.com/auth/userinfo.email',
         'https://www.googleapis.com/auth/userinfo.profile',

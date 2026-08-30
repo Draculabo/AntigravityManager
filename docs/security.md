@@ -40,6 +40,14 @@ Database schema, durable payload and credential-location changes require an Agen
 
 ## Proxy and external services
 
+### Google OAuth scopes
+
+Google authorization URLs request `openid` alongside the existing service scopes in the [cloud-account scope definition](../src/modules/cloud-account/oauthScopes.ts). Explicit Agy switches write the same configured scope string to the generic Gemini OAuth cache; Classic and IDE switches do not synchronize that cache. `id_token` remains optional and is copied only when present.
+
+The cache scope string describes configured requests, not verified grants for an individual token. Adding a scope does not upgrade existing access or refresh tokens. Accounts missing the grant require a new authorization flow and user consent; refreshing or rewriting the cache alone is not a scope migration. Existing account records and credential files are not rewritten automatically when the application updates.
+
+### External request boundaries
+
 - Treat upstream responses and error payloads as untrusted input.
 - Bound retained or emitted bodies, metadata, item counts and timeouts at the point where the complete value is known.
 - Do not forward internal credentials or administrative details to downstream clients.
