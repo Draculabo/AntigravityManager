@@ -2,6 +2,8 @@
 
 Status: implemented
 
+The non-stream reasoning shape and camel-only tool configuration decisions below are superseded by [Responses Format Compatibility with Durable History](2026-08-30-responses-history-compatibility.md). The original verification below is historical evidence, not validation of the superseding behavior.
+
 ## Problem
 
 Responses clients can omit `type` on role-bearing messages, send a terminal assistant text prefill, or begin a replacement transcript with stale tool history. The gateway previously dropped the first form and forwarded the latter forms in shapes the upstream model can reject. Non-stream Responses also discarded reasoning and preferred refusal over visible text. Separately, mapped Gemini requests did not opt into server-side tool invocation reporting.
@@ -17,7 +19,7 @@ Gemini tool configuration has a shared concrete type. Mapped Claude/OpenAI reque
 ## Alternatives considered
 
 - Continue using `Record<string, unknown>` throughout mapping. Rejected because it permits misspelled variants and repeated ad-hoc narrowing after the runtime boundary.
-- Emit competitor-style reasoning items only for non-stream responses. Rejected because it would make the repository's stream and non-stream APIs disagree.
+- Emit reasoning items only for non-stream responses. Rejected because it would make the repository's stream and non-stream APIs disagree.
 - Send camelCase and snake_case tool flags together. Rejected because aliases can be interpreted as duplicate protobuf fields.
 - Remove any tool history found anywhere in a transcript. Rejected because only the leading run is invalid; later tool exchanges belong to an ordinary conversation.
 

@@ -89,6 +89,8 @@ The Electron main process starts and stops the NestJS/Fastify gateway through [s
 
 Protocol-facing behavior is a compatibility surface. Changes to request mapping, streaming event order, tool calls, usage accounting, error responses, model selection or durable response state require the focused tests listed in [testing.md](testing.md) and may require an Agent Note.
 
+The [proxy compatibility reference](proxy-compatibility.md) describes current Responses history, reasoning, tool configuration and explicit-cache contracts.
+
 ## Persistence and credentials
 
 Shared SQLite connection and schema utilities live under `src/shared/persistence/database`. Feature-specific repositories and codecs remain with their feature. Persisted rows are untrusted when read and must be narrowed through the owning schema or codec.
