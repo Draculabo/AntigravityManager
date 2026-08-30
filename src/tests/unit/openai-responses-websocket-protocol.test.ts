@@ -48,6 +48,27 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
       },
     });
   });
+
+  it('replaces the transcript for a role-bearing assistant message without type', () => {
+    const protocol = new OpenAIResponsesWebSocketProtocol();
+    protocol.accept({
+      type: 'response.create',
+      model: 'gpt-5-codex',
+      input: [{ type: 'message', role: 'user', content: 'Old request' }],
+    });
+
+    const replacement = protocol.accept({
+      type: 'response.append',
+      input: [{ role: 'assistant', content: 'Replacement transcript' }],
+    });
+
+    expect(replacement).toMatchObject({
+      kind: 'request',
+      request: {
+        input: [{ role: 'assistant', content: 'Replacement transcript' }],
+      },
+    });
+  });
 });
 
 describe('OpenAI Responses WebSocket transport', () => {

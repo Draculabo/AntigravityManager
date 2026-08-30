@@ -37,6 +37,31 @@ describe('toInternalGeminiRequest', () => {
     } as GeminiRequest);
 
     expect(internal.tools).toEqual(tools);
+    expect(internal.toolConfig).toEqual({
+      functionCallingConfig: { mode: 'VALIDATED' },
+      includeServerSideToolInvocations: true,
+    });
+  });
+
+  it('preserves caller function selection while enabling server-side tool invocations', () => {
+    const internal = toInternalRequest({
+      contents: [{ role: 'user', parts: [{ text: 'weather in Berlin?' }] }],
+      tools: [{ functionDeclarations: [{ name: 'get_weather' }] }],
+      toolConfig: {
+        functionCallingConfig: {
+          mode: 'ANY',
+          allowedFunctionNames: ['get_weather'],
+        },
+      },
+    } as GeminiRequest);
+
+    expect(internal.toolConfig).toEqual({
+      functionCallingConfig: {
+        mode: 'ANY',
+        allowedFunctionNames: ['get_weather'],
+      },
+      includeServerSideToolInvocations: true,
+    });
   });
 
   it('leaves tools undefined when the caller sent none', () => {
@@ -45,6 +70,7 @@ describe('toInternalGeminiRequest', () => {
     });
 
     expect(internal.tools).toBeUndefined();
+    expect(internal.toolConfig).toBeUndefined();
   });
 
   it('still maps contents, generationConfig and text-only systemInstruction', () => {

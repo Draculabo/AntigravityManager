@@ -35,6 +35,7 @@ export interface GeminiResponsesGroundingMetadata {
 
 interface ResponsesMessageOutputItem {
   content: Array<{
+    annotations: [];
     text: string;
     type: 'output_text';
   }>;
@@ -235,7 +236,7 @@ export class OpenAIResponsesStreamingMapper {
         : `msg_${this.options.responseId}_${this.messageCounter}`;
     this.messageCounter += 1;
     const item: ResponsesMessageOutputItem = {
-      content: [{ text: '', type: 'output_text' }],
+      content: [{ annotations: [], text: '', type: 'output_text' }],
       id: itemId,
       phase: 'commentary',
       role: 'assistant',
@@ -273,6 +274,7 @@ export class OpenAIResponsesStreamingMapper {
         item_id: itemId,
         output_index: outputIndex,
         part: {
+          annotations: [],
           text: '',
           type: 'output_text',
         },
@@ -307,7 +309,7 @@ export class OpenAIResponsesStreamingMapper {
     phase: 'commentary' | 'final_answer',
     status: ResponsesOutputStatus = 'completed',
   ): string[] {
-    message.item.content = [{ text: message.text, type: 'output_text' }];
+    message.item.content = [{ annotations: [], text: message.text, type: 'output_text' }];
     message.item.phase = phase;
     message.item.status = status;
     return [
@@ -323,6 +325,7 @@ export class OpenAIResponsesStreamingMapper {
         item_id: message.itemId,
         output_index: message.outputIndex,
         part: {
+          annotations: [],
           text: message.text,
           type: 'output_text',
         },

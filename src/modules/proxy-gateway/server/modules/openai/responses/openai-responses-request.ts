@@ -8,6 +8,7 @@
  */
 
 import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
+import { z } from 'zod';
 import { ApplyPatchFailureCompactor } from '@/modules/proxy-gateway/antigravity/ApplyPatchFailureCompaction';
 import { toCustomToolArguments } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
 import {
@@ -42,6 +43,102 @@ export interface OpenAIResponsesErrorBody {
     param: string;
     type: string;
   };
+}
+
+const ResponsesMessageItemSchema = z.object({
+  type: z.literal('message'),
+  role: z.string().default('user'),
+  content: z.unknown().optional(),
+});
+
+const ResponsesFunctionCallItemSchema = z.object({
+  type: z.literal('function_call'),
+  call_id: z.string().optional(),
+  id: z.string().optional(),
+  name: z.string().optional(),
+  arguments: z.unknown().optional(),
+});
+
+const ResponsesLocalShellCallItemSchema = z.object({
+  type: z.literal('local_shell_call'),
+  call_id: z.string().optional(),
+  id: z.string().optional(),
+  action: z
+    .object({
+      exec: z
+        .object({
+          command: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
+const ResponsesWebSearchCallItemSchema = z.object({
+  type: z.literal('web_search_call'),
+  call_id: z.string().optional(),
+  id: z.string().optional(),
+  action: z
+    .object({
+      query: z.string().optional(),
+    })
+    .optional(),
+});
+
+const ResponsesCustomToolCallItemSchema = z.object({
+  type: z.literal('custom_tool_call'),
+  call_id: z.string().optional(),
+  id: z.string().optional(),
+  name: z.string().optional(),
+  input: z.string().optional(),
+  status: z.string().optional(),
+});
+
+const ResponsesToolOutputItemSchema = z.object({
+  type: z.enum(['function_call_output', 'custom_tool_call_output']),
+  call_id: z.string().optional(),
+  id: z.string().optional(),
+  output: z.unknown().optional(),
+});
+
+const ResponsesInputItemSchema = z.preprocess(
+  (value) => {
+    if (!isPlainObject(value)) {
+      return value;
+    }
+
+    const candidate = value as { role?: unknown; type?: unknown } & object;
+    if ((!isString(candidate.type) || candidate.type.length === 0) && isString(candidate.role)) {
+      return Object.assign({}, candidate, { type: 'message' as const });
+    }
+    return value;
+  },
+  z.discriminatedUnion('type', [
+    ResponsesMessageItemSchema,
+    ResponsesFunctionCallItemSchema,
+    ResponsesLocalShellCallItemSchema,
+    ResponsesWebSearchCallItemSchema,
+    ResponsesCustomToolCallItemSchema,
+    ResponsesToolOutputItemSchema,
+  ]),
+);
+
+export type ResponsesInputItem = z.infer<typeof ResponsesInputItemSchema>;
+type ResponsesToolCallItem = Exclude<
+  ResponsesInputItem,
+  z.infer<typeof ResponsesMessageItemSchema> | z.infer<typeof ResponsesToolOutputItemSchema>
+>;
+
+function parseResponsesInputItems(input: unknown[]): ResponsesInputItem[] {
+  return input.flatMap((item) => {
+    const parsed = parseResponsesInputItem(item);
+    return parsed ? [parsed] : [];
+  });
+}
+
+export function parseResponsesInputItem(input: unknown): ResponsesInputItem | null {
+  const parsed = ResponsesInputItemSchema.safeParse(input);
+  return parsed.success ? parsed.data : null;
 }
 
 /**
@@ -143,80 +240,55 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
   const callIdToToolName = new Map<string, string>();
   const incompleteCustomCallIds = new Set<string>();
   const applyPatchFailureCompactor = new ApplyPatchFailureCompactor();
-  const inputItems = Array.isArray(body.input) ? body.input : null;
+  const inputItems = Array.isArray(body.input) ? parseResponsesInputItems(body.input) : null;
 
   if (inputItems) {
     for (const item of inputItems) {
-      const itemObj = toRecord(item);
-      if (!itemObj) {
-        continue;
-      }
-
-      const type = asString(itemObj.type);
-      if (!type) {
-        continue;
-      }
-
       if (
-        type === 'function_call' ||
-        type === 'local_shell_call' ||
-        type === 'web_search_call' ||
-        type === 'custom_tool_call'
+        item.type === 'function_call' ||
+        item.type === 'local_shell_call' ||
+        item.type === 'web_search_call' ||
+        item.type === 'custom_tool_call'
       ) {
-        const callId = asString(itemObj.call_id) ?? asString(itemObj.id) ?? `call_${Date.now()}`;
-        if (
-          type === 'custom_tool_call' &&
-          asString(itemObj.status)?.toLowerCase() === 'incomplete'
-        ) {
+        const callId = item.call_id ?? item.id ?? `call_${Date.now()}`;
+        if (item.type === 'custom_tool_call' && item.status?.toLowerCase() === 'incomplete') {
           incompleteCustomCallIds.add(callId);
           continue;
         }
 
         const toolName =
-          type === 'local_shell_call'
+          item.type === 'local_shell_call'
             ? 'shell'
-            : type === 'web_search_call'
+            : item.type === 'web_search_call'
               ? 'builtin_web_search'
-              : (asString(itemObj.name) ?? 'unknown');
+              : (item.name ?? 'unknown');
         callIdToToolName.set(callId, toolName);
       }
     }
 
     for (const item of inputItems) {
-      const itemObj = toRecord(item);
-      if (!itemObj) {
-        continue;
-      }
-
-      const type = asString(itemObj.type);
-      if (!type) {
-        continue;
-      }
-
-      if (type === 'message') {
-        const role = asString(itemObj.role) ?? 'user';
-        const content = normalizeResponsesMessageContent(itemObj.content);
-        messages.push({ role, content });
+      if (item.type === 'message') {
+        const content = normalizeResponsesMessageContent(item.content);
+        messages.push({ role: item.role, content });
         continue;
       }
 
       if (
-        type === 'function_call' ||
-        type === 'local_shell_call' ||
-        type === 'web_search_call' ||
-        type === 'custom_tool_call'
+        item.type === 'function_call' ||
+        item.type === 'local_shell_call' ||
+        item.type === 'web_search_call' ||
+        item.type === 'custom_tool_call'
       ) {
-        const callId = asString(itemObj.call_id) ?? asString(itemObj.id) ?? `call_${Date.now()}`;
+        const callId = item.call_id ?? item.id ?? `call_${Date.now()}`;
         if (incompleteCustomCallIds.has(callId)) {
           continue;
         }
 
         const toolName = callIdToToolName.get(callId) ?? 'unknown';
-        const customInput =
-          type === 'custom_tool_call' ? (asString(itemObj.input) ?? '') : undefined;
+        const customInput = item.type === 'custom_tool_call' ? (item.input ?? '') : undefined;
         const args =
           customInput === undefined
-            ? resolveToolArguments(type, itemObj)
+            ? resolveToolArguments(item)
             : toCustomToolArguments(toolName, customInput);
         const toolCall: OpenAIToolCall = {
           id: callId,
@@ -237,17 +309,17 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
         continue;
       }
 
-      if (type === 'function_call_output' || type === 'custom_tool_call_output') {
-        const callId = asString(itemObj.call_id) ?? asString(itemObj.id) ?? 'unknown';
+      if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {
+        const callId = item.call_id ?? item.id ?? 'unknown';
         if (incompleteCustomCallIds.has(callId)) {
           continue;
         }
-        if (type === 'custom_tool_call_output' && !callIdToToolName.has(callId)) {
+        if (item.type === 'custom_tool_call_output' && !callIdToToolName.has(callId)) {
           continue;
         }
 
         const toolName = callIdToToolName.get(callId) ?? 'unknown';
-        const normalizedOutput = normalizeResponsesOutput(itemObj.output);
+        const normalizedOutput = normalizeResponsesOutput(item.output);
         const output =
           toolName === 'apply_patch'
             ? applyPatchFailureCompactor.compact(normalizedOutput)
@@ -272,6 +344,9 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
       content: normalizeResponsesInput(body.input),
     });
   }
+
+  removeLeadingOrphanToolHistory(messages);
+  rewriteTerminalAssistantPrefill(messages);
 
   if (messages.length === 0) {
     messages.push({
@@ -355,24 +430,22 @@ export function normalizeResponsesMessageContent(content: unknown): string | Ope
   return merged;
 }
 
-export function resolveToolArguments(
-  type: string,
-  item: Record<string, unknown>,
-): Record<string, unknown> {
-  if (type === 'local_shell_call') {
-    const action = toRecord(item.action);
-    const exec = action ? toRecord(action.exec) : null;
-    const command = asString(exec?.command);
+export function resolveToolArguments(item: ResponsesToolCallItem): Record<string, unknown> {
+  if (item.type === 'local_shell_call') {
+    const command = item.action?.exec?.command;
     return {
       command: command ? [command] : [],
     };
   }
 
-  if (type === 'web_search_call') {
-    const action = toRecord(item.action);
+  if (item.type === 'web_search_call') {
     return {
-      query: asString(action?.query) ?? '',
+      query: item.action?.query ?? '',
     };
+  }
+
+  if (item.type === 'custom_tool_call') {
+    return {};
   }
 
   const raw = item.arguments;
@@ -399,6 +472,40 @@ export function resolveToolArguments(
   }
 
   return {};
+}
+
+function removeLeadingOrphanToolHistory(messages: OpenAIChatRequest['messages']): void {
+  let firstConversationIndex = 0;
+  while (messages[firstConversationIndex]?.role === 'system') {
+    firstConversationIndex += 1;
+  }
+
+  let orphanHistoryEnd = firstConversationIndex;
+  while (orphanHistoryEnd < messages.length) {
+    const message = messages[orphanHistoryEnd];
+    const isToolResult = message.role === 'tool' || message.role === 'function';
+    const isToolCall = message.role === 'assistant' && (message.tool_calls?.length ?? 0) > 0;
+    if (!isToolResult && !isToolCall) {
+      break;
+    }
+    orphanHistoryEnd += 1;
+  }
+
+  if (orphanHistoryEnd > firstConversationIndex) {
+    messages.splice(firstConversationIndex, orphanHistoryEnd - firstConversationIndex);
+  }
+}
+
+function rewriteTerminalAssistantPrefill(messages: OpenAIChatRequest['messages']): void {
+  const terminalMessage = messages.at(-1);
+  if (
+    terminalMessage?.role === 'assistant' &&
+    isString(terminalMessage.content) &&
+    terminalMessage.content.trim().length > 0 &&
+    (terminalMessage.tool_calls?.length ?? 0) === 0
+  ) {
+    terminalMessage.role = 'user';
+  }
 }
 
 export function normalizeResponsesOutput(output: unknown): string {

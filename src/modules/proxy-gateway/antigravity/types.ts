@@ -294,17 +294,20 @@ export interface FunctionResponse {
   id?: string;
 }
 
+export interface GeminiToolConfig {
+  functionCallingConfig: {
+    mode: string;
+    allowedFunctionNames?: string[];
+  };
+  includeServerSideToolInvocations?: boolean;
+}
+
 export interface GeminiRequest {
   contents: GeminiContent[];
   /** List of tool declarations */
   tools?: GeminiToolDeclaration[];
   /** Function calling configuration shared by the cached tool declarations. */
-  toolConfig?: {
-    functionCallingConfig: {
-      mode: string;
-      allowedFunctionNames?: string[];
-    };
-  };
+  toolConfig?: GeminiToolConfig;
   /** Safety settings */
   safetySettings?: SafetySetting[];
   /** System instruction */

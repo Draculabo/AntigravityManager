@@ -356,12 +356,23 @@ export class GeminiService extends BaseProxyService {
   }
 
   private toInternalGeminiRequest(request: GeminiRequest): GeminiInternalRequest['request'] {
+    const toolConfig =
+      request.tools && request.tools.length > 0
+        ? {
+            functionCallingConfig: request.toolConfig?.functionCallingConfig ?? {
+              mode: 'VALIDATED',
+            },
+            includeServerSideToolInvocations: true,
+          }
+        : undefined;
+
     return {
       contents: request.contents,
       generationConfig: request.generationConfig,
       // Forwarded verbatim: without this the `/v1beta` passthrough silently
       // strips tool declarations, so the model can never call a tool.
       tools: request.tools,
+      toolConfig,
       systemInstruction: request.systemInstruction
         ? {
             parts: request.systemInstruction.parts

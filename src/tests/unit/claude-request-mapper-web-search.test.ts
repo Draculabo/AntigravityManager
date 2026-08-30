@@ -24,6 +24,10 @@ describe('ClaudeRequestMapper web-search model compatibility', () => {
 
       expect(body.model).toBe(model);
       expect(body.request.tools).toContainEqual({ googleSearch: {} });
+      expect(body.request.toolConfig).toEqual({
+        functionCallingConfig: { mode: 'VALIDATED' },
+        includeServerSideToolInvocations: true,
+      });
     },
   );
 
@@ -32,5 +36,27 @@ describe('ClaudeRequestMapper web-search model compatibility', () => {
 
     expect(body.model).toBe('gemini-3-flash');
     expect(body.request.tools).toContainEqual({ googleSearch: {} });
+  });
+
+  it('keeps Google Search mutually exclusive with function declarations', () => {
+    const request = createWebSearchRequest('gemini-pro-agent');
+    request.tools?.push({
+      name: 'get_weather',
+      description: 'Look up weather.',
+      input_schema: { type: 'object', properties: {} },
+    });
+
+    const body = transformClaudeRequestIn(request);
+
+    expect(body.request.tools).toEqual([
+      {
+        functionDeclarations: [
+          expect.objectContaining({
+            name: 'get_weather',
+          }),
+        ],
+      },
+    ]);
+    expect(body.request.tools).not.toContainEqual({ googleSearch: {} });
   });
 });

@@ -22,6 +22,7 @@ import {
   ImageConfig,
   FunctionDeclaration,
   SafetySetting,
+  GeminiToolConfig,
 } from './types';
 import {
   buildUserAgent,
@@ -188,12 +189,7 @@ export function transformClaudeRequestIn(
     systemInstruction?: { parts: { text: string }[] };
     generationConfig?: GenerationConfig;
     tools?: GeminiToolDeclaration[];
-    toolConfig?: {
-      functionCallingConfig: {
-        mode: string;
-        allowedFunctionNames?: string[];
-      };
-    };
+    toolConfig?: GeminiToolConfig;
   } = {
     contents,
     safetySettings: [...SAFETY_SETTINGS],
@@ -1024,12 +1020,7 @@ function buildGenerationConfig(
   return config;
 }
 
-function buildToolConfig(toolChoice: ClaudeRequest['tool_choice']): {
-  functionCallingConfig: {
-    mode: string;
-    allowedFunctionNames?: string[];
-  };
-} {
+function buildToolConfig(toolChoice: ClaudeRequest['tool_choice']): GeminiToolConfig {
   let mode = 'VALIDATED';
   if (typeof toolChoice === 'string') {
     if (toolChoice === 'none') {
@@ -1047,6 +1038,7 @@ function buildToolConfig(toolChoice: ClaudeRequest['tool_choice']): {
     functionCallingConfig: {
       mode,
     },
+    includeServerSideToolInvocations: true,
   };
 }
 

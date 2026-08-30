@@ -36,9 +36,91 @@ describe('OpenAI Responses non-stream mapper', () => {
           },
         ],
         id: 'msg_resp_refused',
+        phase: 'final_answer',
         role: 'assistant',
         status: 'completed',
         type: 'message',
+      },
+    ]);
+    expect(response.error).toBeNull();
+  });
+
+  it('preserves reasoning, visible text, refusal, and tool calls as separate output channels', () => {
+    const response = toOpenAIResponsesResponse({
+      id: 'resp_mixed',
+      object: 'chat.completion',
+      created: 1,
+      model: 'gpt-5-codex',
+      choices: [
+        {
+          index: 0,
+          finish_reason: 'tool_calls',
+          message: {
+            role: 'assistant',
+            reasoning_content: 'Inspect the repository first.',
+            content: 'I will inspect the repository.',
+            refusal: 'One unsafe sub-operation was refused.',
+            tool_calls: [
+              {
+                id: 'call_read',
+                type: 'function',
+                function: {
+                  name: 'read_file',
+                  arguments: '{"path":"README.md"}',
+                },
+              },
+            ],
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      },
+    });
+
+    expect(response).toMatchObject({ error: null, status: 'completed' });
+    expect(response.output).toEqual([
+      {
+        content: [
+          {
+            annotations: [],
+            text: 'Inspect the repository first.',
+            type: 'output_text',
+          },
+        ],
+        id: 'msg_thought_resp_mixed',
+        phase: 'commentary',
+        role: 'assistant',
+        status: 'completed',
+        type: 'message',
+      },
+      {
+        content: [
+          {
+            annotations: [],
+            text: 'I will inspect the repository.',
+            type: 'output_text',
+          },
+          {
+            refusal: 'One unsafe sub-operation was refused.',
+            type: 'refusal',
+          },
+        ],
+        id: 'msg_resp_mixed',
+        phase: 'commentary',
+        role: 'assistant',
+        status: 'completed',
+        type: 'message',
+      },
+      {
+        arguments: '{"path":"README.md"}',
+        call_id: 'call_read',
+        id: 'call_read',
+        name: 'read_file',
+        status: 'completed',
+        type: 'function_call',
       },
     ]);
   });

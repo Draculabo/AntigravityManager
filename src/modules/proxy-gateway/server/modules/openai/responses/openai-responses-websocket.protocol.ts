@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { mergeOpenAIResponsesInputItems } from './openai-responses-session.store';
+import { parseResponsesInputItem } from './openai-responses-request';
 
 export type OpenAIResponsesWebSocketEvent = Record<string, unknown> & {
   type: string;
@@ -219,12 +220,14 @@ function shouldReplaceTranscript(payload: Record<string, unknown>): boolean {
   }
 
   return payload.input.some((item) => {
-    const record = toRecord(item);
-    const type = record ? getString(record, 'type') : null;
-    if (type === 'function_call' || type === 'custom_tool_call') {
+    const parsed = parseResponsesInputItem(item);
+    if (!parsed) {
+      return false;
+    }
+    if (parsed.type === 'function_call' || parsed.type === 'custom_tool_call') {
       return true;
     }
-    return type === 'message' && getString(record, 'role') === 'assistant';
+    return parsed.type === 'message' && parsed.role === 'assistant';
   });
 }
 

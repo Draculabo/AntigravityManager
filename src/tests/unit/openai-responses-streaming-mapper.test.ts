@@ -272,13 +272,13 @@ describe('OpenAIResponsesStreamingMapper', () => {
       response: {
         output: [
           {
-            content: [{ text: 'inspect\nfiles', type: 'output_text' }],
+            content: [{ annotations: [], text: 'inspect\nfiles', type: 'output_text' }],
             id: expect.stringMatching(/^msg_thought_/),
             phase: 'commentary',
             type: 'message',
           },
           {
-            content: [{ text: 'Done.', type: 'output_text' }],
+            content: [{ annotations: [], text: 'Done.', type: 'output_text' }],
             phase: 'final_answer',
             type: 'message',
           },
@@ -333,7 +333,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
       response: {
         output: [
           {
-            content: [{ text: 'Final answer', type: 'output_text' }],
+            content: [{ annotations: [], text: 'Final answer', type: 'output_text' }],
             phase: 'final_answer',
           },
         ],

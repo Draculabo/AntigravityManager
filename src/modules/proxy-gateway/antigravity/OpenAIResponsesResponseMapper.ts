@@ -84,27 +84,50 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
   const output: Record<string, unknown>[] = [];
   const content = choice?.message.content;
   const refusal = choice?.message.refusal;
+  const reasoningContent = choice?.message.reasoning_content;
   // Upstream already said whether the answer ran out of output budget; a response
   // that reports `completed` regardless makes a truncated answer look final.
   const incompleteReason = toIncompleteReason(choice?.finish_reason);
   const status: ResponsesOutputStatus = incompleteReason ? 'incomplete' : 'completed';
+  const hasToolCalls = (choice?.message.tool_calls?.length ?? 0) > 0;
+
+  if (reasoningContent) {
+    output.push({
+      content: [
+        {
+          annotations: [],
+          text: reasoningContent,
+          type: 'output_text',
+        },
+      ],
+      id: `msg_thought_${response.id}`,
+      phase: 'commentary',
+      role: 'assistant',
+      status,
+      type: 'message',
+    });
+  }
 
   if ((typeof content === 'string' && content.length > 0) || refusal) {
+    const contentParts: Record<string, unknown>[] = [];
+    if (typeof content === 'string' && content.length > 0) {
+      contentParts.push({
+        annotations: [],
+        text: content,
+        type: 'output_text',
+      });
+    }
+    if (refusal) {
+      contentParts.push({
+        refusal,
+        type: 'refusal',
+      });
+    }
+
     output.push({
-      content: refusal
-        ? [
-            {
-              refusal,
-              type: 'refusal',
-            },
-          ]
-        : [
-            {
-              text: content,
-              type: 'output_text',
-            },
-          ],
+      content: contentParts,
       id: `msg_${response.id}`,
+      phase: hasToolCalls ? 'commentary' : 'final_answer',
       role: 'assistant',
       status,
       type: 'message',
@@ -115,8 +138,9 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
     const mapped = toResponsesToolOutputItem(toolCall);
     if ('diagnostic' in mapped) {
       output.push({
-        content: [{ text: mapped.diagnostic, type: 'output_text' }],
+        content: [{ annotations: [], text: mapped.diagnostic, type: 'output_text' }],
         id: `msg_${toolCall.id}`,
+        phase: 'commentary',
         role: 'assistant',
         status,
         type: 'message',
@@ -128,6 +152,7 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
 
   return {
     created_at: response.created,
+    error: null,
     id: response.id,
     incomplete_details: incompleteReason ? { reason: incompleteReason } : null,
     model: response.model,

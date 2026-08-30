@@ -153,6 +153,114 @@ describe('ProxyController Integration', () => {
     ]);
   });
 
+  it('accepts a Responses message item that omits type when role is present', () => {
+    const controller = new ProxyController({
+      handleChatCompletions: vi.fn(),
+      handleAnthropicMessages: vi.fn(),
+    } as any);
+
+    const prepared = controller.prepareResponsesRequest({
+      model: 'gpt-5-codex',
+      input: [
+        {
+          role: 'user',
+          content: 'Keep this role-bearing message.',
+        },
+        {
+          type: 123,
+          role: 'assistant',
+          content: 'Treat a non-string type as absent.',
+        },
+      ],
+    });
+
+    expect(prepared?.request.messages).toEqual([
+      {
+        role: 'user',
+        content: 'Keep this role-bearing message.',
+      },
+      {
+        role: 'user',
+        content: 'Treat a non-string type as absent.',
+      },
+    ]);
+  });
+
+  it('rewrites only a terminal assistant text prefill as a user message', () => {
+    const controller = new ProxyController({
+      handleChatCompletions: vi.fn(),
+      handleAnthropicMessages: vi.fn(),
+    } as any);
+
+    const prepared = controller.prepareResponsesRequest({
+      model: 'gpt-5-codex',
+      input: [
+        {
+          type: 'message',
+          role: 'user',
+          content: 'Complete this prefix.',
+        },
+        {
+          type: 'message',
+          role: 'assistant',
+          content: 'The answer begins',
+        },
+      ],
+    });
+
+    expect(prepared?.request.messages).toEqual([
+      {
+        role: 'user',
+        content: 'Complete this prefix.',
+      },
+      {
+        role: 'user',
+        content: 'The answer begins',
+      },
+    ]);
+  });
+
+  it('drops leading orphan tool history after the system prefix', () => {
+    const controller = new ProxyController({
+      handleChatCompletions: vi.fn(),
+      handleAnthropicMessages: vi.fn(),
+    } as any);
+
+    const prepared = controller.prepareResponsesRequest({
+      model: 'gpt-5-codex',
+      instructions: 'Follow the project instructions.',
+      input: [
+        {
+          type: 'function_call',
+          call_id: 'call_orphan',
+          name: 'read_file',
+          arguments: '{}',
+        },
+        {
+          type: 'function_call_output',
+          call_id: 'call_orphan',
+          output: 'stale output',
+        },
+        {
+          type: 'message',
+          role: 'user',
+          content: 'Start from this request.',
+        },
+      ],
+    });
+
+    expect(prepared?.request.messages).toEqual([
+      {
+        role: 'system',
+        content: 'Follow the project instructions.',
+      },
+      {
+        role: 'user',
+        content: 'Start from this request.',
+      },
+    ]);
+  });
+
   it('compacts repeated apply_patch failures in Responses history', () => {
     const controller = new ProxyController({
       handleChatCompletions: vi.fn(),
@@ -167,6 +275,11 @@ describe('ProxyController Integration', () => {
     const prepared = controller.prepareResponsesRequest({
       model: 'gpt-5-codex',
       input: [
+        {
+          type: 'message',
+          role: 'user',
+          content: 'Apply these changes.',
+        },
         {
           type: 'custom_tool_call',
           call_id: 'call_failure_1',
@@ -537,6 +650,11 @@ describe('ProxyController Integration', () => {
         model: 'gpt-4o',
         input: [
           {
+            type: 'message',
+            role: 'user',
+            content: 'Search for the Gemini API.',
+          },
+          {
             type: 'web_search_call',
             call_id: 'call_search_1',
             action: { query: 'gemini api' },
@@ -600,6 +718,11 @@ describe('ProxyController Integration', () => {
       {
         model: 'gpt-4o',
         input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: 'Apply this patch.',
+          },
           {
             type: 'custom_tool_call',
             call_id: 'call_patch_1',
@@ -700,7 +823,7 @@ describe('ProxyController Integration', () => {
     ]);
   });
 
-  it('repairs an apply_patch call when a compacted continuation only sends its output', async () => {
+  it('drops repaired tool-only history when a compacted continuation has no ordinary message', async () => {
     const patch = '*** Begin Patch\n*** Add File: src/new.ts\n+export {};\n*** End Patch';
     const proxyService = {
       handleChatCompletions: vi
@@ -768,28 +891,7 @@ describe('ProxyController Integration', () => {
     );
 
     const continuationRequest = proxyService.handleChatCompletions.mock.calls[1][0];
-    expect(continuationRequest.messages).toEqual([
-      {
-        role: 'assistant',
-        content: '',
-        tool_calls: [
-          expect.objectContaining({
-            custom_input: patch,
-            id: 'call_patch_compacted',
-            function: {
-              name: 'apply_patch',
-              arguments: JSON.stringify({ input: patch }),
-            },
-          }),
-        ],
-      },
-      {
-        role: 'tool',
-        tool_call_id: 'call_patch_compacted',
-        name: 'apply_patch',
-        content: 'Done',
-      },
-    ]);
+    expect(continuationRequest.messages).toEqual([{ role: 'user', content: '' }]);
   });
 
   it('rejects an unknown previous_response_id', async () => {
