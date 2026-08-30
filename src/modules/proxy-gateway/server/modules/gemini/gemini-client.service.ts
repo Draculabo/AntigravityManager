@@ -40,6 +40,8 @@ interface PreparedInternalRequest {
   cacheKey?: string;
 }
 
+const PROJECT_HEADER_ATTEMPT_COUNT = 2;
+
 @Injectable()
 export class GeminiClient {
   private readonly logger = new Logger(GeminiClient.name);
@@ -475,7 +477,11 @@ export class GeminiClient {
     let lastEndpoint = '';
     let hasTriggeredProjectHeaderDowngrade = false;
 
-    for (let projectHeaderAttempt = 0; projectHeaderAttempt < 5; projectHeaderAttempt++) {
+    for (
+      let projectHeaderAttempt = 0;
+      projectHeaderAttempt < PROJECT_HEADER_ATTEMPT_COUNT;
+      projectHeaderAttempt++
+    ) {
       let shouldRetryWithoutProjectHeader = false;
       const projectHeaders = hasTriggeredProjectHeaderDowngrade
         ? {}

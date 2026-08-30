@@ -8,6 +8,7 @@ import { OpenAIService } from '../../modules/proxy-gateway/server/modules/openai
 import { Observable } from 'rxjs';
 import { GeminiClient } from '../../modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { Upstream4xxCaptureService } from '../../modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import { setServerConfig } from '../../server/server-config';
 import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
@@ -715,6 +716,74 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect((result as any).candidates?.[0]?.content?.parts?.[0]?.text).toBe('ok');
   });
 
+  it('rotates accounts when the no-project retry still lacks a Code Assist license', async () => {
+    const service = new TestableGeminiService();
+    const licenseMessage =
+      'You are currently configured to use a Google Cloud Project but lack a Gemini Code Assist license. (#3501)';
+    const licenseError = new UpstreamRequestError({
+      message: licenseMessage,
+      status: 403,
+      body: JSON.stringify({ error: { message: licenseMessage, status: 'PERMISSION_DENIED' } }),
+    });
+    mockAccountLeaseService.getNextToken
+      .mockResolvedValueOnce(createToken('acc-1'))
+      .mockResolvedValueOnce(createToken('acc-2'));
+    mockGeminiClient.generateInternal
+      .mockRejectedValueOnce(licenseError)
+      .mockRejectedValueOnce(licenseError)
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+        usageMetadata: { totalTokenCount: 5 },
+      });
+
+    const result = await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+      contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+    } as any);
+
+    expect(mockGeminiClient.generateInternal).toHaveBeenCalledTimes(3);
+    expect(mockGeminiClient.generateInternal.mock.calls[0][0].project).toBe('project-1');
+    expect(mockGeminiClient.generateInternal.mock.calls[1][0]).not.toHaveProperty('project');
+    expect(mockGeminiClient.generateInternal.mock.calls[2][0].project).toBe('project-1');
+    expect(mockAccountLeaseService.markAsForbidden).toHaveBeenCalledWith('acc-1');
+    expect(mockAccountLeaseService.getNextToken).toHaveBeenNthCalledWith(2, {
+      sessionKey: undefined,
+      excludeAccountIds: ['acc-1'],
+      model: 'gemini-3-flash',
+    });
+    expect((result as any).candidates?.[0]?.content?.parts?.[0]?.text).toBe('ok');
+  });
+
+  it('rotates immediately on location ineligibility without a payload project retry', async () => {
+    const service = new TestableGeminiService();
+    const locationMessage = 'Gemini Code Assist is not currently available in your location.';
+    mockAccountLeaseService.getNextToken
+      .mockResolvedValueOnce(createToken('acc-1'))
+      .mockResolvedValueOnce(createToken('acc-2'));
+    mockGeminiClient.generateInternal
+      .mockRejectedValueOnce(
+        new UpstreamRequestError({
+          message: locationMessage,
+          status: 403,
+          body: JSON.stringify({
+            error: { message: locationMessage, status: 'PERMISSION_DENIED' },
+          }),
+        }),
+      )
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+        usageMetadata: { totalTokenCount: 5 },
+      });
+
+    await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+      contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+    } as any);
+
+    expect(mockGeminiClient.generateInternal).toHaveBeenCalledTimes(2);
+    expect(mockGeminiClient.generateInternal.mock.calls[0][0].project).toBe('project-1');
+    expect(mockGeminiClient.generateInternal.mock.calls[1][0].project).toBe('project-1');
+    expect(mockAccountLeaseService.markAsForbidden).toHaveBeenCalledWith('acc-1');
+  });
+
   it('omits empty project id in Gemini internal payload', async () => {
     const service = new TestableGeminiService();
     const token = createToken('acc-1');
@@ -812,6 +881,32 @@ describe('GeminiClient internal request parity', () => {
 
     expect(postSpy).toHaveBeenCalledTimes(2);
     expect(postSpy.mock.calls[1][0]).toBe(postSpy.mock.calls[0][0]);
+    expect(postSpy.mock.calls[0][2]?.headers?.['x-goog-user-project']).toBe('project-1');
+    expect(postSpy.mock.calls[1][2]?.headers).not.toHaveProperty('x-goog-user-project');
+  });
+
+  it('removes x-goog-user-project at most once and preserves the final 403', async () => {
+    const forbidden = new AxiosError(
+      'Request failed with status code 403',
+      undefined,
+      undefined,
+      undefined,
+      {
+        data: { error: { message: 'PERMISSION_DENIED' } },
+        status: 403,
+        statusText: 'Forbidden',
+        headers: {},
+        config: {} as any,
+      },
+    );
+    const postSpy = vi.spyOn(axios, 'post').mockRejectedValue(forbidden);
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+
+    await expect(
+      client.generateInternal({ project: 'project-1', request: {} } as any, 'access-token'),
+    ).rejects.toMatchObject({ status: 403 });
+
+    expect(postSpy).toHaveBeenCalledTimes(2);
     expect(postSpy.mock.calls[0][2]?.headers?.['x-goog-user-project']).toBe('project-1');
     expect(postSpy.mock.calls[1][2]?.headers).not.toHaveProperty('x-goog-user-project');
   });

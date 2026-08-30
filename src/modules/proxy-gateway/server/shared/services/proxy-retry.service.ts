@@ -216,9 +216,9 @@ export class ProxyRetryService {
   }
 
   /**
-   * A 403 the user can clear (identity verification) or that a VPC Service Controls boundary
-   * produced says nothing about the credential, so the account stays in rotation. Every other 403
-   * still burns it, including any this cannot recognise.
+   * Identity verification and VPC Service Controls failures say nothing about the credential, so
+   * the account stays in rotation. Location and license eligibility failures are durable for the
+   * current account and must rotate just like an unclassified forbidden response.
    */
   private isRecoverableForbidden(accountId: string, error: UpstreamRequestError): boolean {
     const classification = classifyForbiddenUpstreamError({
@@ -226,7 +226,10 @@ export class ProxyRetryService {
       details: error.details,
       message: error.message,
     });
-    if (classification.kind === 'account_forbidden') {
+    if (
+      classification.kind !== 'validation_required' &&
+      classification.kind !== 'security_policy_violated'
+    ) {
       return false;
     }
 

@@ -330,6 +330,31 @@ describe('ProxyRetryService', () => {
     expect(accountLeaseService.markAsForbidden).toHaveBeenCalledWith('acc-dead');
   });
 
+  it.each([
+    ['acc-location', 'Gemini Code Assist is not currently available in your location.'],
+    [
+      'acc-license',
+      'You are currently configured to use a Google Cloud Project but lack a Gemini Code Assist license. (#3501)',
+    ],
+  ] as const)(
+    'rotates away from a durable provider eligibility 403 for %s',
+    async (accountId, message) => {
+      const { policy, accountLeaseService } = createPolicy();
+
+      await policy.applyUpstreamPenalty(
+        accountId,
+        'gemini-3-flash',
+        new UpstreamRequestError({
+          message,
+          status: 403,
+          body: JSON.stringify({ error: { message, status: 'PERMISSION_DENIED' } }),
+        }),
+      );
+
+      expect(accountLeaseService.markAsForbidden).toHaveBeenCalledWith(accountId);
+    },
+  );
+
   it('still burns the account on a 401', async () => {
     const { policy, accountLeaseService } = createPolicy();
 

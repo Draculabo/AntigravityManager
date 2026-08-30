@@ -24,6 +24,7 @@ import {
 } from '@/modules/proxy-gateway/antigravity/types';
 import { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
+import { isProjectLicenseErrorMessage } from '@/modules/proxy-gateway/server/common/google-error-details';
 
 interface StreamIdleTimer {
   reset: () => void;
@@ -149,14 +150,6 @@ export abstract class BaseProxyService {
     this.retryPolicy.markUpstreamSuccess(accountId, model);
   }
 
-  private isProjectLicenseError(errorMessage: string): boolean {
-    const msg = errorMessage.toLowerCase();
-    return (
-      msg.includes('#3501') ||
-      (msg.includes('google cloud project') && msg.includes('code assist license'))
-    );
-  }
-
   private isProjectNotFoundError(errorMessage: string): boolean {
     const msg = errorMessage.toLowerCase();
     return (
@@ -167,7 +160,7 @@ export abstract class BaseProxyService {
   }
 
   protected isProjectContextError(errorMessage: string): boolean {
-    return this.isProjectLicenseError(errorMessage) || this.isProjectNotFoundError(errorMessage);
+    return isProjectLicenseErrorMessage(errorMessage) || this.isProjectNotFoundError(errorMessage);
   }
 
   protected isQuotaExhaustedError(errorMessage: string): boolean {

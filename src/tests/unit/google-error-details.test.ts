@@ -73,6 +73,23 @@ describe('google error details', () => {
     });
   });
 
+  it.each([
+    ['Gemini Code Assist is not currently available in your location.', 'location_ineligible'],
+    [
+      'You are currently configured to use a Google Cloud Project but lack a Gemini Code Assist license. (#3501)',
+      'license_required',
+    ],
+  ] as const)('classifies durable provider eligibility failures: %s', (message, kind) => {
+    expect(classifyForbiddenUpstreamError({ message })).toEqual({ kind });
+  });
+
+  it.each([
+    'Another product is not available in your location.',
+    'The account has an unrelated software license problem.',
+  ])('does not broaden eligibility matching to unrelated errors: %s', (message) => {
+    expect(classifyForbiddenUpstreamError({ message })).toEqual({ kind: 'account_forbidden' });
+  });
+
   it('calls anything it does not recognise a dead account', () => {
     expect(
       classifyForbiddenUpstreamError({

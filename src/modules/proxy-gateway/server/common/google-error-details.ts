@@ -1,12 +1,9 @@
 import { isObjectLike, isString } from 'lodash-es';
 
 /**
- * Recognition of the two upstream 403s that are *not* a dead credential.
- *
- * `cloudcode-pa` answers 403 for several unrelated reasons. Collapsing all of them into "this
- * account is forbidden" permanently removes an account from rotation for a condition the user can
- * fix (identity verification) or that is a network-boundary policy (VPC Service Controls) rather
- * than a credential problem at all.
+ * `cloudcode-pa` answers 403 for unrelated reasons. Keep recoverable validation and network-policy
+ * failures separate from durable account eligibility failures so retry policy can make an explicit
+ * decision rather than inferring it from a generic `PERMISSION_DENIED` string.
  */
 
 /** Hosts whose `ErrorInfo` may carry a user-actionable `VALIDATION_REQUIRED` 403. */
@@ -42,6 +39,8 @@ export interface GoogleApiErrorDetail {
 
 export type ForbiddenUpstreamKind =
   | 'account_forbidden'
+  | 'location_ineligible'
+  | 'license_required'
   | 'validation_required'
   | 'security_policy_violated';
 
@@ -53,6 +52,15 @@ export interface ForbiddenUpstreamClassification {
 }
 
 const ACCOUNT_FORBIDDEN: ForbiddenUpstreamClassification = { kind: 'account_forbidden' };
+
+export function isProjectLicenseErrorMessage(message: string): boolean {
+  const normalizedMessage = message.toLowerCase();
+  return (
+    normalizedMessage.includes('#3501') ||
+    (normalizedMessage.includes('google cloud project') &&
+      normalizedMessage.includes('code assist license'))
+  );
+}
 
 /**
  * Strips stray characters that SSE framing can inject into a domain before comparing, mirroring
@@ -212,6 +220,21 @@ function classifyFromDetails(
  * cloudcode-pa domain to appear alongside it, exactly as the structured path does.
  */
 function classifyFromText(text: string): ForbiddenUpstreamClassification | null {
+  const normalizedText = text.toLowerCase();
+  if (isProjectLicenseErrorMessage(normalizedText)) {
+    return { kind: 'license_required' };
+  }
+
+  const namesGeminiCodeAssist = normalizedText.includes('gemini code assist');
+  const namesUnavailableLocation =
+    normalizedText.includes('not currently available in your location') ||
+    normalizedText.includes('not currently available in your region') ||
+    normalizedText.includes('not available in your location') ||
+    normalizedText.includes('not available in your region');
+  if (namesGeminiCodeAssist && namesUnavailableLocation) {
+    return { kind: 'location_ineligible' };
+  }
+
   if (text.includes(SECURITY_POLICY_VIOLATED_REASON)) {
     return { kind: 'security_policy_violated' };
   }
@@ -232,10 +255,10 @@ function classifyFromText(text: string): ForbiddenUpstreamClassification | null 
 }
 
 /**
- * Classifies a 403 as either a genuinely dead account or one of the two recoverable conditions.
+ * Classifies a 403 into a durable account failure or one of the two recoverable conditions.
  *
- * Returns `account_forbidden` whenever nothing recoverable is recognised, so the caller's existing
- * behaviour is unchanged for every 403 we do not understand.
+ * Returns `account_forbidden` whenever no more precise condition is recognised, so the caller's
+ * existing fail-closed behaviour is unchanged for every 403 we do not understand.
  */
 export function classifyForbiddenUpstreamError(params: {
   details?: GoogleApiErrorDetail[];
