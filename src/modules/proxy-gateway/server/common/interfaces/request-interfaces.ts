@@ -42,6 +42,7 @@ export interface OpenAIContentPart {
   text?: string;
   image_url?: {
     url: string;
+    detail?: 'auto' | 'low' | 'high';
   };
 }
 

@@ -89,22 +89,17 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
   // that reports `completed` regardless makes a truncated answer look final.
   const incompleteReason = toIncompleteReason(choice?.finish_reason);
   const status: ResponsesOutputStatus = incompleteReason ? 'incomplete' : 'completed';
-  const hasToolCalls = (choice?.message.tool_calls?.length ?? 0) > 0;
-
-  if (reasoningContent) {
+  if (reasoningContent?.trim()) {
     output.push({
-      content: [
+      summary: [
         {
-          annotations: [],
           text: reasoningContent,
-          type: 'output_text',
+          type: 'summary_text',
         },
       ],
-      id: `msg_thought_${response.id}`,
-      phase: 'commentary',
-      role: 'assistant',
+      id: `reasoning_${response.id}`,
       status,
-      type: 'message',
+      type: 'reasoning',
     });
   }
 
@@ -127,7 +122,6 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
     output.push({
       content: contentParts,
       id: `msg_${response.id}`,
-      phase: hasToolCalls ? 'commentary' : 'final_answer',
       role: 'assistant',
       status,
       type: 'message',
@@ -150,6 +144,7 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
     }
   }
 
+  const usage = toOpenAIResponsesUsage(response.usage);
   return {
     created_at: response.created,
     error: null,
@@ -160,6 +155,16 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
     output,
     status,
     type: 'response',
-    usage: toOpenAIResponsesUsage(response.usage),
+    usage: {
+      ...usage,
+      input_tokens_details: {
+        ...usage.input_tokens_details,
+        cached_tokens: usage.input_tokens_details?.cached_tokens ?? 0,
+      },
+      output_tokens_details: {
+        ...usage.output_tokens_details,
+        reasoning_tokens: usage.output_tokens_details?.reasoning_tokens ?? 0,
+      },
+    },
   };
 }

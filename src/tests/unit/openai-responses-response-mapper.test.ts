@@ -36,7 +36,6 @@ describe('OpenAI Responses non-stream mapper', () => {
           },
         ],
         id: 'msg_resp_refused',
-        phase: 'final_answer',
         role: 'assistant',
         status: 'completed',
         type: 'message',
@@ -83,18 +82,10 @@ describe('OpenAI Responses non-stream mapper', () => {
     expect(response).toMatchObject({ error: null, status: 'completed' });
     expect(response.output).toEqual([
       {
-        content: [
-          {
-            annotations: [],
-            text: 'Inspect the repository first.',
-            type: 'output_text',
-          },
-        ],
-        id: 'msg_thought_resp_mixed',
-        phase: 'commentary',
-        role: 'assistant',
+        summary: [{ text: 'Inspect the repository first.', type: 'summary_text' }],
+        id: 'reasoning_resp_mixed',
         status: 'completed',
-        type: 'message',
+        type: 'reasoning',
       },
       {
         content: [
@@ -109,7 +100,6 @@ describe('OpenAI Responses non-stream mapper', () => {
           },
         ],
         id: 'msg_resp_mixed',
-        phase: 'commentary',
         role: 'assistant',
         status: 'completed',
         type: 'message',

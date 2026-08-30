@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "key": "resp_before_upgrade",
+      "updatedAt": 1800000000000,
+      "value": {
+        "inputItems": [
+          { "role": "user", "content": "Remember fixture number 41." },
+          {
+            "content": [
+              { "annotations": [], "text": "Private display text.", "type": "output_text" }
+            ],
+            "id": "msg_thought_resp_before_upgrade",
+            "phase": "commentary",
+            "role": "assistant",
+            "status": "completed",
+            "type": "message"
+          },
+          {
+            "content": [
+              { "annotations": [], "text": "I will inspect the fixture.", "type": "output_text" }
+            ],
+            "id": "msg_resp_before_upgrade",
+            "phase": "commentary",
+            "role": "assistant",
+            "status": "completed",
+            "type": "message"
+          },
+          {
+            "arguments": "{\"name\":\"safe-fixture\"}",
+            "call_id": "call_before_upgrade",
+            "id": "item_before_upgrade",
+            "name": "read_fixture",
+            "status": "completed",
+            "type": "function_call"
+          }
+        ],
+        "instructions": "Only use the provided safe fixture.",
+        "model": "gemini-3-flash",
+        "response": {
+          "created_at": 1800000000,
+          "error": null,
+          "id": "resp_before_upgrade",
+          "incomplete_details": null,
+          "model": "gemini-3-flash",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                { "annotations": [], "text": "Private display text.", "type": "output_text" }
+              ],
+              "id": "msg_thought_resp_before_upgrade",
+              "phase": "commentary",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            },
+            {
+              "content": [
+                { "annotations": [], "text": "I will inspect the fixture.", "type": "output_text" }
+              ],
+              "id": "msg_resp_before_upgrade",
+              "phase": "commentary",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            },
+            {
+              "arguments": "{\"name\":\"safe-fixture\"}",
+              "call_id": "call_before_upgrade",
+              "id": "item_before_upgrade",
+              "name": "read_fixture",
+              "status": "completed",
+              "type": "function_call"
+            }
+          ],
+          "status": "completed",
+          "type": "response",
+          "usage": { "input_tokens": 7, "output_tokens": 3, "total_tokens": 10 }
+        },
+        "tools": [
+          {
+            "type": "function",
+            "function": { "name": "read_fixture", "parameters": { "type": "object" } }
+          }
+        ],
+        "toolCallItems": [
+          {
+            "arguments": "{\"name\":\"safe-fixture\"}",
+            "call_id": "call_before_upgrade",
+            "id": "item_before_upgrade",
+            "name": "read_fixture",
+            "status": "completed",
+            "type": "function_call"
+          }
+        ]
+      }
+    },
+    {
+      "key": "resp_legacy_inputs",
+      "updatedAt": 1800000000000,
+      "value": {
+        "inputItems": [
+          { "type": "", "role": "user", "content": "Legacy empty type." },
+          { "type": "message", "role": "user", "content": { "legacy": "object content" } },
+          {
+            "type": "message",
+            "role": "user",
+            "content": [
+              { "type": "input_image", "image_url": { "url": "data:image/png;base64,AA==" } }
+            ]
+          }
+        ],
+        "model": "gemini-3-flash",
+        "toolCallItems": []
+      }
+    }
+  ]
+}

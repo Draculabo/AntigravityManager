@@ -1,4 +1,5 @@
 import { DurableRecordStore } from '@/shared/persistence/durable-record-store';
+import { resolveResponsesInputType } from './responses-input-type';
 import type { OpenAIChatRequest } from '../../../common/interfaces/request-interfaces';
 
 export interface OpenAIResponsesSession {
@@ -141,7 +142,10 @@ export function mergeOpenAIResponsesInputItems(
 }
 
 function isCodexTranscriptOnlyAssistantMessage(item: unknown): boolean {
-  if (getStringField(item, 'type') !== 'message' || getStringField(item, 'role') !== 'assistant') {
+  if (
+    resolveResponsesInputType(item) !== 'message' ||
+    getStringField(item, 'role') !== 'assistant'
+  ) {
     return false;
   }
 
@@ -167,14 +171,14 @@ function getMessageText(item: unknown): string {
   }
 
   return content
-    .map((part) => {
+    .flatMap((part) => {
       if (typeof part !== 'object' || part === null || Array.isArray(part)) {
-        return '';
+        return [];
       }
       const text = Reflect.get(part, 'text');
-      return typeof text === 'string' ? text : '';
+      return typeof text === 'string' ? [text] : [];
     })
-    .join('');
+    .join('\n');
 }
 
 function repairToolCalls(items: unknown[], cachedToolCalls: unknown[]): unknown[] {

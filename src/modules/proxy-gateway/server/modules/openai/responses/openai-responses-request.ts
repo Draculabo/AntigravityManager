@@ -9,6 +9,7 @@
 
 import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
 import { z } from 'zod';
+import { resolveResponsesInputType } from './responses-input-type';
 import { ApplyPatchFailureCompactor } from '@/modules/proxy-gateway/antigravity/ApplyPatchFailureCompaction';
 import { toCustomToolArguments } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
 import {
@@ -47,7 +48,7 @@ export interface OpenAIResponsesErrorBody {
 
 const ResponsesMessageItemSchema = z.object({
   type: z.literal('message'),
-  role: z.string().default('user'),
+  role: z.preprocess((role) => (typeof role === 'string' ? role : 'user'), z.string()),
   content: z.unknown().optional(),
 });
 
@@ -107,9 +108,8 @@ const ResponsesInputItemSchema = z.preprocess(
       return value;
     }
 
-    const candidate = value as { role?: unknown; type?: unknown } & object;
-    if ((!isString(candidate.type) || candidate.type.length === 0) && isString(candidate.role)) {
-      return Object.assign({}, candidate, { type: 'message' as const });
+    if (resolveResponsesInputType(value) === 'message') {
+      return Object.assign({}, value, { type: 'message' as const });
     }
     return value;
   },
@@ -375,6 +375,13 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
   };
 }
 
+const ResponsesImageUrlSchema = z
+  .object({
+    url: z.string().min(1),
+    detail: z.enum(['auto', 'low', 'high']).optional(),
+  })
+  .catchall(z.json());
+
 export function normalizeResponsesMessageContent(content: unknown): string | OpenAIContentPart[] {
   if (isString(content)) {
     return content;
@@ -394,22 +401,20 @@ export function normalizeResponsesMessageContent(content: unknown): string | Ope
     }
 
     const blockType = asString(block.type);
-    if (blockType === 'input_text' || blockType === 'text' || blockType === 'output_text') {
-      const text = asString(block.text);
-      if (text) {
-        textParts.push(text);
-      }
+    if (typeof block.text === 'string') {
+      textParts.push(block.text);
       continue;
     }
 
     if (blockType === 'input_image' || blockType === 'image_url') {
-      const imageUrl = resolveImageUrl(block);
-      if (imageUrl) {
+      const rawImageUrl = block.image_url;
+      const imageUrl = ResponsesImageUrlSchema.safeParse(
+        typeof rawImageUrl === 'string' ? { url: rawImageUrl } : rawImageUrl,
+      );
+      if (imageUrl.success) {
         imageParts.push({
           type: 'image_url',
-          image_url: {
-            url: imageUrl,
-          },
+          image_url: imageUrl.data,
         });
       }
     }
