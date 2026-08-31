@@ -103,6 +103,17 @@ const zhCn = {
     },
   },
   settings: {
+    'weekly-warmup': {
+      error: '无法读取或保存预热设置。',
+      retry: '重试',
+      'cost-notice':
+        '预热会消耗实际模型配额，并可能使用 AI credits。请求被接受不代表每周计时器已成功重启。',
+      title: '每周配额预热',
+      description: '所选每周配额重置后，为每个配额桶发送一次最小请求，并记录成功周期。',
+      enabled: '启用每周配额预热',
+      groups: '需要预热的配额组',
+      group: { claude: 'Claude 配额组', gemini: 'Gemini 配额组' },
+    },
     title: '设置',
     description: '管理应用偏好设置。',
     general: '常规',
@@ -392,6 +403,16 @@ const zhCn = {
       threeCol: '3 列',
       list: '列表',
       compact: '紧凑',
+    },
+    'quota-window': {
+      label: '配额周期',
+      'five-hours': '5 小时配额',
+      'five-hours-short': '5 小时',
+      weekly: '每周配额',
+      'weekly-short': '每周',
+      'no-weekly-quota': '暂无每周配额数据',
+      'weekly-summary-unavailable': '上游服务未返回该账号的每周配额摘要。',
+      'weekly-bucket-unavailable': '配额摘要中没有可识别的每周配额桶。',
     },
     authDialog: {
       title: '添加 Google 账号',

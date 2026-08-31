@@ -117,6 +117,18 @@ const tr = {
     },
   },
   settings: {
+    'weekly-warmup': {
+      error: 'Isınma ayarları yüklenemedi veya kaydedilemedi.',
+      retry: 'Yeniden dene',
+      'cost-notice':
+        'Isınma model kotası ve AI kredileri kullanabilir. HTTP isteğinin kabul edilmesi haftalık sayacın yeniden başladığını garanti etmez.',
+      title: 'Haftalık kota ısıtma',
+      description:
+        'Seçili haftalık kota sıfırlandıktan sonra her kota bölümü için bir küçük istek gönderir ve başarılı döngüyü kaydeder.',
+      enabled: 'Haftalık kota ısıtmayı etkinleştir',
+      groups: 'Isıtılacak kota grupları',
+      group: { claude: 'Claude kota grupları', gemini: 'Gemini kota grupları' },
+    },
     title: 'Ayarlar',
     description: 'Uygulama tercihlerini yönetin.',
     general: 'Genel',
@@ -417,6 +429,16 @@ const tr = {
       threeCol: '3 Sütun',
       list: 'Liste',
       compact: 'Sıkışık',
+    },
+    'quota-window': {
+      label: 'Kota dönemi',
+      'five-hours': '5 saatlik kota',
+      'five-hours-short': '5 sa',
+      weekly: 'Haftalık kota',
+      'weekly-short': 'Hafta',
+      'no-weekly-quota': 'Haftalık kota verisi yok',
+      'weekly-summary-unavailable': 'Üst hizmet haftalık kota özeti döndürmedi.',
+      'weekly-bucket-unavailable': 'Kota özetinde tanınabilir bir haftalık kota bulunmuyor.',
     },
     authDialog: {
       title: 'Google Hesabı Ekle',

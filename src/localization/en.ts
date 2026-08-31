@@ -118,6 +118,18 @@ const en = {
     },
   },
   settings: {
+    'weekly-warmup': {
+      error: 'Warmup settings could not be loaded or saved.',
+      retry: 'Retry',
+      'cost-notice':
+        'Warmup uses real model quota and may use AI credits. HTTP acceptance does not guarantee a new weekly timer.',
+      title: 'Weekly quota warmup',
+      description:
+        'After a selected weekly quota resets, send one minimal request per quota bucket and record successful cycles.',
+      enabled: 'Enable weekly quota warmup',
+      groups: 'Quota groups to warm up',
+      group: { claude: 'Claude quota groups', gemini: 'Gemini quota groups' },
+    },
     title: 'Settings',
     description: 'Manage application preferences.',
     general: 'General',
@@ -420,6 +432,16 @@ const en = {
       threeCol: '3 Columns',
       list: 'List',
       compact: 'Compact',
+    },
+    'quota-window': {
+      label: 'Quota window',
+      'five-hours': '5-hour quota',
+      'five-hours-short': '5h',
+      weekly: 'Weekly quota',
+      'weekly-short': 'Week',
+      'no-weekly-quota': 'No weekly quota data',
+      'weekly-summary-unavailable': 'The upstream service did not return a weekly quota summary.',
+      'weekly-bucket-unavailable': 'The quota summary contains no recognizable weekly bucket.',
     },
     authDialog: {
       title: 'Add Google Account',

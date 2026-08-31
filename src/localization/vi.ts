@@ -117,6 +117,18 @@ const vi = {
     },
   },
   settings: {
+    'weekly-warmup': {
+      error: 'Không thể tải hoặc lưu cài đặt làm nóng.',
+      retry: 'Thử lại',
+      'cost-notice':
+        'Làm nóng tiêu thụ hạn mức mô hình và có thể dùng tín dụng AI. Yêu cầu HTTP được chấp nhận không đảm bảo bộ đếm tuần đã khởi động lại.',
+      title: 'Làm nóng hạn mức hàng tuần',
+      description:
+        'Sau khi hạn mức hàng tuần đã chọn được đặt lại, gửi một yêu cầu tối thiểu cho mỗi nhóm và lưu chu kỳ thành công.',
+      enabled: 'Bật làm nóng hạn mức hàng tuần',
+      groups: 'Nhóm hạn mức cần làm nóng',
+      group: { claude: 'Nhóm hạn mức Claude', gemini: 'Nhóm hạn mức Gemini' },
+    },
     title: 'Cài đặt',
     description: 'Quản lý tùy chọn ứng dụng.',
     general: 'Chung',
@@ -415,6 +427,18 @@ const vi = {
       threeCol: '3 cột',
       list: 'Danh sách',
       compact: 'Thu gọn',
+    },
+    'quota-window': {
+      label: 'Chu kỳ hạn mức',
+      'five-hours': 'Hạn mức 5 giờ',
+      'five-hours-short': '5 giờ',
+      weekly: 'Hạn mức hàng tuần',
+      'weekly-short': 'Tuần',
+      'no-weekly-quota': 'Không có dữ liệu hạn mức hàng tuần',
+      'weekly-summary-unavailable':
+        'Dịch vụ thượng nguồn không trả về bản tóm tắt hạn mức hàng tuần.',
+      'weekly-bucket-unavailable':
+        'Bản tóm tắt hạn mức không có nhóm hạn mức hàng tuần có thể nhận dạng.',
     },
     authDialog: {
       title: 'Thêm tài khoản Google',

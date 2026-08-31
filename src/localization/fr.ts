@@ -123,6 +123,18 @@ const fr = {
     },
   },
   settings: {
+    'weekly-warmup': {
+      error: 'Impossible de charger ou enregistrer les paramètres.',
+      retry: 'Réessayer',
+      'cost-notice':
+        'Le préchauffage consomme du quota et peut utiliser des crédits IA. Une réponse HTTP acceptée ne garantit pas un nouveau cycle hebdomadaire.',
+      title: 'Préchauffage du quota hebdomadaire',
+      description:
+        'Après la réinitialisation d’un quota sélectionné, envoie une requête minimale par compartiment et mémorise les cycles réussis.',
+      enabled: 'Activer le préchauffage hebdomadaire',
+      groups: 'Groupes de quotas à préchauffer',
+      group: { claude: 'Groupes de quotas Claude', gemini: 'Groupes de quotas Gemini' },
+    },
     title: 'Parametres',
     description: 'Gerez les preferences de l application.',
     general: 'General',
@@ -426,6 +438,18 @@ const fr = {
       threeCol: '3 colonnes',
       list: 'Liste',
       compact: 'Compact',
+    },
+    'quota-window': {
+      label: 'Période de quota',
+      'five-hours': 'Quota sur 5 heures',
+      'five-hours-short': '5 h',
+      weekly: 'Quota hebdomadaire',
+      'weekly-short': 'Semaine',
+      'no-weekly-quota': 'Aucune donnée de quota hebdomadaire',
+      'weekly-summary-unavailable':
+        "Le service en amont n'a renvoyé aucun résumé de quota hebdomadaire.",
+      'weekly-bucket-unavailable':
+        'Le résumé du quota ne contient aucun compartiment hebdomadaire reconnu.',
     },
     authDialog: {
       title: 'Ajouter un compte Google',
