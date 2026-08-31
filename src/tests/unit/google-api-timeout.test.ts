@@ -519,6 +519,71 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ project: 'project-1' }));
   });
 
+  it('retries grouped quota summary on the same endpoint without project after project 403', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          models: {
+            'gemini-3-flash': {
+              quotaInfo: {
+                remainingFraction: 1,
+                resetTime: '2026-05-05T00:00:00Z',
+              },
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 403 })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          groups: [
+            {
+              displayName: 'Gemini Models',
+              buckets: [
+                {
+                  bucketId: 'gemini-weekly',
+                  window: 'weekly',
+                  remainingFraction: 1,
+                  resetTime: '2026-05-05T00:00:00Z',
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue({
+      proxy: { upstream_proxy: { enabled: false } },
+    } as any);
+
+    const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+    vi.spyOn(GoogleAPIService, 'fetchProjectContext').mockResolvedValue({
+      projectId: 'project-1',
+      subscriptionTier: 'pro',
+    });
+
+    await expect(GoogleAPIService.fetchQuota('access-token')).resolves.toMatchObject({
+      quota_groups: [
+        {
+          display_name: 'Gemini Models',
+          buckets: [{ bucket_id: 'gemini-weekly', window: 'weekly' }],
+        },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(fetchMock.mock.calls[1]?.[0]);
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ project: 'project-1' }));
+    expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({}));
+  });
+
   it('keeps model quota results when grouped quota summary fails', async () => {
     const fetchMock = vi
       .fn()

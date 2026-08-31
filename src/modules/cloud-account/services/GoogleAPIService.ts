@@ -957,28 +957,42 @@ export class GoogleAPIService {
     const payload: Record<string, unknown> = projectId ? { project: projectId } : {};
 
     for (const endpoint of QUOTA_SUMMARY_ENDPOINTS) {
-      try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: buildInternalApiHeaders(accessToken),
-          body: JSON.stringify(payload),
-          signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
-          ...fetchOptions,
-        });
+      let currentPayload = { ...payload };
+      let retriedWithoutProject = false;
 
-        if (!response.ok) {
-          logger.warn(
-            `[GoogleAPIService] Quota summary API ${endpoint} returned ${response.status}`,
-          );
-          if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-            return undefined;
+      while (true) {
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: buildInternalApiHeaders(accessToken),
+            body: JSON.stringify(currentPayload),
+            signal: createTimeoutSignal(REQUEST_TIMEOUT_MS),
+            ...fetchOptions,
+          });
+
+          if (!response.ok) {
+            logger.warn(
+              `[GoogleAPIService] Quota summary API ${endpoint} returned ${response.status}`,
+            );
+            if (response.status === 403 && 'project' in currentPayload && !retriedWithoutProject) {
+              logger.warn(
+                '[GoogleAPIService] Quota summary returned 403 with project ID, retrying without project ID',
+              );
+              currentPayload = {};
+              retriedWithoutProject = true;
+              continue;
+            }
+            if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+              return undefined;
+            }
+            break;
           }
-          continue;
-        }
 
-        return toQuotaGroups((await response.json()) as QuotaSummaryResponse);
-      } catch (error) {
-        logger.warn(`[GoogleAPIService] Quota summary API request failed at ${endpoint}`, error);
+          return toQuotaGroups((await response.json()) as QuotaSummaryResponse);
+        } catch (error) {
+          logger.warn(`[GoogleAPIService] Quota summary API request failed at ${endpoint}`, error);
+          break;
+        }
       }
     }
 
