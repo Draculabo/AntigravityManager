@@ -11,11 +11,13 @@ import {
 } from '@/modules/cloud-account/components/CloudAccountList.constants';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 
 interface CloudAccountGridProps {
   accounts: CloudAccount[];
   sourceAccountCount: number;
   gridLayout: GridLayout;
+  quotaWindow: QuotaWindow;
   selectedIds: Set<string>;
   hasActiveTierFilter: boolean;
   refreshingAccountId?: string;
@@ -34,6 +36,7 @@ export function CloudAccountGrid({
   accounts,
   sourceAccountCount,
   gridLayout,
+  quotaWindow,
   selectedIds,
   hasActiveTierFilter,
   refreshingAccountId,
@@ -56,6 +59,7 @@ export function CloudAccountGrid({
           <CompactCloudAccountCard
             key={account.id}
             account={account}
+            quotaWindow={quotaWindow}
             onRefresh={onRefresh}
             onDelete={onDelete}
             onSwitch={onSwitch}
@@ -69,6 +73,7 @@ export function CloudAccountGrid({
           <CloudAccountCard
             key={account.id}
             account={account}
+            quotaWindow={quotaWindow}
             onRefresh={onRefresh}
             onDelete={onDelete}
             onSwitch={onSwitch}

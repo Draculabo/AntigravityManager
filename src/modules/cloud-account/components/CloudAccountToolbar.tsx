@@ -2,7 +2,9 @@ import type { ChangeEvent, RefObject } from 'react';
 import {
   Check,
   CheckSquare,
+  CalendarDays,
   Cloud,
+  Clock3,
   Columns2,
   Columns3,
   Download,
@@ -57,6 +59,7 @@ import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarge
 import type { AccountTierOption } from '@/modules/cloud-account/utils/account-tier-filter';
 import type { AccountSortKey } from '@/modules/cloud-account/utils/quota-display';
 import { LocalAccountImportDialog } from '@/modules/cloud-account/local-import/components/LocalAccountImportDialog';
+import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 
 type ImportStrategy = 'merge' | 'overwrite' | 'skip-existing';
 
@@ -89,6 +92,7 @@ interface CloudAccountToolbarProps {
   tierFilterButtonLabel: string;
   currentSort: AccountSortKey;
   gridLayout: GridLayout;
+  quotaWindow: QuotaWindow;
   getTierOptionLabel: (key: string, label: string) => string;
   onToggleAutoSwitch: (checked: boolean) => void;
   onToggleSelectAllAccounts: () => void;
@@ -109,6 +113,7 @@ interface CloudAccountToolbarProps {
   onToggleTierFilter: (tierKey: string, checked: boolean) => void;
   onSortChange: (sortKey: AccountSortKey) => void;
   onUpdateGridLayout: (layout: GridLayout) => void;
+  onQuotaWindowChange: (quotaWindow: QuotaWindow) => void;
 }
 
 export function CloudAccountToolbar({
@@ -140,6 +145,7 @@ export function CloudAccountToolbar({
   tierFilterButtonLabel,
   currentSort,
   gridLayout,
+  quotaWindow,
   getTierOptionLabel,
   onToggleAutoSwitch,
   onToggleSelectAllAccounts,
@@ -160,6 +166,7 @@ export function CloudAccountToolbar({
   onToggleTierFilter,
   onSortChange,
   onUpdateGridLayout,
+  onQuotaWindowChange,
 }: CloudAccountToolbarProps) {
   const { t } = useTranslation();
 
@@ -428,7 +435,33 @@ export function CloudAccountToolbar({
         </DropdownMenu>
       </div>
 
-      <div className="ml-auto flex items-center gap-1 rounded-md border p-1">
+      <div
+        className="ml-auto flex items-center gap-1 rounded-md border p-1"
+        aria-label={t('cloud.quota-window.label')}
+      >
+        <Button
+          variant={quotaWindow === '5h' ? 'secondary' : 'ghost'}
+          aria-pressed={quotaWindow === '5h'}
+          size="sm"
+          className="h-7 cursor-pointer px-2 text-xs"
+          onClick={() => onQuotaWindowChange('5h')}
+        >
+          <Clock3 className="mr-1 h-3.5 w-3.5" />
+          {t('cloud.quota-window.five-hours-short')}
+        </Button>
+        <Button
+          variant={quotaWindow === 'weekly' ? 'secondary' : 'ghost'}
+          aria-pressed={quotaWindow === 'weekly'}
+          size="sm"
+          className="h-7 cursor-pointer px-2 text-xs"
+          onClick={() => onQuotaWindowChange('weekly')}
+        >
+          <CalendarDays className="mr-1 h-3.5 w-3.5" />
+          {t('cloud.quota-window.weekly-short')}
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-1 rounded-md border p-1">
         <TooltipProvider delayDuration={0}>
           <Tooltip>
             <TooltipTrigger asChild>
