@@ -2,6 +2,8 @@ import type {
   GeminiToolConfig,
   GeminiSnakeToolConfig,
   GeminiToolDeclaration,
+  FunctionCall,
+  FunctionResponse,
 } from '../../../antigravity/types';
 
 export interface OpenAIChatRequest {
@@ -168,6 +170,8 @@ export interface GeminiPart {
   inlineData?: GeminiInlineData;
   thoughtSignature?: string;
   thought_signature?: string;
+  functionCall?: FunctionCall;
+  functionResponse?: FunctionResponse;
 }
 
 export interface GeminiInlineData {

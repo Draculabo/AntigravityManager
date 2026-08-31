@@ -1,9 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import {
-  GeminiToolConfigAliasesSchema,
-  normalizeGeminiToolConfigAliases,
-} from '../../../antigravity/GeminiToolConfigCompat';
-import { isEmpty, isNumber, isString } from 'lodash-es';
+import { GeminiToolConfigAliasesSchema } from '../../../antigravity/GeminiToolConfigCompat';
+import { createGeminiRequestEnvelope } from './gemini-request-envelope';
+import { isEmpty, isNumber } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { Observable } from 'rxjs';
@@ -297,25 +295,14 @@ export class GeminiService extends BaseProxyService {
     requestType: string,
     requestUserAgent: string,
   ): GeminiInternalRequest {
-    const normalizedProjectId = projectId?.trim();
-
-    const internalRequest: GeminiInternalRequest = {
-      requestId: this.createOfficialRequestId(),
-      request: this.toInternalGeminiRequest(request),
+    return createGeminiRequestEnvelope(
       model,
-      userAgent: requestUserAgent,
+      request,
+      projectId,
       requestType,
-    };
-
-    if (normalizedProjectId) {
-      internalRequest.project = normalizedProjectId;
-    }
-
-    if (requestType !== 'image_gen') {
-      internalRequest.enabledCreditTypes = ['GOOGLE_ONE_AI'];
-    }
-
-    return internalRequest;
+      requestUserAgent,
+      this.createOfficialRequestId(),
+    );
   }
 
   private normalizeGeminiGenerateResponse(response: GeminiResponse): GeminiResponse {
@@ -367,23 +354,5 @@ export class GeminiService extends BaseProxyService {
       throw new BadRequestException('Invalid Gemini tools or tool configuration');
     }
     return { ...request, ...aliases.data };
-  }
-
-  private toInternalGeminiRequest(request: GeminiRequest): GeminiInternalRequest['request'] {
-    return {
-      contents: request.contents,
-      generationConfig: request.generationConfig,
-      // Forwarded verbatim: without this the `/v1beta` passthrough silently
-      // strips tool declarations, so the model can never call a tool.
-      tools: request.tools,
-      ...normalizeGeminiToolConfigAliases(request),
-      systemInstruction: request.systemInstruction
-        ? {
-            parts: request.systemInstruction.parts
-              .filter((part): part is { text: string } => isString(part.text))
-              .map((part) => ({ text: part.text })),
-          }
-        : undefined,
-    };
   }
 }

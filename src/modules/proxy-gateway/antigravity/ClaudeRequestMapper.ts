@@ -5,6 +5,11 @@ import { mapClaudeModelToGemini, normalizeGeminiModelAlias } from './ModelMappin
 import { getMaxOutputTokens, getThinkingBudget } from './ModelSpecs';
 import { cleanJsonSchema, normalizeObjectJsonSchema } from './JsonSchemaUtils';
 import { SignatureStore } from './SignatureStore';
+import {
+  isGeminiFlashModel,
+  modelKeepsThinkingWithoutSignature,
+  PLACEHOLDER_THOUGHT_SIGNATURE,
+} from './ThoughtSignatureCompat';
 import { sanitizeSystemInstructionForCache } from './StablePromptPrefix';
 import { buildOfficialSystemInstruction } from './OfficialSystemInstruction';
 import { parseMarkdownImagesToGeminiParts } from './MarkdownImageParts';
@@ -52,8 +57,6 @@ type RequestType = 'agent' | 'web_search' | 'image_gen';
 const AGENT_CREDIT_TYPES = ['GOOGLE_ONE_AI'];
 const TOOL_SCHEMA_CACHE_LIMIT = 100;
 const TOOL_SCHEMA_CACHE_TTL_MS = 30 * 60 * 1000;
-const PLACEHOLDER_SIGNATURE = 'skip_thought_signature_validator';
-
 let placeholderSignatureUsageCount = 0;
 
 /**
@@ -460,20 +463,6 @@ function isGeminiImageModel(modelName: string): boolean {
   );
 }
 
-function isGeminiFlashModel(modelName: string): boolean {
-  const normalized = modelName.toLowerCase();
-  return normalized.includes('gemini') && normalized.includes('flash');
-}
-
-/**
- * Keep forced-thinking targets enabled when tool history has no reusable signature.
- * These models accept the provider sentinel injected into unsigned function calls.
- */
-function modelKeepsThinkingWithoutSignature(modelName: string): boolean {
-  const normalized = modelName.toLowerCase();
-  return isGeminiFlashModel(normalized) || normalized.includes('gemini-pro-agent');
-}
-
 function isGeminiAgentThinkingModel(modelName: string): boolean {
   const normalized = modelName.toLowerCase();
   return (
@@ -750,9 +739,12 @@ function buildContents(
         if (finalSig) {
           part.thoughtSignature = finalSig;
           part.thought_signature = finalSig;
-        } else if (isThinkingEnabled && modelKeepsThinkingWithoutSignature(mappedModel)) {
-          part.thoughtSignature = PLACEHOLDER_SIGNATURE;
-          part.thought_signature = PLACEHOLDER_SIGNATURE;
+        } else if (
+          !mappedModel.startsWith('projects/') &&
+          (isThinkingEnabled || modelKeepsThinkingWithoutSignature(mappedModel))
+        ) {
+          part.thoughtSignature = PLACEHOLDER_THOUGHT_SIGNATURE;
+          part.thought_signature = PLACEHOLDER_THOUGHT_SIGNATURE;
           placeholderUsage ??= { model: mappedModel, toolCallId: block.id };
         }
         parts.push(part);
@@ -795,7 +787,7 @@ function buildContents(
   if (placeholderUsage) {
     placeholderSignatureUsageCount++;
     logger.warn(
-      `[Signature-Placeholder] No real thought signature available, replaying '${PLACEHOLDER_SIGNATURE}' for model=${placeholderUsage.model} toolCallId=${placeholderUsage.toolCallId}`,
+      `[Signature-Placeholder] No real thought signature available, replaying '${PLACEHOLDER_THOUGHT_SIGNATURE}' for model=${placeholderUsage.model} toolCallId=${placeholderUsage.toolCallId}`,
     );
   }
 

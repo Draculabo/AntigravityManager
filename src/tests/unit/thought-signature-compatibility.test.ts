@@ -108,6 +108,62 @@ describe('thought signature compatibility', () => {
     expect(getPlaceholderSignatureUsageCount()).toBe(1);
   });
 
+  it.each(['gemini-3.5-flash-high', 'gemini-3.6-flash', 'gemini-3.7-flash'])(
+    'injects both sentinel signature fields for unsigned %s tool history without thinking',
+    (model) => {
+      const request: ClaudeRequest = {
+        model,
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: `call_${model}`,
+                name: 'get_weather',
+                input: { location: 'London' },
+              },
+            ],
+          },
+        ],
+      };
+
+      const body = transformClaudeRequestIn(request);
+      const functionCallPart = body.request.contents[0].parts.find((part) => part.functionCall);
+
+      expect(body.request.generationConfig?.thinkingConfig).toBeUndefined();
+      expect(functionCallPart?.thoughtSignature).toBe(SKIP_THOUGHT_SIGNATURE);
+      expect(functionCallPart?.thought_signature).toBe(SKIP_THOUGHT_SIGNATURE);
+    },
+  );
+
+  it('does not inject a sentinel signature for an unsigned non-Flash tool call', () => {
+    const request: ClaudeRequest = {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      messages: [
+        {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call_unsigned_pro',
+              name: 'get_weather',
+              input: { location: 'London' },
+            },
+          ],
+        },
+      ],
+    };
+
+    const body = transformClaudeRequestIn(request);
+    const functionCallPart = body.request.contents[0].parts.find((part) => part.functionCall);
+
+    expect(functionCallPart?.thoughtSignature).toBeUndefined();
+    expect(functionCallPart?.thought_signature).toBeUndefined();
+  });
+
   it('accepts snake-case signatures from non-streaming Gemini responses', () => {
     const response = transformResponse(
       {

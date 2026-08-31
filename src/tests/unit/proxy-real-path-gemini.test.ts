@@ -38,6 +38,63 @@ function geminiRequest(text: string) {
 }
 
 describe('real request path, Gemini surface', () => {
+  it.each(['generateContent', 'streamGenerateContent'] as const)(
+    'replays unsigned Flash tool history with both signature fields on %s',
+    async (action) => {
+      const upstream = createUpstream({
+        generate: geminiTextResponse('ok'),
+        streamFrames: [geminiStreamFrame(geminiTextResponse('ok'))],
+      });
+      const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
+      const request = {
+        contents: [
+          {
+            role: 'model',
+            parts: [{ functionCall: { name: 'lookup', args: { key: 'fixture' } } }],
+          },
+          {
+            role: 'user',
+            parts: [{ functionResponse: { name: 'lookup', response: { result: 'ok' } } }],
+          },
+        ],
+      };
+      if (action === 'generateContent') {
+        await new GeminiController(service).modelAction(
+          'gemini-3.7-flash-high:generateContent',
+          request,
+          createReply() as never,
+        );
+      } else {
+        await collect(
+          (await service.handleGeminiStreamGenerateContent(
+            'gemini-3.7-flash-high',
+            request,
+          )) as Observable<string>,
+        );
+      }
+      expect(upstream.calls).toHaveLength(1);
+      expect(upstream.calls[0].body.request.contents).toEqual([
+        {
+          role: 'model',
+          parts: [
+            {
+              functionCall: { name: 'lookup', args: { key: 'fixture' } },
+              thoughtSignature: 'skip_thought_signature_validator',
+              thought_signature: 'skip_thought_signature_validator',
+            },
+          ],
+        },
+        {
+          role: 'user',
+          parts: [{ functionResponse: { name: 'lookup', response: { result: 'ok' } } }],
+        },
+      ]);
+      expect(request.contents[0].parts[0]).toEqual({
+        functionCall: { name: 'lookup', args: { key: 'fixture' } },
+      });
+    },
+  );
+
   afterEach(() => {
     proxyModelAvailabilityStore.clearAccount('acc-1');
     proxyModelAvailabilityStore.clearAccount('acc-2');

@@ -1,16 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { GeminiService as ProxyService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
+import { toInternalGeminiRequest } from '@/modules/proxy-gateway/server/modules/gemini/gemini-request-envelope';
 import type { GeminiRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
-function toInternalRequest(request: GeminiRequest): GeminiInternalRequest['request'] {
-  const service = new ProxyService({} as never, {} as never, {} as never, {} as never, {} as never);
-  const method: unknown = Reflect.get(service, 'toInternalGeminiRequest');
-  if (typeof method !== 'function') {
-    throw new Error('toInternalGeminiRequest is unavailable');
-  }
-  return Reflect.apply(method, service, [request]) as GeminiInternalRequest['request'];
+function toInternalRequest(
+  request: GeminiRequest,
+  model = 'gemini-3-flash',
+): GeminiInternalRequest['request'] {
+  return toInternalGeminiRequest(request, model);
 }
 
 describe('toInternalGeminiRequest', () => {
@@ -83,5 +81,66 @@ describe('toInternalGeminiRequest', () => {
     expect(internal.contents).toEqual([{ role: 'user', parts: [{ text: 'hi' }] }]);
     expect(internal.generationConfig).toEqual({ temperature: 0.25, maxOutputTokens: 64 });
     expect(internal.systemInstruction).toEqual({ parts: [{ text: 'be brief' }] });
+  });
+
+  it.each(['gemini-3.5-flash-high', 'gemini-3.6-flash', 'gemini-3.7-flash'])(
+    'injects both sentinel signature fields into unsigned %s function calls',
+    (model) => {
+      const contents = [
+        {
+          role: 'model',
+          parts: [{ functionCall: { name: 'get_weather', args: {}, id: 'call_weather' } }],
+        },
+      ];
+
+      const internal = toInternalRequest({ contents } as GeminiRequest, model);
+
+      expect(internal.contents).not.toBe(contents);
+      expect(internal.contents[0]?.parts[0]).toEqual({
+        functionCall: { name: 'get_weather', args: {}, id: 'call_weather' },
+        thoughtSignature: 'skip_thought_signature_validator',
+        thought_signature: 'skip_thought_signature_validator',
+      });
+    },
+  );
+
+  it('preserves real signatures and leaves unsigned non-Flash calls unchanged', () => {
+    const realSignature = 'real-provider-signature';
+    const signed = toInternalRequest(
+      {
+        contents: [
+          {
+            role: 'model',
+            parts: [
+              {
+                functionCall: { name: 'signed_call', args: {} },
+                thoughtSignature: realSignature,
+              },
+            ],
+          },
+        ],
+      } as GeminiRequest,
+      'gemini-3.5-flash-high',
+    );
+    const unsignedPro = toInternalRequest(
+      {
+        contents: [
+          {
+            role: 'model',
+            parts: [{ functionCall: { name: 'unsigned_call', args: {} } }],
+          },
+        ],
+      } as GeminiRequest,
+      'gemini-3.1-pro-high',
+    );
+
+    expect(signed.contents[0]?.parts[0]).toEqual({
+      functionCall: { name: 'signed_call', args: {} },
+      thoughtSignature: realSignature,
+      thought_signature: realSignature,
+    });
+    expect(unsignedPro.contents[0]?.parts[0]).toEqual({
+      functionCall: { name: 'unsigned_call', args: {} },
+    });
   });
 });

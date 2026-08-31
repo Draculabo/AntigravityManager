@@ -1,5 +1,11 @@
 # Proxy Compatibility Reference
 
+## Missing thought signatures on tool calls
+
+Claude request mapping injects the compatibility sentinel for an unsigned tool call when thinking is enabled **or** the mapped model keeps unsigned thinking history (Gemini Flash or pro-agent). Resource-style `projects/` models are excluded from this fallback. Available real signatures and existing cache precedence remain authoritative.
+
+Native Gemini request mapping completes the camel-case and snake-case signature aliases without mutating caller history. An existing alias supplies the missing alias. Only a model name containing both `gemini` and `flash`, case-insensitively, receives the sentinel when neither alias exists. Native pro-agent requests do not inherit the Claude-only allowance. This route does not add a new session-signature cache. Streaming and non-streaming requests share the envelope conversion.
+
 ## Responses requests and durable history
 
 Role-bearing messages with a missing or non-string `type` use the message path. Explicit empty-string and unknown string types are ignored as whole input items. Non-string roles default to `user`. String roles are retained through input parsing; the shared downstream conversion treats `system` and `developer` as instructions, keeps `assistant` and tool semantics, and degrades every other string role to `user` instead of forwarding an unknown Gemini role. Array content collects every string `text`, including empty strings, joins them with newlines, and then appends validated image blocks. Both `input_image` and `image_url` accept a URL string or a validated URL object. URLs must be non-empty strings, `detail` must be `auto`, `low` or `high`, and other JSON extensions are retained. Supporting the object form for `input_image` is an intentional compatibility extension beyond upstream. Malformed image blocks are ignored rather than forwarded unchecked. Non-array JSON object content contributes no text; the enclosing message remains available to the existing cleanup rules. Top-level input objects, tool outputs and primitive content retain their existing conversion behavior.
