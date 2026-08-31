@@ -4,10 +4,10 @@ export function resolveResponsesInputType(item: unknown): string | null {
     return null;
   }
   const type: unknown = Reflect.get(item, 'type');
-  if (typeof type === 'string' && type.length > 0) {
+  if (typeof type === 'string') {
     return type;
   }
-  // Empty types were accepted by our previous writer and must remain replayable.
+  // Explicit strings, including the empty type, must not fall back to a message.
   const role: unknown = Reflect.get(item, 'role');
   return typeof role === 'string' ? 'message' : null;
 }

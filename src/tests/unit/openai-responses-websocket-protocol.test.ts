@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 
 import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.protocol';
 import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
+import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
 
 describe('OpenAIResponsesWebSocketProtocol', () => {
   it('handles the initial generate=false request locally and reuses it for the next append', () => {
@@ -47,6 +48,44 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
         stream: true,
       },
     });
+  });
+
+  it('does not replace the transcript for an ignored empty-type assistant item', () => {
+    const protocol = new OpenAIResponsesWebSocketProtocol();
+    const previousInput = [{ type: 'message', role: 'user', content: 'Keep this history.' }];
+    protocol.accept({
+      type: 'response.create',
+      model: 'gpt-5-codex',
+      instructions: 'Keep these instructions.',
+      input: previousInput,
+    });
+    const input = [
+      { type: '', role: 'assistant', content: 'Do not replace history.' },
+      { role: 'user', content: { legacy: 'Do not serialize.' } },
+      { role: 'user', content: 'Continue.' },
+    ];
+    const before = structuredClone(input);
+
+    const appended = protocol.accept({ type: 'response.append', input });
+
+    expect(appended).toEqual({
+      kind: 'request',
+      request: {
+        model: 'gpt-5-codex',
+        instructions: 'Keep these instructions.',
+        input: [...previousInput, ...input],
+        stream: true,
+      },
+    });
+    if (appended.kind !== 'request') {
+      throw new Error('Expected a generation request');
+    }
+    expect(buildResponsesChatRequest({ input: appended.request.input }).messages).toEqual([
+      { role: 'user', content: 'Keep this history.' },
+      { role: 'user', content: '' },
+      { role: 'user', content: 'Continue.' },
+    ]);
+    expect(input).toEqual(before);
   });
 
   it('replaces the transcript for a role-bearing assistant message without type', () => {

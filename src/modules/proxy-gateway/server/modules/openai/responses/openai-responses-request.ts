@@ -388,7 +388,7 @@ export function normalizeResponsesMessageContent(content: unknown): string | Ope
   }
 
   if (!Array.isArray(content)) {
-    return normalizeResponsesInput(content);
+    return isPlainObject(content) ? '' : normalizeResponsesInput(content);
   }
 
   const textParts: string[] = [];
@@ -425,10 +425,11 @@ export function normalizeResponsesMessageContent(content: unknown): string | Ope
   }
 
   const merged: OpenAIContentPart[] = [];
-  if (textParts.length > 0) {
+  const mergedText = textParts.join('\n');
+  if (mergedText !== '') {
     merged.push({
       type: 'text',
-      text: textParts.join('\n'),
+      text: mergedText,
     });
   }
   merged.push(...imageParts);

@@ -107,16 +107,20 @@ describe('sessions written before reasoning format upgrade', () => {
     expect(restarted.get('resp_after_upgrade')?.inputItems).toEqual(items);
     expect(JSON.parse(fs.readFileSync(filePath, 'utf8')).version).toBe(1);
     const legacy = restarted.get('resp_legacy_inputs');
+    expect(legacy?.inputItems).toEqual(fixture.entries[1].value.inputItems);
     expect(
       buildResponsesChatRequest({ model: legacy?.model, input: legacy?.inputItems }).messages,
     ).toEqual([
-      { role: 'user', content: 'Legacy empty type.' },
-      { role: 'user', content: '{"legacy":"object content"}' },
+      { role: 'user', content: '' },
       {
         role: 'user',
         content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }],
       },
     ]);
+    expect(legacy?.inputItems).toEqual(fixture.entries[1].value.inputItems);
+    expect(restarted.get('resp_legacy_inputs')?.inputItems).toEqual(
+      fixture.entries[1].value.inputItems,
+    );
   });
   it.each(['', ' \n\t', ' keep whitespace '])(
     'normalizes reasoning and zero usage at the JSON exit only: %j',

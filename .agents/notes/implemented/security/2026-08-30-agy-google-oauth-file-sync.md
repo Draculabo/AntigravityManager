@@ -8,7 +8,9 @@ Antigravity Manager already updates the operating-system credential store and th
 
 ## Decision
 
-Only callers that explicitly switch the `agy` target request generic Google OAuth file synchronization. The writer uses the OAuth scopes owned by `GoogleAPIService`, converts the internal expiry from seconds to the millisecond `expiry_date` wire field, and includes `id_token` only when it is available.
+Only callers that explicitly switch the `agy` target request generic Google OAuth file synchronization. The writer uses the OAuth scopes owned by `GoogleAPIService`. The type remains `string | undefined`; no nullable or generated ID-token state is introduced. At the generic OAuth file boundary, it matches upstream's exact expiry rule: a value greater than `10_000_000_000` is already milliseconds and remains unchanged; every other value is multiplied by 1000 for the millisecond `expiry_date` wire field.
+
+ Existing service scopes, including `aicode`, remain unchanged. The [security reference](../../../../docs/security.md#google-oauth-scopes) owns the current grant and reauthorization contract.
 
 Both files are serialized before any write. Each file is replaced through a mode-`0600` temporary file in the destination directory. `oauth_creds.json` is installed first and `google_accounts.json` is installed last as the active-account commit marker. The previous active email is retained in the deduplicated `old` list. A malformed existing account index aborts this optional synchronization before either file changes. File synchronization remains best-effort after the required system credential-store write, and logs contain no token or email values.
 
@@ -23,7 +25,19 @@ Both files are serialized before any write. Each file is replaced through a mode
 
 An explicit Agy switch updates the system credential store, the dedicated Agy CLI token, and the generic Gemini OAuth cache. The generic cache remains plaintext by protocol design but is restricted to the current user with mode `0600` where the platform enforces POSIX permissions. A failure between the two atomic replacements can leave a new OAuth token with the old active marker; writing the marker last prevents advertising a new account before its token exists, but the pair is not a filesystem transaction.
 
+No credential-format migration, automatic reauthorization, or token replacement accompanies the `openid` addition. Cached scope metadata can differ from the actual grants of older or imported tokens. The expiry-unit guard applies only while writing the generic OAuth file; it does not change internal expiry comparisons or rewrite existing account and credential data. This change does not claim to resolve those pre-existing limitations or guarantee an ID token for every account.
+
 ## Verification
+
+For the `openid` addition, authorization URL tests cover both the active and explicitly selected OAuth client, and the cache test checks the complete serialized payload. Before the production change, all three scope assertions failed specifically because `openid` was absent. After the change, the following focused run passed all 35 tests:
+
+- `npm test -- src/tests/unit/google-oauth-authorization.test.ts src/tests/unit/google-oauth-credential-store.test.ts src/tests/unit/antigravity-credential-store-write.test.ts src/tests/unit/agy-cli-token-store.test.ts src/tests/unit/sensitive-data-masking.test.ts --maxWorkers=2`
+
+The expiry-unit regression covers the exact `10_000_000_000` boundary and the first value above it. The ID-token regression separately covers an absent field and an explicitly empty string. Before the writer changes, the above-threshold expiry was multiplied again and the empty ID token was omitted; after the changes, the focused credential-store test passed all seven cases.
+
+This addition has no new live authorization, provider-grant, ID-token, or CLI evidence. The platform results below belong to the original file-synchronization work and do not validate the added scope.
+
+Original file-synchronization verification:
 
 - `npm run test:unit -- --run src/tests/unit/google-oauth-credential-store.test.ts src/tests/unit/agy-cli-token-store.test.ts`
 - `npm run test:unit -- --run src/tests/unit/antigravity-credential-store-write.test.ts`

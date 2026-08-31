@@ -87,6 +87,33 @@ describe('Responses continuation across a restart', () => {
     ]);
   });
 
+  it('ignores legacy inputs during previous_response_id continuation without rewriting them', async () => {
+    const writer = createStore();
+    const inputItems = [
+      { type: '', role: 'user', content: 'Ignored empty-type history.' },
+      { type: 'message', role: 'user', content: { legacy: 'Ignored object history.' } },
+      { role: 'user', content: 'Remember 41.' },
+    ];
+    writer.save('resp_legacy', { model: 'gpt-4o', inputItems });
+    await writer.flush();
+
+    const restarted = createStore();
+    const after = createController(restarted, chatResponse('resp_continued', '42'));
+    await after.controller.responses(
+      { previous_response_id: 'resp_legacy', input: 'Add one.' },
+      createReplyMock() as never,
+    );
+    await restarted.flush();
+
+    expect(after.handleChatCompletions).toHaveBeenCalledTimes(1);
+    expect(after.handleChatCompletions.mock.calls[0][0].messages).toEqual([
+      { role: 'user', content: '' },
+      { role: 'user', content: 'Remember 41.' },
+      { role: 'user', content: 'Add one.' },
+    ]);
+    expect(createStore().get('resp_legacy')?.inputItems).toEqual(inputItems);
+  });
+
   it('answers an id the restart aged out, not one it invented', async () => {
     const writer = createStore();
     const before = createController(writer, chatResponse('resp_stale', 'stale answer'));
