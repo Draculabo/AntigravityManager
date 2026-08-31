@@ -33,14 +33,18 @@ export function writeGoogleOAuthCredentials(
   const accountsPath = path.join(geminiDir, 'google_accounts.json');
   const accounts = readGoogleAccountsFile(accountsPath);
   const nextAccounts = buildNextGoogleAccounts(accounts, input.email);
+  const expiryDate =
+    input.expiry_timestamp > 10_000_000_000
+      ? input.expiry_timestamp
+      : input.expiry_timestamp * 1000;
 
   const oauthPayload = JSON.stringify(
     {
       access_token: input.access_token,
       refresh_token: input.refresh_token,
       token_type: 'Bearer',
-      expiry_date: input.expiry_timestamp * 1000,
-      ...(input.id_token ? { id_token: input.id_token } : {}),
+      expiry_date: expiryDate,
+      ...(input.id_token !== undefined ? { id_token: input.id_token } : {}),
       scope: GOOGLE_OAUTH_SCOPE,
     },
     null,

@@ -53,6 +53,56 @@ describe('writeGoogleOAuthCredentials', () => {
     expect(fs.readdirSync(workDir).sort()).toEqual(['google_accounts.json', 'oauth_creds.json']);
   });
 
+  it.each([
+    ['absent', undefined, false],
+    ['empty', '', true],
+  ])(
+    'writes an %s id_token with upstream-compatible presence semantics',
+    (_case, idToken, present) => {
+      writeGoogleOAuthCredentials(
+        {
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expiry_timestamp: 1_900_000_000,
+          ...(idToken !== undefined ? { id_token: idToken } : {}),
+          email: 'active@example.com',
+        },
+        { geminiDir: workDir },
+      );
+
+      const oauthCredentials = JSON.parse(
+        fs.readFileSync(path.join(workDir, 'oauth_creds.json'), 'utf-8'),
+      ) as Record<string, unknown>;
+      expect(Object.hasOwn(oauthCredentials, 'id_token')).toBe(present);
+      if (present) {
+        expect(oauthCredentials.id_token).toBe(idToken);
+      }
+    },
+  );
+
+  it.each([
+    [10_000_000_000, 10_000_000_000_000],
+    [10_000_000_001, 10_000_000_001],
+  ])(
+    'normalizes expiry timestamp %s to milliseconds at the competitor threshold',
+    (input, expected) => {
+      writeGoogleOAuthCredentials(
+        {
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expiry_timestamp: input,
+          email: 'active@example.com',
+        },
+        { geminiDir: workDir },
+      );
+
+      const oauthCredentials = JSON.parse(
+        fs.readFileSync(path.join(workDir, 'oauth_creds.json'), 'utf-8'),
+      ) as { expiry_date: number };
+      expect(oauthCredentials.expiry_date).toBe(expected);
+    },
+  );
+
   it('moves the previous active account into old without duplicates', () => {
     fs.writeFileSync(
       path.join(workDir, 'google_accounts.json'),
