@@ -226,10 +226,28 @@ describe('upstream 4xx capture', () => {
     expect(files).not.toContain(path.basename(existingFiles[0]));
   });
 
-  it('replaces an oversized capture with a bounded diagnostic summary', async () => {
+  it('redacts conversation content from captured upstream requests', async () => {
+    const privatePrompt = 'private user conversation';
     await writeCapture({
       upstreamRequest: {
-        request: { model: 'upstream-model', prompt: 'large prompt! '.repeat(200_000) },
+        request: { model: 'upstream-model', prompt: privatePrompt },
+      },
+    });
+
+    const [file] = await captureFiles();
+    const content = await fs.readFile(path.join(agentDirectory, CAPTURES_DIRECTORY, file), 'utf-8');
+
+    expect(content).not.toContain(privatePrompt);
+    expect(content).toContain('"prompt": "[REDACTED]"');
+  });
+
+  it('replaces an oversized non-sensitive capture with a bounded diagnostic summary', async () => {
+    await writeCapture({
+      upstreamRequest: {
+        request: {
+          model: 'upstream-model',
+          diagnostic_blob: 'large diagnostic payload! '.repeat(200_000),
+        },
       },
     });
 
