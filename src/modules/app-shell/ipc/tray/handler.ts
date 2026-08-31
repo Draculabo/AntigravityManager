@@ -1,10 +1,10 @@
 import { app, Tray, Menu, nativeImage, BrowserWindow } from 'electron';
-import path from 'path';
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { logger } from '@/shared/logging/logger';
 import { getTrayTexts } from './i18n';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
+import { configureTrayIcon, resolveTrayIconPath } from './icon';
 
 let tray: Tray | null = null;
 let globalMainWindow: BrowserWindow | null = null;
@@ -53,10 +53,13 @@ export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | P
   }
 
   const inDevelopment = process.env.NODE_ENV === 'development';
-  // In production, extraResource copies 'src/assets' folder to 'resources/assets'
-  const iconPath = inDevelopment
-    ? path.join(process.cwd(), 'src/assets/tray.png')
-    : path.join(process.resourcesPath, 'assets', 'tray.png');
+  // In production, extraResource copies 'src/assets' folder to 'resources/assets'.
+  const iconPath = resolveTrayIconPath({
+    inDevelopment,
+    platform: process.platform,
+    cwd: process.cwd(),
+    resourcesPath: process.resourcesPath,
+  });
 
   logger.info(
     `Tray icon path: ${iconPath}, inDevelopment: ${inDevelopment}, resourcesPath: ${process.resourcesPath}`,
@@ -70,6 +73,7 @@ export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | P
     return;
   }
 
+  configureTrayIcon(icon, process.platform);
   tray = new Tray(icon);
   tray.setToolTip('Antigravity Manager');
 
