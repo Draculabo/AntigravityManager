@@ -24,6 +24,26 @@ This document explains the cloud AI account management and switching capabilitie
 - **Background monitoring**: Built-in `CloudMonitorService` polls quota status for all accounts every 5 minutes by default.
 - **Global toggle**: Users can enable or disable this feature with one click in the UI.
 
+### 1.5 Weekly Quota and Opt-In Warmu
+
+The account toolbar selects the five-hour or weekly quota view. The weekly view uses provider buckets whose `window` or `bucket_id` contains `week`, case-insensitively. It never substitutes model quota when weekly buckets are missing. The five-hour view retains non-weekly detailed buckets. The preference is local to the renderer; unavailable browser storage falls back to the five-hour view.
+
+Settings > Models provides an independent weekly warmup switch and Claude/Gemini group selection. Warmup is off by default. Enabling it keeps the existing five-minute monitor running even when auto-switch is off. Only successful fresh quota/token refreshes, including manual refreshes, supply candidates. While warmup is enabled, the visible account list rereads local snapshots every minute; this renderer refresh does not call the provider.
+
+Eligibility requires a Google account without a non-active status or forbidden quota flag, at least `0.999` remaining fraction, and a valid reset timestamp that has passed less than six days ago. The selected group must be enabled. Each weekly bucket uses `claude-sonnet-4-6` or `gemini-3-flash` as its representative. Missing weekly groups and unavailable project context are not replaced with guessed values.
+
+Warmup consumes real model quota and may use AI credits. HTTP acceptance is recorded as success; it does not prove that the provider restarted a weekly timer or completed generation. The application rereads quota after successful warmups. No live-provider timer or cost guarantee is implied.
+
+### 1.6 Warmup Execution and Recovery
+
+`WeeklyWarmupService` owns a serial main-process queue shared by scheduled and manual refreshes. There is a two-second delay between candidates. Configuration changes and monitor shutdown cancel the active generation request and prevent queued candidates from starting. An already accepted provider request cannot be undone.
+
+The cloud-account module persists validated configuration and versioned history in existing settings rows, without a schema migration. History keys contain account ID, bucket ID, the weekly window, and a normalized reset timestamp. Equivalent timestamp offsets and legacy string timestamps resolve to the same key. Successful entries are retained for 30 days; old reset cycles are independently excluded, so retention cleanup does not make them eligible again.
+
+Failed requests do not create success records and may be retried after a later fresh refresh. Invalid or unreadable history, or a history write failure after acceptance, pauses warmup until application restart. Repair the underlying storage problem before restarting; otherwise the same safety check pauses it again. Invalid configuration remains an error in the settings UI instead of being silently replaced with enabled defaults. A process crash after provider acceptance but before history persistence can cause another request after restart; execution is not exactly-once.
+
+The proxy-gateway adapter uses the existing Claude mapper or the native Gemini envelope and `GeminiClient` transport. It starts with `streamGenerateContent?alt=sse`, falls back to `generateContent` on transport failure, and does not repeat an HTTP rejection as a non-streaming request. A 60-second deadline and cancellation signal bound transport work. No internal HTTP endpoint or authentication bypass is exposed.
+
 ## 2. Technical Implementation
 
 ### 2.1 Database Design (`cloud_accounts.db`)

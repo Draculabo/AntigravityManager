@@ -13,17 +13,33 @@ import {
 import { CloudAccount } from '@/modules/cloud-account/types';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
+import {
+  switchCloudAccount,
+  getAutoSwitchEnabled,
+  setAutoSwitchEnabled,
+  getAutoSwitchModelsConfig,
+  setAutoSwitchModelsConfig,
+  forcePollCloudMonitor,
+  getWeeklyWarmupConfig,
+  setWeeklyWarmupConfig,
+} from '@/modules/cloud-account/actions/cloud';
+import type { WeeklyWarmupConfig } from '@/modules/cloud-account/services/weekly-warmup-contract';
+import { syncLocalAccount } from '@/modules/cloud-account/actions/cloud';
+import { exportCloudAccounts, importCloudAccounts } from '@/modules/cloud-account/actions/cloud';
+import { startAuthFlow } from '@/modules/cloud-account/actions/cloud';
+
 export const QUERY_KEYS = {
   cloudAccounts: ['cloudAccounts'],
   securityStatus: ['cloudAccountSecurityStatus'],
   oauthClients: ['oauthClients'],
 };
 
-export function useCloudAccounts() {
+export function useCloudAccounts(refetchInterval: number | false = false) {
   return useQuery<CloudAccount[]>({
     queryKey: QUERY_KEYS.cloudAccounts,
     queryFn: listCloudAccounts,
     staleTime: 1000 * 60, // 1 minute
+    refetchInterval,
   });
 }
 
@@ -91,15 +107,6 @@ export function useRefreshQuota() {
   });
 }
 
-import {
-  switchCloudAccount,
-  getAutoSwitchEnabled,
-  setAutoSwitchEnabled,
-  getAutoSwitchModelsConfig,
-  setAutoSwitchModelsConfig,
-  forcePollCloudMonitor,
-} from '@/modules/cloud-account/actions/cloud';
-
 export function useSwitchCloudAccount() {
   const queryClient = useQueryClient();
 
@@ -162,7 +169,25 @@ export function useForcePollCloudMonitor() {
   });
 }
 
-import { syncLocalAccount } from '@/modules/cloud-account/actions/cloud';
+export const WEEKLY_WARMUP_CONFIG_KEY = ['weeklyWarmupConfig'];
+
+export function useWeeklyWarmupConfig() {
+  return useQuery<WeeklyWarmupConfig>({
+    queryKey: WEEKLY_WARMUP_CONFIG_KEY,
+    queryFn: getWeeklyWarmupConfig,
+    staleTime: Infinity,
+  });
+}
+
+export function useSetWeeklyWarmupConfig() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setWeeklyWarmupConfig,
+    onSuccess: (_, config) => {
+      queryClient.setQueryData(WEEKLY_WARMUP_CONFIG_KEY, config);
+    },
+  });
+}
 
 export function useSyncLocalAccount() {
   const queryClient = useQueryClient();
@@ -174,7 +199,6 @@ export function useSyncLocalAccount() {
   });
 }
 
-import { startAuthFlow } from '@/modules/cloud-account/actions/cloud';
 export { startAuthFlow };
 
 export function useSetAccountProxy() {
@@ -189,8 +213,6 @@ export function useSetAccountProxy() {
     },
   });
 }
-
-import { exportCloudAccounts, importCloudAccounts } from '@/modules/cloud-account/actions/cloud';
 
 export function useExportCloudAccounts() {
   return useMutation<string, Error, { stripTokens?: boolean }>({

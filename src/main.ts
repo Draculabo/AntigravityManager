@@ -18,9 +18,9 @@ import {
 } from './modules/app-shell/utils/installNotice';
 import { applyStartupGpuSwitches } from '@/modules/app-shell/utils/startupGpuSwitches';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
-import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { initDatabase } from '@/modules/account/public';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
+import { createWeeklyWarmupExecutor } from '@/modules/proxy-gateway/weekly-warmup-executor';
 
 // Static Imports to fix Bundle Resolution Errors
 import { AuthServer } from '@/modules/cloud-account/ipc/authServer';
@@ -707,6 +707,7 @@ app
     try {
       // Start OAuth Server
       AuthServer.start();
+      CloudMonitorService.configureWeeklyWarmupExecutor(createWeeklyWarmupExecutor());
 
       // Gateway Server (NestJS) - auto-start if enabled
       const config = startupConfig || ConfigManager.loadConfig();
@@ -728,12 +729,11 @@ app
         }
       }
 
-      const enabled = CloudAccountSettingsStore.getSetting('auto_switch_enabled', false);
-      if (enabled) {
-        logger.info('Startup: Auto-Switch enabled, starting monitor...');
+      if (CloudMonitorService.isContinuousPollingEnabled()) {
+        logger.info('Startup: Background cloud monitoring enabled, starting monitor...');
         CloudMonitorService.start();
       } else {
-        logger.info('Startup: Auto-Switch disabled, running one-time quota and AI credits sync...');
+        logger.info('Startup: Background monitoring disabled, running one-time cloud sync...');
         await CloudMonitorService.poll();
       }
     } catch (e) {

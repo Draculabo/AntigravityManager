@@ -37,6 +37,7 @@ import {
 } from '@/modules/cloud-account/utils/account-status';
 import { withTimingTrace } from '@/shared/observability/timingTrace';
 import { AppError } from '@/shared/errors/appError';
+import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 
 // Helper to update tray
 function notifyTrayUpdate(account: CloudAccount) {
@@ -494,6 +495,7 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
     await clearAccountStatus(account);
     proxyModelAvailabilityStore.clearCapabilityFailures(account.id);
     notifyTrayUpdate(account);
+    CloudMonitorService.scheduleWeeklyWarmup([account]);
     return account;
   } catch (error: any) {
     if (error.message === 'UNAUTHORIZED') {
@@ -541,6 +543,7 @@ export async function refreshAccountQuota(accountId: string): Promise<CloudAccou
         account.last_used = Math.floor(Date.now() / 1000);
         await clearAccountStatus(account);
         proxyModelAvailabilityStore.clearCapabilityFailures(account.id);
+        CloudMonitorService.scheduleWeeklyWarmup([account]);
         return account;
       } catch (refreshError) {
         logger.error(

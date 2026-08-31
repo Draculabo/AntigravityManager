@@ -9,6 +9,8 @@ import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { WeeklyWarmupService } from './WeeklyWarmupService';
+import type { WeeklyWarmupExecutor } from './weekly-warmup-contract';
 
 type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi' | 'fr' | 'tr';
 
@@ -121,15 +123,36 @@ export class CloudMonitorService {
   private static DEBOUNCE_TIME = 10000; // 10 seconds
   private static lastFocusTime: number = 0;
   private static activePollPromise: Promise<void> | null = null;
+  private static weeklyWarmupExecutor: WeeklyWarmupExecutor | null = null;
+  private static stopped = false;
+  private static stopEpoch = 0;
 
   private static isAutoSwitchEnabled(): boolean {
     return CloudAccountSettingsStore.getSetting<boolean>('auto_switch_enabled', false);
   }
 
+  static configureWeeklyWarmupExecutor(executor: WeeklyWarmupExecutor): void {
+    this.weeklyWarmupExecutor = executor;
+  }
+
+  static isContinuousPollingEnabled(): boolean {
+    return this.isAutoSwitchEnabled() || WeeklyWarmupService.isEnabled();
+  }
+
+  static syncSchedule(): void {
+    if (this.isContinuousPollingEnabled()) {
+      this.start();
+      return;
+    }
+    this.stop();
+  }
+
   // Helper for testing
   static resetStateForTesting() {
+    WeeklyWarmupService.resetStateForTesting();
     this.lastFocusTime = 0;
     this.activePollPromise = null;
+    this.weeklyWarmupExecutor = null;
     this.stop();
   }
 
@@ -147,6 +170,9 @@ export class CloudMonitorService {
   }
 
   static stop() {
+    this.stopped = true;
+    this.stopEpoch++;
+    WeeklyWarmupService.cancel();
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
@@ -189,7 +215,7 @@ export class CloudMonitorService {
       clearInterval(this.intervalId);
     }
     this.intervalId = setInterval(() => {
-      if (!this.isAutoSwitchEnabled()) {
+      if (!this.isContinuousPollingEnabled()) {
         this.stop();
         return;
       }
@@ -205,7 +231,8 @@ export class CloudMonitorService {
   }
 
   static async poll(): Promise<void> {
-    if (this.isAutoSwitchEnabled() && !this.intervalId) {
+    this.stopped = false;
+    if (this.isContinuousPollingEnabled() && !this.intervalId) {
       this.startInterval();
     }
 
@@ -226,6 +253,8 @@ export class CloudMonitorService {
   }
 
   private static async executePoll(): Promise<void> {
+    const epoch = this.stopEpoch;
+    const refreshedAccounts: CloudAccount[] = [];
     logger.info('CloudMonitor: Polling quotas...');
     const accounts = await CloudAccountRepo.getAccounts();
     let now = Math.floor(Date.now() / 1000);
@@ -379,6 +408,9 @@ export class CloudMonitorService {
         await CloudAccountRepo.updateQuota(account.id, quota);
         account.quota = quota;
         await CloudAccountRepo.setAccountStatus(account.id, 'active', null);
+        account.status = 'active';
+        account.status_reason = undefined;
+        refreshedAccounts.push(account);
         proxyModelAvailabilityStore.clearCapabilityFailures(account.id);
       } catch (error) {
         logger.error(`Monitor: Failed to update ${account.email}`, error);
@@ -455,6 +487,50 @@ export class CloudMonitorService {
     // 5. Check for Auto-Switch
     for (const target of AUTO_SWITCH_TARGETS) {
       await AutoSwitchService.checkAndSwitchIfNeeded(target);
+    }
+    if (epoch === this.stopEpoch) {
+      await this.runWeeklyWarmups(refreshedAccounts);
+    }
+  }
+
+  /** The caller supplies only accounts whose quota/token refresh just succeeded. */
+  static scheduleWeeklyWarmup(accounts: CloudAccount[]): void {
+    this.runWeeklyWarmups(accounts).catch(() => {
+      logger.warn('Weekly warmup refresh could not complete');
+    });
+  }
+
+  private static async runWeeklyWarmups(accounts: CloudAccount[]): Promise<void> {
+    if (this.stopped || !WeeklyWarmupService.isEnabled()) {
+      return;
+    }
+    if (!this.weeklyWarmupExecutor) {
+      logger.warn('Weekly warmup is enabled, but no executor is configured');
+      return;
+    }
+
+    const warmedAccountIds = await WeeklyWarmupService.run(accounts, this.weeklyWarmupExecutor);
+    for (const accountId of warmedAccountIds) {
+      if (this.stopped) {
+        break;
+      }
+      const account = accounts.find((candidate) => candidate.id === accountId);
+      if (!account) {
+        continue;
+      }
+      try {
+        const refreshedQuota = await GoogleAPIService.fetchQuota(
+          account.token.access_token,
+          account.proxy_url,
+        );
+        account.quota = {
+          ...refreshedQuota,
+          ai_credits: refreshedQuota.ai_credits ?? account.quota?.ai_credits,
+        };
+        await CloudAccountRepo.updateQuota(account.id, account.quota);
+      } catch {
+        logger.warn(`Failed to refresh quota after weekly warmup for account=${account.id}`);
+      }
     }
   }
 }

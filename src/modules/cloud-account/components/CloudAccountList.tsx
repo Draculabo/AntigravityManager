@@ -1,5 +1,6 @@
 import {
   useCloudAccounts,
+  useWeeklyWarmupConfig,
   useCloudAccountSecurityStatus,
   useRefreshQuota,
   useDeleteCloudAccount,
@@ -40,10 +41,24 @@ import {
 } from '@/modules/cloud-account/components/CloudAccountListFallbacks';
 import { CloudAccountListSummary } from '@/modules/cloud-account/components/CloudAccountListSummary';
 import { CloudAccountToolbar } from '@/modules/cloud-account/components/CloudAccountToolbar';
+import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
+import {
+  readQuotaWindowPreference,
+  saveQuotaWindowPreference,
+} from '@/modules/cloud-account/utils/quota-window-preference';
 
 export function CloudAccountList() {
   const { t } = useTranslation();
-  const { data: accounts, isLoading, isError, error, errorUpdatedAt, refetch } = useCloudAccounts();
+  const { data: warmupConfig } = useWeeklyWarmupConfig();
+  // Read local snapshots after background warmups; this does not request provider quota.
+  const {
+    data: accounts,
+    isLoading,
+    isError,
+    error,
+    errorUpdatedAt,
+    refetch,
+  } = useCloudAccounts(warmupConfig?.enabled ? 60_000 : false);
   const { data: securityStatus } = useCloudAccountSecurityStatus();
   const { config, saveConfig } = useAppConfig();
   const refreshMutation = useRefreshQuota();
@@ -63,6 +78,13 @@ export function CloudAccountList() {
   const lastSubmittedAuthCodeRef = useRef<string | null>(null);
 
   const gridLayout: GridLayout = (config?.grid_layout as GridLayout) || 'auto';
+  const [quotaWindow, setQuotaWindow] = useState<QuotaWindow>(() =>
+    readQuotaWindowPreference(() => window.localStorage),
+  );
+
+  useEffect(() => {
+    saveQuotaWindowPreference(() => window.localStorage, quotaWindow);
+  }, [quotaWindow]);
 
   const updateGridLayout = async (layout: GridLayout) => {
     if (config) {
@@ -715,6 +737,7 @@ export function CloudAccountList() {
         tierFilterButtonLabel={tierFilterButtonLabel}
         currentSort={currentSort}
         gridLayout={gridLayout}
+        quotaWindow={quotaWindow}
         getTierOptionLabel={getTierOptionLabel}
         onToggleAutoSwitch={handleToggleAutoSwitch}
         onToggleSelectAllAccounts={toggleSelectAllAccounts}
@@ -749,12 +772,14 @@ export function CloudAccountList() {
         onUpdateGridLayout={(layout) => {
           updateGridLayout(layout);
         }}
+        onQuotaWindowChange={setQuotaWindow}
       />
 
       <CloudAccountGrid
         accounts={sortedAccounts}
         sourceAccountCount={accounts?.length ?? 0}
         gridLayout={gridLayout}
+        quotaWindow={quotaWindow}
         selectedIds={selectedIds}
         hasActiveTierFilter={hasActiveTierFilter}
         refreshingAccountId={refreshingAccountId}

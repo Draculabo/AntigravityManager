@@ -120,6 +120,55 @@ export class GeminiClient {
 
   // --- Internal Gateway API Support ---
 
+  async warmupInternal(
+    body: GeminiInternalRequest,
+    accessToken: string,
+    upstreamProxyUrl?: string,
+    cancellation?: AbortSignal,
+  ): Promise<void> {
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    const timer = setTimeout(cancel, 60000);
+    cancellation?.addEventListener('abort', cancel, { once: true });
+    if (cancellation?.aborted) {
+      cancel();
+    }
+    const signal = controller.signal;
+    const send = (path: string) => {
+      return this.executeRequestWithEndpointFailover<Readable>(
+        path,
+        body,
+        accessToken,
+        upstreamProxyUrl,
+        {
+          responseType: 'stream',
+          signal,
+          timeout: 60000,
+          validateStatus: () => true,
+        },
+        'weekly-warmup',
+      );
+    };
+    try {
+      let response: AxiosResponse<Readable>;
+      try {
+        response = await send(':streamGenerateContent?alt=sse');
+      } catch {
+        if (signal.aborted) {
+          throw new Error('Weekly warmup cancelled');
+        }
+        response = await send(':generateContent');
+      }
+      response.data.destroy();
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`Weekly warmup rejected with HTTP ${response.status}`);
+      }
+    } finally {
+      clearTimeout(timer);
+      cancellation?.removeEventListener('abort', cancel);
+    }
+  }
+
   async streamGenerateInternal(
     body: GeminiInternalRequest,
     accessToken: string,
@@ -492,12 +541,15 @@ export class GeminiClient {
         : this.createProjectHeaders(body);
 
       for (let index = 0; index < baseUrls.length; index++) {
+        if (config.signal?.aborted) {
+          throw new Error('Upstream request cancelled');
+        }
         const baseUrl = baseUrls[index];
         const url = `${baseUrl}${path}`;
         lastEndpoint = url;
 
         try {
-          return await axios.post<T>(url, this.createInternalRequestBody(path, body), {
+          const response = await axios.post<T>(url, this.createInternalRequestBody(path, body), {
             headers: {
               Authorization: `Bearer ${accessToken}`,
               'Content-Type': 'application/json',
@@ -509,7 +561,22 @@ export class GeminiClient {
             proxy: axiosProxy,
             ...config,
           });
+          if (response.status === 403 && Boolean(projectHeaders['x-goog-user-project'])) {
+            if (response.data instanceof Readable) {
+              response.data.destroy();
+            }
+            this.logger.warn(
+              `[${operation}] received 403 with x-goog-user-project; retrying without project header.`,
+            );
+            hasTriggeredProjectHeaderDowngrade = true;
+            shouldRetryWithoutProjectHeader = true;
+            break;
+          }
+          return response;
         } catch (error) {
+          if (config.signal?.aborted) {
+            throw new Error('Upstream request cancelled');
+          }
           lastError = error;
 
           if (this.shouldRetryWithoutProjectHeader(error, projectHeaders)) {

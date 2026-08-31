@@ -43,6 +43,8 @@ import { getSwitchMetricsSnapshot } from '@/modules/antigravity-runtime/switch/s
 import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { getDeviceHardeningSnapshot } from '@/modules/identity-profile/ipc/handler';
 import { localAccountImportRouter } from '@/modules/cloud-account/local-import/ipc/router';
+import { WeeklyWarmupConfigSchema } from '@/modules/cloud-account/services/weekly-warmup-contract';
+import { getWeeklyWarmupConfig, setWeeklyWarmupConfig } from './weekly-warmup';
 import { getSecurityStatus } from '@/shared/security/security';
 
 const switchOwnerSchema = z.enum(['local-account-switch', 'cloud-account-switch']);
@@ -220,6 +222,17 @@ export const cloudRouter = os.router({
     .output(z.void())
     .handler(async ({ input }) => {
       setAutoSwitchModelsConfig(input as Record<string, AutoSwitchModelConfig>);
+    }),
+
+  getWeeklyWarmupConfig: os.output(WeeklyWarmupConfigSchema).handler(async () => {
+    return getWeeklyWarmupConfig();
+  }),
+
+  setWeeklyWarmupConfig: os
+    .input(WeeklyWarmupConfigSchema)
+    .output(z.void())
+    .handler(async ({ input }) => {
+      await setWeeklyWarmupConfig(input);
     }),
 
   forcePollCloudMonitor: os.output(z.void()).handler(async () => {

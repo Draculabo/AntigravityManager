@@ -885,6 +885,21 @@ describe('GeminiClient internal request parity', () => {
     expect(postSpy.mock.calls[1][2]?.headers).not.toHaveProperty('x-goog-user-project');
   });
 
+  it('retries an accepted warmup 403 without x-goog-user-project', async () => {
+    const postSpy = vi
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({ status: 403, data: Readable.from([]) })
+      .mockResolvedValueOnce({ status: 200, data: Readable.from([]) });
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+
+    await client.warmupInternal({ project: 'project-1', request: {} } as any, 'access-token');
+
+    expect(postSpy).toHaveBeenCalledTimes(2);
+    expect(postSpy.mock.calls[1][0]).toBe(postSpy.mock.calls[0][0]);
+    expect(postSpy.mock.calls[0][2]?.headers?.['x-goog-user-project']).toBe('project-1');
+    expect(postSpy.mock.calls[1][2]?.headers).not.toHaveProperty('x-goog-user-project');
+  });
+
   it('removes x-goog-user-project at most once and preserves the final 403', async () => {
     const forbidden = new AxiosError(
       'Request failed with status code 403',

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
+import { WeeklyWarmupService } from '@/modules/cloud-account/services/WeeklyWarmupService';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchService';
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
@@ -24,6 +25,9 @@ describe('CloudMonitorService', () => {
       (_key: string, defaultValue: unknown) => defaultValue,
     );
     CloudMonitorService.resetStateForTesting();
+    vi.mocked(CloudAccountSettingsStore.readSetting).mockImplementation((key) =>
+      CloudAccountSettingsStore.getSetting(key, undefined),
+    );
   });
 
   afterEach(() => {
@@ -45,6 +49,123 @@ describe('CloudMonitorService', () => {
     await vi.advanceTimersByTimeAsync(1000 * 60 * 5);
     expect(pollSpy).toHaveBeenCalledTimes(2);
   });
+
+  it('keeps the five-minute interval active when weekly warmup is enabled alone', async () => {
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockImplementation(
+      (key: string, defaultValue: unknown) => {
+        if (key === 'auto_switch_enabled') {
+          return false as never;
+        }
+        if (key === 'weekly_warmup_config') {
+          return { enabled: true, groups: ['claude', 'gemini'] } as never;
+        }
+        return defaultValue as never;
+      },
+    );
+    const pollSpy = vi.spyOn(CloudMonitorService, 'poll').mockResolvedValue(undefined);
+
+    CloudMonitorService.start();
+    await vi.advanceTimersByTimeAsync(1000 * 60 * 5);
+
+    expect(pollSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('warms an eligible weekly bucket once and refreshes its quota afterward', async () => {
+    vi.setSystemTime(new Date('2026-09-01T00:05:00Z'));
+    const account = {
+      id: 'weekly-account',
+      provider: 'google',
+      email: 'weekly@example.com',
+      token: {
+        access_token: 'weekly-token',
+        refresh_token: 'weekly-refresh',
+        expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
+        project_id: 'weekly-project',
+      },
+      status: 'active',
+      quota: { models: {} },
+    };
+    const weeklyQuota = {
+      models: {},
+      quota_groups: [
+        {
+          display_name: 'Claude Models',
+          buckets: [
+            {
+              bucket_id: 'claude-weekly',
+              window: 'weekly',
+              remaining_fraction: 1,
+              reset_time: '2026-09-01T00:00:00Z',
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([account] as never);
+    vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue(weeklyQuota as never);
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockImplementation(
+      (key: string, defaultValue: unknown) => {
+        if (key === 'weekly_warmup_config') {
+          return { enabled: true, groups: ['claude'] } as never;
+        }
+        return defaultValue as never;
+      },
+    );
+    const warmup = vi.fn().mockResolvedValue(undefined);
+    CloudMonitorService.configureWeeklyWarmupExecutor({ warmup });
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    expect(warmup).toHaveBeenCalledExactlyOnceWith({
+      accessToken: 'weekly-token',
+      model: 'claude-sonnet-4-6',
+      projectId: 'weekly-project',
+      upstreamProxyUrl: undefined,
+      signal: expect.any(AbortSignal),
+    });
+    expect(GoogleAPIService.fetchQuota).toHaveBeenCalledTimes(2);
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledTimes(2);
+    expect(CloudAccountSettingsStore.setSetting).toHaveBeenCalledWith(
+      'weekly_warmup_history',
+      expect.objectContaining({ version: 1 }),
+    );
+  });
+
+  it.each(['refresh fails', 'stopped during refresh'])(
+    'does not schedule warmup when %s',
+    async (scenario) => {
+      const account = {
+        id: 'freshness-account',
+        provider: 'google',
+        email: 'fixture@example.com',
+        token: { access_token: 'fixture', expiry_timestamp: Date.now() / 1000 + 3600 },
+        quota: { models: {} },
+      };
+      vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([account] as never);
+      vi.mocked(CloudAccountSettingsStore.readSetting).mockImplementation((key) =>
+        key === 'weekly_warmup_config' ? { enabled: true, groups: ['gemini'] } : undefined,
+      );
+      vi.mocked(GoogleAPIService.fetchQuota).mockImplementation(async () => {
+        if (scenario === 'refresh fails') {
+          throw new Error('quota unavailable');
+        }
+        CloudMonitorService.stop();
+        return { models: {} };
+      });
+      const run = vi.spyOn(WeeklyWarmupService, 'run').mockResolvedValue([]);
+      CloudMonitorService.configureWeeklyWarmupExecutor({ warmup: vi.fn() });
+      const poll = CloudMonitorService.poll();
+      await vi.advanceTimersByTimeAsync(1000);
+      await poll;
+      if (scenario === 'refresh fails') {
+        expect(run).toHaveBeenCalledExactlyOnceWith([], expect.anything());
+      } else {
+        expect(run).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it('should poll accounts correctly', async () => {
     const mockAccounts = [

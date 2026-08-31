@@ -10,6 +10,21 @@ import { getCloudDb } from './cloud-account-db';
 const ACTIVE_ACCOUNT_SETTING_PREFIX = 'active_cloud_account';
 
 export class CloudAccountSettingsStore {
+  /** Missing settings use the default; corrupt or unavailable storage must remain an error. */
+  static readSetting(key: string): unknown {
+    const { raw, orm } = getCloudDb();
+    try {
+      const row = orm
+        .select({ value: settings.value })
+        .from(settings)
+        .where(eq(settings.key, key))
+        .get();
+      return row ? JSON.parse(row.value) : undefined;
+    } finally {
+      raw.close();
+    }
+  }
+
   static getSetting<T>(key: string, defaultValue: T): T {
     const { raw, orm } = getCloudDb();
     try {

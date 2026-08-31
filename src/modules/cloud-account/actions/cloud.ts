@@ -2,6 +2,7 @@ import { ipc } from '@/ipc/manager';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { DeviceProfile } from '@/modules/identity-profile/types';
 import { isValidProxyUrl } from '@/shared/utils/url';
+import type { WeeklyWarmupConfig } from '@/modules/cloud-account/services/weekly-warmup-contract';
 
 export function addGoogleAccount(input: { authCode: string; oauthClientKey?: string }) {
   return ipc.client.cloud.addGoogleAccount(input);
@@ -51,6 +52,14 @@ export function setAutoSwitchModelsConfig(
 
 export function forcePollCloudMonitor() {
   return ipc.client.cloud.forcePollCloudMonitor();
+}
+
+export function getWeeklyWarmupConfig() {
+  return ipc.client.cloud.getWeeklyWarmupConfig();
+}
+
+export function setWeeklyWarmupConfig(config: WeeklyWarmupConfig) {
+  return ipc.client.cloud.setWeeklyWarmupConfig(config);
 }
 
 export function syncLocalAccount(input?: { appTarget?: AntigravityAppTarget }) {

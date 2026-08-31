@@ -22,6 +22,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Loader2, FolderOpen, RefreshCw, X } from 'lucide-react';
 import { ModelVisibilitySettings } from '@/modules/config/components/ModelVisibilitySettings';
 import { AutoSwitchModelSettings } from '@/modules/cloud-account/components/AutoSwitchModelSettings';
+import { WeeklyWarmupSettings } from '@/modules/cloud-account/components/WeeklyWarmupSettings';
 import { useEffect, useState } from 'react';
 import { ProxyConfig } from '@/modules/config/types';
 import {
@@ -927,6 +928,7 @@ function SettingsPage() {
         <TabsContent value="models" className="space-y-5">
           <ModelVisibilitySettings />
           <AutoSwitchModelSettings />
+          <WeeklyWarmupSettings />
         </TabsContent>
 
         {/* --- PROXY TAB --- */}
