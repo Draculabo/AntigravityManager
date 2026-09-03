@@ -8,6 +8,9 @@ import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/ac
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import { hasAntigravityStorage } from '@/shared/platform/paths';
+import { detectAgyCliExecutablePath } from '@/modules/antigravity-runtime/binary-patch/agyCliPathDetection';
+import { ConfigManager } from '@/modules/config/ipc/manager';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { WeeklyWarmupService } from './WeeklyWarmupService';
 import type { WeeklyWarmupExecutor } from './weekly-warmup-contract';
@@ -61,9 +64,36 @@ const CLOUD_MONITOR_NOTIFICATION_TEXT: Record<
   },
 };
 
-const AUTO_SWITCH_TARGETS: AntigravityAppTarget[] = AntigravityAppTargetSchema.options.filter(
-  (target) => target !== 'agy',
-);
+const AUTO_SWITCH_CANDIDATE_TARGETS: AntigravityAppTarget[] = [
+  ...AntigravityAppTargetSchema.options,
+];
+
+/**
+ * Whether the agy CLI is installed, so its credential-store switch can actually run. Unlike the
+ * desktop targets, agy has no storage.json; its switch reads the keychain and the CLI binary.
+ */
+function isAgyCliInstalled(): boolean {
+  try {
+    const config = ConfigManager.getCachedConfig() ?? ConfigManager.loadConfig();
+    return (
+      detectAgyCliExecutablePath({ configuredPath: config.antigravity_cli_executable }) !== null
+    );
+  } catch (error) {
+    logger.warn('AutoSwitch: Failed to detect the agy CLI; excluding it from auto-switch', error);
+    return false;
+  }
+}
+
+/**
+ * A target only participates in auto-switch when its switch can actually run: the desktop targets
+ * need a storage.json on disk, and agy needs its CLI binary. Resolving this per poll keeps an
+ * absent install from failing the switch (desktop targets throw storage_json_not_found).
+ */
+function resolveAutoSwitchTargets(): AntigravityAppTarget[] {
+  return AUTO_SWITCH_CANDIDATE_TARGETS.filter((target) =>
+    target === 'agy' ? isAgyCliInstalled() : hasAntigravityStorage(target),
+  );
+}
 
 function getCloudMonitorLanguage(language: string | null | undefined): CloudMonitorLanguage {
   const normalizedLanguage = language?.toLowerCase() ?? 'en';
@@ -485,8 +515,14 @@ export class CloudMonitorService {
     }
 
     // 5. Check for Auto-Switch
-    for (const target of AUTO_SWITCH_TARGETS) {
-      await AutoSwitchService.checkAndSwitchIfNeeded(target);
+    for (const target of resolveAutoSwitchTargets()) {
+      try {
+        await AutoSwitchService.checkAndSwitchIfNeeded(target);
+      } catch (switchError) {
+        // A switch failure is specific to one target and must not discard the quota results
+        // already collected above, which the caller reports as a whole-poll failure.
+        logger.error(`AutoSwitch: Failed to switch target ${target}`, switchError);
+      }
     }
     if (epoch === this.stopEpoch) {
       await this.runWeeklyWarmups(refreshedAccounts);
