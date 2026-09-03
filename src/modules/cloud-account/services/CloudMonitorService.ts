@@ -8,6 +8,7 @@ import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/ac
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import { hasAntigravityStorage } from '@/shared/platform/paths';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { WeeklyWarmupService } from './WeeklyWarmupService';
 import type { WeeklyWarmupExecutor } from './weekly-warmup-contract';
@@ -61,9 +62,17 @@ const CLOUD_MONITOR_NOTIFICATION_TEXT: Record<
   },
 };
 
-const AUTO_SWITCH_TARGETS: AntigravityAppTarget[] = AntigravityAppTargetSchema.options.filter(
-  (target) => target !== 'agy',
-);
+const AUTO_SWITCH_CANDIDATE_TARGETS: AntigravityAppTarget[] =
+  AntigravityAppTargetSchema.options.filter((target) => target !== 'agy');
+
+/**
+ * Auto-switch rewrites the storage.json owned by a target's desktop install, so a target that is
+ * not installed can never be switched. Resolving the list per poll keeps an absent install from
+ * failing with storage_json_not_found on machines that only use a subset of the targets.
+ */
+function resolveAutoSwitchTargets(): AntigravityAppTarget[] {
+  return AUTO_SWITCH_CANDIDATE_TARGETS.filter((target) => hasAntigravityStorage(target));
+}
 
 function getCloudMonitorLanguage(language: string | null | undefined): CloudMonitorLanguage {
   const normalizedLanguage = language?.toLowerCase() ?? 'en';
@@ -485,8 +494,14 @@ export class CloudMonitorService {
     }
 
     // 5. Check for Auto-Switch
-    for (const target of AUTO_SWITCH_TARGETS) {
-      await AutoSwitchService.checkAndSwitchIfNeeded(target);
+    for (const target of resolveAutoSwitchTargets()) {
+      try {
+        await AutoSwitchService.checkAndSwitchIfNeeded(target);
+      } catch (switchError) {
+        // A switch failure is specific to one target and must not discard the quota results
+        // already collected above, which the caller reports as a whole-poll failure.
+        logger.error(`AutoSwitch: Failed to switch target ${target}`, switchError);
+      }
     }
     if (epoch === this.stopEpoch) {
       await this.runWeeklyWarmups(refreshedAccounts);

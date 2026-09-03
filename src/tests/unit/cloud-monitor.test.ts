@@ -7,6 +7,7 @@ import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIServ
 import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchService';
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { logger } from '../../shared/logging/logger';
+import { hasAntigravityStorage } from '@/shared/platform/paths';
 import * as electronMock from 'electron';
 
 // Mock dependencies
@@ -15,11 +16,18 @@ vi.mock('@/modules/cloud-account/persistence/cloud-account-settings-store');
 vi.mock('@/modules/cloud-account/services/GoogleAPIService');
 vi.mock('@/modules/cloud-account/services/AutoSwitchService');
 vi.mock('../../shared/logging/logger');
+// Auto-switch target selection reads the real filesystem, so stub it to keep these tests
+// independent of whether the host running them has Antigravity installed.
+vi.mock('@/shared/platform/paths', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/platform/paths')>()),
+  hasAntigravityStorage: vi.fn(() => true),
+}));
 
 describe('CloudMonitorService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    vi.mocked(hasAntigravityStorage).mockReturnValue(true);
     vi.mocked(CloudAccountSettingsStore.getSetting).mockReset();
     vi.mocked(CloudAccountSettingsStore.getSetting).mockImplementation(
       (_key: string, defaultValue: unknown) => defaultValue,
@@ -193,6 +201,47 @@ describe('CloudMonitorService', () => {
     expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc1', expect.anything());
     expect(CloudAccountRepo.updateLastUsed).not.toHaveBeenCalled();
     expect(AutoSwitchService.checkAndSwitchIfNeeded).toHaveBeenCalled();
+  });
+
+  it('skips auto-switch for targets whose storage.json is absent', async () => {
+    vi.mocked(hasAntigravityStorage).mockReturnValue(false);
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      {
+        id: 'acc1',
+        email: 'test@example.com',
+        token: { access_token: 'valid_token', expiry_timestamp: Date.now() / 1000 + 3600 },
+      },
+    ] as never);
+    vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue({ models: {} } as never);
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    // Quota still refreshes; only the switch attempt is skipped.
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc1', expect.anything());
+    expect(AutoSwitchService.checkAndSwitchIfNeeded).not.toHaveBeenCalled();
+  });
+
+  it('keeps polled quota when an auto-switch target fails to switch', async () => {
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      {
+        id: 'acc1',
+        email: 'test@example.com',
+        token: { access_token: 'valid_token', expiry_timestamp: Date.now() / 1000 + 3600 },
+      },
+    ] as never);
+    vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue({ models: {} } as never);
+    vi.mocked(AutoSwitchService.checkAndSwitchIfNeeded).mockRejectedValue(
+      new Error('storage_json_not_found'),
+    );
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // A failing switch must not reject the poll, which the caller reports as a total failure.
+    await expect(pollPromise).resolves.toBeUndefined();
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc1', expect.anything());
   });
 
   it('should refresh token if expired during poll', async () => {

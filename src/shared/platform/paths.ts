@@ -873,6 +873,17 @@ export function getAntigravityStoragePath(
   return paths.length > 0 ? paths[0] : '';
 }
 
+/**
+ * Whether the target has a storage.json on disk. Callers that rewrite storage.json use this to skip
+ * a target whose desktop app was never installed, instead of failing with storage_json_not_found.
+ */
+export function hasAntigravityStorage(
+  target?: AntigravityAppTarget | null,
+  options?: PathResolutionOptions,
+): boolean {
+  return getAntigravityStoragePaths(target, options).some((candidate) => fs.existsSync(candidate));
+}
+
 // Keep for backward compatibility if needed, but prefer getAntigravityDbPaths
 export function getAntigravityDbPath(
   target?: AntigravityAppTarget | null,
