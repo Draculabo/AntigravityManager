@@ -8,6 +8,7 @@ import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchSe
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { logger } from '../../shared/logging/logger';
 import { hasAntigravityStorage } from '@/shared/platform/paths';
+import { detectAgyCliExecutablePath } from '@/modules/antigravity-runtime/binary-patch/agyCliPathDetection';
 import * as electronMock from 'electron';
 
 // Mock dependencies
@@ -16,11 +17,20 @@ vi.mock('@/modules/cloud-account/persistence/cloud-account-settings-store');
 vi.mock('@/modules/cloud-account/services/GoogleAPIService');
 vi.mock('@/modules/cloud-account/services/AutoSwitchService');
 vi.mock('../../shared/logging/logger');
-// Auto-switch target selection reads the real filesystem, so stub it to keep these tests
-// independent of whether the host running them has Antigravity installed.
+// Auto-switch target selection reads the real filesystem and config, so stub both to keep these
+// tests independent of whether the host running them has Antigravity installed.
 vi.mock('@/shared/platform/paths', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/platform/paths')>()),
   hasAntigravityStorage: vi.fn(() => true),
+}));
+vi.mock('@/modules/antigravity-runtime/binary-patch/agyCliPathDetection', () => ({
+  detectAgyCliExecutablePath: vi.fn(() => null),
+}));
+vi.mock('@/modules/config/ipc/manager', () => ({
+  ConfigManager: {
+    getCachedConfig: vi.fn(() => ({ antigravity_cli_executable: null })),
+    loadConfig: vi.fn(() => ({ antigravity_cli_executable: null })),
+  },
 }));
 
 describe('CloudMonitorService', () => {
@@ -28,6 +38,7 @@ describe('CloudMonitorService', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     vi.mocked(hasAntigravityStorage).mockReturnValue(true);
+    vi.mocked(detectAgyCliExecutablePath).mockReturnValue(null);
     vi.mocked(CloudAccountSettingsStore.getSetting).mockReset();
     vi.mocked(CloudAccountSettingsStore.getSetting).mockImplementation(
       (_key: string, defaultValue: unknown) => defaultValue,
@@ -221,6 +232,26 @@ describe('CloudMonitorService', () => {
     // Quota still refreshes; only the switch attempt is skipped.
     expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc1', expect.anything());
     expect(AutoSwitchService.checkAndSwitchIfNeeded).not.toHaveBeenCalled();
+  });
+
+  it('includes the agy CLI target when its executable is detected', async () => {
+    vi.mocked(hasAntigravityStorage).mockReturnValue(false);
+    vi.mocked(detectAgyCliExecutablePath).mockReturnValue('/Users/x/.local/bin/agy');
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      {
+        id: 'acc1',
+        email: 'test@example.com',
+        token: { access_token: 'valid_token', expiry_timestamp: Date.now() / 1000 + 3600 },
+      },
+    ] as never);
+    vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue({ models: {} } as never);
+
+    const pollPromise = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(1000);
+    await pollPromise;
+
+    // Only agy resolves (no desktop storage.json), so it must be the target passed to the switch.
+    expect(AutoSwitchService.checkAndSwitchIfNeeded).toHaveBeenCalledWith('agy');
   });
 
   it('keeps polled quota when an auto-switch target fails to switch', async () => {
