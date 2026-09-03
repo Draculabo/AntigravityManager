@@ -276,18 +276,33 @@ export function writeAntigravityCredentialStoreToken(
   }
 }
 
+function credentialStoreItemExists(): boolean {
+  // `find-generic-password` reads only the item's attributes, not its secret, so it does not prompt
+  // even when the ACL is restrictive. Exit status 0 means the item is present.
+  const result = spawnSync(
+    'security',
+    ['find-generic-password', '-s', 'gemini', '-a', 'antigravity'],
+    { stdio: 'ignore' },
+  );
+  return result.status === 0;
+}
+
 function writeToSystemCredentialStore(payload: string): void {
   if (process.platform === 'darwin') {
     const value = `go-keyring-base64:${Buffer.from(payload, 'utf-8').toString('base64')}`;
-    execFileSync(
-      'security',
-      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'],
-      {
-        input: `${value}\n`,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'ignore', 'ignore'],
-      },
-    );
+    // `-A` sets the item's access-control list to "all applications". macOS treats writing the ACL
+    // as a change that needs the login-keychain password, and `-U` reapplies it on every update, so
+    // each account switch pops a password prompt. Only pass `-A` when the item does not exist yet;
+    // afterwards update the stored value without touching the ACL, which does not prompt.
+    const alreadyExists = credentialStoreItemExists();
+    const args = alreadyExists
+      ? ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-U', '-w']
+      : ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'];
+    execFileSync('security', args, {
+      input: `${value}\n`,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'ignore', 'ignore'],
+    });
     return;
   }
 

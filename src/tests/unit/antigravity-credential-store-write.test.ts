@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   execFileSync: vi.fn(),
+  spawnSync: vi.fn(),
   setSecret: vi.fn(),
   deleteCredential: vi.fn(),
   withTarget: vi.fn(),
@@ -32,8 +33,10 @@ vi.mock('child_process', async (importOriginal) => {
     default: {
       ...actual,
       execFileSync: mocks.execFileSync,
+      spawnSync: mocks.spawnSync,
     },
     execFileSync: mocks.execFileSync,
+    spawnSync: mocks.spawnSync,
   };
 });
 
@@ -50,6 +53,9 @@ describe('writeAntigravityCredentialStoreToken', () => {
   beforeEach(() => {
     vi.resetModules();
     mocks.execFileSync.mockReset();
+    mocks.spawnSync.mockReset();
+    // Default: the keychain item does not exist yet, so writes take the create path.
+    mocks.spawnSync.mockReturnValue({ status: 1 });
     mocks.setSecret.mockReset();
     mocks.deleteCredential.mockReset();
     mocks.withTarget.mockReset();
@@ -66,7 +72,8 @@ describe('writeAntigravityCredentialStoreToken', () => {
     setPlatform(originalPlatform);
   });
 
-  it('updates the macOS keychain item without exposing the credential in process arguments', async () => {
+  it('sets the ACL with -A when first creating the macOS keychain item, without exposing the credential in process arguments', async () => {
+    mocks.spawnSync.mockReturnValue({ status: 1 }); // item does not exist yet
     const { writeAntigravityCredentialStoreToken } =
       await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
 
@@ -92,6 +99,29 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expect(args.join(' ')).not.toContain('refresh-token');
     expect(args).not.toContain('delete-generic-password');
     expect(mocks.writeGoogleOAuthCredentials).not.toHaveBeenCalled();
+  });
+
+  it('updates an existing macOS keychain item without -A so it does not reprompt for ACL changes', async () => {
+    mocks.spawnSync.mockReturnValue({ status: 0 }); // item already exists
+    const { writeAntigravityCredentialStoreToken } =
+      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+
+    writeAntigravityCredentialStoreToken({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expiry_timestamp: 1_900_000_000,
+    });
+
+    // Existence is probed with a non-prompting attribute read.
+    expect(mocks.spawnSync).toHaveBeenCalledWith(
+      'security',
+      ['find-generic-password', '-s', 'gemini', '-a', 'antigravity'],
+      expect.objectContaining({ stdio: 'ignore' }),
+    );
+    expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
+    const args = mocks.execFileSync.mock.calls[0][1] as string[];
+    expect(args).toEqual(['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-U', '-w']);
+    expect(args).not.toContain('-A');
   });
 
   it('syncs generic Google OAuth files only when the caller marks an explicit Agy switch', async () => {
