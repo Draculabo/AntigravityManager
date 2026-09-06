@@ -1,7 +1,6 @@
 import { Entry } from '@napi-rs/keyring';
 import type { OpenCodeCredentialStore } from './opencode-credential.service';
 
-const OPEN_CODE_KEYRING_TARGET = 'antigravity-manager:opencode';
 const OPEN_CODE_KEYRING_SERVICE = 'Antigravity Manager';
 const OPEN_CODE_KEYRING_ACCOUNT = 'opencode-proxy-key';
 
@@ -16,14 +15,14 @@ export class OpenCodeNativeCredentialStore implements OpenCodeCredentialStore {
    * during import: every test that pulled in the guard opened a credential
    * store before its first line ran, and failed wherever no keyring is
    * available.
+   *
+   * Use the default credential builder (`new Entry(service, account)`).
+   * `Entry.withTarget` on macOS expects a keychain kind (`User` / `System` /
+   * `Common` / `Dynamic`), not an app-specific namespace string.
    */
   private get entry(): Entry {
     if (!this.cachedEntry) {
-      this.cachedEntry = Entry.withTarget(
-        OPEN_CODE_KEYRING_TARGET,
-        OPEN_CODE_KEYRING_SERVICE,
-        OPEN_CODE_KEYRING_ACCOUNT,
-      );
+      this.cachedEntry = new Entry(OPEN_CODE_KEYRING_SERVICE, OPEN_CODE_KEYRING_ACCOUNT);
     }
 
     return this.cachedEntry;

@@ -45,6 +45,15 @@ describe('OpenCode dedicated key scope', () => {
     expect(guard.canActivate(createContext('dedicated-opencode-key'))).toBe(true);
   });
 
+  it('falls through to the configured proxy API key when OpenCode matching throws', () => {
+    credentialMocks.matches.mockImplementation(() => {
+      throw new Error("Value of 'keychain' is invalid: 'antigravity-manager:opencode'");
+    });
+    const guard = new ProxyGuard();
+
+    expect(guard.canActivate(createContext('global-admin-key'))).toBe(true);
+  });
+
   it('does not accept the dedicated key on admin routes', () => {
     const guard = new AdminGuard();
 

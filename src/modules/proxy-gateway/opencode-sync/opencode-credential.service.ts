@@ -34,7 +34,7 @@ export class OpenCodeCredentialService {
   }
 
   hasKey(): boolean {
-    return Boolean(this.store.read());
+    return Boolean(this.readCurrentKey());
   }
 
   matches(candidate: string | null | undefined): boolean {
@@ -42,7 +42,7 @@ export class OpenCodeCredentialService {
       return false;
     }
 
-    const current = this.store.read();
+    const current = this.readCurrentKey();
     if (!current) {
       return false;
     }
@@ -54,5 +54,17 @@ export class OpenCodeCredentialService {
     }
 
     return timingSafeEqual(currentBytes, candidateBytes);
+  }
+
+  /**
+   * Optional OpenCode auth must never take down the model proxy. A missing or
+   * unusable keyring is treated as "no dedicated OpenCode key".
+   */
+  private readCurrentKey(): string | null {
+    try {
+      return this.store.read();
+    } catch {
+      return null;
+    }
   }
 }

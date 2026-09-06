@@ -27,8 +27,16 @@ export class ProxyGuard implements CanActivate {
 
     // The OpenCode credential is accepted only by this model-proxy guard.
     // AdminGuard intentionally knows nothing about it, so revocation and scope stay independent.
-    if (openCodeCredentialService.matches(clientToken)) {
-      return true;
+    // OpenCode is optional: a keyring failure must not block the configured proxy API key.
+    try {
+      if (openCodeCredentialService.matches(clientToken)) {
+        return true;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `OpenCode credential check failed; continuing with proxy API key auth (${request.ip})`,
+        error instanceof Error ? error.stack : undefined,
+      );
     }
 
     // 2. Bypass if no api_key set (Open Mode) or config missing

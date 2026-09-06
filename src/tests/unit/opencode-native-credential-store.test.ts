@@ -1,16 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const keyringMocks = vi.hoisted(() => ({
-  withTarget: vi.fn(),
+  Entry: vi.fn(),
   getPassword: vi.fn(() => 'stored-key'),
   setPassword: vi.fn(),
   deleteCredential: vi.fn(),
 }));
 
 vi.mock('@napi-rs/keyring', () => ({
-  Entry: {
-    withTarget: keyringMocks.withTarget,
-  },
+  Entry: keyringMocks.Entry,
 }));
 
 import { OpenCodeNativeCredentialStore } from '@/modules/proxy-gateway/opencode-sync/opencode-native-credential-store';
@@ -18,10 +16,14 @@ import { OpenCodeNativeCredentialStore } from '@/modules/proxy-gateway/opencode-
 describe('OpenCodeNativeCredentialStore', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    keyringMocks.withTarget.mockReturnValue({
-      getPassword: keyringMocks.getPassword,
-      setPassword: keyringMocks.setPassword,
-      deleteCredential: keyringMocks.deleteCredential,
+    keyringMocks.Entry.mockImplementation(function MockEntry(this: {
+      getPassword: typeof keyringMocks.getPassword;
+      setPassword: typeof keyringMocks.setPassword;
+      deleteCredential: typeof keyringMocks.deleteCredential;
+    }) {
+      this.getPassword = keyringMocks.getPassword;
+      this.setPassword = keyringMocks.setPassword;
+      this.deleteCredential = keyringMocks.deleteCredential;
     });
   });
 
@@ -34,21 +36,17 @@ describe('OpenCodeNativeCredentialStore', () => {
   it('does not open the keyring while being constructed', () => {
     new OpenCodeNativeCredentialStore();
 
-    expect(keyringMocks.withTarget).not.toHaveBeenCalled();
+    expect(keyringMocks.Entry).not.toHaveBeenCalled();
   });
 
-  it('opens the keyring on first use and reuses it afterwards', () => {
+  it('opens the default keyring entry on first use and reuses it afterwards', () => {
     const store = new OpenCodeNativeCredentialStore();
 
     expect(store.read()).toBe('stored-key');
     store.write('next-key');
 
-    expect(keyringMocks.withTarget).toHaveBeenCalledOnce();
-    expect(keyringMocks.withTarget).toHaveBeenCalledWith(
-      'antigravity-manager:opencode',
-      'Antigravity Manager',
-      'opencode-proxy-key',
-    );
+    expect(keyringMocks.Entry).toHaveBeenCalledOnce();
+    expect(keyringMocks.Entry).toHaveBeenCalledWith('Antigravity Manager', 'opencode-proxy-key');
     expect(keyringMocks.setPassword).toHaveBeenCalledWith('next-key');
   });
 
@@ -67,11 +65,11 @@ describe('OpenCodeNativeCredentialStore', () => {
    * into the idempotent "already gone" case.
    */
   it('still reports a keyring that cannot be opened at all', () => {
-    keyringMocks.withTarget.mockImplementation(() => {
-      throw new Error("Value of 'target' is invalid: unknown key");
+    keyringMocks.Entry.mockImplementation(() => {
+      throw new Error("Value of 'keychain' is invalid: unknown key");
     });
     const store = new OpenCodeNativeCredentialStore();
 
-    expect(() => store.delete()).toThrow("Value of 'target' is invalid: unknown key");
+    expect(() => store.delete()).toThrow("Value of 'keychain' is invalid: unknown key");
   });
 });

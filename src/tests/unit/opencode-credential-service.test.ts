@@ -57,4 +57,19 @@ describe('OpenCodeCredentialService', () => {
     expect(service.matches('short')).toBe(false);
     expect(service.matches('agm_oc_expected')).toBe(true);
   });
+
+  it('treats an unusable credential store as having no dedicated OpenCode key', () => {
+    const store: OpenCodeCredentialStore = {
+      delete: vi.fn(),
+      read: vi.fn(() => {
+        throw new Error("Value of 'keychain' is invalid: 'antigravity-manager:opencode'");
+      }),
+      write: vi.fn(),
+    };
+    const service = new OpenCodeCredentialService(store);
+
+    expect(service.hasKey()).toBe(false);
+    expect(service.matches('agm_oc_any')).toBe(false);
+  });
 });
+
