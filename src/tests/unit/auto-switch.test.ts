@@ -308,4 +308,162 @@ describe('AutoSwitchService', () => {
       id: 'priority-present',
     });
   });
+
+  it('uses the minimum across every related quota bucket when ranking accounts', async () => {
+    const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({});
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createAccount('current', quotaWithClaudeGroup(50, 0.5)),
+      createAccount('model-high-weekly-low', {
+        models: { 'claude-sonnet-4-5': { percentage: 90, resetTime: '' } },
+        quota_groups: [
+          {
+            display_name: 'Claude and GPT models',
+            buckets: [
+              {
+                bucket_id: '3p-5h',
+                window: '5h',
+                remaining_fraction: 0.8,
+                reset_time: '',
+              },
+              {
+                bucket_id: '3p-weekly',
+                window: 'weekly',
+                remaining_fraction: 0.06,
+                reset_time: '',
+              },
+            ],
+          },
+        ],
+      }),
+      createAccount('model-medium-buckets-healthy', quotaWithClaudeGroup(60, 0.6)),
+    ]);
+
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
+      id: 'model-medium-buckets-healthy',
+    });
+  });
+
+  it('scores priority and fallback cohorts against only their related quota groups', async () => {
+    const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({
+      'claude-sonnet-4-5': { enabled: true, priority: true },
+      'gemini-3.5-flash': { enabled: true, priority: false },
+    });
+
+    const createRankedAccount = (
+      id: string,
+      claudePercentage: number,
+      geminiPercentage: number,
+      claudeGroupFraction: number,
+      geminiGroupFraction: number,
+    ) =>
+      createAccount(id, {
+        models: {
+          'claude-sonnet-4-5': { percentage: claudePercentage, resetTime: '' },
+          'gemini-3.5-flash': { percentage: geminiPercentage, resetTime: '' },
+        },
+        quota_groups: [
+          {
+            display_name: 'Claude and GPT models',
+            buckets: [
+              {
+                bucket_id: '3p-weekly',
+                window: 'weekly',
+                remaining_fraction: claudeGroupFraction,
+                reset_time: '',
+              },
+            ],
+          },
+          {
+            display_name: 'Gemini models',
+            buckets: [
+              {
+                bucket_id: 'gemini-weekly',
+                window: 'weekly',
+                remaining_fraction: geminiGroupFraction,
+                reset_time: '',
+              },
+            ],
+          },
+        ],
+      });
+
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createRankedAccount('current', 50, 50, 0.5, 0.5),
+      createRankedAccount('raw-priority-high', 100, 90, 0.4, 0.1),
+      createRankedAccount('fallback-healthier', 40, 30, 0.8, 0.9),
+    ]);
+
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
+      id: 'fallback-healthier',
+    });
+  });
+
+  it('does not let an unrelated quota group lower a cohort score', async () => {
+    const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({});
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createAccount('current', {
+        models: { 'gemini-3.5-flash': { percentage: 50, resetTime: '' } },
+      }),
+      createAccount('gemini-high-with-unrelated-group', {
+        models: { 'gemini-3.5-flash': { percentage: 90, resetTime: '' } },
+        quota_groups: [
+          {
+            display_name: 'Claude and GPT models',
+            buckets: [
+              {
+                bucket_id: '3p-weekly',
+                window: 'weekly',
+                remaining_fraction: 0.06,
+                reset_time: '',
+              },
+            ],
+          },
+        ],
+      }),
+      createAccount('gemini-medium', {
+        models: { 'gemini-3.5-flash': { percentage: 50, resetTime: '' } },
+      }),
+    ]);
+
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
+      id: 'gemini-high-with-unrelated-group',
+    });
+  });
+
+  it('preserves source order when every score is tied', async () => {
+    const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({});
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createAccount('current', quotaWithClaudeGroup(50, 0.5)),
+      createAccount('first', quotaWithClaudeGroup(60, 0.6)),
+      createAccount('second', quotaWithClaudeGroup(60, 0.6)),
+    ]);
+
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
+      id: 'first',
+    });
+  });
 });

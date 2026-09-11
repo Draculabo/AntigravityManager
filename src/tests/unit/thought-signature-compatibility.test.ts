@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { vi } from 'vitest';
+
 import {
   transformClaudeRequestIn,
   getPlaceholderSignatureUsageCount,
@@ -15,6 +17,7 @@ import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 const THOUGHT_SIGNATURE = 'thought-signature-for-tool-call';
 const SKIP_THOUGHT_SIGNATURE = 'skip_thought_signature_validator';
+const SIGNATURE_MODEL = 'gemini-3-flash';
 
 describe('thought signature compatibility', () => {
   afterEach(() => {
@@ -220,8 +223,11 @@ describe('thought signature compatibility', () => {
           },
         ],
       },
-      'anthropic:non-stream-session',
-      2,
+      {
+        model: SIGNATURE_MODEL,
+        signatureSessionKey: 'anthropic:non-stream-session',
+        signatureMessageCount: 2,
+      },
     );
 
     expect(response.content).toContainEqual({
@@ -231,7 +237,13 @@ describe('thought signature compatibility', () => {
       input: { location: 'London' },
       signature: THOUGHT_SIGNATURE,
     });
-    expect(SignatureStore.getAt('anthropic:non-stream-session', 2)).toBe(THOUGHT_SIGNATURE);
+    expect(
+      SignatureStore.getAt({
+        model: SIGNATURE_MODEL,
+        sessionKey: 'anthropic:non-stream-session',
+        messageCount: 2,
+      }),
+    ).toBe(THOUGHT_SIGNATURE);
   });
 
   it('accepts snake-case signatures from streaming Gemini responses', () => {
@@ -249,8 +261,16 @@ describe('thought signature compatibility', () => {
 
   it('reuses only the signature belonging to the request session', () => {
     const alphaSignature = 'thought-signature-for-session-alpha';
-    SignatureStore.store(alphaSignature, 'anthropic:session-alpha');
-    SignatureStore.store('thought-signature-for-session-beta', 'anthropic:session-beta');
+    SignatureStore.store({
+      signature: alphaSignature,
+      model: SIGNATURE_MODEL,
+      sessionKey: 'anthropic:session-alpha',
+    });
+    SignatureStore.store({
+      signature: 'thought-signature-for-session-beta',
+      model: SIGNATURE_MODEL,
+      sessionKey: 'anthropic:session-beta',
+    });
 
     const request: ClaudeRequest = {
       model: 'gemini-3-flash',
@@ -286,20 +306,50 @@ describe('thought signature compatibility', () => {
     const futureSignature = 'c'.repeat(70);
     const rewindSignature = 'd'.repeat(65);
 
-    SignatureStore.store(firstSignature, sessionKey, 1);
-    SignatureStore.store(shorterFirstSignature, sessionKey, 1);
-    SignatureStore.store(futureSignature, sessionKey, 3);
+    SignatureStore.store({
+      signature: firstSignature,
+      model: SIGNATURE_MODEL,
+      sessionKey,
+      messageCount: 1,
+    });
+    SignatureStore.store({
+      signature: shorterFirstSignature,
+      model: SIGNATURE_MODEL,
+      sessionKey,
+      messageCount: 1,
+    });
+    SignatureStore.store({
+      signature: futureSignature,
+      model: SIGNATURE_MODEL,
+      sessionKey,
+      messageCount: 3,
+    });
 
-    expect(SignatureStore.getAt(sessionKey, 1)).toBe(firstSignature);
-    expect(SignatureStore.getAt(sessionKey, 3)).toBe(futureSignature);
-    expect(SignatureStore.get(sessionKey)).toBe(futureSignature);
+    expect(SignatureStore.getAt({ model: SIGNATURE_MODEL, sessionKey, messageCount: 1 })).toBe(
+      firstSignature,
+    );
+    expect(SignatureStore.getAt({ model: SIGNATURE_MODEL, sessionKey, messageCount: 3 })).toBe(
+      futureSignature,
+    );
+    expect(SignatureStore.get({ model: SIGNATURE_MODEL, sessionKey })).toBe(futureSignature);
 
-    SignatureStore.store(rewindSignature, sessionKey, 2);
+    SignatureStore.store({
+      signature: rewindSignature,
+      model: SIGNATURE_MODEL,
+      sessionKey,
+      messageCount: 2,
+    });
 
-    expect(SignatureStore.getAt(sessionKey, 1)).toBe(firstSignature);
-    expect(SignatureStore.getAt(sessionKey, 2)).toBe(rewindSignature);
-    expect(SignatureStore.getAt(sessionKey, 3)).toBeNull();
-    expect(SignatureStore.get(sessionKey)).toBe(rewindSignature);
+    expect(SignatureStore.getAt({ model: SIGNATURE_MODEL, sessionKey, messageCount: 1 })).toBe(
+      firstSignature,
+    );
+    expect(SignatureStore.getAt({ model: SIGNATURE_MODEL, sessionKey, messageCount: 2 })).toBe(
+      rewindSignature,
+    );
+    expect(
+      SignatureStore.getAt({ model: SIGNATURE_MODEL, sessionKey, messageCount: 3 }),
+    ).toBeNull();
+    expect(SignatureStore.get({ model: SIGNATURE_MODEL, sessionKey })).toBe(rewindSignature);
   });
 
   it('replays the signature matching each historical message index before the latest fallback', () => {
@@ -307,8 +357,18 @@ describe('thought signature compatibility', () => {
     const firstTurnSignature = 'first-turn-signature'.repeat(4);
     const latestTurnSignature = 'latest-turn-signature'.repeat(4);
 
-    SignatureStore.store(firstTurnSignature, sessionKey, 1);
-    SignatureStore.store(latestTurnSignature, sessionKey, 3);
+    SignatureStore.store({
+      signature: firstTurnSignature,
+      model: SIGNATURE_MODEL,
+      sessionKey,
+      messageCount: 1,
+    });
+    SignatureStore.store({
+      signature: latestTurnSignature,
+      model: SIGNATURE_MODEL,
+      sessionKey,
+      messageCount: 3,
+    });
 
     const request: ClaudeRequest = {
       model: 'gemini-3-flash',
@@ -356,7 +416,7 @@ describe('thought signature compatibility', () => {
 
   it('stores a streamed tool signature at the request message count', () => {
     const sessionKey = 'anthropic:stream-message-count';
-    const state = new StreamingState(sessionKey, 5);
+    const state = new StreamingState({ model: SIGNATURE_MODEL, sessionKey, messageCount: 5 });
     const processor = new PartProcessor(state);
 
     processor.process({
@@ -368,7 +428,9 @@ describe('thought signature compatibility', () => {
       thoughtSignature: THOUGHT_SIGNATURE,
     });
 
-    expect(SignatureStore.getAt(sessionKey, 5)).toBe(THOUGHT_SIGNATURE);
+    expect(SignatureStore.getAt({ model: SIGNATURE_MODEL, sessionKey, messageCount: 5 })).toBe(
+      THOUGHT_SIGNATURE,
+    );
   });
 
   it("keeps concurrent tool calls in the same turn from reading each other's signature", () => {
@@ -400,12 +462,15 @@ describe('thought signature compatibility', () => {
           },
         ],
       },
-      sessionKey,
-      9,
+      { model: SIGNATURE_MODEL, signatureSessionKey: sessionKey, signatureMessageCount: 9 },
     );
 
-    expect(SignatureStore.getForToolCall('call_a', sessionKey)).toBe(shortCallSignature);
-    expect(SignatureStore.getForToolCall('call_b', sessionKey)).toBe(longCallSignature);
+    expect(
+      SignatureStore.getForToolCall({ model: SIGNATURE_MODEL, toolCallId: 'call_a', sessionKey }),
+    ).toBe(shortCallSignature);
+    expect(
+      SignatureStore.getForToolCall({ model: SIGNATURE_MODEL, toolCallId: 'call_b', sessionKey }),
+    ).toBe(longCallSignature);
 
     // Replay: a client that echoes tool_use blocks back without their signature must
     // still get each call's own signature, not the other call's.
@@ -433,28 +498,239 @@ describe('thought signature compatibility', () => {
   });
 
   it('returns null instead of throwing when no signature was ever stored for a tool-call id', () => {
-    expect(() => SignatureStore.getForToolCall('never-stored-call-id')).not.toThrow();
-    expect(SignatureStore.getForToolCall('never-stored-call-id')).toBeNull();
-    expect(SignatureStore.getForToolCall(undefined)).toBeNull();
+    expect(() =>
+      SignatureStore.getForToolCall({ model: SIGNATURE_MODEL, toolCallId: 'never-stored-call-id' }),
+    ).not.toThrow();
+    expect(
+      SignatureStore.getForToolCall({ model: SIGNATURE_MODEL, toolCallId: 'never-stored-call-id' }),
+    ).toBeNull();
+    expect(
+      SignatureStore.getForToolCall({ model: SIGNATURE_MODEL, toolCallId: undefined }),
+    ).toBeNull();
   });
 
   it('isolates identical tool-call ids between sessions and clears only the requested session', () => {
     const toolCallId = 'reused-call-id';
-    SignatureStore.store('signature-alpha', 'anthropic:session-alpha', 1, toolCallId);
-    SignatureStore.store('signature-beta-is-longer', 'anthropic:session-beta', 1, toolCallId);
+    SignatureStore.store({
+      signature: 'signature-alpha',
+      model: SIGNATURE_MODEL,
+      sessionKey: 'anthropic:session-alpha',
+      messageCount: 1,
+      toolCallId,
+    });
+    SignatureStore.store({
+      signature: 'signature-beta-is-longer',
+      model: SIGNATURE_MODEL,
+      sessionKey: 'anthropic:session-beta',
+      messageCount: 1,
+      toolCallId,
+    });
 
-    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-alpha')).toBe(
-      'signature-alpha',
-    );
-    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-beta')).toBe(
-      'signature-beta-is-longer',
-    );
+    expect(
+      SignatureStore.getForToolCall({
+        model: SIGNATURE_MODEL,
+        toolCallId,
+        sessionKey: 'anthropic:session-alpha',
+      }),
+    ).toBe('signature-alpha');
+    expect(
+      SignatureStore.getForToolCall({
+        model: SIGNATURE_MODEL,
+        toolCallId,
+        sessionKey: 'anthropic:session-beta',
+      }),
+    ).toBe('signature-beta-is-longer');
 
     SignatureStore.clear('anthropic:session-alpha');
 
-    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-alpha')).toBeNull();
-    expect(SignatureStore.getForToolCall(toolCallId, 'anthropic:session-beta')).toBe(
-      'signature-beta-is-longer',
+    expect(
+      SignatureStore.getForToolCall({
+        model: SIGNATURE_MODEL,
+        toolCallId,
+        sessionKey: 'anthropic:session-alpha',
+      }),
+    ).toBeNull();
+    expect(
+      SignatureStore.getForToolCall({
+        model: SIGNATURE_MODEL,
+        toolCallId,
+        sessionKey: 'anthropic:session-beta',
+      }),
+    ).toBe('signature-beta-is-longer');
+  });
+
+  it('reuses provenance within a canonical family and rejects another family', () => {
+    SignatureStore.store({
+      signature: THOUGHT_SIGNATURE,
+      model: 'gemini-3-flash-agent',
+      family: 'gemini-3.5-flash',
+      familyModel: 'gemini-3-flash-agent',
+      sessionKey: 'family-session',
+    });
+
+    expect(
+      SignatureStore.get({ model: 'gemini-3.5-flash-low', sessionKey: 'family-session' }),
+    ).toBe(THOUGHT_SIGNATURE);
+    expect(
+      SignatureStore.get({ model: 'gemini-3.7-flash-low', sessionKey: 'family-session' }),
+    ).toBeNull();
+  });
+
+  it('does not replay a signature from the pre-mapper family after web-search remaps the physical model', () => {
+    const sessionKey = 'anthropic:web-search-remap';
+    SignatureStore.store({
+      signature: THOUGHT_SIGNATURE,
+      model: 'gpt-oss-120b-medium',
+      family: 'gpt-oss-120b-medium',
+      familyModel: 'gpt-oss-120b-medium',
+      sessionKey,
+      toolCallId: 'call_weather',
+    });
+
+    const body = transformClaudeRequestIn(
+      {
+        model: 'gpt-oss-120b-medium',
+        thinking: { type: 'enabled', budget_tokens: 256 },
+        metadata: { signature_session_key: sessionKey },
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: 'call_weather',
+                name: 'get_weather',
+                input: { location: 'London' },
+              },
+            ],
+          },
+        ],
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      },
+      undefined,
+      undefined,
+      'gpt-oss-120b-medium',
+      'anthropic',
+      {
+        signatureTargetFamily: 'gpt-oss-120b-medium',
+        signatureTargetFamilyModel: 'gpt-oss-120b-medium',
+      },
     );
+    const functionCallPart = body.request.contents[0]?.parts.find((part) => part.functionCall);
+
+    expect(body.model).toBe('gemini-3-flash');
+    expect(functionCallPart?.thoughtSignature).not.toBe(THOUGHT_SIGNATURE);
+  });
+
+  it('stores a remapped response under its actual physical model instead of the stale account family', () => {
+    const sessionKey = 'anthropic:remapped-response';
+    transformResponse(
+      {
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [
+                {
+                  functionCall: { name: 'get_weather', args: {}, id: 'call_weather' },
+                  thoughtSignature: THOUGHT_SIGNATURE,
+                },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        model: 'gemini-3-flash',
+        family: 'gpt-oss-120b-medium',
+        familyModel: 'gpt-oss-120b-medium',
+        signatureSessionKey: sessionKey,
+      },
+    );
+
+    expect(
+      SignatureStore.get({ model: 'gpt-oss-120b-medium', sessionKey }),
+    ).toBeNull();
+    expect(SignatureStore.get({ model: 'gemini-3-flash', sessionKey })).toBe(THOUGHT_SIGNATURE);
+  });
+
+  it('matches unknown models only by exact normalized physical id', () => {
+    SignatureStore.store({
+      signature: THOUGHT_SIGNATURE,
+      model: ' Vendor-Physical-Model ',
+      sessionKey: 'unknown-session',
+    });
+
+    expect(
+      SignatureStore.get({ model: 'vendor-physical-model', sessionKey: 'unknown-session' }),
+    ).toBe(THOUGHT_SIGNATURE);
+    expect(
+      SignatureStore.get({ model: 'vendor-other-model', sessionKey: 'unknown-session' }),
+    ).toBeNull();
+  });
+
+  it('treats provenance-less entries as misses and skips producers without a model', () => {
+    (SignatureStore as unknown as { signature: unknown }).signature = {
+      signature: THOUGHT_SIGNATURE,
+      updatedAt: Date.now(),
+    };
+    expect(SignatureStore.get({ model: SIGNATURE_MODEL })).toBeNull();
+
+    SignatureStore.store({ signature: THOUGHT_SIGNATURE, model: '   ' });
+    expect(SignatureStore.get({ model: SIGNATURE_MODEL })).toBeNull();
+  });
+
+  it('clears only the failed recovery scope', () => {
+    SignatureStore.store({ signature: 'legacy-signature', model: SIGNATURE_MODEL });
+    SignatureStore.store({
+      signature: 'named-signature',
+      model: SIGNATURE_MODEL,
+      sessionKey: 'named-session',
+    });
+
+    SignatureStore.clearRecoveryScope();
+
+    expect(SignatureStore.get({ model: SIGNATURE_MODEL })).toBeNull();
+    expect(SignatureStore.get({ model: SIGNATURE_MODEL, sessionKey: 'named-session' })).toBe(
+      'named-signature',
+    );
+  });
+
+  it('recovery mapping never reads cache but preserves explicit tool signatures and sentinel logic', () => {
+    const getSpy = vi.spyOn(SignatureStore, 'get');
+    const getAtSpy = vi.spyOn(SignatureStore, 'getAt');
+    const getToolSpy = vi.spyOn(SignatureStore, 'getForToolCall');
+    const body = transformClaudeRequestIn(
+      {
+        model: 'gemini-3-flash',
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: 'explicit',
+                name: 'one',
+                input: {},
+                signature: 'client-signature',
+              },
+              { type: 'tool_use', id: 'unsigned', name: 'two', input: {} },
+            ],
+          },
+        ],
+      },
+      undefined,
+      undefined,
+      undefined,
+      'anthropic',
+      { mode: 'invalid-thought-signature-recovery' },
+    );
+
+    expect(getSpy).not.toHaveBeenCalled();
+    expect(getAtSpy).not.toHaveBeenCalled();
+    expect(getToolSpy).not.toHaveBeenCalled();
+    const functionCallParts = body.request.contents[0]?.parts.filter((part) => part.functionCall);
+    expect(functionCallParts?.[0]?.thoughtSignature).toBe('client-signature');
+    expect(functionCallParts?.[1]?.thoughtSignature).toBe(SKIP_THOUGHT_SIGNATURE);
   });
 });

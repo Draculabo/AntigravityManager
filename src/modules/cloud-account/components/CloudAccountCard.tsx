@@ -56,7 +56,7 @@ import { isValidProxyUrl } from '@/shared/utils/url';
 import { getCloudAccountBlockedStatusLabel } from '@/modules/cloud-account/utils/accountValidationStatus';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { AccountTierBadge } from '@/modules/cloud-account/components/AccountTierBadge';
-import { aggregateVisibleQuotaModelFamilies } from '@/modules/cloud-account/utils/quota-model-families';
+import { getVisibleQuotaModelsForPresentation } from '@/modules/cloud-account/utils/quota-model-families';
 import {
   selectWeeklyQuotaItems,
   type QuotaWindow,
@@ -153,6 +153,18 @@ function getAvailabilityModelCandidates(modelName: string): Set<string> {
     candidates.add('gemini-3.5-flash-extra-low');
     candidates.add('gemini-3.5-flash-low');
     candidates.add('gemini-3-flash-agent');
+  }
+
+  if (normalized === 'gemini-3.7-flash') {
+    candidates.add('gemini-3.7-flash-low');
+    candidates.add('gemini-3.7-flash-medium');
+    candidates.add('gemini-3.7-flash-high');
+    candidates.add('gemini-3.7-flash-tiered');
+    candidates.add('gemini-3.6-flash');
+    candidates.add('gemini-3.6-flash-low');
+    candidates.add('gemini-3.6-flash-medium');
+    candidates.add('gemini-3.6-flash-high');
+    candidates.add('gemini-3.6-flash-tiered');
   }
 
   if (normalized === 'gemini-3.1-flash-image' || normalized === 'gemini-3-flash-image') {
@@ -263,7 +275,7 @@ export function CloudAccountCard({
 
   const allModelEntries = Object.entries(account.quota?.models || {}) as ModelQuotaEntry[];
 
-  const mergedModelQuotas = aggregateVisibleQuotaModelFamilies(
+  const mergedModelQuotas = getVisibleQuotaModelsForPresentation(
     account.quota?.models || {},
     config?.model_visibility || {},
   );
@@ -922,7 +934,7 @@ export function CompactCloudAccountCard({
     return QUOTA_BAR_COLOR_CLASS_BY_STATUS[quotaStatus];
   };
 
-  const mergedModelQuotas = aggregateVisibleQuotaModelFamilies(
+  const mergedModelQuotas = getVisibleQuotaModelsForPresentation(
     account.quota?.models || {},
     config?.model_visibility || {},
   );

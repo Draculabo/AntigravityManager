@@ -567,6 +567,75 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(internalRequest.model).toBe('gemini-3-flash');
   });
 
+  it('keeps OpenAI signature provenance on the physical model after web-search remapping', async () => {
+    const service = new TestableOpenAIService();
+    const sessionKey = 'openai:openai-remap';
+    const staleSignature = 'gpt-oss-signature'.repeat(4);
+    const returnedSignature = 'gemini-signature'.repeat(4);
+    SignatureStore.store({
+      signature: staleSignature,
+      model: 'gpt-oss-120b-medium',
+      family: 'gpt-oss-120b-medium',
+      familyModel: 'gpt-oss-120b-medium',
+      sessionKey,
+      toolCallId: 'call_old',
+    });
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
+    mockGeminiClient.generateInternal.mockResolvedValue({
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [
+              {
+                functionCall: { id: 'call_new', name: 'lookup', args: {} },
+                thoughtSignature: returnedSignature,
+              },
+            ],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+    });
+
+    try {
+      await service.handleChatCompletions({
+        model: 'gpt-oss-120b-medium',
+        stream: false,
+        extra: { user_id: 'openai-remap' },
+        messages: [
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_old',
+                type: 'function',
+                function: { name: 'lookup', arguments: '{}' },
+              },
+            ],
+          },
+        ],
+        tools: [{ type: 'web_search_20250305' }],
+      } as any);
+
+      const internalRequest = mockGeminiClient.generateInternal.mock.calls[0][0];
+      const historicalToolCall = internalRequest.request.contents[0]?.parts.find(
+        (part: { functionCall?: unknown }) => part.functionCall,
+      );
+      expect(internalRequest.model).toBe('gemini-3-flash');
+      expect(historicalToolCall?.thoughtSignature).not.toBe(staleSignature);
+      expect(
+        SignatureStore.getAt({ model: 'gpt-oss-120b-medium', sessionKey, messageCount: 1 }),
+      ).toBeNull();
+      expect(
+        SignatureStore.getAt({ model: 'gemini-3-flash', sessionKey, messageCount: 1 }),
+      ).toBe(returnedSignature);
+    } finally {
+      SignatureStore.clear();
+    }
+  });
+
   it('retries Anthropic flow with the same error classification matrix', async () => {
     const service = new TestableAnthropicService();
     const token1 = createToken('acc-1');
@@ -1130,6 +1199,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       undefined,
       sessionKey,
       6,
+      'gemini-3-flash',
     );
 
     const chunks: string[] = [];
@@ -1216,8 +1286,10 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       completion_tokens: 4,
       total_tokens: 14,
     });
-    expect(SignatureStore.get(sessionKey)).toBe('stable signature');
-    expect(SignatureStore.getAt(sessionKey, 6)).toBe('stable signature');
+    expect(SignatureStore.get({ model: 'gemini-3-flash', sessionKey })).toBe('stable signature');
+    expect(SignatureStore.getAt({ model: 'gemini-3-flash', sessionKey, messageCount: 6 })).toBe(
+      'stable signature',
+    );
     expect(chunks.filter((chunk) => chunk.includes('data: [DONE]'))).toHaveLength(1);
 
     SignatureStore.clear(sessionKey);

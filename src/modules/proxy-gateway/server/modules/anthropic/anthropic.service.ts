@@ -5,6 +5,10 @@ import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemi
 import { Observable } from 'rxjs';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
+import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
+import { rewriteInvalidThoughtSignatureRequest } from '@/modules/proxy-gateway/antigravity/thought-signature-recovery';
+import type { ResolvedModelVariant } from '@/modules/proxy-gateway/antigravity/model-variant-registry';
+import { normalizeThoughtSignatureModelContext } from '@/modules/proxy-gateway/antigravity/thought-signature-model';
 import {
   PartProcessor,
   StreamingState,
@@ -12,6 +16,8 @@ import {
 import {
   ClaudeRequest,
   ClaudeResponse,
+  GeminiInternalRequest,
+  GeminiResponse,
   type UsageMetadata,
 } from '@/modules/proxy-gateway/antigravity/types';
 import { classifyStreamError } from '@/modules/proxy-gateway/antigravity/stream-error-utils';
@@ -29,6 +35,17 @@ import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-pro
 import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { classifyInvalidThoughtSignatureError } from './invalid-thought-signature-error';
+
+interface AnthropicRecoveryState {
+  attempted: boolean;
+}
+
+interface AnthropicUpstreamResult {
+  body: GeminiInternalRequest;
+  response?: GeminiResponse;
+  stream?: NodeJS.ReadableStream;
+}
 
 @Injectable()
 export class AnthropicService extends BaseProxyService {
@@ -125,97 +142,95 @@ export class AnthropicService extends BaseProxyService {
       const accountTargetModel = effectiveVariantRequest.variant
         ? accountRequest.model
         : effectiveTargetModel;
+      const signatureFamily =
+        effectiveVariantRequest.variant?.canonicalModel ??
+        normalizeThoughtSignatureModelContext({ model: accountTargetModel })?.family ??
+        null;
+      const recoveryState: AnthropicRecoveryState = { attempted: false };
 
       try {
-        const projectId = token.token.project_id ?? '';
-        const requestUserAgent = await resolveRequestUserAgent();
-        const geminiBody = transformClaudeRequestIn(
-          this.toClaudeRequest(accountRequest, sessionKey),
-          projectId,
-          requestUserAgent,
-          accountTargetModel,
-          'anthropic',
-        );
-        this.applyInternalGenerationConstraints(
-          geminiBody,
-          geminiBody.model,
-          token.id,
-          effectiveVariantRequest.variant ?? undefined,
-        );
+        const execution = await this.executeAnthropicAccountRequest({
+          accountId: token.id,
+          accessToken: token.token.access_token,
+          upstreamProxyUrl: token.token.upstream_proxy_url,
+          extraHeaders,
+          projectId: token.token.project_id ?? '',
+          request: this.toClaudeRequest(accountRequest, sessionKey),
+          targetModel: accountTargetModel,
+          signatureFamily,
+          signatureSessionKey: sessionKey,
+          stream: request.stream === true,
+          recoveryState,
+          variant: effectiveVariantRequest.variant ?? undefined,
+        });
+        this.markUpstreamSuccess(token.id, execution.body.model);
 
-        if (request.stream) {
-          const stream = await this.geminiClient.streamGenerateInternal(
-            geminiBody,
-            token.token.access_token,
-            token.token.upstream_proxy_url,
-            extraHeaders,
-          );
-          this.markUpstreamSuccess(token.id, geminiBody.model);
+        if (execution.stream) {
           return this.processAnthropicInternalStream(
-            stream,
-            geminiBody.model,
+            execution.stream,
+            execution.body.model,
             sessionKey,
             signatureMessageCount,
-          );
-        } else {
-          const response = await this.generateInternalWithStreamFallback(
-            geminiBody,
-            token.token.access_token,
-            token.token.upstream_proxy_url,
-            extraHeaders,
-          );
-          this.markUpstreamSuccess(token.id, geminiBody.model);
-          return this.toAnthropicChatResponse(
-            transformResponse(response, sessionKey, signatureMessageCount),
+            signatureFamily,
+            accountTargetModel,
           );
         }
+        return this.toAnthropicChatResponse(
+          transformResponse(execution.response!, {
+            model: execution.body.model,
+            family: signatureFamily,
+            familyModel: accountTargetModel,
+            signatureSessionKey: sessionKey,
+            signatureMessageCount,
+          }),
+        );
       } catch (error) {
+        if (classifyInvalidThoughtSignatureError(error)) {
+          throw error;
+        }
         if (error instanceof Error && this.isProjectContextError(error.message)) {
           this.logger.warn(
             `Anthropic request hit project context issue, retrying without project: ${error.message}`,
           );
           try {
-            const requestUserAgent = await resolveRequestUserAgent();
-            const fallbackBody = transformClaudeRequestIn(
-              this.toClaudeRequest(accountRequest, sessionKey),
-              '',
-              requestUserAgent,
-              accountTargetModel,
-              'anthropic',
-            );
-            this.applyInternalGenerationConstraints(
-              fallbackBody,
-              fallbackBody.model,
-              token.id,
-              effectiveVariantRequest.variant ?? undefined,
-            );
-            if (request.stream) {
-              const stream = await this.geminiClient.streamGenerateInternal(
-                fallbackBody,
-                token.token.access_token,
-                token.token.upstream_proxy_url,
-                extraHeaders,
-              );
-              this.markUpstreamSuccess(token.id, fallbackBody.model);
+            const execution = await this.executeAnthropicAccountRequest({
+              accountId: token.id,
+              accessToken: token.token.access_token,
+              upstreamProxyUrl: token.token.upstream_proxy_url,
+              extraHeaders,
+              projectId: '',
+              request: this.toClaudeRequest(accountRequest, sessionKey),
+              targetModel: accountTargetModel,
+              signatureFamily,
+              signatureSessionKey: sessionKey,
+              stream: request.stream === true,
+              recoveryState,
+              variant: effectiveVariantRequest.variant ?? undefined,
+            });
+            this.markUpstreamSuccess(token.id, execution.body.model);
+            if (execution.stream) {
               return this.processAnthropicInternalStream(
-                stream,
-                fallbackBody.model,
+                execution.stream,
+                execution.body.model,
                 sessionKey,
                 signatureMessageCount,
-              );
-            } else {
-              const response = await this.generateInternalWithStreamFallback(
-                fallbackBody,
-                token.token.access_token,
-                token.token.upstream_proxy_url,
-                extraHeaders,
-              );
-              this.markUpstreamSuccess(token.id, fallbackBody.model);
-              return this.toAnthropicChatResponse(
-                transformResponse(response, sessionKey, signatureMessageCount),
+                signatureFamily,
+                accountTargetModel,
               );
             }
+            return this.toAnthropicChatResponse(
+              transformResponse(execution.response!, {
+                model: execution.body.model,
+                family: signatureFamily,
+                familyModel: accountTargetModel,
+                signatureSessionKey: sessionKey,
+                signatureMessageCount,
+              }),
+            );
           } catch (fallbackErr) {
+            if (classifyInvalidThoughtSignatureError(fallbackErr)) {
+              throw fallbackErr;
+            }
             lastError = fallbackErr;
           }
         }
@@ -239,51 +254,54 @@ export class AnthropicService extends BaseProxyService {
               },
             });
             const downgradedRequest = this.toClaudeRequest(downgradedVariant.request, sessionKey);
-            const requestUserAgent = await resolveRequestUserAgent();
-            const downgradedBody = transformClaudeRequestIn(
-              downgradedRequest,
-              token.token.project_id ?? '',
-              requestUserAgent,
-              downgradedVariant.request.model,
-              'anthropic',
-            );
-            this.applyInternalGenerationConstraints(
-              downgradedBody,
-              downgradedVariant.request.model,
-              token.id,
-              downgradedVariant.variant ?? undefined,
-            );
-            if (request.stream) {
-              const stream = await this.geminiClient.streamGenerateInternal(
-                downgradedBody,
-                token.token.access_token,
-                token.token.upstream_proxy_url,
-                extraHeaders,
-              );
-              this.markUpstreamSuccess(token.id, downgradedBody.model);
+            const downgradedFamily =
+              downgradedVariant.variant?.canonicalModel ??
+              normalizeThoughtSignatureModelContext({
+                model: downgradedVariant.request.model,
+              })?.family ??
+              null;
+            const execution = await this.executeAnthropicAccountRequest({
+              accountId: token.id,
+              accessToken: token.token.access_token,
+              upstreamProxyUrl: token.token.upstream_proxy_url,
+              extraHeaders,
+              projectId: token.token.project_id ?? '',
+              request: downgradedRequest,
+              targetModel: downgradedVariant.request.model,
+              signatureFamily: downgradedFamily,
+              signatureSessionKey: sessionKey,
+              stream: request.stream === true,
+              recoveryState,
+              variant: downgradedVariant.variant ?? undefined,
+            });
+            this.markUpstreamSuccess(token.id, execution.body.model);
+            if (execution.stream) {
               return this.processAnthropicInternalStream(
-                stream,
-                downgradedBody.model,
+                execution.stream,
+                execution.body.model,
                 sessionKey,
                 signatureMessageCount,
+                downgradedFamily,
+                downgradedVariant.request.model,
               );
-            } else {
-              const response = await this.generateInternalWithStreamFallback(
-                downgradedBody,
-                token.token.access_token,
-                token.token.upstream_proxy_url,
-                extraHeaders,
-              );
-              this.markUpstreamSuccess(token.id, downgradedBody.model);
-              const transformed = this.toAnthropicChatResponse(
-                transformResponse(response, sessionKey, signatureMessageCount),
-              );
-              return {
-                ...transformed,
-                model: request.model,
-              };
             }
+            const transformed = this.toAnthropicChatResponse(
+              transformResponse(execution.response!, {
+                model: execution.body.model,
+                family: downgradedFamily,
+                familyModel: downgradedVariant.request.model,
+                signatureSessionKey: sessionKey,
+                signatureMessageCount,
+              }),
+            );
+            return {
+              ...transformed,
+              model: request.model,
+            };
           } catch (downgradeErr) {
+            if (classifyInvalidThoughtSignatureError(downgradeErr)) {
+              throw downgradeErr;
+            }
             lastError = downgradeErr;
           }
         }
@@ -301,17 +319,116 @@ export class AnthropicService extends BaseProxyService {
     throw lastError || new Error('Request failed after retries');
   }
 
+  private async executeAnthropicAccountRequest(params: {
+    accountId: string;
+    accessToken: string;
+    upstreamProxyUrl?: string;
+    extraHeaders: Record<string, string>;
+    projectId: string;
+    request: ClaudeRequest;
+    targetModel: string;
+    signatureFamily: string | null;
+    signatureSessionKey?: string;
+    stream: boolean;
+    recoveryState: AnthropicRecoveryState;
+    variant?: ResolvedModelVariant;
+  }): Promise<AnthropicUpstreamResult> {
+    const execute = async (
+      request: ClaudeRequest,
+      mode: 'normal' | 'invalid-thought-signature-recovery',
+    ): Promise<AnthropicUpstreamResult> => {
+      const requestUserAgent = await resolveRequestUserAgent();
+      const body = transformClaudeRequestIn(
+        request,
+        params.projectId,
+        requestUserAgent,
+        params.targetModel,
+        'anthropic',
+        {
+          mode,
+          signatureTargetFamily: params.signatureFamily,
+          signatureTargetFamilyModel: params.targetModel,
+        },
+      );
+      this.applyInternalGenerationConstraints(body, body.model, params.accountId, params.variant);
+
+      if (params.stream) {
+        return {
+          body,
+          stream: await this.geminiClient.streamGenerateInternal(
+            body,
+            params.accessToken,
+            params.upstreamProxyUrl,
+            params.extraHeaders,
+          ),
+        };
+      }
+
+      return {
+        body,
+        response: await this.generateInternalWithStreamFallback(
+          body,
+          params.accessToken,
+          params.upstreamProxyUrl,
+          params.extraHeaders,
+        ),
+      };
+    };
+
+    try {
+      return await execute(params.request, 'normal');
+    } catch (error) {
+      const classification = classifyInvalidThoughtSignatureError(error);
+      if (!classification || params.recoveryState.attempted) {
+        if (classification) {
+          this.logger.warn(
+            `Invalid thought signature recovery failed: status=400 source=${classification.source} model=${params.targetModel.trim().toLowerCase()} family=${params.signatureFamily ?? 'unbound'} stream=${params.stream} attempt=1 sessionPresent=${Boolean(params.signatureSessionKey)}`,
+          );
+        }
+        throw error;
+      }
+
+      params.recoveryState.attempted = true;
+      SignatureStore.clearRecoveryScope(params.signatureSessionKey);
+      this.logger.warn(
+        `Invalid thought signature recovery triggered: status=400 source=${classification.source} model=${params.targetModel.trim().toLowerCase()} family=${params.signatureFamily ?? 'unbound'} stream=${params.stream} attempt=1 sessionPresent=${Boolean(params.signatureSessionKey)}`,
+      );
+      try {
+        return await execute(
+          rewriteInvalidThoughtSignatureRequest(params.request),
+          'invalid-thought-signature-recovery',
+        );
+      } catch (recoveryError) {
+        const recoveryClassification = classifyInvalidThoughtSignatureError(recoveryError);
+        if (recoveryClassification) {
+          this.logger.warn(
+            `Invalid thought signature recovery failed: status=400 source=${recoveryClassification.source} model=${params.targetModel.trim().toLowerCase()} family=${params.signatureFamily ?? 'unbound'} stream=${params.stream} attempt=1 sessionPresent=${Boolean(params.signatureSessionKey)}`,
+          );
+        }
+        throw recoveryError;
+      }
+    }
+  }
+
   private processAnthropicInternalStream(
     upstreamStream: NodeJS.ReadableStream,
-    _model: string,
+    model: string,
     signatureSessionKey?: string,
     signatureMessageCount?: number,
+    signatureFamily?: string | null,
+    signatureFamilyModel?: string | null,
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      const state = new StreamingState(signatureSessionKey, signatureMessageCount);
+      const state = new StreamingState({
+        model,
+        family: signatureFamily,
+        familyModel: signatureFamilyModel,
+        sessionKey: signatureSessionKey,
+        messageCount: signatureMessageCount,
+      });
       const processor = new PartProcessor(state);
 
       let lastFinishReason: string | undefined;

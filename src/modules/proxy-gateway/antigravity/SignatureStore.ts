@@ -9,10 +9,18 @@
  * client's signature to overwrite another client's entry.
  */
 import { logger } from '@/shared/logging/logger';
+import {
+  areThoughtSignatureModelsCompatible,
+  normalizeThoughtSignatureModelContext,
+  type NormalizedThoughtSignatureModelContext,
+  type ThoughtSignatureModelContext,
+} from './thought-signature-model';
 
 interface StoredSignature {
   signature: string;
   updatedAt: number;
+  sourceModel: string;
+  sourceFamily: string | null;
 }
 
 interface StoredToolCallSignature extends StoredSignature {
@@ -30,7 +38,7 @@ class SignatureStoreImpl {
   private static readonly MAX_SESSION_ENTRIES = 500;
   private static readonly SESSION_TTL_MS = 60 * 60 * 1000;
 
-  private signature: string | null = null;
+  private signature: StoredSignature | null = null;
   private readonly signaturesBySession = new Map<string, SessionSignatureBucket>();
   private readonly signaturesByToolCallKey = new Map<string, StoredToolCallSignature>();
 
@@ -49,22 +57,32 @@ class SignatureStoreImpl {
    * A supplied tool-call id additionally makes the signature retrievable within
    * the same session via {@link getForToolCall}.
    */
-  public store(sig: string, sessionKey?: string, messageCount?: number, toolCallId?: string): void {
-    if (!sig) {
+  public store(
+    options: ThoughtSignatureModelContext & {
+      signature: string;
+      sessionKey?: string;
+      messageCount?: number;
+      toolCallId?: string;
+    },
+  ): void {
+    const { signature: sig, sessionKey, messageCount, toolCallId } = options;
+    const source = normalizeThoughtSignatureModelContext(options);
+    if (!sig || !source) {
       return;
     }
 
     if (toolCallId) {
-      this.storeByToolCallId(sig, toolCallId, sessionKey);
+      this.storeByToolCallId(sig, source, toolCallId, sessionKey);
     }
 
     if (!sessionKey) {
-      const existingLen = this.signature?.length ?? 0;
-      if (sig.length > existingLen) {
+      const existingLen = this.signature?.signature.length ?? 0;
+      const sameSource = this.signature ? this.hasSameSource(this.signature, source) : true;
+      if (!sameSource || sig.length > existingLen) {
         logger.info(
           `[ThoughtSig] Storing signature (length: ${sig.length}, replacing old: ${existingLen}, session: legacy)`,
         );
-        this.signature = sig;
+        this.signature = this.createStoredSignature(sig, source);
       } else {
         logger.debug(
           `[ThoughtSig] Skipping shorter signature (new length: ${sig.length}, existing: ${existingLen}, session: legacy)`,
@@ -89,7 +107,7 @@ class SignatureStoreImpl {
         if (cachedMessageCount > normalizedMessageCount) {
           bucket.signaturesByMessageCount.delete(cachedMessageCount);
           logger.info(
-            `[ThoughtSig] Rewind detected (session: ${sessionKey}, current: ${normalizedMessageCount}, removed future: ${cachedMessageCount})`,
+            `[ThoughtSig] Rewind detected (session: scoped, current: ${normalizedMessageCount}, removed future: ${cachedMessageCount})`,
           );
         }
       }
@@ -101,12 +119,17 @@ class SignatureStoreImpl {
         : bucket.signaturesByMessageCount.get(normalizedMessageCount)?.signature;
     const existingLen = existing ? existing.length : 0;
     const newLen = sig.length;
+    const existingStored =
+      normalizedMessageCount === undefined
+        ? bucket.legacySignature
+        : bucket.signaturesByMessageCount.get(normalizedMessageCount);
+    const sameSource = existingStored ? this.hasSameSource(existingStored, source) : true;
 
-    if (newLen > existingLen) {
+    if (!sameSource || newLen > existingLen) {
       logger.info(
-        `[ThoughtSig] Storing signature (length: ${newLen}, replacing old: ${existingLen}, session: ${sessionKey}, message count: ${normalizedMessageCount ?? 'legacy'})`,
+        `[ThoughtSig] Storing signature (length: ${newLen}, replacing old: ${existingLen}, session: scoped, message count: ${normalizedMessageCount ?? 'legacy'})`,
       );
-      const stored = { signature: sig, updatedAt: now };
+      const stored = this.createStoredSignature(sig, source, now);
       if (normalizedMessageCount === undefined) {
         bucket.legacySignature = stored;
       } else {
@@ -114,7 +137,7 @@ class SignatureStoreImpl {
       }
     } else {
       logger.debug(
-        `[ThoughtSig] Skipping shorter signature (new length: ${newLen}, existing: ${existingLen}, session: ${sessionKey}, message count: ${normalizedMessageCount ?? 'legacy'})`,
+        `[ThoughtSig] Skipping shorter signature (new length: ${newLen}, existing: ${existingLen}, session: scoped, message count: ${normalizedMessageCount ?? 'legacy'})`,
       );
     }
 
@@ -125,7 +148,12 @@ class SignatureStoreImpl {
   /**
    * Get the stored thought_signature without clearing it.
    */
-  public get(sessionKey?: string): string | null {
+  public get(options: ThoughtSignatureModelContext & { sessionKey?: string }): string | null {
+    const target = normalizeThoughtSignatureModelContext(options);
+    if (!target) {
+      return null;
+    }
+    const { sessionKey } = options;
     if (sessionKey) {
       const stored = this.signaturesBySession.get(sessionKey);
       if (!stored) {
@@ -139,22 +167,30 @@ class SignatureStoreImpl {
       let latestMessageCount = -1;
       let latestSignature: string | null = null;
       for (const [messageCount, cached] of stored.signaturesByMessageCount) {
-        if (messageCount > latestMessageCount) {
+        const compatible = this.readCompatibleSignature(cached, target);
+        if (compatible && messageCount > latestMessageCount) {
           latestMessageCount = messageCount;
-          latestSignature = cached.signature;
+          latestSignature = compatible;
         }
       }
-      return latestSignature ?? stored.legacySignature?.signature ?? null;
+      return latestSignature ?? this.readCompatibleSignature(stored.legacySignature, target);
     }
-    return this.signature;
+    return this.readCompatibleSignature(this.signature, target);
   }
 
   /**
    * Get the signature stored for a specific tool-call id in the given session.
    * A miss (no entry, or an expired one) returns null; it is a normal outcome, not an error.
    */
-  public getForToolCall(toolCallId: string | undefined, sessionKey?: string): string | null {
+  public getForToolCall(
+    options: ThoughtSignatureModelContext & { toolCallId: string | undefined; sessionKey?: string },
+  ): string | null {
+    const { toolCallId, sessionKey } = options;
     if (!toolCallId) {
+      return null;
+    }
+    const target = normalizeThoughtSignatureModelContext(options);
+    if (!target) {
       return null;
     }
     const toolCallKey = this.createToolCallKey(toolCallId, sessionKey);
@@ -167,14 +203,24 @@ class SignatureStoreImpl {
       return null;
     }
     this.touchToolCallEntry(toolCallKey, stored);
-    return stored.signature;
+    return this.readCompatibleSignature(stored, target);
   }
 
   /**
    * Get the signature produced for the assistant message at an exact conversation index.
    */
-  public getAt(sessionKey: string | undefined, messageCount: number): string | null {
+  public getAt(
+    options: ThoughtSignatureModelContext & {
+      sessionKey: string | undefined;
+      messageCount: number;
+    },
+  ): string | null {
+    const { sessionKey, messageCount } = options;
     if (!sessionKey) {
+      return null;
+    }
+    const target = normalizeThoughtSignatureModelContext(options);
+    if (!target) {
       return null;
     }
     const stored = this.signaturesBySession.get(sessionKey);
@@ -186,19 +232,20 @@ class SignatureStoreImpl {
       return null;
     }
     this.touchSession(sessionKey, stored);
-    return stored.signaturesByMessageCount.get(messageCount)?.signature ?? null;
+    return this.readCompatibleSignature(stored.signaturesByMessageCount.get(messageCount), target);
   }
 
   /**
    * Get and clear the stored thought_signature.
    */
-  public take(sessionKey?: string): string | null {
+  public take(options: ThoughtSignatureModelContext & { sessionKey?: string }): string | null {
+    const { sessionKey } = options;
     if (sessionKey) {
-      const signature = this.get(sessionKey);
+      const signature = this.get(options);
       this.clear(sessionKey);
       return signature;
     }
-    const sig = this.signature;
+    const sig = this.get(options);
     this.signature = null;
     return sig;
   }
@@ -221,21 +268,79 @@ class SignatureStoreImpl {
     this.signaturesByToolCallKey.clear();
   }
 
-  private storeByToolCallId(sig: string, toolCallId: string, sessionKey?: string): void {
+  /** Clears only the cache scope that could have contributed to one failed request. */
+  public clearRecoveryScope(sessionKey?: string): void {
+    if (sessionKey) {
+      this.clear(sessionKey);
+      return;
+    }
+
+    this.signature = null;
+    for (const [toolCallKey, stored] of this.signaturesByToolCallKey) {
+      if (!stored.sessionKey) {
+        this.signaturesByToolCallKey.delete(toolCallKey);
+      }
+    }
+  }
+
+  private storeByToolCallId(
+    sig: string,
+    source: NormalizedThoughtSignatureModelContext,
+    toolCallId: string,
+    sessionKey?: string,
+  ): void {
     this.evictExpiredToolCallEntries();
     const toolCallKey = this.createToolCallKey(toolCallId, sessionKey);
     const existing = this.signaturesByToolCallKey.get(toolCallKey);
     const existingLen = existing?.signature.length ?? 0;
-    if (sig.length > existingLen) {
+    const sameSource = existing ? this.hasSameSource(existing, source) : true;
+    if (!sameSource || sig.length > existingLen) {
       this.touchToolCallEntry(toolCallKey, {
         sessionKey,
-        signature: sig,
-        updatedAt: Date.now(),
+        ...this.createStoredSignature(sig, source),
       });
     } else if (existing) {
       this.touchToolCallEntry(toolCallKey, existing);
     }
     this.evictOverflowToolCallEntries();
+  }
+
+  private createStoredSignature(
+    signature: string,
+    source: NormalizedThoughtSignatureModelContext,
+    updatedAt = Date.now(),
+  ): StoredSignature {
+    return {
+      signature,
+      updatedAt,
+      sourceModel: source.model,
+      sourceFamily: source.family,
+    };
+  }
+
+  private hasSameSource(
+    stored: StoredSignature,
+    source: NormalizedThoughtSignatureModelContext,
+  ): boolean {
+    return areThoughtSignatureModelsCompatible(
+      { model: stored.sourceModel, family: stored.sourceFamily },
+      source,
+    );
+  }
+
+  private readCompatibleSignature(
+    stored: StoredSignature | undefined | null,
+    target: NormalizedThoughtSignatureModelContext,
+  ): string | null {
+    if (!stored) {
+      return null;
+    }
+    return areThoughtSignatureModelsCompatible(
+      { model: stored.sourceModel, family: stored.sourceFamily },
+      target,
+    )
+      ? stored.signature
+      : null;
   }
 
   private createToolCallKey(toolCallId: string, sessionKey?: string): string {

@@ -84,6 +84,9 @@ interface OpenAIResponsesStreamingMapperOptions {
   responseId: string;
   signatureMessageCount?: number;
   signatureSessionKey?: string;
+  signatureSourceModel?: string;
+  signatureSourceFamily?: string | null;
+  signatureSourceFamilyModel?: string | null;
 }
 
 export class OpenAIResponsesStreamingMapper {
@@ -138,11 +141,7 @@ export class OpenAIResponsesStreamingMapper {
     }
 
     if (signature) {
-      SignatureStore.store(
-        signature,
-        this.options.signatureSessionKey,
-        this.options.signatureMessageCount,
-      );
+      this.storeSignature(signature);
     }
 
     if (part.thought && part.text) {
@@ -349,12 +348,7 @@ export class OpenAIResponsesStreamingMapper {
       : splitName.name;
     const callId = functionCall.id || `call_${this.options.responseId}_${this.nextOutputIndex}`;
     if (signature) {
-      SignatureStore.store(
-        signature,
-        this.options.signatureSessionKey,
-        this.options.signatureMessageCount,
-        callId,
-      );
+      this.storeSignature(signature, callId);
     }
     if (functionCall.id && this.emittedToolCallIds.has(callId)) {
       return [];
@@ -481,6 +475,21 @@ export class OpenAIResponsesStreamingMapper {
     );
 
     return events;
+  }
+
+  private storeSignature(signature: string, toolCallId?: string): void {
+    if (!this.options.signatureSourceModel) {
+      return;
+    }
+    SignatureStore.store({
+      signature,
+      model: this.options.signatureSourceModel,
+      family: this.options.signatureSourceFamily,
+      familyModel: this.options.signatureSourceFamilyModel,
+      sessionKey: this.options.signatureSessionKey,
+      messageCount: this.options.signatureMessageCount,
+      toolCallId,
+    });
   }
 
   private processText(text: string): string[] {

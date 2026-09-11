@@ -198,6 +198,25 @@ describe('groupModelsByProvider', () => {
     expect(stats.providers[0].earliestReset).toBe('2026-07-30T08:00:00.000Z');
   });
 
+  it('keeps registered exact-presentation families conservative in provider summaries', () => {
+    const stats = groupModelsByProvider(
+      {
+        'gemini-3.7-flash-low': { percentage: 90, resetTime: '2026-07-30T10:00:00Z' },
+        'gemini-3.7-flash-high': { percentage: 15, resetTime: '2026-07-30T08:00:00Z' },
+      },
+      {},
+    );
+
+    expect(stats.providers[0].models).toEqual([
+      {
+        id: 'gemini-3.7-flash',
+        percentage: 15,
+        resetTime: '2026-07-30T08:00:00Z',
+      },
+    ]);
+    expect(stats.overallPercentage).toBe(15);
+  });
+
   it('should sort providers: claude first, gemini second, others last', () => {
     const models = {
       'gpt-4': { percentage: 50, resetTime: '' },

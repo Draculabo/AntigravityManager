@@ -13,6 +13,10 @@ import fs from 'fs';
 import path from 'path';
 import { applyDeviceProfile, generateDeviceProfile } from '@/modules/identity-profile/ipc/handler';
 import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
+import {
+  mutateAccountIndex,
+  readAccountIndex,
+} from '@/modules/account/persistence/account-index-store';
 
 // Mock dependencies
 vi.mock('../../shared/platform/paths', async () => {
@@ -243,5 +247,110 @@ describe('Account Handler', () => {
     const finalSnapshot = getSwitchGuardSnapshot();
     expect(finalSnapshot.activeOwner).toBeNull();
     expect(finalSnapshot.pendingCount).toBe(0);
+  });
+
+  it('preserves concurrent account fields when a paused switch commits its owned fields', async () => {
+    const account = await addAccountSnapshot();
+    const accountFilePath = path.join(testAgentDir, 'accounts.json');
+    const concurrentProfile = {
+      machineId: 'concurrent-machine',
+      macMachineId: 'concurrent-mac',
+      devDeviceId: 'concurrent-dev',
+      sqmId: '{CONCURRENT-SQM}',
+    };
+    const concurrentHistory = [
+      {
+        id: 'concurrent-history',
+        createdAt: 1_788_739_200,
+        label: 'concurrent',
+        profile: concurrentProfile,
+        isCurrent: true,
+      },
+    ];
+    const futureLastUsed = '2099-01-01T00:00:00.000Z';
+
+    let releaseStart!: () => void;
+    let startEntered!: () => void;
+    const startBarrier = new Promise<void>((resolve) => {
+      startEntered = resolve;
+    });
+    const startBlocker = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    vi.mocked(startAntigravity).mockImplementationOnce(async () => {
+      startEntered();
+      await startBlocker;
+    });
+
+    const switchPromise = switchAccount(account.id);
+    await startBarrier;
+
+    await mutateAccountIndex(accountFilePath, (draft) => {
+      const latest = draft[account.id];
+      latest.name = 'Concurrent rename';
+      latest.deviceProfile = concurrentProfile;
+      latest.deviceHistory = concurrentHistory;
+      latest.last_used = futureLastUsed;
+    });
+    releaseStart();
+    await switchPromise;
+
+    expect((await readAccountIndex(accountFilePath))[account.id]).toEqual({
+      ...account,
+      name: 'Concurrent rename',
+      deviceProfile: concurrentProfile,
+      deviceHistory: concurrentHistory,
+      last_used: futureLastUsed,
+    });
+  });
+
+  it('does not resurrect an account deleted while its switch is paused', async () => {
+    const account = await addAccountSnapshot();
+    const accountFilePath = path.join(testAgentDir, 'accounts.json');
+
+    let releaseStart!: () => void;
+    let startEntered!: () => void;
+    const startBarrier = new Promise<void>((resolve) => {
+      startEntered = resolve;
+    });
+    const startBlocker = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    vi.mocked(startAntigravity).mockImplementationOnce(async () => {
+      startEntered();
+      await startBlocker;
+    });
+
+    const switchPromise = switchAccount(account.id);
+    await startBarrier;
+    await mutateAccountIndex(accountFilePath, (draft) => {
+      delete draft[account.id];
+    });
+    releaseStart();
+    await switchPromise;
+
+    expect(await readAccountIndex(accountFilePath)).toEqual({});
+  });
+
+  it('commits a generated switch profile when its starting identity snapshot is unchanged', async () => {
+    const account = await addAccountSnapshot();
+    const accountFilePath = path.join(testAgentDir, 'accounts.json');
+
+    await switchAccount(account.id);
+
+    const persisted = (await readAccountIndex(accountFilePath))[account.id];
+    expect(persisted.deviceProfile).toEqual({
+      machineId: 'auth0|user_test',
+      macMachineId: 'mac-machine-id',
+      devDeviceId: 'dev-device-id',
+      sqmId: '{SQM-ID}',
+    });
+    expect(persisted.deviceHistory).toEqual([
+      expect.objectContaining({
+        label: 'auto_generated',
+        profile: persisted.deviceProfile,
+        isCurrent: true,
+      }),
+    ]);
   });
 });

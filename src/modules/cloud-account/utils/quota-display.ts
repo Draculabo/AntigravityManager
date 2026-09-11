@@ -1,10 +1,15 @@
 import { differenceInHours, differenceInMinutes, isBefore } from 'date-fns';
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { aggregateVisibleQuotaModelFamilies } from '@/modules/cloud-account/utils/quota-model-families';
+import {
+  applyQuotaLowerBound,
+  collectQuotaGroupBucketPercentages,
+  getMinimumQuotaPercentage,
+} from '@/modules/cloud-account/utils/quota-groups';
 
 const HIGH_QUOTA_PERCENTAGE = 80;
 const MEDIUM_QUOTA_PERCENTAGE = 20;
-const CLAUDE_GROUP_PATTERN = /claude|gpt|3p/i;
+const CLAUDE_GROUP_MATCH_TOKENS = ['claude', 'gpt', '3p'] as const;
 
 export type QuotaStatus = 'high' | 'medium' | 'low';
 export type AccountSortKey =
@@ -117,48 +122,11 @@ function getAveragePercentage(
   return modelEntries.reduce((sum, [, model]) => sum + model.percentage, 0) / modelEntries.length;
 }
 
-export function getQuotaGroupBucketPercentages(account: CloudAccount, pattern?: RegExp): number[] {
-  const groups = account.quota?.quota_groups ?? [];
-  const percentages: number[] = [];
-
-  for (const group of groups) {
-    const groupText = [group.display_name, group.description].filter(Boolean).join(' ');
-    const groupMatches = pattern ? pattern.test(groupText) : true;
-
-    for (const bucket of group.buckets) {
-      const bucketText = [bucket.bucket_id, bucket.window, bucket.display_name, bucket.description]
-        .filter(Boolean)
-        .join(' ');
-
-      if (!groupMatches && pattern && !pattern.test(bucketText)) {
-        continue;
-      }
-
-      percentages.push(Math.round(bucket.remaining_fraction * 100));
-    }
-  }
-
-  return percentages;
-}
-
-function getMinimumPercentage(values: number[]): number | null {
-  if (values.length === 0) {
-    return null;
-  }
-
-  return Math.min(...values);
-}
-
-function applyQuotaGroupLowerBound(modelScore: number, groupScore: number | null): number {
-  if (groupScore === null) {
-    return modelScore;
-  }
-
-  if (modelScore === 0) {
-    return groupScore;
-  }
-
-  return Math.min(modelScore, groupScore);
+export function getQuotaGroupBucketPercentages(
+  account: CloudAccount,
+  matchTokens?: readonly string[],
+): number[] {
+  return collectQuotaGroupBucketPercentages(account.quota?.quota_groups, matchTokens);
 }
 
 export function getLowestEffectiveQuotaPercentage(account: CloudAccount): number | null {
@@ -167,7 +135,7 @@ export function getLowestEffectiveQuotaPercentage(account: CloudAccount): number
   );
   const groupPercentages = getQuotaGroupBucketPercentages(account);
 
-  return getMinimumPercentage([...modelPercentages, ...groupPercentages]);
+  return getMinimumQuotaPercentage([...modelPercentages, ...groupPercentages]);
 }
 
 function modelMatchesText(modelName: string, displayName: string | undefined, pattern: RegExp) {
@@ -186,17 +154,23 @@ export function getAccountSortValue(
 
   switch (sortKey) {
     case 'quota-overall':
-      return applyQuotaGroupLowerBound(
-        getAveragePercentage(visibleModelEntries),
-        getMinimumPercentage(getQuotaGroupBucketPercentages(account)),
+      return (
+        applyQuotaLowerBound(
+          getAveragePercentage(visibleModelEntries),
+          getMinimumQuotaPercentage(getQuotaGroupBucketPercentages(account)),
+        ) ?? 0
       );
     case 'quota-claude': {
       const claude = visibleModelEntries.filter(([modelName, model]) =>
         modelMatchesText(modelName, model.display_name, /claude/i),
       );
-      return applyQuotaGroupLowerBound(
-        getAveragePercentage(claude),
-        getMinimumPercentage(getQuotaGroupBucketPercentages(account, CLAUDE_GROUP_PATTERN)),
+      return (
+        applyQuotaLowerBound(
+          claude.length > 0 ? getAveragePercentage(claude) : null,
+          getMinimumQuotaPercentage(
+            getQuotaGroupBucketPercentages(account, CLAUDE_GROUP_MATCH_TOKENS),
+          ),
+        ) ?? 0
       );
     }
     case 'quota-pro3': {

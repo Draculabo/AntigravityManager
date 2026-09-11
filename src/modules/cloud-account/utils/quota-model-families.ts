@@ -2,6 +2,7 @@ import type { CloudQuotaModelInfo } from '@/modules/cloud-account/types';
 
 const FAMILY_DISPLAY_NAMES: Record<string, string> = {
   'gemini-3.1-pro': 'Gemini 3.1 Pro',
+  'gemini-3.7-flash': 'Gemini 3.7 Flash',
   'gemini-3.5-flash': 'Gemini 3.5 Flash',
   'gemini-flash-lite': 'Gemini Flash Lite',
   'gemini-pro-image': 'Gemini Pro Image',
@@ -11,6 +12,12 @@ const FAMILY_DISPLAY_NAMES: Record<string, string> = {
   'claude-opus-4-5': 'Claude Opus 4.5',
   'gpt-oss-120b': 'GPT OSS 120B',
 };
+
+const EXACT_PRESENTATION_FAMILIES = new Set([
+  'gemini-3.1-pro',
+  'gemini-3.7-flash',
+  'gemini-3.5-flash',
+]);
 
 function normalizeModelId(modelId: string): string {
   return modelId
@@ -46,6 +53,10 @@ export function getQuotaModelFamilyId(modelId: string): string {
     normalized.startsWith('gemini-pro-agent')
   ) {
     return 'gemini-3.1-pro';
+  }
+
+  if (normalized.startsWith('gemini-3.7-flash') || normalized.startsWith('gemini-3.6-flash')) {
+    return 'gemini-3.7-flash';
   }
 
   if (
@@ -144,5 +155,44 @@ export function aggregateVisibleQuotaModelFamilies(
       visibleModels[familyId] = info;
     }
   }
+  return visibleModels;
+}
+
+/**
+ * Keep conservative aggregation for summaries while exposing physical quota
+ * slots for the tiered text families the product manages explicitly.
+ */
+export function getVisibleQuotaModelsForPresentation(
+  models: Record<string, CloudQuotaModelInfo>,
+  visibilitySettings: Record<string, boolean>,
+): Record<string, CloudQuotaModelInfo> {
+  const conservativeFamilies = aggregateQuotaModelFamilies(models);
+  const entriesByFamily = new Map<string, Array<[string, CloudQuotaModelInfo]>>();
+
+  for (const [modelId, info] of Object.entries(models)) {
+    const normalizedModelId = normalizeModelId(modelId);
+    const familyId = getQuotaModelFamilyId(normalizedModelId);
+    const entries = entriesByFamily.get(familyId) ?? [];
+    entries.push([modelId, info]);
+    entriesByFamily.set(familyId, entries);
+  }
+
+  const visibleModels: Record<string, CloudQuotaModelInfo> = {};
+  for (const [familyId, entries] of entriesByFamily) {
+    const visibleEntries = entries.filter(([modelId]) => visibilitySettings[modelId] !== false);
+    if (visibleEntries.length === 0) {
+      continue;
+    }
+
+    if (EXACT_PRESENTATION_FAMILIES.has(familyId)) {
+      for (const [modelId, info] of visibleEntries) {
+        visibleModels[normalizeModelId(modelId)] = info;
+      }
+      continue;
+    }
+
+    visibleModels[familyId] = conservativeFamilies[familyId];
+  }
+
   return visibleModels;
 }

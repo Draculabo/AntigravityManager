@@ -113,8 +113,13 @@ export class StreamingState {
   private parseErrorCount: number = 0;
 
   constructor(
-    public readonly signatureSessionKey?: string,
-    public readonly messageCount?: number,
+    public readonly signatureContext: {
+      model?: string;
+      family?: string | null;
+      familyModel?: string | null;
+      sessionKey?: string;
+      messageCount?: number;
+    } = {},
   ) {}
 
   public emit<EventType extends keyof StreamSseEventPayloads>(
@@ -337,6 +342,21 @@ export class StreamingState {
   public storeSignature(signature?: string) {
     this.signatures.store(signature);
   }
+
+  public persistSignature(signature: string, toolCallId?: string): void {
+    if (!this.signatureContext.model) {
+      return;
+    }
+    SignatureStore.store({
+      signature,
+      model: this.signatureContext.model,
+      family: this.signatureContext.family,
+      familyModel: this.signatureContext.familyModel,
+      sessionKey: this.signatureContext.sessionKey,
+      messageCount: this.signatureContext.messageCount,
+      toolCallId,
+    });
+  }
   public handleParseError(rawData: string): string[] {
     const chunks: string[] = [];
     this.parseErrorCount++;
@@ -398,6 +418,9 @@ export class PartProcessor {
   public process(part: GeminiPart): string[] {
     const chunks: string[] = [];
     const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature);
+    if (signature) {
+      this.state.persistSignature(signature);
+    }
 
     // 1. Handle FunctionCall
     if (part.functionCall) {
@@ -562,13 +585,7 @@ export class PartProcessor {
 
     if (signature) {
       toolUse.signature = signature;
-      // Store signature to global storage for replay in subsequent requests
-      SignatureStore.store(
-        signature,
-        this.state.signatureSessionKey,
-        this.state.messageCount,
-        toolId,
-      );
+      this.state.persistSignature(signature, toolId);
     }
 
     chunks.push(...this.state.startBlock('Function', toolUse));

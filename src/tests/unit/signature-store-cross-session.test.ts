@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 
 describe('SignatureStore cross-session tool-call isolation', () => {
+  const model = 'gemini-3-flash';
   afterEach(() => {
     SignatureStore.clear();
   });
@@ -12,16 +13,38 @@ describe('SignatureStore cross-session tool-call isolation', () => {
     const sessionASignature = 'signature-from-session-a'.repeat(2);
     const sessionBSignature = 'signature-from-session-b'.repeat(3);
 
-    SignatureStore.store(sessionASignature, 'session-a', 1, toolCallId);
-    expect(SignatureStore.getForToolCall(toolCallId, 'session-a')).toBe(sessionASignature);
+    SignatureStore.store({
+      signature: sessionASignature,
+      model,
+      sessionKey: 'session-a',
+      messageCount: 1,
+      toolCallId,
+    });
+    expect(SignatureStore.getForToolCall({ model, toolCallId, sessionKey: 'session-a' })).toBe(
+      sessionASignature,
+    );
 
-    SignatureStore.store(sessionBSignature, 'session-b', 1, toolCallId);
+    SignatureStore.store({
+      signature: sessionBSignature,
+      model,
+      sessionKey: 'session-b',
+      messageCount: 1,
+      toolCallId,
+    });
 
-    expect(SignatureStore.getForToolCall(toolCallId)).toBeNull();
-    expect(SignatureStore.getForToolCall(toolCallId, 'session-a')).toBe(sessionASignature);
-    expect(SignatureStore.getForToolCall(toolCallId, 'session-b')).toBe(sessionBSignature);
-    expect(SignatureStore.getAt('session-a', 1)).toBe(sessionASignature);
-    expect(SignatureStore.getAt('session-b', 1)).toBe(sessionBSignature);
+    expect(SignatureStore.getForToolCall({ model, toolCallId })).toBeNull();
+    expect(SignatureStore.getForToolCall({ model, toolCallId, sessionKey: 'session-a' })).toBe(
+      sessionASignature,
+    );
+    expect(SignatureStore.getForToolCall({ model, toolCallId, sessionKey: 'session-b' })).toBe(
+      sessionBSignature,
+    );
+    expect(SignatureStore.getAt({ model, sessionKey: 'session-a', messageCount: 1 })).toBe(
+      sessionASignature,
+    );
+    expect(SignatureStore.getAt({ model, sessionKey: 'session-b', messageCount: 1 })).toBe(
+      sessionBSignature,
+    );
   });
 
   it('keeps direct lookup when the same session updates the tool call', () => {
@@ -29,9 +52,23 @@ describe('SignatureStore cross-session tool-call isolation', () => {
     const shorterSignature = 'short-signature'.repeat(2);
     const longerSignature = 'longer-signature'.repeat(4);
 
-    SignatureStore.store(shorterSignature, 'session-a', 1, toolCallId);
-    SignatureStore.store(longerSignature, 'session-a', 1, toolCallId);
+    SignatureStore.store({
+      signature: shorterSignature,
+      model,
+      sessionKey: 'session-a',
+      messageCount: 1,
+      toolCallId,
+    });
+    SignatureStore.store({
+      signature: longerSignature,
+      model,
+      sessionKey: 'session-a',
+      messageCount: 1,
+      toolCallId,
+    });
 
-    expect(SignatureStore.getForToolCall(toolCallId, 'session-a')).toBe(longerSignature);
+    expect(SignatureStore.getForToolCall({ model, toolCallId, sessionKey: 'session-a' })).toBe(
+      longerSignature,
+    );
   });
 });

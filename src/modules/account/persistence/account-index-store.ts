@@ -1,15 +1,81 @@
 import fs from 'fs';
 import path from 'path';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
 import { AccountSchema, type Account } from '@/modules/account/types';
 import { logger } from '@/shared/logging/logger';
 
-type AccountIndex = Record<string, Account>;
+export type AccountIndex = Record<string, Account>;
 
 const AccountIndexSchema = z.record(z.string(), AccountSchema);
 
-export function loadAccountIndex(filePath: string): AccountIndex {
+interface AccountIndexGate {
+  pending: number;
+  tail: Promise<void>;
+}
+
+const accountIndexGates = new Map<string, AccountIndexGate>();
+const accountIndexTransactionContext = new AsyncLocalStorage<boolean>();
+
+export class AccountIndexTransactionReentryError extends Error {
+  constructor() {
+    super('Account index transactions cannot be nested');
+    this.name = 'AccountIndexTransactionReentryError';
+  }
+}
+
+export class AccountIndexAsyncMutationError extends Error {
+  constructor() {
+    super('Account index mutation callback must be synchronous');
+    this.name = 'AccountIndexAsyncMutationError';
+  }
+}
+
+function getIndexKey(filePath: string): string {
+  const resolvedPath = path.resolve(filePath);
+  return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
+function assertNotInIndexTransaction(): void {
+  if (!accountIndexTransactionContext.getStore()) {
+    return;
+  }
+
+  logger.warn('Rejected reentrant account index transaction');
+  throw new AccountIndexTransactionReentryError();
+}
+
+function runWithIndexGate<T>(indexKey: string, operation: () => T | Promise<T>): Promise<T> {
+  let gate = accountIndexGates.get(indexKey);
+  if (!gate) {
+    gate = { pending: 0, tail: Promise.resolve() };
+    accountIndexGates.set(indexKey, gate);
+  }
+
+  const previous = gate.tail;
+  let release!: () => void;
+  const ticket = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  gate.tail = previous.then(() => ticket);
+  gate.pending += 1;
+
+  return previous.then(operation).finally(() => {
+    release();
+    gate.pending -= 1;
+    if (gate.pending === 0) {
+      accountIndexGates.delete(indexKey);
+    }
+  });
+}
+
+function cloneBoundaryValue<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function readValidatedIndex(filePath: string): AccountIndex {
   if (!fs.existsSync(filePath)) {
     return {};
   }
@@ -19,37 +85,88 @@ export function loadAccountIndex(filePath: string): AccountIndex {
     const rawIndex: unknown = JSON.parse(content);
     return AccountIndexSchema.parse(rawIndex);
   } catch (error) {
-    logger.error('Failed to load accounts index', error);
+    logger.error('Failed to read accounts index', error);
     throw error;
   }
 }
 
-export function saveAccountIndex(filePath: string, accounts: AccountIndex): void {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' && value !== null && 'then' in value) ||
+    (typeof value === 'function' && 'then' in value)
+  );
+}
 
-  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  const content = `${JSON.stringify(accounts, null, 2)}\n`;
+function cleanTemporaryIndex(tempPath: string): void {
+  if (!fs.existsSync(tempPath)) {
+    return;
+  }
 
   try {
+    fs.unlinkSync(tempPath);
+  } catch (cleanupError) {
+    logger.warn('Failed to clean up temporary accounts index', cleanupError);
+  }
+}
+
+function commitIndex(filePath: string, accounts: AccountIndex): void {
+  const directory = path.dirname(filePath);
+  const tempPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  const content = `${JSON.stringify(accounts, null, 2)}\n`;
+  let failureStage = 'create-directory';
+
+  try {
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+
+    failureStage = 'write-temporary-file';
     fs.writeFileSync(tempPath, content, 'utf-8');
-    try {
-      fs.renameSync(tempPath, filePath);
-    } catch {
-      fs.copyFileSync(tempPath, filePath);
-      fs.unlinkSync(tempPath);
-    }
+    failureStage = 'replace-index';
+    fs.renameSync(tempPath, filePath);
   } catch (error) {
-    if (fs.existsSync(tempPath)) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch (cleanupError) {
-        logger.warn('Failed to clean up temporary accounts index', cleanupError);
-      }
-    }
-    logger.error('Failed to save accounts index', error);
+    cleanTemporaryIndex(tempPath);
+    logger.error(`Failed to commit accounts index during ${failureStage}`, error);
     throw error;
   }
+}
+
+/**
+ * Reads a detached, schema-validated snapshot through the account-index serialization gate.
+ * Callers must not retain a snapshot and later write it back as a whole index.
+ */
+export function readAccountIndex(filePath: string): Promise<AccountIndex> {
+  const indexKey = getIndexKey(filePath);
+  assertNotInIndexTransaction();
+
+  return runWithIndexGate(indexKey, () => cloneBoundaryValue(readValidatedIndex(filePath)));
+}
+
+/**
+ * Serializes one synchronous read-modify-write operation for an account-index file.
+ * The draft is transaction-owned, the complete result is validated before replacement, and
+ * the callback result is detached before it crosses the transaction boundary.
+ */
+export function mutateAccountIndex<T>(
+  filePath: string,
+  mutation: (draft: AccountIndex) => T,
+): Promise<T> {
+  const indexKey = getIndexKey(filePath);
+  assertNotInIndexTransaction();
+
+  return runWithIndexGate(indexKey, () =>
+    accountIndexTransactionContext.run(true, () => {
+      const draft = cloneBoundaryValue(readValidatedIndex(filePath));
+      const result = mutation(draft);
+      if (isPromiseLike(result)) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new AccountIndexAsyncMutationError();
+      }
+
+      const detachedResult = cloneBoundaryValue(result);
+      const validatedIndex = AccountIndexSchema.parse(draft);
+      commitIndex(filePath, validatedIndex);
+      return detachedResult;
+    }),
+  );
 }

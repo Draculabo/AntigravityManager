@@ -143,6 +143,10 @@ export class OpenAIService extends BaseProxyService {
           requestUserAgent,
           accountTargetModel,
           'openai',
+          {
+            signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
+            signatureTargetFamilyModel: accountTargetModel,
+          },
         );
         this.applyInternalGenerationConstraints(
           geminiBody,
@@ -168,6 +172,9 @@ export class OpenAIService extends BaseProxyService {
               sessionKey,
               clientToolNames,
               claudeRequest.messages.length,
+              geminiBody.model,
+              effectiveVariantRequest.variant?.canonicalModel ?? null,
+              accountTargetModel,
             );
           } catch (streamError) {
             this.logger.warn(
@@ -186,11 +193,13 @@ export class OpenAIService extends BaseProxyService {
             this.logger.log(
               `Upstream response snippet after stream fallback: ${safeStringifyPacket(response).substring(0, 500)}`,
             );
-            const claudeResponse = transformResponse(
-              response,
-              sessionKey,
-              claudeRequest.messages.length,
-            );
+            const claudeResponse = transformResponse(response, {
+              model: geminiBody.model,
+              family: effectiveVariantRequest.variant?.canonicalModel ?? null,
+              familyModel: accountTargetModel,
+              signatureSessionKey: sessionKey,
+              signatureMessageCount: claudeRequest.messages.length,
+            });
             const openaiResponse = convertClaudeToOpenAIResponse(
               claudeResponse,
               request.model,
@@ -217,11 +226,13 @@ export class OpenAIService extends BaseProxyService {
             `Upstream response snippet (non-stream): ${safeStringifyPacket(response).substring(0, 500)}`,
           );
           // Transform Gemini response to OpenAI format
-          const claudeResponse = transformResponse(
-            response,
-            sessionKey,
-            claudeRequest.messages.length,
-          );
+          const claudeResponse = transformResponse(response, {
+            model: geminiBody.model,
+            family: effectiveVariantRequest.variant?.canonicalModel ?? null,
+            familyModel: accountTargetModel,
+            signatureSessionKey: sessionKey,
+            signatureMessageCount: claudeRequest.messages.length,
+          });
           this.logger.log(
             `Transformed Claude response snippet: ${safeStringifyPacket(claudeResponse).substring(0, 500)}`,
           );
@@ -241,6 +252,10 @@ export class OpenAIService extends BaseProxyService {
               requestUserAgent,
               accountTargetModel,
               'openai',
+              {
+                signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
+                signatureTargetFamilyModel: accountTargetModel,
+              },
             );
             this.applyInternalGenerationConstraints(
               fallbackBody,
@@ -263,6 +278,9 @@ export class OpenAIService extends BaseProxyService {
                 sessionKey,
                 clientToolNames,
                 claudeRequest.messages.length,
+                fallbackBody.model,
+                effectiveVariantRequest.variant?.canonicalModel ?? null,
+                accountTargetModel,
               );
             }
 
@@ -273,11 +291,13 @@ export class OpenAIService extends BaseProxyService {
               extraHeaders,
             );
             this.markUpstreamSuccess(token.id, fallbackBody.model);
-            const claudeResponse = transformResponse(
-              response,
-              sessionKey,
-              claudeRequest.messages.length,
-            );
+            const claudeResponse = transformResponse(response, {
+              model: fallbackBody.model,
+              family: effectiveVariantRequest.variant?.canonicalModel ?? null,
+              familyModel: accountTargetModel,
+              signatureSessionKey: sessionKey,
+              signatureMessageCount: claudeRequest.messages.length,
+            });
             return convertClaudeToOpenAIResponse(claudeResponse, request.model, clientToolNames);
           } catch (fallbackErr) {
             lastError = fallbackErr;
@@ -305,6 +325,9 @@ export class OpenAIService extends BaseProxyService {
     signatureSessionKey?: string,
     clientToolNames?: ReadonlySet<string>,
     signatureMessageCount?: number,
+    signatureSourceModel?: string,
+    signatureSourceFamily?: string | null,
+    signatureSourceFamilyModel?: string | null,
   ): Observable<string> {
     if (outputProtocol === 'responses') {
       return this.processResponsesStreamResponse(
@@ -313,6 +336,9 @@ export class OpenAIService extends BaseProxyService {
         signatureSessionKey,
         clientToolNames,
         signatureMessageCount,
+        signatureSourceModel,
+        signatureSourceFamily,
+        signatureSourceFamilyModel,
       );
     }
     return this.processStreamResponse(
@@ -321,6 +347,9 @@ export class OpenAIService extends BaseProxyService {
       clientToolNames,
       signatureSessionKey,
       signatureMessageCount,
+      signatureSourceModel,
+      signatureSourceFamily,
+      signatureSourceFamilyModel,
     );
   }
 
@@ -330,6 +359,9 @@ export class OpenAIService extends BaseProxyService {
     signatureSessionKey?: string,
     clientToolNames?: ReadonlySet<string>,
     signatureMessageCount?: number,
+    signatureSourceModel?: string,
+    signatureSourceFamily?: string | null,
+    signatureSourceFamilyModel?: string | null,
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
@@ -341,6 +373,9 @@ export class OpenAIService extends BaseProxyService {
         responseId: `resp_${uuidv4()}`,
         signatureMessageCount,
         signatureSessionKey,
+        signatureSourceModel,
+        signatureSourceFamily,
+        signatureSourceFamilyModel,
       });
       let heartbeatTimer: NodeJS.Timeout | undefined;
 
@@ -471,6 +506,9 @@ export class OpenAIService extends BaseProxyService {
     clientToolNames?: ReadonlySet<string>,
     signatureSessionKey?: string,
     signatureMessageCount?: number,
+    signatureSourceModel?: string,
+    signatureSourceFamily?: string | null,
+    signatureSourceFamilyModel?: string | null,
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
@@ -564,7 +602,16 @@ export class OpenAIService extends BaseProxyService {
                     : undefined;
                 const signature = decodeSignature(rawSignature);
                 if (signature) {
-                  SignatureStore.store(signature, signatureSessionKey, signatureMessageCount);
+                  if (signatureSourceModel) {
+                    SignatureStore.store({
+                      signature,
+                      model: signatureSourceModel,
+                      family: signatureSourceFamily,
+                      familyModel: signatureSourceFamilyModel,
+                      sessionKey: signatureSessionKey,
+                      messageCount: signatureMessageCount,
+                    });
+                  }
                 }
 
                 const functionCall = toUnknownRecord(part.functionCall);

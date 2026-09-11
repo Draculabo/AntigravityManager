@@ -23,6 +23,7 @@ function createMapper(): OpenAIResponsesStreamingMapper {
   return new OpenAIResponsesStreamingMapper({
     model: 'gemini-3-pro',
     responseId: 'resp_test',
+    signatureSourceModel: 'gemini-3-pro',
   });
 }
 
@@ -398,7 +399,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
       'response.custom_tool_call_input.done',
       'response.output_item.done',
     ]);
-    expect(SignatureStore.get()).toBe('stored thought signature');
+    expect(SignatureStore.get({ model: 'gemini-3-pro' })).toBe('stored thought signature');
   });
 
   it('stores thought signatures under the supplied session key', () => {
@@ -407,14 +408,42 @@ describe('OpenAIResponsesStreamingMapper', () => {
       responseId: 'resp_session_test',
       signatureMessageCount: 4,
       signatureSessionKey: 'openai:session-a',
+      signatureSourceModel: 'gemini-3-pro',
     });
     const encodedSignature = Buffer.from('session a thought signature').toString('base64');
 
     mapper.processPart({ thought: true, thoughtSignature: encodedSignature });
 
-    expect(SignatureStore.get('openai:session-a')).toBe('session a thought signature');
-    expect(SignatureStore.getAt('openai:session-a', 4)).toBe('session a thought signature');
-    expect(SignatureStore.get()).toBeNull();
+    expect(SignatureStore.get({ model: 'gemini-3-pro', sessionKey: 'openai:session-a' })).toBe(
+      'session a thought signature',
+    );
+    expect(
+      SignatureStore.getAt({
+        model: 'gemini-3-pro',
+        sessionKey: 'openai:session-a',
+        messageCount: 4,
+      }),
+    ).toBe('session a thought signature');
+    expect(SignatureStore.get({ model: 'gemini-3-pro' })).toBeNull();
+  });
+
+  it('uses the physical upstream model, not the client response model, as provenance', () => {
+    const mapper = new OpenAIResponsesStreamingMapper({
+      model: 'gpt-4o',
+      responseId: 'resp_physical_provenance',
+      signatureSessionKey: 'openai:physical-model',
+      signatureSourceModel: 'gemini-3-flash',
+    });
+
+    mapper.processPart({
+      thought: true,
+      thoughtSignature: Buffer.from('physical model signature').toString('base64'),
+    });
+
+    expect(
+      SignatureStore.get({ model: 'gemini-3-flash', sessionKey: 'openai:physical-model' }),
+    ).toBe('physical model signature');
+    expect(SignatureStore.get({ model: 'gpt-4o', sessionKey: 'openai:physical-model' })).toBeNull();
   });
 
   it('indexes a tool signature by both session and tool-call id', () => {
@@ -423,6 +452,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
       responseId: 'resp_tool_signature',
       signatureMessageCount: 4,
       signatureSessionKey: 'openai:session-a',
+      signatureSourceModel: 'gemini-3-pro',
     });
     const encodedSignature = Buffer.from('tool-specific signature').toString('base64');
 
@@ -431,10 +461,20 @@ describe('OpenAIResponsesStreamingMapper', () => {
       thoughtSignature: encodedSignature,
     });
 
-    expect(SignatureStore.getForToolCall('call_shared', 'openai:session-a')).toBe(
-      'tool-specific signature',
-    );
-    expect(SignatureStore.getForToolCall('call_shared', 'openai:session-b')).toBeNull();
+    expect(
+      SignatureStore.getForToolCall({
+        model: 'gemini-3-pro',
+        toolCallId: 'call_shared',
+        sessionKey: 'openai:session-a',
+      }),
+    ).toBe('tool-specific signature');
+    expect(
+      SignatureStore.getForToolCall({
+        model: 'gemini-3-pro',
+        toolCallId: 'call_shared',
+        sessionKey: 'openai:session-b',
+      }),
+    ).toBeNull();
   });
 
   it('emits grounding metadata as visible Responses text', () => {

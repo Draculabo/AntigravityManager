@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { isEqual } from 'lodash-es';
 import {
   getAccountsFilePath,
   getBackupsDir,
@@ -35,13 +36,13 @@ import {
 import { runWithSwitchGuard } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { executeSwitchFlow } from '@/modules/antigravity-runtime/switch/switchFlow';
 import {
-  loadAccountIndex,
-  saveAccountIndex,
+  mutateAccountIndex,
+  readAccountIndex,
+  type AccountIndex,
 } from '@/modules/account/persistence/account-index-store';
 import { shell } from 'electron';
 import { withTimingTrace } from '@/shared/observability/timingTrace';
 
-type AccountIndex = Record<string, Account>;
 const SWITCH_EXIT_TIMEOUT_MS = 10000;
 
 function getDeviceHistory(account: Account): DeviceProfileVersion[] {
@@ -77,20 +78,29 @@ function bindDeviceProfileToAccount(
 }
 
 /**
- * Loads the accounts index from the file system.
- * @returns {AccountIndex} The accounts index.
+ * Reads a detached accounts snapshot through the persistence transaction gate.
  */
-function loadAccountsIndex(): AccountIndex {
-  return loadAccountIndex(getAccountsFilePath());
+function readAccountsIndex(): Promise<AccountIndex> {
+  return readAccountIndex(getAccountsFilePath());
 }
 
 /**
- * Saves the accounts index to the file system.
- * @param accounts {AccountIndex} The accounts index to save.
- * @throws {Error} If the accounts index cannot be saved.
+ * Mutates the latest accounts index through the persistence transaction gate.
  */
-function saveAccountsIndex(accounts: AccountIndex): void {
-  saveAccountIndex(getAccountsFilePath(), accounts);
+function mutateAccountsIndex<T>(mutation: (draft: AccountIndex) => T): Promise<T> {
+  return mutateAccountIndex(getAccountsFilePath(), mutation);
+}
+
+function sanitizeAccountId(accountId: string): string {
+  return accountId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+}
+
+function getAccountOrThrow(accounts: AccountIndex, accountId: string): Account {
+  const account = accounts[accountId];
+  if (!account) {
+    throw new Error(`Account not found: ${accountId}`);
+  }
+  return account;
 }
 
 /**
@@ -99,7 +109,7 @@ function saveAccountsIndex(accounts: AccountIndex): void {
  * @throws {Error} If the accounts index cannot be loaded.
  */
 export async function listAccountsData(): Promise<Account[]> {
-  const accountIndex = loadAccountsIndex();
+  const accountIndex = await readAccountsIndex();
   const accountList = Object.values(accountIndex);
   // NOTE: Sort by last_used descending
   accountList.sort((leftAccount, rightAccount) => {
@@ -128,7 +138,7 @@ export async function addAccountSnapshot(): Promise<Account> {
     throw new Error(message);
   }
 
-  const accounts = loadAccountsIndex();
+  const accounts = await readAccountsIndex();
   const now = new Date().toISOString();
 
   // NOTE Find existing account by email
@@ -163,7 +173,7 @@ export async function addAccountSnapshot(): Promise<Account> {
     // NOTE Use existing backup path if available, otherwise generate new one
     backupPath = account.backup_file || path.join(getBackupsDir(), `${account.id}.json`);
 
-    logger.info(`Updating existing account: ${currentAccountInfo.email}`);
+    logger.info(`Updating existing account: ${sanitizeAccountId(account.id)}`);
   } else {
     const accountId = uuidv4();
 
@@ -190,7 +200,7 @@ export async function addAccountSnapshot(): Promise<Account> {
       last_used: now,
     };
     accounts[accountId] = account;
-    logger.info(`Creating new account: ${currentAccountInfo.email}`);
+    logger.info(`Creating new account: ${sanitizeAccountId(accountId)}`);
   }
 
   // NOTE  Backup data from DB
@@ -203,11 +213,26 @@ export async function addAccountSnapshot(): Promise<Account> {
   }
   fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2));
 
-  // NOTE Update backup_file in account object and save
-  account.backup_file = backupPath;
-  saveAccountsIndex(accounts);
+  // NOTE Re-read the latest index before committing account metadata.
+  return mutateAccountsIndex((latestAccounts) => {
+    const latestAccount = Object.values(latestAccounts).find(
+      (candidate) => candidate.email === currentAccountInfo.email,
+    );
 
-  return account;
+    if (latestAccount) {
+      const defaultName = currentAccountInfo.email.split('@')[0];
+      if (currentAccountInfo.name && currentAccountInfo.name !== defaultName) {
+        latestAccount.name = currentAccountInfo.name;
+      }
+      latestAccount.last_used = now;
+      latestAccount.backup_file = backupPath;
+      return latestAccount;
+    }
+
+    account.backup_file = backupPath;
+    latestAccounts[account.id] = account;
+    return account;
+  });
 }
 
 /**
@@ -220,11 +245,12 @@ export async function switchAccount(
   appTarget?: AntigravityAppTarget,
 ): Promise<void> {
   await runWithSwitchGuard('local-account-switch', async () => {
-    logger.info(`Switching to account: ${accountId}`);
+    const sanitizedAccountId = sanitizeAccountId(accountId);
+    logger.info(`Switching to account: ${sanitizedAccountId}`);
     await withTimingTrace(
       'switch.local.prepare',
       {
-        accountId,
+        accountId: sanitizedAccountId,
         appTarget: appTarget || 'classic',
       },
       async (trace) => {
@@ -234,11 +260,11 @@ export async function switchAccount(
       },
     );
 
-    const accounts = loadAccountsIndex();
-    const account = accounts[accountId];
-    if (!account) {
-      throw new Error(`Account not found: ${accountId}`);
-    }
+    const accounts = await readAccountsIndex();
+    const account = getAccountOrThrow(accounts, accountId);
+    const startingDeviceProfile = structuredClone(account.deviceProfile);
+    const startingDeviceHistory = structuredClone(account.deviceHistory);
+    let generatedIdentityState = false;
 
     // NOTE Get backup file path from account data
     const backupPath = account.backup_file || path.join(getBackupsDir(), `${accountId}.json`);
@@ -254,6 +280,7 @@ export async function switchAccount(
       const generated = generateDeviceProfile();
       saveGlobalOriginalProfile(generated);
       bindDeviceProfileToAccount(account, generated, 'auto_generated', true);
+      generatedIdentityState = true;
     }
 
     const usesCredentialStore =
@@ -287,8 +314,36 @@ export async function switchAccount(
         }
       },
       afterSwitchSuccess: async () => {
-        account.last_used = new Date().toISOString();
-        saveAccountsIndex(accounts);
+        const completedAt = new Date().toISOString();
+        await mutateAccountsIndex((latestAccounts) => {
+          const latestAccount = latestAccounts[accountId];
+          if (!latestAccount) {
+            logger.warn(`Account was deleted before switch completion: ${sanitizedAccountId}`);
+            return;
+          }
+
+          latestAccount.last_used =
+            latestAccount.last_used.localeCompare(completedAt) >= 0
+              ? latestAccount.last_used
+              : completedAt;
+
+          if (!generatedIdentityState) {
+            return;
+          }
+
+          const identitySnapshotUnchanged =
+            isEqual(latestAccount.deviceProfile, startingDeviceProfile) &&
+            isEqual(latestAccount.deviceHistory, startingDeviceHistory);
+          if (!identitySnapshotUnchanged) {
+            logger.warn(
+              `Preserved newer account identity state after switch: ${sanitizedAccountId}`,
+            );
+            return;
+          }
+
+          latestAccount.deviceProfile = account.deviceProfile;
+          latestAccount.deviceHistory = account.deviceHistory;
+        });
       },
     });
   });
@@ -299,11 +354,8 @@ export async function previewGenerateIdentityProfile(): Promise<DeviceProfile> {
 }
 
 export async function getIdentityProfiles(accountId: string): Promise<DeviceProfilesSnapshot> {
-  const accounts = loadAccountsIndex();
-  const account = accounts[accountId];
-  if (!account) {
-    throw new Error(`Account not found: ${accountId}`);
-  }
+  const accounts = await readAccountsIndex();
+  const account = getAccountOrThrow(accounts, accountId);
 
   let currentStorage: DeviceProfile | undefined;
   try {
@@ -324,11 +376,7 @@ export async function bindIdentityProfile(
   accountId: string,
   mode: 'capture' | 'generate',
 ): Promise<DeviceProfile> {
-  const accounts = loadAccountsIndex();
-  const account = accounts[accountId];
-  if (!account) {
-    throw new Error(`Account not found: ${accountId}`);
-  }
+  getAccountOrThrow(await readAccountsIndex(), accountId);
 
   let profile: DeviceProfile;
   if (mode === 'capture') {
@@ -340,8 +388,9 @@ export async function bindIdentityProfile(
   ensureGlobalOriginalFromCurrentStorage();
   saveGlobalOriginalProfile(profile);
   applyDeviceProfile(profile);
-  bindDeviceProfileToAccount(account, profile, mode, true);
-  saveAccountsIndex(accounts);
+  await mutateAccountsIndex((accounts) => {
+    bindDeviceProfileToAccount(getAccountOrThrow(accounts, accountId), profile, mode, true);
+  });
   return profile;
 }
 
@@ -349,33 +398,32 @@ export async function bindIdentityProfileWithPayload(
   accountId: string,
   profile: DeviceProfile,
 ): Promise<DeviceProfile> {
-  const accounts = loadAccountsIndex();
-  const account = accounts[accountId];
-  if (!account) {
-    throw new Error(`Account not found: ${accountId}`);
-  }
+  getAccountOrThrow(await readAccountsIndex(), accountId);
 
   ensureGlobalOriginalFromCurrentStorage();
   saveGlobalOriginalProfile(profile);
   applyDeviceProfile(profile);
-  bindDeviceProfileToAccount(account, profile, 'generated', true);
-  saveAccountsIndex(accounts);
+  await mutateAccountsIndex((accounts) => {
+    bindDeviceProfileToAccount(getAccountOrThrow(accounts, accountId), profile, 'generated', true);
+  });
   return profile;
 }
 
 export async function applyBoundIdentityProfile(accountId: string): Promise<DeviceProfile> {
-  const accounts = loadAccountsIndex();
-  const account = accounts[accountId];
-  if (!account) {
-    throw new Error(`Account not found: ${accountId}`);
-  }
+  const account = getAccountOrThrow(await readAccountsIndex(), accountId);
   if (!account.deviceProfile) {
     throw new Error('Account has no bound device profile');
   }
 
   applyDeviceProfile(account.deviceProfile);
-  account.last_used = new Date().toISOString();
-  saveAccountsIndex(accounts);
+  const completedAt = new Date().toISOString();
+  await mutateAccountsIndex((accounts) => {
+    const latestAccount = getAccountOrThrow(accounts, accountId);
+    latestAccount.last_used =
+      latestAccount.last_used.localeCompare(completedAt) >= 0
+        ? latestAccount.last_used
+        : completedAt;
+  });
   return account.deviceProfile;
 }
 
@@ -383,20 +431,13 @@ export async function restoreIdentityProfileRevision(
   accountId: string,
   versionId: string,
 ): Promise<DeviceProfile> {
-  const accounts = loadAccountsIndex();
-  const account = accounts[accountId];
-  if (!account) {
-    throw new Error(`Account not found: ${accountId}`);
-  }
+  const account = getAccountOrThrow(await readAccountsIndex(), accountId);
 
   let targetProfile: DeviceProfile | null = null;
   if (versionId === 'baseline') {
     targetProfile = loadGlobalOriginalProfile();
     if (!targetProfile) {
       throw new Error('Global original profile not found');
-    }
-    for (const version of getDeviceHistory(account)) {
-      version.isCurrent = false;
     }
   } else if (versionId === 'current') {
     targetProfile = account.deviceProfile || null;
@@ -410,14 +451,27 @@ export async function restoreIdentityProfileRevision(
       throw new Error('Device profile version not found');
     }
     targetProfile = targetVersion.profile;
-    for (const version of history) {
-      version.isCurrent = version.id === versionId;
-    }
   }
 
   applyDeviceProfile(targetProfile);
-  account.deviceProfile = targetProfile;
-  saveAccountsIndex(accounts);
+  await mutateAccountsIndex((accounts) => {
+    const latestAccount = getAccountOrThrow(accounts, accountId);
+    if (versionId === 'baseline') {
+      for (const version of getDeviceHistory(latestAccount)) {
+        version.isCurrent = false;
+      }
+    } else if (versionId !== 'current') {
+      const history = getDeviceHistory(latestAccount);
+      if (!history.some((version) => version.id === versionId)) {
+        throw new Error('Device profile version not found');
+      }
+      for (const version of history) {
+        version.isCurrent = version.id === versionId;
+      }
+    }
+
+    latestAccount.deviceProfile = targetProfile;
+  });
   return targetProfile;
 }
 
@@ -429,43 +483,36 @@ export async function deleteIdentityProfileRevision(
     throw new Error('Original profile cannot be deleted');
   }
 
-  const accounts = loadAccountsIndex();
-  const account = accounts[accountId];
-  if (!account) {
-    throw new Error(`Account not found: ${accountId}`);
-  }
+  await mutateAccountsIndex((accounts) => {
+    const account = getAccountOrThrow(accounts, accountId);
+    const history = getDeviceHistory(account);
+    if (history.some((version) => version.id === versionId && version.isCurrent)) {
+      throw new Error('Currently bound profile cannot be deleted');
+    }
 
-  const history = getDeviceHistory(account);
-  if (history.some((version) => version.id === versionId && version.isCurrent)) {
-    throw new Error('Currently bound profile cannot be deleted');
-  }
-
-  const before = history.length;
-  account.deviceHistory = history.filter((version) => version.id !== versionId);
-  if (account.deviceHistory.length === before) {
-    throw new Error('Historical device profile not found');
-  }
-
-  saveAccountsIndex(accounts);
+    const before = history.length;
+    account.deviceHistory = history.filter((version) => version.id !== versionId);
+    if (account.deviceHistory.length === before) {
+      throw new Error('Historical device profile not found');
+    }
+  });
 }
 
 export async function restoreBaselineProfile(accountId: string): Promise<DeviceProfile> {
-  const accounts = loadAccountsIndex();
-  const account = accounts[accountId];
-  if (!account) {
-    throw new Error(`Account not found: ${accountId}`);
-  }
+  getAccountOrThrow(await readAccountsIndex(), accountId);
 
   const baseline = loadGlobalOriginalProfile();
   if (!baseline) {
     throw new Error('Global original profile not found');
   }
 
-  account.deviceProfile = baseline;
-  for (const version of getDeviceHistory(account)) {
-    version.isCurrent = false;
-  }
-  saveAccountsIndex(accounts);
+  await mutateAccountsIndex((accounts) => {
+    const account = getAccountOrThrow(accounts, accountId);
+    account.deviceProfile = baseline;
+    for (const version of getDeviceHistory(account)) {
+      version.isCurrent = false;
+    }
+  });
 
   return baseline;
 }
@@ -484,13 +531,9 @@ export async function openIdentityStorageFolder(): Promise<void> {
  * @throws {Error} If the account cannot be found or the backup file cannot be found.
  */
 export async function deleteAccount(accountId: string): Promise<void> {
-  logger.info(`Deleting account: ${accountId}`);
+  logger.info(`Deleting account: ${sanitizeAccountId(accountId)}`);
 
-  const accounts = loadAccountsIndex();
-  const account = accounts[accountId];
-  if (!account) {
-    throw new Error(`Account not found: ${accountId}`);
-  }
+  const account = getAccountOrThrow(await readAccountsIndex(), accountId);
 
   // NOTE Remove backup file using stored path
   const backupPath = account.backup_file || path.join(getBackupsDir(), `${accountId}.json`);
@@ -504,7 +547,8 @@ export async function deleteAccount(accountId: string): Promise<void> {
     }
   }
 
-  // NOTE Remove from index
-  delete accounts[accountId];
-  saveAccountsIndex(accounts);
+  // NOTE Deletion wins over any operation that retained an earlier detached snapshot.
+  await mutateAccountsIndex((accounts) => {
+    delete accounts[accountId];
+  });
 }

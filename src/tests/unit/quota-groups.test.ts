@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  applyQuotaLowerBound,
+  collectQuotaGroupBucketPercentages,
+  getMinimumQuotaPercentage,
   isWeeklyQuotaBucket,
   selectWeeklyQuotaItems,
 } from '@/modules/cloud-account/utils/quota-groups';
@@ -67,6 +70,57 @@ describe('weekly quota groups', () => {
         resetTime: '2026-09-02T00:00:00Z',
       }),
     ]);
+  });
+});
+
+describe('quota group score primitives', () => {
+  it('collects every bucket from every positively matched group', () => {
+    expect(collectQuotaGroupBucketPercentages(groups, ['models/CLAUDE'])).toEqual([55, 100]);
+    expect(getMinimumQuotaPercentage([55, 100])).toBe(55);
+  });
+
+  it('matches bucket metadata when the group metadata is not specific', () => {
+    const genericGroups: CloudQuotaGroup[] = [
+      {
+        display_name: 'Shared limits',
+        buckets: [
+          {
+            bucket_id: '3p-5h',
+            window: '5h',
+            remaining_fraction: 0.8,
+            reset_time: '',
+          },
+          {
+            bucket_id: 'claude-weekly',
+            window: 'weekly',
+            remaining_fraction: 0.06,
+            reset_time: '',
+          },
+        ],
+      },
+    ];
+
+    expect(collectQuotaGroupBucketPercentages(genericGroups, ['claude', '3p'])).toEqual([80, 6]);
+  });
+
+  it('does not infer an unrelated provider when no token matches', () => {
+    expect(collectQuotaGroupBucketPercentages(groups, ['vendor-experimental-v9'])).toEqual([]);
+  });
+
+  it('combines nullable model and group scores without treating a real zero as missing', () => {
+    expect({
+      both: applyQuotaLowerBound(75, 20),
+      modelOnly: applyQuotaLowerBound(75, null),
+      groupOnly: applyQuotaLowerBound(null, 20),
+      realZero: applyQuotaLowerBound(0, 20),
+      neither: applyQuotaLowerBound(null, null),
+    }).toEqual({
+      both: 20,
+      modelOnly: 75,
+      groupOnly: 20,
+      realZero: 0,
+      neither: null,
+    });
   });
 });
 

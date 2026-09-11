@@ -52,6 +52,14 @@ interface ResolvedRequestConfig {
   imageConfig: ImageConfig | null;
 }
 
+export type ClaudeRequestMapperMode = 'normal' | 'invalid-thought-signature-recovery';
+
+export interface ClaudeRequestMapperOptions {
+  mode?: ClaudeRequestMapperMode;
+  signatureTargetFamily?: string | null;
+  signatureTargetFamilyModel?: string | null;
+}
+
 type RequestType = 'agent' | 'web_search' | 'image_gen';
 
 const AGENT_CREDIT_TYPES = ['GOOGLE_ONE_AI'];
@@ -103,6 +111,7 @@ export function transformClaudeRequestIn(
   userAgent?: string,
   resolvedModel?: string,
   source: 'anthropic' | 'openai' = 'anthropic',
+  options: ClaudeRequestMapperOptions = {},
 ): GeminiInternalRequest {
   const { extraSystemMessages, messages } = extractEmbeddedSystemMessages(claudeReq.messages);
   const signatureSessionKey = isString(claudeReq.metadata?.signature_session_key)
@@ -133,6 +142,12 @@ export function transformClaudeRequestIn(
 
   // Resolve grounding config
   const requestConfig = resolveRequestConfig(claudeReq.model, mappedModel, normalizedTools);
+  const mapperMode = options.mode ?? 'normal';
+  const signatureTarget = {
+    model: requestConfig.finalModel,
+    family: options.signatureTargetFamily,
+    familyModel: options.signatureTargetFamilyModel,
+  };
 
   const allowDummyThought = requestConfig.finalModel.startsWith('gemini-');
 
@@ -151,7 +166,10 @@ export function transformClaudeRequestIn(
   }
 
   if (isThinkingEnabled) {
-    const sessionSignature = SignatureStore.get(signatureSessionKey);
+    const sessionSignature =
+      mapperMode === 'normal'
+        ? SignatureStore.get({ ...signatureTarget, sessionKey: signatureSessionKey })
+        : null;
     const hasFunctionCalls = messages.some((m) => {
       if (Array.isArray(m.content)) {
         return m.content.some((b) => b.type === 'tool_use');
@@ -185,6 +203,9 @@ export function transformClaudeRequestIn(
     allowDummyThought,
     requestConfig.finalModel,
     signatureSessionKey,
+    options.signatureTargetFamily,
+    options.signatureTargetFamilyModel,
+    mapperMode,
   );
 
   // 3. Tools
@@ -697,6 +718,9 @@ function buildContents(
   allowDummyThought: boolean,
   mappedModel: string,
   signatureSessionKey?: string,
+  signatureTargetFamily?: string | null,
+  signatureTargetFamilyModel?: string | null,
+  mapperMode: ClaudeRequestMapperMode = 'normal',
 ): GeminiContent[] {
   const contents: GeminiContent[] = [];
   let lastThoughtSignature: string | null = null;
@@ -737,12 +761,27 @@ function buildContents(
           functionCall: { name: block.name, args: block.input, id: block.id },
         };
         toolIdToName.set(block.id, block.name);
+        const signatureTarget = {
+          model: mappedModel,
+          family: signatureTargetFamily,
+          familyModel: signatureTargetFamilyModel,
+        };
         const finalSig =
           block.signature ||
-          SignatureStore.getForToolCall(block.id, signatureSessionKey) ||
-          lastThoughtSignature ||
-          SignatureStore.getAt(signatureSessionKey, i) ||
-          SignatureStore.get(signatureSessionKey);
+          (mapperMode === 'normal'
+            ? SignatureStore.getForToolCall({
+                ...signatureTarget,
+                toolCallId: block.id,
+                sessionKey: signatureSessionKey,
+              }) ||
+              lastThoughtSignature ||
+              SignatureStore.getAt({
+                ...signatureTarget,
+                sessionKey: signatureSessionKey,
+                messageCount: i,
+              }) ||
+              SignatureStore.get({ ...signatureTarget, sessionKey: signatureSessionKey })
+            : lastThoughtSignature);
         if (finalSig) {
           part.thoughtSignature = finalSig;
           part.thought_signature = finalSig;

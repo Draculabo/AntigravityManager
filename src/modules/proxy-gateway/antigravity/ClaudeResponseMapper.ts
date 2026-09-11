@@ -10,6 +10,12 @@ import {
 import { decodeSignature } from './signature-utils';
 import { toAnthropicMessageId } from './anthropic-message-id';
 import { SignatureStore } from './SignatureStore';
+import type { ThoughtSignatureModelContext } from './thought-signature-model';
+
+export interface ClaudeResponseMapperOptions extends Partial<ThoughtSignatureModelContext> {
+  signatureSessionKey?: string;
+  signatureMessageCount?: number;
+}
 
 /**
  * Non-streaming response processor (Gemini -> Claude)
@@ -23,10 +29,7 @@ class NonStreamingProcessor {
   private trailingSignature: string | null = null;
   private hasToolCall: boolean = false;
 
-  constructor(
-    private readonly signatureSessionKey?: string,
-    private readonly signatureMessageCount?: number,
-  ) {}
+  constructor(private readonly options: ClaudeResponseMapperOptions = {}) {}
 
   public process(geminiResponse: GeminiResponse): ClaudeResponse {
     const candidate = geminiResponse.candidates?.[0];
@@ -84,12 +87,7 @@ class NonStreamingProcessor {
       const toolId = fc.id || `${fc.name}-${uuidv4()}`;
 
       if (signature) {
-        SignatureStore.store(
-          signature,
-          this.signatureSessionKey,
-          this.signatureMessageCount,
-          toolId,
-        );
+        this.storeSignature(signature, toolId);
       }
 
       const toolUse: ContentBlock = {
@@ -105,7 +103,7 @@ class NonStreamingProcessor {
     }
 
     if (signature) {
-      SignatureStore.store(signature, this.signatureSessionKey, this.signatureMessageCount);
+      this.storeSignature(signature);
     }
 
     // 2. Handle Text / Thinking
@@ -177,6 +175,21 @@ class NonStreamingProcessor {
         this.flushText();
       }
     }
+  }
+
+  private storeSignature(signature: string, toolCallId?: string): void {
+    if (!this.options.model) {
+      return;
+    }
+    SignatureStore.store({
+      signature,
+      model: this.options.model,
+      family: this.options.family,
+      familyModel: this.options.familyModel,
+      sessionKey: this.options.signatureSessionKey,
+      messageCount: this.options.signatureMessageCount,
+      toolCallId,
+    });
   }
 
   private processGrounding(grounding: GroundingMetadata) {
@@ -287,9 +300,8 @@ class NonStreamingProcessor {
  */
 export function transformResponse(
   geminiResponse: GeminiResponse,
-  signatureSessionKey?: string,
-  signatureMessageCount?: number,
+  options: ClaudeResponseMapperOptions = {},
 ): ClaudeResponse {
-  const processor = new NonStreamingProcessor(signatureSessionKey, signatureMessageCount);
+  const processor = new NonStreamingProcessor(options);
   return processor.process(geminiResponse);
 }

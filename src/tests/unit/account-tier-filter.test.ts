@@ -160,6 +160,12 @@ describe('account tier filtering', () => {
               {
                 bucket_id: '3p-5h',
                 window: '5h',
+                remaining_fraction: 0.8,
+                reset_time: '',
+              },
+              {
+                bucket_id: '3p-weekly',
+                window: 'weekly',
                 remaining_fraction: 0.02,
                 reset_time: '',
               },
@@ -197,6 +203,60 @@ describe('account tier filtering', () => {
     expect(result.map((account) => account.id)).toEqual([
       'model-medium-group-healthy',
       'model-high-group-low',
+    ]);
+  });
+
+  it('keeps a real zero model score below a positive group lower bound', () => {
+    const accounts = [
+      createAccount('model-zero-group-high', {
+        tier: 'Pro',
+        models: {
+          'claude-sonnet-4-5': { percentage: 0, resetTime: '' },
+        },
+        quotaGroups: [
+          {
+            display_name: 'Claude and GPT models',
+            buckets: [
+              {
+                bucket_id: '3p-5h',
+                window: '5h',
+                remaining_fraction: 0.8,
+                reset_time: '',
+              },
+            ],
+          },
+        ],
+      }),
+      createAccount('model-positive-group-low', {
+        tier: 'Pro',
+        models: {
+          'claude-sonnet-4-5': { percentage: 10, resetTime: '' },
+        },
+        quotaGroups: [
+          {
+            display_name: 'Claude and GPT models',
+            buckets: [
+              {
+                bucket_id: '3p-5h',
+                window: '5h',
+                remaining_fraction: 0.1,
+                reset_time: '',
+              },
+            ],
+          },
+        ],
+      }),
+    ];
+
+    const result = filterAndSortCloudAccounts(accounts, {
+      selectedTierKeys: ['pro'],
+      sortKey: 'quota-claude',
+      modelVisibility: {},
+    });
+
+    expect(result.map((account) => account.id)).toEqual([
+      'model-positive-group-low',
+      'model-zero-group-high',
     ]);
   });
 

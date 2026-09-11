@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   aggregateQuotaModelFamilies,
   aggregateVisibleQuotaModelFamilies,
+  getVisibleQuotaModelsForPresentation,
   getQuotaModelFamilyId,
 } from '@/modules/cloud-account/utils/quota-model-families';
 import type { CloudQuotaModelInfo } from '@/modules/cloud-account/types';
@@ -41,6 +42,22 @@ describe('quota model families', () => {
     });
   });
 
+  it('aggregates Gemini 3.7 physical models and Gemini 3.6 compatibility ids', () => {
+    const aggregated = aggregateQuotaModelFamilies({
+      'gemini-3.7-flash-high': quota(80, '2026-07-30T12:00:00.000Z'),
+      'gemini-3.7-flash-medium': quota(50, '2026-07-30T10:00:00.000Z'),
+      'gemini-3.6-flash-low': quota(10, '2026-07-30T08:00:00.000Z'),
+    });
+
+    expect(aggregated).toEqual({
+      'gemini-3.7-flash': {
+        percentage: 10,
+        resetTime: '2026-07-30T08:00:00.000Z',
+        display_name: 'Gemini 3.7 Flash',
+      },
+    });
+  });
+
   it('keeps unknown models, including names containing thinking', () => {
     const aggregated = aggregateQuotaModelFamilies({
       'vendor-experimental-thinking-v9': quota(23, 'not-a-date'),
@@ -68,5 +85,54 @@ describe('quota model families', () => {
     );
 
     expect(aggregated['gemini-3.1-pro'].percentage).toBe(5);
+  });
+
+  it('renders registered tiered Gemini text families as exact physical model rows', () => {
+    const presented = getVisibleQuotaModelsForPresentation(
+      {
+        'models/gemini-3.7-flash-low': quota(80, '2026-07-30T08:00:00.000Z'),
+        'gemini-3.7-flash-high': quota(25, '2026-07-30T10:00:00.000Z'),
+      },
+      {},
+    );
+
+    expect(presented).toEqual({
+      'gemini-3.7-flash-low': quota(80, '2026-07-30T08:00:00.000Z'),
+      'gemini-3.7-flash-high': quota(25, '2026-07-30T10:00:00.000Z'),
+    });
+  });
+
+  it('honors exact visibility for expanded rows without changing conservative summaries', () => {
+    const models = {
+      'gemini-3.1-pro-low': quota(5, '2026-07-30T08:00:00.000Z'),
+      'gemini-3.1-pro-high': quota(80, '2026-07-30T10:00:00.000Z'),
+    };
+    const visibility = { 'gemini-3.1-pro-low': false };
+
+    expect(getVisibleQuotaModelsForPresentation(models, visibility)).toEqual({
+      'gemini-3.1-pro-high': quota(80, '2026-07-30T10:00:00.000Z'),
+    });
+    expect(
+      aggregateVisibleQuotaModelFamilies(models, visibility)['gemini-3.1-pro'].percentage,
+    ).toBe(5);
+  });
+
+  it('keeps image, Claude, and unknown families conservatively aggregated', () => {
+    const presented = getVisibleQuotaModelsForPresentation(
+      {
+        'gemini-3.1-flash-image': quota(70, '2026-07-30T10:00:00.000Z'),
+        'gemini-3-flash-image': quota(20, '2026-07-30T08:00:00.000Z'),
+        'claude-sonnet-4-6': quota(90, '2026-07-30T10:00:00.000Z'),
+        'claude-sonnet-4-6-thinking': quota(40, '2026-07-30T08:00:00.000Z'),
+        'vendor-v9': quota(60, '2026-07-30T12:00:00.000Z'),
+      },
+      {},
+    );
+
+    expect(presented).toEqual({
+      'gemini-flash-image': expect.objectContaining({ percentage: 20 }),
+      'claude-sonnet-4-6': expect.objectContaining({ percentage: 40 }),
+      'vendor-v9': quota(60, '2026-07-30T12:00:00.000Z'),
+    });
   });
 });

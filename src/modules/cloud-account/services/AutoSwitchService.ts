@@ -10,11 +10,18 @@ import {
 import { switchCloudAccount } from '@/modules/cloud-account/ipc/handler';
 import { logger } from '@/shared/logging/logger';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import {
+  applyQuotaLowerBound,
+  collectQuotaGroupBucketPercentages,
+  getMinimumQuotaPercentage,
+} from '@/modules/cloud-account/utils/quota-groups';
 
 interface AccountSelectionScore {
   priorityScore: number | null;
   fallbackScore: number;
 }
+
+type QuotaModelEntry = [string, NonNullable<CloudAccount['quota']>['models'][string]];
 
 const BooleanSettingSchema = z.boolean();
 
@@ -47,10 +54,16 @@ export class AutoSwitchService {
 
     if (candidates.length === 0) return null;
 
-    // Sort by "Best" score
-    candidates.sort((a, b) => {
-      const scoreA = this.calculateAccountScore(a, config);
-      const scoreB = this.calculateAccountScore(b, config);
+    const rankedCandidates = candidates.map((account, index) => ({
+      account,
+      index,
+      score: this.calculateAccountScore(account, config),
+    }));
+
+    // Preserve the repository order when all configured scoring inputs tie.
+    rankedCandidates.sort((a, b) => {
+      const scoreA = a.score;
+      const scoreB = b.score;
 
       if (scoreA.priorityScore !== null || scoreB.priorityScore !== null) {
         if (scoreA.priorityScore === null) return 1;
@@ -60,10 +73,11 @@ export class AutoSwitchService {
         }
       }
 
-      return scoreB.fallbackScore - scoreA.fallbackScore;
+      const fallbackDifference = scoreB.fallbackScore - scoreA.fallbackScore;
+      return fallbackDifference !== 0 ? fallbackDifference : a.index - b.index;
     });
 
-    return candidates[0];
+    return rankedCandidates[0].account;
   }
 
   private static getModelConfig(config: Record<string, AutoSwitchModelConfig>, modelId: string) {
@@ -79,31 +93,71 @@ export class AutoSwitchService {
       return { priorityScore: null, fallbackScore: 0 };
     }
 
-    const entries = Object.entries(account.quota.models);
+    const entries = Object.entries(account.quota.models) as QuotaModelEntry[];
 
     // 1. Get priority models that are enabled and exist in this account
     const priorityEntries = entries.filter(([modelId]) => {
       const modelConfig = this.getModelConfig(config, modelId);
       return modelConfig?.enabled && modelConfig?.priority;
     });
-    const priorityScore =
-      priorityEntries.length > 0
-        ? priorityEntries.reduce((acc, [, model]) => acc + model.percentage, 0) /
-          priorityEntries.length
-        : null;
+    const priorityScore = this.calculateCohortScore(account, priorityEntries);
 
-    // 2. Fall back to all enabled models when no candidate exposes a priority model
-    const enabledEntries = entries.filter(([modelId]) => {
+    // 2. Score the enabled non-priority cohort independently.
+    const fallbackEntries = entries.filter(([modelId]) => {
       const modelConfig = this.getModelConfig(config, modelId);
-      return modelConfig ? modelConfig.enabled : true;
+      return modelConfig ? modelConfig.enabled && !modelConfig.priority : true;
     });
-    const fallbackScore =
-      enabledEntries.length > 0
-        ? enabledEntries.reduce((acc, [, model]) => acc + model.percentage, 0) /
-          enabledEntries.length
-        : 0;
+    const fallbackScore = this.calculateCohortScore(account, fallbackEntries) ?? 0;
 
     return { priorityScore, fallbackScore };
+  }
+
+  private static calculateCohortScore(
+    account: CloudAccount,
+    entries: QuotaModelEntry[],
+  ): number | null {
+    if (entries.length === 0) {
+      return null;
+    }
+
+    const modelScore =
+      entries.reduce((total, [, model]) => total + model.percentage, 0) / entries.length;
+    const matchTokens = this.getQuotaGroupMatchTokens(entries.map(([modelId]) => modelId));
+    const groupScore = getMinimumQuotaPercentage(
+      collectQuotaGroupBucketPercentages(account.quota?.quota_groups, matchTokens),
+    );
+
+    return applyQuotaLowerBound(modelScore, groupScore);
+  }
+
+  private static getQuotaGroupMatchTokens(modelIds: string[]): string[] {
+    const tokens = new Set<string>();
+
+    for (const modelId of modelIds) {
+      const normalizedModelId = modelId
+        .replace(/^models\//i, '')
+        .trim()
+        .toLowerCase();
+      if (!normalizedModelId) {
+        continue;
+      }
+
+      tokens.add(normalizedModelId);
+      if (normalizedModelId.startsWith('gemini-')) {
+        tokens.add('gemini');
+      } else if (
+        normalizedModelId.startsWith('claude-') ||
+        /(?:^|-)(?:opus|sonnet|haiku)(?:-|$)/.test(normalizedModelId)
+      ) {
+        tokens.add('claude');
+        tokens.add('3p');
+      } else if (normalizedModelId.startsWith('gpt-')) {
+        tokens.add('gpt');
+        tokens.add('3p');
+      }
+    }
+
+    return [...tokens];
   }
 
   /**
