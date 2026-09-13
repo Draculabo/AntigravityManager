@@ -1,7 +1,13 @@
 import type { FastifyRequest } from 'fastify';
 import type { ImageMonitoringInput, ImageMonitoringRequest } from './image-monitoring-summary';
+import { validateInputImageLimits } from './image-input-validation';
 
-const IMAGE_FIELD_PATTERN = /^image(?:\d+)?$/u;
+const IMAGE_FIELD_PATTERN = /^image\d+$/u;
+const MAX_IMAGE_MULTIPART_FILE_PARTS = 64;
+
+export function isEditImageField(name: string): boolean {
+  return name === 'image' || name === 'image[]' || IMAGE_FIELD_PATTERN.test(name);
+}
 
 function toImageInput(
   data: Buffer,
@@ -11,7 +17,7 @@ function toImageInput(
   return {
     data: data.toString('base64'),
     filename,
-    mimeType: mimeType || 'application/octet-stream',
+    mimeType: mimeType || 'image/png',
   };
 }
 
@@ -30,23 +36,29 @@ export async function parseImageMultipartRequest(
   }
 
   const body: ImageMonitoringRequest = {};
-  const referenceImages: ImageMonitoringInput[] = [];
-  let style: string | undefined;
-  let imageSize: string | undefined;
-  let aspectRatio: string | undefined;
-
-  for await (const part of request.parts()) {
+  const inputImages: ImageMonitoringInput[] = [];
+  let totalInputImageBytes = 0;
+  for await (const part of request.parts({ limits: { files: MAX_IMAGE_MULTIPART_FILE_PARTS } })) {
     if (part.type === 'file') {
-      const image = toImageInput(await part.toBuffer(), part.filename, part.mimetype);
-      if (part.fieldname === 'image') {
-        body.image = image;
-      } else if (part.fieldname === 'mask') {
+      const isImage = isEditImageField(part.fieldname);
+      const isMask = part.fieldname === 'mask';
+      if (!isImage && !isMask) {
+        part.file.resume();
+        continue;
+      }
+
+      const bytes = await part.toBuffer();
+      const image = toImageInput(bytes, part.filename, part.mimetype);
+      if (isImage) {
+        const nextTotal = totalInputImageBytes + bytes.length;
+        validateInputImageLimits(inputImages.length + 1, bytes.length, nextTotal);
+        totalInputImageBytes = nextTotal;
+        inputImages.push(image);
+      } else {
+        const nextTotal = totalInputImageBytes + bytes.length;
+        validateInputImageLimits(inputImages.length, bytes.length, nextTotal);
+        totalInputImageBytes = nextTotal;
         body.mask = image;
-      } else if (
-        part.fieldname === 'reference_images' ||
-        (IMAGE_FIELD_PATTERN.test(part.fieldname) && part.fieldname !== 'image')
-      ) {
-        referenceImages.push(image);
       }
       continue;
     }
@@ -54,7 +66,9 @@ export async function parseImageMultipartRequest(
     const value = String(part.value ?? '');
     switch (part.fieldname) {
       case 'model':
-        body.model = value;
+        if (value) {
+          body.model = value;
+        }
         break;
       case 'prompt':
         body.prompt = value;
@@ -66,33 +80,24 @@ export async function parseImageMultipartRequest(
         body.quality = value;
         break;
       case 'aspect_ratio':
-        aspectRatio = value;
+        body.aspect_ratio = value;
         break;
       case 'image_size':
-        imageSize = value;
+      case 'imageSize':
+        body.image_size = value;
         break;
       case 'style':
-        style = value;
+        body.style = value;
         break;
       default:
         break;
     }
   }
 
-  if (referenceImages.length > 0) {
-    body.reference_images = referenceImages;
+  if (inputImages.length === 1) {
+    body.image = inputImages[0];
+  } else if (inputImages.length > 1) {
+    body.image = inputImages;
   }
-  if (aspectRatio) {
-    body.size = aspectRatio;
-  }
-  if (imageSize === '4K') {
-    body.quality = 'hd';
-  } else if (imageSize === '2K') {
-    body.quality = 'medium';
-  }
-  if (style) {
-    body.prompt = body.prompt ? `${body.prompt}, style: ${style}` : `style: ${style}`;
-  }
-
   return body;
 }

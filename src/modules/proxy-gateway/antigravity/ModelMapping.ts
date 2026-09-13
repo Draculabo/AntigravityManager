@@ -2,6 +2,9 @@ import { isEmpty, isString } from 'lodash-es';
 import { logger } from '@/shared/logging/logger';
 
 const PUBLIC_MODEL_PRESET_DISPLAY_NAMES = {
+  'gemini-3.7-flash-low': 'Gemini 3.7 Flash (Low)',
+  'gemini-3.7-flash-medium': 'Gemini 3.7 Flash (Medium)',
+  'gemini-3.7-flash-high': 'Gemini 3.7 Flash (High)',
   'gemini-3.5-flash-medium': 'Gemini 3.5 Flash (Medium)',
   'gemini-3.5-flash-high': 'Gemini 3.5 Flash (High)',
   'gemini-3.5-flash-low': 'Gemini 3.5 Flash (Low)',
@@ -21,6 +24,13 @@ const PUBLIC_MODEL_BY_DISPLAY_NAME = new Map(
 
 const PUBLIC_SUPPORTED_MODELS = [
   ...Object.keys(PUBLIC_MODEL_PRESET_DISPLAY_NAMES),
+  'gemini-3.7-flash',
+  'gemini-3.7-flash-tiered',
+  'gemini-3.6-flash',
+  'gemini-3.6-flash-tiered',
+  'gemini-3.6-flash-low',
+  'gemini-3.6-flash-medium',
+  'gemini-3.6-flash-high',
   'gemini-3-flash',
 ] as const;
 
@@ -28,6 +38,16 @@ const CLAUDE_TO_GEMINI: Record<string, string> = {
   // Directly supported models
   'claude-sonnet-4-6-thinking': 'claude-sonnet-4-6-thinking',
   'claude-opus-4-6-thinking': 'claude-opus-4-6-thinking',
+  'gemini-3.7-flash': 'gemini-3.7-flash',
+  'gemini-3.7-flash-tiered': 'gemini-3.7-flash-tiered',
+  'gemini-3.7-flash-low': 'gemini-3.7-flash-low',
+  'gemini-3.7-flash-medium': 'gemini-3.7-flash-medium',
+  'gemini-3.7-flash-high': 'gemini-3.7-flash-high',
+  'gemini-3.6-flash': 'gemini-3.6-flash',
+  'gemini-3.6-flash-tiered': 'gemini-3.6-flash-tiered',
+  'gemini-3.6-flash-low': 'gemini-3.6-flash-low',
+  'gemini-3.6-flash-medium': 'gemini-3.6-flash-medium',
+  'gemini-3.6-flash-high': 'gemini-3.6-flash-high',
   'gemini-3.5-flash-high': 'gemini-3.5-flash-high',
   'gemini-3.5-flash-medium': 'gemini-3.5-flash-medium',
   'gemini-3.5-flash-low': 'gemini-3.5-flash-low',
@@ -100,6 +120,10 @@ const DYNAMIC_IMAGE_BASE_MODEL = 'gemini-3-pro-image';
 const DYNAMIC_IMAGE_RESOLUTIONS = ['', '-2k', '-4k'];
 const DYNAMIC_IMAGE_RATIOS = ['', '-1x1', '-4x3', '-3x4', '-16x9', '-9x16', '-21x9'];
 const EXTRA_DYNAMIC_MODELS = [
+  'gemini-3.7-flash',
+  'gemini-3.7-flash-high',
+  'gemini-3.7-flash-medium',
+  'gemini-3.7-flash-low',
   'gemini-3-flash',
   'gemini-3.1-pro-high',
   'gemini-3.1-pro-low',

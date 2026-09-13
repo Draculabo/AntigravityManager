@@ -46,10 +46,12 @@ describe('OpenAIResponsesStoreController', () => {
     const created = createReplyMock();
     await chat.responses({ input: 'a question', model: 'gpt-4o' }, created as never);
     const retrieved = createReplyMock();
+    const answered = (created.send as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      id: string;
+    };
 
-    store.getResponse('resp_kept', retrieved as never);
+    store.getResponse(answered.id, retrieved as never);
 
-    const answered = (created.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(retrieved.status).toHaveBeenCalledWith(200);
     expect((retrieved.send as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual(answered);
   });
@@ -87,18 +89,38 @@ describe('OpenAIResponsesStoreController', () => {
     expect(retrieved.status).toHaveBeenCalledWith(404);
   });
 
+  it('does not create continuation state for an incomplete non-stream response', async () => {
+    const incomplete = chatResponse('resp_incomplete', 'truncated');
+    incomplete.choices[0].finish_reason = 'length';
+    const { chat, store } = createSurface(incomplete);
+    const created = createReplyMock();
+    await chat.responses({ input: 'a question', model: 'gpt-4o' }, created as never);
+    const responseId = (
+      (created.send as ReturnType<typeof vi.fn>).mock.calls[0][0] as { id: string }
+    ).id;
+    const retrieved = createReplyMock();
+
+    store.getResponse(responseId, retrieved as never);
+
+    expect(retrieved.status).toHaveBeenCalledWith(404);
+  });
+
   it('deletes a stored response once and reports it missing after that', async () => {
     const { chat, store } = createSurface(chatResponse('resp_doomed', 'the answer'));
-    await chat.responses({ input: 'a question', model: 'gpt-4o' }, createReplyMock() as never);
+    const created = createReplyMock();
+    await chat.responses({ input: 'a question', model: 'gpt-4o' }, created as never);
+    const responseId = (
+      (created.send as ReturnType<typeof vi.fn>).mock.calls[0][0] as { id: string }
+    ).id;
     const first = createReplyMock();
     const second = createReplyMock();
 
-    store.deleteResponse('resp_doomed', first as never);
-    store.deleteResponse('resp_doomed', second as never);
+    store.deleteResponse(responseId, first as never);
+    store.deleteResponse(responseId, second as never);
 
     expect(first.status).toHaveBeenCalledWith(200);
     expect(first.send).toHaveBeenCalledWith({
-      id: 'resp_doomed',
+      id: responseId,
       object: 'response',
       deleted: true,
     });
@@ -110,12 +132,16 @@ describe('OpenAIResponsesStoreController', () => {
       chatResponse('resp_chain', 'the answer'),
       chatResponse('resp_chain_2', 'the second answer'),
     );
-    await chat.responses({ input: 'a question', model: 'gpt-4o' }, createReplyMock() as never);
-    store.deleteResponse('resp_chain', createReplyMock() as never);
+    const created = createReplyMock();
+    await chat.responses({ input: 'a question', model: 'gpt-4o' }, created as never);
+    const responseId = (
+      (created.send as ReturnType<typeof vi.fn>).mock.calls[0][0] as { id: string }
+    ).id;
+    store.deleteResponse(responseId, createReplyMock() as never);
     const continuation = createReplyMock();
 
     await chat.responses(
-      { input: 'and another', previous_response_id: 'resp_chain' },
+      { input: 'and another', previous_response_id: responseId },
       continuation as never,
     );
 

@@ -39,7 +39,8 @@ const SENSITIVE_KEYS = [
 const CIRCULAR_PLACEHOLDER = '[Circular]';
 const BASE64_REDACTED_PREFIX = '[base64 redacted';
 const MIN_UNLABELED_BASE64_LENGTH = 512;
-const DATA_URL_PATTERN = /data:(?<mime>[\w.+-]+\/[\w.+-]+);base64,(?<data>[A-Za-z0-9+/=]+)/g;
+const DATA_URL_PATTERN =
+  /data:(?<mime>[\w.+-]+\/[\w.+-]+)(?<metadata>(?:;[^,;]*)*),(?<data>[A-Za-z0-9+/=]+)/gi;
 const URL_CREDENTIAL_PATTERN = /\b((?:https?|socks5?):\/\/)[^/\s]*@/gi;
 const BASE64_FIELD_KEYS = new Set(['b64_json', 'base64', 'base64_data', 'base64data']);
 
@@ -64,7 +65,13 @@ function isLikelyBase64(value: string): boolean {
 }
 
 function sanitizeString(value: string, key?: string, mimeType?: string): string {
-  if (key && (BASE64_FIELD_KEYS.has(key.toLowerCase()) || isLikelyBase64(value))) {
+  const normalizedKey = key?.toLowerCase();
+  const isImageDataField =
+    normalizedKey === 'data' && mimeType?.trim().toLowerCase().startsWith('image/') === true;
+  if (
+    normalizedKey &&
+    (BASE64_FIELD_KEYS.has(normalizedKey) || isImageDataField || isLikelyBase64(value))
+  ) {
     return summarizeBase64(value, mimeType);
   }
 
@@ -75,7 +82,12 @@ function sanitizeString(value: string, key?: string, mimeType?: string): string 
   const withoutUrlCredentials = value.replace(URL_CREDENTIAL_PATTERN, '$1[REDACTED]@');
 
   return withoutUrlCredentials.replace(DATA_URL_PATTERN, (...args: unknown[]) => {
-    const groups = args.at(-1) as { mime?: string; data?: string } | undefined;
+    const match = args[0] as string;
+    const groups = args.at(-1) as { mime?: string; metadata?: string; data?: string } | undefined;
+    const isBase64 = groups?.metadata?.split(';').some((part) => part.toLowerCase() === 'base64');
+    if (!isBase64) {
+      return match;
+    }
     if (!groups?.data) {
       return '[data URL redacted]';
     }

@@ -102,6 +102,8 @@ export class StreamingState {
   public blockIndex: number = 0;
   public messageStartSent: boolean = false;
   public messageStopSent: boolean = false;
+  public hasThinking: boolean = false;
+  public hasContent: boolean = false;
   private usedTool: boolean = false;
   private signatures: SignatureManagerImpl = new SignatureManagerImpl();
   public trailingSignature: string | null = null;
@@ -129,7 +131,7 @@ export class StreamingState {
     return `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
   }
 
-  public emitMessageStart(response: GeminiResponse): string {
+  public emitMessageStart(response: GeminiResponse, fallbackUsage?: Usage): string {
     if (this.messageStartSent) return '';
 
     const usageMeta = response.usageMetadata;
@@ -148,7 +150,7 @@ export class StreamingState {
             usageMeta.thoughtsTokenCount ??
             0,
         }
-      : undefined;
+      : fallbackUsage;
 
     const message: StreamMessageStart = {
       id: toAnthropicMessageId(response.responseId),
@@ -253,6 +255,7 @@ export class StreamingState {
         }),
       );
       this.blockIndex++;
+      this.hasThinking = true;
     }
 
     // Process grounding (web search) -> convert to Markdown text block
@@ -287,33 +290,53 @@ export class StreamingState {
         this.emit('content_block_stop', { type: 'content_block_stop', index: this.blockIndex }),
       );
       this.blockIndex++;
+      this.hasContent = true;
+    }
+
+    const recoveredEmptyResponse = !this.hasContent && !this.hasThinking;
+    if (recoveredEmptyResponse) {
+      if (!this.messageStartSent) {
+        chunks.push(
+          this.emitMessageStart(
+            { modelVersion: 'gemini-auto' },
+            { input_tokens: 0, output_tokens: 0 },
+          ),
+        );
+      }
+
+      chunks.push(...this.startBlock('Text', { type: 'text', text: '.' }));
+      chunks.push(...this.endBlock());
+      this.hasContent = true;
     }
 
     // Determine stop reason
-    let stopReason = 'end_turn';
-    if (this.usedTool) {
-      stopReason = 'tool_use';
-    } else if (finishReason === 'MAX_TOKENS') {
-      stopReason = 'max_tokens';
-    }
+    const stopReason = recoveredEmptyResponse
+      ? 'end_turn'
+      : this.usedTool
+        ? 'tool_use'
+        : finishReason === 'MAX_TOKENS'
+          ? 'max_tokens'
+          : 'end_turn';
 
-    const usage: Usage = usageMetadata
-      ? {
-          input_tokens: usageMetadata.total_input_tokens ?? usageMetadata.promptTokenCount ?? 0,
-          output_tokens:
-            usageMetadata.total_output_tokens ?? usageMetadata.candidatesTokenCount ?? 0,
-          cache_read_input_tokens:
-            usageMetadata.total_cached_tokens ??
-            usageMetadata.cachedContentTokenCount ??
-            usageMetadata.cachedTokens ??
-            0,
-          reasoning_tokens:
-            usageMetadata.total_thought_tokens ??
-            usageMetadata.totalThoughtTokens ??
-            usageMetadata.thoughtsTokenCount ??
-            0,
-        }
-      : { input_tokens: 0, output_tokens: 0 };
+    const usage: Usage = recoveredEmptyResponse
+      ? { input_tokens: 1, output_tokens: 1 }
+      : usageMetadata
+        ? {
+            input_tokens: usageMetadata.total_input_tokens ?? usageMetadata.promptTokenCount ?? 0,
+            output_tokens:
+              usageMetadata.total_output_tokens ?? usageMetadata.candidatesTokenCount ?? 0,
+            cache_read_input_tokens:
+              usageMetadata.total_cached_tokens ??
+              usageMetadata.cachedContentTokenCount ??
+              usageMetadata.cachedTokens ??
+              0,
+            reasoning_tokens:
+              usageMetadata.total_thought_tokens ??
+              usageMetadata.totalThoughtTokens ??
+              usageMetadata.thoughtsTokenCount ??
+              0,
+          }
+        : { input_tokens: 0, output_tokens: 0 };
 
     chunks.push(
       this.emit('message_delta', {
@@ -333,6 +356,7 @@ export class StreamingState {
 
   public markToolUsed() {
     this.usedTool = true;
+    this.hasContent = true;
   }
 
   public currentBlockType(): BlockType {
@@ -440,6 +464,7 @@ export class PartProcessor {
         chunks.push(this.state.emitDelta({ type: 'thinking_delta', thinking: '' }));
         chunks.push(this.state.emitDelta({ type: 'signature_delta', signature: trailingSig }));
         chunks.push(...this.state.endBlock());
+        this.state.hasThinking = true;
       }
 
       chunks.push(...this.processFunctionCall(part.functionCall, signature));
@@ -486,6 +511,7 @@ export class PartProcessor {
       chunks.push(this.state.emitDelta({ type: 'thinking_delta', thinking: '' }));
       chunks.push(this.state.emitDelta({ type: 'signature_delta', signature: trailingSig }));
       chunks.push(...this.state.endBlock());
+      this.state.hasThinking = true;
     }
 
     // A thought with no text and no signature has nothing to put in a block. The
@@ -495,6 +521,8 @@ export class PartProcessor {
     if (!text && !signature) {
       return chunks;
     }
+
+    this.state.hasThinking = true;
 
     if (this.state.currentBlockType() !== 'Thinking') {
       chunks.push(...this.state.startBlock('Thinking', { type: 'thinking', thinking: '' }));
@@ -520,6 +548,8 @@ export class PartProcessor {
       return chunks;
     }
 
+    this.state.hasContent = true;
+
     // Handle trailing signature
     if (this.state.trailingSignature) {
       chunks.push(...this.state.endBlock());
@@ -536,6 +566,7 @@ export class PartProcessor {
       chunks.push(this.state.emitDelta({ type: 'thinking_delta', thinking: '' }));
       chunks.push(this.state.emitDelta({ type: 'signature_delta', signature: trailingSig }));
       chunks.push(...this.state.endBlock());
+      this.state.hasThinking = true;
     }
 
     // Non-empty text with signature -> flush immediately
@@ -556,6 +587,7 @@ export class PartProcessor {
       chunks.push(this.state.emitDelta({ type: 'thinking_delta', thinking: '' }));
       chunks.push(this.state.emitDelta({ type: 'signature_delta', signature: signature }));
       chunks.push(...this.state.endBlock());
+      this.state.hasThinking = true;
 
       return chunks;
     }

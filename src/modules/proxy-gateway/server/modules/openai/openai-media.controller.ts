@@ -14,8 +14,9 @@ export class OpenAIMediaController {
   public imageGenerations(
     @Body() body: ImageMonitoringRequest,
     @Res() res: FastifyReply,
+    @Req() req?: FastifyRequest,
   ): Promise<void> {
-    return this.operations.imageGenerations(body, res);
+    return this.operations.imageGenerations(body, res, req);
   }
 
   @Post('images/edits')

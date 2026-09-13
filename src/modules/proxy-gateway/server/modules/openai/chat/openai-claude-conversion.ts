@@ -31,6 +31,7 @@ import {
   AnthropicContent,
   OpenAIChatRequest,
   OpenAIChatResponse,
+  OpenAIContentPart,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
 export function convertOpenAIToClaude(
@@ -60,14 +61,36 @@ export function convertOpenAIToClaude(
     }
 
     if (msg.role === 'tool') {
-      const toolResultText = extractOpenAITextContent(msg.content) || '';
+      const toolContent = convertOpenAIPartsToAnthropicContent(
+        msg.content,
+        () => '[image link]',
+        () => '[audio]',
+      );
+      const toolResultText = toolContent
+        .filter(
+          (block): block is Extract<AnthropicContent, { type: 'text' }> => block.type === 'text',
+        )
+        .map((block) => block.text)
+        .join('\n');
+      const toolMedia = toolContent.filter(
+        (block) => block.type === 'image' || block.type === 'audio' || block.type === 'document',
+      );
+      const toolResultContent: string | AnthropicContent[] =
+        toolMedia.length === 0
+          ? toolResultText
+          : [
+              ...(toolResultText === ''
+                ? []
+                : ([{ type: 'text', text: toolResultText }] satisfies AnthropicContent[])),
+              ...toolMedia,
+            ];
       anthropicMessages.push({
         role: 'user',
         content: [
           {
             type: 'tool_result',
             tool_use_id: msg.tool_call_id || msg.name || `tool-result-${uuidv4()}`,
-            content: toolResultText,
+            content: toolResultContent,
             is_error: false,
           },
         ],
@@ -137,6 +160,8 @@ export function convertOpenAIToClaude(
 
 export function convertOpenAIPartsToAnthropicContent(
   content: OpenAIChatRequest['messages'][number]['content'],
+  remoteImageFallback: (url: string) => string = (url) => `[image_url] ${url}`,
+  unreadableAudioFallback: () => string = () => '',
 ): AnthropicContent[] {
   if (isString(content)) {
     return content.trim() ? [{ type: 'text', text: content }] : [];
@@ -155,18 +180,31 @@ export function convertOpenAIPartsToAnthropicContent(
     const imageUrl = part.type === 'image_url' ? resolveOpenAIImageUrl(part.image_url) : null;
     if (imageUrl) {
       const url = imageUrl;
-      const dataUri = url.match(/^data:(?<mime>[^;]+);base64,(?<data>.+)$/);
-      if (dataUri?.groups?.mime && dataUri.groups.data) {
+      const dataUri = parseBase64DataUrl(url, 'image/');
+      if (dataUri) {
         blocks.push({
           type: 'image',
           source: {
             type: 'base64',
-            media_type: dataUri.groups.mime,
-            data: dataUri.groups.data,
+            media_type: dataUri.mimeType,
+            data: dataUri.data,
           },
         });
       } else {
-        blocks.push({ type: 'text', text: `[image_url] ${url}` });
+        blocks.push({ type: 'text', text: remoteImageFallback(url) });
+      }
+      continue;
+    }
+
+    if (part.type === 'audio_url') {
+      const audio = resolveOpenAIAudioUrl(part.audio_url);
+      if (audio) {
+        blocks.push({ type: 'audio', source: audio });
+      } else {
+        const fallback = unreadableAudioFallback();
+        if (fallback) {
+          blocks.push({ type: 'text', text: fallback });
+        }
       }
       continue;
     }
@@ -180,6 +218,65 @@ export function convertOpenAIPartsToAnthropicContent(
     }
   }
   return blocks;
+}
+
+function parseBase64DataUrl(
+  value: string,
+  mimePrefix: string,
+): { data: string; mimeType: string } | null {
+  if (!value.startsWith('data:')) {
+    return null;
+  }
+  const separator = value.indexOf(',');
+  if (separator < 0) {
+    return null;
+  }
+  const metadataParts = value.slice('data:'.length, separator).split(';');
+  const mimeType = metadataParts[0] ?? '';
+  if (
+    !mimeType.toLowerCase().startsWith(mimePrefix) ||
+    !metadataParts.slice(1).some((part) => part.toLowerCase() === 'base64')
+  ) {
+    return null;
+  }
+  const data = value.slice(separator + 1);
+  return data === '' ? null : { data, mimeType };
+}
+
+function resolveOpenAIAudioUrl(
+  value: OpenAIContentPart['audio_url'],
+): Extract<AnthropicContent, { type: 'audio' }>['source'] | null {
+  if (!value || !isString(value.url) || value.url.trim() === '') {
+    return null;
+  }
+  const url = value.url.trim();
+  const inline = parseBase64DataUrl(url, 'audio/');
+  if (inline) {
+    return { type: 'base64', media_type: inline.mimeType, data: inline.data };
+  }
+  if (!/^https?:\/\//iu.test(url)) {
+    return null;
+  }
+  const extension = url.split(/[?#]/u, 1)[0]?.split('.').pop()?.toLowerCase();
+  const inferredMime =
+    extension === 'wav'
+      ? 'audio/wav'
+      : extension === 'ogg'
+        ? 'audio/ogg'
+        : extension === 'flac'
+          ? 'audio/flac'
+          : extension === 'm4a' || extension === 'mp4'
+            ? 'audio/mp4'
+            : extension === 'aac'
+              ? 'audio/aac'
+              : 'audio/mpeg';
+  const declared = (value.mime_type ?? value.mimeType ?? value.format)?.trim();
+  const mediaType = declared
+    ? declared.includes('/')
+      ? declared.toLowerCase()
+      : `audio/${declared.toLowerCase()}`
+    : inferredMime;
+  return { type: 'url', media_type: mediaType, url };
 }
 
 export function extractOpenAITextContent(

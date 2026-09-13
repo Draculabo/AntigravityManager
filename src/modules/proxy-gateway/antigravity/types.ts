@@ -151,11 +151,17 @@ export interface DocumentBlock {
 
 export interface AudioBlock {
   type: 'audio';
-  source: {
-    type: 'base64';
-    media_type: string;
-    data: string;
-  };
+  source:
+    | {
+        type: 'base64';
+        media_type: string;
+        data: string;
+      }
+    | {
+        type: 'url';
+        media_type: string;
+        url: string;
+      };
 }
 
 export interface ToolUseBlock {
@@ -398,6 +404,11 @@ export interface GeminiPart {
   inlineData?: {
     mimeType: string;
     data: string;
+  };
+  /** Provider-readable remote media. */
+  fileData?: {
+    fileUri: string;
+    mimeType: string;
   };
 }
 

@@ -94,4 +94,28 @@ describe('OpenAIResponsesSessionStore', () => {
       ),
     ).toEqual([]);
   });
+
+  it('never retains raw inline media in durable continuation history', () => {
+    const inputItems = [
+      {
+        type: 'function_call_output',
+        call_id: 'call_image',
+        output: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+      },
+    ];
+
+    OpenAIResponsesSessionStore.save('resp_image', {
+      inputItems,
+      model: 'gpt-4o',
+    });
+
+    expect(OpenAIResponsesSessionStore.get('resp_image')?.inputItems).toEqual([
+      {
+        type: 'function_call_output',
+        call_id: 'call_image',
+        output: [{ type: 'input_text', text: '[historical image omitted]' }],
+      },
+    ]);
+    expect(JSON.stringify(inputItems)).toContain('data:image/');
+  });
 });

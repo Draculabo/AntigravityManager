@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProxyGatewayWeeklyWarmupExecutor } from '@/modules/proxy-gateway/weekly-warmup-executor';
 
 let server: Server;
-let packets: { url: string; body: unknown; authorization?: string }[];
+let packets: { url: string; body: unknown; authorization?: string; quotaProject?: string }[];
 let status = 200;
 let disconnectStream = false;
 let onRequest: (() => void) | undefined;
@@ -21,10 +21,12 @@ beforeEach(async () => {
     for await (const chunk of request) {
       chunks.push(Buffer.from(chunk));
     }
+    const quotaProject = request.headers['x-goog-user-project'];
     packets.push({
       url: request.url ?? '',
       body: JSON.parse(Buffer.concat(chunks).toString('utf8')),
       authorization: request.headers.authorization,
+      ...(typeof quotaProject === 'string' ? { quotaProject } : {}),
     });
     if (onRequest) {
       onRequest();
@@ -89,6 +91,7 @@ describe('weekly warmup actual HTTP transport', () => {
       '/v1internal:generateContent',
     ]);
     expect(packets[1].body).toEqual(packets[0].body);
+    expect(packets.every((packet) => packet.quotaProject === undefined)).toBe(true);
   });
 
   it('does not turn an HTTP rejection into a successful warmup or a second generation', async () => {

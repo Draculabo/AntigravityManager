@@ -1,5 +1,5 @@
-import { Body, Controller, Inject, Post, Res, UseGuards } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import { Body, Controller, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { ProxyGuard } from '../../../guards/proxy.guard';
 import { OpenAIOperations, type ResponsesRequestBody } from '../openai-operations.service';
@@ -10,7 +10,11 @@ export class OpenAIResponsesController {
   public constructor(@Inject(OpenAIOperations) private readonly operations: OpenAIOperations) {}
 
   @Post()
-  public responses(@Body() body: ResponsesRequestBody, @Res() res: FastifyReply): Promise<void> {
-    return this.operations.responses(body, res);
+  public responses(
+    @Body() body: ResponsesRequestBody,
+    @Res() res: FastifyReply,
+    @Req() req?: FastifyRequest,
+  ): Promise<void> {
+    return this.operations.responses(body, res, req);
   }
 }

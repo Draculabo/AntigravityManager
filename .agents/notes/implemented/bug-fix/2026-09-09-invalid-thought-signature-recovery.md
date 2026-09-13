@@ -14,7 +14,7 @@ This decision is related to, but deliberately separate from, [proxy session and 
 - Require a target effective model for every cache read. Known families compare by canonical family; unknown models compare by exact normalized physical ID. Provenance-less entries are misses.
 - Keep recovery inside the Anthropic compatibility service. The shared proxy retry service is unchanged.
 - Classify only upstream HTTP 400 errors with explicit thought-signature evidence. Broad deserialization, block-order and generic signature text does not qualify.
-- Rebuild the retry from the original account-specific Claude request. Preserve non-empty thinking text as ordinary text, remove empty/redacted thinking, retain explicit tool-use signatures, and apply the fixed competitor-compatible tool-loop closures.
+- Rebuild the retry from the original account-specific Claude request. Preserve non-empty thinking text as ordinary text, remove empty/redacted thinking, retain explicit tool-use signatures, and apply the required tool-loop closures.
 - Retry immediately once with the same account, token and effective physical model. Do not delay, penalize or rotate on the first classified error. Propagate a second classified error without another attempt.
 - Permit stream recovery only before the upstream stream is returned. Never replay after client-visible events may have been emitted.
 

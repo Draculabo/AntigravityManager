@@ -288,6 +288,24 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
   });
 
+  it('keeps output item ids independent from the public response id', () => {
+    const mapper = createMapper();
+    const events = [
+      ...mapper.processPart({ text: 'Inspecting', thought: true }),
+      ...mapper.processPart({ text: 'Done.' }),
+      ...mapper.complete(),
+    ].map(parseEvent);
+    const completed = events.at(-1);
+    const output = Reflect.get(Reflect.get(completed ?? {}, 'response') ?? {}, 'output') as Array<{
+      id?: string;
+    }>;
+
+    expect(output).toHaveLength(2);
+    expect(output[0]?.id).toMatch(/^msg_thought_[0-9a-f]{16}_0$/);
+    expect(output[1]?.id).toMatch(/^msg_[0-9a-f]{16}_1$/);
+    expect(output.every((item) => !item.id?.includes('resp_test'))).toBe(true);
+  });
+
   it('closes reasoning before a tool call and keeps their output indexes distinct', () => {
     const mapper = createMapper();
     const events = [

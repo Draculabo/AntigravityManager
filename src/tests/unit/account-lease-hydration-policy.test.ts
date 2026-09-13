@@ -67,6 +67,10 @@ function createPolicyContext(tokenCache: Map<string, AccountLeaseTokenData>) {
   };
 }
 
+function waitForPersistenceTurn(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 describe('AccountLeaseHydrationPolicy', () => {
   it('hydrates and persists a missing project id without database or upstream singletons', async () => {
     const token = createToken({
@@ -86,6 +90,8 @@ describe('AccountLeaseHydrationPolicy', () => {
 
     expect(projectId).toBe('resolved-project');
     expect(token.project_id).toBe('resolved-project');
+    expect(persistTokenState).not.toHaveBeenCalled();
+    await waitForPersistenceTurn();
     expect(persistTokenState).toHaveBeenCalledWith(
       'acc-1',
       expect.objectContaining({
@@ -129,7 +135,141 @@ describe('AccountLeaseHydrationPolicy', () => {
     await Promise.all([first, second]);
 
     expect(token.access_token).toBe('access-token-new');
+    expect(persistTokenState).not.toHaveBeenCalled();
+    await waitForPersistenceTurn();
     expect(persistTokenState).toHaveBeenCalledTimes(1);
+  });
+
+  it('serializes deferred refresh and project persistence without delaying token hydration', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const token = createToken({ expiry_timestamp: nowSeconds - 1, project_id: undefined });
+    const tokenCache = new Map([['acc-1', token]]);
+    const { persistTokenState, policy, upstream } = createPolicyContext(tokenCache);
+    let releaseFirstPersistence: (() => void) | undefined;
+    vi.mocked(persistTokenState)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseFirstPersistence = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    vi.mocked(upstream.refreshAccessToken).mockResolvedValue({
+      access_token: 'access-token-new',
+      expires_in: 7200,
+      token_type: 'Bearer',
+    });
+    vi.mocked(upstream.fetchProjectId).mockResolvedValue('resolved-project');
+
+    await expect(
+      policy.hydrateSelectedToken({
+        accountId: 'acc-1',
+        tokenData: token,
+        nowSeconds,
+        fallbackProjectId: 'fallback-project',
+      }),
+    ).resolves.toBe('resolved-project');
+
+    expect(token).toMatchObject({
+      access_token: 'access-token-new',
+      project_id: 'resolved-project',
+    });
+    expect(persistTokenState).not.toHaveBeenCalled();
+
+    await waitForPersistenceTurn();
+    expect(persistTokenState).toHaveBeenCalledTimes(1);
+    expect(persistTokenState).toHaveBeenNthCalledWith(
+      1,
+      'acc-1',
+      expect.objectContaining({ access_token: 'access-token-new', project_id: undefined }),
+    );
+
+    releaseFirstPersistence?.();
+    await waitForPersistenceTurn();
+    await waitForPersistenceTurn();
+    expect(persistTokenState).toHaveBeenCalledTimes(2);
+    expect(persistTokenState).toHaveBeenNthCalledWith(
+      2,
+      'acc-1',
+      expect.objectContaining({
+        access_token: 'access-token-new',
+        project_id: 'resolved-project',
+      }),
+    );
+    await policy.drainBackgroundPersistence();
+  });
+
+  it('lets different accounts persist independently', async () => {
+    const firstToken = createToken({ account_id: 'acc-1', project_id: undefined });
+    const secondToken = createToken({
+      account_id: 'acc-2',
+      access_token: 'access-token-2',
+      email: 'second@example.com',
+      project_id: undefined,
+    });
+    const tokenCache = new Map([
+      ['acc-1', firstToken],
+      ['acc-2', secondToken],
+    ]);
+    const { persistTokenState, policy, upstream } = createPolicyContext(tokenCache);
+    let releaseFirstPersistence: (() => void) | undefined;
+    vi.mocked(persistTokenState).mockImplementation((accountId) => {
+      if (accountId !== 'acc-1') {
+        return Promise.resolve();
+      }
+      return new Promise<void>((resolve) => {
+        releaseFirstPersistence = resolve;
+      });
+    });
+    vi.mocked(upstream.fetchProjectId).mockImplementation(async (accessToken) =>
+      accessToken === 'access-token-2' ? 'project-2' : 'project-1',
+    );
+
+    await Promise.all([
+      policy.hydrateSelectedToken({
+        accountId: 'acc-1',
+        tokenData: firstToken,
+        nowSeconds: Math.floor(Date.now() / 1000),
+        fallbackProjectId: 'fallback-project',
+      }),
+      policy.hydrateSelectedToken({
+        accountId: 'acc-2',
+        tokenData: secondToken,
+        nowSeconds: Math.floor(Date.now() / 1000),
+        fallbackProjectId: 'fallback-project',
+      }),
+    ]);
+    await waitForPersistenceTurn();
+
+    expect(persistTokenState).toHaveBeenCalledWith(
+      'acc-2',
+      expect.objectContaining({ project_id: 'project-2' }),
+    );
+    releaseFirstPersistence?.();
+    await policy.drainBackgroundPersistence();
+  });
+
+  it('logs deferred persistence failures without rejecting token hydration', async () => {
+    const token = createToken({ project_id: undefined });
+    const tokenCache = new Map([['acc-1', token]]);
+    const { logger, persistTokenState, policy, upstream } = createPolicyContext(tokenCache);
+    vi.mocked(upstream.fetchProjectId).mockResolvedValue('resolved-project');
+    vi.mocked(persistTokenState).mockRejectedValue(new Error('disk unavailable'));
+
+    await expect(
+      policy.hydrateSelectedToken({
+        accountId: 'acc-1',
+        tokenData: token,
+        nowSeconds: Math.floor(Date.now() / 1000),
+        fallbackProjectId: 'fallback-project',
+      }),
+    ).resolves.toBe('resolved-project');
+    await waitForPersistenceTurn();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to persist token state for acc-1',
+      expect.objectContaining({ message: 'disk unavailable' }),
+    );
   });
 
   it('rejects invalid_grant refresh failures without persisting policy-owned health', async () => {

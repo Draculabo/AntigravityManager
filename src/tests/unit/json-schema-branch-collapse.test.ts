@@ -55,6 +55,40 @@ describe('JSON schema branch collapse', () => {
     expect(map.properties.city.description).toBe('declared on the node');
   });
 
+  it('preserves a const discriminator while collapsing a union branch', () => {
+    const schema: JsonSchemaMap = {
+      type: 'object',
+      properties: {
+        target: {
+          anyOf: [
+            {
+              type: 'object',
+              properties: {
+                type: { const: 'element' },
+              },
+              required: ['type'],
+            },
+          ],
+        },
+      },
+    };
+
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual({
+      type: 'object',
+      properties: {
+        target: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['element'] },
+          },
+          required: ['type'],
+        },
+      },
+    });
+  });
+
   it('leaves a schema without branches untouched', () => {
     const schema: JsonSchemaMap = { type: 'object', properties: { city: { type: 'string' } } };
 

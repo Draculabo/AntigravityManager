@@ -803,7 +803,7 @@ describe('Process Handler', () => {
       });
     });
 
-    it('should not hide Windows GUI windows when launching Antigravity IDE', async () => {
+    it('should hide the Windows console when launching Antigravity IDE', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       mockFindProcess.mockResolvedValue([]);
       vi.mocked(getAntigravityExecutablePath).mockReturnValue(
@@ -819,14 +819,9 @@ describe('Process Handler', () => {
           detached: true,
           stdio: 'ignore',
           cwd: 'C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity IDE',
+          windowsHide: true,
         }),
       );
-      const spawnCall = childProcessMock.spawn.mock.calls[0] as unknown as [
-        string,
-        string[],
-        Record<string, unknown>,
-      ];
-      expect(spawnCall[2]).not.toHaveProperty('windowsHide');
     });
   });
 

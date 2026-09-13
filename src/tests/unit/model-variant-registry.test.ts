@@ -5,6 +5,80 @@ import {
 } from '@/modules/proxy-gateway/antigravity/model-variant-registry';
 
 describe('resolveModelVariant', () => {
+  it('defaults the canonical Gemini 3.7 Flash model to the registered high tier', () => {
+    expect(resolveModelVariant({ model: 'gemini-3.7-flash' })).toEqual({
+      canonicalModel: 'gemini-3.7-flash',
+      model: 'gemini-3.7-flash-high',
+      tier: 'high',
+      thinkingBudget: 10000,
+      maxOutputTokens: 65536,
+      includeThoughts: true,
+      preserveClientBudget: false,
+      supportsTools: true,
+    });
+  });
+
+  it('keeps Gemini 3.7 fixed aliases fixed and 3.6 compatibility aliases tier-aware', () => {
+    expect([
+      resolveModelVariant({ model: 'gemini-3.7-flash-low', effort: 'high' }),
+      resolveModelVariant({ model: 'gemini-3.7-flash-medium', effort: 'low' }),
+      resolveModelVariant({ model: 'gemini-3.7-flash-high', effort: 'low' }),
+      resolveModelVariant({ model: 'gemini-3.6-flash-high', effort: 'low' }),
+      resolveModelVariant({ model: 'gemini-3.6-flash-tiered', effort: 'medium' }),
+    ]).toEqual([
+      {
+        canonicalModel: 'gemini-3.7-flash',
+        model: 'gemini-3.7-flash-low',
+        tier: 'low',
+        thinkingBudget: 1000,
+        maxOutputTokens: 65536,
+        includeThoughts: true,
+        preserveClientBudget: false,
+        supportsTools: true,
+      },
+      {
+        canonicalModel: 'gemini-3.7-flash',
+        model: 'gemini-3.7-flash-medium',
+        tier: 'medium',
+        thinkingBudget: 4000,
+        maxOutputTokens: 65536,
+        includeThoughts: true,
+        preserveClientBudget: false,
+        supportsTools: true,
+      },
+      {
+        canonicalModel: 'gemini-3.7-flash',
+        model: 'gemini-3.7-flash-low',
+        tier: 'low',
+        thinkingBudget: 1000,
+        maxOutputTokens: 65536,
+        includeThoughts: true,
+        preserveClientBudget: false,
+        supportsTools: true,
+      },
+      {
+        canonicalModel: 'gemini-3.7-flash',
+        model: 'gemini-3.7-flash-low',
+        tier: 'low',
+        thinkingBudget: 1000,
+        maxOutputTokens: 65536,
+        includeThoughts: true,
+        preserveClientBudget: false,
+        supportsTools: true,
+      },
+      {
+        canonicalModel: 'gemini-3.7-flash',
+        model: 'gemini-3.7-flash-medium',
+        tier: 'medium',
+        thinkingBudget: 4000,
+        maxOutputTokens: 65536,
+        includeThoughts: true,
+        preserveClientBudget: false,
+        supportsTools: true,
+      },
+    ]);
+  });
+
   it('defaults the canonical Gemini 3.5 Flash model to the registered high tier', () => {
     expect(resolveModelVariant({ model: 'gemini-3.5-flash' })).toEqual({
       canonicalModel: 'gemini-3.5-flash',

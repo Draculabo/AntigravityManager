@@ -152,6 +152,12 @@ This store is local. It preserves the client contract, but it is no provider-sid
 
 Deliberate deviation: `store: false` suppresses retrieval but not continuation. OpenAI refuses both, and this gateway's clients chain with `previous_response_id` while sending `store: false`, so refusing the chain would break them silently for a property they do not use.
 
+### OpenAI image request boundaries
+
+`POST /v1/images/generations` accepts the Canvas-compatible top-level `image` extension only as one inline Base64 `data:image/*` URL or a non-empty ordered array of them. It never fetches remote image URLs. `POST /v1/images/edits` accepts multipart `image`, repeated `image`, `image[]`, and numbered `imageN` fields in arrival order; a mask is placed immediately after the first input image in the upstream parts list.
+
+Both routes allow at most 16 input images, 20 MiB decoded per image, and 32 MiB decoded across input images plus masks. The JSON body limit is raised only for the generation route so valid Base64 expansion can reach those checks; other JSON routes keep Fastify's normal ceiling. Explicit `image_size` / `imageSize` wins over `quality`, which wins over model suffixes. A valid `aspect_ratio` wins over a valid `size`, and invalid values fall through to the next source instead of forcing `1:1`. Image monitoring records counts and byte metadata, never prompt text, filenames, or Base64 payloads.
+
 ---
 
 ## 4b. v1internal Diagnostic Passthrough

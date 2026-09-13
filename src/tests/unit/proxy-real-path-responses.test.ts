@@ -212,4 +212,145 @@ describe('real request path, Responses input compatibility', () => {
     ]);
     expect(input).toEqual(before);
   });
+
+  it.each([false, true])(
+    'preserves tool-result text and image through the real Responses path with stream=%s',
+    async (stream) => {
+      const upstream = createUpstream({
+        generate: geminiTextResponse('ok'),
+        streamFrames: [geminiStreamFrame(geminiTextResponse('ok'))],
+      });
+      const lease = createLease([createAccount('acc-1')]);
+      const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
+      const reply = createReply();
+
+      await controller.responses(
+        {
+          model: 'gemini-3-flash',
+          stream,
+          store: false,
+          input: [
+            { role: 'user', content: 'Generate an image.' },
+            {
+              type: 'function_call',
+              call_id: 'call_image',
+              name: 'view_image',
+              arguments: '{}',
+            },
+            {
+              type: 'function_call_output',
+              call_id: 'call_image',
+              output: [
+                { type: 'input_text', text: 'image generated' },
+                {
+                  type: 'input_image',
+                  image_url: 'data:image/webp;name=source;BASE64,AQ==',
+                },
+              ],
+            },
+          ],
+        },
+        reply as never,
+      );
+      if (stream) {
+        if (!(reply.body instanceof Observable)) {
+          throw new Error('Expected a Responses stream');
+        }
+        await collect(reply.body);
+      }
+
+      const toolParts = upstream.calls[0]?.body.request.contents[2]?.parts;
+      expect(toolParts).toEqual([
+        expect.objectContaining({
+          functionResponse: {
+            name: 'view_image',
+            response: { result: 'image generated' },
+            id: 'call_image',
+          },
+        }),
+        { inlineData: { mimeType: 'image/webp', data: 'AQ==' } },
+      ]);
+      expect(JSON.stringify(toolParts?.[0])).not.toContain('data:image/');
+    },
+  );
+
+  it('maps Responses message audio_url to provider-readable media', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const lease = createLease([createAccount('acc-1')]);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
+    const reply = createReply();
+
+    await controller.responses(
+      {
+        model: 'gemini-3-flash',
+        stream: false,
+        store: false,
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [
+              {
+                type: 'audio_url',
+                audio_url: { url: 'https://example.com/sample.wav', mimeType: 'audio/wav' },
+              },
+            ],
+          },
+        ],
+      },
+      reply as never,
+    );
+
+    expect(reply.statusCode).toBe(200);
+    expect(upstream.calls[0]?.body.request.contents).toEqual([
+      {
+        role: 'user',
+        parts: [
+          {
+            fileData: { fileUri: 'https://example.com/sample.wav', mimeType: 'audio/wav' },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('uses the Responses tool audio_url fallback for an unreadable source', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const lease = createLease([createAccount('acc-1')]);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
+    const reply = createReply();
+
+    await controller.responses(
+      {
+        model: 'gemini-3-flash',
+        stream: false,
+        store: false,
+        input: [
+          { role: 'user', content: 'Inspect the audio.' },
+          {
+            type: 'function_call',
+            call_id: 'call_audio',
+            name: 'inspect_audio',
+            arguments: '{}',
+          },
+          {
+            type: 'function_call_output',
+            call_id: 'call_audio',
+            output: [{ type: 'audio_url', audio_url: { url: 'unresolvable-audio' } }],
+          },
+        ],
+      },
+      reply as never,
+    );
+
+    expect(upstream.calls[0]?.body.request.contents[2]?.parts).toEqual([
+      expect.objectContaining({
+        functionResponse: {
+          name: 'inspect_audio',
+          response: { result: '[audio]' },
+          id: 'call_audio',
+        },
+      }),
+    ]);
+  });
 });

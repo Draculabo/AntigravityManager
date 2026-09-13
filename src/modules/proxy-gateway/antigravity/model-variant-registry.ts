@@ -25,6 +25,36 @@ interface ModelVariantFamily {
   aliases: Record<string, AliasPolicy>;
 }
 
+const GEMINI_37_FLASH_VARIANTS: Record<
+  ModelVariantTier,
+  Omit<ResolvedModelVariant, 'canonicalModel' | 'tier'>
+> = {
+  low: {
+    model: 'gemini-3.7-flash-low',
+    thinkingBudget: 1000,
+    maxOutputTokens: 65536,
+    includeThoughts: true,
+    preserveClientBudget: false,
+    supportsTools: true,
+  },
+  medium: {
+    model: 'gemini-3.7-flash-medium',
+    thinkingBudget: 4000,
+    maxOutputTokens: 65536,
+    includeThoughts: true,
+    preserveClientBudget: false,
+    supportsTools: true,
+  },
+  high: {
+    model: 'gemini-3.7-flash-high',
+    thinkingBudget: 10000,
+    maxOutputTokens: 65536,
+    includeThoughts: true,
+    preserveClientBudget: false,
+    supportsTools: true,
+  },
+};
+
 const GEMINI_35_FLASH_VARIANTS: Record<
   ModelVariantTier,
   Omit<ResolvedModelVariant, 'canonicalModel' | 'tier'>
@@ -86,6 +116,21 @@ const GEMINI_31_PRO_VARIANTS: Record<
 };
 
 const MODEL_VARIANT_FAMILIES: ModelVariantFamily[] = [
+  {
+    canonicalModel: 'gemini-3.7-flash',
+    variants: GEMINI_37_FLASH_VARIANTS,
+    aliases: {
+      'gemini-3.7-flash-high': 'tier',
+      'gemini-3.7-flash-medium': 'medium',
+      'gemini-3.7-flash-low': 'low',
+      'gemini-3.7-flash-tiered': 'tier',
+      'gemini-3.6-flash-high': 'tier',
+      'gemini-3.6-flash-medium': 'medium',
+      'gemini-3.6-flash-low': 'low',
+      'gemini-3.6-flash': 'tier',
+      'gemini-3.6-flash-tiered': 'tier',
+    },
+  },
   {
     canonicalModel: 'gemini-3.5-flash',
     variants: GEMINI_35_FLASH_VARIANTS,

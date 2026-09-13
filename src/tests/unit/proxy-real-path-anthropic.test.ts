@@ -86,6 +86,30 @@ describe('real request path, Anthropic messages surface', () => {
     expect((reply.body as { id: string }).id).toBe('msg_upstream-response-1');
   });
 
+  it('returns a minimal non-empty response when both direct and streamed upstream responses are empty', async () => {
+    const upstream = createUpstream({ generate: {}, streamFrames: [] });
+    const lease = createLease([createAccount('acc-1')]);
+    const controller = new AnthropicController(createGateway(upstream, lease).anthropicService);
+    const reply = createReply();
+
+    await controller.anthropicMessages(
+      {
+        max_tokens: 16,
+        messages: [{ content: '.', role: 'user' }],
+        model: 'claude-sonnet-4-5',
+        stream: false,
+      } as never,
+      reply as never,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(reply.body).toMatchObject({
+      content: [{ text: '.', type: 'text' }],
+      stop_reason: 'end_turn',
+    });
+    expect(upstream.calls.map((call) => call.kind)).toEqual(['generate', 'stream']);
+  });
+
   it('streams an upstream fixture as the Anthropic event sequence a client expects', async () => {
     const upstream = createUpstream({
       streamFrames: [
@@ -283,17 +307,15 @@ describe('real request path, Anthropic messages surface', () => {
     } as never);
 
     const body = upstream.calls[0]?.body;
-    const historicalToolCall = body?.request.contents[0]?.parts.find(
-      (part) => part.functionCall,
-    );
+    const historicalToolCall = body?.request.contents[0]?.parts.find((part) => part.functionCall);
     expect(body?.model).toBe('gemini-3-flash');
     expect(historicalToolCall?.thoughtSignature).not.toBe(staleSignature);
     expect(
       SignatureStore.getAt({ model: 'gpt-oss-120b-medium', sessionKey, messageCount: 1 }),
     ).toBeNull();
-    expect(
-      SignatureStore.getAt({ model: 'gemini-3-flash', sessionKey, messageCount: 1 }),
-    ).toBe(returnedSignature);
+    expect(SignatureStore.getAt({ model: 'gemini-3-flash', sessionKey, messageCount: 1 })).toBe(
+      returnedSignature,
+    );
   });
 
   it('stops after the one repair retry without rotating or penalising', async () => {

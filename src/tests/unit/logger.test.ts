@@ -106,6 +106,18 @@ describe('Logger Utilities', () => {
     expect(content).toContain(message);
   });
 
+  it('redacts credentials embedded in proxy URLs before writing to the log sink', async () => {
+    const credential = 'logger-test-user:logger-test-password';
+    logger.info(`Invalid proxy URL: http://${credential}@proxy.example:8080`);
+
+    const filePath = await waitForLogContains(
+      'Invalid proxy URL: http://[REDACTED]@proxy.example:8080',
+    );
+    expect(filePath).not.toBeNull();
+    const content = fs.readFileSync(filePath as string, 'utf-8');
+    expect(content).not.toContain(credential);
+  });
+
   it('should report raw cloud account token refresh strings to Sentry', async () => {
     const reporter = vi.fn();
     const message = 'Token refresh failed for user@example.com. Please try logging in again.';

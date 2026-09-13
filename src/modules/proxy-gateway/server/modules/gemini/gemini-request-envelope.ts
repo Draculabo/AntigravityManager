@@ -12,6 +12,7 @@ export function toInternalGeminiRequest(
   return {
     contents: injectPlaceholderSignaturesForModel(request.contents, model),
     generationConfig: request.generationConfig,
+    safetySettings: request.safetySettings,
     tools: request.tools,
     ...normalizeGeminiToolConfigAliases(request),
     systemInstruction: request.systemInstruction

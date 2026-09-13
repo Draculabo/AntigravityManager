@@ -1,4 +1,13 @@
-import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import type { CloudAccount, CloudAccountHealth } from '@/modules/cloud-account/types';
 import { RateLimitTrackerService } from '../../shared/services/rate-limit-tracker.service';
 import {
@@ -28,6 +37,15 @@ import {
 } from './policies/account-lease-limit.policy';
 import { AccountLeaseConfigPolicy } from './policies/account-lease-config.policy';
 import { normalizeTrustedGoogleValidationUrl } from '@/modules/cloud-account/utils/google-validation-url';
+import {
+  ModelAvailabilityService,
+  proxyModelAvailabilityStore,
+} from '../../shared/services/model-availability.service';
+import {
+  ImageAccountPermit,
+  ImageAccountSchedulerService,
+} from './image-account-scheduler.service';
+import { getServerConfig } from '@/server/server-config';
 
 interface GetNextTokenOptions {
   sessionKey?: string;
@@ -35,11 +53,39 @@ interface GetNextTokenOptions {
   model?: string;
 }
 
+export interface GetNextImageTokenOptions extends GetNextTokenOptions {
+  signal?: AbortSignal;
+}
+
+export interface ImageTokenLease {
+  permit: ImageAccountPermit;
+  token: CloudAccount;
+}
+
+export class ImageQueueTimeoutError extends HttpException {
+  constructor() {
+    super('Image queue wait timed out', HttpStatus.TOO_MANY_REQUESTS);
+  }
+}
+
+export class ImageAccountUnavailableError extends HttpException {
+  constructor() {
+    super('No available image accounts', HttpStatus.SERVICE_UNAVAILABLE);
+  }
+}
+
+export class ImageQueueAbortedError extends Error {
+  constructor() {
+    super('Image request was aborted');
+    this.name = 'AbortError';
+  }
+}
+
 type TokenData = AccountLeaseTokenData;
 type TokenEntry = [string, TokenData];
 
 @Injectable()
-export class AccountLeaseService implements OnModuleInit {
+export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AccountLeaseService.name);
   private readonly stickySessionTtlMs = 10 * 60 * 1000;
   private readonly rateLimitCooldownMs = 5 * 60 * 1000;
@@ -67,6 +113,12 @@ export class AccountLeaseService implements OnModuleInit {
     @Optional()
     @Inject(RateLimitTrackerService)
     private readonly rateLimitTrackerService: RateLimitTrackerService = new RateLimitTrackerService(),
+    @Optional()
+    @Inject(ModelAvailabilityService)
+    private readonly modelAvailability: ModelAvailabilityService = proxyModelAvailabilityStore,
+    @Optional()
+    @Inject(ImageAccountSchedulerService)
+    private readonly imageScheduler: ImageAccountSchedulerService = new ImageAccountSchedulerService(),
   ) {
     this.quotaRefreshPolicy = new AccountLeaseQuotaRefreshPolicy({
       accountStore: this.accountStore,
@@ -93,7 +145,6 @@ export class AccountLeaseService implements OnModuleInit {
     });
     this.fulfillmentPolicy = new AccountLeaseFulfillmentPolicy({
       hydrationPolicy: this.hydrationPolicy,
-      markRateLimitSuccess: (accountId) => this.rateLimitTracker.markSuccess(accountId),
       bindSession: (sessionKey, accountId, expiresAt) =>
         this.selectionPolicy.bindSession(sessionKey, accountId, expiresAt),
       stickySessionTtlMs: this.stickySessionTtlMs,
@@ -136,22 +187,36 @@ export class AccountLeaseService implements OnModuleInit {
 
   async onModuleInit() {
     await this.loadAccounts();
+    this.restorePersistedLongImageLimits();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.hydrationPolicy.drainBackgroundPersistence();
   }
 
   async loadAccounts(): Promise<number> {
-    return this.tokenCache.loadAccounts();
+    try {
+      return await this.tokenCache.loadAccounts();
+    } finally {
+      this.syncImageSchedulerAccounts();
+    }
   }
 
   async reloadAllAccounts(): Promise<number> {
     const count = await this.loadAccounts();
-    this.clearAllRateLimits();
+    this.resetRateLimitsFromPersistence();
     this.clearAllSessions();
     return count;
   }
 
   async reloadAllAccountsOrThrow(): Promise<number> {
-    const count = await this.tokenCache.loadAccountsOrThrow();
-    this.clearAllRateLimits();
+    let count: number;
+    try {
+      count = await this.tokenCache.loadAccountsOrThrow();
+    } finally {
+      this.syncImageSchedulerAccounts();
+    }
+    this.resetRateLimitsFromPersistence();
     this.clearAllSessions();
     return count;
   }
@@ -162,7 +227,9 @@ export class AccountLeaseService implements OnModuleInit {
 
   evictAccount(accountId: string): boolean {
     this.selectionPolicy.clearAccountSessions(accountId);
-    return this.tokens.delete(accountId);
+    const deleted = this.tokens.delete(accountId);
+    this.syncImageSchedulerAccounts();
+    return deleted;
   }
 
   updateAccountOAuthHealth(accountId: string, oauthHealth: CloudAccountHealth['oauth']): boolean {
@@ -176,6 +243,17 @@ export class AccountLeaseService implements OnModuleInit {
 
   clearAllRateLimits(): void {
     this.limitPolicy.clearAllRateLimits();
+  }
+
+  private resetRateLimitsFromPersistence(): void {
+    this.clearAllRateLimits();
+    this.restorePersistedLongImageLimits();
+  }
+
+  private restorePersistedLongImageLimits(): void {
+    for (const entry of this.modelAvailability.getActiveSnapshot()) {
+      this.rateLimitTracker.restorePersistedLongImageLimit(entry);
+    }
   }
 
   recordParityError(): void {
@@ -212,6 +290,14 @@ export class AccountLeaseService implements OnModuleInit {
 
   async markFromUpstreamError(params: AccountLeaseUpstreamErrorParams): Promise<void> {
     await this.limitPolicy.markFromUpstreamError(params);
+  }
+
+  markImageRateLimitFast(params: AccountLeaseUpstreamErrorParams): boolean {
+    return this.limitPolicy.markImageRateLimitFast(params);
+  }
+
+  async reconcileImageRateLimit(params: AccountLeaseUpstreamErrorParams): Promise<void> {
+    await this.limitPolicy.reconcileImageRateLimit(params);
   }
 
   async markValidationRequired(params: {
@@ -315,6 +401,96 @@ export class AccountLeaseService implements OnModuleInit {
       this.logger.error('Failed to select the next account token', error);
       return null;
     }
+  }
+
+  async getNextImageToken(options: GetNextImageTokenOptions = {}): Promise<ImageTokenLease> {
+    this.syncImageSchedulerAccounts();
+    const timeoutMs = Math.max(1, (getServerConfig()?.request_timeout ?? 120) * 1000);
+    const deadline = Date.now() + timeoutMs;
+
+    while (true) {
+      this.throwIfImageSelectionAborted(options.signal);
+      const busyAccountIds = new Set<string>();
+
+      while (true) {
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+          throw new ImageQueueTimeoutError();
+        }
+
+        const token = this.getNextToken({
+          sessionKey: options.sessionKey,
+          model: options.model,
+          excludeAccountIds: [...(options.excludeAccountIds ?? []), ...busyAccountIds],
+        });
+        const selected = await this.waitForImageSelection(token, remainingMs, options.signal);
+        if (selected === null) {
+          if (busyAccountIds.size === 0) {
+            throw new ImageAccountUnavailableError();
+          }
+          break;
+        }
+
+        const permit = this.imageScheduler.tryAcquire(selected.id);
+        if (permit) {
+          return { token: selected, permit };
+        }
+        busyAccountIds.add(selected.id);
+      }
+
+      const waitResult = await this.imageScheduler.waitForChange(
+        deadline - Date.now(),
+        options.signal,
+      );
+      if (waitResult === 'aborted') {
+        throw new ImageQueueAbortedError();
+      }
+      if (Date.now() >= deadline) {
+        throw new ImageQueueTimeoutError();
+      }
+    }
+  }
+
+  private async waitForImageSelection(
+    selection: Promise<CloudAccount | null>,
+    remainingMs: number,
+    signal?: AbortSignal,
+  ): Promise<CloudAccount | null> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (value: CloudAccount | null): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        resolve(value);
+      };
+      const fail = (error: unknown): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        reject(error);
+      };
+      const onAbort = (): void => fail(new ImageQueueAbortedError());
+      const timer = setTimeout(() => fail(new ImageQueueTimeoutError()), remainingMs);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      void selection.then(finish, fail);
+    });
+  }
+
+  private throwIfImageSelectionAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+      throw new ImageQueueAbortedError();
+    }
+  }
+
+  private syncImageSchedulerAccounts(): void {
+    this.imageScheduler.syncAccounts(this.tokens.keys());
   }
 
   private selectModelCapableAccounts(allTokens: TokenEntry[], model?: string): TokenEntry[] {

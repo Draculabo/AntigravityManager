@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Inject, Param, Post, Res, UseGuards } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import { Body, Controller, Get, Inject, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
 import { OpenAIOperations, type OpenAITextCompletionRequest } from './openai-operations.service';
@@ -11,8 +11,12 @@ export class OpenAIChatController {
   public constructor(@Inject(OpenAIOperations) private readonly operations: OpenAIOperations) {}
 
   @Post('chat/completions')
-  public chatCompletions(@Body() body: OpenAIChatRequest, @Res() res: FastifyReply): Promise<void> {
-    return this.operations.chatCompletions(body, res);
+  public chatCompletions(
+    @Body() body: OpenAIChatRequest,
+    @Res() res: FastifyReply,
+    @Req() req?: FastifyRequest,
+  ): Promise<void> {
+    return this.operations.chatCompletions(body, res, req);
   }
 
   @Get('chat/completions/:completionId')
@@ -27,7 +31,8 @@ export class OpenAIChatController {
   public completions(
     @Body() body: OpenAITextCompletionRequest,
     @Res() res: FastifyReply,
+    @Req() req?: FastifyRequest,
   ): Promise<void> {
-    return this.operations.completions(body, res);
+    return this.operations.completions(body, res, req);
   }
 }

@@ -156,7 +156,7 @@ describe('Responses input compatibility', () => {
   );
 
   it.each([{}, { legacy: true }, { text: 'Not an array block.' }, { nested: { value: 1 } }])(
-    'ignores object content %j without removing the enclosing message',
+    'handles object content %j without removing the enclosing message',
     (content) => {
       const input = [
         { role: 'user', content },
@@ -166,8 +166,8 @@ describe('Responses input compatibility', () => {
       const before = structuredClone(input);
 
       expect(buildResponsesChatRequest({ input }).messages).toEqual([
-        { role: 'user', content: '' },
-        { role: 'assistant', content: '' },
+        { role: 'user', content: 'text' in content ? content.text : '' },
+        { role: 'assistant', content: 'text' in content ? content.text : '' },
         { role: 'user', content: 'Continue.' },
       ]);
       expect(input).toEqual(before);
@@ -223,5 +223,92 @@ describe('Responses input compatibility', () => {
         { type: 'image_url', image_url: { url: 'https://example.com/image.png', detail: 7 } },
       ]),
     ).toBe('');
+  });
+
+  it('preserves text and images from Responses tool output', () => {
+    expect(
+      buildResponsesChatRequest({
+        input: [
+          { role: 'user', content: 'Generate an image.' },
+          { type: 'function_call', call_id: 'call_image', name: 'view_image', arguments: '{}' },
+          {
+            type: 'function_call_output',
+            call_id: 'call_image',
+            output: {
+              content: [
+                { type: 'input_text', text: 'image generated' },
+                { type: 'input_image', image_url: 'data:image/png;base64,AQ==' },
+              ],
+            },
+          },
+        ],
+      }).messages.at(-1),
+    ).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_image',
+      name: 'view_image',
+      content: [
+        { type: 'text', text: 'image generated' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AQ==' } },
+      ],
+    });
+  });
+
+  it('keeps pure tool images without fabricating text and retains unknown JSON fallback', () => {
+    const request = buildResponsesChatRequest({
+      input: [
+        { role: 'user', content: 'Inspect.' },
+        { type: 'function_call', call_id: 'call_image', name: 'view_image', arguments: '{}' },
+        {
+          type: 'function_call_output',
+          call_id: 'call_image',
+          output: { type: 'input_image', image_url: 'data:image/png;base64,AQ==' },
+        },
+        { type: 'function_call', call_id: 'call_unknown', name: 'read_value', arguments: '{}' },
+        {
+          type: 'function_call_output',
+          call_id: 'call_unknown',
+          output: [{ value: 41 }],
+        },
+      ],
+    });
+
+    expect(request.messages[2]?.content).toEqual([
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AQ==' } },
+    ]);
+    expect(request.messages.at(-1)?.content).toBe('[{"value":41}]');
+  });
+
+  it('compacts repeated apply_patch failures without dropping tool media', () => {
+    const input: unknown[] = [{ role: 'user', content: 'Apply the patch.' }];
+    for (let index = 1; index <= 7; index += 1) {
+      input.push(
+        {
+          type: 'function_call',
+          call_id: `call_patch_${index}`,
+          name: 'apply_patch',
+          arguments: '{}',
+        },
+        {
+          type: 'function_call_output',
+          call_id: `call_patch_${index}`,
+          output: [
+            {
+              type: 'input_text',
+              text: `apply_patch verification failed\nDistinct failure ${index}`,
+            },
+            { type: 'input_image', image_url: 'data:image/png;base64,AQ==' },
+          ],
+        },
+      );
+    }
+
+    expect(buildResponsesChatRequest({ input }).messages.at(-1)?.content).toEqual([
+      {
+        type: 'text',
+        text: '[Additional apply_patch failure omitted to avoid a retry loop. Produce a fresh V4A patch from current file contents instead of repeating previous failed patches.]',
+      },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AQ==' } },
+    ]);
   });
 });

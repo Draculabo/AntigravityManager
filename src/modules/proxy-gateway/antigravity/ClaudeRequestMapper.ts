@@ -15,6 +15,11 @@ import { buildOfficialSystemInstruction } from './OfficialSystemInstruction';
 import { parseMarkdownImagesToGeminiParts } from './MarkdownImageParts';
 import { enhanceGeminiSkillsPrompt } from './SkillPromptEnhancer';
 import { toSnakeToolConfig } from './GeminiToolConfigCompat';
+import {
+  IMAGE_GENERATION_SAFETY_SETTINGS,
+  resolveImageGenerationConfig,
+  type ImageGenerationConfigInput,
+} from './ImageGenerationConfig';
 import { logger } from '@/shared/logging/logger';
 import {
   ClaudeRequest,
@@ -55,6 +60,7 @@ interface ResolvedRequestConfig {
 export type ClaudeRequestMapperMode = 'normal' | 'invalid-thought-signature-recovery';
 
 export interface ClaudeRequestMapperOptions {
+  imageRequest?: ImageGenerationConfigInput;
   mode?: ClaudeRequestMapperMode;
   signatureTargetFamily?: string | null;
   signatureTargetFamilyModel?: string | null;
@@ -132,7 +138,9 @@ export function transformClaudeRequestIn(
 
   // Map model name
   const mappedModel = resolvedModel
-    ? normalizeGeminiModelAlias(resolvedModel)
+    ? resolvedModel.toLowerCase().includes('-image')
+      ? resolvedModel
+      : normalizeGeminiModelAlias(resolvedModel)
     : mapClaudeModelToGemini(claudeReq.model);
 
   // Convert Claude tools to Tool array for networking detection
@@ -141,7 +149,13 @@ export function transformClaudeRequestIn(
     : undefined;
 
   // Resolve grounding config
-  const requestConfig = resolveRequestConfig(claudeReq.model, mappedModel, normalizedTools);
+  const requestConfig = resolveRequestConfig(
+    claudeReq.model,
+    mappedModel,
+    normalizedTools,
+    options.imageRequest,
+    resolvedModel !== undefined,
+  );
   const mapperMode = options.mode ?? 'normal';
   const signatureTarget = {
     model: requestConfig.finalModel,
@@ -249,6 +263,7 @@ export function transformClaudeRequestIn(
     delete innerRequest.tools;
     // 2. Remove systemInstruction (image generation does not support system prompts)
     delete innerRequest.systemInstruction;
+    innerRequest.safetySettings = [...IMAGE_GENERATION_SAFETY_SETTINGS];
 
     // 3. Clean generationConfig
     const imageGenerationConfig = innerRequest.generationConfig || {};
@@ -387,14 +402,19 @@ function resolveRequestConfig(
   originalModel: string,
   mappedModel: string,
   tools?: Tool[],
+  imageRequest?: ImageGenerationConfigInput,
+  preserveMappedImageModel = false,
 ): ResolvedRequestConfig {
   // 1. Image Generation Check
   if (isGeminiImageModel(mappedModel)) {
-    const { imageConfig, parsedBaseModel } = parseImageConfig(originalModel);
+    const { imageConfig } = resolveImageGenerationConfig(originalModel, imageRequest);
+    const { parsedBaseModel } = resolveImageGenerationConfig(mappedModel);
     return {
       requestType: 'image_gen',
       injectGoogleSearch: false,
-      finalModel: parsedBaseModel,
+      finalModel: preserveMappedImageModel
+        ? parsedBaseModel
+        : normalizeGeminiModelAlias(parsedBaseModel),
       imageConfig,
     };
   }
@@ -440,40 +460,6 @@ function supportsWebSearchModel(modelName: string): boolean {
     normalized.includes('claude-opus') ||
     normalized.includes('claude-4')
   );
-}
-
-/**
- * Parses image generation configuration
- * Extracts aspect ratio and resolution settings from model name
- */
-function parseImageConfig(modelName: string): {
-  imageConfig: ImageConfig;
-  parsedBaseModel: string;
-} {
-  const normalizedModel = modelName.toLowerCase();
-  let aspectRatio = '1:1';
-  if (modelName.includes('-16x9')) aspectRatio = '16:9';
-  else if (modelName.includes('-9x16')) aspectRatio = '9:16';
-  else if (modelName.includes('-4x3')) aspectRatio = '4:3';
-  else if (modelName.includes('-3x4')) aspectRatio = '3:4';
-  else if (modelName.includes('-1x1')) aspectRatio = '1:1';
-
-  const isHd = modelName.includes('-4k') || modelName.includes('-hd');
-
-  const config: ImageConfig = { aspectRatio };
-  if (isHd) {
-    config.imageSize = '4K';
-  }
-
-  const parsedBaseModel =
-    normalizedModel.startsWith('gemini-3.1-flash-image') ||
-    normalizedModel.startsWith('gemini-3-flash-image')
-      ? 'gemini-3.1-flash-image'
-      : normalizedModel.startsWith('gemini-3.1-pro-image')
-        ? 'gemini-3.1-pro-image'
-        : 'gemini-3-pro-image';
-
-  return { imageConfig: config, parsedBaseModel };
 }
 
 function isGeminiImageModel(modelName: string): boolean {
@@ -752,10 +738,15 @@ function buildContents(
       } else if (block.type === 'image' || block.type === 'document' || block.type === 'audio') {
         // Images and documents differ only in what the client called them; the
         // provider takes both as one inline part carrying its own MIME type.
-        if (block.source.type === 'base64')
+        if (block.source.type === 'base64') {
           parts.push({
             inlineData: { mimeType: block.source.media_type, data: block.source.data },
           });
+        } else if (block.type === 'audio' && block.source.type === 'url') {
+          parts.push({
+            fileData: { mimeType: block.source.media_type, fileUri: block.source.url },
+          });
+        }
       } else if (block.type === 'tool_use') {
         const part: GeminiPart = {
           functionCall: { name: block.name, args: block.input, id: block.id },
@@ -797,16 +788,42 @@ function buildContents(
       } else if (block.type === 'tool_result') {
         const funcName = toolIdToName.get(block.tool_use_id) || block.tool_use_id;
         let mergedContent = '';
-        if (isString(block.content)) mergedContent = block.content;
-        else if (Array.isArray(block.content))
+        const extraParts: GeminiPart[] = [];
+        if (isString(block.content)) {
+          mergedContent = block.content;
+        } else if (Array.isArray(block.content)) {
           mergedContent = block.content
             .filter((content): content is { type: 'text'; text: string } => content.type === 'text')
             .map((content) => content.text)
             .join('\n');
-        if (isEmpty(mergedContent.trim()))
+          for (const content of block.content) {
+            if (
+              (content.type === 'image' ||
+                content.type === 'document' ||
+                content.type === 'audio') &&
+              content.source.type === 'base64'
+            ) {
+              extraParts.push({
+                inlineData: {
+                  mimeType: content.source.media_type,
+                  data: content.source.data,
+                },
+              });
+            } else if (content.type === 'audio' && content.source.type === 'url') {
+              extraParts.push({
+                fileData: {
+                  mimeType: content.source.media_type,
+                  fileUri: content.source.url,
+                },
+              });
+            }
+          }
+        }
+        if (isEmpty(mergedContent.trim()) && extraParts.length === 0) {
           mergedContent = block.is_error
             ? 'Tool execution failed with no output.'
             : 'Command executed successfully.';
+        }
         const part: GeminiPart = {
           functionResponse: {
             name: funcName,
@@ -819,6 +836,7 @@ function buildContents(
           part.thought_signature = lastThoughtSignature;
         }
         parts.push(part);
+        parts.push(...extraParts);
       } else if (block.type === 'redacted_thinking') {
         parts.push({ text: `[Redacted Thinking: ${block.data}]`, thought: true });
       }

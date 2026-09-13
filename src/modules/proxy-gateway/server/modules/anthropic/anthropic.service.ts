@@ -366,7 +366,7 @@ export class AnthropicService extends BaseProxyService {
 
       return {
         body,
-        response: await this.generateInternalWithStreamFallback(
+        response: await this.generateAnthropicInternalWithStreamFallback(
           body,
           params.accessToken,
           params.upstreamProxyUrl,
@@ -410,6 +410,35 @@ export class AnthropicService extends BaseProxyService {
     }
   }
 
+  private async generateAnthropicInternalWithStreamFallback(
+    body: GeminiInternalRequest,
+    accessToken: string,
+    upstreamProxyUrl?: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<GeminiResponse> {
+    try {
+      return await this.generateInternalWithStreamFallback(
+        body,
+        accessToken,
+        upstreamProxyUrl,
+        extraHeaders,
+      );
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== 'Empty response stream') {
+        throw error;
+      }
+
+      return {
+        candidates: [
+          {
+            content: { role: 'model', parts: [] },
+            finishReason: 'STOP',
+          },
+        ],
+      };
+    }
+  }
+
   private processAnthropicInternalStream(
     upstreamStream: NodeJS.ReadableStream,
     model: string,
@@ -434,7 +463,6 @@ export class AnthropicService extends BaseProxyService {
       let lastFinishReason: string | undefined;
       let lastUsageMetadata: UsageMetadata | undefined;
 
-      let receivedData = false;
       const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Claude-SSE', () => {
         subscriber.next('data: {"type": "message_stop"}\n\ndata: [DONE]\n\n');
         subscriber.complete();
@@ -443,7 +471,6 @@ export class AnthropicService extends BaseProxyService {
       idleTimer.reset();
 
       upstreamStream.on('data', (chunk: Buffer) => {
-        receivedData = true; // Mark that we got data
         idleTimer.reset();
         buffer += decoder.decode(chunk, { stream: true });
         const lines = buffer.split('\n');
@@ -502,12 +529,6 @@ export class AnthropicService extends BaseProxyService {
 
       upstreamStream.on('end', () => {
         idleTimer.clear();
-        if (!receivedData) {
-          this.logger.warn('Empty response stream detected');
-          subscriber.error(new Error('Empty response stream'));
-          return;
-        }
-
         const finishChunks = state.emitFinish(lastFinishReason, lastUsageMetadata);
         finishChunks.forEach((c) => subscriber.next(c));
         subscriber.complete();

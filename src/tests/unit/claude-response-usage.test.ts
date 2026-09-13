@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
 
 describe('ClaudeResponseMapper usage', () => {
+  it('returns one minimal text block when the upstream response has no content', () => {
+    expect(transformResponse({}).content).toEqual([{ type: 'text', text: '.' }]);
+  });
+
   it('maps Gemini implicit cache and thinking counts into Claude-compatible usage', () => {
     const response = transformResponse({
       usageMetadata: {

@@ -81,6 +81,7 @@ export class AccountLeaseLimitPolicy {
 
   markModelSuccess(accountIdOrEmail: string, model: string): void {
     const accountId = this.resolveAccountId(accountIdOrEmail);
+    this.rateLimitTracker.markSuccess(accountId);
     this.rateLimitTracker.markModelSuccess(accountId, normalizeModelId(model) ?? model);
   }
 
@@ -141,6 +142,39 @@ export class AccountLeaseLimitPolicy {
     this.trackParsedError(params, accountId, normalizedModel, true);
   }
 
+  markImageRateLimitFast(params: AccountLeaseUpstreamErrorParams): boolean {
+    const accountId = this.resolveAccountId(params.accountIdOrEmail);
+    const normalizedModel = normalizeModelId(params.model);
+    this.trackParsedError(params, accountId, normalizedModel, true);
+
+    if ((params.status ?? 0) !== 429) {
+      return false;
+    }
+    const hasExplicitRetryWindow =
+      Boolean(isString(params.retryAfter) && !isEmpty(params.retryAfter.trim())) ||
+      parseRetryDelayMilliseconds(params.body) !== null;
+    if (hasExplicitRetryWindow) {
+      return false;
+    }
+    const reason = this.detectRateLimitReasonFromBody(params.body);
+    return reason === RateLimitReason.QuotaExhausted || reason === RateLimitReason.Unknown;
+  }
+
+  async reconcileImageRateLimit(params: AccountLeaseUpstreamErrorParams): Promise<void> {
+    const accountId = this.resolveAccountId(params.accountIdOrEmail);
+    const normalizedModel = normalizeModelId(params.model);
+    const reason = this.detectRateLimitReasonFromBody(params.body);
+    const refreshOutcome = await this.options.refreshRealtimeQuotaAndReconcileLimit(
+      accountId,
+      reason,
+      normalizedModel,
+    );
+    if (refreshOutcome !== 'unavailable') {
+      return;
+    }
+    this.options.setPreciseLockoutFromCachedQuota(accountId, reason, normalizedModel);
+  }
+
   private trackParsedError(
     params: AccountLeaseUpstreamErrorParams,
     accountId: string,
@@ -158,15 +192,6 @@ export class AccountLeaseLimitPolicy {
 
     if (!parsed) {
       return;
-    }
-
-    const isModelScoped =
-      Boolean(parsed.model && !isEmpty(parsed.model.trim())) &&
-      (parsed.reason === RateLimitReason.QuotaExhausted ||
-        parsed.reason === RateLimitReason.RateLimitExceeded ||
-        parsed.reason === RateLimitReason.ModelCapacityExhausted);
-    if (!isModelScoped) {
-      this.accountCooldowns.set(accountId, Date.now() + parsed.retryAfterSec * 1000);
     }
 
     if (logResult) {

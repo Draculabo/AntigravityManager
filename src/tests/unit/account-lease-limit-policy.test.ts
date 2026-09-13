@@ -100,6 +100,31 @@ describe('AccountLeaseLimitPolicy', () => {
     expect(policy.isRateLimited('acc-1', 'gemini-3.1-flash-lite')).toBe(false);
   });
 
+  it('clears a transient account-level 429 only after a real model success', async () => {
+    const { policy } = createPolicy();
+
+    await policy.markFromUpstreamError({
+      accountIdOrEmail: 'acc-1',
+      status: 429,
+      model: 'gemini-3-pro-image',
+      body: JSON.stringify({ error: { details: [{ retryDelay: '1s' }] } }),
+    });
+    expect(policy.isRateLimited('acc-1', 'gemini-3-pro-image')).toBe(true);
+
+    policy.markModelSuccess('acc-1', 'gemini-3-pro-image');
+
+    expect(policy.isRateLimited('acc-1', 'gemini-3-pro-image')).toBe(false);
+  });
+
+  it('does not clear an explicit forbidden cooldown on model success', () => {
+    const { policy } = createPolicy();
+    policy.markAsForbidden('acc-1');
+
+    policy.markModelSuccess('acc-1', 'gemini-3-pro-image');
+
+    expect(policy.isRateLimited('acc-1', 'gemini-3-pro-image')).toBe(true);
+  });
+
   it('clears only recovered model families during partial quota recovery', () => {
     const { policy } = createPolicy();
     const resetTime = new Date(Date.now() + 60_000).toISOString();

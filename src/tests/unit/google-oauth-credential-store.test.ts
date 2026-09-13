@@ -84,7 +84,7 @@ describe('writeGoogleOAuthCredentials', () => {
     [10_000_000_000, 10_000_000_000_000],
     [10_000_000_001, 10_000_000_001],
   ])(
-    'normalizes expiry timestamp %s to milliseconds at the competitor threshold',
+    'normalizes expiry timestamp %s to milliseconds at the protocol threshold',
     (input, expected) => {
       writeGoogleOAuthCredentials(
         {

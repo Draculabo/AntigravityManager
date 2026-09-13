@@ -3,10 +3,12 @@ import { GeminiClient } from '../modules/gemini/gemini-client.service';
 import { AccountLeaseService } from '../modules/account-lease/account-lease.service';
 import { v4 as uuidv4 } from 'uuid';
 import { getServerConfig } from '@/server/server-config';
-import { isFunction, isNumber, isPlainObject } from 'lodash-es';
+import { isFunction, isNumber, isPlainObject, isString } from 'lodash-es';
 import {
   ProxyRetryService,
   ProxyTokenRetryState,
+  type ImageSchedulerPermit,
+  type ImageRetryPenaltyMode,
   type ProxyUpstreamFailureClassification,
 } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import { CloudAccount } from '@/modules/cloud-account/types';
@@ -15,7 +17,10 @@ import {
   type RegisteredGenerationConstraints,
 } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
-import { hasExplicitQuotaExhaustedSignal } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+import {
+  hasExplicitQuotaExhaustedSignal,
+  isGeminiImageModel,
+} from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import {
   GeminiContent,
@@ -124,8 +129,18 @@ export abstract class BaseProxyService {
     retryState: ProxyTokenRetryState,
     model: string,
     sessionKey?: string,
+    imageRequest = false,
+    signal?: AbortSignal,
   ): Promise<CloudAccount | null> {
-    return this.retryPolicy.selectRetryToken(retryState, model, sessionKey);
+    return this.retryPolicy.selectRetryToken(retryState, model, sessionKey, imageRequest, signal);
+  }
+
+  protected releaseImagePermit(retryState: ProxyTokenRetryState): void {
+    this.retryPolicy.releaseImagePermit(retryState);
+  }
+
+  protected takeImagePermit(retryState: ProxyTokenRetryState): ImageSchedulerPermit | null {
+    return this.retryPolicy.takeImagePermit(retryState);
   }
 
   protected async waitBeforeRetry(
@@ -143,11 +158,103 @@ export abstract class BaseProxyService {
     error: unknown,
     label: string,
   ): Promise<boolean> {
-    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label);
+    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label, 'baseline');
+  }
+
+  protected async prepareCurrentGraceRetry(
+    retryState: ProxyTokenRetryState,
+    token: CloudAccount,
+    error: unknown,
+    label: string,
+  ): Promise<boolean> {
+    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label, 'current');
+  }
+
+  protected async prepareScheduledImageRetry(
+    retryState: ProxyTokenRetryState,
+    token: CloudAccount,
+    model: string,
+    error: unknown,
+    label: string,
+    allowGraceRetry = true,
+    signal?: AbortSignal,
+    penaltyMode: ImageRetryPenaltyMode = 'gemini',
+  ): Promise<boolean> {
+    return this.retryPolicy.prepareScheduledImageRetry(
+      retryState,
+      token,
+      model,
+      error,
+      label,
+      allowGraceRetry,
+      signal,
+      penaltyMode,
+    );
   }
 
   protected markUpstreamSuccess(accountId: string, model: string): void {
     this.retryPolicy.markUpstreamSuccess(accountId, model);
+  }
+
+  protected markUpstreamSuccessForResponse(
+    accountId: string,
+    model: string,
+    response: GeminiResponse,
+  ): void {
+    if (!isGeminiImageModel(model) || this.responseHasInlineImageData(response)) {
+      this.markUpstreamSuccess(accountId, model);
+    }
+  }
+
+  protected inspectImageSseData(rawData: string): {
+    failed: boolean;
+    hasImageData: boolean;
+  } {
+    const decoded = decodeInternalSseData(rawData);
+    if (decoded.kind === 'invalid') {
+      return { failed: true, hasImageData: false };
+    }
+    if (decoded.kind === 'ignored') {
+      return { failed: false, hasImageData: false };
+    }
+    const response = decoded.response;
+    if (isPlainObject(response) && 'error' in response) {
+      return { failed: true, hasImageData: false };
+    }
+    return {
+      failed: false,
+      hasImageData: this.responseHasInlineImageData(response),
+    };
+  }
+
+  protected responseHasInlineImageData(response: GeminiResponse): boolean {
+    return Boolean(
+      response.candidates?.some((candidate) =>
+        candidate.content?.parts?.some((part) => {
+          const inlineData = part.inlineData;
+          return (
+            inlineData !== undefined &&
+            isString(inlineData.data) &&
+            inlineData.data.trim().length > 0
+          );
+        }),
+      ),
+    );
+  }
+
+  protected shouldRecordImagePenaltyBeforeGrace(model: string, error: unknown): boolean {
+    return this.retryPolicy.shouldRecordImagePenaltyBeforeGrace(model, error);
+  }
+
+  protected recordRetryFailure(retryState: ProxyTokenRetryState, error: unknown): void {
+    this.retryPolicy.recordFailure(retryState, error);
+  }
+
+  protected resolveTerminalRetryError(
+    retryState: ProxyTokenRetryState,
+    lastError: unknown,
+  ): unknown {
+    return this.retryPolicy.resolveTerminalError(retryState, lastError);
   }
 
   private isProjectNotFoundError(errorMessage: string): boolean {
@@ -288,12 +395,14 @@ export abstract class BaseProxyService {
     accessToken: string,
     upstreamProxyUrl?: string,
     extraHeaders?: Record<string, string>,
+    signal?: AbortSignal,
   ): Promise<GeminiResponse> {
     const direct = await this.geminiClient.generateInternal(
       body,
       accessToken,
       upstreamProxyUrl,
       extraHeaders,
+      signal,
     );
     if (this.hasUsableGeminiCandidate(direct)) {
       return direct;
@@ -305,6 +414,7 @@ export abstract class BaseProxyService {
       accessToken,
       upstreamProxyUrl,
       extraHeaders,
+      signal,
     );
     return this.collectGeminiStreamAsResponse(stream);
   }

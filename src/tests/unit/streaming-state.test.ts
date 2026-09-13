@@ -64,6 +64,39 @@ describe('StreamingState', () => {
   });
 
   describe('stream aggregation compatibility', () => {
+    it('emits a complete minimal Anthropic response when upstream produces no content', () => {
+      const chunks = state.emitFinish();
+      const output = chunks.join('');
+      const events = output
+        .split('\n')
+        .filter((line) => line.startsWith('event: '))
+        .map((line) => line.slice('event: '.length));
+
+      expect(events).toEqual([
+        'message_start',
+        'content_block_start',
+        'content_block_stop',
+        'message_delta',
+        'message_stop',
+      ]);
+      expect(output).toContain('"model":"gemini-auto"');
+      expect(output).toContain('"usage":{"input_tokens":0,"output_tokens":0}');
+      expect(output).toContain('"content_block":{"type":"text","text":"."}');
+      expect(output).not.toContain('"type":"text_delta"');
+      expect(output).toContain('"usage":{"input_tokens":1,"output_tokens":1}');
+    });
+
+    it('uses end_turn and recovery usage for an empty MAX_TOKENS response', () => {
+      const output = state
+        .emitFinish('MAX_TOKENS', { promptTokenCount: 50, candidatesTokenCount: 60 })
+        .join('');
+
+      expect(output).toContain('"content_block":{"type":"text","text":"."}');
+      expect(output).toContain('"stop_reason":"end_turn"');
+      expect(output).toContain('"usage":{"input_tokens":1,"output_tokens":1}');
+      expect(output).not.toContain('"stop_reason":"max_tokens"');
+    });
+
     it('emits tool_use stop reason when functionCall appears in stream', () => {
       const processor = new PartProcessor(state);
       const functionChunks = processor.process({
@@ -82,9 +115,11 @@ describe('StreamingState', () => {
       expect(output).toContain('"type":"tool_use"');
       expect(output).toContain('"stop_reason":"tool_use"');
       expect(output).toContain('"message_stop"');
+      expect(output).not.toContain('"content_block":{"type":"text","text":"."}');
     });
 
     it('includes cache-read tokens in the final Anthropic usage event', () => {
+      new PartProcessor(state).process({ text: 'answer' });
       const chunks = state.emitFinish('STOP', {
         cachedContentTokenCount: 5,
         candidatesTokenCount: 3,
@@ -95,6 +130,7 @@ describe('StreamingState', () => {
     });
 
     it('preserves Interactions usage fields in the final Anthropic event', () => {
+      new PartProcessor(state).process({ text: 'answer' });
       const chunks = state.emitFinish('STOP', {
         total_input_tokens: 100,
         total_output_tokens: 12,
@@ -127,6 +163,7 @@ describe('StreamingState', () => {
       expect(output).toContain('Searched for you');
       expect(output).toContain('Citations');
       expect(output).toContain('https://example.com/gemini');
+      expect(output).not.toContain('"text":"."');
     });
   });
   describe('thought parts that carry nothing', () => {
@@ -140,6 +177,7 @@ describe('StreamingState', () => {
 
       expect(payload).not.toContain('"content_block":{"type":"thinking"');
       expect(payload).not.toContain('"thinking_delta"');
+      expect(payload).toContain('"content_block":{"type":"text","text":"."}');
     });
 
     it('still opens a thinking block for an empty thought that carries a signature', () => {
@@ -153,6 +191,22 @@ describe('StreamingState', () => {
 
       expect(payload).toContain('"content_block":{"type":"thinking"');
       expect(payload).toContain('"signature_delta"');
+      expect(payload).not.toContain('"content_block":{"type":"text","text":"."}');
+    });
+
+    it('does not recover with text after flushing a stored trailing signature', () => {
+      const processor = new PartProcessor(state);
+      const signature = Buffer.from('stored-trailing-signature').toString('base64');
+
+      const payload = [
+        ...processor.process({ text: '', thoughtSignature: signature }),
+        ...processor.process({ thought: true, text: '' }),
+        ...state.emitFinish('STOP'),
+      ].join('');
+
+      expect(payload).toContain('"signature_delta"');
+      expect(state.hasThinking).toBe(true);
+      expect(payload).not.toContain('"content_block":{"type":"text","text":"."}');
     });
 
     it('keeps the thinking text of a thought that has content', () => {
@@ -165,6 +219,7 @@ describe('StreamingState', () => {
 
       expect(payload).toContain('"content_block":{"type":"thinking"');
       expect(payload).toContain('"thinking":"weighing the options"');
+      expect(payload).not.toContain('"content_block":{"type":"text","text":"."}');
     });
   });
   describe('Anthropic message identity', () => {

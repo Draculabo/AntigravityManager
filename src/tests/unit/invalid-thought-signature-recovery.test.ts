@@ -124,7 +124,7 @@ describe('invalid thought signature history rewrite', () => {
     expect(JSON.stringify(repeated).match(/\[System Recovery\]/g)).toHaveLength(1);
   });
 
-  it('closes a broken active tool loop with the competitor message pair', () => {
+  it('closes a broken active tool loop with the required message pair', () => {
     const recovered = rewriteInvalidThoughtSignatureRequest({
       model: 'claude-sonnet-4-6',
       messages: [

@@ -23,20 +23,18 @@ describe('image monitoring summaries', () => {
       path: '/v1/images/edits',
       fields: {
         model: 'gemini-3.1-flash-image',
-        prompt: `${'x'.repeat(500)}...`,
+        prompt_characters: 501,
         quality: undefined,
         size: undefined,
       },
       files: [
         {
           field: 'image',
-          filename: 'source.png',
           content_type: 'image/png',
           bytes: 4,
         },
         {
           field: 'reference_images',
-          filename: undefined,
           content_type: 'image/jpeg',
           bytes: 4,
         },
@@ -44,6 +42,8 @@ describe('image monitoring summaries', () => {
       raw_bytes: 531,
     });
     expect(JSON.stringify(summary)).not.toContain(base64);
+    expect(JSON.stringify(summary)).not.toContain('x'.repeat(100));
+    expect(JSON.stringify(summary)).not.toContain('source.png');
   });
 
   it('replaces response base64 with PNG metadata and dimensions', () => {
@@ -77,6 +77,16 @@ describe('image monitoring summaries', () => {
       ],
     });
     expect(JSON.stringify(summary)).not.toContain(base64);
+  });
+
+  it('recognizes accepted image data URL metadata and uppercase BASE64', () => {
+    const summary = summarizeImageRequest('/v1/images/generations', {
+      prompt: 'draw',
+      image: 'data:image/webp;name=source;BASE64,AQ==',
+    });
+
+    expect(summary.files).toEqual([{ field: 'image', content_type: 'image/webp', bytes: 1 }]);
+    expect(JSON.stringify(summary)).not.toContain('AQ==');
   });
 
   it('redacts image data URLs while preserving ordinary URLs', () => {

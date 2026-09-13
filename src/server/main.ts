@@ -15,6 +15,7 @@ import {
   hasConfiguredApiKey,
 } from '../modules/proxy-gateway/server/guards/api-key-auth.util';
 import { isObservable } from 'rxjs';
+import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
 
 import { ProxyConfig } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from './server-config';
@@ -42,6 +43,22 @@ interface RawMediaBodyParserHost {
     options: { bodyLimit: number; parseAs: 'buffer' },
     handler: (request: unknown, body: Buffer, done: (error: null, body: Buffer) => void) => void,
   ) => void;
+}
+
+interface ImageGenerationRouteLimitHost {
+  addHook: (
+    name: 'onRoute',
+    handler: (options: { bodyLimit?: number; method: string | string[]; url: string }) => void,
+  ) => void;
+}
+
+export function registerImageGenerationBodyLimit(instance: ImageGenerationRouteLimitHost): void {
+  instance.addHook('onRoute', (options) => {
+    const methods = Array.isArray(options.method) ? options.method : [options.method];
+    if (methods.includes('POST') && options.url === '/v1/images/generations') {
+      options.bodyLimit = MAX_IMAGE_GENERATION_BODY_BYTES;
+    }
+  });
 }
 
 /**
@@ -103,6 +120,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
 
   try {
     const fastifyAdapter = new FastifyAdapter();
+    registerImageGenerationBodyLimit(fastifyAdapter.getInstance());
     app = await NestFactory.create<NestFastifyApplication>(AppModule, fastifyAdapter, {
       logger: ['error', 'warn', 'log'],
     });
@@ -145,7 +163,15 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
           );
         }
 
-        const result = await proxyService.handleChatCompletions(prepared.request, 'responses');
+        const result = await proxyService.handleChatCompletions(
+          prepared.request,
+          'responses',
+          undefined,
+          {
+            requestSessionId: prepared.requestSessionId,
+            responseId: prepared.responseId,
+          },
+        );
         if (!isObservable(result)) {
           throw new Error('Responses WebSocket request did not produce a stream');
         }

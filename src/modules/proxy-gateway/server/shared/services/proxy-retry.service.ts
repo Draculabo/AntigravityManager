@@ -3,18 +3,30 @@ import { isString } from 'lodash-es';
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { calculateRetryDelay, sleep } from '../../../antigravity/retry-utils';
 import {
-  GRACE_RETRY_BUFFER_MS,
   hasExplicitQuotaExhaustedSignal,
-  parseRetryDelayMilliseconds,
+  hasStrictQuotaExhaustedMarker,
+  isGeminiImageModel,
+  isRecognizedGeminiImageModel,
+  parseBaselineRetryDelayMilliseconds,
+  parseRetryDelay,
   shouldGraceRetry,
+  STRUCTURED_GRACE_RETRY_BUFFER_MS,
+  TEXT_GRACE_RETRY_BUFFER_MS,
 } from './rate-limit-tracker.service';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
 import { classifyForbiddenUpstreamError } from '../../common/google-error-details';
 import { ModelAvailabilityService } from './model-availability.service';
 
+export interface ImageSchedulerPermit {
+  release(): void;
+}
+
 export interface ProxyTokenRetryState {
   attemptedAccountIds: Set<string>;
   graceRetryToken: CloudAccount | null;
+  graceRetriedAccountIds: Set<string>;
+  lastNonRateLimitError: unknown | null;
+  imagePermit: ImageSchedulerPermit | null;
 }
 
 export interface ProxyRetryAccountLeaseService {
@@ -23,6 +35,12 @@ export interface ProxyRetryAccountLeaseService {
     excludeAccountIds?: string[];
     model?: string;
   }): Promise<CloudAccount | null>;
+  getNextImageToken?(options?: {
+    sessionKey?: string;
+    excludeAccountIds?: string[];
+    model?: string;
+    signal?: AbortSignal;
+  }): Promise<{ token: CloudAccount; permit: ImageSchedulerPermit }>;
   recordParityError(): void;
   markAsForbidden(accountIdOrEmail: string): void;
   markAsRateLimited(accountIdOrEmail: string): void;
@@ -35,6 +53,20 @@ export interface ProxyRetryAccountLeaseService {
   }): Promise<void>;
   getRemainingRateLimitWait(accountIdOrEmail: string, model?: string): number;
   markModelSuccess(accountIdOrEmail: string, model: string): void;
+  markImageRateLimitFast?(params: {
+    accountIdOrEmail: string;
+    status?: number;
+    retryAfter?: string;
+    body?: string;
+    model?: string;
+  }): boolean;
+  reconcileImageRateLimit?(params: {
+    accountIdOrEmail: string;
+    status?: number;
+    retryAfter?: string;
+    body?: string;
+    model?: string;
+  }): Promise<void>;
   markValidationRequired?(params: {
     accountId: string;
     verificationUrl?: string;
@@ -61,6 +93,9 @@ export interface ProxyUpstreamFailureClassification {
   markAsRateLimited: boolean;
 }
 
+export type GraceRetryMode = 'baseline' | 'current';
+export type ImageRetryPenaltyMode = 'gemini' | 'openai';
+
 @Injectable()
 export class ProxyRetryService {
   constructor(
@@ -76,6 +111,9 @@ export class ProxyRetryService {
     return {
       attemptedAccountIds: new Set<string>(),
       graceRetryToken: null,
+      graceRetriedAccountIds: new Set<string>(),
+      lastNonRateLimitError: null,
+      imagePermit: null,
     };
   }
 
@@ -83,12 +121,28 @@ export class ProxyRetryService {
     retryState: ProxyTokenRetryState,
     model: string,
     sessionKey?: string,
+    imageRequest = false,
+    signal?: AbortSignal,
   ): Promise<CloudAccount | null> {
     const graceRetryToken = retryState.graceRetryToken;
     retryState.graceRetryToken = null;
 
     if (graceRetryToken) {
       return graceRetryToken;
+    }
+
+    this.releaseImagePermit(retryState);
+
+    if (imageRequest && this.accountLeaseService.getNextImageToken) {
+      const selected = await this.accountLeaseService.getNextImageToken({
+        sessionKey,
+        excludeAccountIds: Array.from(retryState.attemptedAccountIds),
+        model,
+        signal,
+      });
+      retryState.imagePermit = selected.permit;
+      retryState.attemptedAccountIds.add(selected.token.id);
+      return selected.token;
     }
 
     const token = await this.accountLeaseService.getNextToken({
@@ -102,6 +156,17 @@ export class ProxyRetryService {
 
     retryState.attemptedAccountIds.add(token.id);
     return token;
+  }
+
+  releaseImagePermit(retryState: ProxyTokenRetryState): void {
+    retryState.imagePermit?.release();
+    retryState.imagePermit = null;
+  }
+
+  takeImagePermit(retryState: ProxyTokenRetryState): ImageSchedulerPermit | null {
+    const permit = retryState.imagePermit;
+    retryState.imagePermit = null;
+    return permit;
   }
 
   async waitBeforeRetry(
@@ -126,8 +191,15 @@ export class ProxyRetryService {
     token: CloudAccount,
     error: unknown,
     label: string,
+    mode: GraceRetryMode = 'current',
   ): Promise<boolean> {
-    const graceRetryDelay = this.resolveGraceRetryDelay(error);
+    if (retryState.graceRetriedAccountIds.has(token.id)) {
+      return false;
+    }
+    const graceRetryDelay =
+      mode === 'baseline'
+        ? this.resolveBaselineGraceRetryDelay(error)
+        : this.resolveGraceRetryDelay(error);
     if (graceRetryDelay === null) {
       return false;
     }
@@ -135,9 +207,108 @@ export class ProxyRetryService {
     this.logger.log(
       `${label} grace retry on same account ${token.id}, waiting ${graceRetryDelay}ms`,
     );
+    retryState.graceRetriedAccountIds.add(token.id);
     await sleep(graceRetryDelay);
     retryState.graceRetryToken = token;
     return true;
+  }
+
+  async prepareScheduledImageRetry(
+    retryState: ProxyTokenRetryState,
+    token: CloudAccount,
+    model: string,
+    error: unknown,
+    label: string,
+    allowGraceRetry = true,
+    signal?: AbortSignal,
+    penaltyMode: ImageRetryPenaltyMode = 'gemini',
+  ): Promise<boolean> {
+    if (!(error instanceof UpstreamRequestError) || error.status === undefined) {
+      this.releaseImagePermit(retryState);
+      await this.applyUpstreamPenalty(token.id, model, error);
+      return false;
+    }
+    const status = error.status;
+    const shouldFastMark =
+      status === 429 || (penaltyMode === 'openai' && [500, 503, 529].includes(status));
+    if (!shouldFastMark) {
+      this.releaseImagePermit(retryState);
+      await this.applyUpstreamPenalty(token.id, model, error);
+      return false;
+    }
+    this.accountLeaseService.recordParityError();
+
+    const params = {
+      accountIdOrEmail: token.id,
+      status,
+      retryAfter: error.headers?.retryAfter,
+      body: error.body,
+      model,
+    };
+    try {
+      const needsReconciliation = this.accountLeaseService.markImageRateLimitFast
+        ? this.accountLeaseService.markImageRateLimitFast(params)
+        : false;
+      if (!this.accountLeaseService.markImageRateLimitFast) {
+        await this.accountLeaseService.markFromUpstreamError(params);
+      }
+      this.persistModelRateLimit(token.id, model, error.body ?? error.message, status);
+
+      const delay = status === 429 ? this.resolveGraceRetryDelay(error) : null;
+      const canGraceRetry =
+        allowGraceRetry && !retryState.graceRetriedAccountIds.has(token.id) && delay !== null;
+      if (!canGraceRetry) {
+        this.releaseImagePermit(retryState);
+      }
+      if (needsReconciliation && this.accountLeaseService.reconcileImageRateLimit) {
+        await this.accountLeaseService.reconcileImageRateLimit(params);
+      }
+      if (!canGraceRetry || delay === null) {
+        return false;
+      }
+
+      this.logger.log(`${label} grace retry on same account ${token.id}, waiting ${delay}ms`);
+      retryState.graceRetriedAccountIds.add(token.id);
+      await this.waitForScheduledGraceRetry(delay, signal, () => {
+        this.releaseImagePermit(retryState);
+      });
+      retryState.graceRetryToken = token;
+      return true;
+    } catch (retryPreparationError) {
+      this.releaseImagePermit(retryState);
+      throw retryPreparationError;
+    }
+  }
+
+  private waitForScheduledGraceRetry(
+    delayMs: number,
+    signal: AbortSignal | undefined,
+    onAbort: () => void,
+  ): Promise<void> {
+    if (!signal) {
+      return sleep(delayMs);
+    }
+    if (signal.aborted) {
+      onAbort();
+      const error = new Error('Image request was aborted');
+      error.name = 'AbortError';
+      return Promise.reject(error);
+    }
+
+    return new Promise((resolve, reject) => {
+      const abort = (): void => {
+        clearTimeout(timer);
+        onAbort();
+        const error = new Error('Image request was aborted');
+        error.name = 'AbortError';
+        reject(error);
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', abort);
+        resolve();
+      }, delayMs);
+      signal.addEventListener('abort', abort, { once: true });
+    });
   }
 
   async applyUpstreamPenalty(accountId: string, model: string, error: unknown): Promise<void> {
@@ -168,7 +339,8 @@ export class ProxyRetryService {
           body: error.body,
           model,
         });
-        this.persistModelRateLimit(accountId, model, error.body ?? error.message, status);
+        const persistenceMessage = error.body ?? error.message;
+        this.persistModelRateLimit(accountId, model, persistenceMessage, status);
         return;
       }
       if (status === 403 && (await this.handleRecoverableForbidden(accountId, error))) {
@@ -217,7 +389,34 @@ export class ProxyRetryService {
 
   markUpstreamSuccess(accountId: string, model: string): void {
     this.accountLeaseService.markModelSuccess(accountId, model);
+    if (isGeminiImageModel(model)) {
+      this.modelAvailability.clearModelFamily(accountId, model);
+      return;
+    }
     this.modelAvailability.clearModel(accountId, model);
+  }
+
+  shouldRecordImagePenaltyBeforeGrace(model: string, error: unknown): boolean {
+    return (
+      isGeminiImageModel(model) && error instanceof UpstreamRequestError && error.status === 429
+    );
+  }
+
+  recordFailure(retryState: ProxyTokenRetryState, error: unknown): void {
+    if (!(error instanceof UpstreamRequestError) || error.status !== 429) {
+      retryState.lastNonRateLimitError = error;
+    }
+  }
+
+  resolveTerminalError(retryState: ProxyTokenRetryState, lastError: unknown): unknown {
+    if (
+      lastError instanceof UpstreamRequestError &&
+      lastError.status === 429 &&
+      retryState.lastNonRateLimitError !== null
+    ) {
+      return retryState.lastNonRateLimitError;
+    }
+    return lastError;
   }
 
   /**
@@ -265,6 +464,13 @@ export class ProxyRetryService {
     if (waitSeconds <= 0) {
       return;
     }
+    const preservesLongImageEvidence =
+      waitSeconds > 300 &&
+      isRecognizedGeminiImageModel(model) &&
+      hasStrictQuotaExhaustedMarker(message);
+    const persistenceMessage = preservesLongImageEvidence
+      ? `QUOTA_EXHAUSTED retry after ${waitSeconds}s`
+      : `retry after ${waitSeconds}s\n${message}`;
     this.modelAvailability.mark(
       accountId,
       model,
@@ -272,7 +478,7 @@ export class ProxyRetryService {
       Date.now() + waitSeconds * 1000,
       {
         status,
-        message,
+        message: persistenceMessage,
       },
     );
   }
@@ -283,12 +489,33 @@ export class ProxyRetryService {
     }
 
     const errorText = [error.body, error.message].filter(isString).join('\n');
-    const retryDelayMs = parseRetryDelayMilliseconds(errorText);
-    if (retryDelayMs === null || !shouldGraceRetry(retryDelayMs)) {
+    if (hasStrictQuotaExhaustedMarker(errorText)) {
+      return null;
+    }
+    const retryDelay =
+      parseRetryDelay(error.body, error.headers?.retryAfter) ?? parseRetryDelay(error.message);
+    if (retryDelay === null || !shouldGraceRetry(retryDelay.delayMs)) {
       return null;
     }
 
-    return retryDelayMs + GRACE_RETRY_BUFFER_MS;
+    const bufferMs =
+      retryDelay.source === 'text' ? TEXT_GRACE_RETRY_BUFFER_MS : STRUCTURED_GRACE_RETRY_BUFFER_MS;
+    return retryDelay.delayMs + bufferMs;
+  }
+
+  resolveBaselineGraceRetryDelay(error: unknown): number | null {
+    if (!(error instanceof UpstreamRequestError) || error.status !== 429) {
+      return null;
+    }
+    const errorText = [error.body, error.message].filter(isString).join('\n');
+    if (hasExplicitQuotaExhaustedSignal(errorText)) {
+      return null;
+    }
+    const retryDelayMs = parseBaselineRetryDelayMilliseconds(errorText);
+    if (retryDelayMs === null || retryDelayMs <= 0 || retryDelayMs > 2000) {
+      return null;
+    }
+    return retryDelayMs + 1500;
   }
 
   classifyUpstreamFailure(errorMessage: string): ProxyUpstreamFailureClassification {

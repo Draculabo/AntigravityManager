@@ -1,4 +1,4 @@
-import { isBoolean, isNumber, isPlainObject, isString } from 'lodash-es';
+import { isBoolean, isEqual, isNumber, isPlainObject, isString } from 'lodash-es';
 import { z } from 'zod';
 
 const JsonValueSchema = z.json();
@@ -14,6 +14,60 @@ function isJsonSchemaMap(value: JsonSchemaValue): value is JsonSchemaMap {
 
 function isJsonSchemaPrimitive(value: JsonSchemaValue): value is string | number | boolean {
   return isString(value) || isNumber(value) || isBoolean(value);
+}
+
+function inferConstSchemaType(value: JsonSchemaValue): string | undefined {
+  if (isString(value)) {
+    return 'string';
+  }
+  if (isNumber(value)) {
+    return Number.isInteger(value) ? 'integer' : 'number';
+  }
+  if (isBoolean(value)) {
+    return 'boolean';
+  }
+  if (Array.isArray(value)) {
+    return 'array';
+  }
+  if (isJsonSchemaMap(value)) {
+    return 'object';
+  }
+  return undefined;
+}
+
+function stringifyConstEnumValue(value: JsonSchemaValue): string {
+  if (isString(value)) {
+    return value;
+  }
+  if (value === null) {
+    return 'null';
+  }
+  return JSON.stringify(value);
+}
+
+function normalizeConstKeyword(map: JsonSchemaMap): boolean {
+  if (!Object.prototype.hasOwnProperty.call(map, 'const')) {
+    return false;
+  }
+
+  const constValue = map.const;
+  delete map.const;
+
+  if (map.type === undefined) {
+    const inferredType = inferConstSchemaType(constValue);
+    if (inferredType) {
+      map.type = inferredType;
+    }
+  }
+
+  if (map.enum === undefined) {
+    map.enum = [];
+  }
+  if (Array.isArray(map.enum) && !map.enum.some((entry) => isEqual(entry, constValue))) {
+    map.enum.push(constValue);
+  }
+
+  return true;
 }
 
 function cloneJsonValue<TValue extends JsonSchemaValue>(value: TValue): TValue {
@@ -210,6 +264,7 @@ function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
   }
 
   const map = value;
+  const hadConst = normalizeConstKeyword(map);
 
   if (isJsonSchemaMap(map.properties)) {
     const properties = map.properties;
@@ -243,6 +298,10 @@ function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
 
   // 2. Collect and process validation fields (Migration logic: Downgrade constraints to Hints in description)
   const constraints: string[] = [];
+
+  if (hadConst && Array.isArray(map.enum)) {
+    map.enum = map.enum.map(stringifyConstEnumValue);
+  }
 
   const enumValues = map.enum;
   if (enumValues !== undefined) {
@@ -309,7 +368,6 @@ function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
     'enumNormalizeWhitespace',
     'uniqueItems',
     'default',
-    'const',
     'examples',
     // Advanced logic fields common in MCP tools but unsupported by Gemini
     'propertyNames',

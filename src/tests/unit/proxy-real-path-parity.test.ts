@@ -93,6 +93,26 @@ describe('real request path, OpenAI chat surface', () => {
     expect(sent).toContain('You are terse.');
   });
 
+  it('selects image accounts by the clean base model and preserves the physical model upstream', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('image generated') });
+    const lease = createLease([createAccount('acc-1')]);
+    lease.resolveDynamicModelForAccount.mockReturnValue('gemini-3.1-pro-image');
+    const { openAIService } = createGateway(upstream, lease);
+
+    await openAIService.handleChatCompletions({
+      messages: [{ content: 'Generate a product photo.', role: 'user' }],
+      model: 'gemini-3-pro-image-16x9-4k',
+      stream: false,
+    } as never);
+
+    expect(lease.resolveDynamicModelForAccount).toHaveBeenCalledWith('acc-1', 'gemini-3-pro-image');
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3.1-pro-image');
+    expect(upstream.calls[0]?.body.request.generationConfig?.imageConfig).toEqual({
+      aspectRatio: '16:9',
+      imageSize: '4K',
+    });
+  });
+
   it('streams an upstream fixture to an OpenAI client as SSE it can read', async () => {
     const upstream = createUpstream({
       streamFrames: [

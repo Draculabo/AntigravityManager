@@ -24,6 +24,7 @@ function createToken(id: string): CloudAccount {
 function createPolicy() {
   const accountLeaseService = {
     getNextToken: vi.fn(),
+    getNextImageToken: vi.fn(),
     recordParityError: vi.fn(),
     markAsForbidden: vi.fn(),
     markAsRateLimited: vi.fn(),
@@ -31,6 +32,8 @@ function createPolicy() {
     getRemainingRateLimitWait: vi.fn().mockReturnValue(30),
     markModelSuccess: vi.fn(),
     markValidationRequired: vi.fn().mockResolvedValue(undefined),
+    markImageRateLimitFast: vi.fn().mockReturnValue(false),
+    reconcileImageRateLimit: vi.fn().mockResolvedValue(undefined),
   };
   const logger = {
     log: vi.fn(),
@@ -97,6 +100,272 @@ describe('ProxyRetryService', () => {
     });
   });
 
+  it('keeps one image permit across grace and releases it before reconciliation on rotation', async () => {
+    vi.useFakeTimers();
+    try {
+      const { policy, accountLeaseService } = createPolicy();
+      const retryState = policy.createTokenRetryState();
+      const token = createToken('acc-1');
+      const order: string[] = [];
+      const permit = { release: vi.fn(() => order.push('release')) };
+      accountLeaseService.getNextImageToken.mockResolvedValue({ token, permit });
+      accountLeaseService.markImageRateLimitFast
+        .mockImplementationOnce(() => {
+          order.push('fast');
+          return false;
+        })
+        .mockImplementationOnce(() => {
+          order.push('fast');
+          return true;
+        });
+      accountLeaseService.reconcileImageRateLimit.mockImplementation(async () => {
+        order.push('reconcile');
+      });
+
+      await expect(
+        policy.selectRetryToken(retryState, 'gemini-3.1-flash-image', 'session-1', true),
+      ).resolves.toBe(token);
+
+      const shortLimit = new UpstreamRequestError({
+        message: 'rate limited',
+        status: 429,
+        body: JSON.stringify({ error: { details: [{ retryDelay: '1ms' }] } }),
+      });
+      const grace = policy.prepareScheduledImageRetry(
+        retryState,
+        token,
+        'gemini-3.1-flash-image',
+        shortLimit,
+        'image',
+      );
+      await vi.runAllTimersAsync();
+      await expect(grace).resolves.toBe(true);
+      expect(permit.release).not.toHaveBeenCalled();
+
+      await expect(
+        policy.selectRetryToken(retryState, 'gemini-3.1-flash-image', 'session-1', true),
+      ).resolves.toBe(token);
+      const hardLimit = new UpstreamRequestError({
+        message: 'quota exhausted',
+        status: 429,
+        body: 'QUOTA_EXHAUSTED',
+      });
+      await expect(
+        policy.prepareScheduledImageRetry(
+          retryState,
+          token,
+          'gemini-3.1-flash-image',
+          hardLimit,
+          'image',
+        ),
+      ).resolves.toBe(false);
+
+      expect(order).toEqual(['fast', 'fast', 'release', 'reconcile']);
+      expect(permit.release).toHaveBeenCalledTimes(1);
+      expect(accountLeaseService.recordParityError).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('releases an image permit when the request is aborted during grace wait', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const retryState = policy.createTokenRetryState();
+    const token = createToken('acc-abort');
+    const permit = { release: vi.fn() };
+    accountLeaseService.getNextImageToken.mockResolvedValue({ token, permit });
+    await policy.selectRetryToken(retryState, 'gemini-3.1-flash-image', undefined, true);
+    const error = new UpstreamRequestError({
+      message: 'rate limited',
+      status: 429,
+      body: JSON.stringify({ error: { details: [{ retryDelay: '1s' }] } }),
+    });
+    const controller = new AbortController();
+    const retry = policy.prepareScheduledImageRetry(
+      retryState,
+      token,
+      'gemini-3.1-flash-image',
+      error,
+      'image',
+      true,
+      controller.signal,
+    );
+    controller.abort();
+
+    await expect(retry).rejects.toMatchObject({ name: 'AbortError' });
+    expect(permit.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases an image permit when slow rate-limit reconciliation fails', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const retryState = policy.createTokenRetryState();
+    const token = createToken('acc-reconcile-error');
+    const permit = { release: vi.fn() };
+    accountLeaseService.getNextImageToken.mockResolvedValue({ token, permit });
+    accountLeaseService.markImageRateLimitFast.mockReturnValue(true);
+    accountLeaseService.reconcileImageRateLimit.mockRejectedValue(new Error('refresh failed'));
+    await policy.selectRetryToken(retryState, 'gemini-3.1-flash-image', undefined, true);
+
+    await expect(
+      policy.prepareScheduledImageRetry(
+        retryState,
+        token,
+        'gemini-3.1-flash-image',
+        new UpstreamRequestError({
+          message: 'quota exhausted',
+          status: 429,
+          body: 'QUOTA_EXHAUSTED',
+        }),
+        'image',
+      ),
+    ).rejects.toThrow('refresh failed');
+    expect(permit.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('fast-marks OpenAI image 500/503/529 failures before releasing their permits', async () => {
+    for (const status of [500, 503, 529]) {
+      const { policy, accountLeaseService } = createPolicy();
+      const retryState = policy.createTokenRetryState();
+      const token = createToken(`acc-${status}`);
+      const order: string[] = [];
+      const permit = { release: vi.fn(() => order.push('release')) };
+      accountLeaseService.getNextImageToken.mockResolvedValue({ token, permit });
+      accountLeaseService.markImageRateLimitFast.mockImplementation(() => {
+        order.push('fast');
+        return false;
+      });
+      await policy.selectRetryToken(retryState, 'gemini-3.1-flash-image', undefined, true);
+
+      await expect(
+        policy.prepareScheduledImageRetry(
+          retryState,
+          token,
+          'gemini-3.1-flash-image',
+          new UpstreamRequestError({ message: 'server busy', status }),
+          'image',
+          true,
+          undefined,
+          'openai',
+        ),
+      ).resolves.toBe(false);
+
+      expect(order).toEqual(['fast', 'release']);
+      expect(accountLeaseService.markFromUpstreamError).not.toHaveBeenCalled();
+      expect(accountLeaseService.reconcileImageRateLimit).not.toHaveBeenCalled();
+    }
+  });
+
+  it('reuses each account once without consuming the account-rotation budget', async () => {
+    vi.useFakeTimers();
+    try {
+      const { policy, accountLeaseService } = createPolicy();
+      const retryState = policy.createTokenRetryState();
+      const first = createToken('acc-1');
+      const second = createToken('acc-2');
+      accountLeaseService.getNextToken.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+      const short429 = new UpstreamRequestError({
+        message: 'rate limited',
+        status: 429,
+        body: JSON.stringify({ error: { details: [{ retryDelay: '1ms' }] } }),
+      });
+
+      const sequence: string[] = [];
+      sequence.push((await policy.selectRetryToken(retryState, 'gemini-3-pro-image'))?.id ?? '');
+      const firstGrace = policy.prepareGraceRetry(retryState, first, short429, 'image');
+      await vi.runAllTimersAsync();
+      await expect(firstGrace).resolves.toBe(true);
+      sequence.push((await policy.selectRetryToken(retryState, 'gemini-3-pro-image'))?.id ?? '');
+      await expect(policy.prepareGraceRetry(retryState, first, short429, 'image')).resolves.toBe(
+        false,
+      );
+      sequence.push((await policy.selectRetryToken(retryState, 'gemini-3-pro-image'))?.id ?? '');
+      const secondGrace = policy.prepareGraceRetry(retryState, second, short429, 'image');
+      await vi.runAllTimersAsync();
+      await expect(secondGrace).resolves.toBe(true);
+      sequence.push((await policy.selectRetryToken(retryState, 'gemini-3-pro-image'))?.id ?? '');
+
+      expect(sequence).toEqual(['acc-1', 'acc-1', 'acc-2', 'acc-2']);
+      expect(accountLeaseService.getNextToken).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses source-specific grace buffers and refuses hard quota grace retries', () => {
+    const { policy } = createPolicy();
+    const structured = new UpstreamRequestError({
+      message: 'rate limited',
+      status: 429,
+      body: JSON.stringify({ error: { details: [{ retryDelay: '1s' }] } }),
+    });
+    const header = new UpstreamRequestError({
+      message: 'rate limited',
+      status: 429,
+      headers: { retryAfter: '3' },
+    });
+    const text = new UpstreamRequestError({
+      message: 'retry after 3s',
+      status: 429,
+      body: 'retry after 3s',
+    });
+    const hardQuota = new UpstreamRequestError({
+      message: 'QUOTA_EXHAUSTED',
+      status: 429,
+      body: 'QUOTA_EXHAUSTED; retry after 1s',
+    });
+    const quotaResetMetadata = new UpstreamRequestError({
+      message: 'rate limited',
+      status: 429,
+      body: JSON.stringify({ error: { details: [{ metadata: { quotaResetDelay: '1s' } }] } }),
+    });
+
+    expect(policy.resolveGraceRetryDelay(structured)).toBe(1200);
+    expect(policy.resolveGraceRetryDelay(header)).toBe(3200);
+    expect(policy.resolveGraceRetryDelay(text)).toBe(4000);
+    expect(policy.resolveGraceRetryDelay(quotaResetMetadata)).toBe(1200);
+    expect(policy.resolveGraceRetryDelay(hardQuota)).toBeNull();
+  });
+
+  it('keeps the baseline Anthropic grace window at two seconds', () => {
+    const { policy } = createPolicy();
+    const twoSeconds = new UpstreamRequestError({
+      message: 'retry after 2s',
+      status: 429,
+      body: 'retry after 2s',
+    });
+    const threeSeconds = new UpstreamRequestError({
+      message: 'retry after 3s',
+      status: 429,
+      body: 'retry after 3s',
+    });
+
+    expect(policy.resolveBaselineGraceRetryDelay(twoSeconds)).toBe(3500);
+    expect(policy.resolveBaselineGraceRetryDelay(threeSeconds)).toBeNull();
+  });
+
+  it('preserves the last non-429 terminal failure when later accounts return 429', () => {
+    const { policy } = createPolicy();
+    const retryState = policy.createTokenRetryState();
+    const forbidden = new UpstreamRequestError({ message: 'forbidden', status: 403 });
+    const rateLimited = new UpstreamRequestError({ message: 'rate limited', status: 429 });
+
+    policy.recordFailure(retryState, forbidden);
+    policy.recordFailure(retryState, rateLimited);
+
+    expect(policy.resolveTerminalError(retryState, rateLimited)).toBe(forbidden);
+    const allRateLimited = policy.createTokenRetryState();
+    policy.recordFailure(allRateLimited, rateLimited);
+    expect(policy.resolveTerminalError(allRateLimited, rateLimited)).toBe(rateLimited);
+  });
+
+  it('identifies image 429 failures that must be recorded before grace sleep', () => {
+    const { policy } = createPolicy();
+    const error = new UpstreamRequestError({ message: 'rate limited', status: 429 });
+
+    expect(policy.shouldRecordImagePenaltyBeforeGrace('gemini-3.1-pro-image', error)).toBe(true);
+    expect(policy.shouldRecordImagePenaltyBeforeGrace('gemini-3.1-pro-high', error)).toBe(false);
+  });
+
   it('routes structured upstream errors to account lease upstream error handling', async () => {
     const { policy, accountLeaseService } = createPolicy();
 
@@ -154,6 +423,30 @@ describe('ProxyRetryService', () => {
     expect(entry?.unavailableUntil).toBeGreaterThanOrEqual(startedAt + 300_000);
     expect(entry?.unavailableUntil).toBeLessThanOrEqual(Date.now() + 300_000);
     proxyModelAvailabilityStore.clearAccount('acc-clamped');
+  });
+
+  it('persists compact long-image quota evidence even when the raw marker is past 500 chars', async () => {
+    proxyModelAvailabilityStore.clearAccount('acc-long-image-evidence');
+    const { policy, accountLeaseService } = createPolicy();
+    accountLeaseService.getRemainingRateLimitWait.mockReturnValue(3600);
+    const body = `${'x'.repeat(600)} QUOTA_EXHAUSTED retry after 3600s`;
+
+    await policy.applyUpstreamPenalty(
+      'acc-long-image-evidence',
+      'gemini-3-pro-image',
+      new UpstreamRequestError({
+        message: 'quota exhausted',
+        status: 429,
+        body,
+      }),
+    );
+
+    const entry = proxyModelAvailabilityStore
+      .getSnapshot()
+      .find((candidate) => candidate.accountId === 'acc-long-image-evidence');
+    expect(entry?.message).toBe('QUOTA_EXHAUSTED retry after 3600s');
+    expect(entry?.message?.length).toBeLessThan(500);
+    proxyModelAvailabilityStore.clearAccount('acc-long-image-evidence');
   });
 
   it('classifies generic RESOURCE_EXHAUSTED availability as a transient rate limit', async () => {

@@ -4,8 +4,46 @@ import {
 } from '../../../antigravity/model-variant-registry';
 import type {
   AnthropicChatRequest,
+  GeminiRequest,
   OpenAIChatRequest,
 } from '../../common/interfaces/request-interfaces';
+
+export interface AppliedGeminiModelVariant {
+  model: string;
+  request: GeminiRequest;
+  variant: ReturnType<typeof resolveModelVariant>;
+}
+
+export function applyGeminiModelVariant(
+  model: string,
+  request: GeminiRequest,
+): AppliedGeminiModelVariant {
+  const thinkingConfig = request.generationConfig?.thinkingConfig;
+  const variant = resolveModelVariant({
+    model,
+    budgetTokens: thinkingConfig?.thinkingBudget,
+    effort: thinkingConfig?.thinkingLevel,
+  });
+
+  return {
+    model: variant?.model ?? model,
+    request,
+    variant,
+  };
+}
+
+export function rebindGeminiModelVariant(
+  applied: AppliedGeminiModelVariant,
+  physicalModel: string,
+): AppliedGeminiModelVariant {
+  const variant = rebindModelVariant(applied.variant, physicalModel);
+
+  return {
+    model: variant?.model ?? physicalModel,
+    request: applied.request,
+    variant,
+  };
+}
 
 export interface AppliedAnthropicModelVariant {
   request: AnthropicChatRequest;

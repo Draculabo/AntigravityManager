@@ -96,6 +96,48 @@ describe('cleanJsonSchema', () => {
     expect(schema.enum).toEqual(enumValues);
   });
 
+  it.each([
+    [{ const: 'element' }, { type: 'string', enum: ['element'] }],
+    [{ const: 5 }, { type: 'integer', enum: ['5'] }],
+    [{ const: 1.5 }, { type: 'number', enum: ['1.5'] }],
+    [{ const: true }, { type: 'boolean', enum: ['true'] }],
+    [{ const: ['a', 1] }, { type: 'array', enum: ['["a",1]'] }],
+    [{ const: { kind: 'element' } }, { type: 'object', enum: ['{"kind":"element"}'] }],
+    [{ const: null }, { enum: ['null'] }],
+  ])('preserves const semantics as a Gemini-compatible enum', (schema, expected) => {
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual(expected);
+  });
+
+  it('does not overwrite an explicit const type and does not duplicate an existing value', () => {
+    const schema: JsonSchemaMap = {
+      type: 'number',
+      const: 5,
+      enum: [5, 7],
+    };
+
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual({
+      type: 'number',
+      enum: ['5', '7'],
+    });
+  });
+
+  it('does not replace a malformed enum while preserving the inferred const type', () => {
+    const schema: JsonSchemaMap = {
+      const: 'element',
+      enum: 'not-an-array',
+    };
+
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual({
+      type: 'string',
+    });
+  });
+
   it('stringifies primitive enum members for Gemini string-backed enum types', () => {
     const stringSchema = { type: 'string', enum: [3, 6, 12] };
     const integerSchema = { type: 'integer', enum: [3, 6, 12] };

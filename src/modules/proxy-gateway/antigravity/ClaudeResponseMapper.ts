@@ -282,6 +282,10 @@ class NonStreamingProcessor {
         0,
     };
 
+    if (this.contentBlocks.length === 0) {
+      this.contentBlocks.push({ type: 'text', text: '.' });
+    }
+
     return {
       id: toAnthropicMessageId(geminiResponse.responseId),
       type: 'message',

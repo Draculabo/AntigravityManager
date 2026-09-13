@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parse } from 'jsonc-parser';
 import {
   OPEN_CODE_API_KEY_PLACEHOLDER,
   clearOpenCodeConfigJsonc,
@@ -92,6 +93,57 @@ describe('OpenCode JSONC config editing', () => {
     expect(updated).toContain('"baseURL": "http://localhost:8045/v1"');
     expect(updated).toContain('"gemini-3.1-pro"');
     expect(updated).not.toContain('\r\n');
+  });
+
+  it('writes Gemini 3 effort variants and disables unsupported OpenCode slots', () => {
+    const updated = updateOpenCodeConfigJsonc('{}\n', {
+      apiKey: 'dedicated-key',
+      baseUrl: 'http://127.0.0.1:8045',
+      models: [
+        { id: 'gemini-3.1-pro' },
+        { id: 'gemini-3.5-flash' },
+        { id: 'gemini-3.6-flash-high' },
+      ],
+    });
+    const models = (
+      parse(updated) as {
+        provider: { 'antigravity-manager': { models: Record<string, { variants: unknown }> } };
+      }
+    ).provider['antigravity-manager'].models;
+
+    expect(models['gemini-3.1-pro'].variants).toEqual({
+      low: { effort: 'low' },
+      medium: { disabled: true },
+      high: { effort: 'high' },
+      max: { disabled: true },
+    });
+    expect(Object.keys(models['gemini-3.1-pro'].variants as object)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'max',
+    ]);
+    expect(models['gemini-3.5-flash'].variants).toEqual({
+      low: { effort: 'low' },
+      medium: { effort: 'medium' },
+      high: { effort: 'high' },
+      max: { disabled: true },
+    });
+    expect(models['gemini-3.7-flash']).toMatchObject({
+      name: 'Gemini 3.7 Flash',
+      limit: { context: 1000000, output: 65536 },
+      modalities: {
+        input: ['text', 'image', 'audio', 'video', 'pdf'],
+        output: ['text'],
+      },
+      variants: {
+        low: { effort: 'low' },
+        medium: { effort: 'medium' },
+        high: { effort: 'high' },
+        max: { disabled: true },
+      },
+    });
+    expect(models).not.toHaveProperty('gemini-3.6-flash-high');
   });
 
   it('renames a lone Gemini alias to its canonical key without losing comments', () => {
@@ -205,5 +257,51 @@ describe('OpenCode JSONC config editing', () => {
     );
 
     expect(cleared).toMatch(/"google"\s*:\s*\{\s*\}/);
+  });
+
+  it('writes Claude thinking variants for base Opus 4.5 and 4.6 ids', () => {
+    const updated = updateOpenCodeConfigJsonc('{}\n', {
+      apiKey: 'dedicated-key',
+      baseUrl: 'http://127.0.0.1:8045',
+      models: [{ id: 'claude-opus-4-5' }, { id: 'claude-opus-4-6' }],
+    });
+    const models = (
+      parse(updated) as {
+        provider: { 'antigravity-manager': { models: Record<string, unknown> } };
+      }
+    ).provider['antigravity-manager'].models;
+    const variants = {
+      low: {
+        thinkingConfig: { thinkingBudget: 8192 },
+        thinking: { type: 'enabled', budget_tokens: 8192, budgetTokens: 8192 },
+      },
+      medium: {
+        thinkingConfig: { thinkingBudget: 16384 },
+        thinking: { type: 'enabled', budget_tokens: 16384, budgetTokens: 16384 },
+      },
+      high: {
+        thinkingConfig: { thinkingBudget: 24576 },
+        thinking: { type: 'enabled', budget_tokens: 24576, budgetTokens: 24576 },
+      },
+      max: {
+        thinkingConfig: { thinkingBudget: 32768 },
+        thinking: { type: 'enabled', budget_tokens: 32768, budgetTokens: 32768 },
+      },
+    };
+
+    expect(models['claude-opus-4-5']).toEqual({
+      name: 'Claude Opus 4.5',
+      limit: { context: 200000, output: 64000 },
+      modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+      reasoning: true,
+      variants,
+    });
+    expect(models['claude-opus-4-6']).toEqual({
+      name: 'Claude Opus 4.6',
+      limit: { context: 200000, output: 64000 },
+      modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+      reasoning: true,
+      variants,
+    });
   });
 });

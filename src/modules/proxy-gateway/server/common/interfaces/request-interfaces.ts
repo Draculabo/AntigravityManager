@@ -2,8 +2,11 @@ import type {
   GeminiToolConfig,
   GeminiSnakeToolConfig,
   GeminiToolDeclaration,
+  ThinkingGeminiConfig,
+  ImageConfig,
   FunctionCall,
   FunctionResponse,
+  SafetySetting,
 } from '../../../antigravity/types';
 
 export interface OpenAIChatRequest {
@@ -18,6 +21,7 @@ export interface OpenAIChatRequest {
   stream?: boolean;
   /** Ask the gateway to keep the completion so its GET route can replay it. */
   store?: boolean;
+  image_size?: string;
   size?: string;
   quality?: string;
   tools?: OpenAITool[];
@@ -54,7 +58,7 @@ export interface OpenAIMessage {
 }
 
 export interface OpenAIContentPart {
-  type: 'text' | 'image_url' | 'input_audio' | 'audio';
+  type: 'text' | 'image_url' | 'input_audio' | 'audio' | 'audio_url';
   text?: string;
   image_url?:
     | string
@@ -64,6 +68,12 @@ export interface OpenAIContentPart {
       };
   input_audio?: {
     data: string;
+    format?: string;
+  };
+  audio_url?: {
+    url: string;
+    mime_type?: string;
+    mimeType?: string;
     format?: string;
   };
 }
@@ -155,7 +165,7 @@ export type AnthropicContent =
   // A document is an image block by another name on the wire: same inline
   // source, and the upstream transport has one representation for both.
   | { type: 'document'; source: AnthropicImageSource; title?: string }
-  | { type: 'audio'; source: AnthropicImageSource }
+  | { type: 'audio'; source: AnthropicAudioSource }
   | {
       type: 'tool_use';
       id: string;
@@ -177,6 +187,10 @@ export interface AnthropicImageSource {
   data: string;
 }
 
+export type AnthropicAudioSource =
+  | AnthropicImageSource
+  | { type: 'url'; media_type: string; url: string };
+
 export interface GeminiContent {
   role: string;
   parts: GeminiPart[];
@@ -185,6 +199,7 @@ export interface GeminiContent {
 export interface GeminiPart {
   text?: string;
   inlineData?: GeminiInlineData;
+  fileData?: { fileUri: string; mimeType: string };
   thoughtSignature?: string;
   thought_signature?: string;
   functionCall?: FunctionCall;
@@ -198,6 +213,7 @@ export interface GeminiInlineData {
 
 export interface GeminiRequest {
   contents: GeminiContent[];
+  safetySettings?: SafetySetting[];
   systemInstruction?: { parts: GeminiPart[] };
   generationConfig?: GeminiGenerationConfig;
   tools?: GeminiToolDeclaration[];
@@ -206,10 +222,12 @@ export interface GeminiRequest {
 }
 
 export interface GeminiGenerationConfig {
+  imageConfig?: ImageConfig;
   temperature?: number;
   maxOutputTokens?: number;
   topP?: number;
   topK?: number;
+  thinkingConfig?: ThinkingGeminiConfig;
 }
 
 export interface GeminiResponse {

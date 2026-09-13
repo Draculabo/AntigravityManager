@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { SignatureStore } from './SignatureStore';
 import { decodeSignature } from './signature-utils';
 import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight';
@@ -91,6 +93,7 @@ interface OpenAIResponsesStreamingMapperOptions {
 
 export class OpenAIResponsesStreamingMapper {
   private readonly emittedToolCallIds = new Set<string>();
+  private readonly itemIdPrefix = randomUUID().replaceAll('-', '').slice(0, 16);
   private readonly outputItems: ResponsesOutputItem[] = [];
   private activeMessage: ActiveMessageOutput | null = null;
   private activeThought: ActiveMessageOutput | null = null;
@@ -231,8 +234,8 @@ export class OpenAIResponsesStreamingMapper {
     this.nextOutputIndex += 1;
     const itemId =
       kind === 'thought'
-        ? `msg_thought_${this.options.responseId}_${this.messageCounter}`
-        : `msg_${this.options.responseId}_${this.messageCounter}`;
+        ? `msg_thought_${this.itemIdPrefix}_${this.messageCounter}`
+        : `msg_${this.itemIdPrefix}_${this.messageCounter}`;
     this.messageCounter += 1;
     const item: ResponsesMessageOutputItem = {
       content: [{ annotations: [], text: '', type: 'output_text' }],

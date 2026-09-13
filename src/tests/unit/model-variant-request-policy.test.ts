@@ -1,14 +1,109 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyAnthropicModelVariant,
+  applyGeminiModelVariant,
   applyOpenAIModelVariant,
   rebindAnthropicModelVariant,
+  rebindGeminiModelVariant,
   rebindOpenAIModelVariant,
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import type {
   AnthropicChatRequest,
+  GeminiRequest,
   OpenAIChatRequest,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+
+describe('applyGeminiModelVariant', () => {
+  const request: GeminiRequest = {
+    contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
+  };
+
+  it('resolves a canonical Gemini request to the default high physical variant', () => {
+    expect(applyGeminiModelVariant('gemini-3.7-flash', request)).toEqual({
+      model: 'gemini-3.7-flash-high',
+      request,
+      variant: {
+        canonicalModel: 'gemini-3.7-flash',
+        model: 'gemini-3.7-flash-high',
+        tier: 'high',
+        thinkingBudget: 10000,
+        maxOutputTokens: 65536,
+        includeThoughts: true,
+        preserveClientBudget: false,
+        supportsTools: true,
+      },
+    });
+  });
+
+  it('honors an explicit native thinking budget for the tier-aware 3.6 high alias', () => {
+    const tieredRequest: GeminiRequest = {
+      ...request,
+      generationConfig: {
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: 1000,
+        },
+      },
+    };
+
+    expect(applyGeminiModelVariant('gemini-3.6-flash-high', tieredRequest)).toEqual({
+      model: 'gemini-3.7-flash-low',
+      request: tieredRequest,
+      variant: {
+        canonicalModel: 'gemini-3.7-flash',
+        model: 'gemini-3.7-flash-low',
+        tier: 'low',
+        thinkingBudget: 1000,
+        maxOutputTokens: 65536,
+        includeThoughts: true,
+        preserveClientBudget: false,
+        supportsTools: true,
+      },
+    });
+  });
+
+  it('uses a valid native thinking level as the explicit tier', () => {
+    const tieredRequest: GeminiRequest = {
+      ...request,
+      generationConfig: {
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingLevel: 'medium',
+        },
+      },
+    };
+
+    expect(applyGeminiModelVariant('gemini-3.7-flash', tieredRequest).variant).toEqual({
+      canonicalModel: 'gemini-3.7-flash',
+      model: 'gemini-3.7-flash-medium',
+      tier: 'medium',
+      thinkingBudget: 4000,
+      maxOutputTokens: 65536,
+      includeThoughts: true,
+      preserveClientBudget: false,
+      supportsTools: true,
+    });
+  });
+
+  it('rebinds the complete native variant tuple when an account selects a sibling', () => {
+    const applied = applyGeminiModelVariant('gemini-3.7-flash-low', request);
+
+    expect(rebindGeminiModelVariant(applied, 'gemini-3.7-flash-medium')).toEqual({
+      model: 'gemini-3.7-flash-medium',
+      request,
+      variant: {
+        canonicalModel: 'gemini-3.7-flash',
+        model: 'gemini-3.7-flash-medium',
+        tier: 'medium',
+        thinkingBudget: 4000,
+        maxOutputTokens: 65536,
+        includeThoughts: true,
+        preserveClientBudget: false,
+        supportsTools: true,
+      },
+    });
+  });
+});
 
 describe('applyAnthropicModelVariant', () => {
   it('applies Anthropic effort before forwarding a canonical Gemini request', () => {

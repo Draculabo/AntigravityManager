@@ -5,13 +5,15 @@ import {
   Get,
   HttpStatus,
   Inject,
+  HttpException,
   Param,
   Post,
+  Req,
   Res,
   UseGuards,
   Optional,
 } from '@nestjs/common';
-import { FastifyReply } from 'fastify';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import { isEmpty, isFunction, isNumber, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 
@@ -31,6 +33,7 @@ import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
 import { AccountLeaseService } from '../account-lease/account-lease.service';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
+import { createProxyRequestAbortScope } from '../../common/base-proxy.controller';
 
 type GeminiModelMetadata = {
   name: string;
@@ -89,6 +92,7 @@ export class GeminiController {
     @Param('modelAction') modelAction: string,
     @Body() body: GeminiRequest,
     @Res() res: FastifyReply,
+    @Req() req?: FastifyRequest,
   ) {
     const parsed = this.parseModelActionToken(modelAction);
     if (!parsed) {
@@ -102,7 +106,7 @@ export class GeminiController {
       return;
     }
 
-    await this.handleModelActionDispatch(parsed.model, parsed.action, body, res);
+    await this.handleModelActionDispatch(parsed.model, parsed.action, body, res, req);
   }
 
   @Post('models/:model/countTokens')
@@ -110,8 +114,9 @@ export class GeminiController {
     @Param('model') model: string,
     @Body() body: GeminiRequest,
     @Res() res: FastifyReply,
+    @Req() req?: FastifyRequest,
   ) {
-    await this.handleModelActionDispatch(`models/${model}`, 'countTokens', body, res);
+    await this.handleModelActionDispatch(`models/${model}`, 'countTokens', body, res, req);
   }
 
   private async handleModelActionDispatch(
@@ -119,6 +124,7 @@ export class GeminiController {
     action: string,
     body: GeminiRequest,
     res: FastifyReply,
+    req?: FastifyRequest,
   ): Promise<void> {
     let request: GeminiRequest;
     try {
@@ -139,6 +145,7 @@ export class GeminiController {
       throw error;
     }
 
+    const abortScope = createProxyRequestAbortScope(req, res);
     try {
       if (action === 'countTokens') {
         const totalTokens = await this.proxyService.handleGeminiCountTokens(model, request);
@@ -147,7 +154,9 @@ export class GeminiController {
       }
 
       if (action === 'streamGenerateContent') {
-        const stream = await this.proxyService.handleGeminiStreamGenerateContent(model, request);
+        const stream = await (abortScope.signal
+          ? this.proxyService.handleGeminiStreamGenerateContent(model, request, abortScope.signal)
+          : this.proxyService.handleGeminiStreamGenerateContent(model, request));
         if (stream instanceof Observable) {
           this.writeObservableSseResponse(res, stream);
           return;
@@ -155,7 +164,14 @@ export class GeminiController {
       }
 
       if (action === 'generateContent') {
-        const result = await this.proxyService.handleGeminiGenerateContent(model, request);
+        const result = await (abortScope.signal
+          ? this.proxyService.handleGeminiGenerateContent(
+              model,
+              request,
+              'generate-content',
+              abortScope.signal,
+            )
+          : this.proxyService.handleGeminiGenerateContent(model, request));
         res.status(HttpStatus.OK).send(this.buildNormalizedGeminiGenerateResponse(result));
         return;
       }
@@ -186,9 +202,11 @@ export class GeminiController {
 
       const message = error instanceof Error ? error.message : 'Internal Server Error';
       const status =
-        action === 'countTokens'
-          ? this.resolveCountTokensErrorHttpStatus(error)
-          : HttpStatus.INTERNAL_SERVER_ERROR;
+        error instanceof HttpException
+          ? (error.getStatus() as HttpStatus)
+          : action === 'countTokens'
+            ? this.resolveCountTokensErrorHttpStatus(error)
+            : HttpStatus.INTERNAL_SERVER_ERROR;
       res.status(status).send({
         error: {
           code: status,
@@ -196,6 +214,8 @@ export class GeminiController {
           status: this.resolveGeminiErrorStatus(status),
         },
       });
+    } finally {
+      abortScope.dispose();
     }
   }
 

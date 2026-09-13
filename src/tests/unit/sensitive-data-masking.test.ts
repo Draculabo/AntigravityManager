@@ -86,6 +86,14 @@ describe('sensitive data masking', () => {
       expect(sanitized).not.toContain('QUJDQUJD');
     });
 
+    it('redacts short image data URLs with metadata and uppercase BASE64', () => {
+      const raw = 'prefix data:image/webp;name=source;BASE64,AQ== suffix';
+      const sanitized = sanitizeObject(raw);
+
+      expect(sanitized).toBe('prefix [data URL redacted mime=image/webp bytes=1] suffix');
+      expect(sanitized).not.toContain('AQ==');
+    });
+
     it('redacts inlineData base64 while preserving its MIME type', () => {
       const sanitized = sanitizeObject({
         inlineData: {
@@ -98,6 +106,15 @@ describe('sensitive data masking', () => {
         inlineData: {
           mimeType: 'image/webp',
           data: '[base64 redacted mime=image/webp bytes=480]',
+        },
+      });
+    });
+
+    it('redacts short inlineData when its sibling MIME type is an image', () => {
+      expect(sanitizeObject({ inlineData: { mimeType: 'image/png', data: 'AQ==' } })).toEqual({
+        inlineData: {
+          mimeType: 'image/png',
+          data: '[base64 redacted mime=image/png bytes=1]',
         },
       });
     });

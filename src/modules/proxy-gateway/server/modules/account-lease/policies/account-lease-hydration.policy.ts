@@ -31,6 +31,7 @@ interface HydrateSelectedTokenRequest {
 export class AccountLeaseHydrationPolicy {
   private readonly refreshLocks = new Map<string, Promise<void>>();
   private readonly projectIdLocks = new Map<string, Promise<string | undefined>>();
+  private readonly persistenceTails = new Map<string, Promise<void>>();
 
   constructor(private readonly options: AccountLeaseHydrationPolicyOptions) {}
 
@@ -108,8 +109,8 @@ export class AccountLeaseHydrationPolicy {
         refreshedToken.oauth_client_key,
       );
       Object.assign(tokenData, tokenToRefresh);
-      await this.saveTokenState(accountId, tokenToRefresh);
       tokenCache.set(accountId, tokenToRefresh);
+      this.enqueueTokenStatePersistence(accountId, tokenToRefresh);
       this.options.logger.log(`Access token refreshed for ${tokenToRefresh.email}`);
     } catch (error) {
       this.options.logger.error(
@@ -200,8 +201,8 @@ export class AccountLeaseHydrationPolicy {
       if (normalizedProjectId) {
         latestToken.project_id = normalizedProjectId;
         tokenData.project_id = normalizedProjectId;
-        await this.saveTokenState(accountId, latestToken);
         tokenCache.set(accountId, latestToken);
+        this.enqueueTokenStatePersistence(accountId, latestToken);
         this.options.logger.log(
           `Resolved project ID for ${latestToken.email}: ${normalizedProjectId}`,
         );
@@ -248,6 +249,12 @@ export class AccountLeaseHydrationPolicy {
     return this.options.upstream.normalizeRefreshedOAuthClientKey(currentToken, refreshedClientKey);
   }
 
+  async drainBackgroundPersistence(): Promise<void> {
+    while (this.persistenceTails.size > 0) {
+      await Promise.all(this.persistenceTails.values());
+    }
+  }
+
   private async saveTokenState(accountId: string, tokenData: AccountLeaseTokenData): Promise<void> {
     if (this.options.persistTokenState) {
       await this.options.persistTokenState(accountId, tokenData);
@@ -255,6 +262,27 @@ export class AccountLeaseHydrationPolicy {
     }
 
     await this.persistTokenState(accountId, tokenData);
+  }
+
+  private enqueueTokenStatePersistence(accountId: string, tokenData: AccountLeaseTokenData): void {
+    const snapshot = { ...tokenData };
+    const previous = this.persistenceTails.get(accountId) ?? Promise.resolve();
+    // Account-store reads and writes contain synchronous SQLite work. Starting on the next
+    // event-loop turn keeps it outside lease fulfillment, while the per-account tail prevents
+    // an older refresh snapshot from overwriting a later project/token update.
+    const task = previous
+      .then(() => new Promise<void>((resolve) => setImmediate(resolve)))
+      .then(() => this.saveTokenState(accountId, snapshot))
+      .catch((error: unknown) => {
+        this.options.logger.error(`Failed to persist token state for ${accountId}`, error);
+      });
+
+    this.persistenceTails.set(accountId, task);
+    void task.finally(() => {
+      if (this.persistenceTails.get(accountId) === task) {
+        this.persistenceTails.delete(accountId);
+      }
+    });
   }
 }
 

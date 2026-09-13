@@ -33,9 +33,13 @@ export class GenerationConstraintsService {
     accountId: string,
     registered?: RegisteredGenerationConstraints,
   ): void {
-    const generationConfig = body.request.generationConfig;
+    let generationConfig = body.request.generationConfig;
     if (!generationConfig) {
-      return;
+      if (!registered) {
+        return;
+      }
+      generationConfig = {};
+      body.request.generationConfig = generationConfig;
     }
 
     if (registered) {

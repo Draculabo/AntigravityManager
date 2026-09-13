@@ -341,6 +341,11 @@ describe('ProxyController Integration', () => {
     const ids = payload.data.map((model: { id: string }) => model.id);
     expect(ids).toEqual(
       expect.arrayContaining([
+        'gemini-3.7-flash',
+        'gemini-3.7-flash-medium',
+        'gemini-3.7-flash-high',
+        'gemini-3.7-flash-low',
+        'gemini-3.6-flash',
         'gemini-3.5-flash-medium',
         'gemini-3.5-flash-high',
         'gemini-3.5-flash-low',
@@ -627,6 +632,11 @@ describe('ProxyController Integration', () => {
     expect(proxyService.handleChatCompletions).toHaveBeenCalledWith(
       expect.any(Object),
       'responses',
+      undefined,
+      expect.objectContaining({
+        requestSessionId: expect.any(String),
+        responseId: expect.any(String),
+      }),
     );
   });
 
@@ -805,12 +815,11 @@ describe('ProxyController Integration', () => {
     };
     const controller = new ProxyController(proxyService as any);
 
+    const firstReply = createReplyMock();
+    await controller.responses({ input: 'First question', model: 'gpt-4o' }, firstReply as any);
+    const firstResponseId = (firstReply.send.mock.calls[0][0] as { id: string }).id;
     await controller.responses(
-      { input: 'First question', model: 'gpt-4o' },
-      createReplyMock() as any,
-    );
-    await controller.responses(
-      { input: 'Second question', previous_response_id: 'resp_previous_1' },
+      { input: 'Second question', previous_response_id: firstResponseId },
       createReplyMock() as any,
     );
 
@@ -871,13 +880,12 @@ describe('ProxyController Integration', () => {
     };
     const controller = new ProxyController(proxyService as any);
 
-    await controller.responses(
-      { input: 'Create the file', model: 'gpt-4o' },
-      createReplyMock() as any,
-    );
+    const firstReply = createReplyMock();
+    await controller.responses({ input: 'Create the file', model: 'gpt-4o' }, firstReply as any);
+    const firstResponseId = (firstReply.send.mock.calls[0][0] as { id: string }).id;
     await controller.responses(
       {
-        previous_response_id: 'resp_compaction_1',
+        previous_response_id: firstResponseId,
         input: [
           { type: 'compaction_summary', content: 'Earlier context was compacted.' },
           {
@@ -957,6 +965,72 @@ describe('ProxyController Integration', () => {
     expect(imageQuotaRefresh).toHaveBeenCalledOnce();
   });
 
+  it('passes ordered Canvas input images and normalized image_size to generation', async () => {
+    const proxyService = {
+      handleChatCompletions: vi.fn().mockResolvedValue({
+        choices: [{ message: { content: 'data:image/png;base64,AAAABBBB' } }],
+      }),
+    };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.imageGenerations(
+      {
+        image: ['data:image/png;base64,AQ==', 'data:image/webp;base64,Ag=='],
+        imageSize: '2k',
+        prompt: 'draw from references',
+        style: 'natural',
+      },
+      reply as any,
+    );
+
+    expect(proxyService.handleChatCompletions).toHaveBeenCalledWith({
+      image_size: '2K',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'draw from references, (natural lighting, realistic, photorealistic)',
+            },
+            {
+              type: 'image_url',
+              image_url: { url: 'data:image/png;base64,AQ==' },
+            },
+            {
+              type: 'image_url',
+              image_url: { url: 'data:image/webp;base64,Ag==' },
+            },
+          ],
+        },
+      ],
+      model: 'gemini-3.1-flash-image',
+      quality: undefined,
+      size: undefined,
+      stream: false,
+    });
+    expect(reply.status).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects invalid generation image input before calling upstream', async () => {
+    const proxyService = { handleChatCompletions: vi.fn() };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.imageGenerations(
+      {
+        image: 'https://example.invalid/image.png',
+        prompt: 'draw from a reference',
+      },
+      reply as any,
+    );
+
+    expect(proxyService.handleChatCompletions).not.toHaveBeenCalled();
+    expect(reply.status).toHaveBeenCalledWith(400);
+    expect(reply.send).toHaveBeenCalledWith('Input image must be a base64 data:image URL');
+  });
+
   it('maps image generation upstream quota errors to 429', async () => {
     const proxyService = {
       handleChatCompletions: vi.fn().mockRejectedValue(new Error('429 quota exceeded')),
@@ -1029,14 +1103,36 @@ describe('ProxyController Integration', () => {
 
     await controller.imageGenerations(
       {
-        model: 'gemini-3-pro-image',
+        image: 'data:image/png;base64,AQ==',
+        model: 'gemini-3.1-flash-image-16x9-4k',
         prompt: 'draw a fox',
       },
       reply as any,
     );
 
     expect(proxyService.handleChatCompletions).toHaveBeenCalledOnce();
-    expect(proxyService.handleGeminiGenerateContent).toHaveBeenCalledOnce();
+    expect(proxyService.handleGeminiGenerateContent).toHaveBeenCalledWith(
+      'gemini-3.1-flash-image',
+      expect.objectContaining({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: 'draw a fox, (vivid colors, dramatic lighting, rich details)' },
+              { inlineData: { data: 'AQ==', mimeType: 'image/png' } },
+            ],
+          },
+        ],
+        generationConfig: {
+          imageConfig: { aspectRatio: '16:9', imageSize: '4K' },
+        },
+        safetySettings: expect.arrayContaining([
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'OFF' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'OFF' },
+        ]),
+      }),
+      'image_gen',
+    );
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.send).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1048,6 +1144,26 @@ describe('ProxyController Integration', () => {
       }),
     );
     expect(imageQuotaRefresh).toHaveBeenCalledOnce();
+  });
+
+  it('rejects non-string generation image_size with the public boundary error', async () => {
+    const proxyService = { handleChatCompletions: vi.fn() };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.imageGenerations(
+      {
+        image_size: 4,
+        prompt: 'draw a fox',
+      } as any,
+      reply as any,
+    );
+
+    expect(proxyService.handleChatCompletions).not.toHaveBeenCalled();
+    expect(reply.status).toHaveBeenCalledWith(400);
+    expect(reply.send).toHaveBeenCalledWith(
+      'Invalid image_size: expected one of 1K, 2K, 4K, or auto',
+    );
   });
 
   it('returns 502 when the direct Gemini image fallback has no inline image', async () => {
@@ -1096,13 +1212,6 @@ describe('ProxyController Integration', () => {
         { type: 'field', fieldname: 'prompt', value: 'make it brighter' },
         {
           type: 'file',
-          fieldname: 'image',
-          filename: 'main.png',
-          mimetype: 'image/png',
-          data: Buffer.from('main-image'),
-        },
-        {
-          type: 'file',
           fieldname: 'mask',
           filename: 'mask.webp',
           mimetype: 'image/webp',
@@ -1110,7 +1219,14 @@ describe('ProxyController Integration', () => {
         },
         {
           type: 'file',
-          fieldname: 'image1',
+          fieldname: 'image',
+          filename: 'main.png',
+          mimetype: 'image/png',
+          data: Buffer.from('main-image'),
+        },
+        {
+          type: 'file',
+          fieldname: 'image[]',
           filename: 'reference.jpg',
           mimetype: 'image/jpeg',
           data: Buffer.from('reference-image'),
@@ -1152,6 +1268,45 @@ describe('ProxyController Integration', () => {
       ],
     });
     expect(reply.status).toHaveBeenCalledWith(200);
+  });
+
+  it('uses valid size when image edit aspect_ratio is invalid', async () => {
+    const proxyService = {
+      handleChatCompletions: vi.fn().mockResolvedValue({
+        choices: [{ message: { content: 'data:image/png;base64,AAAABBBB' } }],
+      }),
+    };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.imageEdits(
+      createMultipartRequest([
+        { type: 'field', fieldname: 'prompt', value: 'edit' },
+        { type: 'field', fieldname: 'aspect_ratio', value: 'garbage' },
+        { type: 'field', fieldname: 'size', value: '1920x1080' },
+      ]) as any,
+      reply as any,
+    );
+
+    expect(proxyService.handleChatCompletions).toHaveBeenCalledWith(
+      expect.objectContaining({ size: '1920x1080' }),
+    );
+    expect(reply.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does not allow style to replace a missing image edit prompt', async () => {
+    const proxyService = { handleChatCompletions: vi.fn() };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.imageEdits(
+      createMultipartRequest([{ type: 'field', fieldname: 'style', value: 'vivid' }]) as any,
+      reply as any,
+    );
+
+    expect(proxyService.handleChatCompletions).not.toHaveBeenCalled();
+    expect(reply.status).toHaveBeenCalledWith(400);
+    expect(reply.send).toHaveBeenCalledWith('Missing prompt');
   });
 
   it('passes image edit input to the Gemini project-context fallback', async () => {
@@ -1216,6 +1371,7 @@ describe('ProxyController Integration', () => {
           },
         ],
       }),
+      'image_gen',
     );
     expect(reply.status).toHaveBeenCalledWith(200);
   });

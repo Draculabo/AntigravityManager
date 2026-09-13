@@ -1,4 +1,6 @@
-import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+
+import { BadRequestException, HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { isEmpty, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
@@ -11,6 +13,12 @@ import {
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
 import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
+import {
+  IMAGE_GENERATION_SAFETY_SETTINGS,
+  normalizeExplicitImageSize,
+  resolveImageGenerationConfig,
+  selectImageAspectRatioInput,
+} from '@/modules/proxy-gateway/antigravity/ImageGenerationConfig';
 import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import {
   expandFileReferences,
@@ -23,9 +31,10 @@ import {
 } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-chat-completion.store';
 import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
 import {
-  mergeOpenAIResponsesInputItems,
   OpenAIResponsesSessionStore,
+  prepareOpenAIResponsesSessionInput,
   type OpenAIResponsesSession,
+  type OpenAIResponsesSessionParent,
   type OpenAIResponsesSessionStoreLike,
 } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
 import {
@@ -37,16 +46,18 @@ import { getServerConfig } from '@/server/server-config';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import {
+  type ImageMonitoringInput,
   type ImageMonitoringRequest,
   type OpenAIImageResponse,
   summarizeImageRequest,
   summarizeImageResponse,
 } from '@/modules/proxy-gateway/server/modules/openai/media/image-monitoring-summary';
 import { parseImageMultipartRequest } from '@/modules/proxy-gateway/server/modules/openai/media/image-multipart-request';
+import { parseGenerationInputImages } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 import { BaseProxyController } from '@/modules/proxy-gateway/server/common/base-proxy.controller';
 import { resolveOpenAIImageUrl } from './openai-image-url';
-import { OpenAIService } from './openai.service';
+import { OpenAIService, type OpenAIResponsesExecutionContext } from './openai.service';
 export type { ResponsesRequestBody } from './responses/openai-responses-request';
 import {
   buildResponseNotFoundError,
@@ -57,6 +68,11 @@ import {
   parseResponsesSessionResponse,
   resolveInlineData,
 } from './responses/openai-responses-request';
+import {
+  boundResponsesInputItems,
+  omitMediaBeforeLatestUserTurn,
+  validateResponsesInputImageLimits,
+} from './responses/openai-responses-inline-media';
 
 export const IMAGE_QUOTA_REFRESH = Symbol('IMAGE_QUOTA_REFRESH');
 
@@ -80,7 +96,10 @@ export interface OpenAITextCompletionRequest {
 }
 
 export interface PreparedResponsesRequest {
+  parent: OpenAIResponsesSessionParent | null;
   request: OpenAIChatRequest;
+  requestSessionId: string;
+  responseId: string;
   session: OpenAIResponsesSession;
 }
 
@@ -211,7 +230,7 @@ export class OpenAIOperations extends BaseProxyController {
     }
   }
 
-  async chatCompletions(body: OpenAIChatRequest, res: FastifyReply) {
+  async chatCompletions(body: OpenAIChatRequest, res: FastifyReply, req?: FastifyRequest) {
     if (body.store === true && body.stream === true) {
       res.status(HttpStatus.BAD_REQUEST).send({
         error: {
@@ -226,7 +245,7 @@ export class OpenAIOperations extends BaseProxyController {
       return;
     }
 
-    await this.respondOpenAIChatCompletions(body, res);
+    await this.respondOpenAIChatCompletions(body, res, req);
   }
 
   /**
@@ -255,7 +274,7 @@ export class OpenAIOperations extends BaseProxyController {
     res.status(HttpStatus.OK).send(stored);
   }
 
-  async completions(body: OpenAITextCompletionRequest, res: FastifyReply) {
+  async completions(body: OpenAITextCompletionRequest, res: FastifyReply, req?: FastifyRequest) {
     const request: OpenAIChatRequest = {
       model: body.model ?? 'gemini-3-flash',
       messages: [
@@ -269,8 +288,11 @@ export class OpenAIOperations extends BaseProxyController {
       top_p: body.top_p,
       stream: body.stream,
     };
+    const abortScope = this.createRequestAbortScope(req, res);
     try {
-      const result = await this.proxyService.handleChatCompletions(request);
+      const result = await (abortScope.signal
+        ? this.proxyService.handleChatCompletions(request, 'chat-completions', abortScope.signal)
+        : this.proxyService.handleChatCompletions(request));
       if (body.stream && this.isObservableLike(result)) {
         this.writeSseResponse(res, result);
         return;
@@ -280,10 +302,12 @@ export class OpenAIOperations extends BaseProxyController {
       res.status(HttpStatus.OK).send(this.toLegacyTextCompletionsResponse(response));
     } catch (error) {
       this.sendOpenAIErrorResponse(res, '/v1/completions', error);
+    } finally {
+      abortScope.dispose();
     }
   }
 
-  async responses(body: ResponsesRequestBody, res: FastifyReply) {
+  async responses(body: ResponsesRequestBody, res: FastifyReply, req?: FastifyRequest) {
     let expanded: ResponsesRequestBody;
     try {
       expanded = await expandFileReferences(body, 'openai-responses', this.files);
@@ -295,6 +319,7 @@ export class OpenAIOperations extends BaseProxyController {
       throw error;
     }
 
+    const abortScope = this.createRequestAbortScope(req, res);
     try {
       const prepared = this.prepareResponsesRequest(expanded);
       if (!prepared) {
@@ -304,38 +329,93 @@ export class OpenAIOperations extends BaseProxyController {
         return;
       }
 
-      const result = await this.proxyService.handleChatCompletions(prepared.request, 'responses');
+      const result = await (abortScope.signal
+        ? this.proxyService.handleChatCompletions(
+            prepared.request,
+            'responses',
+            abortScope.signal,
+            this.toResponsesExecutionContext(prepared),
+          )
+        : this.proxyService.handleChatCompletions(
+            prepared.request,
+            'responses',
+            undefined,
+            this.toResponsesExecutionContext(prepared),
+          ));
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, this.cacheResponsesStream(result, prepared.session));
+        this.writeSseResponse(res, this.cacheResponsesStream(result, prepared));
         return;
       }
 
       const response = result as OpenAIChatResponse;
-      const responsesResponse = toOpenAIResponsesResponse(response);
-      this.saveResponsesSession(responsesResponse, prepared.session);
+      const responsesResponse = toOpenAIResponsesResponse(response, prepared.responseId);
+      this.saveResponsesSession(responsesResponse, prepared);
       res.status(HttpStatus.OK).send(responsesResponse);
     } catch (error) {
       this.sendOpenAIErrorResponse(res, '/v1/responses', error);
+    } finally {
+      abortScope.dispose();
     }
   }
 
-  async imageGenerations(body: ImageMonitoringRequest, res: FastifyReply) {
+  async imageGenerations(body: ImageMonitoringRequest, res: FastifyReply, req?: FastifyRequest) {
     const path = '/v1/images/generations';
+    if (!isString(body.prompt)) {
+      res.status(HttpStatus.BAD_REQUEST).send("Missing 'prompt' field");
+      return;
+    }
+
+    let inputImages: ImageMonitoringInput[];
+    let imageSize: string | undefined;
+    try {
+      inputImages = parseGenerationInputImages(body.image);
+      imageSize = normalizeExplicitImageSize(body.image_size ?? body.imageSize);
+    } catch (error) {
+      res
+        .status(HttpStatus.BAD_REQUEST)
+        .send(error instanceof Error ? error.message : 'Invalid image request');
+      return;
+    }
+
     this.logImageMonitoringSummary('request', summarizeImageRequest(path, body));
+    const model = isString(body.model) ? body.model : 'gemini-3.1-flash-image';
+    const quality = isString(body.quality) ? body.quality : undefined;
+    const size = isString(body.size) ? body.size : undefined;
+    let prompt = body.prompt;
+    if (quality === 'hd') {
+      prompt += ', (high quality, highly detailed, 4k resolution, hdr)';
+    }
+    const style = isString(body.style) ? body.style : 'vivid';
+    if (style === 'vivid') {
+      prompt += ', (vivid colors, dramatic lighting, rich details)';
+    } else if (style === 'natural') {
+      prompt += ', (natural lighting, realistic, photorealistic)';
+    }
+    const imageParts = this.collectImageContentParts(inputImages, 'image/png');
     const request: OpenAIChatRequest = {
-      model: body.model ?? 'gemini-3.1-flash-image',
+      model,
       messages: [
         {
           role: 'user',
-          content: body.prompt ?? '',
+          content:
+            imageParts.length > 0
+              ? [
+                  {
+                    type: 'text',
+                    text: prompt,
+                  },
+                  ...imageParts,
+                ]
+              : prompt,
         },
       ],
       stream: false,
-      size: body.size,
-      quality: body.quality,
+      image_size: imageSize,
+      size,
+      quality,
     };
 
-    await this.sendOpenAIImageGenerationResponse(request, body.prompt ?? '', path, res);
+    await this.sendOpenAIImageGenerationResponse(request, prompt, path, res, req);
   }
 
   async imageEdits(req: FastifyRequest, res: FastifyReply) {
@@ -349,18 +429,30 @@ export class OpenAIOperations extends BaseProxyController {
     let body: ImageMonitoringRequest;
     try {
       body = await parseImageMultipartRequest(req);
+      body.image_size = normalizeExplicitImageSize(body.image_size);
     } catch (error) {
       res
         .status(HttpStatus.BAD_REQUEST)
         .send(error instanceof Error ? error.message : 'Invalid multipart request');
       return;
     }
+    if (!body.prompt) {
+      res.status(HttpStatus.BAD_REQUEST).send('Missing prompt');
+      return;
+    }
     this.logImageMonitoringSummary('request', summarizeImageRequest(path, body));
+    const prompt = body.style === undefined ? body.prompt : `${body.prompt}, style: ${body.style}`;
 
-    const imageParts = [
-      ...this.collectImageContentParts([body.image, body.mask], 'image/png'),
+    const inputImages = Array.isArray(body.image) ? body.image : [body.image];
+    const inputImageParts = [
+      ...this.collectImageContentParts(inputImages, 'image/png'),
       ...this.collectImageContentParts(body.reference_images ?? [], 'image/jpeg'),
     ];
+    const maskParts = this.collectImageContentParts([body.mask], 'image/png');
+    const imageParts =
+      inputImageParts.length > 0
+        ? [inputImageParts[0], ...maskParts, ...inputImageParts.slice(1)]
+        : maskParts;
 
     const request: OpenAIChatRequest = {
       model: body.model ?? 'gemini-3.1-flash-image',
@@ -372,20 +464,20 @@ export class OpenAIOperations extends BaseProxyController {
               ? [
                   {
                     type: 'text',
-                    text:
-                      body.prompt ?? 'Please edit this image based on the provided instruction.',
+                    text: prompt,
                   },
                   ...imageParts,
                 ]
-              : (body.prompt ?? 'Please edit this image based on the provided instruction.'),
+              : prompt,
         },
       ],
       stream: false,
-      size: body.size,
+      image_size: body.image_size,
+      size: selectImageAspectRatioInput(body.aspect_ratio, body.size),
       quality: body.quality,
     };
 
-    await this.sendOpenAIImageGenerationResponse(request, body.prompt ?? '', path, res);
+    await this.sendOpenAIImageGenerationResponse(request, prompt, path, res, req);
   }
 
   async audioTranscriptions(body: AudioRequestBody, req: FastifyRequest, res: FastifyReply) {
@@ -480,12 +572,19 @@ export class OpenAIOperations extends BaseProxyController {
     }
   }
 
-  private async respondOpenAIChatCompletions(body: OpenAIChatRequest, res: FastifyReply) {
+  private async respondOpenAIChatCompletions(
+    body: OpenAIChatRequest,
+    res: FastifyReply,
+    req?: FastifyRequest,
+  ) {
+    const abortScope = this.createRequestAbortScope(req, res);
     try {
       // Handles become inline content before the request is mapped: upstream
       // has no file plane, so a `file_id` left in place reaches nothing.
       const request = await expandFileReferences(body, 'openai-chat', this.files);
-      const result = await this.proxyService.handleChatCompletions(request);
+      const result = await (abortScope.signal
+        ? this.proxyService.handleChatCompletions(request, 'chat-completions', abortScope.signal)
+        : this.proxyService.handleChatCompletions(request));
 
       if (body.stream && this.isObservableLike(result)) {
         this.writeSseResponse(res, result);
@@ -502,6 +601,8 @@ export class OpenAIOperations extends BaseProxyController {
         return;
       }
       this.sendOpenAIErrorResponse(res, '/v1/chat/completions', error);
+    } finally {
+      abortScope.dispose();
     }
   }
 
@@ -538,34 +639,46 @@ export class OpenAIOperations extends BaseProxyController {
   }
 
   public prepareResponsesRequest(body: ResponsesRequestBody): PreparedResponsesRequest | null {
-    const currentInputItems = normalizeResponsesInputItems(body.input);
     const previousSession = body.previous_response_id
-      ? this.responsesSessions.get(body.previous_response_id)
+      ? this.responsesSessions.getWithParent(body.previous_response_id)
       : null;
     if (body.previous_response_id && !previousSession) {
       return null;
     }
 
-    const inputItems = mergeOpenAIResponsesInputItems(
-      previousSession?.inputItems ?? [],
-      currentInputItems,
-      previousSession?.toolCallItems,
+    const currentInputItems = omitMediaBeforeLatestUserTurn(
+      normalizeResponsesInputItems(body.input),
     );
-    const model = body.model ?? previousSession?.model ?? 'gemini-3-flash';
-    const instructions = body.instructions ?? previousSession?.instructions;
-    const tools = body.tools ?? previousSession?.tools;
+    try {
+      validateResponsesInputImageLimits(currentInputItems);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : String(error));
+    }
+    const preparedInput = prepareOpenAIResponsesSessionInput(
+      boundResponsesInputItems(previousSession?.session.inputItems ?? []),
+      currentInputItems,
+      boundResponsesInputItems(previousSession?.session.toolCallItems ?? []),
+    );
+    const model = body.model ?? previousSession?.session.model ?? 'gemini-3-flash';
+    const instructions = body.instructions ?? previousSession?.session.instructions;
+    const tools = body.tools ?? previousSession?.session.tools;
+    const responseId = `resp_${randomUUID()}`;
+    const requestSessionId = body.previous_response_id ?? responseId;
     const request = buildResponsesChatRequest({
       ...body,
-      input: inputItems,
+      input: preparedInput.merged,
       instructions,
       model,
       tools,
     });
 
     return {
+      parent: preparedInput.resetParent ? null : (previousSession?.parent ?? null),
       request,
+      requestSessionId,
+      responseId,
       session: {
-        inputItems,
+        inputItems: preparedInput.delta,
         instructions,
         model,
         store: body.store,
@@ -576,12 +689,12 @@ export class OpenAIOperations extends BaseProxyController {
 
   private cacheResponsesStream(
     stream: Observable<unknown>,
-    session: OpenAIResponsesSession,
+    prepared: PreparedResponsesRequest,
   ): Observable<unknown> {
     return new Observable<unknown>((subscriber) => {
       const subscription = stream.subscribe({
         next: (event) => {
-          this.saveResponsesSession(extractCompletedResponsesEvent(event), session);
+          this.saveResponsesSession(extractCompletedResponsesEvent(event), prepared);
           subscriber.next(event);
         },
         error: (error: unknown) => subscriber.error(error),
@@ -592,19 +705,35 @@ export class OpenAIOperations extends BaseProxyController {
     });
   }
 
-  private saveResponsesSession(response: unknown, session: OpenAIResponsesSession): void {
+  private saveResponsesSession(response: unknown, prepared: PreparedResponsesRequest): void {
     const responseRecord = parseResponsesSessionResponse(response);
-    if (!responseRecord) {
+    if (!responseRecord || (responseRecord.status && responseRecord.status !== 'completed')) {
       return;
     }
+    const storedResponse = { ...responseRecord, id: prepared.responseId };
 
-    this.responsesSessions.save(responseRecord.id, {
-      ...session,
-      inputItems: [...session.inputItems, ...responseRecord.output],
+    this.responsesSessions.saveDelta(prepared.responseId, {
+      inputDelta: prepared.session.inputItems,
+      instructions: prepared.session.instructions,
+      model: prepared.session.model,
+      parent: prepared.parent,
       // `store: false` asks for nothing retrievable, so the payload is dropped
       // while the continuation history this gateway needs is kept.
-      response: session.store === false ? undefined : responseRecord,
+      response: prepared.session.store === false ? undefined : storedResponse,
+      responseOutput: storedResponse.output,
+      store: prepared.session.store,
+      tools: prepared.session.tools,
+      toolCallItems: prepared.session.toolCallItems,
     });
+  }
+
+  private toResponsesExecutionContext(
+    prepared: PreparedResponsesRequest,
+  ): OpenAIResponsesExecutionContext {
+    return {
+      requestSessionId: prepared.requestSessionId,
+      responseId: prepared.responseId,
+    };
   }
 
   private collectImageContentParts(
@@ -632,9 +761,13 @@ export class OpenAIOperations extends BaseProxyController {
     prompt: string,
     path: '/v1/images/generations' | '/v1/images/edits',
     res: FastifyReply,
+    req?: FastifyRequest,
   ): Promise<void> {
+    const abortScope = this.createRequestAbortScope(req, res);
     try {
-      const result = await this.proxyService.handleChatCompletions(request);
+      const result = await (abortScope.signal
+        ? this.proxyService.handleChatCompletions(request, 'chat-completions', abortScope.signal)
+        : this.proxyService.handleChatCompletions(request));
       if (result instanceof Observable) {
         this.logProxyEndpointError(
           path,
@@ -685,10 +818,23 @@ export class OpenAIOperations extends BaseProxyController {
       if (this.isProjectContextErrorMessage(message)) {
         try {
           const geminiRequest = this.buildGeminiImageRequest(request, prompt);
-          const geminiResult = await this.proxyService.handleGeminiGenerateContent(
-            request.model ?? 'gemini-3.1-flash-image',
-            geminiRequest,
-          );
+          const { parsedBaseModel } = resolveImageGenerationConfig(request.model, {
+            imageSize: request.image_size,
+            quality: request.quality,
+            size: request.size,
+          });
+          const geminiResult = await (abortScope.signal
+            ? this.proxyService.handleGeminiGenerateContent(
+                parsedBaseModel,
+                geminiRequest,
+                'image_gen',
+                abortScope.signal,
+              )
+            : this.proxyService.handleGeminiGenerateContent(
+                parsedBaseModel,
+                geminiRequest,
+                'image_gen',
+              ));
           const fallbackImage = this.extractInlineBase64ImageFromGeminiResponse(geminiResult);
           if (fallbackImage) {
             const response: OpenAIImageResponse = {
@@ -716,6 +862,8 @@ export class OpenAIOperations extends BaseProxyController {
       }
 
       this.sendOpenAIErrorResponse(res, path, resolvedError, message);
+    } finally {
+      abortScope.dispose();
     }
   }
 
@@ -821,6 +969,12 @@ export class OpenAIOperations extends BaseProxyController {
       parts.push({ text: fallbackPrompt || 'Please generate an image based on this request.' });
     }
 
+    const { imageConfig } = resolveImageGenerationConfig(request.model, {
+      imageSize: request.image_size,
+      quality: request.quality,
+      size: request.size,
+    });
+
     return {
       contents: [
         {
@@ -828,6 +982,10 @@ export class OpenAIOperations extends BaseProxyController {
           parts,
         },
       ],
+      safetySettings: [...IMAGE_GENERATION_SAFETY_SETTINGS],
+      generationConfig: {
+        imageConfig,
+      },
     };
   }
 

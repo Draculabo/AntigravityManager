@@ -11,14 +11,17 @@ export interface ImageMonitoringRequest {
   prompt?: string;
   size?: string;
   quality?: string;
-  image?: string | ImageMonitoringInput;
+  image_size?: string;
+  imageSize?: string;
+  aspect_ratio?: string;
+  style?: string;
+  image?: string | ImageMonitoringInput | Array<string | ImageMonitoringInput>;
   mask?: string | ImageMonitoringInput;
   reference_images?: Array<string | ImageMonitoringInput>;
 }
 
 interface ImageFileSummary {
   field: string;
-  filename?: string;
   content_type: string;
   bytes: number;
 }
@@ -28,7 +31,7 @@ export interface ImageRequestMonitoringSummary {
   path: string;
   fields: {
     model?: string;
-    prompt?: string;
+    prompt_characters?: number;
     quality?: string;
     size?: string;
   };
@@ -95,13 +98,17 @@ function parseImageInput(
     return null;
   }
 
-  const dataUrlMatch = /^data:(?<mime>[\w/+.-]+);base64,(?<data>[\s\S]+)$/u.exec(rawData);
-  const encodedData = dataUrlMatch?.groups?.data ?? rawData;
+  const dataUrlMatch = /^data:(?<mime>[\w/+.-]+)(?<metadata>(?:;[^,;]*)*),(?<data>[\s\S]+)$/iu.exec(
+    rawData,
+  );
+  const isBase64DataUrl = dataUrlMatch?.groups?.metadata
+    ?.split(';')
+    .some((part) => part.toLowerCase() === 'base64');
+  const encodedData = isBase64DataUrl ? (dataUrlMatch?.groups?.data ?? rawData) : rawData;
   return {
     field,
-    filename: typeof input === 'string' ? undefined : input.filename,
     content_type:
-      dataUrlMatch?.groups?.mime ||
+      (isBase64DataUrl ? dataUrlMatch?.groups?.mime : undefined) ||
       (typeof input === 'string' ? undefined : input.mimeType) ||
       'application/octet-stream',
     bytes: estimateBase64Bytes(encodedData),
@@ -120,7 +127,10 @@ function collectFileSummaries(body: ImageMonitoringRequest): ImageFileSummary[] 
     }
   };
 
-  addFile('image', body.image);
+  const images = Array.isArray(body.image) ? body.image : [body.image];
+  for (const image of images) {
+    addFile('image', image);
+  }
   addFile('mask', body.mask);
   for (const referenceImage of body.reference_images ?? []) {
     addFile('reference_images', referenceImage);
@@ -135,17 +145,23 @@ export function summarizeImageRequest(
   const files = collectFileSummaries(body);
   const fields = {
     model: body.model ? truncateForLog(body.model) : undefined,
-    prompt: body.prompt ? truncateForLog(body.prompt) : undefined,
+    prompt_characters: body.prompt ? Array.from(body.prompt).length : undefined,
     quality: body.quality ? truncateForLog(body.quality) : undefined,
     size: body.size ? truncateForLog(body.size) : undefined,
   };
-  const fieldBytes = [body.model, body.prompt, body.quality, body.size].reduce(
-    (total, value) => total + (value ? Buffer.byteLength(value, 'utf8') : 0),
-    0,
-  );
+  const fieldBytes = [
+    body.model,
+    body.prompt,
+    body.quality,
+    body.size,
+    body.image_size,
+    body.imageSize,
+    body.aspect_ratio,
+    body.style,
+  ].reduce((total, value) => total + (value ? Buffer.byteLength(value, 'utf8') : 0), 0);
 
   return {
-    content_type: files.length > 0 ? 'multipart/form-data' : 'application/json',
+    content_type: path === '/v1/images/edits' ? 'multipart/form-data' : 'application/json',
     path,
     fields,
     files,

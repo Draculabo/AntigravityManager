@@ -5,6 +5,7 @@ import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemi
 import { v4 as uuidv4 } from 'uuid';
 import { Observable } from 'rxjs';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
+import { cleanImageModelName } from '@/modules/proxy-gateway/antigravity/ImageGenerationConfig';
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
 import {
   toOpenAIResponsesUsage,
@@ -53,12 +54,21 @@ import {
 } from './chat/openai-claude-conversion';
 import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import {
+  ProxyRetryService,
+  type ImageSchedulerPermit,
+} from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { isGeminiImageModel } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
 import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { validateOpenAIInputAudio } from './chat/openai-input-audio';
 import { validateOpenAIResponseFormat } from './chat/openai-response-format';
 
 export type OpenAIOutputProtocol = 'chat-completions' | 'responses';
+
+export interface OpenAIResponsesExecutionContext {
+  requestSessionId: string;
+  responseId: string;
+}
 
 @Injectable()
 export class OpenAIService extends BaseProxyService {
@@ -82,18 +92,27 @@ export class OpenAIService extends BaseProxyService {
   async handleChatCompletions(
     request: OpenAIChatRequest,
     outputProtocol: OpenAIOutputProtocol = 'chat-completions',
+    signal?: AbortSignal,
+    responsesContext?: OpenAIResponsesExecutionContext,
   ): Promise<OpenAIChatResponse | Observable<string>> {
     validateOpenAIInputAudio(request);
     validateOpenAIResponseFormat(request);
     const appliedVariantRequest = applyOpenAIModelVariant(request);
     const routedRequest = appliedVariantRequest.request;
-    const sessionKey = this.extractOpenAISessionKey(request);
+    const sessionKey = responsesContext
+      ? this.toOpenAISessionKey(responsesContext.requestSessionId)
+      : this.extractOpenAISessionKey(request);
+    const responseSessionKey = responsesContext
+      ? this.toOpenAISessionKey(responsesContext.responseId)
+      : sessionKey;
     const clientToolNames = extractOpenAIToolNames(routedRequest.tools);
 
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(
-      routedRequest.model,
-    );
+    const routingModel = routedRequest.model.toLowerCase().includes('-image')
+      ? cleanImageModelName(routedRequest.model)
+      : routedRequest.model;
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(routingModel);
     const targetModel = routeResolution.resolvedModel;
+    const isImageRequest = isGeminiImageModel(routingModel) || isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
       `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}`,
@@ -113,10 +132,16 @@ export class OpenAIService extends BaseProxyService {
       );
 
       // 1. Get Token
-      const token = await this.selectRetryToken(retryState, targetModel, sessionKey);
+      const token = await this.selectRetryToken(
+        retryState,
+        targetModel,
+        sessionKey,
+        isImageRequest,
+        signal,
+      );
       if (!token) {
         if (lastError !== null) {
-          throw lastError;
+          throw this.resolveTerminalRetryError(retryState, lastError);
         }
         throw new Error('No available accounts (all exhausted or rate limited)');
       }
@@ -144,6 +169,11 @@ export class OpenAIService extends BaseProxyService {
           accountTargetModel,
           'openai',
           {
+            imageRequest: {
+              imageSize: accountRequest.image_size,
+              quality: accountRequest.quality,
+              size: accountRequest.size,
+            },
             signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
             signatureTargetFamilyModel: accountTargetModel,
           },
@@ -163,18 +193,21 @@ export class OpenAIService extends BaseProxyService {
               token.token.access_token,
               token.token.upstream_proxy_url,
               extraHeaders,
+              signal,
             );
-            this.markUpstreamSuccess(token.id, geminiBody.model);
             return this.createOpenAIProtocolStream(
               stream,
               request.model,
               outputProtocol,
-              sessionKey,
+              responseSessionKey,
               clientToolNames,
               claudeRequest.messages.length,
               geminiBody.model,
               effectiveVariantRequest.variant?.canonicalModel ?? null,
               accountTargetModel,
+              token.id,
+              this.takeImagePermit(retryState),
+              responsesContext?.responseId,
             );
           } catch (streamError) {
             this.logger.warn(
@@ -188,8 +221,10 @@ export class OpenAIService extends BaseProxyService {
               token.token.access_token,
               token.token.upstream_proxy_url,
               extraHeaders,
+              signal,
             );
-            this.markUpstreamSuccess(token.id, geminiBody.model);
+            this.markUpstreamSuccessForResponse(token.id, geminiBody.model, response);
+            this.releaseImagePermit(retryState);
             this.logger.log(
               `Upstream response snippet after stream fallback: ${safeStringifyPacket(response).substring(0, 500)}`,
             );
@@ -197,7 +232,7 @@ export class OpenAIService extends BaseProxyService {
               model: geminiBody.model,
               family: effectiveVariantRequest.variant?.canonicalModel ?? null,
               familyModel: accountTargetModel,
-              signatureSessionKey: sessionKey,
+              signatureSessionKey: responseSessionKey,
               signatureMessageCount: claudeRequest.messages.length,
             });
             const openaiResponse = convertClaudeToOpenAIResponse(
@@ -208,9 +243,10 @@ export class OpenAIService extends BaseProxyService {
             return outputProtocol === 'responses'
               ? this.createSyntheticResponsesStream(
                   openaiResponse,
-                  sessionKey,
+                  responseSessionKey,
                   clientToolNames,
                   claudeRequest.messages.length,
+                  responsesContext?.responseId,
                 )
               : this.createSyntheticOpenAIStream(openaiResponse);
           }
@@ -220,8 +256,10 @@ export class OpenAIService extends BaseProxyService {
             token.token.access_token,
             token.token.upstream_proxy_url,
             extraHeaders,
+            signal,
           );
-          this.markUpstreamSuccess(token.id, geminiBody.model);
+          this.markUpstreamSuccessForResponse(token.id, geminiBody.model, response);
+          this.releaseImagePermit(retryState);
           this.logger.log(
             `Upstream response snippet (non-stream): ${safeStringifyPacket(response).substring(0, 500)}`,
           );
@@ -230,7 +268,7 @@ export class OpenAIService extends BaseProxyService {
             model: geminiBody.model,
             family: effectiveVariantRequest.variant?.canonicalModel ?? null,
             familyModel: accountTargetModel,
-            signatureSessionKey: sessionKey,
+            signatureSessionKey: responseSessionKey,
             signatureMessageCount: claudeRequest.messages.length,
           });
           this.logger.log(
@@ -253,6 +291,11 @@ export class OpenAIService extends BaseProxyService {
               accountTargetModel,
               'openai',
               {
+                imageRequest: {
+                  imageSize: accountRequest.image_size,
+                  quality: accountRequest.quality,
+                  size: accountRequest.size,
+                },
                 signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
                 signatureTargetFamilyModel: accountTargetModel,
               },
@@ -269,18 +312,21 @@ export class OpenAIService extends BaseProxyService {
                 token.token.access_token,
                 token.token.upstream_proxy_url,
                 extraHeaders,
+                signal,
               );
-              this.markUpstreamSuccess(token.id, fallbackBody.model);
               return this.createOpenAIProtocolStream(
                 stream,
                 request.model,
                 outputProtocol,
-                sessionKey,
+                responseSessionKey,
                 clientToolNames,
                 claudeRequest.messages.length,
                 fallbackBody.model,
                 effectiveVariantRequest.variant?.canonicalModel ?? null,
                 accountTargetModel,
+                token.id,
+                this.takeImagePermit(retryState),
+                responsesContext?.responseId,
               );
             }
 
@@ -289,13 +335,15 @@ export class OpenAIService extends BaseProxyService {
               token.token.access_token,
               token.token.upstream_proxy_url,
               extraHeaders,
+              signal,
             );
-            this.markUpstreamSuccess(token.id, fallbackBody.model);
+            this.markUpstreamSuccessForResponse(token.id, fallbackBody.model, response);
+            this.releaseImagePermit(retryState);
             const claudeResponse = transformResponse(response, {
               model: fallbackBody.model,
               family: effectiveVariantRequest.variant?.canonicalModel ?? null,
               familyModel: accountTargetModel,
-              signatureSessionKey: sessionKey,
+              signatureSessionKey: responseSessionKey,
               signatureMessageCount: claudeRequest.messages.length,
             });
             return convertClaudeToOpenAIResponse(claudeResponse, request.model, clientToolNames);
@@ -306,16 +354,48 @@ export class OpenAIService extends BaseProxyService {
           lastError = err;
         }
 
-        if (
-          !appliedVariantRequest.variant &&
-          (await this.prepareGraceRetry(retryState, token, lastError, 'OpenAI-compatible'))
-        ) {
+        this.recordRetryFailure(retryState, lastError);
+        if (isImageRequest) {
+          if (
+            await this.prepareScheduledImageRetry(
+              retryState,
+              token,
+              accountTargetModel,
+              lastError,
+              'OpenAI-compatible',
+              !appliedVariantRequest.variant,
+              signal,
+              'openai',
+            )
+          ) {
+            i -= 1;
+          }
           continue;
         }
-        await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+        const penaltyRecordedBeforeGrace = this.shouldRecordImagePenaltyBeforeGrace(
+          accountTargetModel,
+          lastError,
+        );
+        if (penaltyRecordedBeforeGrace) {
+          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+        }
+        if (
+          !appliedVariantRequest.variant &&
+          (await this.prepareCurrentGraceRetry(retryState, token, lastError, 'OpenAI-compatible'))
+        ) {
+          i -= 1;
+          continue;
+        }
+        if (!penaltyRecordedBeforeGrace) {
+          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+        }
       }
     }
-    throw lastError || new Error('Request failed after retries');
+    this.releaseImagePermit(retryState);
+    throw this.resolveTerminalRetryError(
+      retryState,
+      lastError || new Error('Request failed after retries'),
+    );
   }
 
   private createOpenAIProtocolStream(
@@ -328,7 +408,13 @@ export class OpenAIService extends BaseProxyService {
     signatureSourceModel?: string,
     signatureSourceFamily?: string | null,
     signatureSourceFamilyModel?: string | null,
+    successAccountId?: string,
+    imagePermit?: ImageSchedulerPermit | null,
+    responseId?: string,
   ): Observable<string> {
+    if (successAccountId && signatureSourceModel && !isGeminiImageModel(signatureSourceModel)) {
+      this.markUpstreamSuccess(successAccountId, signatureSourceModel);
+    }
     if (outputProtocol === 'responses') {
       return this.processResponsesStreamResponse(
         upstreamStream,
@@ -339,6 +425,9 @@ export class OpenAIService extends BaseProxyService {
         signatureSourceModel,
         signatureSourceFamily,
         signatureSourceFamilyModel,
+        successAccountId,
+        imagePermit,
+        responseId,
       );
     }
     return this.processStreamResponse(
@@ -350,6 +439,8 @@ export class OpenAIService extends BaseProxyService {
       signatureSourceModel,
       signatureSourceFamily,
       signatureSourceFamilyModel,
+      successAccountId,
+      imagePermit,
     );
   }
 
@@ -362,15 +453,22 @@ export class OpenAIService extends BaseProxyService {
     signatureSourceModel?: string,
     signatureSourceFamily?: string | null,
     signatureSourceFamilyModel?: string | null,
+    successAccountId?: string,
+    imagePermit?: ImageSchedulerPermit | null,
+    responseId?: string,
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
       let buffer = '';
       let completed = false;
+      const requiresCleanImageEnd = isGeminiImageModel(signatureSourceModel);
+      let sawImageData = false;
+      let streamFailed = false;
+      let pendingFinishReason: string | null | undefined;
       const mapper = new OpenAIResponsesStreamingMapper({
         clientToolNames,
         model,
-        responseId: `resp_${uuidv4()}`,
+        responseId: responseId ?? `resp_${uuidv4()}`,
         signatureMessageCount,
         signatureSessionKey,
         signatureSourceModel,
@@ -391,6 +489,7 @@ export class OpenAIService extends BaseProxyService {
           return;
         }
         completed = true;
+        imagePermit?.release();
         clearHeartbeat();
         for (const event of mapper.complete(finishReason)) {
           subscriber.next(event);
@@ -430,6 +529,11 @@ export class OpenAIService extends BaseProxyService {
           const dataString = trimmed.slice(6);
 
           try {
+            if (requiresCleanImageEnd) {
+              const observation = this.inspectImageSseData(dataString);
+              sawImageData ||= observation.hasImageData;
+              streamFailed ||= observation.failed;
+            }
             const decoded = decodeInternalSseData(dataString);
             if (decoded.kind !== 'response') {
               continue;
@@ -470,10 +574,15 @@ export class OpenAIService extends BaseProxyService {
             }
 
             if (isString(candidate?.finishReason) && candidate.finishReason.length > 0) {
+              if (requiresCleanImageEnd) {
+                pendingFinishReason = candidate.finishReason;
+                continue;
+              }
               complete(candidate.finishReason);
               return;
             }
           } catch {
+            streamFailed ||= requiresCleanImageEnd;
             // Preserve compatibility: ignore per-chunk mapping failures.
           }
         }
@@ -481,11 +590,23 @@ export class OpenAIService extends BaseProxyService {
 
       upstreamStream.on('end', () => {
         idleTimer.clear();
-        complete();
+        buffer += decoder.decode();
+        const trailingData = buffer.trim();
+        if (requiresCleanImageEnd && trailingData.startsWith('data: ')) {
+          const observation = this.inspectImageSseData(trailingData.slice(6));
+          sawImageData ||= observation.hasImageData;
+          streamFailed ||= observation.failed;
+        }
+        if (requiresCleanImageEnd && successAccountId && sawImageData && !streamFailed) {
+          this.markUpstreamSuccess(successAccountId, signatureSourceModel ?? model);
+        }
+        complete(pendingFinishReason);
       });
 
       upstreamStream.on('error', (error: unknown) => {
         idleTimer.clear();
+        streamFailed = true;
+        imagePermit?.release();
         clearHeartbeat();
         const cleanError =
           error instanceof Error ? new Error(error.message) : new Error(String(error));
@@ -494,6 +615,7 @@ export class OpenAIService extends BaseProxyService {
       });
 
       return () => {
+        imagePermit?.release();
         clearHeartbeat();
         idleTimer.dispose();
       };
@@ -509,12 +631,17 @@ export class OpenAIService extends BaseProxyService {
     signatureSourceModel?: string,
     signatureSourceFamily?: string | null,
     signatureSourceFamilyModel?: string | null,
+    successAccountId?: string,
+    imagePermit?: ImageSchedulerPermit | null,
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
       let buffer = '';
       let hasEmittedChunk = false;
       let hasSentDone = false;
+      const requiresCleanImageEnd = isGeminiImageModel(signatureSourceModel);
+      let sawImageData = false;
+      let streamFailed = false;
       let lastUsage: OpenAIUsage | undefined;
       let toolCallIndex = 0;
       const emittedToolCalls = new Set<string>();
@@ -531,6 +658,7 @@ export class OpenAIService extends BaseProxyService {
       };
 
       const idleTimer = this.createStreamIdleTimer(upstreamStream, 'OpenAI-SSE', () => {
+        imagePermit?.release();
         if (!hasSentDone) {
           subscriber.next('data: [DONE]\n\n');
           hasSentDone = true;
@@ -553,6 +681,11 @@ export class OpenAIService extends BaseProxyService {
           const dataStr = trimmed.slice(6);
 
           try {
+            if (requiresCleanImageEnd) {
+              const observation = this.inspectImageSseData(dataStr);
+              sawImageData ||= observation.hasImageData;
+              streamFailed ||= observation.failed;
+            }
             const decoded = decodeInternalSseData(dataStr);
             if (decoded.kind !== 'response') {
               continue;
@@ -735,6 +868,9 @@ export class OpenAIService extends BaseProxyService {
                   usage: lastUsage,
                 };
                 pushChunk(finishChunk);
+                if (requiresCleanImageEnd) {
+                  continue;
+                }
                 subscriber.next('data: [DONE]\n\n');
                 hasSentDone = true;
                 subscriber.complete();
@@ -742,6 +878,7 @@ export class OpenAIService extends BaseProxyService {
               }
             }
           } catch {
+            streamFailed ||= requiresCleanImageEnd;
             // Preserve compatibility: ignore per-chunk mapping failures.
           }
         }
@@ -749,6 +886,17 @@ export class OpenAIService extends BaseProxyService {
 
       upstreamStream.on('end', () => {
         idleTimer.clear();
+        imagePermit?.release();
+        buffer += decoder.decode();
+        const trailingData = buffer.trim();
+        if (requiresCleanImageEnd && trailingData.startsWith('data: ')) {
+          const observation = this.inspectImageSseData(trailingData.slice(6));
+          sawImageData ||= observation.hasImageData;
+          streamFailed ||= observation.failed;
+        }
+        if (requiresCleanImageEnd && successAccountId && sawImageData && !streamFailed) {
+          this.markUpstreamSuccess(successAccountId, signatureSourceModel ?? model);
+        }
         if (!hasEmittedChunk) {
           pushChunk({
             id: streamId,
@@ -773,6 +921,8 @@ export class OpenAIService extends BaseProxyService {
 
       upstreamStream.on('error', (err: unknown) => {
         idleTimer.clear();
+        streamFailed = true;
+        imagePermit?.release();
         // Convert to clean Error to avoid circular reference issues (socket objects)
         const cleanError = err instanceof Error ? new Error(err.message) : new Error(String(err));
         this.logger.error(`OpenAI-compatible stream error: ${cleanError.message}`);
@@ -780,6 +930,7 @@ export class OpenAIService extends BaseProxyService {
       });
 
       return () => {
+        imagePermit?.release();
         idleTimer.dispose();
       };
     });
@@ -853,12 +1004,13 @@ export class OpenAIService extends BaseProxyService {
     signatureSessionKey?: string,
     clientToolNames?: ReadonlySet<string>,
     signatureMessageCount?: number,
+    responseId?: string,
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const mapper = new OpenAIResponsesStreamingMapper({
         clientToolNames,
         model: response.model,
-        responseId: `resp_${uuidv4()}`,
+        responseId: responseId ?? `resp_${uuidv4()}`,
         signatureMessageCount,
         signatureSessionKey,
       });
@@ -935,13 +1087,25 @@ export class OpenAIService extends BaseProxyService {
     if (!isString(sessionCandidate) || isEmpty(sessionCandidate.trim())) {
       return undefined;
     }
-    return `openai:${sessionCandidate.trim()}`;
+    return this.toOpenAISessionKey(sessionCandidate);
+  }
+
+  private toOpenAISessionKey(sessionId: string): string {
+    return `openai:${sessionId.trim()}`;
   }
 
   async handleGeminiGenerateContent(
     model: string,
     request: GeminiRequest,
+    requestType: 'generate-content' | 'image_gen' = 'generate-content',
+    signal?: AbortSignal,
   ): Promise<GeminiResponse> {
-    return this.geminiService.handleGeminiGenerateContent(model, request);
+    return this.geminiService.handleGeminiGenerateContent(
+      model,
+      request,
+      requestType,
+      signal,
+      'openai',
+    );
   }
 }

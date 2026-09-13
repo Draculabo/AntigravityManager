@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
+import { HttpException } from '@nestjs/common';
 
 import { GeminiController } from '../../modules/proxy-gateway/server/modules/gemini/gemini.controller';
 import { DEFAULT_APP_CONFIG } from '../../modules/config/types';
@@ -14,6 +15,33 @@ function createReplyMock() {
 }
 
 describe('GeminiController Integration', () => {
+  it.each([
+    [429, 'RESOURCE_EXHAUSTED'],
+    [503, 'UNAVAILABLE'],
+  ])(
+    'preserves image scheduler HTTP %i errors in the Gemini error dialect',
+    async (code, status) => {
+      const proxyService = {
+        handleGeminiGenerateContent: vi
+          .fn()
+          .mockRejectedValue(new HttpException('image scheduling', code)),
+      };
+      const controller = new GeminiController(proxyService as any);
+      const reply = createReplyMock();
+
+      await controller.modelAction(
+        'gemini-3.1-flash-image:generateContent',
+        { contents: [{ role: 'user', parts: [{ text: 'draw' }] }] },
+        reply as any,
+      );
+
+      expect(reply.status).toHaveBeenCalledWith(code);
+      expect(reply.send).toHaveBeenCalledWith({
+        error: expect.objectContaining({ code, status }),
+      });
+    },
+  );
+
   it('supports list and get model endpoints', () => {
     const proxyService = {};
     const accountLeaseService = {
@@ -76,6 +104,11 @@ describe('GeminiController Integration', () => {
     const names = payload.models.map((model: { name: string }) => model.name);
     expect(names).toEqual(
       expect.arrayContaining([
+        'models/gemini-3.7-flash',
+        'models/gemini-3.7-flash-medium',
+        'models/gemini-3.7-flash-high',
+        'models/gemini-3.7-flash-low',
+        'models/gemini-3.6-flash',
         'models/gemini-3.5-flash-medium',
         'models/gemini-3.5-flash-high',
         'models/gemini-3.5-flash-low',

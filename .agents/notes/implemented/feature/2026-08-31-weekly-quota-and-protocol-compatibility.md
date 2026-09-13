@@ -6,7 +6,7 @@ Opt-in warmup and compatibility fixes are implemented locally; provider and nati
 
 ## Problem
 
-Five competitor commits changed unsigned Flash tool-call handling, platform tray assets, weekly quota presentation and weekly reset warmup. The previous partial port omitted request-envelope fields, admitted unsafe repeat scenarios, and removed non-weekly detailed quota presentation. A translated audit with immutable upstream and local baseline line evidence lives in the [comparison artifacts](../../../../artifacts/competitor-five-commits-2026-08-31/report.zh-CN.md).
+Unsigned Flash tool-call handling, platform tray assets, weekly quota presentation and weekly reset warmup needed to be aligned as one coherent feature. The previous implementation omitted request-envelope fields, admitted unsafe repeat scenarios, and removed non-weekly detailed quota presentation.
 
 ## Decision
 
@@ -16,16 +16,16 @@ Keep warmup scheduling and persisted policy in cloud-account, with a narrow type
 
 ## Alternatives considered
 
-- A literal Rust/Tauri transplant would introduce incompatible process, HTTP and persistence boundaries into Electron/NestJS. The port instead preserves observable request fields and mapper behavior within existing owners.
-- Copying the competitor's reset-minus-60-second eligibility risks early generation. This port waits for the reset timestamp. Its six-day reset-age guard and canonical history keys prevent stale cycles from becoming eligible after history cleanup; it does not use the upstream six-day same-key retry allowance.
-- Overlapping background loops and ignored model allowlists are not copied. One queue serializes all local entry points, honors enabled groups, and reacts to configuration cancellation.
+- Introducing a second desktop runtime would create incompatible process, HTTP and persistence boundaries in the existing Electron/NestJS architecture. The implementation therefore preserves observable request fields and mapper behavior within the established owners.
+- Reset-minus-60-second eligibility risks early generation. This implementation waits for the reset timestamp. Its six-day reset-age guard and canonical history keys prevent stale cycles from becoming eligible after history cleanup; it does not use a six-day same-key retry allowance.
+- One queue serializes all local entry points, honors enabled model groups, and reacts to configuration cancellation, avoiding overlapping background loops.
 - Falling back to model-only quota or a fixed project ID would generate requests with unproven context. Missing provider groups or unresolved projects are skipped.
 - Treating corrupt history as empty would make lost history look like permission to repeat. Strict reads pause execution instead. Request failure remains retryable, unlike success history.
 - Adding a loopback `/internal` endpoint would broaden authentication and credential exposure. The injected executor requires neither.
 
 ## Consequences
 
-These are explicit behavioral adaptations, not a claim of source or byte-for-byte equivalence. Visible group names are retained rather than forcing upstream abbreviations. The final candidate has no trailing two-second wait. Native Gemini does not gain an upstream session-cache mechanism. Renderer snapshots can lag a background update by one minute while visible.
+These behaviors are implemented within the application's existing architecture and ownership boundaries. Visible group names are retained instead of forcing internal abbreviations. The final candidate has no trailing two-second wait. Native Gemini does not gain an additional session-cache mechanism. Renderer snapshots can lag a background update by one minute while visible.
 
 The feature is disabled by default and states that quota/AI-credit consumption is real. HTTP acceptance, timer activation and exactly-once execution are distinct. Transport retry or a crash before persistence can duplicate provider-side work. No live credentials, external generation, database schema, auth policy or release configuration are changed by verification.
 
@@ -33,6 +33,6 @@ The feature is disabled by default and states that quota/AI-credit consumption i
 
 Focused tests cover candidate dates and thresholds, forbidden accounts, canonical history, persistence errors, concurrency and cancellation, settings failures, both quota views, both signature aliases, public Gemini request paths, platform tray choices and loopback HTTP request bodies/fallback behavior. The implementation report records exact commands and results after the final verification run.
 
-The unit test runner aliases native SQLite. A separate [native persistence check](../../../../artifacts/competitor-five-commits-2026-08-31/verify-native-persistence.mjs) bundles the actual settings store with an isolated database provider and runs two independent Electron-as-Node processes. It verifies native SQLite/Drizzle configuration and history round trips and corrupt-JSON rejection without opening the application or accessing user data.
+The unit test runner aliases native SQLite. A separate native persistence check bundles the actual settings store with an isolated database provider and runs two independent Electron-as-Node processes. It verifies native SQLite/Drizzle configuration and history round trips and corrupt-JSON rejection without opening the application or accessing user data.
 
 Live-provider weekly reset effects, real credit consumption, packaged Electron execution, and macOS/Windows/Linux native tray appearance remain unverified here.

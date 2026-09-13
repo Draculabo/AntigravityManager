@@ -11,7 +11,11 @@ import {
 } from './common/interfaces/request-interfaces';
 import { AnthropicService } from './modules/anthropic/anthropic.service';
 import { GeminiService } from './modules/gemini/gemini.service';
-import { OpenAIService, type OpenAIOutputProtocol } from './modules/openai/openai.service';
+import {
+  OpenAIService,
+  type OpenAIOutputProtocol,
+  type OpenAIResponsesExecutionContext,
+} from './modules/openai/openai.service';
 
 @Injectable()
 export class ProxyService {
@@ -24,8 +28,15 @@ export class ProxyService {
   handleChatCompletions(
     request: OpenAIChatRequest,
     outputProtocol: OpenAIOutputProtocol = 'chat-completions',
+    signal?: AbortSignal,
+    responsesContext?: OpenAIResponsesExecutionContext,
   ): Promise<OpenAIChatResponse | Observable<string>> {
-    return this.openAIService.handleChatCompletions(request, outputProtocol);
+    return this.openAIService.handleChatCompletions(
+      request,
+      outputProtocol,
+      signal,
+      responsesContext,
+    );
   }
 
   handleAnthropicMessages(

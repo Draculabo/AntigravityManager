@@ -79,7 +79,10 @@ function parseToolArguments(argumentsString: string): Record<string, unknown> {
   };
 }
 
-export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<string, unknown> {
+export function toOpenAIResponsesResponse(
+  response: OpenAIChatResponse,
+  responseId = response.id,
+): Record<string, unknown> {
   const choice = response.choices[0];
   const output: Record<string, unknown>[] = [];
   const content = choice?.message.content;
@@ -97,7 +100,7 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
           type: 'summary_text',
         },
       ],
-      id: `reasoning_${response.id}`,
+      id: `reasoning_${responseId}`,
       status,
       type: 'reasoning',
     });
@@ -121,7 +124,7 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
 
     output.push({
       content: contentParts,
-      id: `msg_${response.id}`,
+      id: `msg_${responseId}`,
       role: 'assistant',
       status,
       type: 'message',
@@ -148,7 +151,7 @@ export function toOpenAIResponsesResponse(response: OpenAIChatResponse): Record<
   return {
     created_at: response.created,
     error: null,
-    id: response.id,
+    id: responseId,
     incomplete_details: incompleteReason ? { reason: incompleteReason } : null,
     model: response.model,
     object: 'response',

@@ -1,5 +1,8 @@
+import { isEqual } from 'lodash-es';
+
 import { DurableRecordStore } from '@/shared/persistence/durable-record-store';
 import { resolveResponsesInputType } from './responses-input-type';
+import { boundResponsesInputItems } from './openai-responses-inline-media';
 import type { OpenAIChatRequest } from '../../../common/interfaces/request-interfaces';
 
 export interface OpenAIResponsesSession {
@@ -14,12 +17,56 @@ export interface OpenAIResponsesSession {
   toolCallItems?: unknown[];
 }
 
+interface OpenAIResponsesSessionNode {
+  readonly parent: OpenAIResponsesSessionNode | null;
+  readonly inputDelta: readonly unknown[];
+  readonly responseOutput: readonly unknown[];
+  readonly instructions?: string;
+  readonly model: string;
+  readonly tools?: OpenAIChatRequest['tools'];
+  readonly toolCallItems: readonly unknown[];
+}
+
+interface StoredOpenAIResponsesSession {
+  readonly node: OpenAIResponsesSessionNode;
+  readonly response?: Record<string, unknown>;
+  readonly store?: boolean;
+}
+
+declare const openAIResponsesSessionParentBrand: unique symbol;
+
+/** Opaque strong reference to an immutable Responses history node. */
+export interface OpenAIResponsesSessionParent {
+  readonly [openAIResponsesSessionParentBrand]: true;
+}
+
+export interface OpenAIResponsesSessionWithParent {
+  parent: OpenAIResponsesSessionParent;
+  session: OpenAIResponsesSession;
+}
+
+export interface SaveOpenAIResponsesSessionDelta {
+  inputDelta: unknown[];
+  instructions?: string;
+  model: string;
+  parent?: OpenAIResponsesSessionParent | null;
+  response?: Record<string, unknown>;
+  responseOutput: unknown[];
+  store?: boolean;
+  tools?: OpenAIChatRequest['tools'];
+  toolCallItems?: unknown[];
+}
+
+const sessionParentNodes = new WeakMap<object, OpenAIResponsesSessionNode>();
+
 /** What the Responses surface needs from the store, so a caller can be handed either. */
 export interface OpenAIResponsesSessionStoreLike {
   clear(): void;
   delete(responseId: string): boolean;
   get(responseId: string): OpenAIResponsesSession | null;
+  getWithParent(responseId: string): OpenAIResponsesSessionWithParent | null;
   save(responseId: string, session: OpenAIResponsesSession): void;
+  saveDelta(responseId: string, delta: SaveOpenAIResponsesSessionDelta): void;
 }
 
 export interface OpenAIResponsesSessionStoreOptions {
@@ -42,29 +89,78 @@ export const DEFAULT_OPENAI_RESPONSES_SESSION_TTL_MS = 60 * 60 * 1000;
  * one.
  */
 export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionStoreLike {
-  private readonly sessions: DurableRecordStore<OpenAIResponsesSession>;
+  private readonly sessions: DurableRecordStore<StoredOpenAIResponsesSession>;
 
   public constructor(options: OpenAIResponsesSessionStoreOptions = {}) {
-    this.sessions = new DurableRecordStore<OpenAIResponsesSession>({
+    this.sessions = new DurableRecordStore<StoredOpenAIResponsesSession>({
       filePath: options.filePath,
       maxEntries: options.maxSessions ?? DEFAULT_OPENAI_RESPONSES_MAX_SESSIONS,
       ttlMs: options.ttlMs ?? DEFAULT_OPENAI_RESPONSES_SESSION_TTL_MS,
-      revive: reviveOpenAIResponsesSession,
+      revive: reviveStoredOpenAIResponsesSession,
     });
   }
 
   public get(responseId: string): OpenAIResponsesSession | null {
-    const session = this.sessions.get(responseId);
-    return session ? cloneOpenAIResponsesSession(session) : null;
+    return this.getWithParent(responseId)?.session ?? null;
+  }
+
+  public getWithParent(responseId: string): OpenAIResponsesSessionWithParent | null {
+    const stored = this.sessions.get(responseId);
+    if (!stored) {
+      return null;
+    }
+
+    return {
+      parent: createOpenAIResponsesSessionParent(stored.node),
+      session: materializeOpenAIResponsesSession(stored),
+    };
   }
 
   public save(responseId: string, session: OpenAIResponsesSession): void {
+    const boundedInputItems = boundResponsesInputItems(session.inputItems);
+    const boundedToolCallItems = boundResponsesInputItems(session.toolCallItems ?? []);
     this.sessions.set(responseId, {
-      ...cloneOpenAIResponsesSession(session),
-      toolCallItems: collectResponsesToolCallItems([
-        ...(session.toolCallItems ?? []),
-        ...session.inputItems,
-      ]),
+      node: createOpenAIResponsesSessionNode({
+        inputDelta: boundedInputItems,
+        instructions: session.instructions,
+        model: session.model,
+        parent: null,
+        responseOutput: [],
+        tools: session.tools,
+        toolCallItems: collectResponsesToolCallItems([
+          ...boundedToolCallItems,
+          ...boundedInputItems,
+        ]),
+      }),
+      response: cloneStoredResponse(session.response),
+      store: session.store,
+    });
+  }
+
+  public saveDelta(responseId: string, delta: SaveOpenAIResponsesSessionDelta): void {
+    const parentNode = delta.parent ? sessionParentNodes.get(delta.parent) : undefined;
+    if (delta.parent && !parentNode) {
+      throw new Error('Invalid OpenAI Responses session parent');
+    }
+    const inputDelta = boundResponsesInputItems(delta.inputDelta);
+    const responseOutput = boundResponsesInputItems(delta.responseOutput);
+    const toolCallItems = boundResponsesInputItems(delta.toolCallItems ?? []);
+    this.sessions.set(responseId, {
+      node: createOpenAIResponsesSessionNode({
+        inputDelta,
+        instructions: delta.instructions,
+        model: delta.model,
+        parent: parentNode ?? null,
+        responseOutput,
+        tools: delta.tools,
+        toolCallItems: collectResponsesToolCallItems([
+          ...toolCallItems,
+          ...inputDelta,
+          ...responseOutput,
+        ]),
+      }),
+      response: cloneStoredResponse(delta.response),
+      store: delta.store,
     });
   }
 
@@ -92,14 +188,61 @@ export const OpenAIResponsesSessionStore = new OpenAIResponsesSessionStoreImpl()
 
 function cloneOpenAIResponsesSession(session: OpenAIResponsesSession): OpenAIResponsesSession {
   return {
-    inputItems: [...session.inputItems],
+    inputItems: cloneResponsesItems(session.inputItems),
     instructions: session.instructions,
     model: session.model,
-    response: session.response,
+    response: cloneStoredResponse(session.response),
     store: session.store,
-    tools: session.tools,
-    toolCallItems: [...(session.toolCallItems ?? [])],
+    tools: cloneResponsesTools(session.tools),
+    toolCallItems: cloneResponsesItems(session.toolCallItems ?? []),
   };
+}
+
+function createOpenAIResponsesSessionParent(
+  node: OpenAIResponsesSessionNode,
+): OpenAIResponsesSessionParent {
+  const parent = Object.freeze({}) as OpenAIResponsesSessionParent;
+  sessionParentNodes.set(parent, node);
+  return parent;
+}
+
+function createOpenAIResponsesSessionNode(
+  node: OpenAIResponsesSessionNode,
+): OpenAIResponsesSessionNode {
+  return Object.freeze({
+    ...node,
+    inputDelta: Object.freeze(cloneResponsesItems(node.inputDelta)),
+    responseOutput: Object.freeze(cloneResponsesItems(node.responseOutput)),
+    tools: cloneResponsesTools(node.tools),
+    toolCallItems: Object.freeze(cloneResponsesItems(node.toolCallItems)),
+  });
+}
+
+function materializeOpenAIResponsesSession(
+  stored: StoredOpenAIResponsesSession,
+): OpenAIResponsesSession {
+  const chain: OpenAIResponsesSessionNode[] = [];
+  for (let node: OpenAIResponsesSessionNode | null = stored.node; node; node = node.parent) {
+    chain.push(node);
+  }
+
+  const inputItems = chain
+    .reverse()
+    .flatMap((node) => cloneResponsesItems([...node.inputDelta, ...node.responseOutput]));
+  const toolCallItems = collectResponsesToolCallItems([
+    ...chain.flatMap((node) => node.toolCallItems),
+    ...inputItems,
+  ]);
+
+  return sanitizeOpenAIResponsesSession({
+    inputItems,
+    instructions: stored.node.instructions,
+    model: stored.node.model,
+    response: cloneStoredResponse(stored.response),
+    store: stored.store,
+    tools: cloneResponsesTools(stored.node.tools),
+    toolCallItems,
+  });
 }
 
 /**
@@ -107,16 +250,116 @@ function cloneOpenAIResponsesSession(session: OpenAIResponsesSession): OpenAIRes
  * logic dereferences are present, so a hand-edited or truncated file costs the
  * affected chains rather than the whole store.
  */
-function reviveOpenAIResponsesSession(value: unknown): OpenAIResponsesSession | null {
+function reviveStoredOpenAIResponsesSession(value: unknown): StoredOpenAIResponsesSession | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return null;
   }
+
+  const storedNode = reviveOpenAIResponsesSessionNode(Reflect.get(value, 'node'));
+  if (storedNode) {
+    return {
+      node: storedNode,
+      response: reviveStoredResponse(Reflect.get(value, 'response')),
+      store: reviveStoredBoolean(Reflect.get(value, 'store')),
+    };
+  }
+
   const inputItems = Reflect.get(value, 'inputItems');
   const model = Reflect.get(value, 'model');
   if (!Array.isArray(inputItems) || typeof model !== 'string' || !model) {
     return null;
   }
-  return cloneOpenAIResponsesSession(value as OpenAIResponsesSession);
+  const legacy = sanitizeOpenAIResponsesSession(value as OpenAIResponsesSession);
+  const boundedToolCallItems = boundResponsesInputItems(legacy.toolCallItems ?? []);
+  return {
+    node: createOpenAIResponsesSessionNode({
+      inputDelta: legacy.inputItems,
+      instructions: legacy.instructions,
+      model: legacy.model,
+      parent: null,
+      responseOutput: [],
+      tools: legacy.tools,
+      toolCallItems: collectResponsesToolCallItems([...boundedToolCallItems, ...legacy.inputItems]),
+    }),
+    response: legacy.response,
+    store: legacy.store,
+  };
+}
+
+function reviveOpenAIResponsesSessionNode(value: unknown): OpenAIResponsesSessionNode | null {
+  const serializedChain: Array<Omit<OpenAIResponsesSessionNode, 'parent'>> = [];
+  let current = value;
+  while (current != null) {
+    if (typeof current !== 'object' || Array.isArray(current)) {
+      return null;
+    }
+    const inputDelta = Reflect.get(current, 'inputDelta');
+    const responseOutput = Reflect.get(current, 'responseOutput');
+    const model = Reflect.get(current, 'model');
+    if (
+      !Array.isArray(inputDelta) ||
+      !Array.isArray(responseOutput) ||
+      typeof model !== 'string' ||
+      !model
+    ) {
+      return null;
+    }
+    const rawToolCallItems = Reflect.get(current, 'toolCallItems');
+    serializedChain.push({
+      inputDelta: boundResponsesInputItems(inputDelta),
+      instructions:
+        typeof Reflect.get(current, 'instructions') === 'string'
+          ? (Reflect.get(current, 'instructions') as string)
+          : undefined,
+      model,
+      responseOutput: boundResponsesInputItems(responseOutput),
+      tools: Reflect.get(current, 'tools') as OpenAIChatRequest['tools'],
+      toolCallItems: boundResponsesInputItems(
+        Array.isArray(rawToolCallItems) ? rawToolCallItems : [],
+      ),
+    });
+    current = Reflect.get(current, 'parent');
+  }
+
+  let parent: OpenAIResponsesSessionNode | null = null;
+  for (const serialized of serializedChain.reverse()) {
+    parent = createOpenAIResponsesSessionNode({ ...serialized, parent });
+  }
+  return parent;
+}
+
+function reviveStoredResponse(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function cloneStoredResponse(
+  value: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  return value ? structuredClone(value) : undefined;
+}
+
+function cloneResponsesTools(
+  tools: OpenAIChatRequest['tools'] | undefined,
+): OpenAIChatRequest['tools'] | undefined {
+  return tools ? structuredClone(tools) : undefined;
+}
+
+function cloneResponsesItems(items: readonly unknown[]): unknown[] {
+  return structuredClone([...items]);
+}
+
+function reviveStoredBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function sanitizeOpenAIResponsesSession(session: OpenAIResponsesSession): OpenAIResponsesSession {
+  return cloneOpenAIResponsesSession({
+    ...session,
+    inputItems: boundResponsesInputItems(session.inputItems),
+    toolCallItems: boundResponsesInputItems(session.toolCallItems ?? []),
+  });
 }
 
 /**
@@ -139,6 +382,61 @@ export function mergeOpenAIResponsesInputItems(
   return dedupeFunctionCallsByCallId(
     dedupeInputItemsById(repairToolCalls(merged, cachedToolCalls)),
   );
+}
+
+export interface PreparedOpenAIResponsesSessionInput {
+  delta: unknown[];
+  merged: unknown[];
+  resetParent: boolean;
+}
+
+/** Derives the target-era Responses delta without importing later semantic replay heuristics. */
+export function prepareOpenAIResponsesSessionInput(
+  history: unknown[],
+  newInput: unknown[],
+  cachedToolCalls: unknown[] = [],
+): PreparedOpenAIResponsesSessionInput {
+  const resetParent = newInput.some(isCompactionItem);
+  const exactReplay = history.length > 0 && startsWithItems(newInput, history);
+  const replayedThrough = resetParent || exactReplay ? -1 : findLastSharedItemId(history, newInput);
+  const deltaSource =
+    resetParent || history.length === 0
+      ? [...newInput]
+      : exactReplay
+        ? newInput.slice(history.length)
+        : replayedThrough >= 0
+          ? newInput.slice(replayedThrough + 1)
+          : [...newInput];
+  const delta = mergeOpenAIResponsesInputItems([], deltaSource, cachedToolCalls);
+  const merged =
+    resetParent || history.length === 0
+      ? [...delta]
+      : mergeOpenAIResponsesInputItems(history, delta, cachedToolCalls);
+
+  return { delta, merged, resetParent };
+}
+
+function startsWithItems(items: unknown[], prefix: unknown[]): boolean {
+  return prefix.every((item, index) => isEqual(items[index], item));
+}
+
+function findLastSharedItemId(history: unknown[], newInput: unknown[]): number {
+  const historyIds = new Set(history.map(resolveItemId).filter((id): id is string => Boolean(id)));
+  for (let index = newInput.length - 1; index >= 0; index -= 1) {
+    const id = resolveItemId(newInput[index]);
+    if (id && historyIds.has(id)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function resolveItemId(item: unknown): string | undefined {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+    return undefined;
+  }
+  const id = Reflect.get(item, 'id');
+  return typeof id === 'string' && id ? id : undefined;
 }
 
 function isCodexTranscriptOnlyAssistantMessage(item: unknown): boolean {

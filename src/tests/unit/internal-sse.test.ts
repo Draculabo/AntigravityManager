@@ -186,5 +186,45 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
     );
     const events = serializedEvents.map((event) => parseEvent(String(event)));
     expect(events.some((event) => event.type === 'message_delta')).toBe(true);
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'message_start' }),
+      expect.objectContaining({
+        type: 'content_block_start',
+        content_block: { type: 'text', text: '.' },
+      }),
+      expect.objectContaining({ type: 'content_block_stop' }),
+      expect.objectContaining({
+        type: 'message_delta',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+      expect.objectContaining({ type: 'message_stop' }),
+    ]);
+  });
+
+  it('recovers a zero-byte upstream stream with a complete Anthropic event sequence', async () => {
+    const service = new ProxyService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const serializedEvents = await lastValueFrom(
+      createAnthropicStream(service, Readable.from([])).pipe(toArray()),
+    );
+    const events = serializedEvents.map((event) => parseEvent(String(event)));
+
+    expect(events.map((event) => event.type)).toEqual([
+      'message_start',
+      'content_block_start',
+      'content_block_stop',
+      'message_delta',
+      'message_stop',
+    ]);
+    expect(events[0]).toMatchObject({
+      message: expect.objectContaining({ model: 'gemini-auto' }),
+    });
+    expect(events[1]).toMatchObject({ content_block: { type: 'text', text: '.' } });
+    expect(events[3]).toMatchObject({ usage: { input_tokens: 1, output_tokens: 1 } });
   });
 });

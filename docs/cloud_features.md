@@ -42,7 +42,7 @@ The cloud-account module persists validated configuration and versioned history 
 
 Failed requests do not create success records and may be retried after a later fresh refresh. Invalid or unreadable history, or a history write failure after acceptance, pauses warmup until application restart. Repair the underlying storage problem before restarting; otherwise the same safety check pauses it again. Invalid configuration remains an error in the settings UI instead of being silently replaced with enabled defaults. A process crash after provider acceptance but before history persistence can cause another request after restart; execution is not exactly-once.
 
-The proxy-gateway adapter uses the existing Claude mapper or the native Gemini envelope and `GeminiClient` transport. It starts with `streamGenerateContent?alt=sse`, falls back to `generateContent` on transport failure, and does not repeat an HTTP rejection as a non-streaming request. Weekly warmup also opts out of the ordinary Google 403 project-header downgrade, so an HTTP rejection cannot start a second warmup generation without `x-goog-user-project`. Ordinary generation requests retain that bounded compatibility retry. A 60-second deadline and cancellation signal bound transport work. No internal HTTP endpoint or authentication bypass is exposed.
+The proxy-gateway adapter uses the existing Claude mapper or the native Gemini envelope and `GeminiClient` transport. It starts with `streamGenerateContent?alt=sse`, falls back to `generateContent` on transport failure, and does not repeat an HTTP rejection as a non-streaming request. Both content methods preserve the project in the request body but omit `x-goog-user-project`, including after extra headers are merged. Non-content internal methods retain the bounded Google 403 project-header downgrade. A 60-second deadline and cancellation signal bound transport work. No internal HTTP endpoint or authentication bypass is exposed.
 
 ## 2. Technical Implementation
 
@@ -112,7 +112,13 @@ We implemented `src/shared/serialization/protobuf.ts`, which can:
 3. **Select**: Filter accounts with `active` status and sufficient quota, then sort by remaining quota.
 4. **Execute**: Automatically call `switchCloudAccount` and notify the user.
 
-### 2.6 Security Hardening
+### 2.6 Proxy Lease Token Persistence
+
+The proxy account lease makes refreshed access-token and resolved project-ID state available in its in-memory cache before durable persistence. Persistence is deferred to the next event-loop turn and serialized per account, so encrypted SQLite work does not delay the request that acquired the lease and an older write cannot overtake a newer token or project update. Different accounts persist independently. A deferred write failure is logged without invalidating the lease that already succeeded. Graceful gateway shutdown drains queued writes; an abrupt process exit can lose only the latest deferred update.
+
+Account mutations outside this lease hot path keep their existing awaited persistence behavior.
+
+### 2.7 Security Hardening
 
 - **Key management**: Use native OS credential stores (Windows Credential Manager / macOS Keychain) via `keytar` to securely store the AES-256 master key.
 - **Data encryption**: Encrypt all sensitive fields (`token_json`, `quota_json`) with `AES-256-GCM` before writing to SQLite.

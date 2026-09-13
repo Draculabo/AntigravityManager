@@ -27,18 +27,16 @@ function createToken(overrides: Partial<AccountLeaseTokenData> = {}): AccountLea
 }
 
 describe('AccountLeaseFulfillmentPolicy', () => {
-  it('hydrates the selected token, records success, binds session, and returns a cloud account lease', async () => {
+  it('hydrates the selected token, binds the session, and returns a cloud account lease', async () => {
     const hydrationPolicy = {
       hydrateSelectedToken: vi.fn().mockResolvedValue('resolved-project'),
     } as unknown as AccountLeaseHydrationPolicy;
-    const markRateLimitSuccess = vi.fn();
     const bindSession = vi.fn();
     const logger = {
       error: vi.fn(),
     };
     const policy = new AccountLeaseFulfillmentPolicy({
       hydrationPolicy,
-      markRateLimitSuccess,
       bindSession,
       stickySessionTtlMs: 600_000,
       resolveFallbackProjectId: () => 'fallback-project',
@@ -60,7 +58,6 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       nowSeconds: 100,
       fallbackProjectId: 'fallback-project',
     });
-    expect(markRateLimitSuccess).toHaveBeenCalledWith('acc-1');
     expect(bindSession).toHaveBeenCalledWith('openai:user-1', 'acc-1', expect.any(Number));
     expect(lease).toEqual(
       expect.objectContaining({
@@ -85,7 +82,6 @@ describe('AccountLeaseFulfillmentPolicy', () => {
     };
     const policy = new AccountLeaseFulfillmentPolicy({
       hydrationPolicy,
-      markRateLimitSuccess: vi.fn(),
       bindSession: vi.fn(),
       stickySessionTtlMs: 600_000,
       resolveFallbackProjectId: () => 'fallback-project',
@@ -112,7 +108,6 @@ describe('AccountLeaseFulfillmentPolicy', () => {
     } as unknown as AccountLeaseHydrationPolicy;
     const policy = new AccountLeaseFulfillmentPolicy({
       hydrationPolicy,
-      markRateLimitSuccess: vi.fn(),
       bindSession: vi.fn(),
       stickySessionTtlMs: 600_000,
       resolveFallbackProjectId: () => 'fallback-project',

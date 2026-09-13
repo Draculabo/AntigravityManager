@@ -199,11 +199,23 @@ const ResponsesMessageContentBlockSchema = z.object({
   text: z.string().optional(),
   image_url: z.unknown().optional(),
   input_audio: z.unknown().optional(),
+  audio_url: z.unknown().optional(),
 });
 const ResponsesInputAudioSchema = z.object({
   data: z.string(),
   format: z.string().optional(),
 });
+const ResponsesAudioUrlSchema = z
+  .object({
+    url: z.string().min(1),
+    mime_type: z.string().optional(),
+    mimeType: z.string().optional(),
+    format: z.string().optional(),
+  })
+  .transform(({ url, mime_type, mimeType, format }) => ({
+    url,
+    mime_type: mime_type ?? mimeType ?? format,
+  }));
 const ResponsesOutputSchema = z.object({
   content: z.string().optional(),
 });
@@ -416,16 +428,16 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
         }
 
         const toolName = callIdToToolName.get(callId) ?? 'unknown';
-        const normalizedOutput = normalizeResponsesOutput(item.output);
-        const output =
+        const normalizedOutput = normalizeResponsesToolOutput(item.output);
+        const outputText =
           toolName === 'apply_patch'
-            ? applyPatchFailureCompactor.compact(normalizedOutput)
-            : normalizedOutput;
+            ? applyPatchFailureCompactor.compact(normalizedOutput.text)
+            : normalizedOutput.text;
         messages.push({
           role: 'tool',
           tool_call_id: callId,
           name: toolName,
-          content: output,
+          content: buildResponsesToolOutputContent(outputText, normalizedOutput.mediaParts),
         });
         continue;
       }
@@ -484,59 +496,7 @@ export function normalizeResponsesMessageContent(content: unknown): string | Ope
   if (isString(content)) {
     return content;
   }
-
-  if (!Array.isArray(content)) {
-    return isPlainObject(content) ? '' : normalizeResponsesInput(content);
-  }
-
-  const textParts: string[] = [];
-  const mediaParts: OpenAIContentPart[] = [];
-
-  for (const item of content) {
-    const parsedBlock = ResponsesMessageContentBlockSchema.safeParse(item);
-    if (!parsedBlock.success) {
-      continue;
-    }
-
-    const block = parsedBlock.data;
-    const blockType = block.type;
-    if (block.text !== undefined) {
-      textParts.push(block.text);
-      continue;
-    }
-
-    if (blockType === 'input_image' || blockType === 'image_url') {
-      const rawImageUrl = block.image_url;
-      const imageUrl = ResponsesImageUrlSchema.safeParse(
-        typeof rawImageUrl === 'string' ? { url: rawImageUrl } : rawImageUrl,
-      );
-      if (imageUrl.success) {
-        mediaParts.push({
-          type: 'image_url',
-          image_url: imageUrl.data,
-        });
-      }
-      continue;
-    }
-
-    if (blockType === 'input_audio' || blockType === 'audio') {
-      const inputAudio = ResponsesInputAudioSchema.safeParse(block.input_audio);
-      if (!inputAudio.success) {
-        throw new BadRequestException(
-          'Invalid input_audio: input_audio must be an object with string data and optional string format',
-        );
-      }
-      const audioPart: OpenAIContentPart = {
-        type: 'input_audio',
-        input_audio: {
-          data: inputAudio.data.data,
-          format: inputAudio.data.format,
-        },
-      };
-      parseOpenAIInputAudio(audioPart);
-      mediaParts.push(audioPart);
-    }
-  }
+  const { mediaParts, textParts } = partitionResponsesContent(content);
 
   if (mediaParts.length === 0) {
     return textParts.join('\n');
@@ -552,6 +512,111 @@ export function normalizeResponsesMessageContent(content: unknown): string | Ope
   }
   merged.push(...mediaParts);
   return merged;
+}
+
+function partitionResponsesContent(content: unknown): {
+  mediaParts: OpenAIContentPart[];
+  textParts: string[];
+  unhandledParts: unknown[];
+} {
+  const textParts: string[] = [];
+  const mediaParts: OpenAIContentPart[] = [];
+  const unhandledParts: unknown[] = [];
+  const parts = Array.isArray(content) ? content : [content];
+
+  for (const item of parts) {
+    const parsedBlock = ResponsesMessageContentBlockSchema.safeParse(item);
+    if (!parsedBlock.success) {
+      unhandledParts.push(item);
+      continue;
+    }
+
+    const block = parsedBlock.data;
+    if (block.text !== undefined) {
+      textParts.push(block.text);
+      continue;
+    }
+
+    if (block.type === 'input_image' || block.type === 'image_url') {
+      const imageUrl = ResponsesImageUrlSchema.safeParse(
+        typeof block.image_url === 'string' ? { url: block.image_url } : block.image_url,
+      );
+      if (imageUrl.success) {
+        mediaParts.push({ type: 'image_url', image_url: imageUrl.data });
+      } else {
+        unhandledParts.push(item);
+      }
+      continue;
+    }
+
+    if (block.type === 'input_audio' || block.type === 'audio') {
+      const inputAudio = ResponsesInputAudioSchema.safeParse(block.input_audio);
+      if (!inputAudio.success) {
+        throw new BadRequestException(
+          'Invalid input_audio: input_audio must be an object with string data and optional string format',
+        );
+      }
+      const audioPart: OpenAIContentPart = {
+        type: 'input_audio',
+        input_audio: { data: inputAudio.data.data, format: inputAudio.data.format },
+      };
+      parseOpenAIInputAudio(audioPart);
+      mediaParts.push(audioPart);
+      continue;
+    }
+
+    if (block.type === 'audio_url') {
+      const audioUrl = ResponsesAudioUrlSchema.safeParse(block.audio_url);
+      if (audioUrl.success) {
+        mediaParts.push({ type: 'audio_url', audio_url: audioUrl.data });
+      } else {
+        unhandledParts.push(item);
+      }
+      continue;
+    }
+
+    unhandledParts.push(item);
+  }
+
+  return { mediaParts, textParts, unhandledParts };
+}
+
+function normalizeResponsesToolOutput(output: unknown): {
+  mediaParts: OpenAIContentPart[];
+  text: string;
+} {
+  const outputRecord = isPlainObject(output) ? (output as Record<string, unknown>) : null;
+  const content =
+    outputRecord && Object.hasOwn(outputRecord, 'content') ? outputRecord.content : output;
+  if (isString(content)) {
+    return { mediaParts: [], text: content };
+  }
+
+  const typedContent =
+    isPlainObject(content) && Object.hasOwn(content as Record<string, unknown>, 'type');
+  if (Array.isArray(content) || typedContent) {
+    const { mediaParts, textParts, unhandledParts } = partitionResponsesContent(content);
+    if (textParts.length === 0 && mediaParts.length === 0) {
+      const fallback = Array.isArray(content) ? unhandledParts : (unhandledParts[0] ?? null);
+      return { mediaParts: [], text: JSON.stringify(fallback) };
+    }
+    return { mediaParts, text: textParts.join('\n') };
+  }
+
+  return {
+    mediaParts: [],
+    text: content === undefined ? '' : (JSON.stringify(content) ?? ''),
+  };
+}
+
+function buildResponsesToolOutputContent(
+  text: string,
+  mediaParts: OpenAIContentPart[],
+): string | OpenAIContentPart[] {
+  if (mediaParts.length === 0) {
+    return text;
+  }
+  return text === '' ? mediaParts : [{ type: 'text', text }, ...mediaParts];
 }
 
 export function resolveToolArguments(item: ResponsesToolCallItem): Record<string, unknown> {

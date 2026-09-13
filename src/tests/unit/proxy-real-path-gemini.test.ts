@@ -38,6 +38,131 @@ function geminiRequest(text: string) {
 }
 
 describe('real request path, Gemini surface', () => {
+  it('builds a true image-generation wire envelope when requested by the OpenAI fallback', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
+    const safetySettings = [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'OFF' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'OFF' },
+    ];
+
+    await service.handleGeminiGenerateContent(
+      'gemini-3.1-flash-image',
+      {
+        ...geminiRequest('draw a fox'),
+        generationConfig: { imageConfig: { aspectRatio: '16:9', imageSize: '4K' } },
+        safetySettings,
+      },
+      'image_gen',
+    );
+
+    expect(upstream.calls[0]?.body).toMatchObject({
+      model: 'gemini-3.1-flash-image',
+      requestType: 'image_gen',
+      request: {
+        generationConfig: { imageConfig: { aspectRatio: '16:9', imageSize: '4K' } },
+        safetySettings,
+      },
+    });
+    expect(upstream.calls[0]?.body.enabledCreditTypes).toBeUndefined();
+  });
+
+  it.each(['generateContent', 'streamGenerateContent'] as const)(
+    'routes canonical Gemini 3.7 to the high physical model with its full tuple on %s',
+    async (action) => {
+      const upstream = createUpstream({
+        generate: geminiTextResponse('ok'),
+        streamFrames: [geminiStreamFrame(geminiTextResponse('ok'))],
+      });
+      const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
+      const request = geminiRequest('hello');
+
+      if (action === 'generateContent') {
+        await service.handleGeminiGenerateContent('gemini-3.7-flash', request);
+      } else {
+        await collect(
+          (await service.handleGeminiStreamGenerateContent(
+            'gemini-3.7-flash',
+            request,
+          )) as Observable<string>,
+        );
+      }
+
+      expect(upstream.calls).toHaveLength(1);
+      expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-high');
+      expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
+        maxOutputTokens: 65536,
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: 10000,
+        },
+      });
+    },
+  );
+
+  it('honors a native 3.6-high low budget and sends the complete 3.7-low tuple upstream', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
+
+    await service.handleGeminiGenerateContent('gemini-3.6-flash-high', {
+      ...geminiRequest('hello'),
+      generationConfig: {
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: 1000,
+        },
+      },
+    });
+
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-low');
+    expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
+      maxOutputTokens: 65536,
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 1000,
+      },
+    });
+  });
+
+  it('rebinds native variant parameters when the account selects a physical sibling', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const lease = createLease([createAccount('acc-1')]);
+    lease.resolveDynamicModelForAccount.mockReturnValue('gemini-3.7-flash-medium');
+    const service = createGateway(upstream, lease).geminiService;
+
+    await service.handleGeminiGenerateContent('gemini-3.7-flash-low', geminiRequest('hello'));
+
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-medium');
+    expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
+      maxOutputTokens: 65536,
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 4000,
+      },
+    });
+  });
+
+  it('routes native countTokens for canonical Gemini 3.7 to the high physical model', async () => {
+    const upstream = createUpstream({ countTokens: { totalTokens: 7 } });
+    const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
+
+    await expect(
+      service.handleGeminiCountTokens('gemini-3.7-flash', geminiRequest('hello')),
+    ).resolves.toBe(7);
+
+    expect(upstream.countTokensCalls).toEqual([
+      {
+        accessToken: 'access-acc-1',
+        body: {
+          request: {
+            contents: [{ parts: [{ text: 'hello' }], role: 'user' }],
+            model: 'models/gemini-3.7-flash-high',
+          },
+        },
+      },
+    ]);
+  });
+
   it.each(['generateContent', 'streamGenerateContent'] as const)(
     'replays unsigned Flash tool history with both signature fields on %s',
     async (action) => {
@@ -135,7 +260,7 @@ describe('real request path, Gemini surface', () => {
       createReply() as never,
     );
 
-    expect(upstream.calls[0]?.body.model).toBe('gemini-3-flash');
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3-flash-agent');
   });
 
   it.each(['generateContent', 'streamGenerateContent'])(

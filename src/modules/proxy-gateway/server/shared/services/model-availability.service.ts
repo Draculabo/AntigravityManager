@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
+import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 import { logger } from '@/shared/logging/logger';
 
 export type ProxyModelAvailabilityReason =
@@ -122,6 +123,25 @@ export class ModelAvailabilityService {
     return changed;
   }
 
+  clearModelFamily(accountId: string, modelId: string): number {
+    if (!accountId || !modelId) {
+      return 0;
+    }
+    this.hydrate();
+    const family = getQuotaModelFamilyId(modelId);
+    let deleted = 0;
+    for (const [key, entry] of this.entries) {
+      if (entry.accountId === accountId && getQuotaModelFamilyId(entry.modelId) === family) {
+        this.entries.delete(key);
+        deleted += 1;
+      }
+    }
+    if (deleted > 0) {
+      this.persist();
+    }
+    return deleted;
+  }
+
   clearCapabilityFailures(accountId: string): void {
     this.hydrate();
     let changed = false;
@@ -154,6 +174,11 @@ export class ModelAvailabilityService {
       this.persist();
     }
     return [...this.entries.values()];
+  }
+
+  getActiveSnapshot(now = Date.now()): ProxyModelAvailability[] {
+    this.hydrate();
+    return [...this.entries.values()].filter((entry) => entry.unavailableUntil > now);
   }
 
   private hydrate(): void {

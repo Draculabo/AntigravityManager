@@ -1,15 +1,46 @@
 import { HttpException, HttpStatus, Logger } from '@nestjs/common';
-import { FastifyReply } from 'fastify';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import { isFunction, isObjectLike, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import type { FileReferenceError } from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
+
+export function createProxyRequestAbortScope(
+  req: FastifyRequest | undefined,
+  res: FastifyReply,
+): { dispose: () => void; signal?: AbortSignal } {
+  if (!req?.raw || !res.raw) {
+    return { dispose: () => undefined };
+  }
+  const controller = new AbortController();
+  const abort = (): void => {
+    if (!res.raw.writableEnded) {
+      controller.abort();
+    }
+  };
+  req.raw.once('aborted', abort);
+  res.raw.once('close', abort);
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      req.raw.removeListener('aborted', abort);
+      res.raw.removeListener('close', abort);
+    },
+  };
+}
 
 export abstract class BaseProxyController {
   protected readonly logger = new Logger(this.constructor.name);
 
   protected isObservableLike(value: unknown): value is Observable<unknown> {
     return isObjectLike(value) && isFunction((value as { subscribe?: unknown }).subscribe);
+  }
+
+  protected createRequestAbortScope(
+    req: FastifyRequest | undefined,
+    res: FastifyReply,
+  ): { dispose: () => void; signal?: AbortSignal } {
+    return createProxyRequestAbortScope(req, res);
   }
 
   protected writeSseResponse(res: FastifyReply, stream: Observable<unknown>): void {

@@ -12,12 +12,12 @@ function createPolicy(overrides?: {
   });
 }
 
-function createInternalRequest(generationConfig: Record<string, unknown>): GeminiInternalRequest {
+function createInternalRequest(generationConfig?: Record<string, unknown>): GeminiInternalRequest {
   return {
     requestId: 'agent/1/test',
     request: {
       contents: [],
-      generationConfig,
+      ...(generationConfig ? { generationConfig } : {}),
     },
     model: 'gemini-2.5-flash',
     userAgent: 'test-agent',
@@ -26,6 +26,25 @@ function createInternalRequest(generationConfig: Record<string, unknown>): Gemin
 }
 
 describe('GenerationConstraintsService', () => {
+  it('creates the exact generation config when a registered variant request omitted it', () => {
+    const policy = createPolicy();
+    const request = createInternalRequest();
+
+    policy.applyInternalGenerationConstraints(request, 'gemini-3.7-flash-high', 'acc-1', {
+      thinkingBudget: 10000,
+      maxOutputTokens: 65536,
+      includeThoughts: true,
+    });
+
+    expect(request.request.generationConfig).toEqual({
+      maxOutputTokens: 65536,
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 10000,
+      },
+    });
+  });
+
   it('keeps registered variant parameters authoritative over legacy model constraints', () => {
     const policy = createPolicy({
       outputLimit: 64_000,

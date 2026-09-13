@@ -602,6 +602,7 @@ async function startAntigravityByExecutable(
       detached: true,
       stdio: 'ignore',
       cwd: path.win32.dirname(executablePath),
+      windowsHide: true,
     });
     child.unref();
     return;

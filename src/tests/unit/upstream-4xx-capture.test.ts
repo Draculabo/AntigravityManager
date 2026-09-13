@@ -187,6 +187,30 @@ describe('upstream 4xx capture', () => {
     expect(content).not.toContain(secret);
   });
 
+  it('never persists short image Base64 from client or upstream requests', async () => {
+    const dataUrl = 'data:image/webp;name=source;BASE64,AQ==';
+    const capture = new Upstream4xxCaptureService();
+    await runWithUpstreamCaptureContext(captureContext({ body: { image: dataUrl } }), () =>
+      capture.capture({
+        endpoint: 'https://cloudcode-pa.googleapis.com/v1internal:generateContent',
+        status: 400,
+        upstreamErrorBody: { error: { message: 'rejected' } },
+        upstreamRequest: {
+          request: {
+            contents: [{ parts: [{ inlineData: { data: 'AQ==', mimeType: 'image/webp' } }] }],
+          },
+        },
+      }),
+    );
+
+    const [file] = await captureFiles();
+    const content = await fs.readFile(path.join(agentDirectory, CAPTURES_DIRECTORY, file), 'utf-8');
+    expect(content).not.toContain(dataUrl);
+    expect(content).not.toContain('AQ==');
+    expect(content).toContain('[data URL redacted mime=image/webp bytes=1]');
+    expect(content).toContain('[base64 redacted mime=image/webp bytes=1]');
+  });
+
   it('redacts credentials embedded in client and upstream query strings', async () => {
     const secret = 'query-secret-value';
     const capture = new Upstream4xxCaptureService();

@@ -64,7 +64,7 @@ describe('Gemini countTokens', () => {
     const sent = upstream.countTokensCalls[0]?.body as {
       request: Record<string, unknown>;
     };
-    expect(sent.request.model).toBe('models/gemini-3-flash');
+    expect(sent.request.model).toBe('models/gemini-3-flash-agent');
     expect(sent.request.contents).toEqual([{ parts: [{ text: 'count me' }], role: 'user' }]);
     expect(Object.keys(sent.request).sort()).toEqual(['contents', 'model']);
     expect(JSON.stringify(sent)).not.toContain('project-42');

@@ -40,7 +40,7 @@ describe('AccountLeaseLimitPolicy structured retry delays', () => {
     expect(policy.isRateLimited('acc-1', 'gemini-3.1-pro')).toBe(true);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        'Recorded upstream limit for account acc-1: reason=rate_limit_exceeded, wait=14s',
+        'Recorded upstream limit for account acc-1: reason=rate_limit_exceeded, wait=12s',
       ),
     );
   });

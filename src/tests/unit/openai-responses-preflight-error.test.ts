@@ -35,6 +35,7 @@ function createSurface() {
   const lease = createLease([createAccount('acc-1')]);
   return {
     controller: new OpenAIOperations(createGateway(upstream, lease).openAIService),
+    lease,
     upstream,
   };
 }
@@ -106,6 +107,39 @@ describe('OpenAI Responses preflight errors', () => {
     expect(upstream.calls).toHaveLength(0);
   });
 
+  it('rejects malformed inline image data before account selection or upstream work', async () => {
+    const { controller, upstream } = createSurface();
+    const reply = createRouteReply();
+
+    await controller.responses(
+      {
+        input: [
+          {
+            role: 'user',
+            type: 'message',
+            content: [
+              {
+                type: 'input_image',
+                image_url: 'data:image/png;base64,not-base64',
+              },
+            ],
+          },
+        ],
+        model: 'gemini-3-flash',
+      },
+      reply,
+    );
+
+    expect(reply.statusCode).toBe(400);
+    expect(reply.body).toMatchObject({
+      error: {
+        message: 'Input image contains invalid base64 data',
+        type: 'server_error',
+      },
+    });
+    expect(upstream.calls).toHaveLength(0);
+  });
+
   it('keeps the previous_response_id not-found response outside the generic error envelope', async () => {
     const { controller, upstream } = createSurface();
     const reply = createRouteReply();
@@ -128,6 +162,37 @@ describe('OpenAI Responses preflight errors', () => {
       },
     });
     expect(upstream.calls).toHaveLength(0);
+  });
+
+  it('keeps missing previous_response_id ahead of malformed image validation', async () => {
+    const { controller, lease, upstream } = createSurface();
+    const reply = createRouteReply();
+
+    await controller.responses(
+      {
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_image', image_url: 'data:image/png;base64,not-base64' }],
+          },
+        ],
+        previous_response_id: 'resp_missing',
+      },
+      reply,
+    );
+
+    expect(reply.statusCode).toBe(404);
+    expect(reply.body).toEqual({
+      error: {
+        code: 'previous_response_not_found',
+        message: "Previous response with id 'resp_missing' not found.",
+        param: 'previous_response_id',
+        type: 'invalid_request_error',
+      },
+    });
+    expect(lease.getNextToken).not.toHaveBeenCalled();
+    expect(upstream.calls).toEqual([]);
   });
 
   it('continues to send valid Responses json_schema and input_audio requests upstream', async () => {

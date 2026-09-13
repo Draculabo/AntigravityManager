@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '../../server/server-config';
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
@@ -58,6 +58,10 @@ describe('AccountLeaseService parity scheduling replay', () => {
     vi.spyOn(CloudAccountHealthService, 'getHealth').mockResolvedValue(undefined);
     service = new AccountLeaseService();
     seedTokens(service);
+  });
+
+  afterEach(async () => {
+    await service.onModuleDestroy();
   });
 
   it('rewrites gemini pro model to first available account candidate', () => {
@@ -171,6 +175,7 @@ describe('AccountLeaseService parity scheduling replay', () => {
     const persistSpy = vi.spyOn(service as any, 'persistTokenState').mockResolvedValue(undefined);
 
     const selected = await (service as any).finalizeSelectedToken('acc-1', tokenData, nowSec);
+    await service.onModuleDestroy();
 
     expect(refreshSpy).toHaveBeenCalledWith('refresh-1', 'http://127.0.0.1:8080', 'custom-client');
     expect(persistSpy).toHaveBeenCalledWith(
@@ -184,9 +189,6 @@ describe('AccountLeaseService parity scheduling replay', () => {
     expect(selected?.token.id_token).toBe('id-new');
     expect(selected?.token.oauth_client_key).toBe('custom-fallback');
     expect((service as any).tokens.get('acc-1')?.oauth_client_key).toBe('custom-fallback');
-
-    refreshSpy.mockRestore();
-    persistSpy.mockRestore();
   });
 
   it('refreshes selected token when expiry is inside the request timeout buffer', async () => {
@@ -214,15 +216,12 @@ describe('AccountLeaseService parity scheduling replay', () => {
       expires_in: 7200,
       token_type: 'Bearer',
     });
-    const persistSpy = vi.spyOn(service as any, 'persistTokenState').mockResolvedValue(undefined);
+    vi.spyOn(service as any, 'persistTokenState').mockResolvedValue(undefined);
 
     const selected = await (service as any).finalizeSelectedToken('acc-1', tokenData, nowSec);
 
     expect(refreshSpy).toHaveBeenCalledWith('refresh-1', undefined, undefined);
     expect(selected?.token.access_token).toBe('token-new');
-
-    refreshSpy.mockRestore();
-    persistSpy.mockRestore();
   });
 
   it('coalesces concurrent token refreshes for the same account', async () => {
@@ -261,7 +260,7 @@ describe('AccountLeaseService parity scheduling replay', () => {
           };
         }),
     );
-    const persistSpy = vi.spyOn(service as any, 'persistTokenState').mockResolvedValue(undefined);
+    vi.spyOn(service as any, 'persistTokenState').mockResolvedValue(undefined);
 
     const first = (service as any).finalizeSelectedToken('acc-1', tokenData, nowSec);
     const second = (service as any).finalizeSelectedToken('acc-1', tokenData, nowSec);
@@ -273,9 +272,6 @@ describe('AccountLeaseService parity scheduling replay', () => {
     const selected = await Promise.all([first, second]);
     expect(selected[0]?.token.access_token).toBe('token-new');
     expect(selected[1]?.token.access_token).toBe('token-new');
-
-    refreshSpy.mockRestore();
-    persistSpy.mockRestore();
   });
 
   it('keeps oauth_client_key unset for legacy account refreshed by enterprise client', () => {

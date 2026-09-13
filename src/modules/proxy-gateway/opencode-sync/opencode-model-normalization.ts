@@ -1,4 +1,13 @@
 export const OPEN_CODE_MODEL_ALIASES: Readonly<Record<string, string>> = {
+  'gemini-3.7-flash-high': 'gemini-3.7-flash',
+  'gemini-3.7-flash-medium': 'gemini-3.7-flash',
+  'gemini-3.7-flash-low': 'gemini-3.7-flash',
+  'gemini-3.7-flash-tiered': 'gemini-3.7-flash',
+  'gemini-3.6-flash': 'gemini-3.7-flash',
+  'gemini-3.6-flash-high': 'gemini-3.7-flash',
+  'gemini-3.6-flash-medium': 'gemini-3.7-flash',
+  'gemini-3.6-flash-low': 'gemini-3.7-flash',
+  'gemini-3.6-flash-tiered': 'gemini-3.7-flash',
   'gemini-3.1-pro-high': 'gemini-3.1-pro',
   'gemini-3.1-pro-low': 'gemini-3.1-pro',
   'gemini-pro': 'gemini-3.1-pro',
@@ -10,6 +19,7 @@ export const OPEN_CODE_MODEL_ALIASES: Readonly<Record<string, string>> = {
 
 const OPEN_CODE_CANONICAL_MODEL_NAMES: Readonly<Record<string, string>> = {
   'gemini-3.1-pro': 'Gemini 3.1 Pro',
+  'gemini-3.7-flash': 'Gemini 3.7 Flash',
   'gemini-3.5-flash': 'Gemini 3.5 Flash',
 };
 

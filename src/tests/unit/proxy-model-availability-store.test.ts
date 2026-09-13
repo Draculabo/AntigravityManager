@@ -77,6 +77,19 @@ describe('ModelAvailabilityService', () => {
     ]);
   });
 
+  it('clears every persisted alias in a successful image model family', () => {
+    const store = new ModelAvailabilityService();
+
+    store.mark('acc-1', 'gemini-3-pro-image', 'quota_exhausted');
+    store.mark('acc-1', 'gemini-3.1-pro-image', 'rate_limited');
+    store.mark('acc-1', 'gemini-3-flash-image', 'rate_limited');
+
+    expect(store.clearModelFamily('acc-1', 'gemini-pro-image')).toBe(2);
+    expect(store.getSnapshot()).toEqual([
+      expect.objectContaining({ modelId: 'gemini-3-flash-image' }),
+    ]);
+  });
+
   it('persists live status details and restores them after restart', () => {
     const durableState = createPersistence();
     const firstStore = new ModelAvailabilityService(durableState.persistence);
