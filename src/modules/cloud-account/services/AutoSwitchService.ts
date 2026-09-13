@@ -24,6 +24,7 @@ interface AccountSelectionScore {
 type QuotaModelEntry = [string, NonNullable<CloudAccount['quota']>['models'][string]];
 
 const BooleanSettingSchema = z.boolean();
+const AUTO_SWITCH_DEPLETION_THRESHOLD_PERCENT = 5;
 
 export class AutoSwitchService {
   /**
@@ -31,7 +32,7 @@ export class AutoSwitchService {
    * Criteria:
    * 1. Not the current account (unless it's the only one).
    * 2. Status is 'active'.
-   * 3. Has quota >= 5% in the best available model of every enabled quota group.
+   * 3. Has quota > 5% in the best available model of every enabled quota group.
    * 4. Sorted by priority models quota first, falling back to enabled models.
    */
   static async findBestAccount(currentAccountId: string): Promise<CloudAccount | null> {
@@ -228,7 +229,6 @@ export class AutoSwitchService {
 
   static isAccountDepleted(account: CloudAccount): boolean {
     if (!account.quota) return false;
-    const THRESHOLD = 5;
 
     const config =
       CloudAccountSettingsStore.getSetting(
@@ -275,7 +275,7 @@ export class AutoSwitchService {
     }
 
     const anyQuotaGroupDepleted = [...maxPercentageByQuotaGroup.values()].some(
-      (percentage) => percentage < THRESHOLD,
+      (percentage) => percentage <= AUTO_SWITCH_DEPLETION_THRESHOLD_PERCENT,
     );
     if (anyQuotaGroupDepleted) {
       return true;
@@ -284,10 +284,10 @@ export class AutoSwitchService {
     // Check quota groups
     const depletedGroups = (account.quota.quota_groups || []).filter((g) => {
       const lowestBucket = g.buckets.reduce(
-        (min, b) => Math.min(min, b.remaining_fraction * 100),
+        (min, b) => Math.min(min, Math.round(b.remaining_fraction * 100)),
         100,
       );
-      return lowestBucket < THRESHOLD;
+      return lowestBucket <= AUTO_SWITCH_DEPLETION_THRESHOLD_PERCENT;
     });
 
     if (depletedGroups.length > 0) {

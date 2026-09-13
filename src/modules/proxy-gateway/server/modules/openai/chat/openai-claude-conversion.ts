@@ -26,6 +26,7 @@ import {
 import { ClaudeRequest, ClaudeResponse } from '@/modules/proxy-gateway/antigravity/types';
 import { resolveOpenAIImageUrl } from '../openai-image-url';
 import { parseOpenAIInputAudio } from './openai-input-audio';
+import { resolveOpenAIVideoUrl } from './openai-video-url';
 import {
   AnthropicChatRequest,
   AnthropicContent,
@@ -34,9 +35,20 @@ import {
   OpenAIContentPart,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
+export interface OpenAIConversionOptions {
+  allowLocalVideoPaths?: boolean;
+}
+
+interface OpenAIPartsConversionOptions extends OpenAIConversionOptions {
+  remoteImageFallback?: (url: string) => string;
+  unreadableAudioFallback?: () => string;
+  unreadableVideoFallback?: () => string;
+}
+
 export function convertOpenAIToClaude(
   request: OpenAIChatRequest,
   signatureSessionKey?: string,
+  options: OpenAIConversionOptions = {},
 ): ClaudeRequest {
   const messages = request.messages || [];
   const systemPromptParts: string[] = [];
@@ -61,11 +73,12 @@ export function convertOpenAIToClaude(
     }
 
     if (msg.role === 'tool') {
-      const toolContent = convertOpenAIPartsToAnthropicContent(
-        msg.content,
-        () => '[image link]',
-        () => '[audio]',
-      );
+      const toolContent = convertOpenAIPartsToAnthropicContent(msg.content, {
+        allowLocalVideoPaths: options.allowLocalVideoPaths,
+        remoteImageFallback: () => '[image link]',
+        unreadableAudioFallback: () => '[audio]',
+        unreadableVideoFallback: () => '[video]',
+      });
       const toolResultText = toolContent
         .filter(
           (block): block is Extract<AnthropicContent, { type: 'text' }> => block.type === 'text',
@@ -73,7 +86,11 @@ export function convertOpenAIToClaude(
         .map((block) => block.text)
         .join('\n');
       const toolMedia = toolContent.filter(
-        (block) => block.type === 'image' || block.type === 'audio' || block.type === 'document',
+        (block) =>
+          block.type === 'image' ||
+          block.type === 'audio' ||
+          block.type === 'video' ||
+          block.type === 'document',
       );
       const toolResultContent: string | AnthropicContent[] =
         toolMedia.length === 0
@@ -98,7 +115,9 @@ export function convertOpenAIToClaude(
       continue;
     }
 
-    const contentBlocks = convertOpenAIPartsToAnthropicContent(msg.content);
+    const contentBlocks = convertOpenAIPartsToAnthropicContent(msg.content, {
+      allowLocalVideoPaths: options.allowLocalVideoPaths,
+    });
 
     if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
       for (const toolCall of msg.tool_calls) {
@@ -121,10 +140,20 @@ export function convertOpenAIToClaude(
       }
     }
 
+    if (contentBlocks.length === 0) {
+      continue;
+    }
+
     anthropicMessages.push({
       role: msg.role === 'assistant' ? 'assistant' : 'user',
-      content: contentBlocks.length > 0 ? contentBlocks : '',
+      content: contentBlocks,
     });
+  }
+
+  if (anthropicMessages.length === 0) {
+    anthropicMessages.push({ role: 'user', content: 'Continue' });
+  } else if (anthropicMessages[0]?.role === 'assistant') {
+    anthropicMessages.unshift({ role: 'user', content: 'Continue the task.' });
   }
 
   const systemPrompt = systemPromptParts.length > 0 ? systemPromptParts.join('\n') : undefined;
@@ -160,8 +189,7 @@ export function convertOpenAIToClaude(
 
 export function convertOpenAIPartsToAnthropicContent(
   content: OpenAIChatRequest['messages'][number]['content'],
-  remoteImageFallback: (url: string) => string = (url) => `[image_url] ${url}`,
-  unreadableAudioFallback: () => string = () => '',
+  options: OpenAIPartsConversionOptions = {},
 ): AnthropicContent[] {
   if (isString(content)) {
     return content.trim() ? [{ type: 'text', text: content }] : [];
@@ -191,7 +219,12 @@ export function convertOpenAIPartsToAnthropicContent(
           },
         });
       } else {
-        blocks.push({ type: 'text', text: remoteImageFallback(url) });
+        blocks.push({
+          type: 'text',
+          text: (options.remoteImageFallback ?? ((fallbackUrl) => `[image_url] ${fallbackUrl}`))(
+            url,
+          ),
+        });
       }
       continue;
     }
@@ -201,7 +234,7 @@ export function convertOpenAIPartsToAnthropicContent(
       if (audio) {
         blocks.push({ type: 'audio', source: audio });
       } else {
-        const fallback = unreadableAudioFallback();
+        const fallback = options.unreadableAudioFallback?.() ?? '';
         if (fallback) {
           blocks.push({ type: 'text', text: fallback });
         }
@@ -215,6 +248,21 @@ export function convertOpenAIPartsToAnthropicContent(
         type: 'audio',
         source: { type: 'base64', media_type: audio.mimeType, data: audio.data },
       });
+      continue;
+    }
+
+    if (part.type === 'video_url') {
+      const video = resolveOpenAIVideoUrl(part.video_url, {
+        allowLocalPaths: options.allowLocalVideoPaths,
+      });
+      if (video) {
+        blocks.push({ type: 'video', source: video });
+      } else {
+        const fallback = options.unreadableVideoFallback?.() ?? '';
+        if (fallback) {
+          blocks.push({ type: 'text', text: fallback });
+        }
+      }
     }
   }
   return blocks;

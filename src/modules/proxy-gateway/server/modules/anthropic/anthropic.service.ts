@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { isEmpty, isString } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Observable } from 'rxjs';
+import { Observable, type Subscriber, type Subscription } from 'rxjs';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
@@ -46,6 +46,11 @@ interface AnthropicUpstreamResult {
   response?: GeminiResponse;
   stream?: NodeJS.ReadableStream;
 }
+
+const ANTHROPIC_STREAM_IDLE_TIMEOUT_MS = 120_000;
+const ANTHROPIC_STREAM_PING_INTERVAL_MS = 20_000;
+const ANTHROPIC_STREAM_MAX_CONSECUTIVE_PINGS = 5;
+const ANTHROPIC_STREAM_FIRST_EVENT_TIMEOUT_MS = 30_000;
 
 @Injectable()
 export class AnthropicService extends BaseProxyService {
@@ -139,6 +144,8 @@ export class AnthropicService extends BaseProxyService {
         effectiveTargetModel,
       );
       const accountRequest = effectiveVariantRequest.request;
+      const registeredToolNames =
+        accountRequest.tools?.map((tool) => tool.name).filter((name) => name.length > 0) ?? [];
       const accountTargetModel = effectiveVariantRequest.variant
         ? accountRequest.model
         : effectiveTargetModel;
@@ -163,18 +170,20 @@ export class AnthropicService extends BaseProxyService {
           recoveryState,
           variant: effectiveVariantRequest.variant ?? undefined,
         });
-        this.markUpstreamSuccess(token.id, execution.body.model);
-
         if (execution.stream) {
-          return this.processAnthropicInternalStream(
+          const preparedStream = await this.prepareAnthropicInternalStream(
             execution.stream,
             execution.body.model,
             sessionKey,
             signatureMessageCount,
             signatureFamily,
             accountTargetModel,
+            registeredToolNames,
           );
+          this.markUpstreamSuccess(token.id, execution.body.model);
+          return preparedStream;
         }
+        this.markUpstreamSuccess(token.id, execution.body.model);
         return this.toAnthropicChatResponse(
           transformResponse(execution.response!, {
             model: execution.body.model,
@@ -182,6 +191,7 @@ export class AnthropicService extends BaseProxyService {
             familyModel: accountTargetModel,
             signatureSessionKey: sessionKey,
             signatureMessageCount,
+            registeredToolNames,
           }),
         );
       } catch (error) {
@@ -207,17 +217,20 @@ export class AnthropicService extends BaseProxyService {
               recoveryState,
               variant: effectiveVariantRequest.variant ?? undefined,
             });
-            this.markUpstreamSuccess(token.id, execution.body.model);
             if (execution.stream) {
-              return this.processAnthropicInternalStream(
+              const preparedStream = await this.prepareAnthropicInternalStream(
                 execution.stream,
                 execution.body.model,
                 sessionKey,
                 signatureMessageCount,
                 signatureFamily,
                 accountTargetModel,
+                registeredToolNames,
               );
+              this.markUpstreamSuccess(token.id, execution.body.model);
+              return preparedStream;
             }
+            this.markUpstreamSuccess(token.id, execution.body.model);
             return this.toAnthropicChatResponse(
               transformResponse(execution.response!, {
                 model: execution.body.model,
@@ -225,6 +238,7 @@ export class AnthropicService extends BaseProxyService {
                 familyModel: accountTargetModel,
                 signatureSessionKey: sessionKey,
                 signatureMessageCount,
+                registeredToolNames,
               }),
             );
           } catch (fallbackErr) {
@@ -274,17 +288,20 @@ export class AnthropicService extends BaseProxyService {
               recoveryState,
               variant: downgradedVariant.variant ?? undefined,
             });
-            this.markUpstreamSuccess(token.id, execution.body.model);
             if (execution.stream) {
-              return this.processAnthropicInternalStream(
+              const preparedStream = await this.prepareAnthropicInternalStream(
                 execution.stream,
                 execution.body.model,
                 sessionKey,
                 signatureMessageCount,
                 downgradedFamily,
                 downgradedVariant.request.model,
+                registeredToolNames,
               );
+              this.markUpstreamSuccess(token.id, execution.body.model);
+              return preparedStream;
             }
+            this.markUpstreamSuccess(token.id, execution.body.model);
             const transformed = this.toAnthropicChatResponse(
               transformResponse(execution.response!, {
                 model: execution.body.model,
@@ -292,6 +309,7 @@ export class AnthropicService extends BaseProxyService {
                 familyModel: downgradedVariant.request.model,
                 signatureSessionKey: sessionKey,
                 signatureMessageCount,
+                registeredToolNames,
               }),
             );
             return {
@@ -446,6 +464,7 @@ export class AnthropicService extends BaseProxyService {
     signatureMessageCount?: number,
     signatureFamily?: string | null,
     signatureFamilyModel?: string | null,
+    registeredToolNames: readonly string[] = [],
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
@@ -458,20 +477,76 @@ export class AnthropicService extends BaseProxyService {
         sessionKey: signatureSessionKey,
         messageCount: signatureMessageCount,
       });
+      state.setRegisteredToolNames(registeredToolNames);
       const processor = new PartProcessor(state);
 
       let lastFinishReason: string | undefined;
       let lastUsageMetadata: UsageMetadata | undefined;
+      let consecutiveIdlePings = 0;
+      let pingTimer: NodeJS.Timeout | undefined;
+      let terminal = false;
 
-      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Claude-SSE', () => {
+      const clearPingTimer = (): void => {
+        if (pingTimer) {
+          clearTimeout(pingTimer);
+          pingTimer = undefined;
+        }
+      };
+
+      const completeIdleStream = (): void => {
+        if (terminal) {
+          return;
+        }
+        terminal = true;
+        clearPingTimer();
+        idleTimer.clear();
         subscriber.next('data: {"type": "message_stop"}\n\ndata: [DONE]\n\n');
         subscriber.complete();
-      });
+      };
+
+      const idleTimer = this.createStreamIdleTimer(
+        upstreamStream,
+        'Claude-SSE',
+        completeIdleStream,
+        ANTHROPIC_STREAM_IDLE_TIMEOUT_MS,
+      );
+
+      const emitMappedChunk = (chunk: string): void => {
+        if (terminal) {
+          return;
+        }
+        idleTimer.reset();
+        subscriber.next(chunk);
+      };
+
+      const schedulePing = (): void => {
+        clearPingTimer();
+        pingTimer = setTimeout(() => {
+          consecutiveIdlePings += 1;
+          if (consecutiveIdlePings >= ANTHROPIC_STREAM_MAX_CONSECUTIVE_PINGS) {
+            this.logger.error(
+              `[Claude-SSE] Stream idle for ${(consecutiveIdlePings * ANTHROPIC_STREAM_PING_INTERVAL_MS) / 1000}s (${consecutiveIdlePings}x ${ANTHROPIC_STREAM_PING_INTERVAL_MS / 1000}s timeout), terminating`,
+            );
+            completeIdleStream();
+            return;
+          }
+          this.logger.debug(
+            `[Claude-SSE] SSE idle ping #${consecutiveIdlePings}/${ANTHROPIC_STREAM_MAX_CONSECUTIVE_PINGS}`,
+          );
+          emitMappedChunk(': ping\n\n');
+          schedulePing();
+        }, ANTHROPIC_STREAM_PING_INTERVAL_MS);
+      };
 
       idleTimer.reset();
+      schedulePing();
 
       upstreamStream.on('data', (chunk: Buffer) => {
-        idleTimer.reset();
+        if (terminal) {
+          return;
+        }
+        consecutiveIdlePings = 0;
+        schedulePing();
         buffer += decoder.decode(chunk, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
@@ -488,7 +563,7 @@ export class AnthropicService extends BaseProxyService {
           if (decoded.kind === 'invalid') {
             this.logger.error('Stream parse error: invalid v1internal SSE payload');
             const errorChunks = state.handleParseError(dataStr);
-            errorChunks.forEach((c) => subscriber.next(c));
+            errorChunks.forEach(emitMappedChunk);
             continue;
           }
 
@@ -496,7 +571,9 @@ export class AnthropicService extends BaseProxyService {
             const response = decoded.response;
 
             const startMsg = state.emitMessageStart(response);
-            if (startMsg) subscriber.next(startMsg);
+            if (startMsg) {
+              emitMappedChunk(startMsg);
+            }
 
             const candidate = response.candidates?.[0];
             const parts = candidate?.content?.parts;
@@ -512,7 +589,7 @@ export class AnthropicService extends BaseProxyService {
               for (const part of parts) {
                 if (this.isGeminiPart(part)) {
                   const chunks = processor.process(part);
-                  chunks.forEach((c) => subscriber.next(c));
+                  chunks.forEach(emitMappedChunk);
                 }
               }
             }
@@ -522,20 +599,30 @@ export class AnthropicService extends BaseProxyService {
           } catch (e) {
             this.logger.error('Stream parse error', e);
             const errorChunks = state.handleParseError(dataStr);
-            errorChunks.forEach((c) => subscriber.next(c));
+            errorChunks.forEach(emitMappedChunk);
           }
         }
       });
 
       upstreamStream.on('end', () => {
+        if (terminal) {
+          return;
+        }
+        terminal = true;
         idleTimer.clear();
+        clearPingTimer();
         const finishChunks = state.emitFinish(lastFinishReason, lastUsageMetadata);
         finishChunks.forEach((c) => subscriber.next(c));
         subscriber.complete();
       });
 
       upstreamStream.on('error', (err: unknown) => {
+        if (terminal) {
+          return;
+        }
+        terminal = true;
         idleTimer.clear();
+        clearPingTimer();
         const cleanError = err instanceof Error ? err : new Error(String(err));
         const { type } = classifyStreamError(cleanError);
 
@@ -544,8 +631,118 @@ export class AnthropicService extends BaseProxyService {
       });
 
       return () => {
+        terminal = true;
+        clearPingTimer();
         idleTimer.dispose();
       };
+    });
+  }
+
+  private prepareAnthropicInternalStream(
+    upstreamStream: NodeJS.ReadableStream,
+    model: string,
+    signatureSessionKey?: string,
+    signatureMessageCount?: number,
+    signatureFamily?: string | null,
+    signatureFamilyModel?: string | null,
+    registeredToolNames: readonly string[] = [],
+  ): Promise<Observable<string>> {
+    const mappedStream = this.processAnthropicInternalStream(
+      upstreamStream,
+      model,
+      signatureSessionKey,
+      signatureMessageCount,
+      signatureFamily,
+      signatureFamilyModel,
+      registeredToolNames,
+    );
+
+    return new Promise((resolve, reject) => {
+      const bufferedChunks: string[] = [];
+      let downstream: Subscriber<string> | null = null;
+      let sourceSubscription: Subscription | undefined;
+      let ready = false;
+      let claimed = false;
+      let completed = false;
+      let terminalError: unknown;
+
+      const clearFirstEventTimer = (): void => {
+        clearTimeout(firstEventTimer);
+      };
+
+      const preparedStream = new Observable<string>((subscriber) => {
+        if (claimed) {
+          subscriber.error(new Error('Anthropic stream has already been consumed'));
+          return;
+        }
+        claimed = true;
+        downstream = subscriber;
+        for (const chunk of bufferedChunks.splice(0)) {
+          subscriber.next(chunk);
+        }
+
+        if (terminalError !== undefined) {
+          subscriber.error(terminalError);
+        } else if (completed) {
+          subscriber.complete();
+        } else {
+          upstreamStream.resume();
+        }
+
+        return () => {
+          downstream = null;
+          sourceSubscription?.unsubscribe();
+        };
+      });
+
+      const firstEventTimer = setTimeout(() => {
+        if (ready) {
+          return;
+        }
+        sourceSubscription?.unsubscribe();
+        reject(new Error('Timeout waiting for first Anthropic stream event (30s)'));
+      }, ANTHROPIC_STREAM_FIRST_EVENT_TIMEOUT_MS);
+
+      sourceSubscription = mappedStream.subscribe({
+        next: (chunk) => {
+          if (!ready) {
+            const trimmed = chunk.trim();
+            if (trimmed.length === 0 || trimmed.startsWith(':')) {
+              return;
+            }
+            ready = true;
+            clearFirstEventTimer();
+            upstreamStream.pause();
+            bufferedChunks.push(chunk);
+            resolve(preparedStream);
+            return;
+          }
+
+          if (downstream) {
+            downstream.next(chunk);
+          } else {
+            bufferedChunks.push(chunk);
+          }
+        },
+        error: (error) => {
+          clearFirstEventTimer();
+          if (!ready) {
+            reject(error);
+            return;
+          }
+          terminalError = error;
+          downstream?.error(error);
+        },
+        complete: () => {
+          clearFirstEventTimer();
+          if (!ready) {
+            reject(new Error('Empty Anthropic stream during first-event preflight'));
+            return;
+          }
+          completed = true;
+          downstream?.complete();
+        },
+      });
     });
   }
 

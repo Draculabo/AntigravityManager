@@ -92,6 +92,7 @@ export abstract class BaseProxyService {
     upstreamStream: NodeJS.ReadableStream,
     label: string,
     onTimeout: () => void,
+    timeoutMs = this.streamIdleTimeoutMs,
   ): StreamIdleTimer {
     let idleTimer: NodeJS.Timeout | undefined;
 
@@ -105,10 +106,12 @@ export abstract class BaseProxyService {
     const reset = (): void => {
       clear();
       idleTimer = setTimeout(() => {
-        this.logger.error(`[${label}] Idle timeout after 300s, terminating stream`);
+        this.logger.error(
+          `[${label}] Idle timeout after ${Math.round(timeoutMs / 1000)}s, terminating stream`,
+        );
         onTimeout();
         this.destroyUpstreamStream(upstreamStream);
-      }, this.streamIdleTimeoutMs);
+      }, timeoutMs);
     };
 
     return {

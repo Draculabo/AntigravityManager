@@ -58,7 +58,7 @@ export interface OpenAIMessage {
 }
 
 export interface OpenAIContentPart {
-  type: 'text' | 'image_url' | 'input_audio' | 'audio' | 'audio_url';
+  type: 'text' | 'image_url' | 'input_audio' | 'audio' | 'audio_url' | 'video_url';
   text?: string;
   image_url?:
     | string
@@ -71,6 +71,12 @@ export interface OpenAIContentPart {
     format?: string;
   };
   audio_url?: {
+    url: string;
+    mime_type?: string;
+    mimeType?: string;
+    format?: string;
+  };
+  video_url?: {
     url: string;
     mime_type?: string;
     mimeType?: string;
@@ -166,6 +172,7 @@ export type AnthropicContent =
   // source, and the upstream transport has one representation for both.
   | { type: 'document'; source: AnthropicImageSource; title?: string }
   | { type: 'audio'; source: AnthropicAudioSource }
+  | { type: 'video'; source: AnthropicVideoSource }
   | {
       type: 'tool_use';
       id: string;
@@ -188,6 +195,10 @@ export interface AnthropicImageSource {
 }
 
 export type AnthropicAudioSource =
+  | AnthropicImageSource
+  | { type: 'url'; media_type: string; url: string };
+
+export type AnthropicVideoSource =
   | AnthropicImageSource
   | { type: 'url'; media_type: string; url: string };
 

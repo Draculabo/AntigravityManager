@@ -11,8 +11,10 @@ import { decodeSignature } from './signature-utils';
 import { toAnthropicMessageId } from './anthropic-message-id';
 import { SignatureStore } from './SignatureStore';
 import type { ThoughtSignatureModelContext } from './thought-signature-model';
+import { logger } from '@/shared/logging/logger';
 
 export interface ClaudeResponseMapperOptions extends Partial<ThoughtSignatureModelContext> {
+  registeredToolNames?: readonly string[];
   signatureSessionKey?: string;
   signatureMessageCount?: number;
 }
@@ -223,12 +225,77 @@ class NonStreamingProcessor {
   }
 
   private flushText() {
-    if (!this.textBuilder) return;
+    if (!this.textBuilder) {
+      return;
+    }
+
+    const text = this.textBuilder;
+    this.textBuilder = '';
+    const recoveredToolCall = this.recoverLeakedToolCall(text);
+    if (recoveredToolCall) {
+      this.contentBlocks.push(recoveredToolCall);
+      this.hasToolCall = true;
+      return;
+    }
+
     this.contentBlocks.push({
       type: 'text',
-      text: this.textBuilder,
+      text,
     });
-    this.textBuilder = '';
+  }
+
+  private recoverLeakedToolCall(text: string): ContentBlock | null {
+    const registeredToolNames = this.options.registeredToolNames;
+    if (!registeredToolNames || registeredToolNames.length === 0) {
+      return null;
+    }
+
+    const prefix = 'call:default_api:';
+    const trimmed = text.trim();
+    if (!trimmed.startsWith(prefix)) {
+      return null;
+    }
+
+    const rest = trimmed.slice(prefix.length);
+    const delimiterIndex = rest.search(/[({]/u);
+    const toolNameEnd = delimiterIndex === -1 ? rest.length : delimiterIndex;
+    const toolName = rest.slice(0, toolNameEnd).trim();
+    if (!toolName) {
+      return null;
+    }
+
+    const argumentText = rest.slice(toolNameEnd).trim();
+    if (argumentText && !argumentText.startsWith('{') && !argumentText.startsWith('(')) {
+      return null;
+    }
+
+    const registeredToolName = registeredToolNames.find(
+      (candidate) => candidate.toLowerCase() === toolName.toLowerCase(),
+    );
+    if (!registeredToolName) {
+      return null;
+    }
+
+    let input: Record<string, unknown> = {};
+    if (argumentText) {
+      try {
+        const parsed: unknown = JSON.parse(argumentText);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return null;
+        }
+        input = parsed as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+
+    logger.warn(`[Claude-Response] Recovered leaked tool call for ${registeredToolName}`);
+    return {
+      type: 'tool_use',
+      id: `${registeredToolName}-${uuidv4()}`,
+      name: registeredToolName,
+      input,
+    };
   }
 
   private flushThinking() {

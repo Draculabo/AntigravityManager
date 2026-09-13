@@ -54,6 +54,15 @@ The cache scope string describes configured requests, not verified grants for an
 - Enforce authentication and authorization in the operation that performs the protected action, not only in UI visibility or prompt/schema filtering.
 - Preserve protocol error semantics without returning raw provider secrets or internal implementation objects.
 
+OpenAI Chat Completions local `video_url` paths are disabled by default. The user can enable
+`proxy.experimental.allow_local_video_paths` in Settings; the running gateway reads this setting
+for every request, so no restart is required. Once enabled, the existing proxy API-key boundary is
+the only caller restriction and there is no directory allowlist: any authorized proxy client can
+request any regular file readable by the desktop process. The Settings description must keep this
+scope explicit. While the setting is disabled, `video_url` handling must not probe or read the local
+filesystem; explicit local path forms are rejected lexically and ambiguous non-URL strings retain
+the gateway's raw-Base64 fallback.
+
 ## Updates and external execution
 
 Installer, updater, shell, subprocess and binary-patching changes are high risk. Validate exact targets and arguments, preserve platform quoting rules, and avoid command construction from untrusted strings. Update sources and artifacts must retain the repository's existing integrity and signing expectations.

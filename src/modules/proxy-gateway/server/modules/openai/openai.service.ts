@@ -62,12 +62,14 @@ import { isGeminiImageModel } from '@/modules/proxy-gateway/server/shared/servic
 import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { validateOpenAIInputAudio } from './chat/openai-input-audio';
 import { validateOpenAIResponseFormat } from './chat/openai-response-format';
+import { getServerConfig } from '@/server/server-config';
 
 export type OpenAIOutputProtocol = 'chat-completions' | 'responses';
 
 export interface OpenAIResponsesExecutionContext {
   requestSessionId: string;
   responseId: string;
+  routingSessionId: string;
 }
 
 @Injectable()
@@ -99,12 +101,15 @@ export class OpenAIService extends BaseProxyService {
     validateOpenAIResponseFormat(request);
     const appliedVariantRequest = applyOpenAIModelVariant(request);
     const routedRequest = appliedVariantRequest.request;
-    const sessionKey = responsesContext
-      ? this.toOpenAISessionKey(responsesContext.requestSessionId)
+    const routingSessionKey = responsesContext
+      ? this.toOpenAISessionKey(responsesContext.routingSessionId)
       : this.extractOpenAISessionKey(request);
+    const signatureReadSessionKey = responsesContext
+      ? this.toOpenAISessionKey(responsesContext.requestSessionId)
+      : routingSessionKey;
     const responseSessionKey = responsesContext
       ? this.toOpenAISessionKey(responsesContext.responseId)
-      : sessionKey;
+      : routingSessionKey;
     const clientToolNames = extractOpenAIToolNames(routedRequest.tools);
 
     const routingModel = routedRequest.model.toLowerCase().includes('-image')
@@ -135,7 +140,7 @@ export class OpenAIService extends BaseProxyService {
       const token = await this.selectRetryToken(
         retryState,
         targetModel,
-        sessionKey,
+        routingSessionKey,
         isImageRequest,
         signal,
       );
@@ -159,7 +164,7 @@ export class OpenAIService extends BaseProxyService {
         : effectiveTargetModel;
 
       try {
-        const claudeRequest = convertOpenAIToClaude(accountRequest, sessionKey);
+        const claudeRequest = this.convertOpenAIToClaude(accountRequest, signatureReadSessionKey);
         const projectId = token.token.project_id ?? '';
         const requestUserAgent = await resolveRequestUserAgent();
         const geminiBody = transformClaudeRequestIn(
@@ -282,7 +287,10 @@ export class OpenAIService extends BaseProxyService {
             `OpenAI compatibility request hit project context issue, retrying without project: ${err.message}`,
           );
           try {
-            const claudeRequest = convertOpenAIToClaude(accountRequest, sessionKey);
+            const claudeRequest = this.convertOpenAIToClaude(
+              accountRequest,
+              signatureReadSessionKey,
+            );
             const requestUserAgent = await resolveRequestUserAgent();
             const fallbackBody = transformClaudeRequestIn(
               claudeRequest,
@@ -1063,7 +1071,9 @@ export class OpenAIService extends BaseProxyService {
     request: OpenAIChatRequest,
     signatureSessionKey?: string,
   ): ClaudeRequest {
-    return convertOpenAIToClaude(request, signatureSessionKey);
+    return convertOpenAIToClaude(request, signatureSessionKey, {
+      allowLocalVideoPaths: Boolean(getServerConfig()?.experimental?.allow_local_video_paths),
+    });
   }
 
   private convertClaudeToOpenAIResponse(

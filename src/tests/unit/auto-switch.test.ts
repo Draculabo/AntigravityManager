@@ -80,15 +80,15 @@ describe('AutoSwitchService', () => {
     vi.clearAllMocks();
   });
 
-  it('skips accounts whose Claude/GPT grouped quota bucket is depleted', async () => {
+  it('skips an otherwise better account whose Claude/GPT group is exactly at 5%', async () => {
     const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
     const { AutoSwitchService } =
       await import('@/modules/cloud-account/services/AutoSwitchService');
 
     vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
       createAccount('current', quotaWithClaudeGroup(1, 0.01)),
-      createAccount('model-high-group-low', quotaWithClaudeGroup(90, 0.02)),
-      createAccount('model-medium-group-healthy', quotaWithClaudeGroup(45, 0.8)),
+      createAccount('model-high-group-boundary', quotaWithClaudeGroup(90, 0.05)),
+      createAccount('model-medium-group-healthy', quotaWithClaudeGroup(45, 0.06)),
     ]);
 
     await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
@@ -180,7 +180,7 @@ describe('AutoSwitchService', () => {
     });
   });
 
-  it('uses the best quota in an alias group and keeps the threshold comparison strict', async () => {
+  it('uses the best quota in an alias group and treats each enabled group at 5% as depleted', async () => {
     const { AutoSwitchService } =
       await import('@/modules/cloud-account/services/AutoSwitchService');
 
@@ -188,7 +188,20 @@ describe('AutoSwitchService', () => {
       models: {
         'gemini-3.1-pro-low': { percentage: 0, resetTime: '' },
         'gemini-3.1-pro-high': { percentage: 80, resetTime: '' },
+      },
+    });
+    const accountAtBoundary = createAccount('at-boundary', {
+      models: {
+        'gemini-3.1-pro-low': { percentage: 0, resetTime: '' },
+        'gemini-3.1-pro-high': { percentage: 80, resetTime: '' },
         'gemini-3.1-flash-image': { percentage: 5, resetTime: '' },
+      },
+    });
+    const accountAboveBoundary = createAccount('above-boundary', {
+      models: {
+        'gemini-3.1-pro-low': { percentage: 0, resetTime: '' },
+        'gemini-3.1-pro-high': { percentage: 80, resetTime: '' },
+        'gemini-3.1-flash-image': { percentage: 6, resetTime: '' },
       },
     });
     const accountWithDepletedGroup = createAccount('depleted-group', {
@@ -200,11 +213,106 @@ describe('AutoSwitchService', () => {
 
     expect({
       healthySibling: AutoSwitchService.isAccountDepleted(accountWithHealthySibling),
+      atBoundary: AutoSwitchService.isAccountDepleted(accountAtBoundary),
+      aboveBoundary: AutoSwitchService.isAccountDepleted(accountAboveBoundary),
       depletedGroup: AutoSwitchService.isAccountDepleted(accountWithDepletedGroup),
     }).toEqual({
       healthySibling: false,
+      atBoundary: true,
+      aboveBoundary: false,
       depletedGroup: true,
     });
+  });
+
+  it.each([
+    ['weekly', 0.05],
+    ['5h', 0.05],
+    ['weekly', 0.054],
+  ])('treats a relevant %s quota bucket at rounded 5%% as depleted', async (window, fraction) => {
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+    const account = createAccount(`rounded-boundary-${window}-${fraction}`, {
+      models: {
+        'gemini-3.5-flash': { percentage: 90, resetTime: '' },
+      },
+      quota_groups: [
+        {
+          display_name: 'Gemini models',
+          buckets: [
+            {
+              bucket_id: `gemini-${window}`,
+              window,
+              remaining_fraction: fraction,
+              reset_time: '',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(AutoSwitchService.isAccountDepleted(account)).toBe(true);
+  });
+
+  it('keeps rounded 6% and unrelated 5% quota buckets healthy', async () => {
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+    const roundedSix = createAccount('rounded-six', {
+      models: {
+        'gemini-3.5-flash': { percentage: 90, resetTime: '' },
+      },
+      quota_groups: [
+        {
+          display_name: 'Gemini models',
+          buckets: [
+            {
+              bucket_id: 'gemini-weekly',
+              window: 'weekly',
+              remaining_fraction: 0.055,
+              reset_time: '',
+            },
+          ],
+        },
+      ],
+    });
+    const unrelatedBoundary = createAccount('unrelated-boundary', {
+      models: {
+        'gemini-3.5-flash': { percentage: 90, resetTime: '' },
+      },
+      quota_groups: [
+        {
+          display_name: 'Claude and GPT models',
+          buckets: [
+            {
+              bucket_id: '3p-weekly',
+              window: 'weekly',
+              remaining_fraction: 0.05,
+              reset_time: '',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect({
+      roundedSix: AutoSwitchService.isAccountDepleted(roundedSix),
+      unrelatedBoundary: AutoSwitchService.isAccountDepleted(unrelatedBoundary),
+    }).toEqual({
+      roundedSix: false,
+      unrelatedBoundary: false,
+    });
+  });
+
+  it('returns no best account when the only candidate is exactly at the depletion boundary', async () => {
+    const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createAccount('current', quotaWithClaudeGroup(50, 0.5)),
+      createAccount('only-boundary-candidate', quotaWithClaudeGroup(90, 0.05)),
+    ]);
+
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toBeNull();
   });
 
   it('matches depleted quota groups for models-prefixed identifiers', async () => {

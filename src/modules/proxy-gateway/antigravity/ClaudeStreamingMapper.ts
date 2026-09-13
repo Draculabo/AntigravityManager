@@ -40,7 +40,7 @@ interface StreamMessageStart {
   model: string;
   stop_reason: null;
   stop_sequence: null;
-  usage: Usage | undefined;
+  usage: Usage;
 }
 
 interface StreamErrorPayload {
@@ -113,6 +113,8 @@ export class StreamingState {
   public groundingChunks: GroundingChunk[] | null = null;
 
   private parseErrorCount: number = 0;
+  private registeredToolNames: readonly string[] = [];
+  private textDeltaEmittedThisTurn: boolean = false;
 
   constructor(
     public readonly signatureContext: {
@@ -135,7 +137,7 @@ export class StreamingState {
     if (this.messageStartSent) return '';
 
     const usageMeta = response.usageMetadata;
-    const usage: Usage | undefined = usageMeta
+    const usage: Usage = usageMeta
       ? {
           input_tokens: usageMeta.total_input_tokens ?? usageMeta.promptTokenCount ?? 0,
           output_tokens: usageMeta.total_output_tokens ?? usageMeta.candidatesTokenCount ?? 0,
@@ -150,7 +152,7 @@ export class StreamingState {
             usageMeta.thoughtsTokenCount ??
             0,
         }
-      : fallbackUsage;
+      : (fallbackUsage ?? { input_tokens: 0, output_tokens: 0 });
 
     const message: StreamMessageStart = {
       id: toAnthropicMessageId(response.responseId),
@@ -357,6 +359,32 @@ export class StreamingState {
   public markToolUsed() {
     this.usedTool = true;
     this.hasContent = true;
+  }
+
+  public setRegisteredToolNames(names: readonly string[]): void {
+    this.registeredToolNames = [...names];
+  }
+
+  public findRegisteredToolName(name: string): string | undefined {
+    return this.registeredToolNames.find(
+      (candidate) => candidate.toLowerCase() === name.toLowerCase(),
+    );
+  }
+
+  public hasRegisteredToolNames(): boolean {
+    return this.registeredToolNames.length > 0;
+  }
+
+  public hasUsedTool(): boolean {
+    return this.usedTool;
+  }
+
+  public hasEmittedTextDelta(): boolean {
+    return this.textDeltaEmittedThisTurn;
+  }
+
+  public markTextDeltaEmitted(): void {
+    this.textDeltaEmittedThisTurn = true;
   }
 
   public currentBlockType(): BlockType {
@@ -592,13 +620,87 @@ export class PartProcessor {
       return chunks;
     }
 
+    const recoveredToolCall = this.tryRecoverLeakedToolCall(text);
+    if (recoveredToolCall) {
+      return [...chunks, ...recoveredToolCall];
+    }
+
     // Normal text
     if (this.state.currentBlockType() !== 'Text') {
       chunks.push(...this.state.startBlock('Text', { type: 'text', text: '' }));
     }
+    this.state.markTextDeltaEmitted();
     chunks.push(this.state.emitDelta({ type: 'text_delta', text: text }));
 
     return chunks;
+  }
+
+  private tryRecoverLeakedToolCall(text: string): string[] | null {
+    if (!this.state.hasRegisteredToolNames()) {
+      return null;
+    }
+
+    const prefix = 'call:default_api:';
+    const trimmed = text.trim();
+    if (!trimmed.startsWith(prefix)) {
+      return null;
+    }
+
+    const rest = trimmed.slice(prefix.length);
+    const delimiterIndex = rest.search(/[({]/u);
+    const toolNameEnd = delimiterIndex === -1 ? rest.length : delimiterIndex;
+    const toolName = rest.slice(0, toolNameEnd).trim();
+    if (!toolName) {
+      return null;
+    }
+
+    const argumentText = rest.slice(toolNameEnd).trim();
+    if (argumentText && !argumentText.startsWith('{') && !argumentText.startsWith('(')) {
+      return null;
+    }
+
+    const registeredToolName = this.state.findRegisteredToolName(toolName);
+    if (!registeredToolName || this.state.hasUsedTool() || this.state.hasEmittedTextDelta()) {
+      return null;
+    }
+
+    const input = this.parseLooseJsonObject(argumentText);
+    if (!input) {
+      return null;
+    }
+
+    logger.warn(`[Claude-SSE] Recovered leaked tool call for ${registeredToolName}`);
+    return this.processFunctionCall({ name: registeredToolName, args: input });
+  }
+
+  private parseLooseJsonObject(argumentText: string): Record<string, unknown> | null {
+    if (!argumentText) {
+      return {};
+    }
+
+    const parseObject = (value: string): Record<string, unknown> | null => {
+      try {
+        const parsed: unknown = JSON.parse(value);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return null;
+        }
+        return parsed as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    };
+
+    const strict = parseObject(argumentText);
+    if (strict) {
+      return strict;
+    }
+
+    if (!argumentText.startsWith('{') || !argumentText.endsWith('}')) {
+      return null;
+    }
+
+    const quotedKeys = argumentText.replace(/([{,]\s*)([A-Za-z_$][\w$-]*)(\s*:)/gu, '$1"$2"$3');
+    return parseObject(quotedKeys);
   }
 
   private processFunctionCall(fc: FunctionCall, signature?: string): string[] {

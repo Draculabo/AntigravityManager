@@ -49,7 +49,7 @@ describe('cleanJsonSchema', () => {
       ((properties.list.items as Record<string, unknown>).properties as Record<string, unknown>)
         .excluded,
     ).toBeUndefined();
-    expect(properties.invalidItems.items).toBeUndefined();
+    expect(properties.invalidItems.items).toEqual({ type: 'string' });
   });
 
   it('flattens object definitions without copying malformed definition arrays', () => {
@@ -101,13 +101,88 @@ describe('cleanJsonSchema', () => {
     [{ const: 5 }, { type: 'integer', enum: ['5'] }],
     [{ const: 1.5 }, { type: 'number', enum: ['1.5'] }],
     [{ const: true }, { type: 'boolean', enum: ['true'] }],
-    [{ const: ['a', 1] }, { type: 'array', enum: ['["a",1]'] }],
+    [{ const: ['a', 1] }, { type: 'array', items: { type: 'string' }, enum: ['["a",1]'] }],
     [{ const: { kind: 'element' } }, { type: 'object', enum: ['{"kind":"element"}'] }],
     [{ const: null }, { enum: ['null'] }],
   ])('preserves const semantics as a Gemini-compatible enum', (schema, expected) => {
     cleanJsonSchema(schema);
 
     expect(schema).toEqual(expected);
+  });
+
+  it.each([
+    [{ type: 'array' }, { type: 'array', items: { type: 'string' } }],
+    [{ type: 'ArRaY' }, { type: 'array', items: { type: 'string' } }],
+    [
+      { type: 'array', items: false },
+      { type: 'array', items: { type: 'string' } },
+    ],
+    [
+      { type: 'array', items: 'invalid' },
+      { type: 'array', items: { type: 'string' } },
+    ],
+  ])('supplies Gemini-compatible items to an itemless array schema', (schema, expected) => {
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual(expected);
+  });
+
+  it('preserves valid array items instead of replacing them with the fallback', () => {
+    const schema: JsonSchemaMap = { type: 'array', items: { type: 'number' } };
+
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual({ type: 'array', items: { type: 'number' } });
+  });
+
+  it.each(['allOf', 'anyOf', 'oneOf'] as const)(
+    'preserves valid array items supplied by a collapsed %s branch',
+    (keyword) => {
+      const schema: JsonSchemaMap = {
+        type: 'array',
+        [keyword]: [{ type: 'array', items: { type: 'number' } }],
+      };
+
+      cleanJsonSchema(schema);
+
+      expect(schema).toEqual({ type: 'array', items: { type: 'number' } });
+    },
+  );
+
+  it('supplies fallback items to an array derived from a collapsed branch', () => {
+    const schema: JsonSchemaMap = {
+      anyOf: [{ type: 'array' }],
+    };
+
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual({ type: 'array', items: { type: 'string' } });
+  });
+
+  it('supplies fallback items to an itemless array at arbitrary nesting', () => {
+    const schema: JsonSchemaMap = {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'object',
+          properties: {
+            where: {
+              type: 'array',
+              items: { type: 'array' },
+            },
+          },
+        },
+      },
+    };
+
+    cleanJsonSchema(schema);
+
+    expect(
+      (
+        (((schema.properties as JsonSchemaMap).query as JsonSchemaMap).properties as JsonSchemaMap)
+          .where as JsonSchemaMap
+      ).items,
+    ).toEqual({ type: 'array', items: { type: 'string' } });
   });
 
   it('does not overwrite an explicit const type and does not duplicate an existing value', () => {

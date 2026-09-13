@@ -76,17 +76,44 @@ describe('OpenAIResponsesStoreController', () => {
   it('never retains a response the caller asked not to store', async () => {
     const { chat, store } = createSurface(
       chatResponse('resp_transient', 'gone'),
-      chatResponse('resp_next', 'still chained'),
+      chatResponse('resp_next', 'must not run'),
     );
-    await chat.responses(
-      { input: 'a question', model: 'gpt-4o', store: false },
-      createReplyMock() as never,
-    );
+    const created = createReplyMock();
+    await chat.responses({ input: 'a question', model: 'gpt-4o', store: false }, created as never);
+    const responseId = (
+      (created.send as ReturnType<typeof vi.fn>).mock.calls[0][0] as { id: string }
+    ).id;
     const retrieved = createReplyMock();
 
-    store.getResponse('resp_transient', retrieved as never);
+    store.getResponse(responseId, retrieved as never);
 
     expect(retrieved.status).toHaveBeenCalledWith(404);
+
+    const continued = createReplyMock();
+    await chat.responses(
+      { input: 'continue', previous_response_id: responseId },
+      continued as never,
+    );
+    expect(continued.status).toHaveBeenCalledWith(404);
+  });
+
+  it('retains responses when store is omitted or explicitly true', async () => {
+    for (const storeValue of [undefined, true]) {
+      const { chat, store } = createSurface(chatResponse('resp_kept', 'kept'));
+      const created = createReplyMock();
+      await chat.responses(
+        { input: 'question', model: 'gpt-4o', store: storeValue },
+        created as never,
+      );
+      const responseId = (
+        (created.send as ReturnType<typeof vi.fn>).mock.calls[0][0] as { id: string }
+      ).id;
+      const retrieved = createReplyMock();
+
+      store.getResponse(responseId, retrieved as never);
+
+      expect(retrieved.status).toHaveBeenCalledWith(200);
+    }
   });
 
   it('does not create continuation state for an incomplete non-stream response', async () => {

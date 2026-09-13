@@ -532,6 +532,30 @@ print(response.choices[0].message.content)`;
               }
             />
           </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+            <div className="space-y-1">
+              <Label htmlFor="proxy-allow-local-video-paths">
+                {t('proxy.config.allow-local-video-paths')}
+              </Label>
+              <p className="text-muted-foreground text-xs">
+                {t('proxy.config.allow-local-video-paths-desc')}
+              </p>
+            </div>
+            <Switch
+              id="proxy-allow-local-video-paths"
+              checked={proxyConfig.experimental.allow_local_video_paths}
+              onCheckedChange={(checked) =>
+                updateProxyConfig({
+                  ...proxyConfig,
+                  experimental: {
+                    ...proxyConfig.experimental,
+                    allow_local_video_paths: checked,
+                  },
+                })
+              }
+            />
+          </div>
         </CardContent>
       </Card>
 

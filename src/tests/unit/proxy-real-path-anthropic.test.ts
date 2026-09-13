@@ -86,6 +86,33 @@ describe('real request path, Anthropic messages surface', () => {
     expect((reply.body as { id: string }).id).toBe('msg_upstream-response-1');
   });
 
+  it('recovers a registered unary tool call leaked as text', async () => {
+    const upstream = createUpstream({
+      generate: geminiTextResponse('call:default_api:read{"file_path":"C:/tmp/a.txt"}'),
+    });
+    const lease = createLease([createAccount('acc-1')]);
+    const { anthropicService } = createGateway(upstream, lease);
+
+    const response = await anthropicService.handleAnthropicMessages({
+      max_tokens: 32,
+      messages: [{ content: 'read it', role: 'user' }],
+      model: 'claude-sonnet-4-5',
+      stream: false,
+      tools: [{ name: 'Read', input_schema: { type: 'object' } }],
+    } as never);
+
+    expect(response).toMatchObject({
+      content: [
+        {
+          type: 'tool_use',
+          name: 'Read',
+          input: { file_path: 'C:/tmp/a.txt' },
+        },
+      ],
+      stop_reason: 'tool_use',
+    });
+  });
+
   it('returns a minimal non-empty response when both direct and streamed upstream responses are empty', async () => {
     const upstream = createUpstream({ generate: {}, streamFrames: [] });
     const lease = createLease([createAccount('acc-1')]);
@@ -148,6 +175,39 @@ describe('real request path, Anthropic messages surface', () => {
     expect(payload).toContain('partial ');
     expect(payload).toContain('answer');
     expect(payload).toContain('"id":"msg_upstream-response-1"');
+  });
+
+  it('recovers a registered streamed tool leak and supplies zero start usage', async () => {
+    const leaked = 'call:default_api:Read{file_path:"C:/tmp/a.txt"}';
+    const upstream = createUpstream({
+      streamFrames: [
+        geminiStreamFrame({
+          candidates: [
+            { content: { parts: [{ text: leaked }], role: 'model' }, finishReason: 'STOP' },
+          ],
+          modelVersion: 'gemini-3-flash',
+          responseId: 'upstream-response-1',
+        }),
+      ],
+    });
+    const lease = createLease([createAccount('acc-1')]);
+    const { anthropicService } = createGateway(upstream, lease);
+
+    const result = await anthropicService.handleAnthropicMessages({
+      max_tokens: 32,
+      messages: [{ content: 'read it', role: 'user' }],
+      model: 'claude-sonnet-4-5',
+      stream: true,
+      tools: [{ name: 'Read', input_schema: { type: 'object' } }],
+    } as never);
+    const payload = await collect(result as Observable<string>);
+
+    expect(payload).toContain('"usage":{"input_tokens":0,"output_tokens":0}');
+    expect(payload).toContain('"type":"tool_use"');
+    expect(payload).toContain('"name":"Read"');
+    expect(payload).toContain('"partial_json":"{\\"file_path\\":\\"C:/tmp/a.txt\\"}"');
+    expect(payload).toContain('"stop_reason":"tool_use"');
+    expect(payload).not.toContain(`"type":"text_delta","text":"${leaked}`);
   });
 
   it('moves to the next account when the first one is rejected upstream', async () => {
@@ -419,6 +479,17 @@ describe('real request path, Anthropic messages surface', () => {
     });
     const lease = createLease([createAccount('acc-1'), createAccount('acc-2')]);
     const { anthropicService } = createGateway(upstream, lease);
+    returnedStream.write(
+      Buffer.from(
+        `data: ${JSON.stringify(
+          geminiStreamFrame({
+            candidates: [{ content: { parts: [{ text: 'ready' }], role: 'model' } }],
+            modelVersion: 'gemini-3-flash',
+            responseId: 'upstream-response-1',
+          }),
+        )}\n\n`,
+      ),
+    );
 
     const result = await anthropicService.handleAnthropicMessages({
       max_tokens: 16,

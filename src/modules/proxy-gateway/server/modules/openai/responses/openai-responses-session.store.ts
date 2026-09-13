@@ -9,6 +9,8 @@ export interface OpenAIResponsesSession {
   inputItems: unknown[];
   instructions?: string;
   model: string;
+  /** Stable account-routing identity shared by every response in one lineage. */
+  routingSessionId?: string;
   /** The completed Responses payload, so `GET /v1/responses/{id}` can replay it. */
   response?: Record<string, unknown>;
   /** What the request asked for. `false` means the payload is never retained. */
@@ -23,6 +25,7 @@ interface OpenAIResponsesSessionNode {
   readonly responseOutput: readonly unknown[];
   readonly instructions?: string;
   readonly model: string;
+  readonly routingSessionId?: string;
   readonly tools?: OpenAIChatRequest['tools'];
   readonly toolCallItems: readonly unknown[];
 }
@@ -42,6 +45,7 @@ export interface OpenAIResponsesSessionParent {
 
 export interface OpenAIResponsesSessionWithParent {
   parent: OpenAIResponsesSessionParent;
+  routingSessionId: string;
   session: OpenAIResponsesSession;
 }
 
@@ -52,6 +56,7 @@ export interface SaveOpenAIResponsesSessionDelta {
   parent?: OpenAIResponsesSessionParent | null;
   response?: Record<string, unknown>;
   responseOutput: unknown[];
+  routingSessionId?: string;
   store?: boolean;
   tools?: OpenAIChatRequest['tools'];
   toolCallItems?: unknown[];
@@ -112,6 +117,7 @@ export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionSt
 
     return {
       parent: createOpenAIResponsesSessionParent(stored.node),
+      routingSessionId: normalizeRoutingSessionId(stored.node.routingSessionId) ?? responseId,
       session: materializeOpenAIResponsesSession(stored),
     };
   }
@@ -126,6 +132,7 @@ export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionSt
         model: session.model,
         parent: null,
         responseOutput: [],
+        routingSessionId: normalizeRoutingSessionId(session.routingSessionId) ?? responseId,
         tools: session.tools,
         toolCallItems: collectResponsesToolCallItems([
           ...boundedToolCallItems,
@@ -152,6 +159,7 @@ export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionSt
         model: delta.model,
         parent: parentNode ?? null,
         responseOutput,
+        routingSessionId: normalizeRoutingSessionId(delta.routingSessionId) ?? responseId,
         tools: delta.tools,
         toolCallItems: collectResponsesToolCallItems([
           ...toolCallItems,
@@ -191,6 +199,7 @@ function cloneOpenAIResponsesSession(session: OpenAIResponsesSession): OpenAIRes
     inputItems: cloneResponsesItems(session.inputItems),
     instructions: session.instructions,
     model: session.model,
+    routingSessionId: session.routingSessionId,
     response: cloneStoredResponse(session.response),
     store: session.store,
     tools: cloneResponsesTools(session.tools),
@@ -238,6 +247,7 @@ function materializeOpenAIResponsesSession(
     inputItems,
     instructions: stored.node.instructions,
     model: stored.node.model,
+    routingSessionId: stored.node.routingSessionId,
     response: cloneStoredResponse(stored.response),
     store: stored.store,
     tools: cloneResponsesTools(stored.node.tools),
@@ -278,6 +288,7 @@ function reviveStoredOpenAIResponsesSession(value: unknown): StoredOpenAIRespons
       model: legacy.model,
       parent: null,
       responseOutput: [],
+      routingSessionId: legacy.routingSessionId,
       tools: legacy.tools,
       toolCallItems: collectResponsesToolCallItems([...boundedToolCallItems, ...legacy.inputItems]),
     }),
@@ -313,6 +324,7 @@ function reviveOpenAIResponsesSessionNode(value: unknown): OpenAIResponsesSessio
           : undefined,
       model,
       responseOutput: boundResponsesInputItems(responseOutput),
+      routingSessionId: normalizeRoutingSessionId(Reflect.get(current, 'routingSessionId')),
       tools: Reflect.get(current, 'tools') as OpenAIChatRequest['tools'],
       toolCallItems: boundResponsesInputItems(
         Array.isArray(rawToolCallItems) ? rawToolCallItems : [],
@@ -390,30 +402,56 @@ export interface PreparedOpenAIResponsesSessionInput {
   resetParent: boolean;
 }
 
-/** Derives the target-era Responses delta without importing later semantic replay heuristics. */
+/** Derives the retained suffix while rebuilding the complete input needed by the provider. */
 export function prepareOpenAIResponsesSessionInput(
   history: unknown[],
   newInput: unknown[],
   cachedToolCalls: unknown[] = [],
+  retainDelta = true,
 ): PreparedOpenAIResponsesSessionInput {
   const resetParent = newInput.some(isCompactionItem);
   const exactReplay = history.length > 0 && startsWithItems(newInput, history);
-  const replayedThrough = resetParent || exactReplay ? -1 : findLastSharedItemId(history, newInput);
-  const deltaSource =
-    resetParent || history.length === 0
-      ? [...newInput]
-      : exactReplay
-        ? newInput.slice(history.length)
-        : replayedThrough >= 0
-          ? newInput.slice(replayedThrough + 1)
-          : [...newInput];
+  const semanticPrefixReplay =
+    history.length > 0 &&
+    newInput.length >= history.length &&
+    history.every((item, index) => responsesItemsSemanticallyEqual(item, newInput[index]));
+  const replayedThrough =
+    resetParent || exactReplay || semanticPrefixReplay
+      ? -1
+      : findLastSharedItemId(history, newInput);
+  const semanticSuffixIndex =
+    history.length > 0 &&
+    !resetParent &&
+    !exactReplay &&
+    !semanticPrefixReplay &&
+    replayedThrough < 0
+      ? findLastSemanticItemIndex(newInput, history[history.length - 1])
+      : -1;
+  let useNewInputAsMerged = false;
+  let deltaSource: unknown[];
+  if (resetParent || history.length === 0) {
+    deltaSource = [...newInput];
+  } else if (exactReplay || semanticPrefixReplay) {
+    deltaSource = newInput.slice(history.length);
+  } else if (replayedThrough >= 0) {
+    deltaSource = newInput.slice(replayedThrough + 1);
+  } else if (semanticSuffixIndex >= 0) {
+    deltaSource = newInput.slice(semanticSuffixIndex + 1);
+  } else if (newInput.length >= history.length) {
+    deltaSource = newInput.length > 0 ? [newInput[newInput.length - 1]] : [];
+    useNewInputAsMerged = true;
+  } else {
+    deltaSource = [...newInput];
+  }
   const delta = mergeOpenAIResponsesInputItems([], deltaSource, cachedToolCalls);
   const merged =
     resetParent || history.length === 0
       ? [...delta]
-      : mergeOpenAIResponsesInputItems(history, delta, cachedToolCalls);
+      : useNewInputAsMerged
+        ? mergeOpenAIResponsesInputItems([], newInput, cachedToolCalls)
+        : mergeOpenAIResponsesInputItems(history, delta, cachedToolCalls);
 
-  return { delta, merged, resetParent };
+  return { delta: retainDelta ? delta : [], merged, resetParent };
 }
 
 function startsWithItems(items: unknown[], prefix: unknown[]): boolean {
@@ -429,6 +467,37 @@ function findLastSharedItemId(history: unknown[], newInput: unknown[]): number {
     }
   }
   return -1;
+}
+
+function findLastSemanticItemIndex(items: unknown[], expected: unknown): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (responsesItemsSemanticallyEqual(items[index], expected)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function responsesItemsSemanticallyEqual(left: unknown, right: unknown): boolean {
+  if (!isResponsesItemRecord(left) || !isResponsesItemRecord(right)) {
+    return isEqual(left, right);
+  }
+
+  return (
+    isEqual(Reflect.get(left, 'role'), Reflect.get(right, 'role')) &&
+    isEqual(Reflect.get(left, 'type'), Reflect.get(right, 'type')) &&
+    isEqual(resolveSemanticItemContent(left), resolveSemanticItemContent(right))
+  );
+}
+
+function resolveSemanticItemContent(item: Record<PropertyKey, unknown>): unknown {
+  return Object.prototype.hasOwnProperty.call(item, 'content')
+    ? Reflect.get(item, 'content')
+    : Reflect.get(item, 'text');
+}
+
+function isResponsesItemRecord(value: unknown): value is Record<PropertyKey, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function resolveItemId(item: unknown): string | undefined {
@@ -591,4 +660,8 @@ function getStringField(item: unknown, field: string): string | null {
   }
   const value = Reflect.get(item, field);
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function normalizeRoutingSessionId(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }

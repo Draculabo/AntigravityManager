@@ -108,6 +108,7 @@ export type ContentBlock =
   | ImageBlock
   | DocumentBlock
   | AudioBlock
+  | VideoBlock
   | ToolUseBlock
   | ToolResultBlock
   | RedactedThinkingBlock;
@@ -151,6 +152,21 @@ export interface DocumentBlock {
 
 export interface AudioBlock {
   type: 'audio';
+  source:
+    | {
+        type: 'base64';
+        media_type: string;
+        data: string;
+      }
+    | {
+        type: 'url';
+        media_type: string;
+        url: string;
+      };
+}
+
+export interface VideoBlock {
+  type: 'video';
   source:
     | {
         type: 'base64';

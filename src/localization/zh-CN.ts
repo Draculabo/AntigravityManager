@@ -695,6 +695,9 @@ const zhCn = {
       cloud_code_meta: 'Cloud Code 元数据块',
       cloud_code_meta_desc:
         '注入非标准 __cloudCodeMeta SSE 数据块，用于兼容旧版 Cloud Code。严格 OpenAI 客户端应保持关闭。',
+      'allow-local-video-paths': '允许本地视频路径',
+      'allow-local-video-paths-desc':
+        '允许 API 请求通过 video_url 读取当前用户可访问的本地文件。仅在信任所有代理调用方时开启。',
       local_access: '局域网访问:',
       select_ip: '选择 IP',
       no_token_warning: '⚠️ 未设置 API 密钥。服务对公网开放！',

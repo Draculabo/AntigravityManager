@@ -92,6 +92,7 @@ describe('Responses continuation across a restart', () => {
     expect(before.handleChatCompletions.mock.calls[0]?.[3]).toEqual({
       requestSessionId: previousResponseId,
       responseId: previousResponseId,
+      routingSessionId: previousResponseId,
     });
 
     const after = createController(createStore(), chatResponse('resp_restart_2', 'It is 42'));
@@ -112,8 +113,76 @@ describe('Responses continuation across a restart', () => {
     expect(after.handleChatCompletions.mock.calls[0]?.[3]).toEqual({
       requestSessionId: previousResponseId,
       responseId: childResponseId,
+      routingSessionId: previousResponseId,
     });
     expect(childResponseId).not.toBe(previousResponseId);
+  });
+
+  it('persists an explicit routing identity across restart and continuation', async () => {
+    const writer = createStore();
+    const root = createController(writer, chatResponse('resp_routing_root', 'root'));
+    const rootReply = createReplyMock();
+    await root.controller.responses(
+      { input: 'root', model: 'gpt-4o', session_id: '  client-routing  ' },
+      rootReply as never,
+    );
+    const rootResponseId = getSentResponseId(rootReply);
+    expect(root.handleChatCompletions.mock.calls[0]?.[3]).toEqual({
+      requestSessionId: rootResponseId,
+      responseId: rootResponseId,
+      routingSessionId: 'client-routing',
+    });
+    await writer.flush();
+
+    const restarted = createStore();
+    expect(restarted.getWithParent(rootResponseId)?.routingSessionId).toBe('client-routing');
+    const child = createController(restarted, chatResponse('resp_routing_child', 'child'));
+    const childReply = createReplyMock();
+    await child.controller.responses(
+      { input: 'continue', previous_response_id: rootResponseId, session_id: '   ' },
+      childReply as never,
+    );
+
+    expect(child.handleChatCompletions.mock.calls[0]?.[3]).toMatchObject({
+      requestSessionId: rootResponseId,
+      routingSessionId: 'client-routing',
+    });
+    expect(restarted.getWithParent(getSentResponseId(childReply))?.routingSessionId).toBe(
+      'client-routing',
+    );
+  });
+
+  it('resolves routing identity priority without changing signature identity', () => {
+    const store = createStore();
+    store.save('resp_parent', {
+      inputItems: [{ type: 'message', role: 'user', content: 'root' }],
+      model: 'gpt-4o',
+      routingSessionId: 'stored-routing',
+    });
+    const { controller } = createController(store);
+
+    const inherited = controller.prepareResponsesRequest({
+      input: 'continue',
+      previous_response_id: 'resp_parent',
+      session_id: '   ',
+    });
+    expect(inherited).toMatchObject({
+      requestSessionId: 'resp_parent',
+      routingSessionId: 'stored-routing',
+    });
+
+    const explicit = controller.prepareResponsesRequest({
+      input: 'continue',
+      previous_response_id: 'resp_parent',
+      session_id: ' explicit-routing ',
+    });
+    expect(explicit).toMatchObject({
+      requestSessionId: 'resp_parent',
+      routingSessionId: 'explicit-routing',
+    });
+
+    const root = controller.prepareResponsesRequest({ input: 'root', session_id: '   ' });
+    expect(root?.routingSessionId).toBe(root?.responseId);
   });
 
   it('stores only replay deltas while sibling HTTP branches remain isolated', async () => {
@@ -157,6 +226,12 @@ describe('Responses continuation across a restart', () => {
     expect(branchAHistory).not.toContain('branch b request');
     expect(branchBHistory).toContain('branch b request');
     expect(branchBHistory).not.toContain('branch a request');
+    expect(store.getWithParent(getSentResponseId(branchAReply))?.routingSessionId).toBe(
+      rootResponseId,
+    );
+    expect(store.getWithParent(getSentResponseId(branchBReply))?.routingSessionId).toBe(
+      rootResponseId,
+    );
   });
 
   it('ignores legacy inputs during previous_response_id continuation without rewriting them', async () => {
@@ -170,6 +245,7 @@ describe('Responses continuation across a restart', () => {
     await writer.flush();
 
     const restarted = createStore();
+    expect(restarted.getWithParent('resp_legacy')?.routingSessionId).toBe('resp_legacy');
     const after = createController(restarted, chatResponse('resp_continued', '42'));
     await after.controller.responses(
       { previous_response_id: 'resp_legacy', input: 'Add one.' },
@@ -246,6 +322,11 @@ describe('Responses continuation across a restart', () => {
                     },
                   ],
                 },
+                {
+                  type: 'message',
+                  role: 'assistant',
+                  content: 'Prior answer.',
+                },
               ],
             },
           },
@@ -270,6 +351,7 @@ describe('Responses continuation across a restart', () => {
         role: 'user',
         content: '[historical image omitted]\n[historical audio omitted]',
       },
+      { role: 'assistant', content: 'Prior answer.' },
       { role: 'user', content: 'Continue safely.' },
     ]);
   });
@@ -451,6 +533,38 @@ describe('Responses continuation across a restart', () => {
     expect(damaged.handleChatCompletions).not.toHaveBeenCalled();
     expect(damagedReply.status).toHaveBeenCalledWith(404);
     expect(intact.handleChatCompletions).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads a parent-linked legacy node without a routing identity', () => {
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        entries: [
+          {
+            key: 'resp_legacy_node',
+            updatedAt: Date.now(),
+            value: {
+              node: {
+                parent: null,
+                inputDelta: [{ type: 'message', role: 'user', content: 'legacy' }],
+                responseOutput: [],
+                model: 'gpt-4o',
+                toolCallItems: [],
+              },
+            },
+          },
+        ],
+      }),
+      'utf8',
+    );
+
+    const legacy = createStore().getWithParent('resp_legacy_node');
+
+    expect(legacy?.routingSessionId).toBe('resp_legacy_node');
+    expect(legacy?.session.inputItems).toEqual([
+      { type: 'message', role: 'user', content: 'legacy' },
+    ]);
   });
 
   it('writes nothing outside an explicit path while the tests run', () => {

@@ -735,14 +735,22 @@ function buildContents(
           part.thought_signature = block.signature;
         }
         parts.push(part);
-      } else if (block.type === 'image' || block.type === 'document' || block.type === 'audio') {
-        // Images and documents differ only in what the client called them; the
-        // provider takes both as one inline part carrying its own MIME type.
+      } else if (
+        block.type === 'image' ||
+        block.type === 'document' ||
+        block.type === 'audio' ||
+        block.type === 'video'
+      ) {
+        // Media blocks differ only in what the client called them; the provider
+        // takes inline bytes in one part carrying its own MIME type.
         if (block.source.type === 'base64') {
           parts.push({
             inlineData: { mimeType: block.source.media_type, data: block.source.data },
           });
-        } else if (block.type === 'audio' && block.source.type === 'url') {
+        } else if (
+          (block.type === 'audio' || block.type === 'video') &&
+          block.source.type === 'url'
+        ) {
           parts.push({
             fileData: { mimeType: block.source.media_type, fileUri: block.source.url },
           });
@@ -800,7 +808,8 @@ function buildContents(
             if (
               (content.type === 'image' ||
                 content.type === 'document' ||
-                content.type === 'audio') &&
+                content.type === 'audio' ||
+                content.type === 'video') &&
               content.source.type === 'base64'
             ) {
               extraParts.push({
@@ -809,7 +818,10 @@ function buildContents(
                   data: content.source.data,
                 },
               });
-            } else if (content.type === 'audio' && content.source.type === 'url') {
+            } else if (
+              (content.type === 'audio' || content.type === 'video') &&
+              content.source.type === 'url'
+            ) {
               extraParts.push({
                 fileData: {
                   mimeType: content.source.media_type,
@@ -845,7 +857,13 @@ function buildContents(
       const hasThought = parts.some((p) => p.thought === true);
       if (!hasThought) parts.unshift({ text: 'Thinking...', thought: true });
     }
-    if (parts.length > 0) contents.push({ role, parts });
+    if (parts.length > 0) {
+      contents.push({ role, parts });
+    } else if (role === 'user') {
+      // Gemini requires user/model role rotation. Preserve an otherwise empty
+      // user turn after unsupported or blocked content is removed.
+      contents.push({ role, parts: [{ text: ' ' }] });
+    }
   }
 
   if (placeholderUsage) {

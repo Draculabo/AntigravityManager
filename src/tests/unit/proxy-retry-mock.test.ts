@@ -1,7 +1,10 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import axios, { AxiosError } from 'axios';
 import { EventEmitter } from 'events';
-import { Readable } from 'node:stream';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { PassThrough, Readable } from 'node:stream';
 import { AnthropicService } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.service';
 import { GeminiService } from '../../modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { OpenAIService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
@@ -16,6 +19,7 @@ import { GenerationConstraintsService } from '../../modules/proxy-gateway/server
 import { ModelRoutingService } from '../../modules/proxy-gateway/server/shared/services/model-routing.service';
 import { ProxyRetryService } from '../../modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import { proxyModelAvailabilityStore } from '../../modules/proxy-gateway/server/shared/services/model-availability.service';
+import type { OpenAIChatRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
 // The three services the protocol services used to build for themselves. Real instances:
 // these tests drive the retry path, so a placeholder would change what is under test.
@@ -240,16 +244,31 @@ describe('ProxyService Empty Stream Retry Logic', () => {
 
   it('preserves every part from a multi-part Anthropic stream event', async () => {
     const service = new TestableAnthropicService();
-    const stream = new EventEmitter();
+    const stream = new PassThrough();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
 
-    const result = (await service.handleAnthropicMessages({
+    const resultPromise = service.handleAnthropicMessages({
       model: 'gemini-3.5-flash',
       stream: true,
       max_tokens: 256,
       messages: [{ role: 'user', content: 'hello' }],
-    } as any)) as Observable<string>;
+    } as any);
+
+    const payload = JSON.stringify({
+      response: {
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'reasoning', thought: true }, { text: 'final answer' }],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+      },
+    });
+    stream.end(Buffer.from(`data: ${payload}\n\n`));
+    const result = (await resultPromise) as Observable<string>;
     const receivedChunks: string[] = [];
     const done = new Promise<void>((resolve, reject) => {
       result.subscribe({
@@ -258,19 +277,6 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         complete: resolve,
       });
     });
-
-    const payload = JSON.stringify({
-      candidates: [
-        {
-          content: {
-            parts: [{ text: 'reasoning', thought: true }, { text: 'final answer' }],
-          },
-          finishReason: 'STOP',
-        },
-      ],
-    });
-    stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
-    stream.emit('end');
     await done;
 
     const response = receivedChunks.join('');
@@ -280,24 +286,16 @@ describe('ProxyService Empty Stream Retry Logic', () => {
 
   it('preserves text from wrapped Anthropic stream events', async () => {
     const service = new TestableAnthropicService();
-    const stream = new EventEmitter();
+    const stream = new PassThrough();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.streamGenerateInternal.mockResolvedValue(stream);
 
-    const result = (await service.handleAnthropicMessages({
+    const resultPromise = service.handleAnthropicMessages({
       model: 'gemini-3.5-flash',
       stream: true,
       max_tokens: 256,
       messages: [{ role: 'user', content: 'hello' }],
-    } as any)) as Observable<string>;
-    const receivedChunks: string[] = [];
-    const done = new Promise<void>((resolve, reject) => {
-      result.subscribe({
-        next: (chunk) => receivedChunks.push(chunk),
-        error: reject,
-        complete: resolve,
-      });
-    });
+    } as any);
 
     const payload = JSON.stringify({
       response: {
@@ -309,8 +307,16 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         ],
       },
     });
-    stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
-    stream.emit('end');
+    stream.end(Buffer.from(`data: ${payload}\n\n`));
+    const result = (await resultPromise) as Observable<string>;
+    const receivedChunks: string[] = [];
+    const done = new Promise<void>((resolve, reject) => {
+      result.subscribe({
+        next: (chunk) => receivedChunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
     await done;
 
     expect(receivedChunks.join('')).toContain('"text":"wrapped answer"');
@@ -542,6 +548,58 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     ]);
   });
 
+  it('hot-reloads local video path access on the real OpenAI service path', async () => {
+    const service = new TestableOpenAIService();
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-openai-video-wire-'));
+    const videoPath = path.join(tempDirectory, 'sample.webm');
+    const videoBytes = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x01, 0x02, 0x03]);
+    fs.writeFileSync(videoPath, videoBytes);
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
+    mockGeminiClient.generateInternal.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+      usageMetadata: { totalTokenCount: 5 },
+    });
+    const request: OpenAIChatRequest = {
+      model: 'gemini-3-flash',
+      stream: false,
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'video_url', video_url: { url: videoPath } }],
+        },
+      ],
+    };
+
+    try {
+      await service.handleChatCompletions(request);
+      expect(mockGeminiClient.generateInternal.mock.calls[0][0].request.contents).toEqual([
+        { role: 'user', parts: [{ text: 'Continue' }] },
+      ]);
+
+      mockGeminiClient.generateInternal.mockClear();
+      const enabledConfig = createProxyConfig();
+      enabledConfig.experimental.allow_local_video_paths = true;
+      setServerConfig(enabledConfig);
+
+      await service.handleChatCompletions(request);
+      expect(mockGeminiClient.generateInternal.mock.calls[0][0].request.contents).toEqual([
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: 'video/webm',
+                data: videoBytes.toString('base64'),
+              },
+            },
+          ],
+        },
+      ]);
+    } finally {
+      fs.rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('keeps the web-search fallback selected by the request mapper', async () => {
     setServerConfig(
       createProxyConfig({
@@ -621,15 +679,15 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       } as any);
 
       const internalRequest = mockGeminiClient.generateInternal.mock.calls[0][0];
-      const historicalToolCall = internalRequest.request.contents[0]?.parts.find(
-        (part: { functionCall?: unknown }) => part.functionCall,
-      );
+      const historicalToolCall = internalRequest.request.contents
+        .flatMap((content: { parts: Array<{ functionCall?: unknown }> }) => content.parts)
+        .find((part: { functionCall?: unknown }) => part.functionCall);
       expect(internalRequest.model).toBe('gemini-3-flash');
       expect(historicalToolCall?.thoughtSignature).not.toBe(staleSignature);
       expect(
-        SignatureStore.getAt({ model: 'gpt-oss-120b-medium', sessionKey, messageCount: 1 }),
+        SignatureStore.getAt({ model: 'gpt-oss-120b-medium', sessionKey, messageCount: 2 }),
       ).toBeNull();
-      expect(SignatureStore.getAt({ model: 'gemini-3-flash', sessionKey, messageCount: 1 })).toBe(
+      expect(SignatureStore.getAt({ model: 'gemini-3-flash', sessionKey, messageCount: 2 })).toBe(
         returnedSignature,
       );
     } finally {
@@ -689,19 +747,27 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         } as any,
         'responses',
         undefined,
-        { requestSessionId: 'resp_parent', responseId: 'resp_child' },
+        {
+          requestSessionId: 'resp_parent',
+          responseId: 'resp_child',
+          routingSessionId: 'routing_root',
+        },
       );
 
       const internalRequest = mockGeminiClient.generateInternal.mock.calls[0][0];
-      const historicalToolCall = internalRequest.request.contents[0]?.parts.find(
-        (part: { functionCall?: unknown }) => part.functionCall,
-      );
+      const historicalToolCall = internalRequest.request.contents
+        .flatMap((content: { parts: Array<{ functionCall?: unknown }> }) => content.parts)
+        .find((part: { functionCall?: unknown }) => part.functionCall);
+      expect(internalRequest).not.toHaveProperty('sessionId');
       expect(historicalToolCall?.thoughtSignature).toBe(parentSignature);
+      expect(mockAccountLeaseService.getNextToken).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionKey: 'openai:routing_root' }),
+      );
       expect(
         SignatureStore.getAt({
           model: 'gemini-3-flash',
           sessionKey: childSessionKey,
-          messageCount: 1,
+          messageCount: 2,
         }),
       ).toBe(childSignature);
       expect(
@@ -1403,6 +1469,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       createProxyConfig({
         experimental: {
           enable_cloud_code_meta: true,
+          allow_local_video_paths: false,
         },
       }),
     );

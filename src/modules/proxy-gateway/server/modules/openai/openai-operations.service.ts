@@ -100,6 +100,7 @@ export interface PreparedResponsesRequest {
   request: OpenAIChatRequest;
   requestSessionId: string;
   responseId: string;
+  routingSessionId: string;
   session: OpenAIResponsesSession;
 }
 
@@ -658,12 +659,19 @@ export class OpenAIOperations extends BaseProxyController {
       boundResponsesInputItems(previousSession?.session.inputItems ?? []),
       currentInputItems,
       boundResponsesInputItems(previousSession?.session.toolCallItems ?? []),
+      body.store !== false,
     );
     const model = body.model ?? previousSession?.session.model ?? 'gemini-3-flash';
     const instructions = body.instructions ?? previousSession?.session.instructions;
     const tools = body.tools ?? previousSession?.session.tools;
     const responseId = `resp_${randomUUID()}`;
     const requestSessionId = body.previous_response_id ?? responseId;
+    const explicitSessionId = body.session_id?.trim();
+    const routingSessionId =
+      explicitSessionId ||
+      previousSession?.routingSessionId ||
+      body.previous_response_id ||
+      responseId;
     const request = buildResponsesChatRequest({
       ...body,
       input: preparedInput.merged,
@@ -673,10 +681,14 @@ export class OpenAIOperations extends BaseProxyController {
     });
 
     return {
-      parent: preparedInput.resetParent ? null : (previousSession?.parent ?? null),
+      parent:
+        body.store === false || preparedInput.resetParent
+          ? null
+          : (previousSession?.parent ?? null),
       request,
       requestSessionId,
       responseId,
+      routingSessionId,
       session: {
         inputItems: preparedInput.delta,
         instructions,
@@ -710,6 +722,9 @@ export class OpenAIOperations extends BaseProxyController {
     if (!responseRecord || (responseRecord.status && responseRecord.status !== 'completed')) {
       return;
     }
+    if (prepared.session.store === false) {
+      return;
+    }
     const storedResponse = { ...responseRecord, id: prepared.responseId };
 
     this.responsesSessions.saveDelta(prepared.responseId, {
@@ -717,10 +732,9 @@ export class OpenAIOperations extends BaseProxyController {
       instructions: prepared.session.instructions,
       model: prepared.session.model,
       parent: prepared.parent,
-      // `store: false` asks for nothing retrievable, so the payload is dropped
-      // while the continuation history this gateway needs is kept.
-      response: prepared.session.store === false ? undefined : storedResponse,
+      response: storedResponse,
       responseOutput: storedResponse.output,
+      routingSessionId: prepared.routingSessionId,
       store: prepared.session.store,
       tools: prepared.session.tools,
       toolCallItems: prepared.session.toolCallItems,
@@ -733,6 +747,7 @@ export class OpenAIOperations extends BaseProxyController {
     return {
       requestSessionId: prepared.requestSessionId,
       responseId: prepared.responseId,
+      routingSessionId: prepared.routingSessionId,
     };
   }
 

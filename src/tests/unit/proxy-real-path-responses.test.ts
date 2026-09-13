@@ -353,4 +353,85 @@ describe('real request path, Responses input compatibility', () => {
       }),
     ]);
   });
+
+  it.each([false, true])(
+    'restores a stored parent for store:false without retaining the transient response, stream=%s',
+    async (stream) => {
+      let generateCount = 0;
+      const upstream = createUpstream({
+        generate: () => geminiTextResponse(generateCount++ === 0 ? 'root answer' : 'next answer'),
+        streamFrames: [geminiStreamFrame(geminiTextResponse('next answer'))],
+      });
+      const lease = createLease([createAccount('acc-1')]);
+      const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
+      const rootReply = createReply();
+
+      await controller.responses(
+        {
+          model: 'gemini-3-flash',
+          input: 'root request',
+          instructions: 'Stay concise.',
+          tools: [
+            {
+              type: 'function',
+              function: { name: 'lookup', parameters: { type: 'object' } },
+            },
+          ],
+        },
+        rootReply as never,
+      );
+      const rootResponseId = z.object({ id: z.string().min(1) }).parse(rootReply.body).id;
+      const replayWithoutIds = (
+        OpenAIResponsesSessionStore.get(rootResponseId)?.inputItems ?? []
+      ).map((item) => {
+        const copy = structuredClone(item);
+        if (typeof copy === 'object' && copy !== null && !Array.isArray(copy)) {
+          Reflect.deleteProperty(copy, 'id');
+        }
+        return copy;
+      });
+      const transientReply = createReply();
+      await controller.responses(
+        {
+          input: [...replayWithoutIds, { type: 'message', role: 'user', content: 'next request' }],
+          previous_response_id: rootResponseId,
+          store: false,
+          stream,
+        },
+        transientReply as never,
+      );
+
+      let transientResponseId: string;
+      if (stream) {
+        if (!(transientReply.body instanceof Observable)) {
+          throw new Error('Expected a Responses stream');
+        }
+        const events = (await collect(transientReply.body))
+          .split('\n')
+          .filter((line) => line.startsWith('data: {'))
+          .map((line) => JSON.parse(line.slice(6)) as Record<string, unknown>);
+        const completed = events.find((event) => event.type === 'response.completed');
+        transientResponseId = z
+          .object({ response: z.object({ id: z.string().min(1) }) })
+          .parse(completed).response.id;
+      } else {
+        transientResponseId = z.object({ id: z.string().min(1) }).parse(transientReply.body).id;
+      }
+
+      expect(upstream.calls[1]?.body.request.contents).toEqual([
+        { role: 'user', parts: [{ text: 'root request' }] },
+        { role: 'model', parts: [{ text: 'root answer' }] },
+        { role: 'user', parts: [{ text: 'next request' }] },
+      ]);
+      expect(upstream.calls[1]?.body.request.systemInstruction).toMatchObject({
+        parts: [{ text: expect.stringContaining('Stay concise.') }],
+      });
+      expect(JSON.stringify(upstream.calls[1]?.body.request.tools)).toContain('lookup');
+      expect(OpenAIResponsesSessionStore.get(transientResponseId)).toBeNull();
+      expect(lease.getNextToken).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ sessionKey: `openai:${rootResponseId}` }),
+      );
+    },
+  );
 });

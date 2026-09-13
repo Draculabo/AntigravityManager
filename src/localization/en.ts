@@ -728,6 +728,9 @@ const en = {
       cloud_code_meta: 'Cloud Code metadata chunks',
       cloud_code_meta_desc:
         'Inject non-standard __cloudCodeMeta SSE chunks for legacy Cloud Code compatibility. Keep disabled for strict OpenAI clients.',
+      'allow-local-video-paths': 'Allow local video paths',
+      'allow-local-video-paths-desc':
+        'Allow API requests to read local files accessible to your user account through video_url. Enable only when every proxy client is trusted.',
       local_access: 'Local network access:',
       select_ip: 'Select IP',
       no_token_warning: '⚠️ API key is not set. Access is open to everyone!',

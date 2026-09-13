@@ -184,7 +184,7 @@ describe('Responses parent-linked session history', () => {
     arguments: '{}',
   };
 
-  it('derives only the target-era replay delta', () => {
+  it('derives replay deltas from exact, semantic-prefix, id, and semantic-suffix boundaries', () => {
     const history = [rootInput, rootOutput];
     const exact = prepareOpenAIResponsesSessionInput(history, [
       structuredClone(rootInput),
@@ -204,6 +204,18 @@ describe('Responses parent-linked session history', () => {
       { id: 'msg_boundary', type: 'message', role: 'user', content: 'boundary' },
     ]);
 
+    const semanticPrefix = prepareOpenAIResponsesSessionInput(history, [
+      { ...rootInput, id: 'msg_regenerated_root' },
+      { ...rootOutput, id: 'out_regenerated_root' },
+      { id: 'msg_semantic', type: 'message', role: 'user', content: 'semantic' },
+    ]);
+    expect(semanticPrefix.delta).toEqual([
+      { id: 'msg_semantic', type: 'message', role: 'user', content: 'semantic' },
+    ]);
+    expect(
+      semanticPrefix.merged.filter((item) => Reflect.get(item as object, 'content') === 'root'),
+    ).toHaveLength(1);
+
     const semanticSuffixOnly = prepareOpenAIResponsesSessionInput(
       [
         { type: 'message', role: 'user', content: 'first' },
@@ -214,7 +226,65 @@ describe('Responses parent-linked session history', () => {
         { type: 'message', role: 'user', content: 'third' },
       ],
     );
-    expect(semanticSuffixOnly.delta).toHaveLength(2);
+    expect(semanticSuffixOnly.delta).toEqual([{ type: 'message', role: 'user', content: 'third' }]);
+  });
+
+  it('keeps semantic matching narrow and lets an explicit shared id win', () => {
+    const history = [
+      { id: 'first', type: 'message', role: 'user', content: 'first' },
+      { id: 'second', type: 'message', role: 'user', content: 'second' },
+      { id: 'third', type: 'message', role: 'assistant', content: 'third' },
+    ];
+    const sharedId = prepareOpenAIResponsesSessionInput(history, [
+      { id: 'second', type: 'message', role: 'assistant', content: 'changed' },
+      { id: 'next', type: 'message', role: 'user', content: 'next' },
+    ]);
+    expect(sharedId.delta).toEqual([
+      { id: 'next', type: 'message', role: 'user', content: 'next' },
+    ]);
+
+    for (const mismatched of [
+      { type: 'message', role: 'user', content: 'third' },
+      { type: 'function_call', role: 'assistant', content: 'third' },
+      { type: 'message', role: 'assistant', content: 'different' },
+    ]) {
+      const prepared = prepareOpenAIResponsesSessionInput(history, [
+        mismatched,
+        { type: 'message', role: 'user', content: 'next' },
+      ]);
+      expect(prepared.delta).toHaveLength(2);
+    }
+
+    const textFallback = prepareOpenAIResponsesSessionInput(
+      [{ id: 'old', type: 'message', role: 'user', text: 'same' }],
+      [
+        { id: 'new', type: 'message', role: 'user', text: 'same' },
+        { type: 'message', role: 'user', content: 'next' },
+      ],
+    );
+    expect(textFallback.delta).toEqual([{ type: 'message', role: 'user', content: 'next' }]);
+  });
+
+  it('uses unmatched full client history as authoritative and can suppress its storage delta', () => {
+    const history = [
+      { type: 'message', role: 'user', content: 'old one' },
+      { type: 'message', role: 'assistant', content: 'old two' },
+    ];
+    const replay = [
+      { type: 'message', role: 'user', content: 'replacement one' },
+      { type: 'message', role: 'assistant', content: 'replacement two' },
+    ];
+
+    expect(prepareOpenAIResponsesSessionInput(history, replay)).toEqual({
+      delta: [replay[1]],
+      merged: replay,
+      resetParent: false,
+    });
+    expect(prepareOpenAIResponsesSessionInput(history, replay, [], false)).toEqual({
+      delta: [],
+      merged: replay,
+      resetParent: false,
+    });
   });
 
   it('keeps sibling branches independent after their direct parent key is deleted', () => {

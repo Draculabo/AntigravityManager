@@ -28,6 +28,7 @@ export interface ResponsesRequestBody {
   input?: unknown;
   metadata?: Record<string, unknown>;
   previous_response_id?: string;
+  session_id?: string;
   store?: boolean;
   tools?: OpenAIChatRequest['tools'];
   max_output_tokens?: number;
@@ -169,6 +170,7 @@ const ResponsesRequestBodySchema = z
     input: z.unknown().optional(),
     metadata: JsonRecordSchema.optional(),
     previous_response_id: z.string().optional(),
+    session_id: z.string().optional(),
     store: z.boolean().optional(),
     tools: z.array(OpenAIToolSchema).optional(),
     max_output_tokens: z.number().optional(),

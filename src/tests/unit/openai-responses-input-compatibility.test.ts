@@ -13,6 +13,7 @@ describe('Responses input compatibility', () => {
         model: 'gpt-5-codex',
         input: 'Continue the task.',
         metadata: { trace: 'ws-1' },
+        session_id: 'routing-1',
         tools: [
           {
             type: 'function',
@@ -30,6 +31,7 @@ describe('Responses input compatibility', () => {
       model: 'gpt-5-codex',
       input: 'Continue the task.',
       metadata: { trace: 'ws-1' },
+      session_id: 'routing-1',
       tools: [
         {
           type: 'function',
@@ -48,6 +50,7 @@ describe('Responses input compatibility', () => {
   it.each([
     { model: 7 },
     { metadata: ['not', 'an', 'object'] },
+    { session_id: 7 },
     { tools: [{ type: 'function', function: { name: 7 } }] },
     { tool_choice: { type: 'function', function: { name: 7 } } },
   ])('rejects a malformed WebSocket request field: %j', (body) => {

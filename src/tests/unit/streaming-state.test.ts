@@ -64,6 +64,29 @@ describe('StreamingState', () => {
   });
 
   describe('stream aggregation compatibility', () => {
+    it('always includes zero usage in message_start when upstream usage is absent', () => {
+      const output = state.emitMessageStart({ modelVersion: 'gemini-3-flash' });
+      const dataLine = output.split('\n').find((line) => line.startsWith('data: '));
+      const payload = JSON.parse(dataLine?.slice('data: '.length) ?? '{}') as {
+        message: { usage: unknown };
+      };
+
+      expect(payload.message.usage).toEqual({ input_tokens: 0, output_tokens: 0 });
+    });
+
+    it('maps upstream usage into message_start when it is present', () => {
+      const output = state.emitMessageStart({
+        modelVersion: 'gemini-3-flash',
+        usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 3 },
+      });
+      const dataLine = output.split('\n').find((line) => line.startsWith('data: '));
+      const payload = JSON.parse(dataLine?.slice('data: '.length) ?? '{}') as {
+        message: { usage: unknown };
+      };
+
+      expect(payload.message.usage).toMatchObject({ input_tokens: 8, output_tokens: 3 });
+    });
+
     it('emits a complete minimal Anthropic response when upstream produces no content', () => {
       const chunks = state.emitFinish();
       const output = chunks.join('');

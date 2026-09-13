@@ -647,6 +647,9 @@ const vi = {
       api_key: 'API Key',
       auto_start: 'Tự động chạy cùng app',
       auto_start_desc: 'Khởi động proxy khi ứng dụng mở lên',
+      'allow-local-video-paths': 'Cho phép đường dẫn video cục bộ',
+      'allow-local-video-paths-desc':
+        'Cho phép yêu cầu API đọc qua video_url các tệp cục bộ mà tài khoản người dùng của bạn có thể truy cập. Chỉ bật khi mọi máy khách proxy đều đáng tin cậy.',
       local_access: 'Truy cập trong mạng nội bộ:',
       select_ip: 'Chọn IP',
       no_token_warning: 'API key chưa được đặt. Bất kỳ ai trong mạng đều có thể truy cập!',

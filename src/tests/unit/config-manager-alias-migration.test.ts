@@ -62,6 +62,25 @@ describe('ConfigManager alias migration', () => {
       'gpt-4o': 'gemini-3-pro',
     });
     expect(loaded.proxy.anthropic_mapping).toEqual({});
+    expect(loaded.proxy.experimental.allow_local_video_paths).toBe(false);
+  });
+
+  it('persists the explicit local video path opt-in', async () => {
+    writeLegacyConfig();
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+
+    const loaded = ConfigManager.loadConfig();
+    loaded.proxy.experimental.allow_local_video_paths = true;
+    await ConfigManager.saveConfig(loaded);
+
+    const written = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    expect(written.proxy.experimental.allow_local_video_paths).toBe(true);
+
+    vi.resetModules();
+    const { ConfigManager: ReloadedConfigManager } = await import('@/modules/config/ipc/manager');
+    expect(ReloadedConfigManager.loadConfig().proxy.experimental.allow_local_video_paths).toBe(
+      true,
+    );
   });
 
   it('retires the legacy maps on disk at the next save', async () => {

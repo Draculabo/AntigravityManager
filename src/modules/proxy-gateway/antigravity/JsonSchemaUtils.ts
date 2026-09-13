@@ -360,6 +360,11 @@ function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
   // 4. Keep the declared shape before the blacklist removes the keyword that carried it
   collapseSchemaBranches(map);
 
+  const schemaType = map.type;
+  if (isString(schemaType) && schemaType.toLowerCase() === 'array' && map.items === undefined) {
+    map.items = { type: 'string' };
+  }
+
   // 5. Physically remove "hard" blacklist items that interfere with generation
   const hardRemoveFields = [
     '$schema',

@@ -170,6 +170,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
           {
             requestSessionId: prepared.requestSessionId,
             responseId: prepared.responseId,
+            routingSessionId: prepared.routingSessionId,
           },
         );
         if (!isObservable(result)) {

@@ -678,6 +678,9 @@ const fr = {
       cloud_code_meta: 'Blocs de metadonnees Cloud Code',
       cloud_code_meta_desc:
         'Injecter des blocs SSE __cloudCodeMeta non standard pour la compatibilite avec l ancien Cloud Code. Gardez desactive pour les clients OpenAI stricts.',
+      'allow-local-video-paths': 'Autoriser les chemins video locaux',
+      'allow-local-video-paths-desc':
+        'Autorise les requetes API a lire via video_url les fichiers locaux accessibles a votre compte. Activez uniquement si tous les clients du proxy sont fiables.',
       local_access: 'Acces reseau local :',
       select_ip: 'Selectionner une IP',
       no_token_warning: 'La cle API n est pas definie. L acces est ouvert a tout le monde !',
