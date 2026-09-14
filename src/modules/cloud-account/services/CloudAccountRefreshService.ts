@@ -24,17 +24,17 @@ export class CloudAccountRefreshService {
   private static readonly operationLocks = new Map<string, Promise<void>>();
 
   static async refreshAccessToken(request: CloudAccountRefreshRequest): Promise<TokenResponse> {
-    return this.runAccountOperation(request.accountId, () => this.refreshAccessTokenLocked(request));
+    return this.runAccountOperation(request.accountId, () =>
+      this.refreshAccessTokenLocked(request),
+    );
   }
 
   static async clearFailureState(accountId: string): Promise<void> {
     await this.runAccountOperation(accountId, async () => {
       const health = await CloudAccountHealthService.getHealth(accountId);
       if (health?.oauth) {
-        await CloudAccountHealthService.mutateHealth(
-          accountId,
-          (currentHealth) =>
-            currentHealth?.validation ? { validation: currentHealth.validation } : undefined,
+        await CloudAccountHealthService.mutateHealth(accountId, (currentHealth) =>
+          currentHealth?.validation ? { validation: currentHealth.validation } : undefined,
         );
       }
 

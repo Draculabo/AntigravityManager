@@ -648,9 +648,7 @@ describe('thought signature compatibility', () => {
       },
     );
 
-    expect(
-      SignatureStore.get({ model: 'gpt-oss-120b-medium', sessionKey }),
-    ).toBeNull();
+    expect(SignatureStore.get({ model: 'gpt-oss-120b-medium', sessionKey })).toBeNull();
     expect(SignatureStore.get({ model: 'gemini-3-flash', sessionKey })).toBe(THOUGHT_SIGNATURE);
   });
 
