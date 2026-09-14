@@ -1,5 +1,9 @@
 import { accountRouter, databaseRouter } from '@/modules/account/ipc/router';
-import { cloudRouter } from '@/modules/cloud-account/ipc/router';
+import {
+  cloudRouter,
+  type LocalAccountImportORPCErrorData,
+  parseLocalAccountImportORPCErrorData,
+} from '@/modules/cloud-account/ipc/router';
 import { configRouter } from '@/modules/config/ipc/router';
 import { gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
 import { antigravityRuntimeRouter } from '@/modules/antigravity-runtime/ipc/router';
@@ -10,10 +14,6 @@ import { isString } from 'lodash-es';
 import { z } from 'zod';
 import { logger } from '../shared/logging/logger';
 import { AppError, getAppErrorData, type AppErrorData } from '@/shared/errors/appError';
-import {
-  LocalAccountImportORPCErrorData,
-  parseLocalAccountImportORPCErrorData,
-} from '@/modules/cloud-account/local-import/ipc/error-data';
 
 interface BackendErrorDetails {
   backendCode?: string;
