@@ -27,6 +27,9 @@ function ensureDatabaseInitialized(dbPath: string): void {
 
   let db: Database.Database | null = null;
   try {
+    if (typeof Database !== 'function') {
+      return;
+    }
     db = new Database(dbPath);
     configureDatabase(db, { busyTimeoutMs: CLOUD_ACCOUNT_SQLITE_BUSY_TIMEOUT_MS });
 

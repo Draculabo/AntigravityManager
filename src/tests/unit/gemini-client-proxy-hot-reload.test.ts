@@ -7,11 +7,16 @@ import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common
 
 const axiosMock = vi.hoisted(() => ({
   post: vi.fn(),
+  create: vi.fn(() => ({
+    get: vi.fn(),
+    post: vi.fn(),
+  })),
   isAxiosError: vi.fn(() => false),
 }));
 
 vi.mock('axios', () => ({
   default: axiosMock,
+  create: axiosMock.create,
   post: axiosMock.post,
   isAxiosError: axiosMock.isAxiosError,
 }));

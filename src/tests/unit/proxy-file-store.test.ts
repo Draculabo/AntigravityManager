@@ -34,7 +34,12 @@ function createStore(options: FileStoreOptions = {}): FileContentStore {
 
 afterEach(async () => {
   while (createdRoots.length > 0) {
-    await rm(createdRoots.pop() as string, { recursive: true, force: true });
+    await rm(createdRoots.pop() as string, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 50,
+    });
   }
 });
 
