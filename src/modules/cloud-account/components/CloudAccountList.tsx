@@ -138,7 +138,9 @@ export function CloudAccountList() {
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [authCode, setAuthCode] = useState('');
-  const [selectedOAuthClientKey, setSelectedOAuthClientKey] = useState('');
+  const [overrideOAuthClientKey, setSelectedOAuthClientKey] = useState<string | null>(null);
+  const selectedOAuthClientKey =
+    overrideOAuthClientKey ?? oauthClients.find((client) => client.is_active)?.key ?? '';
   const [identityAccount, setIdentityAccount] = useState<CloudAccount | null>(null);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -184,15 +186,6 @@ export function CloudAccountList() {
     [addMutation, authCode, oauthClients, selectedOAuthClientKey, t, toast],
   );
 
-  useEffect(() => {
-    if (selectedOAuthClientKey !== '') {
-      return;
-    }
-    const activeClientKey = oauthClients.find((client) => client.is_active)?.key;
-    if (activeClientKey) {
-      setSelectedOAuthClientKey(activeClientKey);
-    }
-  }, [oauthClients, selectedOAuthClientKey]);
   // Listen for Google Auth Code
   useEffect(() => {
     if (window.electron?.onGoogleAuthCode) {
@@ -222,7 +215,7 @@ export function CloudAccountList() {
   }, [addMutation.isPending, authCode, isAddDialogOpen, submitAuthCode]);
 
   // Batch Operations State
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [rawSelectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isError || !errorUpdatedAt || errorUpdatedAt === lastLoadErrorToastAtRef.current) {
@@ -509,13 +502,10 @@ export function CloudAccountList() {
     });
   };
 
-  useEffect(() => {
+  const selectedIds = useMemo(() => {
     const visibleAccountIdSet = new Set(visibleAccountIds);
-    setSelectedIds((prev) => {
-      const next = new Set(Array.from(prev).filter((id) => visibleAccountIdSet.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [visibleAccountIds]);
+    return new Set(Array.from(rawSelectedIds).filter((id) => visibleAccountIdSet.has(id)));
+  }, [rawSelectedIds, visibleAccountIds]);
 
   const toggleSelectAllAccounts = () => {
     const allVisibleSelected =

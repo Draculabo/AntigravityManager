@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
 import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
@@ -41,19 +41,17 @@ export function ModelVisibilitySettings() {
   const { data: accounts, isLoading: accountsLoading } = useCloudAccounts();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [modelVisibilityMap, setModelVisibilityMap] = useState<Record<string, boolean>>({});
-  const [providerGroupingEnabled, setProviderGroupingEnabled] = useState(false);
+  const [visibilityOverride, setVisibilityOverride] = useState<Record<string, boolean> | null>(
+    null,
+  );
+  const [groupingOverride, setGroupingOverride] = useState<boolean | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-  // Initialize model visibility and provider groupings from config
-  useEffect(() => {
-    if (config?.model_visibility) {
-      setModelVisibilityMap(config.model_visibility);
-    }
-    if (config?.provider_groupings_enabled !== undefined) {
-      setProviderGroupingEnabled(config.provider_groupings_enabled);
-    }
-  }, [config?.model_visibility, config?.provider_groupings_enabled]);
+  const modelVisibilityMap = useMemo(
+    () => visibilityOverride ?? config?.model_visibility ?? {},
+    [visibilityOverride, config?.model_visibility],
+  );
+  const providerGroupingEnabled = groupingOverride ?? config?.provider_groupings_enabled ?? false;
 
   // Get all unique models from all accounts
   const availableModelIds = useMemo(() => {
@@ -75,7 +73,7 @@ export function ModelVisibilitySettings() {
 
   // Reset to defaults (all models visible)
   const resetVisibilityOverrides = () => {
-    setModelVisibilityMap({});
+    setVisibilityOverride({});
   };
 
   // Save configuration
@@ -92,6 +90,8 @@ export function ModelVisibilitySettings() {
         provider_groupings_enabled: providerGroupingEnabled,
       };
       await saveConfig(nextConfig);
+      setVisibilityOverride(null);
+      setGroupingOverride(null);
     } catch (error) {
       console.error('Failed to save model visibility settings:', error);
     } finally {
@@ -104,12 +104,12 @@ export function ModelVisibilitySettings() {
   };
 
   const handleProviderGroupingToggle = (checked: boolean) => {
-    setProviderGroupingEnabled(checked);
+    setGroupingOverride(checked);
   };
 
   const handleModelVisibilityChange = (modelId: string, checked: boolean) => {
-    setModelVisibilityMap((prev) => ({
-      ...prev,
+    setVisibilityOverride((prev) => ({
+      ...(prev ?? config?.model_visibility ?? {}),
       [modelId]: checked,
     }));
   };

@@ -122,15 +122,12 @@ function ProxyPage() {
   });
 
   // Selected IP for display (defaults to first recommended or first available)
-  const [selectedIp, setSelectedIp] = useState<string>('');
-
-  // Set default selected IP when IPs are loaded
-  useEffect(() => {
-    if (localIps && localIps.length > 0 && !selectedIp) {
-      const recommended = localIps.find((ip) => ip.isRecommended);
-      setSelectedIp(recommended?.address || localIps[0].address);
-    }
-  }, [localIps, selectedIp]);
+  const [overrideSelectedIp, setSelectedIp] = useState<string | null>(null);
+  const selectedIp =
+    overrideSelectedIp ??
+    localIps?.find((ip) => ip.isRecommended)?.address ??
+    localIps?.[0]?.address ??
+    '';
 
   // Local state for proxyConfig editing
   const [proxyConfig, setProxyConfig] = useState<ProxyConfig | undefined>(undefined);

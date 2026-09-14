@@ -1,4 +1,5 @@
-import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type JSX, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
   Fingerprint,
@@ -11,11 +12,7 @@ import {
   Cpu,
 } from 'lucide-react';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import type {
-  DeviceProfile,
-  DeviceProfilesSnapshot,
-  DeviceProfileVersion,
-} from '@/modules/identity-profile/types';
+import type { DeviceProfile, DeviceProfileVersion } from '@/modules/identity-profile/types';
 import {
   bindCloudIdentityProfile,
   bindCloudIdentityProfileWithPayload,
@@ -92,54 +89,24 @@ function sortHistory(history: DeviceProfileVersion[]): DeviceProfileVersion[] {
 export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityProfileDialogProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const [snapshot, setSnapshot] = useState<DeviceProfilesSnapshot | null>(null);
-  const [initialLoading, setInitialLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [previewProfile, setPreviewProfile] = useState<DeviceProfile | null>(null);
   const actionLockRef = useRef(false);
 
+  const accountId = account?.id;
+  const {
+    data: snapshot = null,
+    isLoading: isQueryLoading,
+    isFetching: refreshing,
+    refetch,
+  } = useQuery({
+    queryKey: ['cloudIdentityProfiles', accountId],
+    queryFn: () => getCloudIdentityProfiles({ accountId: accountId! }),
+    enabled: open && Boolean(accountId),
+  });
+
   const history = useMemo(() => sortHistory(snapshot?.history || []), [snapshot?.history]);
-  const showLoadingPlaceholder = initialLoading && !snapshot;
-
-  const refreshProfiles = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!account) {
-        setSnapshot(null);
-        return;
-      }
-      const silent = options?.silent === true;
-      if (silent) {
-        setRefreshing(true);
-      } else {
-        setInitialLoading(true);
-      }
-      try {
-        const result = await getCloudIdentityProfiles({ accountId: account.id });
-        setSnapshot(result);
-      } catch (error) {
-        toast({
-          title: t('cloud.toast.actionFailed'),
-          description: formatError(error),
-          variant: 'destructive',
-        });
-      } finally {
-        if (silent) {
-          setRefreshing(false);
-        } else {
-          setInitialLoading(false);
-        }
-      }
-    },
-    [account, t, toast],
-  );
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    refreshProfiles();
-  }, [open, refreshProfiles]);
+  const showLoadingPlaceholder = isQueryLoading && !snapshot;
 
   const runAction = async (key: string, action: () => Promise<void>) => {
     if (actionLockRef.current) {
@@ -149,7 +116,7 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
     setActionKey(key);
     try {
       await action();
-      await refreshProfiles({ silent: true });
+      await refetch();
     } catch (error) {
       toast({
         title: t('cloud.toast.actionFailed'),
