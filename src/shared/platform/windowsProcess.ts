@@ -36,7 +36,11 @@ export function isSafeWindowsImageName(imageName: string): boolean {
 
 async function queryWindowsImageRunning(imageName: string): Promise<boolean | null> {
   const processes = await queryWindowsProcessesByImageName(imageName);
-  return processes ? processes.length > 0 : null;
+  if (!processes) {
+    return null;
+  }
+
+  return processes.length > 0;
 }
 
 /**
@@ -51,13 +55,16 @@ export function isWindowsImageRunning(imageName: string): Promise<boolean | null
   }
 
   const query = queryWindowsImageRunning(imageName).finally(() => {
-    runningImageQueries.delete(queryKey);
+    if (runningImageQueries.get(queryKey) === query) {
+      runningImageQueries.delete(queryKey);
+    }
   });
   runningImageQueries.set(queryKey, query);
   return query;
 }
 
 export async function killWindowsImageTree(imageName: string): Promise<boolean> {
+  runningImageQueries.delete(imageName.toLowerCase());
   if (!isSafeWindowsImageName(imageName)) {
     throw new Error(`Invalid Windows executable image name: ${imageName}`);
   }
@@ -100,10 +107,17 @@ export async function queryWindowsProcessesByImageName(
 
   try {
     const normalizedImageName = imageName.toLowerCase();
+    const psListFn =
+      typeof psList === 'function'
+        ? psList
+        : (psList as unknown as { default?: typeof psList })?.default;
+    if (typeof psListFn !== 'function') {
+      return null;
+    }
     const processes =
       process.arch === 'arm64'
         ? await findProcess('name', imageName, { strict: true })
-        : await psList();
+        : await psListFn();
     return processes
       .filter(
         (processItem) =>

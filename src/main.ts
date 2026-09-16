@@ -60,10 +60,19 @@ logger.enableFileLogging();
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
 
 function logPacket(data: unknown) {
+  if (process.env.DEBUG_ORPC_PACKETS !== 'true') {
+    return;
+  }
+
   try {
-    fs.appendFileSync(
+    fs.appendFile(
       packetLogPath,
       `[${new Date().toISOString()}] ${safeStringifyPacket(data)}\n`,
+      (err) => {
+        if (err) {
+          logger.error('Failed to append ORPC packet log', err);
+        }
+      },
     );
   } catch (e) {
     if (e instanceof Error) {
@@ -386,7 +395,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
     show: !startHidden,
     autoHideMenuBar: true,
     webPreferences: {
-      backgroundThrottling: false,
+      backgroundThrottling: true,
       devTools: inDevelopment,
       sandbox: false,
       webviewTag: true,
@@ -601,16 +610,16 @@ async function setupORPC() {
     logger.info('IPC: Received START_ORPC_SERVER');
     const [port] = event.ports;
 
-    // Debug: Inspect raw messages
-    port.on('message', (msgEvent) => {
-      try {
-        const data = msgEvent.data;
-
-        logPacket(data);
-      } catch {
-        logger.debug('[RAW ORPC MSG] (unparseable)', msgEvent.data);
-      }
-    });
+    if (process.env.DEBUG_ORPC_PACKETS === 'true') {
+      port.on('message', (msgEvent) => {
+        try {
+          const data = msgEvent.data;
+          logPacket(data);
+        } catch {
+          logger.debug('[RAW ORPC MSG] (unparseable)', msgEvent.data);
+        }
+      });
+    }
 
     port.start();
     logger.info('IPC: Server port started');
@@ -634,7 +643,7 @@ process.on('unhandledRejection', (reason) => {
 app
   .whenReady()
   .then(async () => {
-    if (process.platform === 'win32') {
+    if (process.platform === 'win32' && process.env.DISABLE_WINDOWS_POWER_THROTTLING === 'true') {
       disableWindowsPowerThrottling()
         .then(() => {
           logger.info('Disabled Windows Power Throttling / EcoQoS for the Electron main process');

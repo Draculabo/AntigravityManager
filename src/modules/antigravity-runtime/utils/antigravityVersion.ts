@@ -28,25 +28,33 @@ function cacheAndReturn(
 
 function readPackageJsonVersion(execPath: string): AntigravityVersion | null {
   const parentDir = path.dirname(execPath);
-  const packageJson = path.join(parentDir, 'resources', 'app', 'package.json');
-  if (!fs.existsSync(packageJson)) {
-    return null;
-  }
-  try {
-    const content = fs.readFileSync(packageJson, 'utf-8');
-    const rawManifest: unknown = JSON.parse(content);
-    const manifest = PackageJsonVersionSchema.safeParse(rawManifest);
-    if (!manifest.success) {
-      return null;
+  const candidates = [
+    path.join(parentDir, 'resources', 'app', 'package.json'),
+    path.join(parentDir, 'resources', 'app.asar', 'package.json'),
+  ];
+
+  for (const packageJson of candidates) {
+    if (!fs.existsSync(packageJson)) {
+      continue;
     }
-    const parsed = parseVersionString(manifest.data.version ?? null);
-    return {
-      shortVersion: parsed,
-      bundleVersion: parsed,
-    };
-  } catch {
-    return null;
+    try {
+      const content = fs.readFileSync(packageJson, 'utf-8');
+      const rawManifest: unknown = JSON.parse(content);
+      const manifest = PackageJsonVersionSchema.safeParse(rawManifest);
+      if (!manifest.success) {
+        continue;
+      }
+      const parsed = parseVersionString(manifest.data.version ?? null);
+      return {
+        shortVersion: parsed,
+        bundleVersion: parsed,
+      };
+    } catch {
+      continue;
+    }
   }
+
+  return null;
 }
 
 function readPlistValue(content: string, key: string): string | null {
