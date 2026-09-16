@@ -43,6 +43,10 @@ import { getSwitchMetricsSnapshot } from '@/modules/antigravity-runtime/switch/s
 import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { getDeviceHardeningSnapshot } from '@/modules/identity-profile/ipc/handler';
 import { localAccountImportRouter } from '@/modules/cloud-account/local-import/ipc/router';
+export {
+  type LocalAccountImportORPCErrorData,
+  parseLocalAccountImportORPCErrorData,
+} from '@/modules/cloud-account/local-import/ipc/error-data';
 
 import { WeeklyWarmupConfigSchema } from '@/modules/cloud-account/services/weekly-warmup-contract';
 import { getWeeklyWarmupConfig, setWeeklyWarmupConfig } from './weekly-warmup';

@@ -25,9 +25,7 @@ export function normalizeThoughtSignatureModelContext(
     return null;
   }
 
-  const explicitFamilyModel = context.familyModel
-    ? normalizeModelName(context.familyModel)
-    : null;
+  const explicitFamilyModel = context.familyModel ? normalizeModelName(context.familyModel) : null;
   const explicitFamily =
     context.family && explicitFamilyModel === model ? normalizeModelName(context.family) : null;
   const directFamily = resolveModelVariant({ model })?.canonicalModel ?? null;

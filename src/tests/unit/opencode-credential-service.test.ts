@@ -72,4 +72,3 @@ describe('OpenCodeCredentialService', () => {
     expect(service.matches('agm_oc_any')).toBe(false);
   });
 });
-

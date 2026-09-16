@@ -284,7 +284,7 @@ function credentialStoreItemExists(): boolean {
     ['find-generic-password', '-s', 'gemini', '-a', 'antigravity'],
     { stdio: 'ignore' },
   );
-  return result.status === 0;
+  return result?.status === 0;
 }
 
 function writeToSystemCredentialStore(payload: string): void {

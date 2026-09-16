@@ -1,10 +1,5 @@
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import type { CloudAccount, CloudAccountHealth } from '@/modules/cloud-account/types';
-import {
-  evictNestServerAccountLeaseAccount,
-  reloadNestServerAccountLeaseCache,
-  updateNestServerAccountLeaseOAuthHealth,
-} from '@/server/main';
 
 type HealthMutation = (
   currentHealth: CloudAccountHealth | undefined,
@@ -88,6 +83,7 @@ export class CloudAccountHealthService {
 }
 
 export async function evictAccountFromActiveLeaseCache(accountId: string): Promise<void> {
+  const { evictNestServerAccountLeaseAccount } = await import('@/server/main');
   evictNestServerAccountLeaseAccount(accountId);
 }
 
@@ -95,6 +91,7 @@ export async function syncAccountOAuthHealthToActiveLeaseCache(
   accountId: string,
   oauthHealth: CloudAccountHealth['oauth'],
 ): Promise<void> {
+  const { updateNestServerAccountLeaseOAuthHealth } = await import('@/server/main');
   updateNestServerAccountLeaseOAuthHealth(accountId, oauthHealth);
 }
 
@@ -119,6 +116,7 @@ export async function clearValidationHealthAfterSuccessfulProbe(
     },
     {
       afterCommit: async () => {
+        const { reloadNestServerAccountLeaseCache } = await import('@/server/main');
         await reloadNestServerAccountLeaseCache();
       },
       rollbackOnAfterCommitFailure: true,

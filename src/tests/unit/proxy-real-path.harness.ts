@@ -138,11 +138,7 @@ export function createLease(accounts: CloudAccount[]) {
       penalties.push({ accountId: params.accountIdOrEmail, kind: 'upstream_error' });
     }),
     markValidationRequired: vi.fn(
-      async (params: {
-        accountId: string;
-        verificationUrl?: string;
-        description?: string;
-      }) => {
+      async (params: { accountId: string; verificationUrl?: string; description?: string }) => {
         validationQuarantines.push(params);
       },
     ),
