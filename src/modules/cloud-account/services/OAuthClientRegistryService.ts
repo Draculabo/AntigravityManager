@@ -67,7 +67,7 @@ function buildOAuthClientRegistry(): OAuthClientRegistry {
       const parts = trimmed.split('|').map((part) => part.trim());
       if (parts.length < 3) {
         logger.warn(
-          `[OAuthClientRegistryService] Ignored invalid OAuth client entry in ${OAUTH_CLIENTS_ENV}: ${trimmed}`,
+          `[OAuthClientRegistryService] Ignored invalid OAuth client entry in ${OAUTH_CLIENTS_ENV}`,
         );
         continue;
       }
@@ -77,7 +77,7 @@ function buildOAuthClientRegistry(): OAuthClientRegistry {
       const clientSecret = parts[2];
       if (key === '' || clientId === '' || clientSecret === '') {
         logger.warn(
-          `[OAuthClientRegistryService] Ignored incomplete OAuth client entry in ${OAUTH_CLIENTS_ENV}: ${trimmed}`,
+          `[OAuthClientRegistryService] Ignored incomplete OAuth client entry in ${OAUTH_CLIENTS_ENV}`,
         );
         continue;
       }
