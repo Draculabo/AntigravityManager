@@ -130,7 +130,7 @@ export class AnthropicService extends BaseProxyService {
       const token = await this.selectRetryToken(retryState, targetModel, sessionKey);
       if (!token) {
         if (lastError !== null) {
-          throw lastError;
+          throw this.resolveTerminalRetryError(retryState, lastError);
         }
 
         throw new Error('No available accounts');
@@ -325,6 +325,7 @@ export class AnthropicService extends BaseProxyService {
         }
 
         lastError = error;
+        this.recordRetryFailure(retryState, lastError);
         if (
           !appliedVariantRequest.variant &&
           (await this.prepareGraceRetry(retryState, token, lastError, 'Anthropic'))
@@ -334,7 +335,10 @@ export class AnthropicService extends BaseProxyService {
         await this.applyUpstreamPenalty(token.id, accountTargetModel, error);
       }
     }
-    throw lastError || new Error('Request failed after retries');
+    throw this.resolveTerminalRetryError(
+      retryState,
+      lastError || new Error('Request failed after retries'),
+    );
   }
 
   private async executeAnthropicAccountRequest(params: {

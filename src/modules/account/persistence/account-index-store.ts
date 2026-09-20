@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
 import { AccountSchema, type Account } from '@/modules/account/types';
 import { logger } from '@/shared/logging/logger';
+import { writeFileAtomicSync } from '@/shared/persistence/atomic-json-file';
 
 export type AccountIndex = Record<string, Account>;
 
@@ -97,36 +97,13 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
-function cleanTemporaryIndex(tempPath: string): void {
-  if (!fs.existsSync(tempPath)) {
-    return;
-  }
-
-  try {
-    fs.unlinkSync(tempPath);
-  } catch (cleanupError) {
-    logger.warn('Failed to clean up temporary accounts index', cleanupError);
-  }
-}
-
 function commitIndex(filePath: string, accounts: AccountIndex): void {
-  const directory = path.dirname(filePath);
-  const tempPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
   const content = `${JSON.stringify(accounts, null, 2)}\n`;
-  let failureStage = 'create-directory';
 
   try {
-    if (!fs.existsSync(directory)) {
-      fs.mkdirSync(directory, { recursive: true });
-    }
-
-    failureStage = 'write-temporary-file';
-    fs.writeFileSync(tempPath, content, 'utf-8');
-    failureStage = 'replace-index';
-    fs.renameSync(tempPath, filePath);
+    writeFileAtomicSync(filePath, content);
   } catch (error) {
-    cleanTemporaryIndex(tempPath);
-    logger.error(`Failed to commit accounts index during ${failureStage}`, error);
+    logger.error('Failed to commit accounts index', error);
     throw error;
   }
 }

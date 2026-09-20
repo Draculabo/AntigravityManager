@@ -4,10 +4,15 @@ import { SignatureStore } from './SignatureStore';
 import { decodeSignature } from './signature-utils';
 import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight';
 import { extractCustomToolInput, isCustomToolCall } from './CustomToolCall';
-import { resolveShellToolName } from './ShellToolName';
+import {
+  isMalformedFunctionCallFinishReason,
+  MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
+} from './GeminiFinishReason';
+import { adaptCommandArguments, selectClientCommandTool } from './CommandToolAdapter';
 import { splitNamespaceToolName } from './ToolNamespace';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
 import type { OpenAIResponsesUsage } from './OpenAIUsageMapper';
+import { logger } from '@/shared/logging/logger';
 
 export interface GeminiResponsesStreamPart {
   functionCall?: {
@@ -197,12 +202,17 @@ export class OpenAIResponsesStreamingMapper {
       return [];
     }
 
+    const recoveryEvents =
+      isMalformedFunctionCallFinishReason(finishReason) && !this.hasSeenRegularText
+        ? this.processText(MALFORMED_FUNCTION_CALL_RECOVERY_TEXT)
+        : [];
     this.completed = true;
     // An answer upstream cut short is not a finished answer, and a client that is
     // told `completed` has no way to know it should continue.
     const incompleteReason = toIncompleteReason(finishReason);
     const status: ResponsesOutputStatus = incompleteReason ? 'incomplete' : 'completed';
     const events = [
+      ...recoveryEvents,
       ...this.closeThought(status),
       ...this.closeMessage(this.hasToolCall ? 'commentary' : 'final_answer', status),
     ];
@@ -347,7 +357,7 @@ export class OpenAIResponsesStreamingMapper {
   ): string[] {
     const splitName = splitNamespaceToolName(functionCall.name);
     const functionName = this.options.clientToolNames
-      ? resolveShellToolName(splitName.name, this.options.clientToolNames)
+      ? selectClientCommandTool(splitName.name, this.options.clientToolNames)
       : splitName.name;
     const callId = functionCall.id || `call_${this.options.responseId}_${this.nextOutputIndex}`;
     if (signature) {
@@ -360,7 +370,11 @@ export class OpenAIResponsesStreamingMapper {
       this.emittedToolCallIds.add(callId);
     }
 
-    const normalizedArguments = this.normalizeShellArguments(functionName, functionCall.args);
+    const adaptedCommandArguments = adaptCommandArguments(functionName, functionCall.args);
+    if (adaptedCommandArguments.fallbackApplied) {
+      logger.debug('[OpenAI Responses] command tool fallback_applied=true');
+    }
+    const normalizedArguments = adaptedCommandArguments.arguments;
     const isCustomTool = isCustomToolCall(functionName) || functionName === 'shell';
     const argumentsString = JSON.stringify(normalizedArguments);
     let input = isCustomTool
@@ -544,26 +558,6 @@ export class OpenAIResponsesStreamingMapper {
       }),
     );
     return events;
-  }
-
-  private normalizeShellArguments(
-    functionName: string,
-    args: Record<string, unknown>,
-  ): Record<string, unknown> {
-    if (!['shell', 'bash', 'local_shell'].includes(functionName) || 'command' in args) {
-      return args;
-    }
-
-    for (const alternativeKey of ['cmd', 'code', 'script', 'shell_command']) {
-      if (alternativeKey in args) {
-        const { [alternativeKey]: command, ...remainingArgs } = args;
-        return {
-          ...remainingArgs,
-          command,
-        };
-      }
-    }
-    return args;
   }
 
   private serialize(event: Record<string, unknown>): string {

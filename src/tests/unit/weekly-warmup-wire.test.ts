@@ -72,8 +72,6 @@ describe('weekly warmup actual HTTP transport', () => {
           model: 'gemini-3-flash',
           project: 'synthetic-project',
           userAgent: 'antigravity',
-          requestType: 'agent',
-          enabledCreditTypes: ['GOOGLE_ONE_AI'],
           request: {
             contents: [{ role: 'user', parts: [{ text: 'Say hi' }] }],
             generationConfig: { temperature: 0, topK: 40, topP: 1 },

@@ -56,29 +56,26 @@ describe('writeGoogleOAuthCredentials', () => {
   it.each([
     ['absent', undefined, false],
     ['empty', '', true],
-  ])(
-    'writes an %s id_token with upstream-compatible presence semantics',
-    (_case, idToken, present) => {
-      writeGoogleOAuthCredentials(
-        {
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expiry_timestamp: 1_900_000_000,
-          ...(idToken !== undefined ? { id_token: idToken } : {}),
-          email: 'active@example.com',
-        },
-        { geminiDir: workDir },
-      );
+  ])('writes an %s id_token with the credential-presence contract', (_case, idToken, present) => {
+    writeGoogleOAuthCredentials(
+      {
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+        expiry_timestamp: 1_900_000_000,
+        ...(idToken !== undefined ? { id_token: idToken } : {}),
+        email: 'active@example.com',
+      },
+      { geminiDir: workDir },
+    );
 
-      const oauthCredentials = JSON.parse(
-        fs.readFileSync(path.join(workDir, 'oauth_creds.json'), 'utf-8'),
-      ) as Record<string, unknown>;
-      expect(Object.hasOwn(oauthCredentials, 'id_token')).toBe(present);
-      if (present) {
-        expect(oauthCredentials.id_token).toBe(idToken);
-      }
-    },
-  );
+    const oauthCredentials = JSON.parse(
+      fs.readFileSync(path.join(workDir, 'oauth_creds.json'), 'utf-8'),
+    ) as Record<string, unknown>;
+    expect(Object.hasOwn(oauthCredentials, 'id_token')).toBe(present);
+    if (present) {
+      expect(oauthCredentials.id_token).toBe(idToken);
+    }
+  });
 
   it.each([
     [10_000_000_000, 10_000_000_000_000],

@@ -38,6 +38,10 @@ When adding a new sensitive field, update the central masking behavior and its t
 
 Database schema, durable payload and credential-location changes require an Agent Note because they impose compatibility and recovery obligations.
 
+### Linux Secret Service collections
+
+When `secret-tool` is available on Linux, credential writes synchronize the same payload to the `login` collection and then the default collection. The default collection remains the application compatibility gate: a default-write failure falls back to the native keyring even when the `login` write succeeded. Both writes are bounded to ten seconds and diagnostics contain collection outcomes only, never credential payloads or raw process errors.
+
 ## Proxy and external services
 
 ### Google OAuth scopes

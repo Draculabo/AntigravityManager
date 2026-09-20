@@ -1,10 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
+import { MALFORMED_FUNCTION_CALL_RECOVERY_TEXT } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 
 describe('ClaudeResponseMapper usage', () => {
   it('returns one minimal text block when the upstream response has no content', () => {
     expect(transformResponse({}).content).toEqual([{ type: 'text', text: '.' }]);
+  });
+
+  it('uses a stable recovery message instead of a blank response for a malformed function call', () => {
+    const response = transformResponse({
+      candidates: [
+        { content: { role: 'model', parts: [] }, finishReason: 'MALFORMED_FUNCTION_CALL' },
+      ],
+    });
+
+    expect(response).toMatchObject({
+      content: [{ text: MALFORMED_FUNCTION_CALL_RECOVERY_TEXT, type: 'text' }],
+      stop_reason: 'end_turn',
+    });
   });
 
   it('maps Gemini implicit cache and thinking counts into Claude-compatible usage', () => {

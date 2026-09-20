@@ -28,6 +28,12 @@ const URLS = {
   FETCH_CREDITS: 'https://cloudcode-pa.googleapis.com/v1internal:fetchCredits',
 };
 
+const PROJECT_CONTEXT_ENDPOINTS = [
+  URLS.LOAD_PROJECT,
+  URLS.DAILY_LOAD_PROJECT,
+  URLS.SANDBOX_LOAD_PROJECT,
+] as const;
+
 const QUOTA_API_ENDPOINTS = [
   'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels',
   'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
@@ -147,6 +153,10 @@ interface GoogleApiRequestOptions extends GoogleApiProxyOptions {
 
 function isSuccessfulHttpStatus(status: number): boolean {
   return status >= 200 && status < 300;
+}
+
+function shouldFallbackProjectContextStatus(status: number): boolean {
+  return status === 404 || status === 429 || (status >= 500 && status < 600);
 }
 
 function responseDataToText(data: unknown): string {
@@ -436,10 +446,6 @@ function parseQuotaSummaryResponse(payload: unknown): QuotaSummaryResponse {
     throw new Error('Received malformed quota summary response from Google APIs');
   }
   return parsed.data;
-}
-
-function isHttp429Error(error: unknown): boolean {
-  return error instanceof Error && error.message.startsWith('HTTP 429');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -896,47 +902,54 @@ export class GoogleAPIService {
     let projectId: string | undefined;
     let subscriptionTier: string | undefined;
     let lastError: unknown;
-    const endpoints = [URLS.LOAD_PROJECT, URLS.SANDBOX_LOAD_PROJECT];
+    const axiosOptions = this.getAxiosOptions(proxyUrl);
 
-    for (const endpoint of endpoints) {
+    for (
+      let endpointIndex = 0;
+      endpointIndex < PROJECT_CONTEXT_ENDPOINTS.length;
+      endpointIndex += 1
+    ) {
+      const endpoint = PROJECT_CONTEXT_ENDPOINTS[endpointIndex];
+      const hasNextEndpoint = endpointIndex < PROJECT_CONTEXT_ENDPOINTS.length - 1;
+      let response: GoogleApiHttpResponse;
+
       try {
-        const response = await requestGoogleApi(endpoint, {
+        response = await requestGoogleApi(endpoint, {
           data: JSON.stringify(body),
           headers: buildInternalApiHeaders(accessToken),
           method: 'POST',
           signal: createGoogleApiRequestSignal(REQUEST_TIMEOUT_MS).signal,
-          ...this.getAxiosOptions(proxyUrl),
+          ...axiosOptions,
         });
-
-        if (isSuccessfulHttpStatus(response.status)) {
-          const data = parseLoadProjectResponse(response.data);
-          if (isString(data.cloudaicompanionProject)) {
-            projectId = data.cloudaicompanionProject;
-          }
-          subscriptionTier = resolveSubscriptionTier(data);
-          break;
-        } else {
-          lastError = new Error(`HTTP ${response.status}: ${responseDataToText(response.data)}`);
-          if (endpoint === URLS.LOAD_PROJECT && response.status === 429) {
-            logger.warn(
-              '[GoogleAPIService] Prod loadCodeAssist returned 429, falling back to sandbox endpoint',
-            );
-            continue;
-          }
-        }
       } catch (error) {
         lastError = error;
-        logger.warn(`[GoogleAPIService] Failed to fetch project ID from ${endpoint} `, error);
-        await sleep(500);
-      }
-
-      if (projectId || subscriptionTier) {
+        if (hasNextEndpoint) {
+          logger.warn(
+            `[GoogleAPIService] loadCodeAssist transport failure at ${endpoint}, falling back to the next endpoint`,
+          );
+          continue;
+        }
+        logger.warn(`[GoogleAPIService] loadCodeAssist transport failure at ${endpoint}`);
         break;
       }
 
-      if (endpoint !== URLS.LOAD_PROJECT || !isHttp429Error(lastError)) {
+      if (isSuccessfulHttpStatus(response.status)) {
+        const data = parseLoadProjectResponse(response.data);
+        if (isString(data.cloudaicompanionProject)) {
+          projectId = data.cloudaicompanionProject;
+        }
+        subscriptionTier = resolveSubscriptionTier(data);
         break;
       }
+
+      lastError = new Error(`HTTP ${response.status}: ${responseDataToText(response.data)}`);
+      if (!hasNextEndpoint || !shouldFallbackProjectContextStatus(response.status)) {
+        break;
+      }
+
+      logger.warn(
+        `[GoogleAPIService] loadCodeAssist endpoint ${endpoint} returned ${response.status}, falling back to the next endpoint`,
+      );
     }
 
     if (!projectId && !subscriptionTier) {

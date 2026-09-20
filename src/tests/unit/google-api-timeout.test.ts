@@ -779,6 +779,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
       .fn()
       .mockRejectedValueOnce(new TypeError('fetch failed'))
       .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -821,11 +822,11 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
       },
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({}));
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock.mock.calls[3]?.[1]?.body).toBe(JSON.stringify({}));
   });
 
-  it('falls back to sandbox loadCodeAssist when prod returns 429', async () => {
+  it('falls back to daily-prod loadCodeAssist when prod returns 429', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -837,7 +838,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
         ok: true,
         status: 200,
         json: vi.fn().mockResolvedValue({
-          cloudaicompanionProject: 'sandbox-project',
+          cloudaicompanionProject: 'daily-project',
         }),
       });
 
@@ -854,12 +855,12 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
 
     const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
 
-    await expect(GoogleAPIService.fetchProjectId('access-token')).resolves.toBe('sandbox-project');
+    await expect(GoogleAPIService.fetchProjectId('access-token')).resolves.toBe('daily-project');
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
     );
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
-      'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist',
+      'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
     );
   });
 });

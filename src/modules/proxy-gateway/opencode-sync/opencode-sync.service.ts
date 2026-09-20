@@ -1,7 +1,8 @@
-import { access, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rename, unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { parse, type ParseError } from 'jsonc-parser';
 import { sanitizeObject } from '@/shared/security/sensitiveDataMasking';
+import { writeFileAtomic } from '@/shared/persistence/atomic-json-file';
 import { buildOpenCodeAccountsFile, type OpenCodeAccountLoader } from './opencode-accounts';
 import type { OpenCodeCredentialService } from './opencode-credential.service';
 import {
@@ -76,17 +77,6 @@ function normalizeBaseUrl(baseUrl: string): string {
   return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`;
 }
 
-async function writeAtomically(path: string, content: string, mode?: number): Promise<void> {
-  const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(temporaryPath, content, { encoding: 'utf8', mode });
-  try {
-    await rename(temporaryPath, path);
-  } catch (error) {
-    await unlink(temporaryPath).catch(() => undefined);
-    throw error;
-  }
-}
-
 export class OpenCodeSyncService {
   private readonly configDirectory: string;
 
@@ -116,7 +106,7 @@ export class OpenCodeSyncService {
     if (exists) {
       await this.createOrSanitizeBackup(configPath, source);
     }
-    await writeAtomically(configPath, updated);
+    await writeFileAtomic(configPath, updated);
     if (input.syncAccounts) {
       await this.syncAccountsFile();
     }
@@ -135,7 +125,7 @@ export class OpenCodeSyncService {
       const backup = await readFile(backupPath, 'utf8');
       const restored = injectOpenCodeApiKeyAfterRestore(backup, this.credentials.getOrCreate());
       configPath = this.getBackupTargetPath(backupPath);
-      await writeAtomically(configPath, restored);
+      await writeFileAtomic(configPath, restored);
       await unlink(backupPath);
     }
     if (accountsBackupPath) {
@@ -150,7 +140,7 @@ export class OpenCodeSyncService {
       const source = await readFile(configPath, 'utf8');
       const cleared = clearOpenCodeConfigJsonc(source, input);
       await this.createOrSanitizeBackup(configPath, source);
-      await writeAtomically(configPath, cleared);
+      await writeFileAtomic(configPath, cleared);
     }
 
     const accountsBackupPath = await this.findAccountsBackupPath();
@@ -274,7 +264,7 @@ export class OpenCodeSyncService {
       // Replace it with a redacted snapshot of the validated current config.
       redacted = redactOpenCodeApiKeyForBackup(source);
     }
-    await writeAtomically(backupPath, redacted);
+    await writeFileAtomic(backupPath, redacted);
   }
 
   private getAccountsPath(): string {
@@ -288,14 +278,16 @@ export class OpenCodeSyncService {
       const backupPath = `${accountsPath}${BACKUP_SUFFIX}`;
       if (!(await pathExists(backupPath))) {
         const backupSource = await readFile(accountsPath, 'utf8');
-        await writeAtomically(backupPath, backupSource, 0o600);
+        await writeFileAtomic(backupPath, backupSource, { mode: 0o600 });
       }
     }
 
     const source = exists ? await readFile(accountsPath, 'utf8') : null;
     const accounts = await this.loadAccounts();
     const output = buildOpenCodeAccountsFile(source, accounts);
-    await writeAtomically(accountsPath, `${JSON.stringify(output, null, 2)}\n`, 0o600);
+    await writeFileAtomic(accountsPath, `${JSON.stringify(output, null, 2)}\n`, {
+      mode: 0o600,
+    });
   }
 
   private async findAccountsBackupPath(): Promise<string | null> {

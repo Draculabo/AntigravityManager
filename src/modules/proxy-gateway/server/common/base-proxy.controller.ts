@@ -4,6 +4,18 @@ import { isFunction, isObjectLike, isString } from 'lodash-es';
 import { Observable } from 'rxjs';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import type { FileReferenceError } from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
+import { ProxyAccountUnavailableError } from '@/modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
+
+export function applyProxyRetryAfterHeader(res: FastifyReply, error: unknown): void {
+  if (
+    error instanceof ProxyAccountUnavailableError &&
+    error.retryAfterSeconds !== undefined &&
+    Number.isFinite(error.retryAfterSeconds) &&
+    error.retryAfterSeconds > 0
+  ) {
+    res.header('Retry-After', String(Math.ceil(error.retryAfterSeconds)));
+  }
+}
 
 export function createProxyRequestAbortScope(
   req: FastifyRequest | undefined,
@@ -159,6 +171,7 @@ export abstract class BaseProxyController {
     const message = overrideMessage ?? this.resolveErrorMessageText(error);
     const status = this.resolveErrorHttpStatus(message, error);
     this.logProxyEndpointError(endpoint, status, message, error);
+    applyProxyRetryAfterHeader(res, error);
     res.status(status).send({
       error: {
         message,
@@ -174,8 +187,9 @@ export abstract class BaseProxyController {
     overrideMessage?: string,
   ): void {
     const message = overrideMessage ?? this.resolveErrorMessageText(error);
-    const status = this.resolveErrorHttpStatus(message, error);
+    const status = this.resolveAnthropicErrorHttpStatus(message, error);
     this.logProxyEndpointError(endpoint, status, message, error);
+    applyProxyRetryAfterHeader(res, error);
     res.status(status).send({
       type: 'error',
       error: {
@@ -183,6 +197,22 @@ export abstract class BaseProxyController {
         message,
       },
     });
+  }
+
+  /**
+   * A terminal upstream 403 means the local account pool could not satisfy an
+   * Anthropic request. Claude clients treat a public 403 as an invalid local
+   * login and stop retrying, so expose it as temporary gateway unavailability.
+   * This stays at the Anthropic boundary: OpenAI and Gemini preserve upstream
+   * 403 responses, and the shared retry service remains provider-neutral.
+   */
+  private resolveAnthropicErrorHttpStatus(message: string, error?: unknown): HttpStatus {
+    const status = this.resolveErrorHttpStatus(message, error);
+    if (error instanceof UpstreamRequestError && status === HttpStatus.FORBIDDEN) {
+      return HttpStatus.SERVICE_UNAVAILABLE;
+    }
+
+    return status;
   }
 
   private resolveErrorHttpStatus(message: string, error?: unknown): HttpStatus {

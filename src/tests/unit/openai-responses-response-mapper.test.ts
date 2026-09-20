@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { MISSING_COMMAND_FALLBACK } from '@/modules/proxy-gateway/antigravity/CommandToolAdapter';
+import { MALFORMED_FUNCTION_CALL_RECOVERY_TEXT } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { toOpenAIResponsesResponse } from '../../modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
 
 describe('OpenAI Responses non-stream mapper', () => {
@@ -274,8 +276,90 @@ describe('OpenAI Responses non-stream mapper', () => {
     });
 
     expect(response).toMatchObject({ incomplete_details: null, status: 'completed' });
-    expect(response.output).toEqual([
+    expect(Reflect.get(response, 'output')).toEqual([
       expect.objectContaining({ status: 'completed', type: 'message' }),
+    ]);
+  });
+
+  it('normalizes an incomplete shell tool call in a non-stream Responses response', () => {
+    const response = toOpenAIResponsesResponse({
+      id: 'resp_missing_command',
+      object: 'chat.completion',
+      created: 1,
+      model: 'gpt-5-codex',
+      choices: [
+        {
+          index: 0,
+          finish_reason: 'tool_calls',
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_terminal',
+                type: 'function',
+                function: {
+                  name: 'terminal',
+                  arguments: JSON.stringify({ description: 'sensitive tool detail' }),
+                },
+              },
+            ],
+          },
+        },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+
+    const output = Reflect.get(response, 'output');
+    expect(Array.isArray(output)).toBe(true);
+    if (!Array.isArray(output)) {
+      throw new Error('Responses mapper did not return an output array');
+    }
+    const toolCall = output[0];
+    if (typeof toolCall !== 'object' || toolCall === null) {
+      throw new Error('Responses mapper did not return a function-call object');
+    }
+    const argumentsValue = Reflect.get(toolCall, 'arguments');
+    expect(Reflect.get(toolCall, 'name')).toBe('terminal');
+    expect(Reflect.get(toolCall, 'type')).toBe('function_call');
+    expect(typeof argumentsValue).toBe('string');
+    if (typeof argumentsValue !== 'string') {
+      throw new Error('Responses mapper did not serialize function-call arguments');
+    }
+    expect(JSON.parse(argumentsValue)).toEqual({
+      command: MISSING_COMMAND_FALLBACK,
+      description: 'sensitive tool detail',
+    });
+  });
+
+  it('recovers a malformed function call with completed, non-empty Responses output', () => {
+    const response = toOpenAIResponsesResponse({
+      id: 'resp_malformed_function_call',
+      object: 'chat.completion',
+      created: 1,
+      model: 'gpt-5-codex',
+      choices: [
+        {
+          index: 0,
+          finish_reason: 'MALFORMED_FUNCTION_CALL',
+          message: { role: 'assistant', content: null },
+        },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 0, total_tokens: 1 },
+    });
+
+    expect(response).toMatchObject({ incomplete_details: null, status: 'completed' });
+    expect(response.output).toEqual([
+      expect.objectContaining({
+        content: [
+          {
+            annotations: [],
+            text: MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
+            type: 'output_text',
+          },
+        ],
+        type: 'message',
+      }),
     ]);
   });
 });

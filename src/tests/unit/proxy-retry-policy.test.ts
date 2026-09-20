@@ -1,8 +1,10 @@
+import { HttpException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { ProxyAccountUnavailableError } from '@/modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
 
 function createToken(id: string): CloudAccount {
   return {
@@ -30,6 +32,7 @@ function createPolicy() {
     markAsRateLimited: vi.fn(),
     markFromUpstreamError: vi.fn().mockResolvedValue(undefined),
     getRemainingRateLimitWait: vi.fn().mockReturnValue(30),
+    getMinimumRateLimitWaitForPool: vi.fn().mockReturnValue(undefined),
     markModelSuccess: vi.fn(),
     markValidationRequired: vi.fn().mockResolvedValue(undefined),
     markImageRateLimitFast: vi.fn().mockReturnValue(false),
@@ -97,6 +100,43 @@ describe('ProxyRetryService', () => {
       sessionKey: 'session-1',
       excludeAccountIds: ['acc-1'],
       model: 'gemini-3-flash',
+    });
+  });
+
+  it('reports an initially unavailable account pool as 503 with its shortest wait', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const retryState = policy.createTokenRetryState();
+    accountLeaseService.getNextToken.mockResolvedValue(null);
+    accountLeaseService.getMinimumRateLimitWaitForPool.mockReturnValue(17);
+
+    await expect(policy.selectRetryToken(retryState, 'gemini-3-flash')).rejects.toMatchObject({
+      retryAfterSeconds: 17,
+    });
+
+    try {
+      await policy.selectRetryToken(policy.createTokenRetryState(), 'gemini-3-flash');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ProxyAccountUnavailableError);
+      expect((error as ProxyAccountUnavailableError).getStatus()).toBe(503);
+    }
+  });
+
+  it('preserves the shortest wait when the image account pool is unavailable', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    accountLeaseService.getNextImageToken.mockRejectedValue(
+      new HttpException('No available image accounts', 503),
+    );
+    accountLeaseService.getMinimumRateLimitWaitForPool.mockReturnValue(11);
+
+    await expect(
+      policy.selectRetryToken(
+        policy.createTokenRetryState(),
+        'gemini-3.1-flash-image',
+        undefined,
+        true,
+      ),
+    ).rejects.toMatchObject({
+      retryAfterSeconds: 11,
     });
   });
 
@@ -345,17 +385,27 @@ describe('ProxyRetryService', () => {
 
   it('preserves the last non-429 terminal failure when later accounts return 429', () => {
     const { policy } = createPolicy();
-    const retryState = policy.createTokenRetryState();
     const forbidden = new UpstreamRequestError({ message: 'forbidden', status: 403 });
-    const rateLimited = new UpstreamRequestError({ message: 'rate limited', status: 429 });
+    const rateLimited = new UpstreamRequestError({
+      message: 'rate limited',
+      status: 429,
+      headers: { retryAfter: '23' },
+    });
 
-    policy.recordFailure(retryState, forbidden);
-    policy.recordFailure(retryState, rateLimited);
-
-    expect(policy.resolveTerminalError(retryState, rateLimited)).toBe(forbidden);
     const allRateLimited = policy.createTokenRetryState();
     policy.recordFailure(allRateLimited, rateLimited);
-    expect(policy.resolveTerminalError(allRateLimited, rateLimited)).toBe(rateLimited);
+    const rateLimitedResult = policy.resolveTerminalError(allRateLimited, rateLimited);
+
+    expect(rateLimitedResult).toBeInstanceOf(ProxyAccountUnavailableError);
+    expect((rateLimitedResult as ProxyAccountUnavailableError).getStatus()).toBe(429);
+    expect((rateLimitedResult as ProxyAccountUnavailableError).retryAfterSeconds).toBe(23);
+
+    const mixedFailures = policy.createTokenRetryState();
+    policy.recordFailure(mixedFailures, forbidden);
+    policy.recordFailure(mixedFailures, rateLimited);
+    const mixedResult = policy.resolveTerminalError(mixedFailures, rateLimited);
+
+    expect(mixedResult).toBe(forbidden);
   });
 
   it('identifies image 429 failures that must be recorded before grace sleep', () => {

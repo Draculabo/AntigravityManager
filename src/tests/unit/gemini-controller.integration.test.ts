@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { HttpException } from '@nestjs/common';
 
 import { GeminiController } from '../../modules/proxy-gateway/server/modules/gemini/gemini.controller';
 import { DEFAULT_APP_CONFIG } from '../../modules/config/types';
 import { setServerConfig } from '../../server/server-config';
+import { ProxyAccountUnavailableError } from '../../modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};
@@ -41,6 +42,28 @@ describe('GeminiController Integration', () => {
       });
     },
   );
+
+  it('returns Retry-After with Gemini account-pool 503 responses', async () => {
+    const proxyService = {
+      handleGeminiGenerateContent: vi.fn().mockRejectedValue(
+        new ProxyAccountUnavailableError({
+          status: 503,
+          retryAfterSeconds: 13,
+        }),
+      ),
+    };
+    const controller = new GeminiController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.modelAction(
+      'gemini-3-flash:generateContent',
+      { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] },
+      reply as any,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(503);
+    expect(reply.header).toHaveBeenCalledWith('Retry-After', '13');
+  });
 
   it('supports list and get model endpoints', () => {
     const proxyService = {};
@@ -255,6 +278,50 @@ describe('GeminiController Integration', () => {
     expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'no-cache');
     expect(reply.header).toHaveBeenCalledWith('Connection', 'keep-alive');
     expect(reply.send).toHaveBeenCalledWith(stream);
+  });
+
+  it('writes an SSE error event through the raw reply stream', async () => {
+    const stream = throwError(() => new Error('upstream stream failed'));
+    const proxyService = {
+      handleGeminiGenerateContent: vi.fn(),
+      handleGeminiStreamGenerateContent: vi.fn().mockResolvedValue(stream),
+    };
+    const controller = new GeminiController(proxyService as any);
+    const raw = {
+      end: vi.fn(),
+      on: vi.fn(),
+      writableEnded: false,
+      write: vi.fn(),
+      writeHead: vi.fn(),
+    };
+    const reply: Record<string, any> = {
+      ...createReplyMock(),
+      hijack: vi.fn(),
+      raw,
+    };
+
+    await controller.modelAction(
+      'gemini-2.5-flash:streamGenerateContent',
+      { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] } as any,
+      reply as any,
+    );
+
+    expect(reply.hijack).toHaveBeenCalledOnce();
+    expect(raw.writeHead).toHaveBeenCalledWith(
+      200,
+      expect.objectContaining({
+        'Content-Type': 'text/event-stream',
+      }),
+    );
+    const payload = raw.write.mock.calls[0][0] as string;
+    expect(JSON.parse(payload.slice('data: '.length))).toEqual({
+      error: {
+        message: 'upstream stream failed',
+        type: 'server_error',
+      },
+    });
+    expect(raw.end).toHaveBeenCalledOnce();
+    expect(reply.send).not.toHaveBeenCalled();
   });
 
   it('supports countTokens action', async () => {

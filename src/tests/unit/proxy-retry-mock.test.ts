@@ -1018,7 +1018,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(internalPayload).not.toHaveProperty('project');
   });
 
-  it('uses generate-content requestType for Gemini stream internal payload', async () => {
+  it('omits requestType and credits for a plain Gemini stream internal payload', async () => {
     const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.streamGenerateInternal.mockResolvedValue(new EventEmitter());
@@ -1028,7 +1028,8 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     } as any);
 
     const internalPayload = mockGeminiClient.streamGenerateInternal.mock.calls[0][0];
-    expect(internalPayload.requestType).toBe('generate-content');
+    expect(internalPayload).not.toHaveProperty('requestType');
+    expect(internalPayload).not.toHaveProperty('enabledCreditTypes');
   });
 });
 
@@ -1354,6 +1355,112 @@ describe('ProxyService Protocol Parity Fixtures', () => {
         (delta) => 'content' in delta && delta.content !== null && 'reasoning_content' in delta,
       ),
     ).toBe(false);
+    expect(chunks.filter((chunk) => chunk.includes('data: [DONE]'))).toHaveLength(1);
+  });
+
+  it('normalizes shell argument aliases in Chat Completions SSE output', async () => {
+    const service = new TestableOpenAIService();
+    const stream = new EventEmitter();
+    const observable = (service as any).processStreamResponse(
+      stream,
+      'gpt-4o-mini',
+      new Set(['PowerShell']),
+    );
+    const chunks: string[] = [];
+
+    await new Promise<void>((resolve, reject) => {
+      observable.subscribe({
+        next: (chunk: string) => {
+          chunks.push(chunk);
+        },
+        error: reject,
+        complete: resolve,
+      });
+
+      stream.emit(
+        'data',
+        Buffer.from(
+          `data: ${JSON.stringify({
+            response: {
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      {
+                        functionCall: {
+                          args: { input: 'Get-Location' },
+                          id: 'call_powershell_stream',
+                          name: 'powershell',
+                        },
+                      },
+                    ],
+                  },
+                  finishReason: 'STOP',
+                },
+              ],
+            },
+          })}\n`,
+        ),
+      );
+      stream.emit('end');
+    });
+
+    const payloads = chunks
+      .flatMap((chunk) => chunk.split('\n'))
+      .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
+      .map((line) => JSON.parse(line.slice('data: '.length)));
+    const toolCall = payloads
+      .flatMap((payload) => payload.choices ?? [])
+      .flatMap((choice: { delta: { tool_calls?: unknown[] } }) => choice.delta.tool_calls ?? [])
+      .at(0) as { function?: { arguments?: string; name?: string } } | undefined;
+
+    expect(toolCall?.function?.name).toBe('PowerShell');
+    expect(JSON.parse(toolCall?.function?.arguments ?? '{}')).toEqual({ command: 'Get-Location' });
+  });
+
+  it('emits one neutral recovery message and stop for a malformed function call in Chat Completions SSE', async () => {
+    const service = new TestableOpenAIService();
+    const stream = new EventEmitter();
+    const observable = (service as any).processStreamResponse(stream, 'gpt-4o-mini');
+    const chunks: string[] = [];
+
+    await new Promise<void>((resolve, reject) => {
+      observable.subscribe({
+        next: (chunk: string) => {
+          chunks.push(chunk);
+        },
+        error: reject,
+        complete: resolve,
+      });
+
+      stream.emit(
+        'data',
+        Buffer.from(
+          `data: ${JSON.stringify({
+            response: {
+              candidates: [{ content: { parts: [] }, finishReason: 'MALFORMED_FUNCTION_CALL' }],
+            },
+          })}\n`,
+        ),
+      );
+      stream.emit('end');
+    });
+
+    const payloads = chunks
+      .flatMap((chunk) => chunk.split('\n'))
+      .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
+      .map((line) => JSON.parse(line.slice('data: '.length)));
+    const contentDeltas = payloads
+      .flatMap((payload) => payload.choices ?? [])
+      .map((choice: { delta: { content?: unknown } }) => choice.delta.content)
+      .filter((content: unknown): content is string => typeof content === 'string');
+    const finishReasons = payloads
+      .flatMap((payload) => payload.choices ?? [])
+      .map((choice: { finish_reason?: unknown }) => choice.finish_reason)
+      .filter((finishReason: unknown): finishReason is string => typeof finishReason === 'string');
+
+    expect(contentDeltas).toEqual([expect.stringMatching(/could not complete a tool call/i)]);
+    expect(finishReasons).toEqual(['stop']);
     expect(chunks.filter((chunk) => chunk.includes('data: [DONE]'))).toHaveLength(1);
   });
 

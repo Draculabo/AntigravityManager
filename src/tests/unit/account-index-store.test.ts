@@ -171,11 +171,8 @@ describe('account index store', () => {
     const originalWrite = fs.writeFileSync.bind(fs);
 
     vi.spyOn(fs, 'writeFileSync').mockImplementation((file, data, options) => {
-      if (String(file).startsWith(`${indexPath}.tmp-`)) {
-        originalWrite(file, data, options);
-        throw new Error('disk full');
-      }
-      throw new Error(`unexpected write target: ${String(file)}`);
+      originalWrite(file, data, options);
+      throw new Error('disk full');
     });
 
     await expect(mutateAccountIndex(indexPath, () => undefined)).rejects.toThrow('disk full');
@@ -205,7 +202,7 @@ describe('account index store', () => {
     vi.spyOn(fs, 'renameSync').mockImplementation(() => {
       throw new Error('replace failed');
     });
-    vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {
+    vi.spyOn(fs, 'rmSync').mockImplementation(() => {
       throw new Error('cleanup failed');
     });
 
@@ -223,23 +220,31 @@ describe('account index store', () => {
     expect(fs.readdirSync(tempDir)).toEqual(['accounts.json']);
   });
 
+  it('synchronizes the temporary index before replacing the durable account file', async () => {
+    const sync = vi.spyOn(fs, 'fsyncSync');
+
+    await seedAccount();
+
+    expect(sync).toHaveBeenCalled();
+  });
+
   it('uses distinct UUID-backed temp paths for separate commits', async () => {
-    const tempPaths: string[] = [];
-    const originalWrite = fs.writeFileSync.bind(fs);
-    vi.spyOn(fs, 'writeFileSync').mockImplementation((file, data, options) => {
-      if (String(file).startsWith(`${indexPath}.tmp-`)) {
-        tempPaths.push(String(file));
-      }
-      return originalWrite(file, data, options);
-    });
+    const open = vi.spyOn(fs, 'openSync');
 
     await seedAccount();
     await mutateAccountIndex(indexPath, (draft) => {
       draft[ACCOUNT_A.id].name = 'Updated';
     });
 
+    const tempPaths = open.mock.calls
+      .map(([file]) => String(file))
+      .filter(
+        (file) => file.startsWith(path.join(tempDir, '.accounts.json.')) && file.endsWith('.tmp'),
+      );
     expect(tempPaths).toHaveLength(2);
     expect(new Set(tempPaths).size).toBe(2);
-    expect(tempPaths.every((tempPath) => /\.tmp-\d+-[0-9a-f-]{36}$/.test(tempPath))).toBe(true);
+    expect(
+      tempPaths.every((tempPath) => /\.accounts\.json\.[0-9a-f-]{36}\.tmp$/.test(tempPath)),
+    ).toBe(true);
   });
 });

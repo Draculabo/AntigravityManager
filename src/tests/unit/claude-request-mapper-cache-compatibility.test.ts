@@ -337,7 +337,6 @@ describe('ClaudeRequestMapper cache compatibility', () => {
       'model',
       'userAgent',
       'requestType',
-      'enabledCreditTypes',
       'requestId',
     ]);
   });

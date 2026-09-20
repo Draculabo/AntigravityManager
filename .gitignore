@@ -112,10 +112,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-venv/
-ENV/
-env/
-*.egg-info/
 dist/
 build/
 
@@ -126,3 +122,6 @@ accounts_backup.json
 
 # Bun lock file
 bun.lock
+.idea/
+# Added by code-review-graph
+.code-review-graph/

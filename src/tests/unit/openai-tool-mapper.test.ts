@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { MISSING_COMMAND_FALLBACK } from '@/modules/proxy-gateway/antigravity/CommandToolAdapter';
 import { OpenAIService as ProxyService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
 
 describe('OpenAI tool mapper compatibility', () => {
@@ -42,5 +43,33 @@ describe('OpenAI tool mapper compatibility', () => {
     });
 
     expect(hasUsableResponse).toBe(true);
+  });
+
+  it('normalizes an incomplete PowerShell tool call in a non-stream Chat Completions response', () => {
+    const service = Object.create(ProxyService.prototype) as ProxyService;
+    const result = Reflect.get(service, 'convertClaudeToOpenAIResponse').call(
+      service,
+      {
+        content: [
+          {
+            id: 'call_powershell',
+            input: { description: 'sensitive tool detail' },
+            name: 'PowerShell',
+            type: 'tool_use',
+          },
+        ],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+      'gpt-5-codex',
+    );
+
+    expect(result.choices[0]).toMatchObject({ finish_reason: 'tool_calls' });
+    const toolCall = result.choices[0].message.tool_calls?.[0];
+    expect(toolCall?.function?.name).toBe('PowerShell');
+    expect(JSON.parse(toolCall?.function?.arguments ?? '{}')).toEqual({
+      command: MISSING_COMMAND_FALLBACK,
+      description: 'sensitive tool detail',
+    });
   });
 });

@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Notification } from 'electron';
 import { z } from 'zod';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
@@ -17,7 +18,7 @@ import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/ac
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
-import { hasAntigravityStorage } from '@/shared/platform/paths';
+import { getAntigravityStoragePaths } from '@/shared/platform/paths';
 import { detectAgyCliExecutablePath } from '@/modules/antigravity-runtime/binary-patch/agyCliPathDetection';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
@@ -93,6 +94,10 @@ function isAgyCliInstalled(): boolean {
   }
 }
 
+function hasAutoSwitchStorage(target: AntigravityAppTarget): boolean {
+  return getAntigravityStoragePaths(target).some((storagePath) => fs.existsSync(storagePath));
+}
+
 /**
  * A target only participates in auto-switch when its switch can actually run: the desktop targets
  * need a storage.json on disk, and agy needs its CLI binary. Resolving this per poll keeps an
@@ -100,10 +105,9 @@ function isAgyCliInstalled(): boolean {
  */
 function resolveAutoSwitchTargets(): AntigravityAppTarget[] {
   return AUTO_SWITCH_CANDIDATE_TARGETS.filter((target) =>
-    target === 'agy' ? isAgyCliInstalled() : hasAntigravityStorage(target),
+    target === 'agy' ? isAgyCliInstalled() : hasAutoSwitchStorage(target),
   );
 }
-
 const BooleanSettingSchema = z.boolean();
 const NumberSettingSchema = z.number();
 const StringSettingSchema = z.string();

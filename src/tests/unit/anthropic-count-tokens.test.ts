@@ -108,6 +108,7 @@ describe('Anthropic count_tokens', () => {
     await controller.countTokens(countTokensBody('hello') as never, reply as never);
 
     expect(reply.body).toMatchObject({ type: 'error' });
+    expect(reply.status).toHaveBeenCalledWith(503);
     expect(lease.penalties).toEqual([{ accountId: 'acc-1', kind: 'forbidden' }]);
   });
 });

@@ -4,7 +4,12 @@ import type {
 } from '../server/common/interfaces/request-interfaces';
 import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight';
 import { extractCustomToolInput, isCustomToolCall } from './CustomToolCall';
+import {
+  isMalformedFunctionCallFinishReason,
+  MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
+} from './GeminiFinishReason';
 import { toOpenAIResponsesUsage } from './OpenAIUsageMapper';
+import { adaptCommandArguments } from './CommandToolAdapter';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
 
 type ResponsesToolOutput =
@@ -22,10 +27,15 @@ function toResponsesToolOutputItem(toolCall: OpenAIToolCall): ResponsesToolOutpu
   };
   const callId = toolCall.call_id ?? toolCall.id;
   const namespaceFields = toolCall.namespace ? { namespace: toolCall.namespace } : {};
+  const adaptedArguments = adaptCommandArguments(
+    functionCall.name,
+    parseToolArguments(functionCall.arguments),
+  );
+  const argumentsString = JSON.stringify(adaptedArguments.arguments);
   if (toolCall.custom_input !== undefined || isCustomToolCall(functionCall.name)) {
     const rawInput =
       toolCall.custom_input ??
-      extractCustomToolInput(functionCall.name, parseToolArguments(functionCall.arguments));
+      extractCustomToolInput(functionCall.name, adaptedArguments.arguments);
     const input = isCustomToolCall(functionCall.name)
       ? optimizeApplyPatch(rawInput).input
       : rawInput;
@@ -53,7 +63,7 @@ function toResponsesToolOutputItem(toolCall: OpenAIToolCall): ResponsesToolOutpu
 
   return {
     item: {
-      arguments: functionCall.arguments,
+      arguments: argumentsString,
       call_id: callId,
       id: toolCall.id,
       name: functionCall.name,
@@ -85,7 +95,12 @@ export function toOpenAIResponsesResponse(
 ): Record<string, unknown> {
   const choice = response.choices[0];
   const output: Record<string, unknown>[] = [];
-  const content = choice?.message.content;
+  const rawContent = choice?.message.content;
+  const content =
+    isMalformedFunctionCallFinishReason(choice?.finish_reason) &&
+    (typeof rawContent !== 'string' || rawContent.trim().length === 0)
+      ? MALFORMED_FUNCTION_CALL_RECOVERY_TEXT
+      : rawContent;
   const refusal = choice?.message.refusal;
   const reasoningContent = choice?.message.reasoning_content;
   // Upstream already said whether the answer ran out of output budget; a response

@@ -103,6 +103,65 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
   });
 
+  it('normalizes PowerShell aliases and recovers a blank command in Responses streaming', () => {
+    const mapper = new OpenAIResponsesStreamingMapper({
+      clientToolNames: new Set(['PowerShell']),
+      model: 'gemini-3-pro',
+      responseId: 'resp_powershell',
+    });
+    const events = mapper
+      .processPart({
+        functionCall: {
+          args: { command: '   ', input: 'Get-Location' },
+          id: 'call_powershell',
+          name: 'powershell',
+        },
+      })
+      .map(parseEvent);
+    const completedTool = events.at(-1);
+
+    expect(completedTool).toMatchObject({
+      item: { name: 'PowerShell', type: 'function_call' },
+      type: 'response.output_item.done',
+    });
+    expect(
+      JSON.parse(
+        String(Reflect.get(Reflect.get(completedTool ?? {}, 'item') as object, 'arguments')),
+      ),
+    ).toEqual({
+      command: 'Get-Location',
+    });
+  });
+
+  it('emits one recovery message and a completed terminal event for a malformed function call', () => {
+    const mapper = createMapper();
+    const events = mapper.complete('MALFORMED_FUNCTION_CALL').map(parseEvent);
+    const deltas = events.filter((event) => event.type === 'response.output_text.delta');
+
+    expect(deltas).toHaveLength(1);
+    expect(deltas[0]).toMatchObject({
+      delta: expect.stringMatching(/could not complete a tool call/i),
+    });
+    expect(events.at(-1)).toMatchObject({
+      response: {
+        incomplete_details: null,
+        output: [
+          expect.objectContaining({
+            content: [
+              expect.objectContaining({
+                text: expect.stringMatching(/could not complete a tool call/i),
+              }),
+            ],
+            status: 'completed',
+            type: 'message',
+          }),
+        ],
+        status: 'completed',
+      },
+      type: 'response.completed',
+    });
+  });
+
   it('emits apply_patch as a custom tool call with raw patch input', () => {
     const mapper = createMapper();
     const patch = '*** Begin Patch\n*** Update File: src/example.ts\n*** End Patch';

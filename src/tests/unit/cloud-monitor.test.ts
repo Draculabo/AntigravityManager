@@ -8,7 +8,7 @@ import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIServ
 import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchService';
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { logger } from '../../shared/logging/logger';
-import { hasAntigravityStorage } from '@/shared/platform/paths';
+import { getAntigravityStoragePaths } from '@/shared/platform/paths';
 import { detectAgyCliExecutablePath } from '@/modules/antigravity-runtime/binary-patch/agyCliPathDetection';
 import * as electronMock from 'electron';
 
@@ -22,7 +22,7 @@ vi.mock('../../shared/logging/logger');
 // tests independent of whether the host running them has Antigravity installed.
 vi.mock('@/shared/platform/paths', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/platform/paths')>()),
-  hasAntigravityStorage: vi.fn(() => true),
+  getAntigravityStoragePaths: vi.fn(() => [process.cwd()]),
 }));
 vi.mock('@/modules/antigravity-runtime/binary-patch/agyCliPathDetection', () => ({
   detectAgyCliExecutablePath: vi.fn(() => null),
@@ -38,7 +38,7 @@ describe('CloudMonitorService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    vi.mocked(hasAntigravityStorage).mockReturnValue(true);
+    vi.mocked(getAntigravityStoragePaths).mockReturnValue([process.cwd()]);
     vi.mocked(detectAgyCliExecutablePath).mockReturnValue(null);
     vi.mocked(CloudAccountSettingsStore.getSetting).mockReset();
     vi.mocked(CloudAccountSettingsStore.getSetting).mockImplementation(
@@ -216,7 +216,7 @@ describe('CloudMonitorService', () => {
   });
 
   it('skips auto-switch for targets whose storage.json is absent', async () => {
-    vi.mocked(hasAntigravityStorage).mockReturnValue(false);
+    vi.mocked(getAntigravityStoragePaths).mockReturnValue([]);
     vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
       {
         id: 'acc1',
@@ -236,7 +236,7 @@ describe('CloudMonitorService', () => {
   });
 
   it('includes the agy CLI target when its executable is detected', async () => {
-    vi.mocked(hasAntigravityStorage).mockReturnValue(false);
+    vi.mocked(getAntigravityStoragePaths).mockReturnValue([]);
     vi.mocked(detectAgyCliExecutablePath).mockReturnValue('/Users/x/.local/bin/agy');
     vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
       {
@@ -690,6 +690,7 @@ describe('AccountLeaseService project-id hydration', () => {
 
     const service = new AccountLeaseService();
     const selectedToken = await service.getNextToken();
+    await service.onModuleDestroy();
 
     expect(GoogleAPIService.fetchProjectId).toHaveBeenCalledWith('access-token');
     expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
@@ -780,6 +781,7 @@ describe('AccountLeaseService project-id hydration', () => {
 
     const service = new AccountLeaseService();
     const selectedToken = await service.getNextToken();
+    await service.onModuleDestroy();
 
     expect(GoogleAPIService.fetchProjectId).toHaveBeenCalledWith('access-token-4');
     expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(

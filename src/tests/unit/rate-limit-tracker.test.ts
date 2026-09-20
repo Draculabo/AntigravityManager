@@ -74,6 +74,38 @@ describe('RateLimitTrackerService parity replay', () => {
     expect(info?.retryAfterSec).toBe(60);
   });
 
+  it('treats bare unstructured quota_exhausted without a delay as a short rate limit', () => {
+    const tracker = new RateLimitTrackerService();
+    const info = tracker.parseAndMarkFromError({
+      accountId: 'acc-bare-quota',
+      status: 429,
+      body: 'quota_exhausted',
+      model: 'gemini-3.1-pro-high',
+      backoffSteps: [60, 300, 1800, 7200],
+    });
+
+    expect(info).toMatchObject({
+      reason: RateLimitReason.RateLimitExceeded,
+      retryAfterSec: 5,
+    });
+  });
+
+  it('treats bare unstructured quota_exhausted with a delay as quota exhausted', () => {
+    const tracker = new RateLimitTrackerService();
+    const info = tracker.parseAndMarkFromError({
+      accountId: 'acc-delayed-quota',
+      status: 429,
+      body: 'quota_exhausted; retry after 42s',
+      model: 'gemini-3.1-pro-high',
+      backoffSteps: [60, 300, 1800, 7200],
+    });
+
+    expect(info).toMatchObject({
+      reason: RateLimitReason.QuotaExhausted,
+      retryAfterSec: 42,
+    });
+  });
+
   it('clears only the successful model lockout', () => {
     const tracker = new RateLimitTrackerService();
     const commonError = {

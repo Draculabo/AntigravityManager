@@ -33,7 +33,10 @@ import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
 import { AccountLeaseService } from '../account-lease/account-lease.service';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
-import { createProxyRequestAbortScope } from '../../common/base-proxy.controller';
+import {
+  applyProxyRetryAfterHeader,
+  createProxyRequestAbortScope,
+} from '../../common/base-proxy.controller';
 
 type GeminiModelMetadata = {
   name: string;
@@ -207,6 +210,7 @@ export class GeminiController {
           : action === 'countTokens'
             ? this.resolveCountTokensErrorHttpStatus(error)
             : HttpStatus.INTERNAL_SERVER_ERROR;
+      applyProxyRetryAfterHeader(res, error);
       res.status(status).send({
         error: {
           code: status,

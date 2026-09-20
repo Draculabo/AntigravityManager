@@ -288,6 +288,20 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  getMinimumRateLimitWaitForPool(options?: { model?: string }): number | undefined {
+    const now = Date.now();
+    const model = normalizeModelId(options?.model) ?? options?.model;
+    const availableAccounts = Array.from(this.tokens.entries()).filter(
+      ([, tokenData]) =>
+        tokenData.validation_blocked_until_ms === undefined ||
+        now >= tokenData.validation_blocked_until_ms,
+    );
+    const waits = this.selectModelCapableAccounts(availableAccounts, model)
+      .map(([accountId]) => this.rateLimitTracker.getRemainingWaitSeconds(accountId, model))
+      .filter((waitSeconds) => waitSeconds > 0);
+    return waits.length > 0 ? Math.min(...waits) : undefined;
+  }
+
   async markFromUpstreamError(params: AccountLeaseUpstreamErrorParams): Promise<void> {
     await this.limitPolicy.markFromUpstreamError(params);
   }

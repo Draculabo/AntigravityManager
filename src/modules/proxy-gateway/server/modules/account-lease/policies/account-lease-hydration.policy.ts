@@ -278,7 +278,7 @@ export class AccountLeaseHydrationPolicy {
       });
 
     this.persistenceTails.set(accountId, task);
-    void task.finally(() => {
+    task.finally(() => {
       if (this.persistenceTails.get(accountId) === task) {
         this.persistenceTails.delete(accountId);
       }

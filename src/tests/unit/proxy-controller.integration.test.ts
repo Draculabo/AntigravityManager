@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 import { AnthropicController } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
 import { OpenAIOperations as ProxyController } from '../../modules/proxy-gateway/server/modules/openai/openai-operations.service';
@@ -7,6 +7,7 @@ import { OpenAIResponsesSessionStore } from '../../modules/proxy-gateway/server/
 import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import { DEFAULT_APP_CONFIG } from '../../modules/config/types';
 import { setServerConfig } from '../../server/server-config';
+import { ProxyAccountUnavailableError } from '../../modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};
@@ -451,6 +452,53 @@ describe('ProxyController Integration', () => {
     expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'no-cache');
     expect(reply.header).toHaveBeenCalledWith('Connection', 'keep-alive');
     expect(reply.send).toHaveBeenCalledWith(stream);
+  });
+
+  it('writes a stream error through the raw OpenAI SSE response', async () => {
+    const stream = throwError(() => new Error('upstream stream failed'));
+    const proxyService = {
+      handleChatCompletions: vi.fn().mockResolvedValue(stream),
+      handleAnthropicMessages: vi.fn(),
+    };
+    const controller = new ProxyController(proxyService as any);
+    const raw = {
+      end: vi.fn(),
+      on: vi.fn(),
+      writableEnded: false,
+      write: vi.fn(),
+      writeHead: vi.fn(),
+    };
+    const reply: Record<string, any> = {
+      ...createReplyMock(),
+      hijack: vi.fn(),
+      raw,
+    };
+
+    await controller.chatCompletions(
+      {
+        model: 'claude-sonnet-4-5',
+        stream: true,
+        messages: [{ role: 'user', content: 'hello' }],
+      } as any,
+      reply as any,
+    );
+
+    expect(reply.hijack).toHaveBeenCalledOnce();
+    expect(raw.writeHead).toHaveBeenCalledWith(
+      200,
+      expect.objectContaining({
+        'Content-Type': 'text/event-stream',
+      }),
+    );
+    const payload = raw.write.mock.calls[0][0] as string;
+    expect(JSON.parse(payload.slice('data: '.length))).toEqual({
+      error: {
+        message: 'upstream stream failed',
+        type: 'server_error',
+      },
+    });
+    expect(raw.end).toHaveBeenCalledOnce();
+    expect(reply.send).not.toHaveBeenCalled();
   });
 
   it('supports OpenAI completions compatibility endpoint', async () => {
@@ -1049,6 +1097,43 @@ describe('ProxyController Integration', () => {
     expect(reply.status).toHaveBeenCalledWith(429);
   });
 
+  it('returns Retry-After with OpenAI account-pool 503 responses', async () => {
+    const proxyService = {
+      handleChatCompletions: vi.fn().mockRejectedValue(
+        new ProxyAccountUnavailableError({
+          status: 503,
+          retryAfterSeconds: 17,
+        }),
+      ),
+    };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.imageGenerations({ prompt: 'draw a dog' }, reply as any);
+
+    expect(reply.status).toHaveBeenCalledWith(503);
+    expect(reply.header).toHaveBeenCalledWith('Retry-After', '17');
+  });
+
+  it('returns Retry-After with an all-accounts OpenAI 429 response', async () => {
+    const proxyService = {
+      handleChatCompletions: vi.fn().mockRejectedValue(
+        new ProxyAccountUnavailableError({
+          status: 429,
+          retryAfterSeconds: 23,
+          cause: new Error('All accounts are rate limited'),
+        }),
+      ),
+    };
+    const controller = new ProxyController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.imageGenerations({ prompt: 'draw a dog' }, reply as any);
+
+    expect(reply.status).toHaveBeenCalledWith(429);
+    expect(reply.header).toHaveBeenCalledWith('Retry-After', '23');
+  });
+
   it('preserves a structured image upstream status when the message has no status hint', async () => {
     const proxyService = {
       handleChatCompletions: vi.fn().mockRejectedValue(
@@ -1476,5 +1561,62 @@ describe('ProxyController Integration', () => {
 
     expect(proxyService.handleAnthropicMessages).toHaveBeenCalledOnce();
     expect(reply.status).toHaveBeenCalledWith(200);
+  });
+
+  it('maps terminal Anthropic upstream forbidden responses to service unavailable', async () => {
+    const proxyService = {
+      handleAnthropicMessages: vi.fn().mockRejectedValue(
+        new UpstreamRequestError({
+          body: '{"error":{"status":"PERMISSION_DENIED"}}',
+          message: 'The caller does not have permission',
+          status: 403,
+        }),
+      ),
+    };
+    const controller = new AnthropicController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.anthropicMessages(
+      {
+        model: 'claude-sonnet-4-5',
+        stream: false,
+        messages: [{ role: 'user', content: 'hello' }],
+      } as any,
+      reply as any,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(503);
+    expect(reply.send).toHaveBeenCalledWith({
+      type: 'error',
+      error: {
+        type: 'api_error',
+        message: 'The caller does not have permission',
+      },
+    });
+  });
+
+  it('returns Retry-After with Anthropic account-pool 503 responses', async () => {
+    const proxyService = {
+      handleAnthropicMessages: vi.fn().mockRejectedValue(
+        new ProxyAccountUnavailableError({
+          status: 503,
+          retryAfterSeconds: 19,
+        }),
+      ),
+    };
+    const controller = new AnthropicController(proxyService as any);
+    const reply = createReplyMock();
+
+    await controller.anthropicMessages(
+      {
+        model: 'claude-sonnet-4-5',
+        stream: false,
+        messages: [{ role: 'user', content: 'hello' }],
+      } as any,
+      reply as any,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(503);
+    expect(reply.header).toHaveBeenCalledWith('Retry-After', '19');
   });
 });

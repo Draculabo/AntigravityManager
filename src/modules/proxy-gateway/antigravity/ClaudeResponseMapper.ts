@@ -10,6 +10,10 @@ import {
 import { decodeSignature } from './signature-utils';
 import { toAnthropicMessageId } from './anthropic-message-id';
 import { SignatureStore } from './SignatureStore';
+import {
+  isMalformedFunctionCallFinishReason,
+  MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
+} from './GeminiFinishReason';
 import type { ThoughtSignatureModelContext } from './thought-signature-model';
 import { logger } from '@/shared/logging/logger';
 
@@ -313,13 +317,14 @@ class NonStreamingProcessor {
 
   private buildResponse(geminiResponse: GeminiResponse): ClaudeResponse {
     const finishReason = geminiResponse.candidates?.[0]?.finishReason;
+    const isMalformedFunctionCall = isMalformedFunctionCallFinishReason(finishReason);
     const blockReason = geminiResponse.promptFeedback?.blockReason;
     const refusal = blockReason
       ? `Request blocked by safety policy (blockReason: ${blockReason})`
       : undefined;
 
     let stopReason = 'end_turn';
-    if (this.hasToolCall) {
+    if (!isMalformedFunctionCall && this.hasToolCall) {
       stopReason = 'tool_use';
     } else if (finishReason === 'MAX_TOKENS') {
       stopReason = 'max_tokens';
@@ -349,7 +354,12 @@ class NonStreamingProcessor {
         0,
     };
 
-    if (this.contentBlocks.length === 0) {
+    const hasVisibleText = this.contentBlocks.some(
+      (contentBlock) => contentBlock.type === 'text' && contentBlock.text.trim().length > 0,
+    );
+    if (isMalformedFunctionCall && !hasVisibleText) {
+      this.contentBlocks.push({ type: 'text', text: MALFORMED_FUNCTION_CALL_RECOVERY_TEXT });
+    } else if (this.contentBlocks.length === 0) {
       this.contentBlocks.push({ type: 'text', text: '.' });
     }
 

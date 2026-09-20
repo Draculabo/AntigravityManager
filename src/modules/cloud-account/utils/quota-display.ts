@@ -50,9 +50,28 @@ export function formatAiCreditsAmount(credits: number): string {
   }).format(credits);
 }
 
+export function parseQuotaResetTime(value: string | undefined | null): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (normalized === '') {
+    return null;
+  }
+
+  const numericTimestamp = /^\d+$/.test(normalized) ? Number(normalized) : null;
+  const timestamp =
+    numericTimestamp === null
+      ? new Date(normalized)
+      : new Date(normalized.length <= 10 ? numericTimestamp * 1000 : numericTimestamp);
+
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp;
+}
+
 export function formatTimeRemaining(dateStr: string): string | null {
-  const targetDate = new Date(dateStr);
-  if (Number.isNaN(targetDate.getTime())) {
+  const targetDate = parseQuotaResetTime(dateStr);
+  if (!targetDate) {
     return null;
   }
 
@@ -96,8 +115,8 @@ export function formatResetTimeTitle(
     return undefined;
   }
 
-  const resetDate = new Date(resetTime);
-  if (Number.isNaN(resetDate.getTime())) {
+  const resetDate = parseQuotaResetTime(resetTime);
+  if (!resetDate) {
     return undefined;
   }
 

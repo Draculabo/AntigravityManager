@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { isString } from 'lodash-es';
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { calculateRetryDelay, sleep } from '../../../antigravity/retry-utils';
@@ -16,6 +16,7 @@ import {
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
 import { classifyForbiddenUpstreamError } from '../../common/google-error-details';
 import { ModelAvailabilityService } from './model-availability.service';
+import { ProxyAccountUnavailableError } from '../../common/exceptions/proxy-account-unavailable.exception';
 
 export interface ImageSchedulerPermit {
   release(): void;
@@ -26,6 +27,10 @@ export interface ProxyTokenRetryState {
   graceRetryToken: CloudAccount | null;
   graceRetriedAccountIds: Set<string>;
   lastNonRateLimitError: unknown | null;
+  failureCount: number;
+  allFailuresRateLimited: boolean;
+  retryAfterSeconds?: number;
+  model?: string;
   imagePermit: ImageSchedulerPermit | null;
 }
 
@@ -52,6 +57,7 @@ export interface ProxyRetryAccountLeaseService {
     model?: string;
   }): Promise<void>;
   getRemainingRateLimitWait(accountIdOrEmail: string, model?: string): number;
+  getMinimumRateLimitWaitForPool?(options?: { model?: string }): number | undefined;
   markModelSuccess(accountIdOrEmail: string, model: string): void;
   markImageRateLimitFast?(params: {
     accountIdOrEmail: string;
@@ -113,6 +119,8 @@ export class ProxyRetryService {
       graceRetryToken: null,
       graceRetriedAccountIds: new Set<string>(),
       lastNonRateLimitError: null,
+      failureCount: 0,
+      allFailuresRateLimited: true,
       imagePermit: null,
     };
   }
@@ -124,6 +132,7 @@ export class ProxyRetryService {
     imageRequest = false,
     signal?: AbortSignal,
   ): Promise<CloudAccount | null> {
+    retryState.model = model;
     const graceRetryToken = retryState.graceRetryToken;
     retryState.graceRetryToken = null;
 
@@ -134,12 +143,28 @@ export class ProxyRetryService {
     this.releaseImagePermit(retryState);
 
     if (imageRequest && this.accountLeaseService.getNextImageToken) {
-      const selected = await this.accountLeaseService.getNextImageToken({
-        sessionKey,
-        excludeAccountIds: Array.from(retryState.attemptedAccountIds),
-        model,
-        signal,
-      });
+      let selected: { token: CloudAccount; permit: ImageSchedulerPermit };
+      try {
+        selected = await this.accountLeaseService.getNextImageToken({
+          sessionKey,
+          excludeAccountIds: Array.from(retryState.attemptedAccountIds),
+          model,
+          signal,
+        });
+      } catch (error) {
+        if (
+          error instanceof HttpException &&
+          error.getStatus() === HttpStatus.SERVICE_UNAVAILABLE
+        ) {
+          this.refreshPoolRetryAfter(retryState);
+          throw new ProxyAccountUnavailableError({
+            status: HttpStatus.SERVICE_UNAVAILABLE,
+            retryAfterSeconds: retryState.retryAfterSeconds,
+            cause: error,
+          });
+        }
+        throw error;
+      }
       retryState.imagePermit = selected.permit;
       retryState.attemptedAccountIds.add(selected.token.id);
       return selected.token;
@@ -151,6 +176,13 @@ export class ProxyRetryService {
       model,
     });
     if (!token) {
+      this.refreshPoolRetryAfter(retryState);
+      if (retryState.attemptedAccountIds.size === 0) {
+        throw new ProxyAccountUnavailableError({
+          status: HttpStatus.SERVICE_UNAVAILABLE,
+          retryAfterSeconds: retryState.retryAfterSeconds,
+        });
+      }
       return null;
     }
 
@@ -403,20 +435,52 @@ export class ProxyRetryService {
   }
 
   recordFailure(retryState: ProxyTokenRetryState, error: unknown): void {
+    retryState.failureCount += 1;
     if (!(error instanceof UpstreamRequestError) || error.status !== 429) {
+      retryState.allFailuresRateLimited = false;
       retryState.lastNonRateLimitError = error;
+      return;
+    }
+
+    const retryDelay =
+      parseRetryDelay(error.body, error.headers?.retryAfter) ?? parseRetryDelay(error.message);
+    if (retryDelay !== null) {
+      this.mergeRetryAfter(retryState, Math.ceil(retryDelay.delayMs / 1000));
     }
   }
 
   resolveTerminalError(retryState: ProxyTokenRetryState, lastError: unknown): unknown {
-    if (
-      lastError instanceof UpstreamRequestError &&
-      lastError.status === 429 &&
-      retryState.lastNonRateLimitError !== null
-    ) {
-      return retryState.lastNonRateLimitError;
+    this.refreshPoolRetryAfter(retryState);
+    const allFailuresRateLimited = retryState.failureCount > 0 && retryState.allFailuresRateLimited;
+    if (allFailuresRateLimited) {
+      return new ProxyAccountUnavailableError({
+        status: HttpStatus.TOO_MANY_REQUESTS,
+        retryAfterSeconds: retryState.retryAfterSeconds,
+        cause: lastError,
+      });
     }
-    return lastError;
+
+    return retryState.lastNonRateLimitError ?? lastError;
+  }
+
+  private refreshPoolRetryAfter(retryState: ProxyTokenRetryState): void {
+    const waitSeconds = this.accountLeaseService.getMinimumRateLimitWaitForPool?.({
+      model: retryState.model,
+    });
+    if (waitSeconds !== undefined) {
+      this.mergeRetryAfter(retryState, waitSeconds);
+    }
+  }
+
+  private mergeRetryAfter(retryState: ProxyTokenRetryState, waitSeconds: number): void {
+    if (!Number.isFinite(waitSeconds) || waitSeconds <= 0) {
+      return;
+    }
+    const roundedWaitSeconds = Math.ceil(waitSeconds);
+    retryState.retryAfterSeconds =
+      retryState.retryAfterSeconds === undefined
+        ? roundedWaitSeconds
+        : Math.min(retryState.retryAfterSeconds, roundedWaitSeconds);
   }
 
   /**

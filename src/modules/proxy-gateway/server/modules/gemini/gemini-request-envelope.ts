@@ -4,6 +4,7 @@ import type { GeminiRequest } from '../../common/interfaces/request-interfaces';
 import type { GeminiInternalRequest } from '../../../antigravity/types';
 import { normalizeGeminiToolConfigAliases } from '../../../antigravity/GeminiToolConfigCompat';
 import { injectPlaceholderSignaturesForModel } from '../../../antigravity/ThoughtSignatureCompat';
+import { requiresToolQuotaRoute } from '../../../antigravity/ToolQuotaRoute';
 
 export function toInternalGeminiRequest(
   request: GeminiRequest,
@@ -35,13 +36,20 @@ export function createGeminiRequestEnvelope(
   requestId = `agent/${Date.now()}/${randomUUID().replaceAll('-', '').slice(0, 8)}`,
 ): GeminiInternalRequest {
   const project = projectId?.trim();
+  const internalRequest = toInternalGeminiRequest(request, model);
+  const providerRequestType =
+    requestType === 'image_gen'
+      ? 'image_gen'
+      : requiresToolQuotaRoute({ tools: internalRequest.tools, contents: internalRequest.contents })
+        ? 'agent'
+        : undefined;
   return {
     requestId,
-    request: toInternalGeminiRequest(request, model),
+    request: internalRequest,
     model,
     userAgent,
-    requestType,
     ...(project ? { project } : {}),
-    ...(requestType !== 'image_gen' ? { enabledCreditTypes: ['GOOGLE_ONE_AI'] } : {}),
+    ...(providerRequestType ? { requestType: providerRequestType } : {}),
+    ...(providerRequestType === 'agent' ? { enabledCreditTypes: ['GOOGLE_ONE_AI'] } : {}),
   };
 }

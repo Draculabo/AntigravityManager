@@ -4,6 +4,7 @@ import { AppConfig, DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { migrateLegacyModelAliases } from '@/modules/config/model-aliases';
 import { getAgentDir } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
+import { writeFileAtomic } from '@/shared/persistence/atomic-json-file';
 
 const CONFIG_FILENAME = 'gui_config.json';
 
@@ -91,7 +92,7 @@ export class ConfigManager {
 
       const existing = await fs.promises.readFile(configPath, 'utf-8');
       if (!existing.includes('"model_aliases"')) {
-        await fs.promises.writeFile(backupPath, existing, 'utf-8');
+        await writeFileAtomic(backupPath, existing);
         logger.info(`Config: Wrote pre-migration backup to ${backupPath}`);
       }
     } catch (e) {
@@ -113,11 +114,7 @@ export class ConfigManager {
       .then(async () => {
         await this.backupBeforeMigration(configPath);
 
-        // Write-then-rename: a crash or a full disk mid-write leaves the previous configuration
-        // intact instead of a truncated file the app cannot parse on next start.
-        const tempPath = `${configPath}.tmp`;
-        await fs.promises.writeFile(tempPath, content, 'utf-8');
-        await fs.promises.rename(tempPath, configPath);
+        await writeFileAtomic(configPath, content);
         this.cachedConfig = migratedConfig;
         logger.info(`Config: Saved to ${configPath}`);
       })

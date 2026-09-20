@@ -41,6 +41,7 @@ import {
   FALLBACK_VERSION,
   resolveLocalInstalledVersion,
 } from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
+import { requiresToolQuotaRoute } from './ToolQuotaRoute';
 
 /**
  * Request Configuration
@@ -68,7 +69,6 @@ export interface ClaudeRequestMapperOptions {
 
 type RequestType = 'agent' | 'web_search' | 'image_gen';
 
-const AGENT_CREDIT_TYPES = ['GOOGLE_ONE_AI'];
 const TOOL_SCHEMA_CACHE_LIMIT = 100;
 const TOOL_SCHEMA_CACHE_TTL_MS = 30 * 60 * 1000;
 let placeholderSignatureUsageCount = 0;
@@ -306,14 +306,21 @@ function buildInternalRequestBody(params: {
 }): GeminiInternalRequest {
   const normalizedProjectId = params.projectId?.trim();
   const discoveryVersion = resolveLocalInstalledVersion() ?? FALLBACK_VERSION;
-  const isAgentRequest = params.requestConfig.requestType !== 'image_gen';
+  const requestType =
+    params.requestConfig.requestType === 'image_gen'
+      ? 'image_gen'
+      : requiresToolQuotaRoute({
+            tools: params.innerRequest.tools,
+            contents: params.innerRequest.contents,
+          })
+        ? 'agent'
+        : undefined;
   const body: GeminiInternalRequest = {
     ...(normalizedProjectId ? { project: normalizedProjectId } : {}),
     request: params.innerRequest,
     model: params.requestConfig.finalModel,
     userAgent: params.userAgent?.trim() || buildUserAgent(discoveryVersion),
-    requestType: isAgentRequest ? 'agent' : 'image_gen',
-    ...(isAgentRequest ? { enabledCreditTypes: [...AGENT_CREDIT_TYPES] } : {}),
+    ...(requestType ? { requestType } : {}),
     requestId: createOfficialRequestId(),
   };
 

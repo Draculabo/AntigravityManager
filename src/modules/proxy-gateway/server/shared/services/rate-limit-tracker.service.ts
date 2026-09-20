@@ -127,6 +127,19 @@ export function hasExplicitQuotaExhaustedSignal(body: string | undefined): boole
   );
 }
 
+function hasDurableQuotaExhaustedSignal(body: string | undefined): boolean {
+  const lowerBody = toLowerText(body);
+  return (
+    lowerBody.includes('quota exceeded') ||
+    lowerBody.includes('quotaresetdelay') ||
+    lowerBody.includes('quota reset') ||
+    lowerBody.includes('quota limit') ||
+    lowerBody.includes('quota will reset') ||
+    lowerBody.includes('per day') ||
+    lowerBody.includes('daily quota')
+  );
+}
+
 export function hasStrictQuotaExhaustedMarker(body: string | undefined): boolean {
   return toLowerText(body).includes('quota_exhausted');
 }
@@ -595,7 +608,7 @@ export class RateLimitTrackerService {
       return null;
     }
 
-    const reason = this.detectRateLimitReason(status, params.body);
+    const reason = this.detectRateLimitReason(status, params.body, params.retryAfter);
     const rawRetryAfterSec = this.computeRetryAfterSeconds({
       reason,
       status,
@@ -674,7 +687,11 @@ export class RateLimitTrackerService {
     return this.trackFromUpstreamError(params);
   }
 
-  private detectRateLimitReason(status: number, body: string | undefined): RateLimitReason {
+  private detectRateLimitReason(
+    status: number,
+    body: string | undefined,
+    retryAfter?: string,
+  ): RateLimitReason {
     const parsedBody = tryParseGoogleErrorBody(body);
     const error = getGoogleErrorEnvelope(parsedBody);
     const details = getGoogleErrorDetails(error);
@@ -701,26 +718,33 @@ export class RateLimitTrackerService {
     }
 
     const lowerBody = toLowerText(body);
-    const hasGenericResourceExhausted =
-      statusFromBody === 'RESOURCE_EXHAUSTED' || hasGenericResourceExhaustedSignal(body);
-    const hasExplicitQuotaExhausted = hasExplicitQuotaExhaustedSignal(body);
-    if (
-      lowerBody.includes('per minute') ||
-      lowerBody.includes('rate limit') ||
-      lowerBody.includes('rate_limit') ||
-      lowerBody.includes('too many requests') ||
-      (hasGenericResourceExhausted && !hasExplicitQuotaExhausted)
-    ) {
-      return RateLimitReason.RateLimitExceeded;
-    }
     if (
       lowerBody.includes('model capacity exhausted') ||
       lowerBody.includes('no capacity available')
     ) {
       return RateLimitReason.ModelCapacityExhausted;
     }
-    if (hasExplicitQuotaExhausted || lowerBody.includes('quota')) {
+
+    const hasGenericResourceExhausted =
+      statusFromBody === 'RESOURCE_EXHAUSTED' || hasGenericResourceExhaustedSignal(body);
+    const hasBareQuotaExhausted = lowerBody.includes('quota_exhausted');
+    const hasDelayedBareQuotaExhausted =
+      hasBareQuotaExhausted && parseRetryDelay(body, retryAfter) !== null;
+    const hasDurableQuotaExhausted = hasDurableQuotaExhaustedSignal(body);
+    if (
+      lowerBody.includes('per minute') ||
+      lowerBody.includes('rate limit') ||
+      lowerBody.includes('rate_limit') ||
+      lowerBody.includes('too many requests') ||
+      (hasGenericResourceExhausted && !hasDurableQuotaExhausted && !hasDelayedBareQuotaExhausted)
+    ) {
+      return RateLimitReason.RateLimitExceeded;
+    }
+    if (hasDurableQuotaExhausted || hasDelayedBareQuotaExhausted) {
       return RateLimitReason.QuotaExhausted;
+    }
+    if (hasBareQuotaExhausted || lowerBody.includes('quota')) {
+      return RateLimitReason.RateLimitExceeded;
     }
 
     return RateLimitReason.Unknown;

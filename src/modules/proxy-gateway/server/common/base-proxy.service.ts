@@ -359,7 +359,7 @@ export abstract class BaseProxyService {
       const token = await this.selectRetryToken(retryState, targetModel);
       if (!token) {
         if (lastError !== null) {
-          throw lastError;
+          throw this.resolveTerminalRetryError(retryState, lastError);
         }
         throw new Error('No available accounts (all exhausted or rate limited)');
       }
@@ -383,6 +383,7 @@ export abstract class BaseProxyService {
         return response.totalTokens;
       } catch (error) {
         lastError = error;
+        this.recordRetryFailure(retryState, error);
         if (await this.prepareGraceRetry(retryState, token, error, label)) {
           continue;
         }
@@ -390,7 +391,10 @@ export abstract class BaseProxyService {
       }
     }
 
-    throw lastError || new Error(`${label} request failed after retries`);
+    throw this.resolveTerminalRetryError(
+      retryState,
+      lastError || new Error(`${label} request failed after retries`),
+    );
   }
 
   protected async generateInternalWithStreamFallback(
