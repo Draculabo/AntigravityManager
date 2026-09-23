@@ -2,6 +2,106 @@
 
 # Changelog
 
+## [0.21.0](https://github.com/Draculabo/AntigravityManager/compare/v0.20.0...v0.21.0) (2026-09-23)
+
+### ✨ Features
+
+* align account signature and quota behavior ([46ad6f3](https://github.com/Draculabo/AntigravityManager/commit/46ad6f332803a43d56088856dc642fa73e4934ba))
+* **cloud-account:** keep the Antigravity CLI on the account the IDE switched to ([#261](https://github.com/Draculabo/AntigravityManager/issues/261)) ([94be28a](https://github.com/Draculabo/AntigravityManager/commit/94be28aded4e33577cf92c7cabc35484f9ab97f8))
+* **cloud-account:** sync Google OAuth credentials to local CLI stores ([f470946](https://github.com/Draculabo/AntigravityManager/commit/f47094673baab1470347441465386b0159cb3b1a))
+* **cloud:** add account health recovery and media hardening ([0845e04](https://github.com/Draculabo/AntigravityManager/commit/0845e04320d94a64db48d98b1fb4a814f1b9662c))
+* **cloud:** add opt-in weekly quota warmup ([b61d75a](https://github.com/Draculabo/AntigravityManager/commit/b61d75abf05311e8bef5472e79310933a80ec120))
+* **cloud:** add weekly quota view with explicit empty states ([2017089](https://github.com/Draculabo/AntigravityManager/commit/2017089f5f7bc02b1d75298da661a6a1b9e4b7d8))
+* **cloud:** add weekly quota view with explicit empty states ([7f0f7e9](https://github.com/Draculabo/AntigravityManager/commit/7f0f7e9f945ad219f78bfe69c3641e009b003918))
+* harden proxy protocol compatibility ([8616320](https://github.com/Draculabo/AntigravityManager/commit/8616320aa45f80bf36aa1f8e4ca669a76f13d91e))
+* harden proxy streaming and media compatibility ([9842237](https://github.com/Draculabo/AntigravityManager/commit/984223757532d68aff4a7fb41a0fa7e910771eed))
+* **proxy:** add traffic monitoring and thought restoration ([993ed7c](https://github.com/Draculabo/AntigravityManager/commit/993ed7c8068a3ffa12d591cd7bc68dfa3f2ead5c))
+* **proxy:** promote the completed gateway integration ([#266](https://github.com/Draculabo/AntigravityManager/issues/266)) ([573ad66](https://github.com/Draculabo/AntigravityManager/commit/573ad660816d109834341943b6480a7fd776ace6)), closes [#252](https://github.com/Draculabo/AntigravityManager/issues/252) [#258](https://github.com/Draculabo/AntigravityManager/issues/258) [#258](https://github.com/Draculabo/AntigravityManager/issues/258)
+
+### 🐛 Bug Fixes
+
+* **auth:** request openid alongside existing Google OAuth scopes ([ec349bc](https://github.com/Draculabo/AntigravityManager/commit/ec349bc1c2fb500de9b661ca5b7088f2c1599087))
+* **ci:** fix broken format, governance and lint checks on main ([#312](https://github.com/Draculabo/AntigravityManager/issues/312)) ([e88d867](https://github.com/Draculabo/AntigravityManager/commit/e88d8674b151ae910d68a05efdd0364f9ce08ec2))
+* close merged PR safety gaps ([5c1130b](https://github.com/Draculabo/AntigravityManager/commit/5c1130bf81ba2a0405a82e2435a2860cf1184253))
+* **cloud-account:** alert when model quota reaches zero ([#267](https://github.com/Draculabo/AntigravityManager/issues/267)) ([0ea6ed4](https://github.com/Draculabo/AntigravityManager/commit/0ea6ed4af8f886f6fe41582ee1b49eddec851677))
+* **cloud-account:** avoid treating generic forbidden errors as rate limits ([#269](https://github.com/Draculabo/AntigravityManager/issues/269)) ([23bea60](https://github.com/Draculabo/AntigravityManager/commit/23bea6068020cd66028db0330f78ac282fd45c96))
+* **cloud-account:** classify OAuth client errors precisely ([#270](https://github.com/Draculabo/AntigravityManager/issues/270)) ([b076e0b](https://github.com/Draculabo/AntigravityManager/commit/b076e0b53b5dcf922f322a8768f2a478dddf1d62))
+* **cloud-account:** fail OAuth callback without renderer ([#276](https://github.com/Draculabo/AntigravityManager/issues/276)) ([45b0796](https://github.com/Draculabo/AntigravityManager/commit/45b079643e6be4609a8fa252b220e6e48f543157))
+* **cloud-account:** gracefully skip unmigratable corrupted accounts in getAccounts ([#246](https://github.com/Draculabo/AntigravityManager/issues/246)) ([8823dfa](https://github.com/Draculabo/AntigravityManager/commit/8823dfa898dd1a156d794a29dbf5140f7056dbea))
+* **cloud-account:** handle unrefreshable monitor tokens ([#272](https://github.com/Draculabo/AntigravityManager/issues/272)) ([8dc0bf3](https://github.com/Draculabo/AntigravityManager/commit/8dc0bf357c1a8edc0b6cc086435174d2d3f72fdc))
+* **cloud-account:** harden post-merge account flows ([577fa86](https://github.com/Draculabo/AntigravityManager/commit/577fa86d5085cabdbe6a2a256fc135a141f4ee26))
+* **cloud-account:** honor priority model availability ([#281](https://github.com/Draculabo/AntigravityManager/issues/281)) ([92a91f5](https://github.com/Draculabo/AntigravityManager/commit/92a91f5d2c6c6d99a3bf0409dfa0f2f5b7d0c5f3))
+* **cloud-account:** match prefixed models to quota groups ([#273](https://github.com/Draculabo/AntigravityManager/issues/273)) ([fb5b402](https://github.com/Draculabo/AntigravityManager/commit/fb5b402ab40dbab96a1fe4e31f54f1ff5627a875))
+* **cloud-account:** normalize auto-switch model config keys ([#274](https://github.com/Draculabo/AntigravityManager/issues/274)) ([f92dd7a](https://github.com/Draculabo/AntigravityManager/commit/f92dd7a7ce3bbd7d4054efd6735bc3617828efc1))
+* **cloud-account:** normalize quota group model identifiers ([#275](https://github.com/Draculabo/AntigravityManager/issues/275)) ([86143ff](https://github.com/Draculabo/AntigravityManager/commit/86143fff70c1a2e1dc1e0745771b950b26ce1675))
+* **cloud-account:** prefer authoritative Linux secret-tool credentials ([#277](https://github.com/Draculabo/AntigravityManager/issues/277)) ([855a4a0](https://github.com/Draculabo/AntigravityManager/commit/855a4a0bb2037f1579d2be7d9e414254514e21d1))
+* **cloud-account:** preserve last used during account import ([#279](https://github.com/Draculabo/AntigravityManager/issues/279)) ([58edc5c](https://github.com/Draculabo/AntigravityManager/commit/58edc5cc9903a9755884cd5dfd822f53b10d0925))
+* **cloud-account:** recover stale auto-switch target state ([#282](https://github.com/Draculabo/AntigravityManager/issues/282)) ([bfd104c](https://github.com/Draculabo/AntigravityManager/commit/bfd104c581431efb3f62ba898df232160c9315f6))
+* **cloud-account:** reject expired unrefreshable token injection ([#283](https://github.com/Draculabo/AntigravityManager/issues/283)) ([04af356](https://github.com/Draculabo/AntigravityManager/commit/04af3565c825b2ba0f32388f7b2e48f47e7c0b01))
+* **cloud-account:** retry AI credits after token refresh ([eaba5b9](https://github.com/Draculabo/AntigravityManager/commit/eaba5b9fe7af59f07a5b9dada7f83740c4d3803b))
+* **cloud-account:** stabilize legacy device history revisions ([#284](https://github.com/Draculabo/AntigravityManager/issues/284)) ([2c6dc5c](https://github.com/Draculabo/AntigravityManager/commit/2c6dc5c33d5b06ad582bf9005dd502a5a23d4038))
+* **cloud-account:** start monitor after enabling auto-switch ([#285](https://github.com/Draculabo/AntigravityManager/issues/285)) ([1e32360](https://github.com/Draculabo/AntigravityManager/commit/1e32360d2c8637ae7e9027eadef78077a52d2b3b))
+* **cloud-account:** stop inventing IDE token expiry ([#268](https://github.com/Draculabo/AntigravityManager/issues/268)) ([ebf011e](https://github.com/Draculabo/AntigravityManager/commit/ebf011ef902fdbbb70a81af3cd23675e5716a5e3))
+* **cloud-account:** update native keyring credentials atomically ([#280](https://github.com/Draculabo/AntigravityManager/issues/280)) ([624bce4](https://github.com/Draculabo/AntigravityManager/commit/624bce4329dbc5fc880b21756cf3978d3017d74e))
+* **cloud-account:** use explicit OAuth loopback address ([#286](https://github.com/Draculabo/AntigravityManager/issues/286)) ([5387d95](https://github.com/Draculabo/AntigravityManager/commit/5387d954e556e8fa4f3e95d991718fa670eee2ac))
+* **cloud-account:** validate active account setting values ([#287](https://github.com/Draculabo/AntigravityManager/issues/287)) ([c77e733](https://github.com/Draculabo/AntigravityManager/commit/c77e73352f2e56c3d71ba95a1dc162728352e678))
+* **cloud-account:** validate imported device profiles ([#288](https://github.com/Draculabo/AntigravityManager/issues/288)) ([5e283cf](https://github.com/Draculabo/AntigravityManager/commit/5e283cfa40bc2aa86239da012c67e6ce64c602b7))
+* **cloud-account:** validate imported proxy URLs ([#289](https://github.com/Draculabo/AntigravityManager/issues/289)) ([5b3d812](https://github.com/Draculabo/AntigravityManager/commit/5b3d812c5573f5d9e718d389f8b012f59af0cc5a))
+* **cloud-monitor:** recover from 401 unauthorized and serialize concurrent polls ([#305](https://github.com/Draculabo/AntigravityManager/issues/305)) ([fc8404a](https://github.com/Draculabo/AntigravityManager/commit/fc8404a3ffca1d72f76712f8f4e4adff805d9114))
+* **cloud:** retry quota summary without project after HTTP 403 ([9e81ef7](https://github.com/Draculabo/AntigravityManager/commit/9e81ef7c4847e25abf0cae6ff91790effb1183a6))
+* **credential-store:** stop the keychain password prompt on every account switch ([#309](https://github.com/Draculabo/AntigravityManager/issues/309)) ([0ba7601](https://github.com/Draculabo/AntigravityManager/commit/0ba760195ed433c3c2cec1dccfcf2acd37ac8c6c))
+* harden account sync and proxy state ([54aefbc](https://github.com/Draculabo/AntigravityManager/commit/54aefbcdb318f126790ee6cc767cd7216f83aeab))
+* **identity-profile:** fail closed on profile apply errors ([#298](https://github.com/Draculabo/AntigravityManager/issues/298)) ([6a78325](https://github.com/Draculabo/AntigravityManager/commit/6a7832519ed49222a52c8fbffd5568705cf08483))
+* macos keychain atomic update ([#255](https://github.com/Draculabo/AntigravityManager/issues/255)) ([315adff](https://github.com/Draculabo/AntigravityManager/commit/315adffa4ac31248932ce3367d720656b7016470))
+* protect local account index ([#253](https://github.com/Draculabo/AntigravityManager/issues/253)) ([a6d76d0](https://github.com/Draculabo/AntigravityManager/commit/a6d76d096bd48773682f03f6512e682711e32bec))
+* **proxy:** align Responses and tool invocation compatibility ([aee466a](https://github.com/Draculabo/AntigravityManager/commit/aee466a22cec370a6f4612c34fea8a01ff88126e))
+* **proxy:** align Responses input compatibility ([9d02269](https://github.com/Draculabo/AntigravityManager/commit/9d02269ab790193c3e82fa2964ab41399680bb0e))
+* **proxy:** classify Google 403s and bound project fallback ([f32e71c](https://github.com/Draculabo/AntigravityManager/commit/f32e71c853346eef7a16740dcf3a838fa11fc41c))
+* **proxy:** harden session and routing state ([#291](https://github.com/Draculabo/AntigravityManager/issues/291)) ([6b104a8](https://github.com/Draculabo/AntigravityManager/commit/6b104a875be54d9adbb3fdbb373878b7ee719089))
+* **proxy:** honor structured retry delays ([#293](https://github.com/Draculabo/AntigravityManager/issues/293)) ([2f7a2ab](https://github.com/Draculabo/AntigravityManager/commit/2f7a2abcae257fb8ed1ff4bea046953bdcec6086))
+* **proxy:** make bundled Nest injection explicit ([b930d3c](https://github.com/Draculabo/AntigravityManager/commit/b930d3cd07cad03914f31817a4ead5251782561c))
+* **proxy:** normalize Claude SDK identity and retry compatibility ([a75b8dd](https://github.com/Draculabo/AntigravityManager/commit/a75b8ddbba201ea97517305060ed334f42253516))
+* **proxy:** preserve active cache entries ([#300](https://github.com/Draculabo/AntigravityManager/issues/300)) ([836f75f](https://github.com/Draculabo/AntigravityManager/commit/836f75fa44a276a6a17a87486846d4ef8ad72f34))
+* **proxy:** preserve JSON schema and image URL compatibility ([a1dff2b](https://github.com/Draculabo/AntigravityManager/commit/a1dff2bb2629301d26acae8d54cbf4442d3762f4))
+* **proxy:** preserve malformed model-path captures ([#301](https://github.com/Draculabo/AntigravityManager/issues/301)) ([3b9e200](https://github.com/Draculabo/AntigravityManager/commit/3b9e2002c3c205a652b737c4fce4f68baa962238))
+* **proxy:** preserve Responses history across reasoning changes ([72d9f57](https://github.com/Draculabo/AntigravityManager/commit/72d9f57521c93caa0dcd73eb251cf7810761a753))
+* **proxy:** preserve thought signature compatibility across request paths ([2b3e8bc](https://github.com/Draculabo/AntigravityManager/commit/2b3e8bc23c09854551db4cbf2d7e05caa5260c82))
+* **proxy:** scope model availability by account ([#302](https://github.com/Draculabo/AntigravityManager/issues/302)) ([3dc795a](https://github.com/Draculabo/AntigravityManager/commit/3dc795a57fcc6a74f1083cb89afad4d6611f2178))
+* **proxy:** scope rate-limit backoff by model ([#292](https://github.com/Draculabo/AntigravityManager/issues/292)) ([5a9c8bc](https://github.com/Draculabo/AntigravityManager/commit/5a9c8bc4babc6521bf572f78d9aa2f1c15bbef53))
+* **proxy:** serialize gateway lifecycle operations ([#294](https://github.com/Draculabo/AntigravityManager/issues/294)) ([36b7164](https://github.com/Draculabo/AntigravityManager/commit/36b716460f6290db2d52a1d1f3cc1a296d260795))
+* **proxy:** support Gemini tool config aliases ([af0d33b](https://github.com/Draculabo/AntigravityManager/commit/af0d33b5a0aeb2c49525d41e517ac88f939a3629))
+* prune context cache failure cooldowns ([#254](https://github.com/Draculabo/AntigravityManager/issues/254)) ([de6d9ab](https://github.com/Draculabo/AntigravityManager/commit/de6d9ab7c614397db7cb25381fb1ca8f59461dd5))
+* prune context cache failure cooldowns ([#256](https://github.com/Draculabo/AntigravityManager/issues/256)) ([545359c](https://github.com/Draculabo/AntigravityManager/commit/545359c972418d7e8895b3f239b6b6b831354d55))
+* recover crashed renderer ([#257](https://github.com/Draculabo/AntigravityManager/issues/257)) ([e1721ef](https://github.com/Draculabo/AntigravityManager/commit/e1721ef8b9ef14c10c9d50006e431d0a0d6f755d))
+* **security:** harden credential and diagnostic boundaries ([#290](https://github.com/Draculabo/AntigravityManager/issues/290)) ([a772032](https://github.com/Draculabo/AntigravityManager/commit/a772032641709d136cd2748d05b9f8e3792f0dca))
+* **security:** make master key recovery non-destructive ([e29cfdc](https://github.com/Draculabo/AntigravityManager/commit/e29cfdc0727ebf84f585d6c16e41039fbd347379))
+* **security:** migrate legacy encrypted account data ([#297](https://github.com/Draculabo/AntigravityManager/issues/297)) ([fed2fbe](https://github.com/Draculabo/AntigravityManager/commit/fed2fbe6d3b846dc46ae35295a0513e655745a5e))
+* stabilize numeric settings and countTokens errors ([3d27360](https://github.com/Draculabo/AntigravityManager/commit/3d2736071aa490594a7a6d1f87b3573fbf7adbd5))
+* **tray:** select and configure icons by platform ([4d6f86c](https://github.com/Draculabo/AntigravityManager/commit/4d6f86cd9451572d18d5c31d8a6b34856f9d67de))
+
+### 📝 Documentation
+
+* fix broken star history chart ([#264](https://github.com/Draculabo/AntigravityManager/issues/264)) ([4f636a6](https://github.com/Draculabo/AntigravityManager/commit/4f636a6b606c744a38adfeb2db5f49700a2e5ee6))
+* **performance:** document Electron recorder workflow ([4570866](https://github.com/Draculabo/AntigravityManager/commit/4570866bf9d92a8bf58e05ad1989acaf68437999))
+* **proxy:** document Responses and tool compatibility ([010aec7](https://github.com/Draculabo/AntigravityManager/commit/010aec7fa76149390b9db974b39167e28de6104f))
+* **security:** record legacy encryption migration ([#303](https://github.com/Draculabo/AntigravityManager/issues/303)) ([03fe87a](https://github.com/Draculabo/AntigravityManager/commit/03fe87a9db766814bb4226d90e4396fd7d743404))
+
+### 💄 Styles
+
+* format CI baseline files ([#304](https://github.com/Draculabo/AntigravityManager/issues/304)) ([afa04cb](https://github.com/Draculabo/AntigravityManager/commit/afa04cb884bdbcce1913635c3d3037cd1b2432ed))
+
+### ♻️ Code Refactoring
+
+* **http:** migrate update and Google requests to Axios ([75a2819](https://github.com/Draculabo/AntigravityManager/commit/75a28194c4a55b1ec8e9a60bb290337350dc5d02))
+* **ipc:** close typed IPC error envelopes ([8090925](https://github.com/Draculabo/AntigravityManager/commit/80909259c556fa07221fe1c4b82667bbc59f61ca))
+* **proxy:** align batch target binding ([1eb9884](https://github.com/Draculabo/AntigravityManager/commit/1eb988494789d558e5c797474a09be0e1b03dfbf))
+* **proxy:** clarify command tooling and quota routing ([09e28d2](https://github.com/Draculabo/AntigravityManager/commit/09e28d2b4c0b3d9b72052257f0b4b407862de06f))
+* **proxy:** encapsulate file storage access ([4b06faf](https://github.com/Draculabo/AntigravityManager/commit/4b06faf76feaa436c606de8737e452dd74c2ed0f))
+* **proxy:** make batch dependencies explicit ([343c7ec](https://github.com/Draculabo/AntigravityManager/commit/343c7ec918b8eab1eb1f394e16a745351472a788))
+* **proxy:** split OpenAI route controllers ([2ecce75](https://github.com/Draculabo/AntigravityManager/commit/2ecce75660ad0d36dc0ec28219cea8e719113c0f))
+* **proxy:** validate upstream payload boundaries ([61c84dd](https://github.com/Draculabo/AntigravityManager/commit/61c84dd0cbddc74d9a6563ace8ee3e596d96c72e))
+* **types:** validate local and persistence boundaries ([cc26c9e](https://github.com/Draculabo/AntigravityManager/commit/cc26c9ebd173bc4a49de64a3f7bc0bd08ebfc8d6))
+
 ## [0.20.0](https://github.com/Draculabo/AntigravityManager/compare/v0.19.0...v0.20.0) (2026-08-10)
 
 ### ✨ Features
