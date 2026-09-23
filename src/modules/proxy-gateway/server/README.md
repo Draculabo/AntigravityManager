@@ -386,11 +386,75 @@ converted upstream request/rejection) to `~/.antigravity-agent/captures/` every 
 OpenAI, Anthropic and native Gemini requests). Off by default: capture is a diagnostic aid, not
 something every install should pay disk I/O for on every rejected request. Secrets are masked
 with `sanitizeObject` before anything is written, only diagnostic allowlisted request headers
-are retained, and POSIX capture directories/files use `0700`/`0600` permissions. The directory
-is pruned to the newest 50 files. Captures larger than 1 MiB are replaced with a small diagnostic
+are retained, and each captured request or 4xx-response payload is capped at 256 KiB before it can
+outlive the request handler. POSIX capture directories/files use `0700`/`0600` permissions. The directory
+is pruned to the newest 50 managed JSON files and a 50 MiB aggregate budget. Set
+`AGM_UPSTREAM_4XX_CAPTURE_MAX_DIRECTORY_BYTES` to tighten or relax that aggregate ceiling while
+the proxy is running; pruning runs after every successful capture and removes the oldest managed
+captures until both limits hold. Captures larger than 1 MiB are replaced with a small diagnostic
 summary containing their original size, so one rejected request cannot consume unbounded disk
-space. A capture failure (e.g. disk full) is logged and swallowed — it never turns the caller's
-4xx into a 5xx.
+space. This is opt-in rejection diagnostics, not a complete traffic audit ledger: raw bodies are
+never exposed through the UI or application logs. At most four diagnostic writes may wait in
+memory; further captures are skipped rather than retaining an unbounded error burst. A capture
+failure (e.g. disk full) is logged and swallowed — it never turns the caller's 4xx into a 5xx.
+
+### Traffic audit and Thought Store
+
+The gateway records every incoming HTTP request, authentication failure and ordinary IPC call in
+`request-audit.db`. A request is the parent record; each physical provider attempt, including a
+retry, endpoint failover or project-header downgrade, is an ordered child record. Streaming
+responses are reconstructed from valid SSE events, including an `_unrecognized_events` sidecar
+when a future event shape cannot be folded into the final response. Malformed SSE is retained as
+credential-redacted raw framing (`redacted_raw_sse`) with its first parse-error offset and summary;
+it is diagnostic-equivalent, not promised to be byte-for-byte identical to the provider stream.
+Interrupted streams retain their partial body and true terminal outcome.
+
+Headers, query values and JSON fields with credential-shaped keys are recursively replaced before
+they cross the worker boundary. Binary media is represented only by MIME type, byte size, source
+and SHA-256. Free-form prompt, code and tool output is intentionally not scanned heuristically, so
+a credential typed into ordinary content remains the user's responsibility. Sanitized bodies are
+serialized into 64 KiB SQLite chunks as they arrive. A unique logical body stores at most the first
+100 MiB while continuing full sanitized size/hash accounting when the source remains available.
+Identical bodies within one parent request share a payload reference; bodies never share ownership
+across parent requests. Parent and attempt tables keep metadata and payload references rather than
+large `TEXT` columns. Detail reads are paged, and the authenticated content route streams every
+stored chunk when an explicit full read is required. The worker queue defaults to 16 MiB (maximum
+64 MiB) and enforces both byte and command-count bounds for all live bodies. Saturation or SQLite
+failure increments visible drop statistics but cannot delay or replace a model response.
+The audit queue reserves capacity for model writes, limits background writes to 10% and all
+non-model writes to 30%, and separately bounds management reads. Summaries and admin events share
+the configured row and age limits; disk pressure removes system/admin data before IPC, auxiliary
+and model traffic.
+
+`thinking-store.db` separately retains full Gemini thought text and signatures used to restore a
+continued turn across OpenAI, Anthropic and Gemini entry points. Its independent worker and queue
+prevent audit pressure from delaying thought restoration. Records use `RAW1` or `AGZ1` framing;
+each session is transactionally pruned to 200 turns and 64 MiB of uncompressed thought text. A
+single oversized thought stores only its hash, source metadata, original size and reason. Both
+features are enabled by default, apply settings without a gateway restart and never treat
+`store: false` as an audit or Thought Store opt-out.
+
+The renderer reaches management operations only through typed IPC. Authenticated HTTP management
+routes live under `/internal/audit` and `/internal/thinking`; audit body pages are available at
+`/internal/audit/bodies/:bodyId/chunks` and full content streams at
+`/internal/audit/bodies/:bodyId/content`. Management reads are excluded from the traffic ledger to
+avoid recursion, while mutations write lightweight admin events.
+The dedicated `/traffic` page separates model, auxiliary, IPC and system records. Saved reasoning
+records are available in the proxy settings under a collapsed advanced diagnostics section. Model
+rows show the selected upstream account (successful attempt first, otherwise the
+last attempt), physical model family, output modality and normalized input/output token counts.
+Cache and reasoning counts remain separate in detail; native Gemini upstream usage is captured
+before response normalization without changing the client-visible response shape.
+Account, status, model family and output modality filters run in the audit database. Metadata
+search and paginated rows precede parent/attempt detail. The body viewer reads
+bounded pages into a 4 MiB window; search can jump to the matching chunk, while Save Full streams
+the complete stored body to a file without constructing it in the renderer.
+
+Explicit repair closes the owning worker, renames the database plus WAL/SHM sidecars with a `.corrupt-<timestamp>`
+suffix, and creates a new database. Startup never silently replaces a corrupt database. Because the
+audit feature has not shipped, older audit schema versions are archived rather than incrementally
+migrated: their database/WAL/SHM sets receive a `.schema-v<version>-backup-<timestamp>` suffix
+before a fresh schema v4 starts. The Thought Store database is independent and is not rebuilt.
 
 ---
 

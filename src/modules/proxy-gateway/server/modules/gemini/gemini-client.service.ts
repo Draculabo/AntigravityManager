@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosProxyConfig, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { isEmpty, isFunction, isNil, isNumber, isObjectLike, isString } from 'lodash-es';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import {
   GeminiCountTokensRequest,
@@ -22,6 +22,20 @@ import {
   type Upstream4xxCaptureInput,
 } from '../../common/upstream-4xx-capture.service';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
+import {
+  completeCurrentUpstreamAttempt,
+  startCurrentUpstreamAttempt,
+} from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import { IncrementalSseRedactor } from '@/modules/proxy-gateway/audit/incremental-sse-redactor';
+import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
+import type { UpstreamAttemptHandle } from '@/modules/proxy-gateway/audit/traffic-audit.service';
+import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
+import {
+  getCurrentProxyTimingState,
+  markProxyNormalizationComplete,
+  markProxyUpstreamFirstByte,
+  markProxyUpstreamStarted,
+} from '../../common/proxy-response-timing';
 
 /**
  * What travels the internal endpoints: generation, the narrower count, and -- only through the
@@ -69,19 +83,33 @@ export class GeminiClient {
   ): Promise<NodeJS.ReadableStream> {
     const url = `${this.baseUrl}/models/${model}:streamGenerateContent?alt=sse`;
     const axiosProxy = this.resolveUpstreamAxiosProxy(upstreamProxyUrl);
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    };
+    const attempt = startCurrentUpstreamAttempt({
+      endpoint: url,
+      headers,
+      model,
+      operation: 'gemini-stream-generate',
+      requestBody: content,
+    });
 
     try {
       const response = await axios.post(url, content, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         responseType: 'stream',
         timeout: 60000,
         proxy: axiosProxy,
       });
-      return response.data;
+      return this.captureStreamResult(response.data, {
+        attempt,
+        model,
+        responseHeaders: response.headers,
+        status: response.status,
+      });
     } catch (error) {
+      await this.completeFailedAttempt(attempt, error);
       if (axios.isAxiosError(error)) {
         return await this.throwUpstreamRequestError(error, 'gemini-stream-generate', {
           endpoint: url,
@@ -100,18 +128,38 @@ export class GeminiClient {
   ): Promise<GeminiResponse> {
     const url = `${this.baseUrl}/models/${model}:generateContent`;
     const axiosProxy = this.resolveUpstreamAxiosProxy(upstreamProxyUrl);
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    };
+    const attempt = startCurrentUpstreamAttempt({
+      endpoint: url,
+      headers,
+      model,
+      operation: 'gemini-generate',
+      requestBody: content,
+    });
 
     try {
       const response = await axios.post<GeminiResponse>(url, content, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         timeout: 60000, // 60s timeout
         proxy: axiosProxy,
       });
+      completeCurrentUpstreamAttempt(attempt, {
+        outcome: this.outcomeForStatus(response.status),
+        responseBody: response.data,
+        responseHeaders: this.toPlainHeaders(response.headers),
+        status: response.status,
+      });
+      thoughtStoreService.captureGeminiResponse(
+        thoughtStoreService.getCurrentSessionKey(),
+        response.data,
+        model,
+      );
       return response.data;
     } catch (error) {
+      await this.completeFailedAttempt(attempt, error);
       if (axios.isAxiosError(error)) {
         return await this.throwUpstreamRequestError(error, 'gemini-generate', {
           endpoint: url,
@@ -328,6 +376,8 @@ export class GeminiClient {
     operation: string,
     extraHeaders?: Record<string, string>,
   ): Promise<AxiosResponse<T>> {
+    markProxyNormalizationComplete();
+    await thoughtStoreService.prepareInternalRequest(body, body.model);
     const prepared = await this.applyExplicitContextCache(body, accessToken, upstreamProxyUrl);
     try {
       return await this.executeRequestWithEndpointFailover<T>(
@@ -433,16 +483,30 @@ export class GeminiClient {
       tools: candidate.source.tools,
       ttl: `${this.getExplicitContextCacheTtlSeconds()}s`,
     };
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'User-Agent': requestUserAgent,
+    };
+    const attempt = startCurrentUpstreamAttempt({
+      endpoint: url,
+      headers,
+      model: candidate.source.model,
+      operation: 'create-context-cache',
+      requestBody: body,
+    });
 
     try {
       const response = await axios.post<ExplicitContextCacheResource>(url, body, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'User-Agent': requestUserAgent,
-        },
+        headers,
         proxy: this.resolveUpstreamAxiosProxy(upstreamProxyUrl),
         timeout: Math.min(this.getInternalTimeoutMs(), 20_000),
+      });
+      completeCurrentUpstreamAttempt(attempt, {
+        outcome: this.outcomeForStatus(response.status),
+        responseBody: response.data,
+        responseHeaders: this.toPlainHeaders(response.headers),
+        status: response.status,
       });
       if (!isString(response.data?.name) || isEmpty(response.data.name.trim())) {
         this.logger.warn(
@@ -457,6 +521,7 @@ export class GeminiClient {
         name: response.data.name,
       };
     } catch (error) {
+      await this.completeFailedAttempt(attempt, error);
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`[ContextCache] Create failed; bypassing cache: ${message}`);
       return null;
@@ -562,6 +627,7 @@ export class GeminiClient {
         const baseUrl = baseUrls[index];
         const url = `${baseUrl}${path}`;
         lastEndpoint = url;
+        let attempt: UpstreamAttemptHandle | null = null;
 
         try {
           const headers: Record<string, string> = {
@@ -578,11 +644,25 @@ export class GeminiClient {
               }
             }
           }
+          attempt = startCurrentUpstreamAttempt({
+            endpoint: url,
+            headers,
+            model: this.extractRequestModel(body),
+            operation,
+            requestBody: body,
+          });
+          markProxyUpstreamStarted();
+          const timing = getCurrentProxyTimingState();
           const response = await axios.post<T>(url, this.createInternalRequestBody(path, body), {
             headers,
             timeout,
             proxy: axiosProxy,
             ...config,
+            onDownloadProgress: (progress) => {
+              if (progress.loaded > 0) {
+                markProxyUpstreamFirstByte(timing);
+              }
+            },
           });
           if (
             retryPolicy.allowProjectHeaderDowngrade &&
@@ -592,6 +672,11 @@ export class GeminiClient {
             if (response.data instanceof Readable) {
               response.data.destroy();
             }
+            completeCurrentUpstreamAttempt(attempt, {
+              outcome: 'upstream_error',
+              responseHeaders: this.toPlainHeaders(response.headers),
+              status: response.status,
+            });
             this.logger.warn(
               `[${operation}] received 403 with x-goog-user-project; retrying without project header.`,
             );
@@ -599,11 +684,17 @@ export class GeminiClient {
             shouldRetryWithoutProjectHeader = true;
             break;
           }
-          return response;
+          return this.captureAxiosResponse(response, attempt, this.extractRequestModel(body));
         } catch (error) {
           if (config.signal?.aborted) {
+            completeCurrentUpstreamAttempt(attempt, {
+              error,
+              outcome: 'client_cancelled',
+              partial: true,
+            });
             throw new Error('Upstream request cancelled');
           }
+          await this.completeFailedAttempt(attempt, error);
           lastError = error;
 
           if (
@@ -649,6 +740,191 @@ export class GeminiClient {
       endpoint: lastEndpoint,
       upstreamRequest: body,
     });
+  }
+
+  private captureAxiosResponse<T>(
+    response: AxiosResponse<T>,
+    attempt: UpstreamAttemptHandle | null,
+    model: string | undefined,
+  ): AxiosResponse<T> {
+    if (response.data instanceof Readable) {
+      response.data = this.captureStreamResult(response.data, {
+        attempt,
+        model,
+        responseHeaders: response.headers,
+        status: response.status,
+      }) as T;
+      return response;
+    }
+
+    markProxyUpstreamFirstByte();
+    completeCurrentUpstreamAttempt(attempt, {
+      outcome: this.outcomeForStatus(response.status),
+      responseBody: response.data,
+      responseHeaders: this.toPlainHeaders(response.headers),
+      status: response.status,
+    });
+    if (model) {
+      thoughtStoreService.captureGeminiResponse(
+        thoughtStoreService.getCurrentSessionKey(),
+        response.data,
+        model,
+      );
+    }
+    return response;
+  }
+
+  private captureStreamResult(
+    source: Readable,
+    input: {
+      attempt: UpstreamAttemptHandle | null;
+      model?: string;
+      responseHeaders: unknown;
+      status: number;
+    },
+  ): Readable {
+    const auditRedactor = new IncrementalSseRedactor();
+    const auditWriter = trafficAuditService.beginAttemptSse(input.attempt);
+    const sessionKey = thoughtStoreService.getCurrentSessionKey();
+    const timing = getCurrentProxyTimingState();
+    let totalBytes = 0;
+    let completed = false;
+    let reachedTerminalEvent = false;
+    const captureSanitizedEvent = (sanitized: string): boolean => {
+      const accepted = auditWriter?.write(sanitized) ?? true;
+      if (input.model) {
+        thoughtStoreService.captureGeminiSse(sessionKey, sanitized, input.model);
+      }
+      reachedTerminalEvent =
+        reachedTerminalEvent ||
+        sanitized.includes('[DONE]') ||
+        sanitized.includes('"response.completed"') ||
+        sanitized.includes('"message_stop"') ||
+        sanitized.includes('"finishReason"');
+      return accepted;
+    };
+    const complete = (
+      outcome: 'auth_failed' | 'completed' | 'client_disconnected' | 'upstream_error',
+      error?: unknown,
+    ) => {
+      if (completed) {
+        return;
+      }
+      completed = true;
+      const final = auditRedactor.finish();
+      let auditPartial = outcome !== 'completed';
+      for (const sanitized of final.chunks) {
+        if (!captureSanitizedEvent(sanitized)) {
+          auditPartial = true;
+        }
+      }
+      auditWriter?.finish({
+        errorSummary: final.result.errorSummary,
+        parseErrorOffset: final.result.parseErrorOffset,
+        partial: auditPartial,
+        rawBytes: totalBytes,
+        terminalStatus: outcome,
+      });
+      completeCurrentUpstreamAttempt(input.attempt, {
+        error,
+        outcome,
+        partial: auditPartial,
+        responsePayloadHandled: Boolean(auditWriter),
+        responseHeaders: this.toPlainHeaders(input.responseHeaders),
+        status: input.status,
+      });
+    };
+    const transform = new Transform({
+      transform(chunk: Buffer | string, _encoding, callback) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        if (buffer.byteLength > 0) {
+          markProxyUpstreamFirstByte(timing);
+        }
+        totalBytes += buffer.byteLength;
+        for (const sanitized of auditRedactor.push(buffer)) {
+          if (!captureSanitizedEvent(sanitized)) {
+            // The audit writer owns its fail-open drop accounting.
+          }
+        }
+        callback(null, chunk);
+      },
+      flush: (callback) => {
+        complete(this.outcomeForStatus(input.status));
+        callback();
+      },
+    });
+    source.once('error', (error) => {
+      complete('upstream_error', error);
+      transform.destroy(error);
+    });
+    transform.once('close', () => {
+      complete(
+        reachedTerminalEvent || transform.writableFinished
+          ? this.outcomeForStatus(input.status)
+          : 'client_disconnected',
+      );
+    });
+    source.pipe(transform);
+    return transform;
+  }
+
+  private async completeFailedAttempt(
+    attempt: UpstreamAttemptHandle | null,
+    error: unknown,
+  ): Promise<void> {
+    if (!attempt) {
+      return;
+    }
+    if (!axios.isAxiosError(error)) {
+      completeCurrentUpstreamAttempt(attempt, { error, outcome: 'internal_error' });
+      return;
+    }
+
+    let responseBody = error.response?.data;
+    let partial = false;
+    if (this.isReadableStream(responseBody)) {
+      responseBody = await this.readStreamAsText(responseBody);
+      partial = true;
+      if (error.response) {
+        error.response.data = responseBody;
+      }
+    }
+    const status = error.response?.status;
+    completeCurrentUpstreamAttempt(attempt, {
+      error,
+      outcome: status ? this.outcomeForStatus(status) : 'upstream_error',
+      partial,
+      responseBody,
+      responseHeaders: this.toPlainHeaders(error.response?.headers),
+      status,
+    });
+  }
+
+  private extractRequestModel(body: InternalEndpointRequestBody): string | undefined {
+    if (!isObjectLike(body)) {
+      return undefined;
+    }
+    const direct = Reflect.get(body as object, 'model');
+    if (isString(direct)) {
+      return direct;
+    }
+    const request = Reflect.get(body as object, 'request');
+    const nested = isObjectLike(request) ? Reflect.get(request as object, 'model') : undefined;
+    return isString(nested) ? nested : undefined;
+  }
+
+  private outcomeForStatus(status: number): 'completed' | 'auth_failed' | 'upstream_error' {
+    if (status === 401 || status === 403) {
+      return 'auth_failed';
+    }
+    return status >= 400 ? 'upstream_error' : 'completed';
+  }
+
+  private toPlainHeaders(headers: unknown): Record<string, unknown> | undefined {
+    if (!headers || typeof headers !== 'object') {
+      return undefined;
+    }
+    return Object.fromEntries(Object.entries(headers));
   }
 
   private createInternalRequestBody(

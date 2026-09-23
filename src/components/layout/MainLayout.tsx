@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Activity,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,11 @@ export const MainLayout: React.FC = () => {
       to: '/proxy',
       icon: Network,
       label: t('nav.proxy'),
+    },
+    {
+      to: '/traffic',
+      icon: Activity,
+      label: t('nav.traffic'),
     },
     {
       to: '/settings',

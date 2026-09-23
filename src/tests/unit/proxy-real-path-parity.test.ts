@@ -68,6 +68,7 @@ describe('real request path, OpenAI chat surface', () => {
     });
     expect(upstream.calls).toHaveLength(1);
     expect(upstream.calls[0]?.accessToken).toBe('access-acc-1');
+    expect(upstream.calls[0]?.body.request.systemInstruction).toMatchObject({ role: 'user' });
   });
 
   it('carries the client request through the mapper into the upstream body', async () => {
@@ -91,6 +92,70 @@ describe('real request path, OpenAI chat surface', () => {
     expect(sent).toContain('project-42');
     expect(sent).toContain('Say hello.');
     expect(sent).toContain('You are terse.');
+    expect(upstream.calls[0]?.body.request.systemInstruction).toEqual(
+      expect.objectContaining({
+        role: 'user',
+        parts: expect.arrayContaining([
+          expect.objectContaining({ text: expect.stringContaining('You are terse.') }),
+        ]),
+      }),
+    );
+  });
+
+  it('keeps the Gemini 3 server profile when an OpenAI client supplies a low raw budget', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const lease = createLease([createAccount('acc-1')]);
+    const { openAIService } = createGateway(upstream, lease);
+
+    await openAIService.handleChatCompletions({
+      messages: [{ content: 'Use the configured profile.', role: 'user' }],
+      model: 'gemini-3.7-flash',
+      stream: false,
+      thinking: {
+        budget_tokens: 1000,
+        effort: 'low',
+        type: 'enabled',
+      },
+    });
+
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-high');
+    expect(upstream.calls[0]?.body.request.generationConfig).toEqual(
+      expect.objectContaining({
+        maxOutputTokens: 65536,
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: 10000,
+        },
+      }),
+    );
+  });
+
+  it('replaces raw OpenAI thinking controls for a direct Gemini agent identity', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const lease = createLease([createAccount('acc-1')]);
+    const { openAIService } = createGateway(upstream, lease);
+
+    await openAIService.handleChatCompletions({
+      messages: [{ content: 'Use the configured profile.', role: 'user' }],
+      model: 'gemini-pro-agent',
+      stream: false,
+      thinking: {
+        budget_tokens: 1000,
+        effort: 'low',
+        type: 'enabled',
+      },
+    });
+
+    expect(upstream.calls[0]?.body.model).toBe('gemini-pro-agent');
+    expect(upstream.calls[0]?.body.request.generationConfig).toEqual(
+      expect.objectContaining({
+        maxOutputTokens: 65_535,
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: 10_001,
+        },
+      }),
+    );
   });
 
   it('selects image accounts by the clean base model and preserves the physical model upstream', async () => {

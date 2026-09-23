@@ -30,6 +30,7 @@ import {
 import { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
 import { isProjectLicenseErrorMessage } from '@/modules/proxy-gateway/server/common/google-error-details';
+import { setCurrentAuditAccountId } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 
 interface StreamIdleTimer {
   reset: () => void;
@@ -135,7 +136,15 @@ export abstract class BaseProxyService {
     imageRequest = false,
     signal?: AbortSignal,
   ): Promise<CloudAccount | null> {
-    return this.retryPolicy.selectRetryToken(retryState, model, sessionKey, imageRequest, signal);
+    const account = await this.retryPolicy.selectRetryToken(
+      retryState,
+      model,
+      sessionKey,
+      imageRequest,
+      signal,
+    );
+    setCurrentAuditAccountId(account?.id ?? null);
+    return account;
   }
 
   protected releaseImagePermit(retryState: ProxyTokenRetryState): void {
@@ -325,12 +334,18 @@ export abstract class BaseProxyService {
     model: string,
     accountId: string,
     registered?: RegisteredGenerationConstraints,
+    enforceAuthoritativeThinkingBudget = false,
   ): void {
+    if (body.request.systemInstruction) {
+      body.request.systemInstruction.role = 'user';
+    }
+
     this.generationConstraints.applyInternalGenerationConstraints(
       body,
       model,
       accountId,
       registered,
+      enforceAuthoritativeThinkingBudget,
     );
   }
 

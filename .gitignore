@@ -123,5 +123,5 @@ accounts_backup.json
 # Bun lock file
 bun.lock
 .idea/
-# Added by code-review-graph
+# Local analysis metadata
 .code-review-graph/

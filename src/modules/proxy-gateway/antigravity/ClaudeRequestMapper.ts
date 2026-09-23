@@ -12,6 +12,7 @@ import {
 } from './ThoughtSignatureCompat';
 import { sanitizeSystemInstructionForCache } from './StablePromptPrefix';
 import { buildOfficialSystemInstruction } from './OfficialSystemInstruction';
+import { hasGlobalSystemPrompt, resolveGlobalSystemPrompt } from './GlobalSystemPrompt';
 import { parseMarkdownImagesToGeminiParts } from './MarkdownImageParts';
 import { enhanceGeminiSkillsPrompt } from './SkillPromptEnhancer';
 import { toSnakeToolConfig } from './GeminiToolConfigCompat';
@@ -42,6 +43,7 @@ import {
   resolveLocalInstalledVersion,
 } from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
 import { requiresToolQuotaRoute } from './ToolQuotaRoute';
+import { getServerConfig } from '@/server/server-config';
 
 /**
  * Request Configuration
@@ -655,7 +657,18 @@ function buildSystemInstruction(
     }
   }
 
-  const text = buildOfficialSystemInstruction(instructions, assistantIdentityDirective);
+  const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
+  const text = buildOfficialSystemInstruction(
+    instructions,
+    assistantIdentityDirective,
+    globalSystemPrompt &&
+      !hasGlobalSystemPrompt(
+        instructions.map((text) => ({ text })),
+        globalSystemPrompt,
+      )
+      ? globalSystemPrompt
+      : null,
+  );
   return text ? { parts: [{ text: enhanceGeminiSkillsPrompt(text, tools) }] } : null;
 }
 

@@ -56,6 +56,7 @@ import { parseImageMultipartRequest } from '@/modules/proxy-gateway/server/modul
 import { parseGenerationInputImages } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 import { BaseProxyController } from '@/modules/proxy-gateway/server/common/base-proxy.controller';
+import { setProxyResponseTimingHeaders } from '@/modules/proxy-gateway/server/common/proxy-response-timing';
 import { resolveOpenAIImageUrl } from './openai-image-url';
 import { OpenAIService, type OpenAIResponsesExecutionContext } from './openai.service';
 export type { ResponsesRequestBody } from './responses/openai-responses-request';
@@ -295,11 +296,12 @@ export class OpenAIOperations extends BaseProxyController {
         ? this.proxyService.handleChatCompletions(request, 'chat-completions', abortScope.signal)
         : this.proxyService.handleChatCompletions(request));
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, result);
+        this.writeSseResponse(res, result, true);
         return;
       }
 
       const response = result as OpenAIChatResponse;
+      setProxyResponseTimingHeaders(res, req);
       res.status(HttpStatus.OK).send(this.toLegacyTextCompletionsResponse(response));
     } catch (error) {
       this.sendOpenAIErrorResponse(res, '/v1/completions', error);
@@ -344,13 +346,14 @@ export class OpenAIOperations extends BaseProxyController {
             this.toResponsesExecutionContext(prepared),
           ));
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, this.cacheResponsesStream(result, prepared));
+        this.writeSseResponse(res, this.cacheResponsesStream(result, prepared), true);
         return;
       }
 
       const response = result as OpenAIChatResponse;
       const responsesResponse = toOpenAIResponsesResponse(response, prepared.responseId);
       this.saveResponsesSession(responsesResponse, prepared);
+      setProxyResponseTimingHeaders(res, req);
       res.status(HttpStatus.OK).send(responsesResponse);
     } catch (error) {
       this.sendOpenAIErrorResponse(res, '/v1/responses', error);
@@ -588,12 +591,13 @@ export class OpenAIOperations extends BaseProxyController {
         : this.proxyService.handleChatCompletions(request));
 
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, result);
+        this.writeSseResponse(res, result, true);
         return;
       } else {
         if (body.store === true) {
           this.storedCompletions.save(result as OpenAIChatResponse);
         }
+        setProxyResponseTimingHeaders(res, req);
         res.status(HttpStatus.OK).send(result);
       }
     } catch (error) {

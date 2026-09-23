@@ -320,22 +320,48 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
   });
 
-  it('emits reasoning as a separate commentary message before the final answer', () => {
+  it('emits native reasoning summaries before the final answer', () => {
     const mapper = createMapper();
     const events = [
-      ...mapper.processPart({ text: '<think>inspect\nfiles</think>', thought: true }),
+      ...mapper.processPart({ text: '<think>inspect\n', thought: true }),
+      ...mapper.processPart({ text: 'files</think>', thought: true }),
       ...mapper.processPart({ text: 'Done.' }),
       ...mapper.complete(),
     ].map(parseEvent);
+
+    expect(events.slice(0, 7).map((event) => event.type)).toEqual([
+      'response.output_item.added',
+      'response.reasoning_summary_part.added',
+      'response.reasoning_summary_text.delta',
+      'response.reasoning_summary_text.delta',
+      'response.reasoning_summary_text.done',
+      'response.reasoning_summary_part.done',
+      'response.output_item.done',
+    ]);
+    const reasoningItemId = Reflect.get(events[0]?.item ?? {}, 'id');
+    expect(reasoningItemId).toMatch(/^rs_[0-9a-f]{16}_0$/);
+    expect(events[0]).toMatchObject({
+      item: { status: 'in_progress', summary: [], type: 'reasoning' },
+      output_index: 0,
+    });
+    expect(
+      events.filter((event) => event.item_id === reasoningItemId).map((event) => event.type),
+    ).toEqual([
+      'response.reasoning_summary_part.added',
+      'response.reasoning_summary_text.delta',
+      'response.reasoning_summary_text.delta',
+      'response.reasoning_summary_text.done',
+      'response.reasoning_summary_part.done',
+    ]);
 
     expect(events.at(-1)).toMatchObject({
       response: {
         output: [
           {
-            content: [{ annotations: [], text: 'inspect\nfiles', type: 'output_text' }],
-            id: expect.stringMatching(/^msg_thought_/),
-            phase: 'commentary',
-            type: 'message',
+            id: expect.stringMatching(/^rs_[0-9a-f]{16}_0$/),
+            status: 'completed',
+            summary: [{ text: 'inspect\nfiles', type: 'summary_text' }],
+            type: 'reasoning',
           },
           {
             content: [{ annotations: [], text: 'Done.', type: 'output_text' }],
@@ -360,7 +386,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
     }>;
 
     expect(output).toHaveLength(2);
-    expect(output[0]?.id).toMatch(/^msg_thought_[0-9a-f]{16}_0$/);
+    expect(output[0]?.id).toMatch(/^rs_[0-9a-f]{16}_0$/);
     expect(output[1]?.id).toMatch(/^msg_[0-9a-f]{16}_1$/);
     expect(output.every((item) => !item.id?.includes('resp_test'))).toBe(true);
   });
@@ -379,12 +405,12 @@ describe('OpenAIResponsesStreamingMapper', () => {
       ...mapper.complete(),
     ].map(parseEvent);
 
-    const thoughtDoneIndex = events.findIndex(
+    const reasoningDoneIndex = events.findIndex(
       (event) =>
         event.type === 'response.output_item.done' &&
         typeof event.item === 'object' &&
         event.item !== null &&
-        Reflect.get(event.item, 'phase') === 'commentary',
+        Reflect.get(event.item, 'type') === 'reasoning',
     );
     const toolAddedIndex = events.findIndex(
       (event) =>
@@ -394,10 +420,71 @@ describe('OpenAIResponsesStreamingMapper', () => {
         Reflect.get(event.item, 'type') === 'function_call',
     );
 
-    expect(thoughtDoneIndex).toBeGreaterThanOrEqual(0);
-    expect(toolAddedIndex).toBeGreaterThan(thoughtDoneIndex);
-    expect(events[thoughtDoneIndex]).toMatchObject({ output_index: 0 });
+    expect(reasoningDoneIndex).toBeGreaterThanOrEqual(0);
+    expect(toolAddedIndex).toBeGreaterThan(reasoningDoneIndex);
+    expect(events[reasoningDoneIndex]).toMatchObject({ output_index: 0 });
     expect(events[toolAddedIndex]).toMatchObject({ output_index: 1 });
+  });
+
+  it('closes a reasoning-only stream with a completed native output item', () => {
+    const mapper = createMapper();
+    const events = [
+      ...mapper.processPart({ text: 'Inspecting', thought: true }),
+      ...mapper.complete(),
+    ].map(parseEvent);
+
+    expect(events.map((event) => event.type)).toEqual([
+      'response.output_item.added',
+      'response.reasoning_summary_part.added',
+      'response.reasoning_summary_text.delta',
+      'response.reasoning_summary_text.done',
+      'response.reasoning_summary_part.done',
+      'response.output_item.done',
+      'response.completed',
+    ]);
+    expect(events[5]).toMatchObject({
+      item: {
+        status: 'completed',
+        summary: [{ text: 'Inspecting', type: 'summary_text' }],
+        type: 'reasoning',
+      },
+      output_index: 0,
+    });
+    expect(events[6]).toMatchObject({
+      response: {
+        output: [
+          {
+            status: 'completed',
+            summary: [{ text: 'Inspecting', type: 'summary_text' }],
+            type: 'reasoning',
+          },
+        ],
+      },
+      type: 'response.completed',
+    });
+  });
+
+  it('marks native reasoning incomplete when the stream is truncated', () => {
+    const mapper = createMapper();
+    const events = [
+      ...mapper.processPart({ text: 'Inspecting', thought: true }),
+      ...mapper.complete('MAX_TOKENS'),
+    ].map(parseEvent);
+
+    expect(events.find((event) => event.type === 'response.output_item.done')).toMatchObject({
+      item: {
+        status: 'incomplete',
+        summary: [{ text: 'Inspecting', type: 'summary_text' }],
+        type: 'reasoning',
+      },
+    });
+    expect(events.at(-1)).toMatchObject({
+      response: {
+        incomplete_details: { reason: 'max_output_tokens' },
+        status: 'incomplete',
+      },
+      type: 'response.incomplete',
+    });
   });
 
   it('drops thought chunks that arrive after final-answer text has started', () => {

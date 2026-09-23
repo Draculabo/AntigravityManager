@@ -1,5 +1,6 @@
 interface SystemInstructionSections {
   identity: string[];
+  globalSystemPrompt: string[];
   environmentPermissions: string[];
   appContext: string[];
   customizations: string[];
@@ -39,9 +40,11 @@ const IDENTITY_MARKERS = [
 export function buildOfficialSystemInstruction(
   instructions: string[],
   fallbackIdentity: string,
+  globalSystemPrompt?: string | null,
 ): string {
   const sections: SystemInstructionSections = {
     identity: [],
+    globalSystemPrompt: [],
     environmentPermissions: [],
     appContext: [],
     customizations: [],
@@ -58,6 +61,10 @@ export function buildOfficialSystemInstruction(
 
   if (sections.identity.length === 0 && fallbackIdentity.trim()) {
     sections.identity.push(fallbackIdentity);
+  }
+
+  if (globalSystemPrompt?.trim()) {
+    sections.globalSystemPrompt.push(globalSystemPrompt);
   }
 
   return renderSections(sections);
@@ -185,6 +192,7 @@ function renderSections(sections: SystemInstructionSections): string {
   const output: string[] = [];
 
   appendSection(output, 'identity', joinDeduplicated(sections.identity));
+  appendSection(output, 'global_system_prompt', joinDeduplicated(sections.globalSystemPrompt));
   appendSection(
     output,
     'environment_permissions',

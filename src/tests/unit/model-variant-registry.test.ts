@@ -2,7 +2,28 @@ import { describe, expect, it } from 'vitest';
 import {
   rebindModelVariant,
   resolveModelVariant,
+  usesAuthoritativeThinkingBudget,
 } from '@/modules/proxy-gateway/antigravity/model-variant-registry';
+
+describe('usesAuthoritativeThinkingBudget', () => {
+  it('recognizes registered aliases, agent identities, future Gemini majors, and explicit tiers', () => {
+    expect([
+      usesAuthoritativeThinkingBudget('models/gemini-3.7-flash'),
+      usesAuthoritativeThinkingBudget('gemini-pro'),
+      usesAuthoritativeThinkingBudget('gemini-pro-agent'),
+      usesAuthoritativeThinkingBudget('gemini-10-flash'),
+      usesAuthoritativeThinkingBudget('gemini-3.8-flash-high'),
+    ]).toEqual([true, true, true, true, true]);
+  });
+
+  it('does not classify pre-v3 or ordinary non-tiered non-Gemini models as authoritative', () => {
+    expect([
+      usesAuthoritativeThinkingBudget('gemini-2.5-flash'),
+      usesAuthoritativeThinkingBudget('claude-sonnet-4-6'),
+      usesAuthoritativeThinkingBudget('gpt-oss-120b-medium'),
+    ]).toEqual([false, false, false]);
+  });
+});
 
 describe('resolveModelVariant', () => {
   it('defaults the canonical Gemini 3.7 Flash model to the registered high tier', () => {
@@ -18,12 +39,20 @@ describe('resolveModelVariant', () => {
     });
   });
 
-  it('keeps Gemini 3.7 fixed aliases fixed and 3.6 compatibility aliases tier-aware', () => {
+  it('honors explicit model tiers before effort or raw budgets', () => {
     expect([
       resolveModelVariant({ model: 'gemini-3.7-flash-low', effort: 'high' }),
       resolveModelVariant({ model: 'gemini-3.7-flash-medium', effort: 'low' }),
-      resolveModelVariant({ model: 'gemini-3.7-flash-high', effort: 'low' }),
-      resolveModelVariant({ model: 'gemini-3.6-flash-high', effort: 'low' }),
+      resolveModelVariant({
+        model: 'gemini-3.7-flash-high',
+        effort: 'low',
+        budgetTokens: 1000,
+      }),
+      resolveModelVariant({
+        model: 'gemini-3.6-flash-high',
+        effort: 'low',
+        budgetTokens: 1000,
+      }),
       resolveModelVariant({ model: 'gemini-3.6-flash-tiered', effort: 'medium' }),
     ]).toEqual([
       {
@@ -48,9 +77,9 @@ describe('resolveModelVariant', () => {
       },
       {
         canonicalModel: 'gemini-3.7-flash',
-        model: 'gemini-3.7-flash-low',
-        tier: 'low',
-        thinkingBudget: 1000,
+        model: 'gemini-3.7-flash-high',
+        tier: 'high',
+        thinkingBudget: 10000,
         maxOutputTokens: 65536,
         includeThoughts: true,
         preserveClientBudget: false,
@@ -58,9 +87,9 @@ describe('resolveModelVariant', () => {
       },
       {
         canonicalModel: 'gemini-3.7-flash',
-        model: 'gemini-3.7-flash-low',
-        tier: 'low',
-        thinkingBudget: 1000,
+        model: 'gemini-3.7-flash-high',
+        tier: 'high',
+        thinkingBudget: 10000,
         maxOutputTokens: 65536,
         includeThoughts: true,
         preserveClientBudget: false,
@@ -188,7 +217,7 @@ describe('resolveModelVariant', () => {
     ]);
   });
 
-  it('applies fixed and tier-aware alias policies', () => {
+  it('applies explicit and tier-aware alias policies', () => {
     expect(
       [
         resolveModelVariant({
@@ -224,9 +253,9 @@ describe('resolveModelVariant', () => {
       },
       {
         canonicalModel: 'gemini-3.1-pro',
-        model: 'gemini-3.1-pro-low',
-        tier: 'low',
-        thinkingBudget: 1001,
+        model: 'gemini-pro-agent',
+        tier: 'high',
+        thinkingBudget: 10001,
       },
     ]);
   });

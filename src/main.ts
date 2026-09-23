@@ -3,6 +3,8 @@ import { app, BrowserWindow, dialog, shell } from 'electron';
 import type { MessageBoxOptions } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import squirrelStartup from 'electron-squirrel-startup';
 
 import { ipcMain } from 'electron/main';
@@ -20,6 +22,8 @@ import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandl
 import { initDatabase } from '@/modules/account/public';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 import { createWeeklyWarmupExecutor } from '@/modules/proxy-gateway/weekly-warmup-executor';
+import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
+import { SaveAuditBodyInputSchema } from '@/modules/proxy-gateway/audit/save-audit-body-input';
 
 // Static Imports to fix Bundle Resolution Errors
 import { AuthServer } from '@/modules/cloud-account/ipc/authServer';
@@ -312,6 +316,36 @@ ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL_URL, async (_event, url: unknown) => {
   await shell.openExternal(url);
 });
 
+ipcMain.handle(
+  IPC_CHANNELS.SAVE_TRAFFIC_AUDIT_BODY,
+  async (_event, bodyId: string, suggestedName: string) => {
+    const [validatedBodyId, validatedSuggestedName] = SaveAuditBodyInputSchema.parse([
+      bodyId,
+      suggestedName,
+    ]);
+    const safeName = validatedSuggestedName.replace(/[^a-z0-9._-]+/giu, '-').slice(0, 120);
+    const options = {
+      defaultPath: safeName || `traffic-body-${validatedBodyId}.txt`,
+      filters: [
+        { name: 'JSON or text', extensions: ['json', 'txt', 'log'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+      title: 'Save traffic audit body',
+    };
+    const result = globalMainWindow
+      ? await dialog.showSaveDialog(globalMainWindow, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) {
+      return { status: 'cancelled' as const };
+    }
+    await pipeline(
+      Readable.from(trafficAuditService.bodyContent(validatedBodyId)),
+      fs.createWriteStream(result.filePath),
+    );
+    return { path: result.filePath, status: 'saved' as const };
+  },
+);
+
 ipcMain.handle(IPC_CHANNELS.GET_OBSERVABILITY_CONFIG, () => {
   return getQuickObservabilityConfig((message, error) => {
     logger.error(message, error);
@@ -416,6 +450,11 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
 
   logger.info('createWindow: setting main window in ipcContext');
   ipcContext.setMainWindow(mainWindow);
+  const unsubscribeTrafficAudit = trafficAuditService.subscribe((event) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.TRAFFIC_AUDIT_EVENT, event);
+    }
+  });
   logger.info('createWindow: setMainWindow done');
 
   if (inDevelopment && MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -457,6 +496,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   });
 
   mainWindow.on('closed', () => {
+    unsubscribeTrafficAudit();
     logger.info('Window closed event triggered');
     globalMainWindow = null;
   });

@@ -7,7 +7,10 @@ import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/Cl
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 import { rewriteInvalidThoughtSignatureRequest } from '@/modules/proxy-gateway/antigravity/thought-signature-recovery';
-import type { ResolvedModelVariant } from '@/modules/proxy-gateway/antigravity/model-variant-registry';
+import {
+  usesAuthoritativeThinkingBudget,
+  type ResolvedModelVariant,
+} from '@/modules/proxy-gateway/antigravity/model-variant-registry';
 import { normalizeThoughtSignatureModelContext } from '@/modules/proxy-gateway/antigravity/thought-signature-model';
 import {
   PartProcessor,
@@ -372,7 +375,13 @@ export class AnthropicService extends BaseProxyService {
           signatureTargetFamilyModel: params.targetModel,
         },
       );
-      this.applyInternalGenerationConstraints(body, body.model, params.accountId, params.variant);
+      this.applyInternalGenerationConstraints(
+        body,
+        body.model,
+        params.accountId,
+        params.variant,
+        usesAuthoritativeThinkingBudget(params.request.model),
+      );
 
       if (params.stream) {
         return {

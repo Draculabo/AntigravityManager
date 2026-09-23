@@ -20,6 +20,10 @@ import { ModelRoutingService } from '../../modules/proxy-gateway/server/shared/s
 import { ProxyRetryService } from '../../modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import { proxyModelAvailabilityStore } from '../../modules/proxy-gateway/server/shared/services/model-availability.service';
 import type { OpenAIChatRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import {
+  runWithTrafficAuditRequestContext,
+  type TrafficAuditRequestContext,
+} from '@/modules/proxy-gateway/audit/traffic-audit-context';
 
 // The three services the protocol services used to build for themselves. Real instances:
 // these tests drive the retry path, so a placeholder would change what is under test.
@@ -873,7 +877,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(internalPayload.model).toBe('gemini-3.1-pro-high');
   });
 
-  it('strips non-parity Gemini usage metadata fields', async () => {
+  it('keeps client-compatible Gemini usage while capturing full upstream audit usage', async () => {
     const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.generateInternal.mockResolvedValue({
@@ -888,14 +892,27 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         candidatesTokenCount: 2,
         totalTokenCount: 3,
         thoughtsTokenCount: 4,
+        cachedContentTokenCount: 5,
+        total_input_tokens: 10,
+        total_output_tokens: 6,
+        total_cached_tokens: 7,
+        total_thought_tokens: 8,
       },
       responseId: 'resp_123',
       createTime: '2026-02-10T00:00:00.000Z',
     });
 
-    const result = await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
-      contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
-    } as any);
+    const auditContext: TrafficAuditRequestContext = {
+      attemptSequence: 0,
+      parent: null,
+      thoughtSessionKey: 'test',
+      thoughtSessionStable: true,
+    };
+    const result = await runWithTrafficAuditRequestContext(auditContext, () =>
+      service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+        contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+      } as any),
+    );
 
     expect((result as any).usageMetadata).toEqual({
       promptTokenCount: 1,
@@ -903,6 +920,12 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       totalTokenCount: 3,
     });
     expect((result as any).usageMetadata.thoughtsTokenCount).toBeUndefined();
+    expect(auditContext.upstreamUsage).toEqual({
+      cachedTokens: 7,
+      inputTokens: 10,
+      outputTokens: 6,
+      reasoningTokens: 8,
+    });
   });
 
   it('retries Gemini generate-content without project when project context is invalid', async () => {

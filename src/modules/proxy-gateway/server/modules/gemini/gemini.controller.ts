@@ -14,7 +14,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { isEmpty, isFunction, isNumber, isString } from 'lodash-es';
+import { isEmpty, isNumber } from 'lodash-es';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
@@ -37,6 +37,8 @@ import {
   applyProxyRetryAfterHeader,
   createProxyRequestAbortScope,
 } from '../../common/base-proxy.controller';
+import { setProxyResponseTimingHeaders } from '../../common/proxy-response-timing';
+import { writeProxySseResponse } from '../../common/proxy-sse-response';
 
 type GeminiModelMetadata = {
   name: string;
@@ -161,7 +163,7 @@ export class GeminiController {
           ? this.proxyService.handleGeminiStreamGenerateContent(model, request, abortScope.signal)
           : this.proxyService.handleGeminiStreamGenerateContent(model, request));
         if (stream instanceof Observable) {
-          this.writeObservableSseResponse(res, stream);
+          writeProxySseResponse(res, stream, { includeTiming: true, request: req });
           return;
         }
       }
@@ -175,6 +177,7 @@ export class GeminiController {
               abortScope.signal,
             )
           : this.proxyService.handleGeminiGenerateContent(model, request));
+        setProxyResponseTimingHeaders(res, req);
         res.status(HttpStatus.OK).send(this.buildNormalizedGeminiGenerateResponse(result));
         return;
       }
@@ -368,63 +371,5 @@ export class GeminiController {
       normalized.trafficType = usageMetadata.trafficType;
     }
     return normalized;
-  }
-
-  private writeObservableSseResponse(res: FastifyReply, stream: Observable<unknown>): void {
-    if (!res.raw || !isFunction(res.raw.writeHead) || !isFunction(res.raw.write)) {
-      res.header('Content-Type', 'text/event-stream');
-      res.header('Cache-Control', 'no-cache');
-      res.header('Connection', 'keep-alive');
-      res.send(stream);
-      return;
-    }
-
-    if (this.supportsReplyHijack(res)) {
-      res.hijack();
-    }
-
-    res.raw.writeHead(HttpStatus.OK, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    });
-
-    const subscription = stream.subscribe({
-      next: (chunk) => {
-        if (res.raw.writableEnded) {
-          return;
-        }
-        const payload = isString(chunk) ? chunk : String(chunk ?? '');
-        res.raw.write(payload);
-      },
-      error: (error) => {
-        if (res.raw.writableEnded) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : String(error);
-        res.raw.write(
-          `data: ${JSON.stringify({
-            error: {
-              message,
-              type: 'server_error',
-            },
-          })}\n\n`,
-        );
-        res.raw.end();
-      },
-      complete: () => {
-        if (!res.raw.writableEnded) {
-          res.raw.end();
-        }
-      },
-    });
-
-    res.raw.on('close', () => {
-      subscription.unsubscribe();
-    });
-  }
-
-  private supportsReplyHijack(reply: FastifyReply): reply is FastifyReply & { hijack: () => void } {
-    return isFunction((reply as { hijack?: unknown }).hijack);
   }
 }

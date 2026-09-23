@@ -9,13 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as ProxyRouteImport } from './routes/proxy'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProxyRouteImport } from './routes/proxy'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as TrafficRouteImport } from './routes/traffic'
 
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProxyRoute = ProxyRouteImport.update({
@@ -23,9 +24,14 @@ const ProxyRoute = ProxyRouteImport.update({
   path: '/proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TrafficRoute = TrafficRouteImport.update({
+  id: '/traffic',
+  path: '/traffic',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -33,39 +39,43 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/proxy': typeof ProxyRoute
   '/settings': typeof SettingsRoute
+  '/traffic': typeof TrafficRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/proxy': typeof ProxyRoute
   '/settings': typeof SettingsRoute
+  '/traffic': typeof TrafficRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/proxy': typeof ProxyRoute
   '/settings': typeof SettingsRoute
+  '/traffic': typeof TrafficRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/proxy' | '/settings'
+  fullPaths: '/' | '/proxy' | '/settings' | '/traffic'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/proxy' | '/settings'
-  id: '__root__' | '/' | '/proxy' | '/settings'
+  to: '/' | '/proxy' | '/settings' | '/traffic'
+  id: '__root__' | '/' | '/proxy' | '/settings' | '/traffic'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProxyRoute: typeof ProxyRoute
   SettingsRoute: typeof SettingsRoute
+  TrafficRoute: typeof TrafficRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/proxy': {
@@ -75,11 +85,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/traffic': {
+      id: '/traffic'
+      path: '/traffic'
+      fullPath: '/traffic'
+      preLoaderRoute: typeof TrafficRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProxyRoute: ProxyRoute,
   SettingsRoute: SettingsRoute,
+  TrafficRoute: TrafficRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

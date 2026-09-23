@@ -1,12 +1,57 @@
 import {
   rebindModelVariant,
   resolveModelVariant,
+  usesAuthoritativeThinkingBudget,
 } from '../../../antigravity/model-variant-registry';
 import type {
   AnthropicChatRequest,
   GeminiRequest,
   OpenAIChatRequest,
 } from '../../common/interfaces/request-interfaces';
+
+function removeAuthoritativeGeminiThinkingControls(request: GeminiRequest): GeminiRequest {
+  const generationConfig = request.generationConfig;
+  if (!generationConfig?.thinkingConfig) {
+    return request;
+  }
+
+  const { thinkingConfig: _thinkingConfig, ...sanitizedGenerationConfig } = generationConfig;
+  const { generationConfig: _generationConfig, ...requestWithoutGenerationConfig } = request;
+  if (Object.keys(sanitizedGenerationConfig).length === 0) {
+    return requestWithoutGenerationConfig;
+  }
+
+  return {
+    ...requestWithoutGenerationConfig,
+    generationConfig: sanitizedGenerationConfig,
+  };
+}
+
+function removeAuthoritativeOpenAIThinkingControls(request: OpenAIChatRequest): OpenAIChatRequest {
+  if (!request.thinking) {
+    return request;
+  }
+
+  const { budget_tokens: _budgetTokens, effort: _effort, ...thinking } = request.thinking;
+  return {
+    ...request,
+    thinking,
+  };
+}
+
+function removeAuthoritativeAnthropicThinkingControls(
+  request: AnthropicChatRequest,
+): AnthropicChatRequest {
+  if (!request.thinking) {
+    return request;
+  }
+
+  const { budget_tokens: _budgetTokens, ...thinking } = request.thinking;
+  return {
+    ...request,
+    thinking,
+  };
+}
 
 export interface AppliedGeminiModelVariant {
   model: string;
@@ -18,7 +63,11 @@ export function applyGeminiModelVariant(
   model: string,
   request: GeminiRequest,
 ): AppliedGeminiModelVariant {
-  const thinkingConfig = request.generationConfig?.thinkingConfig;
+  const usesAuthoritativeBudget = usesAuthoritativeThinkingBudget(model);
+  const sanitizedRequest = usesAuthoritativeBudget
+    ? removeAuthoritativeGeminiThinkingControls(request)
+    : request;
+  const thinkingConfig = sanitizedRequest.generationConfig?.thinkingConfig;
   const variant = resolveModelVariant({
     model,
     budgetTokens: thinkingConfig?.thinkingBudget,
@@ -27,7 +76,7 @@ export function applyGeminiModelVariant(
 
   return {
     model: variant?.model ?? model,
-    request,
+    request: sanitizedRequest,
     variant,
   };
 }
@@ -53,21 +102,25 @@ export interface AppliedAnthropicModelVariant {
 export function applyAnthropicModelVariant(
   request: AnthropicChatRequest,
 ): AppliedAnthropicModelVariant {
+  const usesAuthoritativeBudget = usesAuthoritativeThinkingBudget(request.model);
+  const sanitizedRequest = usesAuthoritativeBudget
+    ? removeAuthoritativeAnthropicThinkingControls(request)
+    : request;
   const variant = resolveModelVariant({
-    model: request.model,
-    budgetTokens: request.thinking?.budget_tokens,
-    effort: request.output_config?.effort,
+    model: sanitizedRequest.model,
+    budgetTokens: sanitizedRequest.thinking?.budget_tokens,
+    effort: sanitizedRequest.output_config?.effort,
   });
   if (!variant) {
     return {
-      request,
+      request: sanitizedRequest,
       variant: null,
     };
   }
 
   return {
     request: {
-      ...request,
+      ...sanitizedRequest,
       model: variant.model,
       max_tokens: variant.maxOutputTokens,
       thinking:
@@ -77,8 +130,8 @@ export function applyAnthropicModelVariant(
               type: 'enabled',
               budget_tokens: variant.thinkingBudget,
             },
-      tools: variant.supportsTools ? request.tools : undefined,
-      tool_choice: variant.supportsTools ? request.tool_choice : undefined,
+      tools: variant.supportsTools ? sanitizedRequest.tools : undefined,
+      tool_choice: variant.supportsTools ? sanitizedRequest.tool_choice : undefined,
       output_config: undefined,
     },
     variant,
@@ -119,21 +172,25 @@ export interface AppliedOpenAIModelVariant {
 }
 
 export function applyOpenAIModelVariant(request: OpenAIChatRequest): AppliedOpenAIModelVariant {
+  const usesAuthoritativeBudget = usesAuthoritativeThinkingBudget(request.model);
+  const sanitizedRequest = usesAuthoritativeBudget
+    ? removeAuthoritativeOpenAIThinkingControls(request)
+    : request;
   const variant = resolveModelVariant({
-    model: request.model,
-    budgetTokens: request.thinking?.budget_tokens,
-    effort: request.reasoning_effort ?? request.thinking?.effort,
+    model: sanitizedRequest.model,
+    budgetTokens: sanitizedRequest.thinking?.budget_tokens,
+    effort: sanitizedRequest.reasoning_effort ?? sanitizedRequest.thinking?.effort,
   });
   if (!variant) {
     return {
-      request,
+      request: sanitizedRequest,
       variant: null,
     };
   }
 
   return {
     request: {
-      ...request,
+      ...sanitizedRequest,
       model: variant.model,
       max_tokens: variant.maxOutputTokens,
       thinking:
@@ -145,7 +202,9 @@ export function applyOpenAIModelVariant(request: OpenAIChatRequest): AppliedOpen
             },
       tools: variant.supportsTools ? request.tools : undefined,
       tool_choice: variant.supportsTools ? request.tool_choice : undefined,
-      ...(request.reasoning_effort !== undefined ? { reasoning_effort: variant.tier } : {}),
+      ...(sanitizedRequest.reasoning_effort !== undefined
+        ? { reasoning_effort: variant.tier }
+        : {}),
     },
     variant,
   };

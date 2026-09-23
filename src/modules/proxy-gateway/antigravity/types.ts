@@ -364,7 +364,7 @@ export interface GeminiRequest {
   /** Safety settings */
   safetySettings?: SafetySetting[];
   /** System instruction */
-  systemInstruction?: { parts: { text: string }[] };
+  systemInstruction?: { role?: string; parts: { text: string }[] };
   /** Generation config */
   generationConfig?: GenerationConfig;
   /** Server-created explicit context cache resource name. */

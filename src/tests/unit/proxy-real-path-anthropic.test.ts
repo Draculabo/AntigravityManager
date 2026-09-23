@@ -52,6 +52,7 @@ describe('real request path, Anthropic messages surface', () => {
         max_tokens: 128,
         messages: [{ content: 'What is the weather?', role: 'user' }],
         model: 'claude-sonnet-4-5',
+        system: 'Use terse phrasing.',
         stream: false,
       } as never,
       reply as never,
@@ -65,6 +66,14 @@ describe('real request path, Anthropic messages surface', () => {
       type: 'message',
     });
     expect(upstream.calls[0]?.accessToken).toBe('access-acc-1');
+    expect(upstream.calls[0]?.body.request.systemInstruction).toEqual(
+      expect.objectContaining({
+        role: 'user',
+        parts: expect.arrayContaining([
+          expect.objectContaining({ text: expect.stringContaining('Use terse phrasing.') }),
+        ]),
+      }),
+    );
   });
 
   it('gives the answer an Anthropic message id rather than the provider identifier', async () => {
@@ -84,6 +93,71 @@ describe('real request path, Anthropic messages surface', () => {
     );
 
     expect((reply.body as { id: string }).id).toBe('msg_upstream-response-1');
+  });
+
+  it('keeps the Gemini 3 server profile when an Anthropic client supplies a low raw budget', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const lease = createLease([createAccount('acc-1')]);
+    const controller = new AnthropicController(createGateway(upstream, lease).anthropicService);
+    const reply = createReply();
+
+    await controller.anthropicMessages(
+      {
+        max_tokens: 128,
+        messages: [{ content: 'Use the configured profile.', role: 'user' }],
+        model: 'gemini-3.5-flash',
+        stream: false,
+        thinking: {
+          budget_tokens: 1000,
+          type: 'enabled',
+        },
+      } as never,
+      reply as never,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3-flash-agent');
+    expect(upstream.calls[0]?.body.request.generationConfig).toEqual(
+      expect.objectContaining({
+        maxOutputTokens: 65536,
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: 10000,
+        },
+      }),
+    );
+  });
+
+  it('replaces raw Anthropic thinking controls for a direct Gemini agent identity', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const lease = createLease([createAccount('acc-1')]);
+    const controller = new AnthropicController(createGateway(upstream, lease).anthropicService);
+    const reply = createReply();
+
+    await controller.anthropicMessages(
+      {
+        max_tokens: 128,
+        messages: [{ content: 'Use the configured profile.', role: 'user' }],
+        model: 'gemini-pro-agent',
+        stream: false,
+        thinking: {
+          budget_tokens: 1000,
+          type: 'enabled',
+        },
+      } as never,
+      reply as never,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(upstream.calls[0]?.body.model).toBe('gemini-pro-agent');
+    expect(upstream.calls[0]?.body.request.generationConfig).toEqual(
+      expect.objectContaining({
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: 10001,
+        },
+      }),
+    );
   });
 
   it('recovers a registered unary tool call leaked as text', async () => {

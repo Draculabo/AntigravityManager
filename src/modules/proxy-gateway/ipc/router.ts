@@ -3,6 +3,7 @@
  * Provides routes for controlling the API Gateway service
  */
 import { os } from '@orpc/server';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   startGateway,
@@ -14,6 +15,79 @@ import {
 import { proxyModelAvailabilityStore } from '../server/shared/services/model-availability.service';
 import { openCodeCredentialService } from '../opencode-sync/opencode-credentials';
 import { openCodeSyncService } from '../opencode-sync/opencode-sync';
+import { trafficAuditService } from '../audit/traffic-audit.service';
+import { TrafficClassSchema } from '../audit/traffic-classifier';
+import {
+  TrafficAuditBodyPageInputSchema,
+  TrafficAuditBodySearchInputSchema,
+  TrafficAuditListInputSchema,
+} from '../audit/traffic-audit.types';
+import { thoughtStoreService } from '../thought-store/thought-store.service';
+import { copyAuditCurl } from '../traffic-monitor/copy-audit-curl';
+import {
+  createThoughtSessionKey,
+  runWithTrafficAuditRequestContext,
+} from '../audit/traffic-audit-context';
+
+export const gatewayAuditMiddleware = os.middleware(async ({ next, path }, input) => {
+  const auditPath = path.join('/');
+  const sessionId = readIpcSessionId(input);
+  const auditParent = isAuditManagementIpc(auditPath)
+    ? null
+    : trafficAuditService.startParent({
+        method: 'IPC',
+        operation: auditPath,
+        protocol: 'ipc',
+        requestBody: input,
+        sessionId: sessionId ?? undefined,
+        trafficClass: 'ipc',
+        url: `/ipc/${auditPath}`,
+      });
+  const auditContext = {
+    attemptSequence: 0,
+    parent: auditParent,
+    thoughtSessionKey: createThoughtSessionKey({}, sessionId ?? `request-${randomUUID()}`),
+    thoughtSessionStable: Boolean(sessionId),
+  };
+
+  return runWithTrafficAuditRequestContext(auditContext, async () => {
+    try {
+      const result = await next({});
+      trafficAuditService.completeParent(auditParent, {
+        outcome: 'completed',
+        responseBody: result.output,
+        status: 200,
+      });
+      return result;
+    } catch (error) {
+      trafficAuditService.completeParent(auditParent, {
+        error,
+        outcome: 'internal_error',
+        status: 500,
+      });
+      throw error;
+    }
+  });
+});
+
+function isAuditManagementIpc(path: string): boolean {
+  return (
+    path.startsWith('gateway/audit') || path.startsWith('gateway/thought') || path === 'config/save'
+  );
+}
+
+function readIpcSessionId(input: unknown): string | null {
+  if (!input || typeof input !== 'object') {
+    return null;
+  }
+  for (const key of ['session_id', 'sessionId', 'conversation_id', 'conversationId']) {
+    const value = Reflect.get(input, key);
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
 
 const OpenCodeModelInputSchema = z.object({
   id: z.string().trim().min(1),
@@ -118,4 +192,108 @@ export const gatewayRouter = os.prefix('/gateway').router({
     .handler(async () => {
       return proxyModelAvailabilityStore.getSnapshot();
     }),
+
+  auditList: os.input(TrafficAuditListInputSchema).handler(async ({ input }) => {
+    return trafficAuditService.list(input);
+  }),
+
+  auditFilterOptions: os.handler(async () => trafficAuditService.filterOptions()),
+
+  auditDetail: os.input(z.object({ id: z.string().min(1).max(128) })).handler(async ({ input }) => {
+    return trafficAuditService.detail(input.id);
+  }),
+
+  auditBodyPage: os.input(TrafficAuditBodyPageInputSchema).handler(async ({ input }) => {
+    return trafficAuditService.bodyPage(input);
+  }),
+
+  auditBodySearch: os.input(TrafficAuditBodySearchInputSchema).handler(async ({ input }) => {
+    return trafficAuditService.bodySearch(input);
+  }),
+
+  auditCopyCurl: os
+    .input(
+      z.object({
+        id: z.string().min(1).max(128),
+        attemptId: z.string().min(1).max(128).optional(),
+        includeCredentials: z.boolean(),
+      }),
+    )
+    .handler(async ({ input }) => {
+      await copyAuditCurl(input);
+      return { copied: true };
+    }),
+
+  auditStats: os.handler(async () => {
+    return trafficAuditService.stats();
+  }),
+
+  auditDelete: os.input(z.object({ id: z.string().min(1).max(128) })).handler(async ({ input }) => {
+    return { affected: await trafficAuditService.delete(input.id) };
+  }),
+
+  auditClear: os
+    .input(z.object({ trafficClass: TrafficClassSchema.nullable() }))
+    .handler(async ({ input }) => {
+      return { affected: await trafficAuditService.clear(input.trafficClass) };
+    }),
+
+  auditRepair: os.handler(async () => {
+    return trafficAuditService.repair();
+  }),
+
+  thoughtSessions: os
+    .input(
+      z.object({
+        limit: z.number().int().min(1).max(200).default(100),
+        model: z.string().trim().max(256).optional(),
+        offset: z.number().int().nonnegative().default(0),
+        search: z.string().trim().max(512).optional(),
+      }),
+    )
+    .handler(async ({ input }) => {
+      return thoughtStoreService.listSessions(input.limit, input.offset, input.search, input.model);
+    }),
+
+  thoughtSession: os
+    .input(z.object({ sessionKey: z.string().min(1) }))
+    .handler(async ({ input }) => {
+      return thoughtStoreService.getSession(input.sessionKey);
+    }),
+
+  thoughtRecords: os
+    .input(z.object({ sessionKey: z.string().min(1) }))
+    .handler(async ({ input }) => {
+      return thoughtStoreService.listRecords(input.sessionKey);
+    }),
+
+  thoughtRecord: os
+    .input(z.object({ id: z.number().int().positive(), sessionKey: z.string().min(1) }))
+    .handler(async ({ input }) => {
+      return thoughtStoreService.getRecord(input.sessionKey, input.id);
+    }),
+
+  thoughtStats: os.handler(async () => {
+    return thoughtStoreService.stats();
+  }),
+
+  thoughtDelete: os
+    .input(z.object({ sessionKey: z.string().min(1) }))
+    .handler(async ({ input }) => {
+      const affected = await thoughtStoreService.deleteSession(input.sessionKey);
+      trafficAuditService.recordAdminOperation('delete_thought_session', affected);
+      return { affected };
+    }),
+
+  thoughtClear: os.handler(async () => {
+    const affected = await thoughtStoreService.clear();
+    trafficAuditService.recordAdminOperation('clear_thought_sessions', affected);
+    return { affected };
+  }),
+
+  thoughtRepair: os.handler(async () => {
+    const result = await thoughtStoreService.repair();
+    trafficAuditService.recordAdminOperation('repair_thought_store');
+    return result;
+  }),
 });

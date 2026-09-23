@@ -32,10 +32,11 @@ export class GenerationConstraintsService {
     model: string,
     accountId: string,
     registered?: RegisteredGenerationConstraints,
+    enforceAuthoritativeThinkingBudget = false,
   ): void {
     let generationConfig = body.request.generationConfig;
     if (!generationConfig) {
-      if (!registered) {
+      if (!registered && !enforceAuthoritativeThinkingBudget) {
         return;
       }
       generationConfig = {};
@@ -53,6 +54,13 @@ export class GenerationConstraintsService {
         };
       }
       return;
+    }
+
+    if (enforceAuthoritativeThinkingBudget) {
+      generationConfig.thinkingConfig = {
+        includeThoughts: true,
+        thinkingBudget: this.getModelThinkingBudget(accountId, model),
+      };
     }
 
     const outputCap = this.getModelOutputCap(accountId, model);

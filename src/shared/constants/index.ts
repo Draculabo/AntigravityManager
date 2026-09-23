@@ -16,4 +16,6 @@ export const IPC_CHANNELS = {
   OPEN_EXTERNAL_URL: 'open-external-url',
   START_PERFORMANCE_RECORDING: 'start-performance-recording',
   STOP_PERFORMANCE_RECORDING: 'stop-performance-recording',
+  TRAFFIC_AUDIT_EVENT: 'traffic-audit-event',
+  SAVE_TRAFFIC_AUDIT_BODY: 'save-traffic-audit-body',
 };

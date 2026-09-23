@@ -45,6 +45,31 @@ describe('GenerationConstraintsService', () => {
     });
   });
 
+  it('injects the account-authoritative budget for an unregistered direct Gemini 3 identity', () => {
+    const policy = createPolicy({
+      outputLimit: 65_535,
+      thinkingBudget: 10_001,
+    });
+    const request = createInternalRequest({ temperature: 0.2 });
+
+    policy.applyInternalGenerationConstraints(
+      request,
+      'gemini-pro-agent',
+      'acc-1',
+      undefined,
+      true,
+    );
+
+    expect(request.request.generationConfig).toEqual({
+      temperature: 0.2,
+      maxOutputTokens: 42_769,
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 10_001,
+      },
+    });
+  });
+
   it('keeps registered variant parameters authoritative over legacy model constraints', () => {
     const policy = createPolicy({
       outputLimit: 64_000,

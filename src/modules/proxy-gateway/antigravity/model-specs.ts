@@ -50,6 +50,16 @@ const modelSpecs = {
       thinking_budget: 49152,
       is_thinking: true,
     },
+    'gemini-pro-agent': {
+      max_output_tokens: 65535,
+      thinking_budget: 10001,
+      is_thinking: true,
+    },
+    'gemini-3-flash-agent': {
+      max_output_tokens: 65536,
+      thinking_budget: 10000,
+      is_thinking: true,
+    },
     'gemini-3-pro-image': {
       max_output_tokens: 65536,
       thinking_budget: 24576,

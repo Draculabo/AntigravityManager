@@ -5,7 +5,7 @@ import {
   parseLocalAccountImportORPCErrorData,
 } from '@/modules/cloud-account/ipc/router';
 import { configRouter } from '@/modules/config/ipc/router';
-import { gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
+import { gatewayAuditMiddleware, gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
 import { antigravityRuntimeRouter } from '@/modules/antigravity-runtime/ipc/router';
 import { appShellRouter } from '@/modules/app-shell/ipc/router';
 
@@ -130,10 +130,8 @@ export function toPublicORPCError(
 // Log middleware setup
 const logMiddleware = os.middleware(async ({ next, path }) => {
   const requestPath = JSON.stringify(path || 'unknown');
-
   try {
-    const result = await next({});
-    return result;
+    return await next({});
   } catch (err) {
     logger.error(`[ORPC] Error in handler for ${requestPath}:`, err);
     throw toPublicORPCError(err, requestPath);
@@ -141,15 +139,18 @@ const logMiddleware = os.middleware(async ({ next, path }) => {
 });
 
 // Explicit Router Definition
-export const router = os.use(logMiddleware).router({
-  ping: os.output(z.string()).handler(async () => 'pong'),
+export const router = os
+  .use(logMiddleware)
+  .use(gatewayAuditMiddleware)
+  .router({
+    ping: os.output(z.string()).handler(async () => 'pong'),
 
-  ...appShellRouter,
-  database: databaseRouter,
-  ...antigravityRuntimeRouter,
+    ...appShellRouter,
+    database: databaseRouter,
+    ...antigravityRuntimeRouter,
 
-  account: accountRouter,
-  cloud: cloudRouter,
-  config: configRouter,
-  gateway: gatewayRouter,
-});
+    account: accountRouter,
+    cloud: cloudRouter,
+    config: configRouter,
+    gateway: gatewayRouter,
+  });

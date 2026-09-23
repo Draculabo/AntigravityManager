@@ -16,6 +16,9 @@ import {
 } from '../modules/proxy-gateway/server/guards/api-key-auth.util';
 import { isObservable } from 'rxjs';
 import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
+import { registerTrafficAuditHttpHooks } from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
+import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 
 import { ProxyConfig } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from './server-config';
@@ -121,6 +124,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
   try {
     const fastifyAdapter = new FastifyAdapter();
     registerImageGenerationBodyLimit(fastifyAdapter.getInstance());
+    registerTrafficAuditHttpHooks(fastifyAdapter.getInstance());
     app = await NestFactory.create<NestFastifyApplication>(AppModule, fastifyAdapter, {
       logger: ['error', 'warn', 'log'],
     });
@@ -216,6 +220,7 @@ export async function stopNestServer(): Promise<boolean> {
       detachResponsesWebSocketServer?.();
       detachResponsesWebSocketServer = null;
       await app.close();
+      await Promise.allSettled([trafficAuditService.close(), thoughtStoreService.close()]);
       app = null;
       currentPort = 0;
       logger.info('NestJS server stopped.');

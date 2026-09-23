@@ -2,23 +2,38 @@ import { Injectable, Logger } from '@nestjs/common';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { isObjectLike, isString } from 'lodash-es';
+import { isObjectLike, isPlainObject, isString } from 'lodash-es';
 import { getAgentDir } from '@/shared/platform/paths';
+import { readPositiveIntegerEnv } from '@/shared/persistence/durable-store-settings';
 import { sanitizeObject } from '@/shared/security/sensitiveDataMasking';
-import { getUpstreamCaptureContext, isUpstream4xxCaptureEnabled } from './upstream-capture-context';
+import {
+  getUpstreamCaptureContext,
+  isUpstream4xxCaptureEnabled,
+  snapshotCapturePayload,
+  type UpstreamCaptureContext,
+} from './upstream-capture-context';
 
 const CAPTURE_DIRECTORY = 'captures';
 const CAPTURE_LIMIT = 50;
 const CAPTURE_MAX_BYTES = 1024 * 1024;
+const CAPTURE_DIRECTORY_MAX_BYTES = CAPTURE_LIMIT * CAPTURE_MAX_BYTES;
+const CAPTURE_DIRECTORY_MAX_BYTES_ENV = 'AGM_UPSTREAM_4XX_CAPTURE_MAX_DIRECTORY_BYTES';
 const CAPTURE_SUMMARY_FIELD_MAX_LENGTH = 1024;
+const MAX_PENDING_CAPTURES = 4;
 const SENSITIVE_QUERY_PARAM_PATTERN =
-  /([?&](?:api[_-]?key|key|access[_-]?token|refresh[_-]?token|token|authorization|auth|secret|client[_-]?secret|code)=)[^&#]*/giu;
+  /([?&](?:api[_-]?key|key|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer[_-]?token|token|authorization|auth|secret|client[_-]?secret|session(?:[_-]?id)?|cookie|credential(?:s)?|code)=)[^&#]*/giu;
 
 interface CaptureMetadata {
   captured_at: string;
   client_visible_model: string | null;
   mapped_upstream_model: string | null;
   upstream_endpoint: string;
+}
+
+interface CaptureFile {
+  filePath: string;
+  modifiedAt: number;
+  size: number;
 }
 
 export interface Upstream4xxCaptureInput {
@@ -35,20 +50,50 @@ export interface Upstream4xxCaptureInput {
  */
 @Injectable()
 export class Upstream4xxCaptureService {
+  private static captureQueue: Promise<void> = Promise.resolve();
+  private static pendingCaptureCount = 0;
   private readonly logger = new Logger(Upstream4xxCaptureService.name);
 
   async capture(input: Upstream4xxCaptureInput): Promise<void> {
-    if (!isUpstream4xxCaptureEnabled() || !isClientErrorStatus(input.status)) {
+    const status = input.status;
+    if (!isUpstream4xxCaptureEnabled() || !isClientErrorStatus(status)) {
+      return;
+    }
+    if (Upstream4xxCaptureService.pendingCaptureCount >= MAX_PENDING_CAPTURES) {
+      this.logger.warn('Skipped upstream 4xx capture because the diagnostic queue is full.');
       return;
     }
 
+    const context = snapshotCaptureContext(getUpstreamCaptureContext());
+    const captureInput: Upstream4xxCaptureInput = {
+      endpoint: redactSensitiveQueryParams(snapshotCaptureText(input.endpoint)) ?? '',
+      status,
+      upstreamErrorBody: snapshotCapturePayload(input.upstreamErrorBody),
+      upstreamRequest: snapshotCapturePayload(input.upstreamRequest),
+    };
+    Upstream4xxCaptureService.pendingCaptureCount += 1;
+    const scheduledCapture = Upstream4xxCaptureService.captureQueue.then(() =>
+      this.writeCapture(captureInput, context, status),
+    );
+    Upstream4xxCaptureService.captureQueue = scheduledCapture.catch(() => undefined);
+    try {
+      await scheduledCapture;
+    } finally {
+      Upstream4xxCaptureService.pendingCaptureCount -= 1;
+    }
+  }
+
+  private async writeCapture(
+    input: Upstream4xxCaptureInput,
+    context: UpstreamCaptureContext | undefined,
+    status: number,
+  ): Promise<void> {
     try {
       const captureDirectory = path.join(getAgentDir(), CAPTURE_DIRECTORY);
       await fs.mkdir(captureDirectory, { mode: 0o700, recursive: true });
       if (process.platform !== 'win32') {
         await fs.chmod(captureDirectory, 0o700);
       }
-      const context = getUpstreamCaptureContext();
       const capturedAt = new Date().toISOString();
       const metadata: CaptureMetadata = {
         captured_at: capturedAt,
@@ -69,11 +114,11 @@ export class Upstream4xxCaptureService {
         upstream_request: input.upstreamRequest,
         upstream_response: {
           error_body: input.upstreamErrorBody,
-          status: input.status,
+          status,
         },
       });
       const filename = `${capturedAt.replace(/[:.]/gu, '-')}-${randomUUID()}.json`;
-      const serializedDocument = serializeCaptureDocument(document, metadata, input.status);
+      const serializedDocument = serializeCaptureDocument(document, metadata, status);
 
       await fs.writeFile(path.join(captureDirectory, filename), serializedDocument, {
         encoding: 'utf-8',
@@ -94,15 +139,59 @@ export class Upstream4xxCaptureService {
         .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
         .map(async (entry) => {
           const filePath = path.join(captureDirectory, entry.name);
-          return { filePath, modifiedAt: (await fs.stat(filePath)).mtimeMs };
+          const stats = await fs.stat(filePath);
+          return { filePath, modifiedAt: stats.mtimeMs, size: stats.size };
         }),
     );
-    const expired = captures
-      .sort((left, right) => left.modifiedAt - right.modifiedAt)
-      .slice(0, Math.max(0, captures.length - CAPTURE_LIMIT));
+    const maxDirectoryBytes = readPositiveIntegerEnv(
+      CAPTURE_DIRECTORY_MAX_BYTES_ENV,
+      CAPTURE_DIRECTORY_MAX_BYTES,
+    );
+    const orderedCaptures = captures.sort(compareCaptureFiles);
+    let retainedCount = orderedCaptures.length;
+    let retainedBytes = orderedCaptures.reduce((total, capture) => total + capture.size, 0);
 
-    await Promise.all(expired.map(({ filePath }) => fs.unlink(filePath)));
+    for (const capture of orderedCaptures) {
+      if (retainedCount <= CAPTURE_LIMIT && retainedBytes <= maxDirectoryBytes) {
+        break;
+      }
+
+      await fs.unlink(capture.filePath);
+      retainedCount -= 1;
+      retainedBytes -= capture.size;
+    }
   }
+}
+
+function compareCaptureFiles(left: CaptureFile, right: CaptureFile): number {
+  if (left.modifiedAt !== right.modifiedAt) {
+    return left.modifiedAt - right.modifiedAt;
+  }
+
+  return left.filePath.localeCompare(right.filePath);
+}
+
+function snapshotCaptureContext(
+  context: UpstreamCaptureContext | undefined,
+): UpstreamCaptureContext | undefined {
+  if (!context) {
+    return undefined;
+  }
+
+  const headers = snapshotCapturePayload(context.clientRequest.headers);
+  return {
+    clientRequest: {
+      body: snapshotCapturePayload(context.clientRequest.body),
+      endpoint:
+        redactSensitiveQueryParams(snapshotCaptureText(context.clientRequest.endpoint)) ?? '',
+      headers: isPlainObject(headers) ? (headers as Record<string, unknown>) : {},
+    },
+  };
+}
+
+function snapshotCaptureText(value: string): string {
+  const snapshot = snapshotCapturePayload(value);
+  return isString(snapshot) ? snapshot : '';
 }
 
 function serializeCaptureDocument(

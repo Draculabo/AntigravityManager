@@ -17,6 +17,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { OpenCodeSyncCard } from '@/modules/proxy-gateway/components/OpenCodeSyncCard';
+import { GlobalSystemPromptCard } from '@/modules/proxy-gateway/components/GlobalSystemPromptCard';
+import { AuditAndThoughtStoreCard } from '@/modules/proxy-gateway/components/AuditAndThoughtStoreCard';
 import {
   buildProxyExampleModels,
   isImageProxyExampleModel,
@@ -511,6 +513,13 @@ print(response.choices[0].message.content)`;
             />
           </div>
 
+          <GlobalSystemPromptCard
+            config={proxyConfig.global_system_prompt}
+            onChange={(global_system_prompt) =>
+              updateProxyConfig({ ...proxyConfig, global_system_prompt })
+            }
+          />
+
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="space-y-1">
               <Label>{t('proxy.config.cloud_code_meta')}</Label>
@@ -672,6 +681,11 @@ print(response.choices[0].message.content)`;
       </Card>
 
       <OpenCodeSyncCard baseUrl={baseUrl} models={exampleModels} />
+
+      <AuditAndThoughtStoreCard
+        config={proxyConfig}
+        onChange={(patch) => updateProxyConfig({ ...proxyConfig, ...patch })}
+      />
 
       {/* Usage Examples Card */}
       <Card>

@@ -38,6 +38,47 @@ When adding a new sensitive field, update the central masking behavior and its t
 
 Database schema, durable payload and credential-location changes require an Agent Note because they impose compatibility and recovery obligations.
 
+### Proxy traffic and thought persistence
+
+Traffic audit and Thought Store data live in separate SQLite databases under the proxy state
+directory and are written by separate bounded worker threads. The model path is fail-open: queue
+overflow, worker failure and shutdown-drain timeout are reported as counters but do not alter the
+provider response. Read-only audit/Thought management calls are not recursively audited. Clear,
+delete, repair and setting changes produce metadata-only admin events.
+
+Before an audit payload reaches SQLite, authorization and cookie headers, credential-bearing query
+parameters, and recursively matched JSON credential keys are replaced with `[REDACTED]`. Media
+bodies retain metadata and a SHA-256 digest, not bytes. Free-form prompt, code and tool output is
+not heuristically scanned; users who place credentials in ordinary content are choosing to retain
+that content in plaintext. Thought text and signatures are also plaintext by explicit product
+policy. The UI automatically previews stored bodies up to 20 KiB. Larger bodies show a 20 KiB
+prefix until the user chooses to browse more; signatures remain collapsed until expanded.
+
+The Traffic Monitor's cURL export is an explicit local clipboard exception, not an audit-storage
+exception. Its credential switch starts off for each page visit and resets on filter changes. When selected, the main process
+substitutes the **current** local proxy API key into a parent-request command and writes it directly
+to the OS clipboard; the renderer and IPC response never receive the key. Historical credentials
+cannot be reconstructed from redacted records. Upstream-attempt export is always redacted. The
+clipboard may be read by other local applications and the pasted command may disclose its key;
+users should treat it as a secret and clear it when finished. Export refuses partial, expired,
+binary or oversized request bodies rather than silently generating an incomplete replay.
+
+Audit parent and attempt tables contain metadata and references, never large inline body columns.
+Sanitized body content is written in 64 KiB chunks with a 100 MiB stored-prefix ceiling per unique
+logical payload. Exact payloads may share a reference only inside the same parent request; there is
+no cross-request content-addressed ownership or reference-count lifecycle. Normal SSE stores a
+reconstructed response and preserves unrecognized events. Parse failures store redacted raw SSE,
+framing and error location, not byte-identical upstream content. Authenticated body reads are paged
+by default; the full-content route streams chunks and the renderer requires explicit confirmation
+before accumulating a complete body for clipboard copy.
+
+Both databases reject unknown future schema versions. Corruption does not trigger automatic
+replacement. An authenticated explicit repair first closes the worker, then preserves the main
+database and WAL/SHM sidecars under a timestamped `.corrupt-*` name before creating a fresh file.
+For this unshipped audit feature, an older audit schema is archived with its WAL/SHM sidecars and
+replaced by an empty schema v4 database. No old audit rows are migrated; the independent Thought
+Store database is untouched.
+
 ### Linux Secret Service collections
 
 When `secret-tool` is available on Linux, credential writes synchronize the same payload to the `login` collection and then the default collection. The default collection remains the application compatibility gate: a default-write failure falls back to the native keyring even when the `login` write succeeded. Both writes are bounded to ten seconds and diagnostics contain collection outcomes only, never credential payloads or raw process errors.

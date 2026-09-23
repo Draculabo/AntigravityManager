@@ -4,11 +4,11 @@ Status: implemented
 
 ## Problem
 
-The target protocol behavior uses a different non-stream reasoning shape and dual Gemini tool configuration aliases. Replacing these fields alone can drop historical commentary filtering, tool-call associations, image metadata, or cache semantics. The chosen defaults must coexist with our existing persistence and cache paths.
+The target protocol behavior uses native `reasoning` items with `summary_text` for both non-stream and streaming Responses, alongside dual Gemini tool configuration aliases. Replacing the streaming thought representation alone can drop historical commentary filtering, tool-call associations, image metadata, or cache semantics; retaining native reasoning in continuation input can also replay presentation-only thought text upstream. The chosen defaults must coexist with our existing persistence and cache paths.
 
 ## Decision
 
-This decision supersedes the non-stream reasoning and camel-only tool decisions in [the earlier compatibility note](2026-08-30-openai-responses-tool-compatibility.md). Other safeguards in that note remain applicable. Current behavior is documented in [the proxy compatibility reference](../../../../docs/proxy-compatibility.md).
+This decision supersedes the non-stream reasoning, streaming-commentary, and camel-only tool decisions in [the earlier compatibility note](2026-08-30-openai-responses-tool-compatibility.md). Other safeguards in that note remain applicable. Current behavior is documented in [the proxy compatibility reference](../../../../docs/proxy-compatibility.md).
 
 
 The object-content rule is refined by the bounded-media compatibility change: a single typed content object now follows the same text/media parser as an array, while an untyped object still contributes no message text. Top-level input objects and other primitive content are not changed. Tool outputs now unwrap nested `content`, retain recognized text and media together, and use the old JSON serialization only when nothing recognized is present. Empty-type assistant items also stop triggering WebSocket transcript replacement through the shared parser. The existing file-reference preflight remains a deliberate boundary decision: it can still reject an unresolved attachment inside an otherwise ignored item or object content. Input conversion does not bypass attachment error handling. Image URL validation is also retained: non-empty URLs, supported detail values and JSON extensions pass, while malformed image values are ignored at the request boundary. The same validated object form remains accepted for `input_image` so existing clients do not silently lose images. Unknown string roles follow the established shared rule: after system, developer, assistant and tool handling, the OpenAI conversion maps other roles to `user` rather than forwarding an unsupported role verbatim to Gemini. This behavior remains unchanged for Chat Completions.
@@ -27,7 +27,7 @@ Only cache tool configurations representable by the existing cachedContents API.
 
 ## Alternatives considered
 
-- Redesign the streaming format: rejected; streaming commentary and event order stay unchanged.
+- Retain the legacy streaming commentary format: rejected; streaming reasoning now uses the same native item shape as non-stream Responses, while ordinary message and tool lifecycles stay unchanged.
 - Rewrite all stored responses to the new reasoning shape: rejected; old GET payloads and tool references are client-visible durable state.
 - Retain the legacy empty-type and object-content replay behavior: superseded by the user's explicit decision to ignore those inputs. No migration rewrites historical records.
 - Discard snake_case only during caching: rejected; this can silently change the requested function mode or allowed names.
@@ -40,7 +40,7 @@ The remaining output-shape audit distinguishes a narrow internal contract from a
 
 For empty-text-plus-image input, the intermediate chat conversion now omits a text block only when the newline-joined text is exactly `''`, matching upstream's parser boundary. It intentionally does not trim: spaces remain text, and two empty blocks join to a non-empty newline that remains text. The following chat-to-Claude conversion still produces image-only Gemini content for the strictly empty case.
 
-Non-stream and streaming reasoning intentionally have different representations. New reasoning items are ignored during upstream history replay; old commentary is still removed. Normal assistant text is retained unless an existing transcript-only marker identifies it. Newline joining prevents adjacent text blocks from accidentally forming the reserved thinking prefix.
+Non-stream and streaming reasoning both use native `reasoning` items with `summary_text`. Streaming emits the summary-part-added, summary-text-delta, summary-text-done, summary-part-done, and output-item-done lifecycle in that order, and closes reasoning before a visible message or tool item. Reasoning remains in the completed response and GET surface but is ignored during upstream history replay; old commentary is still removed. Normal assistant text is retained unless an existing transcript-only marker identifies it. Newline joining prevents adjacent text blocks from accidentally forming the reserved thinking prefix.
 
 History that relied on empty-type messages or untyped object content loses that contribution when continued, even though old GET response payloads remain unchanged. Typed object content is parsed as one content block. Historical media is intentionally represented by placeholders in new continuation records, preventing repeated base64 growth while preserving turn structure and tool-result association.
 
@@ -49,6 +49,8 @@ The durable JSON representation changes from a flat materialized session to a le
 Configuration extensions continue to reach generation, but bypass explicit caching until the cache API can represent them. No durable migration, database change, authentication change, new dependency, or release action is included.
 
 ## Verification
+
+Native streaming-reasoning regressions pin the complete summary lifecycle, multiple thought chunks, final-text and tool ordering, reasoning-only and truncated termination, independent `rs_` IDs, late-thought suppression, and monotonic SSE sequencing. Session-store regressions keep native reasoning in the stored completed response while excluding it from merged continuation history alongside legacy commentary transcripts.
 
 The old-session fixture was generated with the pre-change writer, before production edits. It remains unchanged while its assertions verify that recovered legacy continuation input is bounded on read, its completed GET response stays exact, and unsupported content is ignored during conversion. Regression tests exercise recovery, raw response equality, IDs, function output association, whitespace, usage details, SSE/WebSocket behavior, all three protocol service paths, and credentials. Loopback HTTP tests use the real GeminiClient and Axios Node adapter to observe serialized cache and generation requests, including cache failure and fallback.
 

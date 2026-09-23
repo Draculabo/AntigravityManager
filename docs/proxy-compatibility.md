@@ -46,7 +46,7 @@ Role-bearing messages with a missing or non-string `type` use the message path. 
 
 Function and custom-tool outputs unwrap an enclosing `content` field, accept an array or one typed object, keep text and supported image/audio media together, and retain the prior JSON-string fallback only when no supported part was recognized. The apply-patch retry-loop compactor runs on the extracted text without discarding media. Downstream mapping emits Gemini `functionResponse` first and then media `inlineData`; a pure-media result keeps an empty function result instead of fabricating success text.
 
-Raw history and input parsing share their type resolver. Assistant `phase: commentary`, `msg_thought_` IDs, and the reserved thinking prefix identify transcript-only messages. Filtering precedes compaction, merging, call repair and deduplication. The existing leading-orphan cleanup, terminal assistant-prefill rewrite, and empty-user fallback remain in place.
+Raw history and input parsing share their type resolver. Native `reasoning` output items, assistant `phase: commentary`, `msg_thought_` IDs, and the reserved thinking prefix identify transcript-only items. Filtering precedes compaction, merging, call repair and deduplication. The existing leading-orphan cleanup, terminal assistant-prefill rewrite, and empty-user fallback remain in place.
 
 For a full-replay request, media before the latest user turn is replaced with `[historical image omitted]` or `[historical audio omitted]` before validation. The latest turn and every following tool exchange stay intact for the live upstream request. Inline data-image payloads on that live slice are limited to 16 images, 20 MiB decoded per image, and 32 MiB decoded in total; invalid data URLs fail before account selection, while remote URLs are not counted by this inline-byte guard.
 
@@ -54,7 +54,7 @@ The durable session copy is separate from the live request and recursively repla
 
 The remaining ignore rules apply to new input and recovered history during request conversion without rewriting old GET payloads. An empty-type assistant item does not trigger WebSocket transcript replacement. File-reference resolution still precedes input conversion, so unresolved attachment references retain their existing errors even inside an otherwise ignored item or object content.
 
-New non-stream responses emit nonblank reasoning as `reasoning` items with `summary_text`, followed by visible text/refusal and tools. Ordinary message items have no `phase`. The apply_patch diagnostic exception retains commentary. Streaming retains its existing commentary messages and event sequence. Zero cached/reasoning token detail fields are normalized only at the non-stream response boundary.
+Non-stream responses emit nonblank reasoning as `reasoning` items with `summary_text`, followed by visible text/refusal and tools. Streaming emits the same native reasoning item shape, with the lifecycle `response.reasoning_summary_part.added` → `response.reasoning_summary_text.delta` → `response.reasoning_summary_text.done` → `response.reasoning_summary_part.done` → `response.output_item.done`. It closes reasoning before visible text or a tool item and never emits `output_text` or `content_part` events for reasoning. Ordinary message and tool lifecycles are unchanged, while native reasoning remains in the completed response but is excluded from continuation replay. Non-stream ordinary message items have no `phase`; streaming ordinary messages retain their existing `commentary` or `final_answer` phase. The apply_patch diagnostic exception retains commentary. Zero cached/reasoning token detail fields are normalized only at the non-stream response boundary.
 
 The production non-stream path selects the first Gemini candidate, concatenates its text blocks without a separator, and constructs one internal Chat Completions choice with string-or-null content and a usage object. Missing upstream usage becomes zero before the final Responses conversion. The non-stream stream-aggregation fallback uses the same normalization. The final Responses mapper is not a general-purpose converter for arbitrary external Chat Completions responses or multiple choices.
 
@@ -65,6 +65,32 @@ Response IDs, function/custom tool IDs, namespaces and call IDs are preserved. O
 Responses account routing and signature provenance are separate. A nonblank request `session_id` overrides the stored lineage routing identity; otherwise continuations inherit it, fall back to `previous_response_id`, and roots use the new response ID. Account leasing uses only that routing identity. Tool signatures are still read from the parent response ID and written under the new response ID. The routing identity is stored on each retained node; legacy records without it use their addressed response ID.
 
 Only explicit `store: false` disables storage. The request may reconstruct and use a valid parent's history, instructions, model, tools and cached calls for the current upstream call, but the returned response creates no retrievable payload or continuation node. A later GET or `previous_response_id` using that transient response ID returns 404. Omitted and true storage retain the completed turn. The durable record format remains version 1 with the existing one-hour TTL, 500-session limit, missing-ID errors and deletion semantics. Recovery requires an entry retained within those limits and a completed disk flush; this is not a guarantee for interrupted writes or incomplete streams.
+
+The traffic-audit and Thought Store switches are application-level persistence controls and are
+independent of the OpenAI `store` field. A Responses request with `store: false` still participates
+in traffic auditing and, when it provides a stable session identifier, thought restoration. The
+same hashed credential plus sanitized client session identifier selects a Thought Store session
+across OpenAI Chat/Responses, Anthropic Messages and Gemini generate/stream entry points. Requests
+without a stable identifier receive a per-request key and never restore another request's thought.
+
+Historical model turns are ingested against the entire stored session, not only its last record.
+Repeated client history does not append duplicate turns; a stronger version of an existing turn can
+replace its stored thought. Restoration scans stored records newest first, matches tool-call IDs or
+content fingerprints before any fallback, and permits category fallback only for the final model
+turn. A turn that already carries complete thought text and a signature is left unchanged. Text
+and tool-call turns do not cross-match.
+
+Successful OpenAI Chat, Responses and Completions requests and native Gemini generate requests
+include `X-Session-Id`, `X-Antigravity-Session-Id`, and the four timing headers
+`X-Timing-Clean-Ms`, `X-Timing-Norm-Ms`, `X-Timing-Thinking-Ms` and `X-Timing-Ttft-Ms`. The
+session headers identify the client-visible routing session, not the hashed Thought Store key.
+Streaming responses emit these headers when the first output is ready so TTFT is measured from
+the upstream start to its first response byte. Timing is diagnostic and does not gate the model
+response.
+
+## System Instruction Role Normalization
+
+Every existing internal Gemini `systemInstruction` reaches the upstream wire with `role: "user"`. Normalization runs after each OpenAI Chat, Responses, Anthropic, or native Gemini mapper has constructed its internal request, so only the role changes; instruction parts, tool configuration, safety settings, generation configuration, contents, and model routing are preserved. A request with no system instruction remains without one. Count-token paths continue omitting system instructions. Protocol and image paths that already remove an instruction keep doing so; native Gemini image requests that already carry a system instruction retain it and apply the same `role: "user"` normalization. Explicit context caching therefore observes the same normalized request shape as direct generation.
 
 ## Tool Configuration and Explicit Context Caching
 

@@ -11,6 +11,7 @@ import {
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
 } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
+import { usesAuthoritativeThinkingBudget } from '@/modules/proxy-gateway/antigravity/model-variant-registry';
 import {
   toOpenAIResponsesUsage,
   toOpenAIUsageFromGeminiUsageMetadata,
@@ -44,6 +45,10 @@ import {
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import {
+  markProxyCleanComplete,
+  markProxyNormalizationStarted,
+} from '@/modules/proxy-gateway/server/common/proxy-response-timing';
 import {
   toGeminiUsageMetadata,
   toResponsesGroundingMetadata,
@@ -124,11 +129,15 @@ export class OpenAIService extends BaseProxyService {
       : routedRequest.model;
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(routingModel);
     const targetModel = routeResolution.resolvedModel;
+    const enforceAuthoritativeThinkingBudget =
+      usesAuthoritativeThinkingBudget(request.model) ||
+      usesAuthoritativeThinkingBudget(targetModel);
     const isImageRequest = isGeminiImageModel(routingModel) || isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
       `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}`,
     );
+    markProxyCleanComplete();
 
     // Retry loop for account selection
     let lastError: unknown = null;
@@ -170,6 +179,7 @@ export class OpenAIService extends BaseProxyService {
         ? accountRequest.model
         : effectiveTargetModel;
 
+      markProxyNormalizationStarted();
       try {
         const claudeRequest = this.convertOpenAIToClaude(accountRequest, signatureReadSessionKey);
         const projectId = token.token.project_id ?? '';
@@ -195,6 +205,7 @@ export class OpenAIService extends BaseProxyService {
           geminiBody.model,
           token.id,
           effectiveVariantRequest.variant ?? undefined,
+          enforceAuthoritativeThinkingBudget,
         );
 
         // Use v1internal API (same as Anthropic handler)
@@ -294,6 +305,7 @@ export class OpenAIService extends BaseProxyService {
             `OpenAI compatibility request hit project context issue, retrying without project: ${err.message}`,
           );
           try {
+            markProxyNormalizationStarted();
             const claudeRequest = this.convertOpenAIToClaude(
               accountRequest,
               signatureReadSessionKey,
@@ -320,6 +332,7 @@ export class OpenAIService extends BaseProxyService {
               fallbackBody.model,
               token.id,
               effectiveVariantRequest.variant ?? undefined,
+              enforceAuthoritativeThinkingBudget,
             );
             if (request.stream) {
               const stream = await this.geminiClient.streamGenerateInternal(

@@ -384,8 +384,8 @@ export function mergeOpenAIResponsesInputItems(
   newInput: unknown[],
   cachedToolCalls: unknown[] = [],
 ): unknown[] {
-  const filteredHistory = history.filter((item) => !isCodexTranscriptOnlyAssistantMessage(item));
-  const filteredNewInput = newInput.filter((item) => !isCodexTranscriptOnlyAssistantMessage(item));
+  const filteredHistory = history.filter((item) => !isCodexTranscriptOnlyItem(item));
+  const filteredNewInput = newInput.filter((item) => !isCodexTranscriptOnlyItem(item));
   const hasCompaction = filteredNewInput.some(isCompactionItem);
   const merged = hasCompaction
     ? filteredNewInput.filter((item) => !isCompactionItem(item))
@@ -508,11 +508,13 @@ function resolveItemId(item: unknown): string | undefined {
   return typeof id === 'string' && id ? id : undefined;
 }
 
-function isCodexTranscriptOnlyAssistantMessage(item: unknown): boolean {
-  if (
-    resolveResponsesInputType(item) !== 'message' ||
-    getStringField(item, 'role') !== 'assistant'
-  ) {
+function isCodexTranscriptOnlyItem(item: unknown): boolean {
+  const inputType = resolveResponsesInputType(item);
+  if (inputType === 'reasoning') {
+    return true;
+  }
+
+  if (inputType !== 'message' || getStringField(item, 'role') !== 'assistant') {
     return false;
   }
 

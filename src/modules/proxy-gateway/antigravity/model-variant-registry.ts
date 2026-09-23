@@ -152,6 +152,41 @@ const MODEL_VARIANT_FAMILIES: ModelVariantFamily[] = [
   },
 ];
 
+/**
+ * Gemini 3+ and explicitly tiered Gemini variants are server-owned operating
+ * profiles. A raw client budget is a request hint, not permission to silently
+ * route an explicitly selected profile to a lower variant. Protocol adapters
+ * may still honor their own explicit effort controls where their public
+ * contract supports them.
+ */
+export function usesAuthoritativeThinkingBudget(model: string): boolean {
+  const normalized = model
+    .trim()
+    .toLowerCase()
+    .replace(/^models\//, '');
+  const knownGemini3Family = MODEL_VARIANT_FAMILIES.some(
+    (family) =>
+      family.canonicalModel.startsWith('gemini-3') &&
+      (family.canonicalModel === normalized ||
+        Object.prototype.hasOwnProperty.call(family.aliases, normalized)),
+  );
+
+  if (knownGemini3Family) {
+    return true;
+  }
+
+  if (!normalized.includes('gemini')) {
+    return false;
+  }
+
+  if (normalized.includes('agent')) {
+    return true;
+  }
+
+  const version = /gemini-(\d+(?:\.\d+)*)/.exec(normalized)?.[1];
+  return version !== undefined && Number.parseFloat(version) >= 3;
+}
+
 function inferTier(budgetTokens: number | undefined): ModelVariantTier {
   if (budgetTokens !== undefined && budgetTokens < 2000) {
     return 'low';
@@ -161,6 +196,20 @@ function inferTier(budgetTokens: number | undefined): ModelVariantTier {
   }
 
   return 'high';
+}
+
+function parseExplicitModelTier(model: string): ModelVariantTier | null {
+  if (model.endsWith('-high')) {
+    return 'high';
+  }
+  if (model.endsWith('-medium')) {
+    return 'medium';
+  }
+  if (model.endsWith('-low') || model.endsWith('-extra-low')) {
+    return 'low';
+  }
+
+  return null;
 }
 
 function parseEffort(effort: string | undefined): ModelVariantTier | null {
@@ -238,18 +287,25 @@ function resolveNonVariantModel(
 
 export function resolveModelVariant(input: ResolveModelVariantInput): ResolvedModelVariant | null {
   const model = input.model.trim().toLowerCase();
-  const requestedTier = parseEffort(input.effort) ?? inferTier(input.budgetTokens);
   const family = MODEL_VARIANT_FAMILIES.find(
     (candidate) =>
       candidate.canonicalModel === model ||
       Object.prototype.hasOwnProperty.call(candidate.aliases, model),
   );
   if (!family) {
-    return resolveNonVariantModel(model, requestedTier, input.budgetTokens);
+    return resolveNonVariantModel(
+      model,
+      parseEffort(input.effort) ?? inferTier(input.budgetTokens),
+      input.budgetTokens,
+    );
   }
 
+  const explicitModelTier = parseExplicitModelTier(model);
+  const requestedTier =
+    explicitModelTier ?? parseEffort(input.effort) ?? inferTier(input.budgetTokens);
   const aliasPolicy = family.aliases[model];
-  const tier = aliasPolicy && aliasPolicy !== 'tier' ? aliasPolicy : requestedTier;
+  const tier =
+    explicitModelTier ?? (aliasPolicy && aliasPolicy !== 'tier' ? aliasPolicy : requestedTier);
   return {
     canonicalModel: family.canonicalModel,
     tier,

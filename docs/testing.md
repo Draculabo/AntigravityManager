@@ -63,6 +63,17 @@ npm run test:performance-recorder-process
 
 This process-level test uses a temporary `npm.cmd` fixture and runs outside Vitest's `no-app-launch` guard. It skips on non-Windows platforms; the default Vitest suite validates only the launch-command contract and does not start child processes.
 
+After `npm run start` has built the production traffic-audit and Thought Store workers, run their
+native SQLite persistence checks under Electron's matching Node runtime:
+
+```powershell
+$env:ELECTRON_RUN_AS_NODE = '1'
+& .\node_modules\electron\dist\electron.exe scripts\traffic-audit-native.test.mjs
+```
+
+This checks real worker messages, database reopen, body paging, retention and physical disk
+reclamation. It supplements, but does not replace, live gateway/provider acceptance.
+
 Run static checks when a shared type, import surface, public export or cross-module contract changes:
 
 ```powershell

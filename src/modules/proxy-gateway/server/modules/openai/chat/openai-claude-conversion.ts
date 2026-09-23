@@ -43,6 +43,9 @@ export interface OpenAIConversionOptions {
   allowLocalVideoPaths?: boolean;
 }
 
+const STALE_CODEX_MODEL_IDENTITY = 'You are Codex, an agent based on GPT-5.';
+const GENERIC_CODEX_IDENTITY = 'You are Codex, an agent.';
+
 interface OpenAIPartsConversionOptions extends OpenAIConversionOptions {
   remoteImageFallback?: (url: string) => string;
   unreadableAudioFallback?: () => string;
@@ -59,7 +62,7 @@ export function convertOpenAIToClaude(
   const seenSystemPromptKeys = new Set<string>();
   const anthropicMessages: ClaudeRequest['messages'] = [];
   const addSystemPrompt = (text: string) => {
-    const trimmed = text.trim();
+    const trimmed = normalizeStaleCodexModelIdentity(text).trim();
     const key = sanitizeSystemInstructionForCache(trimmed).split(/\s+/).join(' ');
     if (key && !seenSystemPromptKeys.has(key)) {
       seenSystemPromptKeys.add(key);
@@ -189,6 +192,10 @@ export function convertOpenAIToClaude(
       signature_session_key: signatureSessionKey,
     },
   };
+}
+
+function normalizeStaleCodexModelIdentity(text: string): string {
+  return text.replaceAll(STALE_CODEX_MODEL_IDENTITY, GENERIC_CODEX_IDENTITY);
 }
 
 export function convertOpenAIPartsToAnthropicContent(

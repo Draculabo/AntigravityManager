@@ -2,6 +2,7 @@ import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common'
 
 import { AccountLeaseService } from '../account-lease/account-lease.service';
 import { GeminiClient } from '../gemini/gemini-client.service';
+import { setCurrentAuditAccountId } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 
 /**
  * Response headers worth handing back. A diagnostic exists to be compared against the vendor's
@@ -38,6 +39,8 @@ export class V1InternalPassthroughService {
         'No eligible account is available for v1internal probing',
       );
     }
+
+    setCurrentAuditAccountId(account.id);
 
     const upstream = await this.geminiClient.postV1InternalRaw(
       verb,

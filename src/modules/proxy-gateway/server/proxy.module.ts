@@ -7,11 +7,14 @@ import { BatchModule } from './modules/batch/batch.module';
 import { FilesModule } from './modules/files/files.module';
 import { GeminiModule } from './modules/gemini/gemini.module';
 import { OpenAIModule } from './modules/openai/openai.module';
+import { ObservabilityModule } from './modules/observability/observability.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { V1InternalPassthroughModule } from './modules/v1internal-passthrough/v1internal-passthrough.module';
+import { ThinkingModule } from './modules/thinking/thinking.module';
 import { BatchExecutionTargetBinder } from './batch-execution-target.binder';
 import { ProxyService } from './proxy.service';
 import { UpstreamCaptureContextInterceptor } from './common/upstream-capture-context';
+import { TrafficAuditContextInterceptor } from '../audit/traffic-audit-context';
 
 @Module({
   imports: [
@@ -21,8 +24,10 @@ import { UpstreamCaptureContextInterceptor } from './common/upstream-capture-con
     GeminiModule,
     AnthropicModule,
     OpenAIModule,
+    ObservabilityModule,
     UploadsModule,
     V1InternalPassthroughModule,
+    ThinkingModule,
   ],
   providers: [
     ProxyService,
@@ -30,6 +35,10 @@ import { UpstreamCaptureContextInterceptor } from './common/upstream-capture-con
     {
       provide: APP_INTERCEPTOR,
       useClass: UpstreamCaptureContextInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TrafficAuditContextInterceptor,
     },
   ],
   exports: [ProxyService, AccountLeaseModule],

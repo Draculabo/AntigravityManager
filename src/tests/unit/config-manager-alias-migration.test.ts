@@ -12,7 +12,17 @@ vi.mock('@/shared/platform/paths', () => ({
 // The real logger opens a rotating file transport in the directory under test and keeps it open
 // past the teardown that removes it, which turns a passing run into a wall of ENOENT.
 vi.mock('@/shared/logging/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    setErrorReportingEnabled: vi.fn(),
+  },
+}));
+
+vi.mock('@/modules/antigravity-runtime/utils/autoStart', () => ({
+  syncAutoStart: vi.fn(),
 }));
 
 /**
@@ -63,6 +73,29 @@ describe('ConfigManager alias migration', () => {
     });
     expect(loaded.proxy.anthropic_mapping).toEqual({});
     expect(loaded.proxy.experimental.allow_local_video_paths).toBe(false);
+    expect(loaded.proxy.global_system_prompt).toEqual({ enabled: false, content: '' });
+  });
+
+  it('synchronizes the saved global prompt before a gateway has started', async () => {
+    const { saveConfig } = await import('@/modules/config/ipc/handlers');
+    const { DEFAULT_APP_CONFIG } = await import('@/modules/config/types');
+    const { getServerConfig } = await import('@/server/server-config');
+
+    await saveConfig({
+      ...DEFAULT_APP_CONFIG,
+      proxy: {
+        ...DEFAULT_APP_CONFIG.proxy,
+        global_system_prompt: {
+          enabled: true,
+          content: 'Always answer in Simplified Chinese.',
+        },
+      },
+    });
+
+    expect(getServerConfig()?.global_system_prompt).toEqual({
+      enabled: true,
+      content: 'Always answer in Simplified Chinese.',
+    });
   });
 
   it('persists the explicit local video path opt-in', async () => {

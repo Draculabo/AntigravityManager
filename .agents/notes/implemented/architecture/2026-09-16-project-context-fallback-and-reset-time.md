@@ -17,7 +17,7 @@ Fallback logging records endpoint and status metadata only; it does not serializ
 ## Alternatives considered
 
 - Retrying every HTTP error would mask malformed requests and invalid or unauthorized credentials, while creating unnecessary external traffic.
-- Preserving the old two-endpoint path would skip the daily-production host that the upstream-compatible flow uses before sandbox.
+- Preserving the old two-endpoint path would skip the daily-production host in the established three-host fallback sequence before sandbox.
 - Parsing seconds and milliseconds at each display call site would allow tooltip and relative-time displays to diverge.
 - Persisting request diagnostics as part of this change was not selected. Request logging needs a separate threat model, redaction policy, retention design, and explicit product surface before it can safely record provider interactions.
 

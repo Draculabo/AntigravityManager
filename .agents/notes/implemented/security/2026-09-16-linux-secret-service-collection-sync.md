@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-On Linux, Secret Service can expose separate `login` and default collections. External Antigravity CLI consumers may resolve the `login` collection while this application's existing reader first resolves the default Secret Service entry. Writing only the default collection can leave an external CLI on a stale account; treating a successful login write as sufficient can leave the application's established read path stale instead.
+On Linux, Secret Service can expose separate `login` and default collections. A managed command-line credential reader may resolve the `login` collection while this application's existing reader first resolves the default Secret Service entry. Writing only the default collection can leave the command-line reader on a stale account; treating a successful login write as sufficient can leave the application's established read path stale instead.
 
 ## Decision
 
@@ -14,9 +14,9 @@ The default collection remains the compatibility gate: a successful default writ
 
 ## Alternatives considered
 
-- Writing only `login` would follow one external consumer but could leave the current default-first reader on an old credential.
+- Writing only `login` would satisfy one secondary reader but could leave the current default-first reader on an old credential.
 - Accepting either collection as complete success would change the prior default/native fallback contract and could make an account switch appear successful while the application still reads the old value.
-- Adding a generic OpenCode provider descriptor was rejected because the repository has only one managed provider. The module ownership rules require a real second consumer before introducing shared infrastructure.
+- Adding a generic provider descriptor was rejected because the repository has only one managed provider. The module ownership rules require a real second consumer before introducing shared infrastructure.
 
 ## Consequences
 

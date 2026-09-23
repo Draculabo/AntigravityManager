@@ -35,7 +35,7 @@ describe('applyGeminiModelVariant', () => {
     });
   });
 
-  it('honors an explicit native thinking budget for the tier-aware 3.6 high alias', () => {
+  it('keeps the server-authoritative high variant for a tier-aware 3.6 alias', () => {
     const tieredRequest: GeminiRequest = {
       ...request,
       generationConfig: {
@@ -46,23 +46,29 @@ describe('applyGeminiModelVariant', () => {
       },
     };
 
-    expect(applyGeminiModelVariant('gemini-3.6-flash-high', tieredRequest)).toEqual({
-      model: 'gemini-3.7-flash-low',
-      request: tieredRequest,
+    const applied = applyGeminiModelVariant('gemini-3.6-flash-high', tieredRequest);
+
+    expect(applied).toEqual({
+      model: 'gemini-3.7-flash-high',
+      request,
       variant: {
         canonicalModel: 'gemini-3.7-flash',
-        model: 'gemini-3.7-flash-low',
-        tier: 'low',
-        thinkingBudget: 1000,
+        model: 'gemini-3.7-flash-high',
+        tier: 'high',
+        thinkingBudget: 10000,
         maxOutputTokens: 65536,
         includeThoughts: true,
         preserveClientBudget: false,
         supportsTools: true,
       },
     });
+    expect(tieredRequest.generationConfig?.thinkingConfig).toEqual({
+      includeThoughts: true,
+      thinkingBudget: 1000,
+    });
   });
 
-  it('uses a valid native thinking level as the explicit tier', () => {
+  it('does not let a native thinking level downshift a Gemini 3 profile', () => {
     const tieredRequest: GeminiRequest = {
       ...request,
       generationConfig: {
@@ -73,15 +79,46 @@ describe('applyGeminiModelVariant', () => {
       },
     };
 
-    expect(applyGeminiModelVariant('gemini-3.7-flash', tieredRequest).variant).toEqual({
+    const applied = applyGeminiModelVariant('gemini-3.7-flash', tieredRequest);
+
+    expect(applied.variant).toEqual({
       canonicalModel: 'gemini-3.7-flash',
-      model: 'gemini-3.7-flash-medium',
-      tier: 'medium',
-      thinkingBudget: 4000,
+      model: 'gemini-3.7-flash-high',
+      tier: 'high',
+      thinkingBudget: 10000,
       maxOutputTokens: 65536,
       includeThoughts: true,
       preserveClientBudget: false,
       supportsTools: true,
+    });
+    expect(applied.request.generationConfig).toBeUndefined();
+  });
+
+  it('removes raw thinking controls from a direct Gemini agent request before forwarding it', () => {
+    const directRequest: GeminiRequest = {
+      ...request,
+      generationConfig: {
+        temperature: 0.2,
+        thinkingConfig: {
+          includeThoughts: false,
+          thinkingBudget: 1000,
+          thinkingLevel: 'low',
+        },
+      },
+    };
+
+    expect(applyGeminiModelVariant('gemini-pro-agent', directRequest)).toEqual({
+      model: 'gemini-pro-agent',
+      request: {
+        contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
+        generationConfig: { temperature: 0.2 },
+      },
+      variant: null,
+    });
+    expect(directRequest.generationConfig?.thinkingConfig).toEqual({
+      includeThoughts: false,
+      thinkingBudget: 1000,
+      thinkingLevel: 'low',
     });
   });
 
@@ -143,6 +180,79 @@ describe('applyAnthropicModelVariant', () => {
       },
     });
     expect(request.model).toBe('gemini-3.1-pro');
+  });
+
+  it('does not let a raw Anthropic thinking budget downshift a Gemini 3 profile', () => {
+    const applied = applyAnthropicModelVariant({
+      model: 'gemini-3.5-flash',
+      messages: [{ role: 'user', content: 'Hello' }],
+      max_tokens: 2048,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 1000,
+      },
+    });
+
+    expect(applied.request).toEqual({
+      model: 'gemini-3-flash-agent',
+      messages: [{ role: 'user', content: 'Hello' }],
+      max_tokens: 65536,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 10000,
+      },
+      tools: undefined,
+      tool_choice: undefined,
+      output_config: undefined,
+    });
+    expect(applied.variant?.tier).toBe('high');
+  });
+
+  it('does not let Anthropic effort downshift an explicit Gemini 3 tier', () => {
+    const applied = applyAnthropicModelVariant({
+      model: 'gemini-3.1-pro-high',
+      messages: [{ role: 'user', content: 'Hello' }],
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 1000,
+      },
+      output_config: {
+        effort: 'low',
+      },
+    });
+
+    expect(applied.request).toMatchObject({
+      model: 'gemini-pro-agent',
+      max_tokens: 65535,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 10001,
+      },
+      output_config: undefined,
+    });
+    expect(applied.variant?.tier).toBe('high');
+  });
+
+  it('removes raw Anthropic thinking controls from a direct Gemini agent request', () => {
+    const applied = applyAnthropicModelVariant({
+      model: 'gemini-pro-agent',
+      messages: [{ role: 'user', content: 'Hello' }],
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 1000,
+      },
+    });
+
+    expect(applied).toEqual({
+      request: {
+        model: 'gemini-pro-agent',
+        messages: [{ role: 'user', content: 'Hello' }],
+        thinking: {
+          type: 'enabled',
+        },
+      },
+      variant: null,
+    });
   });
 
   it('silently removes thinking and tool fields for a registered checkpoint without tool support', () => {
@@ -250,6 +360,50 @@ describe('applyOpenAIModelVariant', () => {
       thinking: {
         budget_tokens: 4000,
       },
+    });
+  });
+
+  it('does not let a raw OpenAI thinking budget downshift a Gemini 3 profile', () => {
+    const applied = applyOpenAIModelVariant({
+      model: 'gemini-3.7-flash',
+      messages: [],
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 1000,
+        effort: 'low',
+      },
+    });
+
+    expect(applied.request).toMatchObject({
+      model: 'gemini-3.7-flash-high',
+      max_tokens: 65536,
+      thinking: {
+        budget_tokens: 10000,
+      },
+    });
+    expect(applied.variant?.tier).toBe('high');
+  });
+
+  it('removes raw OpenAI thinking controls from a direct Gemini agent request', () => {
+    const applied = applyOpenAIModelVariant({
+      model: 'gemini-pro-agent',
+      messages: [],
+      reasoning_effort: 'medium',
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 1000,
+        effort: 'low',
+      },
+    });
+
+    expect(applied).toEqual({
+      request: {
+        model: 'gemini-pro-agent',
+        messages: [],
+        reasoning_effort: 'medium',
+        thinking: { type: 'enabled' },
+      },
+      variant: null,
     });
   });
 

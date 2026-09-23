@@ -463,6 +463,16 @@ const config: ForgeConfig = {
           config: 'vite.preload.config.mts',
           target: 'preload',
         },
+        {
+          entry: 'src/modules/proxy-gateway/audit/traffic-audit.worker.ts',
+          config: 'vite.worker.config.mts',
+          target: 'main',
+        },
+        {
+          entry: 'src/modules/proxy-gateway/thought-store/thought-store.worker.ts',
+          config: 'vite.worker.config.mts',
+          target: 'main',
+        },
       ],
       renderer: [
         {

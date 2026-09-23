@@ -14,6 +14,34 @@ export const ImageSchedulerConfigSchema = z.object({
   per_account_concurrency: z.number().int().nonnegative().default(4),
 });
 
+export const GlobalSystemPromptConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  content: z.string().default(''),
+});
+
+export const TrafficAuditConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  max_disk_mib: z.number().int().min(128).max(16_384).default(1024),
+  body_retention_hours: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 365)
+    .default(24),
+  summary_retention_days: z.number().int().min(1).max(3650).default(30),
+  max_rows: z.number().int().min(1_000).max(1_000_000).default(100_000),
+  max_queue_records: z.number().int().min(32).max(4096).default(512),
+  max_queue_mib: z.number().int().min(16).max(64).default(16),
+});
+
+export const ThoughtStoreConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  retention_days: z.number().int().min(1).max(3650).default(15),
+  max_sessions: z.number().int().min(1).max(2000).default(2000),
+  max_turns_per_session: z.number().int().min(1).max(200).default(200),
+  max_session_mib: z.number().int().min(1).max(64).default(64),
+});
+
 /**
  * One user-declared model alias.
  *
@@ -50,6 +78,26 @@ export const ProxyConfigSchema = z.object({
   custom_mapping: z.record(z.string(), z.string()).default({}),
   anthropic_mapping: z.record(z.string(), z.string()), // Mapping table
   request_timeout: z.number().default(120), // Timeout in seconds
+  global_system_prompt: GlobalSystemPromptConfigSchema.default({
+    enabled: false,
+    content: '',
+  }),
+  traffic_audit: TrafficAuditConfigSchema.default({
+    enabled: true,
+    max_disk_mib: 1024,
+    body_retention_hours: 24,
+    summary_retention_days: 30,
+    max_rows: 100_000,
+    max_queue_records: 512,
+    max_queue_mib: 16,
+  }),
+  thought_store: ThoughtStoreConfigSchema.default({
+    enabled: true,
+    retention_days: 15,
+    max_sessions: 2000,
+    max_turns_per_session: 200,
+    max_session_mib: 64,
+  }),
   image_scheduler: ImageSchedulerConfigSchema.default({
     per_account_concurrency: 4,
   }),
@@ -96,6 +144,9 @@ export const AppConfigSchema = z.object({
 export type ModelAliasRoute = z.infer<typeof ModelAliasRouteSchema>;
 export type UpstreamProxyConfig = z.infer<typeof UpstreamProxyConfigSchema>;
 export type ProxyExperimentalConfig = z.infer<typeof ProxyExperimentalConfigSchema>;
+export type GlobalSystemPromptConfig = z.infer<typeof GlobalSystemPromptConfigSchema>;
+export type TrafficAuditConfig = z.infer<typeof TrafficAuditConfigSchema>;
+export type ThoughtStoreConfig = z.infer<typeof ThoughtStoreConfigSchema>;
 export type ProxyConfig = z.infer<typeof ProxyConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
@@ -148,6 +199,26 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     custom_mapping: {},
     anthropic_mapping: {},
     request_timeout: 120,
+    global_system_prompt: {
+      enabled: false,
+      content: '',
+    },
+    traffic_audit: {
+      enabled: true,
+      max_disk_mib: 1024,
+      body_retention_hours: 24,
+      summary_retention_days: 30,
+      max_rows: 100_000,
+      max_queue_records: 512,
+      max_queue_mib: 16,
+    },
+    thought_store: {
+      enabled: true,
+      retention_days: 15,
+      max_sessions: 2000,
+      max_turns_per_session: 200,
+      max_session_mib: 64,
+    },
     image_scheduler: {
       per_account_concurrency: 4,
     },

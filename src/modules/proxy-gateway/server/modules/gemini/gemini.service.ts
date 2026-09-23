@@ -6,12 +6,17 @@ import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/acco
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { Observable } from 'rxjs';
 import { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
+import { usesAuthoritativeThinkingBudget } from '@/modules/proxy-gateway/antigravity/model-variant-registry';
 import {
   GeminiRequest,
   GeminiResponse,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { resolveRequestUserAgent } from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
 import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import {
+  markProxyCleanComplete,
+  markProxyNormalizationStarted,
+} from '@/modules/proxy-gateway/server/common/proxy-response-timing';
 import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import {
@@ -20,6 +25,7 @@ import {
   type ImageSchedulerPermit,
 } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import { isGeminiImageModel } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+import { captureCurrentAuditUsage } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import {
   applyGeminiModelVariant,
   rebindGeminiModelVariant,
@@ -86,12 +92,16 @@ export class GeminiService extends BaseProxyService {
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
     const appliedVariantRequest = applyGeminiModelVariant(routeResolution.resolvedModel, request);
+    const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
+      routeResolution.resolvedModel,
+    );
     const targetModel = appliedVariantRequest.model;
     const isImageRequest = requestType === 'image_gen' || isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
       `Gemini generate request received: model=${normalizedModel}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
+    markProxyCleanComplete();
 
     let lastError: unknown = null;
     const maxRetries = 3;
@@ -124,6 +134,7 @@ export class GeminiService extends BaseProxyService {
       );
       const accountTargetModel = effectiveVariantRequest.model;
 
+      markProxyNormalizationStarted();
       try {
         const requestUserAgent = await resolveRequestUserAgent();
         const internalBody = this.createGeminiInternalRequest(
@@ -138,6 +149,7 @@ export class GeminiService extends BaseProxyService {
           accountTargetModel,
           token.id,
           effectiveVariantRequest.variant ?? undefined,
+          enforceAuthoritativeThinkingBudget,
         );
 
         const response = await this.generateInternalWithStreamFallback(
@@ -157,6 +169,7 @@ export class GeminiService extends BaseProxyService {
             `Gemini request hit project context issue, retrying without project: ${err.message}`,
           );
           try {
+            markProxyNormalizationStarted();
             const requestUserAgent = await resolveRequestUserAgent();
             const fallbackBody = this.createGeminiInternalRequest(
               accountTargetModel,
@@ -170,6 +183,7 @@ export class GeminiService extends BaseProxyService {
               accountTargetModel,
               token.id,
               effectiveVariantRequest.variant ?? undefined,
+              enforceAuthoritativeThinkingBudget,
             );
             const response = await this.generateInternalWithStreamFallback(
               fallbackBody,
@@ -239,12 +253,16 @@ export class GeminiService extends BaseProxyService {
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
     const appliedVariantRequest = applyGeminiModelVariant(routeResolution.resolvedModel, request);
+    const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
+      routeResolution.resolvedModel,
+    );
     const targetModel = appliedVariantRequest.model;
     const isImageRequest = isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
       `Gemini stream request received: model=${normalizedModel}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
+    markProxyCleanComplete();
 
     let lastError: unknown = null;
     const maxRetries = 3;
@@ -282,6 +300,7 @@ export class GeminiService extends BaseProxyService {
       );
       const accountTargetModel = effectiveVariantRequest.model;
 
+      markProxyNormalizationStarted();
       try {
         const requestUserAgent = await resolveRequestUserAgent();
         const internalBody = this.createGeminiInternalRequest(
@@ -296,6 +315,7 @@ export class GeminiService extends BaseProxyService {
           accountTargetModel,
           token.id,
           effectiveVariantRequest.variant ?? undefined,
+          enforceAuthoritativeThinkingBudget,
         );
 
         const stream = await this.geminiClient.streamGenerateInternal(
@@ -317,6 +337,7 @@ export class GeminiService extends BaseProxyService {
             `Gemini stream request hit project context issue, retrying without project: ${err.message}`,
           );
           try {
+            markProxyNormalizationStarted();
             const requestUserAgent = await resolveRequestUserAgent();
             const fallbackBody = this.createGeminiInternalRequest(
               accountTargetModel,
@@ -330,6 +351,7 @@ export class GeminiService extends BaseProxyService {
               accountTargetModel,
               token.id,
               effectiveVariantRequest.variant ?? undefined,
+              enforceAuthoritativeThinkingBudget,
             );
             const stream = await this.geminiClient.streamGenerateInternal(
               fallbackBody,
@@ -496,6 +518,7 @@ export class GeminiService extends BaseProxyService {
   }
 
   private normalizeGeminiGenerateResponse(response: GeminiResponse): GeminiResponse {
+    captureCurrentAuditUsage(response);
     const candidates = Array.isArray(response.candidates)
       ? response.candidates.map((candidate, index) => ({
           content: candidate?.content,

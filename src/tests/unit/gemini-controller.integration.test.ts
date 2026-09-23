@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { HttpException } from '@nestjs/common';
 
+const auditMocks = vi.hoisted(() => ({
+  captureChunk: vi.fn(),
+  completeResponse: vi.fn(),
+}));
+
+vi.mock('@/modules/proxy-gateway/audit/traffic-audit-context', () => ({
+  captureHijackedHttpResponseChunk: auditMocks.captureChunk,
+  completeHijackedHttpResponse: auditMocks.completeResponse,
+  getProxyResponseTimingContext: () => undefined,
+}));
+
 import { GeminiController } from '../../modules/proxy-gateway/server/modules/gemini/gemini.controller';
 import { DEFAULT_APP_CONFIG } from '../../modules/config/types';
 import { setServerConfig } from '../../server/server-config';
@@ -304,6 +315,7 @@ describe('GeminiController Integration', () => {
       'gemini-2.5-flash:streamGenerateContent',
       { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] } as any,
       reply as any,
+      { id: 'request-1' } as any,
     );
 
     expect(reply.hijack).toHaveBeenCalledOnce();
@@ -322,6 +334,52 @@ describe('GeminiController Integration', () => {
     });
     expect(raw.end).toHaveBeenCalledOnce();
     expect(reply.send).not.toHaveBeenCalled();
+    expect(auditMocks.captureChunk).toHaveBeenCalledWith(
+      { id: 'request-1' },
+      expect.stringContaining('upstream stream failed'),
+    );
+    expect(auditMocks.completeResponse).toHaveBeenCalledWith(
+      { id: 'request-1' },
+      reply,
+      expect.objectContaining({ partial: true }),
+    );
+  });
+
+  it('captures a successful raw Gemini SSE response for the parent audit record', async () => {
+    auditMocks.captureChunk.mockClear();
+    auditMocks.completeResponse.mockClear();
+    const payload =
+      'data: {"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"ok"}]}}]}\n\n';
+    const proxyService = {
+      handleGeminiGenerateContent: vi.fn(),
+      handleGeminiStreamGenerateContent: vi.fn().mockResolvedValue(of(payload)),
+    };
+    const controller = new GeminiController(proxyService as any);
+    const raw = {
+      end: vi.fn(),
+      on: vi.fn(),
+      writableEnded: false,
+      writableFinished: false,
+      write: vi.fn(),
+      writeHead: vi.fn(),
+    };
+    const reply: Record<string, any> = {
+      ...createReplyMock(),
+      hijack: vi.fn(),
+      raw,
+    };
+    const request = { id: 'request-2' };
+
+    await controller.modelAction(
+      'gemini-2.5-flash:streamGenerateContent',
+      { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] } as any,
+      reply as any,
+      request as any,
+    );
+
+    expect(auditMocks.captureChunk).toHaveBeenCalledWith(request, payload);
+    expect(auditMocks.completeResponse).toHaveBeenCalledWith(request, reply);
+    expect(raw.end).toHaveBeenCalledOnce();
   });
 
   it('supports countTokens action', async () => {

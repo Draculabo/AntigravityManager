@@ -68,6 +68,49 @@ describe('real request path, Gemini surface', () => {
   });
 
   it.each(['generateContent', 'streamGenerateContent'] as const)(
+    'normalizes a native system instruction role before the %s upstream request',
+    async (action) => {
+      const upstream = createUpstream({
+        generate: geminiTextResponse('ok'),
+        streamFrames: [geminiStreamFrame(geminiTextResponse('ok'))],
+      });
+      const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
+      const request = {
+        ...geminiRequest('hello'),
+        systemInstruction: {
+          role: 'model',
+          parts: [{ text: 'Native instruction.' }],
+        },
+      };
+
+      if (action === 'generateContent') {
+        await service.handleGeminiGenerateContent('gemini-3-flash', request);
+      } else {
+        await collect(
+          (await service.handleGeminiStreamGenerateContent(
+            'gemini-3-flash',
+            request,
+          )) as Observable<string>,
+        );
+      }
+
+      expect(upstream.calls[0]?.body.request.systemInstruction).toEqual({
+        role: 'user',
+        parts: [{ text: 'Native instruction.' }],
+      });
+    },
+  );
+
+  it('does not synthesize an absent native system instruction', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
+
+    await service.handleGeminiGenerateContent('gemini-3-flash', geminiRequest('hello'));
+
+    expect(upstream.calls[0]?.body.request.systemInstruction).toBeUndefined();
+  });
+
+  it.each(['generateContent', 'streamGenerateContent'] as const)(
     'routes canonical Gemini 3.7 to the high physical model with its full tuple on %s',
     async (action) => {
       const upstream = createUpstream({
@@ -100,7 +143,7 @@ describe('real request path, Gemini surface', () => {
     },
   );
 
-  it('honors a native 3.6-high low budget and sends the complete 3.7-low tuple upstream', async () => {
+  it('keeps the native 3.6-high server profile despite a low budget hint', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('ok') });
     const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
 
@@ -114,12 +157,39 @@ describe('real request path, Gemini surface', () => {
       },
     });
 
-    expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-low');
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-high');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
       maxOutputTokens: 65536,
       thinkingConfig: {
         includeThoughts: true,
-        thinkingBudget: 1000,
+        thinkingBudget: 10000,
+      },
+    });
+  });
+
+  it('replaces raw thinking controls for a direct native Gemini agent identity', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
+
+    await service.handleGeminiGenerateContent('gemini-pro-agent', {
+      ...geminiRequest('hello'),
+      generationConfig: {
+        temperature: 0.2,
+        thinkingConfig: {
+          includeThoughts: false,
+          thinkingBudget: 1000,
+          thinkingLevel: 'low',
+        },
+      },
+    });
+
+    expect(upstream.calls[0]?.body.model).toBe('gemini-pro-agent');
+    expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
+      temperature: 0.2,
+      maxOutputTokens: 42_769,
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 10_001,
       },
     });
   });

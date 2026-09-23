@@ -24,6 +24,17 @@ vi.mock(
   }),
 );
 
+const responsesStreamEventSchema = z
+  .object({ sequence_number: z.number().int(), type: z.string() })
+  .passthrough();
+
+function parseResponsesStreamEvents(text: string) {
+  return text
+    .split('\n')
+    .filter((line) => line.startsWith('data: {'))
+    .map((line) => responsesStreamEventSchema.parse(JSON.parse(line.slice(6))));
+}
+
 describe('real request path, Responses input compatibility', () => {
   afterEach(() => {
     proxyModelAvailabilityStore.clearAccount('acc-1');
@@ -107,6 +118,216 @@ describe('real request path, Responses input compatibility', () => {
       });
     },
   );
+
+  it('emits native reasoning summaries before final text through the streaming Responses path', async () => {
+    const upstream = createUpstream({
+      streamFrames: [
+        geminiStreamFrame({
+          candidates: [
+            {
+              content: { parts: [{ text: 'Inspecting ', thought: true }], role: 'model' },
+            },
+          ],
+        }),
+        geminiStreamFrame({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: 'the route.', thought: true }, { text: 'Done.' }],
+                role: 'model',
+              },
+              finishReason: 'STOP',
+            },
+          ],
+          modelVersion: 'gemini-3-flash',
+        }),
+      ],
+    });
+    const lease = createLease([createAccount('acc-1')]);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
+    const reply = createReply();
+
+    await controller.responses(
+      { input: 'Answer once.', model: 'gemini-3-flash', stream: true },
+      reply as never,
+    );
+
+    if (!(reply.body instanceof Observable)) {
+      throw new Error('Expected a Responses stream');
+    }
+    const events = parseResponsesStreamEvents(await collect(reply.body));
+    const reasoningAddedIndex = events.findIndex(
+      (event) =>
+        event.type === 'response.output_item.added' &&
+        typeof event.item === 'object' &&
+        event.item !== null &&
+        !Array.isArray(event.item) &&
+        Reflect.get(event.item, 'type') === 'reasoning',
+    );
+    const reasoningId = z
+      .object({ item: z.object({ id: z.string().regex(/^rs_/), type: z.literal('reasoning') }) })
+      .parse(events[reasoningAddedIndex]).item.id;
+    const reasoningDoneIndex = events.findIndex(
+      (event) =>
+        event.type === 'response.output_item.done' &&
+        typeof event.item === 'object' &&
+        event.item !== null &&
+        !Array.isArray(event.item) &&
+        Reflect.get(event.item, 'id') === reasoningId,
+    );
+    const messageAddedIndex = events.findIndex(
+      (event) =>
+        event.type === 'response.output_item.added' &&
+        typeof event.item === 'object' &&
+        event.item !== null &&
+        !Array.isArray(event.item) &&
+        Reflect.get(event.item, 'type') === 'message',
+    );
+    const terminal = z
+      .object({
+        response: z.object({
+          id: z.string(),
+          output: z.array(z.object({ type: z.string() }).passthrough()),
+          status: z.literal('completed'),
+        }),
+        type: z.literal('response.completed'),
+      })
+      .parse(events.at(-1));
+
+    expect(events.map((event) => event.sequence_number)).toEqual(
+      events.map((_event, index) => index),
+    );
+    expect(events[reasoningAddedIndex]).toMatchObject({
+      item: { status: 'in_progress', summary: [], type: 'reasoning' },
+      output_index: 0,
+    });
+    expect(
+      events.filter((event) => event.item_id === reasoningId).map((event) => event.type),
+    ).toEqual([
+      'response.reasoning_summary_part.added',
+      'response.reasoning_summary_text.delta',
+      'response.reasoning_summary_text.delta',
+      'response.reasoning_summary_text.done',
+      'response.reasoning_summary_part.done',
+    ]);
+    expect(reasoningDoneIndex).toBeGreaterThan(reasoningAddedIndex);
+    expect(messageAddedIndex).toBeGreaterThan(reasoningDoneIndex);
+    expect(events[messageAddedIndex]).toMatchObject({ output_index: 1 });
+    expect(
+      events.some(
+        (event) => event.item_id === reasoningId && event.type === 'response.output_text.delta',
+      ),
+    ).toBe(false);
+    expect(terminal.response.output).toEqual([
+      expect.objectContaining({
+        id: reasoningId,
+        status: 'completed',
+        summary: [{ text: 'Inspecting the route.', type: 'summary_text' }],
+        type: 'reasoning',
+      }),
+      expect.objectContaining({
+        content: [{ annotations: [], text: 'Done.', type: 'output_text' }],
+        phase: 'final_answer',
+        type: 'message',
+      }),
+    ]);
+    expect(OpenAIResponsesSessionStore.get(terminal.response.id)?.response).toMatchObject({
+      output: terminal.response.output,
+    });
+  });
+
+  it('closes native reasoning before a Responses tool item through the streaming path', async () => {
+    const upstream = createUpstream({
+      streamFrames: [
+        geminiStreamFrame({
+          candidates: [
+            {
+              content: { parts: [{ text: 'Looking up docs.', thought: true }], role: 'model' },
+            },
+          ],
+        }),
+        geminiStreamFrame({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      args: { query: 'Responses API' },
+                      id: 'call_reasoning_tool',
+                      name: 'lookup',
+                    },
+                  },
+                ],
+                role: 'model',
+              },
+              finishReason: 'STOP',
+            },
+          ],
+          modelVersion: 'gemini-3-flash',
+        }),
+      ],
+    });
+    const lease = createLease([createAccount('acc-1')]);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
+    const reply = createReply();
+
+    await controller.responses(
+      {
+        input: 'Use the available tool.',
+        model: 'gemini-3-flash',
+        store: false,
+        stream: true,
+        tools: [{ function: { name: 'lookup', parameters: { type: 'object' } }, type: 'function' }],
+      },
+      reply as never,
+    );
+
+    if (!(reply.body instanceof Observable)) {
+      throw new Error('Expected a Responses stream');
+    }
+    const events = parseResponsesStreamEvents(await collect(reply.body));
+    const reasoningDoneIndex = events.findIndex(
+      (event) =>
+        event.type === 'response.output_item.done' &&
+        typeof event.item === 'object' &&
+        event.item !== null &&
+        !Array.isArray(event.item) &&
+        Reflect.get(event.item, 'type') === 'reasoning',
+    );
+    const toolAddedIndex = events.findIndex(
+      (event) =>
+        event.type === 'response.output_item.added' &&
+        typeof event.item === 'object' &&
+        event.item !== null &&
+        !Array.isArray(event.item) &&
+        Reflect.get(event.item, 'type') === 'function_call',
+    );
+    const terminal = z
+      .object({
+        response: z.object({
+          output: z.array(z.object({ type: z.string() }).passthrough()),
+          status: z.literal('completed'),
+        }),
+        type: z.literal('response.completed'),
+      })
+      .parse(events.at(-1));
+
+    expect(events.map((event) => event.sequence_number)).toEqual(
+      events.map((_event, index) => index),
+    );
+    expect(reasoningDoneIndex).toBeGreaterThanOrEqual(0);
+    expect(toolAddedIndex).toBeGreaterThan(reasoningDoneIndex);
+    expect(events[reasoningDoneIndex]).toMatchObject({ output_index: 0 });
+    expect(events[toolAddedIndex]).toMatchObject({
+      item: expect.objectContaining({ call_id: 'call_reasoning_tool', type: 'function_call' }),
+      output_index: 1,
+    });
+    expect(terminal.response.output).toEqual([
+      expect.objectContaining({ type: 'reasoning' }),
+      expect.objectContaining({ call_id: 'call_reasoning_tool', type: 'function_call' }),
+    ]);
+  });
 
   it.each([false, true])(
     'sends only image data upstream with an empty text block present=%s',
@@ -424,6 +645,7 @@ describe('real request path, Responses input compatibility', () => {
         { role: 'user', parts: [{ text: 'next request' }] },
       ]);
       expect(upstream.calls[1]?.body.request.systemInstruction).toMatchObject({
+        role: 'user',
         parts: [{ text: expect.stringContaining('Stay concise.') }],
       });
       expect(JSON.stringify(upstream.calls[1]?.body.request.tools)).toContain('lookup');
