@@ -352,8 +352,8 @@ AntigravityManager/
 2. 打开终端执行以下命令（每次更新后都需要重新执行）
 
 ```plaintext
-sudo xattr -dr com.apple.quarantine "/Applications/Antigravity Manager 2.app"
-codesign --force --deep --sign - "/Applications/Antigravity Manager 2.app"
+sudo xattr -dr com.apple.quarantine "/Applications/Antigravity Manager.app"
+codesign --force --deep --sign - "/Applications/Antigravity Manager.app"
 ```
 
 重新打开应用后，Keychain 应会提示授权（可选“始终允许”）。
