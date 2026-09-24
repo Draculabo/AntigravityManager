@@ -56,6 +56,24 @@ function applyDeviceProfileBestEffort(
   }
 }
 
+function applyCredentialStoreDeviceProfile(
+  profile: DeviceProfile,
+  appTarget: AntigravityAppTarget | undefined,
+): void {
+  try {
+    applyDeviceProfile(profile, appTarget);
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== 'storage_json_not_found') {
+      throw error;
+    }
+
+    logger.warn(
+      'Skipping device profile apply because the legacy storage.json is unavailable for a credential-store-backed target',
+      error,
+    );
+  }
+}
+
 function syncTelemetryServiceMachineIdBestEffort(
   profile: DeviceProfile | null,
   appTarget: AntigravityAppTarget | undefined,
@@ -175,7 +193,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
               throw new Error('Account has no bound identity profile');
             }
             trace.phaseSync('applyProfileMs', () => {
-              applyDeviceProfile(targetProfile, appTarget);
+              applyCredentialStoreDeviceProfile(targetProfile, appTarget);
             });
           }
         } else {

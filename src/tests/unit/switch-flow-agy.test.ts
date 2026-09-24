@@ -125,6 +125,38 @@ describe('executeSwitchFlow for agy CLI', () => {
     );
   });
 
+  it('continues credential-store switching when the legacy storage file is absent', async () => {
+    const performSwitch = vi.fn(async () => undefined);
+    const afterSwitchSuccess = vi.fn(async () => undefined);
+    const targetProfile = {
+      machineId: 'machine-id',
+      macMachineId: 'mac-machine-id',
+      devDeviceId: 'dev-device-id',
+      sqmId: 'sqm-id',
+    };
+    applyDeviceProfile.mockImplementationOnce(() => {
+      throw new Error('storage_json_not_found');
+    });
+
+    await executeSwitchFlow({
+      scope: 'cloud',
+      appTarget: 'classic',
+      targetProfile,
+      applyFingerprint: true,
+      useCredentialStore: true,
+      processExitTimeoutMs: 10000,
+      performSwitch,
+      afterSwitchSuccess,
+    });
+
+    expect(performSwitch).toHaveBeenCalledTimes(1);
+    expect(applyDeviceProfile).toHaveBeenCalledWith(targetProfile, 'classic');
+    expect(startAntigravity).toHaveBeenCalledWith('classic');
+    expect(afterSwitchSuccess).toHaveBeenCalledTimes(1);
+    expect(recordSwitchSuccess).toHaveBeenCalledWith('cloud');
+    expect(recordSwitchFailure).not.toHaveBeenCalled();
+  });
+
   it('fails before starting a credential-store-backed GUI target without an identity profile', async () => {
     const performSwitch = vi.fn(async () => undefined);
 
