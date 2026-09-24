@@ -37,6 +37,10 @@ function getQuotaText(account: CloudAccount | null, texts: TrayTexts): string[] 
   return lines;
 }
 
+export function setTrayMainWindow(mainWindow: BrowserWindow | null): void {
+  globalMainWindow = mainWindow;
+}
+
 export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | Promise<void>) {
   globalMainWindow = mainWindow;
   onQuitRequested = quitHandler ?? null;
