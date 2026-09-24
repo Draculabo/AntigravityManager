@@ -386,6 +386,14 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       for (let attempt = 0; attempt < filteredAccountPool.length; attempt += 1) {
         const selectedTokenEntry = await this.selectionPolicy.selectCandidate({
           allTokens: remainingAccountPool,
+          getModelQuota: (accountId, tokenData, requestedModel) => {
+            const accountModel = this.modelPolicy.resolveDynamicModelForAccount(
+              accountId,
+              requestedModel,
+            );
+            const normalizedModel = normalizeModelId(accountModel);
+            return normalizedModel ? tokenData.model_quotas?.[normalizedModel] : undefined;
+          },
           sessionKey,
           model,
           now,

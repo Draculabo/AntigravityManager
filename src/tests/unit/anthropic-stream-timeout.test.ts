@@ -168,16 +168,39 @@ describe('Anthropic stream timeout compatibility', () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(completed).toBe(true);
     expect(
-      chunks.filter((chunk) => chunk === ': ping\n\n' || chunk.includes('data: [DONE]')),
+      chunks.filter((chunk) => chunk === ': ping\n\n' || chunk.includes('event: error')),
     ).toEqual([
       ': ping\n\n',
       ': ping\n\n',
       ': ping\n\n',
       ': ping\n\n',
-      'data: {"type": "message_stop"}\n\ndata: [DONE]\n\n',
+      'event: error\ndata: {"type":"error","error":{"type":"api_error","message":"Upstream response stream timed out."}}\n\n',
     ]);
+    expect(chunks.some((chunk) => chunk.includes('data: [DONE]'))).toBe(false);
     expect(hangingStream.destroyed).toBe(true);
     expect(idleTimerSpy.mock.calls[0]?.[3]).toBe(120_000);
+  });
+
+  it('accepts clean upstream end after Anthropic content without a finish reason', async () => {
+    const upstreamStream = new PassThrough();
+    const upstream = createUpstream({ streamFrames: [] });
+    upstream.streamGenerateInternal.mockResolvedValue(upstreamStream);
+    const lease = createLease([createAccount('acc-1')]);
+    writeReadyFrame(upstreamStream);
+    const observable = await createAnthropicStream(createGateway(upstream, lease).anthropicService);
+    const chunks: string[] = [];
+    const finished = new Promise<void>((resolve, reject) => {
+      observable.subscribe({
+        next: (chunk) => chunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
+    upstreamStream.end();
+    await finished;
+
+    expect(chunks.some((chunk) => chunk.includes('message_stop'))).toBe(true);
+    expect(chunks.some((chunk) => chunk.includes('event: error'))).toBe(false);
   });
 
   it('resets the consecutive ping counter whenever upstream data arrives', async () => {
@@ -237,7 +260,8 @@ describe('Anthropic stream timeout compatibility', () => {
 
     expect(completed).toBe(true);
     expect(chunks.filter((chunk) => chunk === ': ping\n\n')).toEqual([]);
-    expect(chunks.filter((chunk) => chunk.includes('data: [DONE]'))).toHaveLength(1);
+    expect(chunks.filter((chunk) => chunk.includes('event: error'))).toHaveLength(1);
+    expect(chunks.some((chunk) => chunk.includes('data: [DONE]'))).toBe(false);
     expect(upstreamStream.destroyed).toBe(true);
   });
 

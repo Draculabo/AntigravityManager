@@ -36,6 +36,7 @@ describe('AccountLeaseConfigPolicy', () => {
     const policy = new AccountLeaseConfigPolicy();
 
     expect(policy.getSelectionConfig()).toEqual({
+      quotaAwareSchedulingEnabled: true,
       parityEnabled: true,
       parityShadowEnabled: true,
       schedulingMode: 'performance-first',

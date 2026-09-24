@@ -430,54 +430,113 @@ export class GeminiService extends BaseProxyService {
       let observationBuffer = '';
       let sawImageData = false;
       let streamFailed = false;
-      const inspectLine = (line: string): void => {
-        const trimmed = line.trim();
-        if (!observesImageSuccess || !trimmed.startsWith('data: ')) {
+      let sawFinishReason = false;
+      let sawCandidateOutput = false;
+      let terminated = false;
+      const fail = (message: string): void => {
+        if (terminated) {
           return;
         }
-        const observation = this.inspectImageSseData(trimmed.slice(6));
-        sawImageData ||= observation.hasImageData;
-        streamFailed ||= observation.failed;
+        terminated = true;
+        streamFailed = true;
+        idleTimer.clear();
+        imagePermit?.release();
+        subscriber.next(
+          `data: ${JSON.stringify({ error: { code: 502, message, status: 'UPSTREAM_STREAM_ERROR' } })}\n\n`,
+        );
+        subscriber.complete();
+      };
+      const inspectLine = (line: string): void => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data: ')) {
+          return;
+        }
+        const data = trimmed.slice(6);
+        if (observesImageSuccess) {
+          const observation = this.inspectImageSseData(data);
+          sawImageData ||= observation.hasImageData;
+          streamFailed ||= observation.failed;
+        }
+        try {
+          const parsed: unknown = JSON.parse(data);
+          if (parsed && typeof parsed === 'object' && 'response' in parsed) {
+            const response = parsed.response;
+            if (
+              response &&
+              typeof response === 'object' &&
+              'candidates' in response &&
+              Array.isArray(response.candidates)
+            ) {
+              sawFinishReason ||= response.candidates.some(
+                (candidate: unknown) =>
+                  candidate !== null &&
+                  typeof candidate === 'object' &&
+                  'finishReason' in candidate &&
+                  typeof candidate.finishReason === 'string',
+              );
+              sawCandidateOutput ||= response.candidates.some((candidate: unknown) => {
+                if (!candidate || typeof candidate !== 'object' || !('content' in candidate)) {
+                  return false;
+                }
+                const content = candidate.content;
+                return Boolean(
+                  content &&
+                  typeof content === 'object' &&
+                  'parts' in content &&
+                  Array.isArray(content.parts) &&
+                  content.parts.length > 0,
+                );
+              });
+            }
+          }
+        } catch {
+          // The upstream payload remains available to the client unchanged.
+        }
       };
       const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Gemini-SSE', () => {
-        streamFailed = true;
-        imagePermit?.release();
-        subscriber.complete();
+        fail('Upstream response stream timed out.');
       });
 
       idleTimer.reset();
 
       upstreamStream.on('data', (chunk: Buffer) => {
+        if (terminated) {
+          return;
+        }
         receivedData = true;
         idleTimer.reset();
         const decodedChunk = decoder.decode(chunk, { stream: true });
-        if (observesImageSuccess) {
-          observationBuffer += decodedChunk;
-          const lines = observationBuffer.split('\n');
-          observationBuffer = lines.pop() ?? '';
-          for (const line of lines) {
-            inspectLine(line);
-          }
+        observationBuffer += decodedChunk;
+        const lines = observationBuffer.split('\n');
+        observationBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+          inspectLine(line);
         }
         subscriber.next(decodedChunk);
       });
 
       upstreamStream.on('end', () => {
+        if (terminated) {
+          return;
+        }
         idleTimer.clear();
         imagePermit?.release();
         observationBuffer += decoder.decode();
-        if (observesImageSuccess) {
-          for (const line of observationBuffer.split('\n')) {
-            inspectLine(line);
-          }
+        for (const line of observationBuffer.split('\n')) {
+          inspectLine(line);
         }
         if (!receivedData) {
           subscriber.error(new Error('Empty response stream'));
           return;
         }
+        if ((!sawFinishReason && !sawCandidateOutput) || streamFailed) {
+          fail('Upstream stream ended without output or a finish reason.');
+          return;
+        }
         if (observesImageSuccess && accountId && model && sawImageData && !streamFailed) {
           this.markUpstreamSuccess(accountId, model);
         }
+        terminated = true;
         subscriber.complete();
       });
 
@@ -486,7 +545,11 @@ export class GeminiService extends BaseProxyService {
         streamFailed = true;
         imagePermit?.release();
         const cleanError = err instanceof Error ? new Error(err.message) : new Error(String(err));
-        subscriber.error(cleanError);
+        if (receivedData) {
+          fail('Upstream response stream failed.');
+        } else {
+          subscriber.error(cleanError);
+        }
       });
 
       return () => {

@@ -252,6 +252,30 @@ export class OpenAIResponsesStreamingMapper {
     return events;
   }
 
+  public fail(code: string, message: string): string[] {
+    if (this.completed) {
+      return [];
+    }
+    this.completed = true;
+    return [
+      ...this.closeThought('incomplete'),
+      ...this.closeMessage(this.hasToolCall ? 'commentary' : 'final_answer', 'incomplete'),
+      this.serialize({
+        response: {
+          error: { code, message },
+          id: this.options.responseId,
+          incomplete_details: null,
+          model: this.options.model,
+          object: 'response',
+          output: this.outputItems,
+          status: 'failed',
+          usage: this.usage,
+        },
+        type: 'response.failed',
+      }),
+    ];
+  }
+
   private startMessage(): string[] {
     if (this.activeMessage) {
       return [];

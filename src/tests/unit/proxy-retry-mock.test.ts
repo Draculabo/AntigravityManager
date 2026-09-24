@@ -175,7 +175,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(geminiHeaders).toEqual({});
   });
 
-  it('recovers a stream that ends without data as a minimal Anthropic response', async () => {
+  it('recovers a clean empty Anthropic stream with the compatibility text', async () => {
     const service = new TestableAnthropicService();
     const stream = new EventEmitter();
 
@@ -202,6 +202,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
 
     expect(errorReceived).toBeUndefined();
     expect(receivedChunks.join('')).toContain('"content_block":{"type":"text","text":"."}');
+    expect(receivedChunks.join('')).toContain('message_stop');
   });
 
   it('should NOT emit error when stream has data', async () => {
@@ -447,6 +448,30 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     await done;
 
     expect(errorMessage).toBe('Empty response stream');
+  });
+
+  it('accepts a clean Gemini EOF after a content frame without a finish reason', async () => {
+    const service = new TestableGeminiService();
+    const stream = new EventEmitter();
+    const chunks: string[] = [];
+    const finished = new Promise<void>((resolve, reject) => {
+      service.testPassthroughStream(stream).subscribe({
+        next: (chunk) => chunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
+    stream.emit(
+      'data',
+      Buffer.from(
+        'data: {"response":{"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}}\n\n',
+      ),
+    );
+    stream.emit('end');
+    await finished;
+
+    expect(chunks[0]).toContain('partial');
+    expect(chunks).toHaveLength(1);
   });
 
   it('propagates Anthropic stream interruption errors', async () => {
@@ -1312,6 +1337,59 @@ describe('ProxyService Protocol Parity Fixtures', () => {
     expect(openaiResponse.choices[0].finish_reason).toBe('tool_calls');
   });
 
+  it('retains reasoning when a non-stream response is emitted as Chat or Responses SSE', async () => {
+    const service = new TestableOpenAIService();
+    const response = (service as any).convertClaudeToOpenAIResponse(
+      {
+        content: [
+          { type: 'thinking', thinking: 'Check the input.' },
+          { type: 'text', text: 'The answer.' },
+        ],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 4, output_tokens: 8 },
+      },
+      'gpt-4o-mini',
+    );
+    const collect = async (stream: Observable<string>): Promise<string[]> => {
+      const chunks: string[] = [];
+      await new Promise<void>((resolve, reject) => {
+        stream.subscribe({ next: (chunk) => chunks.push(chunk), error: reject, complete: resolve });
+      });
+      return chunks;
+    };
+
+    const chatChunks = await collect((service as any).createSyntheticOpenAIStream(response));
+    const chatPayloads = chatChunks
+      .filter((chunk) => chunk !== 'data: [DONE]\n\n')
+      .map((chunk) => JSON.parse(chunk.slice('data: '.length)));
+    expect(chatPayloads.map((payload) => payload.choices[0].delta)).toEqual([
+      { role: 'assistant', content: null, reasoning_content: 'Check the input.' },
+      { content: 'The answer.' },
+    ]);
+    expect(chatChunks.at(-1)).toBe('data: [DONE]\n\n');
+
+    const responsesChunks = await collect(
+      (service as any).createSyntheticResponsesStream(response),
+    );
+    const responsesPayloads = responsesChunks.map((chunk) => {
+      const dataLine = chunk.split('\n').find((line) => line.startsWith('data: '));
+      if (!dataLine) {
+        throw new Error('Missing Responses SSE data line');
+      }
+      return JSON.parse(dataLine.slice('data: '.length));
+    });
+    expect(responsesPayloads.map((payload) => payload.type)).toContain(
+      'response.reasoning_summary_text.delta',
+    );
+    expect(
+      responsesPayloads.find((payload) => payload.type === 'response.reasoning_summary_text.delta'),
+    ).toMatchObject({ delta: 'Check the input.' });
+    expect(
+      responsesPayloads.find((payload) => payload.type === 'response.output_text.delta'),
+    ).toMatchObject({ delta: 'The answer.' });
+    expect(responsesPayloads.at(-1)?.type).toBe('response.completed');
+  });
+
   it('unwraps internal SSE responses and keeps reasoning separate from content', async () => {
     const service = new TestableOpenAIService();
     const stream = new EventEmitter();
@@ -1379,6 +1457,129 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       ),
     ).toBe(false);
     expect(chunks.filter((chunk) => chunk.includes('data: [DONE]'))).toHaveLength(1);
+  });
+
+  it('synthesizes a Chat finish on clean EOF after content', async () => {
+    const service = new TestableOpenAIService();
+    const stream = new EventEmitter();
+    const chunks: string[] = [];
+    const finished = new Promise<void>((resolve, reject) => {
+      (service as any).processStreamResponse(stream, 'gpt-4o-mini').subscribe({
+        next: (chunk: string) => chunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
+    stream.emit(
+      'data',
+      Buffer.from(
+        `data: ${JSON.stringify({
+          response: {
+            candidates: [{ content: { parts: [{ text: 'Partial answer' }] } }],
+          },
+        })}\n`,
+      ),
+    );
+    stream.emit('end');
+    await finished;
+
+    expect(chunks.some((chunk) => chunk.includes('Partial answer'))).toBe(true);
+    expect(chunks.at(-2)).toContain('"finish_reason":"stop"');
+    expect(chunks.at(-1)).toBe('data: [DONE]\n\n');
+  });
+
+  it('processes a final Chat SSE event without a trailing newline', async () => {
+    const service = new TestableOpenAIService();
+    const stream = new EventEmitter();
+    const chunks: string[] = [];
+    const finished = new Promise<void>((resolve, reject) => {
+      (service as any).processStreamResponse(stream, 'gpt-4o-mini').subscribe({
+        next: (chunk: string) => chunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
+    stream.emit(
+      'data',
+      Buffer.from(
+        `data: ${JSON.stringify({
+          response: {
+            candidates: [
+              { content: { parts: [{ text: 'Complete answer' }] }, finishReason: 'STOP' },
+            ],
+          },
+        })}`,
+      ),
+    );
+    stream.emit('end');
+    await finished;
+
+    expect(chunks.some((chunk) => chunk.includes('Complete answer'))).toBe(true);
+    expect(chunks.at(-1)).toBe('data: [DONE]\n\n');
+    expect(chunks.some((chunk) => chunk.includes('upstream_interrupted'))).toBe(false);
+  });
+
+  it('completes a Responses stream on clean EOF after output', async () => {
+    const service = new TestableOpenAIService();
+    const stream = new EventEmitter();
+    const chunks: string[] = [];
+    const finished = new Promise<void>((resolve, reject) => {
+      (service as any).processResponsesStreamResponse(stream, 'gpt-4o-mini').subscribe({
+        next: (chunk: string) => chunks.push(chunk),
+        error: reject,
+        complete: resolve,
+      });
+    });
+    stream.emit(
+      'data',
+      Buffer.from(
+        `data: ${JSON.stringify({
+          response: {
+            candidates: [{ content: { parts: [{ text: 'Partial answer' }] } }],
+          },
+        })}\n`,
+      ),
+    );
+    stream.emit('end');
+    await finished;
+
+    const events = chunks
+      .flatMap((chunk) => chunk.split('\n').filter((line) => line.startsWith('data: ')))
+      .map((line) => JSON.parse(line.slice('data: '.length)));
+    expect(events.at(-1)).toMatchObject({
+      type: 'response.completed',
+      response: { status: 'completed' },
+    });
+    expect(events.some((event) => event.type === 'response.failed')).toBe(false);
+  });
+
+  it('keeps empty OpenAI streams as failures', async () => {
+    const service = new TestableOpenAIService();
+    const collectEmpty = async (create: (stream: EventEmitter) => Observable<string>) => {
+      const stream = new EventEmitter();
+      const chunks: string[] = [];
+      const finished = new Promise<void>((resolve, reject) => {
+        create(stream).subscribe({
+          next: (chunk) => chunks.push(chunk),
+          error: reject,
+          complete: resolve,
+        });
+      });
+      stream.emit('end');
+      await finished;
+      return chunks;
+    };
+
+    const chat = await collectEmpty((stream) =>
+      (service as any).processStreamResponse(stream, 'gpt-4o-mini'),
+    );
+    expect(chat.at(-1)).toContain('"code":"upstream_interrupted"');
+    expect(chat).not.toContain('data: [DONE]\n\n');
+
+    const responses = await collectEmpty((stream) =>
+      (service as any).processResponsesStreamResponse(stream, 'gpt-4o-mini'),
+    );
+    expect(responses.at(-1)).toContain('"type":"response.failed"');
   });
 
   it('normalizes shell argument aliases in Chat Completions SSE output', async () => {
@@ -1638,7 +1839,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
     expect(chunks.join('')).toContain('"content":"final answer"');
   });
 
-  it('propagates OpenAI-compatible upstream stream errors instead of completing with [DONE]', async () => {
+  it('emits an OpenAI-compatible stream error instead of completing with [DONE]', async () => {
     const service = new TestableOpenAIService();
     const stream = new EventEmitter();
     const observable = (service as any).processStreamResponse(stream, 'gpt-4o-mini');
@@ -1671,9 +1872,10 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       stream.emit('error', new Error('socket hang up'));
     });
 
-    expect(streamResult.completed).not.toBe(true);
-    expect(streamResult.error?.message).toContain('socket hang up');
+    expect(streamResult.completed).toBe(true);
+    expect(streamResult.error).toBeUndefined();
     expect(chunks.join('')).toContain('"content":"partial output"');
+    expect(chunks.at(-1)).toContain('"code":"upstream_stream_error"');
     expect(chunks.join('')).not.toContain('data: [DONE]');
   });
 });

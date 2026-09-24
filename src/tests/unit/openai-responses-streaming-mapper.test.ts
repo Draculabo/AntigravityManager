@@ -743,4 +743,21 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
     expect(itemDone).toMatchObject({ item: { status: 'completed', type: 'message' } });
   });
+
+  it('reports an interrupted stream as failed while retaining partial output', () => {
+    const mapper = createMapper();
+    const events = [
+      ...mapper.processPart({ text: 'Partial answer' }),
+      ...mapper.fail('upstream_interrupted', 'Upstream stream ended without a finish reason.'),
+    ].map(parseEvent);
+    expect(events.at(-1)).toMatchObject({
+      response: {
+        error: { code: 'upstream_interrupted' },
+        output: [{ content: [{ text: 'Partial answer' }], status: 'incomplete' }],
+        status: 'failed',
+      },
+      type: 'response.failed',
+    });
+    expect(events.some((event) => event.type === 'response.completed')).toBe(false);
+  });
 });

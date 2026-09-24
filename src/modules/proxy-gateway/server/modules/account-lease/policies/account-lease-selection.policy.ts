@@ -7,6 +7,7 @@ export interface AccountLeaseRateLimitReader {
 }
 
 export interface AccountLeaseSelectionConfig {
+  quotaAwareSchedulingEnabled: boolean;
   parityEnabled: boolean;
   parityShadowEnabled: boolean;
   schedulingMode: AccountLeaseSelectionMode;
@@ -23,6 +24,7 @@ interface AccountLeaseSelectionLogger {
 
 export interface AccountLeaseSelectionRequest<T> {
   allTokens: Array<AccountLeaseSelectionEntry<T>>;
+  getModelQuota?: (accountId: string, token: T, model: string) => number | undefined;
   sessionKey?: string;
   model?: string;
   now: number;
@@ -208,6 +210,23 @@ export class AccountLeaseSelectionPolicy {
     return picked;
   }
 
+  private weightedCandidates<T>(
+    candidates: Array<AccountLeaseSelectionEntry<T>>,
+    request: AccountLeaseSelectionRequest<T>,
+  ): Array<AccountLeaseSelectionEntry<T>> {
+    const model = request.model;
+    const getModelQuota = request.getModelQuota;
+    if (!request.config.quotaAwareSchedulingEnabled || !model || !getModelQuota) {
+      return candidates;
+    }
+    return candidates.flatMap((candidate) => {
+      const quota = getModelQuota(candidate[0], candidate[1], model);
+      const weight =
+        quota === undefined || !Number.isFinite(quota) ? 1 : quota >= 75 ? 3 : quota >= 25 ? 2 : 1;
+      return Array.from({ length: weight }, () => candidate);
+    });
+  }
+
   private peekRoundRobinCandidateAccountId<T>(
     candidates: Array<AccountLeaseSelectionEntry<T>>,
   ): string | null {
@@ -241,7 +260,7 @@ export class AccountLeaseSelectionPolicy {
       return stickyToken;
     }
 
-    return this.pickRoundRobinEntry(availableTokens);
+    return this.pickRoundRobinEntry(this.weightedCandidates(availableTokens, request));
   }
 
   private async selectParityTokenCandidate<T>(
@@ -297,12 +316,12 @@ export class AccountLeaseSelectionPolicy {
           return stickyAfterWait;
         }
         if (refreshedAvailable.length > 0) {
-          return this.pickRoundRobinEntry(refreshedAvailable);
+          return this.pickRoundRobinEntry(this.weightedCandidates(refreshedAvailable, request));
         }
       }
     }
 
-    return this.pickRoundRobinEntry(availableTokens);
+    return this.pickRoundRobinEntry(this.weightedCandidates(availableTokens, request));
   }
 
   private predictLegacyAccountCandidateId<T>(
@@ -328,7 +347,7 @@ export class AccountLeaseSelectionPolicy {
       return stickyToken[0];
     }
 
-    return this.peekRoundRobinCandidateAccountId(availableTokens);
+    return this.peekRoundRobinCandidateAccountId(this.weightedCandidates(availableTokens, request));
   }
 
   private predictParityAccountCandidateId<T>(
@@ -362,7 +381,7 @@ export class AccountLeaseSelectionPolicy {
       return stickyToken[0];
     }
 
-    return this.peekRoundRobinCandidateAccountId(availableTokens);
+    return this.peekRoundRobinCandidateAccountId(this.weightedCandidates(availableTokens, request));
   }
 
   private executeShadowComparison<T>(request: AccountLeaseSelectionRequest<T>): void {

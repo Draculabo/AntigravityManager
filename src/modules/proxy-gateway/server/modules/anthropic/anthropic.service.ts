@@ -506,21 +506,23 @@ export class AnthropicService extends BaseProxyService {
         }
       };
 
-      const completeIdleStream = (): void => {
+      const failStream = (message: string): void => {
         if (terminal) {
           return;
         }
         terminal = true;
         clearPingTimer();
         idleTimer.clear();
-        subscriber.next('data: {"type": "message_stop"}\n\ndata: [DONE]\n\n');
+        subscriber.next(
+          `event: error\ndata: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message } })}\n\n`,
+        );
         subscriber.complete();
       };
 
       const idleTimer = this.createStreamIdleTimer(
         upstreamStream,
         'Claude-SSE',
-        completeIdleStream,
+        () => failStream('Upstream response stream timed out.'),
         ANTHROPIC_STREAM_IDLE_TIMEOUT_MS,
       );
 
@@ -540,7 +542,7 @@ export class AnthropicService extends BaseProxyService {
             this.logger.error(
               `[Claude-SSE] Stream idle for ${(consecutiveIdlePings * ANTHROPIC_STREAM_PING_INTERVAL_MS) / 1000}s (${consecutiveIdlePings}x ${ANTHROPIC_STREAM_PING_INTERVAL_MS / 1000}s timeout), terminating`,
             );
-            completeIdleStream();
+            failStream('Upstream response stream timed out.');
             return;
           }
           this.logger.debug(
@@ -721,6 +723,12 @@ export class AnthropicService extends BaseProxyService {
           if (!ready) {
             const trimmed = chunk.trim();
             if (trimmed.length === 0 || trimmed.startsWith(':')) {
+              return;
+            }
+            if (trimmed.startsWith('event: error')) {
+              clearFirstEventTimer();
+              sourceSubscription?.unsubscribe();
+              reject(new Error('Anthropic stream failed before the first response event'));
               return;
             }
             ready = true;

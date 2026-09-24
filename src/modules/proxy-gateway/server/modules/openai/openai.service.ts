@@ -497,6 +497,7 @@ export class OpenAIService extends BaseProxyService {
       let sawImageData = false;
       let streamFailed = false;
       let pendingFinishReason: string | null | undefined;
+      let sawMappedOutput = false;
       const mapper = new OpenAIResponsesStreamingMapper({
         clientToolNames,
         model,
@@ -529,6 +530,21 @@ export class OpenAIService extends BaseProxyService {
         subscriber.complete();
       };
 
+      const fail = (code: string, message: string): void => {
+        if (completed) {
+          return;
+        }
+        completed = true;
+        streamFailed = true;
+        imagePermit?.release();
+        clearHeartbeat();
+        idleTimer.clear();
+        for (const event of mapper.fail(code, message)) {
+          subscriber.next(event);
+        }
+        subscriber.complete();
+      };
+
       subscriber.next(mapper.createResponseCreatedEvent());
       subscriber.next(mapper.createResponseInProgressEvent());
       heartbeatTimer = setInterval(() => {
@@ -536,14 +552,12 @@ export class OpenAIService extends BaseProxyService {
           subscriber.next(': ping\n\n');
         }
       }, 15_000);
-      const idleTimer = this.createStreamIdleTimer(
-        upstreamStream,
-        'OpenAI-Responses-SSE',
-        complete,
+      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'OpenAI-Responses-SSE', () =>
+        fail('upstream_timeout', 'Upstream response stream timed out.'),
       );
       idleTimer.reset();
 
-      upstreamStream.on('data', (chunk: Buffer) => {
+      const handleData = (chunk: Buffer): void => {
         if (completed) {
           return;
         }
@@ -593,6 +607,7 @@ export class OpenAIService extends BaseProxyService {
                   continue;
                 }
                 for (const event of mapper.processPart(normalizedPart)) {
+                  sawMappedOutput = true;
                   subscriber.next(event);
                 }
               }
@@ -601,6 +616,7 @@ export class OpenAIService extends BaseProxyService {
             const grounding = toResponsesGroundingMetadata(candidate?.groundingMetadata);
             if (grounding) {
               for (const event of mapper.processGrounding(grounding)) {
+                sawMappedOutput = true;
                 subscriber.next(event);
               }
             }
@@ -618,32 +634,36 @@ export class OpenAIService extends BaseProxyService {
             // Preserve compatibility: ignore per-chunk mapping failures.
           }
         }
-      });
+      };
+      upstreamStream.on('data', handleData);
 
       upstreamStream.on('end', () => {
+        if (completed) {
+          return;
+        }
         idleTimer.clear();
         buffer += decoder.decode();
-        const trailingData = buffer.trim();
-        if (requiresCleanImageEnd && trailingData.startsWith('data: ')) {
-          const observation = this.inspectImageSseData(trailingData.slice(6));
-          sawImageData ||= observation.hasImageData;
-          streamFailed ||= observation.failed;
+        if (buffer.trim()) {
+          handleData(Buffer.from('\n'));
         }
-        if (requiresCleanImageEnd && successAccountId && sawImageData && !streamFailed) {
-          this.markUpstreamSuccess(successAccountId, signatureSourceModel ?? model);
+        if (completed) {
+          return;
         }
-        complete(pendingFinishReason);
+        if (pendingFinishReason || (sawMappedOutput && !streamFailed)) {
+          if (requiresCleanImageEnd && successAccountId && sawImageData && !streamFailed) {
+            this.markUpstreamSuccess(successAccountId, signatureSourceModel ?? model);
+          }
+          complete(pendingFinishReason ?? 'STOP');
+        } else {
+          fail('upstream_interrupted', 'Upstream stream ended without output or a finish reason.');
+        }
       });
 
       upstreamStream.on('error', (error: unknown) => {
         idleTimer.clear();
-        streamFailed = true;
-        imagePermit?.release();
-        clearHeartbeat();
-        const cleanError =
-          error instanceof Error ? new Error(error.message) : new Error(String(error));
+        const cleanError = error instanceof Error ? error : new Error(String(error));
         this.logger.error(`OpenAI Responses stream error: ${cleanError.message}`);
-        subscriber.error(cleanError);
+        fail('upstream_stream_error', 'Upstream response stream failed.');
       });
 
       return () => {
@@ -669,9 +689,11 @@ export class OpenAIService extends BaseProxyService {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
       let buffer = '';
-      let hasEmittedChunk = false;
       let hasEmittedContent = false;
+      let hasEmittedOutput = false;
       let hasSentDone = false;
+      let terminated = false;
+      let sawFinishReason = false;
       const requiresCleanImageEnd = isGeminiImageModel(signatureSourceModel);
       let sawImageData = false;
       let streamFailed = false;
@@ -686,22 +708,33 @@ export class OpenAIService extends BaseProxyService {
       }
 
       const pushChunk = (payload: Record<string, unknown>): void => {
-        hasEmittedChunk = true;
         subscriber.next(`data: ${JSON.stringify(payload)}\n\n`);
       };
 
-      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'OpenAI-SSE', () => {
-        imagePermit?.release();
-        if (!hasSentDone) {
-          subscriber.next('data: [DONE]\n\n');
-          hasSentDone = true;
+      const fail = (code: string, message: string): void => {
+        if (terminated) {
+          return;
         }
+        terminated = true;
+        streamFailed = true;
+        idleTimer.clear();
+        imagePermit?.release();
+        subscriber.next(
+          `data: ${JSON.stringify({ error: { code, message, type: 'upstream_stream_error' } })}\n\n`,
+        );
         subscriber.complete();
+      };
+
+      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'OpenAI-SSE', () => {
+        fail('upstream_timeout', 'Upstream response stream timed out.');
       });
 
       idleTimer.reset();
 
-      upstreamStream.on('data', (chunk: Buffer) => {
+      const handleData = (chunk: Buffer): void => {
+        if (terminated) {
+          return;
+        }
         idleTimer.reset();
         buffer += decoder.decode(chunk, { stream: true });
         const lines = buffer.split('\n');
@@ -834,6 +867,7 @@ export class OpenAIService extends BaseProxyService {
                     ],
                   };
                   pushChunk(toolCallChunk);
+                  hasEmittedOutput = true;
                   toolCallIndex += 1;
                 }
 
@@ -866,6 +900,7 @@ export class OpenAIService extends BaseProxyService {
                   ],
                 };
                 pushChunk(reasoningChunk);
+                hasEmittedOutput = true;
               }
 
               const finishReason = isString(candidate?.finishReason)
@@ -892,9 +927,11 @@ export class OpenAIService extends BaseProxyService {
                 };
                 pushChunk(contentChunk);
                 hasEmittedContent = true;
+                hasEmittedOutput = true;
               }
 
               if (candidate && isString(candidate.finishReason)) {
+                sawFinishReason = true;
                 const finishChunk = {
                   id: streamId,
                   object: 'chat.completion.chunk',
@@ -921,6 +958,7 @@ export class OpenAIService extends BaseProxyService {
                 }
                 subscriber.next('data: [DONE]\n\n');
                 hasSentDone = true;
+                terminated = true;
                 subscriber.complete();
                 return;
               }
@@ -930,51 +968,57 @@ export class OpenAIService extends BaseProxyService {
             // Preserve compatibility: ignore per-chunk mapping failures.
           }
         }
-      });
+      };
+      upstreamStream.on('data', handleData);
 
       upstreamStream.on('end', () => {
+        if (terminated) {
+          return;
+        }
         idleTimer.clear();
         imagePermit?.release();
         buffer += decoder.decode();
-        const trailingData = buffer.trim();
-        if (requiresCleanImageEnd && trailingData.startsWith('data: ')) {
-          const observation = this.inspectImageSseData(trailingData.slice(6));
-          sawImageData ||= observation.hasImageData;
-          streamFailed ||= observation.failed;
+        if (buffer.trim()) {
+          handleData(Buffer.from('\n'));
         }
-        if (requiresCleanImageEnd && successAccountId && sawImageData && !streamFailed) {
+        if (terminated) {
+          return;
+        }
+        if (
+          requiresCleanImageEnd &&
+          successAccountId &&
+          sawImageData &&
+          !streamFailed &&
+          sawFinishReason
+        ) {
           this.markUpstreamSuccess(successAccountId, signatureSourceModel ?? model);
         }
-        if (!hasEmittedChunk) {
+        if (streamFailed || (!sawFinishReason && !hasEmittedOutput)) {
+          fail('upstream_interrupted', 'Upstream stream ended without output or a finish reason.');
+          return;
+        }
+        if (!sawFinishReason) {
           pushChunk({
             id: streamId,
             object: 'chat.completion.chunk',
             created,
             model,
-            choices: [
-              {
-                index: 0,
-                delta: { content: '' },
-                finish_reason: null,
-              },
-            ],
+            choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
           });
         }
         if (!hasSentDone) {
           subscriber.next('data: [DONE]\n\n');
           hasSentDone = true;
         }
+        terminated = true;
         subscriber.complete();
       });
 
       upstreamStream.on('error', (err: unknown) => {
         idleTimer.clear();
-        streamFailed = true;
-        imagePermit?.release();
-        // Convert to clean Error to avoid circular reference issues (socket objects)
-        const cleanError = err instanceof Error ? new Error(err.message) : new Error(String(err));
+        const cleanError = err instanceof Error ? err : new Error(String(err));
         this.logger.error(`OpenAI-compatible stream error: ${cleanError.message}`);
-        subscriber.error(cleanError);
+        fail('upstream_stream_error', 'Upstream response stream failed.');
       });
 
       return () => {
@@ -991,12 +1035,36 @@ export class OpenAIService extends BaseProxyService {
       const model = response.model;
       const choice = response.choices?.[0];
       const finishReason = choice?.finish_reason ?? 'stop';
+      const reasoningContent = choice?.message?.reasoning_content;
       const content =
         choice?.message && isString(choice.message.content) ? choice.message.content : '';
       const chunkSize = 80;
 
       if (this.shouldEmitCloudCodeMeta()) {
         subscriber.next(this.createCloudCodeMetaChunk(this.createCloudCodeTraceId()));
+      }
+
+      if (reasoningContent) {
+        for (let index = 0; index < reasoningContent.length; index += chunkSize) {
+          const chunk = {
+            id: streamId,
+            object: 'chat.completion.chunk',
+            created,
+            model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: 'assistant',
+                  content: null,
+                  reasoning_content: reasoningContent.slice(index, index + chunkSize),
+                },
+                finish_reason: null,
+              },
+            ],
+          };
+          subscriber.next(`data: ${JSON.stringify(chunk)}\n\n`);
+        }
       }
 
       if (content.length === 0) {
@@ -1063,12 +1131,18 @@ export class OpenAIService extends BaseProxyService {
         signatureSessionKey,
       });
       const choice = response.choices?.[0];
+      const reasoningContent = choice?.message?.reasoning_content;
       const content =
         choice?.message && isString(choice.message.content) ? choice.message.content : undefined;
 
       subscriber.next(mapper.createResponseCreatedEvent());
       subscriber.next(mapper.createResponseInProgressEvent());
       mapper.setUsage(toOpenAIResponsesUsage(response.usage));
+      if (reasoningContent) {
+        for (const event of mapper.processPart({ text: reasoningContent, thought: true })) {
+          subscriber.next(event);
+        }
+      }
       if (content) {
         for (const event of mapper.processPart({ text: content })) {
           subscriber.next(event);

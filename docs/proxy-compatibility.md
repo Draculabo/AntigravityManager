@@ -1,5 +1,15 @@
 # Proxy Compatibility Reference
 
+## Account Scheduling and Stream Completion
+
+Eligible accounts are selected with bounded model-quota weights when `proxy.quota_aware_scheduling_enabled` is true (the default). Each account's resolved upstream model selects its quota snapshot. A reported quota percentage below 25 or an unknown value has weight 1, 25–74 has weight 2, and 75 or above has weight 3. Existing model-capability, health, cooldown, and session-affinity rules still run before weighted round robin. The quota snapshot is only a preference: it never makes an ineligible account eligible and does not reserve capacity. Setting the switch to false restores equal-weight selection.
+
+Synthetic OpenAI Chat and Responses streams created from a completed non-stream response preserve reasoning before visible text. Chat emits `delta.reasoning_content`; Responses emits reasoning summary events. A clean upstream EOF after meaningful output is a valid termination even when the provider omits `finishReason`; Chat infers `stop` and sends `[DONE]`, and Responses emits `response.completed`. A real upstream error, idle timeout, or clean EOF without output remains a failure. Chat does not send `[DONE]` for that failure; Responses emits `response.failed` and does not persist an incomplete response as completed history. Once any response event has been sent, the gateway does not replay the request against another account because that could duplicate visible output or tool calls.
+
+Anthropic streaming idle timeout emits an Anthropic `error` event instead of `message_stop` and `[DONE]`. Clean EOF retains the established normal finish and empty-response compatibility behavior even without a finish reason. An upstream transport error retains the established preflight retry behavior before mapped output and remains a stream error after output.
+
+Native Gemini streaming accepts clean EOF after a candidate output frame even without a finish reason. Timeout, transport failure, or an EOF with no candidate output produces an SSE `error` payload. An entirely empty stream still raises its existing empty-stream error.
+
 ## Claude Agent SDK Client Identity
 
 Claude request mapping normalizes the exact top-level Claude Agent SDK identity sentence to the Claude Code identity before cache sanitization. The rule applies to a string `system` value and to matching text blocks in a top-level `system` array. It is intentionally exact: mentions inside longer text, whitespace-padded variants, and embedded role-bearing system messages remain unchanged.

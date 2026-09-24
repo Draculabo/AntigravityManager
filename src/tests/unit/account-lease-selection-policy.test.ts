@@ -13,6 +13,7 @@ function createConfig(
   overrides: Partial<AccountLeaseSelectionConfig> = {},
 ): AccountLeaseSelectionConfig {
   return {
+    quotaAwareSchedulingEnabled: true,
     parityEnabled: false,
     parityShadowEnabled: false,
     schedulingMode: 'balance',
@@ -128,5 +129,37 @@ describe('AccountLeaseSelectionPolicy', () => {
     expect(selected).toBeNull();
     expect(getRemainingWaitSeconds).toHaveBeenCalledWith('acc-1', 'gemini-3.1-flash-image');
     expect(getRemainingWaitSeconds).toHaveBeenCalledWith('acc-2', 'gemini-3.1-flash-image');
+  });
+
+  it('favors higher target-model quota without excluding unknown or empty quota accounts', async () => {
+    const policy = new AccountLeaseSelectionPolicy();
+    const request = createRequest({
+      model: 'gemini-3-pro',
+      getModelQuota: (_accountId, token) => (token.email.startsWith('one') ? 90 : 0),
+    });
+
+    const selections = await Promise.all(
+      Array.from({ length: 4 }, () => policy.selectCandidate(request)),
+    );
+    expect(selections.map((entry) => entry?.[0])).toEqual(['acc-1', 'acc-1', 'acc-1', 'acc-2']);
+
+    policy.resetSelectionState();
+    const unknownQuota = await policy.selectCandidate({
+      ...request,
+      getModelQuota: () => undefined,
+    });
+    expect(unknownQuota?.[0]).toBe('acc-1');
+  });
+
+  it('falls back to ordinary rotation when quota-aware scheduling is disabled', async () => {
+    const policy = new AccountLeaseSelectionPolicy();
+    const request = createRequest({
+      model: 'gemini-3-pro',
+      getModelQuota: (_accountId, token) => (token.email.startsWith('one') ? 90 : 0),
+      config: createConfig({ quotaAwareSchedulingEnabled: false }),
+    });
+    const first = await policy.selectCandidate(request);
+    const second = await policy.selectCandidate(request);
+    expect([first?.[0], second?.[0]]).toEqual(['acc-1', 'acc-2']);
   });
 });
