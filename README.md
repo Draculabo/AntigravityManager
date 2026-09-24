@@ -353,8 +353,8 @@ This is a **temporary workaround** for personal use:
 2. Run the following commands in Terminal (repeat after every update)
 
 ```plaintext
-sudo xattr -dr com.apple.quarantine "/Applications/Antigravity Manager 2.app"
-codesign --force --deep --sign - "/Applications/Antigravity Manager 2.app"
+sudo xattr -dr com.apple.quarantine "/Applications/Antigravity Manager.app"
+codesign --force --deep --sign - "/Applications/Antigravity Manager.app"
 ```
 
 Reopen the app and allow Keychain access if prompted.
