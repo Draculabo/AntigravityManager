@@ -107,10 +107,13 @@ export async function queryWindowsProcessesByImageName(
 
   try {
     const normalizedImageName = imageName.toLowerCase();
+    const candidate: unknown = psList;
     const psListFn =
       typeof psList === 'function'
         ? psList
-        : (psList as unknown as { default?: typeof psList })?.default;
+        : typeof candidate === 'object' && candidate !== null && 'default' in candidate
+          ? (candidate as { default?: typeof psList }).default
+          : null;
     if (typeof psListFn !== 'function') {
       return null;
     }

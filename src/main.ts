@@ -29,7 +29,13 @@ import { SaveAuditBodyInputSchema } from '@/modules/proxy-gateway/audit/save-aud
 import { AuthServer } from '@/modules/cloud-account/ipc/authServer';
 import { disableWindowsPowerThrottling } from '@/shared/platform/windowsPowerThrottling';
 import { bootstrapNestServer, stopNestServer } from './server/main';
-import { initTray, setTrayLanguage, destroyTray } from '@/modules/app-shell/ipc/tray/handler';
+import {
+  initTray,
+  setTrayLanguage,
+  destroyTray,
+  setTrayMainWindow,
+} from '@/modules/app-shell/ipc/tray/handler';
+import { restoreExistingWindow } from '@/modules/app-shell/utils/windowActivation';
 import { rpcHandler } from './ipc/handler';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { AppConfig } from '@/modules/config/types';
@@ -396,18 +402,22 @@ process.on('before-exit', (code) => {
 // let tray: Tray | null = null; // Moved to tray/handler.ts
 
 function createWindow({ startHidden }: { startHidden: boolean }) {
-  if (globalMainWindow && !globalMainWindow.isDestroyed()) {
+  const existingWindow =
+    globalMainWindow && !globalMainWindow.isDestroyed()
+      ? globalMainWindow
+      : (BrowserWindow.getAllWindows().find((w) => !w.isDestroyed()) ?? null);
+
+  if (existingWindow) {
+    globalMainWindow = existingWindow;
+    setTrayMainWindow(existingWindow);
     if (startHidden) {
-      globalMainWindow.hide();
+      existingWindow.hide();
       return;
     }
-    if (globalMainWindow.isMinimized()) {
-      globalMainWindow.restore();
+    if (process.platform === 'darwin' && typeof app.show === 'function') {
+      app.show();
     }
-    if (!globalMainWindow.isVisible()) {
-      globalMainWindow.show();
-    }
-    globalMainWindow.focus();
+    restoreExistingWindow(existingWindow);
     return;
   }
 
@@ -442,6 +452,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
     icon: windowIcon,
   });
   globalMainWindow = mainWindow;
+  setTrayMainWindow(mainWindow);
   logger.info('createWindow: BrowserWindow instance created');
   if (startHidden) {
     mainWindow.hide();
@@ -488,6 +499,9 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
+      if (mainWindow.isFullScreen()) {
+        mainWindow.setFullScreen(false);
+      }
       mainWindow.hide();
       logger.info('Window close intercepted -> Minimized to tray');
       return false;
@@ -499,6 +513,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
     unsubscribeTrafficAudit();
     logger.info('Window closed event triggered');
     globalMainWindow = null;
+    setTrayMainWindow(null);
   });
 
   mainWindow.on('show', () => {
@@ -788,8 +803,13 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  logger.info('App activate event triggered');
+  if (app.isReady()) {
     createWindow({ startHidden: false });
+    return;
   }
+  app.whenReady().then(() => {
+    createWindow({ startHidden: false });
+  });
 });
 //osX only ends
