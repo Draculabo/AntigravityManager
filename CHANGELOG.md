@@ -2,6 +2,13 @@
 
 # Changelog
 
+## [0.21.1](https://github.com/Draculabo/AntigravityManager/compare/v0.21.0...v0.21.1) (2026-09-24)
+
+### 🐛 Bug Fixes
+
+* **macos:** restore and focus window on dock activation after close ([#317](https://github.com/Draculabo/AntigravityManager/issues/317)) ([6044467](https://github.com/Draculabo/AntigravityManager/commit/6044467e88a625543d09c778901f84e56d5197b6))
+* **proxy:** improve account scheduling and stream completion ([9962b76](https://github.com/Draculabo/AntigravityManager/commit/9962b76ecbbe65fb8cc7f511b88b52bd149d80f7))
+
 ## [0.21.0](https://github.com/Draculabo/AntigravityManager/compare/v0.20.0...v0.21.0) (2026-09-23)
 
 ### ✨ Features
