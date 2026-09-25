@@ -47,6 +47,15 @@ function stringifyUnknownError(error: unknown): string {
   }
 }
 
+function getPublicBackendStack(error: Error): string | undefined {
+  return process.env.NODE_ENV === 'development' ? error.stack : undefined;
+}
+
+function getPublicBackendStackDetails(error: Error): Pick<BackendErrorDetails, 'backendStack'> {
+  const backendStack = getPublicBackendStack(error);
+  return backendStack ? { backendStack } : {};
+}
+
 function createBackendErrorDetails(error: unknown, requestPath: string): BackendErrorDetails {
   const message = stringifyUnknownError(error);
 
@@ -56,7 +65,7 @@ function createBackendErrorDetails(error: unknown, requestPath: string): Backend
       backendStatus: error.status,
       backendName: error.name,
       backendMessage: message,
-      backendStack: error.stack,
+      ...getPublicBackendStackDetails(error),
       requestPath,
     };
   }
@@ -65,7 +74,7 @@ function createBackendErrorDetails(error: unknown, requestPath: string): Backend
     return {
       backendName: error.name,
       backendMessage: message,
-      backendStack: error.stack,
+      ...getPublicBackendStackDetails(error),
       requestPath,
     };
   }
