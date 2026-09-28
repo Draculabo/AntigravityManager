@@ -96,6 +96,7 @@ export function CloudAccountList() {
 
   const {
     sortedAccounts,
+    manualRecommendation,
     tierOptions,
     effectiveSelectedTierKeys,
     effectiveSelectedTierKeySet,
@@ -770,6 +771,7 @@ export function CloudAccountList() {
         sourceAccountCount={accounts?.length ?? 0}
         gridLayout={gridLayout}
         quotaWindow={quotaWindow}
+        manualRecommendation={manualRecommendation}
         selectedIds={selectedIds}
         hasActiveTierFilter={hasActiveTierFilter}
         refreshingAccountId={refreshingAccountId}

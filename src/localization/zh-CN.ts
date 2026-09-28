@@ -511,9 +511,20 @@ const zhCn = {
       'five-hours-short': '5 小时',
       weekly: '每周配额',
       'weekly-short': '每周',
+      'both-short': '全部',
       'no-weekly-quota': '暂无每周配额数据',
       'weekly-summary-unavailable': '上游服务未返回该账号的每周配额摘要。',
       'weekly-bucket-unavailable': '配额摘要中没有可识别的每周配额桶。',
+    },
+    recommendation: {
+      badge: '推荐下一个',
+      description: '根据最近一次获取的 {{context}} 配额自动推荐。',
+      context: {
+        overall: '综合',
+        claude: 'Claude',
+        pro3: 'Gemini Pro',
+        flash: 'Gemini Flash',
+      },
     },
     authDialog: {
       title: '添加 Google 账号',

@@ -1,6 +1,6 @@
 import type { CloudQuotaBucket, CloudQuotaGroup } from '@/modules/cloud-account/types';
 
-export type QuotaWindow = '5h' | 'weekly';
+export type QuotaWindow = 'both' | '5h' | 'weekly';
 
 export interface WeeklyQuotaItem {
   id: string;
@@ -24,6 +24,28 @@ function metadataMatchesTokens(values: Array<string | undefined>, tokens: readon
   return tokens.some((token) => text.includes(token));
 }
 
+function normalizeQuotaMatchTokens(matchTokens?: readonly string[]): string[] | undefined {
+  return matchTokens?.map(normalizeQuotaMatchToken).filter((token) => token.length > 0);
+}
+
+function bucketMatchesTokens(
+  group: CloudQuotaGroup,
+  bucket: CloudQuotaBucket,
+  normalizedTokens: readonly string[] | undefined,
+): boolean {
+  if (normalizedTokens === undefined) {
+    return true;
+  }
+
+  return (
+    metadataMatchesTokens([group.display_name, group.description], normalizedTokens) ||
+    metadataMatchesTokens(
+      [bucket.bucket_id, bucket.window, bucket.display_name, bucket.description],
+      normalizedTokens,
+    )
+  );
+}
+
 /**
  * Collect every bucket percentage backed by positive metadata evidence.
  * Omitting tokens selects all groups; an empty token list selects none.
@@ -32,26 +54,12 @@ export function collectQuotaGroupBucketPercentages(
   groups: CloudQuotaGroup[] | undefined,
   matchTokens?: readonly string[],
 ): number[] {
-  const normalizedTokens = matchTokens
-    ?.map(normalizeQuotaMatchToken)
-    .filter((token) => token.length > 0);
+  const normalizedTokens = normalizeQuotaMatchTokens(matchTokens);
   const percentages: number[] = [];
 
   for (const group of groups ?? []) {
-    const groupMatches =
-      normalizedTokens === undefined ||
-      metadataMatchesTokens([group.display_name, group.description], normalizedTokens);
-
     for (const bucket of group.buckets) {
-      const bucketMatches =
-        groupMatches ||
-        (normalizedTokens !== undefined &&
-          metadataMatchesTokens(
-            [bucket.bucket_id, bucket.window, bucket.display_name, bucket.description],
-            normalizedTokens,
-          ));
-
-      if (bucketMatches) {
+      if (bucketMatchesTokens(group, bucket, normalizedTokens)) {
         percentages.push(Math.round(bucket.remaining_fraction * 100));
       }
     }
@@ -81,16 +89,26 @@ export function isWeeklyQuotaBucket(bucket: CloudQuotaBucket): boolean {
   return `${bucket.window} ${bucket.bucket_id}`.toLowerCase().includes('week');
 }
 
-export function selectWeeklyQuotaItems(groups: CloudQuotaGroup[] | undefined): WeeklyQuotaItem[] {
+export function selectWeeklyQuotaItems(
+  groups: CloudQuotaGroup[] | undefined,
+  matchTokens?: readonly string[],
+): WeeklyQuotaItem[] {
+  const normalizedTokens = normalizeQuotaMatchTokens(matchTokens);
+
   return (groups ?? []).flatMap((group) =>
-    group.buckets.filter(isWeeklyQuotaBucket).map((bucket) => ({
-      id: `${group.display_name}:${bucket.bucket_id}:${bucket.window}:${bucket.reset_time}`,
-      groupName: group.display_name.replace(/\s+models?$/i, '').trim(),
-      groupDescription: group.description,
-      bucketLabel: bucket.display_name || bucket.window || bucket.bucket_id,
-      percentage: Math.round(bucket.remaining_fraction * 100),
-      resetTime: bucket.reset_time,
-      bucket,
-    })),
+    group.buckets
+      .filter(
+        (bucket) =>
+          isWeeklyQuotaBucket(bucket) && bucketMatchesTokens(group, bucket, normalizedTokens),
+      )
+      .map((bucket) => ({
+        id: `${group.display_name}:${bucket.bucket_id}:${bucket.window}:${bucket.reset_time}`,
+        groupName: group.display_name.replace(/\s+models?$/i, '').trim(),
+        groupDescription: group.description,
+        bucketLabel: bucket.display_name || bucket.window || bucket.bucket_id,
+        percentage: Math.round(bucket.remaining_fraction * 100),
+        resetTime: bucket.reset_time,
+        bucket,
+      })),
   );
 }

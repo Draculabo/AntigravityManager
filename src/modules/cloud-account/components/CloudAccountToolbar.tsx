@@ -440,6 +440,15 @@ export function CloudAccountToolbar({
         aria-label={t('cloud.quota-window.label')}
       >
         <Button
+          variant={quotaWindow === 'both' ? 'secondary' : 'ghost'}
+          aria-pressed={quotaWindow === 'both'}
+          size="sm"
+          className="h-7 cursor-pointer px-2 text-xs"
+          onClick={() => onQuotaWindowChange('both')}
+        >
+          {t('cloud.quota-window.both-short')}
+        </Button>
+        <Button
           variant={quotaWindow === '5h' ? 'secondary' : 'ghost'}
           aria-pressed={quotaWindow === '5h'}
           size="sm"

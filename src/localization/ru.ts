@@ -431,6 +431,7 @@ const ru = {
       'five-hours-short': '5 ч',
       weekly: 'Недельная квота',
       'weekly-short': 'Неделя',
+      'both-short': 'Оба',
       'no-weekly-quota': 'Нет данных о недельной квоте',
       'weekly-summary-unavailable': 'Внешний сервис не вернул сводку недельной квоты.',
       'weekly-bucket-unavailable': 'В сводке квоты нет распознаваемого недельного лимита.',

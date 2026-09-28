@@ -59,17 +59,21 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
                 <li>{t('cloud.error.dataRepair.stepOpenIssue')}</li>
               </ol>
               <div className="mt-4 flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" asChild>
-                  <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">
-                    <ExternalLink className="h-4 w-4" />
-                    {t('cloud.error.dataRepair.openRepository')}
-                  </a>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void window.electron.openExternalUrl(GITHUB_REPOSITORY_URL)}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  {t('cloud.error.dataRepair.openRepository')}
                 </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <a href={GITHUB_ISSUES_URL} target="_blank" rel="noreferrer">
-                    <ExternalLink className="h-4 w-4" />
-                    {t('cloud.error.dataRepair.openIssues')}
-                  </a>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void window.electron.openExternalUrl(GITHUB_ISSUES_URL)}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  {t('cloud.error.dataRepair.openIssues')}
                 </Button>
               </div>
             </div>

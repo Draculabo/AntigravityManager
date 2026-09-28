@@ -14,9 +14,19 @@ import {
   type AccountSortKey,
   type QuotaStatus,
 } from '@/modules/cloud-account/utils/quota-display';
+import {
+  getManualAccountRecommendation,
+  prioritizeRecommendedAccount,
+  type ManualAccountRecommendation,
+} from '@/modules/cloud-account/utils/manual-account-recommendation';
+
+const EMPTY_ACCOUNTS: CloudAccount[] = [];
+const EMPTY_SELECTED_TIER_KEYS: string[] = [];
+const EMPTY_MODEL_VISIBILITY: Record<string, boolean> = {};
 
 export interface CloudAccountListView {
   sortedAccounts: CloudAccount[];
+  manualRecommendation: ManualAccountRecommendation | null;
   tierOptions: AccountTierOption[];
   effectiveSelectedTierKeys: string[];
   effectiveSelectedTierKeySet: Set<string>;
@@ -62,9 +72,9 @@ export function useCloudAccountListView(
   config: AppConfig | undefined,
   currentSort: AccountSortKey,
 ): CloudAccountListView {
-  const sourceAccounts = accounts ?? [];
-  const selectedTierKeys = config?.account_tier_filter ?? [];
-  const modelVisibility = config?.model_visibility ?? {};
+  const sourceAccounts = accounts ?? EMPTY_ACCOUNTS;
+  const selectedTierKeys = config?.account_tier_filter ?? EMPTY_SELECTED_TIER_KEYS;
+  const modelVisibility = config?.model_visibility ?? EMPTY_MODEL_VISIBILITY;
 
   const tierOptions = useMemo(() => buildAccountTierOptions(sourceAccounts), [sourceAccounts]);
   const effectiveSelectedTierKeys = useMemo(
@@ -76,7 +86,7 @@ export function useCloudAccountListView(
     [effectiveSelectedTierKeys],
   );
 
-  const sortedAccounts = useMemo(() => {
+  const baseSortedAccounts = useMemo(() => {
     return filterAndSortCloudAccounts(sourceAccounts, {
       selectedTierKeys: effectiveSelectedTierKeys,
       sortKey: currentSort,
@@ -84,6 +94,20 @@ export function useCloudAccountListView(
       tierOptions,
     });
   }, [currentSort, effectiveSelectedTierKeys, modelVisibility, sourceAccounts, tierOptions]);
+
+  const manualRecommendation = useMemo(
+    () =>
+      getManualAccountRecommendation(baseSortedAccounts, {
+        sortKey: currentSort,
+        modelVisibility,
+      }),
+    [baseSortedAccounts, currentSort, modelVisibility],
+  );
+
+  const sortedAccounts = useMemo(
+    () => prioritizeRecommendedAccount(baseSortedAccounts, manualRecommendation),
+    [baseSortedAccounts, manualRecommendation],
+  );
 
   const visibleAccountIds = useMemo(
     () => sortedAccounts.map((account) => account.id),
@@ -100,6 +124,7 @@ export function useCloudAccountListView(
 
   return {
     sortedAccounts,
+    manualRecommendation,
     tierOptions,
     effectiveSelectedTierKeys,
     effectiveSelectedTierKeySet,

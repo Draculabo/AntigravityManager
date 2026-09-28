@@ -447,11 +447,22 @@ const fr = {
       'five-hours-short': '5 h',
       weekly: 'Quota hebdomadaire',
       'weekly-short': 'Semaine',
+      'both-short': 'Les deux',
       'no-weekly-quota': 'Aucune donnée de quota hebdomadaire',
       'weekly-summary-unavailable':
         "Le service en amont n'a renvoyé aucun résumé de quota hebdomadaire.",
       'weekly-bucket-unavailable':
         'Le résumé du quota ne contient aucun compartiment hebdomadaire reconnu.',
+    },
+    recommendation: {
+      badge: 'Prochain recommandé',
+      description: 'Sélectionné automatiquement à partir du dernier quota {{context}} récupéré.',
+      context: {
+        overall: 'global',
+        claude: 'Claude',
+        pro3: 'Gemini Pro',
+        flash: 'Gemini Flash',
+      },
     },
     authDialog: {
       title: 'Ajouter un compte Google',

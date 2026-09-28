@@ -125,8 +125,10 @@ describe('quota group score primitives', () => {
 });
 
 describe('quota-window preference', () => {
-  it('defaults invalid or unavailable storage values to the five-hour view', () => {
-    expect(readQuotaWindowPreference({ getItem: () => 'unexpected', setItem: vi.fn() })).toBe('5h');
+  it('defaults invalid or unavailable storage values to the combined view', () => {
+    expect(readQuotaWindowPreference({ getItem: () => 'unexpected', setItem: vi.fn() })).toBe(
+      'both',
+    );
     expect(
       readQuotaWindowPreference({
         getItem: () => {
@@ -134,13 +136,14 @@ describe('quota-window preference', () => {
         },
         setItem: vi.fn(),
       }),
-    ).toBe('5h');
+    ).toBe('both');
   });
 
-  it('round-trips the weekly preference without throwing when writes are blocked', () => {
+  it('round-trips every quota-window preference without throwing when writes are blocked', () => {
     const setItem = vi.fn();
     saveQuotaWindowPreference({ getItem: () => null, setItem }, 'weekly');
     expect(setItem).toHaveBeenCalledExactlyOnceWith(QUOTA_WINDOW_STORAGE_KEY, 'weekly');
+    expect(readQuotaWindowPreference({ getItem: () => 'both', setItem: vi.fn() })).toBe('both');
 
     expect(() =>
       saveQuotaWindowPreference(

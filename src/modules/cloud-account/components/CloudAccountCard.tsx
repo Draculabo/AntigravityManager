@@ -61,8 +61,11 @@ import {
   selectWeeklyQuotaItems,
   type QuotaWindow,
 } from '@/modules/cloud-account/utils/quota-groups';
-import { WeeklyQuotaDisplay } from '@/modules/cloud-account/components/WeeklyQuotaDisplay';
 import { DetailedQuotaDisplay } from '@/modules/cloud-account/components/DetailedQuotaDisplay';
+import { AccountQuotaWindowSections } from '@/modules/cloud-account/components/AccountQuotaWindowSections';
+import { CompactModelQuotaDisplay } from '@/modules/cloud-account/components/CompactModelQuotaDisplay';
+import { ManualRecommendationBadge } from '@/modules/cloud-account/components/ManualRecommendationBadge';
+import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/manual-account-recommendation';
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
 import { isWeeklyQuotaBucket } from '@/modules/cloud-account/utils/quota-groups';
 import { openAccountValidationLink } from '@/modules/cloud-account/actions/cloud';
@@ -207,11 +210,12 @@ interface CloudAccountCardProps {
   isRefreshing?: boolean;
   isDeleting?: boolean;
   isSwitching?: boolean;
+  recommendationContext?: ManualRecommendationContext;
 }
 
 export function CloudAccountCard({
   account,
-  quotaWindow = '5h',
+  quotaWindow = 'both',
   onRefresh,
   onDelete,
   onSwitch,
@@ -221,6 +225,7 @@ export function CloudAccountCard({
   isRefreshing,
   isDeleting,
   isSwitching,
+  recommendationContext,
 }: CloudAccountCardProps) {
   const { t } = useTranslation();
   const { config, saveConfig } = useAppConfig();
@@ -652,6 +657,9 @@ export function CloudAccountCard({
               {account.provider.toUpperCase()}
             </Badge>
             <AccountTierBadge account={account} unknownLabel={t('cloud.tierFilter.unknown')} />
+            {recommendationContext ? (
+              <ManualRecommendationBadge context={recommendationContext} />
+            ) : null}
 
             {validationBlockedStatusLabel && (
               <span className="text-destructive bg-destructive/10 border-destructive/20 rounded border px-1.5 py-0.5 text-[11px] font-semibold">
@@ -760,26 +768,30 @@ export function CloudAccountCard({
         </div>
 
         <div className="space-y-2">
-          {quotaWindow === 'weekly' ? (
-            <WeeklyQuotaDisplay
-              items={weeklyQuotaItems}
-              hasQuotaSummary={account.quota?.quota_groups !== undefined}
-            />
-          ) : providerGroupingsEnabled ? (
-            <>
-              {providerGroupedQuotaSection}
-              {!providerGroupedQuotaSection && !hasDetailedQuota ? emptyQuotaState : null}
-            </>
-          ) : hasVisibleQuotaModels ? (
-            <div className="space-y-3">
-              {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
-              <div className="pt-1" />
-              {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
-            </div>
-          ) : hasDetailedQuota ? null : (
-            emptyQuotaState
-          )}
-          {quotaWindow === '5h' && <DetailedQuotaDisplay groups={detailedGroups} />}
+          <AccountQuotaWindowSections
+            quotaWindow={quotaWindow}
+            weeklyItems={weeklyQuotaItems}
+            hasQuotaSummary={account.quota?.quota_groups !== undefined}
+            fiveHourContent={
+              <>
+                {providerGroupingsEnabled ? (
+                  <>
+                    {providerGroupedQuotaSection}
+                    {!providerGroupedQuotaSection && !hasDetailedQuota ? emptyQuotaState : null}
+                  </>
+                ) : hasVisibleQuotaModels ? (
+                  <div className="space-y-3">
+                    {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
+                    <div className="pt-1" />
+                    {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
+                  </div>
+                ) : hasDetailedQuota ? null : (
+                  emptyQuotaState
+                )}
+                <DetailedQuotaDisplay groups={detailedGroups} />
+              </>
+            }
+          />
         </div>
       </CardContent>
 
@@ -907,11 +919,12 @@ interface CompactCloudAccountCardProps {
   isDeleting?: boolean;
   isSwitching?: boolean;
   switchingTarget?: AntigravityAppTarget;
+  recommendationContext?: ManualRecommendationContext;
 }
 
 export function CompactCloudAccountCard({
   account,
-  quotaWindow = '5h',
+  quotaWindow = 'both',
   onRefresh,
   onDelete,
   onSwitch,
@@ -919,6 +932,7 @@ export function CompactCloudAccountCard({
   isRefreshing,
   isDeleting,
   isSwitching,
+  recommendationContext,
 }: CompactCloudAccountCardProps) {
   const { t } = useTranslation();
   const { config } = useAppConfig();
@@ -929,19 +943,18 @@ export function CompactCloudAccountCard({
     account.is_active_agy
   );
 
-  const getQuotaBarColorClass = (percentage: number) => {
-    const quotaStatus = getQuotaStatus(percentage);
-    return QUOTA_BAR_COLOR_CLASS_BY_STATUS[quotaStatus];
-  };
-
   const mergedModelQuotas = getVisibleQuotaModelsForPresentation(
     account.quota?.models || {},
     config?.model_visibility || {},
   );
 
-  const compactModels = Object.entries(mergedModelQuotas).sort(
-    (a, b) => b[1].percentage - a[1].percentage,
-  );
+  const compactQuotaItems = Object.entries(mergedModelQuotas)
+    .sort((a, b) => b[1].percentage - a[1].percentage)
+    .map(([modelName, info]) => ({
+      id: modelName,
+      label: formatModelDisplayName(modelName),
+      percentage: info.percentage,
+    }));
   const weeklyQuotaItems = selectWeeklyQuotaItems(account.quota?.quota_groups);
 
   const aiCredits = account.quota?.ai_credits;
@@ -984,6 +997,9 @@ export function CompactCloudAccountCard({
             unknownLabel={t('cloud.tierFilter.unknown')}
             className="h-4 max-w-24 px-1 text-[9px]"
           />
+          {recommendationContext ? (
+            <ManualRecommendationBadge context={recommendationContext} />
+          ) : null}
         </div>
 
         <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
@@ -1037,35 +1053,13 @@ export function CompactCloudAccountCard({
           )}
         </div>
 
-        {quotaWindow === 'weekly' ? (
-          <WeeklyQuotaDisplay
-            items={weeklyQuotaItems}
-            hasQuotaSummary={account.quota?.quota_groups !== undefined}
-            variant="compact"
-          />
-        ) : compactModels.length > 0 ? (
-          <div className="mt-1 flex items-center gap-1">
-            {compactModels.map(([modelName, info]) => (
-              <TooltipProvider key={modelName}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="bg-muted h-1.5 w-12 overflow-hidden rounded-full">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${getQuotaBarColorClass(info.percentage)}`}
-                        style={{ width: `${clampQuotaPercentage(info.percentage)}%` }}
-                      />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">
-                      {formatModelDisplayName(modelName)}: {info.percentage}%
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ))}
-          </div>
-        ) : null}
+        <AccountQuotaWindowSections
+          quotaWindow={quotaWindow}
+          weeklyItems={weeklyQuotaItems}
+          hasQuotaSummary={account.quota?.quota_groups !== undefined}
+          variant="compact"
+          fiveHourContent={<CompactModelQuotaDisplay items={compactQuotaItems} />}
+        />
       </div>
 
       <div className="flex shrink-0 items-center gap-1">

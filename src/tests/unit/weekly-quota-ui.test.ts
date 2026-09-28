@@ -3,6 +3,8 @@ import { createElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WeeklyQuotaDisplay } from '@/modules/cloud-account/components/WeeklyQuotaDisplay';
 import { DetailedQuotaDisplay } from '@/modules/cloud-account/components/DetailedQuotaDisplay';
+import { AccountQuotaWindowSections } from '@/modules/cloud-account/components/AccountQuotaWindowSections';
+import { CompactModelQuotaDisplay } from '@/modules/cloud-account/components/CompactModelQuotaDisplay';
 import { selectWeeklyQuotaItems } from '@/modules/cloud-account/utils/quota-groups';
 import {
   readQuotaWindowPreference,
@@ -63,11 +65,60 @@ describe('quota window display', () => {
     expect(progress.getAttribute('aria-valuenow')).toBe('90');
     expect(progress.getAttribute('tabindex')).toBe('0');
   });
+  it('exposes compact five-hour quota as a labeled progress bar', () => {
+    render(
+      createElement(CompactModelQuotaDisplay, {
+        items: [{ id: 'gemini-pro', label: 'Gemini Pro', percentage: 64 }],
+      }),
+    );
+
+    expect(
+      screen.getByRole('progressbar', { name: 'Gemini Pro' }).getAttribute('aria-valuenow'),
+    ).toBe('64');
+  });
+  it('shows five-hour and weekly quota together in the combined view', () => {
+    render(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: 'both',
+        fiveHourContent: createElement('span', null, 'five-hour-content'),
+        weeklyItems: selectWeeklyQuotaItems(groups),
+        hasQuotaSummary: true,
+      }),
+    );
+
+    expect(screen.getByText('five-hour-content')).toBeTruthy();
+    expect(screen.getByText('Seven days')).toBeTruthy();
+  });
+  it('keeps the focused quota views mutually exclusive', () => {
+    const { rerender } = render(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: '5h',
+        fiveHourContent: createElement('span', null, 'five-hour-content'),
+        weeklyItems: selectWeeklyQuotaItems(groups),
+        hasQuotaSummary: true,
+      }),
+    );
+
+    expect(screen.getByText('five-hour-content')).toBeTruthy();
+    expect(screen.queryByText('Seven days')).toBeNull();
+
+    rerender(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: 'weekly',
+        fiveHourContent: createElement('span', null, 'five-hour-content'),
+        weeklyItems: selectWeeklyQuotaItems(groups),
+        hasQuotaSummary: true,
+      }),
+    );
+
+    expect(screen.queryByText('five-hour-content')).toBeNull();
+    expect(screen.getByText('Seven days')).toBeTruthy();
+  });
   it('handles a throwing localStorage getter without losing the page', () => {
     const unavailable = () => {
       throw new Error('Storage unavailable');
     };
-    expect(readQuotaWindowPreference(unavailable)).toBe('5h');
+    expect(readQuotaWindowPreference(unavailable)).toBe('both');
     expect(() => saveQuotaWindowPreference(unavailable, 'weekly')).not.toThrow();
   });
 });

@@ -542,9 +542,20 @@ const en = {
       'five-hours-short': '5h',
       weekly: 'Weekly quota',
       'weekly-short': 'Week',
+      'both-short': 'Both',
       'no-weekly-quota': 'No weekly quota data',
       'weekly-summary-unavailable': 'The upstream service did not return a weekly quota summary.',
       'weekly-bucket-unavailable': 'The quota summary contains no recognizable weekly bucket.',
+    },
+    recommendation: {
+      badge: 'Recommended Next',
+      description: 'Automatically selected from the latest fetched {{context}} quota.',
+      context: {
+        overall: 'overall',
+        claude: 'Claude',
+        pro3: 'Gemini Pro',
+        flash: 'Gemini Flash',
+      },
     },
     authDialog: {
       title: 'Add Google Account',

@@ -12,12 +12,14 @@ import {
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
+import type { ManualAccountRecommendation } from '@/modules/cloud-account/utils/manual-account-recommendation';
 
 interface CloudAccountGridProps {
   accounts: CloudAccount[];
   sourceAccountCount: number;
   gridLayout: GridLayout;
   quotaWindow: QuotaWindow;
+  manualRecommendation: ManualAccountRecommendation | null;
   selectedIds: Set<string>;
   hasActiveTierFilter: boolean;
   refreshingAccountId?: string;
@@ -37,6 +39,7 @@ export function CloudAccountGrid({
   sourceAccountCount,
   gridLayout,
   quotaWindow,
+  manualRecommendation,
   selectedIds,
   hasActiveTierFilter,
   refreshingAccountId,
@@ -68,6 +71,11 @@ export function CloudAccountGrid({
             isDeleting={deletingAccountId === account.id}
             isSwitching={switchingAccountId === account.id}
             switchingTarget={switchingAccountId === account.id ? switchingTarget : undefined}
+            recommendationContext={
+              manualRecommendation?.accountId === account.id
+                ? manualRecommendation.context
+                : undefined
+            }
           />
         ) : (
           <CloudAccountCard
@@ -83,6 +91,11 @@ export function CloudAccountGrid({
             isRefreshing={refreshingAccountId === account.id}
             isDeleting={deletingAccountId === account.id}
             isSwitching={switchingAccountId === account.id}
+            recommendationContext={
+              manualRecommendation?.accountId === account.id
+                ? manualRecommendation.context
+                : undefined
+            }
           />
         ),
       )}

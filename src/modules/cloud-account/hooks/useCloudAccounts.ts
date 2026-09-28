@@ -61,8 +61,20 @@ export function useAddGoogleAccount() {
 
   return useMutation({
     mutationFn: addGoogleAccount,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+    onSuccess: (newAccount: CloudAccount) => {
+      queryClient.setQueryData(QUERY_KEYS.cloudAccounts, (oldData: CloudAccount[] | undefined) => {
+        if (!oldData) {
+          return [newAccount];
+        }
+
+        const alreadyCached = oldData.some((account) => account.id === newAccount.id);
+        if (alreadyCached) {
+          return oldData.map((account) => (account.id === newAccount.id ? newAccount : account));
+        }
+
+        return [...oldData, newAccount];
+      });
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
     },
   });
 }
@@ -168,8 +180,8 @@ export function useForcePollCloudMonitor() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: forcePollCloudMonitor,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
     },
   });
 }
