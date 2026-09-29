@@ -2,6 +2,12 @@
 
 # Changelog
 
+## [0.21.2](https://github.com/Draculabo/AntigravityManager/compare/v0.21.1...v0.21.2) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* resolve reported account management issues ([a56e8ef](https://github.com/Draculabo/AntigravityManager/commit/a56e8ef786eac5c5020165f22495e0c87666a61d))
+
 ## [0.21.1](https://github.com/Draculabo/AntigravityManager/compare/v0.21.0...v0.21.1) (2026-09-24)
 
 ### 🐛 Bug Fixes
