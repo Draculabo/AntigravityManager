@@ -969,10 +969,10 @@ export function CompactCloudAccountCard({
         <img
           src={account.avatar_url}
           alt={account.name || ''}
-          className="bg-muted h-7 w-7 rounded-full border"
+          className="bg-muted mt-1 h-7 w-7 shrink-0 self-start rounded-full border"
         />
       ) : (
-        <div className="bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold">
+        <div className="bg-primary/10 text-primary mt-1 flex h-7 w-7 shrink-0 items-center justify-center self-start rounded-full border text-xs font-semibold">
           {account.name?.[0]?.toUpperCase() || 'A'}
         </div>
       )}

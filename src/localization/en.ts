@@ -542,6 +542,7 @@ const en = {
       'five-hours-short': '5h',
       weekly: 'Weekly quota',
       'weekly-short': 'Week',
+      'compact-weekly-short': 'Wk',
       'both-short': 'Both',
       'no-weekly-quota': 'No weekly quota data',
       'weekly-summary-unavailable': 'The upstream service did not return a weekly quota summary.',

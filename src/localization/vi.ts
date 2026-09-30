@@ -434,6 +434,7 @@ const vi = {
       'five-hours-short': '5 giờ',
       weekly: 'Hạn mức hàng tuần',
       'weekly-short': 'Tuần',
+      'compact-weekly-short': 'Tuần',
       'both-short': 'Cả hai',
       'no-weekly-quota': 'Không có dữ liệu hạn mức hàng tuần',
       'weekly-summary-unavailable':

@@ -76,6 +76,34 @@ describe('quota window display', () => {
       screen.getByRole('progressbar', { name: 'Gemini Pro' }).getAttribute('aria-valuenow'),
     ).toBe('64');
   });
+  it('labels and groups every compact quota bar by window and model', () => {
+    render(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: 'both',
+        fiveHourContent: createElement(CompactModelQuotaDisplay, {
+          items: [
+            { id: 'gemini-pro', label: 'Gemini Pro', percentage: 64 },
+            { id: 'claude-sonnet', label: 'Claude Sonnet', percentage: 42 },
+          ],
+        }),
+        weeklyItems: selectWeeklyQuotaItems(groups),
+        hasQuotaSummary: true,
+        variant: 'compact',
+      }),
+    );
+
+    expect(screen.getByRole('group', { name: 'cloud.quota-window.five-hours-short' })).toBeTruthy();
+    const geminiModelItem = screen.getByText('Gemini Pro').parentElement;
+    expect(geminiModelItem?.classList.contains('flex-col')).toBe(true);
+    expect(geminiModelItem?.lastElementChild?.getAttribute('role')).toBe('progressbar');
+    expect(screen.getByText('Claude Sonnet')).toBeTruthy();
+    expect(
+      screen.getByRole('group', { name: 'cloud.quota-window.compact-weekly-short' }),
+    ).toBeTruthy();
+    const weeklyGeminiItem = screen.getByText('Gemini').parentElement;
+    expect(weeklyGeminiItem?.classList.contains('flex-col')).toBe(true);
+    expect(weeklyGeminiItem?.lastElementChild?.getAttribute('role')).toBe('progressbar');
+  });
   it('shows five-hour and weekly quota together in the combined view', () => {
     render(
       createElement(AccountQuotaWindowSections, {

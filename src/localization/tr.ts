@@ -436,6 +436,7 @@ const tr = {
       'five-hours-short': '5 sa',
       weekly: 'Haftalık kota',
       'weekly-short': 'Hafta',
+      'compact-weekly-short': 'Hf',
       'both-short': 'İkisi',
       'no-weekly-quota': 'Haftalık kota verisi yok',
       'weekly-summary-unavailable': 'Üst hizmet haftalık kota özeti döndürmedi.',

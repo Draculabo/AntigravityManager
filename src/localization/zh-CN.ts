@@ -511,6 +511,7 @@ const zhCn = {
       'five-hours-short': '5 小时',
       weekly: '每周配额',
       'weekly-short': '每周',
+      'compact-weekly-short': '周',
       'both-short': '全部',
       'no-weekly-quota': '暂无每周配额数据',
       'weekly-summary-unavailable': '上游服务未返回该账号的每周配额摘要。',

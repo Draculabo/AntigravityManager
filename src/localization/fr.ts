@@ -447,6 +447,7 @@ const fr = {
       'five-hours-short': '5 h',
       weekly: 'Quota hebdomadaire',
       'weekly-short': 'Semaine',
+      'compact-weekly-short': 'Sem.',
       'both-short': 'Les deux',
       'no-weekly-quota': 'Aucune donnée de quota hebdomadaire',
       'weekly-summary-unavailable':

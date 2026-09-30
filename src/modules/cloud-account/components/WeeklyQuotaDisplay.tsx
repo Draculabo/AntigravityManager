@@ -2,6 +2,7 @@ import { CalendarDays } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { CompactQuotaRow } from '@/modules/cloud-account/components/CompactQuotaRow';
 import type { WeeklyQuotaItem } from '@/modules/cloud-account/utils/quota-groups';
 import {
   clampQuotaPercentage,
@@ -55,44 +56,53 @@ export function WeeklyQuotaDisplay({
 
   if (variant === 'compact') {
     return (
-      <div className="mt-1 flex items-center gap-1">
+      <CompactQuotaRow label={t('cloud.quota-window.compact-weekly-short')}>
         {items.map((item) => {
           const status = getQuotaStatus(item.percentage);
+          const groupName = item.groupName || t('cloud.card.quotaGroupUnknown');
+          const label = items.some((other) => other !== item && other.groupName === item.groupName)
+            ? `${groupName} · ${item.bucketLabel}`
+            : groupName;
           return (
-            <TooltipProvider key={item.id}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    tabIndex={0}
-                    role="progressbar"
-                    aria-label={`${item.groupName}: ${item.bucketLabel}`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={clampQuotaPercentage(item.percentage)}
-                    className="bg-muted h-1.5 w-12 overflow-hidden rounded-full"
-                  >
+            <div key={item.id} className="flex min-w-0 flex-col gap-1">
+              <span className="text-muted-foreground block truncate text-[10px]" title={label}>
+                {label}
+              </span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <div
-                      className={`h-full rounded-full transition-all duration-300 ${BAR_CLASS[status]}`}
-                      style={{ width: `${clampQuotaPercentage(item.percentage)}%` }}
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs">
-                    {item.groupName || t('cloud.card.quotaGroupUnknown')}: {item.percentage}%
-                  </p>
-                  <p className="text-muted-foreground text-[10px]">
-                    {formatResetTimeLabel(item.resetTime, {
-                      prefix: t('cloud.card.resetPrefix'),
-                      unknown: t('cloud.card.resetUnknown'),
-                    })}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                      tabIndex={0}
+                      role="progressbar"
+                      aria-label={`${groupName}: ${item.bucketLabel}`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={clampQuotaPercentage(item.percentage)}
+                      className="bg-muted h-1.5 w-full overflow-hidden rounded-full"
+                    >
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${BAR_CLASS[status]}`}
+                        style={{ width: `${clampQuotaPercentage(item.percentage)}%` }}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">
+                      {groupName}: {item.percentage}%
+                    </p>
+                    <p className="text-muted-foreground text-[10px]">
+                      {formatResetTimeLabel(item.resetTime, {
+                        prefix: t('cloud.card.resetPrefix'),
+                        unknown: t('cloud.card.resetUnknown'),
+                      })}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           );
         })}
-      </div>
+      </CompactQuotaRow>
     );
   }
 
