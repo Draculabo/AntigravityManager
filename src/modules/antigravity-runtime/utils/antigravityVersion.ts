@@ -164,10 +164,24 @@ export function getAntigravityVersion(target?: AntigravityAppTarget | null): Ant
         throw new Error(`Unable to read Antigravity version from ${execPath} under WSL`);
       }
 
+      // Prefer reading the package manifest rather than executing the binary.
+      // On Linux, when Antigravity is not already running, the Electron
+      // entrypoint opens a window instead of printing a version and exiting,
+      // which both phantom-launches the app and blocks execSync indefinitely.
+      // Reading the manifest avoids running the binary entirely. (#324)
+      const manifestVersion = readPackageJsonVersion(execPath);
+      if (manifestVersion) {
+        return cacheAndReturn(resolvedTarget, manifestVersion);
+      }
+
+      // Manifest not found — fall back to running the binary, but guard with a
+      // timeout so the probe cannot block the main process indefinitely.
+      // ponytail: 5 s timeout; raise if a slow system needs more headroom
       try {
         const output = execSync(`"${execPath}" --version`, {
           encoding: 'utf-8',
           stdio: ['ignore', 'pipe', 'ignore'],
+          timeout: 5000,
         }).trim();
         const parsed = parseVersionString(output);
         return cacheAndReturn(resolvedTarget, {
@@ -175,10 +189,7 @@ export function getAntigravityVersion(target?: AntigravityAppTarget | null): Ant
           bundleVersion: parsed,
         });
       } catch {
-        const fallback = readPackageJsonVersion(execPath);
-        if (fallback) {
-          return cacheAndReturn(resolvedTarget, fallback);
-        }
+        throw new Error(`Unable to determine Antigravity version from ${execPath}`);
       }
     }
 
