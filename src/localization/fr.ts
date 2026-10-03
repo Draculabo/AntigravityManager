@@ -692,6 +692,14 @@ const fr = {
       cancel: 'Annuler',
       confirm: 'Regenerer',
     },
+    'risk-confirmation': {
+      title: 'Confirmez les risques avant de démarrer le proxy',
+      description:
+        'Depuis février, Google a renforcé ses mesures de contrôle. Le simple fait de changer de compte avec ce logiciel n’affecte pas votre compte Google.\n\nCependant, son utilisation comme proxy inverse ou à des fins similaires enfreint les conditions d’utilisation de Google et peut entraîner la suspension du compte.',
+      'account-advice': 'Utilisez uniquement des comptes que vous pouvez vous permettre de perdre.',
+      cancel: 'Annuler',
+      confirm: 'Je comprends les risques. Démarrer le proxy',
+    },
     service: {
       title: 'Statut du service',
       description: 'Controlez le serveur proxy API local.',

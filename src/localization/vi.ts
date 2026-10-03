@@ -651,6 +651,14 @@ const vi = {
       cancel: 'Hủy',
       confirm: 'Tạo lại',
     },
+    'risk-confirmation': {
+      title: 'Xác nhận rủi ro trước khi khởi động proxy',
+      description:
+        'Kể từ tháng Hai, Google đã tăng cường các biện pháp kiểm soát. Việc chỉ chuyển đổi tài khoản bằng phần mềm này sẽ không ảnh hưởng đến tài khoản Google của bạn.\n\nTuy nhiên, sử dụng phần mềm làm proxy ngược hoặc cho các mục đích tương tự vi phạm Điều khoản dịch vụ của Google và có thể khiến tài khoản bị đình chỉ.',
+      'account-advice': 'Chỉ sử dụng những tài khoản mà bạn có thể chấp nhận mất.',
+      cancel: 'Hủy',
+      confirm: 'Tôi hiểu rủi ro. Khởi động proxy',
+    },
     service: {
       title: 'Trạng thái dịch vụ',
       description: 'Điều khiển local API proxy server.',

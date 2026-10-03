@@ -75,6 +75,15 @@ When using Antigravity IDE, have you ever encountered these problems?
 - ✅ **Local API Proxy** - Built-in OpenAI/Anthropic compatible proxy server
 - ✅ **Secure Encryption** - AES-256-GCM encryption for sensitive data
 
+> [!WARNING]
+> **Account risks when using the reverse proxy**
+>
+> Since February, Google has intensified enforcement. Simply switching accounts with this software will not affect your Google account. However, using it as a reverse proxy or for similar purposes violates Google's Terms of Service and may result in account suspension.
+>
+> **Only use accounts you can afford to lose.**
+
+The first time you click **Start Service** on the API Proxy page, you must acknowledge this warning before the service starts. Cancelling or closing the dialog does not start the proxy.
+
 ---
 
 ## 🎯 Features

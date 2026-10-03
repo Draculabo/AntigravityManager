@@ -15,10 +15,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { useToast } from '@/components/ui/use-toast';
 import { OpenCodeSyncCard } from '@/modules/proxy-gateway/components/OpenCodeSyncCard';
 import { GlobalSystemPromptCard } from '@/modules/proxy-gateway/components/GlobalSystemPromptCard';
 import { AuditAndThoughtStoreCard } from '@/modules/proxy-gateway/components/AuditAndThoughtStoreCard';
+import { ProxyServiceControl } from '@/modules/proxy-gateway/components/ProxyServiceControl';
 import {
   buildProxyExampleModels,
   isImageProxyExampleModel,
@@ -105,7 +105,6 @@ function ProxyPage() {
   const { t } = useTranslation();
   const { config, isLoading, saveConfig } = useAppConfig();
   const { data: cloudAccounts = [] } = useCloudAccounts();
-  const { toast } = useToast();
 
   // Query all available local IPs
   const { data: localIps } = useQuery({
@@ -351,54 +350,11 @@ print(response.choices[0].message.content)`;
         <CardContent className="space-y-6">
           {/* Start/Stop Button */}
           <div className="flex items-center gap-4">
-            <Button
-              variant={proxyConfig.enabled ? 'destructive' : 'default'}
-              onClick={async () => {
-                try {
-                  const { ipc } = await import('@/ipc/manager');
-                  if (proxyConfig.enabled) {
-                    await ipc.client.gateway.stop();
-                    setGatewayError(null);
-                    updateProxyConfig({ ...proxyConfig, enabled: false });
-                    return;
-                  }
-
-                  const result = await ipc.client.gateway.start({ port: proxyConfig.port });
-                  if (result.success) {
-                    setGatewayError(null);
-                    updateProxyConfig({ ...proxyConfig, port: result.port, enabled: true });
-                    return;
-                  }
-
-                  const description =
-                    result.reason === 'address-in-use'
-                      ? t('proxy.service.port_in_use_description', { port: result.port })
-                      : result.message;
-                  setGatewayError(description);
-                  updateProxyConfig({ ...proxyConfig, enabled: false });
-                  toast({
-                    title:
-                      result.reason === 'address-in-use'
-                        ? t('proxy.service.port_in_use_title')
-                        : t('proxy.service.start_failed'),
-                    description,
-                    variant: 'destructive',
-                  });
-                } catch (error) {
-                  const description =
-                    error instanceof Error ? error.message : t('proxy.service.start_failed');
-                  setGatewayError(description);
-                  updateProxyConfig({ ...proxyConfig, enabled: false });
-                  toast({
-                    title: t('proxy.service.start_failed'),
-                    description,
-                    variant: 'destructive',
-                  });
-                }
-              }}
-            >
-              {proxyConfig.enabled ? t('proxy.service.stop') : t('proxy.service.start')}
-            </Button>
+            <ProxyServiceControl
+              config={proxyConfig}
+              onConfigChange={updateProxyConfig}
+              onError={setGatewayError}
+            />
           </div>
           {gatewayError && (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
