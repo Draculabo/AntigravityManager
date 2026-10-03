@@ -55,4 +55,15 @@ describe('Forge package ignore policy', () => {
     expect(shouldIgnorePackagePath('/test-results/report.json')).toBe(true);
     expect(shouldIgnorePackagePath('/src/main.ts')).toBe(true);
   });
+
+  it('keeps the process query loader and its platform binaries', () => {
+    const runtimePaths = [
+      '/node_modules/@draculabo/sysinfo-process-enhanced/index.js',
+      '/node_modules/@draculabo/sysinfo-process-enhanced/lib/query.cjs',
+      '/node_modules/@draculabo/sysinfo-process-enhanced-win32-x64-msvc/sysinfo.win32-x64-msvc.node',
+      '/node_modules/@draculabo/sysinfo-process-enhanced-linux-x64-gnu/sysinfo.linux-x64-gnu.node',
+      '/node_modules/@draculabo/sysinfo-process-enhanced-darwin-arm64/sysinfo.darwin-arm64.node',
+    ];
+    expect(runtimePaths.map(shouldIgnorePackagePath)).toEqual(runtimePaths.map(() => false));
+  });
 });

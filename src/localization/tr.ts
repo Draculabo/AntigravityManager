@@ -1,5 +1,24 @@
 const tr = {
   appName: 'Antigravity Manager',
+  'process-runtime': {
+    'close-failed': 'Antigravity kapatılamadı. İzinleri kontrol edip tekrar deneyin.',
+    'exit-unconfirmed':
+      'Antigravity işleminin sonlandığı doğrulanamadı. Yeniden denemeden önce uygulamayı kontrol edin.',
+    working: 'İşleniyor...',
+    busy: 'Antigravity meşgul. İşlemin tamamlanmasını bekleyin.',
+    'missing-executable':
+      'Çalıştırılabilir dosya bulunamadı veya çalıştırılamıyor. Yolu kontrol edin.',
+    'target-conflict':
+      'Yapılandırılan yol ve çalışan işlem farklı kurulumlara ait. Hesap değiştirmeden önce çakışmayı çözün.',
+    'directory-conflict':
+      'Yapılandırılan ve kullanılan veri dizinleri farklı. Hesap değiştirmeden önce çakışmayı çözün.',
+    'probe-failed': 'İşlem süre sınırı içinde kontrol edilemedi.',
+    'launch-failed': 'Başlatma başarısız oldu. Yolu ve izinleri kontrol edin.',
+    'startup-unconfirmed':
+      'Başlangıç altı saniye içinde doğrulanamadı. Tekrar başlatılmadı. Yeniden denemeden önce uygulamayı kontrol edin.',
+    'switched-startup-unconfirmed':
+      'Hesap verileri güncellendi ancak başlangıç doğrulanamadı. Tekrar başlatılmadı. Yeniden denemeden önce uygulamayı kontrol edin.',
+  },
   common: {
     loading: 'Yükleniyor...',
     error: 'Hata',

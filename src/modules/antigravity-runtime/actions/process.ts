@@ -12,3 +12,7 @@ export function closeAntigravity(target?: AntigravityAppTarget) {
 export function startAntigravity(target?: AntigravityAppTarget) {
   return ipc.client.proc.startAntigravity({ target });
 }
+
+export function getProcessOperation(target?: AntigravityAppTarget) {
+  return ipc.client.proc.getOperation({ target });
+}

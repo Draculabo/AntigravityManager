@@ -1,10 +1,14 @@
 import { Entry } from '@napi-rs/keyring';
 import { execFileSync, spawnSync } from 'child_process';
+import os from 'node:os';
+import path from 'node:path';
 import { z } from 'zod';
 import { logger } from '@/shared/logging/logger';
 import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreToken';
 import { writeAgyCliToken } from './agyCliTokenStore';
 import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
+import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
+import { readWindowsCredential, writeWindowsCredential } from './windowsCredentialStore';
 
 export interface CredentialStoreToken {
   accessToken?: string;
@@ -39,13 +43,14 @@ export class CredentialStoreReadError extends Error {
 const CredentialTokenPayloadSchema = z
   .object({
     access_token: z.string().trim().min(1).optional(),
-    refresh_token: z.string().trim().min(1),
+    refresh_token: z.string().trim(),
     id_token: z.string().trim().min(1).optional(),
     project_id: z.string().trim().min(1).optional(),
     expiry_timestamp: z.number().finite().optional(),
     expiry: z.string().trim().min(1).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((token) => Boolean(token.refresh_token || token.access_token));
 
 const NestedCredentialPayloadSchema = z
   .object({
@@ -63,6 +68,8 @@ function buildCredentialStorePayload(token: CredentialStoreTokenInput): string {
       token_type: 'Bearer',
       refresh_token: token.refresh_token,
       expiry,
+      ...(token.id_token ? { id_token: token.id_token } : {}),
+      ...(token.project_id ? { project_id: token.project_id } : {}),
     },
     auth_method: 'consumer',
   });
@@ -154,8 +161,16 @@ function classifyCredentialStoreReadError(error: unknown): CredentialStoreReadEr
   return new CredentialStoreReadError('unavailable');
 }
 
+function createNativeCredentialEntry(): Entry {
+  // Secret Service interprets an explicit target as a collection name. The
+  // Windows credential target must not create a new Linux collection/prompt.
+  return process.platform === 'linux'
+    ? new Entry('gemini', 'antigravity')
+    : Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
+}
+
 function readViaNativeKeyring(): Uint8Array | null {
-  const entry = Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
+  const entry = createNativeCredentialEntry();
   const secret = entry.getSecret();
   return secret ? Uint8Array.from(secret) : null;
 }
@@ -187,7 +202,15 @@ function readViaSecretTool(): Uint8Array | null {
   return payload ? Buffer.from(payload, 'utf-8') : null;
 }
 
-export function readAntigravityCredentialStoreToken(): CredentialStoreToken | null {
+export async function readAntigravityCredentialStoreToken(): Promise<CredentialStoreToken | null> {
+  if (process.platform === 'win32') {
+    try {
+      const payload = await readWindowsCredential('gemini:antigravity');
+      return payload === null ? null : parseCredentialStorePayload(payload);
+    } catch (error) {
+      throw classifyCredentialStoreReadError(error);
+    }
+  }
   if (process.platform === 'linux') {
     try {
       const secret = readViaSecretTool();
@@ -226,7 +249,7 @@ function isSecretToolAvailable(): boolean {
 }
 
 function writeViaNativeKeyring(payload: string): void {
-  const entry = Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
+  const entry = createNativeCredentialEntry();
   entry.setSecret(Buffer.from(payload, 'utf-8'));
 }
 
@@ -268,27 +291,37 @@ export type CredentialStoreWriteOptions =
     }
   | {
       syncGoogleOAuthFiles?: false;
+      syncClassicOAuthFile?: true;
     };
 
-export function writeAntigravityCredentialStoreToken(
+export async function writeAntigravityCredentialStoreToken(
   token: CredentialStoreTokenInput,
   options: CredentialStoreWriteOptions = {},
-): void {
+): Promise<void> {
   const payload = buildCredentialStorePayload(token);
   logger.info('Writing Antigravity token to system credential store');
 
-  writeToSystemCredentialStore(payload);
+  await writeToSystemCredentialStore(payload);
+
+  if (
+    process.platform === 'linux' &&
+    'syncClassicOAuthFile' in options &&
+    options.syncClassicOAuthFile
+  ) {
+    // Linux standalone builds can select file storage instead of Secret Service.
+    // This is the file opened by the official language server, not the CLI cache.
+    writePrivateFileAtomically(
+      path.join(os.homedir(), '.gemini', 'jetski-standalone-oauth-token'),
+      payload,
+    );
+  }
 
   // The CLI keeps the same payload in a file rather than the credential store,
   // so it has to be updated here or it stays on the previous account.
-  writeAgyCliToken(payload);
+  writeAgyCliToken(payload, options.syncGoogleOAuthFiles === true);
 
   if (options.syncGoogleOAuthFiles) {
-    try {
-      writeGoogleOAuthCredentials({ ...token, email: options.email });
-    } catch (error) {
-      logger.warn('Failed to synchronize generic Google OAuth credential files', error);
-    }
+    writeGoogleOAuthCredentials({ ...token, email: options.email });
   }
 }
 
@@ -303,7 +336,11 @@ function credentialStoreItemExists(): boolean {
   return result?.status === 0;
 }
 
-function writeToSystemCredentialStore(payload: string): void {
+async function writeToSystemCredentialStore(payload: string): Promise<void> {
+  if (process.platform === 'win32') {
+    await writeWindowsCredential('gemini:antigravity', 'antigravity', payload);
+    return;
+  }
   if (process.platform === 'darwin') {
     const value = `go-keyring-base64:${Buffer.from(payload, 'utf-8').toString('base64')}`;
     // `-A` sets the item's access-control list to "all applications". macOS treats writing the ACL

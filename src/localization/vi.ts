@@ -1,5 +1,23 @@
 const vi = {
   appName: 'Antigravity Manager',
+  'process-runtime': {
+    'close-failed': 'Không thể đóng Antigravity. Kiểm tra quyền truy cập rồi thử lại.',
+    'exit-unconfirmed':
+      'Không thể xác nhận Antigravity đã thoát. Kiểm tra ứng dụng trước khi thử lại.',
+    working: 'Đang xử lý...',
+    busy: 'Antigravity đang bận. Vui lòng đợi thao tác hoàn tất.',
+    'missing-executable': 'Không tìm thấy hoặc không thể chạy tệp thực thi. Kiểm tra đường dẫn.',
+    'target-conflict':
+      'Đường dẫn cấu hình và tiến trình đang chạy thuộc các bản cài đặt khác nhau. Giải quyết xung đột trước khi chuyển tài khoản.',
+    'directory-conflict':
+      'Thư mục dữ liệu cấu hình và đang dùng khác nhau. Giải quyết xung đột trước khi chuyển tài khoản.',
+    'probe-failed': 'Không thể kiểm tra tiến trình trong thời gian quy định.',
+    'launch-failed': 'Khởi chạy thất bại. Kiểm tra đường dẫn và quyền truy cập.',
+    'startup-unconfirmed':
+      'Chưa xác nhận khởi chạy trong sáu giây. Không tự khởi chạy lại. Kiểm tra ứng dụng trước khi thử lại.',
+    'switched-startup-unconfirmed':
+      'Dữ liệu tài khoản đã cập nhật nhưng chưa xác nhận khởi chạy. Không tự khởi chạy lại. Kiểm tra ứng dụng trước khi thử lại.',
+  },
   common: {
     loading: 'Đang tải...',
     error: 'Lỗi',

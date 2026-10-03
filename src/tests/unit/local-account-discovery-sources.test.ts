@@ -26,7 +26,7 @@ afterEach(() => {
 describe('AntigravityKeyringDiscoverySource', () => {
   it('returns a typed missing result when no system credential exists', async () => {
     const source = new AntigravityKeyringDiscoverySource({
-      readCredential: () => null,
+      readCredential: async () => null,
     });
 
     await expect(source.discover()).resolves.toEqual({
@@ -44,7 +44,7 @@ describe('AntigravityKeyringDiscoverySource', () => {
 
   it('converts the system credential into a read-only candidate', async () => {
     const source = new AntigravityKeyringDiscoverySource({
-      readCredential: () => ({
+      readCredential: async () => ({
         accessToken: 'keyring-access',
         refreshToken: 'keyring-refresh',
         projectId: 'keyring-project',

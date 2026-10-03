@@ -1,3 +1,4 @@
+import type { PathResolutionOptions } from '@/shared/platform/paths';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
@@ -9,16 +10,24 @@ import { ItemTableValueRowSchema, type ItemTableKey } from '@/shared/persistence
 import { logger } from '@/shared/logging/logger';
 import { getAntigravityDbPaths } from '@/shared/platform/paths';
 import { parseRow } from '@/shared/persistence/database/sqlite';
-import { ProtobufUtils } from '@/shared/serialization/protobuf';
 import { openDrizzleConnection } from '@/shared/persistence/database/dbConnection';
 import { itemTable } from '@/shared/persistence/database/schema';
-import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreToken';
+import {
+  prepareClientAccountWrite,
+  prepareLaunchContext,
+  readAntigravityCredentialStoreToken,
+  resolveClientAccountStorage,
+} from '@/modules/antigravity-runtime';
+import { credentialsFromAccountBackup } from './snapshotCredentials';
 import { hasErrorCode } from '@/shared/errors/error-guards';
+import { ProtobufUtils } from '@/shared/serialization/protobuf';
 
 const KEYS_TO_BACKUP: ItemTableKey[] = [
   'antigravityAuthStatus',
   'jetskiStateSync.agentManagerInitState',
   'antigravityUnifiedStateSync.oauthToken',
+  'antigravityUnifiedStateSync.userStatus',
+  'antigravityUnifiedStateSync.enterprisePreferences',
 ];
 
 function openAntigravityStateDb(
@@ -240,8 +249,11 @@ function readCurrentAccountInfoFromDbPath(
  * Gets the current account info.
  * @returns {AccountInfo} The current account info.
  */
-export function getCurrentAccountInfo(target?: AntigravityAppTarget | null): AccountInfo {
-  const dbPaths = getAntigravityDbPaths(target);
+export function getCurrentAccountInfo(
+  target?: AntigravityAppTarget | null,
+  pathOptions?: PathResolutionOptions,
+): AccountInfo {
+  const dbPaths = getAntigravityDbPaths(target, pathOptions);
   if (dbPaths.length === 0) {
     return { email: '', isAuthenticated: false };
   }
@@ -271,145 +283,77 @@ export function getCurrentAccountInfo(target?: AntigravityAppTarget | null): Acc
   return { email: '', isAuthenticated: false };
 }
 
-export function backupAccount(account: AccountBackupData['account']): AccountBackupData {
-  let connection: ReturnType<typeof openDrizzleConnection> | null = null;
-  try {
-    connection = getDatabaseConnection(undefined);
-    const { orm } = connection;
-
-    // NOTE Backup only specific keys
-    const data: Record<string, unknown> = {};
-
-    for (const key of KEYS_TO_BACKUP) {
-      const value = readItemValue(orm, key, `ide.itemTable.backup.${key}`);
-      if (value) {
-        try {
-          data[key] = JSON.parse(value);
-        } catch {
-          data[key] = value;
-        }
-        logger.debug(`Backed up key: ${key}`);
-      } else {
-        logger.debug(`Key not found: ${key}`);
-      }
-    }
-
-    // NOTE Add metadata
-    data['account_email'] = account.email;
-    data['backup_time'] = new Date().toISOString();
-
-    return {
-      version: '1.0',
-      account,
-      data,
-    };
-  } catch (error) {
-    logger.error('Failed to backup account', error);
-    throw error;
-  } finally {
-    if (connection) {
-      connection.raw.close();
-    }
-  }
-}
-
-/**
- * Restores the account data to the database.
- * @param backup {AccountBackupData} The backup data to restore.
- * @throws {Error} If the backup data cannot be restored.
- */
-export function extractCredentialStoreTokenFromBackup(
-  backup: AccountBackupData,
-): CredentialStoreTokenInput {
-  const unified = backup.data['antigravityUnifiedStateSync.oauthToken'];
-  if (!isString(unified)) {
-    throw new Error('Backup does not contain antigravityUnifiedStateSync.oauthToken');
-  }
-
-  const parsed = ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(unified);
-  if (!parsed) {
-    throw new Error('Unable to extract OAuth token from backup');
-  }
-
-  return {
-    access_token: parsed.accessToken,
-    refresh_token: parsed.refreshToken,
-    expiry_timestamp: parsed.expiryTimestamp,
+/** Captures only authentication state from the explicitly selected installation. */
+export async function backupAccount(
+  account: AccountBackupData['account'],
+  target?: AntigravityAppTarget,
+  pathOptions?: PathResolutionOptions,
+): Promise<AccountBackupData> {
+  const data: AccountBackupData['data'] = {
+    account_email: account.email,
+    backup_time: new Date().toISOString(),
   };
-}
-
-export function restoreAccount(backup: AccountBackupData, appTarget?: AntigravityAppTarget): void {
-  const dbPaths = getAntigravityDbPaths(appTarget);
-  if (dbPaths.length === 0) {
-    throw new Error('No Antigravity database paths found');
-  }
-
-  let successCount = 0;
-
-  for (const dbPath of dbPaths) {
-    // NOTE Restore main DB
-    if (restoreSingleDatabase(dbPath, backup)) {
-      successCount++;
+  const storage = await resolveClientAccountStorage(target, pathOptions);
+  if (storage === 'credential-store') {
+    const token = await readAntigravityCredentialStoreToken();
+    if (!token?.accessToken || !token.expiryTimestamp) {
+      throw new Error('Client credential store does not contain complete snapshot credentials');
     }
-
-    // NOTE Restore backup DB (if exists)
-    const backupDbPath = dbPath.replace(/\.vscdb$/, '.vscdb.backup');
-    if (fs.existsSync(backupDbPath)) {
-      if (restoreSingleDatabase(backupDbPath, backup)) {
-        successCount++;
-      }
+    data['antigravityUnifiedStateSync.oauthToken'] = ProtobufUtils.createUnifiedOAuthToken(
+      token.accessToken,
+      token.refreshToken,
+      token.expiryTimestamp,
+      false,
+      token.idToken,
+      account.email,
+    );
+    if (token.projectId) {
+      data['antigravityUnifiedStateSync.enterprisePreferences'] =
+        ProtobufUtils.createUnifiedStateEntry(
+          'enterpriseGcpProjectId',
+          ProtobufUtils.createStringValuePayload(token.projectId),
+        );
     }
-  }
-
-  if (successCount > 0) {
-    logger.info(`Account data restored successfully to ${successCount} files`);
   } else {
-    throw new Error('Failed to restore account data to any database file');
-  }
-}
-
-/**
- * Restores a single database file.
- * @param dbPath {string} The path to the database file.
- * @param backup {AccountBackupData} The backup data to restore.
- * @returns {boolean} True if the database file was restored successfully, false otherwise.
- */
-function restoreSingleDatabase(dbPath: string, backup: AccountBackupData): boolean {
-  if (!fs.existsSync(dbPath)) {
-    return false;
-  }
-
-  logger.info(`Restoring database: ${dbPath}`);
-  let connection: ReturnType<typeof openDrizzleConnection> | null = null;
-
-  try {
-    connection = getDatabaseConnection(dbPath);
-    const { orm } = connection;
-    orm.transaction((tx) => {
-      // NOTE Only restore the keys that were backed up
-      for (const key of KEYS_TO_BACKUP) {
-        if (key in backup.data) {
-          const value = backup.data[key];
-          const stringValue = isString(value) ? value : JSON.stringify(value);
-          tx.insert(itemTable)
-            .values({ key, value: stringValue })
-            .onConflictDoUpdate({
-              target: itemTable.key,
-              set: { value: stringValue },
-            })
-            .run();
-          logger.debug(`Restored key: ${key}`);
+    const dbPath = getAntigravityDbPaths(target, pathOptions).find((file) => fs.existsSync(file));
+    if (!dbPath) {
+      throw new Error('Selected client state database does not exist');
+    }
+    const { raw, orm } = openAntigravityStateDb(dbPath, true);
+    try {
+      const snapshot = orm.transaction((transaction) => {
+        const result: AccountBackupData['data'] = {};
+        for (const key of KEYS_TO_BACKUP) {
+          const value = readItemValue(transaction, key, 'client-snapshot.' + key);
+          if (value) {
+            result[key] = value;
+          }
         }
-      }
-    });
-    logger.info(`Database restoration complete: ${dbPath}`);
-    return true;
-  } catch (error) {
-    logger.error(`Failed to restore database: ${dbPath}`, error);
-    return false;
-  } finally {
-    if (connection) {
-      connection.raw.close();
+        return result;
+      });
+      Object.assign(data, snapshot);
+    } finally {
+      raw.close();
     }
   }
+  return { version: '1.0', account: structuredClone(account), data };
+}
+
+/** Restores normalized credentials to the selected primary store, never a recovery copy. */
+export async function restoreAccount(
+  backup: AccountBackupData,
+  appTarget?: AntigravityAppTarget,
+  pathOptions?: PathResolutionOptions,
+): Promise<void> {
+  const credentials = credentialsFromAccountBackup(backup);
+  const context =
+    appTarget === 'agy' || pathOptions
+      ? undefined
+      : await prepareLaunchContext(appTarget === 'ide' ? 'ide' : 'classic');
+  const prepared = await prepareClientAccountWrite(
+    credentials,
+    appTarget,
+    pathOptions ?? context?.pathOptions,
+  );
+  await prepared.write();
 }

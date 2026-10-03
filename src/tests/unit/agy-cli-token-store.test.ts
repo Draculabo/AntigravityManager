@@ -7,7 +7,7 @@ const pathsMock = vi.hoisted(() => ({
   getAgyCliTokenPaths: vi.fn<() => string[]>(() => []),
 }));
 
-vi.mock('@/modules/cloud-account/persistence/agyCliTokenPaths', () => ({
+vi.mock('@/modules/antigravity-runtime/credentials/agyCliTokenPaths', () => ({
   getAgyCliTokenPaths: pathsMock.getAgyCliTokenPaths,
 }));
 
@@ -34,7 +34,33 @@ describe('writeAgyCliToken', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     fs.rmSync(workDir, { recursive: true, force: true });
+  });
+
+  it('initializes and confirms an explicit local CLI session before discovery', async () => {
+    vi.spyOn(os, 'homedir').mockReturnValue(workDir);
+    pathsMock.getAgyCliTokenPaths.mockReturnValue([]);
+    const { writeAgyCliToken } =
+      await import('@/modules/antigravity-runtime/credentials/agyCliTokenStore');
+    writeAgyCliToken(PAYLOAD, true);
+    expect(
+      fs.readFileSync(
+        path.join(workDir, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
+        'utf-8',
+      ),
+    ).toBe(PAYLOAD);
+  });
+
+  it('fails an explicit CLI switch when the local session cannot be replaced', async () => {
+    vi.spyOn(os, 'homedir').mockReturnValue(workDir);
+    pathsMock.getAgyCliTokenPaths.mockReturnValue([]);
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('replace failed');
+    });
+    const { writeAgyCliToken } =
+      await import('@/modules/antigravity-runtime/credentials/agyCliTokenStore');
+    expect(() => writeAgyCliToken(PAYLOAD, true)).toThrow('replace failed');
   });
 
   it('writes the payload to every CLI install', async () => {
@@ -43,7 +69,7 @@ describe('writeAgyCliToken', () => {
     pathsMock.getAgyCliTokenPaths.mockReturnValue([first, second]);
 
     const { writeAgyCliToken } =
-      await import('../../modules/cloud-account/persistence/agyCliTokenStore');
+      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
     writeAgyCliToken(PAYLOAD);
 
     expect(fs.readFileSync(first, 'utf-8')).toBe(PAYLOAD);
@@ -56,7 +82,7 @@ describe('writeAgyCliToken', () => {
     pathsMock.getAgyCliTokenPaths.mockReturnValue([target]);
 
     const { writeAgyCliToken } =
-      await import('../../modules/cloud-account/persistence/agyCliTokenStore');
+      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
     writeAgyCliToken(PAYLOAD);
 
     expect(fs.readFileSync(target, 'utf-8')).toBe(PAYLOAD);
@@ -70,7 +96,7 @@ describe('writeAgyCliToken', () => {
     pathsMock.getAgyCliTokenPaths.mockReturnValue([unwritable, reachable]);
 
     const { writeAgyCliToken } =
-      await import('../../modules/cloud-account/persistence/agyCliTokenStore');
+      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
 
     expect(() => writeAgyCliToken(PAYLOAD)).not.toThrow();
     expect(fs.readFileSync(reachable, 'utf-8')).toBe(PAYLOAD);
@@ -85,7 +111,7 @@ describe('writeAgyCliToken', () => {
     });
 
     const { writeAgyCliToken } =
-      await import('../../modules/cloud-account/persistence/agyCliTokenStore');
+      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
     writeAgyCliToken(PAYLOAD);
 
     expect(fs.readFileSync(target, 'utf-8')).toBe('previous account');
@@ -101,7 +127,7 @@ describe('writeAgyCliToken', () => {
     ]);
 
     const { writeAgyCliToken } =
-      await import('../../modules/cloud-account/persistence/agyCliTokenStore');
+      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
 
     expect(() => writeAgyCliToken(PAYLOAD)).not.toThrow();
     expect(fs.readFileSync(localTarget, 'utf-8')).toBe(PAYLOAD);
@@ -112,7 +138,7 @@ describe('writeAgyCliToken', () => {
     pathsMock.getAgyCliTokenPaths.mockReturnValue([]);
 
     const { writeAgyCliToken } =
-      await import('../../modules/cloud-account/persistence/agyCliTokenStore');
+      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
     writeAgyCliToken(PAYLOAD);
 
     expect(fs.readdirSync(workDir)).toEqual([]);

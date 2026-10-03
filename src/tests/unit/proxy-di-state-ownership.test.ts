@@ -1,10 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { SELF_DECLARED_DEPS_METADATA } from '@nestjs/common/constants';
 import { NestFactory } from '@nestjs/core';
-
-vi.mock('ps-list', () => ({
-  default: vi.fn().mockResolvedValue([]),
-}));
 
 import { ProxyModule } from '@/modules/proxy-gateway/server/proxy.module';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';

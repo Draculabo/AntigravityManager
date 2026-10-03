@@ -17,6 +17,7 @@ const childProcessMock = vi.hoisted(() => ({
   spawnSync: vi.fn(),
 }));
 const keyringMock = vi.hoisted(() => ({
+  createEntry: vi.fn(),
   deleteCredential: vi.fn(),
   setSecret: vi.fn(),
   withTarget: vi.fn(),
@@ -60,12 +61,16 @@ vi.mock('child_process', () => ({
 }));
 
 vi.mock('@napi-rs/keyring', () => ({
-  Entry: {
-    withTarget: keyringMock.withTarget,
+  Entry: class {
+    static withTarget = keyringMock.withTarget;
+    setSecret = keyringMock.setSecret;
+    deleteCredential = keyringMock.deleteCredential;
+    constructor(service: string, username: string) {
+      keyringMock.createEntry(service, username);
+    }
   },
 }));
-
-vi.mock('@/modules/cloud-account/persistence/agyCliTokenStore', () => ({
+vi.mock('@/modules/antigravity-runtime/credentials/agyCliTokenStore', () => ({
   writeAgyCliToken: agyCliMock.writeAgyCliToken,
 }));
 
@@ -123,6 +128,7 @@ beforeEach(async () => {
   childProcessMock.spawnSync.mockReset();
   keyringMock.deleteCredential.mockReset();
   keyringMock.setSecret.mockReset();
+  keyringMock.createEntry.mockReset();
   keyringMock.withTarget.mockReset();
   agyCliMock.writeAgyCliToken.mockReset();
   keyringMock.withTarget.mockReturnValue({
@@ -238,10 +244,8 @@ describe('writeAntigravityCredentialStoreToken', () => {
     setPlatform('darwin');
 
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken(token);
-
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken(token);
     expect(childProcessMock.execFileSync).toHaveBeenLastCalledWith(
       'security',
       ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'],
@@ -258,15 +262,15 @@ describe('writeAntigravityCredentialStoreToken', () => {
     setPlatform('linux');
 
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken(token);
-
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken(token);
     const storeCall = childProcessMock.spawnSync.mock.calls.find(
       (call) => call[1] && call[1].includes('store'),
     );
     expect(storeCall).toBeDefined();
-    const options = storeCall![2] as { input: string };
+    const options = storeCall![2] as {
+      input: string;
+    };
     expect(options.input).toContain('"access_token":"access-token"');
     expect(options.input).not.toContain('go-keyring-base64');
     expect(keyringMock.setSecret).not.toHaveBeenCalled();
@@ -275,20 +279,19 @@ describe('writeAntigravityCredentialStoreToken', () => {
   it('uses secret-tool when its no-argument usage probe exits non-zero', async () => {
     childProcessMock.spawnSync
       .mockReturnValueOnce({ error: undefined, status: 2, stderr: 'usage: secret-tool' })
+      .mockReturnValueOnce({ error: undefined, status: 0, stderr: '' })
       .mockReturnValueOnce({ error: undefined, status: 0, stderr: '' });
     setPlatform('linux');
 
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken(token);
-
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken(token);
     expect(childProcessMock.spawnSync).toHaveBeenNthCalledWith(1, 'secret-tool', [], {
       stdio: 'ignore',
       timeout: 3000,
     });
     expect(childProcessMock.spawnSync).toHaveBeenNthCalledWith(
-      2,
+      3,
       'secret-tool',
       ['store', '--label=gemini', 'service', 'gemini', 'username', 'antigravity'],
       expect.objectContaining({ input: expect.stringContaining('"access_token":"access-token"') }),
@@ -305,16 +308,11 @@ describe('writeAntigravityCredentialStoreToken', () => {
     setPlatform('linux');
 
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken(token);
-
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken(token);
     const secret = keyringMock.setSecret.mock.calls[0]?.[0] as Buffer;
-    expect(keyringMock.withTarget).toHaveBeenCalledWith(
-      'gemini:antigravity',
-      'gemini',
-      'antigravity',
-    );
+    expect(keyringMock.createEntry).toHaveBeenCalledWith('gemini', 'antigravity');
+    expect(keyringMock.withTarget).not.toHaveBeenCalled();
     expect(keyringMock.deleteCredential).not.toHaveBeenCalled();
     expect(secret.toString('utf-8')).toContain('"access_token":"access-token"');
     expect(secret.toString('utf-8')).not.toContain('go-keyring-base64');
@@ -327,10 +325,8 @@ describe('writeAntigravityCredentialStoreToken', () => {
     setPlatform('linux');
 
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken(token);
-
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken(token);
     expect(keyringMock.setSecret).toHaveBeenCalledTimes(1);
   });
 
@@ -338,30 +334,27 @@ describe('writeAntigravityCredentialStoreToken', () => {
     setPlatform('win32');
 
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken(token);
-
-    const secret = keyringMock.setSecret.mock.calls[0]?.[0] as Buffer;
-    expect(keyringMock.withTarget).toHaveBeenCalledWith(
-      'gemini:antigravity',
-      'gemini',
-      'antigravity',
-    );
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken(token);
+    const secret = keytarMock.setPassword.mock.calls.at(-1)?.[2];
+    expect(keyringMock.withTarget).not.toHaveBeenCalled();
     expect(keyringMock.deleteCredential).not.toHaveBeenCalled();
-    expect(secret.toString('utf-8')).toContain('"access_token":"access-token"');
-    expect(secret.toString('utf-8')).not.toContain('go-keyring-base64');
+    expect(secret).toContain('"access_token":"access-token"');
+    expect(secret).not.toContain('go-keyring-base64');
   });
 
   it('updates Windows credentials without deleting the existing entry first', async () => {
     setPlatform('win32');
 
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken(token);
-
-    expect(keyringMock.setSecret).toHaveBeenCalledTimes(1);
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken(token);
+    expect(keytarMock.setPassword).toHaveBeenCalledWith(
+      'gemini',
+      'antigravity',
+      expect.any(String),
+    );
+    expect(keyringMock.withTarget).not.toHaveBeenCalled();
     expect(keyringMock.deleteCredential).not.toHaveBeenCalled();
   });
 
@@ -369,11 +362,9 @@ describe('writeAntigravityCredentialStoreToken', () => {
     setPlatform('win32');
 
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken(token);
-
-    const secret = keyringMock.setSecret.mock.calls[0]?.[0] as Buffer;
-    expect(agyCliMock.writeAgyCliToken).toHaveBeenCalledWith(secret.toString('utf-8'));
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken(token);
+    const secret = keytarMock.setPassword.mock.calls.at(-1)?.[2];
+    expect(agyCliMock.writeAgyCliToken).toHaveBeenCalledWith(secret, false);
   });
 });

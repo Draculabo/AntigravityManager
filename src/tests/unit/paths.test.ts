@@ -37,11 +37,32 @@ vi.mock('child_process', () => ({
   execSync: childProcessMock.execSync,
 }));
 
-vi.mock('find-process', () => ({
-  default: findProcessMock,
+vi.mock('@/shared/platform/nativeProcessQuery', () => ({
+  readNativeProcessSnapshot: async () =>
+    (await findProcessMock()).map((row) => ({
+      pid: row.pid,
+      parentPid: row.ppid,
+      name: row.name,
+      exe: row.bin,
+      cmd: (row.cmd.match(/"[^"]*"|\S+/g) ?? []).map((arg) => arg.replace(/^"|"$/g, '')),
+      startTime: 1n,
+    })),
 }));
 
 const originalPlatform = process.platform;
+
+it('keeps native Linux executable paths case-sensitive', async () => {
+  const { areExecutablePathsEquivalent } = await import('@/shared/platform/paths');
+  expect([
+    areExecutablePathsEquivalent('/opt/App/selected', '/opt/app/selected', {
+      platform: 'linux',
+      isWsl: false,
+    }),
+    areExecutablePathsEquivalent('C:\\Apps\\selected.exe', 'c:\\apps\\selected.exe', {
+      platform: 'win32',
+    }),
+  ]).toEqual([false, true]);
+});
 const originalAppData = process.env.APPDATA;
 const originalLocalAppData = process.env.LOCALAPPDATA;
 const originalProgramFiles = process.env.ProgramFiles;
@@ -545,6 +566,18 @@ describe('Path Utilities', () => {
         'classic',
       ),
     ).toBe(false);
+    // Preflight must see competing installations that normal configured-path discovery excludes.
+    expect(
+      paths.isTargetAntigravityProcessCandidate(
+        {
+          name: 'Antigravity.exe',
+          commandLine: `"${fuzzyClassicPath}"`,
+          executablePath: fuzzyClassicPath,
+        },
+        'classic',
+        { ignoreExecutableConfiguration: true },
+      ),
+    ).toBe(true);
     expect(
       paths.isTargetAntigravityProcessCandidate(
         {
@@ -608,44 +641,6 @@ describe('Path Utilities', () => {
           name: 'Antigravity.exe',
           commandLine: `"${idePath}" --type=utility`,
           executablePath: '',
-        },
-        'classic',
-      ),
-    ).toBe(false);
-  });
-
-  it('should match IDE helper processes by executable path for close/wait checks', async () => {
-    vi.resetModules();
-    setPlatform('win32');
-    process.env.LOCALAPPDATA = 'C:\\Users\\Alice\\AppData\\Local';
-
-    const idePath =
-      'C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity IDE\\Antigravity IDE.exe';
-    const classicPath = 'C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe';
-
-    vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
-      const normalizedPath = String(candidatePath);
-      return normalizedPath === idePath || normalizedPath === classicPath;
-    });
-
-    const paths = await import('../../shared/platform/paths');
-
-    expect(
-      paths.isTargetAntigravityExecutableProcessCandidate(
-        {
-          name: 'Antigravity IDE.exe',
-          commandLine: `"${idePath}" --type=renderer`,
-          executablePath: idePath,
-        },
-        'ide',
-      ),
-    ).toBe(true);
-    expect(
-      paths.isTargetAntigravityExecutableProcessCandidate(
-        {
-          name: 'Antigravity IDE.exe',
-          commandLine: `"${idePath}" --type=renderer`,
-          executablePath: idePath,
         },
         'classic',
       ),
@@ -828,25 +823,17 @@ describe('Path Utilities', () => {
     await paths.refreshAntigravityProcessCache('ide');
 
     expect(paths.getAntigravityExecutablePath('ide')).toBe(executablePath);
-    expect(findProcessMock).toHaveBeenCalledWith(
-      'name',
-      'Antigravity IDE',
-      expect.objectContaining({ strict: false }),
-    );
+    expect(findProcessMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should avoid all-process scans during normal process cache refresh', async () => {
+  it('performs one snapshot during normal process cache refresh', async () => {
     vi.resetModules();
     setPlatform('win32');
 
     const paths = await import('../../shared/platform/paths');
     await paths.refreshAntigravityProcessCache('classic');
 
-    expect(findProcessMock).not.toHaveBeenCalledWith(
-      'name',
-      '',
-      expect.objectContaining({ strict: false }),
-    );
+    expect(findProcessMock).toHaveBeenCalledTimes(1);
   });
 
   it('should preserve Windows process arguments during normal process cache refresh', async () => {
@@ -869,11 +856,7 @@ describe('Path Utilities', () => {
     const paths = await import('../../shared/platform/paths');
     await paths.refreshAntigravityProcessCache('classic');
 
-    expect(findProcessMock).toHaveBeenCalledWith(
-      'name',
-      'Antigravity',
-      expect.objectContaining({ strict: false }),
-    );
+    expect(findProcessMock).toHaveBeenCalledTimes(1);
     expect(paths.getAntigravityArgsFromRunningProcess('classic')).toEqual([
       [
         'C:\\Users\\Alice\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe',
@@ -904,30 +887,20 @@ describe('Path Utilities', () => {
 
       return '';
     });
-    findProcessMock.mockImplementation(async (_type, searchName) => {
-      if (searchName === '') {
-        return [
-          {
-            pid: 456,
-            ppid: 1,
-            name: 'MyEditor.exe',
-            bin: executablePath,
-            cmd: `"${executablePath}"`,
-          },
-        ];
-      }
-
-      return [];
-    });
+    findProcessMock.mockResolvedValue([
+      {
+        pid: 456,
+        ppid: 1,
+        name: 'MyEditor.exe',
+        bin: executablePath,
+        cmd: '"' + executablePath + '"',
+      },
+    ]);
 
     const paths = await import('../../shared/platform/paths');
     await paths.refreshAntigravityProcessCache('classic', { includeAllProcesses: true });
 
-    expect(findProcessMock).toHaveBeenCalledWith(
-      'name',
-      '',
-      expect.objectContaining({ strict: false }),
-    );
+    expect(findProcessMock).toHaveBeenCalledTimes(1);
     expect(paths.getAntigravityExecutablePath('classic')).toBe(executablePath);
   });
 });
@@ -944,7 +917,7 @@ describe('getAgyCliTokenPaths', () => {
     const exists = (candidate: string) =>
       ['/home/alice/.local/bin/agy', '/home/alice/.gemini/antigravity-cli'].includes(candidate);
 
-    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+    const paths = await import('../../modules/antigravity-runtime/credentials/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({ exists, homeDirectory: '/home/alice', platform: 'linux' }),
@@ -957,7 +930,7 @@ describe('getAgyCliTokenPaths', () => {
     // first login, so a fresh install has neither the directory nor a token.
     const exists = (candidate: string) => candidate === '/home/alice/.local/bin/agy';
 
-    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+    const paths = await import('../../modules/antigravity-runtime/credentials/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({ exists, homeDirectory: '/home/alice', platform: 'linux' }),
@@ -967,7 +940,7 @@ describe('getAgyCliTokenPaths', () => {
   it('offers no Antigravity CLI token when the CLI was never installed', async () => {
     setPlatform('linux');
 
-    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+    const paths = await import('../../modules/antigravity-runtime/credentials/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({
@@ -988,7 +961,7 @@ describe('getAgyCliTokenPaths', () => {
         '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli',
       ].includes(candidate);
 
-    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+    const paths = await import('../../modules/antigravity-runtime/credentials/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({
@@ -1014,7 +987,7 @@ describe('getAgyCliTokenPaths', () => {
         '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli',
       ].includes(candidate);
 
-    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+    const paths = await import('../../modules/antigravity-runtime/credentials/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({
@@ -1037,7 +1010,7 @@ describe('getAgyCliTokenPaths', () => {
         '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli',
         '\\\\wsl.localhost\\Ubuntu-24.04\\home\\bob\\.gemini\\antigravity-cli',
       ].includes(candidate);
-    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+    const paths = await import('../../modules/antigravity-runtime/credentials/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({
@@ -1058,7 +1031,7 @@ describe('getAgyCliTokenPaths', () => {
       candidate === 'C:\\Users\\Alice\\.local\\bin\\agy.exe' ||
       candidate === 'C:\\Users\\Alice\\.gemini\\antigravity-cli';
 
-    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+    const paths = await import('../../modules/antigravity-runtime/credentials/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({
@@ -1074,7 +1047,7 @@ describe('getAgyCliTokenPaths', () => {
   it('does not create a token path for a directory that has no CLI install', async () => {
     setPlatform('linux');
 
-    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+    const paths = await import('../../modules/antigravity-runtime/credentials/agyCliTokenPaths');
 
     const exists = vi.fn(() => false);
     expect(
@@ -1088,7 +1061,7 @@ describe('getAgyCliTokenPaths', () => {
     setPlatform('win32');
     const listRunningWslDistros = vi.fn(() => []);
 
-    const paths = await import('../../modules/cloud-account/persistence/agyCliTokenPaths');
+    const paths = await import('../../modules/antigravity-runtime/credentials/agyCliTokenPaths');
 
     expect(
       paths.getAgyCliTokenPaths({

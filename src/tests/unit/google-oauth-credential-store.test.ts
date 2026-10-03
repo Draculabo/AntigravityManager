@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { writeGoogleOAuthCredentials } from '@/modules/cloud-account/persistence/googleOAuthCredentialStore';
+import { writeGoogleOAuthCredentials } from '@/modules/antigravity-runtime/credentials/googleOAuthCredentialStore';
 
 describe('writeGoogleOAuthCredentials', () => {
   let workDir: string;

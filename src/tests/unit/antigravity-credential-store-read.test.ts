@@ -1,14 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  createEntry: vi.fn(),
   getSecret: vi.fn(),
   spawnSync: vi.fn(),
   withTarget: vi.fn(),
+  readWindowsCredential: vi.fn(),
 }));
-
+vi.mock('@/modules/antigravity-runtime/credentials/windowsCredentialStore', () => ({
+  readWindowsCredential: mocks.readWindowsCredential,
+}));
 vi.mock('@napi-rs/keyring', () => ({
-  Entry: {
-    withTarget: mocks.withTarget,
+  Entry: class {
+    static withTarget = mocks.withTarget;
+    getSecret = mocks.getSecret;
+    constructor(service: string, username: string) {
+      mocks.createEntry(service, username);
+    }
   },
 }));
 
@@ -40,12 +48,17 @@ describe('readAntigravityCredentialStoreToken', () => {
   beforeEach(() => {
     vi.resetModules();
     mocks.getSecret.mockReset();
+    mocks.createEntry.mockReset();
     mocks.spawnSync.mockReset();
     mocks.withTarget.mockReset();
     mocks.withTarget.mockReturnValue({
       getSecret: mocks.getSecret,
     });
     setPlatform('win32');
+    mocks.readWindowsCredential.mockImplementation(async () => {
+      const secret = mocks.getSecret();
+      return secret === null ? null : Buffer.from(secret).toString('utf8');
+    });
   });
 
   afterEach(() => {
@@ -68,9 +81,8 @@ describe('readAntigravityCredentialStoreToken', () => {
       ),
     );
     const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(readAntigravityCredentialStoreToken()).toEqual({
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    expect(await readAntigravityCredentialStoreToken()).toEqual({
       accessToken: 'access-nested',
       refreshToken: 'refresh-nested',
       idToken: 'id-nested',
@@ -91,9 +103,8 @@ describe('readAntigravityCredentialStoreToken', () => {
       ),
     );
     const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(readAntigravityCredentialStoreToken()).toEqual({
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    expect(await readAntigravityCredentialStoreToken()).toEqual({
       accessToken: 'access-top-level',
       refreshToken: 'refresh-top-level',
       projectId: 'project-top-level',
@@ -113,9 +124,8 @@ describe('readAntigravityCredentialStoreToken', () => {
       ),
     );
     const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(readAntigravityCredentialStoreToken()).toEqual({
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    expect(await readAntigravityCredentialStoreToken()).toEqual({
       refreshToken: 'refresh-macos',
     });
   });
@@ -136,9 +146,8 @@ describe('readAntigravityCredentialStoreToken', () => {
       stderr: '',
     });
     const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(readAntigravityCredentialStoreToken()).toEqual({
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    expect(await readAntigravityCredentialStoreToken()).toEqual({
       refreshToken: 'refresh-linux',
     });
     expect(mocks.spawnSync).toHaveBeenCalledWith(
@@ -165,11 +174,10 @@ describe('readAntigravityCredentialStoreToken', () => {
       stderr: 'refresh-secret-leak',
     });
     const { CredentialStoreReadError, readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(() => readAntigravityCredentialStoreToken()).toThrow(CredentialStoreReadError);
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await expect(readAntigravityCredentialStoreToken()).rejects.toThrow(CredentialStoreReadError);
     try {
-      readAntigravityCredentialStoreToken();
+      await readAntigravityCredentialStoreToken();
     } catch (error) {
       expect(error).toMatchObject({
         code: 'timed-out',
@@ -186,10 +194,9 @@ describe('readAntigravityCredentialStoreToken', () => {
       });
     });
     const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
     try {
-      readAntigravityCredentialStoreToken();
+      await readAntigravityCredentialStoreToken();
       expect.unreachable('Expected the credential read to fail');
     } catch (error) {
       expect(error).toMatchObject({
@@ -198,6 +205,24 @@ describe('readAntigravityCredentialStoreToken', () => {
       });
       expect(String(error)).not.toContain('refresh-secret-leak');
     }
+  });
+
+  it('reads the default Linux keyring when secret-tool is unavailable', async () => {
+    setPlatform('linux');
+    mocks.spawnSync.mockReturnValue({
+      error: Object.assign(new Error('spawn secret-tool ENOENT'), { code: 'ENOENT' }),
+      status: null,
+      stdout: '',
+      stderr: '',
+    });
+    mocks.getSecret.mockReturnValue(
+      Array.from(Buffer.from(JSON.stringify({ token: { refresh_token: 'refresh-linux' } }))),
+    );
+    const { readAntigravityCredentialStoreToken } =
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    expect(await readAntigravityCredentialStoreToken()).toEqual({ refreshToken: 'refresh-linux' });
+    expect(mocks.createEntry).toHaveBeenCalledWith('gemini', 'antigravity');
+    expect(mocks.withTarget).not.toHaveBeenCalled();
   });
 
   it('reports a missing Linux secret-tool fallback as unavailable', async () => {
@@ -214,9 +239,8 @@ describe('readAntigravityCredentialStoreToken', () => {
       stderr: '',
     });
     const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(() => readAntigravityCredentialStoreToken()).toThrow(
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await expect(readAntigravityCredentialStoreToken()).rejects.toThrow(
       'The Antigravity credential store is unavailable.',
     );
   });
@@ -225,13 +249,12 @@ describe('readAntigravityCredentialStoreToken', () => {
     const malformedPayload = '{"refresh_token":"refresh-secret-leak"';
     mocks.getSecret.mockReturnValue(Array.from(Buffer.from(malformedPayload, 'utf-8')));
     const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(() => readAntigravityCredentialStoreToken()).toThrow(
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await expect(readAntigravityCredentialStoreToken()).rejects.toThrow(
       'The Antigravity credential payload is malformed.',
     );
     try {
-      readAntigravityCredentialStoreToken();
+      await readAntigravityCredentialStoreToken();
     } catch (error) {
       expect(String(error)).not.toContain('refresh-secret-leak');
     }

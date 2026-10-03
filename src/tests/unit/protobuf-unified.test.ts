@@ -49,6 +49,7 @@ describe('ProtobufUtils Unified OAuth', () => {
       refreshToken,
       expiryTimestamp,
       idToken: undefined,
+      isGcpTos: false,
     });
   });
 
@@ -86,6 +87,7 @@ describe('ProtobufUtils Unified OAuth', () => {
       refreshToken,
       expiryTimestamp,
       idToken: undefined,
+      isGcpTos: false,
     });
   });
 

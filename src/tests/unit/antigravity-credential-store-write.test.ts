@@ -4,12 +4,15 @@ const mocks = vi.hoisted(() => ({
   execFileSync: vi.fn(),
   spawnSync: vi.fn(),
   setSecret: vi.fn(),
+  writeWindowsCredential: vi.fn(),
   deleteCredential: vi.fn(),
   withTarget: vi.fn(),
   writeAgyCliToken: vi.fn(),
   writeGoogleOAuthCredentials: vi.fn(),
 }));
-
+vi.mock('@/modules/antigravity-runtime/credentials/windowsCredentialStore', () => ({
+  writeWindowsCredential: mocks.writeWindowsCredential,
+}));
 vi.mock('@napi-rs/keyring', () => ({
   Entry: {
     withTarget: mocks.withTarget,
@@ -18,11 +21,10 @@ vi.mock('@napi-rs/keyring', () => ({
 
 // The real writer targets the Antigravity CLI session file under the user's
 // home, so leaving it unmocked would sign the live CLI out mid-test-run.
-vi.mock('@/modules/cloud-account/persistence/agyCliTokenStore', () => ({
+vi.mock('@/modules/antigravity-runtime/credentials/agyCliTokenStore', () => ({
   writeAgyCliToken: mocks.writeAgyCliToken,
 }));
-
-vi.mock('@/modules/cloud-account/persistence/googleOAuthCredentialStore', () => ({
+vi.mock('@/modules/antigravity-runtime/credentials/googleOAuthCredentialStore', () => ({
   writeGoogleOAuthCredentials: mocks.writeGoogleOAuthCredentials,
 }));
 
@@ -57,6 +59,8 @@ describe('writeAntigravityCredentialStoreToken', () => {
     // Default: the keychain item does not exist yet, so writes take the create path.
     mocks.spawnSync.mockReturnValue({ status: 1 });
     mocks.setSecret.mockReset();
+    mocks.writeWindowsCredential.mockReset();
+    mocks.writeWindowsCredential.mockResolvedValue(undefined);
     mocks.deleteCredential.mockReset();
     mocks.withTarget.mockReset();
     mocks.writeAgyCliToken.mockReset();
@@ -75,9 +79,8 @@ describe('writeAntigravityCredentialStoreToken', () => {
   it('sets the ACL with -A when first creating the macOS keychain item, without exposing the credential in process arguments', async () => {
     mocks.spawnSync.mockReturnValue({ status: 1 }); // item does not exist yet
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken({
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken({
       access_token: 'access-token',
       refresh_token: 'refresh-token',
       expiry_timestamp: 1_900_000_000,
@@ -104,9 +107,8 @@ describe('writeAntigravityCredentialStoreToken', () => {
   it('updates an existing macOS keychain item without -A so it does not reprompt for ACL changes', async () => {
     mocks.spawnSync.mockReturnValue({ status: 0 }); // item already exists
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken({
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken({
       access_token: 'access-token',
       refresh_token: 'refresh-token',
       expiry_timestamp: 1_900_000_000,
@@ -127,15 +129,14 @@ describe('writeAntigravityCredentialStoreToken', () => {
   it('syncs generic Google OAuth files only when the caller marks an explicit Agy switch', async () => {
     setPlatform('win32');
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
     const token = {
       access_token: 'access-token',
       refresh_token: 'refresh-token',
       expiry_timestamp: 1_900_000_000,
       id_token: 'id-token',
     };
-
-    writeAntigravityCredentialStoreToken(token, {
+    await writeAntigravityCredentialStoreToken(token, {
       email: 'active@example.com',
       syncGoogleOAuthFiles: true,
     });
@@ -145,16 +146,14 @@ describe('writeAntigravityCredentialStoreToken', () => {
       email: 'active@example.com',
     });
   });
-
-  it('keeps a successful credential-store switch when generic OAuth file sync fails', async () => {
+  it('reports an explicit CLI switch failure when its required OAuth file sync fails', async () => {
     setPlatform('win32');
     mocks.writeGoogleOAuthCredentials.mockImplementationOnce(() => {
       throw new Error('file sync failed');
     });
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(() =>
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await expect(
       writeAntigravityCredentialStoreToken(
         {
           access_token: 'access-token',
@@ -166,8 +165,8 @@ describe('writeAntigravityCredentialStoreToken', () => {
           syncGoogleOAuthFiles: true,
         },
       ),
-    ).not.toThrow();
-    expect(mocks.setSecret).toHaveBeenCalledTimes(1);
+    ).rejects.toThrow('file sync failed');
+    expect(mocks.writeWindowsCredential).toHaveBeenCalledTimes(1);
   });
 
   it('propagates update failures without issuing a destructive delete command', async () => {
@@ -175,52 +174,50 @@ describe('writeAntigravityCredentialStoreToken', () => {
       throw new Error('keychain update failed');
     });
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(() =>
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await expect(
       writeAntigravityCredentialStoreToken({
         access_token: 'access-token',
         refresh_token: 'refresh-token',
         expiry_timestamp: 1_900_000_000,
       }),
-    ).toThrow('keychain update failed');
-
+    ).rejects.toThrow('keychain update failed');
     expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
     expect(mocks.execFileSync.mock.calls[0][1]).not.toContain('delete-generic-password');
   });
-  it('updates native keyring credentials without deleting the existing entry first', async () => {
+  it('updates Windows credentials without constructing a destructive native Entry', async () => {
     setPlatform('win32');
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    writeAntigravityCredentialStoreToken({
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await writeAntigravityCredentialStoreToken({
       access_token: 'access-token',
       refresh_token: 'refresh-token',
       expiry_timestamp: 1_900_000_000,
     });
-
-    expect(mocks.withTarget).toHaveBeenCalledWith('gemini:antigravity', 'gemini', 'antigravity');
-    expect(mocks.setSecret).toHaveBeenCalledTimes(1);
+    expect(mocks.withTarget).not.toHaveBeenCalled();
+    expect(mocks.writeWindowsCredential).toHaveBeenCalledWith(
+      'gemini:antigravity',
+      'antigravity',
+      expect.stringContaining('"access_token":"access-token"'),
+    );
+    expect(mocks.setSecret).not.toHaveBeenCalled();
     expect(mocks.deleteCredential).not.toHaveBeenCalled();
   });
 
   it('preserves the existing native keyring entry when an update fails', async () => {
     setPlatform('win32');
-    mocks.setSecret.mockImplementation(() => {
-      throw new Error('native keyring update failed');
-    });
+    mocks.writeWindowsCredential.mockRejectedValue(new Error('native keyring update failed'));
     const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(() =>
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await expect(
       writeAntigravityCredentialStoreToken({
         access_token: 'access-token',
         refresh_token: 'refresh-token',
         expiry_timestamp: 1_900_000_000,
       }),
-    ).toThrow('native keyring update failed');
-
-    expect(mocks.setSecret).toHaveBeenCalledTimes(1);
+    ).rejects.toThrow('native keyring update failed');
+    expect(mocks.writeWindowsCredential).toHaveBeenCalledTimes(1);
+    expect(mocks.withTarget).not.toHaveBeenCalled();
     expect(mocks.deleteCredential).not.toHaveBeenCalled();
   });
 });

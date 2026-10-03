@@ -1,5 +1,21 @@
 const zhCn = {
   appName: 'Antigravity 管理器',
+  'process-runtime': {
+    'close-failed': '未能关闭 Antigravity。请检查权限后重试。',
+    'exit-unconfirmed': '未能确认 Antigravity 已退出。请检查应用状态后再重试。',
+    working: '正在处理…',
+    busy: 'Antigravity 正在处理操作，请等待当前操作完成。',
+    'missing-executable': '未找到 Antigravity 可执行文件，或文件无法执行。请检查配置的路径。',
+    'target-conflict':
+      '配置的可执行文件与正在运行的 Antigravity 属于不同安装。请先解决冲突再切换账户。',
+    'directory-conflict': '配置与运行中的用户数据目录存在冲突。请先解决冲突再切换账户。',
+    'probe-failed': '未能在规定时间内检查 Antigravity 进程状态。',
+    'launch-failed': 'Antigravity 启动命令失败。请检查可执行文件路径和权限。',
+    'startup-unconfirmed':
+      '未能在六秒内确认 Antigravity 已启动，未再次自动启动。请检查应用状态后再重试。',
+    'switched-startup-unconfirmed':
+      '账户数据已更新，但未能确认 Antigravity 已启动，未再次自动启动。请检查应用状态后再重试。',
+  },
   common: {
     loading: '加载中...',
     error: '错误',

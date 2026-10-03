@@ -100,10 +100,20 @@ We implemented `src/shared/serialization/protobuf.ts`, which can:
 ### 2.4 Switching Workflow
 
 1. **Token check**: Check whether the target account token is near expiration; refresh automatically if needed.
-2. **Stop process**: Gracefully stop the Antigravity process.
-3. **Inject token**: Call `CloudAccountRepo.injectCloudToken` to update the IDE database.
-4. **Update state**: Mark target account as `is_active = 1`, set others to `0`.
-5. **Restart process**: Restart the IDE so it loads new credentials.
+2. **Preflight and stop**: Resolve the selected installation and user data directory, reject conflicts, initialize missing identity storage and validate its JSON and write access, then stop the GUI process and confirm exit.
+3. **Apply identity and inject token**: Apply the bound device profile before writing account credentials with the selected credential-store or SQLite strategy. Both steps use the captured context.
+4. **Restart and confirm**: Dispatch one executable launch and confirm the main process within the startup deadline.
+5. **Update state**: Mark the target account active only after confirmation. Startup failure reports that account data was updated without automatically launching again.
+
+The [process operation reference](architecture.md#antigravity-process-operations) owns launch, concurrency and failure behavior. CLI targets skip the GUI stop/restart steps.
+
+### Identity storage initialization
+
+OAuth account addition, JSON account import, confirmed local account import and local account snapshots explicitly prepare desktop identity storage using the resolved desktop target and directory. Imports that do not persist any accounts do not initialize files. IDE synchronization prepares the selected target. GUI switching prepares the directory in its launch context, including a custom `--user-data-dir`. WSL native Linux targets use Linux directories. If no desktop executable is available, account collection can still prepare the host's native default profile; target conflicts and process query failures remain errors.
+
+Only a missing `storage.json` is created, with generated device identifiers in the existing flat and nested telemetry format. An existing file is validated and preserved byte for byte during initialization. Malformed JSON, non-object content and filesystem errors are reported rather than replaced. Atomic exclusive publication preserves a file created concurrently by another process. SQLite state is created by the existing identity write or credential injection operation when required; initialization does not invent authentication records or modify the newer Hub's `app_storage.json`.
+
+Read-only identity queries do not create files. CLI switching does not initialize desktop identity storage. Initialization failures during switch preflight leave the running application and its account credentials unchanged; failures after process shutdown remain explicit and do not trigger an automatic second launch.
 
 ### 2.5 Auto-Switch Logic (`AutoSwitchService`)
 

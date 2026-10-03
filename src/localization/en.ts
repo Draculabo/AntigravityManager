@@ -1,5 +1,25 @@
 const en = {
   appName: 'Antigravity Manager',
+  'process-runtime': {
+    'close-failed': 'Could not close Antigravity. Check permissions and retry.',
+    'exit-unconfirmed':
+      'Could not confirm that Antigravity exited. Check the application before retrying.',
+    working: 'Processing...',
+    busy: 'Antigravity is busy. Wait for the current operation to finish.',
+    'missing-executable':
+      'Antigravity executable was not found or cannot be executed. Check its configured path.',
+    'target-conflict':
+      'The configured executable and the running Antigravity belong to different installations. Resolve the conflict before switching accounts.',
+    'directory-conflict':
+      'The configured and running user data directories conflict. Resolve the conflict before switching accounts.',
+    'probe-failed': 'Antigravity process status could not be checked within the deadline.',
+    'launch-failed':
+      'The Antigravity launch command failed. Check the executable path and permissions.',
+    'startup-unconfirmed':
+      'Antigravity startup could not be confirmed within six seconds. No additional launch was attempted. Check the app before retrying.',
+    'switched-startup-unconfirmed':
+      'Account data was updated, but Antigravity startup could not be confirmed. No additional launch was attempted. Check the app before retrying.',
+  },
   common: {
     loading: 'Loading...',
     error: 'Error',

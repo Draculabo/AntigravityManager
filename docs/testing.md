@@ -29,6 +29,21 @@ Select evidence according to the behavior a change can affect. Focused tests are
 
 `npm run check:governance` analyzes the current worktree, including untracked source files and unstaged deletions, and enforces every runtime boundary rule. It is not a report-only check.
 
+## Native process queries
+
+The published `@draculabo/sysinfo-process-enhanced` dependency provides read-only process
+queries. After `npm ci`, run `node scripts/test-sysinfo.integration.mjs`.
+Run the same script under Electron with `ELECTRON_RUN_AS_NODE=1` to verify native loading
+and real process metadata. The check uses a dedicated temporary child with spaces,
+Unicode, quotes, empty argv and trailing backslashes; it does not target installed apps.
+The existing Antigravity launch integration script verifies the production observer on
+native Windows, Linux and optionally WSL Windows interop.
+
+After changing native dependency or packaging configuration, run `npm run package`.
+Verify the main package remains inside `app.asar`, its matching platform binary exists
+under `app.asar.unpacked/node_modules/@draculabo`, and the packaged loader can query a
+real process under Electron. The existing AutoUnpackNatives plugin unpacks `.node` files.
+
 ## Type and React quality gates
 
 `npm run verify:type-boundaries` blocks new production `any`, double assertions, native `fetch`, direct JSON assertions and `@ts-ignore` entries against `.agents/type-boundary-baseline.json`. Test, mock and generated sources are excluded. A controlled third-party adapter exception must be local, time-bounded and name its owner, tracking issue and reason.
@@ -115,4 +130,23 @@ Packaging and distributable generation are separate evidence. Run `npm run packa
 
 ## Environment-dependent evidence
 
+The Antigravity launch regression has an isolated native process check, separate from Vitest's no-app-launch guard:
+
+```bash
+node scripts/test-antigravity-launch.integration.mjs
+node scripts/test-antigravity-launch.integration.mjs --wsl-interop
+```
+
+Run the first command with Windows Node.js or Linux Node.js and a C compiler. The second uses Linux Node.js in WSL and the installed Windows .NET Framework C# compiler. Both create a temporary fixture and exercise production launch, process observation and stop code. Native Windows copies the Node executable into the fixture directory and performs three consecutive launch/close cycles. Each main process has one utility host with seven same-executable workers: client-process arguments, TypeScript-style `--useNodeIpc`, and workers without known helper arguments are covered. It verifies that only the main process confirms startup, all nine processes exit on the first close request, and each cycle dispatches exactly one launch. Linux and WSL interop check one launch/close cycle. All modes check argv round trips and no reopening after close. Discovery is restricted to the fixture's full executable path; no installed Antigravity is started or closed. Windows execution needs permission to query and terminate the fixture processes. This evidence does not replace real account-switch acceptance, desktop acceptance with the official `.deb` or macOS Launch Services.
+
+For desktop acceptance, use an isolated Manager configuration and application home directory, a fresh main/renderer build, and the real process IPC. In WSLg, configure the extracted Linux executable explicitly to select native process observation; use an isolated XDG handler registration when reproducing the old URI behavior. Verify the actual application window as well as process confirmation, loading and disabled controls, busy errors, invalid executable errors, confirmation timeout without retry, path conflicts before close, and no reopening after manual close. Record the exact OS and official application versions. An extracted `.deb` with a profile-local handler does not establish system-wide installer or GNOME acceptance; account credential injection and macOS Launch Services need separate evidence.
+
 Some Electron, OS keyring, native-module, live-provider, update and packaging paths depend on platform capabilities or credentials. Record the exact skipped evidence and why. A focused test passing with mocked Electron or keyring modules does not prove the corresponding native integration.
+
+## Client credential storage checks
+
+The focused `client-account-write.test.ts`, `snapshot-credentials.test.ts`, `account-backup-file.test.ts`, `database-backup-keys.test.ts` and account handler suites cover destination routing, preflight, preserved topic rows, missing projects, primary-store failures, encrypted snapshot round trips and historical snapshot input. Credential-store and CLI suites cover native readback and required file failures. `antigravityVersion.test.ts` covers version caching, coalescing, metadata changes and probe deadlines.
+
+`node scripts/test-client-account-write.integration.mjs` exercises real SQLite transactions under Electron on Windows and Node on Linux/macOS with isolated synthetic credentials. It verifies WAL-aware backups, repeated writes to one captured destination, A-to-B-to-A restoration, unchanged client recovery files and full transaction rollback on an injected primary-write failure. Windows additionally exercises the production Win32 credential adapter with exact-target A-to-B-to-A writes, independent keytar enumeration and repeated nondestructive reads. Only the credential target is redirected to a unique synthetic target; CLI and Google file writes are suppressed for this native adapter check, and its test credential is deleted during cleanup. For Linux validation from Windows, install Linux native dependencies in an isolated directory and set `AGM_CLIENT_NATIVE_DEPS` to that directory; Windows native modules cannot validate the Linux path.
+
+These fixtures do not write live OS credentials or prove official-client account identity. Release acceptance still requires two authorized test accounts, real IDE restart switching, Classic restart switching, CLI identity checks and a real AI request after each switch. IDE restart switching must confirm full shutdown and one restart. Confirm that a closed window is not reopened and a failed local confirmation is not reported as successful. Physical macOS and system-wide Linux desktop acceptance require separate runs.

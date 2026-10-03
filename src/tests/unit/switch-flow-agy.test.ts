@@ -23,12 +23,8 @@ const {
   waitForProcessExit: vi.fn(async () => undefined),
 }));
 
-vi.mock('@/modules/antigravity-runtime/ipc/handler', () => ({
-  closeAntigravity,
-  isProcessRunning,
-  startAntigravity,
-  _waitForProcessExit: waitForProcessExit,
-}));
+vi.mock('@/modules/antigravity-runtime/launch', () => ({ startFromContext: startAntigravity }));
+vi.mock('@/modules/antigravity-runtime/stop', () => ({ stopFromContext: closeAntigravity }));
 
 vi.mock('@/shared/platform/paths', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/platform/paths')>();
@@ -41,6 +37,7 @@ vi.mock('@/shared/platform/paths', async (importOriginal) => {
 vi.mock('@/modules/identity-profile/ipc/handler', () => ({
   applyDeviceProfile,
   syncTelemetryServiceMachineIdValue,
+  ensureIdentityProfileStorage: vi.fn(),
 }));
 
 vi.mock('@/modules/antigravity-runtime/switch/switchMetrics', () => ({
@@ -107,14 +104,17 @@ describe('executeSwitchFlow for agy CLI', () => {
       }),
     ).rejects.toThrow(applyError);
 
-    expect(applyDeviceProfile).toHaveBeenCalledWith(targetProfile, 'classic');
-    expect(syncTelemetryServiceMachineIdValue).not.toHaveBeenCalled();
-    expect(performSwitch).toHaveBeenCalledTimes(1);
-    expect(performSwitch.mock.invocationCallOrder[0]).toBeLessThan(
-      applyDeviceProfile.mock.invocationCallOrder[0],
+    expect(applyDeviceProfile).toHaveBeenCalledWith(
+      targetProfile,
+      'classic',
+      expect.objectContaining({ userDataDir: '/fixture/data' }),
     );
-    expect(closeAntigravity).toHaveBeenCalledWith('classic');
-    expect(waitForProcessExit).toHaveBeenCalledWith(10000, 100, 'classic');
+    expect(syncTelemetryServiceMachineIdValue).not.toHaveBeenCalled();
+    expect(performSwitch).not.toHaveBeenCalled();
+    expect(closeAntigravity).toHaveBeenCalledWith(
+      expect.objectContaining({ target: 'classic' }),
+      10000,
+    );
     expect(startAntigravity).not.toHaveBeenCalled();
     expect(afterSwitchSuccess).not.toHaveBeenCalled();
     expect(recordSwitchSuccess).not.toHaveBeenCalled();
@@ -140,8 +140,9 @@ describe('executeSwitchFlow for agy CLI', () => {
       }),
     ).rejects.toThrow('Account has no bound identity profile');
 
-    expect(performSwitch).toHaveBeenCalledTimes(1);
+    expect(performSwitch).not.toHaveBeenCalled();
     expect(applyDeviceProfile).not.toHaveBeenCalled();
+    expect(closeAntigravity).not.toHaveBeenCalled();
     expect(startAntigravity).not.toHaveBeenCalled();
     expect(recordSwitchSuccess).not.toHaveBeenCalled();
     expect(recordSwitchFailure).toHaveBeenCalledWith(
@@ -210,12 +211,15 @@ describe('executeSwitchFlow for agy CLI', () => {
       afterSwitchSuccess,
     });
 
-    expect(applyDeviceProfile).toHaveBeenCalledWith(targetProfile, 'ide');
+    expect(applyDeviceProfile).toHaveBeenCalledWith(targetProfile, 'ide', {
+      userDataDir: '/fixture/data',
+    });
     expect(performSwitch).toHaveBeenCalledTimes(1);
     expect(syncTelemetryServiceMachineIdValue).toHaveBeenCalledWith(
       targetProfile.macMachineId,
       undefined,
       'ide',
+      { userDataDir: '/fixture/data' },
     );
     expect(applyDeviceProfile.mock.invocationCallOrder[0]).toBeLessThan(
       performSwitch.mock.invocationCallOrder[0],
@@ -223,7 +227,9 @@ describe('executeSwitchFlow for agy CLI', () => {
     expect(performSwitch.mock.invocationCallOrder[0]).toBeLessThan(
       syncTelemetryServiceMachineIdValue.mock.invocationCallOrder[0],
     );
-    expect(startAntigravity).toHaveBeenCalledWith('ide');
+    expect(startAntigravity).toHaveBeenCalledWith(
+      expect.objectContaining({ target: 'ide', pathOptions: { userDataDir: '/fixture/data' } }),
+    );
     expect(syncTelemetryServiceMachineIdValue.mock.invocationCallOrder[0]).toBeLessThan(
       startAntigravity.mock.invocationCallOrder[0],
     );
@@ -233,4 +239,14 @@ describe('executeSwitchFlow for agy CLI', () => {
     expect(recordSwitchSuccess).toHaveBeenCalledWith('cloud');
     expect(recordSwitchFailure).not.toHaveBeenCalled();
   });
+});
+
+vi.mock('@/modules/antigravity-runtime/launchContext', async () => {
+  const { switchContext } = await import('../support/runtime-switch-fixture');
+  return {
+    prepareLaunchContext: vi.fn(async (target: 'classic' | 'ide') => ({
+      ...switchContext,
+      target,
+    })),
+  };
 });

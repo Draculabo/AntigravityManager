@@ -3,8 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreToken';
-import { GOOGLE_OAUTH_SCOPE } from '../oauthScopes';
-import { writePrivateFileAtomically } from './privateCredentialFile';
+import { GOOGLE_OAUTH_SCOPE } from '@/shared/auth/googleOAuthScopes';
+import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
 
 const GoogleAccountsFileSchema = z.object({
   active: z.string().nullable(),

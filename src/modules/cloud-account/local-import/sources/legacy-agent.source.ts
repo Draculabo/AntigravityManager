@@ -4,6 +4,10 @@ import { uniq } from 'lodash-es';
 import { z } from 'zod';
 import { getAgentDir } from '@/shared/platform/paths';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
+import { AccountBackupDataSchema } from '@/modules/account/types';
+import { credentialsFromAccountBackup } from '@/modules/account/public';
+import { decrypt } from '@/shared/security/security';
+import { isEncryptedPayloadCandidate } from '@/shared/security/crypto';
 import {
   createLocalAccountDiscoveryFailure,
   createLocalAccountDiscoveryFailureByCode,
@@ -108,6 +112,17 @@ function resolveBackupPath(agentDir: string, rawPath: string): string | null {
 }
 
 function extractCredential(value: unknown): DiscoveredCredential {
+  const localSnapshot = AccountBackupDataSchema.safeParse(value);
+  if (localSnapshot.success) {
+    const { token } = credentialsFromAccountBackup(localSnapshot.data);
+    return {
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token,
+      idToken: token.id_token,
+      projectId: token.project_id,
+      expiryTimestamp: token.expiry_timestamp,
+    };
+  }
   const backup = LegacyBackupSchema.parse(value);
   const token = backup.token ?? backup.data?.token;
   if (token) {
@@ -207,12 +222,15 @@ export class LegacyAgentDiscoverySource implements LocalAccountDiscoverySource {
         }
 
         try {
+          const content = fs.readFileSync(backupPath, 'utf-8');
+          const plaintext = isEncryptedPayloadCandidate(content) ? await decrypt(content) : content;
+          const backup: unknown = JSON.parse(plaintext);
           candidates.push({
             source: {
               id: this.id,
               location: backupPath,
             },
-            credential: extractCredential(JSON.parse(fs.readFileSync(backupPath, 'utf-8'))),
+            credential: extractCredential(backup),
             emailHint: normalizeEmailHint(accountPointer.email),
           });
         } catch (error) {

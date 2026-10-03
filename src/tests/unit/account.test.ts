@@ -1,3 +1,4 @@
+import os from 'os';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   listAccountsData,
@@ -5,14 +6,29 @@ import {
   switchAccount,
   deleteAccount,
 } from '@/modules/account/ipc/handler';
-import { restoreAccount } from '@/modules/account/persistence/antigravity-state-database';
-import { CredentialStoreInjectionAdapter } from '@/modules/cloud-account/persistence/credential-store-injection-adapter';
-import { writeAntigravityCredentialStoreToken } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
-import { startAntigravity } from '@/modules/antigravity-runtime/ipc/handler';
+import { prepareClientAccountWrite } from '@/modules/antigravity-runtime/credentials/clientAccountWrite';
+const writeAccount = vi.hoisted(() => vi.fn(async () => undefined));
+import { startFromContext as startAntigravity } from '@/modules/antigravity-runtime/launch';
 import fs from 'fs';
 import path from 'path';
 import { applyDeviceProfile, generateDeviceProfile } from '@/modules/identity-profile/ipc/handler';
 import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
+import { ProtobufUtils } from '@/shared/serialization/protobuf';
+vi.mock('@/shared/security/security', async () => {
+  const { encryptWithKey, decryptParsedPayloadWithKey, parseEncryptedPayload } =
+    await import('@/shared/security/crypto');
+  const key = Buffer.alloc(32, 7);
+  return {
+    encrypt: async (text: string) => encryptWithKey(key, text),
+    decrypt: async (text: string) => {
+      const payload = parseEncryptedPayload(text);
+      if (!payload) {
+        throw new Error('invalid fixture ciphertext');
+      }
+      return decryptParsedPayloadWithKey(key, payload);
+    },
+  };
+});
 import {
   mutateAccountIndex,
   readAccountIndex,
@@ -21,7 +37,8 @@ import {
 // Mock dependencies
 vi.mock('../../shared/platform/paths', async () => {
   const path = await import('path');
-  const agentDir = path.join(process.cwd(), 'temp_test_agent');
+  const os = await import('os');
+  const agentDir = path.join(os.tmpdir(), 'agm-runtime-account-' + process.pid);
   return {
     getAgentDir: vi.fn(() => agentDir),
     getAccountsFilePath: vi.fn(() => path.join(agentDir, 'accounts.json')),
@@ -38,7 +55,17 @@ vi.mock('@/modules/account/persistence/antigravity-state-database', () => ({
     name: 'Test User',
     isAuthenticated: true,
   })),
-  backupAccount: vi.fn((account) => ({ version: '1.0', account, data: {} })),
+  backupAccount: vi.fn((account) => ({
+    version: '1.0',
+    account,
+    data: {
+      'antigravityUnifiedStateSync.oauthToken': ProtobufUtils.createUnifiedOAuthToken(
+        'access',
+        'refresh',
+        1700000000,
+      ),
+    },
+  })),
   restoreAccount: vi.fn(),
   extractCredentialStoreTokenFromBackup: vi.fn(() => ({
     access_token: 'access',
@@ -48,25 +75,20 @@ vi.mock('@/modules/account/persistence/antigravity-state-database', () => ({
   getDatabaseConnection: vi.fn(),
 }));
 
-vi.mock('@/modules/cloud-account/persistence/credential-store-injection-adapter', () => ({
-  CredentialStoreInjectionAdapter: {
-    shouldInjectTokenIntoCredentialStore: vi.fn(() => false),
-  },
+vi.mock('@/modules/antigravity-runtime/credentials/clientAccountWrite', () => ({
+  prepareClientAccountWrite: vi.fn(async () => ({ storage: 'sqlite', write: writeAccount })),
 }));
 
-vi.mock('@/modules/cloud-account/persistence/antigravityCredentialStore', () => ({
+vi.mock('@/modules/antigravity-runtime/credentials/antigravityCredentialStore', () => ({
   writeAntigravityCredentialStoreToken: vi.fn(),
 }));
 
-vi.mock('@/modules/antigravity-runtime/ipc/handler', () => ({
-  closeAntigravity: vi.fn(),
-  startAntigravity: vi.fn(),
-  _waitForProcessExit: vi.fn(),
-  isProcessRunning: vi.fn(() => Promise.resolve(false)),
-}));
+vi.mock('@/modules/antigravity-runtime/launch', () => ({ startFromContext: vi.fn() }));
+vi.mock('@/modules/antigravity-runtime/stop', () => ({ stopFromContext: vi.fn() }));
 
 vi.mock('@/modules/identity-profile/ipc/handler', () => ({
   applyDeviceProfile: vi.fn(),
+  ensureIdentityProfileStorage: vi.fn(),
   ensureGlobalOriginalFromCurrentStorage: vi.fn(),
   generateDeviceProfile: vi.fn(() => ({
     machineId: 'auth0|user_test',
@@ -87,7 +109,7 @@ vi.mock('@/modules/identity-profile/ipc/handler', () => ({
 }));
 
 describe('Account Handler', () => {
-  const testAgentDir = path.join(process.cwd(), 'temp_test_agent');
+  const testAgentDir = path.join(os.tmpdir(), 'agm-runtime-account-' + process.pid);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,45 +144,49 @@ describe('Account Handler', () => {
   it('should restore account to Antigravity IDE target', async () => {
     const account = await addAccountSnapshot();
     await switchAccount(account.id, 'ide');
-    expect(restoreAccount).toHaveBeenCalledWith(expect.any(Object), 'ide');
-    expect(applyDeviceProfile).toHaveBeenCalledWith(expect.any(Object), 'ide');
-  });
-
-  it('should use credential store for Classic when required', async () => {
-    vi.mocked(
-      CredentialStoreInjectionAdapter.shouldInjectTokenIntoCredentialStore,
-    ).mockReturnValueOnce(true);
-
-    const account = await addAccountSnapshot();
-    await switchAccount(account.id);
-
-    expect(restoreAccount).not.toHaveBeenCalled();
-    expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledWith({
-      access_token: 'access',
-      refresh_token: 'refresh',
-      expiry_timestamp: 1700000000,
+    expect(prepareClientAccountWrite).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'test@example.com' }),
+      'ide',
+      {
+        userDataDir: '/fixture/data',
+      },
+    );
+    expect(applyDeviceProfile).toHaveBeenCalledWith(expect.any(Object), 'ide', {
+      userDataDir: '/fixture/data',
     });
   });
 
-  it('should request generic Google OAuth sync for an explicit Agy switch', async () => {
-    vi.mocked(
-      CredentialStoreInjectionAdapter.shouldInjectTokenIntoCredentialStore,
-    ).mockReturnValueOnce(true);
+  it.each([undefined, 'classic', 'agy'] as const)(
+    'prepares one credential destination for target %s',
+    async (target) => {
+      const account = await addAccountSnapshot();
+      await switchAccount(account.id, target);
+      expect(prepareClientAccountWrite).toHaveBeenCalledExactlyOnceWith(
+        {
+          email: 'test@example.com',
+          name: 'Test User',
+          token: {
+            access_token: 'access',
+            refresh_token: 'refresh',
+            expiry_timestamp: 1700000000,
+            is_gcp_tos: false,
+          },
+        },
+        target,
+        target === 'agy' ? undefined : { userDataDir: '/fixture/data' },
+      );
+      expect(writeAccount).toHaveBeenCalledOnce();
+    },
+  );
 
+  it('rejects a corrupt backup before closing or writing the IDE', async () => {
     const account = await addAccountSnapshot();
-    await switchAccount(account.id, 'agy');
-
-    expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledWith(
-      {
-        access_token: 'access',
-        refresh_token: 'refresh',
-        expiry_timestamp: 1700000000,
-      },
-      {
-        email: 'test@example.com',
-        syncGoogleOAuthFiles: true,
-      },
-    );
+    fs.writeFileSync(account.backup_file!, '{bad json');
+    const { stopFromContext } = await import('@/modules/antigravity-runtime/stop');
+    await expect(switchAccount(account.id, 'ide')).rejects.toThrow();
+    expect(stopFromContext).not.toHaveBeenCalled();
+    expect(prepareClientAccountWrite).not.toHaveBeenCalled();
+    expect(writeAccount).not.toHaveBeenCalled();
   });
 
   it('should reuse existing device profile on switch', async () => {
@@ -187,6 +213,7 @@ describe('Account Handler', () => {
         sqmId: '{EXISTING-SQM}',
       },
       undefined,
+      { userDataDir: '/fixture/data' },
     );
   });
 
@@ -199,7 +226,7 @@ describe('Account Handler', () => {
   });
 
   it('should fail fast without rollback or forced restart when restore fails', async () => {
-    const restoreMock = vi.mocked(restoreAccount);
+    const restoreMock = writeAccount;
     restoreMock.mockImplementationOnce(() => {
       throw new Error('restore_failed');
     });
@@ -216,11 +243,12 @@ describe('Account Handler', () => {
         sqmId: '{SQM-ID}',
       },
       undefined,
+      { userDataDir: '/fixture/data' },
     );
     expect(startAntigravity).not.toHaveBeenCalled();
   });
 
-  it('should queue switch requests instead of rejecting concurrent calls', async () => {
+  it('rejects a concurrent switch immediately and never executes it later', async () => {
     const account = await addAccountSnapshot();
 
     const startMock = vi.mocked(startAntigravity);
@@ -228,25 +256,29 @@ describe('Account Handler', () => {
     const firstStartBlocker = new Promise<void>((resolve) => {
       releaseFirstStart = resolve;
     });
+    let firstStartEntered!: () => void;
+    const firstStartBarrier = new Promise<void>((resolve) => {
+      firstStartEntered = resolve;
+    });
     startMock.mockImplementationOnce(async () => {
+      firstStartEntered();
       await firstStartBlocker;
     });
 
     const firstSwitch = switchAccount(account.id);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const secondSwitch = switchAccount(account.id);
-
-    const runningSnapshot = getSwitchGuardSnapshot();
-    expect(runningSnapshot.activeOwner).toBe('local-account-switch');
-    expect(runningSnapshot.pendingCount).toBeGreaterThanOrEqual(1);
-
-    releaseFirstStart();
-
-    await Promise.all([firstSwitch, secondSwitch]);
-
-    const finalSnapshot = getSwitchGuardSnapshot();
-    expect(finalSnapshot.activeOwner).toBeNull();
-    expect(finalSnapshot.pendingCount).toBe(0);
+    await firstStartBarrier;
+    try {
+      await expect(switchAccount(account.id)).rejects.toMatchObject({
+        messageKey: 'process-runtime.busy',
+      });
+      expect(getSwitchGuardSnapshot()).toEqual({ activeOwner: 'local-account-switch' });
+    } finally {
+      releaseFirstStart();
+      await firstSwitch;
+    }
+    expect(startMock).toHaveBeenCalledTimes(1);
+    expect(writeAccount).toHaveBeenCalledTimes(1);
+    expect(getSwitchGuardSnapshot()).toEqual({ activeOwner: null });
   });
 
   it('preserves concurrent account fields when a paused switch commits its owned fields', async () => {
@@ -353,4 +385,14 @@ describe('Account Handler', () => {
       }),
     ]);
   });
+});
+
+vi.mock('@/modules/antigravity-runtime/launchContext', async () => {
+  const { switchContext } = await import('../support/runtime-switch-fixture');
+  return {
+    prepareLaunchContext: vi.fn(async (target: 'classic' | 'ide') => ({
+      ...switchContext,
+      target,
+    })),
+  };
 });

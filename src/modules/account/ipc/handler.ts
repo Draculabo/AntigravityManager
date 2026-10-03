@@ -1,3 +1,7 @@
+import { prepareLaunchContext, prepareClientAccountWrite } from '@/modules/antigravity-runtime';
+import { credentialsFromAccountBackup } from '../persistence/snapshotCredentials';
+import { readAccountBackupFile, writeAccountBackupFile } from '../persistence/account-backup-file';
+import { prepareDesktopIdentityStorage } from '@/modules/identity-profile/public';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -8,7 +12,7 @@ import {
   refreshAntigravityProcessCache,
 } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
-import type { Account, AccountBackupData } from '@/modules/account/types';
+import type { Account } from '@/modules/account/types';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type {
   DeviceProfile,
@@ -17,12 +21,8 @@ import type {
 } from '@/modules/identity-profile/types';
 import {
   backupAccount as dbBackup,
-  extractCredentialStoreTokenFromBackup,
-  restoreAccount as dbRestore,
   getCurrentAccountInfo,
 } from '@/modules/account/persistence/antigravity-state-database';
-import { CredentialStoreInjectionAdapter } from '@/modules/cloud-account/persistence/credential-store-injection-adapter';
-import { writeAntigravityCredentialStoreToken } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
 import {
   applyDeviceProfile,
   ensureGlobalOriginalFromCurrentStorage,
@@ -125,12 +125,14 @@ export async function listAccountsData(): Promise<Account[]> {
  * @returns {Account} The added account.
  * @throws {Error} If the account cannot be added.
  */
-export async function addAccountSnapshot(): Promise<Account> {
+export async function addAccountSnapshot(appTarget?: AntigravityAppTarget): Promise<Account> {
   logger.info('Adding account snapshot...');
   await refreshAntigravityProcessCache();
 
   // NOTE Get current account info from DB
-  const currentAccountInfo = getCurrentAccountInfo();
+  const pathOptions =
+    appTarget === 'agy' ? undefined : await prepareDesktopIdentityStorage(appTarget);
+  const currentAccountInfo = getCurrentAccountInfo(appTarget, pathOptions);
   if (!currentAccountInfo.isAuthenticated) {
     const message =
       'No authenticated account found. Please ensure Antigravity is running and you are logged in.';
@@ -204,14 +206,9 @@ export async function addAccountSnapshot(): Promise<Account> {
   }
 
   // NOTE  Backup data from DB
-  const backupData = dbBackup(account);
+  const backupData = await dbBackup(account, appTarget, pathOptions);
 
-  // NOTE Save backup file
-  const backupsDir = getBackupsDir();
-  if (!fs.existsSync(backupsDir)) {
-    fs.mkdirSync(backupsDir, { recursive: true });
-  }
-  fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2));
+  await writeAccountBackupFile(backupPath, backupData);
 
   // NOTE Re-read the latest index before committing account metadata.
   return mutateAccountsIndex((latestAccounts) => {
@@ -244,109 +241,101 @@ export async function switchAccount(
   accountId: string,
   appTarget?: AntigravityAppTarget,
 ): Promise<void> {
-  await runWithSwitchGuard('local-account-switch', async () => {
-    const sanitizedAccountId = sanitizeAccountId(accountId);
-    logger.info(`Switching to account: ${sanitizedAccountId}`);
-    await withTimingTrace(
-      'switch.local.prepare',
-      {
-        accountId: sanitizedAccountId,
-        appTarget: appTarget || 'classic',
-      },
-      async (trace) => {
-        await trace.phase('refreshProcessCacheMs', async () => {
-          await refreshAntigravityProcessCache(appTarget);
-        });
-      },
-    );
+  await runWithSwitchGuard(
+    'local-account-switch',
+    async () => {
+      const sanitizedAccountId = sanitizeAccountId(accountId);
+      logger.info(`Switching to account: ${sanitizedAccountId}`);
+      const accounts = await readAccountsIndex();
+      const account = getAccountOrThrow(accounts, accountId);
+      const startingDeviceProfile = structuredClone(account.deviceProfile);
+      const startingDeviceHistory = structuredClone(account.deviceHistory);
+      let generatedIdentityState = false;
 
-    const accounts = await readAccountsIndex();
-    const account = getAccountOrThrow(accounts, accountId);
-    const startingDeviceProfile = structuredClone(account.deviceProfile);
-    const startingDeviceHistory = structuredClone(account.deviceHistory);
-    let generatedIdentityState = false;
+      // NOTE Get backup file path from account data
+      const backupPath = account.backup_file || path.join(getBackupsDir(), `${accountId}.json`);
 
-    // NOTE Get backup file path from account data
-    const backupPath = account.backup_file || path.join(getBackupsDir(), `${accountId}.json`);
+      if (!fs.existsSync(backupPath)) {
+        throw new Error(`Backup file not found: ${backupPath}`);
+      }
 
-    if (!fs.existsSync(backupPath)) {
-      throw new Error(`Backup file not found: ${backupPath}`);
-    }
+      const backup = await readAccountBackupFile(backupPath);
+      if (backup.account.email.trim().toLowerCase() !== account.email.trim().toLowerCase()) {
+        throw new Error('Account backup identity does not match the selected account');
+      }
+      const credentials = credentialsFromAccountBackup(backup);
 
-    if (appTarget !== 'agy') {
-      ensureGlobalOriginalFromCurrentStorage(appTarget);
-    }
-    if (!account.deviceProfile) {
-      const generated = generateDeviceProfile();
-      saveGlobalOriginalProfile(generated);
-      bindDeviceProfileToAccount(account, generated, 'auto_generated', true);
-      generatedIdentityState = true;
-    }
-
-    const usesCredentialStore =
-      CredentialStoreInjectionAdapter.shouldInjectTokenIntoCredentialStore(appTarget);
-
-    await executeSwitchFlow({
-      scope: 'local',
-      appTarget,
-      targetProfile: account.deviceProfile || null,
-      applyFingerprint: isIdentityProfileApplyEnabled(),
-      useCredentialStore: usesCredentialStore,
-      processExitTimeoutMs: SWITCH_EXIT_TIMEOUT_MS,
-      performSwitch: async () => {
-        // NOTE Load backup file
-        const backupContent = fs.readFileSync(backupPath, 'utf-8');
-        const backupData: AccountBackupData = JSON.parse(backupContent);
-
-        if (usesCredentialStore) {
-          const token = extractCredentialStoreTokenFromBackup(backupData);
-          if (appTarget === 'agy') {
-            writeAntigravityCredentialStoreToken(token, {
-              email: account.email,
-              syncGoogleOAuthFiles: true,
-            });
-          } else {
-            writeAntigravityCredentialStoreToken(token);
-          }
-        } else {
-          // NOTE Restore data to DB
-          dbRestore(backupData, appTarget);
-        }
-      },
-      afterSwitchSuccess: async () => {
-        const completedAt = new Date().toISOString();
-        await mutateAccountsIndex((latestAccounts) => {
-          const latestAccount = latestAccounts[accountId];
-          if (!latestAccount) {
-            logger.warn(`Account was deleted before switch completion: ${sanitizedAccountId}`);
-            return;
-          }
-
-          latestAccount.last_used =
-            latestAccount.last_used.localeCompare(completedAt) >= 0
-              ? latestAccount.last_used
-              : completedAt;
-
-          if (!generatedIdentityState) {
-            return;
-          }
-
-          const identitySnapshotUnchanged =
-            isEqual(latestAccount.deviceProfile, startingDeviceProfile) &&
-            isEqual(latestAccount.deviceHistory, startingDeviceHistory);
-          if (!identitySnapshotUnchanged) {
-            logger.warn(
-              `Preserved newer account identity state after switch: ${sanitizedAccountId}`,
+      const launchContext =
+        appTarget === 'agy'
+          ? undefined
+          : await withTimingTrace(
+              'switch.local.prepare',
+              { accountId: sanitizedAccountId, appTarget: appTarget || 'classic' },
+              (trace) =>
+                trace.phase('preflightMs', () =>
+                  prepareLaunchContext(appTarget === 'ide' ? 'ide' : 'classic'),
+                ),
             );
-            return;
-          }
+      const preparedWrite = await prepareClientAccountWrite(
+        credentials,
+        appTarget,
+        launchContext?.pathOptions,
+      );
+      if (appTarget !== 'agy') {
+        ensureGlobalOriginalFromCurrentStorage(appTarget, launchContext?.pathOptions);
+      }
+      if (!account.deviceProfile) {
+        const generated = generateDeviceProfile();
+        saveGlobalOriginalProfile(generated);
+        bindDeviceProfileToAccount(account, generated, 'auto_generated', true);
+        generatedIdentityState = true;
+      }
 
-          latestAccount.deviceProfile = account.deviceProfile;
-          latestAccount.deviceHistory = account.deviceHistory;
-        });
-      },
-    });
-  });
+      await executeSwitchFlow({
+        scope: 'local',
+        launchContext,
+        appTarget,
+        targetProfile: account.deviceProfile || null,
+        applyFingerprint: isIdentityProfileApplyEnabled(),
+        useCredentialStore: preparedWrite.storage === 'credential-store',
+        processExitTimeoutMs: SWITCH_EXIT_TIMEOUT_MS,
+        performSwitch: preparedWrite.write,
+        afterSwitchSuccess: async () => {
+          const completedAt = new Date().toISOString();
+          await mutateAccountsIndex((latestAccounts) => {
+            const latestAccount = latestAccounts[accountId];
+            if (!latestAccount) {
+              logger.warn(`Account was deleted before switch completion: ${sanitizedAccountId}`);
+              return;
+            }
+
+            latestAccount.last_used =
+              latestAccount.last_used.localeCompare(completedAt) >= 0
+                ? latestAccount.last_used
+                : completedAt;
+
+            if (!generatedIdentityState) {
+              return;
+            }
+
+            const identitySnapshotUnchanged =
+              isEqual(latestAccount.deviceProfile, startingDeviceProfile) &&
+              isEqual(latestAccount.deviceHistory, startingDeviceHistory);
+            if (!identitySnapshotUnchanged) {
+              logger.warn(
+                `Preserved newer account identity state after switch: ${sanitizedAccountId}`,
+              );
+              return;
+            }
+
+            latestAccount.deviceProfile = account.deviceProfile;
+            latestAccount.deviceHistory = account.deviceHistory;
+          });
+        },
+      });
+    },
+    appTarget,
+  );
 }
 
 export async function previewGenerateIdentityProfile(): Promise<DeviceProfile> {
