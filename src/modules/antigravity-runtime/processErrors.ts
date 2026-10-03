@@ -10,6 +10,7 @@ export type ProcessFailure =
   | 'close-failed'
   | 'exit-unconfirmed'
   | 'startup-unconfirmed'
+  | 'switched-hot-unconfirmed'
   | 'switched-startup-unconfirmed';
 
 export function processError(reason: ProcessFailure): AppError<'ANTIGRAVITY_PROCESS_FAILED'> {
