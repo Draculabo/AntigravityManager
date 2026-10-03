@@ -1,6 +1,7 @@
 import { isBoolean, isPlainObject, isString } from 'lodash-es';
 
 export interface AppErrorMetadataByCode {
+  ANTIGRAVITY_PROCESS_FAILED: Record<string, never>;
   CLOUD_ACCOUNT_LOGIN_EXPIRED: {
     accountId: string;
     email: string;
@@ -26,6 +27,7 @@ export interface AppErrorMetadataByCode {
 export type AppErrorCode = keyof AppErrorMetadataByCode;
 
 const APP_ERROR_CODES = new Set<string>([
+  'ANTIGRAVITY_PROCESS_FAILED',
   'CLOUD_ACCOUNT_LOGIN_EXPIRED',
   'KEYCHAIN_UNAVAILABLE',
   'DATA_MIGRATION_FAILED',
@@ -118,6 +120,10 @@ function normalizeAppErrorMetadata(
 ): AppErrorData['metadata'] {
   if (!isPlainObject(metadata)) {
     return undefined;
+  }
+
+  if (appErrorCode === 'ANTIGRAVITY_PROCESS_FAILED') {
+    return {};
   }
 
   const accountId = getObjectProperty(metadata, 'accountId');

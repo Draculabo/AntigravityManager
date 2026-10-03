@@ -2,8 +2,19 @@ import { ORPCError } from '@orpc/server';
 import { describe, expect, it } from 'vitest';
 import { AppError, getAppErrorData, shouldReportErrorToSentry } from '@/shared/errors/appError';
 import { toPublicORPCError } from '@/ipc/router';
+import { processError } from '@/modules/antigravity-runtime/processErrors';
 
 describe('AppError', () => {
+  it('preserves process failure meaning across IPC without command arguments or credential data', () => {
+    const error = toPublicORPCError(processError('busy'), '["proc","startAntigravity"]');
+    expect(error.code).toBe('BAD_REQUEST');
+    expect(getAppErrorData(error)).toEqual({
+      appErrorCode: 'ANTIGRAVITY_PROCESS_FAILED',
+      messageKey: 'process-runtime.busy',
+      reportToSentry: false,
+      metadata: {},
+    });
+  });
   it('types metadata from the app error code', () => {
     const error = new AppError('CLOUD_ACCOUNT_LOGIN_EXPIRED', 'Cloud account login expired', {
       messageKey: 'error.cloudAccountLoginExpired',

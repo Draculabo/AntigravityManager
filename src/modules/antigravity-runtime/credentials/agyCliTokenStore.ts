@@ -1,6 +1,9 @@
 import { logger } from '@/shared/logging/logger';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { getAgyCliTokenPaths } from './agyCliTokenPaths';
-import { writePrivateFileAtomically } from './privateCredentialFile';
+import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
 
 const WSL_SHARE_HOST = 'wsl.localhost';
 
@@ -48,15 +51,27 @@ function filterAmbiguousWslTokenTargets(targets: string[]): string[] {
 /**
  * Puts the active account into the Antigravity CLI (`agy`) session file.
  *
- * The IDE reads its token from the system credential store, but the CLI reads
+ * Classic builds read their token from the system credential store, but the CLI reads
  * the very same payload from a file, so an account switch that only touches
  * the credential store leaves the CLI signed in as somebody else. The payload
  * is passed in already built to guarantee both stay byte-identical.
  *
- * Every target is best-effort: a CLI install that cannot be written must not
- * fail the switch the IDE already accepted.
+ * Desktop switches synchronize discovered CLI sessions on a best-effort basis.
+ * Explicit CLI switches require the local session file to be written and read back.
  */
-export function writeAgyCliToken(payload: string): void {
+export function writeAgyCliToken(payload: string, requireLocalSession = false): void {
+  const localTarget = path.join(
+    os.homedir(),
+    '.gemini',
+    'antigravity-cli',
+    'antigravity-oauth-token',
+  );
+  if (requireLocalSession) {
+    writePrivateFileAtomically(localTarget, payload);
+    if (fs.readFileSync(localTarget, 'utf-8') !== payload) {
+      throw new Error('Client CLI session write could not be confirmed');
+    }
+  }
   const targets = filterAmbiguousWslTokenTargets(getAgyCliTokenPaths());
   if (targets.length === 0) {
     logger.debug('No Antigravity CLI install found; skipping CLI token write');
@@ -64,6 +79,9 @@ export function writeAgyCliToken(payload: string): void {
   }
 
   for (const target of targets) {
+    if (requireLocalSession && target === localTarget) {
+      continue;
+    }
     try {
       writePrivateFileAtomically(target, payload);
       logger.info(`Wrote Antigravity CLI token to ${target}`);

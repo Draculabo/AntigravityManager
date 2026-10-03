@@ -31,6 +31,7 @@ npm run make
 ```
 
 - `npm start` starts Electron Forge with Vite in development mode.
+- Native process queries use `@draculabo/sysinfo-process-enhanced`. npm installs the matching prebuilt platform package; keep optional dependencies enabled. No Rust build is needed in this repository. For a different packaging architecture, install dependencies on the target runner as the release workflow does.
 - `npm test` runs the Vitest unit and integration suite once.
 - `npm run test:e2e` runs Playwright against the Electron application.
 - `npm run package` creates an unpacked application bundle.

@@ -4,12 +4,15 @@ import {
   isProcessRunning,
   startAntigravity,
   closeAntigravity,
+  getProcessOperation,
 } from '@/modules/antigravity-runtime/actions/process';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/shared/ui/utils';
 import { Activity, ChevronUp, Code2, Loader2, Play, Power, Square, Workflow } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useToast } from '@/components/ui/use-toast';
+import { getLocalizedErrorMessage } from '@/shared/utils/errorMessages';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +35,21 @@ interface ServiceStatus {
 
 function useServiceStatus(target: AntigravityAppTarget) {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const { toast } = useToast();
+
+  const { data: operation } = useQuery({
+    queryKey: ['process', 'operation', target],
+    queryFn: () => getProcessOperation(target),
+    refetchInterval: 300,
+  });
+  const onError = (error: unknown) => {
+    toast({ variant: 'destructive', description: getLocalizedErrorMessage(error, t) });
+  };
+  const onSettled = () => {
+    queryClient.invalidateQueries({ queryKey: ['process', 'status', target] });
+    queryClient.invalidateQueries({ queryKey: ['process', 'operation', target] });
+  };
 
   const { data: isRunning, isLoading } = useQuery({
     queryKey: ['process', 'status', target],
@@ -41,16 +59,14 @@ function useServiceStatus(target: AntigravityAppTarget) {
 
   const startMutation = useMutation({
     mutationFn: () => startAntigravity(target),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['process', 'status', target] });
-    },
+    onError,
+    onSettled,
   });
 
   const stopMutation = useMutation({
     mutationFn: () => closeAntigravity(target),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['process', 'status', target] });
-    },
+    onError,
+    onSettled,
   });
 
   const toggle = () => {
@@ -64,7 +80,10 @@ function useServiceStatus(target: AntigravityAppTarget) {
   return {
     isRunning: Boolean(isRunning),
     isLoading,
-    isPending: startMutation.isPending || stopMutation.isPending,
+    isPending:
+      startMutation.isPending ||
+      stopMutation.isPending ||
+      (operation !== undefined && operation !== 'idle'),
     toggle,
   };
 }
@@ -90,7 +109,7 @@ function ServiceRow({ service }: { service: ServiceStatus }) {
         <div className="min-w-0">
           <div className="truncate text-sm font-medium">{service.label}</div>
           <div className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-xs">
-            {service.isLoading ? (
+            {isBusy ? (
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
               <span
@@ -101,11 +120,13 @@ function ServiceRow({ service }: { service: ServiceStatus }) {
               />
             )}
             <span>
-              {service.isLoading
-                ? t('status.checking_short')
-                : service.isRunning
-                  ? t('status.running_short')
-                  : t('status.stopped_short')}
+              {service.isPending
+                ? t('process-runtime.working')
+                : service.isLoading
+                  ? t('status.checking_short')
+                  : service.isRunning
+                    ? t('status.running_short')
+                    : t('status.stopped_short')}
             </span>
           </div>
         </div>
@@ -115,6 +136,7 @@ function ServiceRow({ service }: { service: ServiceStatus }) {
         size="sm"
         onClick={service.toggle}
         disabled={isBusy}
+        aria-busy={service.isPending}
         className={cn(
           'h-8 shrink-0 rounded-md border px-2.5',
           service.isRunning
@@ -175,7 +197,12 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <button type="button" className={triggerClassName} aria-label={t('status.open_dashboard')}>
+        <button
+          type="button"
+          className={triggerClassName}
+          aria-label={t('status.open_dashboard')}
+          aria-busy={hasPendingAction}
+        >
           {isCollapsed ? (
             <div className="relative">
               {hasPendingAction ? (

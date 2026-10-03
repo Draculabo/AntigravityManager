@@ -2,6 +2,25 @@ import en from './en';
 
 const fr = {
   appName: 'Antigravity Manager',
+  'process-runtime': {
+    'close-failed': 'Impossible de fermer Antigravity. Vérifiez les permissions et réessayez.',
+    'exit-unconfirmed':
+      'Impossible de confirmer la fermeture d’Antigravity. Vérifiez l’application avant de réessayer.',
+    working: 'Traitement...',
+    busy: 'Antigravity est occupé. Attendez la fin de l’opération.',
+    'missing-executable':
+      'Exécutable Antigravity introuvable ou non exécutable. Vérifiez le chemin configuré.',
+    'target-conflict':
+      'Le chemin configuré et le processus actif appartiennent à des installations différentes. Résolvez ce conflit avant de changer de compte.',
+    'directory-conflict':
+      'Les répertoires de données configuré et utilisé sont différents. Résolvez ce conflit avant de changer de compte.',
+    'probe-failed': 'Impossible de vérifier le processus Antigravity dans le délai prévu.',
+    'launch-failed': 'Le démarrage a échoué. Vérifiez le chemin et les permissions.',
+    'startup-unconfirmed':
+      'Démarrage non confirmé en six secondes. Aucun autre démarrage tenté. Vérifiez l’application avant de réessayer.',
+    'switched-startup-unconfirmed':
+      'Données du compte mises à jour, mais démarrage non confirmé. Aucun autre démarrage tenté. Vérifiez l’application avant de réessayer.',
+  },
   common: {
     loading: 'Chargement...',
     error: 'Erreur',

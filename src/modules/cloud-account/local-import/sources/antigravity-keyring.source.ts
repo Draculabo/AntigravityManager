@@ -1,4 +1,4 @@
-import { readAntigravityCredentialStoreToken } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
+import { readAntigravityCredentialStoreToken } from '@/modules/antigravity-runtime';
 import {
   createLocalAccountDiscoveryFailure,
   createLocalAccountDiscoveryFailureByCode,
@@ -21,7 +21,7 @@ export class AntigravityKeyringDiscoverySource implements LocalAccountDiscoveryS
   async discover(): Promise<LocalAccountSourceResult> {
     const source = { id: this.id };
     try {
-      const credential = this.dependencies.readCredential();
+      const credential = await this.dependencies.readCredential();
       if (!credential) {
         return {
           candidates: [],

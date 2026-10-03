@@ -1,3 +1,5 @@
+import type { PathResolutionOptions } from '@/shared/platform/paths';
+import { initializeStorageFile } from '../persistence/initialize-storage';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
@@ -530,12 +532,31 @@ export function isIdentityProfileApplyEnabled(): boolean {
   return !isSafeModeActiveNow();
 }
 
-export function getStoragePath(appTarget?: AntigravityAppTarget): string {
-  const storagePath = getExistingPath(getAntigravityStoragePaths(appTarget));
+export function getStoragePath(
+  appTarget?: AntigravityAppTarget,
+  pathOptions?: PathResolutionOptions,
+): string {
+  const storagePath = getExistingPath(getAntigravityStoragePaths(appTarget, pathOptions));
   if (!storagePath) {
     throw new Error('storage_json_not_found');
   }
   return storagePath;
+}
+
+/** Explicit account mutations may initialize state; read-only queries never do. */
+export function ensureIdentityProfileStorage(
+  appTarget?: AntigravityAppTarget,
+  pathOptions?: PathResolutionOptions,
+): string {
+  if (appTarget === 'agy') {
+    throw new Error('identity_profile_storage_unsupported_for_cli');
+  }
+  const candidates = getAntigravityStoragePaths(appTarget, pathOptions);
+  const storagePath = getExistingPath(candidates) || candidates[0];
+  if (!storagePath) {
+    throw new Error('storage_json_path_unavailable');
+  }
+  return initializeStorageFile(storagePath, generateDeviceProfile);
 }
 
 export function getStorageDirectoryPath(appTarget?: AntigravityAppTarget): string {
@@ -591,13 +612,16 @@ export function readCurrentDeviceProfile(storagePath?: string): DeviceProfile {
   };
 }
 
-export function ensureGlobalOriginalFromCurrentStorage(appTarget?: AntigravityAppTarget): void {
+export function ensureGlobalOriginalFromCurrentStorage(
+  appTarget?: AntigravityAppTarget,
+  pathOptions?: PathResolutionOptions,
+): void {
   if (loadGlobalOriginalProfile()) {
     return;
   }
 
   try {
-    const profile = readCurrentDeviceProfile(getStoragePath(appTarget));
+    const profile = readCurrentDeviceProfile(getStoragePath(appTarget, pathOptions));
     saveGlobalOriginalProfile(profile);
   } catch (error) {
     logger.warn('Failed to capture baseline device profile from storage.json', error);
@@ -660,8 +684,9 @@ export function syncTelemetryServiceMachineIdValue(
   serviceMachineId: string,
   dbPath?: string,
   appTarget?: AntigravityAppTarget,
+  pathOptions?: PathResolutionOptions,
 ): void {
-  const targetDbPath = dbPath || getExistingPath(getAntigravityDbPaths(appTarget));
+  const targetDbPath = dbPath || getExistingPath(getAntigravityDbPaths(appTarget, pathOptions));
   if (!targetDbPath) {
     throw new Error('state_vscdb_not_found');
   }
@@ -698,8 +723,12 @@ export function syncTelemetryServiceMachineIdValue(
 export function applyDeviceProfile(
   profile: DeviceProfile,
   appTarget?: AntigravityAppTarget,
+  pathOptions?: PathResolutionOptions,
 ): string {
-  const storagePath = getStoragePath(appTarget);
+  const storagePath =
+    appTarget === 'agy'
+      ? getStoragePath(appTarget, pathOptions)
+      : ensureIdentityProfileStorage(appTarget, pathOptions);
   const backupPath = `${storagePath}.backup`;
   const stateDbPath = getStateDbPathFromStorage(storagePath);
   const stateBackupPath = `${stateDbPath}.backup`;

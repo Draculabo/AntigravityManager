@@ -3,6 +3,7 @@ import { isEqual, uniq } from 'lodash-es';
 import type { CloudAccount, CloudTokenData } from '@/modules/cloud-account/types';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { upsertCloudAccountsAtomically } from '@/modules/cloud-account/persistence/cloud-account-batch-writer';
+import { prepareDesktopIdentityStorage } from '@/modules/identity-profile/public';
 import type {
   DiscoveredCredential,
   DiscoveredLocalAccountSummary,
@@ -141,7 +142,10 @@ function createNewAccount(
 function createDefaultDependencies(): LocalAccountImportDependencies {
   return {
     getAccounts: () => CloudAccountRepo.getAccounts(),
-    upsertAccounts: upsertCloudAccountsAtomically,
+    upsertAccounts: async (accounts) => {
+      await prepareDesktopIdentityStorage();
+      await upsertCloudAccountsAtomically(accounts);
+    },
     createId: randomUUID,
     now: () => Math.floor(Date.now() / 1000),
   };

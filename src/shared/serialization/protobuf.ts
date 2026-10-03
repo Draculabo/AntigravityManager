@@ -213,6 +213,7 @@ export class ProtobufUtils {
     refreshToken: string;
     expiryTimestamp: number;
     idToken?: string;
+    isGcpTos?: boolean;
   } | null {
     const field6Data = this.getField(data, 6);
     if (!field6Data) {
@@ -342,6 +343,7 @@ export class ProtobufUtils {
     refreshToken: string;
     expiryTimestamp: number;
     idToken?: string;
+    isGcpTos?: boolean;
   } | null {
     const accessTokenBytes = this.getField(data, 1);
     const refreshTokenBytes = this.getField(data, 3);
@@ -362,6 +364,7 @@ export class ProtobufUtils {
       refreshToken: this.readString(refreshTokenBytes),
       expiryTimestamp,
       idToken: idTokenBytes ? this.readString(idTokenBytes) : undefined,
+      isGcpTos: this.findVarintField(data, 6) === 1,
     };
   }
 
@@ -400,6 +403,7 @@ export class ProtobufUtils {
     refreshToken: string;
     expiryTimestamp: number;
     idToken?: string;
+    isGcpTos?: boolean;
   } | null {
     try {
       for (const decoded of this.decodeUnifiedStateTopicEntries(data)) {
@@ -455,6 +459,7 @@ export class ProtobufUtils {
     refreshToken: string;
     expiryTimestamp: number;
     idToken?: string;
+    isGcpTos?: boolean;
   } | null {
     const directParsed = this.extractOAuthTokenDetailsFromOAuthInfo(payload);
     if (directParsed) {
@@ -736,18 +741,10 @@ export class ProtobufUtils {
     refreshToken: string;
     expiryTimestamp: number;
     idToken?: string;
+    isGcpTos?: boolean;
   } | null {
-    let decoded: { sentinelKey: string; payload: Uint8Array };
-    try {
-      decoded = this.decodeUnifiedStateEntry(outerB64);
-    } catch {
-      return null;
-    }
-
-    if (decoded.sentinelKey !== 'oauthTokenInfoSentinelKey') {
-      return null;
-    }
-
-    return this.extractOAuthTokenDetailsFromUnifiedPayload(decoded.payload);
+    return this.extractOAuthTokenDetailsFromUnifiedState(
+      new Uint8Array(Buffer.from(outerB64, 'base64')),
+    );
   }
 }

@@ -2,14 +2,20 @@ import fs from 'fs';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ProtobufUtils } from '../../shared/serialization/protobuf';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
-import { CredentialStoreInjectionAdapter } from '@/modules/cloud-account/persistence/credential-store-injection-adapter';
 import {
   AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE,
   IdeAccountImportAdapter,
 } from '@/modules/cloud-account/persistence/ide-account-import-adapter';
-import { writeAntigravityCredentialStoreToken } from '@/modules/cloud-account/persistence/antigravityCredentialStore';
 import type { UserInfo } from '@/modules/cloud-account/services/GoogleAPIService';
 import { toSyncLocalAccountORPCError } from '@/modules/cloud-account/ipc/router';
+vi.mock('@/modules/identity-profile/ipc/handler', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/modules/identity-profile/ipc/handler')>();
+  return {
+    ...actual,
+    ensureIdentityProfileStorage: vi.fn(),
+    ensureGlobalOriginalFromCurrentStorage: vi.fn(),
+  };
+});
 
 let mockData: Record<string, string>;
 let mockDataByDbPath: Record<string, Record<string, string>>;
@@ -102,12 +108,44 @@ vi.mock('@/modules/cloud-account/services/GoogleAPIService', async (importOrigin
   };
 });
 
-vi.mock('@/modules/cloud-account/persistence/antigravityCredentialStore', () => ({
+vi.mock('@/modules/antigravity-runtime/credentials/antigravityCredentialStore', () => ({
   readAntigravityCredentialStoreToken: vi.fn(() => null),
   writeAntigravityCredentialStoreToken: vi.fn(),
 }));
 
 describe('IdeAccountImportAdapter.syncFromIde', () => {
+  it('does not persist imported credentials if identity storage preparation fails', async () => {
+    const { ensureIdentityProfileStorage } = await import('@/modules/identity-profile/ipc/handler');
+    vi.mocked(ensureIdentityProfileStorage).mockImplementationOnce(() => {
+      throw new Error('invalid identity storage');
+    });
+    vi.spyOn(CloudAccountRepo, 'getAccounts').mockResolvedValue([]);
+    const persist = vi.spyOn(CloudAccountRepo, 'addAccount').mockResolvedValue();
+    const { importCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
+    await expect(
+      importCloudAccounts(
+        JSON.stringify({
+          version: '1.0',
+          exportedAt: 1,
+          accounts: [
+            {
+              provider: 'google',
+              email: 'import@example.com',
+              token: {
+                access_token: 'fixture-access',
+                refresh_token: 'fixture-refresh',
+                expires_in: 3600,
+                expiry_timestamp: 4102444800,
+                token_type: 'Bearer',
+              },
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow('invalid identity storage');
+    expect(persist).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockData = {};
@@ -581,190 +619,6 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
     );
   });
 
-  it('should inject both formats when version detection fails', async () => {
-    vi.resetModules();
-    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
-      getAntigravityVersion: () => {
-        throw new Error('version detection failed');
-      },
-      isCredentialStoreVersion: () => false,
-      isNewVersion: () => false,
-    }));
-
-    const { CredentialStoreInjectionAdapter: AdapterWithMock } =
-      await import('@/modules/cloud-account/persistence/credential-store-injection-adapter');
-    const accessToken = 'access-new';
-    const refreshToken = 'refresh-new';
-
-    mockData['antigravityUnifiedStateSync.oauthToken'] = 'exists';
-    mockData['jetskiStateSync.agentManagerInitState'] = Buffer.from(
-      ProtobufUtils.createOAuthTokenInfo('old-access', 'old-refresh', 1699999999),
-    ).toString('base64');
-
-    AdapterWithMock.injectCloudToken({
-      id: 'id',
-      provider: 'google',
-      email: 'test@example.com',
-      name: 'Test',
-      avatar_url: '',
-      token: {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        expires_in: 3600,
-        expiry_timestamp: 1700000000,
-        token_type: 'Bearer',
-        email: 'test@example.com',
-      },
-      created_at: 1700000000,
-      last_used: 1700000000,
-      status: 'active',
-      is_active: true,
-    });
-
-    const updatedOldKey = runCalls.some(
-      (call) =>
-        call.sql === 'update' &&
-        (call.args[1] as { __key?: string } | undefined)?.__key ===
-          'jetskiStateSync.agentManagerInitState',
-    );
-    const wroteUnifiedKey = runCalls.some(
-      (call) =>
-        call.sql === 'insert' &&
-        (call.args[0] as { key?: string })?.key === 'antigravityUnifiedStateSync.oauthToken',
-    );
-
-    expect(wroteUnifiedKey).toBe(true);
-    expect(updatedOldKey).toBe(true);
-  });
-
-  it('preserves existing unified topic state when injecting a new OAuth token', async () => {
-    vi.resetModules();
-    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
-      getAntigravityVersion: () => ({
-        shortVersion: '2.0.1',
-        bundleVersion: '2.0.1',
-      }),
-      isCredentialStoreVersion: () => false,
-      isNewVersion: () => true,
-    }));
-
-    const existingTopic = ProtobufUtils.concatUnifiedTopicEntries(
-      ProtobufUtils.createUnifiedTopicEntry(
-        'oauthTokenInfoSentinelKey',
-        ProtobufUtils.createOAuthInfo('old-access', 'old-refresh', 1699999999),
-      ),
-      ProtobufUtils.createUnifiedTopicEntry(
-        'authStateWithContextSentinelKey',
-        new Uint8Array([4, 5, 6]),
-      ),
-    );
-    mockData['antigravityUnifiedStateSync.oauthToken'] =
-      Buffer.from(existingTopic).toString('base64');
-
-    const { CredentialStoreInjectionAdapter: AdapterWithMock } =
-      await import('@/modules/cloud-account/persistence/credential-store-injection-adapter');
-
-    AdapterWithMock.injectCloudToken(
-      {
-        id: 'id',
-        provider: 'google',
-        email: 'test@example.com',
-        name: 'Test',
-        avatar_url: '',
-        token: {
-          access_token: 'new-access',
-          refresh_token: 'new-refresh',
-          expires_in: 3600,
-          expiry_timestamp: 1700000000,
-          token_type: 'Bearer',
-          email: 'test@example.com',
-        },
-        created_at: 1700000000,
-        last_used: 1700000000,
-        status: 'active',
-        is_active: true,
-      },
-      'ide',
-    );
-
-    const unifiedWrite = runCalls.find(
-      (call) =>
-        call.sql === 'insert' &&
-        (call.args[0] as { key?: string })?.key === 'antigravityUnifiedStateSync.oauthToken',
-    );
-    const writtenValue = (unifiedWrite?.args[0] as { value?: string } | undefined)?.value;
-    expect(writtenValue).toBeTruthy();
-
-    const writtenTopic = new Uint8Array(Buffer.from(writtenValue!, 'base64'));
-    const entries = ProtobufUtils.decodeUnifiedStateTopicEntries(writtenTopic);
-
-    expect(entries.map((entry) => entry.sentinelKey)).toEqual([
-      'authStateWithContextSentinelKey',
-      'oauthTokenInfoSentinelKey',
-    ]);
-    expect(Array.from(entries[0]?.payload ?? [])).toEqual([4, 5, 6]);
-    expect(ProtobufUtils.extractOAuthTokenInfoFromUnifiedState(writtenTopic)).toEqual({
-      accessToken: 'new-access',
-      refreshToken: 'new-refresh',
-    });
-  });
-
-  it('clears legacy IDE OAuth state when injecting new-format unified state', async () => {
-    vi.resetModules();
-    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
-      getAntigravityVersion: () => ({
-        shortVersion: '2.0.1',
-        bundleVersion: '2.0.1',
-      }),
-      isCredentialStoreVersion: () => false,
-      isNewVersion: () => true,
-    }));
-
-    mockData['antigravityUnifiedStateSync.oauthToken'] = ProtobufUtils.createUnifiedOAuthToken(
-      'old-access',
-      'old-refresh',
-      1699999999,
-    );
-    mockData['jetskiStateSync.agentManagerInitState'] = Buffer.from(
-      ProtobufUtils.createOAuthTokenInfo('legacy-access', 'legacy-refresh', 1699999999),
-    ).toString('base64');
-
-    const { CredentialStoreInjectionAdapter: AdapterWithMock } =
-      await import('@/modules/cloud-account/persistence/credential-store-injection-adapter');
-
-    AdapterWithMock.injectCloudToken(
-      {
-        id: 'id',
-        provider: 'google',
-        email: 'test@example.com',
-        name: 'Test',
-        avatar_url: '',
-        token: {
-          access_token: 'new-access',
-          refresh_token: 'new-refresh',
-          expires_in: 3600,
-          expiry_timestamp: 1700000000,
-          token_type: 'Bearer',
-          email: 'test@example.com',
-        },
-        created_at: 1700000000,
-        last_used: 1700000000,
-        status: 'active',
-        is_active: true,
-      },
-      'ide',
-    );
-
-    const deletedLegacyState = runCalls.some(
-      (call) =>
-        call.sql === 'delete' &&
-        (call.args[0] as { __key?: string } | undefined)?.__key ===
-          'jetskiStateSync.agentManagerInitState',
-    );
-
-    expect(deletedLegacyState).toBe(true);
-  });
-
   it('exports account metadata without tokens when stripping sensitive data', async () => {
     vi.resetModules();
     const account = {
@@ -1080,126 +934,6 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
     );
     expect(formatSwitchRefreshError(refreshError)).toContain('re-login');
   });
-
-  it('should keep pre-2.0 product versions out of the credential store', async () => {
-    vi.resetModules();
-    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
-      getAntigravityVersion: () => ({
-        shortVersion: '1.99.9',
-        bundleVersion: '1.99.9',
-      }),
-      isCredentialStoreVersion: () => false,
-      isNewVersion: () => true,
-    }));
-
-    const { CredentialStoreInjectionAdapter: AdapterWithMock } =
-      await import('@/modules/cloud-account/persistence/credential-store-injection-adapter');
-
-    expect(AdapterWithMock.shouldInjectTokenIntoCredentialStore('classic')).toBe(false);
-  });
-
-  it('should always route agy CLI token injection to credential store', async () => {
-    vi.resetModules();
-    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
-      getAntigravityVersion: () => ({
-        shortVersion: '1.99.9',
-        bundleVersion: '1.99.9',
-      }),
-      isCredentialStoreVersion: () => false,
-      isNewVersion: () => true,
-    }));
-
-    const { CredentialStoreInjectionAdapter: AdapterWithMock } =
-      await import('@/modules/cloud-account/persistence/credential-store-injection-adapter');
-
-    expect(AdapterWithMock.shouldInjectTokenIntoCredentialStore('agy')).toBe(true);
-  });
-
-  it('should allow the known Linux Chromium version output workaround', async () => {
-    vi.resetModules();
-    vi.doMock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
-      getAntigravityVersion: () => ({
-        shortVersion: '1.107.0',
-        bundleVersion: '1.107.0',
-      }),
-      isCredentialStoreVersion: () => false,
-      isNewVersion: () => true,
-    }));
-
-    const { CredentialStoreInjectionAdapter: AdapterWithMock } =
-      await import('@/modules/cloud-account/persistence/credential-store-injection-adapter');
-
-    expect(AdapterWithMock.shouldInjectTokenIntoCredentialStore('classic')).toBe(true);
-  });
-
-  it('should route Classic Antigravity 2.0+ token injection to credential store', () => {
-    const shouldInjectTokenIntoCredentialStoreSpy = vi
-      .spyOn(CredentialStoreInjectionAdapter, 'shouldInjectTokenIntoCredentialStore')
-      .mockReturnValueOnce(true);
-    const injectCloudTokenSpy = vi.spyOn(CredentialStoreInjectionAdapter, 'injectCloudToken');
-
-    const account = {
-      id: 'id',
-      provider: 'google' as const,
-      email: 'test@example.com',
-      name: 'Test',
-      avatar_url: '',
-      token: {
-        access_token: 'access',
-        refresh_token: 'refresh',
-        expires_in: 3600,
-        expiry_timestamp: 1700000000,
-        token_type: 'Bearer',
-        email: 'test@example.com',
-      },
-      created_at: 1700000000,
-      last_used: 1700000000,
-      status: 'active' as const,
-      is_active: true,
-    };
-
-    expect(CredentialStoreInjectionAdapter.injectCloudTokenWithStorageStrategy(account)).toBe(
-      'credential-store',
-    );
-    expect(shouldInjectTokenIntoCredentialStoreSpy).toHaveBeenCalledWith(undefined);
-    expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledWith(account.token);
-    expect(injectCloudTokenSpy).not.toHaveBeenCalled();
-  });
-
-  it('should route Antigravity IDE token injection to SQLite target', () => {
-    vi.spyOn(
-      CredentialStoreInjectionAdapter,
-      'shouldInjectTokenIntoCredentialStore',
-    ).mockReturnValueOnce(false);
-    const injectCloudTokenSpy = vi
-      .spyOn(CredentialStoreInjectionAdapter, 'injectCloudToken')
-      .mockImplementationOnce(() => undefined);
-
-    const account = {
-      id: 'id',
-      provider: 'google' as const,
-      email: 'test@example.com',
-      name: 'Test',
-      avatar_url: '',
-      token: {
-        access_token: 'access',
-        refresh_token: 'refresh',
-        expires_in: 3600,
-        expiry_timestamp: 1700000000,
-        token_type: 'Bearer',
-        email: 'test@example.com',
-      },
-      created_at: 1700000000,
-      last_used: 1700000000,
-      status: 'active' as const,
-      is_active: true,
-    };
-
-    expect(
-      CredentialStoreInjectionAdapter.injectCloudTokenWithStorageStrategy(account, 'ide'),
-    ).toBe('sqlite');
-    expect(injectCloudTokenSpy).toHaveBeenCalledWith(account, 'ide');
-  });
 });
 
 describe('syncLocalAccount ORPC error mapping', () => {
@@ -1301,18 +1035,20 @@ describe('cloud switch fail-fast path', () => {
       },
     }));
 
-    vi.doMock('@/modules/cloud-account/persistence/credential-store-injection-adapter', () => ({
-      CredentialStoreInjectionAdapter: {
-        shouldInjectTokenIntoCredentialStore: vi.fn(() => false),
-        injectCloudTokenWithStorageStrategy: vi.fn(() => {
+    vi.doMock('@/modules/antigravity-runtime/credentials/clientAccountWrite', () => ({
+      resolveClientAccountStorage: vi.fn(async () => 'sqlite'),
+      prepareClientAccountWrite: vi.fn(async () => ({
+        storage: 'sqlite',
+        write: vi.fn(async () => {
           throw new Error('inject_failed');
         }),
-      },
+      })),
     }));
 
     vi.doMock('@/modules/identity-profile/ipc/handler', () => ({
       applyDeviceProfile: applyDeviceProfileMock,
       ensureGlobalOriginalFromCurrentStorage: vi.fn(),
+      ensureIdentityProfileStorage: vi.fn(),
       generateDeviceProfile: vi.fn(() => account.device_profile),
       isIdentityProfileApplyEnabled: vi.fn(() => true),
       readCurrentDeviceProfile: vi.fn(() => ({
@@ -1324,6 +1060,12 @@ describe('cloud switch fail-fast path', () => {
       syncTelemetryServiceMachineIdValue: vi.fn(),
     }));
 
+    vi.doMock('@/modules/antigravity-runtime/stop', () => ({
+      stopFromContext: vi.fn(async () => undefined),
+    }));
+    vi.doMock('@/modules/antigravity-runtime/launch', () => ({
+      startFromContext: startAntigravityMock,
+    }));
     vi.doMock('@/modules/antigravity-runtime/ipc/handler', () => ({
       closeAntigravity: vi.fn(async () => undefined),
       isProcessRunning: vi.fn(async () => true),
@@ -1373,7 +1115,7 @@ describe('cloud switch fail-fast path', () => {
     await expect(switchCloudAccount('acc-1')).rejects.toThrow('Switch failed: inject_failed');
 
     expect(refreshAccessTokenMock).toHaveBeenCalledWith('refresh', undefined, undefined);
-    expect(refreshAntigravityProcessCacheMock).toHaveBeenCalledTimes(1);
+    expect(refreshAntigravityProcessCacheMock).not.toHaveBeenCalled();
     expect(updateTokenMock).toHaveBeenCalledWith(
       'acc-1',
       expect.objectContaining({
@@ -1382,7 +1124,9 @@ describe('cloud switch fail-fast path', () => {
       }),
     );
     expect(applyDeviceProfileMock).toHaveBeenCalledTimes(1);
-    expect(applyDeviceProfileMock).toHaveBeenCalledWith(account.device_profile, undefined);
+    expect(applyDeviceProfileMock).toHaveBeenCalledWith(account.device_profile, undefined, {
+      userDataDir: '/fixture/data',
+    });
     expect(startAntigravityMock).not.toHaveBeenCalled();
     expect(recordSwitchFailureMock).toHaveBeenCalledWith(
       'cloud',
@@ -1457,10 +1201,12 @@ describe('cloud oauth client key backfill', () => {
       },
     }));
 
-    vi.doMock('@/modules/cloud-account/persistence/credential-store-injection-adapter', () => ({
-      CredentialStoreInjectionAdapter: {
-        shouldInjectTokenIntoCredentialStore: vi.fn(() => true),
-      },
+    vi.doMock('@/modules/antigravity-runtime/credentials/clientAccountWrite', () => ({
+      resolveClientAccountStorage: vi.fn(async () => 'credential-store'),
+      prepareClientAccountWrite: vi.fn(async () => ({
+        storage: 'credential-store',
+        write: vi.fn(async () => undefined),
+      })),
     }));
 
     vi.doMock('@/modules/cloud-account/services/GoogleAPIService', () => ({
@@ -1481,6 +1227,7 @@ describe('cloud oauth client key backfill', () => {
     vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: vi.fn() }));
     vi.doMock('@/modules/identity-profile/ipc/handler', () => ({
       ensureGlobalOriginalFromCurrentStorage: vi.fn(),
+      ensureIdentityProfileStorage: vi.fn(),
       generateDeviceProfile: vi.fn(),
       getStorageDirectoryPath: vi.fn(() => ''),
       isIdentityProfileApplyEnabled: vi.fn(() => false),
@@ -1565,10 +1312,12 @@ describe('cloud oauth client key backfill', () => {
       },
     }));
 
-    vi.doMock('@/modules/cloud-account/persistence/credential-store-injection-adapter', () => ({
-      CredentialStoreInjectionAdapter: {
-        shouldInjectTokenIntoCredentialStore: vi.fn(() => true),
-      },
+    vi.doMock('@/modules/antigravity-runtime/credentials/clientAccountWrite', () => ({
+      resolveClientAccountStorage: vi.fn(async () => 'credential-store'),
+      prepareClientAccountWrite: vi.fn(async () => ({
+        storage: 'credential-store',
+        write: vi.fn(async () => undefined),
+      })),
     }));
 
     vi.doMock('@/modules/account/persistence/antigravity-state-database', () => ({
@@ -1598,6 +1347,7 @@ describe('cloud oauth client key backfill', () => {
     vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: vi.fn() }));
     vi.doMock('@/modules/identity-profile/ipc/handler', () => ({
       ensureGlobalOriginalFromCurrentStorage: vi.fn(),
+      ensureIdentityProfileStorage: vi.fn(),
       generateDeviceProfile: vi.fn(),
       getStorageDirectoryPath: vi.fn(() => ''),
       isIdentityProfileApplyEnabled: vi.fn(() => false),
@@ -1668,10 +1418,12 @@ describe('cloud oauth client key backfill', () => {
       },
     }));
 
-    vi.doMock('@/modules/cloud-account/persistence/credential-store-injection-adapter', () => ({
-      CredentialStoreInjectionAdapter: {
-        shouldInjectTokenIntoCredentialStore: vi.fn(() => false),
-      },
+    vi.doMock('@/modules/antigravity-runtime/credentials/clientAccountWrite', () => ({
+      resolveClientAccountStorage: vi.fn(async () => 'sqlite'),
+      prepareClientAccountWrite: vi.fn(async () => ({
+        storage: 'sqlite',
+        write: vi.fn(async () => undefined),
+      })),
     }));
 
     const setActiveOAuthClientKeyMock = vi.fn();
@@ -1694,6 +1446,7 @@ describe('cloud oauth client key backfill', () => {
     vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: vi.fn() }));
     vi.doMock('@/modules/identity-profile/ipc/handler', () => ({
       ensureGlobalOriginalFromCurrentStorage: vi.fn(),
+      ensureIdentityProfileStorage: vi.fn(),
       generateDeviceProfile: vi.fn(),
       getStorageDirectoryPath: vi.fn(() => ''),
       isIdentityProfileApplyEnabled: vi.fn(() => false),
@@ -1770,10 +1523,12 @@ describe('cloud oauth client key backfill', () => {
       },
     }));
 
-    vi.doMock('@/modules/cloud-account/persistence/credential-store-injection-adapter', () => ({
-      CredentialStoreInjectionAdapter: {
-        shouldInjectTokenIntoCredentialStore: vi.fn(() => false),
-      },
+    vi.doMock('@/modules/antigravity-runtime/credentials/clientAccountWrite', () => ({
+      resolveClientAccountStorage: vi.fn(async () => 'sqlite'),
+      prepareClientAccountWrite: vi.fn(async () => ({
+        storage: 'sqlite',
+        write: vi.fn(async () => undefined),
+      })),
     }));
 
     vi.doMock('@/modules/cloud-account/services/GoogleAPIService', () => ({
@@ -1794,6 +1549,7 @@ describe('cloud oauth client key backfill', () => {
     vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: vi.fn() }));
     vi.doMock('@/modules/identity-profile/ipc/handler', () => ({
       ensureGlobalOriginalFromCurrentStorage: vi.fn(),
+      ensureIdentityProfileStorage: vi.fn(),
       generateDeviceProfile: vi.fn(),
       getStorageDirectoryPath: vi.fn(() => ''),
       isIdentityProfileApplyEnabled: vi.fn(() => false),
@@ -1819,4 +1575,14 @@ describe('cloud oauth client key backfill', () => {
     expect(updateTokenMock).not.toHaveBeenCalled();
     expect(setSettingMock).toHaveBeenCalledWith('oauth_client_key_backfill_v1_done', true);
   });
+});
+
+vi.mock('@/modules/antigravity-runtime/launchContext', async () => {
+  const { switchContext } = await import('../support/runtime-switch-fixture');
+  return {
+    prepareLaunchContext: vi.fn(async (target: 'classic' | 'ide') => ({
+      ...switchContext,
+      target,
+    })),
+  };
 });

@@ -1,9 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { readWindowsFileVersion } from './windowsFileVersion';
 import { compare, coerce, parse } from 'semver';
 import { z } from 'zod';
-import { getAntigravityExecutablePath, isWsl } from '@/shared/platform/paths';
+import { getAntigravityExecutablePath } from '@/shared/platform/paths';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
@@ -12,17 +14,17 @@ export interface AntigravityVersion {
   bundleVersion: string;
 }
 
-const cachedVersions = new Map<AntigravityAppTarget, AntigravityVersion>();
-const cachedErrors = new Map<AntigravityAppTarget, Error>();
+const cachedVersions = new Map<string, AntigravityVersion>();
+const pendingVersions = new Map<string, Promise<AntigravityVersion>>();
+const execFileAsync = promisify(execFile);
+const VERSION_TIMEOUT_MS = 2500;
 const PackageJsonVersionSchema = z.object({
-  version: z.string().optional(),
+  name: z.string().regex(/antigravity/i),
+  version: z.string().trim().min(1),
 });
 
-function cacheAndReturn(
-  target: AntigravityAppTarget,
-  version: AntigravityVersion,
-): AntigravityVersion {
-  cachedVersions.set(target, version);
+function cacheAndReturn(cacheKey: string, version: AntigravityVersion): AntigravityVersion {
+  cachedVersions.set(cacheKey, version);
   return version;
 }
 
@@ -44,7 +46,10 @@ function readPackageJsonVersion(execPath: string): AntigravityVersion | null {
       if (!manifest.success) {
         continue;
       }
-      const parsed = parseVersionString(manifest.data.version ?? null);
+      const parsed = parseVersionString(manifest.data.version);
+      if (!parse(parsed) && !coerce(parsed)) {
+        continue;
+      }
       return {
         shortVersion: parsed,
         bundleVersion: parsed,
@@ -77,128 +82,114 @@ function parseVersionString(version: string | null): string {
   return trimmed;
 }
 
-export function getAntigravityVersion(target?: AntigravityAppTarget | null): AntigravityVersion {
+async function readVersion(execPath: string): Promise<AntigravityVersion> {
+  if (process.platform === 'win32') {
+    const parsed = parseVersionString(await readWindowsFileVersion(execPath));
+    return { shortVersion: parsed, bundleVersion: parsed };
+  }
+  if (process.platform === 'darwin') {
+    const plistPath = getPlistPath(execPath);
+    let content = fs.readFileSync(plistPath, 'utf-8');
+    if (content.startsWith('bplist')) {
+      const output = await execFileAsync('plutil', ['-convert', 'xml1', '-o', '-', plistPath], {
+        encoding: 'utf-8',
+        timeout: VERSION_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      });
+      content = output.stdout;
+    }
+    const shortVersion = parseVersionString(readPlistValue(content, 'CFBundleShortVersionString'));
+    return {
+      shortVersion,
+      bundleVersion: parseVersionString(readPlistValue(content, 'CFBundleVersion') || shortVersion),
+    };
+  }
+  if (process.platform === 'linux') {
+    // --version can launch an Electron GUI, including across WSL interop.
+    // Missing installation metadata must never start an application.
+    const manifest = readPackageJsonVersion(execPath);
+    if (manifest) {
+      return manifest;
+    }
+    throw new Error('Unable to read Antigravity product version from its installation');
+  }
+  throw new Error('Unable to determine Antigravity version');
+}
+
+function getPlistPath(execPath: string): string {
+  const appIndex = execPath.toLowerCase().indexOf('.app');
+  const appPath = appIndex >= 0 ? execPath.slice(0, appIndex + 4) : execPath;
+  return path.join(appPath, 'Contents', 'Info.plist');
+}
+
+function getVersionCacheKey(target: AntigravityAppTarget, execPath: string): string {
+  const parent = path.dirname(execPath);
+  const files = [
+    execPath,
+    path.join(parent, 'resources', 'app', 'package.json'),
+    path.join(parent, 'resources', 'app.asar', 'package.json'),
+  ];
+  if (process.platform === 'darwin') {
+    files.push(getPlistPath(execPath));
+  }
+  const identities = files.map((file) => {
+    try {
+      const stat = fs.statSync(file);
+      return [file, stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(':');
+    } catch {
+      return file + ':missing';
+    }
+  });
+  return [target, ...identities].join('|');
+}
+
+/** Coalesces probes; failed queries remain retryable after installation repair. */
+export function getCachedAntigravityVersion(
+  target?: AntigravityAppTarget | null,
+): AntigravityVersion | undefined {
   const resolvedTarget = resolveAntigravityAppTarget(target);
-  const cachedVersion = cachedVersions.get(resolvedTarget);
+  const execPath = getAntigravityExecutablePath(resolvedTarget);
+  return execPath ? cachedVersions.get(getVersionCacheKey(resolvedTarget, execPath)) : undefined;
+}
+
+export async function getAntigravityVersion(
+  target?: AntigravityAppTarget | null,
+  executablePath?: string,
+): Promise<AntigravityVersion> {
+  const resolvedTarget = resolveAntigravityAppTarget(target);
+  const execPath = executablePath ?? getAntigravityExecutablePath(resolvedTarget);
+  if (!execPath) {
+    throw new Error('Unable to locate Antigravity executable');
+  }
+  const cacheKey = getVersionCacheKey(resolvedTarget, execPath);
+  const cachedVersion = cachedVersions.get(cacheKey);
   if (cachedVersion) {
     return cachedVersion;
   }
-  const cachedError = cachedErrors.get(resolvedTarget);
-  if (cachedError) {
-    throw cachedError;
+  let pending = pendingVersions.get(cacheKey);
+  if (!pending) {
+    pending = readVersion(execPath).then((version) => cacheAndReturn(cacheKey, version));
+    pendingVersions.set(cacheKey, pending);
+    const release = () => {
+      pendingVersions.delete(cacheKey);
+    };
+    pending.then(release, release);
   }
-
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const execPath = getAntigravityExecutablePath(resolvedTarget);
-    if (!execPath) {
-      throw new Error('Unable to locate Antigravity executable');
+    return await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Antigravity version query timed out')),
+          VERSION_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
     }
-
-    if (process.platform === 'win32') {
-      try {
-        const escapedPath = execPath.replace(/'/g, "''");
-        const command = `(Get-Item '${escapedPath}').VersionInfo.FileVersion`;
-        const version = execSync(`powershell -NoProfile -Command "${command}"`, {
-          encoding: 'utf-8',
-          stdio: ['ignore', 'pipe', 'ignore'],
-        }).trim();
-
-        const parsed = parseVersionString(version);
-        return cacheAndReturn(resolvedTarget, {
-          shortVersion: parsed,
-          bundleVersion: parsed,
-        });
-      } catch (error) {
-        const fallback = readPackageJsonVersion(execPath);
-        if (fallback) {
-          return cacheAndReturn(resolvedTarget, fallback);
-        }
-        throw error;
-      }
-    }
-
-    if (process.platform === 'darwin') {
-      const appIndex = execPath.toLowerCase().indexOf('.app');
-      const appPath = appIndex >= 0 ? execPath.slice(0, appIndex + 4) : execPath;
-      const plistPath = path.join(appPath, 'Contents', 'Info.plist');
-      if (!fs.existsSync(plistPath)) {
-        throw new Error(`Info.plist not found: ${plistPath}`);
-      }
-
-      let content = fs.readFileSync(plistPath, 'utf-8');
-      if (content.startsWith('bplist')) {
-        try {
-          content = execSync(`plutil -convert xml1 -o - "${plistPath}"`, {
-            encoding: 'utf-8',
-            stdio: ['ignore', 'pipe', 'ignore'],
-          });
-        } catch {
-          throw new Error('Failed to parse Info.plist');
-        }
-      }
-
-      const shortVersion = parseVersionString(
-        readPlistValue(content, 'CFBundleShortVersionString'),
-      );
-      const bundleVersion = parseVersionString(
-        readPlistValue(content, 'CFBundleVersion') || shortVersion,
-      );
-
-      return cacheAndReturn(resolvedTarget, {
-        shortVersion,
-        bundleVersion,
-      });
-    }
-
-    if (process.platform === 'linux') {
-      // Under WSL the resolved executable is the Windows build, and running it
-      // does not print a version and exit: the interop launch hands the request
-      // to Antigravity itself, which opens a window on the user's desktop. The
-      // version is readable from the package manifest beside the binary, so ask
-      // the file rather than the process.
-      if (isWsl()) {
-        const manifestVersion = readPackageJsonVersion(execPath);
-        if (manifestVersion) {
-          return cacheAndReturn(resolvedTarget, manifestVersion);
-        }
-        throw new Error(`Unable to read Antigravity version from ${execPath} under WSL`);
-      }
-
-      // Prefer reading the package manifest rather than executing the binary.
-      // On Linux, when Antigravity is not already running, the Electron
-      // entrypoint opens a window instead of printing a version and exiting,
-      // which both phantom-launches the app and blocks execSync indefinitely.
-      // Reading the manifest avoids running the binary entirely. (#324)
-      const manifestVersion = readPackageJsonVersion(execPath);
-      if (manifestVersion) {
-        return cacheAndReturn(resolvedTarget, manifestVersion);
-      }
-
-      // Manifest not found — fall back to running the binary, but guard with a
-      // timeout so the probe cannot block the main process indefinitely.
-      // ponytail: 5 s timeout; raise if a slow system needs more headroom
-      try {
-        const output = execSync(`"${execPath}" --version`, {
-          encoding: 'utf-8',
-          stdio: ['ignore', 'pipe', 'ignore'],
-          timeout: 5000,
-        }).trim();
-        const parsed = parseVersionString(output);
-        return cacheAndReturn(resolvedTarget, {
-          shortVersion: parsed,
-          bundleVersion: parsed,
-        });
-      } catch {
-        throw new Error(`Unable to determine Antigravity version from ${execPath}`);
-      }
-    }
-
-    throw new Error('Unable to determine Antigravity version');
-  } catch (error) {
-    const normalized =
-      error instanceof Error ? error : new Error('Unable to determine Antigravity version');
-    cachedErrors.set(resolvedTarget, normalized);
-    throw normalized;
   }
 }
 
@@ -217,10 +208,6 @@ export function compareVersion(v1: string, v2: string): number {
   }
 
   return compare(parsedV1, parsedV2);
-}
-
-export function isNewVersion(version: AntigravityVersion): boolean {
-  return compareVersion(version.shortVersion, '1.16.5') >= 0;
 }
 
 export function isCredentialStoreVersion(version: AntigravityVersion): boolean {

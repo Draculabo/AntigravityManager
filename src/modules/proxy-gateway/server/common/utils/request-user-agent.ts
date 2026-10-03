@@ -1,6 +1,9 @@
 import axios from 'axios';
 import { isString } from 'lodash-es';
-import { getAntigravityVersion } from '@/modules/antigravity-runtime/utils/antigravityVersion';
+import {
+  getAntigravityVersion,
+  getCachedAntigravityVersion,
+} from '@/modules/antigravity-runtime/utils/antigravityVersion';
 import { createAxiosHttpClient } from '@/shared/http/axios-json-client';
 import { logger } from '../../../../../shared/logging/logger';
 
@@ -102,10 +105,16 @@ function shouldSkipRemoteVersionLookup(): boolean {
   return process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
 }
 
+/** Synchronous request builders only use a version already confirmed by an async probe. */
 export function resolveLocalInstalledVersion(): string | null {
+  const version = getCachedAntigravityVersion()?.shortVersion;
+  return version ? extractHighestSemver(version) : null;
+}
+
+async function resolveLocalInstalledVersionAsync(): Promise<string | null> {
   let localVersionString: string;
   try {
-    localVersionString = getAntigravityVersion().shortVersion;
+    localVersionString = (await getAntigravityVersion()).shortVersion;
     const rawVersion = normalizeNonEmptyString(localVersionString);
     if (!rawVersion) {
       return null;
@@ -119,7 +128,7 @@ export function resolveLocalInstalledVersion(): string | null {
 
 async function fetchTextPayload(url: string): Promise<string | null> {
   try {
-    const discoveryVersion = resolveLocalInstalledVersion() ?? FALLBACK_VERSION;
+    const discoveryVersion = (await resolveLocalInstalledVersionAsync()) ?? FALLBACK_VERSION;
     const response = await userAgentHttpClient.requestRaw(url, {
       operation: 'default-user-agent-discovery',
       request: {
@@ -180,7 +189,7 @@ async function resolveDefaultUserAgentResolution(): Promise<UserAgentResolution>
   let bestVersion = FALLBACK_VERSION;
   let bestSource: UserAgentSource = 'fallback';
 
-  const localVersion = resolveLocalInstalledVersion();
+  const localVersion = await resolveLocalInstalledVersionAsync();
   if (localVersion && compareSemverVersions(localVersion, bestVersion) > 0) {
     bestVersion = localVersion;
     bestSource = 'local';

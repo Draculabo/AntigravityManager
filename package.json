@@ -122,6 +122,7 @@
     "vitest": "^4.0.8"
   },
   "dependencies": {
+    "@draculabo/sysinfo-process-enhanced": "0.1.0",
     "@codemirror/lang-json": "^6.0.2",
     "@fastify/multipart": "^9.4.0",
     "@grpc/grpc-js": "^1.14.4",
@@ -178,7 +179,6 @@
     "electron-squirrel-startup": "^1.0.1",
     "electron-updater": "^6.8.9",
     "fastify": "^5.8.4",
-    "find-process": "^2.0.0",
     "i18next": "^25.6.3",
     "i18next-browser-languagedetector": "^8.2.0",
     "jsonc-parser": "^3.3.1",
@@ -186,7 +186,6 @@
     "koffi": "^3.1.4",
     "lodash-es": "^4.18.1",
     "lucide-react": "^0.553.0",
-    "ps-list": "^9.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-error-boundary": "^6.1.0",

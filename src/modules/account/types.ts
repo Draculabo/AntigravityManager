@@ -18,18 +18,6 @@ export interface Account {
   last_used: string;
 }
 
-export interface AccountBackupData {
-  version: string; // Backup format version
-  account: Account;
-  data: {
-    // Key-value pairs from Antigravity database
-    antigravityAuthStatus?: string;
-    'jetskiStateSync.agentManagerInitState'?: string;
-    'antigravityUnifiedStateSync.oauthToken'?: string;
-    [key: string]: unknown;
-  };
-}
-
 export interface AccountInfo {
   email: string;
   name?: string;
@@ -51,10 +39,34 @@ export const AccountSchema = z.object({
 });
 
 export const AccountBackupDataSchema = z.object({
-  version: z.string(),
+  version: z.literal('1.0'),
   account: AccountSchema,
-  data: z.record(z.string(), z.any()),
+  data: z
+    .object({
+      antigravityAuthStatus: z
+        .union([
+          z.string(),
+          z.object({
+            email: z.string().optional(),
+            name: z.string().optional(),
+            apiKey: z.string().optional(),
+            user: z
+              .object({ email: z.string().optional(), name: z.string().optional() })
+              .optional(),
+          }),
+        ])
+        .optional(),
+      'jetskiStateSync.agentManagerInitState': z.string().optional(),
+      'antigravityUnifiedStateSync.oauthToken': z.string().optional(),
+      'antigravityUnifiedStateSync.userStatus': z.string().optional(),
+      'antigravityUnifiedStateSync.enterprisePreferences': z.string().optional(),
+      account_email: z.string().optional(),
+      backup_time: z.string().optional(),
+    })
+    .catchall(z.unknown()),
 });
+
+export type AccountBackupData = z.infer<typeof AccountBackupDataSchema>;
 
 export const AccountInfoSchema = z.object({
   email: z.string(), // Allow empty string for unauthenticated state

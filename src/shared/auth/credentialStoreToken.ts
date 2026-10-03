@@ -3,4 +3,5 @@ export interface CredentialStoreTokenInput {
   refresh_token: string;
   expiry_timestamp: number;
   id_token?: string;
+  project_id?: string;
 }

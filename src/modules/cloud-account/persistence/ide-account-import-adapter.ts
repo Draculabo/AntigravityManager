@@ -19,6 +19,7 @@ import { parseRow } from '@/shared/persistence/database/sqlite';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
 import { CloudAccountRepo } from './cloudHandler';
 import { resolveImportedTokenLifetime } from './ide-token-lifetime';
+import { prepareDesktopIdentityStorage } from '@/modules/identity-profile/public';
 
 export const AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE =
   'Antigravity CLI accounts are stored in the system credential store and cannot be synced from IDE SQLite state.';
@@ -221,7 +222,8 @@ export class IdeAccountImportAdapter {
   }
 
   static async syncFromIde(appTarget?: AntigravityAppTarget): Promise<CloudAccount | null> {
-    if (resolveAntigravityAppTarget(appTarget) === 'agy') {
+    const target = resolveAntigravityAppTarget(appTarget);
+    if (target === 'agy') {
       throw new Error(AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE);
     }
 
@@ -360,6 +362,7 @@ export class IdeAccountImportAdapter {
         };
       }
 
+      await prepareDesktopIdentityStorage(target);
       await CloudAccountRepo.addAccount(account);
       return account;
     } catch (error) {

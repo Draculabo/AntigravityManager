@@ -43,6 +43,8 @@ export const ItemTableKeys = [
   'antigravityAuthStatus',
   'antigravityOnboarding',
   'antigravityUnifiedStateSync.oauthToken',
+  'antigravityUnifiedStateSync.userStatus',
+  'antigravityUnifiedStateSync.enterprisePreferences',
   'jetskiStateSync.agentManagerInitState',
   'google.antigravity',
   'antigravityUserSettings.allUserSettings',

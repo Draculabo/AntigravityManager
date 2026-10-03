@@ -32,9 +32,12 @@ export const accountRouter = os.router({
     return listAccountsData();
   }),
 
-  addAccountSnapshot: os.output(AccountSchema).handler(async () => {
-    return addAccountSnapshot();
-  }),
+  addAccountSnapshot: os
+    .input(z.object({ appTarget: AntigravityAppTargetSchema.optional() }).optional())
+    .output(AccountSchema)
+    .handler(async ({ input }) => {
+      return addAccountSnapshot(input?.appTarget);
+    }),
 
   switchAccount: os
     .input(z.object({ accountId: z.string(), appTarget: AntigravityAppTargetSchema.optional() }))
@@ -120,7 +123,7 @@ export const databaseRouter = os.router({
     .input(AccountBackupDataSchema)
     .output(z.void())
     .handler(async ({ input }) => {
-      restoreAccount(input);
+      await restoreAccount(input);
     }),
 
   getCurrentAccountInfo: os.output(AccountInfoSchema).handler(async () => {

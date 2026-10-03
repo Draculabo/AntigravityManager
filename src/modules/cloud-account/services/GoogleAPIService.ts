@@ -14,7 +14,7 @@ import {
   type OAuthClientDescriptor,
   OAuthClientRegistryService,
 } from './OAuthClientRegistryService';
-import { GOOGLE_OAUTH_SCOPE } from '../oauthScopes';
+import { GOOGLE_OAUTH_SCOPE } from '@/shared/auth/googleOAuthScopes';
 
 // --- Constants & Config ---
 const URLS = {

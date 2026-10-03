@@ -4,11 +4,16 @@ const mocks = vi.hoisted(() => ({
   getSecret: vi.fn(),
   spawnSync: vi.fn(),
   withTarget: vi.fn(),
+  entry: vi.fn(),
 }));
 
 vi.mock('@napi-rs/keyring', () => ({
-  Entry: {
-    withTarget: mocks.withTarget,
+  Entry: class {
+    static withTarget = mocks.withTarget;
+    getSecret = mocks.getSecret;
+    constructor(service: string, username: string) {
+      mocks.entry(service, username);
+    }
   },
 }));
 
@@ -54,6 +59,7 @@ describe('Linux credential store precedence', () => {
     mocks.getSecret.mockReset();
     mocks.spawnSync.mockReset();
     mocks.withTarget.mockReset();
+    mocks.entry.mockReset();
     mocks.withTarget.mockReturnValue({
       getSecret: mocks.getSecret,
     });
@@ -78,9 +84,8 @@ describe('Linux credential store precedence', () => {
     });
 
     const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(readAntigravityCredentialStoreToken()).toEqual({
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    expect(await readAntigravityCredentialStoreToken()).toEqual({
       refreshToken: 'refresh-secret-tool-current',
     });
     expect(mocks.getSecret).not.toHaveBeenCalled();
@@ -98,11 +103,12 @@ describe('Linux credential store precedence', () => {
     mocks.getSecret.mockReturnValue(encodedCredential('refresh-native-current'));
 
     const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/cloud-account/persistence/antigravityCredentialStore');
-
-    expect(readAntigravityCredentialStoreToken()).toEqual({
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    expect(await readAntigravityCredentialStoreToken()).toEqual({
       refreshToken: 'refresh-native-current',
     });
     expect(mocks.getSecret).toHaveBeenCalledTimes(1);
+    expect(mocks.entry).toHaveBeenCalledExactlyOnceWith('gemini', 'antigravity');
+    expect(mocks.withTarget).not.toHaveBeenCalled();
   });
 });
