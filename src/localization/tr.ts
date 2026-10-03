@@ -653,6 +653,14 @@ const tr = {
       cancel: 'İptal',
       confirm: 'Yeniden Oluştur',
     },
+    'risk-confirmation': {
+      title: 'Proxy başlatılmadan önce riskleri onaylayın',
+      description:
+        'Google, şubat ayından bu yana denetimlerini artırmıştır. Bu yazılımla yalnızca hesap değiştirmek Google hesabınızı etkilemez.\n\nAncak yazılımı ters proxy veya benzer amaçlarla kullanmak Google Hizmet Şartları’nı ihlal eder ve hesabınızın askıya alınmasına yol açabilir.',
+      'account-advice': 'Yalnızca kaybetmeyi göze alabileceğiniz hesapları kullanın.',
+      cancel: 'İptal',
+      confirm: 'Riskleri anlıyorum. Proxy başlat',
+    },
     service: {
       title: 'Hizmet Durumu',
       description: 'Yerel API proxy sunucusunu kontrol edin.',

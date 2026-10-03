@@ -805,6 +805,14 @@ const zhCn = {
       cancel: '取消',
       confirm: '重新生成',
     },
+    'risk-confirmation': {
+      title: '开启反向代理前，请确认风险',
+      description:
+        '自二月份以来，谷歌已加大打击力度。在使用此软件期间，仅仅切换账户不会对您的谷歌账户造成任何影响。\n\n但是，如果您将其用于反向代理等用途，则违反了谷歌的服务条款，并可能导致账户被暂停。',
+      'account-advice': '请使用您可以承受损失的账户。',
+      cancel: '取消',
+      confirm: '我已了解风险，开启反向代理',
+    },
     service: {
       title: '服务状态',
       description: '控制本地 API 代理服务器。',

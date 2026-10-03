@@ -844,6 +844,14 @@ const en = {
       cancel: 'Cancel',
       confirm: 'Regenerate',
     },
+    'risk-confirmation': {
+      title: 'Confirm the risks before starting the proxy',
+      description:
+        'Since February, Google has intensified enforcement. Simply switching accounts with this software will not affect your Google account.\n\nHowever, using it as a reverse proxy or for similar purposes violates Google’s Terms of Service and may result in account suspension.',
+      'account-advice': 'Only use accounts you can afford to lose.',
+      cancel: 'Cancel',
+      confirm: 'I understand the risks. Start the proxy',
+    },
     service: {
       title: 'Service Status',
       description: 'Control the local API proxy server.',
