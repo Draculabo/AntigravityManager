@@ -2,6 +2,19 @@
 
 # Changelog
 
+## [0.22.0](https://github.com/Draculabo/AntigravityManager/compare/v0.21.2...v0.22.0) (2026-10-03)
+
+### ✨ Features
+
+* **proxy:** require risk acknowledgment before first activation ([6f8cba0](https://github.com/Draculabo/AntigravityManager/commit/6f8cba0e2c401dbd0110593bfdaf6b07bb76f1ab))
+* **runtime:** support supervised IDE hot switching with restart fallback ([12e44c4](https://github.com/Draculabo/AntigravityManager/commit/12e44c45a3c30b42e0f960e77752a35f8f95cd6e))
+
+### 🐛 Bug Fixes
+
+* align compact account quota layout and avatar ([ccea788](https://github.com/Draculabo/AntigravityManager/commit/ccea78872f3aaa196107c806ec6b372b201cbca4))
+* avoid phantom launch on Linux by reading package.json before exec ([#324](https://github.com/Draculabo/AntigravityManager/issues/324)) ([#326](https://github.com/Draculabo/AntigravityManager/issues/326)) ([3c4b3bc](https://github.com/Draculabo/AntigravityManager/commit/3c4b3bcc01fea52e97d30440d269542347be38ee))
+* **runtime:** make account switching and process lifecycle deterministic ([0976166](https://github.com/Draculabo/AntigravityManager/commit/097616687dcc8beb33ac33a6ffab7809eb61835b))
+
 ## [0.21.2](https://github.com/Draculabo/AntigravityManager/compare/v0.21.1...v0.21.2) (2026-09-29)
 
 ### 🐛 Bug Fixes
