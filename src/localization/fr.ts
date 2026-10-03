@@ -18,6 +18,8 @@ const fr = {
     'launch-failed': 'Le démarrage a échoué. Vérifiez le chemin et les permissions.',
     'startup-unconfirmed':
       'Démarrage non confirmé en six secondes. Aucun autre démarrage tenté. Vérifiez l’application avant de réessayer.',
+    'switched-hot-unconfirmed':
+      'Les données du compte ont été mises à jour, mais le changement à chaud dans l’IDE n’a pas pu être confirmé. Vérifiez le compte actuel dans l’IDE avant de réessayer.',
     'switched-startup-unconfirmed':
       'Données du compte mises à jour, mais démarrage non confirmé. Aucun autre démarrage tenté. Vérifiez l’application avant de réessayer.',
   },

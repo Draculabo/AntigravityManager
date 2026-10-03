@@ -16,6 +16,8 @@ const tr = {
     'launch-failed': 'Başlatma başarısız oldu. Yolu ve izinleri kontrol edin.',
     'startup-unconfirmed':
       'Başlangıç altı saniye içinde doğrulanamadı. Tekrar başlatılmadı. Yeniden denemeden önce uygulamayı kontrol edin.',
+    'switched-hot-unconfirmed':
+      'Hesap verileri güncellendi ancak IDE içindeki çalışırken hesap değiştirme doğrulanamadı. Yeniden denemeden önce IDE içindeki mevcut hesabı kontrol edin.',
     'switched-startup-unconfirmed':
       'Hesap verileri güncellendi ancak başlangıç doğrulanamadı. Tekrar başlatılmadı. Yeniden denemeden önce uygulamayı kontrol edin.',
   },

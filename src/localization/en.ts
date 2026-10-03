@@ -17,6 +17,8 @@ const en = {
       'The Antigravity launch command failed. Check the executable path and permissions.',
     'startup-unconfirmed':
       'Antigravity startup could not be confirmed within six seconds. No additional launch was attempted. Check the app before retrying.',
+    'switched-hot-unconfirmed':
+      'Account data was updated, but the IDE hot switch could not be confirmed. Check the current account in the IDE before retrying.',
     'switched-startup-unconfirmed':
       'Account data was updated, but Antigravity startup could not be confirmed. No additional launch was attempted. Check the app before retrying.',
   },

@@ -13,6 +13,8 @@ const zhCn = {
     'launch-failed': 'Antigravity 启动命令失败。请检查可执行文件路径和权限。',
     'startup-unconfirmed':
       '未能在六秒内确认 Antigravity 已启动，未再次自动启动。请检查应用状态后再重试。',
+    'switched-hot-unconfirmed':
+      '账户数据已更新，但未能确认 IDE 热切换完成。请检查 IDE 中的当前账户后重试。',
     'switched-startup-unconfirmed':
       '账户数据已更新，但未能确认 Antigravity 已启动，未再次自动启动。请检查应用状态后再重试。',
   },

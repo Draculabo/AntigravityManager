@@ -7,6 +7,7 @@ import { prepareLaunchContext } from '../launchContext';
 import { startFromContext } from '../launch';
 import { stopFromContext } from '../stop';
 import { processError } from '../processErrors';
+import { prepareIdeHotSwitch } from '../ideHotSwitch';
 import type { LaunchContext } from '../types';
 import {
   applyDeviceProfile,
@@ -74,7 +75,7 @@ function syncTelemetryServiceMachineIdBestEffort(
 }
 
 function toSwitchFailureReason(stage: string, error: unknown): SwitchFailureReason {
-  if (stage === 'close') {
+  if (stage === 'close' || stage === 'hot_stop') {
     return 'process_close_failed';
   }
   if (stage === 'missing_profile') {
@@ -86,7 +87,7 @@ function toSwitchFailureReason(stage: string, error: unknown): SwitchFailureReas
   if (stage === 'switch') {
     return 'perform_switch_failed';
   }
-  if (stage === 'start') {
+  if (stage === 'start' || stage === 'hot_confirm') {
     return 'start_process_failed';
   }
 
@@ -116,7 +117,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
   let failureReason: SwitchFailureReason | null = null;
   let exitUnconfirmed = false;
   let stage = 'close';
-  const switchMode = 'restart';
+  let switchMode = 'restart';
   const isCliTarget = appTarget === 'agy';
   await withTimingTrace(
     'switch.execute',
@@ -148,6 +149,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
         stage = 'preflight';
         const context =
           launchContext || (await prepareLaunchContext(appTarget === 'ide' ? 'ide' : 'classic'));
+        const hotSession = !useCredentialStore ? await prepareIdeHotSwitch(context) : null;
         if (applyFingerprint) {
           if (!targetProfile) {
             stage = 'missing_profile';
@@ -156,8 +158,8 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           stage = 'apply';
           ensureIdentityProfileStorage(appTarget, context.pathOptions);
         }
-        const writeSwitchState = async () => {
-          if (applyFingerprint && targetProfile) {
+        const writeSwitchState = async (applyProfile = true) => {
+          if (applyProfile && applyFingerprint && targetProfile) {
             stage = 'apply';
             trace.phaseSync('applyProfileMs', () => {
               applyDeviceProfile(targetProfile, appTarget, context.pathOptions);
@@ -176,28 +178,80 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           }
         };
 
-        stage = 'close';
-        await trace.phase('closeMs', async () => {
+        stage = 'preflight';
+        let hotConfirmed = false;
+        if (hotSession) {
+          switchMode = 'hot';
+          await writeSwitchState();
           try {
-            await stopFromContext(context, processExitTimeoutMs);
+            stage = 'hot_stop';
+            const stopped = await trace.phase('hotServiceStopMs', hotSession.stopServices);
+            // The retiring service may flush cached credentials on exit. Reassert the selected
+            // account before confirming its replacement; a failed rewrite is a partial switch.
+            await writeSwitchState(false);
+            if (stopped) {
+              stage = 'hot_confirm';
+              hotConfirmed = await trace.phase(
+                'hotServiceConfirmMs',
+                hotSession.confirmReplacement,
+              );
+            }
+            if (!hotConfirmed) {
+              await hotSession.assertCanRestart();
+            }
           } catch (error) {
-            exitUnconfirmed =
-              error instanceof AppError && error.messageKey === 'process-runtime.exit-unconfirmed';
-            throw error;
+            logger.warn('IDE hot switch could not be confirmed', {
+              stage,
+              reason:
+                error instanceof AppError
+                  ? error.messageKey
+                  : error instanceof Error
+                    ? error.name
+                    : 'unknown',
+            });
+            if (
+              error instanceof AppError &&
+              error.messageKey === 'process-runtime.switched-hot-unconfirmed'
+            ) {
+              throw error;
+            }
+            throw processError('switched-hot-unconfirmed');
           }
-        });
-
-        await writeSwitchState();
-
-        stage = 'start';
-        await trace.phase('startMs', async () => {
-          try {
-            await startFromContext(context);
-          } catch {
-            throw processError('switched-startup-unconfirmed');
+          if (!hotConfirmed) {
+            switchMode = 'hot-fallback';
+            logger.info(
+              'IDE services did not recover within the deadline; restarting the captured IDE',
+            );
           }
-        });
+        }
 
+        if (!hotConfirmed) {
+          stage = 'close';
+          await trace.phase('closeMs', async () => {
+            try {
+              await stopFromContext(context, processExitTimeoutMs);
+            } catch (error) {
+              exitUnconfirmed =
+                error instanceof AppError &&
+                error.messageKey === 'process-runtime.exit-unconfirmed';
+              if (hotSession) {
+                throw processError('switched-hot-unconfirmed');
+              }
+              throw error;
+            }
+          });
+
+          await writeSwitchState();
+
+          stage = 'start';
+          await trace.phase('startMs', async () => {
+            try {
+              await startFromContext(context);
+            } catch {
+              throw processError('switched-startup-unconfirmed');
+            }
+          });
+        }
         if (afterSwitchSuccess) {
           stage = 'after_success';
           await trace.phase('afterSwitchSuccessMs', afterSwitchSuccess);

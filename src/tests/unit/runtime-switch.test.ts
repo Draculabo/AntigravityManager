@@ -11,12 +11,17 @@ const mocks = vi.hoisted(() => ({
   apply: vi.fn(),
   initialize: vi.fn(),
   sync: vi.fn(),
+  hot: vi.fn(),
+  stopServices: vi.fn(),
+  confirmReplacement: vi.fn(),
+  assertCanRestart: vi.fn(),
 }));
 vi.mock('@/modules/antigravity-runtime/launchContext', () => ({
   prepareLaunchContext: mocks.prepare,
 }));
 vi.mock('@/modules/antigravity-runtime/launch', () => ({ startFromContext: mocks.start }));
 vi.mock('@/modules/antigravity-runtime/stop', () => ({ stopFromContext: mocks.stop }));
+vi.mock('@/modules/antigravity-runtime/ideHotSwitch', () => ({ prepareIdeHotSwitch: mocks.hot }));
 vi.mock('@/modules/identity-profile/ipc/handler', () => ({
   applyDeviceProfile: mocks.apply,
   ensureIdentityProfileStorage: mocks.initialize,
@@ -34,6 +39,10 @@ beforeEach(() => {
   mocks.stop.mockResolvedValue(undefined);
   mocks.start.mockResolvedValue(undefined);
   mocks.initialize.mockReset();
+  mocks.hot.mockReset().mockResolvedValue(null);
+  mocks.stopServices.mockReset().mockResolvedValue(true);
+  mocks.confirmReplacement.mockReset().mockResolvedValue(true);
+  mocks.assertCanRestart.mockReset().mockResolvedValue(undefined);
 });
 
 function options() {
@@ -56,8 +65,9 @@ describe('switch launch safety', () => {
     sqmId: '{SQM}',
   };
 
-  it('closes a running IDE before writing credentials during restart switching', async () => {
+  it('closes a running IDE before writing credentials when hot switching is unavailable', async () => {
     const events: string[] = [];
+    mocks.hot.mockResolvedValue(null);
     mocks.stop.mockImplementation(async () => {
       events.push('close');
     });
@@ -81,8 +91,155 @@ describe('switch launch safety', () => {
     expect(mocks.initialize).toHaveBeenCalledExactlyOnceWith('ide', switchContext.pathOptions);
     expect(mocks.apply).toHaveBeenCalledTimes(1);
     expect(request.performSwitch).toHaveBeenCalledExactlyOnceWith(switchContext.pathOptions);
+    expect(mocks.stopServices).not.toHaveBeenCalled();
     expect(mocks.stop).toHaveBeenCalledExactlyOnceWith(switchContext, 10000);
     expect(mocks.start).toHaveBeenCalledExactlyOnceWith(switchContext);
+  });
+
+  it.each(['cloud', 'local'] as const)(
+    'hot switches %s IDE accounts without closing or launching the window',
+    async (scope) => {
+      const context = { ...switchContext, target: 'ide' as const };
+      const events: string[] = [];
+      mocks.hot.mockResolvedValue({
+        stopServices: mocks.stopServices,
+        confirmReplacement: mocks.confirmReplacement,
+        assertCanRestart: mocks.assertCanRestart,
+      });
+      mocks.stopServices.mockImplementation(async () => {
+        events.push('stop-services');
+        return true;
+      });
+      mocks.confirmReplacement.mockImplementation(async () => {
+        events.push('confirm-replacement');
+        return true;
+      });
+      const request = {
+        ...options(),
+        scope,
+        appTarget: 'ide' as const,
+        launchContext: context,
+        applyFingerprint: true,
+        targetProfile: profile,
+        performSwitch: vi.fn(async () => {
+          events.push('credentials');
+        }),
+        afterSwitchSuccess: vi.fn(async () => {
+          events.push('success');
+        }),
+      };
+      await executeSwitchFlow(request);
+      expect(events).toEqual([
+        'credentials',
+        'stop-services',
+        'credentials',
+        'confirm-replacement',
+        'success',
+      ]);
+      expect(mocks.apply).toHaveBeenCalledTimes(1);
+      expect(request.performSwitch).toHaveBeenNthCalledWith(1, context.pathOptions);
+      expect(request.performSwitch).toHaveBeenNthCalledWith(2, context.pathOptions);
+      expect(mocks.stop).not.toHaveBeenCalled();
+      expect(mocks.start).not.toHaveBeenCalled();
+    },
+  );
+  it('does not terminate any process when the initial hot-switch write fails', async () => {
+    mocks.hot.mockResolvedValue({
+      stopServices: mocks.stopServices,
+      confirmReplacement: mocks.confirmReplacement,
+      assertCanRestart: mocks.assertCanRestart,
+    });
+    const request = {
+      ...options(),
+      appTarget: 'ide' as const,
+      launchContext: { ...switchContext, target: 'ide' as const },
+    };
+    request.performSwitch.mockRejectedValueOnce(new Error('write failed'));
+    await expect(executeSwitchFlow(request)).rejects.toThrow('write failed');
+    expect(mocks.stopServices).not.toHaveBeenCalled();
+    expect(mocks.stop).not.toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(request.afterSwitchSuccess).not.toHaveBeenCalled();
+  });
+  it('requires the post-termination credential write and does not report success on failure', async () => {
+    mocks.hot.mockResolvedValue({
+      stopServices: mocks.stopServices,
+      confirmReplacement: mocks.confirmReplacement,
+      assertCanRestart: mocks.assertCanRestart,
+    });
+    const request = {
+      ...options(),
+      appTarget: 'ide' as const,
+      launchContext: { ...switchContext, target: 'ide' as const },
+    };
+    request.performSwitch
+      .mockReset()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('rewrite failed'));
+    await expect(executeSwitchFlow(request)).rejects.toMatchObject({
+      messageKey: 'process-runtime.switched-hot-unconfirmed',
+    });
+    expect(mocks.confirmReplacement).not.toHaveBeenCalled();
+    expect(request.afterSwitchSuccess).not.toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
+  });
+  it('falls back to one full restart if service replacement cannot be confirmed', async () => {
+    mocks.hot.mockResolvedValue({
+      stopServices: mocks.stopServices,
+      confirmReplacement: mocks.confirmReplacement,
+      assertCanRestart: mocks.assertCanRestart,
+    });
+    mocks.confirmReplacement.mockResolvedValue(false);
+    const request = {
+      ...options(),
+      appTarget: 'ide' as const,
+      launchContext: { ...switchContext, target: 'ide' as const },
+    };
+    await executeSwitchFlow(request);
+    expect(mocks.stop).toHaveBeenCalledTimes(1);
+    expect(mocks.start).toHaveBeenCalledTimes(1);
+    expect(request.performSwitch).toHaveBeenCalledTimes(3);
+    expect(request.afterSwitchSuccess).toHaveBeenCalledTimes(1);
+  });
+  it('does not reopen a main window closed during hot switching', async () => {
+    mocks.hot.mockResolvedValue({
+      stopServices: mocks.stopServices,
+      confirmReplacement: mocks.confirmReplacement,
+      assertCanRestart: mocks.assertCanRestart,
+    });
+    mocks.confirmReplacement.mockRejectedValue(processError('switched-hot-unconfirmed'));
+    const request = {
+      ...options(),
+      appTarget: 'ide' as const,
+      launchContext: { ...switchContext, target: 'ide' as const },
+    };
+    await expect(executeSwitchFlow(request)).rejects.toMatchObject({
+      messageKey: 'process-runtime.switched-hot-unconfirmed',
+    });
+    expect(mocks.stop).not.toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(request.afterSwitchSuccess).not.toHaveBeenCalled();
+  });
+
+  it('does not perform fallback when the window was closed at the recovery deadline', async () => {
+    mocks.hot.mockResolvedValue({
+      stopServices: mocks.stopServices,
+      confirmReplacement: mocks.confirmReplacement,
+      assertCanRestart: mocks.assertCanRestart,
+    });
+    mocks.confirmReplacement.mockResolvedValue(false);
+    mocks.assertCanRestart.mockRejectedValue(processError('switched-hot-unconfirmed'));
+    const request = {
+      ...options(),
+      appTarget: 'ide' as const,
+      launchContext: { ...switchContext, target: 'ide' as const },
+    };
+    await expect(executeSwitchFlow(request)).rejects.toMatchObject({
+      messageKey: 'process-runtime.switched-hot-unconfirmed',
+    });
+    expect(mocks.stop).not.toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(request.afterSwitchSuccess).not.toHaveBeenCalled();
   });
 
   it('initializes the captured target before closing and applies its profile before credentials', async () => {

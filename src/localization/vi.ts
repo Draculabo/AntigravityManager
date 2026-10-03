@@ -15,6 +15,8 @@ const vi = {
     'launch-failed': 'Khởi chạy thất bại. Kiểm tra đường dẫn và quyền truy cập.',
     'startup-unconfirmed':
       'Chưa xác nhận khởi chạy trong sáu giây. Không tự khởi chạy lại. Kiểm tra ứng dụng trước khi thử lại.',
+    'switched-hot-unconfirmed':
+      'Dữ liệu tài khoản đã được cập nhật nhưng chưa xác nhận được việc chuyển đổi nóng trong IDE. Hãy kiểm tra tài khoản hiện tại trong IDE trước khi thử lại.',
     'switched-startup-unconfirmed':
       'Dữ liệu tài khoản đã cập nhật nhưng chưa xác nhận khởi chạy. Không tự khởi chạy lại. Kiểm tra ứng dụng trước khi thử lại.',
   },
