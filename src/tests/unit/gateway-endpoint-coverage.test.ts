@@ -2,11 +2,16 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { NestFactory } from '@nestjs/core';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
+
+// Route/parser checks need no accounts and must never read the user's database at initialization.
+vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
+  CloudAccountRepo: { getAccounts: async () => [] },
+}));
 
 /**
  * A census of every HTTP route this gateway registers, and which test file is
@@ -48,6 +53,30 @@ interface CensusEntry {
 }
 
 const CENSUS: readonly CensusEntry[] = [
+  ...[
+    ['GET', '/internal/audit/stats'],
+    ['GET', '/internal/audit/requests'],
+    ['GET', '/internal/audit/filter-options'],
+    ['GET', '/internal/audit/requests/:requestId'],
+    ['GET', '/internal/audit/bodies/:bodyId/chunks'],
+    ['GET', '/internal/audit/bodies/:bodyId/content'],
+    ['DELETE', '/internal/audit/requests/:requestId'],
+    ['DELETE', '/internal/audit/requests'],
+    ['POST', '/internal/audit/repair'],
+    ['GET', '/internal/thinking/stats'],
+    ['GET', '/internal/thinking/sessions'],
+    ['GET', '/internal/thinking/sessions/:sessionKey'],
+    ['DELETE', '/internal/thinking/sessions/:sessionKey'],
+    ['DELETE', '/internal/thinking/sessions'],
+    ['POST', '/internal/thinking/repair'],
+    ['POST', '/v1/thinking/end'],
+    ['GET', '/v1/thinking/sessions/:sessionId'],
+    ['DELETE', '/v1/thinking/sessions/:sessionId'],
+  ].map(([method, routePath]) => ({
+    method,
+    routePath,
+    testFile: 'observability-controller.integration.test.ts',
+  })),
   // Anthropic message batches (src/modules/proxy-gateway/server/modules/batch/anthropic-message-batches.controller.ts)
   {
     method: 'POST',
@@ -264,9 +293,10 @@ beforeAll(async () => {
   // Imported dynamically, after the env var above is set: `V1InternalPassthroughModule`
   // reads it once while its `@Module` decorator is evaluated at import time.
   const { AppModule } = await import('@/server/app.module');
+  const { createFastifyAdapter } = await import('@/server/main');
 
   const seen = new Set<string>();
-  const adapter = new FastifyAdapter();
+  const adapter = createFastifyAdapter();
   adapter.getInstance().addHook('onRoute', (opts) => {
     const methods = Array.isArray(opts.method) ? opts.method : [opts.method];
     for (const method of methods) {
@@ -300,6 +330,62 @@ afterAll(async () => {
 });
 
 describe('gateway endpoint coverage census', () => {
+  it.each([
+    '/v1/chat/completions',
+    '/v1/completions',
+    '/v1/complete',
+    '/v1/responses',
+    '/v1/messages',
+    '/v1/messages/count_tokens',
+    '/v1/batches',
+    '/v1/messages/batches',
+    '/v1beta/models/test:generateContent',
+    '/v1beta/models/test/countTokens',
+    '/v1internal/countTokens',
+    '/v1internal/embedContent',
+    '/v1internal/generateChat',
+  ])('lets large JSON reach the real authentication guard on %s', async (url) => {
+    if (!app) {
+      throw new Error('gateway application was not initialized');
+    }
+    const previous = getServerConfig();
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, api_key: 'gateway-test-key' });
+    try {
+      const response = await app
+        .getHttpAdapter()
+        .getInstance()
+        .inject({
+          method: 'POST',
+          url,
+          headers: { 'content-type': 'application/json' },
+          payload: { text: 'a'.repeat(2 * 1024 * 1024) },
+        });
+      expect(response.statusCode).toBe(401);
+      expect(response.json().error.message).toBe('API key validation failed');
+    } finally {
+      setServerConfig(previous ?? DEFAULT_APP_CONFIG.proxy);
+    }
+  });
+
+  it.each(['/v1/thinking/end', '/internal/audit/repair', '/internal/thinking/repair'])(
+    'keeps the 1 MiB parsing limit on the real control route %s',
+    async (url) => {
+      if (!app) {
+        throw new Error('gateway application was not initialized');
+      }
+      const response = await app
+        .getHttpAdapter()
+        .getInstance()
+        .inject({
+          method: 'POST',
+          url,
+          headers: { 'content-type': 'application/json' },
+          payload: { text: 'a'.repeat(2 * 1024 * 1024) },
+        });
+      expect(response.statusCode).toBe(413);
+    },
+  );
+
   it('boots the real gateway and finds at least one route', () => {
     expect(registeredRoutes.length).toBeGreaterThan(0);
   });

@@ -12,7 +12,8 @@ export const DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES = 64 * 1024 * 1024;
 /**
  * Predicate to identify routes that accept large model conversation, prompt,
  * batch, or diagnostic payloads. Non-model routes keep Fastify's safe 1 MiB
- * ceiling to prevent memory amplification and unauthenticated DoS.
+ * ceiling to reduce unnecessary parsing memory. Model bodies are still parsed
+ * before authentication; these per-request limits do not bound concurrent memory use.
  */
 export function isModelPayloadRoute(url: string): boolean {
   return (
