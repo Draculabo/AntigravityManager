@@ -64,8 +64,8 @@ export class ConfigManager {
 
       this.cachedConfig = merged;
       return merged;
-    } catch (e) {
-      logger.error('Config: Failed to load config', e);
+    } catch {
+      logger.error('Config: Failed to load config');
       this.cachedConfig = DEFAULT_APP_CONFIG;
       return DEFAULT_APP_CONFIG;
     }
@@ -118,9 +118,9 @@ export class ConfigManager {
         this.cachedConfig = migratedConfig;
         logger.info(`Config: Saved to ${configPath}`);
       })
-      .catch((e) => {
-        logger.error('Config: Failed to save config', e);
-        throw e;
+      .catch(() => {
+        logger.error('Config: Failed to save config');
+        throw new Error('Configuration could not be saved.');
       });
 
     return this.saveQueue;

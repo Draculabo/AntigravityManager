@@ -82,6 +82,8 @@ export const packageRootAllowlistIgnorePattern = new RegExp(
 export const packageIgnorePatterns = [
   packageRootAllowlistIgnorePattern,
   /^\/node_modules\/\.cache(?:\/|$)/,
+  // Standalone resources are copied once by extraResource, outside the Electron ASAR.
+  /^\/dist\/\.runtime(?:\/|$)/,
   // Source maps are uploaded to Sentry during build and should not ship in the app payload.
   /^\/.*\.map$/,
   packagePruneNodeModulesPattern,

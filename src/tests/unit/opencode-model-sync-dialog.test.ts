@@ -47,7 +47,7 @@ describe('OpenCodeModelSyncDialog', () => {
 
     fireEvent.click(geminiCheckbox);
     fireEvent.click(vendorCheckbox);
-    fireEvent.change(screen.getByLabelText('Custom Manager BaseURL'), {
+    fireEvent.change(screen.getByLabelText('Manager address'), {
       target: { value: 'http://antigravity-manager:8045/v1' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm sync' }));
@@ -95,9 +95,28 @@ describe('OpenCodeModelSyncDialog', () => {
 
     fireEvent.click(
       screen.getByRole('checkbox', {
-        name: /Sync accounts to antigravity-accounts\.json/,
+        name: /Use accounts in the OpenCode sign-in plugin/,
       }),
     );
     expect(onSyncAccountsChange).toHaveBeenCalledWith(true);
+  });
+  it('resets a saved custom address to the current Manager address', () => {
+    render(
+      createElement(OpenCodeModelSyncDialog, {
+        availableModels: AVAILABLE_MODELS,
+        configuredModels: [],
+        initialBaseUrl: 'http://old-manager.test:8045/v1',
+        defaultBaseUrl: 'http://127.0.0.1:9000/v1',
+        syncAccounts: false,
+        onOpenChange: vi.fn(),
+        onSyncAccountsChange: vi.fn(),
+        onSync: vi.fn(),
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(screen.getByLabelText('Manager address')).toHaveProperty(
+      'value',
+      'http://127.0.0.1:9000/v1',
+    );
   });
 });

@@ -13,9 +13,9 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, Search, RotateCcw, Save } from 'lucide-react';
 import { filter, flatMap, includes, size, sortBy, uniq } from 'lodash-es';
-import type { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 
-function collectAvailableModelIds(accounts: CloudAccount[] | undefined): string[] {
+function collectAvailableModelIds(accounts: CloudAccountView[] | undefined): string[] {
   if (!accounts) {
     return [];
   }
@@ -38,7 +38,7 @@ function filterModelIdsByQuery(modelIds: string[], query: string): string[] {
 }
 
 interface InnerProps {
-  accounts: CloudAccount[] | undefined;
+  accounts: CloudAccountView[] | undefined;
   initialConfig: Record<string, { enabled: boolean; priority: boolean }>;
 }
 

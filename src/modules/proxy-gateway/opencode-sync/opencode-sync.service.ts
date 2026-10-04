@@ -157,7 +157,6 @@ export class OpenCodeSyncService {
   }
 
   async getStatus(expectedBaseUrl: string): Promise<OpenCodeSyncStatus> {
-    const installationPromise = this.detectInstallation();
     const configPath = await this.resolveActiveConfigPath();
     const exists = await pathExists(configPath);
     const backupPath = await this.findBackupPath();
@@ -202,7 +201,7 @@ export class OpenCodeSyncService {
     }
 
     const credentialMatches = this.credentials.matches(configuredApiKey);
-    const installation = await installationPromise;
+    const installation = await this.detectInstallation();
 
     return {
       configPath,

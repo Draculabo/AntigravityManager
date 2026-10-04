@@ -53,7 +53,7 @@ See [src/modules/AGENTS.md](src/modules/AGENTS.md), [src/modules/proxy-gateway/A
 ## Security and data
 
 - Never commit secrets, real credentials, authorization headers, private account data or environment files.
-- Store sensitive credentials through existing OS keyring or encrypted-storage helpers. Do not write plaintext secrets to SQLite, logs, IPC payloads, fixtures or snapshots.
+- Cloud-account OAuth tokens are intentionally stored as plaintext JSON in the user's local SQLite profile; see [docs/security.md](docs/security.md) for the backup and access policy. Keep other credentials in their existing OS keyring or encrypted-storage helpers. Do not write secrets to logs, IPC payloads, test fixtures or diagnostic snapshots.
 - Use prepared SQL or Drizzle query construction. Validate data read from SQLite before trusted use.
 - Treat preload exposure, IPC, authentication, credential storage, database formats, updates, installers, binary patching and process execution as high-risk surfaces.
 - Do not change database schemas, durable formats, credential location, authentication, release or deployment behavior without explicit task scope and corresponding migration/recovery evidence.

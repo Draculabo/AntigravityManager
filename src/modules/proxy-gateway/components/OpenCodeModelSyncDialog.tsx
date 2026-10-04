@@ -31,6 +31,7 @@ interface OpenCodeModelSyncDialogProps {
   availableModels: readonly ProxyExampleModel[];
   configuredModels: readonly OpenCodeModelInput[];
   initialBaseUrl: string;
+  defaultBaseUrl?: string;
   syncAccounts: boolean;
   onOpenChange: (open: boolean) => void;
   onSyncAccountsChange: (syncAccounts: boolean) => void;
@@ -67,6 +68,7 @@ export function OpenCodeModelSyncDialog({
   availableModels,
   configuredModels,
   initialBaseUrl,
+  defaultBaseUrl = initialBaseUrl,
   syncAccounts,
   onOpenChange,
   onSyncAccountsChange,
@@ -169,14 +171,14 @@ export function OpenCodeModelSyncDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="open-code-base-url">
-                {t('proxy.open-code.custom-base-url', 'Custom Manager BaseURL')}
+                {t('proxy.open-code.custom-base-url', 'Manager address')}
               </Label>
-              {baseUrl !== initialBaseUrl ? (
+              {baseUrl !== defaultBaseUrl ? (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => setBaseUrl(initialBaseUrl)}
+                  onClick={() => setBaseUrl(defaultBaseUrl)}
                 >
                   <RefreshCw className="mr-1.5 size-3.5" />
                   {t('proxy.open-code.reset-base-url', 'Reset')}
@@ -208,12 +210,12 @@ export function OpenCodeModelSyncDialog({
             />
             <span className="min-w-0">
               <span className="block text-sm font-medium">
-                {t('proxy.open-code.sync-accounts', 'Sync accounts to antigravity-accounts.json')}
+                {t('proxy.open-code.sync-accounts', 'Use accounts in the OpenCode sign-in plugin')}
               </span>
               <span className="text-muted-foreground mt-1 block text-xs">
                 {t(
                   'proxy.open-code.sync-accounts-description',
-                  'OpenCode requires refresh tokens in its local plugin file. This option is off by default; tokens never cross the renderer IPC response or logs.',
+                  'OpenCode saves sign-in details on this computer. Only enable this on a computer you trust.',
                 )}
               </span>
             </span>

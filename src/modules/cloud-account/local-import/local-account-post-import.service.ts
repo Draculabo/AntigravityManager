@@ -37,8 +37,12 @@ function normalizePositiveInteger(value: number | undefined, fallback: number): 
 function createDefaultDependencies(): LocalAccountPostImportDependencies {
   return {
     refreshAccountQuota: async (accountId) => {
-      const { refreshAccountQuota } = await import('../ipc/handler');
-      await refreshAccountQuota(accountId);
+      const { refreshAccountQuotaCore } =
+        await import('../services/cloud-account-quota-refresh.service');
+      const account = await refreshAccountQuotaCore(accountId);
+      const { cloudAccountWeeklyWarmupRunner } =
+        await import('../services/cloud-account-weekly-warmup-runner');
+      cloudAccountWeeklyWarmupRunner.schedule([account]);
     },
     reloadAccountCache: async () => {
       const { reloadNestServerAccountLeaseCache } = await import('@/server/main');
@@ -67,6 +71,7 @@ export class LocalAccountPostImportService {
   private readonly maxTasks: number;
   private readonly taskTtlMs: number;
   private readonly tasks = new Map<string, MutablePostImportTask>();
+  private readonly pendingWork = new Set<Promise<void>>();
 
   constructor(options: LocalAccountPostImportOptions = {}) {
     this.dependencies = options.dependencies ?? createDefaultDependencies();
@@ -97,8 +102,25 @@ export class LocalAccountPostImportService {
       forgetAt: now + this.taskTtlMs,
     };
     this.tasks.set(taskId, task);
-    this.dependencies.defer(() => this.runTask(task, uniqueAccountIds));
+    const completion = new Promise<void>((resolve) => {
+      this.dependencies.defer(async () => {
+        try {
+          await this.runTask(task, uniqueAccountIds);
+        } finally {
+          resolve();
+        }
+      });
+    });
+    this.pendingWork.add(completion);
+    completion.then(() => this.pendingWork.delete(completion));
     return taskId;
+  }
+
+  /** Call after closing import admission so queued hydration cannot outlive persistence. */
+  async drain(): Promise<void> {
+    while (this.pendingWork.size > 0) {
+      await Promise.allSettled(Array.from(this.pendingWork));
+    }
   }
 
   getStatus(taskId: string): LocalAccountPostImportTaskSnapshot | undefined {

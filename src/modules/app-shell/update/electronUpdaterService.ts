@@ -1,257 +1,222 @@
-import { app } from 'electron';
-import type {
-  AppUpdater,
-  ProgressInfo,
-  UpdateCheckResult,
-  UpdateDownloadedEvent,
-  UpdateInfo,
-} from 'electron-updater';
-import { NsisUpdater } from 'electron-updater';
-import { DownloadedUpdateHelper } from 'electron-updater/out/DownloadedUpdateHelper';
+import { app, autoUpdater } from 'electron';
 
-import { isRunningFromExpectedInstallDir } from '@/modules/app-shell/utils/installNotice';
 import { logger } from '@/shared/logging/logger';
 import { buildElectronUpdaterNotification } from './electronUpdaterPolicy';
 import type { ManualUpdateCheckResult, ManualUpdateInfo } from './types';
+import { getWindowsUpdateBaseUrl } from './windowsUpdateSource';
+import {
+  checkNsisUpdate,
+  downloadNsisUpdate,
+  installNsisUpdate,
+  isNsisUpdateReady,
+  registerNsisUpdater,
+} from './windowsNsisUpdater';
+import { detectWindowsUpdatePackage } from './windowsPackageFlavor';
+import { findLatestSquirrelVersion, readSquirrelReleases } from './windowsSquirrelFeed';
+import { getWindowsSquirrelVersion } from './windowsSquirrelInstall';
 
 type NotifyUpdate = (update: ManualUpdateInfo, options?: { force?: boolean }) => void;
 
 type UpdateActionResult =
-  | {
-      status: 'started';
-    }
-  | {
-      status: 'unsupported' | 'not-available' | 'already-downloaded' | 'already-downloading';
-    }
-  | {
-      status: 'error';
-      message: string;
-    };
+  | { status: 'started' }
+  | { status: 'unsupported' | 'not-available' | 'already-downloaded' | 'already-downloading' }
+  | { status: 'error'; message: string };
 
-const GITHUB_UPDATE_FEED = {
-  provider: 'github' as const,
-  owner: 'Draculabo',
-  repo: 'AntigravityManager',
-};
 const LOCAL_UPDATE_FEED_URL = process.env.AGM_UPDATE_FEED_URL?.trim();
 const ALLOW_UNMANAGED_UPDATE_INSTALL = process.env.AGM_UPDATE_ALLOW_UNMANAGED === '1';
+const UPDATE_CHECK_TIMEOUT_MS = 20_000;
 
-function getUpdateFeed() {
-  if (LOCAL_UPDATE_FEED_URL) {
-    return {
-      provider: 'generic' as const,
-      url: LOCAL_UPDATE_FEED_URL,
-    };
-  }
-
-  return GITHUB_UPDATE_FEED;
-}
-
-class WindowsForgeUpdater extends NsisUpdater {
-  protected override downloadedUpdateHelper = new DownloadedUpdateHelper(
-    app.getPath('sessionData'),
-  );
-
-  constructor() {
-    super();
-
-    // Current Windows artifacts are not signed. Keep this local and explicit until release signing
-    // is available, otherwise electron-updater rejects the downloaded installer before UI can act.
-    this.verifyUpdateCodeSignature = async () => null;
-  }
-}
-
-let updater: AppUpdater | null = null;
 let registered = false;
 let notifyUpdate: NotifyUpdate | null = null;
-let lastAvailableUpdate: UpdateInfo | null = null;
-let downloadedUpdate: UpdateDownloadedEvent | null = null;
+let lastAvailableUpdate: ManualUpdateInfo | null = null;
+let downloadedUpdate = false;
 let isDownloading = false;
+
+function getUpdateFeedUrl(): string {
+  if (ALLOW_UNMANAGED_UPDATE_INSTALL && LOCAL_UPDATE_FEED_URL) {
+    return LOCAL_UPDATE_FEED_URL;
+  }
+  return getWindowsUpdateBaseUrl({ platform: 'win32', arch: process.arch });
+}
 
 export function isElectronUpdaterSupported(platform = process.platform): boolean {
   return platform === 'win32';
 }
 
 function isElectronUpdaterEnabled(): boolean {
-  if (!isElectronUpdaterSupported() || !app.isPackaged) {
-    return false;
-  }
+  return getWindowsUpdaterKind() !== null;
+}
 
-  if (ALLOW_UNMANAGED_UPDATE_INSTALL) {
-    return true;
-  }
-
-  return isRunningFromExpectedInstallDir({
+function getWindowsUpdaterKind(): 'squirrel' | 'nsis' | null {
+  return detectWindowsUpdatePackage({
     platform: process.platform,
     isPackaged: app.isPackaged,
+    execPath: process.execPath,
+    resourcesPath: process.resourcesPath,
     localAppData: process.env.LOCALAPPDATA,
     appName: app.getName(),
-    execPath: process.execPath,
+    allowUnmanagedSquirrel: ALLOW_UNMANAGED_UPDATE_INSTALL,
   });
 }
 
-function getUpdater(): AppUpdater {
-  if (!updater) {
-    updater = new WindowsForgeUpdater();
-  }
-
-  return updater;
-}
-
-function logUpdaterError(message: string, error: unknown): void {
-  logger.error(message, error instanceof Error ? error : new Error(String(error)));
-}
-
-function toUpdateNotification(
-  state: ManualUpdateInfo['state'],
-  updateInfo: Pick<UpdateInfo, 'version' | 'releaseName'>,
-): ManualUpdateInfo {
-  return buildElectronUpdaterNotification({
-    state: state ?? 'available',
-    platform: 'win32',
-    version: updateInfo.version,
-    releaseName: typeof updateInfo.releaseName === 'string' ? updateInfo.releaseName : null,
-  });
+function toNotification(version: string, state: 'available' | 'downloaded'): ManualUpdateInfo {
+  return buildElectronUpdaterNotification({ state, platform: 'win32', version });
 }
 
 export function registerElectronUpdater(notify: NotifyUpdate): void {
-  if (!isElectronUpdaterEnabled()) {
-    logger.info(
-      `ElectronUpdater: current ${process.platform} install is not managed by electron-updater`,
-    );
+  const kind = getWindowsUpdaterKind();
+  if (kind === 'nsis') {
+    registerNsisUpdater(notify);
+    return;
+  }
+  if (kind !== 'squirrel') {
+    logger.info('WindowsUpdater: current install is not a managed Windows package');
     return;
   }
 
   notifyUpdate = notify;
-
   if (registered) {
     return;
   }
 
-  const appUpdater = getUpdater();
-  appUpdater.autoDownload = false;
-  appUpdater.autoInstallOnAppQuit = false;
-  appUpdater.autoRunAppAfterInstall = true;
-  appUpdater.allowPrerelease = false;
-  appUpdater.disableDifferentialDownload = true;
-  appUpdater.forceDevUpdateConfig = !app.isPackaged;
-  appUpdater.logger = {
-    info: (message?: unknown) => logger.info(`ElectronUpdater: ${String(message ?? '')}`),
-    warn: (message?: unknown) => logger.warn(`ElectronUpdater: ${String(message ?? '')}`),
-    error: (message?: unknown) => logger.error(`ElectronUpdater: ${String(message ?? '')}`),
-    debug: (message: string) => logger.debug(`ElectronUpdater: ${message}`),
-  };
-  appUpdater.setFeedURL(getUpdateFeed());
-
-  if (LOCAL_UPDATE_FEED_URL) {
-    logger.warn(`ElectronUpdater: using local update feed ${LOCAL_UPDATE_FEED_URL}`);
+  try {
+    autoUpdater.setFeedURL({ url: getUpdateFeedUrl() });
+  } catch {
+    logger.warn('SquirrelUpdater: update feed configuration failed');
+    return;
   }
-
-  if (ALLOW_UNMANAGED_UPDATE_INSTALL) {
-    logger.warn('ElectronUpdater: unmanaged install checks are disabled for local verification');
-  }
-
-  appUpdater.on('checking-for-update', () => {
-    logger.info('ElectronUpdater: checking for update');
+  autoUpdater.on('update-available', () => {
+    logger.info('SquirrelUpdater: update is available and downloading');
   });
-
-  appUpdater.on('update-available', (updateInfo) => {
-    logger.info(`ElectronUpdater: update available ${updateInfo.version}`);
-    lastAvailableUpdate = updateInfo;
-    downloadedUpdate = null;
-    notifyUpdate?.(toUpdateNotification('available', updateInfo), { force: true });
-  });
-
-  appUpdater.on('update-not-available', (updateInfo) => {
-    logger.info(`ElectronUpdater: update not available ${updateInfo.version}`);
-  });
-
-  appUpdater.on('download-progress', (progress: ProgressInfo) => {
-    logger.info(`ElectronUpdater: download progress ${progress.percent.toFixed(2)}%`);
-  });
-
-  appUpdater.on('update-downloaded', (event) => {
+  autoUpdater.on('update-not-available', () => {
     isDownloading = false;
-    downloadedUpdate = event;
-    logger.info(`ElectronUpdater: update downloaded ${event.version}`);
-    notifyUpdate?.(toUpdateNotification('downloaded', event), { force: true });
+    logger.info('SquirrelUpdater: no update in the feed');
   });
-
-  appUpdater.on('error', (error) => {
+  autoUpdater.on('update-downloaded', () => {
     isDownloading = false;
-    logUpdaterError('ElectronUpdater: updater error', error);
+    downloadedUpdate = true;
+    logger.info('SquirrelUpdater: update downloaded');
+    if (lastAvailableUpdate) {
+      notifyUpdate?.(toNotification(lastAvailableUpdate.version, 'downloaded'), { force: true });
+    }
   });
-
+  autoUpdater.on('error', () => {
+    isDownloading = false;
+    logger.warn('SquirrelUpdater: update check or download failed');
+    if (lastAvailableUpdate) {
+      notifyUpdate?.({ ...lastAvailableUpdate, state: 'error' }, { force: true });
+    }
+  });
   registered = true;
 }
 
 export async function checkElectronUpdaterUpdate(): Promise<ManualUpdateCheckResult> {
+  if (getWindowsUpdaterKind() === 'nsis') {
+    return checkNsisUpdate();
+  }
   if (!isElectronUpdaterEnabled()) {
     return { status: 'unsupported' };
   }
 
   try {
-    const result: UpdateCheckResult | null = await getUpdater().checkForUpdates();
-    if (!result?.isUpdateAvailable) {
+    const releases = await readSquirrelReleases(getUpdateFeedUrl());
+    const version = findLatestSquirrelVersion(
+      releases,
+      getWindowsSquirrelVersion(process.execPath) ?? app.getVersion(),
+      process.arch,
+    );
+    if (!version) {
       return { status: 'up-to-date' };
     }
 
-    lastAvailableUpdate = result.updateInfo;
-    return {
-      status: 'available',
-      update: toUpdateNotification('available', result.updateInfo),
-    };
-  } catch (error) {
-    logUpdaterError('ElectronUpdater: failed to check for updates', error);
-    return {
-      status: 'error',
-      message: error instanceof Error ? error.message : 'Unknown update check error',
-    };
+    lastAvailableUpdate = toNotification(version, downloadedUpdate ? 'downloaded' : 'available');
+    if (!downloadedUpdate) {
+      lastAvailableUpdate = { ...lastAvailableUpdate, state: 'downloading' };
+      void downloadElectronUpdaterUpdate();
+    }
+    return { status: 'available', update: lastAvailableUpdate };
+  } catch {
+    logger.warn('SquirrelUpdater: release index check failed');
+    return { status: 'error', message: 'Update check failed' };
   }
 }
 
 export async function downloadElectronUpdaterUpdate(): Promise<UpdateActionResult> {
+  if (getWindowsUpdaterKind() === 'nsis') {
+    return downloadNsisUpdate();
+  }
   if (!isElectronUpdaterEnabled()) {
     return { status: 'unsupported' };
   }
-
   if (downloadedUpdate) {
     return { status: 'already-downloaded' };
   }
-
   if (!lastAvailableUpdate) {
     return { status: 'not-available' };
   }
-
   if (isDownloading) {
     return { status: 'already-downloading' };
   }
 
-  isDownloading = true;
-  try {
-    await getUpdater().downloadUpdate();
-
-    return { status: 'already-downloaded' };
-  } catch (error) {
-    isDownloading = false;
-    logUpdaterError('ElectronUpdater: failed to download update', error);
-
-    return {
-      status: 'error',
-      message: error instanceof Error ? error.message : 'Unknown update download error',
-    };
+  registerElectronUpdater(notifyUpdate ?? (() => {}));
+  if (!registered) {
+    return { status: 'error', message: 'Update download failed' };
   }
+  isDownloading = true;
+  notifyUpdate?.({ ...lastAvailableUpdate, state: 'downloading' }, { force: true });
+  return new Promise<UpdateActionResult>((resolve) => {
+    const finish = (result: UpdateActionResult) => {
+      clearTimeout(timeout);
+      autoUpdater.removeListener('update-available', onAvailable);
+      autoUpdater.removeListener('update-not-available', onNotAvailable);
+      autoUpdater.removeListener('error', onError);
+      if (result.status !== 'started') {
+        isDownloading = false;
+      }
+      resolve(result);
+    };
+    const onAvailable = () => finish({ status: 'started' });
+    const onNotAvailable = () => finish({ status: 'not-available' });
+    const onError = () => finish({ status: 'error', message: 'Update download failed' });
+    const timeout = setTimeout(
+      () => finish({ status: 'error', message: 'Update check timed out' }),
+      UPDATE_CHECK_TIMEOUT_MS,
+    );
+    autoUpdater.once('update-available', onAvailable);
+    autoUpdater.once('update-not-available', onNotAvailable);
+    autoUpdater.once('error', onError);
+    try {
+      // Electron's Squirrel updater starts downloading as part of this check.
+      autoUpdater.checkForUpdates();
+    } catch {
+      finish({ status: 'error', message: 'Update download failed' });
+    }
+  });
 }
 
 export function installElectronUpdaterUpdate(): UpdateActionResult {
+  if (getWindowsUpdaterKind() === 'nsis') {
+    if (!isNsisUpdateReady()) {
+      return { status: 'not-available' };
+    }
+
+    installNsisUpdate();
+    return { status: 'started' };
+  }
   if (!isElectronUpdaterEnabled()) {
     return { status: 'unsupported' };
   }
-
   if (!downloadedUpdate) {
     return { status: 'not-available' };
   }
 
-  getUpdater().quitAndInstall(false, true);
+  autoUpdater.quitAndInstall();
   return { status: 'started' };
+}
+
+export function isElectronUpdaterDownloadReady(): boolean {
+  if (getWindowsUpdaterKind() === 'nsis') {
+    return isNsisUpdateReady();
+  }
+  return getWindowsUpdaterKind() === 'squirrel' && downloadedUpdate;
 }

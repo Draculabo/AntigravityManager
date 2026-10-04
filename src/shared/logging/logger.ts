@@ -77,7 +77,7 @@ class Logger {
    * point, importing this module must stay free of filesystem side effects. Safe to
    * call more than once; only the first call adds the file transport.
    */
-  enableFileLogging(directory: string = getAgentDir()): void {
+  enableFileLogging(directory: string = getAgentDir(), role: 'app' | 'core' = 'app'): void {
     if (this.fileLoggingEnabled) {
       return;
     }
@@ -99,12 +99,12 @@ class Logger {
     );
 
     const rotateTransport = new DailyRotateFile({
-      filename: path.join(directory, 'app-%DATE%.log'),
+      filename: path.join(directory, `${role}-%DATE%.log`),
       datePattern: 'YYYY-MM-DD',
       maxSize: LOG_MAX_SIZE,
       maxFiles: LOG_RETENTION,
       zippedArchive: false,
-      auditFile: path.join(directory, '.app-log-audit.json'),
+      auditFile: path.join(directory, `.${role}-log-audit.json`),
       level: 'debug',
       format: fileFormat,
     });

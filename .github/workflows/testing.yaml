@@ -31,6 +31,8 @@ jobs:
         run: npm run type-check
       - name: Run unit tests
         run: npm run test:unit
+      - name: Run acceptance harness unit tests
+        run: npm run test:acceptance -- unit
 
   # NOTE: E2E tests are disabled in CI because Electron apps require a graphical environment.
   # Run E2E tests locally with: npm run test:e2e

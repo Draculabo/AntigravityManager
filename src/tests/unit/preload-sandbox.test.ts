@@ -10,4 +10,9 @@ describe('preload sandbox compatibility', () => {
     expect(preloadSource).not.toContain('@sentry/electron/renderer');
     expect(preloadSource).not.toContain('SENTRY_ENABLED');
   });
+
+  it('does not expose OAuth authorization codes to the renderer', () => {
+    const preloadSource = readFileSync(path.join(process.cwd(), 'src/preload.ts'), 'utf-8');
+    expect(preloadSource).not.toMatch(/onGoogleAuthCode|GOOGLE_AUTH_CODE/);
+  });
 });

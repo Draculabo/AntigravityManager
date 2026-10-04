@@ -20,6 +20,45 @@ function createDeferredRunner() {
 }
 
 describe('LocalAccountPostImportService', () => {
+  it('drains queued work through quota hydration and cache reload', async () => {
+    const deferred = createDeferredRunner();
+    let finishReload: () => void = () => {};
+    const reload = new Promise<void>((resolve) => {
+      finishReload = resolve;
+    });
+    const service = new LocalAccountPostImportService({
+      dependencies: {
+        refreshAccountQuota: vi.fn(async () => {}),
+        reloadAccountCache: vi.fn(async () => {
+          await reload;
+          return 'reloaded' as const;
+        }),
+        createTaskId: () => 'draining',
+        now: () => 1,
+        defer: deferred.defer,
+      },
+    });
+    service.schedule(['account-a']);
+    let drained = false;
+    const draining = service.drain().then(() => {
+      drained = true;
+    });
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    const running = deferred.run();
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    finishReload();
+    await running;
+    await draining;
+    expect(drained).toBe(true);
+    expect(service.getStatus('draining')).toMatchObject({
+      status: 'completed',
+      cacheReloadStatus: 'reloaded',
+      refreshedAccountIds: ['account-a'],
+    });
+  });
+
   it('returns a queued task before starting quota refreshes', async () => {
     const deferred = createDeferredRunner();
     const refreshAccountQuota = vi.fn(async () => undefined);

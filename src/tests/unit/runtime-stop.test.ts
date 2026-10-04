@@ -52,13 +52,39 @@ afterEach(() => {
   Object.defineProperty(process, 'platform', { value: platform, configurable: true });
 });
 
+it('never forces termination when a Windows client refuses normal close', async () => {
+  mocks.observe.mockResolvedValue([main]);
+  mocks.execFile.mockImplementation((_file, _args, _options, callback) => callback(null));
+  const result = expect(stopFromContext(windowsContext, 500)).rejects.toMatchObject({
+    messageKey: 'process-runtime.exit-unconfirmed',
+  });
+  await vi.advanceTimersByTimeAsync(500);
+  await result;
+  expect(mocks.execFile).toHaveBeenCalledTimes(1);
+  expect(mocks.execFile.mock.calls[0][1]).not.toContain('/F');
+});
+
+it('reports an unconfirmed exit when the last Windows observation consumes the close deadline', async () => {
+  mocks.observe.mockResolvedValueOnce([main]).mockImplementationOnce(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 501));
+    throw new Error('probe deadline exceeded');
+  });
+  mocks.execFile.mockImplementation((_file, _args, _options, callback) => callback(null));
+  const result = expect(stopFromContext(windowsContext, 500)).rejects.toMatchObject({
+    messageKey: 'process-runtime.exit-unconfirmed',
+  });
+  await vi.advanceTimersByTimeAsync(501);
+  await result;
+  expect(mocks.execFile).toHaveBeenCalledTimes(1);
+});
+
 it('closes only verified Windows process IDs through WSL and confirms exit', async () => {
   mocks.observe.mockResolvedValueOnce([main]).mockResolvedValueOnce([]);
   mocks.execFile.mockImplementation((_file, _args, _options, callback) => callback(null));
   await stopFromContext(windowsContext);
   expect(mocks.execFile).toHaveBeenCalledExactlyOnceWith(
     '/mnt/c/Windows/System32/taskkill.exe',
-    ['/PID', '421', '/T', '/F'],
+    ['/PID', '421'],
     expect.objectContaining({ timeout: 10000, windowsHide: true }),
     expect.any(Function),
   );
@@ -69,7 +95,7 @@ it('closes only verified Windows process IDs through WSL and confirms exit', asy
   expect(mocks.existsSync).not.toHaveBeenCalled();
 });
 
-it('allows taskkill to exceed a native query budget while respecting the remaining stop deadline', async () => {
+it('allows normal window close to exceed a native query budget while respecting the remaining stop deadline', async () => {
   mocks.probeTimeout.mockReturnValue(1000);
   mocks.observe
     .mockImplementationOnce(async () => {
@@ -90,7 +116,7 @@ it('allows taskkill to exceed a native query budget while respecting the remaini
   await result;
   expect(mocks.execFile).toHaveBeenCalledExactlyOnceWith(
     '/mnt/c/Windows/System32/taskkill.exe',
-    ['/PID', '421', '/T', '/F'],
+    ['/PID', '421'],
     expect.objectContaining({ timeout: 4700, windowsHide: true }),
     expect.any(Function),
   );
@@ -109,7 +135,7 @@ it('does not kill a process if re-observation finds an installation conflict', a
   expect(mocks.execFile).not.toHaveBeenCalled();
 });
 
-it('gives native exit confirmation the remaining operation budget after taskkill', async () => {
+it('gives native exit confirmation the remaining operation budget after normal window close', async () => {
   Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
   mocks.wsl.mockReturnValue(false);
   mocks.probeTimeout.mockReturnValue(1000);
@@ -143,23 +169,26 @@ it('fails explicitly when a bounded close command fails', async () => {
 it.each([
   [true, 'C:\\Windows\\System32\\taskkill.exe'],
   [false, 'taskkill.exe'],
-])('selects native Windows taskkill by file existence (exists=%s)', async (exists, file) => {
-  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-  mocks.wsl.mockReturnValue(false);
-  mocks.existsSync.mockReturnValue(exists);
-  mocks.observe.mockResolvedValueOnce([main]).mockResolvedValueOnce([]);
-  mocks.execFile.mockImplementation((_file, _args, _options, callback) => callback(null));
-  await stopFromContext(windowsContext);
-  expect(mocks.existsSync).toHaveBeenCalledExactlyOnceWith('C:\\Windows\\System32\\taskkill.exe');
-  expect(mocks.execFile).toHaveBeenCalledExactlyOnceWith(
-    file,
-    ['/PID', '421', '/T', '/F'],
-    expect.objectContaining({ timeout: 10000, windowsHide: true }),
-    expect.any(Function),
-  );
-});
+])(
+  'selects native Windows normal window close by file existence (exists=%s)',
+  async (exists, file) => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    mocks.wsl.mockReturnValue(false);
+    mocks.existsSync.mockReturnValue(exists);
+    mocks.observe.mockResolvedValueOnce([main]).mockResolvedValueOnce([]);
+    mocks.execFile.mockImplementation((_file, _args, _options, callback) => callback(null));
+    await stopFromContext(windowsContext);
+    expect(mocks.existsSync).toHaveBeenCalledExactlyOnceWith('C:\\Windows\\System32\\taskkill.exe');
+    expect(mocks.execFile).toHaveBeenCalledExactlyOnceWith(
+      file,
+      ['/PID', '421'],
+      expect.objectContaining({ timeout: 10000, windowsHide: true }),
+      expect.any(Function),
+    );
+  },
+);
 
-it('does not retry native Windows taskkill after an execution failure', async () => {
+it('does not retry native Windows normal window close after an execution failure', async () => {
   Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
   mocks.wsl.mockReturnValue(false);
   mocks.observe.mockResolvedValue([main]);
@@ -171,13 +200,13 @@ it('does not retry native Windows taskkill after an execution failure', async ()
   });
   expect(mocks.execFile).toHaveBeenCalledExactlyOnceWith(
     'C:\\Windows\\System32\\taskkill.exe',
-    ['/PID', '421', '/T', '/F'],
+    ['/PID', '421'],
     expect.objectContaining({ timeout: 10000, windowsHide: true }),
     expect.any(Function),
   );
 });
 
-it('confirms native Windows exit despite taskkill failing for a retiring child', async () => {
+it('confirms native Windows exit despite normal window close failing for a retiring child', async () => {
   Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
   mocks.wsl.mockReturnValue(false);
   mocks.observe.mockResolvedValueOnce([main]).mockResolvedValue([]);

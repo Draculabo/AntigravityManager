@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { access, readdir } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
-import { extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { compact, uniq } from 'lodash-es';
 
@@ -157,12 +157,25 @@ async function runVersionCommand(
   }
 }
 
-export async function detectOpenCodeInstallation(): Promise<OpenCodeInstallationStatus> {
+export async function detectAgentToolInstallation(
+  executable: 'claude' | 'codex' | 'opencode',
+): Promise<OpenCodeInstallationStatus> {
   const currentPlatform = platform();
-  const pathCandidate = await findInPath('opencode', currentPlatform);
+  const pathCandidate = await findInPath(executable, currentPlatform);
+  const fallback = (await getFallbackCandidates(homedir(), currentPlatform)).map((candidate) =>
+    join(dirname(candidate), basename(candidate).replace(/^opencode/, executable)),
+  );
   const candidates = pathCandidate
     ? [pathCandidate]
-    : uniq(await getFallbackCandidates(homedir(), currentPlatform));
+    : uniq([
+        ...fallback,
+        join(
+          homedir(),
+          '.local',
+          'bin',
+          currentPlatform === 'win32' ? `${executable}.exe` : executable,
+        ),
+      ]);
 
   const existingCandidates = (
     await Promise.all(
@@ -178,4 +191,8 @@ export async function detectOpenCodeInstallation(): Promise<OpenCodeInstallation
   }
 
   return { installed: false, version: null };
+}
+
+export async function detectOpenCodeInstallation(): Promise<OpenCodeInstallationStatus> {
+  return detectAgentToolInstallation('opencode');
 }

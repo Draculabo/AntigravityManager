@@ -1,34 +1,29 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CloudAccount, CloudQuotaData } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import {
   getManualAccountRecommendation,
   prioritizeRecommendedAccount,
 } from '@/modules/cloud-account/utils/manual-account-recommendation';
 
 const NOW = Date.parse('2026-09-28T00:00:00Z');
+type Quota = NonNullable<CloudAccountView['quota']>;
 
 function createAccount(
   id: string,
   options: {
     active?: boolean;
     lastUsed?: number;
-    models?: CloudQuotaData['models'];
-    quotaGroups?: CloudQuotaData['quota_groups'];
-    status?: CloudAccount['status'];
+    models?: Quota['models'];
+    quotaGroups?: Quota['quota_groups'];
+    status?: CloudAccountView['status'];
   } = {},
-): CloudAccount {
+): CloudAccountView {
   return {
     id,
     provider: 'google',
     email: `${id}@example.com`,
-    token: {
-      access_token: 'access-token',
-      refresh_token: 'refresh-token',
-      expires_in: 3600,
-      expiry_timestamp: NOW + 3600,
-      token_type: 'Bearer',
-    },
+    proxy_configured: false,
     quota:
       options.models || options.quotaGroups
         ? {
@@ -51,7 +46,7 @@ function weeklyGroup(
   groupName: string,
   percentage: number,
   resetTime: string,
-): NonNullable<CloudQuotaData['quota_groups']>[number] {
+): NonNullable<Quota['quota_groups']>[number] {
   return {
     display_name: groupName,
     buckets: [

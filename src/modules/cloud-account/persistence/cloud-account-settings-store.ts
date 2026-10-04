@@ -7,11 +7,34 @@ import {
 import { logger } from '@/shared/logging/logger';
 import { settings } from '@/shared/persistence/database/schema';
 import { getCloudDb } from './cloud-account-db';
+import type { CloudAccountAlertPolicyUpdate } from '../services/cloud-account-alert-policy.schema';
 
 const ACTIVE_ACCOUNT_SETTING_PREFIX = 'active_cloud_account';
 const StringSettingSchema = z.string();
 
 export class CloudAccountSettingsStore {
+  /** One SQLite transaction; no JSON configuration writes participate in this policy update. */
+  static setAlertPolicy(input: CloudAccountAlertPolicyUpdate): void {
+    const entries = Object.entries(input).filter(([, value]) => value !== undefined);
+    if (entries.length === 0) {
+      return;
+    }
+    const { raw, orm } = getCloudDb();
+    try {
+      orm.transaction((transaction) => {
+        for (const [key, value] of entries) {
+          const encoded = JSON.stringify(value);
+          transaction
+            .insert(settings)
+            .values({ key, value: encoded })
+            .onConflictDoUpdate({ target: settings.key, set: { value: encoded } })
+            .run();
+        }
+      });
+    } finally {
+      raw.close();
+    }
+  }
   /** Missing settings use the default; corrupt or unavailable storage must remain an error. */
   static readSetting(key: string): unknown {
     const { raw, orm } = getCloudDb();

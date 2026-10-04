@@ -1,19 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  AlertTriangle,
-  Eye,
-  KeyRound,
-  Loader2,
-  RefreshCw,
-  RotateCcw,
-  ShieldCheck,
-  Terminal,
-  Trash2,
-} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AgentToolCardFrame } from './AgentToolCardFrame';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +34,7 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
   const [isConfigViewerOpen, setIsConfigViewerOpen] = useState(false);
   const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
+  const running = useRef(false);
   const statusQuery = useQuery({
     queryKey: ['gateway', 'openCodeStatus', baseUrl],
     queryFn: () => ipc.client.gateway.openCodeStatus({ baseUrl }),
@@ -53,12 +44,17 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
     action: NonNullable<typeof pendingAction>,
     callback: () => Promise<unknown>,
   ): Promise<boolean> => {
+    if (running.current) {
+      return false;
+    }
+    running.current = true;
     setPendingAction(action);
     try {
       await callback();
       await statusQuery.refetch();
       toast({
-        title: t('proxy.open-code.success-title', 'OpenCode configuration updated'),
+        title: t('agent-tools.saved'),
+        description: t('agent-tools.reopen', { name: 'OpenCode' }),
       });
       return true;
     } catch (error) {
@@ -72,6 +68,7 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
       });
       return false;
     } finally {
+      running.current = false;
       setPendingAction(null);
     }
   };
@@ -80,152 +77,85 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
   const isConfigured = status?.isConfigured ?? false;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="size-5" />
-              {t('proxy.open-code.title', 'OpenCode sync')}
-            </CardTitle>
-            <CardDescription>
-              {t(
-                'proxy.open-code.description',
-                'Sync the managed provider without rewriting comments or hand-maintained JSONC formatting.',
-              )}
-            </CardDescription>
-          </div>
-          <span
-            className={`rounded-full px-2 py-1 text-xs font-semibold ${
-              isConfigured
-                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-            }`}
-          >
-            {isConfigured
-              ? status?.isSynced
-                ? t('proxy.open-code.synced', 'Synced')
-                : t('proxy.open-code.synced-custom-url', 'Synced with custom URL')
-              : t('proxy.open-code.not-synced', 'Not synced')}
-          </span>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-lg border p-3">
-            <div className="text-muted-foreground">
-              {t('proxy.open-code.config-path', 'Configuration')}
-            </div>
-            <div className="mt-1 font-mono break-all">{status?.configPath ?? '—'}</div>
-          </div>
-          <div className="rounded-lg border p-3">
-            <div className="text-muted-foreground flex items-center gap-1">
-              <Terminal className="size-3.5" />
-              {t('proxy.open-code.runtime', 'OpenCode runtime')}
-            </div>
-            <div className="mt-1 font-medium">
-              {status?.installed ? (
-                <>
-                  {t('proxy.open-code.installed', 'Installed')}
-                  {status.version ? ` · ${status.version}` : null}
-                </>
-              ) : (
-                t('proxy.open-code.not-installed', 'Not detected')
-              )}
-            </div>
-          </div>
-          <div className="rounded-lg border p-3">
-            <div className="text-muted-foreground">
-              {t('proxy.open-code.configured-models', 'Configured models')}
-            </div>
-            <div className="mt-1 font-medium">{status?.models.length ?? 0}</div>
-          </div>
-          <div className="rounded-lg border p-3">
-            <div className="text-muted-foreground flex items-center gap-1">
-              <KeyRound className="size-3.5" />
-              {t('proxy.open-code.credential', 'Dedicated credential')}
-            </div>
-            <div className="mt-1 font-medium">
-              {status?.keyConfigured
-                ? t('proxy.open-code.key-stored', 'Stored in the OS credential vault')
-                : t('proxy.open-code.key-missing', 'Created on the next sync')}
-            </div>
-          </div>
-        </div>
-
-        <p className="text-muted-foreground text-xs">
-          {t(
-            'proxy.open-code.backup-notice',
-            'Backups retain comments and formatting. The credential is replaced by an invalid placeholder and the current key is injected during restore.',
-          )}
-        </p>
-
+    <>
+      <AgentToolCardFrame
+        title="OpenCode"
+        installed={status?.installed}
+        version={status?.version}
+        loading={statusQuery.isPending}
+        failed={statusQuery.isError}
+        configured={isConfigured}
+        synced={status?.isSynced ?? false}
+        address={status?.currentBaseUrl}
+        model={
+          status?.models.length
+            ? t('agent-tools.model-count', { count: status.models.length })
+            : null
+        }
+        retry={() => {
+          void statusQuery.refetch();
+        }}
+      >
         {status?.hasAuthPlugin ? (
-          <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 dark:text-amber-200">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <div>
-              <div className="text-sm font-semibold">
-                {t('proxy.open-code.auth-plugin-warning-title', 'Legacy auth plugin detected')}
-              </div>
-              <p className="mt-1 text-xs">
-                {t(
-                  'proxy.open-code.auth-plugin-warning-description',
-                  'opencode-antigravity-auth may conflict with the managed provider. Review the plugin before relying on this configuration.',
-                )}
-              </p>
-            </div>
-          </div>
+          <p className="rounded-lg bg-amber-500/10 p-3 text-xs">{t('agent-tools.plugin-notice')}</p>
         ) : null}
-
+        <Button
+          className="w-full"
+          onClick={() => setIsSyncDialogOpen(true)}
+          disabled={pendingAction !== null || !status || statusQuery.isError}
+        >
+          {pendingAction === 'sync' ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+          {isConfigured ? t('agent-tools.update') : t('agent-tools.configure')}
+        </Button>
         <div className="flex flex-wrap gap-2">
           <Button
-            onClick={() => setIsSyncDialogOpen(true)}
-            disabled={pendingAction !== null || !status}
-          >
-            <RefreshCw
-              className={`mr-2 size-4 ${pendingAction === 'sync' ? 'animate-spin' : ''}`}
-            />
-            {t('proxy.open-code.sync', 'Configure and sync OpenCode')}
-          </Button>
-          <Button
             variant="outline"
+            size="sm"
             onClick={() => setIsConfigViewerOpen(true)}
-            disabled={!status?.exists || pendingAction !== null}
+            disabled={!status?.exists || pendingAction !== null || statusQuery.isError}
           >
-            <Eye className="mr-2 size-4" />
-            {t('proxy.open-code.view-config', 'View configuration')}
+            {t('agent-tools.view')}
           </Button>
           <Button
             variant="outline"
+            size="sm"
             onClick={() => setIsRestoreDialogOpen(true)}
-            disabled={!status?.hasBackup || pendingAction !== null}
+            disabled={!status?.hasBackup || pendingAction !== null || statusQuery.isError}
           >
-            <RotateCcw className="mr-2 size-4" />
-            {t('proxy.open-code.restore', 'Restore backup')}
+            {t('agent-tools.restore')}
           </Button>
           <Button
-            variant="destructive"
+            variant="ghost"
+            size="sm"
             onClick={() => setIsClearDialogOpen(true)}
-            disabled={!status?.exists || pendingAction !== null}
+            disabled={!status?.isConfigured || pendingAction !== null || statusQuery.isError}
           >
-            <Trash2 className="mr-2 size-4" />
-            {t('proxy.open-code.clear', 'Clear managed configuration')}
+            {t('agent-tools.remove')}
           </Button>
+        </div>
+        <details className="text-xs">
+          <summary className="text-muted-foreground cursor-pointer">
+            {t('agent-tools.advanced')}
+          </summary>
+          <p className="mt-2 font-mono break-all">{status?.configPath}</p>
+          <p className="text-muted-foreground mt-2">{t('agent-tools.backend-files')}</p>
           <Button
+            className="mt-2"
             variant="outline"
+            size="sm"
             onClick={() => runAction('revoke', () => ipc.client.gateway.revokeOpenCodeKey())}
             disabled={!status?.keyConfigured || pendingAction !== null}
           >
-            <KeyRound className="mr-2 size-4" />
-            {t('proxy.open-code.revoke', 'Revoke dedicated key')}
+            {t('agent-tools.revoke-key')}
           </Button>
-        </div>
-      </CardContent>
+        </details>
+      </AgentToolCardFrame>
       {isSyncDialogOpen && status ? (
         <OpenCodeModelSyncDialog
           availableModels={models}
           configuredModels={status.models}
           initialBaseUrl={status.currentBaseUrl ?? baseUrl}
+          defaultBaseUrl={baseUrl}
           syncAccounts={syncAccounts}
           onOpenChange={setIsSyncDialogOpen}
           onSyncAccountsChange={setSyncAccounts}
@@ -322,7 +252,7 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
               disabled={pendingAction === 'clear'}
               onClick={async () => {
                 const cleared = await runAction('clear', () =>
-                  ipc.client.gateway.clearOpenCode({ baseUrl, clearLegacy: true }),
+                  ipc.client.gateway.clearOpenCode({ baseUrl, clearLegacy: false }),
                 );
                 if (cleared) {
                   setIsClearDialogOpen(false);
@@ -335,6 +265,6 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </>
   );
 }

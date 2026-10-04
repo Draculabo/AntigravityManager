@@ -9,6 +9,7 @@ import {
   getSecurityStatus,
   initializeMasterKey,
 } from '../../shared/security/security';
+import { configureElectronSecurityRuntime } from '@/shared/security/electron-security-runtime';
 
 const primaryHex = '11'.repeat(32);
 const fallbackHex = '22'.repeat(32);
@@ -78,6 +79,8 @@ const fsMock = vi.mocked(fs, { deep: true });
 const keytarMock = vi.mocked(keytar, { deep: true });
 const safeStorageMock = vi.mocked(safeStorage, { deep: true });
 const originalPlatform = process.platform;
+
+configureElectronSecurityRuntime();
 
 function encryptWithKey(key: Buffer, text: string): string {
   const iv = crypto.randomBytes(16);

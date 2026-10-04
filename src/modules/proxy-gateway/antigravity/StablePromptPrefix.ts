@@ -1,5 +1,7 @@
+import { stripClaudeBillingMetadata } from './ClientBillingMetadata';
+
 export function sanitizeSystemInstructionForCache(text: string): string {
-  return text
+  return stripClaudeBillingMetadata(text)
     .replace(/^Current (?:date|time)(?:\s+is)?\s*:.*$/gim, '')
     .replace(/^Today is\s*:.*$/gim, '')
     .replace(/^Date:\s+\d{4}-\d{2}-\d{2}.*$/gim, '')

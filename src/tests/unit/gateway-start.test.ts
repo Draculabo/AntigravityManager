@@ -1,18 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { bootstrapNestServer, getNestServerStatus, stopNestServer } from '@/server/main';
+import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
+import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 
-const { mockAddContentTypeParser, mockAttachResponsesWebSocketServer, mockCreate, mockLogger } =
-  vi.hoisted(() => ({
-    mockAddContentTypeParser: vi.fn(),
-    mockAttachResponsesWebSocketServer: vi.fn(() => vi.fn()),
-    mockCreate: vi.fn(),
-    mockLogger: {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-  }));
+const {
+  mockAddContentTypeParser,
+  mockAddHook,
+  mockAttachResponsesWebSocketServer,
+  mockCreate,
+  mockLogger,
+} = vi.hoisted(() => ({
+  mockAddContentTypeParser: vi.fn(),
+  mockAddHook: vi.fn(),
+  mockAttachResponsesWebSocketServer: vi.fn(() => vi.fn()),
+  mockCreate: vi.fn(),
+  mockLogger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 vi.mock('@nestjs/core', async (importOriginal) => ({
   // Keep the real tokens: the module graph under test registers providers against
@@ -31,7 +39,7 @@ vi.mock('@nestjs/core', async (importOriginal) => ({
 vi.mock('@nestjs/platform-fastify', () => ({
   FastifyAdapter: class {
     getInstance() {
-      return { addContentTypeParser: mockAddContentTypeParser };
+      return { addContentTypeParser: mockAddContentTypeParser, addHook: mockAddHook };
     }
   },
 }));
@@ -54,6 +62,30 @@ describe('gateway server startup', () => {
 
   afterEach(async () => {
     await stopNestServer();
+    vi.restoreAllMocks();
+  });
+
+  it('reports diagnostic close failure while still attempting both stores', async () => {
+    mockCreate.mockResolvedValue({
+      register: vi.fn().mockResolvedValue(undefined),
+      enableCors: vi.fn(),
+      listen: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(() => ({ getAccountCount: () => 0 })),
+      getHttpServer: vi.fn(() => ({})),
+    });
+    const auditClose = vi
+      .spyOn(trafficAuditService, 'close')
+      .mockRejectedValueOnce(new Error('worker did not close'));
+    const thoughtClose = vi.spyOn(thoughtStoreService, 'close').mockResolvedValue(undefined);
+    expect((await bootstrapNestServer(DEFAULT_APP_CONFIG.proxy)).success).toBe(true);
+    await expect(stopNestServer()).resolves.toBe(false);
+    expect(auditClose).toHaveBeenCalledOnce();
+    expect(thoughtClose).toHaveBeenCalledOnce();
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Failed to stop NestJS server',
+      expect.any(AggregateError),
+    );
   });
 
   it('reports EADDRINUSE as an expected startup failure and cleans up the server', async () => {

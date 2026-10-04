@@ -1,6 +1,16 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import YAML from 'yaml';
 
 const WINDOWS_ARCHES = ['x64', 'arm64'];
 
@@ -186,6 +196,39 @@ export function prepareWindowsUpdateFeed({
       releases: targetReleases,
       packages: packages.map((file) => path.basename(file)),
     };
+
+    const nsisMetadata = findRequiredFile(
+      files,
+      (file) => path.basename(file) === `latest-nsis-${arch}.yml` && hasPathSegment(file, arch),
+      `Windows ${arch} NSIS update metadata`,
+    );
+    const updateInfo = YAML.parse(readFileSync(nsisMetadata, 'utf8'));
+    const nsisFile = findRequiredFile(
+      files,
+      (file) => file.endsWith(`-windows-${arch}-nsis.exe`) && hasPathSegment(file, arch),
+      `Windows ${arch} NSIS installer`,
+    );
+    const expectedVersion = releaseTag.replace(/^v/, '');
+    const expectedHash = createHash('sha512').update(readFileSync(nsisFile)).digest('base64');
+    const nsisName = path.basename(nsisFile);
+    if (
+      updateInfo?.version !== expectedVersion ||
+      updateInfo.files?.length !== 1 ||
+      updateInfo.files[0]?.url !== nsisName ||
+      updateInfo.files[0]?.sha512 !== expectedHash ||
+      updateInfo.files[0]?.size !== statSync(nsisFile).size
+    ) {
+      throw new Error(`Windows ${arch} NSIS metadata does not match the release installer`);
+    }
+
+    const nsisAssetUrl = `${releaseAssetBaseUrl}/${encodeURIComponent(nsisName)}`;
+    updateInfo.files[0].url = nsisAssetUrl;
+    updateInfo.path = nsisAssetUrl;
+    const nsisTargetDir = path.join(outputDir, 'nsis', 'win32', arch);
+    mkdirSync(nsisTargetDir, { recursive: true });
+    const nsisFeed = path.join(nsisTargetDir, 'latest.yml');
+    writeFileSync(nsisFeed, YAML.stringify(updateInfo));
+    result[arch].nsis = nsisFeed;
   }
 
   return result;

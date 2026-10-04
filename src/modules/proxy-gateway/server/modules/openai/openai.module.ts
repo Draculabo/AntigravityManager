@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
+import { refreshImageQuota } from './image-quota-refresh';
 import { ProxyGuard } from '../../guards/proxy.guard';
 import { FilesModule } from '../files/files.module';
 import { SharedServicesModule } from '../../shared/shared-services.module';
@@ -33,7 +33,7 @@ import { OpenAIResponsesController } from './responses/openai-responses.controll
     ProxyGuard,
     {
       provide: IMAGE_QUOTA_REFRESH,
-      useValue: () => CloudMonitorService.poll(),
+      useValue: refreshImageQuota,
     },
   ],
   exports: [OpenAIChatCompletionService, OpenAIResponsesSessionService, OpenAIService],

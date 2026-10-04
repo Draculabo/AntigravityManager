@@ -1,5 +1,8 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { GeminiClient } from '../modules/gemini/gemini-client.service';
+import {
+  GeminiClient,
+  type InternalGenerationOptions,
+} from '../modules/gemini/gemini-client.service';
 import { AccountLeaseService } from '../modules/account-lease/account-lease.service';
 import { v4 as uuidv4 } from 'uuid';
 import { getServerConfig } from '@/server/server-config';
@@ -170,7 +173,7 @@ export abstract class BaseProxyService {
     error: unknown,
     label: string,
   ): Promise<boolean> {
-    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label, 'baseline');
+    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label, 'anthropic');
   }
 
   protected async prepareCurrentGraceRetry(
@@ -179,7 +182,7 @@ export abstract class BaseProxyService {
     error: unknown,
     label: string,
   ): Promise<boolean> {
-    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label, 'current');
+    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label, 'hinted');
   }
 
   protected async prepareScheduledImageRetry(
@@ -418,6 +421,7 @@ export abstract class BaseProxyService {
     upstreamProxyUrl?: string,
     extraHeaders?: Record<string, string>,
     signal?: AbortSignal,
+    options?: InternalGenerationOptions,
   ): Promise<GeminiResponse> {
     const direct = await this.geminiClient.generateInternal(
       body,
@@ -425,6 +429,7 @@ export abstract class BaseProxyService {
       upstreamProxyUrl,
       extraHeaders,
       signal,
+      options,
     );
     if (this.hasUsableGeminiCandidate(direct)) {
       return direct;
@@ -437,6 +442,7 @@ export abstract class BaseProxyService {
       upstreamProxyUrl,
       extraHeaders,
       signal,
+      options,
     );
     return this.collectGeminiStreamAsResponse(stream);
   }

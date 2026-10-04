@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 const axiosMock = vi.hoisted(() => ({
   post: vi.fn(),
@@ -61,5 +62,55 @@ describe('GeminiClient upstream proxy config', () => {
       host: '127.0.0.1',
       port: 9090,
     });
+  });
+});
+
+describe('GeminiClient internal endpoint selection', () => {
+  const body: GeminiInternalRequest = {
+    model: 'claude-sonnet-4-6',
+    project: 'synthetic-project',
+    requestId: 'synthetic-request',
+    userAgent: 'synthetic-test',
+    request: { contents: [{ role: 'user', parts: [{ text: 'Synthetic test' }] }] },
+  };
+  beforeEach(() => {
+    axiosMock.post.mockReset();
+    axiosMock.isAxiosError.mockReturnValue(true);
+    axiosMock.post.mockResolvedValue({ status: 200, headers: {}, data: { candidates: [] } });
+    vi.stubEnv('PROXY_INTERNAL_BASE_URLS', '');
+    vi.stubEnv('ANTIGRAVITY_INTERNAL_BASE_URLS', '');
+    vi.stubEnv('PROXY_CONTEXT_CACHE_ENABLED', 'false');
+    setServerConfig(DEFAULT_APP_CONFIG.proxy);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('uses Daily first and falls back to production with the same request and token', async () => {
+    axiosMock.post.mockRejectedValueOnce({
+      response: { status: 429, headers: {}, data: { error: { status: 'RESOURCE_EXHAUSTED' } } },
+    });
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    await expect(client.generateInternal(body, 'synthetic-token')).resolves.toEqual({
+      candidates: [],
+    });
+    expect(axiosMock.post.mock.calls.map(([url]) => url)).toEqual([
+      'https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent',
+      'https://cloudcode-pa.googleapis.com/v1internal:generateContent',
+    ]);
+    expect(axiosMock.post.mock.calls[0][1]).toEqual(axiosMock.post.mock.calls[1][1]);
+    expect(axiosMock.post.mock.calls.map(([, , options]) => options.headers.Authorization)).toEqual(
+      ['Bearer synthetic-token', 'Bearer synthetic-token'],
+    );
+  });
+
+  it('honors an explicit endpoint order and does not probe another endpoint after success', async () => {
+    vi.stubEnv(
+      'PROXY_INTERNAL_BASE_URLS',
+      'http://127.0.0.1:19001/first/,http://127.0.0.1:19002/second',
+    );
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    await client.generateInternal(body, 'synthetic-token');
+    expect(axiosMock.post.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:19001/first:generateContent',
+    ]);
   });
 });

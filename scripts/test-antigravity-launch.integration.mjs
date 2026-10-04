@@ -134,6 +134,7 @@ class Fixture { static void Main(string[] args) {
     'runtimePlatform',
     'stop',
     'stopNativeProcessTree',
+    'linuxProfileOwnership',
   ]) {
     compileModule(`src/modules/antigravity-runtime/${name}.ts`, name);
   }
@@ -211,7 +212,20 @@ class Fixture { static void Main(string[] args) {
       assert.deepEqual(family.map((row) => row.pid).sort(), fixturePids.sort());
     }
     const closing = Date.now();
-    await stopFromContext(context);
+    if (windows || wsl) {
+      // These console fixtures have no window. Production must refuse to force their exit.
+      await assert.rejects(stopFromContext(context, 2500), {
+        messageKey: 'process-runtime.close-failed',
+      });
+      assert.equal((await observeProcesses(context.target)).length, 1);
+      execFileSync(
+        wsl ? '/mnt/c/Windows/System32/taskkill.exe' : 'C:/Windows/System32/taskkill.exe',
+        ['/PID', String((await observeProcesses(context.target))[0].pid), '/T', '/F'],
+        { timeout: 5000, stdio: 'ignore' },
+      ); // Cleanup is restricted to this disposable console fixture.
+    } else {
+      await stopFromContext(context);
+    }
     const closeMs = Date.now() - closing;
     await new Promise((resolve) => setTimeout(resolve, 600));
     assert.equal((await observeProcesses(context.target)).length, 0);

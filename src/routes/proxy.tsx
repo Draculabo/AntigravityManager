@@ -9,13 +9,16 @@ import { ipc } from '@/ipc/manager';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
 import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
-import { ProxyConfig } from '@/modules/config/types';
+import type { ServiceConfigSnapshot } from '@/modules/config/service-config.schema';
+type ProxyConfig = ServiceConfigSnapshot['proxy'];
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { OpenCodeSyncCard } from '@/modules/proxy-gateway/components/OpenCodeSyncCard';
+import { AgentToolSyncCard } from '@/modules/proxy-gateway/components/AgentToolSyncCard';
 import { GlobalSystemPromptCard } from '@/modules/proxy-gateway/components/GlobalSystemPromptCard';
 import { AuditAndThoughtStoreCard } from '@/modules/proxy-gateway/components/AuditAndThoughtStoreCard';
 import { ProxyServiceControl } from '@/modules/proxy-gateway/components/ProxyServiceControl';
@@ -103,7 +106,9 @@ function resolveAnthropicMappingValue(
 
 function ProxyPage() {
   const { t } = useTranslation();
-  const { config, isLoading, saveConfig } = useAppConfig();
+  const { toast } = useToast();
+  const { config, isLoading, saveConfig, serviceAvailable, serviceLoading, retryService } =
+    useAppConfig();
   const { data: cloudAccounts = [] } = useCloudAccounts();
 
   // Query all available local IPs
@@ -134,11 +139,13 @@ function ProxyPage() {
   const [proxyConfig, setProxyConfig] = useState<ProxyConfig | undefined>(undefined);
   const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [keyBusy, setKeyBusy] = useState(false);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
 
   // Sync config.proxy to local state when loaded, and check actual server status
   useEffect(() => {
-    if (config) {
+    if (config && serviceAvailable) {
       // Check actual server status and sync with config
       const syncServerStatus = async () => {
         try {
@@ -161,7 +168,30 @@ function ProxyPage() {
       };
       syncServerStatus();
     }
-  }, [config, saveConfig]);
+  }, [config, saveConfig, serviceAvailable]);
+
+  const revealKey = async (copy: boolean) => {
+    setKeyBusy(true);
+    try {
+      const result = await ipc.client.config.service.revealSecret({ name: 'api-key' });
+      if (copy) {
+        await navigator.clipboard.writeText(result.value);
+      } else {
+        setRevealedKey(result.value);
+        setShowKey(true);
+      }
+    } catch {
+      toast({
+        title: t(
+          'settings.service-unavailable',
+          'Settings are unavailable right now. Please try again.',
+        ),
+        variant: 'destructive',
+      });
+    } finally {
+      setKeyBusy(false);
+    }
+  };
 
   // Helper to update proxyConfig and auto-save
   const updateProxyConfig = async (newProxyConfig: ProxyConfig) => {
@@ -199,7 +229,7 @@ function ProxyPage() {
     : (visibleExampleModels[0]?.id ?? activeModelTab);
 
   // Computed values for examples
-  const apiKey = proxyConfig?.api_key || 'YOUR_API_KEY';
+  const displayApiKey = revealedKey || 'YOUR_API_KEY';
   const baseUrl = `http://localhost:${proxyConfig?.port || 8045}`;
 
   const updateAnthropicMapping = (mappingPatch: Record<string, string>) => {
@@ -215,13 +245,22 @@ function ProxyPage() {
     });
   };
 
-  const copyToClipboard = (text: string, type: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(type);
-    setTimeout(() => setCopied(null), 2000);
+  const copyToClipboard = async (example: (key: string) => string, type: string) => {
+    try {
+      // Copying an authenticated usage example is an explicit secret reveal, never a config read.
+      const key = proxyConfig?.api_key_configured
+        ? (await ipc.client.config.service.revealSecret({ name: 'api-key' })).value
+        : 'YOUR_API_KEY';
+      await navigator.clipboard.writeText(example(key));
+      setCopied(type);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      toast({ title: t('settings.service-unavailable'), variant: 'destructive' });
+    }
   };
 
-  const getCurlExample = (modelId: string) => {
+  const getCurlExample = (modelId: string, exampleKey: string = displayApiKey) => {
+    const apiKey = exampleKey;
     if (selectedProtocol === 'anthropic') {
       return `curl ${baseUrl}/v1/messages \\
   -H "Content-Type: application/json" \\
@@ -252,7 +291,8 @@ function ProxyPage() {
   }'`;
   };
 
-  const getPythonExample = (modelId: string) => {
+  const getPythonExample = (modelId: string, exampleKey: string = displayApiKey) => {
+    const apiKey = exampleKey;
     if (selectedProtocol === 'anthropic') {
       return `from anthropic import Anthropic
 
@@ -282,10 +322,23 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)`;
   };
 
-  if (isLoading || !proxyConfig) {
+  if (isLoading || serviceLoading) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="animate-spin" />
+      </div>
+    );
+  }
+  if (!serviceAvailable || !proxyConfig) {
+    return (
+      <div role="alert" className="space-y-3 p-6">
+        <p>
+          {t(
+            'settings.service-unavailable',
+            'Settings are unavailable right now. Please try again.',
+          )}
+        </p>
+        <Button onClick={() => void retryService()}>{t('settings.service-retry', 'Retry')}</Button>
       </div>
     );
   }
@@ -320,7 +373,7 @@ print(response.choices[0].message.content)`;
                 </Select>
               )}
             </div>
-            {!proxyConfig.api_key && (
+            {!proxyConfig.api_key_configured && (
               <div className="flex items-center gap-2 text-xs font-medium text-amber-600 dark:text-amber-400">
                 {t('proxy.config.no_token_warning')}
               </div>
@@ -398,7 +451,9 @@ print(response.choices[0].message.content)`;
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input
-                  value={proxyConfig.api_key || ''}
+                  value={
+                    showKey ? (revealedKey ?? '') : proxyConfig.api_key_configured ? '********' : ''
+                  }
                   readOnly
                   type={showKey ? 'text' : 'password'}
                   className="pr-10 font-mono text-sm"
@@ -407,7 +462,15 @@ print(response.choices[0].message.content)`;
                   variant="ghost"
                   size="icon"
                   className="absolute top-0 right-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowKey(!showKey)}
+                  disabled={keyBusy}
+                  onClick={() => {
+                    if (showKey) {
+                      setShowKey(false);
+                      setRevealedKey(null);
+                    } else {
+                      revealKey(false);
+                    }
+                  }}
                   title={showKey ? t('proxy.config.hide_key') : t('proxy.config.show_key')}
                 >
                   {showKey ? (
@@ -420,7 +483,8 @@ print(response.choices[0].message.content)`;
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigator.clipboard.writeText(proxyConfig.api_key || '')}
+                disabled={keyBusy}
+                onClick={() => revealKey(true)}
               >
                 <Copy size={14} className="mr-1" />
                 {t('proxy.copy')}
@@ -442,10 +506,33 @@ print(response.choices[0].message.content)`;
                   <Button
                     variant="destructive"
                     onClick={async () => {
-                      const { ipc } = await import('@/ipc/manager');
-                      const result = await ipc.client.gateway.generateKey();
-                      updateProxyConfig({ ...proxyConfig, api_key: result.api_key });
-                      setIsRegenerateDialogOpen(false);
+                      setKeyBusy(true);
+                      try {
+                        const result = await ipc.client.config.service.generateKey();
+                        setProxyConfig(result.snapshot.proxy);
+                        setRevealedKey(null);
+                        setShowKey(false);
+                        await retryService();
+                        setIsRegenerateDialogOpen(false);
+                        if (result.state === 'restart-required') {
+                          toast({
+                            title: t(
+                              'settings.service-restart-required',
+                              'Settings saved. Restart the service to apply all changes.',
+                            ),
+                          });
+                        }
+                      } catch {
+                        toast({
+                          title: t(
+                            'settings.service-unavailable',
+                            'Settings are unavailable right now. Please try again.',
+                          ),
+                          variant: 'destructive',
+                        });
+                      } finally {
+                        setKeyBusy(false);
+                      }
                     }}
                   >
                     {t('proxy.regenerateConfirm.confirm')}
@@ -636,7 +723,17 @@ print(response.choices[0].message.content)`;
         </CardContent>
       </Card>
 
-      <OpenCodeSyncCard baseUrl={baseUrl} models={exampleModels} />
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">{t('agent-tools.title')}</h2>
+          <p className="text-muted-foreground text-sm">{t('agent-tools.description')}</p>
+        </div>
+        <div className="grid items-start gap-4 xl:grid-cols-3">
+          <AgentToolSyncCard tool="claude" baseUrl={baseUrl} models={exampleModels} />
+          <AgentToolSyncCard tool="codex" baseUrl={baseUrl} models={exampleModels} />
+          <OpenCodeSyncCard baseUrl={baseUrl} models={exampleModels} />
+        </div>
+      </section>
 
       <AuditAndThoughtStoreCard
         config={proxyConfig}
@@ -680,7 +777,7 @@ print(response.choices[0].message.content)`;
 
             {/* Anthropic Protocol Card */}
             <div
-              className={`cursor-pointer rounded-lg border-2 bg-gradient-to-br from-purple-50 to-purple-100/50 p-4 transition-all dark:from-purple-950/30 dark:to-purple-900/20 ${selectedProtocol === 'anthropic' ? 'border-purple-500 shadow-md dark:border-purple-600' : 'border-purple-200 hover:border-purple-300 dark:border-purple-800/50'}`}
+              className={`cursor-pointer rounded-lg border-2 bg-linear-to-br from-purple-50 to-purple-100/50 p-4 transition-all dark:from-purple-950/30 dark:to-purple-900/20 ${selectedProtocol === 'anthropic' ? 'border-purple-500 shadow-md dark:border-purple-600' : 'border-purple-200 hover:border-purple-300 dark:border-purple-800/50'}`}
               onClick={() => setSelectedProtocol('anthropic')}
             >
               <div className="mb-3 flex items-center gap-2">
@@ -724,7 +821,9 @@ print(response.choices[0].message.content)`;
                 cURL
               </span>
               <button
-                onClick={() => copyToClipboard(getCurlExample(effectiveModelId), 'curl')}
+                onClick={() =>
+                  copyToClipboard((key) => getCurlExample(effectiveModelId, key), 'curl')
+                }
                 className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
               >
                 {copied === 'curl' ? <CheckCircle size={14} /> : <Copy size={14} />}
@@ -744,7 +843,9 @@ print(response.choices[0].message.content)`;
                 Python
               </span>
               <button
-                onClick={() => copyToClipboard(getPythonExample(effectiveModelId), 'python')}
+                onClick={() =>
+                  copyToClipboard((key) => getPythonExample(effectiveModelId, key), 'python')
+                }
                 className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
               >
                 {copied === 'python' ? <CheckCircle size={14} /> : <Copy size={14} />}

@@ -24,6 +24,18 @@ it('preserves the complete native snapshot and validates its boundary', async ()
   await expect(readNativeProcessSnapshot()).rejects.toThrow();
 });
 
+it('supports a long shutdown budget without exceeding the native query timeout limit', async () => {
+  const { readNativeProcessSnapshot } = await import('@/shared/platform/nativeProcessQuery');
+  mocks.query.mockImplementation(async (timeout: number) => {
+    if (timeout > 30000) {
+      throw new RangeError('Native query timeout exceeds 30000ms');
+    }
+    return [row];
+  });
+  expect(await readNativeProcessSnapshot(60000)).toEqual([row]);
+  expect(mocks.query).toHaveBeenCalledExactlyOnceWith(30000);
+});
+
 it('passes each caller budget to the package and preserves its rejection', async () => {
   const { readNativeProcessSnapshot } = await import('@/shared/platform/nativeProcessQuery');
   const error = Object.assign(new Error('Process query deadline exceeded'), {

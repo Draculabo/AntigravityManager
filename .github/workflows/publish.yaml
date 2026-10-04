@@ -106,6 +106,10 @@ jobs:
         if: matrix.platform == 'win32' && matrix.arch == 'x64'
         run: npm run audit:size:win32:x64
 
+      - name: Make NSIS automatic-update installer
+        if: matrix.platform == 'win32'
+        run: npm run make:nsis -- ${{ matrix.arch }}
+
       # DMG creation may be flaky on GitHub macOS runners, so retry the full darwin make.
       - name: Make Artifacts (darwin with retry)
         if: matrix.platform == 'darwin'
@@ -268,6 +272,17 @@ jobs:
             exit 1
           fi
 
+          for arch in x64 arm64; do
+            if ! find release-assets -type f -path "*/nsis/$arch/*" -name "*-windows-$arch-nsis.exe" | grep -q .; then
+              echo "::error::Missing Windows $arch NSIS automatic-update installer."
+              exit 1
+            fi
+            if ! find release-assets -type f -path "*/nsis/$arch/*" -name "latest-nsis-$arch.yml" | grep -q .; then
+              echo "::error::Missing Windows $arch NSIS update metadata."
+              exit 1
+            fi
+          done
+
           printf 'Found %s Windows setup executable(s) and %s .nupkg package(s).\n' \
             "${#windows_setup_exes[@]}" \
             "${#squirrel_packages[@]}"
@@ -285,6 +300,9 @@ jobs:
             "url": "https://github.com/Draculabo/AntigravityManager/releases/tag/${RELEASE_TAG}"
           }
           EOF
+
+      - name: Test Windows update feed generation
+        run: npm run test:acceptance -- installers feed
 
       - name: Prepare Windows static update feed
         env:

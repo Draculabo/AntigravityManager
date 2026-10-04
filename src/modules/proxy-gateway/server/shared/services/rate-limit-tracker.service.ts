@@ -315,7 +315,7 @@ function extractStructuredDelayRecursive(value: unknown, depth: number): number 
   return null;
 }
 
-function extractBaselineStructuredDelayRecursive(value: unknown, depth: number): number | null {
+function extractEmbeddedDurationRecursive(value: unknown, depth: number): number | null {
   if (depth > MAX_RETRY_DELAY_SEARCH_DEPTH) {
     return null;
   }
@@ -324,7 +324,7 @@ function extractBaselineStructuredDelayRecursive(value: unknown, depth: number):
   }
   if (Array.isArray(value)) {
     for (const item of value) {
-      const delay = extractBaselineStructuredDelayRecursive(item, depth + 1);
+      const delay = extractEmbeddedDurationRecursive(item, depth + 1);
       if (delay !== null) {
         return delay;
       }
@@ -339,7 +339,7 @@ function extractBaselineStructuredDelayRecursive(value: unknown, depth: number):
     return durationObjectDelay;
   }
   for (const childValue of Object.values(value)) {
-    const delay = extractBaselineStructuredDelayRecursive(childValue, depth + 1);
+    const delay = extractEmbeddedDurationRecursive(childValue, depth + 1);
     if (delay !== null) {
       return delay;
     }
@@ -401,7 +401,7 @@ export function parseRetryDelayMilliseconds(errorText: string | undefined): numb
   return parseRetryDelay(errorText)?.delayMs ?? null;
 }
 
-export function parseBaselineRetryDelayMilliseconds(errorText: string | undefined): number | null {
+export function parseAnthropicRetryDelayMilliseconds(errorText: string | undefined): number | null {
   if (!errorText) {
     return null;
   }
@@ -415,7 +415,7 @@ export function parseBaselineRetryDelayMilliseconds(errorText: string | undefine
     }
   }
   const parsedBody = tryParseGoogleErrorBody(errorText);
-  return parsedBody ? extractBaselineStructuredDelayRecursive(parsedBody, 0) : null;
+  return parsedBody ? extractEmbeddedDurationRecursive(parsedBody, 0) : null;
 }
 
 export function shouldGraceRetry(delayMs: number): boolean {

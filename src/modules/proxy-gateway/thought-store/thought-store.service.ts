@@ -12,6 +12,7 @@ import { getTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/tra
 import { recordProxyThinkingFill } from '@/modules/proxy-gateway/server/common/proxy-response-timing';
 import { getServerConfig } from '@/server/server-config';
 import { logger } from '@/shared/logging/logger';
+import { DiagnosticStoreShutdown } from '../diagnostics/store-shutdown';
 import { getProxyStateDir } from '@/shared/platform/paths';
 import { preserveCorruptSqliteDatabase } from '@/shared/persistence/database/preserve-corrupt-sqlite';
 import { BoundedSqliteWorker } from '@/shared/persistence/sqlite-worker/bounded-sqlite-worker';
@@ -83,6 +84,7 @@ function resolveThoughtSessionLimits(
 }
 
 export class ThoughtStoreService {
+  private readonly terminal = new DiagnosticStoreShutdown();
   private worker: BoundedSqliteWorker | null = null;
   private maintenanceTimer: NodeJS.Timeout | null = null;
   private readonly sessions = new Map<string, MemorySession>();
@@ -91,7 +93,7 @@ export class ThoughtStoreService {
   private repairInProgress: Promise<DatabaseRepairResult> | null = null;
 
   public isEnabled(): boolean {
-    return this.getConfig().enabled;
+    return this.terminal.acceptsWork() && this.getConfig().enabled;
   }
 
   public getCurrentSessionKey(): string | null {
@@ -234,6 +236,7 @@ export class ThoughtStoreService {
   }
 
   public async repair(): Promise<DatabaseRepairResult> {
+    this.terminal.requireAdmission();
     if (this.repairInProgress) {
       return this.repairInProgress;
     }
@@ -242,6 +245,29 @@ export class ThoughtStoreService {
     });
     this.repairInProgress = repair;
     return repair;
+  }
+
+  public shutdown(): Promise<void> {
+    if (this.maintenanceTimer) {
+      clearInterval(this.maintenanceTimer);
+      this.maintenanceTimer = null;
+    }
+    return this.terminal.run(
+      async () => {
+        await this.repairInProgress;
+        await Promise.all([...this.hydration.values()]);
+      },
+      async () => {
+        const worker = this.worker;
+        this.worker = null;
+        try {
+          await worker?.close();
+        } finally {
+          this.sessions.clear();
+          this.hydration.clear();
+        }
+      },
+    );
   }
 
   public async close(): Promise<void> {
@@ -412,6 +438,9 @@ export class ThoughtStoreService {
     const load = this.request('load', { sessionKey })
       .then((value) => {
         const records = parseThoughtRecords(value);
+        if (!this.terminal.acceptsWork()) {
+          return records;
+        }
         const session = { lastAccessed: Date.now(), loaded: true, records };
         this.pruneMemorySession(sessionKey, session, this.getConfig());
         this.sessions.set(sessionKey, session);
@@ -421,7 +450,9 @@ export class ThoughtStoreService {
       .catch((error) => {
         this.writeFailures += 1;
         logger.warn('Thought Store hydration failed; continuing without restore', error);
-        this.sessions.set(sessionKey, { lastAccessed: Date.now(), loaded: true, records: [] });
+        if (this.terminal.acceptsWork()) {
+          this.sessions.set(sessionKey, { lastAccessed: Date.now(), loaded: true, records: [] });
+        }
         return [];
       })
       .finally(() => this.hydration.delete(sessionKey));
@@ -465,6 +496,7 @@ export class ThoughtStoreService {
   }
 
   private ensureWorker(): BoundedSqliteWorker {
+    this.terminal.requireWorker(this.worker !== null || this.repairInProgress !== null);
     if (this.worker) {
       return this.worker;
     }
@@ -487,7 +519,7 @@ export class ThoughtStoreService {
   }
 
   private scheduleMaintenance(): void {
-    if (this.maintenanceTimer) {
+    if (this.maintenanceTimer || !this.terminal.acceptsWork()) {
       return;
     }
     this.maintenanceTimer = setInterval(() => {
@@ -514,6 +546,7 @@ export class ThoughtStoreService {
     operation: TOperation,
     payload: Extract<ThoughtStoreWorkerCommand, { operation: TOperation }>['payload'],
   ): Promise<TResult> {
+    this.terminal.requireAdmission();
     if (this.repairInProgress) {
       await this.repairInProgress;
     }

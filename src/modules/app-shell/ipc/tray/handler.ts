@@ -1,18 +1,18 @@
 import { app, Tray, Menu, nativeImage, BrowserWindow } from 'electron';
-import { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import { logger } from '@/shared/logging/logger';
 import { getTrayTexts, type TrayTexts } from './i18n';
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
-import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
+import { getCloudAccountAdapter } from '@/modules/cloud-account/ipc/cloud-account-adapter';
 import { configureTrayIcon, resolveTrayIconPath } from './icon';
 
+type TrayAccount = Pick<CloudAccountView, 'email' | 'quota'>;
 let tray: Tray | null = null;
 let globalMainWindow: BrowserWindow | null = null;
-let lastAccount: CloudAccount | null = null;
+let lastAccount: TrayAccount | null = null;
 let lastLanguage: string = 'en';
 let onQuitRequested: (() => void | Promise<void>) | null = null;
 
-function getQuotaText(account: CloudAccount | null, texts: TrayTexts): string[] {
+function getQuotaText(account: TrayAccount | null, texts: TrayTexts): string[] {
   if (!account) return [`${texts.quota}: --`];
   if (!account.quota || !account.quota.models) return [`${texts.quota}: ${texts.unknown_quota}`];
 
@@ -95,7 +95,7 @@ export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | P
   updateTrayMenu(null);
 }
 
-export function updateTrayMenu(account: CloudAccount | null, language?: string) {
+export function updateTrayMenu(account: TrayAccount | null, language?: string) {
   lastAccount = account;
   if (language) {
     lastLanguage = language;
@@ -119,7 +119,7 @@ export function updateTrayMenu(account: CloudAccount | null, language?: string) 
       label: texts.switch_next,
       click: async () => {
         try {
-          const accounts = await CloudAccountRepo.getAccounts();
+          const accounts = await getCloudAccountAdapter().listViews();
           if (accounts.length === 0) return;
 
           const current = accounts.find((a) => a.is_active);
@@ -130,7 +130,7 @@ export function updateTrayMenu(account: CloudAccount | null, language?: string) 
           }
           const next = accounts[nextIndex];
 
-          CloudAccountRepo.setActive(next.id);
+          await getCloudAccountAdapter().switchAccount(next.id);
           logger.info(`Tray: Switched to account ${next.email}`);
 
           updateTrayMenu(next, lastLanguage);
@@ -147,18 +147,14 @@ export function updateTrayMenu(account: CloudAccount | null, language?: string) 
       label: texts.refresh_current,
       click: async () => {
         try {
-          const accounts = await CloudAccountRepo.getAccounts();
+          const accounts = await getCloudAccountAdapter().listViews();
           const current = accounts.find((a) => a.is_active);
           if (!current) return;
 
           logger.info(`Tray: Refreshing quota for ${current.email}`);
 
-          const quota = await GoogleAPIService.fetchQuota(current.token.access_token);
-          await CloudAccountRepo.updateQuota(current.id, quota);
-
-          // Reload account to get updated obj
-          const updated = await CloudAccountRepo.getAccount(current.id);
-          if (updated) updateTrayMenu(updated, lastLanguage);
+          const updated = await getCloudAccountAdapter().refreshQuota(current.id);
+          updateTrayMenu(updated, lastLanguage);
 
           if (globalMainWindow) {
             globalMainWindow.webContents.send('tray://refresh-current');

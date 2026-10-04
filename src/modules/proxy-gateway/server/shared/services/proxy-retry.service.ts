@@ -7,7 +7,7 @@ import {
   hasStrictQuotaExhaustedMarker,
   isGeminiImageModel,
   isRecognizedGeminiImageModel,
-  parseBaselineRetryDelayMilliseconds,
+  parseAnthropicRetryDelayMilliseconds,
   parseRetryDelay,
   shouldGraceRetry,
   STRUCTURED_GRACE_RETRY_BUFFER_MS,
@@ -99,7 +99,8 @@ export interface ProxyUpstreamFailureClassification {
   markAsRateLimited: boolean;
 }
 
-export type GraceRetryMode = 'baseline' | 'current';
+/** Anthropic uses its two-second window; hinted mode honors the shared retry hints and buffers. */
+export type GraceRetryMode = 'anthropic' | 'hinted';
 export type ImageRetryPenaltyMode = 'gemini' | 'openai';
 
 @Injectable()
@@ -223,14 +224,14 @@ export class ProxyRetryService {
     token: CloudAccount,
     error: unknown,
     label: string,
-    mode: GraceRetryMode = 'current',
+    mode: GraceRetryMode = 'hinted',
   ): Promise<boolean> {
     if (retryState.graceRetriedAccountIds.has(token.id)) {
       return false;
     }
     const graceRetryDelay =
-      mode === 'baseline'
-        ? this.resolveBaselineGraceRetryDelay(error)
+      mode === 'anthropic'
+        ? this.resolveAnthropicGraceRetryDelay(error)
         : this.resolveGraceRetryDelay(error);
     if (graceRetryDelay === null) {
       return false;
@@ -567,7 +568,7 @@ export class ProxyRetryService {
     return retryDelay.delayMs + bufferMs;
   }
 
-  resolveBaselineGraceRetryDelay(error: unknown): number | null {
+  resolveAnthropicGraceRetryDelay(error: unknown): number | null {
     if (!(error instanceof UpstreamRequestError) || error.status !== 429) {
       return null;
     }
@@ -575,7 +576,7 @@ export class ProxyRetryService {
     if (hasExplicitQuotaExhaustedSignal(errorText)) {
       return null;
     }
-    const retryDelayMs = parseBaselineRetryDelayMilliseconds(errorText);
+    const retryDelayMs = parseAnthropicRetryDelayMilliseconds(errorText);
     if (retryDelayMs === null || retryDelayMs <= 0 || retryDelayMs > 2000) {
       return null;
     }

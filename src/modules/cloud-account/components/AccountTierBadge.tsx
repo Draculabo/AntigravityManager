@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import type { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import { cn } from '@/shared/ui/utils';
 import {
   ACCOUNT_TIER_UNKNOWN_KEY,
@@ -20,7 +20,7 @@ const TIER_BADGE_CLASS_BY_KEY: Record<string, string> = {
 };
 
 interface AccountTierBadgeProps {
-  account: CloudAccount;
+  account: CloudAccountView;
   unknownLabel: string;
   className?: string;
 }

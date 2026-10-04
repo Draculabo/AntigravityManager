@@ -10,3 +10,7 @@ export function getWindowsUpdateBaseUrl({
 } = {}) {
   return `${WINDOWS_UPDATE_BASE_URL}/${platform}/${arch}`;
 }
+
+export function getWindowsNsisUpdateBaseUrl(arch: NodeJS.Architecture = process.arch): string {
+  return `${WINDOWS_UPDATE_BASE_URL}/nsis/win32/${arch}`;
+}

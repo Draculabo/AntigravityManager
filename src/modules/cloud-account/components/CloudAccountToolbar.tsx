@@ -1,9 +1,7 @@
-import type { ChangeEvent, RefObject } from 'react';
 import {
   Check,
   CheckSquare,
   CalendarDays,
-  Cloud,
   Clock3,
   Columns2,
   Columns3,
@@ -13,7 +11,6 @@ import {
   LayoutList,
   List,
   Loader2,
-  Plus,
   RefreshCcw,
   SortAsc,
   Upload,
@@ -37,7 +34,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -49,12 +45,13 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AccountTierFilterDropdown } from '@/modules/cloud-account/components/AccountTierFilterDropdown';
+import { CloudAccountAuthDialog } from '@/modules/cloud-account/components/CloudAccountAuthDialog';
 import {
   CLOUD_ACCOUNT_SORT_I18N_KEYS,
   CLOUD_ACCOUNT_SORT_OPTIONS,
   type GridLayout,
 } from '@/modules/cloud-account/components/CloudAccountList.constants';
-import type { OAuthClientDescriptor } from '@/modules/cloud-account/actions/cloud';
+import type { OAuthClientDescriptor } from '@/modules/cloud-account/services/oauth-client-preference.schema';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { AccountTierOption } from '@/modules/cloud-account/utils/account-tier-filter';
 import type { AccountSortKey } from '@/modules/cloud-account/utils/quota-display';
@@ -77,15 +74,13 @@ interface CloudAccountToolbarProps {
   isExportPending: boolean;
   isImportPending: boolean;
   isAddPending: boolean;
+  isCodeSubmitting: boolean;
+  authCode: string;
   isOAuthClientsLoading: boolean;
   isSetActiveOAuthClientPending: boolean;
   importStrategy: ImportStrategy;
-  importFileContent: string | null;
-  importFileName: string;
-  authCode: string;
   selectedOAuthClientKey: string;
   oauthClients: OAuthClientDescriptor[];
-  fileInputRef: RefObject<HTMLInputElement | null>;
   tierOptions: AccountTierOption[];
   effectiveSelectedTierKeySet: Set<string>;
   hasActiveTierFilter: boolean;
@@ -102,12 +97,11 @@ interface CloudAccountToolbarProps {
   onImportDialogOpenChange: (open: boolean) => void;
   onAddDialogOpenChange: (open: boolean) => void;
   onExport: (stripTokens: boolean) => void;
-  onImportFileSelect: (event: ChangeEvent<HTMLInputElement>) => void;
   onImportStrategyChange: (strategy: ImportStrategy) => void;
   onImport: () => void;
   onOAuthClientChange: (clientKey: string) => void;
   onOpenGoogleAuthSignIn: () => void;
-  onAuthCodeChange: (authCode: string) => void;
+  onAuthCodeChange: (code: string) => void;
   onSubmitAuthCode: () => void;
   onResetTierFilter: () => void;
   onToggleTierFilter: (tierKey: string, checked: boolean) => void;
@@ -130,15 +124,13 @@ export function CloudAccountToolbar({
   isExportPending,
   isImportPending,
   isAddPending,
+  isCodeSubmitting,
+  authCode,
   isOAuthClientsLoading,
   isSetActiveOAuthClientPending,
   importStrategy,
-  importFileContent,
-  importFileName,
-  authCode,
   selectedOAuthClientKey,
   oauthClients,
-  fileInputRef,
   tierOptions,
   effectiveSelectedTierKeySet,
   hasActiveTierFilter,
@@ -155,7 +147,6 @@ export function CloudAccountToolbar({
   onImportDialogOpenChange,
   onAddDialogOpenChange,
   onExport,
-  onImportFileSelect,
   onImportStrategyChange,
   onImport,
   onOAuthClientChange,
@@ -295,23 +286,6 @@ export function CloudAccountToolbar({
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label>{t('cloud.exportImport.selectFile')}</Label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={onImportFileSelect}
-                className="hidden"
-              />
-              <Button
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                className="cursor-pointer"
-              >
-                {importFileName || t('cloud.exportImport.selectFile')}
-              </Button>
-            </div>
-            <div className="grid gap-2">
               <Label>{t('cloud.exportImport.importStrategy')}</Label>
               <Select value={importStrategy} onValueChange={onImportStrategyChange}>
                 <SelectTrigger>
@@ -330,7 +304,7 @@ export function CloudAccountToolbar({
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={onImport} disabled={!importFileContent || isImportPending}>
+            <Button onClick={onImport} disabled={isImportPending}>
               {isImportPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isImportPending ? t('cloud.exportImport.importing') : t('cloud.exportImport.import')}
             </Button>
@@ -338,65 +312,21 @@ export function CloudAccountToolbar({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isAddDialogOpen} onOpenChange={onAddDialogOpenChange}>
-        <DialogTrigger asChild>
-          <Button className="cursor-pointer">
-            <Plus className="mr-2 h-4 w-4" />
-            {t('cloud.addAccount')}
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>{t('cloud.authDialog.title')}</DialogTitle>
-            <DialogDescription>{t('cloud.authDialog.description')}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="oauth-client-select">{t('cloud.authDialog.oauthClient')}</Label>
-              <Select
-                value={selectedOAuthClientKey || undefined}
-                onValueChange={onOAuthClientChange}
-                disabled={isOAuthClientsLoading || isSetActiveOAuthClientPending}
-              >
-                <SelectTrigger id="oauth-client-select">
-                  <SelectValue placeholder={t('cloud.authDialog.oauthClientPlaceholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {oauthClients.map((client) => (
-                    <SelectItem key={client.key} value={client.key}>
-                      {client.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Button variant="outline" className="col-span-4" onClick={onOpenGoogleAuthSignIn}>
-                <Cloud className="mr-2 h-4 w-4" />
-                {t('cloud.authDialog.openLogin')}
-              </Button>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="code">{t('cloud.authDialog.authCode')}</Label>
-              <Input
-                id="code"
-                placeholder={t('cloud.authDialog.placeholder')}
-                value={authCode}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                  onAuthCodeChange(event.target.value);
-                }}
-              />
-              <p className="text-muted-foreground text-xs">{t('cloud.authDialog.instruction')}</p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={onSubmitAuthCode} disabled={isAddPending || !authCode}>
-              {isAddPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('cloud.authDialog.verify')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CloudAccountAuthDialog
+        open={isAddDialogOpen}
+        onOpenChange={onAddDialogOpenChange}
+        selectedOAuthClientKey={selectedOAuthClientKey}
+        oauthClients={oauthClients}
+        isOAuthClientsLoading={isOAuthClientsLoading}
+        isSetActiveOAuthClientPending={isSetActiveOAuthClientPending}
+        isAddPending={isAddPending}
+        isCodeSubmitting={isCodeSubmitting}
+        authCode={authCode}
+        onOAuthClientChange={onOAuthClientChange}
+        onOpenGoogleAuthSignIn={onOpenGoogleAuthSignIn}
+        onAuthCodeChange={onAuthCodeChange}
+        onSubmitAuthCode={onSubmitAuthCode}
+      />
 
       <AccountTierFilterDropdown
         options={tierOptions}

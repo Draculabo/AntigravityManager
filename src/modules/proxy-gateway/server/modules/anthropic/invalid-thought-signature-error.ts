@@ -12,12 +12,15 @@ export interface InvalidThoughtSignatureClassification {
 }
 
 const INVALID_THOUGHT_SIGNATURE = /invalid thought signature\.?/i;
+const INVALID_THINKING_BLOCK_SIGNATURE =
+  /invalid\s+[`'"]?signature[`'"]?\s+in\s+[`'"]?thinking[`'"]?\s+block\b/i;
 const SIGNATURE_FIELD = /(?:thought[_-]?signature|thinking\.signature)/i;
 const INVALID_QUALIFIER = /(?:invalid|corrupt(?:ed)?|required|missing)/i;
 
 function hasDirectEvidence(text: string): boolean {
   return (
     INVALID_THOUGHT_SIGNATURE.test(text) ||
+    INVALID_THINKING_BLOCK_SIGNATURE.test(text) ||
     (SIGNATURE_FIELD.test(text) && INVALID_QUALIFIER.test(text))
   );
 }

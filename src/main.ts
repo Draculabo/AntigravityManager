@@ -1,16 +1,23 @@
 import './instrument'; // MUST be the first import to ensure Sentry initializes before app ready
+import { configureDesktopCloudMonitorEffects } from '@/modules/cloud-account/ipc/cloud-monitor-desktop-effects';
+import { isDesktopEmbeddedCloudAccountOwner } from '@/modules/cloud-account/ipc/cloud-account-adapter';
+import { localAccountImportCoordinator } from '@/modules/cloud-account/local-import/local-account-import-coordinator.service';
+import { localAccountPostImportService } from '@/modules/cloud-account/local-import/local-account-post-import.service';
 import { app, BrowserWindow, dialog, shell } from 'electron';
 import type { MessageBoxOptions } from 'electron';
 import path from 'path';
+import { getStandaloneRuntimePaths } from '@/shared/packaging/standalone-runtime-layout';
 import fs from 'fs';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import squirrelStartup from 'electron-squirrel-startup';
 
 import { ipcMain } from 'electron/main';
 import { ipcContext } from '@/ipc/context';
+import { desktopRpcAdmission } from '@/ipc/admission';
 import { IPC_CHANNELS } from './shared/constants';
 import { logger } from './shared/logging/logger';
+import { shutdownDiagnosticStores } from '@/modules/proxy-gateway/diagnostics/shutdown';
+import { ipcAuditRecorder } from '@/modules/proxy-gateway/audit/ipc-audit-recorder';
+import { AppError } from '@/shared/errors/appError';
 import {
   getExpectedInstallRoot,
   getInstallNoticeText,
@@ -18,15 +25,42 @@ import {
   resolveInstallNoticeLanguage,
 } from './modules/app-shell/utils/installNotice';
 import { applyStartupGpuSwitches } from '@/modules/app-shell/utils/startupGpuSwitches';
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import { initializeDesktopAccountSecurity } from '@/modules/app-shell/services/account-security-startup';
+import {
+  bootstrapDesktopOwner,
+  DesktopOwnerStartupError,
+} from '@/modules/app-shell/services/desktop-owner-bootstrap';
+import { desktopCoreConnection } from '@/modules/app-shell/services/desktop-core-connection';
+import { selectDesktopOwners } from '@/modules/app-shell/services/desktop-owner-selection';
+import { getDesktopStartupErrorTexts } from '@/modules/app-shell/services/desktop-startup-text';
+import { getDesktopPreferencesLanguage } from '@/modules/config/ipc/desktop-preferences';
+import { createDesktopShutdownCoordinator } from '@/modules/app-shell/services/desktop-shutdown';
+import { ProfileLease, ProfileOwnershipError } from '@/core/ownership/profile-lease';
 import { initDatabase } from '@/modules/account/public';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
+import { configureImageQuotaRefresh } from '@/modules/proxy-gateway/server/modules/openai/image-quota-refresh';
+import { auditFileOwner } from '@/modules/proxy-gateway/audit/audit-file-owner.service';
+import { auditOwner } from '@/modules/proxy-gateway/audit/audit-owner.service';
+import { auditCurlOwner } from '@/modules/proxy-gateway/traffic-monitor/audit-curl-owner.service';
+import { thoughtOwner } from '@/modules/proxy-gateway/thought-store/thought-owner.service';
+import { openCodeOwner } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.service';
+import { agentToolsOwner } from '@/modules/proxy-gateway/agent-tools/agent-tools.owner';
+import { localAccountOwner } from '@/modules/account/services/local-account-owner.service';
+import { loadDesktopPreferences } from '@/modules/config/ipc/handlers';
+import { serviceConfigService } from '@/modules/config/service-config.service';
+import { cloudAccountAlertPolicy } from '@/modules/cloud-account/services/cloud-account-alert-policy.service';
+import {
+  getCloudAccountAdapter,
+  startAccountOwnerPresentation,
+  stopAccountOwnerPresentation,
+  drainAccountOwnerPresentation,
+} from '@/modules/cloud-account/ipc/cloud-account-adapter';
+import { drainDesktopCloudAccountSwitches } from '@/modules/cloud-account/ipc/cloud-account-switch-desktop';
 import { createWeeklyWarmupExecutor } from '@/modules/proxy-gateway/weekly-warmup-executor';
-import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
-import { SaveAuditBodyInputSchema } from '@/modules/proxy-gateway/audit/save-audit-body-input';
+import { subscribeSelectedAuditEvents } from '@/modules/proxy-gateway/ipc/audit-presentation';
+import { exportSelectedAuditBody } from '@/modules/proxy-gateway/ipc/audit-file-desktop';
 
 // Static Imports to fix Bundle Resolution Errors
-import { AuthServer } from '@/modules/cloud-account/ipc/authServer';
 import { disableWindowsPowerThrottling } from '@/shared/platform/windowsPowerThrottling';
 import { bootstrapNestServer, stopNestServer } from './server/main';
 import {
@@ -54,6 +88,7 @@ import {
   checkElectronUpdaterUpdate,
   downloadElectronUpdaterUpdate,
   installElectronUpdaterUpdate,
+  isElectronUpdaterDownloadReady,
   registerElectronUpdater,
 } from '@/modules/app-shell/update/electronUpdaterService';
 import { selectWindowsUpdateResult } from '@/modules/app-shell/update/windowsUpdateFallbackPolicy';
@@ -67,6 +102,7 @@ import { isTrustedExternalUrl } from '@/modules/app-shell/utils/externalUrlPolic
 // logging below runs, so the shipped app keeps logging to disk as before.
 // Importing the logger module itself must stay free of filesystem side effects.
 logger.enableFileLogging();
+configureImageQuotaRefresh(() => getCloudAccountAdapter().forcePoll());
 
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
 
@@ -144,14 +180,18 @@ configurePerformanceRecorderCommandLine();
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let globalMainWindow: BrowserWindow | null = null;
+const auditPresentationStops = new Set<() => void>();
 // let tray: Tray | null = null; // Moved to tray/handler.ts
 let isQuitting = false;
-let trayShutdownPromise: Promise<void> | null = null;
 let startupConfig: AppConfig | null = null;
+const desktopProfileLease = new ProfileLease('desktop');
+let desktopOwner: Awaited<ReturnType<typeof bootstrapDesktopOwner>> | undefined;
+let ownerMode: 'desktop-embedded' | 'standalone-core' = 'desktop-embedded';
 let shouldStartHidden = false;
 let hasShownInstallNotice = false;
 let pendingManualUpdate: ManualUpdateInfo | null = null;
 let isManualUpdateRendererReady = false;
+let updateInstallRequested = false;
 const notifiedManualUpdateVersions = new Set<string>();
 
 function isRunningFromExpectedInstallDir() {
@@ -287,7 +327,17 @@ ipcMain.handle(IPC_CHANNELS.DOWNLOAD_UPDATE, async () => {
 });
 
 ipcMain.handle(IPC_CHANNELS.INSTALL_UPDATE, async () => {
-  return installElectronUpdaterUpdate();
+  if (!isElectronUpdaterDownloadReady()) {
+    return { status: 'not-available' };
+  }
+  if (updateInstallRequested) {
+    return { status: 'started' };
+  }
+
+  updateInstallRequested = true;
+  isQuitting = true;
+  desktopShutdown.request();
+  return { status: 'started' };
 });
 
 ipcMain.on(IPC_CHANNELS.MANUAL_UPDATE_RENDERER_READY, () => {
@@ -313,37 +363,30 @@ ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL_URL, async (_event, url: unknown) => {
 ipcMain.handle(
   IPC_CHANNELS.SAVE_TRAFFIC_AUDIT_BODY,
   async (_event, bodyId: string, suggestedName: string) => {
-    const [validatedBodyId, validatedSuggestedName] = SaveAuditBodyInputSchema.parse([
-      bodyId,
-      suggestedName,
-    ]);
-    const safeName = validatedSuggestedName.replace(/[^a-z0-9._-]+/giu, '-').slice(0, 120);
-    const options = {
-      defaultPath: safeName || `traffic-body-${validatedBodyId}.txt`,
-      filters: [
-        { name: 'JSON or text', extensions: ['json', 'txt', 'log'] },
-        { name: 'All files', extensions: ['*'] },
-      ],
-      title: 'Save traffic audit body',
-    };
-    const result = globalMainWindow
-      ? await dialog.showSaveDialog(globalMainWindow, options)
-      : await dialog.showSaveDialog(options);
-    if (result.canceled || !result.filePath) {
-      return { status: 'cancelled' as const };
-    }
-    await pipeline(
-      Readable.from(trafficAuditService.bodyContent(validatedBodyId)),
-      fs.createWriteStream(result.filePath),
-    );
-    return { path: result.filePath, status: 'saved' as const };
+    return exportSelectedAuditBody(bodyId, suggestedName, async (safeName) => {
+      const options = {
+        defaultPath: safeName,
+        filters: [
+          { name: 'JSON or text', extensions: ['json', 'txt', 'log'] },
+          { name: 'All files', extensions: ['*'] },
+        ],
+        title: 'Save traffic audit body',
+      };
+      const result = globalMainWindow
+        ? await dialog.showSaveDialog(globalMainWindow, options)
+        : await dialog.showSaveDialog(options);
+      return result.canceled ? null : (result.filePath ?? null);
+    });
   },
 );
 
 ipcMain.handle(IPC_CHANNELS.GET_OBSERVABILITY_CONFIG, () => {
-  return getQuickObservabilityConfig((message, error) => {
-    logger.error(message, error);
-  });
+  return getQuickObservabilityConfig(
+    (message, error) => {
+      logger.error(message, error);
+    },
+    path.join(app.getPath('userData'), 'desktop-preferences.json'),
+  );
 });
 
 registerPerformanceRecorderIpc();
@@ -449,11 +492,12 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
 
   logger.info('createWindow: setting main window in ipcContext');
   ipcContext.setMainWindow(mainWindow);
-  const unsubscribeTrafficAudit = trafficAuditService.subscribe((event) => {
+  const unsubscribeTrafficAudit = subscribeSelectedAuditEvents((event) => {
     if (!mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.TRAFFIC_AUDIT_EVENT, event);
     }
   });
+  auditPresentationStops.add(unsubscribeTrafficAudit);
   logger.info('createWindow: setMainWindow done');
 
   if (inDevelopment && MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -499,6 +543,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
 
   mainWindow.on('closed', () => {
     unsubscribeTrafficAudit();
+    auditPresentationStops.delete(unsubscribeTrafficAudit);
     logger.info('Window closed event triggered');
     globalMainWindow = null;
     setTrayMainWindow(null);
@@ -530,7 +575,9 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   });
 
   mainWindow.on('focus', () => {
-    CloudMonitorService.handleAppFocus();
+    if (isDesktopEmbeddedCloudAccountOwner()) {
+      CloudMonitorService.handleAppFocus();
+    }
     flushPendingManualUpdateNotification();
   });
 }
@@ -539,45 +586,105 @@ app.on('child-process-gone', (event, details) => {
   logger.error('Child process gone:', details);
 });
 
+let allowQuitAfterCleanup = false;
+const desktopShutdown = createDesktopShutdownCoordinator({
+  stopMonitor: () => {
+    desktopRpcAdmission.close();
+    for (const stop of auditPresentationStops) {
+      stop();
+    }
+    auditPresentationStops.clear();
+    stopAccountOwnerPresentation();
+    if (ownerMode === 'standalone-core') {
+      return;
+    }
+    CloudMonitorService.closeAdmission();
+  },
+  drainWarmups: async () => {
+    await desktopRpcAdmission.drain();
+    ipcAuditRecorder.closeAdmission();
+    await ipcAuditRecorder.drain();
+    await drainAccountOwnerPresentation();
+    if (ownerMode === 'standalone-core') {
+      return;
+    }
+    auditFileOwner.closeAdmission();
+    auditOwner.closeAdmission();
+    thoughtOwner.closeAdmission();
+    auditCurlOwner.closeAdmission();
+    openCodeOwner.closeAdmission();
+    agentToolsOwner.closeAdmission();
+    localAccountOwner.closeAdmission();
+    cloudAccountAlertPolicy.closeAdmission();
+    localAccountImportCoordinator.closeAdmission();
+    await auditFileOwner.drain();
+    await auditOwner.drain();
+    await thoughtOwner.drain();
+    await auditCurlOwner.drain();
+    await openCodeOwner.drain();
+    await agentToolsOwner.drain();
+    serviceConfigService.closeAdmission();
+    await localAccountOwner.drain();
+    await serviceConfigService.drain();
+    await localAccountImportCoordinator.drain();
+    await localAccountPostImportService.drain();
+    await CloudMonitorService.drain();
+    await drainAccountOwnerPresentation();
+  },
+  drainAccountSwitches: () =>
+    ownerMode === 'desktop-embedded' ? drainDesktopCloudAccountSwitches() : Promise.resolve(),
+  stopAuth: async () => {
+    if (ownerMode === 'standalone-core' && !desktopOwner) {
+      return;
+    }
+    await getCloudAccountAdapter().stopLogin();
+  },
+  stopGateway: async () => {
+    if (ownerMode === 'standalone-core') {
+      await desktopOwner?.close();
+      return;
+    }
+    const stopped = await stopNestServer();
+    await shutdownDiagnosticStores();
+    if (!stopped) {
+      throw new Error('Gateway did not stop during desktop shutdown');
+    }
+    await desktopOwner?.close();
+  },
+  cleanupTimeoutMs: () => (ownerMode === 'standalone-core' ? 30_000 : 3000),
+  destroyTray,
+  exit: () => {
+    allowQuitAfterCleanup = true;
+    if (updateInstallRequested) {
+      try {
+        app.releaseSingleInstanceLock();
+        const result = installElectronUpdaterUpdate();
+        if (result.status === 'started') {
+          return;
+        }
+        logger.warn(`WindowsUpdater: installation was not ready after shutdown: ${result.status}`);
+      } catch {
+        logger.warn('WindowsUpdater: installation failed to start after shutdown');
+      }
+    }
+    app.quit();
+  },
+  warn: (message) => logger.warn(message),
+});
+
 function requestTrayShutdown(): Promise<void> {
-  if (trayShutdownPromise) {
-    return trayShutdownPromise;
-  }
-
   isQuitting = true;
-  trayShutdownPromise = (async () => {
-    logger.info('Tray exit requested - stopping background services');
-    CloudMonitorService.stop();
-
-    const cleanup = Promise.allSettled([AuthServer.stop(), stopNestServer()]);
-    let timeout: NodeJS.Timeout | undefined;
-    const timeoutReached = new Promise<void>((resolve) => {
-      timeout = setTimeout(resolve, 3000);
-    });
-
-    const result = await Promise.race([
-      cleanup.then(() => 'cleaned' as const),
-      timeoutReached.then(() => 'timeout' as const),
-    ]);
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-    if (result === 'timeout') {
-      logger.warn('Tray exit cleanup timed out after 3000ms; forcing application exit');
-    }
-
-    destroyTray();
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 100);
-    });
-    app.exit(0);
-  })();
-
-  return trayShutdownPromise;
+  logger.info('Tray exit requested - stopping background services');
+  return desktopShutdown.request();
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isQuitting = true;
+  if (allowQuitAfterCleanup) {
+    return;
+  }
+  event.preventDefault();
+  desktopShutdown.request();
   logger.info('App before-quit event triggered - isQuitting set to true');
 });
 
@@ -696,24 +803,37 @@ app
         });
     }
 
-    logger.info('Step: Load Config');
-    const config = ConfigManager.loadConfig();
-    startupConfig = config;
-    syncAutoStart(config);
-    shouldStartHidden = isAutoStartLaunch() && config.auto_startup && config.start_in_tray;
-    if (shouldStartHidden) {
-      logger.info('Startup: Auto-start detected, window will start hidden');
-    }
+    const preferences = await loadDesktopPreferences();
+    ownerMode = preferences.owner_mode ?? 'desktop-embedded';
+    syncAutoStart(preferences);
+    shouldStartHidden =
+      isAutoStartLaunch() && preferences.auto_startup && preferences.start_in_tray;
+    const coreEntry = app.isPackaged
+      ? getStandaloneRuntimePaths(process.resourcesPath).coreEntry
+      : path.join(app.getAppPath(), 'dist', 'core', 'main.cjs');
+    const nodeExecutable = app.isPackaged
+      ? getStandaloneRuntimePaths(process.resourcesPath).nodeExecutable
+      : 'node';
+    desktopOwner = await bootstrapDesktopOwner({
+      mode: ownerMode,
+      lease: desktopProfileLease,
+      ...desktopCoreConnection(coreEntry, nodeExecutable),
+      selectDesktopEmbedded: () => selectDesktopOwners({ mode: 'desktop-embedded' }),
+      initializeDesktopEmbedded: async () => {
+        logger.info('Step: Load Config');
+        const config = ConfigManager.loadConfig();
+        startupConfig = config;
+        if (shouldStartHidden) {
+          logger.info('Startup: Auto-start detected, window will start hidden');
+        }
 
-    logger.info('Step: Initialize CloudAccountRepo');
-    try {
-      await CloudAccountRepo.init();
-    } catch (e) {
-      logger.error('Startup: Failed to initialize CloudAccountRepo', e);
-    }
+        logger.info('Step: Initialize CloudAccountRepo');
+        await initializeDesktopAccountSecurity();
 
-    logger.info('Step: Initialize Antigravity DB (WAL Mode)');
-    initDatabase();
+        logger.info('Step: Initialize Antigravity DB (WAL Mode)');
+        initDatabase();
+      },
+    });
   })
   .then(() => {
     logger.info('Step: setupORPC');
@@ -734,9 +854,14 @@ app
   .then(async () => {
     // Initialize Cloud Monitor if enabled
     try {
-      // Start OAuth Server
-      AuthServer.start();
-      CloudMonitorService.configureWeeklyWarmupExecutor(createWeeklyWarmupExecutor());
+      if (!isDesktopEmbeddedCloudAccountOwner()) {
+        return;
+      }
+      if (isDesktopEmbeddedCloudAccountOwner()) {
+        configureDesktopCloudMonitorEffects();
+        CloudMonitorService.openAdmission();
+        CloudMonitorService.configureWeeklyWarmupExecutor(createWeeklyWarmupExecutor());
+      }
 
       // Gateway Server (NestJS) - auto-start if enabled
       const config = startupConfig || ConfigManager.loadConfig();
@@ -758,6 +883,9 @@ app
         }
       }
 
+      if (!isDesktopEmbeddedCloudAccountOwner()) {
+        return;
+      }
       if (CloudMonitorService.isContinuousPollingEnabled()) {
         logger.info('Startup: Background cloud monitoring enabled, starting monitor...');
         CloudMonitorService.start();
@@ -774,18 +902,49 @@ app
     if (globalMainWindow) {
       initTray(globalMainWindow, requestTrayShutdown);
     }
+    await startAccountOwnerPresentation();
   })
-  .catch((error) => {
+  .catch(async (error) => {
+    if (error instanceof DesktopOwnerStartupError) {
+      logger.error('Selected core owner startup failed');
+      const texts = await getDesktopStartupErrorTexts(
+        getDesktopPreferencesLanguage(app.getLocale()),
+        'core-unavailable',
+      );
+      dialog.showErrorBox(texts.title, texts.body);
+      app.quit();
+      return;
+    }
     logger.error('Failed to start application:', error);
+    if (error instanceof AppError && error.code === 'MASTER_KEY_UNAVAILABLE') {
+      const texts = await getDesktopStartupErrorTexts(
+        getDesktopPreferencesLanguage(app.getLocale()),
+        'account-data-unavailable',
+      );
+      dialog.showErrorBox(texts.title, texts.body);
+    }
+    if (error instanceof ProfileOwnershipError) {
+      const texts = await getDesktopStartupErrorTexts(
+        getDesktopPreferencesLanguage(app.getLocale()),
+        'already-running',
+      );
+      dialog.showErrorBox(texts.title, texts.body);
+    }
     app.quit();
   });
 
 //osX only
 app.on('window-all-closed', () => {
   logger.info('Window all closed event triggered');
-  stopNestServer(); // Stop server
+  if (isQuitting) {
+    return;
+  }
   if (process.platform !== 'darwin') {
     app.quit();
+    return;
+  }
+  if (ownerMode === 'desktop-embedded') {
+    stopNestServer();
   }
   // Keep app running for tray
 });

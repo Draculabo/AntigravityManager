@@ -2,6 +2,9 @@
 
 Status: implemented
 
+The ongoing re-encryption behavior in this note was superseded by
+[plaintext cloud-account storage](2026-09-29-plaintext-cloud-account-storage.md).
+
 ## Problem
 
 Older account records can contain plaintext JSON hidden behind leading whitespace or ciphertext encrypted with a previous data-encryption key. Leaving either form in place retains avoidable plaintext or makes recovery depend indefinitely on a historical fallback key.

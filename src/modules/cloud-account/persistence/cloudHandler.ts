@@ -9,92 +9,16 @@ import {
   type CloudQuotaData,
   type CloudTokenData,
 } from '@/modules/cloud-account/types';
-import {
-  decryptWithMigration,
-  encrypt,
-  initializeMasterKey,
-  type KeySource,
-} from '@/shared/security/security';
-import { isEncryptedPayloadCandidate } from '@/shared/security/crypto';
-import { AppError, getAppErrorData } from '@/shared/errors/appError';
 import { accounts } from '@/shared/persistence/database/schema';
-import { type DrizzleExecutor, getCloudDb } from './cloud-account-db';
+import { isEncryptedPayloadCandidate } from '@/shared/security/crypto';
+import { getCloudDb } from './cloud-account-db';
+import { convertEncryptedAccountFields } from './convert-encrypted-account-fields';
 import {
   parseDeviceHistoryColumn,
   parseDeviceProfileColumn,
   serializeDeviceHistory,
   serializeDeviceProfile,
 } from './cloud-account-device-profile-codec';
-
-interface MigrationStats {
-  totalFields: number;
-  fallbackUsedFields: number;
-  migratedFields: number;
-  migratedBySource: Record<KeySource, number>;
-  failedFields: number;
-}
-
-function createMigrationStats(): MigrationStats {
-  return {
-    totalFields: 0,
-    fallbackUsedFields: 0,
-    migratedFields: 0,
-    migratedBySource: {
-      safeStorage: 0,
-      keytar: 0,
-      file: 0,
-      'legacy-safeStorage': 0,
-      'legacy-keytar': 0,
-      'legacy-file': 0,
-    },
-    failedFields: 0,
-  };
-}
-
-async function decryptAndMigrateField(
-  orm: DrizzleExecutor,
-  accountId: string,
-  field: 'tokenJson' | 'quotaJson' | 'healthJson',
-  value: string | null,
-): Promise<{ value: string | null; migrated: boolean; usedFallback?: KeySource }> {
-  if (!value) {
-    return { value: null, migrated: false };
-  }
-
-  const result = await decryptWithMigration(value);
-  if (result.reencrypted) {
-    if (field === 'tokenJson') {
-      orm
-        .update(accounts)
-        .set({ tokenJson: result.reencrypted })
-        .where(eq(accounts.id, accountId))
-        .run();
-    } else if (field === 'quotaJson') {
-      orm
-        .update(accounts)
-        .set({ quotaJson: result.reencrypted })
-        .where(eq(accounts.id, accountId))
-        .run();
-    } else {
-      orm
-        .update(accounts)
-        .set({ healthJson: result.reencrypted })
-        .where(eq(accounts.id, accountId))
-        .run();
-    }
-    logger.info(
-      `Migrated ${field} for account ${accountId} from ${result.usedFallback ?? 'unknown'} key`,
-    );
-  }
-
-  return {
-    value: result.value,
-    migrated: Boolean(result.reencrypted),
-    usedFallback: result.usedFallback,
-  };
-}
-
-type DecryptFieldResult = Awaited<ReturnType<typeof decryptAndMigrateField>>;
 
 function parseCloudToken(accountId: string, value: string): CloudAccount['token'] {
   try {
@@ -137,79 +61,40 @@ function parseCloudHealth(
   }
 }
 
+type AccountRow = typeof accounts.$inferSelect;
+
+function assertPlainAccountFields(row: AccountRow): void {
+  if ([row.tokenJson, row.quotaJson, row.healthJson].some(isEncryptedPayloadCandidate)) {
+    throw new Error('Encrypted account fields must be converted before reading accounts');
+  }
+}
+
+function parseAccountRow(row: AccountRow): CloudAccount {
+  return {
+    id: row.id,
+    provider: row.provider as CloudAccount['provider'],
+    email: row.email,
+    name: row.name ?? undefined,
+    avatar_url: row.avatarUrl ?? undefined,
+    token: parseCloudToken(row.id, row.tokenJson),
+    quota: parseCloudQuota(row.id, row.quotaJson),
+    health: parseCloudHealth(row.id, row.healthJson),
+    device_profile: parseDeviceProfileColumn(row.deviceProfileJson),
+    device_history: parseDeviceHistoryColumn(row.deviceHistoryJson),
+    created_at: row.createdAt,
+    last_used: row.lastUsed,
+    status: (row.status as CloudAccount['status']) ?? undefined,
+    status_reason: row.statusReason ?? undefined,
+    is_active: Boolean(row.isActive),
+    proxy_url: row.proxyUrl ?? undefined,
+  };
+}
+
 export class CloudAccountRepo {
   private static versionFailureLogged = false;
 
   static async init(): Promise<void> {
-    const { raw, orm } = getCloudDb();
-    const rows = orm
-      .select({
-        tokenJson: accounts.tokenJson,
-        quotaJson: accounts.quotaJson,
-        healthJson: accounts.healthJson,
-      })
-      .from(accounts)
-      .all();
-    raw.close();
-
-    const encryptedSamples = rows.flatMap((row) => {
-      return [row.tokenJson, row.quotaJson, row.healthJson].filter(isEncryptedPayloadCandidate);
-    });
-    await initializeMasterKey({
-      encryptedSamples,
-      storedAccountCount: rows.filter((row) => Boolean(row.tokenJson)).length,
-    });
-    await this.migrateToEncrypted();
-  }
-
-  static async migrateToEncrypted(): Promise<void> {
-    const { raw, orm } = getCloudDb();
-    try {
-      const rows = orm
-        .select({
-          id: accounts.id,
-          tokenJson: accounts.tokenJson,
-          quotaJson: accounts.quotaJson,
-          healthJson: accounts.healthJson,
-        })
-        .from(accounts)
-        .all();
-
-      for (const row of rows) {
-        let changed = false;
-        let newToken = row.tokenJson;
-        let newQuota = row.quotaJson;
-        let newHealth = row.healthJson;
-
-        // Check if plain text (starts with {)
-        if (newToken && newToken.startsWith('{')) {
-          newToken = await encrypt(newToken);
-          changed = true;
-        }
-        if (newQuota && newQuota.startsWith('{')) {
-          newQuota = await encrypt(newQuota);
-          changed = true;
-        }
-        if (newHealth && newHealth.startsWith('{')) {
-          newHealth = await encrypt(newHealth);
-          changed = true;
-        }
-
-        if (changed) {
-          orm
-            .update(accounts)
-            .set({ tokenJson: newToken, quotaJson: newQuota, healthJson: newHealth })
-            .where(eq(accounts.id, row.id))
-            .run();
-          logger.info(`Migrated account ${row.id} to encrypted storage`);
-        }
-      }
-    } catch (error) {
-      logger.error('Failed to migrate data', error);
-      throw error;
-    } finally {
-      raw.close();
-    }
+    await convertEncryptedAccountFields();
   }
 
   static async addAccount(account: CloudAccount): Promise<void> {
@@ -218,18 +103,15 @@ export class CloudAccountRepo {
 
     const { raw, orm } = getCloudDb();
     try {
-      const tokenEncrypted = await encrypt(JSON.stringify(account.token));
-      const quotaEncrypted = account.quota ? await encrypt(JSON.stringify(account.quota)) : null;
-      const healthEncrypted = account.health ? await encrypt(JSON.stringify(account.health)) : null;
       const values = {
         id: account.id,
         provider: account.provider,
         email: account.email,
         name: account.name ?? null,
         avatarUrl: account.avatar_url ?? null,
-        tokenJson: tokenEncrypted,
-        quotaJson: quotaEncrypted,
-        healthJson: healthEncrypted,
+        tokenJson: JSON.stringify(account.token),
+        quotaJson: account.quota ? JSON.stringify(account.quota) : null,
+        healthJson: account.health ? JSON.stringify(account.health) : null,
         deviceProfileJson: serializeDeviceProfile(account.device_profile),
         deviceHistoryJson: serializeDeviceHistory(account.device_history),
         createdAt: account.created_at,
@@ -266,275 +148,36 @@ export class CloudAccountRepo {
 
   static async getAccounts(): Promise<CloudAccount[]> {
     const { raw, orm } = getCloudDb();
-    const migrationStats = createMigrationStats();
-    let tokenCandidates = 0;
-    let successfulTokens = 0;
-    let migrationFailures = 0;
-    let firstMigrationError: unknown;
-
     try {
       const rows = orm.select().from(accounts).orderBy(desc(accounts.lastUsed)).all();
-
-      const activeRows = rows.filter((row) => row.isActive);
-      logger.debug(`Loaded ${rows.length} cloud accounts; ${activeRows.length} are active.`);
-      activeRows.forEach((row) => logger.debug(`Active cloud account: ${row.email} (${row.id})`));
-
       const cloudAccounts: CloudAccount[] = [];
-      for (const normalizedRow of rows) {
+      for (const row of rows) {
+        assertPlainAccountFields(row);
         try {
-          if (normalizedRow.tokenJson) {
-            tokenCandidates += 1;
-          }
-
-          let tokenResult: DecryptFieldResult;
-          try {
-            tokenResult = await decryptAndMigrateField(
-              orm,
-              normalizedRow.id,
-              'tokenJson',
-              normalizedRow.tokenJson,
-            );
-          } catch (error) {
-            const appErrorCode = getAppErrorData(error)?.appErrorCode;
-            if (appErrorCode === 'MASTER_KEY_UNAVAILABLE') {
-              throw error;
-            }
-            if (appErrorCode === 'DATA_MIGRATION_FAILED') {
-              migrationFailures += 1;
-              firstMigrationError ??= error;
-            }
-            migrationStats.failedFields += 1;
-            logger.warn(
-              `Failed to decrypt token for account ${normalizedRow.id}, skipping corrupted account`,
-              error,
-            );
-            continue; // Skip corrupted/unmigratable account
-          }
-          if (tokenResult.value) {
-            successfulTokens += 1;
-          }
-
-          let quotaResult: DecryptFieldResult;
-          try {
-            quotaResult = await decryptAndMigrateField(
-              orm,
-              normalizedRow.id,
-              'quotaJson',
-              normalizedRow.quotaJson,
-            );
-          } catch (error) {
-            if (getAppErrorData(error)?.appErrorCode === 'MASTER_KEY_UNAVAILABLE') {
-              throw error;
-            }
-            migrationStats.failedFields += 1;
-            logger.warn(
-              `Failed to decrypt quota for account ${normalizedRow.id}, continuing without quota`,
-              error,
-            );
-            quotaResult = { value: null, migrated: false }; // Quota is optional, proceed
-          }
-
-          let healthResult: DecryptFieldResult;
-          try {
-            healthResult = await decryptAndMigrateField(
-              orm,
-              normalizedRow.id,
-              'healthJson',
-              normalizedRow.healthJson,
-            );
-          } catch (error) {
-            if (getAppErrorData(error)?.appErrorCode === 'MASTER_KEY_UNAVAILABLE') {
-              throw error;
-            }
-            migrationStats.failedFields += 1;
-            logger.error(
-              `Failed to decrypt health for account ${normalizedRow.id}; excluding account`,
-              error,
-            );
+          if (!row.tokenJson) {
+            logger.warn(`Missing token data for account ${row.id}`);
             continue;
           }
-
-          if (!tokenResult.value) {
-            logger.warn(`Missing token data for account ${normalizedRow.id}`);
-            continue;
-          }
-
-          if (tokenResult.value) {
-            migrationStats.totalFields += 1;
-          }
-          if (tokenResult.usedFallback) {
-            migrationStats.fallbackUsedFields += 1;
-          }
-          if (tokenResult.migrated) {
-            migrationStats.migratedFields += 1;
-            if (tokenResult.usedFallback) {
-              migrationStats.migratedBySource[tokenResult.usedFallback] += 1;
-            }
-          }
-
-          if (quotaResult.value) {
-            migrationStats.totalFields += 1;
-          }
-          if (quotaResult.usedFallback) {
-            migrationStats.fallbackUsedFields += 1;
-          }
-          if (quotaResult.migrated) {
-            migrationStats.migratedFields += 1;
-            if (quotaResult.usedFallback) {
-              migrationStats.migratedBySource[quotaResult.usedFallback] += 1;
-            }
-          }
-          if (healthResult.value) {
-            migrationStats.totalFields += 1;
-          }
-          if (healthResult.usedFallback) {
-            migrationStats.fallbackUsedFields += 1;
-          }
-          if (healthResult.migrated) {
-            migrationStats.migratedFields += 1;
-            if (healthResult.usedFallback) {
-              migrationStats.migratedBySource[healthResult.usedFallback] += 1;
-            }
-          }
-
-          cloudAccounts.push({
-            id: normalizedRow.id,
-            provider: normalizedRow.provider as CloudAccount['provider'],
-            email: normalizedRow.email,
-            name: normalizedRow.name ?? undefined,
-            avatar_url: normalizedRow.avatarUrl ?? undefined,
-            token: parseCloudToken(normalizedRow.id, tokenResult.value),
-            quota: parseCloudQuota(normalizedRow.id, quotaResult.value),
-            health: parseCloudHealth(normalizedRow.id, healthResult.value),
-            device_profile: parseDeviceProfileColumn(normalizedRow.deviceProfileJson),
-            device_history: parseDeviceHistoryColumn(normalizedRow.deviceHistoryJson),
-            created_at: normalizedRow.createdAt,
-            last_used: normalizedRow.lastUsed,
-            status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
-            status_reason: normalizedRow.statusReason ?? undefined,
-            is_active: Boolean(normalizedRow.isActive),
-            proxy_url: normalizedRow.proxyUrl ?? undefined,
-          });
-        } catch (rowError) {
-          if (getAppErrorData(rowError)?.appErrorCode === 'MASTER_KEY_UNAVAILABLE') {
-            throw rowError;
-          }
-          logger.error(`Unexpected error processing row for account ${normalizedRow.id}`, rowError);
-          continue;
+          cloudAccounts.push(parseAccountRow(row));
+        } catch (error) {
+          logger.error(`Invalid stored account ${row.id}`, error);
         }
       }
-
-      if (tokenCandidates > 0 && successfulTokens === 0 && migrationFailures === tokenCandidates) {
-        throw new AppError('MASTER_KEY_UNAVAILABLE', 'Unable to decrypt stored accounts', {
-          messageKey: 'error.masterKeyUnavailable',
-          metadata: {
-            hint: 'HINT_RECOVERY',
-            reason: 'NO_MATCHING_KEY',
-            storedAccountCount: rows.length,
-          },
-          cause: firstMigrationError,
-        });
-      }
-
       return cloudAccounts;
     } finally {
-      if (
-        migrationStats.migratedFields > 0 ||
-        migrationStats.fallbackUsedFields > 0 ||
-        migrationStats.failedFields > 0
-      ) {
-        const summary = {
-          totalFields: migrationStats.totalFields,
-          fallbackUsedFields: migrationStats.fallbackUsedFields,
-          migratedFields: migrationStats.migratedFields,
-          migratedBySource: migrationStats.migratedBySource,
-          failedFields: migrationStats.failedFields,
-        };
-        if (migrationStats.failedFields > 0) {
-          logger.warn('CloudAccountRepo migration summary (with failures)', summary);
-        } else {
-          logger.info('CloudAccountRepo migration summary', summary);
-        }
-      }
       raw.close();
     }
   }
 
   static async getAccount(id: string): Promise<CloudAccount | undefined> {
     const { raw, orm } = getCloudDb();
-
     try {
-      const rows = orm.select().from(accounts).where(eq(accounts.id, id)).all();
-      const normalizedRow = rows[0];
-      if (!normalizedRow) {
+      const row = orm.select().from(accounts).where(eq(accounts.id, id)).get();
+      if (!row) {
         return undefined;
       }
-
-      let tokenResult: DecryptFieldResult;
-      try {
-        tokenResult = await decryptAndMigrateField(
-          orm,
-          normalizedRow.id,
-          'tokenJson',
-          normalizedRow.tokenJson,
-        );
-      } catch (error) {
-        logger.error(
-          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for token`,
-          error,
-        );
-        throw error;
-      }
-
-      let quotaResult: DecryptFieldResult;
-      try {
-        quotaResult = await decryptAndMigrateField(
-          orm,
-          normalizedRow.id,
-          'quotaJson',
-          normalizedRow.quotaJson,
-        );
-      } catch (error) {
-        logger.error(
-          `[CloudAccountRepo] getAccount ${id} failed - Decryption failed for quota, proceeding without quota`,
-          error,
-        );
-        quotaResult = { value: null, migrated: false };
-      }
-
-      const healthResult = await decryptAndMigrateField(
-        orm,
-        normalizedRow.id,
-        'healthJson',
-        normalizedRow.healthJson,
-      );
-
-      const tokenValue = tokenResult.value;
-      if (!tokenValue) {
-        return undefined;
-      }
-
-      const parsedToken = parseCloudToken(normalizedRow.id, tokenValue);
-      const parsedQuota = parseCloudQuota(normalizedRow.id, quotaResult.value);
-
-      return {
-        id: normalizedRow.id,
-        provider: normalizedRow.provider as CloudAccount['provider'],
-        email: normalizedRow.email,
-        name: normalizedRow.name ?? undefined,
-        avatar_url: normalizedRow.avatarUrl ?? undefined,
-        token: parsedToken,
-        quota: parsedQuota,
-        health: parseCloudHealth(normalizedRow.id, healthResult.value),
-        device_profile: parseDeviceProfileColumn(normalizedRow.deviceProfileJson),
-        device_history: parseDeviceHistoryColumn(normalizedRow.deviceHistoryJson),
-        created_at: normalizedRow.createdAt,
-        last_used: normalizedRow.lastUsed,
-        status: (normalizedRow.status as CloudAccount['status']) ?? undefined,
-        status_reason: normalizedRow.statusReason ?? undefined,
-        is_active: Boolean(normalizedRow.isActive),
-        proxy_url: normalizedRow.proxyUrl ?? undefined,
-      };
+      assertPlainAccountFields(row);
+      return parseAccountRow(row);
     } finally {
       raw.close();
     }
@@ -551,18 +194,14 @@ export class CloudAccountRepo {
   }
 
   static async updateToken(id: string, token: CloudTokenData): Promise<void> {
-    // Validate token data before encryption
+    // Validate token data before persistence
     CloudTokenDataSchema.parse(token);
 
     const { raw, orm } = getCloudDb();
 
     try {
-      const encrypted = await encrypt(JSON.stringify(token));
-      const result = orm
-        .update(accounts)
-        .set({ tokenJson: encrypted })
-        .where(eq(accounts.id, id))
-        .run();
+      const tokenJson = JSON.stringify(token);
+      const result = orm.update(accounts).set({ tokenJson }).where(eq(accounts.id, id)).run();
       if (result.changes === 0) {
         logger.warn(`updateToken: No account found with ID ${id}`);
       }
@@ -572,18 +211,14 @@ export class CloudAccountRepo {
   }
 
   static async updateQuota(id: string, quota: CloudQuotaData): Promise<void> {
-    // Validate quota data before encryption
+    // Validate quota data before persistence
     CloudQuotaDataSchema.parse(quota);
 
     const { raw, orm } = getCloudDb();
 
     try {
-      const encrypted = await encrypt(JSON.stringify(quota));
-      const result = orm
-        .update(accounts)
-        .set({ quotaJson: encrypted })
-        .where(eq(accounts.id, id))
-        .run();
+      const quotaJson = JSON.stringify(quota);
+      const result = orm.update(accounts).set({ quotaJson }).where(eq(accounts.id, id)).run();
       if (result.changes === 0) {
         logger.warn(`updateQuota: No account found with ID ${id}`);
       }
@@ -596,7 +231,7 @@ export class CloudAccountRepo {
     const parsedHealth = health === undefined ? undefined : CloudAccountHealthSchema.parse(health);
     const { raw, orm } = getCloudDb();
     try {
-      const healthJson = parsedHealth ? await encrypt(JSON.stringify(parsedHealth)) : null;
+      const healthJson = parsedHealth ? JSON.stringify(parsedHealth) : null;
       const result = orm.update(accounts).set({ healthJson }).where(eq(accounts.id, id)).run();
       if (result.changes === 0) {
         throw new Error(`updateHealth: No account found with ID ${id}`);
@@ -637,10 +272,12 @@ export class CloudAccountRepo {
     const { raw, orm } = getCloudDb();
     try {
       orm.update(accounts).set({ proxyUrl }).where(eq(accounts.id, id)).run();
-      logger.info(`Updated proxy for account ${id}: ${proxyUrl ?? 'none'}`);
-    } catch (error) {
-      logger.error(`Failed to update proxy for account ${id}`, error);
-      throw error;
+      logger.info(
+        `Updated proxy for account ${id}: ${proxyUrl === null ? 'removed' : 'configured'}`,
+      );
+    } catch {
+      logger.error(`Failed to update proxy for account ${id}`);
+      throw new Error('Failed to update account proxy');
     } finally {
       raw.close();
     }

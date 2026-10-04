@@ -11,9 +11,9 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Loader2, Search, RotateCcw, Save } from 'lucide-react';
 import { filter, flatMap, includes, size, sortBy, sumBy, uniq, values } from 'lodash-es';
-import type { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 
-function collectAvailableModelIds(accounts: CloudAccount[] | undefined): string[] {
+function collectAvailableModelIds(accounts: CloudAccountView[] | undefined): string[] {
   if (!accounts) {
     return [];
   }

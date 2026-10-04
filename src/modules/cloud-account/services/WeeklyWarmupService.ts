@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
@@ -198,9 +199,7 @@ export class WeeklyWarmupService {
     signal: AbortSignal,
   ): Promise<string[]> {
     const now = options.now ?? Date.now();
-    const wait =
-      options.wait ??
-      ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+    const wait = options.wait ?? delay;
     const warmedAccountIds = new Set<string>();
     let history: WeeklyWarmupHistory;
     let candidates: WeeklyWarmupCandidate[];
@@ -229,6 +228,9 @@ export class WeeklyWarmupService {
             candidate.account.token.access_token,
             candidate.account.proxy_url,
           );
+          if (signal.aborted) {
+            break;
+          }
           if (!projectId?.trim()) {
             throw new Error('Weekly warmup project context is unavailable');
           }
@@ -245,6 +247,9 @@ export class WeeklyWarmupService {
           upstreamProxyUrl: candidate.account.proxy_url,
           signal,
         });
+        if (signal.aborted) {
+          break;
+        }
         history.entries[candidate.historyKey] = options.now ?? Date.now();
         warmedAccountIds.add(candidate.account.id);
         try {

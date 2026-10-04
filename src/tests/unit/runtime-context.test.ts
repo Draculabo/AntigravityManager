@@ -63,7 +63,7 @@ describe('immutable launch context', () => {
         ],
       },
     ]);
-    expect(context.args).toEqual(['--user-data-dir', userData]);
+    expect(context.args).toEqual([`--user-data-dir=${userData}`]);
     expect(getAntigravityDbPaths('classic', context.pathOptions)).toEqual([
       path.join(userData, 'User', 'globalStorage', 'state.vscdb'),
       path.join(userData, 'User', 'state.vscdb'),
@@ -91,8 +91,7 @@ describe('immutable launch context', () => {
     expect(resolveLaunchContext('classic', []).args).toEqual([
       '--disable-gpu',
       '--locale=en',
-      '--user-data-dir',
-      userData,
+      `--user-data-dir=${userData}`,
     ]);
   });
 

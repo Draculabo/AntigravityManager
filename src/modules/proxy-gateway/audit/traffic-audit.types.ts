@@ -32,6 +32,7 @@ export interface StartAuditParentInput {
   protocol: string;
   query?: Record<string, unknown> | string;
   requestBody?: unknown;
+  requestPayloadHandled?: boolean;
   sessionId?: string;
   trafficClass: TrafficClass;
   url: string;
@@ -40,6 +41,8 @@ export interface StartAuditParentInput {
 
 export interface CompleteAuditParentInput {
   error?: unknown;
+  /** Already redacted by the owned audit serializer across the private process boundary. */
+  errorSummary?: string | null;
   mappedModel?: string;
   outcome: AuditOutcome;
   partial?: boolean;

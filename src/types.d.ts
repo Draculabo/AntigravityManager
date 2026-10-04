@@ -27,7 +27,8 @@ declare global {
     releaseUrl: string;
     platform: 'darwin' | 'linux' | 'win32';
     source?: 'manual' | 'electron-updater';
-    state?: 'available' | 'downloaded';
+    state?: 'available' | 'downloading' | 'downloaded' | 'error';
+    downloadPercent?: number;
   }
 
   type ManualUpdateCheckResult =
@@ -52,7 +53,6 @@ declare global {
         errorReportingEnabled: boolean;
         telemetryEnabled: boolean;
       }>;
-      onGoogleAuthCode: (callback: (code: string) => void) => () => void;
       changeLanguage: (lang: string) => void;
       onManualUpdateAvailable: (callback: (update: ManualUpdateInfo) => void) => () => void;
       onTrafficAuditEvent: (callback: (event: TrafficAuditEvent) => void) => () => void;
@@ -64,7 +64,7 @@ declare global {
       saveTrafficAuditBody: (
         bodyId: string,
         suggestedName: string,
-      ) => Promise<{ path?: string; status: 'saved' | 'cancelled' }>;
+      ) => Promise<{ status: 'saved' | 'cancelled' }>;
       startPerformanceRecording?: (label: string) => Promise<PerformanceRecordingStartResult>;
       stopPerformanceRecording?: (
         snapshot: RendererPerformanceSnapshot,

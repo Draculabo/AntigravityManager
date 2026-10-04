@@ -14,6 +14,8 @@ import { isString } from 'lodash-es';
 import { z } from 'zod';
 import { logger } from '../shared/logging/logger';
 import { AppError, getAppErrorData, type AppErrorData } from '@/shared/errors/appError';
+import { projectOwnerOperationError, type OwnerOperationErrorData } from './owner-operation-error';
+import { desktopRpcAdmission } from './admission';
 
 interface BackendErrorDetails {
   backendCode?: string;
@@ -27,6 +29,7 @@ interface BackendErrorDetails {
 
 /** A closed IPC error envelope with only explicitly validated feature extensions. */
 type PublicORPCErrorData =
+  | OwnerOperationErrorData
   | BackendErrorDetails
   | (BackendErrorDetails & AppErrorData)
   | (BackendErrorDetails & LocalAccountImportORPCErrorData);
@@ -104,6 +107,10 @@ export function toPublicORPCError(
   error: unknown,
   requestPath: string,
 ): ORPCError<string, PublicORPCErrorData> {
+  const ownerError = projectOwnerOperationError(error, requestPath);
+  if (ownerError) {
+    return ownerError;
+  }
   const message = stringifyUnknownError(error);
   const publicData = createPublicORPCErrorData(error, requestPath);
 
@@ -133,13 +140,15 @@ const logMiddleware = os.middleware(async ({ next, path }) => {
   try {
     return await next({});
   } catch (err) {
-    logger.error(`[ORPC] Error in handler for ${requestPath}:`, err);
-    throw toPublicORPCError(err, requestPath);
+    const ownerError = projectOwnerOperationError(err, requestPath);
+    logger.error(`[ORPC] Error in handler for ${requestPath}:`, ownerError ? ownerError.data : err);
+    throw ownerError ?? toPublicORPCError(err, requestPath);
   }
 });
 
 // Explicit Router Definition
 export const router = os
+  .use(os.middleware(({ next }) => desktopRpcAdmission.run(async () => next({}))))
   .use(logMiddleware)
   .use(gatewayAuditMiddleware)
   .router({

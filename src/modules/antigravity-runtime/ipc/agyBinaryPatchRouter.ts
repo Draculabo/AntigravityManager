@@ -1,6 +1,7 @@
 import { os } from '@orpc/server';
 import { z } from 'zod';
-import { ConfigManager } from '@/modules/config/ipc/manager';
+import { getConfigAdapter } from '@/modules/config/ipc/config-adapter';
+import { configurationUnavailable } from '@/modules/config/service-config.router';
 import { detectAgyCliExecutablePath } from '@/modules/antigravity-runtime/binary-patch/agyCliPathDetection';
 import { patchAgyBinaryFile } from '@/modules/antigravity-runtime/binary-patch/agyBinaryPatchService';
 
@@ -18,7 +19,11 @@ export const agyBinaryPatchRouter = os.router({
     .input(z.object({ bypassConfig: z.boolean().optional() }).optional())
     .output(z.string())
     .handler(async ({ input }) => {
-      const config = ConfigManager.getCachedConfig() ?? ConfigManager.loadConfig();
+      const config = await getConfigAdapter()
+        .read()
+        .catch(() => {
+          throw configurationUnavailable();
+        });
       const executablePath = detectAgyCliExecutablePath({
         bypassConfig: input?.bypassConfig,
         configuredPath: config.antigravity_cli_executable,
@@ -32,7 +37,11 @@ export const agyBinaryPatchRouter = os.router({
     }),
 
   patchConfigured: os.output(AgyBinaryPatchResultSchema).handler(async () => {
-    const config = ConfigManager.getCachedConfig() ?? ConfigManager.loadConfig();
+    const config = await getConfigAdapter()
+      .read()
+      .catch(() => {
+        throw configurationUnavailable();
+      });
     const configuredPath = config.antigravity_cli_executable;
     if (!configuredPath) {
       throw new Error('Configure the Antigravity CLI executable path before patching.');

@@ -20,6 +20,7 @@ vi.mock('@/modules/proxy-gateway/audit/traffic-audit.service', () => ({
 }));
 
 import { copyAuditCurl } from '@/modules/proxy-gateway/traffic-monitor/copy-audit-curl';
+import { buildAuditCurl } from '@/modules/proxy-gateway/traffic-monitor/build-audit-curl';
 
 describe('audit cURL clipboard boundary', () => {
   beforeEach(() => {
@@ -64,6 +65,9 @@ describe('audit cURL clipboard boundary', () => {
   it('rejects credential export for upstream attempts before reading a record', async () => {
     await expect(
       copyAuditCurl({ id: 'parent-1', attemptId: 'attempt-1', includeCredentials: true }),
+    ).rejects.toThrow('Unable to copy this request right now. Please try again.');
+    await expect(
+      buildAuditCurl({ id: 'parent-1', attemptId: 'attempt-1', includeCredentials: true }),
     ).rejects.toThrow('redacted credentials');
     expect(mocks.detail).not.toHaveBeenCalled();
     expect(mocks.clipboardWrite).not.toHaveBeenCalled();
@@ -84,6 +88,32 @@ describe('audit cURL clipboard boundary', () => {
     });
 
     await expect(copyAuditCurl({ id: 'parent-1', includeCredentials: false })).rejects.toThrow();
+    expect(mocks.clipboardWrite).not.toHaveBeenCalled();
+  });
+
+  it('retains the existing 8 MiB replay-body limit before reading body pages', async () => {
+    mocks.detail.mockResolvedValue({
+      recordKind: 'request',
+      request: { id: 'parent-1', trafficClass: 'model' },
+      attempts: [],
+      bodies: [
+        {
+          ownerId: 'parent-1',
+          direction: 'request',
+          state: 'complete',
+          partial: false,
+          oversized: false,
+          kind: 'text',
+          storedBytes: 8 * 1024 * 1024 + 1,
+        },
+      ],
+    });
+    await expect(buildAuditCurl({ id: 'parent-1', includeCredentials: false })).rejects.toThrow(
+      '8 MiB',
+    );
+    await expect(copyAuditCurl({ id: 'parent-1', includeCredentials: false })).rejects.toThrow(
+      'Unable to copy this request right now. Please try again.',
+    );
     expect(mocks.clipboardWrite).not.toHaveBeenCalled();
   });
 });

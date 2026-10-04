@@ -58,6 +58,11 @@ interface InternalEndpointRetryPolicy {
   allowProjectHeaderDowngrade: boolean;
 }
 
+export interface InternalGenerationOptions {
+  /** Signature recovery must not restore the history that the provider just rejected. */
+  thoughtReplay?: 'restore' | 'skip';
+}
+
 const PROJECT_HEADER_ATTEMPT_COUNT = 2;
 
 @Injectable()
@@ -66,8 +71,8 @@ export class GeminiClient {
   // Default to v1beta for most features
   private readonly baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
   private readonly defaultInternalBaseUrls = [
-    'https://cloudcode-pa.googleapis.com/v1internal',
     'https://daily-cloudcode-pa.googleapis.com/v1internal',
+    'https://cloudcode-pa.googleapis.com/v1internal',
   ];
 
   constructor(
@@ -232,6 +237,7 @@ export class GeminiClient {
     upstreamProxyUrl?: string,
     extraHeaders?: Record<string, string>,
     signal?: AbortSignal,
+    options?: InternalGenerationOptions,
   ): Promise<NodeJS.ReadableStream> {
     const response = await this.executeInternalWithExplicitContextCache<NodeJS.ReadableStream>(
       ':streamGenerateContent?alt=sse',
@@ -244,6 +250,7 @@ export class GeminiClient {
       },
       'stream-generate',
       extraHeaders,
+      options,
     );
 
     return response.data;
@@ -255,6 +262,7 @@ export class GeminiClient {
     upstreamProxyUrl?: string,
     extraHeaders?: Record<string, string>,
     signal?: AbortSignal,
+    options?: InternalGenerationOptions,
   ): Promise<GeminiResponse> {
     const response = await this.executeInternalWithExplicitContextCache<
       GeminiResponse | { response: GeminiResponse }
@@ -266,6 +274,7 @@ export class GeminiClient {
       { signal },
       'generate-content',
       extraHeaders,
+      options,
     );
     const payload = response.data;
     if (isObjectLike(payload) && 'response' in payload) {
@@ -375,9 +384,12 @@ export class GeminiClient {
     config: AxiosRequestConfig,
     operation: string,
     extraHeaders?: Record<string, string>,
+    options: InternalGenerationOptions = {},
   ): Promise<AxiosResponse<T>> {
     markProxyNormalizationComplete();
-    await thoughtStoreService.prepareInternalRequest(body, body.model);
+    if (options.thoughtReplay !== 'skip') {
+      await thoughtStoreService.prepareInternalRequest(body, body.model);
+    }
     const prepared = await this.applyExplicitContextCache(body, accessToken, upstreamProxyUrl);
     try {
       return await this.executeRequestWithEndpointFailover<T>(

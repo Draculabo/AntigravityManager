@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import en from '@/localization/en';
 
 const mocks = vi.hoisted(() => ({
   clearOpenCode: vi.fn(),
@@ -33,11 +34,13 @@ vi.mock('@/components/ui/use-toast', () => ({
   useToast: () => ({ toast: mocks.toast }),
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (_key: string, fallback?: string) => fallback ?? _key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createInstance } = await import('i18next');
+  const { default: resource } = await import('@/localization/en');
+  const i18n = createInstance();
+  await i18n.init({ lng: 'en', resources: { en: { translation: resource } } });
+  return { useTranslation: () => ({ t: i18n.t.bind(i18n) }) };
+});
 
 import { OpenCodeSyncCard } from '@/modules/proxy-gateway/components/OpenCodeSyncCard';
 
@@ -60,6 +63,8 @@ function renderCard() {
 }
 
 describe('OpenCodeSyncCard', () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.openCodeStatus.mockImplementation(async () => ({
@@ -97,19 +102,19 @@ describe('OpenCodeSyncCard', () => {
     await waitFor(() => expect(mocks.restoreOpenCode).toHaveBeenCalledTimes(1));
   });
 
-  it('shows the detected version and requires confirmation before clearing managed entries', async () => {
+  it('shows the detected version and confirms removal of only the Manager connection', async () => {
     renderCard();
 
-    expect(await screen.findByText('Installed · 1.2.3')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear managed configuration' }));
+    expect(await screen.findByText(`${en['agent-tools'].installed} · 1.2.3`)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: en['agent-tools'].remove }));
     expect(mocks.clearOpenCode).not.toHaveBeenCalled();
-    expect(screen.getByText('Clear managed OpenCode configuration?')).toBeTruthy();
+    expect(screen.getByText(en.proxy['open-code']['clear-confirm-title'])).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm clear' }));
     await waitFor(() =>
       expect(mocks.clearOpenCode).toHaveBeenCalledWith({
         baseUrl: 'http://127.0.0.1:8045',
-        clearLegacy: true,
+        clearLegacy: false,
       }),
     );
   });
@@ -118,9 +123,9 @@ describe('OpenCodeSyncCard', () => {
     renderCard();
 
     await screen.findByText('C:/Users/test/.config/opencode/opencode.jsonc');
-    fireEvent.click(screen.getByRole('button', { name: 'Configure and sync OpenCode' }));
+    fireEvent.click(screen.getByRole('button', { name: en['agent-tools'].update }));
     const syncAccounts = screen.getByRole('checkbox', {
-      name: /Sync accounts to antigravity-accounts\.json/,
+      name: `${en.proxy['open-code']['sync-accounts']} ${en.proxy['open-code']['sync-accounts-description']}`,
     });
     expect(syncAccounts.getAttribute('data-state')).toBe('unchecked');
     fireEvent.click(syncAccounts);
@@ -135,15 +140,17 @@ describe('OpenCodeSyncCard', () => {
     );
     await waitFor(() => expect(screen.queryByText('Choose OpenCode models')).toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Configure and sync OpenCode' }));
+    fireEvent.click(screen.getByRole('button', { name: en['agent-tools'].update }));
     expect(
       screen
-        .getByRole('checkbox', { name: /Sync accounts to antigravity-accounts\.json/ })
+        .getByRole('checkbox', {
+          name: `${en.proxy['open-code']['sync-accounts']} ${en.proxy['open-code']['sync-accounts-description']}`,
+        })
         .getAttribute('data-state'),
     ).toBe('checked');
   });
 
-  it('warns about the legacy plugin and loads the redacted preview only when opened', async () => {
+  it('warns about another sign-in plugin and loads the private preview only when opened', async () => {
     mocks.openCodeStatus.mockImplementation(async () => ({
       configPath: 'C:/Users/test/.config/opencode/opencode.jsonc',
       exists: true,
@@ -159,7 +166,7 @@ describe('OpenCodeSyncCard', () => {
     }));
     renderCard();
 
-    expect(await screen.findByText('Legacy auth plugin detected')).toBeTruthy();
+    expect(await screen.findByText(en['agent-tools']['plugin-notice'])).toBeTruthy();
     expect(mocks.readOpenCodeConfig).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'View configuration' }));

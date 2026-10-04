@@ -1,4 +1,3 @@
-import { Notification } from 'electron';
 import { z } from 'zod';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
@@ -7,7 +6,7 @@ import {
   type AutoSwitchModelConfig,
   type CloudAccount,
 } from '@/modules/cloud-account/types';
-import { switchCloudAccount } from '@/modules/cloud-account/ipc/handler';
+import { switchCloudAccountCore } from './cloud-account-switch.service';
 import { logger } from '@/shared/logging/logger';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import {
@@ -27,6 +26,17 @@ const BooleanSettingSchema = z.boolean();
 const AUTO_SWITCH_DEPLETION_THRESHOLD_PERCENT = 5;
 
 export class AutoSwitchService {
+  private static effects = {
+    switchAccount: (accountId: string, target?: AntigravityAppTarget) =>
+      switchCloudAccountCore(accountId, target, { presentationReason: 'auto' }),
+    onSwitched: (_accountId: string, _email: string, _target?: AntigravityAppTarget): void => {},
+  };
+  static configureEffects(effects: {
+    switchAccount(accountId: string, target?: AntigravityAppTarget): Promise<void>;
+    onSwitched(accountId: string, email: string, target?: AntigravityAppTarget): void;
+  }): void {
+    this.effects = effects;
+  }
   /**
    * Finds the best cloud account to switch to.
    * Criteria:
@@ -206,14 +216,11 @@ export class AutoSwitchService {
         logger.info(`AutoSwitch: Switching to ${nextAccount.email}...`);
 
         // Perform the switch
-        await switchCloudAccount(nextAccount.id, appTarget);
+        await this.effects.switchAccount(nextAccount.id, appTarget);
 
         // Show Desktop Notification to alert the user of the switch
         try {
-          new Notification({
-            title: 'Antigravity Manager: Auto-Switch',
-            body: `Switched account to ${nextAccount.email} due to quota limit. Reopen IDE and type "continue" if needed!`,
-          }).show();
+          this.effects.onSwitched(nextAccount.id, nextAccount.email, appTarget);
         } catch (err) {
           logger.error('Failed to show auto-switch desktop notification', err);
         }

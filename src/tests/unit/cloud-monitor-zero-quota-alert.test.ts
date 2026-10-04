@@ -1,3 +1,4 @@
+import { configureDesktopCloudMonitorEffects } from '@/modules/cloud-account/ipc/cloud-monitor-desktop-effects';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as electronMock from 'electron';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
@@ -18,6 +19,7 @@ describe('CloudMonitorService exhausted quota alerts', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     CloudMonitorService.resetStateForTesting();
+    configureDesktopCloudMonitorEffects();
     notificationShowSpy = vi.spyOn(
       (electronMock as { Notification: typeof electronMock.Notification }).Notification.prototype,
       'show',

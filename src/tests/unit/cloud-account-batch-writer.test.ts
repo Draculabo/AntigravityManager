@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => {
   const close = vi.fn();
   const transaction = vi.fn();
   const getCloudDb = vi.fn();
-  const encrypt = vi.fn(async (value: string) => `encrypted:${value}`);
   const info = vi.fn();
 
   return {
@@ -14,14 +13,9 @@ const mocks = vi.hoisted(() => {
     close,
     transaction,
     getCloudDb,
-    encrypt,
     info,
   };
 });
-
-vi.mock('@/shared/security/security', () => ({
-  encrypt: mocks.encrypt,
-}));
 
 vi.mock('@/shared/logging/logger', () => ({
   logger: {
@@ -82,7 +76,6 @@ describe('upsertCloudAccountsAtomically', () => {
         transaction: mocks.transaction,
       },
     });
-    mocks.encrypt.mockImplementation(async (value: string) => `encrypted:${value}`);
   });
 
   it('writes the complete batch in one transaction without deactivating unrelated rows', async () => {
@@ -114,9 +107,9 @@ describe('upsertCloudAccountsAtomically', () => {
           email: 'a@example.com',
           name: null,
           avatarUrl: null,
-          tokenJson: `encrypted:${JSON.stringify(first.token)}`,
+          tokenJson: JSON.stringify(first.token),
           quotaJson: null,
-          healthJson: `encrypted:${JSON.stringify(first.health)}`,
+          healthJson: JSON.stringify(first.health),
           deviceProfileJson: null,
           deviceHistoryJson: null,
           createdAt: 1_700_000_000,
@@ -132,9 +125,9 @@ describe('upsertCloudAccountsAtomically', () => {
           email: 'a@example.com',
           name: null,
           avatarUrl: null,
-          tokenJson: `encrypted:${JSON.stringify(first.token)}`,
+          tokenJson: JSON.stringify(first.token),
           quotaJson: null,
-          healthJson: `encrypted:${JSON.stringify(first.health)}`,
+          healthJson: JSON.stringify(first.health),
           deviceProfileJson: null,
           deviceHistoryJson: null,
           createdAt: 1_700_000_000,
@@ -152,7 +145,7 @@ describe('upsertCloudAccountsAtomically', () => {
           email: 'b@example.com',
           name: null,
           avatarUrl: null,
-          tokenJson: `encrypted:${JSON.stringify(second.token)}`,
+          tokenJson: JSON.stringify(second.token),
           quotaJson: null,
           healthJson: null,
           deviceProfileJson: null,
@@ -170,7 +163,7 @@ describe('upsertCloudAccountsAtomically', () => {
           email: 'b@example.com',
           name: null,
           avatarUrl: null,
-          tokenJson: `encrypted:${JSON.stringify(second.token)}`,
+          tokenJson: JSON.stringify(second.token),
           quotaJson: null,
           healthJson: null,
           deviceProfileJson: null,
@@ -187,11 +180,9 @@ describe('upsertCloudAccountsAtomically', () => {
     expect(mocks.close).toHaveBeenCalledTimes(1);
   });
 
-  it('does not open the database when credential encryption fails during preflight', async () => {
-    const leakedToken = 'refresh-must-not-be-logged';
+  it('does not open the database when an account fails validation', async () => {
     const account = createAccount('account-a', 'a@example.com', false);
-    account.token.refresh_token = leakedToken;
-    mocks.encrypt.mockRejectedValueOnce(new Error(`encryption failed for ${leakedToken}`));
+    account.token.expiry_timestamp = Number.NaN;
 
     await expect(upsertCloudAccountsAtomically([account])).rejects.toThrow();
 

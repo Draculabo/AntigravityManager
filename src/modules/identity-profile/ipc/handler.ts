@@ -505,7 +505,8 @@ function buildApplyError(
 }
 
 export function getDeviceHardeningSnapshot(): DeviceHardeningSnapshot {
-  const safeModeActive = isSafeModeActiveNow();
+  const safeModeActive =
+    deviceHardeningState.safeModeUntil !== null && Date.now() < deviceHardeningState.safeModeUntil;
   return {
     consecutiveApplyFailures: deviceHardeningState.consecutiveApplyFailures,
     safeModeActive,

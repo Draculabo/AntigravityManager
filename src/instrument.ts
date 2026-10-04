@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import path from 'node:path';
 import * as Sentry from '@sentry/electron/main';
 import { logger } from './shared/logging/logger';
 import {
@@ -9,9 +10,12 @@ import { getQuickObservabilityConfig } from './shared/observability/observabilit
 import { filterCrashSafeSentryIntegrations } from './shared/observability/sentryIntegrations';
 import { redactSentryEventLocalPaths } from './shared/observability/sentryPrivacy';
 
-const quickConfig = getQuickObservabilityConfig((message, error) => {
-  logger.error(message, error);
-});
+const quickConfig = getQuickObservabilityConfig(
+  (message, error) => {
+    logger.error(message, error);
+  },
+  path.join(app.getPath('userData'), 'desktop-preferences.json'),
+);
 
 initializeOpenTelemetry({
   enabled: quickConfig.telemetryEnabled,

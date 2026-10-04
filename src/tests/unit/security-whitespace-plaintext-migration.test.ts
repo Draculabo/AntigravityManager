@@ -45,6 +45,9 @@ describe('whitespace-prefixed plaintext account migration', () => {
 
   it('returns an encrypted replacement for JSON with leading whitespace', async () => {
     const security = await import('@/shared/security/security');
+    const { configureElectronSecurityRuntime } =
+      await import('@/shared/security/electron-security-runtime');
+    configureElectronSecurityRuntime();
     await security.initializeMasterKey({ encryptedSamples: [], storedAccountCount: 0 });
 
     const plaintext = ' \n\t{"access_token":"legacy-token"}';
@@ -60,6 +63,9 @@ describe('whitespace-prefixed plaintext account migration', () => {
 
   it('keeps canonical plaintext JSON on the existing startup migration path', async () => {
     const security = await import('@/shared/security/security');
+    const { configureElectronSecurityRuntime } =
+      await import('@/shared/security/electron-security-runtime');
+    configureElectronSecurityRuntime();
     await security.initializeMasterKey({ encryptedSamples: [], storedAccountCount: 0 });
 
     const result = await security.decryptWithMigration('{"access_token":"legacy-token"}');
