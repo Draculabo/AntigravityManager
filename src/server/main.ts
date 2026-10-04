@@ -16,6 +16,10 @@ import {
 } from '../modules/proxy-gateway/server/guards/api-key-auth.util';
 import { isObservable } from 'rxjs';
 import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
+import {
+  DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES,
+  isModelPayloadRoute,
+} from '../modules/proxy-gateway/server/proxy.constants';
 import { registerTrafficAuditHttpHooks } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
@@ -48,18 +52,27 @@ interface RawMediaBodyParserHost {
   ) => void;
 }
 
-interface ImageGenerationRouteLimitHost {
+interface RouteLimitHost {
   addHook: (
     name: 'onRoute',
     handler: (options: { bodyLimit?: number; method: string | string[]; url: string }) => void,
   ) => void;
 }
 
-export function registerImageGenerationBodyLimit(instance: ImageGenerationRouteLimitHost): void {
+export function registerImageGenerationBodyLimit(instance: RouteLimitHost): void {
   instance.addHook('onRoute', (options) => {
     const methods = Array.isArray(options.method) ? options.method : [options.method];
     if (methods.includes('POST') && options.url === '/v1/images/generations') {
       options.bodyLimit = MAX_IMAGE_GENERATION_BODY_BYTES;
+    }
+  });
+}
+
+export function registerModelRouteBodyLimits(instance: RouteLimitHost): void {
+  instance.addHook('onRoute', (options) => {
+    const methods = Array.isArray(options.method) ? options.method : [options.method];
+    if (methods.includes('POST') && isModelPayloadRoute(options.url)) {
+      options.bodyLimit = DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES;
     }
   });
 }
@@ -108,6 +121,13 @@ async function cleanupFailedServerStart() {
   }
 }
 
+export function createFastifyAdapter(): FastifyAdapter {
+  const adapter = new FastifyAdapter();
+  registerImageGenerationBodyLimit(adapter.getInstance());
+  registerModelRouteBodyLimits(adapter.getInstance());
+  return adapter;
+}
+
 export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServerStartResult> {
   const port = config.port || 8045;
   if (app) {
@@ -122,8 +142,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
   setServerConfig(config);
 
   try {
-    const fastifyAdapter = new FastifyAdapter();
-    registerImageGenerationBodyLimit(fastifyAdapter.getInstance());
+    const fastifyAdapter = createFastifyAdapter();
     registerTrafficAuditHttpHooks(fastifyAdapter.getInstance());
     app = await NestFactory.create<NestFastifyApplication>(AppModule, fastifyAdapter, {
       logger: ['error', 'warn', 'log'],
