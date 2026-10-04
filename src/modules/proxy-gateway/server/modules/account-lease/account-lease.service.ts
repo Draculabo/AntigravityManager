@@ -187,7 +187,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     await this.loadAccounts();
-    this.restorePersistedLongImageLimits();
+    this.restorePersistedQuotaLimits();
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -247,12 +247,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   private resetRateLimitsFromPersistence(): void {
     this.clearAllRateLimits();
-    this.restorePersistedLongImageLimits();
+    this.restorePersistedQuotaLimits();
   }
 
-  private restorePersistedLongImageLimits(): void {
+  private restorePersistedQuotaLimits(): void {
     for (const entry of this.modelAvailability.getActiveSnapshot()) {
-      this.rateLimitTracker.restorePersistedLongImageLimit(entry);
+      this.rateLimitTracker.restorePersistedQuotaLimit(entry);
     }
   }
 
@@ -265,7 +265,11 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   isRateLimited(accountIdOrEmail: string, model?: string): boolean {
-    return this.limitPolicy.isRateLimited(accountIdOrEmail, model);
+    const accountId = this.resolveAccountId(accountIdOrEmail) ?? accountIdOrEmail;
+    return (
+      this.limitPolicy.isRateLimited(accountId, model) ||
+      this.getAccountRouteWait(accountId, model) > 0
+    );
   }
 
   markAsRateLimited(accountIdOrEmail: string) {
@@ -282,10 +286,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   getRemainingRateLimitWait(accountIdOrEmail: string, model?: string): number {
     const accountId = this.resolveAccountId(accountIdOrEmail) ?? accountIdOrEmail;
-    return this.rateLimitTracker.getRemainingWaitSeconds(
-      accountId,
-      normalizeModelId(model) ?? model,
-    );
+    return this.getAccountRouteWait(accountId, normalizeModelId(model) ?? model);
   }
 
   getMinimumRateLimitWaitForPool(options?: { model?: string }): number | undefined {
@@ -297,9 +298,23 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         now >= tokenData.validation_blocked_until_ms,
     );
     const waits = this.selectModelCapableAccounts(availableAccounts, model)
-      .map(([accountId]) => this.rateLimitTracker.getRemainingWaitSeconds(accountId, model))
+      .map(([accountId]) => this.getAccountRouteWait(accountId, model))
       .filter((waitSeconds) => waitSeconds > 0);
     return waits.length > 0 ? Math.min(...waits) : undefined;
+  }
+
+  private getAccountRouteWait(accountId: string, model?: string): number {
+    const requestedWait = this.rateLimitTracker.getRemainingWaitSeconds(accountId, model);
+    if (!model) {
+      return requestedWait;
+    }
+    // Limits are recorded against the physical upstream route, which may differ
+    // from the public preset selected by the client.
+    const accountModel = this.modelPolicy.resolveDynamicModelForAccount(accountId, model);
+    return Math.max(
+      requestedWait,
+      this.rateLimitTracker.getRemainingWaitSeconds(accountId, accountModel),
+    );
   }
 
   async markFromUpstreamError(params: AccountLeaseUpstreamErrorParams): Promise<void> {
@@ -398,7 +413,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
           model,
           now,
           accountCooldowns: this.accountCooldowns,
-          rateLimitTracker: this.rateLimitTracker,
+          rateLimitTracker: {
+            isRateLimited: (accountId, requestedModel) =>
+              this.getAccountRouteWait(accountId, requestedModel) > 0,
+            getRemainingWaitSeconds: (accountId, requestedModel) =>
+              this.getAccountRouteWait(accountId, requestedModel),
+          },
           config: this.configPolicy.getSelectionConfig(),
           logger: this.logger,
         });

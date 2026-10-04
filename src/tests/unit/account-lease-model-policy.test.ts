@@ -35,6 +35,20 @@ function createPolicy(tokenCache: Map<string, AccountLeaseTokenData>) {
 }
 
 describe('AccountLeaseModelPolicy', () => {
+  it('selects the advertised automatic Flash route when no fixed tier is available', () => {
+    const { policy } = createPolicy(
+      new Map([['acc-1', createToken({ model_quotas: { 'gemini-3.7-flash-tiered': 100 } })]]),
+    );
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3.7-flash-high')).toBe(
+      'available',
+    );
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.7-flash-high')).toBe(
+      'gemini-3.7-flash-tiered',
+    );
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3.8-flash-high')).toBe(
+      'unavailable',
+    );
+  });
   describe('output limit precedence', () => {
     // Rule: provider `ModelDetails` from the quota payload wins, persisted `model_limits`
     // is the compatibility layer beneath it, and static specs stay the last resort in

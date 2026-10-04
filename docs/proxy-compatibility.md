@@ -10,6 +10,34 @@ Anthropic streaming idle timeout emits an Anthropic `error` event instead of `me
 
 Native Gemini streaming accepts clean EOF after a candidate output frame even without a finish reason. Timeout, transport failure, or an EOF with no candidate output produces an SSE `error` payload. An entirely empty stream still raises its existing empty-stream error.
 
+## Explicit Quota Resets and Flash Routes
+
+An HTTP 429 with an explicit `QUOTA_EXHAUSTED` marker and a reset hint longer than five
+minutes retains that deadline for the account and actual upstream model. An exhausted model's exact
+quota reset timestamp also retains its full duration. Generic `RESOURCE_EXHAUSTED` responses,
+capacity errors and inferred retry backoff keep the five-minute transient cooldown cap.
+A later transient error cannot shorten an active explicit quota deadline. Quota refresh does
+not clear these explicit long locks before their deadline; a successful request for the model
+does. Other model locks remain independent.
+
+The existing model-availability record stores compact quota evidence so its 500-character
+message bound cannot remove the reset marker. Account reload and process restart restore
+qualified text and image quota deadlines from this record. No durable format changes are
+required. Before selecting an account, both its requested model and resolved upstream route
+are checked for cooldowns. Public presets cannot bypass the physical model's quota lock.
+When the pool is exhausted, the existing unavailable-account response returns HTTP 503 with
+the shortest remaining model wait in `Retry-After`, without an upstream attempt.
+The internal transport stops endpoint failover on an explicit long quota failure,
+including a streamed error body when traffic recording is disabled. Short transient errors
+retain endpoint failover and the existing bounded account rotation and grace retry policy.
+
+Account selection accepts advertised `gemini-3.7-flash-tiered` and registered Gemini 3.6
+physical routes. Automatic Flash routes use `thinkingBudget: -1`, `includeThoughts: true` and
+`maxOutputTokens: 65536`; fixed low and medium routes retain their registered budgets. These
+parameters reach the internal provider request together. An unregistered generation is not
+accepted as a fallback. Selecting an older model does not silently upgrade its generation;
+provider retirement notices remain visible to clients.
+
 ## Claude Agent SDK Client Identity
 
 Claude request mapping normalizes the exact top-level Claude Agent SDK identity sentence to the Claude Code identity before cache sanitization. The rule applies to a string `system` value and to matching text blocks in a top-level `system` array. It is intentionally exact: mentions inside longer text, whitespace-padded variants, and embedded role-bearing system messages remain unchanged.

@@ -338,4 +338,22 @@ describe('resolveModelVariant', () => {
       supportsTools: true,
     });
   });
+
+  it.each(['gemini-3.7-flash-tiered', 'gemini-3.6-flash-tiered'])(
+    'rebinds %s with its complete automatic-thinking profile',
+    (model) => {
+      const variant = resolveModelVariant({ model: 'gemini-3.7-flash', effort: 'low' });
+      expect(rebindModelVariant(variant, model)).toEqual({
+        canonicalModel: 'gemini-3.7-flash',
+        model,
+        tier: 'high',
+        thinkingBudget: -1,
+        maxOutputTokens: 65536,
+        includeThoughts: true,
+        preserveClientBudget: false,
+        supportsTools: true,
+      });
+      expect(rebindModelVariant(variant, 'gemini-3.8-flash-tiered')).toBeNull();
+    },
+  );
 });

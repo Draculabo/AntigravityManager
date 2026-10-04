@@ -35,6 +35,19 @@ describe('internal endpoint failover', () => {
     expect(shouldFailover(503)).toBe(true);
   });
 
+  it('does not repeat an explicit long quota failure at another endpoint', () => {
+    const client = Object.create(GeminiClient.prototype) as GeminiClient;
+    const error = makeAxiosError(429);
+    error.response!.data = {
+      error: { details: [{ reason: 'QUOTA_EXHAUSTED', metadata: { quotaResetDelay: '520035s' } }] },
+    };
+    expect(Reflect.get(client, 'shouldFailoverToNextEndpoint').call(client, error)).toBe(false);
+    error.response!.data = {
+      error: { status: 'RESOURCE_EXHAUSTED', details: [{ retryDelay: '520035s' }] },
+    };
+    expect(Reflect.get(client, 'shouldFailoverToNextEndpoint').call(client, error)).toBe(true);
+  });
+
   it('still fails fast on permanent auth rejections', () => {
     expect(shouldFailover(401)).toBe(false);
     expect(shouldFailover(403)).toBe(false);

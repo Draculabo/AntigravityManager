@@ -313,6 +313,20 @@ describe('applyAnthropicModelVariant', () => {
 });
 
 describe('applyOpenAIModelVariant', () => {
+  it('uses the automatic Flash profile after selecting an advertised tiered route', () => {
+    const applied = applyOpenAIModelVariant({
+      model: 'gemini-3.7-flash',
+      messages: [{ role: 'user', content: 'Hello' }],
+    });
+    expect(rebindOpenAIModelVariant(applied, 'gemini-3.7-flash-tiered').request).toEqual({
+      model: 'gemini-3.7-flash-tiered',
+      messages: [{ role: 'user', content: 'Hello' }],
+      max_tokens: 65536,
+      thinking: { type: 'enabled', budget_tokens: -1 },
+      tools: undefined,
+      tool_choice: undefined,
+    });
+  });
   it('applies the registered model parameters and silently strips unsupported tools', () => {
     const request: OpenAIChatRequest = {
       model: 'gemini-2.5-flash',

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Readable } from 'node:stream';
 
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
@@ -101,6 +102,31 @@ describe('GeminiClient internal endpoint selection', () => {
       ['Bearer synthetic-token', 'Bearer synthetic-token'],
     );
   });
+
+  it.each(['json', 'stream'])(
+    'stops endpoint failover on explicit long quota failures with a %s body and auditing disabled',
+    async (mode) => {
+      const message = JSON.stringify({
+        error: {
+          message: 'Individual quota reached',
+          details: [{ reason: 'QUOTA_EXHAUSTED', metadata: { quotaResetDelay: '520035s' } }],
+        },
+      });
+      axiosMock.post.mockRejectedValueOnce({
+        response: {
+          status: 429,
+          headers: {},
+          data: mode === 'stream' ? Readable.from([message]) : JSON.parse(message),
+        },
+      });
+      const client = new GeminiClient(new Upstream4xxCaptureService());
+      await expect(client.generateInternal(body, 'synthetic-token')).rejects.toMatchObject({
+        status: 429,
+        body: expect.stringContaining('QUOTA_EXHAUSTED'),
+      });
+      expect(axiosMock.post).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('honors an explicit endpoint order and does not probe another endpoint after success', async () => {
     vi.stubEnv(

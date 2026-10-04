@@ -10,6 +10,19 @@ export const taskPrompt = [
   'Actually write the file, then inspect the result. Finish with a short summary.',
 ].join(' ');
 
+export function summarizeStderr(stderr) {
+  return {
+    argumentConflict: /cannot be used with|unexpected argument|unknown option/i.test(stderr),
+    blockedByPolicy: /blocked by policy|permission denied/i.test(stderr),
+    network: /connection|socket|fetch failed/i.test(stderr),
+    // Require an error phrase: test-directory names and stack line numbers are not quota evidence.
+    quota:
+      /\bquota[_ -]+(?:exhausted|exceeded|limit)\b|\b(?:exceeded|exhausted) (?:your )?quota\b|\brate[_ -]+limit\b|\b(?:HTTP|status(?: code)?|APIError|Error)[:= ]+429\b|\b429 +Too Many Requests\b/i.test(
+        stderr,
+      ),
+  };
+}
+
 export function summarizeEvents(client, stdout, workspace = null) {
   const eventTypes = {};
   const toolStates = {};

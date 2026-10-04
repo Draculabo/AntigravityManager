@@ -109,6 +109,11 @@ client event and tool-state counts, artifact size, Thought Store write-failure d
 failed gates. It deliberately excludes prompts, response bodies, thought text, account identity,
 authorization headers and API keys.
 
+`stderrSignals` are diagnostic hints rather than upstream-status evidence. Quota hints require
+an explicit error phrase or HTTP-status context; directory names containing `quota` and stack
+line numbers such as `429` do not count. A client startup failure with no audit requests must
+be diagnosed before attributing the failure to the gateway.
+
 The task passes only when the client exits successfully, emits a final result, creates
 `todo.html`, produces at least one matching loopback gateway request, has no failed final gateway
 request or partial response, and does not increase Thought Store write failures. A recovered

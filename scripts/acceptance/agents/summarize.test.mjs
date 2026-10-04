@@ -1,7 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { evaluateRun, summarizeEvents, summarizeRequests } from './summarize.mjs';
+import { evaluateRun, summarizeEvents, summarizeRequests, summarizeStderr } from './summarize.mjs';
+
+test('client startup paths and stack line numbers are not quota errors', () => {
+  assert.deepEqual(
+    summarizeStderr(
+      'Error: Missing optional dependency\n at /var/tmp/agm-quota-20261005/codex.js:429:9',
+    ),
+    { argumentConflict: false, blockedByPolicy: false, network: false, quota: false },
+  );
+});
+
+test('stderr quota signals require an explicit error phrase', () => {
+  for (const message of [
+    'QUOTA_EXHAUSTED',
+    'quota exceeded',
+    'exceeded your quota',
+    'rate limit exceeded',
+    'APIError: 429 Too Many Requests',
+    'HTTP 429',
+    'status=429',
+  ]) {
+    assert.equal(summarizeStderr(message).quota, true, message);
+  }
+});
 
 function request(status, attempts, inputTokens = null, outputTokens = null) {
   return {
