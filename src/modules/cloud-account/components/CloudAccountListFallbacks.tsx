@@ -1,6 +1,10 @@
 import { AlertTriangle, ExternalLink, FileText, Loader2, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
+import { ipc } from '@/ipc/manager';
+import { BUG_REPORT_URL, buildAccountLoadBugReport } from '../utils/account-load-bug-report';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +21,6 @@ import {
 } from '@/shared/utils/errorMessages';
 
 const GITHUB_REPOSITORY_URL = 'https://github.com/Draculabo/AntigravityManager';
-const GITHUB_ISSUES_URL = 'https://github.com/Draculabo/AntigravityManager/issues';
 
 interface CloudAccountLoadErrorProps {
   error?: unknown;
@@ -34,10 +37,40 @@ export function CloudAccountLoadingState() {
 
 export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorProps) {
   const { t } = useTranslation();
+  const { toast } = useToast();
+  const [reporting, setReporting] = useState(false);
   const message = error ? getLocalizedErrorMessage(error, t) : t('cloud.error.loadFailed');
   const details = error ? getErrorDetailsText(error) : '';
   const shouldShowDataRepairGuidance =
     isDataMigrationError(error) || isMasterKeyUnavailableError(error);
+
+  const reportIssue = async () => {
+    if (reporting) {
+      return;
+    }
+    setReporting(true);
+    let copied = false;
+    try {
+      const environment = await ipc.client.app.bugReportEnvironment();
+      await navigator.clipboard.writeText(buildAccountLoadBugReport(environment, error ?? message));
+      copied = true;
+      await window.electron.openExternalUrl(BUG_REPORT_URL);
+      toast({
+        title: t('cloud.error.report-copied'),
+        description: t('cloud.error.report-paste-guide'),
+      });
+    } catch {
+      toast({
+        title: t(copied ? 'cloud.error.report-open-failed' : 'cloud.error.report-copy-failed'),
+        description: t(copied ? 'cloud.error.report-manual-open' : 'cloud.error.report-retry', {
+          url: BUG_REPORT_URL,
+        }),
+        variant: 'destructive',
+      });
+    } finally {
+      setReporting(false);
+    }
+  };
 
   return (
     <div className="border-destructive/40 bg-destructive/5 col-span-full rounded-lg border p-6">
@@ -56,7 +89,16 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
                 <li>{t('cloud.error.dataRepair.stepMacPrivacy')}</li>
                 <li>{t('cloud.error.dataRepair.stepCheckGithub')}</li>
                 <li>{t('cloud.error.dataRepair.stepReLogin')}</li>
-                <li>{t('cloud.error.dataRepair.stepOpenIssue')}</li>
+                <li>
+                  <button
+                    type="button"
+                    className="text-left underline underline-offset-4 disabled:opacity-50"
+                    disabled={reporting}
+                    onClick={() => void reportIssue()}
+                  >
+                    {t('cloud.error.dataRepair.stepOpenIssue')}
+                  </button>
+                </li>
               </ol>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button
@@ -67,14 +109,6 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
                   <ExternalLink className="h-4 w-4" />
                   {t('cloud.error.dataRepair.openRepository')}
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void window.electron.openExternalUrl(GITHUB_ISSUES_URL)}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  {t('cloud.error.dataRepair.openIssues')}
-                </Button>
               </div>
             </div>
           ) : null}
@@ -82,6 +116,19 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
             <Button variant="outline" size="sm" onClick={onRetry}>
               <RefreshCw className="h-4 w-4" />
               {t('action.retry')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={reporting}
+              onClick={() => void reportIssue()}
+            >
+              {reporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ExternalLink className="h-4 w-4" />
+              )}
+              {t(reporting ? 'cloud.error.report-preparing' : 'cloud.error.report-issue')}
             </Button>
             {details ? (
               <Dialog>

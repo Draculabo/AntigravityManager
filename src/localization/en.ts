@@ -834,6 +834,16 @@ const en = {
     },
     error: {
       loadFailed: 'Failed to load cloud accounts.',
+      'report-issue': 'Report this problem',
+      'report-preparing': 'Preparing error information…',
+      'report-copied': 'Error information copied',
+      'report-paste-guide':
+        'Paste it into the GitHub report, describe what you were doing, then submit.',
+      'report-copy-failed': 'Could not copy the error information',
+      'report-retry': 'Please try again. You can also open Details and copy the error manually.',
+      'report-open-failed': 'Could not open GitHub',
+      'report-manual-open':
+        'Your error information is copied. Open {{url}} and paste it into the report.',
       dataRepair: {
         title: "Saved accounts can't be opened",
         description:
@@ -843,9 +853,9 @@ const en = {
         stepMacPrivacy:
           'On macOS, check for permission prompts. Move the app to the Applications folder, then open it again.',
         stepCheckGithub: 'Check the GitHub repository README for the latest troubleshooting steps.',
-        stepOpenIssue: 'Search GitHub Issues for this error before clearing local account data.',
+        stepOpenIssue:
+          'Report this problem on GitHub. Click to copy your error information and open the report form.',
         openRepository: 'Open GitHub Repository',
-        openIssues: 'Open GitHub Issues',
       },
     },
     toast: {

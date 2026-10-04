@@ -777,6 +777,14 @@ const zhCn = {
     },
     error: {
       loadFailed: '加载云账号失败。',
+      'report-issue': '反馈这个问题',
+      'report-preparing': '正在准备错误信息…',
+      'report-copied': '错误信息已复制',
+      'report-paste-guide': '请在 GitHub 反馈页面粘贴，补充出错前的操作，再提交问题。',
+      'report-copy-failed': '未能复制错误信息',
+      'report-retry': '请重试。你也可以打开“详情”，手动复制错误信息。',
+      'report-open-failed': '未能打开 GitHub',
+      'report-manual-open': '错误信息已复制。请打开 {{url}}，粘贴后提交问题。',
       dataRepair: {
         title: '无法打开已保存的账号',
         description:
@@ -786,9 +794,8 @@ const zhCn = {
         stepMacPrivacy:
           '在 macOS 上，请检查系统是否弹出权限提示，并将应用移到“应用程序”文件夹后重新打开。',
         stepCheckGithub: '查看 GitHub 仓库首页 README 中最新的排查步骤。',
-        stepOpenIssue: '清理本地账号数据前，先在 GitHub Issues 中搜索这个错误。',
+        stepOpenIssue: '向我们反馈这个问题。点击后会复制错误信息，并打开 GitHub 问题反馈页面。',
         openRepository: '打开 GitHub 仓库',
-        openIssues: '打开 GitHub Issues',
       },
     },
     toast: {

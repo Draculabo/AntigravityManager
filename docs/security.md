@@ -13,6 +13,14 @@ Do not expose general-purpose filesystem, process execution, Electron IPC or cre
 
 ## Sensitive data
 
+Cloud-account load errors offer an explicit bug-report action. It copies the app, OS, architecture,
+Electron and Node versions together with the available error details to the clipboard, then opens
+the GitHub bug template without report contents in its URL. The environment endpoint excludes
+hostname, network addresses and account identifiers. The report masks common credential forms,
+email addresses and user-directory names; it does not read account records or log files. Users
+paste the report and submit it themselves. Clipboard failure prevents opening the form; browser
+failure preserves the copied report and provides the form URL for manual continuation.
+
 Remote desktop bootstrap verifies core compatibility, readiness, PID, epoch and a profile
 fingerprint against the profile-owner probe before enabling owner operations. The fingerprint
 is identity metadata, not authentication; the existing private pipe/socket permissions remain the
