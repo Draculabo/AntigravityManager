@@ -4,6 +4,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { upsertCloudAccountsAtomically } from '@/modules/cloud-account/persistence/cloud-account-batch-writer';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import * as security from '@/shared/security/security';
@@ -178,5 +179,119 @@ describe('plaintext cloud-account persistence', () => {
         ),
     ).toEqual([backupName]);
     expect((await CloudAccountRepo.getAccount(first.id))?.token).toEqual(first.token);
+  });
+});
+
+describe('cloud-account active references', () => {
+  function snapshot() {
+    const database = new Database(path.join(state.directory, 'cloud_accounts.db'), {
+      readonly: true,
+    });
+    try {
+      return {
+        accounts: database.prepare('SELECT id FROM accounts ORDER BY id').all(),
+        settings: database.prepare('SELECT key, value FROM settings ORDER BY key').all(),
+      };
+    } finally {
+      database.close();
+    }
+  }
+
+  function preventReferenceCleanup() {
+    const database = new Database(path.join(state.directory, 'cloud_accounts.db'));
+    try {
+      database.exec(`
+        CREATE TRIGGER reject_active_cleanup BEFORE DELETE ON settings
+        WHEN OLD.key = 'active_cloud_account.agy'
+        BEGIN SELECT RAISE(ABORT, 'fixture cleanup failure'); END;
+      `);
+    } finally {
+      database.close();
+    }
+  }
+
+  it('deletes all references to the removed account while preserving other accounts and settings', async () => {
+    await CloudAccountRepo.init();
+    await CloudAccountRepo.addAccount(account());
+    await CloudAccountRepo.addAccount({ ...account(), id: 'account-two' });
+    CloudAccountSettingsStore.setActiveForTarget('classic', account().id);
+    CloudAccountSettingsStore.setActiveForTarget('ide', 'account-two');
+    CloudAccountSettingsStore.setActiveForTarget('agy', `  ${account().id}  `);
+    CloudAccountSettingsStore.setSetting('unrelated-setting', account().id);
+
+    await CloudAccountRepo.removeAccount(account().id);
+
+    expect(snapshot()).toEqual({
+      accounts: [{ id: 'account-two' }],
+      settings: [
+        { key: 'active_cloud_account.ide', value: JSON.stringify('account-two') },
+        { key: 'unrelated-setting', value: JSON.stringify(account().id) },
+      ],
+    });
+    expect(
+      (['classic', 'ide', 'agy'] as const).map((target) =>
+        CloudAccountSettingsStore.getActiveAccountIdForTarget(target),
+      ),
+    ).toEqual(['', 'account-two', '']);
+  });
+
+  it('cleans a reference to an already removed account and allows repeated deletion', async () => {
+    await CloudAccountRepo.init();
+    CloudAccountSettingsStore.setActiveForTarget('agy', 'already-removed');
+
+    await CloudAccountRepo.removeAccount('already-removed');
+    await CloudAccountRepo.removeAccount('already-removed');
+
+    expect(snapshot()).toEqual({ accounts: [], settings: [] });
+  });
+
+  it('cleans historical missing references at startup without choosing or switching an account', async () => {
+    await CloudAccountRepo.init();
+    await CloudAccountRepo.addAccount(account());
+    CloudAccountSettingsStore.setActiveForTarget('classic', 'old-classic');
+    CloudAccountSettingsStore.setActiveForTarget('ide', account().id);
+    CloudAccountSettingsStore.setActiveForTarget('agy', 'old-agy');
+    CloudAccountSettingsStore.setSetting('active_cloud_account.custom', 'old-custom');
+
+    await CloudAccountRepo.init();
+    const firstStartup = snapshot();
+    await CloudAccountRepo.init();
+
+    expect(snapshot()).toEqual(firstStartup);
+    expect(firstStartup).toEqual({
+      accounts: [{ id: account().id }],
+      settings: [
+        { key: 'active_cloud_account.custom', value: JSON.stringify('old-custom') },
+        { key: 'active_cloud_account.ide', value: JSON.stringify(account().id) },
+      ],
+    });
+    expect((await CloudAccountRepo.getAccount(account().id))?.is_active).toBe(false);
+  });
+
+  it('rolls back account deletion if any active-reference cleanup fails', async () => {
+    await CloudAccountRepo.init();
+    await CloudAccountRepo.addAccount(account());
+    CloudAccountSettingsStore.setActiveForTarget('classic', account().id);
+    CloudAccountSettingsStore.setActiveForTarget('agy', account().id);
+    preventReferenceCleanup();
+    const before = snapshot();
+
+    await expect(CloudAccountRepo.removeAccount(account().id)).rejects.toThrow(
+      'fixture cleanup failure',
+    );
+
+    expect(snapshot()).toEqual(before);
+  });
+
+  it('rolls back all startup cleanup if a later reference cannot be removed', async () => {
+    await CloudAccountRepo.init();
+    CloudAccountSettingsStore.setActiveForTarget('classic', 'old-classic');
+    CloudAccountSettingsStore.setActiveForTarget('agy', 'old-agy');
+    preventReferenceCleanup();
+    const before = snapshot();
+
+    await expect(CloudAccountRepo.init()).rejects.toThrow('fixture cleanup failure');
+
+    expect(snapshot()).toEqual(before);
   });
 });

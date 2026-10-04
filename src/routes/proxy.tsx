@@ -22,6 +22,7 @@ import { AgentToolSyncCard } from '@/modules/proxy-gateway/components/AgentToolS
 import { GlobalSystemPromptCard } from '@/modules/proxy-gateway/components/GlobalSystemPromptCard';
 import { AuditAndThoughtStoreCard } from '@/modules/proxy-gateway/components/AuditAndThoughtStoreCard';
 import { ProxyServiceControl } from '@/modules/proxy-gateway/components/ProxyServiceControl';
+import { ProxyAccountStrategy } from '@/modules/proxy-gateway/components/ProxyAccountStrategy';
 import {
   buildProxyExampleModels,
   isImageProxyExampleModel,
@@ -555,6 +556,19 @@ print(response.choices[0].message.content)`;
               }
             />
           </div>
+
+          <ProxyAccountStrategy
+            value={proxyConfig.account_selection_strategy}
+            onChange={async (account_selection_strategy) => {
+              const previous = proxyConfig;
+              try {
+                await updateProxyConfig({ ...proxyConfig, account_selection_strategy });
+              } catch (error) {
+                setProxyConfig(previous);
+                throw error;
+              }
+            }}
+          />
 
           <GlobalSystemPromptCard
             config={proxyConfig.global_system_prompt}

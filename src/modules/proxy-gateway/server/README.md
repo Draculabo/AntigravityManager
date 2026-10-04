@@ -128,6 +128,20 @@ When reading, updating, or refactoring code within this directory, strictly foll
 
 ---
 
+## Account Selection
+
+**API Proxy > Accounts used for API requests** controls `proxy.account_selection_strategy`. It is saved in the existing service configuration and takes effect on the next lease without restarting the service. The default, `balanced`, preserves quota-weighted rotation and available conversation bindings.
+
+`account-first` retains an available account per model across independent requests. Explicit preferred accounts and existing available conversation bindings take precedence; otherwise the last selected account is reused, with the first eligible account as the initial choice. Model capability checks, request exclusions, cooldowns, rate limits, and cached exhausted quota still apply. Failover retains the replacement instead of immediately returning to the recovered account. Typed OAuth refresh rejection continues through the existing bounded alternate-account loop. Temporary continuity bindings are bounded to 256 model identifiers and reset after a service restart or strategy change; the selected strategy itself persists.
+
+This policy runs independently of the experimental parity scheduler. The account-page auto-switch toggle changes official client credentials, not proxy leases. Neither API strategy signs Antigravity, IDE, or CLI into another account. Display-only quota preferences do not filter the account pool.
+
+## JSON Request Capacity
+
+Model conversation, completion, token-counting, batch creation, and enabled diagnostic routes accept JSON bodies up to 64 MiB through the production adapter's route hooks. One byte above that ceiling is rejected with HTTP 413 before handler execution. Administrative, cancellation, and other non-model routes retain Fastify's 1 MiB default. Image generation keeps its dedicated Base64-sized ceiling; raw-media, multipart, and decoded image/file limits remain independent.
+
+Fastify parses model request bodies before the Nest authentication guards execute. Limiting administrative routes reduces unnecessary parsing memory, but model requests can still allocate substantial memory before authentication. These are per-request limits, not a concurrent process memory budget or a guarantee that upstream services accept every payload of that size.
+
 ## 4a. Durable Proxy State
 
 State a client can still reference after the process goes away is kept in `~/.antigravity-agent/proxy-state/`, one JSON file per owner, through `shared/persistence/durable-record-store.ts`. Writes are atomic (temp file plus rename) and coalesced, records are bounded by both count and age, and a damaged file costs the affected records rather than the app's start.
@@ -156,7 +170,7 @@ Deliberate deviation: `store: false` suppresses retrieval but not continuation. 
 
 `POST /v1/images/generations` accepts the Canvas-compatible top-level `image` extension only as one inline Base64 `data:image/*` URL or a non-empty ordered array of them. It never fetches remote image URLs. `POST /v1/images/edits` accepts multipart `image`, repeated `image`, `image[]`, and numbered `imageN` fields in arrival order; a mask is placed immediately after the first input image in the upstream parts list.
 
-Both routes allow at most 16 input images, 20 MiB decoded per image, and 32 MiB decoded across input images plus masks. Model conversation, prompt completion, token counting, and batch JSON routes raise their Fastify body limit to 64 MiB (`DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES`) so large agent conversation histories, tool results, and inline Base64 media reach authentication and protocol validation instead of being rejected early; `POST /v1/images/generations` retains its dedicated route ceiling (`MAX_IMAGE_GENERATION_BODY_BYTES`) sized to its 32 MiB decoded input limit; and non-model or administrative routes keep Fastify's safe 1 MiB ceiling to minimize memory amplification and DoS risks. Explicit `image_size` / `imageSize` wins over `quality`, which wins over model suffixes. A valid `aspect_ratio` wins over a valid `size`, and invalid values fall through to the next source instead of forcing `1:1`. Image monitoring records counts and byte metadata, never prompt text, filenames, or Base64 payloads.
+Both routes allow at most 16 input images, 20 MiB decoded per image, and 32 MiB decoded across input images plus masks. Generation retains a dedicated JSON ceiling sized for Base64 expansion; see [JSON Request Capacity](#json-request-capacity) for the other gateway parsing limits. Explicit `image_size` / `imageSize` wins over `quality`, which wins over model suffixes. A valid `aspect_ratio` wins over a valid `size`, and invalid values fall through to the next source instead of forcing `1:1`. Image monitoring records counts and byte metadata, never prompt text, filenames, or Base64 payloads.
 
 ---
 

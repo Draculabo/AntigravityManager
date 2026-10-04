@@ -40,6 +40,7 @@ describe('AccountLeaseConfigPolicy', () => {
       parityEnabled: true,
       parityShadowEnabled: true,
       schedulingMode: 'performance-first',
+      accountSelectionStrategy: 'balanced',
       preferredAccountId: 'acc-1',
       maxWaitMs: 12_000,
       noGoMismatchRateThreshold: 1,

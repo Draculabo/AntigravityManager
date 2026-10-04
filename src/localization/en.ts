@@ -643,6 +643,18 @@ const en = {
       list: 'List',
       compact: 'Compact',
     },
+    'auto-switch-client': 'Auto-switch client account',
+    'auto-switch-description':
+      'Switches accounts in Antigravity, IDE, and CLI. Choose which accounts API requests use on the API Proxy page.',
+    'quota-display': {
+      title: 'Quota display',
+      description:
+        'Choose what appears on account cards. This does not change quota or which account is used for requests.',
+      'five-hours-gemini': 'Gemini 5-hour quota',
+      'five-hours-claude': 'Claude 5-hour quota',
+      'weekly-gemini': 'Gemini weekly quota',
+      'weekly-claude': 'Claude weekly quota',
+    },
     'quota-window': {
       label: 'Quota window',
       'five-hours': '5-hour quota',
@@ -991,6 +1003,18 @@ const en = {
     },
   },
   proxy: {
+    'account-strategy': {
+      'save-failed': 'Could not save your choice. Please select it again to retry.',
+      title: 'Accounts used for API requests',
+      balanced: 'Rotate between available accounts',
+      'account-first': 'Prefer the same account',
+      'balanced-description':
+        'Distributes new conversations across available accounts. An existing conversation keeps its account while it remains available.',
+      'account-first-description':
+        'For each model, keep using the same account. Switch when its quota is exhausted, it is temporarily limited, or it cannot serve the request. Existing conversations keep their available account.',
+      'client-description':
+        'This setting does not change the account signed in to Antigravity, IDE, or CLI. Client auto-switching is controlled on the Accounts page.',
+    },
     title: 'API Proxy',
     description: 'Manage the local API proxy service.',
     save: 'Save Settings',

@@ -57,6 +57,8 @@ import type { AccountTierOption } from '@/modules/cloud-account/utils/account-ti
 import type { AccountSortKey } from '@/modules/cloud-account/utils/quota-display';
 import { LocalAccountImportDialog } from '@/modules/cloud-account/local-import/components/LocalAccountImportDialog';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
+import type { QuotaGroupVisibility } from '@/modules/cloud-account/utils/quota-group-visibility';
+import { QuotaGroupVisibilityMenu } from './QuotaGroupVisibilityMenu';
 
 type ImportStrategy = 'merge' | 'overwrite' | 'skip-existing';
 
@@ -88,6 +90,7 @@ interface CloudAccountToolbarProps {
   currentSort: AccountSortKey;
   gridLayout: GridLayout;
   quotaWindow: QuotaWindow;
+  quotaGroupVisibility: QuotaGroupVisibility;
   getTierOptionLabel: (key: string, label: string) => string;
   onToggleAutoSwitch: (checked: boolean) => void;
   onToggleSelectAllAccounts: () => void;
@@ -108,6 +111,7 @@ interface CloudAccountToolbarProps {
   onSortChange: (sortKey: AccountSortKey) => void;
   onUpdateGridLayout: (layout: GridLayout) => void;
   onQuotaWindowChange: (quotaWindow: QuotaWindow) => void;
+  onQuotaGroupVisibilityChange: (value: QuotaGroupVisibility) => void;
 }
 
 export function CloudAccountToolbar({
@@ -138,6 +142,7 @@ export function CloudAccountToolbar({
   currentSort,
   gridLayout,
   quotaWindow,
+  quotaGroupVisibility,
   getTierOptionLabel,
   onToggleAutoSwitch,
   onToggleSelectAllAccounts,
@@ -158,6 +163,7 @@ export function CloudAccountToolbar({
   onSortChange,
   onUpdateGridLayout,
   onQuotaWindowChange,
+  onQuotaGroupVisibilityChange,
 }: CloudAccountToolbarProps) {
   const { t } = useTranslation();
 
@@ -168,8 +174,12 @@ export function CloudAccountToolbar({
           <Zap
             className={`h-4 w-4 ${autoSwitchEnabled ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`}
           />
-          <Label htmlFor="auto-switch" className="cursor-pointer text-sm font-medium">
-            {t('cloud.autoSwitch')}
+          <Label
+            htmlFor="auto-switch"
+            className="cursor-pointer text-sm font-medium"
+            title={t('cloud.auto-switch-description')}
+          >
+            {t('cloud.auto-switch-client')}
           </Label>
         </div>
         <Switch
@@ -399,6 +409,11 @@ export function CloudAccountToolbar({
           {t('cloud.quota-window.weekly-short')}
         </Button>
       </div>
+
+      <QuotaGroupVisibilityMenu
+        value={quotaGroupVisibility}
+        onChange={onQuotaGroupVisibilityChange}
+      />
 
       <div className="flex items-center gap-1 rounded-md border p-1">
         <TooltipProvider delayDuration={0}>

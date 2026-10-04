@@ -9,7 +9,13 @@ This document explains the cloud AI account management and switching capabilitie
 - **Add accounts**: Add accounts via Google OAuth authorization code.
 - **List view**: Display all added accounts, including avatar, email, and last used time.
 - **Status monitoring**: Show real-time account status (Active, Rate Limited, Expired) and whether the account is currently active.
-- **Delete accounts**: Remove accounts from the local database.
+- **Delete accounts**: Remove an account and its saved current-account references together. Other accounts and their current-account selections remain unchanged. Removing an account from Manager does not sign it out of an official client.
+
+Desktop and standalone service startup remove saved current-account references for Antigravity,
+Antigravity IDE and the CLI when the referenced account no longer exists in Manager.
+Startup cleanup does not choose another account or switch a client. Account deletion and reference
+cleanup use one SQLite transaction; a cleanup failure rolls back the deletion. Unrelated settings
+and unreadable reference values are preserved, with existing read-time error handling retained.
 
 ### 1.2 Real-Time Quota Monitoring
 
@@ -22,11 +28,13 @@ This document explains the cloud AI account management and switching capabilitie
 
 - **Unlimited pool mode**: When the current account quota is low (`<5%`) or rate-limited, the system automatically finds and switches to the best backup account.
 - **Background monitoring**: Built-in `CloudMonitorService` polls quota status for all accounts every 5 minutes by default.
-- **Global toggle**: Users can enable or disable this feature with one click in the UI.
+- **Client toggle**: The account toolbar enables or disables automatic switching of the official Antigravity clients. It does not select the account used by proxy API requests; the [gateway reference](../src/modules/proxy-gateway/server/README.md#account-selection) owns that policy.
 
-### 1.5 Weekly Quota and Opt-In Warmu
+### 1.5 Quota Display and Opt-In Weekly Warmup
 
-The account toolbar selects the five-hour or weekly quota view. The weekly view uses provider buckets whose `window` or `bucket_id` contains `week`, case-insensitively. It never substitutes model quota when weekly buckets are missing. The five-hour view retains non-weekly detailed buckets. The preference is local to the renderer; unavailable browser storage falls back to the five-hour view.
+The account toolbar selects five-hour, weekly, or combined quota views, with the combined view as the default. **Quota display** independently shows or hides Gemini and Claude for each window. These choices apply to normal, list, compact, and provider-grouped cards. They are saved in renderer local storage; missing, invalid, or unavailable storage defaults to showing both families in both windows. Hiding every available group suppresses its section without claiming the quota is missing.
+
+The weekly view uses provider buckets whose `window` or `bucket_id` contains `week`, case-insensitively. It never substitutes model quota when weekly buckets are missing. The five-hour view retains non-weekly detailed buckets. Claude display controls also cover GPT/third-party (`3p`) buckets; unclassified or shared groups stay visible. Per-model visibility remains independent. All display controls filter views only: persisted quota, account scores, auto-switching, warmup, and API account selection retain the original snapshot.
 
 Settings > Models provides an independent weekly warmup switch and Claude/Gemini group selection. Warmup is off by default. Enabling it keeps the existing five-minute monitor running even when auto-switch is off. Only successful fresh quota/token refreshes, including manual refreshes, supply candidates. While warmup is enabled, the visible account list rereads local snapshots every minute; this renderer refresh does not call the provider.
 
@@ -124,12 +132,10 @@ Read-only identity queries do not create files. CLI switching does not initializ
 
 ### 2.6 Proxy Lease Token Persistence
 
-The proxy account lease makes refreshed access-token and resolved project-ID state available in its in-memory cache before durable persistence. Persistence is deferred to the next event-loop turn and serialized per account, so encrypted SQLite work does not delay the request that acquired the lease and an older write cannot overtake a newer token or project update. Different accounts persist independently. A deferred write failure is logged without invalidating the lease that already succeeded. Graceful gateway shutdown drains queued writes; an abrupt process exit can lose only the latest deferred update.
+The proxy account lease makes refreshed access-token and resolved project-ID state available in its in-memory cache before durable persistence. Persistence is deferred to the next event-loop turn and serialized per account, so SQLite work does not delay the request that acquired the lease and an older write cannot overtake a newer token or project update. Different accounts persist independently. A deferred write failure is logged without invalidating the lease that already succeeded. Graceful gateway shutdown drains queued writes; an abrupt process exit can lose only the latest deferred update.
 
 Account mutations outside this lease hot path keep their existing awaited persistence behavior.
 
 ### 2.7 Security Hardening
 
-- **Key management**: Use native OS credential stores (Windows Credential Manager / macOS Keychain) via `keytar` to securely store the AES-256 master key.
-- **Data encryption**: Encrypt all sensitive fields (`token_json`, `quota_json`) with `AES-256-GCM` before writing to SQLite.
-- **Auto migration**: Automatically detect and migrate legacy plaintext data at startup to ensure a smooth security upgrade.
+The [security reference](security.md#persistence) owns local plaintext cloud-account storage, encrypted-field recovery, backup handling, and access policy. Other credential stores keep their existing OS protection.

@@ -10,6 +10,7 @@ const suites = {
     diagnostics: './runtime/diagnostics-terminal-native.mjs',
     installed: './runtime/installed-runtime-native.mjs',
     desktop: './runtime/packaged-desktop-native.mjs',
+    'preload-csp': './runtime/preload-csp.integration.mjs',
   },
   installers: {
     msi: './installers/installed-msi-native.mjs',

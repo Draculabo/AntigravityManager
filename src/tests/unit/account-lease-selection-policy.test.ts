@@ -17,6 +17,7 @@ function createConfig(
     parityEnabled: false,
     parityShadowEnabled: false,
     schedulingMode: 'balance',
+    accountSelectionStrategy: 'balanced',
     maxWaitMs: 0,
     noGoMismatchRateThreshold: 0.15,
     noGoErrorRateThreshold: 0.4,
@@ -48,6 +49,110 @@ function createRequest(
 }
 
 describe('AccountLeaseSelectionPolicy', () => {
+  it.each([false, true])(
+    'keeps one account across independent requests in account-first mode (parity=%s)',
+    async (parityEnabled) => {
+      const policy = new AccountLeaseSelectionPolicy();
+      const request = createRequest({
+        model: 'claude-sonnet',
+        config: createConfig({ parityEnabled, accountSelectionStrategy: 'account-first' }),
+      });
+      const selected = [];
+      for (let index = 0; index < 4; index++) {
+        selected.push(
+          (await policy.selectCandidate({ ...request, sessionKey: `session-${index}` }))?.[0],
+        );
+      }
+      expect(selected).toEqual(['acc-1', 'acc-1', 'acc-1', 'acc-1']);
+    },
+  );
+
+  it('fails over on a cooldown and retains the replacement after the original account recovers', async () => {
+    const policy = new AccountLeaseSelectionPolicy();
+    const request = createRequest({
+      model: 'claude-sonnet',
+      config: createConfig({ accountSelectionStrategy: 'account-first' }),
+    });
+    expect((await policy.selectCandidate(request))?.[0]).toBe('acc-1');
+    request.accountCooldowns.set('acc-1', request.now + 30_000);
+    expect((await policy.selectCandidate(request))?.[0]).toBe('acc-2');
+    request.accountCooldowns.clear();
+    expect((await policy.selectCandidate(request))?.[0]).toBe('acc-2');
+  });
+
+  it('honors model rate limits, exhausted quotas, excluded accounts, and an empty pool', async () => {
+    const policy = new AccountLeaseSelectionPolicy();
+    const request = createRequest({
+      model: 'claude-sonnet',
+      config: createConfig({ accountSelectionStrategy: 'account-first' }),
+    });
+    expect((await policy.selectCandidate(request))?.[0]).toBe('acc-1');
+    expect(
+      (
+        await policy.selectCandidate({
+          ...request,
+          rateLimitTracker: {
+            isRateLimited: (id) => id === 'acc-1',
+            getRemainingWaitSeconds: () => 30,
+          },
+        })
+      )?.[0],
+    ).toBe('acc-2');
+    expect(
+      (
+        await policy.selectCandidate({
+          ...request,
+          getModelQuota: (id) => (id === 'acc-2' ? 0 : 80),
+        })
+      )?.[0],
+    ).toBe('acc-1');
+    expect(
+      (await policy.selectCandidate({ ...request, allTokens: request.allTokens.slice(1) }))?.[0],
+    ).toBe('acc-2');
+    expect(await policy.selectCandidate({ ...request, allTokens: [] })).toBeNull();
+    expect(await policy.selectCandidate({ ...request, getModelQuota: () => 0 })).toBeNull();
+  });
+
+  it('retains existing conversation bindings and explicit preferred accounts', async () => {
+    const policy = new AccountLeaseSelectionPolicy();
+    const request = createRequest({
+      model: 'claude-sonnet',
+      sessionKey: 'existing',
+      config: createConfig({ accountSelectionStrategy: 'account-first' }),
+    });
+    policy.bindSession('existing', 'acc-2', request.now + 30_000);
+    expect((await policy.selectCandidate(request))?.[0]).toBe('acc-2');
+    expect(
+      (
+        await policy.selectCandidate({
+          ...request,
+          config: { ...request.config, preferredAccountId: 'acc-1' },
+        })
+      )?.[0],
+    ).toBe('acc-1');
+  });
+
+  it('keeps model preferences separate and clears them on account removal or strategy changes', async () => {
+    const policy = new AccountLeaseSelectionPolicy();
+    const request = createRequest({
+      model: 'claude-sonnet',
+      config: createConfig({ accountSelectionStrategy: 'account-first' }),
+    });
+    await policy.selectCandidate({ ...request, allTokens: request.allTokens.slice(1) });
+    expect((await policy.selectCandidate({ ...request, model: 'gemini-flash' }))?.[0]).toBe(
+      'acc-1',
+    );
+    expect((await policy.selectCandidate(request))?.[0]).toBe('acc-2');
+    policy.clearAccountSessions('acc-2');
+    expect((await policy.selectCandidate(request))?.[0]).toBe('acc-1');
+    await policy.selectCandidate({ ...request, allTokens: request.allTokens.slice(1) });
+    await policy.selectCandidate({ ...request, config: createConfig() });
+    expect((await policy.selectCandidate(request))?.[0]).toBe('acc-1');
+    await policy.selectCandidate({ ...request, allTokens: request.allTokens.slice(1) });
+    policy.resetSelectionState();
+    expect((await policy.selectCandidate(request))?.[0]).toBe('acc-1');
+  });
+
   it('uses preferred account when parity scheduling is enabled', async () => {
     const policy = new AccountLeaseSelectionPolicy();
 

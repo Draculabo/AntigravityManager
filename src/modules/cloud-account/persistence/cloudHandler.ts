@@ -13,6 +13,7 @@ import { accounts } from '@/shared/persistence/database/schema';
 import { isEncryptedPayloadCandidate } from '@/shared/security/crypto';
 import { getCloudDb } from './cloud-account-db';
 import { convertEncryptedAccountFields } from './convert-encrypted-account-fields';
+import { CloudAccountSettingsStore } from './cloud-account-settings-store';
 import {
   parseDeviceHistoryColumn,
   parseDeviceProfileColumn,
@@ -95,6 +96,14 @@ export class CloudAccountRepo {
 
   static async init(): Promise<void> {
     await convertEncryptedAccountFields();
+    const { raw, orm } = getCloudDb();
+    try {
+      orm.transaction((transaction) => {
+        CloudAccountSettingsStore.removeMissingActiveAccountReferences(transaction);
+      });
+    } finally {
+      raw.close();
+    }
   }
 
   static async addAccount(account: CloudAccount): Promise<void> {
@@ -186,7 +195,10 @@ export class CloudAccountRepo {
   static async removeAccount(id: string): Promise<void> {
     const { raw, orm } = getCloudDb();
     try {
-      orm.delete(accounts).where(eq(accounts.id, id)).run();
+      orm.transaction((transaction) => {
+        transaction.delete(accounts).where(eq(accounts.id, id)).run();
+        CloudAccountSettingsStore.removeMissingActiveAccountReferences(transaction);
+      });
       logger.info(`Removed cloud account: ${id}`);
     } finally {
       raw.close();

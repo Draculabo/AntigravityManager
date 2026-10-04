@@ -528,6 +528,18 @@ const vi = {
       list: 'Danh sách',
       compact: 'Thu gọn',
     },
+    'auto-switch-client': 'Tự đổi tài khoản ứng dụng',
+    'auto-switch-description':
+      'Đổi tài khoản trong Antigravity, IDE và CLI. Chọn tài khoản cho yêu cầu API trên trang API Proxy.',
+    'quota-display': {
+      title: 'Hiển thị hạn mức',
+      description:
+        'Chọn hạn mức hiển thị trên thẻ tài khoản. Không thay đổi hạn mức hay tài khoản dùng cho yêu cầu.',
+      'five-hours-gemini': 'Hạn mức Gemini trong 5 giờ',
+      'five-hours-claude': 'Hạn mức Claude trong 5 giờ',
+      'weekly-gemini': 'Hạn mức Gemini hằng tuần',
+      'weekly-claude': 'Hạn mức Claude hằng tuần',
+    },
     'quota-window': {
       label: 'Chu kỳ hạn mức',
       'five-hours': 'Hạn mức 5 giờ',
@@ -825,6 +837,18 @@ const vi = {
     },
   },
   proxy: {
+    'account-strategy': {
+      'save-failed': 'Không thể lưu lựa chọn. Vui lòng chọn lại để thử lần nữa.',
+      title: 'Tài khoản dùng cho yêu cầu API',
+      balanced: 'Luân phiên các tài khoản khả dụng',
+      'account-first': 'Ưu tiên cùng một tài khoản',
+      'balanced-description':
+        'Phân bổ cuộc trò chuyện mới cho các tài khoản khả dụng. Cuộc trò chuyện hiện có giữ nguyên tài khoản khi tài khoản đó còn khả dụng.',
+      'account-first-description':
+        'Với mỗi mô hình, tiếp tục dùng cùng một tài khoản. Đổi tài khoản khi hết hạn mức, bị giới hạn tạm thời hoặc không thể xử lý yêu cầu. Cuộc trò chuyện hiện có giữ tài khoản còn khả dụng.',
+      'client-description':
+        'Cài đặt này không đổi tài khoản đăng nhập trong Antigravity, IDE hay CLI. Quản lý tự đổi tài khoản ứng dụng trên trang Tài khoản.',
+    },
     title: 'API Proxy',
     description: 'Quản lý local API proxy service.',
     save: 'Lưu cài đặt',

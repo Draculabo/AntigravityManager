@@ -57,6 +57,11 @@ Both Node service runners accept `--runtime-root <directory>` for their complete
 the fixture to use a separately prepared native dependency tree without rebuilding desktop dependencies.
 See [the testing strategy](../docs/testing.md) for runtime prerequisites and matching-ABI commands.
 
+The `runtime preload-csp` check builds the production preload and exercises its traffic callbacks
+inside an isolated real Electron window, without accounts or upstream requests. See the
+[CSP acceptance procedure](../docs/testing.md#preload-traffic-events-under-content-security-policy)
+for the policy timing variants and regression mode.
+
 Live account, model and installer suites have separate explicit commands. They require prepared
 isolated profiles, platform artifacts and, for model tasks, an authorized account with sufficient
 quota. A pure harness test does not prove that an installed client or upstream model works.
