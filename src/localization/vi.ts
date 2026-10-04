@@ -641,6 +641,18 @@ const vi = {
     },
     error: {
       loadFailed: 'Không thể tải danh sách tài khoản cloud.',
+      'report-issue': 'Báo cáo sự cố này',
+      'report-preparing': 'Đang chuẩn bị thông tin lỗi…',
+      'report-copied': 'Đã sao chép thông tin lỗi',
+      'report-paste-guide':
+        'Dán vào biểu mẫu GitHub, mô tả thao tác trước khi gặp lỗi rồi gửi báo cáo.',
+      'report-copy-failed': 'Không thể sao chép thông tin lỗi',
+      'report-retry': 'Hãy thử lại. Bạn cũng có thể mở phần chi tiết và sao chép lỗi thủ công.',
+      'report-open-failed': 'Không thể mở GitHub',
+      'report-manual-open': 'Thông tin đã được sao chép. Mở {{url}} và dán vào báo cáo.',
+      dataRepair: {
+        stepOpenIssue: 'Báo cáo sự cố trên GitHub. Nhấn để sao chép thông tin lỗi và mở biểu mẫu.',
+      },
     },
     toast: {
       syncSuccess: {

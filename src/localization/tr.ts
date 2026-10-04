@@ -642,6 +642,19 @@ const tr = {
     },
     error: {
       loadFailed: 'Bulut hesapları yüklenemedi.',
+      'report-issue': 'Bu sorunu bildirin',
+      'report-preparing': 'Hata bilgileri hazırlanıyor…',
+      'report-copied': 'Hata bilgileri kopyalandı',
+      'report-paste-guide':
+        'GitHub formuna yapıştırın, yaptığınız işlemleri açıklayın ve bildirimi gönderin.',
+      'report-copy-failed': 'Hata bilgileri kopyalanamadı',
+      'report-retry': 'Tekrar deneyin. Ayrıntıları açıp hatayı elle de kopyalayabilirsiniz.',
+      'report-open-failed': 'GitHub açılamadı',
+      'report-manual-open': 'Bilgiler kopyalandı. {{url}} adresini açıp bildirime yapıştırın.',
+      dataRepair: {
+        stepOpenIssue:
+          'Bu sorunu GitHub’da bildirin. Bilgileri kopyalayıp formu açmak için tıklayın.',
+      },
     },
     toast: {
       syncSuccess: {

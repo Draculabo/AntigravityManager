@@ -741,6 +741,17 @@ const fr = {
     },
     error: {
       loadFailed: 'Echec du chargement des comptes cloud.',
+      'report-issue': 'Signaler ce problème',
+      'report-preparing': 'Préparation des informations…',
+      'report-copied': 'Informations sur l’erreur copiées',
+      'report-paste-guide':
+        'Collez-les dans le formulaire GitHub, décrivez vos actions, puis envoyez le rapport.',
+      'report-copy-failed': 'Impossible de copier les informations',
+      'report-retry':
+        'Réessayez. Vous pouvez aussi ouvrir les détails et copier l’erreur manuellement.',
+      'report-open-failed': 'Impossible d’ouvrir GitHub',
+      'report-manual-open':
+        'Les informations sont copiées. Ouvrez {{url}} et collez-les dans le rapport.',
       dataRepair: {
         title: 'Impossible d’ouvrir les comptes enregistrés',
         description:
@@ -752,9 +763,8 @@ const fr = {
         stepCheckGithub:
           'Consultez le README du depot GitHub pour les dernieres etapes de depannage.',
         stepOpenIssue:
-          'Recherchez cette erreur dans les GitHub Issues avant d effacer les donnees de compte locales.',
+          'Signalez ce problème sur GitHub. Cliquez pour copier les informations et ouvrir le formulaire.',
         openRepository: 'Ouvrir le depot GitHub',
-        openIssues: 'Ouvrir les GitHub Issues',
       },
     },
     toast: {
