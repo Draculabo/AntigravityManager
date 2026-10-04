@@ -8,7 +8,7 @@ describe('waitForViteDevServer', () => {
     vi.restoreAllMocks();
   });
 
-  it('uses Axios with non-2xx responses available to the retry loop', async () => {
+  it('probes directly with a timeout and retries unsuccessful HTTP statuses', async () => {
     const get = vi
       .spyOn(axios, 'get')
       .mockResolvedValueOnce({ status: 503 } as never)
@@ -19,12 +19,25 @@ describe('waitForViteDevServer', () => {
     ).resolves.toBe(0);
 
     expect(get).toHaveBeenCalledTimes(2);
-    expect(get).toHaveBeenCalledWith(
-      'http://127.0.0.1:5173',
-      expect.objectContaining({ validateStatus: expect.any(Function) }),
-    );
+    expect(get).toHaveBeenCalledWith('http://127.0.0.1:5173', {
+      proxy: false,
+      timeout: 1000,
+      validateStatus: expect.any(Function),
+    });
     const requestConfig = get.mock.calls[0][1];
     expect(requestConfig?.validateStatus?.(503)).toBe(true);
+  });
+
+  it('retries a timed-out request and accepts the next successful response', async () => {
+    const get = vi
+      .spyOn(axios, 'get')
+      .mockRejectedValueOnce(new axios.AxiosError('timeout', 'ECONNABORTED'))
+      .mockResolvedValueOnce({ status: 200 } as never);
+
+    await expect(
+      waitForViteDevServer('http://127.0.0.1:5173', { delayMs: 0, maxRetries: 2 }),
+    ).resolves.toBe(0);
+    expect(get).toHaveBeenCalledTimes(2);
   });
 
   it('returns null after all connection failures or unsuccessful statuses', async () => {

@@ -220,7 +220,16 @@ export async function stopNestServer(): Promise<boolean> {
       detachResponsesWebSocketServer?.();
       detachResponsesWebSocketServer = null;
       await app.close();
-      await Promise.allSettled([trafficAuditService.close(), thoughtStoreService.close()]);
+      const storeResults = await Promise.allSettled([
+        trafficAuditService.close(),
+        thoughtStoreService.close(),
+      ]);
+      const failures = storeResults.flatMap((result) =>
+        result.status === 'rejected' ? [result.reason] : [],
+      );
+      if (failures.length > 0) {
+        throw new AggregateError(failures, 'Gateway diagnostic stores did not close');
+      }
       app = null;
       currentPort = 0;
       logger.info('NestJS server stopped.');

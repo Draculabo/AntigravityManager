@@ -1,13 +1,17 @@
 import { execFile } from 'child_process';
 import { existsSync } from 'node:fs';
 import { isWsl } from '@/shared/platform/paths';
+import { promisify } from 'node:util';
 import { logger } from '@/shared/logging/logger';
+
 import { getProcessProbeTimeout, observeProcesses } from './processObserver';
 import { assertContextProcesses } from './launchContext';
 import type { LaunchContext } from './types';
 import { processError } from './processErrors';
 import { usesWindowsRuntime } from './runtimePlatform';
 import { stopNativeProcessTree } from './stopNativeProcessTree';
+
+const runFile = promisify(execFile);
 
 export async function stopFromContext(
   context: LaunchContext,
@@ -75,59 +79,36 @@ export async function stopFromContext(
   }
   for (const item of processes) {
     if (usesWindowsRuntime(context.target, context.executablePath)) {
-      await new Promise<void>((resolve, reject) => {
-        const windowsTaskkill = 'C:\\Windows\\System32\\taskkill.exe';
-        const file = isWsl()
-          ? '/mnt/c/Windows/System32/taskkill.exe'
-          : existsSync(windowsTaskkill)
-            ? windowsTaskkill
-            : 'taskkill.exe';
-        execFile(
-          file,
-          ['/PID', String(item.pid), '/T', '/F'],
-          {
-            windowsHide: true,
-            // taskkill has its own startup cost; process-query budgets must not abort it early.
-            timeout: Math.max(1, deadline - Date.now()),
-            killSignal: 'SIGKILL',
-          },
-          (error) => {
-            if (error) {
-              logger.warn('Antigravity process close command failed', {
-                target: context.target,
-                pid: item.pid,
-                code: error.code,
-                // Numeric command status is safe diagnostic metadata; generic "code" is redacted.
-                exitStatus: typeof error.code === 'number' ? error.code : undefined,
-                killed: error.killed,
-                signal: error.signal,
-              });
-              if (process.platform !== 'win32') {
-                reject(processError('close-failed'));
-                return;
-              }
-              // taskkill can fail for a child after terminating the main process. The
-              // native snapshot decides the outcome without dispatching another command.
-              const remaining = deadline - Date.now();
-              if (remaining <= 0) {
-                reject(processError('close-failed'));
-                return;
-              }
-              observeProcesses(context.target, remaining, context.executablePath)
-                .then((observed) => {
-                  assertContextProcesses(context, observed);
-                  if (observed.some((row) => row.pid === item.pid)) {
-                    throw processError('close-failed');
-                  }
-                  resolve();
-                })
-                .catch(reject);
-            } else {
-              resolve();
-            }
-          },
-        );
-      });
+      // Local taskkill without /F requests normal window close. Never escalate to /F:
+      // a save prompt or a refused close must leave the client alive.
+      const windowsTaskkill = 'C:\\Windows\\System32\\taskkill.exe';
+      const file = isWsl()
+        ? '/mnt/c/Windows/System32/taskkill.exe'
+        : existsSync(windowsTaskkill)
+          ? windowsTaskkill
+          : 'taskkill.exe';
+      try {
+        await runFile(file, ['/PID', String(item.pid)], {
+          windowsHide: true,
+          timeout: Math.max(1, deadline - Date.now()),
+          killSignal: 'SIGKILL',
+        });
+      } catch (error) {
+        logger.warn('Antigravity normal close request failed', {
+          target: context.target,
+          pid: item.pid,
+          errorType: error instanceof Error ? error.name : 'unknown',
+        });
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          throw processError('close-failed');
+        }
+        const observed = await observeProcesses(context.target, remaining, context.executablePath);
+        assertContextProcesses(context, observed);
+        if (observed.some((row) => row.pid === item.pid)) {
+          throw processError('close-failed');
+        }
+      }
     } else {
       try {
         process.kill(item.pid, 'SIGKILL');
@@ -140,13 +121,22 @@ export async function stopFromContext(
   }
   while (Date.now() < deadline) {
     const remaining = deadline - Date.now();
-    const remainingProcesses = await observeProcesses(
-      context.target,
-      process.platform !== 'win32' && usesWindowsRuntime(context.target, context.executablePath)
-        ? Math.min(getProcessProbeTimeout(context.target, context.executablePath), remaining)
-        : remaining,
-      context.executablePath,
-    );
+    let remainingProcesses;
+    try {
+      remainingProcesses = await observeProcesses(
+        context.target,
+        process.platform !== 'win32' && usesWindowsRuntime(context.target, context.executablePath)
+          ? Math.min(getProcessProbeTimeout(context.target, context.executablePath), remaining)
+          : remaining,
+        context.executablePath,
+      );
+    } catch (error) {
+      // A query consuming the final close budget cannot establish that the client exited.
+      if (usesWindowsRuntime(context.target, context.executablePath) && Date.now() >= deadline) {
+        throw processError('exit-unconfirmed');
+      }
+      throw error;
+    }
     assertContextProcesses(context, remainingProcesses);
     if (!remainingProcesses.length) {
       return;

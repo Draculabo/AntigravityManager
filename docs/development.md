@@ -31,6 +31,8 @@ npm run make
 ```
 
 - `npm start` starts Electron Forge with Vite in development mode.
+- The renderer development server binds to `127.0.0.1` so Electron can reach it even when IPv6 loopback is blocked. Forge supplies the actual port to the main process; its readiness probe bypasses proxy environment settings and times out each request after one second.
+  Run `npm run test:acceptance -- development connection` to verify the Vite listener and Forge URL with an isolated Electron window. This check does not open account storage or launch the gateway.
 - Native process queries use `@draculabo/sysinfo-process-enhanced`. npm installs the matching prebuilt platform package; keep optional dependencies enabled. No Rust build is needed in this repository. For a different packaging architecture, install dependencies on the target runner as the release workflow does.
 - `npm test` runs the Vitest unit and integration suite once.
 - `npm run test:e2e` runs Playwright against the Electron application.

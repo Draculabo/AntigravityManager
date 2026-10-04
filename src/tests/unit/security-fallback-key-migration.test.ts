@@ -55,6 +55,9 @@ describe('fallback master-key migration', () => {
     await fs.writeFile(path.join(tempDir, 'master-key.v2.file'), fallbackKey.toString('hex'));
 
     const security = await import('@/shared/security/security');
+    const { configureElectronSecurityRuntime } =
+      await import('@/shared/security/electron-security-runtime');
+    configureElectronSecurityRuntime();
     await security.initializeMasterKey({
       encryptedSamples: [primaryPayload, fallbackPayload],
       storedAccountCount: 2,
@@ -80,6 +83,9 @@ describe('fallback master-key migration', () => {
     await fs.writeFile(path.join(tempDir, 'master-key.v2.safe'), primaryKey.toString('hex'));
 
     const security = await import('@/shared/security/security');
+    const { configureElectronSecurityRuntime } =
+      await import('@/shared/security/electron-security-runtime');
+    configureElectronSecurityRuntime();
     await security.initializeMasterKey({
       encryptedSamples: [primaryPayload],
       storedAccountCount: 1,

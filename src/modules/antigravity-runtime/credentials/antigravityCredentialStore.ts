@@ -1,6 +1,7 @@
 import { Entry } from '@napi-rs/keyring';
 import { execFileSync, spawnSync } from 'child_process';
 import os from 'node:os';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { logger } from '@/shared/logging/logger';
@@ -9,6 +10,7 @@ import { writeAgyCliToken } from './agyCliTokenStore';
 import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
 import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
 import { readWindowsCredential, writeWindowsCredential } from './windowsCredentialStore';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 export interface CredentialStoreToken {
   accessToken?: string;
@@ -132,6 +134,27 @@ function parseCredentialStorePayload(payload: string): CredentialStoreToken {
     ...(token.project_id ? { projectId: token.project_id } : {}),
     ...(expiryTimestamp !== undefined ? { expiryTimestamp } : {}),
   };
+}
+
+/** Agy reads its session file; desktop clients read the system credential store. */
+export async function readClientAccountToken(
+  target?: AntigravityAppTarget | null,
+): Promise<CredentialStoreToken | null> {
+  if (target !== 'agy') {
+    return readAntigravityCredentialStoreToken();
+  }
+  try {
+    const payload = await fs.readFile(
+      path.join(os.homedir(), '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
+      'utf8',
+    );
+    return parseCredentialStorePayload(payload);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      return null;
+    }
+    throw classifyCredentialStoreReadError(error);
+  }
 }
 
 function classifyCredentialStoreReadError(error: unknown): CredentialStoreReadError {
@@ -352,7 +375,9 @@ async function writeToSystemCredentialStore(payload: string): Promise<void> {
       ? ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-U', '-w']
       : ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'];
     execFileSync('security', args, {
-      input: `${value}\n`,
+      // Without an argv value, security reads the password and its confirmation.
+      // Keep both on stdin so the credential never appears in process arguments.
+      input: `${value}\n${value}\n`,
       encoding: 'utf-8',
       stdio: ['pipe', 'ignore', 'ignore'],
     });

@@ -5,6 +5,7 @@ import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemi
 import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
 import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
+import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 
 let server: Server;
 let packets: { url: string; body: unknown }[];
@@ -57,6 +58,7 @@ beforeEach(async () => {
   vi.stubEnv('PROXY_INTERNAL_BASE_URLS', `${baseUrl}/v1internal`);
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   axios.defaults.adapter = originalAdapter;
   explicitContextCacheManager.clear();
   vi.unstubAllEnvs();
@@ -88,6 +90,55 @@ function body(): GeminiInternalRequest {
   };
 }
 describe('tool configuration at the actual HTTP serialization boundary', () => {
+  it.each(['generate', 'stream'] as const)(
+    'does not restore rejected thought history during %s recovery',
+    async (mode) => {
+      vi.stubEnv('PROXY_CONTEXT_CACHE_ENABLED', 'false');
+      const clean = body();
+      const rejected = {
+        text: 'Synthetic rejected reasoning',
+        thought: true,
+        thoughtSignature: 'synthetic-invalid-signature',
+      };
+      const prepare = vi
+        .spyOn(thoughtStoreService, 'prepareInternalRequest')
+        .mockImplementation(async (request) => {
+          request.request.contents.unshift({ role: 'model', parts: [rejected] });
+        });
+      const client = new GeminiClient(new Upstream4xxCaptureService());
+      const send = async (thoughtReplay: 'restore' | 'skip') => {
+        const request = structuredClone(clean);
+        if (mode === 'stream') {
+          const stream = await client.streamGenerateInternal(
+            request,
+            'synthetic-not-a-credential',
+            undefined,
+            undefined,
+            undefined,
+            { thoughtReplay },
+          );
+          for await (const _chunk of stream) {
+            // Drain the real HTTP response so the test observes stream completion.
+          }
+        } else {
+          await client.generateInternal(
+            request,
+            'synthetic-not-a-credential',
+            undefined,
+            undefined,
+            undefined,
+            { thoughtReplay },
+          );
+        }
+      };
+      await send('restore');
+      await send('skip');
+      const restored = structuredClone(clean);
+      restored.request.contents.unshift({ role: 'model', parts: [rejected] });
+      expect(packets.map((packet) => packet.body)).toEqual([restored, clean]);
+      expect(prepare).toHaveBeenCalledTimes(1);
+    },
+  );
   it('creates once, reuses cache and removes both aliases from every cache-backed generation', async () => {
     const client = new GeminiClient(new Upstream4xxCaptureService());
     const request = body();

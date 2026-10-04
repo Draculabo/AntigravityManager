@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Cpu,
 } from 'lucide-react';
-import type { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import type { DeviceProfile, DeviceProfileVersion } from '@/modules/identity-profile/types';
 import {
   bindCloudIdentityProfile,
@@ -35,18 +35,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
+import { readCloudIdentityProfileErrorCode } from '@/modules/cloud-account/services/cloud-account-identity-profile.schema';
 
 interface IdentityProfileDialogProps {
-  account: CloudAccount | null;
+  account: Pick<CloudAccountView, 'id' | 'email'> | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}
-
-function formatError(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return String(error);
 }
 
 function renderProfile(
@@ -118,9 +112,10 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
       await action();
       await refetch();
     } catch (error) {
+      const profileCode = readCloudIdentityProfileErrorCode(error) ?? 'profile-operation-failed';
       toast({
         title: t('cloud.toast.actionFailed'),
-        description: formatError(error),
+        description: t(`cloud.identity.profile-errors.${profileCode}`),
         variant: 'destructive',
       });
     } finally {

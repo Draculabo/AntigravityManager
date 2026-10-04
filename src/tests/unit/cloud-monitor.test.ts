@@ -1,3 +1,4 @@
+import { configureDesktopCloudMonitorEffects } from '@/modules/cloud-account/ipc/cloud-monitor-desktop-effects';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
@@ -45,6 +46,7 @@ describe('CloudMonitorService', () => {
       (_key: string, defaultValue: unknown) => defaultValue,
     );
     CloudMonitorService.resetStateForTesting();
+    configureDesktopCloudMonitorEffects();
     vi.mocked(CloudAccountSettingsStore.readSetting).mockImplementation((key) =>
       CloudAccountSettingsStore.getSetting(key, undefined, z.unknown()),
     );
@@ -549,6 +551,7 @@ describe('CloudMonitorService AI credits alert', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     CloudMonitorService.resetStateForTesting();
+    configureDesktopCloudMonitorEffects();
 
     // Spy on the Notification class exported from the electron mock (same binding used by CloudMonitorService)
     notificationShowSpy = vi.spyOn(

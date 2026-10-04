@@ -1,4 +1,7 @@
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createPackage } from '@electron/asar';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getAntigravityVersion,
@@ -29,6 +32,37 @@ function setPlatform(value: string) {
 }
 
 describe('product version query', () => {
+  it('reads and invalidates packed Linux metadata under standalone Node', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-packed-version-'));
+    try {
+      const source = path.join(directory, 'manifest');
+      const resources = path.join(directory, 'resources');
+      const archive = path.join(resources, 'app.asar');
+      fs.mkdirSync(source);
+      fs.mkdirSync(resources);
+      fs.writeFileSync(
+        path.join(source, 'package.json'),
+        JSON.stringify({ name: 'antigravity', version: '2.19.1' }),
+      );
+      await createPackage(source, archive);
+      setPlatform('linux');
+      expect(await getAntigravityVersion('classic', path.join(directory, 'antigravity'))).toEqual({
+        shortVersion: '2.19.1',
+        bundleVersion: '2.19.1',
+      });
+      fs.writeFileSync(
+        path.join(source, 'package.json'),
+        JSON.stringify({ name: 'antigravity', version: '2.20.10' }),
+      );
+      await createPackage(source, archive);
+      expect(await getAntigravityVersion('classic', path.join(directory, 'antigravity'))).toEqual({
+        shortVersion: '2.20.10',
+        bundleVersion: '2.20.10',
+      });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it('compares semver and retains the Classic 2.0 storage boundary', () => {
     expect(compareVersion('1.99.9', '2.0.0')).toBe(-1);
     expect(compareVersion('2.0.0', '2.0.0')).toBe(0);

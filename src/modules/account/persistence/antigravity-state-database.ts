@@ -15,7 +15,7 @@ import { itemTable } from '@/shared/persistence/database/schema';
 import {
   prepareClientAccountWrite,
   prepareLaunchContext,
-  readAntigravityCredentialStoreToken,
+  readClientAccountToken,
   resolveClientAccountStorage,
 } from '@/modules/antigravity-runtime';
 import { credentialsFromAccountBackup } from './snapshotCredentials';
@@ -295,7 +295,7 @@ export async function backupAccount(
   };
   const storage = await resolveClientAccountStorage(target, pathOptions);
   if (storage === 'credential-store') {
-    const token = await readAntigravityCredentialStoreToken();
+    const token = await readClientAccountToken(target);
     if (!token?.accessToken || !token.expiryTimestamp) {
       throw new Error('Client credential store does not contain complete snapshot credentials');
     }

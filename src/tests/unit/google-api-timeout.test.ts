@@ -135,6 +135,19 @@ describe('GoogleAPIService OAuth clients', () => {
       'Unknown OAuth client key',
     );
   });
+
+  it('does not log malformed OAuth client environment entries with possible secrets', async () => {
+    process.env.ANTIGRAVITY_OAUTH_CLIENTS = 'private-secret-value|client-id;custom|client-id|';
+    const { logger } = await import('@/shared/logging/logger');
+    const warning = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+
+    GoogleAPIService.listOAuthClients();
+
+    expect(warning).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(warning.mock.calls)).not.toContain('private-secret-value');
+    warning.mockRestore();
+  });
 });
 
 describe('GoogleAPIService user info parsing', () => {
@@ -234,36 +247,6 @@ describe('GoogleAPIService user info parsing', () => {
       GoogleAPIService.getUserInfo('access-token', undefined, controller.signal),
     ).rejects.toMatchObject({ name: 'AbortError' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('CloudAccountList auth code auto-submit guard', () => {
-  it('returns true for a fresh auth code while the dialog is open', async () => {
-    const { shouldAutoSubmitGoogleAuthCode } =
-      await import('@/modules/cloud-account/utils/googleAuthSubmission');
-
-    expect(
-      shouldAutoSubmitGoogleAuthCode({
-        authCode: 'fresh-code',
-        isAddDialogOpen: true,
-        isPending: false,
-        lastSubmittedAuthCode: null,
-      }),
-    ).toBe(true);
-  });
-
-  it('returns false after the same auth code was already auto-submitted', async () => {
-    const { shouldAutoSubmitGoogleAuthCode } =
-      await import('@/modules/cloud-account/utils/googleAuthSubmission');
-
-    expect(
-      shouldAutoSubmitGoogleAuthCode({
-        authCode: 'same-code',
-        isAddDialogOpen: true,
-        isPending: false,
-        lastSubmittedAuthCode: 'same-code',
-      }),
-    ).toBe(false);
   });
 });
 

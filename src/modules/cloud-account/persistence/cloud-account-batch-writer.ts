@@ -2,7 +2,6 @@ import type { CloudAccount } from '@/modules/cloud-account/types';
 import { CloudAccountSchema } from '@/modules/cloud-account/types';
 import { logger } from '@/shared/logging/logger';
 import { accounts } from '@/shared/persistence/database/schema';
-import { encrypt } from '@/shared/security/security';
 import { getCloudDb } from './cloud-account-db';
 import {
   serializeDeviceHistory,
@@ -23,29 +22,27 @@ export async function upsertCloudAccountsAtomically(
     return;
   }
 
-  const valuesToPersist = await Promise.all(
-    accountsToPersist.map(async (account) => {
-      CloudAccountSchema.parse(account);
-      return {
-        id: account.id,
-        provider: account.provider,
-        email: account.email,
-        name: account.name ?? null,
-        avatarUrl: account.avatar_url ?? null,
-        tokenJson: await encrypt(JSON.stringify(account.token)),
-        quotaJson: account.quota ? await encrypt(JSON.stringify(account.quota)) : null,
-        healthJson: account.health ? await encrypt(JSON.stringify(account.health)) : null,
-        deviceProfileJson: serializeDeviceProfile(account.device_profile),
-        deviceHistoryJson: serializeDeviceHistory(account.device_history),
-        createdAt: account.created_at,
-        lastUsed: account.last_used,
-        status: account.status ?? 'active',
-        statusReason: account.status_reason ?? null,
-        isActive: account.is_active ? 1 : 0,
-        proxyUrl: account.proxy_url ?? null,
-      };
-    }),
-  );
+  const valuesToPersist = accountsToPersist.map((account) => {
+    CloudAccountSchema.parse(account);
+    return {
+      id: account.id,
+      provider: account.provider,
+      email: account.email,
+      name: account.name ?? null,
+      avatarUrl: account.avatar_url ?? null,
+      tokenJson: JSON.stringify(account.token),
+      quotaJson: account.quota ? JSON.stringify(account.quota) : null,
+      healthJson: account.health ? JSON.stringify(account.health) : null,
+      deviceProfileJson: serializeDeviceProfile(account.device_profile),
+      deviceHistoryJson: serializeDeviceHistory(account.device_history),
+      createdAt: account.created_at,
+      lastUsed: account.last_used,
+      status: account.status ?? 'active',
+      statusReason: account.status_reason ?? null,
+      isActive: account.is_active ? 1 : 0,
+      proxyUrl: account.proxy_url ?? null,
+    };
+  });
 
   const { raw, orm } = getCloudDb();
   try {

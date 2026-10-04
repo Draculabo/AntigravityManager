@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { setTimeout as wait } from 'node:timers/promises';
 
 export interface ViteServerWaitOptions {
   delayMs?: number;
@@ -8,7 +9,9 @@ export interface ViteServerWaitOptions {
 
 async function requestViteDevServer(url: string): Promise<{ status: number }> {
   const response = await axios.get(url, {
-    // Native fetch resolves for non-2xx responses; retain that retry behavior.
+    // Local development traffic must not use an environment-configured proxy.
+    proxy: false,
+    timeout: 1000,
     validateStatus: () => true,
   });
   return { status: response.status };
@@ -28,7 +31,7 @@ export async function waitForViteDevServer(
       // Server not ready yet.
     }
 
-    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    await wait(delayMs);
   }
 
   return null;

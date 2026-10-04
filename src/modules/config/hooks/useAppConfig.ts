@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { toast } from '@/components/ui/use-toast';
 import { ipc } from '@/ipc/manager';
-import { AppConfig } from '@/modules/config/types';
+import type { SettingsConfig } from '../service-config.schema';
+import { serviceConfigPlaceholder, splitSettingsChange } from '../settings-change';
+import { DEFAULT_CLOUD_ACCOUNT_ALERT_POLICY } from '@/modules/cloud-account/services/cloud-account-alert-policy.schema';
 
 const SAVE_DEBOUNCE_MS = 400;
 
@@ -13,40 +15,93 @@ export function useAppConfig() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
-  const {
-    data: config,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ['appConfig'],
-    queryFn: async () => {
-      return (await ipc.client.config.load()) as AppConfig;
-    },
+  const desktop = useQuery({
+    queryKey: ['desktopPreferences'],
+    queryFn: () => ipc.client.config.desktop.load(),
   });
+  const service = useQuery({
+    queryKey: ['serviceConfig'],
+    queryFn: () => ipc.client.config.service.read(),
+    retry: false,
+  });
+  const [draft, setDraft] = useState<SettingsConfig | null>(null);
+  const accountAlertPolicy = useQuery({
+    queryKey: ['accountAlertPolicy'],
+    queryFn: () => ipc.client.config.accountAlertPolicy.read(),
+    retry: false,
+  });
+  const loaded = useMemo(
+    () =>
+      desktop.data
+        ? {
+            ...desktop.data,
+            ...(service.data ?? serviceConfigPlaceholder()),
+            ...(accountAlertPolicy.data ?? DEFAULT_CLOUD_ACCOUNT_ALERT_POLICY),
+          }
+        : undefined,
+    [desktop.data, service.data, accountAlertPolicy.data],
+  );
+  const config = draft ?? loaded;
+  const isLoading = desktop.isLoading;
+  const error = desktop.error ?? service.error ?? accountAlertPolicy.error;
 
   const updateConfig = useMutation({
-    mutationFn: async (newConfig: AppConfig) => {
-      await ipc.client.config.save(newConfig);
-      return newConfig;
+    mutationFn: async ({
+      newConfig,
+      previous,
+    }: {
+      newConfig: SettingsConfig;
+      previous: SettingsConfig;
+    }) => {
+      const change = splitSettingsChange(previous, newConfig);
+      if (change.service && !service.data) {
+        throw new Error('Settings are unavailable right now. Please try again.');
+      }
+      let result = newConfig;
+      if (change.accountAlertPolicy && !accountAlertPolicy.data) {
+        throw new Error('Settings are unavailable right now. Please try again.');
+      }
+      let state: 'applied' | 'restart-required' = 'applied';
+      if (change.service) {
+        const saved = await ipc.client.config.service.update(change.service);
+        queryClient.setQueryData(['serviceConfig'], saved.snapshot);
+        result = { ...result, ...saved.snapshot };
+        state = saved.state;
+      }
+      if (change.desktop) {
+        const saved = await ipc.client.config.desktop.save(change.desktop);
+        queryClient.setQueryData(['desktopPreferences'], saved);
+        result = { ...result, ...saved };
+      }
+      if (change.accountAlertPolicy) {
+        const saved = await ipc.client.config.accountAlertPolicy.update(change.accountAlertPolicy);
+        queryClient.setQueryData(['accountAlertPolicy'], saved);
+        result = { ...result, ...saved };
+      }
+      return { config: result, state };
     },
   });
+  const mutateConfig = updateConfig.mutateAsync;
 
-  const latestConfigRef = useRef<AppConfig | null>(null);
-  const lastStableConfigRef = useRef<AppConfig | null>(null);
+  const latestConfigRef = useRef<SettingsConfig | null>(null);
+  const lastStableConfigRef = useRef<SettingsConfig | null>(null);
+  const pendingBaseRef = useRef<SettingsConfig | null>(null);
   const pendingResolversRef = useRef<
     Array<{ resolve: () => void; reject: (error: Error) => void }>
   >([]);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (config) {
-      lastStableConfigRef.current = config;
+    if (loaded) {
+      lastStableConfigRef.current = loaded;
     }
-  }, [config]);
+  }, [loaded]);
 
   const flushPendingSave = useCallback(async () => {
     const pendingBatch = pendingResolversRef.current.splice(0);
     const nextConfig = latestConfigRef.current;
+    const previous = pendingBaseRef.current;
+    pendingBaseRef.current = null;
     if (!nextConfig) {
       for (const item of pendingBatch) {
         item.resolve();
@@ -55,39 +110,52 @@ export function useAppConfig() {
     }
 
     try {
-      const savedConfig = await updateConfig.mutateAsync(nextConfig);
-      queryClient.setQueryData(['appConfig'], savedConfig);
+      if (!previous) {
+        throw new Error('Settings are not ready.');
+      }
+      const saved = await mutateConfig({ newConfig: nextConfig, previous });
+      const savedConfig = saved.config;
+      if (latestConfigRef.current === nextConfig) {
+        setDraft(null);
+      }
       lastStableConfigRef.current = savedConfig;
       toast({
-        title: t('settings.toast.saved.title'),
-        description: t('settings.toast.saved.description'),
+        title:
+          saved.state === 'applied'
+            ? t('settings.toast.saved.title')
+            : t(
+                'settings.service-restart-required',
+                'Settings saved. Turn the proxy off and back on to apply the changes.',
+              ),
+        description: saved.state === 'applied' ? t('settings.toast.saved.description') : undefined,
       });
       for (const item of pendingBatch) {
         item.resolve();
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to save settings');
-      const fallback = lastStableConfigRef.current;
-      if (fallback) {
-        queryClient.setQueryData(['appConfig'], fallback);
-      } else {
-        queryClient.invalidateQueries({ queryKey: ['appConfig'] });
-      }
+      setDraft(null);
+      queryClient.invalidateQueries({ queryKey: ['serviceConfig'] });
+      queryClient.invalidateQueries({ queryKey: ['desktopPreferences'] });
+      queryClient.invalidateQueries({ queryKey: ['accountAlertPolicy'] });
       toast({
         title: t('settings.toast.saveFailed.title'),
-        description: error.message,
+        description: t('settings.service-unavailable'),
         variant: 'destructive',
       });
       for (const item of pendingBatch) {
         item.reject(error);
       }
     }
-  }, [queryClient, t, updateConfig]);
+  }, [queryClient, t, mutateConfig]);
 
   const saveConfig = useCallback(
-    (newConfig: AppConfig) => {
+    (newConfig: SettingsConfig) => {
+      if (pendingResolversRef.current.length === 0) {
+        pendingBaseRef.current = lastStableConfigRef.current;
+      }
       latestConfigRef.current = newConfig;
-      queryClient.setQueryData(['appConfig'], newConfig);
+      setDraft(newConfig);
 
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -101,7 +169,7 @@ export function useAppConfig() {
         }, SAVE_DEBOUNCE_MS);
       });
     },
-    [flushPendingSave, queryClient],
+    [flushPendingSave],
   );
 
   useEffect(() => {
@@ -125,6 +193,10 @@ export function useAppConfig() {
     config,
     isLoading,
     error,
+    serviceAvailable: Boolean(service.data) && !service.isError,
+    accountAlertPolicyAvailable: Boolean(accountAlertPolicy.data) && !accountAlertPolicy.isError,
+    serviceLoading: service.isLoading,
+    retryService: () => Promise.all([service.refetch(), accountAlertPolicy.refetch()]),
     saveConfig,
     isSaving: updateConfig.isPending,
   };

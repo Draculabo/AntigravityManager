@@ -46,6 +46,10 @@ function rewriteBlock(block: ContentBlock): ContentBlock | null {
   if (block.type === 'redacted_thinking') {
     return null;
   }
+  if (block.type === 'tool_use') {
+    const { signature: _signature, ...tool } = block;
+    return tool;
+  }
   return block;
 }
 

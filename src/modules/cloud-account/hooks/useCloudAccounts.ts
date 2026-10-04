@@ -1,16 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listCloudAccounts,
-  addGoogleAccount,
+  startAuthFlow,
+  submitAuthCode,
   deleteCloudAccount,
   refreshAccountQuota,
   setAccountProxy,
   listOAuthClients,
   setActiveOAuthClient,
-  getCloudAccountSecurityStatus,
-  type OAuthClientDescriptor,
 } from '@/modules/cloud-account/actions/cloud';
-import { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
+import type { OAuthClientDescriptor } from '@/modules/cloud-account/services/oauth-client-preference.schema';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 import {
@@ -26,7 +26,6 @@ import {
 import type { WeeklyWarmupConfig } from '@/modules/cloud-account/services/weekly-warmup-contract';
 import { syncLocalAccount } from '@/modules/cloud-account/actions/cloud';
 import { exportCloudAccounts, importCloudAccounts } from '@/modules/cloud-account/actions/cloud';
-import { startAuthFlow } from '@/modules/cloud-account/actions/cloud';
 
 type SetAccountProxyInput = Parameters<typeof setAccountProxy>[0];
 type SetAccountProxyResult = Awaited<ReturnType<typeof setAccountProxy>>;
@@ -35,12 +34,11 @@ type ImportCloudAccountsResult = Awaited<ReturnType<typeof importCloudAccounts>>
 
 export const QUERY_KEYS = {
   cloudAccounts: ['cloudAccounts'],
-  securityStatus: ['cloudAccountSecurityStatus'],
   oauthClients: ['oauthClients'],
 };
 
 export function useCloudAccounts(refetchInterval: number | false = false) {
-  return useQuery<CloudAccount[]>({
+  return useQuery<CloudAccountView[]>({
     queryKey: QUERY_KEYS.cloudAccounts,
     queryFn: listCloudAccounts,
     staleTime: 1000 * 60, // 1 minute
@@ -48,35 +46,19 @@ export function useCloudAccounts(refetchInterval: number | false = false) {
   });
 }
 
-export function useCloudAccountSecurityStatus() {
-  return useQuery({
-    queryKey: QUERY_KEYS.securityStatus,
-    queryFn: getCloudAccountSecurityStatus,
-    staleTime: Infinity,
-  });
-}
-
-export function useAddGoogleAccount() {
+export function useStartGoogleAuthFlow() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: addGoogleAccount,
-    onSuccess: (newAccount: CloudAccount) => {
-      queryClient.setQueryData(QUERY_KEYS.cloudAccounts, (oldData: CloudAccount[] | undefined) => {
-        if (!oldData) {
-          return [newAccount];
-        }
-
-        const alreadyCached = oldData.some((account) => account.id === newAccount.id);
-        if (alreadyCached) {
-          return oldData.map((account) => (account.id === newAccount.id ? newAccount : account));
-        }
-
-        return [...oldData, newAccount];
-      });
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+    mutationFn: startAuthFlow,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
     },
   });
+}
+
+export function useSubmitGoogleAuthCode() {
+  return useMutation({ mutationFn: submitAuthCode });
 }
 
 export function useOAuthClients() {
@@ -113,12 +95,15 @@ export function useRefreshQuota() {
 
   return useMutation({
     mutationFn: refreshAccountQuota,
-    onSuccess: (updatedAccount: CloudAccount) => {
+    onSuccess: (updatedAccount: CloudAccountView) => {
       // Optimistically update
-      queryClient.setQueryData(QUERY_KEYS.cloudAccounts, (oldData: CloudAccount[] | undefined) => {
-        if (!oldData) return [updatedAccount];
-        return oldData.map((acc) => (acc.id === updatedAccount.id ? updatedAccount : acc));
-      });
+      queryClient.setQueryData(
+        QUERY_KEYS.cloudAccounts,
+        (oldData: CloudAccountView[] | undefined) => {
+          if (!oldData) return [updatedAccount];
+          return oldData.map((acc) => (acc.id === updatedAccount.id ? updatedAccount : acc));
+        },
+      );
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
     },
   });
@@ -208,15 +193,17 @@ export function useSetWeeklyWarmupConfig() {
 
 export function useSyncLocalAccount() {
   const queryClient = useQueryClient();
-  return useMutation<CloudAccount | null, Error, { appTarget?: AntigravityAppTarget } | undefined>({
+  return useMutation<
+    CloudAccountView | null,
+    Error,
+    { appTarget?: AntigravityAppTarget } | undefined
+  >({
     mutationFn: syncLocalAccount,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
     },
   });
 }
-
-export { startAuthFlow };
 
 export function useSetAccountProxy() {
   const queryClient = useQueryClient();
@@ -232,7 +219,11 @@ export function useSetAccountProxy() {
 }
 
 export function useExportCloudAccounts() {
-  return useMutation<string, Error, { stripTokens?: boolean }>({
+  return useMutation<
+    Awaited<ReturnType<typeof exportCloudAccounts>>,
+    Error,
+    { stripTokens?: boolean }
+  >({
     mutationFn: exportCloudAccounts,
   });
 }

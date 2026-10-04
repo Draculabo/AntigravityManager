@@ -31,6 +31,7 @@ export interface SwitchFlowOptions {
   launchContext?: LaunchContext;
   performSwitch: (pathOptions?: PathResolutionOptions) => Promise<void>;
   afterSwitchSuccess?: () => Promise<void>;
+  onFailure?: (reason: SwitchFailureReason) => void;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -112,6 +113,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
     launchContext,
     performSwitch,
     afterSwitchSuccess,
+    onFailure,
   } = options;
 
   let failureReason: SwitchFailureReason | null = null;
@@ -262,6 +264,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
         const message = getErrorMessage(error);
         failureReason = reason;
         recordSwitchFailure(scope, reason, message);
+        onFailure?.(reason);
         throw error;
       }
     },

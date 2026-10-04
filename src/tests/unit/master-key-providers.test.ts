@@ -39,7 +39,7 @@ describe('legacy master-key providers', () => {
     expect(after.equals(original)).toBe(true);
   });
 
-  it('never overwrites a conflicting V2 compatibility key', async () => {
+  it('reads an existing V2 file key without exposing a write operation', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-master-key-'));
     temporaryDirectories.push(directory);
     const keyPath = path.join(directory, 'master-key.v2.file');
@@ -47,10 +47,12 @@ describe('legacy master-key providers', () => {
     await fs.writeFile(keyPath, original, 'utf8');
     const provider = new FileMasterKeyProvider(keyPath);
 
-    await expect(provider.write(Buffer.from('22'.repeat(32), 'hex'))).rejects.toThrow(
-      'different master key',
-    );
-
+    expect(await provider.read()).toEqual({
+      status: 'available',
+      source: 'file',
+      key: Buffer.from(original, 'hex'),
+    });
+    expect('write' in provider).toBe(false);
     expect(await fs.readFile(keyPath, 'utf8')).toBe(original);
   });
 

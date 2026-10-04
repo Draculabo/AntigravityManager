@@ -41,7 +41,10 @@ function createReactScanPlugin(): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN || env.SENTRY_AUTH_TOKEN;
-  const shouldEnableSentry = mode === 'production' && Boolean(sentryAuthToken);
+  const shouldEnableSentry =
+    mode === 'production' &&
+    Boolean(sentryAuthToken) &&
+    process.env.AGM_DISABLE_SENTRY_UPLOAD !== '1';
   const shouldEnableReactScan =
     mode === 'development' &&
     (process.env[REACT_SCAN_ENABLED_ENV] ?? env[REACT_SCAN_ENABLED_ENV]) === '1';
@@ -51,6 +54,8 @@ export default defineConfig(({ mode }) => {
   clarityBuildEnv.NODE_ENV = clarityBuildEnv.NODE_ENV || mode;
 
   return {
+    // Keep the development listener reachable when IPv6 loopback is unavailable.
+    server: { host: '127.0.0.1' },
     plugins: [
       ...(shouldEnableSentry
         ? [

@@ -1,10 +1,11 @@
+import { readCloudAccountFileErrorCode } from '../services/cloud-account-file.schema';
 import {
   useCloudAccounts,
   useWeeklyWarmupConfig,
-  useCloudAccountSecurityStatus,
   useRefreshQuota,
   useDeleteCloudAccount,
-  useAddGoogleAccount,
+  useStartGoogleAuthFlow,
+  useSubmitGoogleAuthCode,
   useSwitchCloudAccount,
   useAutoSwitchEnabled,
   useSetAutoSwitchEnabled,
@@ -12,15 +13,15 @@ import {
   useSyncLocalAccount,
   useOAuthClients,
   useSetActiveOAuthClient,
-  startAuthFlow,
   useExportCloudAccounts,
   useImportCloudAccounts,
 } from '@/modules/cloud-account/hooks/useCloudAccounts';
 import { IdentityProfileDialog } from '@/modules/identity-profile/components/IdentityProfileDialog';
-import { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
+import { readIdeAccountSyncErrorCode } from '@/modules/cloud-account/services/ide-account-sync.schema';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { useToast } from '@/components/ui/use-toast';
-import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getLocalizedErrorMessage } from '@/shared/utils/errorMessages';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
@@ -30,7 +31,8 @@ import {
   type AccountSortKey,
 } from '@/modules/cloud-account/utils/quota-display';
 import { ACCOUNT_TIER_UNKNOWN_KEY } from '@/modules/cloud-account/utils/account-tier-filter';
-import { shouldAutoSubmitGoogleAuthCode } from '@/modules/cloud-account/utils/googleAuthSubmission';
+import { readDesktopOAuthLoginErrorCode } from '@/modules/cloud-account/services/desktop-oauth-login.schema';
+import { readCloudAccountSwitchErrorCode } from '@/modules/cloud-account/services/cloud-account-switch.schema';
 import { useCloudAccountListView } from '@/modules/cloud-account/hooks/useCloudAccountListView';
 import type { GridLayout } from '@/modules/cloud-account/components/CloudAccountList.constants';
 import { CloudAccountBatchActionBar } from '@/modules/cloud-account/components/CloudAccountBatchActionBar';
@@ -59,11 +61,11 @@ export function CloudAccountList() {
     errorUpdatedAt,
     refetch,
   } = useCloudAccounts(warmupConfig?.enabled ? 60_000 : false);
-  const { data: securityStatus } = useCloudAccountSecurityStatus();
   const { config, saveConfig } = useAppConfig();
   const refreshMutation = useRefreshQuota();
   const deleteMutation = useDeleteCloudAccount();
-  const addMutation = useAddGoogleAccount();
+  const loginMutation = useStartGoogleAuthFlow();
+  const submitCodeMutation = useSubmitGoogleAuthCode();
   const switchMutation = useSwitchCloudAccount();
   const syncMutation = useSyncLocalAccount();
 
@@ -75,7 +77,6 @@ export function CloudAccountList() {
 
   const { toast } = useToast();
   const lastLoadErrorToastAtRef = useRef<number>(0);
-  const lastSubmittedAuthCodeRef = useRef<string | null>(null);
 
   const gridLayout: GridLayout = (config?.grid_layout as GridLayout) || 'auto';
   const [quotaWindow, setQuotaWindow] = useState<QuotaWindow>(() =>
@@ -142,78 +143,14 @@ export function CloudAccountList() {
   const [overrideOAuthClientKey, setSelectedOAuthClientKey] = useState<string | null>(null);
   const selectedOAuthClientKey =
     overrideOAuthClientKey ?? oauthClients.find((client) => client.is_active)?.key ?? '';
-  const [identityAccount, setIdentityAccount] = useState<CloudAccount | null>(null);
+  const [identityAccount, setIdentityAccount] = useState<CloudAccountView | null>(null);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [importStrategy, setImportStrategy] = useState<'merge' | 'overwrite' | 'skip-existing'>(
     'merge',
   );
-  const [importFileContent, setImportFileContent] = useState<string | null>(null);
-  const [importFileName, setImportFileName] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const exportMutation = useExportCloudAccounts();
   const importMutation = useImportCloudAccounts();
-
-  const submitAuthCode = useCallback(
-    (incomingAuthCode?: string) => {
-      const codeToUse = incomingAuthCode || authCode;
-      if (!codeToUse) {
-        return;
-      }
-      lastSubmittedAuthCodeRef.current = codeToUse;
-      addMutation.mutate(
-        {
-          authCode: codeToUse,
-          oauthClientKey:
-            selectedOAuthClientKey || oauthClients.find((client) => client.is_active)?.key,
-        },
-        {
-          onSuccess: () => {
-            setIsAddDialogOpen(false);
-            setAuthCode('');
-            lastSubmittedAuthCodeRef.current = null;
-            toast({ title: t('cloud.toast.addSuccess') });
-          },
-          onError: (err) => {
-            toast({
-              title: t('cloud.toast.addFailed.title'),
-              description: getLocalizedErrorMessage(err, t),
-              variant: 'destructive',
-            });
-          },
-        },
-      );
-    },
-    [addMutation, authCode, oauthClients, selectedOAuthClientKey, t, toast],
-  );
-
-  // Listen for Google Auth Code
-  useEffect(() => {
-    if (window.electron?.onGoogleAuthCode) {
-      console.log('[OAuth] Registering Google auth code IPC listener');
-      const cleanup = window.electron.onGoogleAuthCode((code) => {
-        console.log('[OAuth] Received Google auth code via IPC:', code?.substring(0, 10) + '...');
-        lastSubmittedAuthCodeRef.current = null;
-        setAuthCode(code);
-      });
-      return cleanup;
-    }
-  }, []);
-
-  // Auto-submit when authCode is set and dialog is open
-  useEffect(() => {
-    if (
-      shouldAutoSubmitGoogleAuthCode({
-        authCode,
-        isAddDialogOpen,
-        isPending: addMutation.isPending,
-        lastSubmittedAuthCode: lastSubmittedAuthCodeRef.current,
-      })
-    ) {
-      console.log('[OAuth] Auto-submitting Google auth code');
-      submitAuthCode(authCode);
-    }
-  }, [addMutation.isPending, authCode, isAddDialogOpen, submitAuthCode]);
 
   // Batch Operations State
   const [rawSelectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -272,12 +209,14 @@ export function CloudAccountList() {
             title: t('cloud.toast.switched.title'),
             description: t('cloud.toast.switched.description'),
           }),
-        onError: (err) =>
+        onError: (err) => {
+          const switchCode = readCloudAccountSwitchErrorCode(err) ?? 'switch-failed';
           toast({
             title: t('cloud.toast.switchFailed'),
-            description: getLocalizedErrorMessage(err, t),
+            description: t(`cloud.toast.switchFailureCodes.${switchCode}`),
             variant: 'destructive',
-          }),
+          });
+        },
       },
     );
   };
@@ -338,7 +277,7 @@ export function CloudAccountList() {
     syncMutation.mutate(
       { appTarget },
       {
-        onSuccess: (acc: CloudAccount | null) => {
+        onSuccess: (acc: CloudAccountView | null) => {
           if (acc) {
             toast({
               title: t('cloud.toast.syncSuccess.title'),
@@ -353,9 +292,10 @@ export function CloudAccountList() {
           }
         },
         onError: (err) => {
+          const syncCode = readIdeAccountSyncErrorCode(err) ?? 'sync-failed';
           toast({
             title: t('cloud.toast.syncFailed.title'),
-            description: getLocalizedErrorMessage(err, t),
+            description: t(`cloud.toast.syncFailed.codes.${syncCode}`),
             variant: 'destructive',
           });
         },
@@ -364,125 +304,97 @@ export function CloudAccountList() {
   };
 
   const openGoogleAuthSignIn = async () => {
-    try {
-      lastSubmittedAuthCodeRef.current = null;
-      const effectiveClientKey =
-        selectedOAuthClientKey || oauthClients.find((client) => client.is_active)?.key;
-      await startAuthFlow(
-        effectiveClientKey
-          ? {
-              oauthClientKey: effectiveClientKey,
-            }
-          : undefined,
-      );
-    } catch (e) {
-      toast({
-        title: t('cloud.toast.startAuthFailed'),
-        description: String(e),
-        variant: 'destructive',
-      });
-    }
+    setAuthCode('');
+    const effectiveClientKey =
+      selectedOAuthClientKey || oauthClients.find((client) => client.is_active)?.key;
+    loginMutation.mutate(effectiveClientKey ? { oauthClientKey: effectiveClientKey } : undefined, {
+      onSuccess: () => {
+        setIsAddDialogOpen(false);
+        setAuthCode('');
+        toast({ title: t('cloud.toast.addSuccess') });
+      },
+      onError: (error) => {
+        const loginCode = readDesktopOAuthLoginErrorCode(error) ?? 'login-failed';
+        toast({
+          title: t('cloud.toast.addFailed.title'),
+          description: t(`cloud.toast.addFailed.codes.${loginCode}`),
+          variant: 'destructive',
+        });
+      },
+    });
   };
 
+  const submitManualAuthCode = () => {
+    const code = authCode.trim();
+    if (!code || !loginMutation.isPending) {
+      return;
+    }
+    submitCodeMutation.mutate(
+      { code },
+      {
+        onSuccess: () => setAuthCode(''),
+        onError: (error) => {
+          const loginCode = readDesktopOAuthLoginErrorCode(error) ?? 'login-failed';
+          toast({
+            title: t('cloud.toast.addFailed.title'),
+            description: t(`cloud.toast.addFailed.codes.${loginCode}`),
+            variant: 'destructive',
+          });
+        },
+      },
+    );
+  };
+
+  const fileErrorMessage = (error: unknown) =>
+    t(`cloud.exportImport.file-errors.${readCloudAccountFileErrorCode(error) ?? 'import-failed'}`);
+
   const handleExport = async (stripTokens: boolean) => {
-    let url: string | null = null;
     try {
-      const jsonContent: string = await exportMutation.mutateAsync({ stripTokens });
-      const blob = new Blob([jsonContent], { type: 'application/json' });
-      url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `cloud-accounts-export-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const result = await exportMutation.mutateAsync({ stripTokens });
+      if (result.status === 'cancelled') {
+        return;
+      }
       setIsExportDialogOpen(false);
       toast({ title: t('cloud.exportImport.exportSuccess') });
     } catch (error) {
       toast({
         title: t('cloud.error.loadFailed'),
-        description: getLocalizedErrorMessage(error, t),
+        description: fileErrorMessage(error),
         variant: 'destructive',
       });
-    } finally {
-      if (url) {
-        URL.revokeObjectURL(url);
-      }
-    }
-  };
-
-  const handleImportFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: t('cloud.error.loadFailed'),
-        description: t('cloud.exportImport.fileTooLarge'),
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setImportFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        JSON.parse(content);
-        setImportFileContent(content);
-      } catch {
-        toast({
-          title: t('cloud.error.loadFailed'),
-          description: t('cloud.exportImport.invalidJson'),
-          variant: 'destructive',
-        });
-        setImportFileName('');
-        setImportFileContent(null);
-      }
-    };
-    reader.onerror = () => {
-      toast({
-        title: t('cloud.error.loadFailed'),
-        description: t('cloud.exportImport.readFileFailed'),
-        variant: 'destructive',
-      });
-    };
-    reader.readAsText(file);
-    if (e.target) {
-      e.target.value = '';
     }
   };
 
   const handleImport = () => {
-    if (!importFileContent) return;
     importMutation.mutate(
-      { jsonContent: importFileContent, strategy: importStrategy },
+      { strategy: importStrategy },
       {
         onSuccess: (result) => {
+          if (result.status === 'cancelled') {
+            return;
+          }
           setIsImportDialogOpen(false);
-          setImportFileContent(null);
-          setImportFileName('');
           setImportStrategy('merge');
-          toast({
-            title: t('cloud.exportImport.importSuccess', {
-              imported: result.imported,
-              updated: result.updated,
-              skipped: result.skipped,
-            }),
-          });
-          if (result.errors.length > 0) {
+          toast({ title: t('cloud.exportImport.importSuccess', result) });
+          if (result.failed > 0) {
             toast({
-              title: t('cloud.exportImport.importErrors', { count: result.errors.length }),
-              description: result.errors.slice(0, 3).join('\n'),
+              title: t('cloud.exportImport.importErrors', { count: result.failed }),
+              description: result.errors
+                .slice(0, 3)
+                .map((error) =>
+                  [error.email, t(`cloud.exportImport.file-errors.${error.code}`)]
+                    .filter(Boolean)
+                    .join(': '),
+                )
+                .join('\n'),
               variant: 'destructive',
             });
           }
         },
-        onError: (err) => {
+        onError: (error) => {
           toast({
             title: t('cloud.error.loadFailed'),
-            description: getLocalizedErrorMessage(err, t),
+            description: fileErrorMessage(error),
             variant: 'destructive',
           });
         },
@@ -620,8 +532,6 @@ export function CloudAccountList() {
   const handleImportDialogOpenChange = (open: boolean) => {
     setIsImportDialogOpen(open);
     if (!open) {
-      setImportFileContent(null);
-      setImportFileName('');
       setImportStrategy('merge');
     }
   };
@@ -630,7 +540,6 @@ export function CloudAccountList() {
     setIsAddDialogOpen(open);
     if (!open) {
       setAuthCode('');
-      lastSubmittedAuthCodeRef.current = null;
     }
   };
 
@@ -683,14 +592,6 @@ export function CloudAccountList() {
 
   return (
     <div className="space-y-5 pb-20">
-      {securityStatus?.state === 'degraded' ? (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-          <div className="text-sm font-medium">{t('cloud.security.compatibilityMode.title')}</div>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {t('cloud.security.compatibilityMode.description')}
-          </p>
-        </div>
-      ) : null}
       <CloudAccountListSummary
         totalAccounts={totalAccounts}
         activeAccounts={activeAccounts}
@@ -712,16 +613,14 @@ export function CloudAccountList() {
         isAddDialogOpen={isAddDialogOpen}
         isExportPending={exportMutation.isPending}
         isImportPending={importMutation.isPending}
-        isAddPending={addMutation.isPending}
+        isAddPending={loginMutation.isPending}
+        isCodeSubmitting={submitCodeMutation.isPending}
+        authCode={authCode}
         isOAuthClientsLoading={isOAuthClientsLoading}
         isSetActiveOAuthClientPending={setActiveOAuthClientMutation.isPending}
         importStrategy={importStrategy}
-        importFileContent={importFileContent}
-        importFileName={importFileName}
-        authCode={authCode}
         selectedOAuthClientKey={selectedOAuthClientKey}
         oauthClients={oauthClients}
-        fileInputRef={fileInputRef}
         tierOptions={tierOptions}
         effectiveSelectedTierKeySet={effectiveSelectedTierKeySet}
         hasActiveTierFilter={hasActiveTierFilter}
@@ -740,7 +639,6 @@ export function CloudAccountList() {
         onExport={(stripTokens) => {
           handleExport(stripTokens);
         }}
-        onImportFileSelect={handleImportFileSelect}
         onImportStrategyChange={setImportStrategy}
         onImport={handleImport}
         onOAuthClientChange={handleOAuthClientChange}
@@ -748,9 +646,7 @@ export function CloudAccountList() {
           openGoogleAuthSignIn();
         }}
         onAuthCodeChange={setAuthCode}
-        onSubmitAuthCode={() => {
-          submitAuthCode();
-        }}
+        onSubmitAuthCode={submitManualAuthCode}
         onResetTierFilter={() => {
           resetTierFilter();
         }}

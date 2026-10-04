@@ -7,6 +7,7 @@ interface BuildElectronUpdaterNotificationInput {
   platform: ManualUpdatePlatform;
   version: string;
   releaseName?: string | null;
+  downloadPercent?: number;
 }
 
 export function buildElectronUpdaterNotification({
@@ -14,6 +15,7 @@ export function buildElectronUpdaterNotification({
   platform,
   version,
   releaseName,
+  downloadPercent,
 }: BuildElectronUpdaterNotificationInput): ManualUpdateInfo {
   const tagName = version.startsWith('v') ? version : `v${version}`;
 
@@ -25,5 +27,6 @@ export function buildElectronUpdaterNotification({
     platform,
     source: 'electron-updater',
     state,
+    ...(downloadPercent === undefined ? {} : { downloadPercent }),
   };
 }

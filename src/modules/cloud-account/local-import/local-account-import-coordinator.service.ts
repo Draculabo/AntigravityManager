@@ -154,6 +154,35 @@ export class LocalAccountImportCoordinatorService {
   private readonly maxTerminalSessions: number;
   private readonly activeSessions = new Map<string, ActiveSession>();
   private readonly terminalSessions = new Map<string, TerminalSession>();
+  private accepting = true;
+  private generation = 0;
+  private readonly inFlight = new Set<Promise<unknown>>();
+
+  /** A new owner opens admission before exposing management or renderer requests. */
+  openAdmission(): void {
+    this.accepting = true;
+  }
+
+  closeAdmission(): void {
+    this.accepting = false;
+    this.generation += 1;
+    this.activeSessions.clear();
+    this.terminalSessions.clear();
+  }
+
+  async drain(): Promise<void> {
+    await Promise.allSettled(Array.from(this.inFlight));
+  }
+
+  private async track<T>(work: () => Promise<T>): Promise<T> {
+    const task = work();
+    this.inFlight.add(task);
+    try {
+      return await task;
+    } finally {
+      this.inFlight.delete(task);
+    }
+  }
 
   constructor(options: LocalAccountImportCoordinatorOptions = {}) {
     this.dependencies = options.dependencies ?? createDefaultDependencies();
@@ -169,9 +198,20 @@ export class LocalAccountImportCoordinatorService {
   }
 
   async preview(): Promise<LocalAccountImportPreview> {
+    return this.track(() => this.preparePreview());
+  }
+
+  private async preparePreview(): Promise<LocalAccountImportPreview> {
+    const generation = this.generation;
     try {
+      if (!this.accepting) {
+        throw new LocalAccountImportCoordinatorError('preview-failed');
+      }
       const discoverySession = await this.dependencies.discover();
       const validationSession = await this.dependencies.validate(discoverySession);
+      if (!this.accepting || generation !== this.generation) {
+        throw new LocalAccountImportCoordinatorError('preview-failed');
+      }
       const now = this.dependencies.now();
       this.cleanup(now);
       this.evictOldestSessions(now);
@@ -188,6 +228,13 @@ export class LocalAccountImportCoordinatorService {
   }
 
   async confirm(sessionId: string): Promise<LocalAccountImportResult> {
+    return this.track(() => this.confirmSession(sessionId));
+  }
+
+  private async confirmSession(sessionId: string): Promise<LocalAccountImportResult> {
+    if (!this.accepting) {
+      throw new LocalAccountImportCoordinatorError('session-not-found');
+    }
     const now = this.dependencies.now();
     this.cleanup(now);
     const activeSession = this.activeSessions.get(sessionId);
@@ -218,6 +265,9 @@ export class LocalAccountImportCoordinatorService {
   }
 
   discard(sessionId: string): { discarded: boolean } {
+    if (!this.accepting) {
+      return { discarded: false };
+    }
     const now = this.dependencies.now();
     this.cleanup(now);
     if (!this.activeSessions.delete(sessionId)) {

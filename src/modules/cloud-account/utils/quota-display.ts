@@ -124,7 +124,7 @@ export function formatResetTimeTitle(
 }
 
 function getVisibleModelEntries(
-  account: CloudAccount,
+  account: Pick<CloudAccount, 'quota'>,
   modelVisibility: Record<string, boolean>,
 ): Array<[string, NonNullable<CloudAccount['quota']>['models'][string]]> {
   if (!account.quota?.models) return [];
@@ -142,13 +142,15 @@ function getAveragePercentage(
 }
 
 export function getQuotaGroupBucketPercentages(
-  account: CloudAccount,
+  account: Pick<CloudAccount, 'quota'>,
   matchTokens?: readonly string[],
 ): number[] {
   return collectQuotaGroupBucketPercentages(account.quota?.quota_groups, matchTokens);
 }
 
-export function getLowestEffectiveQuotaPercentage(account: CloudAccount): number | null {
+export function getLowestEffectiveQuotaPercentage(
+  account: Pick<CloudAccount, 'quota'>,
+): number | null {
   const modelPercentages = Object.values(account.quota?.models ?? {}).map(
     (model) => model.percentage,
   );
@@ -162,7 +164,7 @@ function modelMatchesText(modelName: string, displayName: string | undefined, pa
 }
 
 export function getAccountSortValue(
-  account: CloudAccount,
+  account: Pick<CloudAccount, 'quota'>,
   sortKey: AccountSortKey,
   modelVisibility: Record<string, boolean> = {},
 ): number {

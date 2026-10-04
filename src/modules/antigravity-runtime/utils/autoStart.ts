@@ -112,8 +112,8 @@ function syncLinuxAutoStart(enabled: boolean) {
   logger.info('AutoStart: Created Linux autostart entry');
 }
 
-export function syncAutoStart(config: AppConfig) {
-  const enabled = Boolean(config.auto_startup);
+export function syncAutoStart(config: Pick<AppConfig, 'auto_startup'>) {
+  const enabled = config.auto_startup;
 
   if (process.platform === 'win32' || process.platform === 'darwin') {
     syncWindowsOrMacAutoStart(enabled);

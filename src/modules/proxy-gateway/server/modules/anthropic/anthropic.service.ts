@@ -1,7 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { isEmpty, isString } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import {
+  GeminiClient,
+  type InternalGenerationOptions,
+} from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { Observable, type Subscriber, type Subscription } from 'rxjs';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
@@ -391,6 +394,8 @@ export class AnthropicService extends BaseProxyService {
             params.accessToken,
             params.upstreamProxyUrl,
             params.extraHeaders,
+            undefined,
+            { thoughtReplay: mode === 'normal' ? 'restore' : 'skip' },
           ),
         };
       }
@@ -402,6 +407,7 @@ export class AnthropicService extends BaseProxyService {
           params.accessToken,
           params.upstreamProxyUrl,
           params.extraHeaders,
+          { thoughtReplay: mode === 'normal' ? 'restore' : 'skip' },
         ),
       };
     };
@@ -446,6 +452,7 @@ export class AnthropicService extends BaseProxyService {
     accessToken: string,
     upstreamProxyUrl?: string,
     extraHeaders?: Record<string, string>,
+    options?: InternalGenerationOptions,
   ): Promise<GeminiResponse> {
     try {
       return await this.generateInternalWithStreamFallback(
@@ -453,6 +460,8 @@ export class AnthropicService extends BaseProxyService {
         accessToken,
         upstreamProxyUrl,
         extraHeaders,
+        undefined,
+        options,
       );
     } catch (error) {
       if (!(error instanceof Error) || error.message !== 'Empty response stream') {

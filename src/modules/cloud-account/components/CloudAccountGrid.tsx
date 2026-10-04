@@ -10,12 +10,12 @@ import {
   type GridLayout,
 } from '@/modules/cloud-account/components/CloudAccountList.constants';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
-import type { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 import type { ManualAccountRecommendation } from '@/modules/cloud-account/utils/manual-account-recommendation';
 
 interface CloudAccountGridProps {
-  accounts: CloudAccount[];
+  accounts: CloudAccountView[];
   sourceAccountCount: number;
   gridLayout: GridLayout;
   quotaWindow: QuotaWindow;

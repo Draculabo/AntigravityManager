@@ -18,11 +18,6 @@ const electronBridge = {
   getObservabilityConfig: () => {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_OBSERVABILITY_CONFIG);
   },
-  onGoogleAuthCode: (callback: (code: string) => void) => {
-    const handler = (_event: IpcRendererEvent, code: string) => callback(code);
-    ipcRenderer.on('GOOGLE_AUTH_CODE', handler);
-    return () => ipcRenderer.off('GOOGLE_AUTH_CODE', handler);
-  },
   changeLanguage: (lang: string) => {
     ipcRenderer.send(IPC_CHANNELS.CHANGE_LANGUAGE, lang);
   },

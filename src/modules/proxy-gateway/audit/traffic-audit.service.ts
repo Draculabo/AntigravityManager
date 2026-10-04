@@ -9,6 +9,7 @@ import { getProxyStateDir } from '@/shared/platform/paths';
 import { preserveCorruptSqliteDatabase } from '@/shared/persistence/database/preserve-corrupt-sqlite';
 import { BoundedSqliteWorker } from '@/shared/persistence/sqlite-worker/bounded-sqlite-worker';
 import { logger } from '@/shared/logging/logger';
+import { DiagnosticStoreShutdown } from '../diagnostics/store-shutdown';
 import {
   MAX_AUDIT_BODY_BYTES,
   sanitizeAuditHeaders,
@@ -41,6 +42,9 @@ import {
 } from './traffic-audit.types';
 import type { TrafficClass } from './traffic-classifier';
 import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
+import { createPreparedAuditPayloadWriter } from './prepared-audit-payload';
+import { extractAuditModel, serializeAuditError } from './audit-parent-metadata';
+import type { IncrementalAuditPayloadKind } from './incremental-audit-serializer';
 
 const TRAFFIC_AUDIT_FILENAME = 'request-audit.db';
 const MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
@@ -80,6 +84,7 @@ interface PendingDropStats {
 }
 
 export class TrafficAuditService {
+  private readonly terminal = new DiagnosticStoreShutdown();
   private worker: BoundedSqliteWorker | null = null;
   private queueConfigKey = '';
   private readonly pendingDropStats = new Map<TrafficClass, PendingDropStats>();
@@ -95,7 +100,7 @@ export class TrafficAuditService {
   }
 
   public isEnabled(): boolean {
-    return this.getConfig().enabled;
+    return this.terminal.acceptsWork() && this.getConfig().enabled;
   }
 
   public startParent(input: StartAuditParentInput): AuditHandle | null {
@@ -111,7 +116,7 @@ export class TrafficAuditService {
         clientIp: input.clientIp ?? null,
         id: handle.id,
         method: input.method,
-        model: input.model ?? extractModel(input.requestBody),
+        model: input.model ?? extractAuditModel(input.requestBody),
         operation: input.operation ?? null,
         protocol: input.protocol,
         requestHeaders: JSON.stringify(sanitizeAuditHeaders(input.headers)),
@@ -133,19 +138,40 @@ export class TrafficAuditService {
       timestamp: startedAt,
       trafficClass: handle.trafficClass,
     });
-    this.capturePayload({
-      direction: 'request',
-      ownerId: handle.id,
-      ownerKind: 'parent',
-      parentId: handle.id,
-      trafficClass: handle.trafficClass,
-      value: input.requestBody,
-    });
+    if (!input.requestPayloadHandled) {
+      this.capturePayload({
+        direction: 'request',
+        ownerId: handle.id,
+        ownerKind: 'parent',
+        parentId: handle.id,
+        trafficClass: handle.trafficClass,
+        value: input.requestBody,
+      });
+    }
     return handle;
   }
 
+  public beginPreparedParentPayload(
+    parent: AuditHandle,
+    direction: 'request' | 'response',
+    kind: IncrementalAuditPayloadKind,
+  ) {
+    this.terminal.requireAdmission();
+    return createPreparedAuditPayloadWriter(
+      parent,
+      direction,
+      kind,
+      async (command) =>
+        (await this.tryWriteAcknowledged(
+          command.operation,
+          command.payload,
+          parent.trafficClass,
+        )) ?? false,
+    );
+  }
+
   public completeParent(handle: AuditHandle | null, input: CompleteAuditParentInput): void {
-    if (!handle) {
+    if (!handle || !this.terminal.acceptsWork()) {
       return;
     }
     const completedAt = Date.now();
@@ -155,7 +181,8 @@ export class TrafficAuditService {
         cachedTokens: input.usage?.cachedTokens ?? null,
         completedAt,
         durationMs: Math.max(0, completedAt - handle.startedAt),
-        error: serializeError(input.error),
+        error:
+          input.errorSummary === undefined ? serializeAuditError(input.error) : input.errorSummary,
         id: handle.id,
         hasImageOutput: input.outputModalities?.hasImage ?? null,
         hasTextOutput: input.outputModalities?.hasText ?? null,
@@ -220,7 +247,7 @@ export class TrafficAuditService {
         attemptIndex,
         endpoint: sanitizeAuditUrl(input.endpoint),
         id: handle.id,
-        model: input.model ?? extractModel(input.requestBody),
+        model: input.model ?? extractAuditModel(input.requestBody),
         operation: input.operation,
         parentId: parent.id,
         requestHeaders: JSON.stringify(sanitizeAuditHeaders(input.headers)),
@@ -252,7 +279,7 @@ export class TrafficAuditService {
     handle: UpstreamAttemptHandle | null,
     input: CompleteUpstreamAttemptInput,
   ): void {
-    if (!handle) {
+    if (!handle || !this.terminal.acceptsWork()) {
       return;
     }
     const completedAt = Date.now();
@@ -261,7 +288,7 @@ export class TrafficAuditService {
       {
         completedAt,
         durationMs: Math.max(0, completedAt - handle.startedAt),
-        error: serializeError(input.error),
+        error: serializeAuditError(input.error),
         id: handle.id,
         outcome: input.outcome,
         responseHeaders: input.responseHeaders
@@ -407,6 +434,7 @@ export class TrafficAuditService {
   }
 
   public async configure(config: TrafficAuditConfig): Promise<void> {
+    this.terminal.requireAdmission();
     const nextKey = `${config.max_queue_records}:${config.max_queue_mib}`;
     if (this.worker && nextKey !== this.queueConfigKey) {
       const old = this.worker;
@@ -418,6 +446,7 @@ export class TrafficAuditService {
   }
 
   public async repair(): Promise<DatabaseRepairResult> {
+    this.terminal.requireAdmission();
     if (this.repairInProgress) {
       return this.repairInProgress;
     }
@@ -441,7 +470,32 @@ export class TrafficAuditService {
     affectedCount: number | null = null,
     error: unknown = null,
   ): void {
+    if (!this.terminal.acceptsWork()) {
+      return;
+    }
     this.recordAdminEvent(operation, affectedCount, error);
+  }
+
+  public shutdown(): Promise<void> {
+    if (this.maintenanceTimer) {
+      clearInterval(this.maintenanceTimer);
+      this.maintenanceTimer = null;
+    }
+    return this.terminal.run(
+      async () => {
+        await this.repairInProgress;
+        await Promise.all([...this.activePayloadWrites]);
+      },
+      async () => {
+        const worker = this.worker;
+        this.worker = null;
+        try {
+          await worker?.close();
+        } finally {
+          this.eventListeners.clear();
+        }
+      },
+    );
   }
 
   public async close(): Promise<void> {
@@ -508,6 +562,9 @@ export class TrafficAuditService {
     parentId: string;
     trafficClass: TrafficClass;
   }): AuditSseBodyWriter | null {
+    if (!this.terminal.acceptsWork()) {
+      return null;
+    }
     const id = randomUUID();
     if (
       !this.tryWrite(
@@ -577,7 +634,7 @@ export class TrafficAuditService {
         }
       },
       write: (chunk) => {
-        if (finished) {
+        if (finished || !this.terminal.acceptsWork()) {
           return false;
         }
         const bytes = Buffer.from(chunk, 'utf8');
@@ -750,6 +807,9 @@ export class TrafficAuditService {
   }
 
   private ensureWorker(): BoundedSqliteWorker {
+    this.terminal.requireWorker(
+      (this.worker?.getStats().alive ?? false) || this.repairInProgress !== null,
+    );
     if (this.worker?.getStats().alive) {
       return this.worker;
     }
@@ -771,14 +831,16 @@ export class TrafficAuditService {
     });
     this.worker.start();
     this.scheduleMaintenance();
-    this.request('maintenance', toRetentionConfig(config)).catch((error) => {
-      logger.warn('Traffic audit startup maintenance failed', error);
-    });
+    if (this.terminal.acceptsWork()) {
+      this.request('maintenance', toRetentionConfig(config)).catch((error) => {
+        logger.warn('Traffic audit startup maintenance failed', error);
+      });
+    }
     return this.worker;
   }
 
   private scheduleMaintenance(): void {
-    if (this.maintenanceTimer) {
+    if (this.maintenanceTimer || !this.terminal.acceptsWork()) {
       return;
     }
     this.maintenanceTimer = setInterval(() => {
@@ -824,6 +886,7 @@ export class TrafficAuditService {
     operation: TOperation,
     payload: Extract<TrafficAuditWorkerCommand, { operation: TOperation }>['payload'],
   ): Promise<TResult> {
+    this.terminal.requireAdmission();
     if (this.repairInProgress) {
       await this.repairInProgress;
     }
@@ -903,7 +966,7 @@ export class TrafficAuditService {
     const timestamp = Date.now();
     const accepted = this.tryWrite('adminEvent', {
       affectedCount,
-      error: serializeError(error),
+      error: serializeAuditError(error),
       operation,
       outcome: error ? 'internal_error' : 'completed',
       timestamp,
@@ -962,31 +1025,6 @@ function serializeQuery(query: Record<string, unknown> | string | undefined): st
     return sanitizeAuditUrl(`/?${query}`).slice(2);
   }
   return snapshotAuditPayload(query, 1024 * 1024).text;
-}
-
-function serializeError(error: unknown): string | null {
-  if (error === undefined || error === null) {
-    return null;
-  }
-  if (error instanceof Error) {
-    return snapshotAuditPayload({ message: error.message, name: error.name, stack: error.stack })
-      .text;
-  }
-  return snapshotAuditPayload(error).text;
-}
-
-function extractModel(body: unknown): string | null {
-  if (!body || typeof body !== 'object') {
-    return null;
-  }
-  const model = Reflect.get(body, 'model');
-  if (typeof model === 'string') {
-    return model;
-  }
-  const nested = Reflect.get(body, 'request');
-  return nested && typeof nested === 'object' && typeof Reflect.get(nested, 'model') === 'string'
-    ? String(Reflect.get(nested, 'model'))
-    : null;
 }
 
 function sha256Hex(value: string): string {

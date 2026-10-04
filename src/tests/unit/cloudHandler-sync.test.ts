@@ -7,7 +7,10 @@ import {
   IdeAccountImportAdapter,
 } from '@/modules/cloud-account/persistence/ide-account-import-adapter';
 import type { UserInfo } from '@/modules/cloud-account/services/GoogleAPIService';
-import { toSyncLocalAccountORPCError } from '@/modules/cloud-account/ipc/router';
+import { toSyncLocalAccountORPCError } from '@/modules/cloud-account/services/ide-account-sync-error';
+vi.mock('@/modules/cloud-account/local-import/local-account-post-import.service', () => ({
+  localAccountPostImportService: { schedule: vi.fn() },
+}));
 vi.mock('@/modules/identity-profile/ipc/handler', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/modules/identity-profile/ipc/handler')>();
   return {
@@ -121,7 +124,8 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
     });
     vi.spyOn(CloudAccountRepo, 'getAccounts').mockResolvedValue([]);
     const persist = vi.spyOn(CloudAccountRepo, 'addAccount').mockResolvedValue();
-    const { importCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
+    const { importCloudAccounts } =
+      await import('@/modules/cloud-account/services/cloud-account-file-policy.service');
     await expect(
       importCloudAccounts(
         JSON.stringify({
@@ -644,7 +648,8 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
       await import('@/modules/cloud-account/persistence/cloudHandler');
     vi.spyOn(RepoWithMock, 'getAccounts').mockResolvedValue([account]);
 
-    const { exportCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
+    const { exportCloudAccounts } =
+      await import('@/modules/cloud-account/services/cloud-account-file-policy.service');
 
     const exported = JSON.parse(await exportCloudAccounts(true)) as {
       accounts: Array<{ token?: unknown; email: string }>;
@@ -688,7 +693,8 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
     vi.spyOn(RepoWithMock, 'getAccounts').mockResolvedValue([existingAccount]);
     const addAccountSpy = vi.spyOn(RepoWithMock, 'addAccount').mockResolvedValue();
 
-    const { importCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
+    const { importCloudAccounts } =
+      await import('@/modules/cloud-account/services/cloud-account-file-policy.service');
 
     const result = await importCloudAccounts(
       JSON.stringify({
@@ -711,9 +717,7 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
 
     expect(result.updated).toBe(1);
     expect(result.imported).toBe(0);
-    expect(result.errors).toEqual([
-      'Failed to import new@example.com: export file does not include tokens',
-    ]);
+    expect(result.errors).toEqual([{ email: 'new@example.com', code: 'tokens-missing' }]);
     expect(addAccountSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         email: 'existing@example.com',
@@ -767,7 +771,8 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
     const clearFailureStateSpy = vi
       .spyOn(RefreshServiceWithMock, 'clearFailureState')
       .mockResolvedValue();
-    const { importCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
+    const { importCloudAccounts } =
+      await import('@/modules/cloud-account/services/cloud-account-file-policy.service');
 
     const result = await importCloudAccounts(
       JSON.stringify({
@@ -837,7 +842,7 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
       .spyOn(RefreshServiceWithMock, 'clearFailureState')
       .mockResolvedValue();
     const { exportCloudAccounts, importCloudAccounts } =
-      await import('@/modules/cloud-account/ipc/handler');
+      await import('@/modules/cloud-account/services/cloud-account-file-policy.service');
 
     const exported = await exportCloudAccounts(false);
     expect(JSON.parse(exported).accounts[0]).not.toHaveProperty('health');
@@ -883,8 +888,9 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
     const { CloudAccountRefreshService: RefreshServiceWithMock } =
       await import('@/modules/cloud-account/services/CloudAccountRefreshService');
     vi.spyOn(RefreshServiceWithMock, 'refreshAccessToken').mockRejectedValue(refreshError);
-    const { formatSwitchRefreshError, refreshAccountQuota } =
-      await import('@/modules/cloud-account/ipc/handler');
+    const { formatSwitchRefreshError } =
+      await import('@/modules/cloud-account/services/cloud-account-switch.service');
+    const { refreshAccountQuota } = await import('@/modules/cloud-account/ipc/handler');
 
     await expect(refreshAccountQuota('first-strike-id')).rejects.toBe(refreshError);
     expect(statusSpy).not.toHaveBeenCalledWith('first-strike-id', 'expired', expect.anything());
@@ -921,8 +927,9 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
     } = await import('@/modules/cloud-account/services/CloudAccountRefreshService');
     const refreshError = new CloudAccountRefreshBlockedError('blocked-id');
     vi.spyOn(RefreshServiceWithMock, 'refreshAccessToken').mockRejectedValue(refreshError);
-    const { formatSwitchRefreshError, refreshAccountQuota } =
-      await import('@/modules/cloud-account/ipc/handler');
+    const { formatSwitchRefreshError } =
+      await import('@/modules/cloud-account/services/cloud-account-switch.service');
+    const { refreshAccountQuota } = await import('@/modules/cloud-account/ipc/handler');
 
     await expect(refreshAccountQuota('blocked-id')).rejects.toMatchObject({
       code: 'CLOUD_ACCOUNT_LOGIN_EXPIRED',
@@ -964,7 +971,7 @@ describe('syncLocalAccount ORPC error mapping', () => {
 
     expect(error.code).toBe('UNAUTHORIZED');
     expect(error.status).toBe(401);
-    expect(error.message).toContain('Please re-login in Antigravity IDE');
+    expect(error.data).toEqual({ syncCode: 'reauth-required' });
   });
 });
 
@@ -1111,8 +1118,11 @@ describe('cloud switch fail-fast path', () => {
       },
     }));
 
-    const { switchCloudAccount } = await import('@/modules/cloud-account/ipc/handler');
-    await expect(switchCloudAccount('acc-1')).rejects.toThrow('Switch failed: inject_failed');
+    const { switchCloudAccountCore: switchCloudAccount } =
+      await import('@/modules/cloud-account/services/cloud-account-switch.service');
+    await expect(switchCloudAccount('acc-1')).rejects.toMatchObject({
+      switchCode: 'target-write-failed',
+    });
 
     expect(refreshAccessTokenMock).toHaveBeenCalledWith('refresh', undefined, undefined);
     expect(refreshAntigravityProcessCacheMock).not.toHaveBeenCalled();
@@ -1247,8 +1257,9 @@ describe('cloud oauth client key backfill', () => {
     }));
     vi.doMock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 
-    const { listCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
-    const listedAccounts = await listCloudAccounts();
+    const { cloudAccountListService } =
+      await import('@/modules/cloud-account/services/cloud-account-list.service');
+    const listedAccounts = await cloudAccountListService.listViews();
 
     expect(listedAccounts.find((account) => account.id === 'acc-1')?.is_active_classic).toBe(false);
     expect(listedAccounts.find((account) => account.id === 'acc-2')?.is_active_classic).toBe(true);
@@ -1367,8 +1378,9 @@ describe('cloud oauth client key backfill', () => {
     }));
     vi.doMock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 
-    const { listCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
-    const listedAccounts = await listCloudAccounts();
+    const { cloudAccountListService } =
+      await import('@/modules/cloud-account/services/cloud-account-list.service');
+    const listedAccounts = await cloudAccountListService.listViews();
 
     expect(listedAccounts.find((account) => account.id === 'acc-1')?.is_active_classic).toBe(false);
     expect(listedAccounts.find((account) => account.id === 'acc-2')?.is_active_classic).toBe(true);
@@ -1466,8 +1478,9 @@ describe('cloud oauth client key backfill', () => {
     }));
     vi.doMock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 
-    const { listCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
-    await listCloudAccounts();
+    const { cloudAccountListService } =
+      await import('@/modules/cloud-account/services/cloud-account-list.service');
+    await cloudAccountListService.listViews();
 
     expect(setActiveOAuthClientKeyMock).toHaveBeenCalledWith('custom_a');
     expect(updateTokenMock).toHaveBeenCalledWith(
@@ -1569,8 +1582,9 @@ describe('cloud oauth client key backfill', () => {
     }));
     vi.doMock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 
-    const { listCloudAccounts } = await import('@/modules/cloud-account/ipc/handler');
-    await listCloudAccounts();
+    const { cloudAccountListService } =
+      await import('@/modules/cloud-account/services/cloud-account-list.service');
+    await cloudAccountListService.listViews();
 
     expect(updateTokenMock).not.toHaveBeenCalled();
     expect(setSettingMock).toHaveBeenCalledWith('oauth_client_key_backfill_v1_done', true);

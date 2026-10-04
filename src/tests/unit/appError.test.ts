@@ -117,4 +117,19 @@ describe('AppError', () => {
     });
     expect(publicError.data).not.toHaveProperty('untrustedData');
   });
+
+  it('uses plain language for invalid settings without exposing internal details', () => {
+    const error = new ORPCError('BAD_REQUEST', {
+      message: 'Internal configuration owner error',
+      data: { configCode: 'invalid-input' },
+    });
+    const publicError = toPublicORPCError(error, '["config","service","update"]');
+
+    expect(publicError.code).toBe('BAD_REQUEST');
+    expect(publicError.message).toBe(
+      'Unable to complete that action. Check the details and try again.',
+    );
+    expect(publicError.data).toMatchObject({ configCode: 'invalid-input' });
+    expect(publicError.message).not.toContain('owner');
+  });
 });

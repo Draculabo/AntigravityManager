@@ -49,6 +49,7 @@ describe('Forge package ignore policy', () => {
   });
 
   it('blocks workspace-only folders from entering app.asar', () => {
+    expect(shouldIgnorePackagePath('/dist/.runtime/win32-x64/standalone/node/node.exe')).toBe(true);
     expect(shouldIgnorePackagePath('/.codex/skills/example/SKILL.md')).toBe(true);
     expect(shouldIgnorePackagePath('/.agents/skills/example/SKILL.md')).toBe(true);
     expect(shouldIgnorePackagePath('/playwright-report/index.html')).toBe(true);

@@ -253,15 +253,65 @@ describe('WeeklyWarmupService.run', () => {
     expect(warmup).toHaveBeenCalledTimes(1);
   });
 
-  it('cancels the remaining queue when the user disables warmup', async () => {
+  it('does not record a warmup that is disabled while its request is in flight', async () => {
     const warmup = vi.fn(async () => {
       WeeklyWarmupService.setConfig({ enabled: false, groups: ['gemini'] });
     });
     const accounts = [makeAccount('a', 'Gemini', 'weekly'), makeAccount('b', 'Gemini', 'weekly')];
     expect(
       await WeeklyWarmupService.run(accounts, { warmup }, { now: RESET_TIMESTAMP, wait: vi.fn() }),
-    ).toEqual(['a']);
+    ).toEqual([]);
     expect(warmup).toHaveBeenCalledTimes(1);
+    expect(storedHistory.entries).toEqual({});
+  });
+
+  it('does not persist a project ID if cancelled during project lookup', async () => {
+    const account = makeAccount('pending-project', 'Gemini', 'weekly');
+    delete account.token.project_id;
+    let releaseProject: (projectId: string) => void = () => {};
+    vi.mocked(GoogleAPIService.fetchProjectId).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseProject = resolve;
+        }),
+    );
+    const warmup = vi.fn(async () => {});
+
+    const task = WeeklyWarmupService.run([account], { warmup }, { now: RESET_TIMESTAMP });
+    await vi.waitFor(() => expect(GoogleAPIService.fetchProjectId).toHaveBeenCalledOnce());
+    WeeklyWarmupService.cancel();
+    releaseProject('late-project');
+
+    expect(await task).toEqual([]);
+    expect(account.token.project_id).toBeUndefined();
+    expect(CloudAccountRepo.updateToken).not.toHaveBeenCalled();
+    expect(warmup).not.toHaveBeenCalled();
+  });
+
+  it('does not persist history if cancelled while the executor is pending', async () => {
+    let releaseWarmup: () => void = () => {};
+    const warmup = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseWarmup = resolve;
+        }),
+    );
+
+    const task = WeeklyWarmupService.run(
+      [makeAccount('pending-warmup', 'Gemini', 'weekly')],
+      { warmup },
+      { now: RESET_TIMESTAMP },
+    );
+    await vi.waitFor(() => expect(warmup).toHaveBeenCalledOnce());
+    WeeklyWarmupService.cancel();
+    releaseWarmup();
+
+    expect(await task).toEqual([]);
+    expect(storedHistory.entries).toEqual({});
+    expect(CloudAccountSettingsStore.setSetting).not.toHaveBeenCalledWith(
+      'weekly_warmup_history',
+      expect.anything(),
+    );
   });
 
   it('accepts legacy timestamp-string history without repeating an already successful cycle', async () => {

@@ -24,6 +24,10 @@ vi.mock('@/shared/logging/logger', () => ({
 vi.mock('@/modules/antigravity-runtime/utils/autoStart', () => ({
   syncAutoStart: vi.fn(),
 }));
+// This configuration test needs only the listening state, not the account-cache status query.
+vi.mock('@/server/main', () => ({
+  getNestServerStatus: async () => ({ running: false, port: 0 }),
+}));
 
 /**
  * The migration only earns its keep where it touches the user's file. These cases drive
@@ -76,15 +80,13 @@ describe('ConfigManager alias migration', () => {
     expect(loaded.proxy.global_system_prompt).toEqual({ enabled: false, content: '' });
   });
 
+  // Cold owner imports include the gateway graph; allow initialization under parallel checks.
   it('synchronizes the saved global prompt before a gateway has started', async () => {
-    const { saveConfig } = await import('@/modules/config/ipc/handlers');
-    const { DEFAULT_APP_CONFIG } = await import('@/modules/config/types');
+    const { serviceConfigService } = await import('@/modules/config/service-config.service');
     const { getServerConfig } = await import('@/server/server-config');
 
-    await saveConfig({
-      ...DEFAULT_APP_CONFIG,
+    await serviceConfigService.update({
       proxy: {
-        ...DEFAULT_APP_CONFIG.proxy,
         global_system_prompt: {
           enabled: true,
           content: 'Always answer in Simplified Chinese.',
@@ -96,7 +98,7 @@ describe('ConfigManager alias migration', () => {
       enabled: true,
       content: 'Always answer in Simplified Chinese.',
     });
-  });
+  }, 15_000);
 
   it('persists the explicit local video path opt-in', async () => {
     writeLegacyConfig();

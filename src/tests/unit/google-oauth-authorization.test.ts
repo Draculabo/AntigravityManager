@@ -19,9 +19,12 @@ describe('Google OAuth authorization scopes', () => {
     ['custom_b', 'id-b'],
   ])('requests OpenID and all existing scopes for client %s', async (clientKey, clientId) => {
     const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
-    const { AuthServer } = await import('@/modules/cloud-account/ipc/authServer');
-
-    const url = new URL(GoogleAPIService.getAuthUrl(clientKey));
+    const { normalizeTrustedGoogleValidationUrl } =
+      await import('@/modules/cloud-account/utils/google-validation-url');
+    const redirectUri = 'http://127.0.0.1:12345/oauth-callback';
+    const state = 'test-session-state';
+    const url = new URL(GoogleAPIService.getAuthUrl(clientKey, { redirectUri, state }));
+    expect(normalizeTrustedGoogleValidationUrl(url.toString())).toBe(url.toString());
 
     expect(`${url.origin}${url.pathname}`).toBe('https://accounts.google.com/o/oauth2/v2/auth');
     expect(Object.fromEntries(url.searchParams)).toEqual({
@@ -38,11 +41,9 @@ describe('Google OAuth authorization scopes', () => {
       prompt: 'consent',
       response_type: 'code',
       client_id: clientId,
-      redirect_uri: AuthServer.getRedirectUri(),
+      redirect_uri: redirectUri,
       include_granted_scopes: 'true',
-      state: expect.stringMatching(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      ),
+      state,
     });
   });
 });

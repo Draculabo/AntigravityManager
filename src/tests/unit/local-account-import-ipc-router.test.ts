@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRouterClient, ORPCError } from '@orpc/server';
+import { createLocalAccountImportRouter } from '@/modules/cloud-account/local-import/transport.router';
+import { toLocalAccountImportORPCError } from '@/modules/cloud-account/local-import/transport.error';
 import {
-  createLocalAccountImportRouter,
   LocalAccountImportPreviewSchema,
   LocalAccountImportResultSchema,
   LocalAccountPostImportTaskSnapshotSchema,
-  toLocalAccountImportORPCError,
-} from '@/modules/cloud-account/local-import/ipc/router';
+} from '@/modules/cloud-account/local-import/transport.schema';
 import { LocalAccountImportCoordinatorError } from '@/modules/cloud-account/local-import/local-account-import-coordinator.service';
 
 function createPreview() {

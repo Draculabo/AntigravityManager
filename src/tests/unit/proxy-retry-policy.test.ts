@@ -366,7 +366,7 @@ describe('ProxyRetryService', () => {
     expect(policy.resolveGraceRetryDelay(hardQuota)).toBeNull();
   });
 
-  it('keeps the baseline Anthropic grace window at two seconds', () => {
+  it('keeps the Anthropic grace window at two seconds', () => {
     const { policy } = createPolicy();
     const twoSeconds = new UpstreamRequestError({
       message: 'retry after 2s',
@@ -379,8 +379,8 @@ describe('ProxyRetryService', () => {
       body: 'retry after 3s',
     });
 
-    expect(policy.resolveBaselineGraceRetryDelay(twoSeconds)).toBe(3500);
-    expect(policy.resolveBaselineGraceRetryDelay(threeSeconds)).toBeNull();
+    expect(policy.resolveAnthropicGraceRetryDelay(twoSeconds)).toBe(3500);
+    expect(policy.resolveAnthropicGraceRetryDelay(threeSeconds)).toBeNull();
   });
 
   it('preserves the last non-429 terminal failure when later accounts return 429', () => {

@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { ipc } from '@/ipc/manager';
-import type { ProxyConfig } from '@/modules/config/types';
+import type { ServiceConfigSnapshot } from '@/modules/config/service-config.schema';
+type ProxyConfig = ServiceConfigSnapshot['proxy'];
 
 const RISK_ACKNOWLEDGEMENT_KEY = 'proxy-risk-acknowledged:v1';
 

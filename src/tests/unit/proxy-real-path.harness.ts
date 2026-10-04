@@ -15,6 +15,7 @@ import {
 import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
+import type { InternalGenerationOptions } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 
 /**
  * Shared scaffolding for the black-box coverage of the real request path:
@@ -83,7 +84,14 @@ export function createUpstream(options: {
       return typeof armed === 'function' ? (armed as () => unknown)() : armed;
     }),
     generateInternal: vi.fn(
-      async (body: GeminiInternalRequest, accessToken: string): Promise<unknown> => {
+      async (
+        body: GeminiInternalRequest,
+        accessToken: string,
+        _proxy?: string,
+        _headers?: Record<string, string>,
+        _signal?: AbortSignal,
+        _options?: InternalGenerationOptions,
+      ): Promise<unknown> => {
         calls.push({ accessToken, body, kind: 'generate' });
         const armed = options.generate;
         if (armed === undefined) {
@@ -93,7 +101,14 @@ export function createUpstream(options: {
       },
     ),
     streamGenerateInternal: vi.fn(
-      async (body: GeminiInternalRequest, accessToken: string): Promise<Readable> => {
+      async (
+        body: GeminiInternalRequest,
+        accessToken: string,
+        _proxy?: string,
+        _headers?: Record<string, string>,
+        _signal?: AbortSignal,
+        _options?: InternalGenerationOptions,
+      ): Promise<Readable> => {
         calls.push({ accessToken, body, kind: 'stream' });
         if (options.streamError) {
           throw options.streamError;

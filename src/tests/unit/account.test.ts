@@ -1,16 +1,17 @@
-import os from 'os';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   listAccountsData,
   addAccountSnapshot,
   switchAccount,
   deleteAccount,
-} from '@/modules/account/ipc/handler';
+} from '@/modules/account/services/local-account-state.service';
 import { prepareClientAccountWrite } from '@/modules/antigravity-runtime/credentials/clientAccountWrite';
 const writeAccount = vi.hoisted(() => vi.fn(async () => undefined));
+const securityState = vi.hoisted(() => ({ initialized: false }));
 import { startFromContext as startAntigravity } from '@/modules/antigravity-runtime/launch';
 import fs from 'fs';
 import path from 'path';
+import os from 'node:os';
 import { applyDeviceProfile, generateDeviceProfile } from '@/modules/identity-profile/ipc/handler';
 import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
@@ -19,7 +20,16 @@ vi.mock('@/shared/security/security', async () => {
     await import('@/shared/security/crypto');
   const key = Buffer.alloc(32, 7);
   return {
-    encrypt: async (text: string) => encryptWithKey(key, text),
+    initializeMasterKey: vi.fn(async () => {
+      securityState.initialized = true;
+      return { state: 'secure' };
+    }),
+    encrypt: async (text: string) => {
+      if (!securityState.initialized) {
+        throw new Error('Snapshot key was not initialized');
+      }
+      return encryptWithKey(key, text);
+    },
     decrypt: async (text: string) => {
       const payload = parseEncryptedPayload(text);
       if (!payload) {
@@ -34,16 +44,16 @@ import {
   readAccountIndex,
 } from '@/modules/account/persistence/account-index-store';
 
+const fixture = vi.hoisted(() => ({ directory: '' }));
+
 // Mock dependencies
 vi.mock('../../shared/platform/paths', async () => {
   const path = await import('path');
-  const os = await import('os');
-  const agentDir = path.join(os.tmpdir(), 'agm-runtime-account-' + process.pid);
   return {
-    getAgentDir: vi.fn(() => agentDir),
-    getAccountsFilePath: vi.fn(() => path.join(agentDir, 'accounts.json')),
-    getBackupsDir: vi.fn(() => path.join(agentDir, 'backups')),
-    getAntigravityDbPath: vi.fn(() => path.join(agentDir, 'state.vscdb')),
+    getAgentDir: vi.fn(() => fixture.directory),
+    getAccountsFilePath: vi.fn(() => path.join(fixture.directory, 'accounts.json')),
+    getBackupsDir: vi.fn(() => path.join(fixture.directory, 'backups')),
+    getAntigravityDbPath: vi.fn(() => path.join(fixture.directory, 'state.vscdb')),
     getAntigravityExecutablePath: vi.fn(() => 'mock_exec_path'),
     refreshAntigravityProcessCache: vi.fn(() => Promise.resolve()),
   };
@@ -73,6 +83,14 @@ vi.mock('@/modules/account/persistence/antigravity-state-database', () => ({
     expiry_timestamp: 1700000000,
   })),
   getDatabaseConnection: vi.fn(),
+}));
+
+vi.mock('@/modules/account/services/current-account.service', () => ({
+  getCurrentAccountInfo: vi.fn(async () => ({
+    email: 'test@example.com',
+    name: 'Test User',
+    isAuthenticated: true,
+  })),
 }));
 
 vi.mock('@/modules/antigravity-runtime/credentials/clientAccountWrite', () => ({
@@ -109,19 +127,18 @@ vi.mock('@/modules/identity-profile/ipc/handler', () => ({
 }));
 
 describe('Account Handler', () => {
-  const testAgentDir = path.join(os.tmpdir(), 'agm-runtime-account-' + process.pid);
+  let testAgentDir: string;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    if (fs.existsSync(testAgentDir)) {
-      fs.rmSync(testAgentDir, { recursive: true, force: true });
-    }
-    fs.mkdirSync(testAgentDir, { recursive: true });
+    securityState.initialized = false;
+    testAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-account-policy-'));
+    fixture.directory = testAgentDir;
   });
 
   afterEach(() => {
     if (fs.existsSync(testAgentDir)) {
-      fs.rmSync(testAgentDir, { recursive: true, force: true });
+      fs.rmSync(testAgentDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 

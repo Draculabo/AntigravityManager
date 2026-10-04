@@ -12,6 +12,7 @@ import { observeProcesses, toWindowsPath, toWslPath } from './processObserver';
 import { processError } from './processErrors';
 import type { GuiTarget, LaunchContext, RuntimeProcess } from './types';
 import { usesWindowsRuntime } from './runtimePlatform';
+import { ownsLinuxProfile } from './linuxProfileOwnership';
 
 function filesystemPath(value: string): string {
   return isWsl() ? toWslPath(value) : value;
@@ -136,7 +137,9 @@ export function resolveLaunchContext(
     portable && fs.existsSync(portable) ? portable : getAppDataDir(target, pathOptions);
   const effectiveDir = configuredDirs[0] || observedDirs[0] || defaultDir;
   const observedEffectiveDirs = processes.map(
-    (item) => userDataDirs(item.args, item.cwd)[0] || defaultDir,
+    (item) =>
+      userDataDirs(item.args, item.cwd)[0] ||
+      (ownsLinuxProfile(item.pid, effectiveDir) ? effectiveDir : defaultDir),
   );
   if (
     [...configuredDirs, ...observedDirs, ...observedEffectiveDirs].some(
@@ -158,7 +161,8 @@ export function resolveLaunchContext(
     if (isWsl() && windows && !/^\/mnt\/[a-z]\//i.test(effectiveDir)) {
       throw processError('directory-conflict');
     }
-    args.push('--user-data-dir', isWsl() && windows ? toWindowsPath(effectiveDir) : effectiveDir);
+    // Standalone Electron clients require Chromium's single-argument switch form.
+    args.push(`--user-data-dir=${isWsl() && windows ? toWindowsPath(effectiveDir) : effectiveDir}`);
   }
   return Object.freeze({
     target,
@@ -191,7 +195,13 @@ export function assertContextProcesses(
   const defaultDir = context.defaultUserDataDir;
   const dirs = processes.flatMap((item) => {
     const observed = userDataDirs(item.args, item.cwd);
-    return observed.length ? observed : [defaultDir];
+    return observed.length
+      ? observed
+      : [
+          ownsLinuxProfile(item.pid, context.pathOptions.userDataDir || defaultDir)
+            ? context.pathOptions.userDataDir || defaultDir
+            : defaultDir,
+        ];
   });
   if (
     dirs.some(

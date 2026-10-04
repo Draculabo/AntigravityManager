@@ -120,6 +120,35 @@ function createDependencies(
 }
 
 describe('LocalAccountImportCoordinatorService', () => {
+  it('does not create a reusable session after shutdown interrupts validation, even after reopening', async () => {
+    let completeValidation!: (session: LocalAccountValidationSession) => void;
+    const dependencies = createDependencies({
+      validate: vi.fn(
+        () =>
+          new Promise<LocalAccountValidationSession>((resolve) => {
+            completeValidation = resolve;
+          }),
+      ),
+    });
+    const service = new LocalAccountImportCoordinatorService({ dependencies });
+    const preview = service.preview();
+    await Promise.resolve();
+    service.closeAdmission();
+    service.openAdmission();
+    let drained = false;
+    const draining = service.drain().then(() => {
+      drained = true;
+    });
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    completeValidation(createValidationSession());
+    await expect(preview).rejects.toMatchObject({ code: 'preview-failed' });
+    await draining;
+    await expect(service.confirm(SESSION_IDS[0])).rejects.toMatchObject({
+      code: 'session-not-found',
+    });
+    expect(dependencies.importSession).not.toHaveBeenCalled();
+  });
   it('returns a token-free preview and consumes the validated session exactly once', async () => {
     const dependencies = createDependencies();
     const service = new LocalAccountImportCoordinatorService({

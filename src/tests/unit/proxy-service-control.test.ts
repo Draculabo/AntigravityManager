@@ -5,7 +5,9 @@ import { createElement } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '@/localization/en';
-import { ProxyConfigSchema, type ProxyConfig } from '@/modules/config/types';
+import { ProxyConfigSchema } from '@/modules/config/types';
+import type { ServiceConfigSnapshot } from '@/modules/config/service-config.schema';
+type ProxyConfig = ServiceConfigSnapshot['proxy'];
 
 const mocks = vi.hoisted(() => ({
   start: vi.fn(),
@@ -24,7 +26,7 @@ import { ProxyServiceControl } from '@/modules/proxy-gateway/components/ProxySer
 
 const i18n = createInstance();
 const labels = en.proxy['risk-confirmation'];
-const config = ProxyConfigSchema.parse({
+const storedConfig = ProxyConfigSchema.parse({
   enabled: false,
   port: 8045,
   api_key: '',
@@ -32,6 +34,13 @@ const config = ProxyConfigSchema.parse({
   anthropic_mapping: {},
   upstream_proxy: { enabled: false, url: '' },
 });
+const { api_key, upstream_proxy, ...publicConfig } = storedConfig;
+const config: ProxyConfig = {
+  ...publicConfig,
+  upstream_proxy: { enabled: upstream_proxy.enabled },
+  api_key_configured: !!api_key,
+  upstream_proxy_configured: !!upstream_proxy.url,
+};
 
 function renderControl(proxyConfig: ProxyConfig = config) {
   return render(

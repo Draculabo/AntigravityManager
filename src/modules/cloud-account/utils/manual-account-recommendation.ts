@@ -1,4 +1,4 @@
-import type { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import { aggregateVisibleQuotaModelFamilies } from '@/modules/cloud-account/utils/quota-model-families';
 import { selectWeeklyQuotaItems } from '@/modules/cloud-account/utils/quota-groups';
 import type { AccountSortKey } from '@/modules/cloud-account/utils/quota-display';
@@ -59,7 +59,7 @@ export function getManualRecommendationContext(
   }
 }
 
-function isActiveAnywhere(account: CloudAccount): boolean {
+function isActiveAnywhere(account: CloudAccountView): boolean {
   return Boolean(
     account.is_active ||
     account.is_active_classic ||
@@ -69,7 +69,7 @@ function isActiveAnywhere(account: CloudAccount): boolean {
 }
 
 function getFiveHourPercentage(
-  account: CloudAccount,
+  account: CloudAccountView,
   context: ManualRecommendationContext,
   modelVisibility: Record<string, boolean>,
 ): number | null {
@@ -92,7 +92,7 @@ function getFiveHourPercentage(
 }
 
 function rankAccount(
-  account: CloudAccount,
+  account: CloudAccountView,
   context: ManualRecommendationContext,
   modelVisibility: Record<string, boolean>,
   now: number,
@@ -144,7 +144,7 @@ function rankAccount(
 }
 
 export function getManualAccountRecommendation(
-  accounts: CloudAccount[],
+  accounts: CloudAccountView[],
   options: ManualAccountRecommendationOptions,
 ): ManualAccountRecommendation | null {
   const context = getManualRecommendationContext(options.sortKey);
@@ -186,9 +186,9 @@ export function getManualAccountRecommendation(
 }
 
 export function prioritizeRecommendedAccount(
-  accounts: CloudAccount[],
+  accounts: CloudAccountView[],
   recommendation: ManualAccountRecommendation | null,
-): CloudAccount[] {
+): CloudAccountView[] {
   if (!recommendation) {
     return accounts;
   }

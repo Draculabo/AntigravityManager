@@ -13,9 +13,10 @@ function createT(): TFunction {
   return ((key: string, options?: { defaultValue?: string }) => {
     const messages: Record<string, string> = {
       'error.cloudAccountLoginExpired': CLOUD_ACCOUNT_LOGIN_EXPIRED_MESSAGE,
-      'error.keychainUnavailable': 'Keychain is unavailable.',
-      'error.keychainHint.translocation': 'Move the app to Applications and reopen it.',
-      'error.dataMigrationFailed': 'Unable to decrypt legacy account data.',
+      'error.keychainUnavailable': "Can't access saved sign-in information right now.",
+      'error.keychainHint.translocation':
+        'Move the app to the Applications folder, then open it again.',
+      'error.dataMigrationFailed': "Can't read accounts saved by an earlier version.",
       'error.dataMigrationHint.relogin': 'Please re-login or re-add your accounts.',
     };
 
@@ -84,7 +85,9 @@ describe('getLocalizedErrorMessage', () => {
       createT(),
     );
 
-    expect(message).toBe('Keychain is unavailable. Move the app to Applications and reopen it.');
+    expect(message).toBe(
+      "Can't access saved sign-in information right now. Move the app to the Applications folder, then open it again.",
+    );
   });
 
   it('does not localize raw keychain error codes without structured data', () => {
@@ -117,7 +120,7 @@ describe('getLocalizedErrorMessage', () => {
     );
 
     expect(message).toBe(
-      'Unable to decrypt legacy account data. Please re-login or re-add your accounts.',
+      "Can't read accounts saved by an earlier version. Please re-login or re-add your accounts.",
     );
   });
 

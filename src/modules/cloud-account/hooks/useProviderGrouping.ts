@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
-import { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import {
   groupModelsByProvider,
   type AccountStats,
@@ -9,7 +9,7 @@ import {
 
 export interface UseProviderGroupingResult {
   enabled: boolean;
-  getAccountStats: (account: CloudAccount) => AccountStats;
+  getAccountStats: (account: CloudAccountView) => AccountStats;
   isProviderCollapsed: (accountId: string, providerKey: string) => boolean;
   toggleProviderCollapse: (accountId: string, providerKey: string) => void;
   isAccountCollapsed: (accountId: string) => boolean;
@@ -28,7 +28,7 @@ export function useProviderGrouping(): UseProviderGroupingResult {
   const visibilitySettings = config?.model_visibility ?? {};
 
   const getAccountStats = useCallback(
-    (account: CloudAccount): AccountStats => {
+    (account: CloudAccountView): AccountStats => {
       const models = account.quota?.models ?? {};
       return groupModelsByProvider(models, visibilitySettings);
     },

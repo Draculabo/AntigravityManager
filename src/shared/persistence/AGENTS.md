@@ -19,7 +19,7 @@ These instructions supplement the repository root `AGENTS.md` for `src/shared/pe
 ## Formats and credentials
 
 - A schema or on-disk payload change requires an explicit migration, compatibility or rejection policy and focused tests for that policy.
-- Secrets remain in the OS credential store or existing encrypted helpers. SQLite stores non-secret metadata and references only.
+- Cloud-account OAuth token JSON is the explicit local SQLite credential exception documented in [docs/security.md](../../../docs/security.md). Other secrets remain in their owning OS credential store or encrypted helper.
 - Never log row bodies or serialized payloads that may contain credentials. Log bounded identifiers and sanitized failure context.
 
 Database schema, durable format, backup/restore semantics and credential-location changes are high risk and require an Agent Note plus the focused evidence in [docs/testing.md](../../../docs/testing.md).

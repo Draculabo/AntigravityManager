@@ -1,4 +1,5 @@
-import { CloudAccount, CloudQuotaModelInfo } from '@/modules/cloud-account/types';
+import type { CloudQuotaModelInfo } from '@/modules/cloud-account/types';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -17,7 +18,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/shared/ui/utils';
 
@@ -51,8 +51,7 @@ import {
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ipc } from '@/ipc/manager';
-import { useSetAccountProxy } from '@/modules/cloud-account/hooks/useCloudAccounts';
-import { isValidProxyUrl } from '@/shared/utils/url';
+import { CloudAccountProxyEditor } from '@/modules/cloud-account/components/CloudAccountProxyEditor';
 import { getCloudAccountBlockedStatusLabel } from '@/modules/cloud-account/utils/accountValidationStatus';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { AccountTierBadge } from '@/modules/cloud-account/components/AccountTierBadge';
@@ -68,7 +67,7 @@ import { ManualRecommendationBadge } from '@/modules/cloud-account/components/Ma
 import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/manual-account-recommendation';
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
 import { isWeeklyQuotaBucket } from '@/modules/cloud-account/utils/quota-groups';
-import { openAccountValidationLink } from '@/modules/cloud-account/actions/cloud';
+import { useOpenAccountValidationLink } from '@/modules/cloud-account/hooks/useOpenAccountValidationLink';
 
 type ModelQuotaEntry = [string, CloudQuotaModelInfo];
 type LiveModelAvailability = Awaited<
@@ -199,7 +198,7 @@ function findModelAvailability(
 }
 
 interface CloudAccountCardProps {
-  account: CloudAccount;
+  account: CloudAccountView;
   quotaWindow?: QuotaWindow;
   onRefresh: (id: string) => void;
   onDelete: (id: string) => void;
@@ -228,6 +227,7 @@ export function CloudAccountCard({
   recommendationContext,
 }: CloudAccountCardProps) {
   const { t } = useTranslation();
+  const validationLink = useOpenAccountValidationLink();
   const { config, saveConfig } = useAppConfig();
   const {
     enabled: providerGroupingsEnabled,
@@ -235,9 +235,6 @@ export function CloudAccountCard({
     isProviderCollapsed,
     toggleProviderCollapse,
   } = useProviderGrouping();
-  const setAccountProxy = useSetAccountProxy();
-  const [proxyUrl, setProxyUrl] = useState(account.proxy_url || '');
-  const [proxySaved, setProxySaved] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const { data: modelAvailability = [] } = useQuery({
     queryKey: ['gateway', 'modelAvailability'],
@@ -666,12 +663,13 @@ export function CloudAccountCard({
                 {validationBlockedStatusLabel}
               </span>
             )}
-            {account.health?.validation?.verification_url && (
+            {account.health?.validation?.has_verification_link && (
               <Button
                 variant="destructive"
                 size="sm"
                 className="h-6 gap-1 px-2 text-[10px]"
-                onClick={() => openAccountValidationLink({ accountId: account.id })}
+                disabled={validationLink.isPending}
+                onClick={() => validationLink.open(account.id)}
               >
                 <ExternalLink className="h-3 w-3" />
                 {t('cloud.card.completeValidation')}
@@ -802,7 +800,7 @@ export function CloudAccountCard({
             {t('cloud.card.used')}{' '}
             {formatDistanceToNow(account.last_used * 1000, { addSuffix: true })}
           </span>
-          {account.proxy_url && (
+          {account.proxy_configured && (
             <span className="text-primary bg-primary/10 border-primary/20 origin-right scale-90 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold">
               Proxy
             </span>
@@ -865,43 +863,7 @@ export function CloudAccountCard({
             </TooltipProvider>
           </div>
 
-          {/* Proxy Setting Input */}
-          <div className="relative min-w-0 flex-1">
-            <Input
-              value={proxyUrl}
-              onChange={(e) => {
-                setProxyUrl(e.target.value);
-                setProxySaved(false);
-              }}
-              onBlur={() => {
-                const trimmed = proxyUrl.trim();
-                if (trimmed && !isValidProxyUrl(trimmed)) {
-                  setProxyUrl(account.proxy_url || '');
-                  return;
-                }
-                if (trimmed !== (account.proxy_url || '')) {
-                  setAccountProxy.mutate({
-                    accountId: account.id,
-                    proxyUrl: trimmed || null,
-                  });
-                  setProxySaved(true);
-                  setTimeout(() => setProxySaved(false), 2000);
-                }
-              }}
-              placeholder={t('cloud.card.proxyPlaceholder')}
-              className="bg-muted/20 border-border/40 focus-visible:bg-background focus-visible:ring-primary/30 h-7 w-full rounded-md text-[11px] transition-all focus-visible:ring-1"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.currentTarget.blur();
-                }
-              }}
-            />
-            {proxySaved && (
-              <span className="bg-background absolute top-1/2 right-2 -translate-y-1/2 rounded px-1 text-[9px] font-semibold text-green-500">
-                {t('cloud.card.proxySaved')}
-              </span>
-            )}
-          </div>
+          <CloudAccountProxyEditor accountId={account.id} configured={account.proxy_configured} />
         </div>
       </CardFooter>
     </Card>
@@ -909,7 +871,7 @@ export function CloudAccountCard({
 }
 
 interface CompactCloudAccountCardProps {
-  account: CloudAccount;
+  account: CloudAccountView;
   quotaWindow?: QuotaWindow;
   onRefresh: (id: string) => void;
   onDelete: (id: string) => void;
@@ -935,6 +897,7 @@ export function CompactCloudAccountCard({
   recommendationContext,
 }: CompactCloudAccountCardProps) {
   const { t } = useTranslation();
+  const validationLink = useOpenAccountValidationLink();
   const { config } = useAppConfig();
   const [menuOpen, setMenuOpen] = useState(false);
   const isActiveAnywhere = !!(
@@ -1024,11 +987,12 @@ export function CompactCloudAccountCard({
               {validationBlockedStatusLabel}
             </span>
           )}
-          {account.health?.validation?.verification_url && (
+          {account.health?.validation?.has_verification_link && (
             <button
               type="button"
               className="text-destructive inline-flex shrink-0 items-center gap-1 text-xs font-semibold"
-              onClick={() => openAccountValidationLink({ accountId: account.id })}
+              disabled={validationLink.isPending}
+              onClick={() => validationLink.open(account.id)}
             >
               <ExternalLink className="h-3 w-3" />
               {t('cloud.card.completeValidation')}

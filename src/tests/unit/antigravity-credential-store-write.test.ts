@@ -76,6 +76,29 @@ describe('writeAntigravityCredentialStoreToken', () => {
     setPlatform(originalPlatform);
   });
 
+  it.each([0, 1])(
+    'confirms both macOS password prompts when the existence probe exits %i',
+    async (status) => {
+      mocks.spawnSync.mockReturnValue({ status });
+      mocks.execFileSync.mockImplementation((_file, _args, options: { input: string }) => {
+        const [password, confirmation] = options.input.split('\n');
+        if (!password || password !== confirmation) {
+          throw new Error("passwords don't match");
+        }
+        expect(options.input).toBe(`${password}\n${password}\n`);
+        return Buffer.alloc(0);
+      });
+      const { writeAntigravityCredentialStoreToken } =
+        await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+      await writeAntigravityCredentialStoreToken({
+        access_token: 'access-fixture',
+        refresh_token: 'refresh-fixture',
+        expiry_timestamp: 1_900_000_000,
+      });
+      expect(mocks.writeAgyCliToken).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('sets the ACL with -A when first creating the macOS keychain item, without exposing the credential in process arguments', async () => {
     mocks.spawnSync.mockReturnValue({ status: 1 }); // item does not exist yet
     const { writeAntigravityCredentialStoreToken } =

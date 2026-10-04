@@ -18,6 +18,9 @@ describe('normalizeTrustedGoogleValidationUrl', () => {
     'https://google.com/verify',
     'https://support.google.com/accounts/answer/1',
     'https://sites.google.com/view/untrusted',
+    'https://user:password@accounts.google.com/verify',
+    'https://accounts.google.com:4443/verify',
+    `https://accounts.google.com/verify?state=${'x'.repeat(2048)}`,
     'not-a-url',
   ])('rejects untrusted validation URL %s', (url) => {
     expect(normalizeTrustedGoogleValidationUrl(url)).toBeUndefined();

@@ -168,9 +168,8 @@ export function parseAnthropicBatchRequests(body: unknown): ParsedAnthropicBatch
 }
 
 /**
- * The Anthropic error envelope, borrowed wholesale from the files surface --
- * the two surfaces share one dialect's error shape -- with the one status
- * batches add: an already-ended batch reports as `invalid_request_error`
+ * Batch and file endpoints use the same Anthropic error envelope. An
+ * already-ended batch reports as `invalid_request_error`
  * rather than the generic `api_error` a bare 409 would otherwise map to.
  */
 export function anthropicBatchErrorResponse(error: unknown) {

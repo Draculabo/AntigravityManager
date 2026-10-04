@@ -13,12 +13,153 @@ Do not expose general-purpose filesystem, process execution, Electron IPC or cre
 
 ## Sensitive data
 
+Remote desktop bootstrap verifies core compatibility, readiness, PID, epoch and a profile
+fingerprint against the profile-owner probe before enabling owner operations. The fingerprint
+is identity metadata, not authentication; the existing private pipe/socket permissions remain the
+access boundary. Epoch headers reject requests to replacement processes before side effects,
+including OAuth and shutdown. Handshake/startup failures expose fixed errors, without paths,
+credential material or arbitrary provider diagnostics. Remote startup never opens local owner
+persistence as recovery.
+
+Private remote IPC capture accepts prepared audit chunks only from the owned main-process
+incremental redactor. It does not expose a raw provider-body upload API to the renderer. The core
+validates epoch capabilities, canonical encoding, chunk order and size, cumulative storage and
+final accounting; complete nonoversized hashes are checked against received bytes. Full oversized
+hashes are trusted producer metadata because discarded suffixes are never transmitted. Capture
+metadata uses the same canonical chunk validation and an aggregate retention budget. Error summaries
+come from the existing owned redactor, not raw exception transport; public RPC errors retain fixed
+messages. Preparing capabilities cannot run business operations, and completed input fields cannot
+be rewritten. Reservations are released on retirement, including abandoned preparation. Capability
+headers carry no credentials and are valid only in the current owner process. See the
+[runtime topology](architecture.md#runtime-topology) for bounds and current cutover gates.
+
+Legacy local-account transport contains bounded account/identity metadata and closed error categories, without backup paths, raw database rows or credential-bearing backup objects. Snapshot restore accepts an account ID and reads its existing backup only inside the selected owner. The unused raw backup/restore renderer contracts are removed; internal durable backup codecs and native injection policy remain unchanged. Admission/drain covers both reads and serialized writes, and existing database primitives close their per-operation handles in `finally` blocks.
+
+Configuration snapshots expose bounded runtime/proxy fields and secret-presence metadata, excluding API keys and upstream proxy URLs. Explicit reveal is the only secret-bearing read; the renderer keeps its result in local interaction state rather than query caches. Secret writes use separately validated bounded input. Configuration routes are excluded from audit middleware so reveal/write payloads cannot initialize audit workers or enter admin-operation logs. Transport/service errors use value-free categories.
+
+Only `/rpc/serviceConfig/update` and `/rpc/openCode/sync` have a 128 KiB allowance plus envelope overhead, each with a separate encoded schema bound. Other private RPC requests retain the 4 KiB limit, including secret writes with a 3,000-byte encoded bound. Desktop preferences contain no proxy credentials and use atomic versioned storage; corrupt preferences fail closed without reseeding legacy privacy consent. The existing service configuration file format and secret-storage behavior are unchanged.
+
+OpenCode refresh grants remain inside the selected owner and its existing external plugin account file; this integration does not introduce a Manager-side token-refresh mechanism. Normal responses contain strict status, intentional current configuration location metadata or a bounded redacted preview. Backup contents, backup/temporary locations, OAuth grants and dedicated keys do not cross control transport. OpenCode renderer routes bypass audit middleware. Configuration, local-account and OpenCode public errors preserve only validated closed categories and fixed messages; their IPC error logs omit raw input, values, causes and stacks. External plugin formats, account selection, backup recovery and native dedicated-key storage remain unchanged.
+
+Audit file export keeps body contents and destination paths outside renderer responses. Only the trusted desktop chooser supplies a bounded absolute destination; private input is independently bounded to 3,000 encoded bytes. The selected owner enforces the existing 100 MiB body ceiling while streaming, uses a new sibling temporary file with restrictive POSIX permissions and preserves the prior destination on failure before replacement. Parent-directory synchronization errors after replacement indicate uncertain durability rather than rollback. Export failures expose fixed text without filesystem/provider diagnostics. The desktop retains its creating adapter throughout selection and does not use embedded persistence on remote failure.
+
+Switch diagnostic transport exposes strict closed variants, finite counters/timestamps, a volatile owner-process epoch and bounded guard entries. Recent failure messages are replaced with fixed public text; raw instrumentation errors and unexpected hardening stages cannot cross this boundary. Remote diagnostic failure never substitutes Electron-local state.
+
+Local-import credential sessions remain in the selected owner. UUID capabilities carry no credential payload and are consumed once before persistence. Desktop capability affinity rejects sessions from a replaced adapter; core restart loses the old session namespace. Preview/result transport bounds every nested array, metadata string, count and timestamp, and rejects unknown fields. Owner shutdown clears reusable credential sessions and prevents late preview completion from reopening them. Remote failures return stable categories and cannot execute the embedded importer.
+
+Owner presentation hints contain only validated account IDs, closed event/target/language variants, bounded model IDs and finite credit values. They contain no account records, credentials, paths, provider diagnostics or arbitrary messages. A strict private read-only endpoint exposes bounded batches to Electron main; display metadata is separately resolved through strict account views. Unknown event variants fail closed. Presentation delivery is best effort, in memory only, and cannot change persisted owner results or trigger mutation retries.
+
+Monitor controls return only strict configuration or a void/success result. Polling and auto-switch retain full accounts only inside their owner. Private configuration writes stay within a 3,000-byte encoded model-policy bound without increasing the shared 4 KiB request cap; saved reads retain a separately bounded compatible shape. Weekly-warmup transport validates its group list independently from the existing durable codec. Monitor failures become one value-free category at both transports. Desktop notifications are local effects; the standalone core emits no notification payload through the renderer.
+
+Cloud-account file import/export keeps token-bearing documents inside the account owner. Only Electron main selects paths; the private core endpoint accepts a bounded path and validated operation options, while the renderer accepts neither paths nor document contents. Full backups intentionally contain account tokens and configured proxy credentials on disk; stripped backups omit account tokens but retain the existing proxy/profile compatibility format. Export uses atomic replacement with restrictive POSIX permissions. Import rejects files above 5 MiB and returns bounded failure categories with validated email metadata, without provider, filesystem or database diagnostics. The shared private-RPC request and response limits are unchanged.
+
 Sensitive data includes access and refresh tokens, API keys, authorization headers, session secrets, credential payloads, account recovery material and any value that can be exchanged for account access.
 
-- Store credentials through existing OS keyring or encrypted-storage helpers.
-- Do not store plaintext credentials in SQLite, configuration files, fixtures, snapshots or logs.
-- Keep non-secret account metadata and credential references separate from secret payloads.
+- Cloud-account OAuth tokens are stored as JSON in the user's local SQLite database. Protect the
+  profile directory and its backups with OS account permissions; anyone able to read the database
+  can read those tokens.
+- Other credential stores retain their existing keyring or encrypted-storage policies.
+- Do not put credentials in logs, test fixtures or diagnostic snapshots.
 - Do not copy production credentials into tests, bug reports or Agent Notes.
+
+The `accounts` table stores `token_json`, `quota_json` and `health_json` as plaintext JSON. The
+token field includes OAuth access and refresh tokens and may include an ID token or upstream proxy
+URL. Account CRUD and ordinary startup do not use the account-encryption master key. On startup,
+only databases containing older encrypted account fields invoke the existing key providers. The
+owner validates every decrypted field, creates an SQLite backup beside the database, then writes
+all converted fields in one transaction. A missing key, invalid field or failed backup stops startup
+without changing account rows. The encrypted backup remains available for manual recovery.
+If a standalone core cannot access the old key provider, start the desktop once with the same
+profile to perform conversion, then start the core. A failed core attempt leaves rows unchanged.
+
+Google login in both the standalone core and Electron main uses a loopback-only callback listener
+owned by the account runtime. Each
+session has a random single-use OAuth state, a bounded lifetime and an exact redirect URI shared
+by authorization and token exchange. In standalone mode, the local management endpoint returns
+only the authorization URL, session ID, session state and a safe account summary; callback
+codes and tokens stay in the core. A callback with a missing or incorrect state cannot enroll an account. The listener
+closes before the core releases profile ownership, and shutdown rejects new sessions before
+waiting for any in-flight start. The detached CLI launcher does not forward custom OAuth client
+secrets, so `account login` uses the core's active/default client without a client-selection flag.
+The printed URL must be opened in a browser on the same machine because its redirect target is
+`127.0.0.1`.
+
+The desktop opens its authorization URL in the system browser after validating its trusted Google
+origin. Its renderer RPC returns only a strict cloud-account view or a stable, value-free failure
+category. The manual fallback accepts a user-pasted authorization code through a strict, bounded
+renderer request only while a login is pending. The selected owner exchanges it with the session's
+exact client and redirect URI; the code is neither persisted nor logged, and no code appears in a
+response or presentation event. Callback and manual completion consume the same session at most
+once. Authorization URLs, session IDs, CSRF state, automatically received callback codes and tokens never cross the
+preload/renderer boundary. In remote adapter mode, the private management endpoint starts and
+polls the core-owned session; its optional bounded OAuth client key is captured in the same start
+request. Its manual completion endpoint accepts only a bounded code for a live session. Electron persists the selected preference through core RPC, then passes the explicit key
+to session start so another preference change cannot alter the exchange client. A desktop failure
+or quit cancels only its pending core session; cancellation never interrupts an enrollment already
+admitted by the core. The former fixed-port callback listener and renderer code-delivery channel
+are removed. Embedded desktop shutdown waits for accepted enrollment before gateway teardown,
+subject to the bounded forced-exit timeout.
+
+Core application RPC shares the private management pipe/socket and has no TCP listener. It
+accepts calls only while the standalone core is running, bounds client requests and responses,
+and validates returned data. Its account-view read uses the same strict projection as the
+Electron list response; the separate account-summary read remains a smaller CLI contract.
+The account token, key material, proxy credentials and raw database fields never enter
+either RPC response. Remote account operations propagate failures without an embedded persistence
+fallback. Proxy replacement/removal is a bounded write-only core RPC operation; no RPC reads
+the stored proxy URL. The repository logs only the account ID and configured/removed state,
+and replaces database write failures with a value-free error so proxy credentials cannot
+appear in normal logs or transport errors. Shutdown closes RPC admission before draining
+requests and stopping persistence.
+
+Manual quota refresh validates a bounded account ID on the core RPC boundary and returns only
+the strict cloud-account view. Provider errors and internal account fields are not serialized to
+the caller. The core schedules weekly warmups only after successful refresh paths; shutdown
+cancels and drains those tasks before persistence teardown. The local transport uses a separate
+bounded timeout for this multi-request operation.
+
+IDE account sync reads local IDE state only in the process that owns account persistence. The
+renderer and private core RPC receive a strict account view or null, and sync failures expose a
+small validated error category. Raw provider messages, local database paths, tokens and stacks
+stay inside the owning process. Shutdown drains admitted sync work before releasing the profile
+lease. The long-running account mutation client uses the same bounded transport timeout as quota
+refresh.
+
+Cloud-account switching accepts a bounded account ID and an enumerated target through both
+renderer and private core RPC. The selected owner performs token refresh, process control and
+credential injection; no token, device profile or target database path crosses either boundary.
+The renderer receives only a stable failure category, never the provider or storage error. Core
+shutdown drains admitted switches before releasing persistence. Desktop shutdown rejects new
+switches and waits for admitted work within its bounded forced-exit window; a switch exceeding
+that window can be interrupted by process exit and must be retried after restart.
+
+Cloud identity-profile account operations use strict account, revision and profile schemas at
+the renderer and private core RPC boundaries. The selected account owner reads and writes bindings,
+baseline and history. The user-visible profile fields are returned for explicit profile management;
+account tokens, storage paths, SQLite diagnostics and stacks are not part of that result. Failures
+cross the boundaries only as stable profile categories. Mutations join the core account-work drain.
+Opening the storage folder remains in Electron main and returns no path to React.
+
+The renderer reads account security status from the selected persistence owner, so remote mode
+reports the standalone core's key-storage state. The account owner resolves validation links
+from stored health data and returns only a bounded, normalized `https://accounts.google.com`
+URL over the private core RPC. Electron main validates the returned URL again before invoking
+the system browser. The renderer receives no URL; failures expose only stable categories and
+never include stored URLs, account tokens or internal diagnostics.
+
+OAuth client discovery and active-client preference use strict public descriptors containing
+only the key, label, client ID and active/builtin flags. Client secrets and registry internals
+remain inside the owning process. Both renderer and core RPC validate bounded client keys;
+unknown keys produce a value-free error, and malformed environment entries or invalid saved
+preferences are logged without their raw values. Preference changes persist through the
+existing `active_oauth_client_key` setting. Electron currently selects embedded account ownership.
+
+The Electron cloud-account list and account-returning mutations project a strict renderer view
+before the MessagePort response. The view includes display metadata, UI quota fields, active flags and
+bounded health signals, but excludes tokens, device profiles, raw provider status reasons,
+verification links, proxy URLs and gateway-only quota policy fields. The card displays only whether a proxy is configured;
+replacing or removing it uses the existing account-scoped mutation. Account export and identity
+profile operations remain separate, explicitly invoked capabilities with their own contracts.
 
 ## Logging and errors
 
@@ -39,6 +180,26 @@ When adding a new sensitive field, update the central masking behavior and its t
 Database schema, durable payload and credential-location changes require an Agent Note because they impose compatibility and recovery obligations.
 
 ### Proxy traffic and thought persistence
+
+Selected-owner audit management responses are validated and bounded below the ordinary control
+response cap. Escaped body pages retain only complete chunks and continue from the first deferred
+chunk. Owner admission/drain covers reads and mutations; transport failures never invoke local
+fallbacks. Presentation journals retain at most 128 reference events and return at most 32 per
+batch, without bodies or worker errors. Public audit IPC failures omit raw input, causes and
+stacks. Repair retains the existing intentional backup-location result; this does not authorize
+reading that backup through control RPC.
+
+Explicit Thought/cURL content uses purpose- and resource-bound owner capabilities with epoch,
+UUID, expiry and sequential byte cursors. Each content owner permits four snapshots and 256 MiB
+of retained body buffers. Each chunk is at most 64 KiB before base64 encoding; normal control
+limits remain unchanged. Completion, explicit close, expiry and owner drain release retention.
+Disconnect cleanup is best-effort and diagnosed without values; expiry bounds orphan retention.
+Thought detail intentionally returns plaintext thought, visible text and nullable signature to
+the requesting renderer. Their combined body has a 256 MiB operational transfer ceiling while
+thought text retains its 64 MiB limit. cURL capabilities and commands stay in Electron main;
+only copied status reaches React. The 8 MiB replay-body limit remains separate from the 64 MiB
+quoted-command ceiling. Current gateway key inclusion remains opt-in; upstream credentials
+remain prohibited. Public Thought/cURL errors omit raw inputs, contents, causes and stacks.
 
 Traffic audit and Thought Store data live in separate SQLite databases under the proxy state
 directory and are written by separate bounded worker threads. The model path is fail-open: queue
@@ -122,9 +283,44 @@ the gateway's raw-Base64 fallback.
 
 ## Updates and external execution
 
+### Coding tool configuration files
+
+Claude Code and Codex settings store the existing gateway API key in the client-readable format
+required by each client. Their first `.antigravity-manager.bak` recovery file preserves the exact
+original text and may contain credentials from a previous provider. These are explicit local
+interoperability files, not Manager account-database migrations. Files use mode `0600` where
+supported; Windows access follows the containing profile's ACL. Do not share, log or commit
+these files. Backups and arbitrary client settings never cross the control transport; previews
+project only model/address fields and a hidden credential marker. The user confirms complete
+restore in the UI or supplies CLI `--yes`. See
+[coding-tool-configuration.md](coding-tool-configuration.md) for the difference between removal
+and restoration.
+
 Installer, updater, shell, subprocess and binary-patching changes are high risk. Validate exact targets and arguments, preserve platform quoting rules, and avoid command construction from untrusted strings. Update sources and artifacts must retain the repository's existing integrity and signing expectations.
 
+Windows automatic updates use separate Squirrel and NSIS feeds. Only a recognized installed
+package activates its matching updater; MSI and unpacked builds cannot invoke either automatic
+installer. The release feed generator verifies the NSIS installer's size and SHA-512 against its
+metadata before publishing a feed that points to the release asset. The updater does not disable
+the library's installer verification. A local-feed override is used only when the explicit
+unmanaged-test flag is also set; ordinary installed builds use the configured release feed.
+
 ## Required evidence
+
+Standalone runtime preparation downloads Node only from the official distribution and verifies
+the selected asset against its official SHA-256 list. Native rebuilds run in an isolated tree;
+they never replace the Electron ABI dependencies. Generated runtime replacement checks its owned
+manifest and resolved directory before moving or deleting anything. Failed restoration preserves
+the previous tree for explicit recovery.
+
+Dependency tracing scopes filesystem reads to the staging root, rejects cross-drive host paths
+and external link targets, and requires the target native binaries before materialization.
+Optional import warnings are reviewed explicitly; unknown warnings fail preparation.
+
+Installed-resource credential acceptance uses unique synthetic service names in the real OS store.
+Its test preload remaps both keytar and OpenCode's native keyring service, so production grants and
+API keys are neither read nor changed. Windows native credential writes require a usable interactive
+login session; a restricted execution token can load the native binary but fail OS-store operations.
 
 Use [testing.md](testing.md) to select focused tests. Security-sensitive changes normally require:
 

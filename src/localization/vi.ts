@@ -1,26 +1,100 @@
 const vi = {
+  'agent-tools': {
+    title: 'Kết nối công cụ lập trình',
+    description: 'Chọn công cụ để dùng mô hình qua Antigravity Manager.',
+    loading: 'Đang đọc cài đặt…',
+    installed: 'Đã cài đặt',
+    'not-installed': 'Chưa tìm thấy bản cài đặt',
+    'read-error': 'Không thể đọc cài đặt. Hãy thử lại trước khi thay đổi.',
+    retry: 'Thử lại',
+    configured: 'Đã lưu cấu hình',
+    'custom-address': 'Đang dùng địa chỉ khác',
+    'not-configured': 'Chưa cấu hình',
+    'not-verified': 'Chưa xác minh yêu cầu',
+    address: 'Địa chỉ Manager',
+    model: 'Mô hình',
+    'not-set': 'Chưa đặt',
+    'choose-model': 'Chọn khi cấu hình',
+    update: 'Cập nhật cấu hình',
+    configure: 'Cấu hình',
+    view: 'Xem cấu hình',
+    restore: 'Khôi phục bản sao lưu',
+    remove: 'Gỡ kết nối',
+    'install-notice': 'Bạn có thể lưu cài đặt trước khi cài công cụ. Sau đó hãy mở lại công cụ.',
+    'action-error': 'Không thể cập nhật cài đặt',
+    saved: 'Đã cập nhật cài đặt',
+    reopen: 'Mở lại {{name}} để áp dụng cài đặt.',
+    'configure-title': 'Kết nối {{name}}',
+    'configure-description':
+      'Yêu cầu sẽ đi qua Manager. Cài đặt hiện tại được sao lưu trước thay đổi đầu tiên.',
+    'restore-title': 'Khôi phục cài đặt {{name}}?',
+    'restore-description':
+      'Toàn bộ tệp sẽ được thay bằng bản sao lưu ban đầu, kể cả các chỉnh sửa sau đó. Nếu Manager tạo tệp, tệp sẽ bị xóa. Bản sao lưu chỉ dùng một lần.',
+    'remove-title': 'Gỡ kết nối với Manager?',
+    'remove-description': 'Khôi phục cài đặt kết nối trước đó, giữ cài đặt khác và bản sao lưu.',
+    'preview-title': 'Cài đặt {{name}}',
+    'preview-description':
+      'Chỉ hiển thị cài đặt cần thiết để kết nối với Manager. Khóa kết nối được ẩn.',
+    confirm: 'Xác nhận',
+    advanced: 'Địa chỉ và tệp cấu hình',
+    'reset-address': 'Dùng địa chỉ Manager hiện tại',
+    'backend-files':
+      'Các cài đặt này được lưu trên máy tính chạy dịch vụ Manager, cho người dùng chạy dịch vụ đó.',
+    'backup-notice': 'Giữ bản sao lưu đầu tiên khi cập nhật. Mở lại công cụ sau khi lưu.',
+    'toml-notice':
+      'Định dạng và chú thích trong cài đặt Codex có thể thay đổi. Bản sao đầy đủ được lưu để khôi phục. Thông tin đăng nhập và quyền hiện có được giữ lại.',
+    'codex-review':
+      'Cấu hình yêu cầu tác vụ và kiểm tra tự động. Giữ tuyến kiểm tra đang bật và cài đặt phê duyệt.',
+    'model-count': '{{count}} mô hình',
+    'plugin-notice':
+      'Đã cài plugin đăng nhập trực tiếp. Hãy kiểm tra Manager được chọn trong OpenCode.',
+    'revoke-key': 'Vô hiệu hóa khóa kết nối OpenCode',
+    errors: {
+      unavailable: 'Không thể truy cập cài đặt. Hãy thử lại.',
+      'invalid-config': 'Tệp không hợp lệ hoặc quá lớn. Hãy sửa trước khi cấu hình.',
+      'read-failed': 'Không thể đọc tệp. Hãy kiểm tra quyền truy cập.',
+      'write-failed': 'Không thể lưu. Bản sao lưu vẫn được giữ.',
+      'backup-failed': 'Không thể tạo bản sao lưu. Cài đặt công cụ chưa thay đổi.',
+      'backup-missing': 'Không có bản sao lưu để khôi phục.',
+      'configuration-changed': 'Cài đặt thay đổi trong lúc xử lý. Hãy đọc lại và thử lại.',
+      'key-missing': 'Hãy tạo khóa kết nối ở trang proxy trước.',
+      'review-route-disabled': 'Tuyến kiểm tra Codex bị tắt. Hãy bật trong ánh xạ mô hình.',
+    },
+  },
   appName: 'Antigravity Manager',
   'process-runtime': {
-    'close-failed': 'Không thể đóng Antigravity. Kiểm tra quyền truy cập rồi thử lại.',
+    'close-failed':
+      'Không thể đóng Antigravity. Hãy lưu cuộc trò chuyện và tệp, đóng ứng dụng thủ công rồi thử lại.',
     'exit-unconfirmed':
-      'Không thể xác nhận Antigravity đã thoát. Kiểm tra ứng dụng trước khi thử lại.',
+      'Antigravity chưa đóng xong. Hãy lưu cuộc trò chuyện và tệp, đóng ứng dụng thủ công rồi thử lại.',
     working: 'Đang xử lý...',
     busy: 'Antigravity đang bận. Vui lòng đợi thao tác hoàn tất.',
-    'missing-executable': 'Không tìm thấy hoặc không thể chạy tệp thực thi. Kiểm tra đường dẫn.',
+    'missing-executable':
+      'Không tìm thấy hoặc không thể mở Antigravity. Hãy kiểm tra vị trí ứng dụng trong Cài đặt.',
     'target-conflict':
-      'Đường dẫn cấu hình và tiến trình đang chạy thuộc các bản cài đặt khác nhau. Giải quyết xung đột trước khi chuyển tài khoản.',
+      'Antigravity đang chạy không phải bản cài đặt được chọn trong Cài đặt. Hãy đóng ứng dụng hoặc chọn đúng bản cài đặt trước khi đổi tài khoản.',
     'directory-conflict':
-      'Thư mục dữ liệu cấu hình và đang dùng khác nhau. Giải quyết xung đột trước khi chuyển tài khoản.',
-    'probe-failed': 'Không thể kiểm tra tiến trình trong thời gian quy định.',
-    'launch-failed': 'Khởi chạy thất bại. Kiểm tra đường dẫn và quyền truy cập.',
+      'Antigravity đang dùng thư mục dữ liệu khác với thư mục đã chọn. Hãy đóng ứng dụng hoặc kiểm tra cài đặt thư mục trước khi đổi tài khoản.',
+    'probe-failed':
+      'Không thể kiểm tra trạng thái Antigravity kịp thời. Hãy kiểm tra ứng dụng có đang mở rồi thử lại.',
+    'launch-failed': 'Không thể mở Antigravity. Hãy kiểm tra vị trí ứng dụng và quyền truy cập.',
     'startup-unconfirmed':
-      'Chưa xác nhận khởi chạy trong sáu giây. Không tự khởi chạy lại. Kiểm tra ứng dụng trước khi thử lại.',
+      'Chưa xác nhận được Antigravity đã mở. Không khởi chạy lần nữa để tránh mở hai lần. Hãy kiểm tra ứng dụng trước khi thử lại.',
     'switched-hot-unconfirmed':
-      'Dữ liệu tài khoản đã được cập nhật nhưng chưa xác nhận được việc chuyển đổi nóng trong IDE. Hãy kiểm tra tài khoản hiện tại trong IDE trước khi thử lại.',
+      'Tài khoản mới đã được lưu nhưng chưa xác nhận đổi tài khoản trong Antigravity IDE. Hãy kiểm tra tài khoản hiển thị trong IDE trước khi thử lại.',
     'switched-startup-unconfirmed':
-      'Dữ liệu tài khoản đã cập nhật nhưng chưa xác nhận khởi chạy. Không tự khởi chạy lại. Kiểm tra ứng dụng trước khi thử lại.',
+      'Tài khoản mới đã được lưu nhưng chưa xác nhận Antigravity đã mở. Không khởi chạy lần nữa. Hãy kiểm tra ứng dụng trước khi thử lại.',
   },
   common: {
+    'core-unavailable-title': 'Không thể kết nối với Antigravity Manager',
+    'core-unavailable-body':
+      'Tài khoản và proxy hiện không dùng được. Hãy đóng rồi mở lại Antigravity Manager. Nếu vẫn gặp lỗi, hãy cài đặt phiên bản mới nhất.',
+    'account-data-unavailable-title': 'Không thể mở các tài khoản đã lưu',
+    'account-data-unavailable-body':
+      'Hiện không thể đọc các tài khoản đã lưu. Hãy kiểm tra bạn đang đăng nhập bằng tài khoản thường dùng trên máy tính này, rồi mở lại Antigravity Manager. Dữ liệu tài khoản của bạn không thay đổi.',
+    'already-running-title': 'Antigravity Manager đang chạy',
+    'already-running-body':
+      'Hãy đóng cửa sổ Antigravity Manager khác rồi thử lại. Nếu không tìm thấy, hãy khởi động lại máy tính.',
     loading: 'Đang tải...',
     error: 'Lỗi',
     unknown: 'Không rõ',
@@ -77,28 +151,27 @@ const vi = {
     generic: 'Đã xảy ra lỗi không mong đợi.',
     detailsTitle: 'Chi tiết lỗi',
     detailsDescription:
-      'Chi tiết lỗi backend được hiển thị bên dưới. Chúng có thể bao gồm đường dẫn cục bộ và stack frame.',
-    keychainUnavailable: 'Keychain không khả dụng.',
+      'Những thông tin này có thể giúp tìm nguyên nhân sự cố và có thể chứa vị trí tệp cá nhân. Hãy kiểm tra trước khi chia sẻ.',
+    keychainUnavailable: 'Hiện không thể đọc thông tin đăng nhập đã lưu.',
     keychainHint: {
-      translocation:
-        'Đã phát hiện macOS App Translocation. Hãy chuyển ứng dụng vào /Applications rồi mở lại.',
+      translocation: 'Hãy chuyển ứng dụng vào thư mục Ứng dụng, rồi mở lại.',
       keychainDenied:
-        'Quyền truy cập Keychain đã bị từ chối. Ứng dụng có thể chưa được ký; hãy xem README để biết cách tự ký.',
-      signNotarize: 'Hãy ưu tiên dùng bản dựng đã được ký và công chứng khi có thể.',
+        'macOS đã chặn quyền truy cập thông tin đăng nhập đã lưu. Hãy xem hướng dẫn cài đặt ứng dụng rồi thử lại.',
+      signNotarize: 'Nếu có, hãy cài đặt phiên bản được macOS xác minh.',
     },
-    dataMigrationFailed: 'Không thể giải mã dữ liệu tài khoản cũ.',
+    dataMigrationFailed: 'Không thể đọc các tài khoản được lưu bằng phiên bản trước.',
     masterKeyUnavailable:
-      'Đã tìm thấy tài khoản đã lưu nhưng khóa mã hóa hiện không khả dụng. Không có dữ liệu tài khoản hoặc tệp khóa nào bị thay đổi.',
+      'Đã tìm thấy các tài khoản đã lưu nhưng hiện chưa thể mở. Dữ liệu tài khoản của bạn không bị thay đổi.',
     dataMigrationHint: {
       relogin: 'Hãy đăng nhập lại hoặc thêm lại tài khoản của bạn.',
       clearData: 'Nếu lỗi vẫn tiếp diễn, hãy xóa dữ liệu tài khoản cục bộ rồi đăng nhập lại.',
     },
     antigravityStorageJsonNotFound:
-      'Không tìm thấy storage.json của Antigravity. Hãy mở ứng dụng Antigravity mục tiêu và đăng nhập một lần, rồi thử chuyển lại.',
+      'Antigravity chưa hoàn tất thiết lập ban đầu. Hãy mở ứng dụng đã chọn và đăng nhập một lần, rồi thử đổi tài khoản lại.',
     antigravityProjectIdMissing:
-      'Tài khoản này thiếu Antigravity project ID. Điều này có thể xảy ra nếu tài khoản chưa từng đăng nhập vào ứng dụng Antigravity. Hãy đăng nhập một lần trong ứng dụng Antigravity, rồi quay lại công cụ này và thử chuyển lại.',
+      'Tài khoản này chưa sẵn sàng dùng với Antigravity. Hãy đăng nhập tài khoản trong Antigravity một lần, rồi thử lại.',
     antigravityDatabasePermissionDenied:
-      'Không thể ghi vào nơi lưu trữ cơ sở dữ liệu Antigravity. Hãy kiểm tra thư mục Antigravity user-data đã cấu hình hoặc khởi động lại Antigravity Manager sau khi mở Antigravity một lần.',
+      'Không thể lưu thông tin đăng nhập Antigravity. Hãy kiểm tra quyền ghi vào thư mục dữ liệu, hoặc mở Antigravity một lần rồi khởi động lại Manager.',
     cloudAccountLoginExpired:
       'Thông tin đăng nhập cho tài khoản cloud này đã hết hạn. Hãy đăng nhập lại.',
   },
@@ -137,6 +210,12 @@ const vi = {
     },
   },
   settings: {
+    'service-unavailable':
+      'Hiện không thể mở hoặc lưu cài đặt. Hãy thử lại. Nếu vẫn gặp lỗi, hãy đóng rồi mở lại Antigravity Manager.',
+    'service-retry': 'Thử lại',
+    'service-restart-required': 'Đã lưu cài đặt. Hãy tắt rồi bật lại proxy để áp dụng thay đổi.',
+    'service-save': 'Lưu',
+    'service-secret-configured': 'Đã đặt địa chỉ proxy. Nhập địa chỉ mới để thay thế.',
     'weekly-warmup': {
       error: 'Không thể tải hoặc lưu cài đặt làm nóng.',
       retry: 'Thử lại',
@@ -269,7 +348,8 @@ const vi = {
       clarity_desc:
         'Chia sẻ chẩn đoán tương tác ẩn danh, heatmap và phát lại phiên để cải thiện ứng dụng.',
       clarity_unavailable: 'Microsoft Clarity chưa được cấu hình cho bản build này.',
-      restart_note: 'Một số thay đổi quan sát sẽ có hiệu lực sau khi khởi động lại ứng dụng.',
+      restart_note:
+        'Một số cài đặt nhật ký và chẩn đoán có hiệu lực sau khi khởi động lại ứng dụng.',
     },
     notifications: {
       title: 'Thông báo',
@@ -426,12 +506,12 @@ const vi = {
   },
   cloud: {
     title: 'Tài khoản',
-    description: 'Quản lý pool tài khoản Google Gemini của bạn.',
+    description: 'Quản lý các tài khoản Google Gemini của bạn.',
     security: {
       compatibilityMode: {
-        title: 'Đang sử dụng kho khóa tương thích',
+        title: 'Khóa bảo mật được lưu trên máy tính này',
         description:
-          'Dữ liệu tài khoản vẫn được mã hóa bằng AES-256-GCM, nhưng khóa chính được lưu cục bộ thay vì được dịch vụ thông tin xác thực của hệ điều hành bảo vệ.',
+          'Kho lưu trữ bảo mật của hệ thống không khả dụng nên khóa được lưu trong tệp trên máy tính. Hãy bảo vệ máy tính và các bản sao lưu.',
       },
     },
     autoSwitch: 'Tự động chuyển',
@@ -457,21 +537,20 @@ const vi = {
       'compact-weekly-short': 'Tuần',
       'both-short': 'Cả hai',
       'no-weekly-quota': 'Không có dữ liệu hạn mức hàng tuần',
-      'weekly-summary-unavailable':
-        'Dịch vụ thượng nguồn không trả về bản tóm tắt hạn mức hàng tuần.',
+      'weekly-summary-unavailable': 'Dịch vụ mô hình chưa cung cấp thông tin sử dụng hằng tuần.',
       'weekly-bucket-unavailable':
-        'Bản tóm tắt hạn mức không có nhóm hạn mức hàng tuần có thể nhận dạng.',
+        'Không tìm thấy mức sử dụng hằng tuần trong thông tin nhận được.',
     },
     authDialog: {
       title: 'Thêm tài khoản Google',
-      description: 'Bạn cần cấp quyền ứng dụng để thêm tài khoản.',
-      oauthClient: 'OAuth Client',
-      oauthClientPlaceholder: 'Chọn OAuth client',
+      description:
+        'Chọn cách đăng nhập rồi đăng nhập Google trong trình duyệt. Tài khoản sẽ được thêm tự động.',
+      oauthClient: 'Cách đăng nhập',
+      oauthClientPlaceholder: 'Chọn cách đăng nhập',
       openLogin: 'Mở trang đăng nhập',
       authCode: 'Mã ủy quyền',
       placeholder: 'Dán mã bắt đầu bằng 4/...',
-      instruction:
-        'Ứng dụng sẽ mở trình duyệt mặc định để đăng nhập Google. Sao chép mã từ trang localhost và dán vào đây.',
+      instruction: 'Nếu đăng nhập không tự hoàn tất, hãy dán mã từ trình duyệt vào đây.',
       verify: 'Xác thực và thêm',
     },
     card: {
@@ -479,7 +558,7 @@ const vi = {
       use: 'Sử dụng',
       rateLimited: 'Bị giới hạn tốc độ',
       validationRiskControlled: 'Rủi ro / Bị giới hạn',
-      validationOAuthReauthRequired: 'Cần xác thực lại OAuth',
+      validationOAuthReauthRequired: 'Cần đăng nhập lại Google',
       validationRequired: 'Cần xác minh',
       completeValidation: 'Hoàn tất xác minh',
       left: 'còn lại',
@@ -498,9 +577,9 @@ const vi = {
       liveLimitRateLimited: 'Bị giới hạn tốc độ',
       liveLimitRemaining: 'còn {{duration}}',
       liveLimitDetectedAgo: 'phát hiện cách đây {{duration}}',
-      liveLimitActiveTitle: 'Điểm cuối thượng nguồn tạm thời không khả dụng.',
-      liveLimitRecentTitle: 'Điểm cuối thượng nguồn vừa trả về lỗi.',
-      liveLimitQuotaSnapshot: 'Ảnh chụp hạn mức vẫn có thể hiển thị {{percentage}}%.',
+      liveLimitActiveTitle: 'Dịch vụ mô hình tạm thời không khả dụng.',
+      liveLimitRecentTitle: 'Dịch vụ mô hình gần đây báo lỗi.',
+      liveLimitQuotaSnapshot: 'Lần kiểm tra hạn mức gần nhất có thể vẫn hiển thị {{percentage}}%.',
       liveLimitMessage: 'Thông báo: {{message}}',
       resetPrefix: 'reset',
       resetTime: 'Thời điểm reset',
@@ -513,6 +592,9 @@ const vi = {
       proxy: 'Proxy',
       proxyPlaceholder: 'ví dụ: http://127.0.0.1:7890',
       proxySaved: 'Đã lưu proxy',
+      'proxy-replace-placeholder': 'Nhập địa chỉ proxy mới',
+      'proxy-remove': 'Xóa proxy',
+      'proxy-save-failed': 'Không thể lưu proxy',
       noProxy: 'Không dùng proxy',
       aiCredits: 'AI Credits',
       aiCreditsValue: '{{amount}} credits',
@@ -520,6 +602,15 @@ const vi = {
       modelVisibility: 'Hiển thị model',
     },
     identity: {
+      'profile-errors': {
+        'account-not-found': 'Tài khoản này không còn khả dụng.',
+        'baseline-unavailable': 'Không có hồ sơ định danh ban đầu để khôi phục.',
+        'revision-not-found': 'Không tìm thấy hồ sơ định danh đã chọn.',
+        'profile-invalid': 'Không thể dùng hồ sơ định danh này. Hãy chọn hồ sơ khác.',
+        'profile-write-failed': 'Không thể lưu hồ sơ danh tính. Vui lòng thử lại.',
+        'profile-operation-failed':
+          'Không thể hoàn tất thao tác hồ sơ danh tính. Vui lòng thử lại.',
+      },
       title: 'Hồ sơ định danh',
       loading: 'Đang tải...',
       generateAndBind: 'Tạo và gán',
@@ -530,7 +621,7 @@ const vi = {
       confirm: 'Xác nhận',
       cancel: 'Hủy',
       close: 'Đóng',
-      currentStorage: 'Hồ sơ runtime hiện tại',
+      currentStorage: 'Cài đặt thiết bị hiện tại',
       accountBinding: 'Hồ sơ đang gán với tài khoản',
       history: 'Lịch sử hồ sơ',
       noHistory: 'Chưa có lịch sử hồ sơ',
@@ -558,11 +649,37 @@ const vi = {
       },
       syncFailed: {
         title: 'Đồng bộ thất bại',
-        description: 'Không tìm thấy tài khoản đang hoạt động trong database của IDE.',
+        description:
+          'Không có tài khoản để đồng bộ từ Antigravity IDE. Hãy đăng nhập trong IDE trước.',
+        codes: {
+          'reauth-required': 'Đăng nhập lại trong Antigravity IDE rồi thử đồng bộ.',
+          'no-ide-account': 'Không tìm thấy tài khoản Google trong Antigravity IDE.',
+          'ide-database-unavailable':
+            'Không thể đọc tài khoản trong Antigravity IDE. Hãy khởi động lại IDE rồi thử lại.',
+          'agy-unsupported': 'Chưa thể nhập tài khoản từ Antigravity CLI tại đây.',
+          'sync-failed': 'Không thể đồng bộ tài khoản từ IDE. Hãy thử lại.',
+        },
+      },
+      validationLinkFailed: {
+        title: 'Không thể mở trang xác minh Google',
+        codes: {
+          'account-not-found': 'Tài khoản này không còn tồn tại.',
+          'no-trusted-link': 'Tài khoản này hiện không có trang xác minh Google để mở.',
+          'validation-link-failed': 'Không thể mở trang xác minh Google. Hãy thử lại.',
+        },
       },
       addSuccess: 'Đã thêm tài khoản thành công!',
       addFailed: {
         title: 'Không thể thêm tài khoản',
+        codes: {
+          'authorization-denied': 'Chưa cấp quyền truy cập Google. Hãy thử lại.',
+          'login-active': 'Đang có một lần đăng nhập Google khác.',
+          'login-cancelled': 'Đã hủy đăng nhập.',
+          'login-timeout': 'Đăng nhập quá thời gian. Hãy bắt đầu lại.',
+          'duplicate-account': 'Tài khoản Google này đã được thêm.',
+          'browser-open-failed': 'Không thể mở trình duyệt. Hãy kiểm tra trình duyệt mặc định.',
+          'login-failed': 'Không thể thêm tài khoản. Hãy thử lại.',
+        },
       },
       quotaRefreshed: 'Đã làm mới quota',
       refreshFailed: 'Không thể làm mới quota',
@@ -572,6 +689,14 @@ const vi = {
         description: 'Đang khởi động lại Antigravity...',
       },
       switchFailed: 'Không thể chuyển tài khoản',
+      switchFailureCodes: {
+        'account-not-found': 'Tài khoản này không còn tồn tại.',
+        'reauth-required': 'Đăng nhập lại tài khoản này trước khi chuyển.',
+        'identity-profile-required': 'Thiết lập hồ sơ nhận dạng trước khi chuyển.',
+        'process-control-failed': 'Không thể đóng hoặc khởi động lại Antigravity. Hãy thử lại.',
+        'target-write-failed': 'Không thể dùng tài khoản đã chọn trong Antigravity. Hãy thử lại.',
+        'switch-failed': 'Không thể chuyển tài khoản. Hãy thử lại.',
+      },
       deleted: 'Đã xóa tài khoản',
       deleteFailed: 'Không thể xóa tài khoản',
       deleteConfirm: 'Bạn có chắc chắn muốn xóa tài khoản này không?',
@@ -615,12 +740,23 @@ const vi = {
       quotaFlash: 'Quota Flash',
     },
     exportImport: {
+      'file-errors': {
+        'file-too-large': 'Tệp đã chọn quá lớn. Hãy chọn bản sao lưu tài khoản nhỏ hơn.',
+        'invalid-export': 'Không nhận dạng được bản sao lưu tài khoản này. Hãy chọn tệp hợp lệ.',
+        'read-failed': 'Không thể mở tệp đã chọn. Hãy kiểm tra xem tệp còn ở vị trí cũ không.',
+        'write-failed': 'Không thể lưu bản sao tài khoản. Hãy kiểm tra vị trí lưu.',
+        'import-failed': 'Không thể nhập tài khoản. Hãy thử lại.',
+        'tokens-missing':
+          'Bản sao lưu này thiếu thông tin đăng nhập của tài khoản. Hãy xuất bản sao có kèm thông tin đăng nhập.',
+        'account-write-failed': 'Không thể lưu tài khoản.',
+      },
       export: 'Xuất',
       import: 'Nhập',
       exportTitle: 'Xuất tài khoản',
-      exportDesc: 'Chọn có bao gồm token xác thực trong tệp xuất hay không.',
-      includeTokens: 'Bao gồm token (kém an toàn hơn)',
-      stripTokens: 'Loại bỏ token (an toàn hơn khi chia sẻ)',
+      exportDesc:
+        'Chọn có đưa thông tin đăng nhập vào bản sao lưu hay không. Hãy giữ riêng tư các bản sao có thông tin này.',
+      includeTokens: 'Có thông tin đăng nhập (khôi phục tài khoản)',
+      stripTokens: 'Không có thông tin đăng nhập (an toàn hơn khi chia sẻ)',
       exportSuccess: 'Đã xuất tài khoản thành công',
       importTitle: 'Nhập tài khoản',
       importDesc: 'Chọn tệp JSON đã được xuất trước đó.',
@@ -635,6 +771,45 @@ const vi = {
       fileTooLarge: 'Kích thước tệp vượt quá giới hạn 5MB',
       invalidJson: 'Định dạng tệp JSON không hợp lệ',
       readFileFailed: 'Không thể đọc tệp',
+    },
+    localImport: {
+      description:
+        'Tìm các tài khoản đã đăng nhập Antigravity trên máy tính này. Kiểm tra kết quả trước khi nhập.',
+      emailCollision: '{{email}} có {{count}} thông tin đăng nhập đã lưu khác nhau.',
+      sources: {
+        'antigravity-keyring': 'Thông tin đăng nhập do hệ thống lưu',
+        'antigravity-classic-db': 'Tài khoản đã lưu trong Antigravity',
+        'antigravity-ide-db': 'Tài khoản đã lưu trong Antigravity IDE',
+      },
+      validationErrors: {
+        'credential-unavailable':
+          'Thông tin đăng nhập này không còn khả dụng. Hãy đăng nhập lại Antigravity rồi quét lại.',
+        'authentication-failed':
+          'Google không chấp nhận thông tin đăng nhập này. Hãy đăng nhập lại Antigravity rồi quét lại.',
+      },
+      discoveryErrors: {
+        missing: 'Không tìm thấy thông tin đăng nhập đã lưu tại đây.',
+        'permission-denied':
+          'Không có quyền đọc thông tin đăng nhập đã lưu. Hãy kiểm tra quyền truy cập rồi thử lại.',
+        locked:
+          'Thông tin đăng nhập bị khóa hoặc đang được dùng. Hãy mở khóa truy cập hoặc đóng Antigravity rồi quét lại.',
+        malformed:
+          'Không thể đọc thông tin đăng nhập đã lưu. Hãy đăng nhập lại Antigravity rồi quét lại.',
+        'timed-out': 'Đọc thông tin đăng nhập mất quá nhiều thời gian. Vui lòng quét lại.',
+        'read-failed': 'Không thể đọc thông tin đăng nhập đã lưu. Vui lòng quét lại.',
+      },
+      importErrors: {
+        'credential-unavailable':
+          'Thông tin đăng nhập này không còn khả dụng. Hãy quét lại trước khi nhập.',
+        'identity-conflict':
+          'Thông tin đăng nhập này không khớp với tài khoản hiện có. Hãy kiểm tra tài khoản trước khi nhập.',
+      },
+      errors: {
+        'session-not-found': 'Kết quả quét này không còn khả dụng. Vui lòng quét lại.',
+        'session-expired': 'Kết quả quét này đã hết hạn. Vui lòng quét lại.',
+        'session-consumed':
+          'Kết quả quét này đã được sử dụng. Hãy quét lại để nhập thêm tài khoản.',
+      },
     },
   },
   proxy: {
@@ -679,47 +854,50 @@ const vi = {
       auto_start_desc: 'Khởi động proxy khi ứng dụng mở lên',
       'allow-local-video-paths': 'Cho phép đường dẫn video cục bộ',
       'allow-local-video-paths-desc':
-        'Cho phép yêu cầu API đọc qua video_url các tệp cục bộ mà tài khoản người dùng của bạn có thể truy cập. Chỉ bật khi mọi máy khách proxy đều đáng tin cậy.',
-      'global-system-prompt-title': 'Lời nhắc hệ thống toàn cục',
+        'Cho phép công cụ kết nối đọc các video trên máy tính mà tài khoản của bạn có quyền truy cập. Chỉ bật khi tin tưởng mọi công cụ kết nối.',
+      'global-system-prompt-title': 'Hướng dẫn chung cho mọi yêu cầu AI',
       'global-system-prompt-description':
-        'Chèn chỉ dẫn này trước chỉ dẫn hệ thống do máy khách cung cấp trong mọi yêu cầu proxy.',
+        'Tự động thêm hướng dẫn này trước hướng dẫn của công cụ kết nối trong mỗi yêu cầu gửi qua Manager.',
       'global-system-prompt-placeholder':
         'Nhập lời nhắc hệ thống toàn cục...\nVí dụ: Trả lời bằng tiếng Trung giản thể và giải thích ngắn gọn thay đổi mã.',
       'global-system-prompt-character-count': '{{count}} ký tự',
       'global-system-prompt-long-warning':
-        'Lời nhắc dài hơn 2.000 ký tự có thể làm giảm đáng kể cửa sổ ngữ cảnh khả dụng.',
+        'Hướng dẫn dài hơn 2.000 ký tự sẽ để lại ít chỗ hơn cho lịch sử hội thoại. Hãy cân nhắc rút gọn.',
       local_access: 'Truy cập trong mạng nội bộ:',
       select_ip: 'Chọn IP',
       no_token_warning: 'API key chưa được đặt. Bất kỳ ai trong mạng đều có thể truy cập!',
       show_key: 'Hiện',
       hide_key: 'Ẩn',
+      cloud_code_meta: 'Tương thích Cloud Code',
+      cloud_code_meta_desc:
+        'Thêm thông tin phản hồi cần thiết cho các công cụ Cloud Code cũ. Chỉ bật khi công cụ cần, vì công cụ khác có thể không chấp nhận thông tin này.',
     },
     mapping: {
       title: 'Ánh xạ mô hình',
-      description: 'Ánh xạ model Claude sang Gemini để định tuyến.',
+      description: 'Chọn mô hình Gemini xử lý yêu cầu cho từng mô hình Claude.',
       maps_to: 'Ánh xạ tới',
       restore: 'Khôi phục mặc định',
-      'only-raw-quota-models': 'Chỉ hiển thị model quota',
+      'only-raw-quota-models': 'Chỉ liệt kê mô hình tìm thấy trong tài khoản',
       'only-raw-quota-models-desc':
-        'API danh sách model chỉ trả về các model vật lý được phát hiện trong bộ nhớ đệm quota của tài khoản đã kết nối.',
+        'Công cụ kết nối chỉ thấy tên mô hình từ lần kiểm tra hạn mức tài khoản gần nhất, không liệt kê tên thay thế bổ sung.',
     },
     'open-code': {
       title: 'Đồng bộ OpenCode',
       description:
-        'Đồng bộ nhà cung cấp được quản lý mà không ghi lại chú thích hoặc định dạng JSONC do người dùng duy trì.',
+        'Kết nối OpenCode với Manager và giữ lại các cài đặt khác, chú thích và định dạng.',
       synced: 'Đã đồng bộ',
       'synced-custom-url': 'Đã đồng bộ bằng URL tùy chỉnh',
       'not-synced': 'Chưa đồng bộ',
       'config-path': 'Cấu hình',
       'configured-models': 'Các model đã cấu hình',
-      runtime: 'Môi trường OpenCode',
+      runtime: 'Cài đặt OpenCode',
       installed: 'Đã cài đặt',
       'not-installed': 'Không phát hiện',
-      credential: 'Thông tin xác thực riêng',
-      'key-stored': 'Được lưu trong kho thông tin xác thực của hệ điều hành',
+      credential: 'Khóa kết nối OpenCode',
+      'key-stored': 'Đã lưu trong kho bảo mật của hệ thống',
       'key-missing': 'Sẽ được tạo trong lần đồng bộ tiếp theo',
       'backup-notice':
-        'Bản sao lưu giữ nguyên chú thích và định dạng. Thông tin xác thực được thay bằng giá trị giữ chỗ không hợp lệ và khóa hiện tại được chèn khi khôi phục.',
+        'Bản sao lưu giữ chú thích và định dạng. Khóa Manager được thay bằng giá trị không sử dụng được; khi khôi phục sẽ dùng khóa hiện tại.',
       sync: 'Cấu hình và đồng bộ OpenCode',
       restore: 'Khôi phục bản sao lưu',
       clear: 'Xóa cấu hình được quản lý',
@@ -727,37 +905,36 @@ const vi = {
       'model-dialog-title': 'Chọn model OpenCode',
       'model-dialog-description':
         'Các model đã chọn sẽ được thêm hoặc cập nhật. Các model hiện có không được chọn sẽ không bị xóa.',
-      'custom-base-url': 'BaseURL Manager tùy chỉnh',
+      'custom-base-url': 'Địa chỉ Manager',
       'reset-base-url': 'Đặt lại',
       'invalid-base-url': 'Nhập URL HTTP hoặc HTTPS hợp lệ.',
-      'sync-accounts': 'Đồng bộ tài khoản vào antigravity-accounts.json',
+      'sync-accounts': 'Sử dụng tài khoản trong tiện ích đăng nhập OpenCode',
       'sync-accounts-description':
-        'OpenCode yêu cầu refresh token trong tệp plugin cục bộ. Tùy chọn này mặc định tắt; token không đi qua phản hồi IPC của renderer hoặc nhật ký.',
+        'Khi bật, OpenCode sẽ lưu thông tin giúp các tài khoản này tiếp tục đăng nhập vào một tệp trên máy tính này. Tùy chọn này mặc định tắt. Chỉ bật trên máy tính bạn tin tưởng.',
       'select-models': 'Các model cần thêm hoặc cập nhật',
       'selected-count': 'Đã chọn {{selected}} / {{total}}',
       'select-all': 'Chọn tất cả',
       'deselect-all': 'Bỏ chọn tất cả',
       'confirm-sync': 'Xác nhận đồng bộ',
-      'auth-plugin-warning-title': 'Đã phát hiện plugin xác thực cũ',
+      'auth-plugin-warning-title': 'Đã phát hiện tiện ích đăng nhập khác',
       'auth-plugin-warning-description':
-        'opencode-antigravity-auth có thể xung đột với provider được quản lý. Hãy kiểm tra plugin trước khi sử dụng cấu hình này.',
+        'opencode-antigravity-auth có thể dùng kết nối khác. Hãy kiểm tra Manager đã được chọn trong OpenCode trước khi dùng cài đặt này.',
       'view-config': 'Xem cấu hình',
       'restore-confirm-title': 'Khôi phục bản sao lưu OpenCode?',
       'restore-confirm-description':
-        'Cấu hình OpenCode hiện tại sẽ được thay bằng bản sao lưu dùng một lần. Bản sao lưu sẽ bị xóa sau khi khôi phục thành công.',
+        'Thay toàn bộ tệp bằng bản sao lưu ban đầu, bao gồm các thay đổi sau đó. Bản sao lưu được xóa sau khi khôi phục.',
       'confirm-restore': 'Xác nhận khôi phục',
-      'clear-confirm-title': 'Xóa cấu hình OpenCode được quản lý?',
+      'clear-confirm-title': 'Xóa kết nối Manager?',
       'clear-confirm-description':
-        'Thao tác này xóa provider được quản lý, các mục Google và Anthropic cũ phù hợp cùng khóa riêng. Các cài đặt không liên quan vẫn giữ nguyên và bản sao lưu đã che vẫn có thể được khôi phục.',
+        'Xóa kết nối này và khóa riêng của nó. Giữ các dịch vụ, cài đặt khác và bản sao lưu.',
       'confirm-clear': 'Xác nhận xóa',
       'config-viewer-title': 'Cấu hình OpenCode',
       'config-viewer-description': 'Bản xem trước cấu hình chỉ đọc',
-      'config-redacted-notice':
-        'Chú thích được loại bỏ và các trường nhạy cảm được che trước khi bản xem trước đến tiến trình renderer.',
-      'config-copied': 'Đã sao chép cấu hình được che',
+      'config-redacted-notice': 'Thông tin riêng tư được ẩn trong bản xem trước.',
+      'config-copied': 'Đã sao chép cấu hình và ẩn thông tin riêng tư',
       'config-copy-failed': 'Không thể sao chép cấu hình',
       'config-load-failed': 'Không thể tải cấu hình',
-      'copy-config': 'Sao chép cấu hình được che',
+      'copy-config': 'Sao chép cấu hình (ẩn thông tin riêng tư)',
       'success-title': 'Đã cập nhật cấu hình OpenCode',
       'error-title': 'Cập nhật OpenCode thất bại',
       'unknown-error': 'Lỗi cấu hình OpenCode không xác định',
@@ -769,39 +946,39 @@ const vi = {
     persistence: {
       title: 'Request history and reasoning',
       description: 'Inspect bounded local records without slowing model traffic.',
-      'audit-title': 'Traffic audit',
+      'audit-title': 'Lịch sử yêu cầu',
       'audit-description':
-        'Stores redacted request, response and upstream-attempt records in a dedicated SQLite database.',
+        'Lưu yêu cầu, phản hồi và các lần gửi tới dịch vụ mô hình trên máy tính này, đồng thời ẩn thông tin nhạy cảm.',
       rows: '{{count}} requests',
-      queue: '{{count}} queued writes',
+      queue: '{{count}} bản ghi đang chờ lưu',
       dropped:
-        '{{count}} audit writes were dropped ({{reason}}). Model requests were not interrupted.',
+        'Không thể lưu {{count}} bản ghi ({{reason}}). Các yêu cầu mô hình vẫn tiếp tục bình thường.',
       'disk-gib': 'Disk limit (GiB)',
-      'body-hours': 'Body retention (hours)',
+      'body-hours': 'Thời gian giữ nội dung đầy đủ (giờ)',
       'summary-days': 'Summary retention (days)',
       'max-rows': 'Maximum rows',
       'no-audit': 'No traffic records yet.',
-      'audit-metadata': 'Request and attempt metadata',
-      'audit-body-missing': 'The audit body no longer exists.',
-      'audit-body-expired': 'The body expired; its metadata remains available.',
+      'audit-metadata': 'Chi tiết yêu cầu và các lần gọi dịch vụ mô hình',
+      'audit-body-missing': 'Nội dung đầy đủ của yêu cầu hoặc phản hồi không còn được lưu.',
+      'audit-body-expired': 'Nội dung đầy đủ đã hết hạn lưu nhưng vẫn có thể xem chi tiết yêu cầu.',
       partial: 'Partial',
-      'logical-size': 'Logical size',
-      'parse-error-offset': 'Parse error offset',
+      'logical-size': 'Kích thước nội dung',
+      'parse-error-offset': 'Vị trí nội dung không thể đọc',
       loading: 'Loading…',
       'copy-progress': 'Preparing full copy: {{value}}%',
       'previous-page': 'Previous page',
       'next-page': 'Next page',
       'copy-full': 'Copy complete body',
       'confirm-copy-full': 'Confirm copying {{size}}',
-      'clear-audit': 'Clear traffic audit',
-      'repair-audit': 'Repair audit database',
+      'clear-audit': 'Xóa lịch sử yêu cầu',
+      'repair-audit': 'Sửa lịch sử yêu cầu',
       'thought-title': 'Reasoning history',
       'thought-description': 'Save reasoning so later turns can continue the conversation.',
       sessions: '{{count}} sessions',
-      'hard-limit': 'Hard limit: 200 turns / 64 MiB per session',
+      'hard-limit': 'Mỗi cuộc hội thoại lưu tối đa 200 lượt và 64 MiB nội dung.',
       'retention-days': 'Retention (days)',
       'max-sessions': 'Maximum sessions',
-      oversized: 'body omitted: over 64 MiB',
+      oversized: 'Nội dung vượt quá 64 MiB nên không được lưu đầy đủ.',
       'no-thought-body': 'No stored thought body.',
       signature: 'Signature',
       'copy-signature': 'Copy signature',
@@ -812,6 +989,25 @@ const vi = {
       'confirm-repair': 'Confirm repair',
     },
   },
+  traffic: {
+    'search-metadata': 'Tìm theo mô hình, mã yêu cầu hoặc địa chỉ',
+    'copy-upstream-curl':
+      'Sao chép yêu cầu tới dịch vụ mô hình dưới dạng cURL (ẩn thông tin riêng tư)',
+    'upstream-attempts': 'Yêu cầu đã gửi tới dịch vụ mô hình',
+    'no-attempts': 'Chưa gửi yêu cầu nào tới dịch vụ mô hình.',
+    upstream: 'Dịch vụ mô hình',
+    endpoint: 'Địa chỉ dịch vụ',
+    protocol: 'Định dạng API',
+    'repair-databases': 'Sửa dữ liệu đã lưu',
+    'concise-help':
+      'Hiển thị thông tin chính của yêu cầu. Các phần được mở rộng vẫn hiển thị toàn bộ nội dung.',
+    'full-help':
+      'Hiển thị toàn bộ thông tin đã tải. Nếu nội dung không thể sắp xếp hoặc chưa đầy đủ, hai chế độ có thể giống nhau.',
+    'load-next-window': 'Phần tiếp theo',
+    offset: 'Vị trí nội dung {{offset}}',
+    'parse-error': 'Không thể đọc nội dung tại vị trí {{offset}}.',
+    'thought-oversized':
+      'Nội dung suy luận vượt quá 64 MiB nên không được lưu đầy đủ. Mã tham chiếu: {{hash}}',
+  },
 };
-
 export default vi;

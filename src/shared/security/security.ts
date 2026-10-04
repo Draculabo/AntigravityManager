@@ -1,5 +1,3 @@
-import path from 'node:path';
-import { app, safeStorage } from 'electron';
 import { logger } from '@/shared/logging/logger';
 import { AppError } from '@/shared/errors/appError';
 import {
@@ -13,21 +11,14 @@ import {
   MasterKeyManager,
   type InitializeMasterKeyOptions,
   type KeySource,
+  type MasterKeyProvider,
   type SecurityStatus,
 } from '@/shared/security/master-key-manager';
-import {
-  FileMasterKeyProvider,
-  LegacyFileMasterKeyProvider,
-} from '@/shared/security/key-providers/file-provider';
 import {
   KeytarMasterKeyProvider,
   LegacyKeytarMasterKeyProvider,
   type KeytarAdapter,
 } from '@/shared/security/key-providers/keytar-provider';
-import {
-  LegacySafeStorageProvider,
-  SafeStorageMasterKeyProvider,
-} from '@/shared/security/key-providers/safe-storage-provider';
 
 const SERVICE_NAME = 'AntigravityManager';
 const V2_KEYTAR_ACCOUNT_NAME = 'MasterKeyV2';
@@ -36,8 +27,12 @@ const LEGACY_KEYTAR_ACCOUNT_NAME = 'MasterKey';
 export type { KeySource, SecurityStatus };
 
 let masterKeyManager: MasterKeyManager | null = null;
+let runtimeConfiguration: {
+  providers: MasterKeyProvider[];
+  recoveryHint: NonNullable<SecurityStatus['recoveryHint']>;
+} | null = null;
 
-function createKeytarLoader(): () => Promise<KeytarAdapter> {
+export function createKeytarLoader(): () => Promise<KeytarAdapter> {
   let loadedKeytar: Promise<KeytarAdapter> | null = null;
 
   return async () => {
@@ -56,40 +51,82 @@ function createKeytarLoader(): () => Promise<KeytarAdapter> {
   };
 }
 
-function getRecoveryHint(): NonNullable<SecurityStatus['recoveryHint']> {
-  if (process.platform !== 'darwin') {
-    return 'HINT_RECOVERY';
+function createMasterKeyManager(): MasterKeyManager {
+  if (runtimeConfiguration) {
+    return new MasterKeyManager(runtimeConfiguration);
+  }
+
+  // The standalone Node runtime writes only to the OS credential store.
+  return new MasterKeyManager({
+    providers: [
+      new KeytarMasterKeyProvider(SERVICE_NAME, V2_KEYTAR_ACCOUNT_NAME, createKeytarLoader()),
+    ],
+  });
+}
+
+/** Configure the desktop's legacy providers before any account data is opened. */
+export function configureSecurityRuntime(configuration: {
+  providers: MasterKeyProvider[];
+  recoveryHint: NonNullable<SecurityStatus['recoveryHint']>;
+}): void {
+  if (masterKeyManager) {
+    throw new Error('Security runtime has already been initialized');
+  }
+
+  runtimeConfiguration = {
+    providers: [...configuration.providers],
+    recoveryHint: configuration.recoveryHint,
+  };
+}
+
+export function createKeytarProviders(loadKeytar = createKeytarLoader()): {
+  current: KeytarMasterKeyProvider;
+  legacy: LegacyKeytarMasterKeyProvider;
+} {
+  return {
+    current: new KeytarMasterKeyProvider(SERVICE_NAME, V2_KEYTAR_ACCOUNT_NAME, loadKeytar),
+    legacy: new LegacyKeytarMasterKeyProvider(SERVICE_NAME, LEGACY_KEYTAR_ACCOUNT_NAME, loadKeytar),
+  };
+}
+
+/** Copy the resolved desktop key to the OS keyring for standalone Node use. */
+export async function ensureHeadlessMasterKeyAvailable(): Promise<void> {
+  const { key } = getMasterKeyManager().getPrimaryKey();
+  const provider = createKeytarProviders().current;
+  const existing = await provider.read();
+
+  if (existing.status === 'available' && existing.key.equals(key)) {
+    return;
+  }
+
+  if (existing.status !== 'missing') {
+    throw new AppError(
+      'MASTER_KEY_UNAVAILABLE',
+      'OS keyring master key is unavailable or differs',
+      {
+        messageKey: 'error.masterKeyUnavailable',
+        metadata: { hint: 'HINT_RECOVERY', reason: 'PROVIDER_UNAVAILABLE', storedAccountCount: 0 },
+      },
+    );
   }
 
   try {
-    if (app.getAppPath().includes('/AppTranslocation/')) {
-      return 'HINT_APP_TRANSLOCATION';
-    }
-  } catch {
-    return 'HINT_MANUAL_SIGN';
+    await provider.write(key);
+  } catch (cause) {
+    throw new AppError('MASTER_KEY_UNAVAILABLE', 'Cannot migrate master key to OS keyring', {
+      messageKey: 'error.masterKeyUnavailable',
+      metadata: { hint: 'HINT_RECOVERY', reason: 'PROVIDER_UNAVAILABLE', storedAccountCount: 0 },
+      cause,
+    });
   }
 
-  return 'HINT_MANUAL_SIGN';
-}
-
-function createMasterKeyManager(): MasterKeyManager {
-  const userDataPath = app.getPath('userData');
-  const legacyKeyPath = path.join(userDataPath, '.mk');
-  const safeKeyPath = path.join(userDataPath, 'master-key.v2.safe');
-  const fileKeyPath = path.join(userDataPath, 'master-key.v2.file');
-  const loadKeytar = createKeytarLoader();
-
-  return new MasterKeyManager({
-    recoveryHint: getRecoveryHint(),
-    providers: [
-      new SafeStorageMasterKeyProvider(safeKeyPath, safeStorage),
-      new KeytarMasterKeyProvider(SERVICE_NAME, V2_KEYTAR_ACCOUNT_NAME, loadKeytar),
-      new FileMasterKeyProvider(fileKeyPath),
-      new LegacySafeStorageProvider(legacyKeyPath, safeStorage),
-      new LegacyKeytarMasterKeyProvider(SERVICE_NAME, LEGACY_KEYTAR_ACCOUNT_NAME, loadKeytar),
-      new LegacyFileMasterKeyProvider(legacyKeyPath),
-    ],
-  });
+  const verified = await provider.read();
+  if (verified.status !== 'available' || !verified.key.equals(key)) {
+    throw new AppError('MASTER_KEY_UNAVAILABLE', 'OS keyring master key verification failed', {
+      messageKey: 'error.masterKeyUnavailable',
+      metadata: { hint: 'HINT_RECOVERY', reason: 'PROVIDER_UNAVAILABLE', storedAccountCount: 0 },
+    });
+  }
 }
 
 function getMasterKeyManager(): MasterKeyManager {

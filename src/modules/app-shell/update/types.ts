@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export type ManualUpdatePlatform = 'darwin' | 'linux' | 'win32';
 export type UpdateNotificationSource = 'manual' | 'electron-updater';
-export type UpdateNotificationState = 'available' | 'downloaded';
+export type UpdateNotificationState = 'available' | 'downloading' | 'downloaded' | 'error';
 
 export const GitHubReleaseSchema = z.object({
   tag_name: z.string().min(1),
@@ -37,6 +37,7 @@ export interface ManualUpdateInfo {
   platform: ManualUpdatePlatform;
   source?: UpdateNotificationSource;
   state?: UpdateNotificationState;
+  downloadPercent?: number;
 }
 
 export interface ManualUpdateSnooze {

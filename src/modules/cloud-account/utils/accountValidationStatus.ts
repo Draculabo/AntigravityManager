@@ -1,5 +1,4 @@
 import type { TFunction } from 'i18next';
-import type { CloudAccount } from '@/modules/cloud-account/types';
 import {
   isOAuthReauthReason,
   isRateLimitReason,
@@ -7,12 +6,17 @@ import {
 
 export type CloudAccountHealthBlockKind = 'oauth_reauth' | 'validation' | null;
 
+interface AccountHealthForDisplay {
+  validation?: object;
+  oauth?: { refresh_blocked: boolean };
+}
+
 /**
  * A durable OAuth refresh block prevents automatic account use, whereas validation is a
  * temporary probe gate. Show the durable recovery requirement first when both are present.
  */
 export function getCloudAccountHealthBlockKind(
-  health: CloudAccount['health'],
+  health?: AccountHealthForDisplay,
 ): CloudAccountHealthBlockKind {
   if (health?.oauth?.refresh_blocked) {
     return 'oauth_reauth';
@@ -48,7 +52,11 @@ export function getValidationBlockedStatusLabel(
 }
 
 export function getCloudAccountBlockedStatusLabel(
-  account: Pick<CloudAccount, 'health' | 'status' | 'status_reason'>,
+  account: {
+    health?: AccountHealthForDisplay;
+    status?: 'active' | 'rate_limited' | 'expired';
+    status_reason?: string;
+  },
   t: TFunction,
 ): string | null {
   const healthBlockKind = getCloudAccountHealthBlockKind(account.health);

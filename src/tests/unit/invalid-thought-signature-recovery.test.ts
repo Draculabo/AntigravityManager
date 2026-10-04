@@ -14,6 +14,7 @@ describe('invalid thought signature classifier', () => {
     ['INVALID THOUGHT SIGNATURE', 'message'],
     ['thinking.signature: field required', 'message'],
     ['thoughtSignature is corrupted', 'message'],
+    ['messages.1.content.0: Invalid `signature` in `thinking` block', 'message'],
   ])('classifies narrow 400 text %s', (message, source) => {
     expect(
       classifyInvalidThoughtSignatureError(new UpstreamRequestError({ message, status: 400 })),
@@ -39,6 +40,27 @@ describe('invalid thought signature classifier', () => {
     expect(classifyInvalidThoughtSignatureError(error)).toEqual({ source: 'parsed_body' });
   });
 
+  it('recognizes a provider error nested as JSON text in the Google response', () => {
+    const error = new UpstreamRequestError({
+      status: 400,
+      message: 'Bad request',
+      body: JSON.stringify({
+        error: {
+          code: 400,
+          status: 'INVALID_ARGUMENT',
+          message: JSON.stringify({
+            type: 'error',
+            error: {
+              type: 'invalid_request_error',
+              message: 'messages.1.content.0: Invalid `signature` in `thinking` block',
+            },
+          }),
+        },
+      }),
+    });
+    expect(classifyInvalidThoughtSignatureError(error)).toEqual({ source: 'parsed_body' });
+  });
+
   it.each([
     'invalid signature',
     'failed to deserialise',
@@ -47,6 +69,8 @@ describe('invalid thought signature classifier', () => {
     'must be `thinking`',
     'thinking.thinking: field required',
     'INVALID_ARGUMENT',
+    'Invalid signature in authorization block',
+    'Invalid thinking block',
   ])('rejects broad false positive %s', (message) => {
     expect(
       classifyInvalidThoughtSignatureError(new UpstreamRequestError({ message, status: 400 })),
@@ -111,7 +135,6 @@ describe('invalid thought signature history rewrite', () => {
             id: 'call_1',
             name: 'lookup',
             input: {},
-            signature: 'explicit-tool-signature',
           },
         ],
       },
