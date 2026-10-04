@@ -11,6 +11,13 @@ This document defines the security-sensitive boundaries that repository changes 
 
 Do not expose general-purpose filesystem, process execution, Electron IPC or credential APIs to the renderer. New preload methods must be narrow, typed and backed by an allowlisted main-process operation.
 
+Traffic events received by the preload are synchronously validated with Zod's per-parse
+`jitless` option before reaching renderer callbacks. Zod can initialize before the page's
+Content Security Policy takes effect; a cached permission to compile JavaScript must not
+cause later event parsing to attempt dynamic compilation. The page keeps its existing
+no-eval policy, and invalid events do not reach subscribers. This option is local to the
+preload event boundary and does not change Zod configuration in other processes.
+
 ## Sensitive data
 
 Cloud-account load errors offer an explicit bug-report action. It copies the app, OS, architecture,

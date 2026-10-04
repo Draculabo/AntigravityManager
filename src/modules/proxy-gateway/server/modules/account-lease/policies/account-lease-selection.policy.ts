@@ -11,6 +11,7 @@ export interface AccountLeaseSelectionConfig {
   parityEnabled: boolean;
   parityShadowEnabled: boolean;
   schedulingMode: AccountLeaseSelectionMode;
+  accountSelectionStrategy: 'balanced' | 'account-first';
   preferredAccountId?: string;
   maxWaitMs: number;
   noGoMismatchRateThreshold: number;
@@ -42,6 +43,8 @@ function delay(ms: number): Promise<void> {
 
 export class AccountLeaseSelectionPolicy {
   private currentIndex = 0;
+  private accountFirstBindings = new Map<string, string>();
+  private lastAccountSelectionStrategy?: AccountLeaseSelectionConfig['accountSelectionStrategy'];
   private sessionBindings: Map<string, { accountId: string; expiresAt: number }> = new Map();
   private parityRequestCount = 0;
   private parityErrorCount = 0;
@@ -62,6 +65,11 @@ export class AccountLeaseSelectionPolicy {
   }
 
   clearAccountSessions(accountId: string): void {
+    for (const [model, id] of this.accountFirstBindings) {
+      if (id === accountId) {
+        this.accountFirstBindings.delete(model);
+      }
+    }
     for (const [sessionKey, binding] of this.sessionBindings) {
       if (binding.accountId === accountId) {
         this.sessionBindings.delete(sessionKey);
@@ -71,6 +79,7 @@ export class AccountLeaseSelectionPolicy {
 
   resetSelectionState(): void {
     this.currentIndex = 0;
+    this.accountFirstBindings.clear();
   }
 
   recordParityError(
@@ -106,6 +115,15 @@ export class AccountLeaseSelectionPolicy {
     request: AccountLeaseSelectionRequest<T>,
   ): Promise<AccountLeaseSelectionEntry<T> | null> {
     this.clearExpiredSessionBindings(request.now);
+
+    if (this.lastAccountSelectionStrategy !== request.config.accountSelectionStrategy) {
+      this.accountFirstBindings.clear();
+      this.lastAccountSelectionStrategy = request.config.accountSelectionStrategy;
+    }
+    // This user-selected strategy is independent of the experimental parity scheduler.
+    if (request.config.accountSelectionStrategy === 'account-first') {
+      return this.selectAccountFirstCandidate(request);
+    }
 
     if (this.shouldExecuteShadowComparison(request.config)) {
       this.executeShadowComparison(request);
@@ -154,6 +172,37 @@ export class AccountLeaseSelectionPolicy {
       accountId,
       expiresAt,
     });
+  }
+
+  private selectAccountFirstCandidate<T>(
+    request: AccountLeaseSelectionRequest<T>,
+  ): AccountLeaseSelectionEntry<T> | null {
+    const candidates = this.collectEligibleTokens(
+      request.allTokens,
+      request.model,
+      request.now,
+      request.accountCooldowns,
+      request.rateLimitTracker,
+    ).filter(([id, token]) => {
+      const quota = request.model ? request.getModelQuota?.(id, token, request.model) : undefined;
+      return quota === undefined || !Number.isFinite(quota) || quota > 0;
+    });
+    const model = request.model?.trim().toLowerCase() ?? '';
+    const preferred = candidates.find(([id]) => id === request.config.preferredAccountId);
+    const session = this.findStickySessionToken(candidates, request.sessionKey, request.now);
+    const retained = candidates.find(([id]) => id === this.accountFirstBindings.get(model));
+    const selected = preferred ?? session ?? retained ?? candidates[0] ?? null;
+    if (selected) {
+      // Bound state for callers that provide many distinct model identifiers.
+      if (!this.accountFirstBindings.has(model) && this.accountFirstBindings.size >= 256) {
+        const oldest = this.accountFirstBindings.keys().next().value;
+        if (oldest !== undefined) {
+          this.accountFirstBindings.delete(oldest);
+        }
+      }
+      this.accountFirstBindings.set(model, selected[0]);
+    }
+    return selected;
   }
 
   private collectEligibleTokens<T>(

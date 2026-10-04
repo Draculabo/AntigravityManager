@@ -2,17 +2,48 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   type AntigravityAppTarget,
+  AntigravityAppTargetSchema,
   resolveAntigravityAppTarget,
 } from '@/shared/platform/antigravityAppTarget';
 import { logger } from '@/shared/logging/logger';
-import { settings } from '@/shared/persistence/database/schema';
-import { getCloudDb } from './cloud-account-db';
+import { accounts, settings } from '@/shared/persistence/database/schema';
+import { getCloudDb, type DrizzleExecutor } from './cloud-account-db';
 import type { CloudAccountAlertPolicyUpdate } from '../services/cloud-account-alert-policy.schema';
 
 const ACTIVE_ACCOUNT_SETTING_PREFIX = 'active_cloud_account';
 const StringSettingSchema = z.string();
 
 export class CloudAccountSettingsStore {
+  /** Run inside the account mutation transaction so a failed cleanup cannot leave partial state. */
+  static removeMissingActiveAccountReferences(transaction: DrizzleExecutor): void {
+    for (const target of AntigravityAppTargetSchema.options) {
+      const key = `${ACTIVE_ACCOUNT_SETTING_PREFIX}.${target}`;
+      const row = transaction.select().from(settings).where(eq(settings.key, key)).get();
+      if (!row) {
+        continue;
+      }
+      let value: unknown;
+      try {
+        value = JSON.parse(row.value);
+      } catch {
+        // Corrupt settings keep their existing read-time diagnostics and default behavior.
+        continue;
+      }
+      const parsed = StringSettingSchema.safeParse(value);
+      if (!parsed.success || !parsed.data.trim()) {
+        continue;
+      }
+      const account = transaction
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(eq(accounts.id, parsed.data.trim()))
+        .get();
+      if (!account) {
+        transaction.delete(settings).where(eq(settings.key, key)).run();
+      }
+    }
+  }
+
   /** One SQLite transaction; no JSON configuration writes participate in this policy update. */
   static setAlertPolicy(input: CloudAccountAlertPolicyUpdate): void {
     const entries = Object.entries(input).filter(([, value]) => value !== undefined);

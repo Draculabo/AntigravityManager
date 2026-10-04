@@ -92,7 +92,34 @@ real process under Electron. The existing AutoUnpackNatives plugin unpacks `.nod
 
 React Doctor runs in pull requests with changed-line scope and error blocking. Telemetry, score sharing and supply-chain analysis are disabled. A full scan is advisory and establishes the existing-work baseline. React Scan is injected only for an explicitly enabled development Electron session; it is not bundled or run in CI.
 
+## Preload traffic events under Content Security Policy
+
+Run `npm run test:acceptance -- runtime preload-csp --policy-timing initial` and
+repeat with `--policy-timing after-preload`. The check builds the production preload
+through Forge's Vite configuration and launches a real Electron window using the
+current main-window execution settings in a temporary profile. It verifies that
+the page rejects dynamic compilation, delivers 100 valid traffic events in order,
+updates the visible count, filters invalid events, and stops callbacks after unsubscribe.
+All temporary window/profile/build files are removed; sanitized reports remain under `out`.
+
+Use `--expect-regression` only against the unfixed preload to confirm the same native
+check detects event loss and compilation errors. A successful Node VM or Vitest check
+does not replace this Electron evidence. The fixture uses synthetic events and does
+not prove live-provider requests, the full Traffic Monitor React page, or installer behavior.
+
+Run `preload-traffic-events.test.ts`, `preload-sandbox.test.ts`, and
+`browser-window-security.test.ts` for the adjacent unit contracts.
+
 ## Focused commands
+
+`cloud-account-plaintext-persistence.test.ts` exercises real SQLite account deletion, current-account
+reference cleanup at startup, repeat deletion, unrelated-setting preservation and transaction rollback
+using disposable databases. Run it with `cloud-account-settings-store.test.ts`,
+`cloud-account-adapter.test.ts`, `core-rpc.test.ts` and `convert-encrypted-account-fields.test.ts`
+for the adjacent desktop and standalone contracts. When the workspace SQLite binary was rebuilt
+for Electron, run the same Vitest entry with the matching Electron executable and
+`ELECTRON_RUN_AS_NODE=1`; do not rebuild it for Node over the desktop binary just to run these tests.
+This establishes native persistence behavior, not installed-client sign-out or live-provider requests.
 
 Build and acceptance scripts are organized by responsibility; see the
 [script reference](../scripts/README.md) for directory ownership and prerequisites.

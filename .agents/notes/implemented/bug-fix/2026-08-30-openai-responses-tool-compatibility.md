@@ -25,7 +25,7 @@ Gemini tool configuration has a shared concrete type. Mapped Claude/OpenAI reque
 
 ## Consequences
 
-Responses clients retain role-bearing messages and all response channels. A tool-only replacement transcript is intentionally discarded in the same way as the validated upstream implementation; clients must include an ordinary conversation message when the tool exchange is still relevant. Direct Gemini callers that provide tools now receive a default `VALIDATED` function-calling mode unless they supplied an explicit configuration.
+Responses clients retain role-bearing messages and all response channels. Tool-only replacement transcripts are discarded during leading tool-history cleanup; clients must include an ordinary conversation message when the tool exchange is still relevant. Direct Gemini callers that provide tools now receive a default `VALIDATED` function-calling mode unless they supplied an explicit configuration.
 
 ## Verification
 

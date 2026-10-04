@@ -531,6 +531,18 @@ const tr = {
       list: 'Liste',
       compact: 'Sıkışık',
     },
+    'auto-switch-client': 'İstemci hesabını otomatik değiştir',
+    'auto-switch-description':
+      'Antigravity, IDE ve CLI hesaplarını değiştirir. API isteklerinde kullanılan hesapları API Proxy sayfasında seçebilirsiniz.',
+    'quota-display': {
+      title: 'Kota görünümü',
+      description:
+        'Hesap kartlarında gösterilecek kotaları seçin. Bu ayar kotayı veya isteklerde kullanılan hesabı değiştirmez.',
+      'five-hours-gemini': 'Gemini 5 saatlik kota',
+      'five-hours-claude': 'Claude 5 saatlik kota',
+      'weekly-gemini': 'Gemini haftalık kota',
+      'weekly-claude': 'Claude haftalık kota',
+    },
     'quota-window': {
       label: 'Kota dönemi',
       'five-hours': '5 saatlik kota',
@@ -827,6 +839,18 @@ const tr = {
     },
   },
   proxy: {
+    'account-strategy': {
+      'save-failed': 'Seçiminiz kaydedilemedi. Yeniden denemek için tekrar seçin.',
+      title: 'API isteklerinde kullanılan hesaplar',
+      balanced: 'Kullanılabilir hesapları sırayla kullan',
+      'account-first': 'Aynı hesabı tercih et',
+      'balanced-description':
+        'Yeni sohbetleri kullanılabilir hesaplara dağıtır. Mevcut sohbet, hesabı kullanılabilir olduğu sürece aynı hesabı kullanır.',
+      'account-first-description':
+        'Her model için aynı hesabı kullanmaya devam eder. Kota bittiğinde, hesap geçici olarak sınırlandığında veya isteği karşılayamadığında başka hesaba geçer. Mevcut sohbetler kullanılabilir hesaplarını korur.',
+      'client-description':
+        'Bu ayar Antigravity, IDE veya CLI oturum hesabını değiştirmez. İstemci hesabının otomatik değiştirilmesi Hesaplar sayfasından yönetilir.',
+    },
     title: 'API Proxy',
     description: 'Yerel API proxy hizmetini yönetin.',
     save: 'Ayarları Kaydet',

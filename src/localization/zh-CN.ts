@@ -595,6 +595,17 @@ const zhCn = {
       list: '列表',
       compact: '紧凑',
     },
+    'auto-switch-client': '客户端自动换号',
+    'auto-switch-description':
+      '控制 Antigravity、IDE 和 CLI 的账号切换。API 请求使用哪些账号，请在 API 反代页面设置。',
+    'quota-display': {
+      title: '额度显示',
+      description: '选择账号卡片显示哪些额度。仅影响显示，不改变实际额度或请求使用的账号。',
+      'five-hours-gemini': 'Gemini 5 小时额度',
+      'five-hours-claude': 'Claude 5 小时额度',
+      'weekly-gemini': 'Gemini 每周额度',
+      'weekly-claude': 'Claude 每周额度',
+    },
     'quota-window': {
       label: '配额周期',
       'five-hours': '5 小时配额',
@@ -927,6 +938,17 @@ const zhCn = {
     },
   },
   proxy: {
+    'account-strategy': {
+      'save-failed': '未能保存设置，请重新选择后再试一次。',
+      title: 'API 请求使用账号的方式',
+      balanced: '轮流使用可用账号',
+      'account-first': '优先使用同一账号',
+      'balanced-description': '将新对话分配给不同的可用账号。已有对话在账号可用时继续使用原账号。',
+      'account-first-description':
+        '每个模型优先继续使用同一账号。额度用完、暂时受限或无法处理请求时，换用其他账号。已有对话会保留仍可用的原账号。',
+      'client-description':
+        '此设置不会改变 Antigravity、IDE 或 CLI 当前登录的账号。客户端自动换号请在账号页面设置。',
+    },
     title: 'API 反代',
     description: '管理本地 API 代理服务。',
     save: '保存设置',

@@ -121,6 +121,29 @@ async function connected() {
 }
 
 describe('service configuration', () => {
+  it('persists the API account strategy through real RPC and applies it without changing client auto-switch', async () => {
+    const { client } = await connected();
+    const { getServerConfig } = await import('@/server/server-config');
+    const before = await readDisk();
+    const result = await client.updateServiceConfig({
+      proxy: { account_selection_strategy: 'account-first' },
+    });
+    expect(result.state).toBe('applied');
+    expect(result.snapshot.proxy.account_selection_strategy).toBe('account-first');
+    expect((await client.readServiceConfig()).proxy.account_selection_strategy).toBe(
+      'account-first',
+    );
+    expect(getServerConfig()?.account_selection_strategy).toBe('account-first');
+    expect(await readDisk()).toEqual({
+      ...before,
+      proxy: { ...before.proxy, account_selection_strategy: 'account-first' },
+    });
+    expect(
+      ServiceConfigUpdateSchema.safeParse({ proxy: { account_selection_strategy: 'invalid' } })
+        .success,
+    ).toBe(false);
+  }, 15000);
+
   it('keeps configuration available to admitted tool work during shutdown', async () => {
     const { client, operations } = await connected();
     const { serviceConfigService } = await import('@/modules/config/service-config.service');

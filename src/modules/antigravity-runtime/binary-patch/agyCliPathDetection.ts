@@ -12,7 +12,7 @@ export interface AgyCliPathDetectionOptions {
 }
 
 /**
- * Locate the agy executable using the same precedence as the upstream implementation.
+ * Locate agy in the configured path, the user's local bin directory, then PATH order.
  *
  * A forced detection intentionally excludes the configured path so the Detect action
  * cannot return a stale-but-existing selection.

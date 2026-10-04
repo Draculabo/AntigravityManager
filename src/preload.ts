@@ -29,7 +29,8 @@ const electronBridge = {
   },
   onTrafficAuditEvent: (callback: (event: TrafficAuditEvent) => void) => {
     const handler = (_event: IpcRendererEvent, payload: unknown) => {
-      const parsed = TrafficAuditEventSchema.safeParse(payload);
+      // Zod can initialize before the page applies its CSP; event parsing must never compile code.
+      const parsed = TrafficAuditEventSchema.safeParse(payload, { jitless: true });
       if (parsed.success) {
         callback(parsed.data);
       }

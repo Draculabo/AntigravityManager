@@ -16,6 +16,7 @@ export class AccountLeaseConfigPolicy {
       parityEnabled: Boolean(config?.parity_enabled) && !config?.parity_kill_switch,
       parityShadowEnabled: Boolean(config?.parity_shadow_enabled),
       schedulingMode: this.getSchedulingMode(),
+      accountSelectionStrategy: config?.account_selection_strategy ?? 'balanced',
       preferredAccountId: this.getPreferredAccountId(),
       maxWaitMs: this.getMaxWaitDurationMs(),
       noGoMismatchRateThreshold: this.getNoGoMismatchRateThreshold(),

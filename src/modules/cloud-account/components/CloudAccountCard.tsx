@@ -55,11 +55,12 @@ import { CloudAccountProxyEditor } from '@/modules/cloud-account/components/Clou
 import { getCloudAccountBlockedStatusLabel } from '@/modules/cloud-account/utils/accountValidationStatus';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { AccountTierBadge } from '@/modules/cloud-account/components/AccountTierBadge';
-import { getVisibleQuotaModelsForPresentation } from '@/modules/cloud-account/utils/quota-model-families';
 import {
-  selectWeeklyQuotaItems,
-  type QuotaWindow,
-} from '@/modules/cloud-account/utils/quota-groups';
+  DEFAULT_QUOTA_GROUP_VISIBILITY,
+  getVisibleAccountQuota,
+  type QuotaGroupVisibility,
+} from '@/modules/cloud-account/utils/quota-group-visibility';
+import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 import { DetailedQuotaDisplay } from '@/modules/cloud-account/components/DetailedQuotaDisplay';
 import { AccountQuotaWindowSections } from '@/modules/cloud-account/components/AccountQuotaWindowSections';
 import { CompactModelQuotaDisplay } from '@/modules/cloud-account/components/CompactModelQuotaDisplay';
@@ -200,6 +201,7 @@ function findModelAvailability(
 interface CloudAccountCardProps {
   account: CloudAccountView;
   quotaWindow?: QuotaWindow;
+  quotaGroupVisibility?: QuotaGroupVisibility;
   onRefresh: (id: string) => void;
   onDelete: (id: string) => void;
   onSwitch: (id: string, appTarget?: AntigravityAppTarget) => void;
@@ -215,6 +217,7 @@ interface CloudAccountCardProps {
 export function CloudAccountCard({
   account,
   quotaWindow = 'both',
+  quotaGroupVisibility = DEFAULT_QUOTA_GROUP_VISIBILITY,
   onRefresh,
   onDelete,
   onSwitch,
@@ -277,10 +280,14 @@ export function CloudAccountCard({
 
   const allModelEntries = Object.entries(account.quota?.models || {}) as ModelQuotaEntry[];
 
-  const mergedModelQuotas = getVisibleQuotaModelsForPresentation(
-    account.quota?.models || {},
-    config?.model_visibility || {},
-  );
+  const {
+    models: mergedModelQuotas,
+    providerModels,
+    groups: detailedGroups,
+    weeklyItems: weeklyQuotaItems,
+    fiveHourHidden,
+    weeklyHidden,
+  } = getVisibleAccountQuota(account.quota, config?.model_visibility ?? {}, quotaGroupVisibility);
 
   const geminiModels = Object.entries(mergedModelQuotas)
     .filter(([name]) => name.includes('gemini') && !GEMINI_LEGACY_MODEL_PATTERN.test(name))
@@ -291,8 +298,6 @@ export function CloudAccountCard({
     .sort((a, b) => b[1].percentage - a[1].percentage);
 
   const hasVisibleQuotaModels = geminiModels.length > 0 || claudeModels.length > 0;
-  const weeklyQuotaItems = selectWeeklyQuotaItems(account.quota?.quota_groups);
-  const detailedGroups = account.quota?.quota_groups ?? [];
   const hasDetailedQuota = detailedGroups.some((group) =>
     group.buckets.some((bucket) => !isWeeklyQuotaBucket(bucket)),
   );
@@ -449,7 +454,12 @@ export function CloudAccountCard({
     </div>
   );
 
-  const providerStats = providerGroupingsEnabled ? getAccountStats(account) : null;
+  const providerStats = providerGroupingsEnabled
+    ? getAccountStats({
+        ...account,
+        quota: account.quota ? { ...account.quota, models: providerModels } : undefined,
+      })
+    : null;
   const providerGroupedQuotaSection =
     providerStats && providerStats.visibleModels > 0 ? (
       <>
@@ -769,6 +779,8 @@ export function CloudAccountCard({
           <AccountQuotaWindowSections
             quotaWindow={quotaWindow}
             weeklyItems={weeklyQuotaItems}
+            fiveHourHidden={fiveHourHidden}
+            weeklyHidden={weeklyHidden}
             hasQuotaSummary={account.quota?.quota_groups !== undefined}
             fiveHourContent={
               <>
@@ -873,6 +885,7 @@ export function CloudAccountCard({
 interface CompactCloudAccountCardProps {
   account: CloudAccountView;
   quotaWindow?: QuotaWindow;
+  quotaGroupVisibility?: QuotaGroupVisibility;
   onRefresh: (id: string) => void;
   onDelete: (id: string) => void;
   onSwitch: (id: string, appTarget?: AntigravityAppTarget) => void;
@@ -887,6 +900,7 @@ interface CompactCloudAccountCardProps {
 export function CompactCloudAccountCard({
   account,
   quotaWindow = 'both',
+  quotaGroupVisibility = DEFAULT_QUOTA_GROUP_VISIBILITY,
   onRefresh,
   onDelete,
   onSwitch,
@@ -906,10 +920,12 @@ export function CompactCloudAccountCard({
     account.is_active_agy
   );
 
-  const mergedModelQuotas = getVisibleQuotaModelsForPresentation(
-    account.quota?.models || {},
-    config?.model_visibility || {},
-  );
+  const {
+    models: mergedModelQuotas,
+    weeklyItems: weeklyQuotaItems,
+    fiveHourHidden,
+    weeklyHidden,
+  } = getVisibleAccountQuota(account.quota, config?.model_visibility ?? {}, quotaGroupVisibility);
 
   const compactQuotaItems = Object.entries(mergedModelQuotas)
     .sort((a, b) => b[1].percentage - a[1].percentage)
@@ -918,7 +934,6 @@ export function CompactCloudAccountCard({
       label: formatModelDisplayName(modelName),
       percentage: info.percentage,
     }));
-  const weeklyQuotaItems = selectWeeklyQuotaItems(account.quota?.quota_groups);
 
   const aiCredits = account.quota?.ai_credits;
   const shouldShowAiCredits =
@@ -1020,6 +1035,8 @@ export function CompactCloudAccountCard({
         <AccountQuotaWindowSections
           quotaWindow={quotaWindow}
           weeklyItems={weeklyQuotaItems}
+          fiveHourHidden={fiveHourHidden}
+          weeklyHidden={weeklyHidden}
           hasQuotaSummary={account.quota?.quota_groups !== undefined}
           variant="compact"
           fiveHourContent={<CompactModelQuotaDisplay items={compactQuotaItems} />}

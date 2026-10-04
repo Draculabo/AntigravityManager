@@ -569,6 +569,18 @@ const fr = {
       list: 'Liste',
       compact: 'Compact',
     },
+    'auto-switch-client': 'Changer automatiquement de compte dans les clients',
+    'auto-switch-description':
+      'Change les comptes dans Antigravity, IDE et CLI. Les comptes utilisés pour les requêtes API se règlent sur la page Proxy API.',
+    'quota-display': {
+      title: 'Affichage des quotas',
+      description:
+        'Choisissez les quotas affichés sur les cartes. Cela ne change ni les quotas ni le compte utilisé pour les requêtes.',
+      'five-hours-gemini': 'Quota Gemini sur 5 heures',
+      'five-hours-claude': 'Quota Claude sur 5 heures',
+      'weekly-gemini': 'Quota hebdomadaire Gemini',
+      'weekly-claude': 'Quota hebdomadaire Claude',
+    },
     'quota-window': {
       label: 'Période de quota',
       'five-hours': 'Quota sur 5 heures',
@@ -906,6 +918,19 @@ const fr = {
     },
   },
   proxy: {
+    'account-strategy': {
+      'save-failed':
+        'Impossible de sauvegarder votre choix. Sélectionnez-le à nouveau pour réessayer.',
+      title: 'Comptes utilisés pour les requêtes API',
+      balanced: 'Alterner entre les comptes disponibles',
+      'account-first': 'Privilégier le même compte',
+      'balanced-description':
+        'Répartit les nouvelles conversations entre les comptes disponibles. Une conversation existante conserve son compte tant que celui-ci reste disponible.',
+      'account-first-description':
+        'Pour chaque modèle, conserve le même compte. Change de compte si son quota est épuisé, si son utilisation est temporairement limitée ou si la requête ne peut pas être traitée. Les conversations existantes conservent leur compte disponible.',
+      'client-description':
+        'Ce réglage ne change pas le compte connecté dans Antigravity, IDE ou CLI. Le changement automatique dans les clients se règle sur la page Comptes.',
+    },
     title: 'Proxy API',
     description: 'Gerez le service proxy API local.',
     save: 'Enregistrer les parametres',

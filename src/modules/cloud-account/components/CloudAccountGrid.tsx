@@ -12,6 +12,7 @@ import {
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
+import type { QuotaGroupVisibility } from '@/modules/cloud-account/utils/quota-group-visibility';
 import type { ManualAccountRecommendation } from '@/modules/cloud-account/utils/manual-account-recommendation';
 
 interface CloudAccountGridProps {
@@ -19,6 +20,7 @@ interface CloudAccountGridProps {
   sourceAccountCount: number;
   gridLayout: GridLayout;
   quotaWindow: QuotaWindow;
+  quotaGroupVisibility: QuotaGroupVisibility;
   manualRecommendation: ManualAccountRecommendation | null;
   selectedIds: Set<string>;
   hasActiveTierFilter: boolean;
@@ -39,6 +41,7 @@ export function CloudAccountGrid({
   sourceAccountCount,
   gridLayout,
   quotaWindow,
+  quotaGroupVisibility,
   manualRecommendation,
   selectedIds,
   hasActiveTierFilter,
@@ -63,6 +66,7 @@ export function CloudAccountGrid({
             key={account.id}
             account={account}
             quotaWindow={quotaWindow}
+            quotaGroupVisibility={quotaGroupVisibility}
             onRefresh={onRefresh}
             onDelete={onDelete}
             onSwitch={onSwitch}
@@ -82,6 +86,7 @@ export function CloudAccountGrid({
             key={account.id}
             account={account}
             quotaWindow={quotaWindow}
+            quotaGroupVisibility={quotaGroupVisibility}
             onRefresh={onRefresh}
             onDelete={onDelete}
             onSwitch={onSwitch}

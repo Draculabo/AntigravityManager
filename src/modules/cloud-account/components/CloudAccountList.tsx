@@ -45,6 +45,10 @@ import { CloudAccountListSummary } from '@/modules/cloud-account/components/Clou
 import { CloudAccountToolbar } from '@/modules/cloud-account/components/CloudAccountToolbar';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 import {
+  readQuotaGroupVisibility,
+  saveQuotaGroupVisibility,
+} from '@/modules/cloud-account/utils/quota-group-visibility';
+import {
   readQuotaWindowPreference,
   saveQuotaWindowPreference,
 } from '@/modules/cloud-account/utils/quota-window-preference';
@@ -86,6 +90,13 @@ export function CloudAccountList() {
   useEffect(() => {
     saveQuotaWindowPreference(() => window.localStorage, quotaWindow);
   }, [quotaWindow]);
+
+  const [quotaGroupVisibility, setQuotaGroupVisibility] = useState(() =>
+    readQuotaGroupVisibility(() => window.localStorage),
+  );
+  useEffect(() => {
+    saveQuotaGroupVisibility(() => window.localStorage, quotaGroupVisibility);
+  }, [quotaGroupVisibility]);
 
   const updateGridLayout = async (layout: GridLayout) => {
     if (config) {
@@ -628,6 +639,7 @@ export function CloudAccountList() {
         currentSort={currentSort}
         gridLayout={gridLayout}
         quotaWindow={quotaWindow}
+        quotaGroupVisibility={quotaGroupVisibility}
         getTierOptionLabel={getTierOptionLabel}
         onToggleAutoSwitch={handleToggleAutoSwitch}
         onToggleSelectAllAccounts={toggleSelectAllAccounts}
@@ -660,6 +672,7 @@ export function CloudAccountList() {
           updateGridLayout(layout);
         }}
         onQuotaWindowChange={setQuotaWindow}
+        onQuotaGroupVisibilityChange={setQuotaGroupVisibility}
       />
 
       <CloudAccountGrid
@@ -667,6 +680,7 @@ export function CloudAccountList() {
         sourceAccountCount={accounts?.length ?? 0}
         gridLayout={gridLayout}
         quotaWindow={quotaWindow}
+        quotaGroupVisibility={quotaGroupVisibility}
         manualRecommendation={manualRecommendation}
         selectedIds={selectedIds}
         hasActiveTierFilter={hasActiveTierFilter}
