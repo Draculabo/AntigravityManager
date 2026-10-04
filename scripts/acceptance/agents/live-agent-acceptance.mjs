@@ -6,7 +6,13 @@ import { z } from 'zod';
 
 import { createClient } from './clients.mjs';
 import { collectAuditWindow } from './audit-window.mjs';
-import { evaluateRun, summarizeEvents, summarizeRequests, taskId } from './summarize.mjs';
+import {
+  evaluateRun,
+  summarizeEvents,
+  summarizeRequests,
+  summarizeStderr,
+  taskId,
+} from './summarize.mjs';
 
 const thoughtStatsSchema = z.object({
   writeFailures: z.number().int().nonnegative(),
@@ -287,14 +293,7 @@ async function main() {
     timedOut: processResult.timedOut,
     stdoutBytes: processResult.stdout.length,
     stderrBytes: processResult.stderrBytes,
-    stderrSignals: {
-      argumentConflict: /cannot be used with|unexpected argument|unknown option/i.test(
-        processResult.stderr,
-      ),
-      blockedByPolicy: /blocked by policy|permission denied/i.test(processResult.stderr),
-      network: /connection|socket|fetch failed/i.test(processResult.stderr),
-      quota: /quota|rate limit|429/i.test(processResult.stderr),
-    },
+    stderrSignals: summarizeStderr(processResult.stderr),
     events,
     audit,
     thought: {

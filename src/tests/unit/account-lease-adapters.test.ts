@@ -42,6 +42,8 @@ describe('AccountLeaseService adapters', () => {
 
     expect(lease?.token.project_id).toBe('resolved-project');
     expect(upstream.fetchProjectId).toHaveBeenCalledWith('access-token', undefined);
+    // Hydration publishes the lease before its queued persistence finishes.
+    await service.onModuleDestroy();
     expect(accountStore.updateToken).toHaveBeenCalledWith(
       'acc-1',
       expect.objectContaining({

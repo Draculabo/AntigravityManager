@@ -138,6 +138,20 @@ describe('GenerationConstraintsService', () => {
     expect(request.request.generationConfig?.maxOutputTokens).toBe(12_000);
   });
 
+  it('preserves the registered automatic Flash sentinel on the internal request', () => {
+    const policy = createPolicy({ outputLimit: 65536, thinkingBudget: 10000 });
+    const request = createInternalRequest({ maxOutputTokens: 4096 });
+    policy.applyInternalGenerationConstraints(request, 'gemini-3.7-flash-tiered', 'acc-1', {
+      thinkingBudget: -1,
+      maxOutputTokens: 65536,
+      includeThoughts: true,
+    });
+    expect(request.request.generationConfig).toEqual({
+      maxOutputTokens: 65536,
+      thinkingConfig: { includeThoughts: true, thinkingBudget: -1 },
+    });
+  });
+
   it('caps explicit max output tokens by account model output limit', () => {
     const policy = createPolicy({
       outputLimit: 4096,

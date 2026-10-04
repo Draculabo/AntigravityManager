@@ -23,6 +23,7 @@ interface ModelVariantFamily {
   canonicalModel: string;
   variants: Record<ModelVariantTier, Omit<ResolvedModelVariant, 'canonicalModel' | 'tier'>>;
   aliases: Record<string, AliasPolicy>;
+  physicalAliases?: Record<string, ModelVariantTier | 'automatic'>;
 }
 
 const GEMINI_37_FLASH_VARIANTS: Record<
@@ -119,6 +120,15 @@ const MODEL_VARIANT_FAMILIES: ModelVariantFamily[] = [
   {
     canonicalModel: 'gemini-3.7-flash',
     variants: GEMINI_37_FLASH_VARIANTS,
+    // These IDs are advertised as physical routes by the account quota API.
+    // Automatic thinking uses the provider's -1 sentinel, not a fixed high budget.
+    physicalAliases: {
+      'gemini-3.7-flash-tiered': 'automatic',
+      'gemini-3.6-flash-tiered': 'automatic',
+      'gemini-3.6-flash-high': 'automatic',
+      'gemini-3.6-flash-medium': 'medium',
+      'gemini-3.6-flash-low': 'low',
+    },
     aliases: {
       'gemini-3.7-flash-high': 'tier',
       'gemini-3.7-flash-medium': 'medium',
@@ -336,13 +346,17 @@ export function rebindModelVariant(
   const matchedTier = (['high', 'medium', 'low'] as const).find(
     (tier) => family.variants[tier].model === normalizedPhysicalModel,
   );
-  if (!matchedTier) {
+  const physicalAlias = family.physicalAliases?.[normalizedPhysicalModel];
+  const tier = matchedTier ?? (physicalAlias === 'automatic' ? 'high' : physicalAlias);
+  if (!tier) {
     return null;
   }
 
   return {
     canonicalModel: family.canonicalModel,
-    tier: matchedTier,
-    ...family.variants[matchedTier],
+    tier,
+    ...family.variants[tier],
+    model: normalizedPhysicalModel,
+    ...(physicalAlias === 'automatic' ? { thinkingBudget: -1 } : {}),
   };
 }

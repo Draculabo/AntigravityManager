@@ -21,7 +21,7 @@ import {
   Upstream4xxCaptureService,
   type Upstream4xxCaptureInput,
 } from '../../common/upstream-4xx-capture.service';
-import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
+import { safeStringifyPacket, sanitizeObject } from '@/shared/security/sensitiveDataMasking';
 import {
   completeCurrentUpstreamAttempt,
   startCurrentUpstreamAttempt,
@@ -30,6 +30,10 @@ import { IncrementalSseRedactor } from '@/modules/proxy-gateway/audit/incrementa
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import type { UpstreamAttemptHandle } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
+import {
+  hasStrictQuotaExhaustedMarker,
+  parseRetryDelay,
+} from '../../shared/services/rate-limit-tracker.service';
 import {
   getCurrentProxyTimingState,
   markProxyNormalizationComplete,
@@ -597,6 +601,18 @@ export class GeminiClient {
       return false;
     }
 
+    if (status === 429) {
+      const body = this.describeAxiosErrorData(error.response.data);
+      if (
+        hasStrictQuotaExhaustedMarker(body) &&
+        (parseRetryDelay(body, this.extractRetryAfterHeader(error.response.headers))?.delayMs ??
+          0) > 300_000
+      ) {
+        // Quota belongs to the account/model, so another regional endpoint cannot restore it.
+        return false;
+      }
+    }
+
     // 499 is Google's client-cancelled code. Upstream emits it for its own aborts, so the next
     // endpoint is worth trying rather than surfacing the abort to the caller as a failure.
     return status === 408 || status === 429 || status === 499 || status >= 500;
@@ -884,11 +900,10 @@ export class GeminiClient {
     attempt: UpstreamAttemptHandle | null,
     error: unknown,
   ): Promise<void> {
-    if (!attempt) {
-      return;
-    }
     if (!axios.isAxiosError(error)) {
-      completeCurrentUpstreamAttempt(attempt, { error, outcome: 'internal_error' });
+      if (attempt) {
+        completeCurrentUpstreamAttempt(attempt, { error, outcome: 'internal_error' });
+      }
       return;
     }
 
@@ -900,6 +915,10 @@ export class GeminiClient {
       if (error.response) {
         error.response.data = responseBody;
       }
+    }
+    // Retry classification needs the error body even when traffic recording is disabled.
+    if (!attempt) {
+      return;
     }
     const status = error.response?.status;
     completeCurrentUpstreamAttempt(attempt, {
@@ -1121,6 +1140,14 @@ export class GeminiClient {
   private describeAxiosErrorData(responseData: unknown): string {
     if (this.isReadableStream(responseData)) {
       return '[stream]';
+    }
+    if (isString(responseData) || Buffer.isBuffer(responseData)) {
+      const sanitized = sanitizeObject(
+        Buffer.isBuffer(responseData) ? responseData.toString('utf-8') : responseData,
+      );
+      if (isString(sanitized)) {
+        return sanitized;
+      }
     }
     return this.safeStringify(responseData);
   }

@@ -93,7 +93,7 @@ export async function verifyTrafficMonitor({ page, gateway, profileHome, reportP
     );
     assert(requests.length > 0, 'A task without requests cannot pass monitor acceptance');
 
-    const search = page.getByPlaceholder('Search metadata: request ID, model, URL, protocol');
+    const search = page.getByRole('main').locator('form').getByRole('textbox');
     const results = [];
     for (const item of requests) {
       const detail = await getJson(

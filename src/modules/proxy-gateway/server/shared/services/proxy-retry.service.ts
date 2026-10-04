@@ -6,7 +6,6 @@ import {
   hasExplicitQuotaExhaustedSignal,
   hasStrictQuotaExhaustedMarker,
   isGeminiImageModel,
-  isRecognizedGeminiImageModel,
   parseAnthropicRetryDelayMilliseconds,
   parseRetryDelay,
   shouldGraceRetry,
@@ -529,17 +528,18 @@ export class ProxyRetryService {
     if (waitSeconds <= 0) {
       return;
     }
-    const preservesLongImageEvidence =
-      waitSeconds > 300 &&
-      isRecognizedGeminiImageModel(model) &&
-      hasStrictQuotaExhaustedMarker(message);
-    const persistenceMessage = preservesLongImageEvidence
+    // The tracker permits waits beyond the transient cap only for explicit quota
+    // deadlines. Keep that evidence when this error is merely a later transient one.
+    const preservesExplicitQuotaEvidence = waitSeconds > 300;
+    const persistenceMessage = preservesExplicitQuotaEvidence
       ? `QUOTA_EXHAUSTED retry after ${waitSeconds}s`
       : `retry after ${waitSeconds}s\n${message}`;
     this.modelAvailability.mark(
       accountId,
       model,
-      hasExplicitQuotaExhaustedSignal(message) ? 'quota_exhausted' : 'rate_limited',
+      preservesExplicitQuotaEvidence || hasExplicitQuotaExhaustedSignal(message)
+        ? 'quota_exhausted'
+        : 'rate_limited',
       Date.now() + waitSeconds * 1000,
       {
         status,

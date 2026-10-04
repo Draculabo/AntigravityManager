@@ -55,7 +55,7 @@ const GEMINI_PRO_FAMILY = new Set([
 const GEMINI_PRO_IMAGE_FAMILY = new Set(['gemini-3-pro-image', 'gemini-3.1-pro-image']);
 const GEMINI_FLASH_IMAGE_FAMILY = new Set(['gemini-3-flash-image', 'gemini-3.1-flash-image']);
 
-const TIERED_MODEL_SUFFIXES = ['extra-low', 'high', 'medium', 'low'] as const;
+const TIERED_MODEL_SUFFIXES = ['extra-low', 'high', 'medium', 'low', 'tiered'] as const;
 const TIER_PREFERENCE = ['high', 'medium', 'low', 'extra-low'] as const;
 type TieredModelSuffix = (typeof TIER_PREFERENCE)[number];
 export type AccountModelAvailability = 'unknown' | 'available' | 'unavailable';
@@ -534,7 +534,7 @@ export class AccountLeaseModelPolicy {
       }
       return {
         base: normalizedModel.slice(0, -marker.length),
-        tier: suffix as TieredModelSuffix,
+        tier: suffix === 'tiered' ? 'high' : suffix,
       };
     }
     return null;

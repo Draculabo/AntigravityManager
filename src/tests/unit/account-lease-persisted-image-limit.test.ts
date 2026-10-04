@@ -15,11 +15,20 @@ function createAvailability(entries: ProxyModelAvailability[]): ModelAvailabilit
   return new ModelAvailabilityService(persistence);
 }
 
-describe('AccountLeaseService persisted image limits', () => {
-  it('restores only qualified long image quota locks when lease state is reloaded', () => {
+describe('AccountLeaseService persisted quota limits', () => {
+  it('restores qualified text and image quota locks when lease state is reloaded', () => {
     const now = Date.now();
     const tracker = new RateLimitTrackerService();
     const availability = createAvailability([
+      ...['claude-sonnet-4-6-thinking', 'gemini-pro-agent'].map((modelId) => ({
+        accountId: `acc-${modelId}`,
+        modelId,
+        reason: 'quota_exhausted' as const,
+        unavailableUntil: now + 210_293_000,
+        status: 429,
+        detectedAt: now,
+        message: 'QUOTA_EXHAUSTED; retry after 210293s',
+      })),
       {
         accountId: 'acc-long-image',
         modelId: 'gemini-3.1-pro-image',
@@ -45,6 +54,11 @@ describe('AccountLeaseService persisted image limits', () => {
     };
 
     resetFromPersistence.resetRateLimitsFromPersistence();
+
+    for (const model of ['claude-sonnet-4-6-thinking', 'gemini-pro-agent']) {
+      expect(tracker.getRemainingWaitSeconds(`acc-${model}`, model)).toBeGreaterThan(300);
+      expect(tracker.isRateLimited(`acc-${model}`, 'gemini-3.1-flash-lite')).toBe(false);
+    }
 
     expect(
       tracker.getRemainingWaitSeconds('acc-long-image', 'gemini-3.1-pro-image'),

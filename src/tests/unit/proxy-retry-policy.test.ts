@@ -475,29 +475,32 @@ describe('ProxyRetryService', () => {
     proxyModelAvailabilityStore.clearAccount('acc-clamped');
   });
 
-  it('persists compact long-image quota evidence even when the raw marker is past 500 chars', async () => {
-    proxyModelAvailabilityStore.clearAccount('acc-long-image-evidence');
-    const { policy, accountLeaseService } = createPolicy();
-    accountLeaseService.getRemainingRateLimitWait.mockReturnValue(3600);
-    const body = `${'x'.repeat(600)} QUOTA_EXHAUSTED retry after 3600s`;
+  it.each(['gemini-3-pro-image', 'gemini-pro-agent', 'claude-sonnet-4-6-thinking'])(
+    'persists compact quota evidence for %s even when the raw marker is past 500 chars',
+    async (model) => {
+      proxyModelAvailabilityStore.clearAccount('acc-long-image-evidence');
+      const { policy, accountLeaseService } = createPolicy();
+      accountLeaseService.getRemainingRateLimitWait.mockReturnValue(3600);
+      const body = `${'x'.repeat(600)} QUOTA_EXHAUSTED retry after 3600s`;
 
-    await policy.applyUpstreamPenalty(
-      'acc-long-image-evidence',
-      'gemini-3-pro-image',
-      new UpstreamRequestError({
-        message: 'quota exhausted',
-        status: 429,
-        body,
-      }),
-    );
+      await policy.applyUpstreamPenalty(
+        'acc-long-image-evidence',
+        model,
+        new UpstreamRequestError({
+          message: 'quota exhausted',
+          status: 429,
+          body,
+        }),
+      );
 
-    const entry = proxyModelAvailabilityStore
-      .getSnapshot()
-      .find((candidate) => candidate.accountId === 'acc-long-image-evidence');
-    expect(entry?.message).toBe('QUOTA_EXHAUSTED retry after 3600s');
-    expect(entry?.message?.length).toBeLessThan(500);
-    proxyModelAvailabilityStore.clearAccount('acc-long-image-evidence');
-  });
+      const entry = proxyModelAvailabilityStore
+        .getSnapshot()
+        .find((candidate) => candidate.accountId === 'acc-long-image-evidence');
+      expect(entry?.message).toBe('QUOTA_EXHAUSTED retry after 3600s');
+      expect(entry?.message?.length).toBeLessThan(500);
+      proxyModelAvailabilityStore.clearAccount('acc-long-image-evidence');
+    },
+  );
 
   it('classifies generic RESOURCE_EXHAUSTED availability as a transient rate limit', async () => {
     proxyModelAvailabilityStore.clearAccount('acc-resource');
@@ -528,6 +531,32 @@ describe('ProxyRetryService', () => {
       ]),
     );
     proxyModelAvailabilityStore.clearAccount('acc-resource');
+  });
+
+  it('retains persisted quota evidence when a later transient failure sees a long tracker wait', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    accountLeaseService.getRemainingRateLimitWait.mockReturnValue(3600);
+    const model = 'claude-sonnet-4-6-thinking';
+    await policy.applyUpstreamPenalty(
+      'acc-existing-quota',
+      model,
+      new UpstreamRequestError({
+        message: 'Resource has been exhausted',
+        body: 'RESOURCE_EXHAUSTED',
+        status: 429,
+      }),
+    );
+    expect(
+      proxyModelAvailabilityStore
+        .getSnapshot()
+        .find((entry) => entry.accountId === 'acc-existing-quota'),
+    ).toMatchObject({
+      modelId: model,
+      reason: 'quota_exhausted',
+      message: 'QUOTA_EXHAUSTED retry after 3600s',
+      status: 429,
+    });
+    proxyModelAvailabilityStore.clearAccount('acc-existing-quota');
   });
 
   it('clears model-scoped retry state after a successful upstream request', () => {

@@ -253,7 +253,7 @@ describe('RateLimitTrackerService parity replay', () => {
     expect(second?.retryAfterSec).toBe(300);
   });
 
-  it('caps upstream and precise quota lockouts at five minutes', () => {
+  it('caps unqualified upstream hints but preserves an explicit quota reset', () => {
     const tracker = new RateLimitTrackerService();
     const info = tracker.parseAndMarkFromError({
       accountId: 'acc-long-retry',
@@ -278,7 +278,7 @@ describe('RateLimitTrackerService parity replay', () => {
 
     expect(
       tracker.getRemainingWaitSeconds('acc-precise-reset', 'gemini-3.1-pro-high'),
-    ).toBeLessThanOrEqual(300);
+    ).toBeGreaterThan(300);
   });
 
   it('parses MODEL_CAPACITY_EXHAUSTED and RetryInfo.retryDelay from 503 payload', () => {
@@ -345,7 +345,7 @@ describe('RateLimitTrackerService parity replay', () => {
     ).toBeNull();
   });
 
-  it('preserves an explicit long QUOTA_EXHAUSTED deadline only for Gemini image families', () => {
+  it('preserves explicit long QUOTA_EXHAUSTED deadlines independently of model type', () => {
     const tracker = new RateLimitTrackerService();
     const retryAfterSec = 210_293;
     const body = JSON.stringify({
@@ -383,19 +383,19 @@ describe('RateLimitTrackerService parity replay', () => {
 
     expect(image).toMatchObject({
       retryAfterSec,
-      preservesLongImageQuota: true,
+      preservesExplicitQuota: true,
     });
     expect(text).toMatchObject({
-      retryAfterSec: 300,
-      preservesLongImageQuota: false,
+      retryAfterSec,
+      preservesExplicitQuota: true,
     });
     expect(unknownImage).toMatchObject({
-      retryAfterSec: 300,
-      preservesLongImageQuota: false,
+      retryAfterSec,
+      preservesExplicitQuota: true,
     });
   });
 
-  it('caps inferred long image locks and precise quota reset timestamps', () => {
+  it('caps inferred image locks while preserving a precise exhausted-quota reset', () => {
     const tracker = new RateLimitTrackerService();
     const inferred = tracker.parseAndMarkFromError({
       accountId: 'acc-inferred-image',
@@ -413,20 +413,20 @@ describe('RateLimitTrackerService parity replay', () => {
 
     expect(inferred).toMatchObject({
       retryAfterSec: 300,
-      preservesLongImageQuota: false,
+      preservesExplicitQuota: false,
     });
     expect(
       tracker.getRemainingWaitSeconds('acc-precise-image', 'gemini-3-pro-image'),
-    ).toBeLessThanOrEqual(300);
+    ).toBeGreaterThan(300);
   });
 
-  it('restores and protects only qualified persisted long image quota locks', () => {
+  it('restores and protects qualified persisted long quota locks', () => {
     const tracker = new RateLimitTrackerService();
     const now = Date.now();
     const unavailableUntil = now + 210_293_000;
 
     expect(
-      tracker.restorePersistedLongImageLimit({
+      tracker.restorePersistedQuotaLimit({
         accountId: 'acc-restored',
         modelId: 'gemini-3.1-pro-image',
         reason: 'quota_exhausted',
@@ -437,7 +437,7 @@ describe('RateLimitTrackerService parity replay', () => {
       }),
     ).toBe(true);
     expect(
-      tracker.restorePersistedLongImageLimit({
+      tracker.restorePersistedQuotaLimit({
         accountId: 'acc-short',
         modelId: 'gemini-3.1-pro-image',
         reason: 'rate_limited',
@@ -457,7 +457,7 @@ describe('RateLimitTrackerService parity replay', () => {
     );
 
     expect(
-      tracker.restorePersistedLongImageLimit({
+      tracker.restorePersistedQuotaLimit({
         accountId: 'acc-expiring',
         modelId: 'gemini-3-pro-image-preview',
         reason: 'quota_exhausted',
