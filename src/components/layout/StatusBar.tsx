@@ -191,8 +191,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
         : t('status.partial_running', { running: runningCount, total: totalCount });
 
   const triggerClassName = isCollapsed
-    ? 'mx-auto flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background/80 text-foreground shadow-sm transition-colors hover:bg-accent'
-    : 'flex w-full items-center justify-between overflow-hidden rounded-lg border border-border bg-background/80 px-3 py-2.5 text-sm shadow-sm transition-colors hover:bg-accent/70';
+    ? 'focus-visible:ring-ring mx-auto flex h-10 w-10 items-center justify-center rounded-md text-foreground outline-none hover:bg-accent focus-visible:ring-2'
+    : 'focus-visible:ring-ring flex w-full items-center justify-between rounded-md px-2 py-2 text-sm outline-none hover:bg-accent/70 focus-visible:ring-2';
 
   return (
     <DropdownMenu modal={false}>
@@ -219,7 +219,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
             </div>
           ) : (
             <>
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="flex min-w-0 items-center gap-2">
                 <div className="bg-muted text-muted-foreground relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md">
                   {hasPendingAction ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -234,10 +234,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({ isCollapsed = false }) => 
                   />
                 </div>
                 <div className="min-w-0 text-left">
-                  <div className="text-xs font-semibold tracking-wider uppercase opacity-80">
-                    {t('status.services')}
-                  </div>
-                  <div className="truncate text-sm leading-tight font-medium">{summary}</div>
+                  <div className="text-muted-foreground text-xs">{t('status.services')}</div>
+                  <div className="text-xs leading-snug font-medium">{summary}</div>
                 </div>
               </div>
               <ChevronUp className="text-muted-foreground ml-2 h-4 w-4 shrink-0" />

@@ -20,10 +20,12 @@ interface Props {
 export function AgentToolCardFrame(props: Props) {
   const { t } = useTranslation();
   return (
-    <Card className="flex h-full flex-col">
-      <CardHeader>
+    <Card className="flex h-full flex-col overflow-hidden shadow-none">
+      <CardHeader className="bg-info-soft/40 mb-4 border-b p-4">
         <CardTitle className="flex items-center gap-2">
-          <Terminal className="size-5" />
+          <span className="bg-info-soft text-info border-info-border flex size-8 items-center justify-center rounded-md border">
+            <Terminal className="size-4" aria-hidden="true" />
+          </span>
           {props.title}
         </CardTitle>
         <p className="text-muted-foreground text-xs">
@@ -34,7 +36,7 @@ export function AgentToolCardFrame(props: Props) {
               : t('agent-tools.not-installed')}
         </p>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-4">
+      <CardContent className="flex flex-1 flex-col gap-4 p-4 pt-0">
         {props.failed ? (
           <div className="border-destructive/40 rounded-lg border p-3 text-sm" role="alert">
             <p>{t('agent-tools.read-error')}</p>
@@ -50,7 +52,7 @@ export function AgentToolCardFrame(props: Props) {
         ) : (
           <div className="flex flex-wrap gap-2 text-xs">
             <span
-              className={`rounded-md px-2 py-1 ${props.configured ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}
+              className={`rounded-md border px-2 py-1 ${props.configured ? 'bg-success-soft text-success border-success-border' : 'bg-muted text-muted-foreground'}`}
             >
               {props.configured
                 ? props.synced
@@ -65,7 +67,7 @@ export function AgentToolCardFrame(props: Props) {
             ) : null}
           </div>
         )}
-        <div className="space-y-2 rounded-lg border p-3 text-xs">
+        <div className="bg-muted/30 space-y-2 rounded-md p-3 text-xs">
           <p className="text-muted-foreground">{t('agent-tools.address')}</p>
           <p className="font-mono break-all">
             {props.loading || props.failed ? '—' : (props.address ?? t('agent-tools.not-set'))}

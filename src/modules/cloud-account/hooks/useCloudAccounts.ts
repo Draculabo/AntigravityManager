@@ -11,7 +11,6 @@ import {
 } from '@/modules/cloud-account/actions/cloud';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import type { OAuthClientDescriptor } from '@/modules/cloud-account/services/oauth-client-preference.schema';
-import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 import {
   switchCloudAccount,
@@ -24,7 +23,6 @@ import {
   setWeeklyWarmupConfig,
 } from '@/modules/cloud-account/actions/cloud';
 import type { WeeklyWarmupConfig } from '@/modules/cloud-account/services/weekly-warmup-contract';
-import { syncLocalAccount } from '@/modules/cloud-account/actions/cloud';
 import { exportCloudAccounts, importCloudAccounts } from '@/modules/cloud-account/actions/cloud';
 
 type SetAccountProxyInput = Parameters<typeof setAccountProxy>[0];
@@ -187,20 +185,6 @@ export function useSetWeeklyWarmupConfig() {
     mutationFn: setWeeklyWarmupConfig,
     onSuccess: (_, config) => {
       queryClient.setQueryData(WEEKLY_WARMUP_CONFIG_KEY, config);
-    },
-  });
-}
-
-export function useSyncLocalAccount() {
-  const queryClient = useQueryClient();
-  return useMutation<
-    CloudAccountView | null,
-    Error,
-    { appTarget?: AntigravityAppTarget } | undefined
-  >({
-    mutationFn: syncLocalAccount,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
     },
   });
 }

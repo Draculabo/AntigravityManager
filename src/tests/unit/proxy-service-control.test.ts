@@ -107,6 +107,11 @@ describe('ProxyServiceControl', () => {
       fireEvent.click(screen.getByRole('button', { name: button }));
 
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole('button', { name: en.proxy.service.start }),
+        ),
+      );
       expect(mocks.start).not.toHaveBeenCalled();
       expect(mocks.save).not.toHaveBeenCalled();
       requestStart();

@@ -12,6 +12,27 @@ adapter delegates to the desktop service or the standalone core. The service sch
 live in src/modules/config/service-config.\*. These interface names do not change the existing
 configuration file locations or stored account alert settings.
 
+## Renderer state
+
+TanStack Query owns remote account data, configuration and mutation results. The account page
+uses a [page-scoped Zustand store](../src/modules/cloud-account/stores/AccountSelectionProvider.tsx)
+for batch selection. Cards subscribe to their own selected flag; select-all and batch controls
+subscribe to derived values. Bulk operations read the current selection when invoked and
+exclude accounts hidden by the current filter. Selection is not persisted and starts empty
+when the page remounts.
+
+Login and file dialogs own their input, open state and mutations. Authorization-code input
+stays local to the login dialog and does not enter the selection store. Quota display
+preferences retain their existing local-storage codecs. The renderer Vite configuration
+enables React Compiler to memoize eligible components and calculations; subscriptions still
+determine which state changes trigger rendering.
+
+Account cards select only their own model-availability entries from the shared gateway query.
+Traffic Monitor keeps its statistics query, search draft and live-update counter in separate
+components. Statistics polling and queued notifications do not update the request table.
+The existing list polling, detail refresh, category filtering and manual refresh policy remain
+in effect; these UI states are not copied into a global store.
+
 ## Runtime topology
 
 ```plaintext

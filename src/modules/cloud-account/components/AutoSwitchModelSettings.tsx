@@ -210,7 +210,7 @@ function AutoSwitchModelSettingsInner({ accounts, initialConfig }: InnerProps) {
                     {isEnabled && isPriority && (
                       <Badge
                         variant="default"
-                        className="bg-blue-600 text-xs text-white dark:bg-blue-700"
+                        className="bg-primary text-primary-foreground text-xs"
                       >
                         {t('settings.autoSwitchModels.priorityLabel')}
                       </Badge>

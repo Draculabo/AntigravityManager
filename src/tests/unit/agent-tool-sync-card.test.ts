@@ -123,4 +123,52 @@ describe('coding tool card', () => {
       [{ tool: 'codex', baseUrl, model: 'gemini-3.1-pro-high' }],
     ]);
   });
+  it.each(['not-an-address', 'http://', 'https://manager.test/v1?private=value'])(
+    'explains invalid address %s and prevents configuration until it is corrected',
+    async (value) => {
+      mount();
+      await screen.findByText(baseUrl);
+      fireEvent.click(screen.getByRole('button', { name: 'agent-tools.update' }));
+      fireEvent.click(screen.getByText('agent-tools.advanced'));
+      const address = screen.getByLabelText('agent-tools.address');
+      fireEvent.change(address, { target: { value } });
+      expect(address.getAttribute('aria-invalid')).toBe('true');
+      expect(screen.getByRole('alert').textContent).toContain('agent-tools.invalid-address');
+      expect(screen.getByRole('button', { name: 'agent-tools.confirm' })).toHaveProperty(
+        'disabled',
+        true,
+      );
+      expect(fixture.configure).not.toHaveBeenCalled();
+      fireEvent.change(address, { target: { value: baseUrl } });
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(address.getAttribute('aria-invalid')).toBe('false');
+      expect(screen.getByRole('button', { name: 'agent-tools.confirm' })).not.toHaveProperty(
+        'disabled',
+        true,
+      );
+    },
+  );
+  it('keeps a failed preview open and retries with a safe error description', async () => {
+    fixture.preview
+      .mockRejectedValueOnce({
+        data: { agentToolCode: 'read-failed' },
+        message: 'private-config-path',
+      })
+      .mockResolvedValueOnce({
+        content: 'Synthetic configuration',
+        configPath: '/synthetic/config',
+      });
+    mount();
+    await screen.findByText(baseUrl);
+    fireEvent.click(screen.getByRole('button', { name: 'agent-tools.view' }));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'agent-tools.errors.read-failed',
+    );
+    expect(screen.queryByText('private-config-path')).toBeNull();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'action.retry' }));
+    await screen.findByText('Synthetic configuration');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(fixture.preview.mock.calls).toEqual([[{ tool: 'codex' }], [{ tool: 'codex' }]]);
+  });
 });

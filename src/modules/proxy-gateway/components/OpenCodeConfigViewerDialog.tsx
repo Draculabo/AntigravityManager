@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle, Copy, Loader2 } from 'lucide-react';
+import { CheckCircle, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
+import { FeedbackState } from '@/components/ui/feedback-state';
 import {
   Dialog,
   DialogContent,
@@ -37,7 +38,10 @@ export function OpenCodeConfigViewerDialog({ onOpenChange }: OpenCodeConfigViewe
     try {
       await navigator.clipboard.writeText(previewQuery.data.content);
       setCopied(true);
-      toast({ title: t('proxy.open-code.config-copied', 'Redacted configuration copied') });
+      toast({
+        title: t('proxy.open-code.config-copied', 'Redacted configuration copied'),
+        variant: 'success',
+      });
     } catch (error) {
       toast({
         title: t('proxy.open-code.config-copy-failed', 'Failed to copy configuration'),
@@ -49,46 +53,63 @@ export function OpenCodeConfigViewerDialog({ onOpenChange }: OpenCodeConfigViewe
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] max-w-3xl flex-col overflow-hidden p-0">
-        <DialogHeader className="border-b p-5 pb-4">
+      <DialogContent className="flex max-w-3xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b px-6 py-5 pr-14">
           <DialogTitle>
             {t('proxy.open-code.config-viewer-title', 'OpenCode configuration')}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-all">
             {previewQuery.data?.fileName ??
               t('proxy.open-code.config-viewer-description', 'Read-only configuration preview')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 px-5">
+        <div
+          className="min-h-0 flex-1 overflow-y-auto px-6 py-4"
+          aria-busy={previewQuery.isFetching}
+        >
           {previewQuery.isLoading ? (
-            <div className="flex min-h-64 items-center justify-center">
-              <Loader2 className="size-6 animate-spin" />
-            </div>
+            <FeedbackState
+              kind="loading"
+              title={t('common.loading')}
+              description={t('common.reading-settings')}
+            />
           ) : previewQuery.error ? (
-            <div className="text-destructive flex min-h-64 items-center justify-center text-sm">
-              {previewQuery.error instanceof Error
-                ? previewQuery.error.message
-                : t('proxy.open-code.config-load-failed', 'Failed to load configuration')}
-            </div>
+            <FeedbackState
+              kind="error"
+              title={t('proxy.open-code.config-load-failed')}
+              description={t('proxy.open-code.config-retry-description')}
+            >
+              <Button
+                variant="outline"
+                disabled={previewQuery.isFetching}
+                onClick={() => void previewQuery.refetch()}
+              >
+                {t('action.retry')}
+              </Button>
+            </FeedbackState>
           ) : (
-            <pre className="max-h-[58vh] overflow-auto rounded-lg bg-gray-950 p-4 font-mono text-xs leading-relaxed whitespace-pre text-gray-100">
+            <pre className="bg-muted text-foreground overflow-x-auto rounded-md border p-4 font-mono text-xs leading-relaxed whitespace-pre">
               {previewQuery.data?.content}
             </pre>
           )}
         </div>
 
-        <div className="bg-muted/40 border-t px-5 py-3 text-xs">
+        <div className="bg-muted text-muted-foreground shrink-0 border-t px-6 py-3 text-xs">
           {t(
             'proxy.open-code.config-redacted-notice',
             'Comments are omitted and sensitive fields are redacted before this preview reaches the renderer.',
           )}
         </div>
-        <DialogFooter className="border-t p-5 pt-4">
+        <DialogFooter className="shrink-0 border-t px-6 py-4">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             {t('common.close', 'Close')}
           </Button>
-          <Button type="button" onClick={copyPreview} disabled={!previewQuery.data}>
+          <Button
+            type="button"
+            onClick={copyPreview}
+            disabled={!previewQuery.data || previewQuery.isError}
+          >
             {copied ? <CheckCircle className="mr-2 size-4" /> : <Copy className="mr-2 size-4" />}
             {t('proxy.open-code.copy-config', 'Copy redacted configuration')}
           </Button>

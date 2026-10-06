@@ -61,6 +61,11 @@ const tr = {
       'key-missing': 'Önce proxy sayfasında bağlantı anahtarı oluşturun.',
       'review-route-disabled': 'Codex inceleme yolu kapalı. Model yönlendirmesinde etkinleştirin.',
     },
+
+    'address-help': 'Hizmet başka bir bilgisayarda çalışmıyorsa mevcut Manager adresini kullanın.',
+    'invalid-address':
+      'http:// veya https:// ile başlayan, oturum bilgisi ve ek parametre içermeyen bir Manager adresi kullanın.',
+    'model-required': 'Kaydetmeden önce bir model seçin.',
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
@@ -87,6 +92,8 @@ const tr = {
       'Yeni hesap kaydedildi ancak Antigravity uygulamasının açıldığı doğrulanamadı. Yeniden başlatılmadı. Tekrar denemeden önce uygulamayı kontrol edin.',
   },
   common: {
+    close: 'Kapat',
+    cancel: 'İptal',
     'core-unavailable-title': "Antigravity Manager'a bağlanılamıyor",
     'core-unavailable-body':
       "Hesaplar ve proxy şu anda kullanılamıyor. Antigravity Manager'ı kapatıp yeniden açın. Sorun sürerse en son sürümü yükleyin.",
@@ -101,6 +108,9 @@ const tr = {
     unknown: 'Bilinmeyen',
     notAvailable: 'Yok',
     openMenu: 'Menüyü aç',
+
+    'dismiss-notification': 'Bildirimi kapat',
+    'reading-settings': 'Ayarlarınız okunuyor…',
   },
   status: {
     checking: 'Durum kontrol ediliyor...',
@@ -177,6 +187,9 @@ const tr = {
       'Bu bulut hesabının giriş bilgileri süresi dolmuş. Lütfen tekrar giriş yapın.',
   },
   nav: {
+    navigation: 'Gezinme',
+    'collapse-sidebar': 'Kenar çubuğunu daralt',
+    'expand-sidebar': 'Kenar çubuğunu genişlet',
     accounts: 'Hesaplar',
     proxy: 'API Proxy',
     settings: 'Ayarlar',
@@ -272,6 +285,12 @@ const tr = {
       clearedDescription: 'Antigravity önbellek klasörlerinden {{size}} MB silindi.',
       failedTitle: 'Önbellek temizlenemedi',
       notFoundTitle: 'Antigravity önbelleği bulunamadı',
+
+      'paths-failed': 'Önbellek konumları bulunamadı',
+      'paths-retry-description': 'Önbelleği temizlemeden önce tekrar deneyin.',
+      'partial-title': 'Önbelleğin bir kısmı temizlenemedi',
+      'partial-description':
+        '{{size}} MB boşaltıldı. {{count}} konum temizlenemedi. Antigravity’yi kapatıp tekrar deneyin.',
     },
     version: 'Sürüm',
     platform: 'Platform',
@@ -287,6 +306,11 @@ const tr = {
       },
     },
     account: {
+      'client-setup': 'İstemci konumu ve başlatma ayarları',
+      'client-setup-description':
+        'Manager istemcinizi bulamıyorsa veya özel başlatma seçenekleri gerekiyorsa değiştirin.',
+      'choose-file': 'Dosya seç',
+      'clear-field': 'Bu alanı temizle',
       title: 'Hesap Ayarları',
       description: 'Otomatik hesap yenileme ve eşitleme ayarlarını yapılandırın.',
       auto_refresh: 'Kotayı Otomatik Yenile',
@@ -508,6 +532,7 @@ const tr = {
     },
   },
   cloud: {
+    'total-accounts': 'Toplam hesap',
     title: 'Hesaplar',
     description: 'Google Gemini hesaplarınızı yönetin.',
     security: {
@@ -520,7 +545,6 @@ const tr = {
     autoSwitch: 'Otomatik Değiştir',
     providerGroupings: 'Sağlayıcı Grupları',
     addAccount: 'Hesap Ekle',
-    syncFromIde: "IDE'den Eşitle",
     checkQuota: 'Kotayı Şimdi Kontrol Et',
     polling: 'Sorgulama tetiklendi',
     globalQuota: 'Genel Kota',
@@ -556,10 +580,13 @@ const tr = {
       'weekly-bucket-unavailable': 'Dönen bilgilerde haftalık kullanım bulunamadı.',
     },
     authDialog: {
+      'manual-sign-in': 'Kodu elle gir',
+      'waiting-for-browser':
+        'Tarayıcınızda oturum açmayı tamamlayın. Bu pencere otomatik olarak güncellenecek.',
       title: 'Google Hesabı Ekle',
       description:
         'Giriş yöntemini seçip tarayıcıda Google hesabınıza giriş yapın. Hesap otomatik olarak eklenecektir.',
-      oauthClient: 'Giriş yöntemi',
+      oauthClient: 'Oturum açma yöntemi',
       oauthClientPlaceholder: 'Giriş yöntemi seçin',
       openLogin: 'Giriş Sayfasını Aç',
       authCode: 'Yetkilendirme Kodu',
@@ -606,6 +633,9 @@ const tr = {
       proxy: 'Proxy',
       proxyPlaceholder: 'örn. http://127.0.0.1:7890',
       proxySaved: 'Proxy kaydedildi',
+      'network-proxy': 'Ağ proxy’si',
+      'network-proxy-description':
+        'İsteğe bağlı: bu hesap için bir ağ proxy’si kullanın. Kaydetmek için Enter tuşuna basın veya adres alanından çıkın.',
       'proxy-replace-placeholder': 'Yeni proxy adresi girin',
       'proxy-remove': "Proxy'yi kaldır",
       'proxy-save-failed': 'Proxy kaydedilemedi',
@@ -624,19 +654,19 @@ const tr = {
         'profile-write-failed': 'Kimlik profili kaydedilemedi. Yeniden deneyin.',
         'profile-operation-failed': 'Kimlik profili işlemi tamamlanamadı. Yeniden deneyin.',
       },
-      title: 'Kimlik Profili',
+      title: 'Hesabın cihaz bilgileri',
       loading: 'Yükleniyor...',
-      generateAndBind: 'Oluştur ve Bağla',
-      captureAndBind: 'Mevcut Olanı Yakala ve Bağla',
-      restoreOriginal: 'Temel Profili Geri Yükle',
-      openFolder: 'Kimlik Depolama Klasörünü Aç',
-      previewTitle: 'Oluşturulan Kimlik Önizlemesi',
+      generateAndBind: 'Yeni cihaz bilgileri oluştur',
+      captureAndBind: 'Mevcut cihaz bilgilerini kullan',
+      restoreOriginal: 'İlk cihaz bilgilerini geri yükle',
+      openFolder: 'Cihaz bilgileri klasörünü aç',
+      previewTitle: 'Yeni cihaz bilgileri',
       confirm: 'Onayla',
       cancel: 'İptal',
       close: 'Kapat',
       currentStorage: 'Mevcut cihaz ayarları',
-      accountBinding: 'Bağlı Hesap Kimliği',
-      history: 'Kimlik Geçmişi',
+      accountBinding: 'Bu hesap için kaydedilen',
+      history: 'Kaydedilmiş sürümler',
       noHistory: 'Kimlik geçmişi yok',
       current: 'Aktif',
       restore: 'Geri Yükle',
@@ -646,7 +676,18 @@ const tr = {
       restoreVersionSuccess: 'Geçmiş kimlik geri yüklendi',
       deleteVersionSuccess: 'Geçmiş kimlik silindi',
       openFolderSuccess: 'Kimlik depolama klasörü açıldı',
-      baseline: 'Temel Kimlik',
+      baseline: 'İlk cihaz bilgileri',
+
+      description: 'Hesap değiştirirken kullanmak için bu hesabın cihaz bilgilerini kaydedin.',
+      'load-failed': 'Cihaz bilgileri okunamadı',
+      'retry-description': 'Tekrar deneyin. Kaydedilmiş cihaz bilgileri değiştirilmedi.',
+      'refresh-failed': 'Yenilenemedi. Önceden okunan cihaz bilgileri gösteriliyor.',
+      updating: 'Cihaz bilgileri güncelleniyor…',
+      'device-id': 'Cihaz numarası',
+      'mac-device-id': 'Mac cihaz numarası',
+      'installation-id': 'Kurulum numarası',
+      'diagnostic-id': 'Tanılama numarası',
+      'delete-version': 'Kaydedilmiş sürümü sil: {{label}}',
     },
     list: {
       noAccounts: 'Henüz bulut hesabı eklenmedi.',
@@ -669,22 +710,6 @@ const tr = {
       },
     },
     toast: {
-      syncSuccess: {
-        title: 'Eşitleme Başarılı',
-        description: "IDE'den {{email}} içe aktarıldı.",
-      },
-      syncFailed: {
-        title: 'Eşitleme Başarısız',
-        description: "Antigravity IDE'de eşitlenecek hesap yok. Önce IDE'de giriş yapın.",
-        codes: {
-          'reauth-required': "Antigravity IDE'de yeniden giriş yapıp eşitlemeyi tekrar deneyin.",
-          'no-ide-account': "Antigravity IDE'de Google hesabı bulunamadı.",
-          'ide-database-unavailable':
-            "Antigravity IDE'deki hesaplar okunamadı. IDE'yi yeniden başlatıp tekrar deneyin.",
-          'agy-unsupported': 'Antigravity CLI hesapları henüz buraya aktarılamıyor.',
-          'sync-failed': "IDE'deki hesap eşitlenemedi. Tekrar deneyin.",
-        },
-      },
       validationLinkFailed: {
         title: 'Google doğrulama sayfası açılamadı',
         codes: {
@@ -745,6 +770,9 @@ const tr = {
       },
     },
     batch: {
+      actions: 'Seçili hesap işlemleri',
+      'delete-title': '{{count}} hesap silinsin mi?',
+      cancel: 'İptal',
       selected: '{{count}} adet seçildi',
       delete: 'Seçilenleri Sil',
       refresh: 'Seçilenleri Yenile',
@@ -800,7 +828,7 @@ const tr = {
     },
     localImport: {
       description:
-        'Bu bilgisayarda Antigravity hesabına giriş yapan hesapları bulun. İçeri aktarmadan önce sonuçları kontrol edin.',
+        'Bu bilgisayarda oturum açılmış hesapları bulun. Aktarmadan önce sonuçları kontrol edin.',
       emailCollision: '{{email}} için {{count}} farklı kayıtlı giriş bulundu.',
       sources: {
         'antigravity-keyring': 'Sistemde kayıtlı giriş bilgileri',
@@ -836,9 +864,25 @@ const tr = {
         'session-consumed':
           'Bu tarama sonuçları zaten kullanıldı. Daha fazla hesap aktarmak için tekrar tarayın.',
       },
+
+      title: 'Bu bilgisayardan hesap aktar',
+
+      trigger: 'Bu bilgisayardan hesap aktar',
+    },
+
+    feedback: {
+      'loading-title': 'Hesaplarınız okunuyor',
+      'loading-description': 'Hesap bilgileriniz hazır olduğunda burada görünecek.',
+      'empty-description':
+        'Oturum açmak için Hesap Ekle’yi seçin veya mevcut bir hesap dosyasını içe aktarın.',
+      'filtered-description':
+        'Daha fazla hesap görmek için başka bir plan deneyin veya filtreyi temizleyin.',
     },
   },
   proxy: {
+    'advanced-options': 'Diğer hizmet ayarları',
+    'advanced-description': 'Hesap seçimi, ortak talimatlar ve araç uyumluluğu.',
+    tabs: { tools: 'Araçlar', models: 'Modeller', records: 'Kayıtlar', examples: 'Örnekler' },
     'account-strategy': {
       'save-failed': 'Seçiminiz kaydedilemedi. Yeniden denemek için tekrar seçin.',
       title: 'API isteklerinde kullanılan hesaplar',
@@ -976,6 +1020,9 @@ const tr = {
       'success-title': 'OpenCode yapılandırması güncellendi',
       'error-title': 'OpenCode güncellemesi başarısız',
       'unknown-error': 'Bilinmeyen OpenCode yapılandırma hatası',
+
+      'choose-model-hint': 'Devam etmek için en az bir model seçin.',
+      'config-retry-description': 'Tekrar deneyin. Kaydedilmiş ayarlarınız değiştirilmedi.',
     },
     examples: {
       title: 'Kullanım Örnekleri',
@@ -1029,6 +1076,33 @@ const tr = {
     },
   },
   traffic: {
+    'detail-load-failed': 'Bu istek yüklenemedi. Tekrar deneyin.',
+    'detail-not-found': 'Bu kayıt artık mevcut değil. Temizlenmiş olabilir.',
+    fields: {
+      category: 'Kategori',
+      method: 'İstek yöntemi',
+      'requested-model': 'İstenen model',
+      'mapped-model': 'Seçilen model yolu',
+      error: 'Hata ayrıntıları',
+      affected: 'Etkilenen kayıtlar',
+      'request-id': 'İstek numarası',
+      'client-address': 'İstemci adresi',
+      username: 'Kullanıcı',
+      'reasoning-tokens': 'Düşünme tokenları',
+      'cached-tokens': 'Önbellek tokenları',
+      query: 'Ek istek seçenekleri',
+    },
+    outcomes: {
+      in_progress: 'İşleniyor',
+      completed: 'Tamamlandı',
+      client_cancelled: 'İptal edildi',
+      client_disconnected: 'Bağlantı kapandı',
+      timeout: 'Zaman aşımı',
+      upstream_error: 'Model hizmeti hatası',
+      auth_failed: 'Oturum açma başarısız',
+      internal_error: 'Uygulama hatası',
+      partial: 'Kısmi sonuç',
+    },
     'search-metadata': 'Model, istek numarası veya adres ara',
     'copy-upstream-curl': 'Model hizmeti isteğini cURL olarak kopyala (özel bilgiler gizli)',
     'upstream-attempts': 'Model hizmetine gönderilen istekler',
@@ -1046,6 +1120,16 @@ const tr = {
     'parse-error': 'İçerik {{offset}} konumunda okunamadı.',
     'thought-oversized':
       'Düşünme içeriği 64 MiB sınırını aştığı için tam kaydedilmedi. Referans: {{hash}}',
+
+    'loading-description': 'İstek kayıtlarınız hazır olduğunda burada görünecek.',
+    'empty-description':
+      'Proxy üzerinden gönderilen istekler burada görünür. Filtreleri de değiştirebilirsiniz.',
+    'empty-category-description':
+      'Bu kategorinin kayıtları burada görünür. Başka bir kategori deneyin veya filtreleri değiştirin.',
+    'load-failed': 'İstek kayıtları okunamadı',
+    'load-failed-description':
+      'Lütfen tekrar deneyin. Bu, kayıtlarınızın silindiği anlamına gelmez.',
+    'refresh-failed': 'Kayıtlar yenilenemedi. Önceden yüklenen kayıtlar gösterilmeye devam ediyor.',
   },
 };
 export default tr;

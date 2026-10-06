@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
 import * as ContextMenu from '@radix-ui/react-context-menu';
-import { Database } from 'lucide-react';
+import { FeedbackState } from '@/components/ui/feedback-state';
 
 import type { TrafficClass } from '@/modules/proxy-gateway/audit/traffic-classifier';
 import type { TrafficAuditSummary } from '@/modules/proxy-gateway/audit/traffic-audit.types';
@@ -73,18 +73,29 @@ export function TrafficTable({
               setFocusedIndex(next);
               virtualizer.scrollToIndex(next);
             } else if (event.key === 'Enter' && items[focusedIndex]) {
+              event.preventDefault();
               onOpen(items[focusedIndex].id);
             }
           }}
         >
           {loading ? (
-            <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-              {t('traffic.loading-records')}
-            </div>
+            <FeedbackState
+              kind="loading"
+              title={t('traffic.loading-records')}
+              description={t('traffic.loading-description')}
+              className="h-full"
+            />
           ) : items.length === 0 ? (
-            <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 text-sm">
-              <Database className="h-6 w-6 opacity-50" /> {t('traffic.no-records')}
-            </div>
+            <FeedbackState
+              kind="empty"
+              title={t('traffic.no-records')}
+              description={t(
+                tab === 'model'
+                  ? 'traffic.empty-description'
+                  : 'traffic.empty-category-description',
+              )}
+              className="h-full"
+            />
           ) : (
             <div
               className="relative w-full"
@@ -285,17 +296,18 @@ function outputTypeLabel(item: TrafficAuditSummary, t: (key: string) => string):
 }
 
 function Outcome({ value }: { value: string }) {
+  const { t } = useTranslation();
   return (
     <span
-      className={
+      className={`w-fit rounded-md px-2 py-0.5 text-[11px] font-medium ${
         value === 'completed'
-          ? 'text-emerald-600 dark:text-emerald-400'
+          ? 'bg-success-soft text-success'
           : value === 'in_progress'
-            ? 'text-blue-600 dark:text-blue-400'
-            : 'text-destructive'
-      }
+            ? 'bg-info-soft text-info'
+            : 'bg-destructive/10 text-destructive'
+      }`}
     >
-      {value}
+      {t(`traffic.outcomes.${value}`, { defaultValue: value })}
     </span>
   );
 }
