@@ -68,6 +68,7 @@ const vi = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'update-in-progress': 'Antigravity đang cập nhật. Hãy hoàn tất cập nhật rồi thử lại.',
     'close-failed':
       'Không thể đóng Antigravity. Hãy lưu cuộc trò chuyện và tệp, đóng ứng dụng thủ công rồi thử lại.',
     'exit-unconfirmed':

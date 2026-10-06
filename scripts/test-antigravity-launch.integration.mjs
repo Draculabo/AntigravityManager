@@ -47,6 +47,7 @@ function compileModule(source, name) {
     '@/shared/platform/paths': './fixture-paths.cjs',
     '@/shared/platform/nativeProcessQuery': './fixture-native-query.cjs',
     '@/shared/platform/antigravityAppTarget': './target.cjs',
+    '@/shared/platform/antigravityProcessIdentity': './process-identity.cjs',
     '@/shared/logging/logger': './fixture-logger.cjs',
     '@/shared/errors/appError': './app-error.cjs',
   })) {
@@ -132,6 +133,7 @@ class Fixture { static void Main(string[] args) {
     'windowsInterop',
     'processErrors',
     'runtimePlatform',
+    'windowsUpdate',
     'stop',
     'stopNativeProcessTree',
     'linuxProfileOwnership',
@@ -139,6 +141,7 @@ class Fixture { static void Main(string[] args) {
     compileModule(`src/modules/antigravity-runtime/${name}.ts`, name);
   }
   compileModule('src/shared/platform/antigravityAppTarget.ts', 'target');
+  compileModule('src/shared/platform/antigravityProcessIdentity.ts', 'process-identity');
   compileModule('src/shared/platform/nativeProcessQuery.ts', 'native-query');
   compileModule('src/shared/errors/appError.ts', 'app-error');
   fs.writeFileSync(

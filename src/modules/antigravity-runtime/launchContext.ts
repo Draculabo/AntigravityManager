@@ -13,6 +13,7 @@ import { processError } from './processErrors';
 import type { GuiTarget, LaunchContext, RuntimeProcess } from './types';
 import { usesWindowsRuntime } from './runtimePlatform';
 import { ownsLinuxProfile } from './linuxProfileOwnership';
+import { assertNoWindowsUpdate } from './windowsUpdate';
 
 function filesystemPath(value: string): string {
   return isWsl() ? toWslPath(value) : value;
@@ -182,6 +183,7 @@ export function resolveLaunchContext(
 }
 
 export async function prepareLaunchContext(target: GuiTarget): Promise<LaunchContext> {
+  await assertNoWindowsUpdate(target);
   return resolveLaunchContext(target, await observeProcesses(target));
 }
 
