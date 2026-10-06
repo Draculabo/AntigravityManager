@@ -10,6 +10,7 @@ export type ProcessFailure =
   | 'close-failed'
   | 'exit-unconfirmed'
   | 'startup-unconfirmed'
+  | 'update-in-progress'
   | 'switched-hot-unconfirmed'
   | 'switched-startup-unconfirmed';
 

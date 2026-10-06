@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   discovered: vi.fn(),
   args: vi.fn(),
   observe: vi.fn(),
+  updateGuard: vi.fn(),
 }));
 vi.mock('@/shared/platform/paths', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/platform/paths')>()),
@@ -28,6 +29,9 @@ vi.mock('@/modules/antigravity-runtime/processObserver', () => ({
   observeProcesses: mocks.observe,
   toWslPath: (value: string) => value,
   toWindowsPath: (value: string) => value,
+}));
+vi.mock('@/modules/antigravity-runtime/windowsUpdate', () => ({
+  assertNoWindowsUpdate: mocks.updateGuard,
 }));
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-context-'));
@@ -46,9 +50,15 @@ beforeEach(() => {
   mocks.discovered.mockReturnValue(executable);
   mocks.args.mockReturnValue([]);
   mocks.observe.mockResolvedValue([]);
+  mocks.updateGuard.mockResolvedValue(undefined);
 });
 
 describe('immutable launch context', () => {
+  it('refuses to prepare account writes while the client is updating', async () => {
+    mocks.updateGuard.mockRejectedValueOnce(new Error('update in progress'));
+    await expect(prepareLaunchContext('classic')).rejects.toThrow('update in progress');
+    expect(mocks.observe).not.toHaveBeenCalled();
+  });
   it('recovers only the user data directory and keeps database and storage resolution inside it', () => {
     const context = resolveLaunchContext('classic', [
       {

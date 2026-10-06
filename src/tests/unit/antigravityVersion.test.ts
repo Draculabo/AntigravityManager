@@ -101,6 +101,28 @@ describe('product version query', () => {
       bundleVersion: '2.18.2',
     });
   });
+  it('keeps Windows archives untouched while refreshing changed executable versions', async () => {
+    setPlatform('win32');
+    const executable = '/fixture/windows-update';
+    const stat = fs.statSync(process.execPath);
+    const fingerprint = vi.spyOn(fs, 'statSync').mockReturnValue(stat);
+    vi.mocked(readWindowsFileVersion)
+      .mockResolvedValueOnce('2.18.1')
+      .mockResolvedValueOnce('2.19.1');
+
+    const initial = await getAntigravityVersion('classic', executable);
+    const cached = await getAntigravityVersion('classic', executable);
+    fingerprint.mockReturnValue({ ...stat, mtimeMs: stat.mtimeMs + 1000 });
+    const updated = await getAntigravityVersion('classic', executable);
+
+    expect([initial, cached, updated]).toEqual([
+      { shortVersion: '2.18.1', bundleVersion: '2.18.1' },
+      { shortVersion: '2.18.1', bundleVersion: '2.18.1' },
+      { shortVersion: '2.19.1', bundleVersion: '2.19.1' },
+    ]);
+    expect(readWindowsFileVersion).toHaveBeenCalledTimes(2);
+    expect(new Set(fingerprint.mock.calls.map(([file]) => file))).toEqual(new Set([executable]));
+  });
   it('limits caller waiting while retaining an unfinished native probe', async () => {
     setPlatform('win32');
     vi.useFakeTimers();

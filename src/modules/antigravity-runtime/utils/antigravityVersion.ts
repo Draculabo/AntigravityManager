@@ -132,14 +132,18 @@ function getPlistPath(execPath: string): string {
 }
 
 function getVersionCacheKey(target: AntigravityAppTarget, execPath: string): string {
-  const parent = path.dirname(execPath);
-  const files = [
-    execPath,
-    path.join(parent, 'resources', 'app', 'package.json'),
-    path.join(parent, 'resources', 'app.asar'),
-  ];
-  if (process.platform === 'darwin') {
-    files.push(getPlistPath(execPath));
+  // Fingerprint only metadata used on this platform. Electron can retain an ASAR
+  // handle after stat(), preventing a Windows installer from replacing the archive.
+  const files = [execPath];
+  switch (process.platform) {
+    case 'darwin':
+      files.push(getPlistPath(execPath));
+      break;
+    case 'linux': {
+      const resources = path.join(path.dirname(execPath), 'resources');
+      files.push(path.join(resources, 'app', 'package.json'), path.join(resources, 'app.asar'));
+      break;
+    }
   }
   const identities = files.map((file) => {
     try {

@@ -76,6 +76,8 @@ const fr = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'update-in-progress':
+      'Antigravity est en cours de mise à jour. Terminez la mise à jour, puis réessayez.',
     'close-failed':
       'Impossible de fermer Antigravity. Enregistrez vos conversations et fichiers, fermez l’application manuellement, puis réessayez.',
     'exit-unconfirmed':

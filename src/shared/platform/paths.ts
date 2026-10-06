@@ -4,6 +4,7 @@ import fs from 'fs';
 import { execSync } from 'child_process';
 import type { ProcessInfo } from '@draculabo/sysinfo-process-enhanced';
 import { readNativeProcessSnapshot } from './nativeProcessQuery';
+import { isAntigravityWindowsInstaller } from './antigravityProcessIdentity';
 import { z } from 'zod';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
@@ -209,6 +210,9 @@ export function isTargetAntigravityProcessCandidate(
   target?: AntigravityAppTarget | null,
   options?: PathResolutionOptions,
 ): boolean {
+  if (isAntigravityWindowsInstaller(processItem.name)) {
+    return false;
+  }
   const normalizedTarget = resolveAntigravityAppTarget(target);
   const nameLower = processItem.name.toLowerCase();
   const cmdLower = processItem.commandLine.toLowerCase();

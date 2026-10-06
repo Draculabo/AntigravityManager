@@ -10,6 +10,7 @@ import type { GuiTarget, RuntimeProcess } from './types';
 import { usesWindowsRuntime } from './runtimePlatform';
 import { readNativeProcessSnapshot } from '@/shared/platform/nativeProcessQuery';
 import { logger } from '@/shared/logging/logger';
+import { isAntigravityWindowsInstaller } from '@/shared/platform/antigravityProcessIdentity';
 import { readWslWindowsProcesses } from './windowsInterop';
 
 class UnreadableProcessMetadata extends Error {}
@@ -84,7 +85,11 @@ function matchesTarget(
   capturedExecutablePath?: string,
 ): boolean {
   // Only the main app can confirm startup; helpers and this manager cannot do so.
-  if (/--type(?:=|\s)/i.test(commandLine) || /crashpad|helper|manager/i.test(name)) {
+  if (
+    /--type(?:=|\s)/i.test(commandLine) ||
+    /crashpad|helper|manager/i.test(name) ||
+    (windows && isAntigravityWindowsInstaller(name))
+  ) {
     return false;
   }
   const candidate = { name, executablePath, commandLine };
@@ -140,6 +145,7 @@ async function scan(
   for (const row of rows) {
     if (
       row.pid === process.pid ||
+      (windows && isAntigravityWindowsInstaller(row.name)) ||
       /crashpad|helper|manager/i.test(row.name) ||
       row.cmd.some((arg) => /^--type(?:=|$)/i.test(arg)) ||
       // Windows IDE language services reuse the app executable without an Electron --type.

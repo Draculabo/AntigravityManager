@@ -44,6 +44,35 @@ afterEach(() => {
   Object.defineProperty(process, 'platform', { value: platform, configurable: true });
 });
 describe('bounded process observation', () => {
+  it('does not treat a pending Windows update installer as a competing client', async () => {
+    const installer =
+      'C:\\Users\\Test\\AppData\\Local\\antigravity-updater\\pending\\Antigravity-x64.exe';
+    mocks.native.mockResolvedValue([
+      main,
+      { ...main, pid: 70, name: 'Antigravity-x64.exe', exe: installer, cmd: [installer] },
+    ]);
+    expect(await observeProcesses('classic', 1000, main.exe)).toEqual([
+      { pid: 42, executablePath: main.exe, args: [], startTime: 1n },
+    ]);
+  });
+  it('confirms the client exited while its Windows update installer remains running', async () => {
+    const installer =
+      'C:\\Users\\Test\\AppData\\Local\\antigravity-updater\\pending\\Antigravity-x64.exe';
+    mocks.native.mockResolvedValue([
+      { ...main, pid: 70, name: 'Antigravity-x64.exe', exe: installer, cmd: [installer] },
+    ]);
+    expect(await observeProcesses('classic', 1000, main.exe)).toEqual([]);
+  });
+  it('does not wait for metadata from an exiting Windows update installer', async () => {
+    mocks.native.mockResolvedValue([
+      main,
+      { ...main, pid: 70, name: 'Antigravity-x64.exe', exe: undefined, cmd: [] },
+    ]);
+    expect(await observeProcesses('classic')).toEqual([
+      { pid: 42, executablePath: main.exe, args: [], startTime: 1n },
+    ]);
+    expect(mocks.native).toHaveBeenCalledTimes(1);
+  });
   it('keeps the captured executable after configuration changes', async () => {
     mocks.configured.mockReturnValue('C:\\Other\\new.exe');
     mocks.native.mockResolvedValue([

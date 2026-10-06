@@ -10,8 +10,9 @@ import { prepareLaunchContext, assertContextProcesses } from './launchContext';
 import { getProcessProbeTimeout, observeProcesses } from './processObserver';
 import { runProcessOperation } from './operation';
 import { processError } from './processErrors';
-import type { LaunchContext } from './types';
+import type { LaunchContext, RuntimeProcess } from './types';
 import { usesWindowsRuntime } from './runtimePlatform';
+import { assertNoWindowsUpdate } from './windowsUpdate';
 
 export function launchEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env = { ...source };
@@ -49,6 +50,7 @@ export function launchEnvironment(source: NodeJS.ProcessEnv = process.env): Node
 }
 
 async function dispatchLaunch(context: LaunchContext): Promise<void> {
+  await assertNoWindowsUpdate(context.target);
   let executable = context.executablePath;
   let args = [...context.args];
   if (process.platform === 'darwin') {
@@ -85,15 +87,19 @@ async function dispatchLaunch(context: LaunchContext): Promise<void> {
   });
 }
 
-/** One dispatch only, followed by bounded observation. Timeout never dispatches again. */
+/** One dispatch only; a short-lived launcher cannot confirm startup. */
 export async function startFromContext(context: LaunchContext): Promise<void> {
   logger.info(`Starting Antigravity target: ${context.target}`);
   try {
     await dispatchLaunch(context);
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
     throw processError('launch-failed');
   }
   const deadline = Date.now() + 6000;
+  let candidates = new Map<number, { startTime: RuntimeProcess['startTime']; since: number }>();
   while (Date.now() < deadline) {
     try {
       const processes = await observeProcesses(
@@ -105,11 +111,23 @@ export async function startFromContext(context: LaunchContext): Promise<void> {
         context.executablePath,
       );
       assertContextProcesses(context, processes);
-      if (processes.length) {
+      const now = Date.now();
+      const current = new Map<number, { startTime: RuntimeProcess['startTime']; since: number }>();
+      for (const item of processes) {
+        const previous = candidates.get(item.pid);
+        current.set(item.pid, {
+          startTime: item.startTime,
+          since: previous && previous.startTime === item.startTime ? previous.since : now,
+        });
+      }
+      candidates = current;
+      // Update handoffs and single-instance launchers can exit just after the first snapshot.
+      if ([...candidates.values()].some((item) => now - item.since >= 1000)) {
         logger.info(`Antigravity startup confirmed: ${context.target}`);
         return;
       }
     } catch (error) {
+      candidates.clear();
       // A failed probe is inconclusive. The single startup deadline still applies.
       logger.warn('Antigravity startup observation inconclusive', {
         target: context.target,

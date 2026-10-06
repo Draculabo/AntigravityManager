@@ -69,6 +69,7 @@ const tr = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'update-in-progress': 'Antigravity güncelleniyor. Güncellemeyi tamamlayıp tekrar deneyin.',
     'close-failed':
       'Antigravity kapatılamadı. Sohbetlerinizi ve dosyalarınızı kaydedin, uygulamayı elle kapatıp tekrar deneyin.',
     'exit-unconfirmed':

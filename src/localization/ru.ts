@@ -71,6 +71,7 @@ const ru = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'update-in-progress': 'Antigravity обновляется. Завершите обновление и попробуйте снова.',
     'close-failed':
       'Не удалось закрыть Antigravity. Сохраните чаты и файлы, закройте приложение вручную и повторите попытку.',
     'exit-unconfirmed':
