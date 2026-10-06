@@ -92,6 +92,62 @@ real process under Electron. The existing AutoUnpackNatives plugin unpacks `.nod
 
 React Doctor runs in pull requests with changed-line scope and error blocking. Telemetry, score sharing and supply-chain analysis are disabled. A full scan is advisory and establishes the existing-work baseline. React Scan is injected only for an explicitly enabled development Electron session; it is not bundled or run in CI.
 
+### Desktop workspace checks
+
+Run `npm run test:performance -- desktop-workspace.spec.mts` to check the production shell,
+account page and Traffic Monitor in an isolated Electron window with synthetic data. The check
+covers light/dark screenshots, supporting theme-color text contrast, a 900-pixel window, keyboard selection, proxy-dialog focus return,
+navigation state, sidebar preference restoration and Chinese copy. Screenshots are saved in the
+test output directory. The fixture has no real preload, credentials, database or upstream service;
+this evidence does not establish installer behavior or macOS/Linux native integration.
+
+The [desktop interface reference](desktop-interface.md) owns the presentation conventions.
+
+Run `npm run test:performance -- feedback-workspace.spec.mts` to check deferred reads, empty account
+and traffic views, failed reads with retry, and all four notification variants in isolated Electron.
+It verifies visible close controls, keyboard dismissal, reduced motion and a 900-pixel window.
+Read results and notification content are synthetic; reporting issues and authorization are not
+performed. The focused traffic-feedback unit check additionally verifies that a failed background
+refresh retains previously loaded records until retry succeeds.
+
+Run `npm run test:performance -- settings-workspace.spec.mts` to check proxy configuration and
+settings in the same isolated fixture. It covers keyboard tab and disclosure navigation, retained
+tool-panel disclosure state, masked connection keys, start-confirmation focus return, protocol
+selection, the settings theme switch and layout at 900 pixels. Screenshots include both themes
+and narrow windows. This check does not start the proxy, save tool configuration, patch clients
+or use real account data.
+
+Run `npm run test:performance -- dialog-workspace.spec.mts` to check account sign-in, import/export
+dialog dismissal, batch deletion cancellation, traffic-row keyboard activation and request details.
+It verifies focus return, manual-code reset, translated status and metadata, retry after a failed
+read, unavailable records, body selection, editor theme and a narrow detail window. Data and read failures are
+synthetic; this check does not perform Google authorization, delete accounts or copy credentials.
+
+Run `npm run test:performance -- tool-dialog-workspace.spec.mts` to check device information,
+local account import preview, tool setup and configuration previews, and cache confirmation in a 900-by-700 Electron window.
+It checks address validation, retry after synthetic read failures, scrolling with visible footer
+actions, cancellation focus, focus return and a dark configuration preview. It does not change
+device information, write tool settings, clear caches or use the system clipboard. Focused unit
+checks exercise pending-action guards, local import cancellation and partial cache results.
+
+### Renderer update profiling
+
+Run `npm run test:performance -- renderer-updates.spec.mts` to measure account-page and
+Traffic Monitor updates in isolated Electron windows. The fixture renders production
+components with React Compiler and React Profiler, using 100 synthetic accounts and 50
+synthetic traffic records. It has no production preload, database or provider connection.
+
+The scenarios cover single-account selection, login input, account model availability,
+statistics changes, queued traffic notifications on an older page and search input.
+Component invocation counts are the regression gate. Profiler render durations are
+diagnostic values from the local development renderer, not production latency guarantees.
+Reports are written under `test-results/playwright-performance`.
+
+For an optional Git comparison, set `AGM_RENDERER_PROFILE_BASELINE` to the commit to compare
+before running the same command. The harness loads the relevant baseline source in memory;
+it does not switch branches or modify the worktree. Run it again after changes to the account
+selection store, account availability selector or Traffic Monitor state boundaries.
+
 ## Preload traffic events under Content Security Policy
 
 Run `npm run test:acceptance -- runtime preload-csp --policy-timing initial` and
