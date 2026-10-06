@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import * as ContextMenu from '@radix-ui/react-context-menu';
@@ -42,6 +42,9 @@ function TrafficDetailDialogContent({
   includeCredentials,
 }: TrafficDetailDialogProps) {
   const { t } = useTranslation();
+  const opener = useRef(
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
   const detail = useQuery({
     enabled: Boolean(id),
     queryKey: ['gateway', 'traffic-detail', id],
@@ -66,7 +69,13 @@ function TrafficDetailDialogContent({
 
   return (
     <Dialog open={Boolean(id)} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[94vh] max-w-[96vw] gap-0 overflow-hidden p-0">
+      <DialogContent
+        className="flex h-[90dvh] max-w-[96vw] flex-col gap-0 overflow-hidden p-0 xl:max-w-7xl"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          opener.current?.focus();
+        }}
+      >
         <DialogHeader className="border-b px-5 py-4 pr-12">
           <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
             {t('traffic.detail-title')}
@@ -99,9 +108,28 @@ function TrafficDetailDialogContent({
         </DialogHeader>
 
         {detail.isLoading && (
-          <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
+          <div
+            role="status"
+            className="text-muted-foreground flex flex-1 items-center justify-center text-sm"
+          >
             {t('traffic.loading-detail')}
           </div>
+        )}
+        {detail.isError && (
+          <div
+            role="alert"
+            className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-sm"
+          >
+            <p>{t('traffic.detail-load-failed')}</p>
+            <Button variant="outline" onClick={() => detail.refetch()}>
+              {t('action.retry')}
+            </Button>
+          </div>
+        )}
+        {!detail.isLoading && !detail.isError && !detail.data && (
+          <p className="text-muted-foreground flex flex-1 items-center justify-center p-6 text-sm">
+            {t('traffic.detail-not-found')}
+          </p>
         )}
         {detail.data?.recordKind === 'admin' && (
           <div className="m-5 max-w-3xl rounded-lg border p-5">
@@ -109,18 +137,36 @@ function TrafficDetailDialogContent({
               <Server className="h-4 w-4" /> {t('traffic.system-operation')}
             </div>
             <DefinitionList
-              values={{
-                operation: detail.data.event.operation,
-                outcome: detail.data.event.outcome,
-                affected: detail.data.event.affectedCount,
-                timestamp: formatTrafficTime(detail.data.event.timestamp),
-                error: detail.data.event.error,
-              }}
+              values={[
+                { label: t('traffic.operation'), value: detail.data.event.operation },
+                { label: t('traffic.result'), value: detail.data.event.outcome },
+                { label: t('traffic.fields.affected'), value: detail.data.event.affectedCount },
+                { label: t('traffic.time'), value: formatTrafficTime(detail.data.event.timestamp) },
+                { label: t('traffic.fields.error'), value: detail.data.event.error },
+              ]}
             />
           </div>
         )}
         {requestDetail && (
           <>
+            <dl className="bg-muted/20 grid shrink-0 grid-cols-2 gap-3 border-b px-5 py-3 text-sm sm:grid-cols-4">
+              {[
+                [t('traffic.status'), requestDetail.request.status ?? '—'],
+                [
+                  t('traffic.duration'),
+                  requestDetail.request.durationMs === null
+                    ? '—'
+                    : `${requestDetail.request.durationMs} ms`,
+                ],
+                [t('traffic.input-tokens'), requestDetail.request.inputTokens ?? '—'],
+                [t('traffic.output-tokens'), requestDetail.request.outputTokens ?? '—'],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-muted-foreground text-xs">{label}</dt>
+                  <dd className="mt-1 font-medium tabular-nums">{value}</dd>
+                </div>
+              ))}
+            </dl>
             <div className="hidden min-h-0 flex-1 grid-cols-[minmax(260px,0.8fr)_minmax(240px,0.7fr)_minmax(420px,1.5fr)] xl:grid">
               <MetadataPane detail={requestDetail} />
               <AttemptPane
@@ -145,7 +191,10 @@ function TrafficDetailDialogContent({
               />
             </div>
             <Tabs defaultValue="metadata" className="flex min-h-0 flex-1 flex-col xl:hidden">
-              <TabsList className="mx-4 mt-3 w-fit">
+              <TabsList
+                aria-label={t('traffic.detail-title')}
+                className="mx-4 mt-3 max-w-[calc(100%-2rem)] justify-start overflow-x-auto"
+              >
                 <TabsTrigger value="metadata">{t('traffic.metadata')}</TabsTrigger>
                 <TabsTrigger value="attempts">
                   {t('traffic.attempts', { count: requestDetail.attempts.length })}
@@ -172,7 +221,6 @@ function TrafficDetailDialogContent({
                   bodies={requestDetail.bodies}
                   selectedBody={selectedBody}
                   onSelect={setSelectedBodyId}
-                  borderless
                 />
               </TabsContent>
             </Tabs>
@@ -201,40 +249,51 @@ function MetadataPane({
     <section className={`min-h-0 overflow-auto p-4 ${borderless ? '' : 'border-r'}`}>
       <h3 className="mb-3 text-sm font-semibold">{t('traffic.client-request')}</h3>
       <DefinitionList
-        values={{
-          class: request.trafficClass,
-          time: formatTrafficTime(request.timestamp),
-          method: request.method,
-          url: request.url,
-          protocol: request.protocol,
-          model: request.model,
-          mappedModel: request.mappedModel,
-          [t('traffic.account')]: request.attributedAccountId,
-          [t('traffic.physical-model')]: request.physicalModel,
-          [t('traffic.model-family')]: request.physicalModelFamily,
-          [t('traffic.output-type')]:
-            request.hasTextOutput === null || request.hasImageOutput === null
-              ? t('traffic.unknown')
-              : request.hasTextOutput && request.hasImageOutput
-                ? t('traffic.mixed-output')
-                : request.hasImageOutput
-                  ? t('traffic.image-output')
-                  : request.hasTextOutput
-                    ? t('traffic.text-output')
-                    : t('traffic.no-visible-output'),
-          status: request.status,
-          duration: request.durationMs === null ? null : `${request.durationMs} ms`,
-          session: request.sessionId,
-          clientIp: request.clientIp,
-          username: request.username,
-          inputTokens: request.inputTokens,
-          outputTokens: request.outputTokens,
-          reasoningTokens: request.reasoningTokens,
-          cachedTokens: request.cachedTokens,
-          query: request.requestQuery,
-          error: request.error,
-        }}
+        values={[
+          { label: t('traffic.fields.category'), value: t(`traffic.${request.trafficClass}`) },
+          { label: t('traffic.time'), value: formatTrafficTime(request.timestamp) },
+          { label: t('traffic.fields.method'), value: request.method },
+          { label: t('traffic.endpoint'), value: request.url },
+          { label: t('traffic.protocol'), value: request.protocol },
+          { label: t('traffic.fields.requested-model'), value: request.model },
+          { label: t('traffic.fields.mapped-model'), value: request.mappedModel },
+          { label: t('traffic.account'), value: request.attributedAccountId },
+          { label: t('traffic.physical-model'), value: request.physicalModel },
+          { label: t('traffic.model-family'), value: request.physicalModelFamily },
+          {
+            label: t('traffic.output-type'),
+            value:
+              request.hasTextOutput === null || request.hasImageOutput === null
+                ? t('traffic.unknown')
+                : request.hasTextOutput && request.hasImageOutput
+                  ? t('traffic.mixed-output')
+                  : request.hasImageOutput
+                    ? t('traffic.image-output')
+                    : request.hasTextOutput
+                      ? t('traffic.text-output')
+                      : t('traffic.no-visible-output'),
+          },
+          { label: t('traffic.fields.error'), value: request.error },
+        ]}
       />
+      <details className="mt-4 rounded-md border p-3 text-xs">
+        <summary className="focus-visible:ring-ring cursor-default rounded-sm font-medium focus-visible:ring-2 focus-visible:outline-none">
+          {t('traffic.advanced-diagnostics')}
+        </summary>
+        <div className="mt-3">
+          <DefinitionList
+            values={[
+              { label: t('traffic.fields.request-id'), value: request.id },
+              { label: t('traffic.session-key'), value: request.sessionId },
+              { label: t('traffic.fields.client-address'), value: request.clientIp },
+              { label: t('traffic.fields.username'), value: request.username },
+              { label: t('traffic.fields.reasoning-tokens'), value: request.reasoningTokens },
+              { label: t('traffic.fields.cached-tokens'), value: request.cachedTokens },
+              { label: t('traffic.fields.query'), value: request.requestQuery },
+            ]}
+          />
+        </div>
+      </details>
       <details className="mt-4 rounded-md border p-3 text-xs">
         <summary className="cursor-default font-medium">{t('traffic.request-headers')}</summary>
         <pre className="mt-2 overflow-auto whitespace-pre-wrap select-text">
@@ -283,7 +342,8 @@ function AttemptPane({
             <ContextMenu.Trigger asChild>
               <button
                 type="button"
-                className={`w-full cursor-default rounded-lg border p-3 text-left transition-colors ${selectedAttemptId === attempt.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                aria-pressed={selectedAttemptId === attempt.id}
+                className={`focus-visible:ring-ring w-full cursor-default rounded-lg border p-3 text-left transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none ${selectedAttemptId === attempt.id ? 'border-foreground/40 bg-accent' : 'hover:bg-muted/50'}`}
                 onClick={() => onSelect(attempt.id)}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -334,22 +394,21 @@ function PayloadPane({
   bodies,
   selectedBody,
   onSelect,
-  borderless = false,
 }: {
   bodies: TrafficAuditBodyDescriptor[];
   selectedBody: TrafficAuditBodyDescriptor | null;
   onSelect: (id: string) => void;
-  borderless?: boolean;
 }) {
   const { t } = useTranslation();
   return (
-    <section className={`flex min-h-0 flex-col gap-3 p-4 ${borderless ? '' : ''}`}>
+    <section className="flex min-h-0 flex-col gap-3 p-4">
       <div className="flex flex-wrap gap-1.5">
         {bodies.map((body) => (
           <button
             key={body.id}
             type="button"
-            className={`cursor-default rounded-md border px-2.5 py-1.5 text-xs ${selectedBody?.id === body.id ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted'}`}
+            aria-pressed={selectedBody?.id === body.id}
+            className={`focus-visible:ring-ring cursor-default rounded-md border px-2.5 py-1.5 text-xs focus-visible:ring-2 focus-visible:outline-none ${selectedBody?.id === body.id ? 'border-foreground/40 bg-accent text-accent-foreground' : 'hover:bg-muted'}`}
             onClick={() => onSelect(body.id)}
           >
             {body.ownerKind === 'parent' ? t('traffic.client') : t('traffic.upstream')}{' '}
@@ -371,23 +430,31 @@ function PayloadPane({
 }
 
 function OutcomeBadge({ outcome }: { outcome: string }) {
+  const { t } = useTranslation();
   const variant =
     outcome === 'completed' ? 'default' : outcome === 'in_progress' ? 'secondary' : 'destructive';
   return (
-    <Badge variant={variant} className="gap-1 text-[10px] font-medium">
+    <Badge
+      variant={variant}
+      className={`gap-1 text-[10px] font-medium ${outcome === 'completed' ? 'border-success-border bg-success-soft text-success hover:bg-success-soft' : ''}`}
+    >
       {outcome === 'in_progress' ? <Clock3 className="h-3 w-3" /> : null}
       {outcome.includes('error') || outcome === 'partial' ? (
         <AlertTriangle className="h-3 w-3" />
       ) : null}
-      {outcome}
+      {t(`traffic.outcomes.${outcome}`, { defaultValue: outcome })}
     </Badge>
   );
 }
 
-function DefinitionList({ values }: { values: Record<string, unknown> }) {
+function DefinitionList({
+  values,
+}: {
+  values: ReadonlyArray<{ label: string; value: string | number | null | undefined }>;
+}) {
   return (
     <dl className="grid grid-cols-[minmax(90px,auto)_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
-      {Object.entries(values).map(([label, value]) => (
+      {values.map(({ label, value }) => (
         <div key={label} className="contents">
           <dt className="text-muted-foreground capitalize">{label}</dt>
           <dd className="min-w-0 font-mono wrap-break-word select-text">

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { Users, CircleCheck, Clock3, Gauge } from 'lucide-react';
 import {
   GLOBAL_QUOTA_BAR_COLOR_CLASS_BY_STATUS,
   GLOBAL_QUOTA_TEXT_COLOR_CLASS_BY_STATUS,
@@ -26,57 +27,68 @@ export function CloudAccountListSummary({
   const { t } = useTranslation();
 
   return (
-    <div className="bg-card border-border/80 rounded-xl border p-6 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-5">
-        <div className="flex shrink-0 flex-col gap-1.5">
-          <h2 className="text-foreground text-2xl font-bold tracking-tight">{t('cloud.title')}</h2>
+    <header className="space-y-5">
+      <div className="flex items-start gap-3">
+        <div className="bg-info-soft text-info border-info-border flex size-11 shrink-0 items-center justify-center rounded-xl border">
+          <Users className="size-5" aria-hidden="true" />
+        </div>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <h1 className="text-foreground text-2xl font-semibold tracking-tight">
+            {t('cloud.title')}
+          </h1>
           <p className="text-muted-foreground max-w-2xl text-sm">{t('cloud.description')}</p>
         </div>
-        <div className="flex flex-wrap gap-2.5">
-          <div className="bg-muted/30 border-border/40 min-w-[80px] rounded-xl border px-4 py-2.5">
-            <div className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
-              {t('cloud.card.actions')}
-            </div>
-            <div className="mt-0.5 text-lg font-bold">{totalAccounts}</div>
+      </div>
+      <dl className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div className="bg-info-soft border-info-border flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+          <div>
+            <dt className="text-muted-foreground text-xs">{t('cloud.total-accounts')}</dt>
+            <dd className="text-foreground mt-1 text-2xl font-semibold tabular-nums">
+              {totalAccounts}
+            </dd>
           </div>
-          <div className="bg-muted/30 border-border/40 min-w-[80px] rounded-xl border px-4 py-2.5">
-            <div className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
-              {t('cloud.card.active')}
-            </div>
-            <div className="mt-0.5 text-lg font-bold text-emerald-600 dark:text-emerald-400">
+          <Users className="text-info size-5 shrink-0" aria-hidden="true" />
+        </div>
+        <div className="bg-success-soft border-success-border flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+          <div>
+            <dt className="text-muted-foreground text-xs">{t('cloud.card.active')}</dt>
+            <dd className="text-foreground mt-1 text-2xl font-semibold tabular-nums">
               {activeAccounts}
-            </div>
+            </dd>
           </div>
-          <div className="bg-muted/30 border-border/40 min-w-[80px] rounded-xl border px-4 py-2.5">
-            <div className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
-              {t('cloud.card.rateLimited')}
-            </div>
-            <div className="mt-0.5 text-lg font-bold text-rose-600 dark:text-rose-400">
+          <CircleCheck className="text-success size-5 shrink-0" aria-hidden="true" />
+        </div>
+        <div className="bg-warning-soft border-warning-border flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+          <div>
+            <dt className="text-muted-foreground text-xs">{t('cloud.card.rateLimited')}</dt>
+            <dd className="text-foreground mt-1 text-2xl font-semibold tabular-nums">
               {rateLimitedAccounts}
-            </div>
+            </dd>
           </div>
-          {overallQuotaPercentage !== null && (
-            <div className="bg-muted/30 border-border/40 min-w-[150px] rounded-xl border px-4 py-2.5">
-              <div className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
-                {t('cloud.globalQuota')}
-              </div>
-              <div className="mt-1.5 flex items-center gap-2.5">
+          <Clock3 className="text-warning size-5 shrink-0" aria-hidden="true" />
+        </div>
+        {overallQuotaPercentage !== null && (
+          <div className="bg-card flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+            <div>
+              <dt className="text-muted-foreground text-xs">{t('cloud.globalQuota')}</dt>
+              <dd className="mt-1 flex items-center gap-2.5">
                 <span
-                  className={`text-base font-bold ${GLOBAL_QUOTA_TEXT_COLOR_CLASS_BY_STATUS[effectiveQuotaStatus]}`}
+                  className={`text-2xl font-semibold tabular-nums ${GLOBAL_QUOTA_TEXT_COLOR_CLASS_BY_STATUS[effectiveQuotaStatus]}`}
                 >
                   {overallQuotaPercentage}%
                 </span>
-                <div className="bg-muted/60 border-border/20 h-2 w-20 overflow-hidden rounded-full border shadow-inner">
+                <div className="bg-muted h-1.5 w-12 overflow-hidden rounded-full">
                   <div
-                    className={`h-full rounded-full transition-all duration-500 ${GLOBAL_QUOTA_BAR_COLOR_CLASS_BY_STATUS[effectiveQuotaStatus]}`}
+                    className={`h-full rounded-full ${GLOBAL_QUOTA_BAR_COLOR_CLASS_BY_STATUS[effectiveQuotaStatus]}`}
                     style={{ width: `${clampQuotaPercentage(overallQuotaPercentage)}%` }}
                   />
                 </div>
-              </div>
+              </dd>
             </div>
-          )}
-        </div>
-      </div>
-    </div>
+            <Gauge className="text-muted-foreground size-5 shrink-0" aria-hidden="true" />
+          </div>
+        )}
+      </dl>
+    </header>
   );
 }

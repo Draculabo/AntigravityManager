@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogClose,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -57,17 +58,17 @@ export function CloudAccountAuthDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button className="cursor-pointer">
+        <Button>
           <Plus className="mr-2 h-4 w-4" />
           {t('cloud.addAccount')}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
+        <DialogHeader className="pr-8">
           <DialogTitle>{t('cloud.authDialog.title')}</DialogTitle>
           <DialogDescription>{t('cloud.authDialog.description')}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4">
           <div className="space-y-2">
             <Label htmlFor="oauth-client-select">{t('cloud.authDialog.oauthClient')}</Label>
             <Select
@@ -88,35 +89,50 @@ export function CloudAccountAuthDialog({
             </Select>
           </div>
           <Button
-            variant="outline"
             onClick={onOpenGoogleAuthSignIn}
             disabled={isAddPending || isOAuthClientsLoading || isSetActiveOAuthClientPending}
+            aria-busy={isAddPending}
           >
             {isAddPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             <Cloud className="mr-2 h-4 w-4" />
             {t('cloud.authDialog.openLogin')}
           </Button>
-          <div className="space-y-2">
-            <Label htmlFor="code">{t('cloud.authDialog.authCode')}</Label>
-            <Input
-              id="code"
-              autoComplete="off"
-              maxLength={2048}
-              placeholder={t('cloud.authDialog.placeholder')}
-              value={authCode}
-              onChange={(event) => onAuthCodeChange(event.target.value)}
-            />
-            <p className="text-muted-foreground text-xs">{t('cloud.authDialog.instruction')}</p>
-          </div>
+          {isAddPending && (
+            <p role="status" className="text-muted-foreground text-sm">
+              {t('cloud.authDialog.waiting-for-browser')}
+            </p>
+          )}
+          <details open={isAddPending || undefined} className="border-t pt-4">
+            <summary className="focus-visible:ring-ring cursor-default rounded-sm text-sm font-medium focus-visible:ring-2 focus-visible:outline-none">
+              {t('cloud.authDialog.manual-sign-in')}
+            </summary>
+            <div className="mt-3 space-y-2">
+              <Label htmlFor="code">{t('cloud.authDialog.authCode')}</Label>
+              <Input
+                id="code"
+                autoComplete="off"
+                maxLength={2048}
+                placeholder={t('cloud.authDialog.placeholder')}
+                value={authCode}
+                onChange={(event) => onAuthCodeChange(event.target.value)}
+              />
+              <p className="text-muted-foreground text-xs">{t('cloud.authDialog.instruction')}</p>
+              <Button
+                variant="secondary"
+                onClick={onSubmitAuthCode}
+                disabled={!isAddPending || isCodeSubmitting || !authCode.trim()}
+                aria-busy={isCodeSubmitting}
+              >
+                {isCodeSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t('cloud.authDialog.verify')}
+              </Button>
+            </div>
+          </details>
         </div>
         <DialogFooter>
-          <Button
-            onClick={onSubmitAuthCode}
-            disabled={!isAddPending || isCodeSubmitting || !authCode.trim()}
-          >
-            {isCodeSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {t('cloud.authDialog.verify')}
-          </Button>
+          <DialogClose asChild>
+            <Button variant="outline">{t('common.close', 'Close')}</Button>
+          </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>

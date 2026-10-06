@@ -197,8 +197,14 @@ function ResultContent({ result }: { result: LocalAccountImportResult }) {
   const { t } = useTranslation();
   return (
     <div className="space-y-4" role="status" aria-live="polite">
-      <div className="border-primary/30 bg-primary/5 flex items-start gap-3 rounded-md border p-3">
-        <CheckCircle2 className="text-primary mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+      <div
+        className={`flex items-start gap-3 rounded-md border p-3 ${result.failed.length > 0 ? 'bg-warning-soft border-warning-border text-warning' : 'bg-success-soft border-success-border text-success'}`}
+      >
+        {result.failed.length > 0 ? (
+          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+        ) : (
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+        )}
         <div>
           <p className="font-medium">{t('cloud.localImport.resultTitle')}</p>
           <p className="text-muted-foreground text-sm">
@@ -381,7 +387,8 @@ export function LocalAccountImportDialog() {
         </Button>
       </DialogTrigger>
       <DialogContent
-        className="sm:max-w-[620px]"
+        className="flex max-w-[620px] flex-col gap-0 overflow-hidden p-0"
+        closeDisabled={phase === 'importing'}
         aria-busy={phase === 'scanning' || phase === 'importing'}
         onEscapeKeyDown={(event) => {
           if (phase === 'importing') {
@@ -394,12 +401,12 @@ export function LocalAccountImportDialog() {
           }
         }}
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0 border-b px-6 py-5 pr-14">
           <DialogTitle>{t('cloud.localImport.title')}</DialogTitle>
           <DialogDescription>{t('cloud.localImport.description')}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-32 py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
           {(phase === 'scanning' || phase === 'importing') && (
             <div
               className="text-muted-foreground flex min-h-32 flex-col items-center justify-center gap-3 text-sm"
@@ -430,7 +437,7 @@ export function LocalAccountImportDialog() {
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 border-t px-6 py-4">
           {phase === 'preview' && (
             <>
               <Button variant="outline" onClick={handleRescan}>

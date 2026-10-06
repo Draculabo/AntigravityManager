@@ -35,7 +35,7 @@ import {
   TriangleAlert,
   ExternalLink,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatAccountLastUsed } from '@/modules/cloud-account/utils/format-last-used';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
@@ -49,9 +49,9 @@ import {
   getQuotaStatus,
 } from '@/modules/cloud-account/utils/quota-display';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useAccountModelAvailability } from '../hooks/useAccountModelAvailability';
 import { ipc } from '@/ipc/manager';
-import { CloudAccountProxyEditor } from '@/modules/cloud-account/components/CloudAccountProxyEditor';
+import { CloudAccountProxyDialog } from '@/modules/cloud-account/components/CloudAccountProxyDialog';
 import { getCloudAccountBlockedStatusLabel } from '@/modules/cloud-account/utils/accountValidationStatus';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { AccountTierBadge } from '@/modules/cloud-account/components/AccountTierBadge';
@@ -229,7 +229,7 @@ export function CloudAccountCard({
   isSwitching,
   recommendationContext,
 }: CloudAccountCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const validationLink = useOpenAccountValidationLink();
   const { config, saveConfig } = useAppConfig();
   const {
@@ -239,11 +239,7 @@ export function CloudAccountCard({
     toggleProviderCollapse,
   } = useProviderGrouping();
   const [menuOpen, setMenuOpen] = useState(false);
-  const { data: modelAvailability = [] } = useQuery({
-    queryKey: ['gateway', 'modelAvailability'],
-    queryFn: () => ipc.client.gateway.modelAvailability(),
-    refetchInterval: 15_000,
-  });
+  const modelAvailability = useAccountModelAvailability(account.id);
   const isActiveAnywhere = !!(
     account.is_active_classic ||
     account.is_active_ide ||
@@ -511,15 +507,14 @@ export function CloudAccountCard({
 
   return (
     <Card
-      className={`group bg-card hover:border-primary/30 border-border/80 relative flex h-full flex-col overflow-hidden rounded-xl border transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-4px_rgba(0,0,0,0.06),0_4px_12px_-2px_rgba(0,0,0,0.03)] ${isSelected ? 'ring-primary border-primary/50 ring-2' : ''}`}
+      className={`group bg-card hover:border-primary/30 border-border relative flex h-full flex-col overflow-hidden rounded-lg border shadow-none ${isSelected ? 'ring-primary border-primary/50 ring-2' : ''}`}
     >
-      <CardHeader className="relative flex flex-row items-center gap-4 space-y-0 pb-2">
+      <CardHeader className="relative flex flex-row items-center gap-3 space-y-0 border-b p-4">
         {onToggleSelection && (
-          <div
-            className={`absolute top-2 left-2 z-10 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} bg-background/90 rounded-full p-2 transition-opacity`}
-          >
+          <div className="flex shrink-0 items-center">
             <Checkbox
               checked={isSelected}
+              aria-label={account.email}
               onCheckedChange={(checked) => onToggleSelection(account.id, checked as boolean)}
               className="h-5 w-5 border-2"
             />
@@ -533,7 +528,7 @@ export function CloudAccountCard({
             className="bg-muted h-10 w-10 rounded-full border"
           />
         ) : (
-          <div className="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-full border font-bold">
+          <div className="bg-muted text-muted-foreground flex h-10 w-10 items-center justify-center rounded-full border font-bold">
             {account.name?.[0]?.toUpperCase() || 'A'}
           </div>
         )}
@@ -557,10 +552,10 @@ export function CloudAccountCard({
                 </span>
               )}
               {account.is_active_ide && (
-                <span className="flex items-center gap-1 rounded border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 dark:text-indigo-400">
+                <span className="border-success-border bg-success-soft text-success flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] font-bold">
                   <span className="relative flex h-1 w-1">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75"></span>
-                    <span className="relative inline-flex h-1 w-1 rounded-full bg-indigo-500"></span>
+                    <span className="bg-success absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"></span>
+                    <span className="bg-success relative inline-flex h-1 w-1 rounded-full"></span>
                   </span>
                   {t('cloud.card.ideLabel', 'Antigravity IDE')}
                 </span>
@@ -578,7 +573,7 @@ export function CloudAccountCard({
           )}
 
           {shouldShowAiCredits && aiCredits && (
-            <div className="mt-1 flex items-center gap-1 text-[10px] font-medium text-blue-500">
+            <div className="text-muted-foreground mt-1 flex items-center gap-1 text-[10px] font-medium">
               <span>
                 {t('cloud.card.aiCreditsValue', {
                   amount: formatAiCreditsAmount(aiCredits.credits),
@@ -750,7 +745,7 @@ export function CloudAccountCard({
                     <span>{t('account.switchToIde', 'Switch to Antigravity IDE')}</span>
                   </span>
                   {account.is_active_ide && (
-                    <Badge className="h-4 border-none bg-indigo-500/20 px-1 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-500/20">
+                    <Badge className="bg-success-soft text-success hover:bg-success-soft h-4 border-none px-1 text-[9px] font-semibold">
                       Active
                     </Badge>
                   )}
@@ -805,12 +800,10 @@ export function CloudAccountCard({
         </div>
       </CardContent>
 
-      <CardFooter className="bg-muted/10 relative mt-auto flex h-11 shrink-0 items-center justify-between overflow-hidden border-t p-2 px-4">
-        {/* Idle State / Used Time Indicator */}
-        <div className="flex w-full items-center justify-between transition-all duration-300 group-hover:pointer-events-none group-hover:opacity-0">
+      <CardFooter className="bg-muted/10 mt-auto flex h-11 shrink-0 items-center justify-between gap-3 overflow-hidden border-t p-2 px-4">
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
           <span className="text-muted-foreground truncate text-[11px]">
-            {t('cloud.card.used')}{' '}
-            {formatDistanceToNow(account.last_used * 1000, { addSuffix: true })}
+            {t('cloud.card.used')} {formatAccountLastUsed(account.last_used, i18n.language)}
           </span>
           {account.proxy_configured && (
             <span className="text-primary bg-primary/10 border-primary/20 origin-right scale-90 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold">
@@ -819,8 +812,7 @@ export function CloudAccountCard({
           )}
         </div>
 
-        {/* Hover State Container (fades in, fixed h-11) */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-between gap-3 p-2 px-4 opacity-0 transition-all duration-300 ease-in-out group-hover:pointer-events-auto group-hover:opacity-100">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Action Icons group with Tooltips */}
           <div className="flex shrink-0 items-center gap-1">
             <TooltipProvider>
@@ -832,6 +824,7 @@ export function CloudAccountCard({
                     size="icon"
                     className="hover:bg-accent border-border/50 h-7 w-7 cursor-pointer rounded-md"
                     onClick={() => onRefresh(account.id)}
+                    aria-label={t('cloud.card.refresh')}
                     disabled={isRefreshing}
                   >
                     <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
@@ -848,6 +841,7 @@ export function CloudAccountCard({
                     size="icon"
                     className="hover:bg-accent border-border/50 h-7 w-7 cursor-pointer rounded-md"
                     onClick={() => onManageIdentity(account.id)}
+                    aria-label={t('cloud.card.identityProfile')}
                   >
                     <Fingerprint className="h-3.5 w-3.5" />
                   </Button>
@@ -865,6 +859,7 @@ export function CloudAccountCard({
                     size="icon"
                     className="text-destructive hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 border-border/50 h-7 w-7 cursor-pointer rounded-md"
                     onClick={() => onDelete(account.id)}
+                    aria-label={t('cloud.card.delete')}
                     disabled={isDeleting}
                   >
                     <Trash className="h-3.5 w-3.5" />
@@ -875,7 +870,7 @@ export function CloudAccountCard({
             </TooltipProvider>
           </div>
 
-          <CloudAccountProxyEditor accountId={account.id} configured={account.proxy_configured} />
+          <CloudAccountProxyDialog accountId={account.id} configured={account.proxy_configured} />
         </div>
       </CardFooter>
     </Card>
@@ -988,7 +983,7 @@ export function CompactCloudAccountCard({
             </span>
           )}
           {account.is_active_ide && (
-            <span className="rounded border border-indigo-500/20 bg-indigo-500/10 px-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-400">
+            <span className="border-success-border bg-success-soft text-success rounded border px-1 text-[9px] font-bold">
               IDE
             </span>
           )}
@@ -1015,7 +1010,7 @@ export function CompactCloudAccountCard({
           )}
 
           {shouldShowAiCredits && aiCredits && (
-            <span className="shrink-0 text-blue-500">
+            <span className="text-muted-foreground shrink-0">
               {t('cloud.card.aiCreditsValue', {
                 amount: formatAiCreditsAmount(aiCredits.credits),
               })}
@@ -1107,7 +1102,7 @@ export function CompactCloudAccountCard({
                   <span>{t('account.switchToIde', 'Switch to Antigravity IDE')}</span>
                 </span>
                 {account.is_active_ide && (
-                  <Badge className="h-4 border-none bg-indigo-500/20 px-1 text-[9px] font-semibold text-indigo-600 hover:bg-indigo-500/20">
+                  <Badge className="bg-success-soft text-success hover:bg-success-soft h-4 border-none px-1 text-[9px] font-semibold">
                     Active
                   </Badge>
                 )}

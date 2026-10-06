@@ -54,6 +54,7 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
       await statusQuery.refetch();
       toast({
         title: t('agent-tools.saved'),
+        variant: 'success',
         description: t('agent-tools.reopen', { name: 'OpenCode' }),
       });
       return true;
@@ -175,7 +176,10 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent
+          closeDisabled={pendingAction === 'restore'}
+          aria-busy={pendingAction === 'restore'}
+        >
           <DialogHeader>
             <DialogTitle>
               {t('proxy.open-code.restore-confirm-title', 'Restore OpenCode backup?')}
@@ -191,8 +195,10 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
             <Button
               type="button"
               variant="outline"
+              autoFocus
               onClick={() => setIsRestoreDialogOpen(false)}
               disabled={pendingAction === 'restore'}
+              aria-busy={pendingAction === 'restore'}
             >
               {t('common.cancel', 'Cancel')}
             </Button>
@@ -225,7 +231,10 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent
+          closeDisabled={pendingAction === 'clear'}
+          aria-busy={pendingAction === 'clear'}
+        >
           <DialogHeader>
             <DialogTitle>
               {t('proxy.open-code.clear-confirm-title', 'Clear managed OpenCode configuration?')}
@@ -241,8 +250,10 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
             <Button
               type="button"
               variant="outline"
+              autoFocus
               onClick={() => setIsClearDialogOpen(false)}
               disabled={pendingAction === 'clear'}
+              aria-busy={pendingAction === 'clear'}
             >
               {t('common.cancel', 'Cancel')}
             </Button>

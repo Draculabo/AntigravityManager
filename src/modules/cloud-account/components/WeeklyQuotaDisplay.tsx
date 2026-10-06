@@ -5,6 +5,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CompactQuotaRow } from '@/modules/cloud-account/components/CompactQuotaRow';
 import type { WeeklyQuotaItem } from '@/modules/cloud-account/utils/quota-groups';
 import {
+  QUOTA_BAR_COLOR_CLASS_BY_STATUS,
+  QUOTA_TEXT_COLOR_CLASS_BY_STATUS,
+} from '@/modules/cloud-account/components/quota-colors';
+import {
   clampQuotaPercentage,
   formatResetTimeLabel,
   formatResetTimeTitle,
@@ -17,18 +21,6 @@ interface WeeklyQuotaDisplayProps {
   variant?: 'card' | 'compact';
 }
 
-const BAR_CLASS = {
-  high: 'bg-gradient-to-r from-emerald-400 to-teal-500',
-  medium: 'bg-gradient-to-r from-amber-400 to-orange-500',
-  low: 'bg-gradient-to-r from-rose-500 to-red-600',
-} as const;
-
-const TEXT_CLASS = {
-  high: 'text-emerald-600 dark:text-emerald-400',
-  medium: 'text-amber-600 dark:text-amber-500',
-  low: 'text-rose-600 dark:text-rose-400',
-} as const;
-
 export function WeeklyQuotaDisplay({
   items,
   hasQuotaSummary,
@@ -38,12 +30,12 @@ export function WeeklyQuotaDisplay({
 
   if (items.length === 0) {
     return (
-      <div className="text-muted-foreground flex flex-col items-center justify-center gap-1 py-4 text-xs">
+      <div className="text-muted-foreground bg-muted/30 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-2 text-xs">
         <div className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4 opacity-50" />
           <span>{t('cloud.quota-window.no-weekly-quota')}</span>
         </div>
-        <span className="max-w-64 text-center text-[10px]">
+        <span className="text-xs">
           {t(
             hasQuotaSummary
               ? 'cloud.quota-window.weekly-bucket-unavailable'
@@ -81,7 +73,7 @@ export function WeeklyQuotaDisplay({
                       className="bg-muted h-1.5 w-full overflow-hidden rounded-full"
                     >
                       <div
-                        className={`h-full rounded-full transition-all duration-300 ${BAR_CLASS[status]}`}
+                        className={`h-full rounded-full transition-all duration-300 ${QUOTA_BAR_COLOR_CLASS_BY_STATUS[status]}`}
                         style={{ width: `${clampQuotaPercentage(item.percentage)}%` }}
                       />
                     </div>
@@ -126,13 +118,15 @@ export function WeeklyQuotaDisplay({
                 </div>
                 <div className="text-muted-foreground truncate text-[9px]">{item.bucketLabel}</div>
               </div>
-              <span className={`font-mono text-xs font-bold ${TEXT_CLASS[status]}`}>
+              <span
+                className={`font-mono text-xs font-bold ${QUOTA_TEXT_COLOR_CLASS_BY_STATUS[status]}`}
+              >
                 {item.percentage}%
               </span>
             </div>
             <div className="bg-muted h-1.5 overflow-hidden rounded-full">
               <div
-                className={`h-full rounded-full transition-all duration-300 ${BAR_CLASS[status]}`}
+                className={`h-full rounded-full transition-all duration-300 ${QUOTA_BAR_COLOR_CLASS_BY_STATUS[status]}`}
                 style={{ width: `${clampQuotaPercentage(item.percentage)}%` }}
               />
             </div>

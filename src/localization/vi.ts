@@ -60,6 +60,11 @@ const vi = {
       'key-missing': 'Hãy tạo khóa kết nối ở trang proxy trước.',
       'review-route-disabled': 'Tuyến kiểm tra Codex bị tắt. Hãy bật trong ánh xạ mô hình.',
     },
+
+    'address-help': 'Giữ địa chỉ Manager hiện tại, trừ khi dịch vụ chạy trên máy tính khác.',
+    'invalid-address':
+      'Dùng địa chỉ Manager bắt đầu bằng http:// hoặc https://, không chứa thông tin đăng nhập hay tham số bổ sung.',
+    'model-required': 'Chọn một mô hình trước khi lưu.',
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
@@ -86,6 +91,8 @@ const vi = {
       'Tài khoản mới đã được lưu nhưng chưa xác nhận Antigravity đã mở. Không khởi chạy lần nữa. Hãy kiểm tra ứng dụng trước khi thử lại.',
   },
   common: {
+    close: 'Đóng',
+    cancel: 'Hủy',
     'core-unavailable-title': 'Không thể kết nối với Antigravity Manager',
     'core-unavailable-body':
       'Tài khoản và proxy hiện không dùng được. Hãy đóng rồi mở lại Antigravity Manager. Nếu vẫn gặp lỗi, hãy cài đặt phiên bản mới nhất.',
@@ -100,6 +107,9 @@ const vi = {
     unknown: 'Không rõ',
     notAvailable: 'Không có',
     openMenu: 'Mở menu',
+
+    'dismiss-notification': 'Đóng thông báo',
+    'reading-settings': 'Đang đọc cài đặt của bạn…',
   },
   status: {
     checking: 'Đang kiểm tra trạng thái...',
@@ -176,6 +186,9 @@ const vi = {
       'Thông tin đăng nhập cho tài khoản cloud này đã hết hạn. Hãy đăng nhập lại.',
   },
   nav: {
+    navigation: 'Điều hướng',
+    'collapse-sidebar': 'Thu gọn thanh bên',
+    'expand-sidebar': 'Mở rộng thanh bên',
     accounts: 'Tài khoản',
     proxy: 'API Proxy',
     settings: 'Cài đặt',
@@ -270,6 +283,12 @@ const vi = {
       clearedDescription: 'Đã xóa {{size}} MB khỏi các thư mục bộ nhớ đệm Antigravity.',
       failedTitle: 'Không thể xóa bộ nhớ đệm',
       notFoundTitle: 'Không tìm thấy bộ nhớ đệm Antigravity',
+
+      'paths-failed': 'Không thể tìm vị trí bộ nhớ đệm',
+      'paths-retry-description': 'Vui lòng thử lại trước khi xóa bộ nhớ đệm.',
+      'partial-title': 'Không thể xóa một phần bộ nhớ đệm',
+      'partial-description':
+        'Đã giải phóng {{size}} MB. Chưa xóa được {{count}} vị trí. Hãy đóng Antigravity rồi thử lại.',
     },
     version: 'Phiên bản',
     platform: 'Nền tảng',
@@ -285,6 +304,11 @@ const vi = {
       },
     },
     account: {
+      'client-setup': 'Vị trí và cách khởi chạy ứng dụng',
+      'client-setup-description':
+        'Chỉ thay đổi khi Manager không tìm thấy ứng dụng hoặc bạn cần tùy chỉnh cách khởi chạy.',
+      'choose-file': 'Chọn tệp',
+      'clear-field': 'Xóa nội dung này',
       title: 'Cài đặt tài khoản',
       description: 'Cấu hình tự động làm mới quota và đồng bộ.',
       auto_refresh: 'Tự động làm mới quota',
@@ -505,6 +529,7 @@ const vi = {
     },
   },
   cloud: {
+    'total-accounts': 'Tổng số tài khoản',
     title: 'Tài khoản',
     description: 'Quản lý các tài khoản Google Gemini của bạn.',
     security: {
@@ -517,7 +542,6 @@ const vi = {
     autoSwitch: 'Tự động chuyển',
     providerGroupings: 'Nhóm theo nhà cung cấp',
     addAccount: 'Thêm tài khoản',
-    syncFromIde: 'Đồng bộ từ IDE',
     checkQuota: 'Kiểm tra quota ngay',
     polling: 'Đã kích hoạt polling',
     globalQuota: 'Quota tổng',
@@ -554,6 +578,9 @@ const vi = {
         'Không tìm thấy mức sử dụng hằng tuần trong thông tin nhận được.',
     },
     authDialog: {
+      'manual-sign-in': 'Nhập mã thủ công',
+      'waiting-for-browser':
+        'Hoàn tất đăng nhập trong trình duyệt. Cửa sổ này sẽ tự động cập nhật.',
       title: 'Thêm tài khoản Google',
       description:
         'Chọn cách đăng nhập rồi đăng nhập Google trong trình duyệt. Tài khoản sẽ được thêm tự động.',
@@ -604,6 +631,9 @@ const vi = {
       proxy: 'Proxy',
       proxyPlaceholder: 'ví dụ: http://127.0.0.1:7890',
       proxySaved: 'Đã lưu proxy',
+      'network-proxy': 'Proxy mạng',
+      'network-proxy-description':
+        'Tùy chọn: dùng proxy mạng cho tài khoản này. Nhấn Enter hoặc rời ô địa chỉ để lưu.',
       'proxy-replace-placeholder': 'Nhập địa chỉ proxy mới',
       'proxy-remove': 'Xóa proxy',
       'proxy-save-failed': 'Không thể lưu proxy',
@@ -623,19 +653,19 @@ const vi = {
         'profile-operation-failed':
           'Không thể hoàn tất thao tác hồ sơ danh tính. Vui lòng thử lại.',
       },
-      title: 'Hồ sơ định danh',
+      title: 'Thiết bị của tài khoản',
       loading: 'Đang tải...',
-      generateAndBind: 'Tạo và gán',
-      captureAndBind: 'Lấy và gán hồ sơ hiện tại',
-      restoreOriginal: 'Khôi phục baseline',
-      openFolder: 'Mở thư mục lưu hồ sơ',
-      previewTitle: 'Xem trước hồ sơ đã tạo',
+      generateAndBind: 'Tạo thông tin thiết bị mới',
+      captureAndBind: 'Dùng thông tin thiết bị hiện tại',
+      restoreOriginal: 'Khôi phục thông tin ban đầu',
+      openFolder: 'Mở thư mục thông tin thiết bị',
+      previewTitle: 'Thông tin thiết bị mới',
       confirm: 'Xác nhận',
       cancel: 'Hủy',
       close: 'Đóng',
       currentStorage: 'Cài đặt thiết bị hiện tại',
-      accountBinding: 'Hồ sơ đang gán với tài khoản',
-      history: 'Lịch sử hồ sơ',
+      accountBinding: 'Đã lưu cho tài khoản này',
+      history: 'Phiên bản đã lưu',
       noHistory: 'Chưa có lịch sử hồ sơ',
       current: 'Đang dùng',
       restore: 'Khôi phục',
@@ -645,7 +675,18 @@ const vi = {
       restoreVersionSuccess: 'Đã khôi phục bản lịch sử',
       deleteVersionSuccess: 'Đã xóa bản lịch sử',
       openFolderSuccess: 'Đã mở thư mục lưu hồ sơ',
-      baseline: 'Hồ sơ baseline',
+      baseline: 'Thông tin thiết bị ban đầu',
+
+      description: 'Lưu thông tin thiết bị cho tài khoản này để sử dụng khi chuyển tài khoản.',
+      'load-failed': 'Không thể đọc thông tin thiết bị',
+      'retry-description': 'Vui lòng thử lại. Thông tin thiết bị đã lưu chưa bị thay đổi.',
+      'refresh-failed': 'Không thể làm mới. Thông tin đã đọc trước đó vẫn được hiển thị.',
+      updating: 'Đang cập nhật thông tin thiết bị…',
+      'device-id': 'Mã thiết bị',
+      'mac-device-id': 'Mã thiết bị Mac',
+      'installation-id': 'Mã cài đặt',
+      'diagnostic-id': 'Mã chẩn đoán',
+      'delete-version': 'Xóa phiên bản đã lưu: {{label}}',
     },
     list: {
       noAccounts: 'Chưa có tài khoản cloud nào được thêm.',
@@ -667,23 +708,6 @@ const vi = {
       },
     },
     toast: {
-      syncSuccess: {
-        title: 'Đồng bộ thành công',
-        description: 'Đã nhập {{email}} từ IDE.',
-      },
-      syncFailed: {
-        title: 'Đồng bộ thất bại',
-        description:
-          'Không có tài khoản để đồng bộ từ Antigravity IDE. Hãy đăng nhập trong IDE trước.',
-        codes: {
-          'reauth-required': 'Đăng nhập lại trong Antigravity IDE rồi thử đồng bộ.',
-          'no-ide-account': 'Không tìm thấy tài khoản Google trong Antigravity IDE.',
-          'ide-database-unavailable':
-            'Không thể đọc tài khoản trong Antigravity IDE. Hãy khởi động lại IDE rồi thử lại.',
-          'agy-unsupported': 'Chưa thể nhập tài khoản từ Antigravity CLI tại đây.',
-          'sync-failed': 'Không thể đồng bộ tài khoản từ IDE. Hãy thử lại.',
-        },
-      },
       validationLinkFailed: {
         title: 'Không thể mở trang xác minh Google',
         codes: {
@@ -743,6 +767,9 @@ const vi = {
       },
     },
     batch: {
+      actions: 'Thao tác với tài khoản đã chọn',
+      'delete-title': 'Xóa {{count}} tài khoản?',
+      cancel: 'Hủy',
       selected: 'Đã chọn {{count}}',
       delete: 'Xóa mục đã chọn',
       refresh: 'Làm mới mục đã chọn',
@@ -797,8 +824,7 @@ const vi = {
       readFileFailed: 'Không thể đọc tệp',
     },
     localImport: {
-      description:
-        'Tìm các tài khoản đã đăng nhập Antigravity trên máy tính này. Kiểm tra kết quả trước khi nhập.',
+      description: 'Tìm các tài khoản đã đăng nhập trên máy này. Kiểm tra kết quả trước khi nhập.',
       emailCollision: '{{email}} có {{count}} thông tin đăng nhập đã lưu khác nhau.',
       sources: {
         'antigravity-keyring': 'Thông tin đăng nhập do hệ thống lưu',
@@ -834,9 +860,23 @@ const vi = {
         'session-consumed':
           'Kết quả quét này đã được sử dụng. Hãy quét lại để nhập thêm tài khoản.',
       },
+
+      title: 'Nhập tài khoản từ máy này',
+
+      trigger: 'Nhập tài khoản từ máy này',
+    },
+
+    feedback: {
+      'loading-title': 'Đang đọc tài khoản',
+      'loading-description': 'Thông tin tài khoản sẽ xuất hiện ở đây khi sẵn sàng.',
+      'empty-description': 'Chọn Thêm tài khoản để đăng nhập hoặc nhập tệp tài khoản có sẵn.',
+      'filtered-description': 'Thử gói khác hoặc xóa bộ lọc để xem thêm tài khoản.',
     },
   },
   proxy: {
+    'advanced-options': 'Cài đặt dịch vụ khác',
+    'advanced-description': 'Chọn tài khoản, hướng dẫn chung và khả năng tương thích với công cụ.',
+    tabs: { tools: 'Công cụ', models: 'Mô hình', records: 'Lịch sử', examples: 'Ví dụ' },
     'account-strategy': {
       'save-failed': 'Không thể lưu lựa chọn. Vui lòng chọn lại để thử lần nữa.',
       title: 'Tài khoản dùng cho yêu cầu API',
@@ -974,6 +1014,9 @@ const vi = {
       'success-title': 'Đã cập nhật cấu hình OpenCode',
       'error-title': 'Cập nhật OpenCode thất bại',
       'unknown-error': 'Lỗi cấu hình OpenCode không xác định',
+
+      'choose-model-hint': 'Chọn ít nhất một mô hình để tiếp tục.',
+      'config-retry-description': 'Vui lòng thử lại. Cấu hình đã lưu chưa bị thay đổi.',
     },
     examples: {
       title: 'Ví dụ sử dụng',
@@ -1026,6 +1069,33 @@ const vi = {
     },
   },
   traffic: {
+    'detail-load-failed': 'Không tải được yêu cầu này. Vui lòng thử lại.',
+    'detail-not-found': 'Bản ghi này không còn khả dụng. Có thể đã bị xóa.',
+    fields: {
+      category: 'Danh mục',
+      method: 'Phương thức yêu cầu',
+      'requested-model': 'Mô hình được yêu cầu',
+      'mapped-model': 'Tuyến mô hình đã chọn',
+      error: 'Chi tiết lỗi',
+      affected: 'Số bản ghi bị ảnh hưởng',
+      'request-id': 'Mã yêu cầu',
+      'client-address': 'Địa chỉ ứng dụng',
+      username: 'Người dùng',
+      'reasoning-tokens': 'Token suy luận',
+      'cached-tokens': 'Token bộ nhớ đệm',
+      query: 'Tùy chọn yêu cầu bổ sung',
+    },
+    outcomes: {
+      in_progress: 'Đang xử lý',
+      completed: 'Đã hoàn tất',
+      client_cancelled: 'Đã hủy',
+      client_disconnected: 'Kết nối đã đóng',
+      timeout: 'Hết thời gian chờ',
+      upstream_error: 'Lỗi dịch vụ mô hình',
+      auth_failed: 'Đăng nhập thất bại',
+      internal_error: 'Lỗi ứng dụng',
+      partial: 'Kết quả một phần',
+    },
     'search-metadata': 'Tìm theo mô hình, mã yêu cầu hoặc địa chỉ',
     'copy-upstream-curl':
       'Sao chép yêu cầu tới dịch vụ mô hình dưới dạng cURL (ẩn thông tin riêng tư)',
@@ -1044,6 +1114,15 @@ const vi = {
     'parse-error': 'Không thể đọc nội dung tại vị trí {{offset}}.',
     'thought-oversized':
       'Nội dung suy luận vượt quá 64 MiB nên không được lưu đầy đủ. Mã tham chiếu: {{hash}}',
+
+    'loading-description': 'Bản ghi yêu cầu sẽ xuất hiện ở đây khi sẵn sàng.',
+    'empty-description':
+      'Các yêu cầu gửi qua proxy xuất hiện ở đây. Bạn cũng có thể điều chỉnh bộ lọc.',
+    'empty-category-description':
+      'Bản ghi của danh mục này xuất hiện ở đây. Thử danh mục khác hoặc điều chỉnh bộ lọc.',
+    'load-failed': 'Không thể đọc bản ghi yêu cầu',
+    'load-failed-description': 'Vui lòng thử lại. Điều này không có nghĩa là bản ghi đã bị xóa.',
+    'refresh-failed': 'Không thể làm mới bản ghi. Dữ liệu đã tải trước đó vẫn được hiển thị.',
   },
 };
 export default vi;

@@ -44,6 +44,7 @@ describe('cloud account login dialog', () => {
 
   it('waits for an active browser login before accepting a pasted code', () => {
     renderDialog(false);
+    fireEvent.click(screen.getByText('cloud.authDialog.manual-sign-in'));
     expect(
       (screen.getByRole('button', { name: 'cloud.authDialog.verify' }) as HTMLButtonElement)
         .disabled,

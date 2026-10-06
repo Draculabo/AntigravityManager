@@ -65,6 +65,11 @@ const en = {
       'review-route-disabled':
         'The Codex review route is disabled. Enable it in model routing before configuration.',
     },
+
+    'address-help': 'Use the current Manager address unless the service runs on another computer.',
+    'invalid-address':
+      'Use a Manager address starting with http:// or https://, without sign-in details or extra parameters.',
+    'model-required': 'Choose a model before saving.',
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
@@ -92,6 +97,8 @@ const en = {
       'The new account was saved, but Antigravity has not been confirmed open yet. No second launch was attempted. Check the app before trying again.',
   },
   common: {
+    close: 'Close',
+    cancel: 'Cancel',
     'core-unavailable-title': "Can't connect to Antigravity Manager",
     'core-unavailable-body':
       'Accounts and proxy are unavailable right now. Close and reopen Antigravity Manager. If the problem continues, install the latest version.',
@@ -106,6 +113,9 @@ const en = {
     unknown: 'Unknown',
     notAvailable: 'N/A',
     openMenu: 'Open menu',
+
+    'dismiss-notification': 'Dismiss notification',
+    'reading-settings': 'Reading your settings…',
   },
   status: {
     checking: 'Checking status...',
@@ -182,12 +192,42 @@ const en = {
       'The login information for this cloud account has expired. Please log in again.',
   },
   nav: {
+    navigation: 'Navigation',
+    'collapse-sidebar': 'Collapse sidebar',
+    'expand-sidebar': 'Expand sidebar',
     accounts: 'Accounts',
     proxy: 'API Proxy',
     settings: 'Settings',
     traffic: 'Traffic',
   },
   traffic: {
+    'detail-load-failed': 'Could not load this request. Please try again.',
+    'detail-not-found': 'This record is no longer available. It may have been cleared.',
+    fields: {
+      category: 'Category',
+      method: 'Request method',
+      'requested-model': 'Requested model',
+      'mapped-model': 'Selected model route',
+      error: 'Error details',
+      affected: 'Affected records',
+      'request-id': 'Request ID',
+      'client-address': 'Client address',
+      username: 'User',
+      'reasoning-tokens': 'Reasoning tokens',
+      'cached-tokens': 'Cached tokens',
+      query: 'Additional request options',
+    },
+    outcomes: {
+      in_progress: 'In progress',
+      completed: 'Completed',
+      client_cancelled: 'Cancelled',
+      client_disconnected: 'Connection closed',
+      timeout: 'Timed out',
+      upstream_error: 'Model service error',
+      auth_failed: 'Sign-in failed',
+      internal_error: 'App error',
+      partial: 'Partial result',
+    },
     title: 'Traffic Monitor',
     description: 'Review model requests and app activity to find issues quickly.',
     records: '{{count}} records',
@@ -289,6 +329,16 @@ const en = {
     protocol: 'API format',
     'repair-databases': 'Repair saved records',
     'open-monitor': 'Open Traffic Monitor',
+
+    'loading-description': 'Your request records will appear here when they are ready.',
+    'empty-description':
+      'Requests sent through the proxy appear here. You can also adjust the filters.',
+    'empty-category-description':
+      'Records for this category appear here. Try another category or adjust the filters.',
+    'load-failed': 'Could not read request records',
+    'load-failed-description':
+      'Please try again. This does not mean your records have been deleted.',
+    'refresh-failed': 'Could not refresh records. Previously loaded records are still shown.',
   },
   editionSelection: {
     title: 'Choose Your Antigravity Edition',
@@ -383,6 +433,12 @@ const en = {
       clearedDescription: '{{size}} MB was removed from Antigravity cache directories.',
       failedTitle: 'Failed to clear cache',
       notFoundTitle: 'No Antigravity cache found',
+
+      'paths-failed': 'Could not find the cache locations',
+      'paths-retry-description': 'Please retry before clearing the cache.',
+      'partial-title': 'Some cache could not be cleared',
+      'partial-description':
+        'Freed {{size}} MB. {{count}} location(s) could not be cleared. Close Antigravity and try again.',
     },
     version: 'Version',
     platform: 'Platform',
@@ -398,6 +454,11 @@ const en = {
       },
     },
     account: {
+      'client-setup': 'Client locations and launch options',
+      'client-setup-description':
+        'Change these only if Manager cannot find your client or you need custom launch options.',
+      'choose-file': 'Choose a file',
+      'clear-field': 'Clear this field',
       title: 'Account Settings',
       description: 'Configure automatic account refresh and sync.',
       auto_refresh: 'Auto Refresh Quota',
@@ -620,6 +681,7 @@ const en = {
     },
   },
   cloud: {
+    'total-accounts': 'Total accounts',
     title: 'Accounts',
     description: 'Manage your Google Gemini accounts.',
     security: {
@@ -632,7 +694,6 @@ const en = {
     autoSwitch: 'Auto-Switch',
     providerGroupings: 'Provider Groupings',
     addAccount: 'Add Account',
-    syncFromIde: 'Sync from IDE',
     checkQuota: 'Check Quota Now',
     polling: 'Polling triggered',
     globalQuota: 'Global Quota',
@@ -678,6 +739,9 @@ const en = {
       },
     },
     authDialog: {
+      'manual-sign-in': 'Enter a code manually',
+      'waiting-for-browser':
+        'Complete sign-in in your browser. This window will update when it finishes.',
       title: 'Add Google Account',
       description:
         'Choose a sign-in method, then sign in to Google in your browser. Your account will be added automatically.',
@@ -690,10 +754,10 @@ const en = {
       verify: 'Verify & Add',
     },
     localImport: {
-      trigger: 'Scan Local Accounts',
-      title: 'Import Local Accounts',
+      trigger: 'Import from this computer',
+      title: 'Import from this computer',
       description:
-        'Find accounts already signed in to Antigravity on this computer. Review the results before importing.',
+        'Find accounts already signed in on this computer. Review the results before importing.',
       scanning: 'Scanning and verifying local accounts…',
       importing: 'Importing the confirmed accounts…',
       summary: 'Local account scan summary',
@@ -798,6 +862,9 @@ const en = {
       proxy: 'Proxy',
       proxyPlaceholder: 'e.g. http://127.0.0.1:7890',
       proxySaved: 'Proxy saved',
+      'network-proxy': 'Network proxy',
+      'network-proxy-description':
+        'Optional: use a network proxy for this account. Press Enter or leave the address field to save.',
       'proxy-replace-placeholder': 'Enter a new proxy address',
       'proxy-remove': 'Remove proxy',
       'proxy-save-failed': 'Could not save proxy',
@@ -816,19 +883,19 @@ const en = {
         'profile-write-failed': 'Could not save the identity profile. Please retry.',
         'profile-operation-failed': 'Could not complete the identity action. Please retry.',
       },
-      title: 'Identity Profile',
+      title: 'Account device information',
       loading: 'Loading...',
-      generateAndBind: 'Create and Bind',
-      captureAndBind: 'Capture and Bind Current',
-      restoreOriginal: 'Restore Baseline',
-      openFolder: 'Open Identity Storage',
-      previewTitle: 'Generated Identity Preview',
+      generateAndBind: 'Create new device information',
+      captureAndBind: 'Use current device information',
+      restoreOriginal: 'Restore original device information',
+      openFolder: 'Open device information folder',
+      previewTitle: 'New device information',
       confirm: 'Confirm',
       cancel: 'Cancel',
       close: 'Close',
       currentStorage: 'Current device settings',
-      accountBinding: 'Bound Account Identity',
-      history: 'Identity History',
+      accountBinding: 'Saved for this account',
+      history: 'Saved versions',
       noHistory: 'No identity history',
       current: 'Active',
       restore: 'Restore',
@@ -838,7 +905,18 @@ const en = {
       restoreVersionSuccess: 'Historical identity restored',
       deleteVersionSuccess: 'Historical identity deleted',
       openFolderSuccess: 'Identity storage opened',
-      baseline: 'Baseline Identity',
+      baseline: 'Original device information',
+
+      description: 'Save device information for this account to use when switching accounts.',
+      'load-failed': 'Could not read device information',
+      'retry-description': 'Please retry. Your saved device information has not been changed.',
+      'refresh-failed': 'Could not refresh. Previously loaded device information is still shown.',
+      updating: 'Updating device information…',
+      'device-id': 'Device ID',
+      'mac-device-id': 'Mac device ID',
+      'installation-id': 'Installation ID',
+      'diagnostic-id': 'Diagnostics ID',
+      'delete-version': 'Delete saved version: {{label}}',
     },
     list: {
       noAccounts: 'No cloud accounts added yet.',
@@ -871,22 +949,6 @@ const en = {
       },
     },
     toast: {
-      syncSuccess: {
-        title: 'Sync Successful',
-        description: 'Imported {{email}} from IDE.',
-      },
-      syncFailed: {
-        title: 'Sync Failed',
-        description: 'No account is ready to sync from Antigravity IDE. Sign in there first.',
-        codes: {
-          'reauth-required': 'Sign in again in Antigravity IDE, then retry sync.',
-          'no-ide-account': 'No Google account was found in Antigravity IDE.',
-          'ide-database-unavailable':
-            'Could not read accounts from Antigravity IDE. Restart the IDE and try again.',
-          'agy-unsupported': 'Accounts from Antigravity CLI cannot be imported here yet.',
-          'sync-failed': 'Could not sync the IDE account. Please retry.',
-        },
-      },
       validationLinkFailed: {
         title: 'Could not open the Google verification page',
         codes: {
@@ -947,6 +1009,9 @@ const en = {
       },
     },
     batch: {
+      actions: 'Selected account actions',
+      'delete-title': 'Delete {{count}} accounts?',
+      cancel: 'Cancel',
       selected: 'Selected {{count}}',
       delete: 'Delete Selected',
       refresh: 'Refresh Selected',
@@ -1001,8 +1066,18 @@ const en = {
       invalidJson: 'Invalid JSON file format',
       readFileFailed: 'Failed to read file',
     },
+
+    feedback: {
+      'loading-title': 'Reading your accounts',
+      'loading-description': 'Your account details will appear here when they are ready.',
+      'empty-description': 'Choose Add Account to sign in, or import an existing account file.',
+      'filtered-description': 'Try another plan or clear the filter to see more accounts.',
+    },
   },
   proxy: {
+    'advanced-options': 'More service settings',
+    'advanced-description': 'Account selection, shared instructions and tool compatibility.',
+    tabs: { tools: 'Tools', models: 'Models', records: 'Records', examples: 'Examples' },
     'account-strategy': {
       'save-failed': 'Could not save your choice. Please select it again to retry.',
       title: 'Accounts used for API requests',
@@ -1140,6 +1215,9 @@ const en = {
       'success-title': 'OpenCode configuration updated',
       'error-title': 'OpenCode update failed',
       'unknown-error': 'Unknown OpenCode configuration error',
+
+      'choose-model-hint': 'Choose at least one model to continue.',
+      'config-retry-description': 'Please retry. Your saved configuration has not been changed.',
     },
     examples: {
       title: 'Usage Examples',

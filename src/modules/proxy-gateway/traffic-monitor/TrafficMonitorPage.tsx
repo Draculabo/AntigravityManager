@@ -1,18 +1,13 @@
-import { useEffect, useState } from 'react';
+import { TrafficMonitorHeader } from './components/TrafficMonitorHeader';
+import { TrafficSearchForm } from './components/TrafficSearchForm';
+import { TrafficRefreshControls } from './components/TrafficRefreshControls';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import {
-  Activity,
-  AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  Search,
-  Trash2,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { FeedbackState } from '@/components/ui/feedback-state';
 import { Input } from '@/components/ui/input';
 import { ipc } from '@/ipc/manager';
 import type { TrafficClass } from '@/modules/proxy-gateway/audit/traffic-classifier';
@@ -69,9 +64,8 @@ export function TrafficMonitorPage({
 }: TrafficMonitorPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [searchDraft, setSearchDraft] = useState(search);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [newCount, setNewCount] = useState(0);
+  const [refreshControlsKey, setRefreshControlsKey] = useState(0);
   const [confirmClear, setConfirmClear] = useState(false);
   const [includeCredentials, setIncludeCredentials] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState('');
@@ -137,33 +131,12 @@ export function TrafficMonitorPage({
       }),
     refetchInterval: page === 0 && !selectedId ? 5_000 : false,
   });
-  const stats = useQuery({
-    queryKey: ['gateway', 'audit-stats'],
-    queryFn: () => ipc.client.gateway.auditStats(),
-    refetchInterval: 5_000,
-  });
   const filterOptions = useQuery({
     enabled: tab === 'model',
     queryKey: ['gateway', 'audit-filter-options'],
     queryFn: () => ipc.client.gateway.auditFilterOptions(),
     refetchInterval: 30_000,
   });
-
-  useEffect(() => {
-    return window.electron.onTrafficAuditEvent((event) => {
-      if (event.trafficClass && event.trafficClass !== tab) {
-        return;
-      }
-      if (page === 0 && !selectedId) {
-        void queryClient.invalidateQueries({ queryKey: ['gateway', 'traffic-list', tab] });
-      } else {
-        setNewCount((current) => current + 1);
-      }
-      if (selectedId && event.id === selectedId) {
-        void queryClient.invalidateQueries({ queryKey: ['gateway', 'traffic-detail', selectedId] });
-      }
-    });
-  }, [page, queryClient, selectedId, tab]);
 
   const clearCurrent = async () => {
     if (!confirmClear) {
@@ -176,36 +149,9 @@ export function TrafficMonitorPage({
     await queryClient.invalidateQueries({ queryKey: ['gateway'] });
   };
 
-  const refresh = async () => {
-    setNewCount(0);
-    await queryClient.invalidateQueries({ queryKey: ['gateway'] });
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="border-b px-6 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Activity className="text-primary h-5 w-5" />
-              <h1 className="text-xl font-semibold tracking-tight">{t('traffic.title')}</h1>
-            </div>
-            <p className="text-muted-foreground mt-1 text-sm">{t('traffic.description')}</p>
-          </div>
-          <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
-            <span>{t('traffic.records', { count: stats.data?.rows ?? 0 })}</span>
-            <span>
-              {t('traffic.on-disk', { size: formatBytes(stats.data?.databaseBytes ?? 0) })}
-            </span>
-            {(stats.data?.droppedCount ?? 0) > 0 && (
-              <Badge variant="destructive" className="gap-1">
-                <AlertTriangle className="h-3 w-3" />
-                {t('traffic.dropped', { count: stats.data?.droppedCount })}
-              </Badge>
-            )}
-          </div>
-        </div>
-      </header>
+      <TrafficMonitorHeader />
 
       <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
         <div className="bg-muted flex rounded-lg p-1">
@@ -220,10 +166,11 @@ export function TrafficMonitorPage({
             <button
               key={value}
               type="button"
-              className={`cursor-default rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${tab === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              aria-pressed={tab === value}
+              className={`focus-visible:ring-ring cursor-default rounded-md px-3 py-1.5 text-xs font-medium outline-none focus-visible:ring-2 ${tab === value ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
               onClick={() => {
                 updateFilters({ page: 0, tab: value });
-                setNewCount(0);
+                setRefreshControlsKey((key) => key + 1);
                 setConfirmClear(false);
               }}
             >
@@ -231,21 +178,11 @@ export function TrafficMonitorPage({
             </button>
           ))}
         </div>
-        <form
-          className="relative max-w-md min-w-56 flex-1"
-          onSubmit={(event) => {
-            event.preventDefault();
-            updateFilters({ page: 0, search: searchDraft.trim() });
-          }}
-        >
-          <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
-          <Input
-            value={searchDraft}
-            onChange={(event) => setSearchDraft(event.target.value)}
-            className="h-9 pl-8"
-            placeholder={t('traffic.search-metadata')}
-          />
-        </form>
+        <TrafficSearchForm
+          key={search}
+          search={search}
+          onSubmit={(value) => updateFilters({ page: 0, search: value })}
+        />
         <div className="flex items-center gap-2 text-xs">
           <label className="text-muted-foreground flex items-center gap-1">
             {t('traffic.date-from')}
@@ -285,14 +222,12 @@ export function TrafficMonitorPage({
             {t('traffic.include-current-credential')}
           </label>
         )}
-        {newCount > 0 && (
-          <Button size="sm" variant="secondary" onClick={() => void refresh()}>
-            {t('traffic.new-records', { count: newCount })}
-          </Button>
-        )}
-        <Button size="sm" variant="outline" onClick={() => void refresh()}>
-          <RefreshCw className="h-4 w-4" /> {t('traffic.refresh')}
-        </Button>
+        <TrafficRefreshControls
+          key={`${tab}:${refreshControlsKey}`}
+          tab={tab}
+          page={page}
+          selectedId={selectedId}
+        />
         <Button size="sm" variant={confirmClear ? 'destructive' : 'outline'} onClick={clearCurrent}>
           <Trash2 className="h-4 w-4" />
           {confirmClear ? t('traffic.confirm-clear') : t('traffic.clear-category')}
@@ -420,13 +355,42 @@ export function TrafficMonitorPage({
         </div>
       )}
 
-      <TrafficTable
-        items={list.data?.items ?? []}
-        loading={list.isLoading}
-        tab={tab}
-        onOpen={setSelectedId}
-        onCopyCurl={(id) => void copyCurl(id)}
-      />
+      {list.isError && list.data && (
+        <div
+          role="alert"
+          className="bg-warning-soft text-warning border-warning-border flex flex-wrap items-center justify-between gap-2 border-b px-6 py-2 text-xs"
+        >
+          <span>{t('traffic.refresh-failed')}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={list.isFetching}
+            onClick={() => void list.refetch()}
+          >
+            {t('action.retry')}
+          </Button>
+        </div>
+      )}
+      {list.isError && !list.data ? (
+        <FeedbackState
+          kind="error"
+          title={t('traffic.load-failed')}
+          description={t('traffic.load-failed-description')}
+          className="min-h-0 flex-1"
+        >
+          <Button variant="outline" disabled={list.isFetching} onClick={() => void list.refetch()}>
+            {t('action.retry')}
+          </Button>
+        </FeedbackState>
+      ) : (
+        <TrafficTable
+          items={list.data?.items ?? []}
+          loading={list.isLoading}
+          tab={tab}
+          onOpen={setSelectedId}
+          onCopyCurl={(id) => void copyCurl(id)}
+        />
+      )}
 
       <footer className="flex items-center justify-between border-t px-6 py-2">
         <span className="text-muted-foreground text-xs">
@@ -460,11 +424,4 @@ export function TrafficMonitorPage({
       />
     </div>
   );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KiB`;
-  }
-  return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }

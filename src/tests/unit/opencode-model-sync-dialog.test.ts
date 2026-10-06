@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -118,5 +118,33 @@ describe('OpenCodeModelSyncDialog', () => {
       'value',
       'http://127.0.0.1:9000/v1',
     );
+  });
+  it('blocks duplicate submission and dismissal while the selected settings are being saved', async () => {
+    const deferred = Promise.withResolvers<boolean>();
+    const onSync = vi.fn(() => deferred.promise);
+    const onOpenChange = vi.fn();
+    render(
+      createElement(OpenCodeModelSyncDialog, {
+        availableModels: AVAILABLE_MODELS,
+        configuredModels: [{ id: 'gemini-3.5-flash' }],
+        initialBaseUrl: 'http://127.0.0.1:8045/v1',
+        syncAccounts: false,
+        onOpenChange,
+        onSyncAccountsChange: vi.fn(),
+        onSync,
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm sync' }));
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveProperty('disabled', true);
+    expect(screen.getByLabelText('Manager address').closest('fieldset')).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm sync' }));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onSync).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    await act(async () => deferred.resolve(true));
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
   });
 });

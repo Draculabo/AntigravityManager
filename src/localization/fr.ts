@@ -67,6 +67,12 @@ const fr = {
       'review-route-disabled':
         'La route de vérification Codex est désactivée. Activez-la dans le routage des modèles.',
     },
+
+    'address-help':
+      'Gardez l’adresse actuelle de Manager, sauf si le service fonctionne sur un autre ordinateur.',
+    'invalid-address':
+      'Utilisez une adresse Manager commençant par http:// ou https://, sans identifiants ni paramètres supplémentaires.',
+    'model-required': 'Choisissez un modèle avant d’enregistrer.',
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
@@ -94,6 +100,8 @@ const fr = {
       'Le nouveau compte est enregistré, mais l’ouverture d’Antigravity n’a pas été confirmée. Aucun second lancement n’a été tenté. Vérifiez l’application avant de réessayer.',
   },
   common: {
+    close: 'Fermer',
+    cancel: 'Annuler',
     'core-unavailable-title': 'Connexion à Antigravity Manager impossible',
     'core-unavailable-body':
       'Les comptes et le proxy sont momentanément indisponibles. Fermez puis rouvrez Antigravity Manager. Si le problème persiste, installez la dernière version.',
@@ -108,6 +116,9 @@ const fr = {
     unknown: 'Inconnu',
     notAvailable: 'N/A',
     openMenu: 'Ouvrir le menu',
+
+    'dismiss-notification': 'Fermer la notification',
+    'reading-settings': 'Lecture de vos paramètres…',
   },
   status: {
     checking: 'Verification du statut...',
@@ -187,6 +198,9 @@ const fr = {
       'Les informations de connexion de ce compte cloud ont expire. Veuillez vous reconnecter.',
   },
   nav: {
+    navigation: 'Navigation',
+    'collapse-sidebar': 'Réduire la barre latérale',
+    'expand-sidebar': 'Développer la barre latérale',
     accounts: 'Comptes',
     proxy: 'Proxy API',
     settings: 'Parametres',
@@ -194,6 +208,33 @@ const fr = {
   },
   traffic: {
     ...en.traffic,
+    'detail-load-failed': 'Impossible de charger cette requête. Réessayez.',
+    'detail-not-found': 'Cet enregistrement est indisponible. Il a peut-être été effacé.',
+    fields: {
+      category: 'Catégorie',
+      method: 'Méthode de requête',
+      'requested-model': 'Modèle demandé',
+      'mapped-model': 'Route du modèle choisie',
+      error: 'Détails de l’erreur',
+      affected: 'Enregistrements concernés',
+      'request-id': 'Identifiant de requête',
+      'client-address': 'Adresse du client',
+      username: 'Utilisateur',
+      'reasoning-tokens': 'Tokens de raisonnement',
+      'cached-tokens': 'Tokens en cache',
+      query: 'Options supplémentaires',
+    },
+    outcomes: {
+      in_progress: 'En cours',
+      completed: 'Terminé',
+      client_cancelled: 'Annulé',
+      client_disconnected: 'Connexion fermée',
+      timeout: 'Délai dépassé',
+      upstream_error: 'Erreur du service de modèle',
+      auth_failed: 'Échec de connexion',
+      internal_error: 'Erreur de l’application',
+      partial: 'Résultat partiel',
+    },
     'search-metadata': 'Rechercher un modèle, un numéro de requête ou une adresse',
     'copy-upstream-curl':
       'Copier la requête au service de modèles en cURL (données privées masquées)',
@@ -212,6 +253,17 @@ const fr = {
     'parse-error': 'Impossible de lire ce contenu à la position {{offset}}.',
     'thought-oversized':
       'Le raisonnement dépasse 64 MiB et n’a pas été enregistré en entier. Référence : {{hash}}',
+
+    'loading-description': 'Les requêtes apparaîtront ici dès qu’elles seront prêtes.',
+    'empty-description':
+      'Les requêtes envoyées via le proxy apparaissent ici. Vous pouvez aussi modifier les filtres.',
+    'empty-category-description':
+      'Les enregistrements de cette catégorie apparaissent ici. Essayez une autre catégorie ou modifiez les filtres.',
+    'load-failed': 'Impossible de lire les requêtes',
+    'load-failed-description':
+      'Réessayez. Cela ne signifie pas que vos enregistrements ont été supprimés.',
+    'refresh-failed':
+      'Impossible d’actualiser les enregistrements. Les données précédentes restent affichées.',
   },
   editionSelection: {
     title: 'Choisissez votre edition Antigravity',
@@ -307,6 +359,12 @@ const fr = {
       clearedDescription: '{{size}} Mo ont été supprimés des dossiers de cache Antigravity.',
       failedTitle: 'Échec du nettoyage du cache',
       notFoundTitle: 'Aucun cache Antigravity trouvé',
+
+      'paths-failed': 'Impossible de trouver les emplacements du cache',
+      'paths-retry-description': 'Réessayez avant de vider le cache.',
+      'partial-title': 'Une partie du cache n’a pas été supprimée',
+      'partial-description':
+        '{{size}} Mo libérés. {{count}} emplacement(s) non supprimé(s). Fermez Antigravity et réessayez.',
     },
     version: 'Version',
     platform: 'Plateforme',
@@ -322,6 +380,11 @@ const fr = {
       },
     },
     account: {
+      'client-setup': 'Emplacement et lancement des clients',
+      'client-setup-description':
+        'À modifier si Manager ne trouve pas votre client ou si vous souhaitez personnaliser son lancement.',
+      'choose-file': 'Choisir un fichier',
+      'clear-field': 'Vider ce champ',
       title: 'Parametres du compte',
       description: 'Configurez l actualisation et la synchronisation automatiques des comptes.',
       auto_refresh: 'Actualisation automatique du quota',
@@ -546,6 +609,7 @@ const fr = {
     },
   },
   cloud: {
+    'total-accounts': 'Total des comptes',
     title: 'Comptes',
     description: 'Gérez vos comptes Google Gemini.',
     security: {
@@ -558,7 +622,6 @@ const fr = {
     autoSwitch: 'Basculement auto',
     providerGroupings: 'Groupements de fournisseurs',
     addAccount: 'Ajouter un compte',
-    syncFromIde: 'Synchroniser depuis l IDE',
     checkQuota: 'Verifier le quota maintenant',
     polling: 'Interrogation declenchee',
     globalQuota: 'Quota global',
@@ -606,6 +669,9 @@ const fr = {
       },
     },
     authDialog: {
+      'manual-sign-in': 'Saisir un code manuellement',
+      'waiting-for-browser':
+        'Terminez la connexion dans votre navigateur. Cette fenêtre se mettra à jour automatiquement.',
       title: 'Ajouter un compte Google',
       description:
         'Choisissez une méthode de connexion, puis connectez-vous à Google dans votre navigateur. Le compte sera ajouté automatiquement.',
@@ -621,7 +687,7 @@ const fr = {
     localImport: {
       ...en.cloud.localImport,
       description:
-        'Recherchez les comptes déjà connectés à Antigravity sur cet ordinateur. Vérifiez les résultats avant l’importation.',
+        'Recherchez les comptes déjà connectés sur cet ordinateur, puis vérifiez les résultats avant de les importer.',
       emailCollision: '{{email}} possède {{count}} connexions enregistrées différentes.',
       sources: {
         ...en.cloud.localImport['sources'],
@@ -663,6 +729,10 @@ const fr = {
         'session-consumed':
           'Ces résultats ont déjà été utilisés. Relancez la recherche pour importer d’autres comptes.',
       },
+
+      title: 'Importer depuis cet ordinateur',
+
+      trigger: 'Importer depuis cet ordinateur',
     },
     card: {
       active: 'Actif',
@@ -704,6 +774,9 @@ const fr = {
       proxy: 'Proxy',
       proxyPlaceholder: 'ex. http://127.0.0.1:7890',
       proxySaved: 'Proxy enregistre',
+      'network-proxy': 'Proxy réseau',
+      'network-proxy-description':
+        'Facultatif : utilisez un proxy réseau pour ce compte. Appuyez sur Entrée ou quittez le champ pour enregistrer.',
       'proxy-replace-placeholder': 'Saisir une nouvelle adresse proxy',
       'proxy-remove': 'Supprimer le proxy',
       'proxy-save-failed': "Impossible d'enregistrer le proxy",
@@ -723,19 +796,19 @@ const fr = {
         'profile-operation-failed':
           "Impossible de terminer l'action sur le profil d'identité. Réessayez.",
       },
-      title: 'Profil d identite',
+      title: 'Appareil du compte',
       loading: 'Chargement...',
-      generateAndBind: 'Creer et associer',
-      captureAndBind: 'Capturer et associer l actuel',
-      restoreOriginal: 'Restaurer la base',
-      openFolder: 'Ouvrir le stockage d identite',
-      previewTitle: 'Apercu de l identite generee',
+      generateAndBind: 'Créer de nouvelles informations',
+      captureAndBind: 'Utiliser l’appareil actuel',
+      restoreOriginal: 'Restaurer les informations d’origine',
+      openFolder: 'Ouvrir le dossier de l’appareil',
+      previewTitle: 'Nouvelles informations',
       confirm: 'Confirmer',
       cancel: 'Annuler',
       close: 'Fermer',
       currentStorage: 'Réglages actuels de l’appareil',
-      accountBinding: 'Identite associee au compte',
-      history: 'Historique des identites',
+      accountBinding: 'Enregistré pour ce compte',
+      history: 'Versions enregistrées',
       noHistory: 'Aucun historique d identite',
       current: 'Actif',
       restore: 'Restaurer',
@@ -745,7 +818,19 @@ const fr = {
       restoreVersionSuccess: 'Identite historique restauree',
       deleteVersionSuccess: 'Identite historique supprimee',
       openFolderSuccess: 'Stockage d identite ouvert',
-      baseline: 'Identite de base',
+      baseline: 'Informations d’origine',
+
+      description:
+        'Enregistrez les informations de l’appareil pour ce compte afin de les utiliser lors du changement de compte.',
+      'load-failed': 'Impossible de lire les informations de l’appareil',
+      'retry-description': 'Réessayez. Les informations enregistrées n’ont pas été modifiées.',
+      'refresh-failed': 'Actualisation impossible. Les informations précédentes restent affichées.',
+      updating: 'Mise à jour des informations de l’appareil…',
+      'device-id': 'Identifiant de l’appareil',
+      'mac-device-id': 'Identifiant de l’appareil Mac',
+      'installation-id': 'Identifiant d’installation',
+      'diagnostic-id': 'Identifiant de diagnostic',
+      'delete-version': 'Supprimer la version enregistrée : {{label}}',
     },
     list: {
       noAccounts: 'Aucun compte cloud ajoute pour le moment.',
@@ -780,23 +865,6 @@ const fr = {
       },
     },
     toast: {
-      syncSuccess: {
-        title: 'Synchronisation reussie',
-        description: '{{email}} importe depuis l IDE.',
-      },
-      syncFailed: {
-        title: 'Echec de la synchronisation',
-        description:
-          'Aucun compte à synchroniser depuis Antigravity IDE. Connectez-vous d’abord dans l’IDE.',
-        codes: {
-          'reauth-required': 'Reconnectez-vous dans Antigravity IDE, puis réessayez.',
-          'no-ide-account': 'Aucun compte Google trouvé dans Antigravity IDE.',
-          'ide-database-unavailable':
-            'Impossible de lire les comptes dans Antigravity IDE. Redémarrez l’IDE puis réessayez.',
-          'agy-unsupported': 'Les comptes Antigravity CLI ne peuvent pas encore être importés ici.',
-          'sync-failed': 'Impossible de synchroniser le compte IDE. Réessayez.',
-        },
-      },
       validationLinkFailed: {
         title: 'Impossible d’ouvrir la page de vérification Google',
         codes: {
@@ -859,6 +927,9 @@ const fr = {
       },
     },
     batch: {
+      actions: 'Actions sur les comptes sélectionnés',
+      'delete-title': 'Supprimer {{count}} comptes ?',
+      cancel: 'Annuler',
       selected: '{{count}} selectionnes',
       delete: 'Supprimer la selection',
       refresh: 'Actualiser la selection',
@@ -916,8 +987,21 @@ const fr = {
       invalidJson: 'Format de fichier JSON invalide',
       readFileFailed: 'Echec de la lecture du fichier',
     },
+
+    feedback: {
+      'loading-title': 'Lecture de vos comptes',
+      'loading-description':
+        'Les informations de vos comptes apparaîtront ici dès qu’elles seront prêtes.',
+      'empty-description':
+        'Choisissez Ajouter un compte pour vous connecter, ou importez un fichier de comptes.',
+      'filtered-description':
+        'Essayez une autre offre ou effacez le filtre pour voir plus de comptes.',
+    },
   },
   proxy: {
+    'advanced-options': 'Autres réglages du service',
+    'advanced-description': 'Choix des comptes, instructions communes et compatibilité des outils.',
+    tabs: { tools: 'Outils', models: 'Modèles', records: 'Historique', examples: 'Exemples' },
     'account-strategy': {
       'save-failed':
         'Impossible de sauvegarder votre choix. Sélectionnez-le à nouveau pour réessayer.',
@@ -1056,6 +1140,10 @@ const fr = {
       'success-title': 'Configuration OpenCode mise à jour',
       'error-title': 'Échec de la mise à jour OpenCode',
       'unknown-error': 'Erreur de configuration OpenCode inconnue',
+
+      'choose-model-hint': 'Choisissez au moins un modèle pour continuer.',
+      'config-retry-description':
+        'Réessayez. Votre configuration enregistrée n’a pas été modifiée.',
     },
     examples: {
       title: 'Exemples d utilisation',

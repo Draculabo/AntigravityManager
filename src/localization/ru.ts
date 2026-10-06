@@ -63,6 +63,11 @@ const ru = {
       'review-route-disabled':
         'Маршрут проверки Codex отключён. Включите его в настройках маршрутизации моделей.',
     },
+
+    'address-help': 'Оставьте текущий адрес Manager, если сервис не работает на другом компьютере.',
+    'invalid-address':
+      'Укажите адрес Manager с http:// или https://, без данных входа и дополнительных параметров.',
+    'model-required': 'Выберите модель перед сохранением.',
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
@@ -90,6 +95,8 @@ const ru = {
       'Новый аккаунт сохранён, но открытие Antigravity не подтверждено. Повторный запуск не выполнялся. Проверьте приложение перед новой попыткой.',
   },
   common: {
+    close: 'Закрыть',
+    cancel: 'Отмена',
     'core-unavailable-title': 'Не удалось подключиться к Antigravity Manager',
     'core-unavailable-body':
       'Аккаунты и прокси сейчас недоступны. Закройте и снова откройте Antigravity Manager. Если проблема останется, установите последнюю версию.',
@@ -104,8 +111,20 @@ const ru = {
     unknown: 'Неизвестно',
     notAvailable: 'Н/Д',
     openMenu: 'Открыть меню',
+
+    'dismiss-notification': 'Закрыть уведомление',
+    'reading-settings': 'Читаем ваши настройки…',
   },
   status: {
+    services: 'Приложения',
+    dashboard_title: 'Состояние приложений',
+    open_dashboard: 'Показать состояние приложений',
+    checking_short: 'Проверка…',
+    running_short: 'Работает',
+    stopped_short: 'Не запущено',
+    all_running: 'Все приложения работают',
+    all_stopped: 'Приложения не запущены',
+    partial_running: 'Работают {{running}}/{{total}} приложений',
     checking: 'Проверка статуса...',
     running: 'Antigravity работает в фоне',
     stopped: 'Служба Antigravity остановлена',
@@ -171,6 +190,9 @@ const ru = {
       'Данные входа для этого облачного аккаунта устарели. Пожалуйста, войдите снова.',
   },
   nav: {
+    navigation: 'Навигация',
+    'collapse-sidebar': 'Свернуть боковую панель',
+    'expand-sidebar': 'Развернуть боковую панель',
     accounts: 'Аккаунты',
     proxy: 'API Прокси',
     settings: 'Настройки',
@@ -268,6 +290,12 @@ const ru = {
       clearedDescription: 'Из каталогов кэша Antigravity удалено {{size}} МБ.',
       failedTitle: 'Не удалось очистить кэш',
       notFoundTitle: 'Кэш Antigravity не найден',
+
+      'paths-failed': 'Не удалось найти папки кэша',
+      'paths-retry-description': 'Попробуйте ещё раз перед очисткой кэша.',
+      'partial-title': 'Часть кэша не удалось очистить',
+      'partial-description':
+        'Освобождено {{size}} МБ. Не удалось очистить {{count}} папок. Закройте Antigravity и попробуйте ещё раз.',
     },
     version: 'Версия',
     platform: 'Платформа',
@@ -283,6 +311,11 @@ const ru = {
       },
     },
     account: {
+      'client-setup': 'Расположение и запуск клиентов',
+      'client-setup-description':
+        'Измените, если Manager не находит клиент или нужны особые параметры запуска.',
+      'choose-file': 'Выбрать файл',
+      'clear-field': 'Очистить поле',
       title: 'Настройки аккаунта',
       description: 'Настройка автоматического обновления и синхронизации.',
       auto_refresh: 'Автообновление квот',
@@ -506,6 +539,7 @@ const ru = {
     },
   },
   cloud: {
+    'total-accounts': 'Всего аккаунтов',
     title: 'Аккаунты',
     description: 'Управляйте своими аккаунтами Google Gemini.',
     security: {
@@ -518,7 +552,6 @@ const ru = {
     autoSwitch: 'Авто-переключение',
     providerGroupings: 'Группировка по провайдерам',
     addAccount: 'Добавить аккаунт',
-    syncFromIde: 'Синхр. из IDE',
     checkQuota: 'Проверить квоту',
     polling: 'Опрос запущен',
     globalQuota: 'Глобальная квота',
@@ -555,6 +588,8 @@ const ru = {
       'weekly-bucket-unavailable': 'В полученных данных не найдено недельное использование.',
     },
     authDialog: {
+      'manual-sign-in': 'Ввести код вручную',
+      'waiting-for-browser': 'Завершите вход в браузере. Это окно обновится автоматически.',
       title: 'Добавить Google Аккаунт',
       description:
         'Выберите способ входа и войдите в Google через браузер. Аккаунт будет добавлен автоматически.',
@@ -606,6 +641,9 @@ const ru = {
       proxy: 'Прокси',
       proxyPlaceholder: 'напр. http://127.0.0.1:7890',
       proxySaved: 'Прокси сохранён',
+      'network-proxy': 'Сетевой прокси',
+      'network-proxy-description':
+        'Необязательно: используйте сетевой прокси для этого аккаунта. Нажмите Enter или покиньте поле адреса для сохранения.',
       'proxy-replace-placeholder': 'Введите новый адрес прокси',
       'proxy-remove': 'Удалить прокси',
       'proxy-save-failed': 'Не удалось сохранить прокси',
@@ -625,19 +663,19 @@ const ru = {
         'profile-operation-failed':
           'Не удалось выполнить действие с профилем идентичности. Повторите попытку.',
       },
-      title: 'Профиль идентичности',
+      title: 'Устройство аккаунта',
       loading: 'Загрузка...',
-      generateAndBind: 'Создать и привязать',
-      captureAndBind: 'Считать текущий и привязать',
-      restoreOriginal: 'Восстановить базовый профиль',
-      openFolder: 'Открыть хранилище профилей',
-      previewTitle: 'Предпросмотр сгенерированного профиля',
+      generateAndBind: 'Создать новые данные устройства',
+      captureAndBind: 'Использовать текущее устройство',
+      restoreOriginal: 'Восстановить исходные данные',
+      openFolder: 'Открыть папку данных устройства',
+      previewTitle: 'Новые данные устройства',
       confirm: 'Подтвердить',
       cancel: 'Отмена',
       close: 'Закрыть',
       currentStorage: 'Текущие настройки устройства',
-      accountBinding: 'Профиль, привязанный к аккаунту',
-      history: 'История профилей',
+      accountBinding: 'Сохранено для этого аккаунта',
+      history: 'Сохранённые версии',
       noHistory: 'История профилей пуста',
       current: 'Активный',
       restore: 'Восстановить',
@@ -647,7 +685,19 @@ const ru = {
       restoreVersionSuccess: 'Исторический профиль восстановлен',
       deleteVersionSuccess: 'Исторический профиль удален',
       openFolderSuccess: 'Хранилище профилей открыто',
-      baseline: 'Базовый профиль',
+      baseline: 'Исходные данные устройства',
+
+      description:
+        'Сохраните данные устройства для этого аккаунта, чтобы использовать их при переключении.',
+      'load-failed': 'Не удалось прочитать данные устройства',
+      'retry-description': 'Попробуйте ещё раз. Сохранённые данные устройства не изменены.',
+      'refresh-failed': 'Не удалось обновить. На экране остаются ранее загруженные данные.',
+      updating: 'Обновляем данные устройства…',
+      'device-id': 'Номер устройства',
+      'mac-device-id': 'Номер устройства Mac',
+      'installation-id': 'Номер установки',
+      'diagnostic-id': 'Номер диагностики',
+      'delete-version': 'Удалить сохранённую версию: {{label}}',
     },
     list: {
       noAccounts: 'Нет добавленных облачных аккаунтов.',
@@ -680,22 +730,6 @@ const ru = {
       },
     },
     toast: {
-      syncSuccess: {
-        title: 'Синхронизация успешна',
-        description: 'Импортирован {{email}} из IDE.',
-      },
-      syncFailed: {
-        title: 'Синхронизация не удалась',
-        description: 'В Antigravity IDE нет аккаунта для синхронизации. Сначала войдите в IDE.',
-        codes: {
-          'reauth-required': 'Снова войдите в Antigravity IDE и повторите синхронизацию.',
-          'no-ide-account': 'В Antigravity IDE не найден аккаунт Google.',
-          'ide-database-unavailable':
-            'Не удалось прочитать аккаунты Antigravity IDE. Перезапустите IDE и повторите попытку.',
-          'agy-unsupported': 'Аккаунты Antigravity CLI пока нельзя импортировать здесь.',
-          'sync-failed': 'Не удалось синхронизировать аккаунт из IDE. Повторите попытку.',
-        },
-      },
       validationLinkFailed: {
         title: 'Не удалось открыть страницу проверки Google',
         codes: {
@@ -758,6 +792,9 @@ const ru = {
       },
     },
     batch: {
+      actions: 'Действия с выбранными аккаунтами',
+      'delete-title': 'Удалить {{count}} аккаунтов?',
+      cancel: 'Отмена',
       selected: 'Выбрано {{count}}',
       delete: 'Удалить выбранные',
       refresh: 'Обновить выбранные',
@@ -813,7 +850,7 @@ const ru = {
     },
     localImport: {
       description:
-        'Найдите аккаунты, уже вошедшие в Antigravity на этом компьютере. Проверьте результаты перед импортом.',
+        'Найдите аккаунты, в которые уже выполнен вход на этом компьютере. Проверьте результаты перед импортом.',
       emailCollision: 'Для {{email}} найдено {{count}} разных сохранённых входов.',
       sources: {
         'antigravity-keyring': 'Данные входа в системе',
@@ -849,9 +886,25 @@ const ru = {
         'session-consumed':
           'Эти результаты уже использованы. Повторите поиск для импорта других аккаунтов.',
       },
+
+      title: 'Импорт с этого компьютера',
+
+      trigger: 'Импорт с этого компьютера',
+    },
+
+    feedback: {
+      'loading-title': 'Читаем ваши аккаунты',
+      'loading-description': 'Сведения об аккаунтах появятся здесь, когда будут готовы.',
+      'empty-description':
+        'Нажмите «Добавить аккаунт», чтобы войти, или импортируйте файл аккаунтов.',
+      'filtered-description':
+        'Выберите другой тариф или сбросьте фильтр, чтобы увидеть больше аккаунтов.',
     },
   },
   proxy: {
+    'advanced-options': 'Другие настройки сервиса',
+    'advanced-description': 'Выбор аккаунтов, общие инструкции и совместимость инструментов.',
+    tabs: { tools: 'Инструменты', models: 'Модели', records: 'История', examples: 'Примеры' },
     'account-strategy': {
       'save-failed':
         'Не удалось сохранить настройку. Выберите её ещё раз, чтобы повторить попытку.',
@@ -990,6 +1043,9 @@ const ru = {
       'success-title': 'Конфигурация OpenCode обновлена',
       'error-title': 'Не удалось обновить OpenCode',
       'unknown-error': 'Неизвестная ошибка конфигурации OpenCode',
+
+      'choose-model-hint': 'Выберите хотя бы одну модель, чтобы продолжить.',
+      'config-retry-description': 'Попробуйте ещё раз. Сохранённые настройки не изменены.',
     },
     examples: {
       title: 'Примеры',
@@ -1043,6 +1099,33 @@ const ru = {
     },
   },
   traffic: {
+    'detail-load-failed': 'Не удалось загрузить запрос. Повторите попытку.',
+    'detail-not-found': 'Запись недоступна. Возможно, она была удалена.',
+    fields: {
+      category: 'Категория',
+      method: 'Метод запроса',
+      'requested-model': 'Запрошенная модель',
+      'mapped-model': 'Выбранный маршрут модели',
+      error: 'Описание ошибки',
+      affected: 'Затронутые записи',
+      'request-id': 'Номер запроса',
+      'client-address': 'Адрес клиента',
+      username: 'Пользователь',
+      'reasoning-tokens': 'Токены рассуждения',
+      'cached-tokens': 'Кэшированные токены',
+      query: 'Дополнительные параметры',
+    },
+    outcomes: {
+      in_progress: 'Выполняется',
+      completed: 'Завершено',
+      client_cancelled: 'Отменено',
+      client_disconnected: 'Соединение закрыто',
+      timeout: 'Время ожидания истекло',
+      upstream_error: 'Ошибка сервиса модели',
+      auth_failed: 'Не удалось войти',
+      internal_error: 'Ошибка приложения',
+      partial: 'Частичный результат',
+    },
     'search-metadata': 'Поиск по модели, номеру запроса или адресу',
     'copy-upstream-curl': 'Скопировать запрос к сервису моделей в cURL (личные данные скрыты)',
     'upstream-attempts': 'Запросы к сервису моделей',
@@ -1060,6 +1143,15 @@ const ru = {
     'parse-error': 'Не удалось прочитать содержимое в позиции {{offset}}.',
     'thought-oversized':
       'Рассуждения превысили 64 MiB и сохранены не полностью. Номер для проверки: {{hash}}',
+
+    'loading-description': 'Записи запросов появятся здесь, когда будут готовы.',
+    'empty-description':
+      'Здесь появляются запросы, отправленные через прокси. Можно также изменить фильтры.',
+    'empty-category-description':
+      'Здесь появляются записи этой категории. Выберите другую категорию или измените фильтры.',
+    'load-failed': 'Не удалось прочитать записи запросов',
+    'load-failed-description': 'Попробуйте ещё раз. Это не означает, что записи удалены.',
+    'refresh-failed': 'Не удалось обновить записи. Ранее загруженные данные остаются на экране.',
   },
 };
 export default ru;

@@ -58,10 +58,6 @@ export function setWeeklyWarmupConfig(config: WeeklyWarmupConfig) {
   return ipc.client.cloud.setWeeklyWarmupConfig(config);
 }
 
-export function syncLocalAccount(input?: { appTarget?: AntigravityAppTarget }) {
-  return ipc.client.cloud.syncLocalAccount(input);
-}
-
 export function startAuthFlow(input?: { oauthClientKey?: string }) {
   return ipc.client.cloud.startAuthFlow(input);
 }

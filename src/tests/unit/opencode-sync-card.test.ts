@@ -174,4 +174,24 @@ describe('OpenCodeSyncCard', () => {
     expect(await screen.findByText(/\[REDACTED\]/)).toBeTruthy();
     expect(mocks.readOpenCodeConfig).toHaveBeenCalledTimes(1);
   });
+  it('offers a safe retry when the configuration preview cannot be read', async () => {
+    mocks.readOpenCodeConfig.mockRejectedValueOnce(new Error('private-config-path'));
+    renderCard();
+    await screen.findByText('C:/Users/test/.config/opencode/opencode.jsonc');
+    fireEvent.click(screen.getByRole('button', { name: en['agent-tools'].view }));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      en.proxy['open-code']['config-load-failed'],
+    );
+    expect(screen.queryByText('private-config-path')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: en.proxy['open-code']['copy-config'] }),
+    ).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByRole('button', { name: en.action.retry }));
+    await screen.findByText(/\[REDACTED\]/);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(mocks.readOpenCodeConfig).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByRole('button', { name: en.proxy['open-code']['copy-config'] }),
+    ).not.toHaveProperty('disabled', true);
+  });
 });

@@ -154,7 +154,9 @@ describe('LocalAccountImportDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'cloud.localImport.confirm:1' }));
     await screen.findByText('cloud.localImport.importing');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    const close = screen.getByRole('button', { name: 'common.close' });
+    expect(close).toHaveProperty('disabled', true);
+    fireEvent.click(close);
     expect(screen.getByText('cloud.localImport.importing')).toBeTruthy();
 
     await act(async () => {

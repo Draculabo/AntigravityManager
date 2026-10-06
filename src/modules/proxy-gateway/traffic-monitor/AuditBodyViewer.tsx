@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, CircleHelp, Clipboard, Download, Loader2, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+import { useTheme } from '@/components/shared/theme-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -38,6 +39,10 @@ export function AuditBodyViewer({ body }: AuditBodyViewerProps) {
 
 function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
   const { t } = useTranslation();
+  const { theme } = useTheme();
+  const isDarkTheme =
+    theme === 'dark' ||
+    (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const active = useRef(true);
   const editor = useRef<EditorView | null>(null);
   const [content, setContent] = useState('');
@@ -347,6 +352,7 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
       <div className="min-h-0 flex-1">
         <CodeMirror
           value={displayContent}
+          theme={isDarkTheme ? 'dark' : 'light'}
           height="100%"
           extensions={extensions}
           editable={false}

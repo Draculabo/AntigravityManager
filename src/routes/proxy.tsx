@@ -13,10 +13,12 @@ import type { ServiceConfigSnapshot } from '@/modules/config/service-config.sche
 type ProxyConfig = ServiceConfigSnapshot['proxy'];
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { FeedbackState } from '@/components/ui/feedback-state';
 import { useToast } from '@/components/ui/use-toast';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OpenCodeSyncCard } from '@/modules/proxy-gateway/components/OpenCodeSyncCard';
 import { AgentToolSyncCard } from '@/modules/proxy-gateway/components/AgentToolSyncCard';
 import { GlobalSystemPromptCard } from '@/modules/proxy-gateway/components/GlobalSystemPromptCard';
@@ -35,7 +37,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Loader2,
   Copy,
   CheckCircle,
   Zap,
@@ -47,6 +48,7 @@ import {
   Eye,
   EyeOff,
   ImageIcon,
+  Network,
 } from 'lucide-react';
 import {
   Dialog,
@@ -325,37 +327,49 @@ print(response.choices[0].message.content)`;
 
   if (isLoading || serviceLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="animate-spin" />
-      </div>
+      <FeedbackState
+        kind="loading"
+        title={t('common.loading')}
+        description={t('common.reading-settings')}
+        className="h-full"
+      />
     );
   }
   if (!serviceAvailable || !proxyConfig) {
     return (
-      <div role="alert" className="space-y-3 p-6">
-        <p>
-          {t(
-            'settings.service-unavailable',
-            'Settings are unavailable right now. Please try again.',
-          )}
-        </p>
+      <FeedbackState
+        kind="error"
+        title={t('proxy.title')}
+        description={t(
+          'settings.service-unavailable',
+          'Settings are unavailable right now. Please try again.',
+        )}
+        className="h-full"
+      >
         <Button onClick={() => void retryService()}>{t('settings.service-retry', 'Retry')}</Button>
-      </div>
+      </FeedbackState>
     );
   }
 
   return (
-    <div className="container mx-auto max-w-4xl space-y-5 p-6">
+    <div className="container mx-auto max-w-6xl space-y-5 p-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">{t('proxy.title')}</h2>
-        <p className="text-muted-foreground mt-1">{t('proxy.description')}</p>
+        <div className="flex items-start gap-3">
+          <div className="bg-success-soft text-success border-success-border flex size-11 shrink-0 items-center justify-center rounded-xl border">
+            <Network className="size-5" aria-hidden="true" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{t('proxy.title')}</h1>
+            <p className="text-muted-foreground mt-1 text-sm">{t('proxy.description')}</p>
+          </div>
+        </div>
 
         {/* Local Access Info Banner */}
         {proxyConfig?.enabled && (
-          <div className="mt-4 flex flex-col gap-2 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+          <div className="bg-card mt-4 flex flex-col gap-2 rounded-md border p-3 text-sm">
             <div className="flex items-center gap-2">
               <div className="font-semibold">{t('proxy.config.local_access')}</div>
-              <code className="rounded bg-blue-100 px-1.5 py-0.5 font-mono select-all dark:bg-blue-900/50">
+              <code className="bg-muted rounded px-1.5 py-0.5 font-mono select-all">
                 http://{selectedIp || 'localhost'}:{proxyConfig.port}/v1
               </code>
               {/* IP Selector Dropdown */}
@@ -375,7 +389,7 @@ print(response.choices[0].message.content)`;
               )}
             </div>
             {!proxyConfig.api_key_configured && (
-              <div className="flex items-center gap-2 text-xs font-medium text-amber-600 dark:text-amber-400">
+              <div className="text-warning flex items-center gap-2 text-xs font-medium">
                 {t('proxy.config.no_token_warning')}
               </div>
             )}
@@ -384,32 +398,32 @@ print(response.choices[0].message.content)`;
       </div>
 
       {/* Service Control Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+      <Card className="overflow-hidden shadow-none">
+        <CardHeader className="bg-success-soft/40 mb-4 border-b p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <CardTitle>{t('proxy.service.title')}</CardTitle>
               <CardDescription>{t('proxy.service.description')}</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <div
-                className={`h-3 w-3 rounded-full ${proxyConfig.enabled ? 'animate-pulse bg-green-500' : 'bg-gray-400'}`}
-              ></div>
-              <span className="text-sm font-medium">
+            <div className="flex items-center gap-3">
+              <span
+                className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium ${proxyConfig.enabled ? 'border-success-border bg-success-soft text-success' : 'bg-card text-muted-foreground'}`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`size-1.5 rounded-full ${proxyConfig.enabled ? 'bg-success' : 'bg-muted-foreground'}`}
+                />
                 {proxyConfig.enabled ? t('proxy.service.running') : t('proxy.service.stopped')}
               </span>
+              <ProxyServiceControl
+                config={proxyConfig}
+                onConfigChange={updateProxyConfig}
+                onError={setGatewayError}
+              />
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Start/Stop Button */}
-          <div className="flex items-center gap-4">
-            <ProxyServiceControl
-              config={proxyConfig}
-              onConfigChange={updateProxyConfig}
-              onError={setGatewayError}
-            />
-          </div>
+        <CardContent className="space-y-4 p-4 pt-0">
           {gatewayError && (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
               {gatewayError}
@@ -448,10 +462,11 @@ print(response.choices[0].message.content)`;
 
           {/* API Key */}
           <div className="space-y-2">
-            <Label>{t('proxy.config.api_key')}</Label>
+            <Label htmlFor="gateway-api-key">{t('proxy.config.api_key')}</Label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input
+                  id="gateway-api-key"
                   value={
                     showKey ? (revealedKey ?? '') : proxyConfig.api_key_configured ? '********' : ''
                   }
@@ -473,6 +488,7 @@ print(response.choices[0].message.content)`;
                     }
                   }}
                   title={showKey ? t('proxy.config.hide_key') : t('proxy.config.show_key')}
+                  aria-label={showKey ? t('proxy.config.hide_key') : t('proxy.config.show_key')}
                 >
                   {showKey ? (
                     <EyeOff className="text-muted-foreground h-4 w-4" />
@@ -544,12 +560,13 @@ print(response.choices[0].message.content)`;
           </div>
 
           {/* Auto Start Toggle */}
-          <div className="flex items-center justify-between rounded-lg border p-4">
+          <div className="flex items-center justify-between gap-4 border-t pt-4">
             <div className="space-y-1">
-              <Label>{t('proxy.config.auto_start')}</Label>
-              <p className="text-xs text-gray-500">{t('proxy.config.auto_start_desc')}</p>
+              <Label htmlFor="proxy-auto-start">{t('proxy.config.auto_start')}</Label>
+              <p className="text-muted-foreground text-xs">{t('proxy.config.auto_start_desc')}</p>
             </div>
             <Switch
+              id="proxy-auto-start"
               checked={proxyConfig.auto_start}
               onCheckedChange={(checked) =>
                 updateProxyConfig({ ...proxyConfig, auto_start: checked })
@@ -557,321 +574,343 @@ print(response.choices[0].message.content)`;
             />
           </div>
 
-          <ProxyAccountStrategy
-            value={proxyConfig.account_selection_strategy}
-            onChange={async (account_selection_strategy) => {
-              const previous = proxyConfig;
-              try {
-                await updateProxyConfig({ ...proxyConfig, account_selection_strategy });
-              } catch (error) {
-                setProxyConfig(previous);
-                throw error;
-              }
-            }}
+          <details className="group border-t pt-4">
+            <summary className="focus-visible:ring-ring cursor-default rounded-sm text-sm font-medium focus-visible:ring-2 focus-visible:outline-none">
+              {t('proxy.advanced-options')}
+            </summary>
+            <p className="text-muted-foreground mt-1 text-xs">{t('proxy.advanced-description')}</p>
+            <div className="mt-4 space-y-4">
+              <ProxyAccountStrategy
+                value={proxyConfig.account_selection_strategy}
+                onChange={async (account_selection_strategy) => {
+                  const previous = proxyConfig;
+                  try {
+                    await updateProxyConfig({ ...proxyConfig, account_selection_strategy });
+                  } catch (error) {
+                    setProxyConfig(previous);
+                    throw error;
+                  }
+                }}
+              />
+
+              <GlobalSystemPromptCard
+                config={proxyConfig.global_system_prompt}
+                onChange={(global_system_prompt) =>
+                  updateProxyConfig({ ...proxyConfig, global_system_prompt })
+                }
+              />
+
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label>{t('proxy.config.cloud_code_meta')}</Label>
+                  <p className="text-xs text-gray-500">{t('proxy.config.cloud_code_meta_desc')}</p>
+                </div>
+                <Switch
+                  checked={proxyConfig.experimental.enable_cloud_code_meta}
+                  onCheckedChange={(checked) =>
+                    updateProxyConfig({
+                      ...proxyConfig,
+                      experimental: {
+                        ...proxyConfig.experimental,
+                        enable_cloud_code_meta: checked,
+                      },
+                    })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label htmlFor="proxy-allow-local-video-paths">
+                    {t('proxy.config.allow-local-video-paths')}
+                  </Label>
+                  <p className="text-muted-foreground text-xs">
+                    {t('proxy.config.allow-local-video-paths-desc')}
+                  </p>
+                </div>
+                <Switch
+                  id="proxy-allow-local-video-paths"
+                  checked={proxyConfig.experimental.allow_local_video_paths}
+                  onCheckedChange={(checked) =>
+                    updateProxyConfig({
+                      ...proxyConfig,
+                      experimental: {
+                        ...proxyConfig.experimental,
+                        allow_local_video_paths: checked,
+                      },
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
+
+      <Tabs defaultValue="tools" className="space-y-4">
+        <TabsList
+          aria-label={t('proxy.title')}
+          className="max-w-full justify-start overflow-x-auto"
+        >
+          <TabsTrigger value="tools">{t('proxy.tabs.tools')}</TabsTrigger>
+          <TabsTrigger value="models">{t('proxy.tabs.models')}</TabsTrigger>
+          <TabsTrigger value="records">{t('proxy.tabs.records')}</TabsTrigger>
+          <TabsTrigger value="examples">{t('proxy.tabs.examples')}</TabsTrigger>
+        </TabsList>
+        {/* Keep panel inputs mounted so navigation does not discard unsaved edits. */}
+        <TabsContent value="models" forceMount className="data-[state=inactive]:hidden">
+          {/* Model Mapping Card */}
+          <Card className="shadow-none">
+            <CardHeader className="p-4">
+              <CardTitle>{t('proxy.mapping.title')}</CardTitle>
+              <CardDescription>{t('proxy.mapping.description')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 p-4 pt-0">
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-1">
+                  <Label>{t('proxy.mapping.only-raw-quota-models')}</Label>
+                  <p className="text-xs text-gray-500">
+                    {t('proxy.mapping.only-raw-quota-models-desc')}
+                  </p>
+                </div>
+                <Switch
+                  checked={proxyConfig.only_raw_quota_models}
+                  onCheckedChange={(checked) =>
+                    updateProxyConfig({ ...proxyConfig, only_raw_quota_models: checked })
+                  }
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {/* Sonnet 4.6 Card */}
+                <div className="bg-muted/20 flex flex-col rounded-lg border p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="bg-muted-foreground h-2 w-2 rounded-full"></div>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                      Claude Sonnet 4.6 (Thinking)
+                    </h3>
+                  </div>
+                  <p className="mb-3 text-xs text-gray-600 dark:text-gray-400">
+                    {t('proxy.mapping.maps_to')}
+                  </p>
+                  <Select
+                    value={resolveAnthropicMappingValue(
+                      proxyConfig.anthropic_mapping,
+                      ['claude-sonnet-4-6-20260219', 'claude-sonnet-4-5-20250929'],
+                      'claude-sonnet-4-6-thinking',
+                    )}
+                    onValueChange={(value) =>
+                      updateAnthropicMapping({
+                        'claude-sonnet-4-6-20260219': value,
+                        'claude-sonnet-4-5-20250929': value,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ANTHROPIC_ROUTE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Opus 4.6 Card */}
+                <div className="bg-muted/20 flex flex-col rounded-lg border p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="bg-muted-foreground h-2 w-2 rounded-full"></div>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                      Claude Opus 4.6 (Thinking)
+                    </h3>
+                  </div>
+                  <p className="mb-3 text-xs text-gray-600 dark:text-gray-400">
+                    {t('proxy.mapping.maps_to')}
+                  </p>
+                  <Select
+                    value={resolveAnthropicMappingValue(
+                      proxyConfig.anthropic_mapping,
+                      ['claude-opus-4-6-20260201', 'opus'],
+                      'claude-opus-4-6-thinking',
+                    )}
+                    onValueChange={(value) =>
+                      updateAnthropicMapping({
+                        'claude-opus-4-6-20260201': value,
+                        opus: value,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ANTHROPIC_ROUTE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    updateProxyConfig({
+                      ...proxyConfig,
+                      anthropic_mapping: { ...DEFAULT_ANTHROPIC_MAPPING },
+                    })
+                  }
+                >
+                  {t('proxy.mapping.restore')}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tools" forceMount className="data-[state=inactive]:hidden">
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">{t('agent-tools.title')}</h2>
+              <p className="text-muted-foreground text-sm">{t('agent-tools.description')}</p>
+            </div>
+            <div className="grid items-start gap-4 xl:grid-cols-3">
+              <AgentToolSyncCard tool="claude" baseUrl={baseUrl} models={exampleModels} />
+              <AgentToolSyncCard tool="codex" baseUrl={baseUrl} models={exampleModels} />
+              <OpenCodeSyncCard baseUrl={baseUrl} models={exampleModels} />
+            </div>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="records" forceMount className="data-[state=inactive]:hidden">
+          <AuditAndThoughtStoreCard
+            config={proxyConfig}
+            onChange={(patch) => updateProxyConfig({ ...proxyConfig, ...patch })}
           />
+        </TabsContent>
 
-          <GlobalSystemPromptCard
-            config={proxyConfig.global_system_prompt}
-            onChange={(global_system_prompt) =>
-              updateProxyConfig({ ...proxyConfig, global_system_prompt })
-            }
-          />
+        <TabsContent value="examples" forceMount className="data-[state=inactive]:hidden">
+          {/* Usage Examples Card */}
+          <Card className="shadow-none">
+            <CardHeader className="p-4">
+              <CardTitle className="flex items-center gap-2">
+                <Code size={20} />
+                {t('proxy.examples.title')}
+              </CardTitle>
+              <CardDescription>{t('proxy.examples.description')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 p-4 pt-0">
+              {/* Protocol Selector Cards */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {/* OpenAI Protocol Card */}
+                <button
+                  type="button"
+                  aria-pressed={selectedProtocol === 'openai'}
+                  aria-label={t('settings.examples.openai_protocol')}
+                  onClick={() => setSelectedProtocol('openai')}
+                  className={`focus-visible:ring-ring cursor-default rounded-lg border p-4 text-left transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none ${selectedProtocol === 'openai' ? 'border-primary bg-primary/5' : 'bg-card hover:bg-muted/50'}`}
+                >
+                  <span className="mb-3 block text-sm font-semibold">
+                    {t('settings.examples.openai_protocol')}
+                  </span>
+                  <code className="bg-muted mb-2 block rounded px-3 py-2 font-mono text-xs break-all">
+                    POST /v1/chat/completions
+                  </code>
+                  <span className="text-muted-foreground block text-xs">
+                    {t('settings.examples.openai_tools')}
+                  </span>
+                </button>
 
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-1">
-              <Label>{t('proxy.config.cloud_code_meta')}</Label>
-              <p className="text-xs text-gray-500">{t('proxy.config.cloud_code_meta_desc')}</p>
-            </div>
-            <Switch
-              checked={proxyConfig.experimental.enable_cloud_code_meta}
-              onCheckedChange={(checked) =>
-                updateProxyConfig({
-                  ...proxyConfig,
-                  experimental: {
-                    ...proxyConfig.experimental,
-                    enable_cloud_code_meta: checked,
-                  },
-                })
-              }
-            />
-          </div>
-
-          <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
-            <div className="space-y-1">
-              <Label htmlFor="proxy-allow-local-video-paths">
-                {t('proxy.config.allow-local-video-paths')}
-              </Label>
-              <p className="text-muted-foreground text-xs">
-                {t('proxy.config.allow-local-video-paths-desc')}
-              </p>
-            </div>
-            <Switch
-              id="proxy-allow-local-video-paths"
-              checked={proxyConfig.experimental.allow_local_video_paths}
-              onCheckedChange={(checked) =>
-                updateProxyConfig({
-                  ...proxyConfig,
-                  experimental: {
-                    ...proxyConfig.experimental,
-                    allow_local_video_paths: checked,
-                  },
-                })
-              }
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Model Mapping Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('proxy.mapping.title')}</CardTitle>
-          <CardDescription>{t('proxy.mapping.description')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-1">
-              <Label>{t('proxy.mapping.only-raw-quota-models')}</Label>
-              <p className="text-xs text-gray-500">
-                {t('proxy.mapping.only-raw-quota-models-desc')}
-              </p>
-            </div>
-            <Switch
-              checked={proxyConfig.only_raw_quota_models}
-              onCheckedChange={(checked) =>
-                updateProxyConfig({ ...proxyConfig, only_raw_quota_models: checked })
-              }
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* Sonnet 4.6 Card */}
-            <div className="flex flex-col rounded-lg border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100/50 p-4 dark:border-blue-800/50 dark:from-blue-950/30 dark:to-blue-900/20">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500"></div>
-                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                  Claude Sonnet 4.6 (Thinking)
-                </h3>
+                {/* Anthropic Protocol Card */}
+                <button
+                  type="button"
+                  aria-pressed={selectedProtocol === 'anthropic'}
+                  aria-label={t('settings.examples.anthropic_protocol')}
+                  onClick={() => setSelectedProtocol('anthropic')}
+                  className={`focus-visible:ring-ring cursor-default rounded-lg border p-4 text-left transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none ${selectedProtocol === 'anthropic' ? 'border-primary bg-primary/5' : 'bg-card hover:bg-muted/50'}`}
+                >
+                  <span className="mb-3 block text-sm font-semibold">
+                    {t('settings.examples.anthropic_protocol')}
+                  </span>
+                  <code className="bg-muted mb-2 block rounded px-3 py-2 font-mono text-xs break-all">
+                    POST /v1/messages
+                  </code>
+                  <span className="text-muted-foreground block text-xs">
+                    {t('settings.examples.anthropic_tools')}
+                  </span>
+                </button>
               </div>
-              <p className="mb-3 text-xs text-gray-600 dark:text-gray-400">
-                {t('proxy.mapping.maps_to')}
-              </p>
-              <Select
-                value={resolveAnthropicMappingValue(
-                  proxyConfig.anthropic_mapping,
-                  ['claude-sonnet-4-6-20260219', 'claude-sonnet-4-5-20250929'],
-                  'claude-sonnet-4-6-thinking',
-                )}
-                onValueChange={(value) =>
-                  updateAnthropicMapping({
-                    'claude-sonnet-4-6-20260219': value,
-                    'claude-sonnet-4-5-20250929': value,
-                  })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ANTHROPIC_ROUTE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
 
-            {/* Opus 4.6 Card */}
-            <div className="flex flex-col rounded-lg border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100/50 p-4 dark:border-purple-800/50 dark:from-purple-950/30 dark:to-purple-900/20">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="h-2 w-2 animate-pulse rounded-full bg-purple-500"></div>
-                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                  Claude Opus 4.6 (Thinking)
-                </h3>
+              {/* Model Tabs */}
+              <div className="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700">
+                {visibleExampleModels.map((model) => (
+                  <button
+                    key={model.id}
+                    type="button"
+                    aria-pressed={effectiveModelId === model.id}
+                    onClick={() => setActiveModelTab(model.id)}
+                    className={`focus-visible:ring-ring flex items-center gap-1 rounded-t-lg px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none ${effectiveModelId === model.id ? 'border-b-2 border-blue-600 bg-blue-50/50 text-blue-600 dark:border-blue-400 dark:bg-blue-900/10 dark:text-blue-400' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'}`}
+                  >
+                    {getExampleModelIcon(model.id)}
+                    <span>{model.name}</span>
+                  </button>
+                ))}
               </div>
-              <p className="mb-3 text-xs text-gray-600 dark:text-gray-400">
-                {t('proxy.mapping.maps_to')}
-              </p>
-              <Select
-                value={resolveAnthropicMappingValue(
-                  proxyConfig.anthropic_mapping,
-                  ['claude-opus-4-6-20260201', 'opus'],
-                  'claude-opus-4-6-thinking',
-                )}
-                onValueChange={(value) =>
-                  updateAnthropicMapping({
-                    'claude-opus-4-6-20260201': value,
-                    opus: value,
-                  })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ANTHROPIC_ROUTE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                updateProxyConfig({
-                  ...proxyConfig,
-                  anthropic_mapping: { ...DEFAULT_ANTHROPIC_MAPPING },
-                })
-              }
-            >
-              {t('proxy.mapping.restore')}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold">{t('agent-tools.title')}</h2>
-          <p className="text-muted-foreground text-sm">{t('agent-tools.description')}</p>
-        </div>
-        <div className="grid items-start gap-4 xl:grid-cols-3">
-          <AgentToolSyncCard tool="claude" baseUrl={baseUrl} models={exampleModels} />
-          <AgentToolSyncCard tool="codex" baseUrl={baseUrl} models={exampleModels} />
-          <OpenCodeSyncCard baseUrl={baseUrl} models={exampleModels} />
-        </div>
-      </section>
-
-      <AuditAndThoughtStoreCard
-        config={proxyConfig}
-        onChange={(patch) => updateProxyConfig({ ...proxyConfig, ...patch })}
-      />
-
-      {/* Usage Examples Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Code size={20} />
-            {t('proxy.examples.title')}
-          </CardTitle>
-          <CardDescription>{t('proxy.examples.description')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Protocol Selector Cards */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* OpenAI Protocol Card */}
-            <div
-              className={`cursor-pointer rounded-lg border-2 bg-gradient-to-br from-blue-50 to-blue-100/50 p-4 transition-all dark:from-blue-950/30 dark:to-blue-900/20 ${selectedProtocol === 'openai' ? 'border-blue-500 shadow-md dark:border-blue-600' : 'border-blue-200 hover:border-blue-300 dark:border-blue-800/50'}`}
-              onClick={() => setSelectedProtocol('openai')}
-            >
-              <div className="mb-3 flex items-center gap-2">
-                <div
-                  className={`h-2 w-2 rounded-full ${selectedProtocol === 'openai' ? 'animate-pulse bg-blue-500' : 'bg-blue-400'}`}
-                ></div>
-                <span className="text-sm font-bold text-blue-700 dark:text-blue-400">
-                  {t('settings.examples.openai_protocol')}
-                </span>
+              {/* cURL Example */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <Terminal size={16} />
+                    cURL
+                  </span>
+                  <button
+                    onClick={() =>
+                      copyToClipboard((key) => getCurlExample(effectiveModelId, key), 'curl')
+                    }
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    {copied === 'curl' ? <CheckCircle size={14} /> : <Copy size={14} />}
+                    {copied === 'curl' ? t('proxy.copied') : t('proxy.copy')}
+                  </button>
+                </div>
+                <pre className="overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-xs whitespace-pre-wrap text-gray-100">
+                  {getCurlExample(effectiveModelId)}
+                </pre>
               </div>
-              <div className="mb-2 rounded border border-blue-200/50 bg-white/60 px-3 py-2 dark:border-blue-700/30 dark:bg-gray-800/40">
-                <code className="font-mono text-xs break-all text-gray-800 dark:text-gray-200">
-                  POST /v1/chat/completions
-                </code>
+
+              {/* Python Example */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <Code size={16} />
+                    Python
+                  </span>
+                  <button
+                    onClick={() =>
+                      copyToClipboard((key) => getPythonExample(effectiveModelId, key), 'python')
+                    }
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    {copied === 'python' ? <CheckCircle size={14} /> : <Copy size={14} />}
+                    {copied === 'python' ? t('proxy.copied') : t('proxy.copy')}
+                  </button>
+                </div>
+                <pre className="overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-xs whitespace-pre-wrap text-gray-100">
+                  {getPythonExample(effectiveModelId)}
+                </pre>
               </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400">
-                {t('settings.examples.openai_tools')}
-              </p>
-            </div>
-
-            {/* Anthropic Protocol Card */}
-            <div
-              className={`cursor-pointer rounded-lg border-2 bg-linear-to-br from-purple-50 to-purple-100/50 p-4 transition-all dark:from-purple-950/30 dark:to-purple-900/20 ${selectedProtocol === 'anthropic' ? 'border-purple-500 shadow-md dark:border-purple-600' : 'border-purple-200 hover:border-purple-300 dark:border-purple-800/50'}`}
-              onClick={() => setSelectedProtocol('anthropic')}
-            >
-              <div className="mb-3 flex items-center gap-2">
-                <div
-                  className={`h-2 w-2 rounded-full ${selectedProtocol === 'anthropic' ? 'animate-pulse bg-purple-500' : 'bg-purple-400'}`}
-                ></div>
-                <span className="text-sm font-bold text-purple-700 dark:text-purple-400">
-                  {t('settings.examples.anthropic_protocol')}
-                </span>
-              </div>
-              <div className="mb-2 rounded border border-purple-200/50 bg-white/60 px-3 py-2 dark:border-purple-700/30 dark:bg-gray-800/40">
-                <code className="font-mono text-xs break-all text-gray-800 dark:text-gray-200">
-                  POST /v1/messages
-                </code>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400">
-                {t('settings.examples.anthropic_tools')}
-              </p>
-            </div>
-          </div>
-
-          {/* Model Tabs */}
-          <div className="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700">
-            {visibleExampleModels.map((model) => (
-              <button
-                key={model.id}
-                onClick={() => setActiveModelTab(model.id)}
-                className={`flex items-center gap-1 rounded-t-lg px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors ${effectiveModelId === model.id ? 'border-b-2 border-blue-600 bg-blue-50/50 text-blue-600 dark:border-blue-400 dark:bg-blue-900/10 dark:text-blue-400' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'}`}
-              >
-                {getExampleModelIcon(model.id)}
-                <span>{model.name}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* cURL Example */}
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-                <Terminal size={16} />
-                cURL
-              </span>
-              <button
-                onClick={() =>
-                  copyToClipboard((key) => getCurlExample(effectiveModelId, key), 'curl')
-                }
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-              >
-                {copied === 'curl' ? <CheckCircle size={14} /> : <Copy size={14} />}
-                {copied === 'curl' ? t('proxy.copied') : t('proxy.copy')}
-              </button>
-            </div>
-            <pre className="overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-xs whitespace-pre-wrap text-gray-100">
-              {getCurlExample(effectiveModelId)}
-            </pre>
-          </div>
-
-          {/* Python Example */}
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-                <Code size={16} />
-                Python
-              </span>
-              <button
-                onClick={() =>
-                  copyToClipboard((key) => getPythonExample(effectiveModelId, key), 'python')
-                }
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-              >
-                {copied === 'python' ? <CheckCircle size={14} /> : <Copy size={14} />}
-                {copied === 'python' ? t('proxy.copied') : t('proxy.copy')}
-              </button>
-            </div>
-            <pre className="overflow-x-auto rounded-lg bg-gray-900 p-3 font-mono text-xs whitespace-pre-wrap text-gray-100">
-              {getPythonExample(effectiveModelId)}
-            </pre>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

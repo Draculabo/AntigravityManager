@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { FeedbackState } from '@/components/ui/feedback-state';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
@@ -56,10 +57,10 @@ function renderProfile(
   }
 
   const rows: Array<{ label: string; value: string }> = [
-    { label: 'machineId', value: profile.machineId },
-    { label: 'macMachineId', value: profile.macMachineId },
-    { label: 'devDeviceId', value: profile.devDeviceId },
-    { label: 'sqmId', value: profile.sqmId },
+    { label: 'device-id', value: profile.machineId },
+    { label: 'mac-device-id', value: profile.macMachineId },
+    { label: 'installation-id', value: profile.devDeviceId },
+    { label: 'diagnostic-id', value: profile.sqmId },
   ];
 
   return (
@@ -67,7 +68,7 @@ function renderProfile(
       {rows.map((row) => (
         <div key={row.label} className="flex items-start justify-between gap-3">
           <span className="text-muted-foreground text-[11px] tracking-wide uppercase">
-            {row.label}
+            {t(`cloud.identity.${row.label}`)}
           </span>
           <span className="max-w-[70%] text-right font-mono text-xs break-all">{row.value}</span>
         </div>
@@ -92,6 +93,7 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
     data: snapshot = null,
     isLoading: isQueryLoading,
     isFetching: refreshing,
+    isError,
     refetch,
   } = useQuery({
     queryKey: ['cloudIdentityProfiles', accountId],
@@ -129,17 +131,30 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden p-0">
-        <DialogHeader className="from-primary/10 via-background to-background border-b bg-gradient-to-r p-6">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!actionLockRef.current) {
+          onOpenChange(nextOpen);
+        }
+      }}
+    >
+      <DialogContent
+        closeDisabled={actionKey !== null}
+        className="flex max-w-6xl flex-col gap-0 overflow-hidden p-0"
+      >
+        <DialogHeader className="shrink-0 border-b px-6 py-5 pr-14">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="bg-primary/15 text-primary rounded-xl border p-2.5">
+              <div className="bg-card text-info border-info-border rounded-lg border p-2.5">
                 <Fingerprint className="h-5 w-5" />
               </div>
               <div className="min-w-0">
                 <DialogTitle className="truncate">{t('cloud.identity.title')}</DialogTitle>
-                <DialogDescription className="truncate">{account.email}</DialogDescription>
+                <DialogDescription>
+                  {t('cloud.identity.description')}
+                  <span className="mt-1 block break-all">{account.email}</span>
+                </DialogDescription>
               </div>
             </div>
             <Badge variant="secondary" className="shrink-0">
@@ -149,135 +164,282 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
           </div>
         </DialogHeader>
 
-        <div className="flex-1 space-y-6 overflow-y-auto p-6" aria-busy={refreshing}>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Button
-              variant="outline"
-              disabled={actionKey === 'preview-generate'}
-              className="h-auto cursor-pointer justify-start rounded-xl px-4 py-3"
-              onClick={() => {
-                runAction('preview-generate', async () => {
-                  const profile = await previewGenerateCloudIdentityProfile();
-                  setPreviewProfile(profile);
-                });
-              }}
+        <div
+          className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6"
+          aria-busy={refreshing || actionKey !== null}
+        >
+          {isError && !snapshot ? (
+            <FeedbackState
+              kind="error"
+              title={t('cloud.identity.load-failed')}
+              description={t('cloud.identity.retry-description')}
             >
-              <Wand2 className="mr-2 h-4 w-4" />
-              {t('cloud.identity.generateAndBind')}
-            </Button>
-
-            <Button
-              variant="outline"
-              disabled={actionKey === 'capture-bind'}
-              className="h-auto cursor-pointer justify-start rounded-xl px-4 py-3"
-              onClick={() => {
-                runAction('capture-bind', async () => {
-                  await bindCloudIdentityProfile({ accountId: account.id, mode: 'capture' });
-                  setPreviewProfile(null);
-                  toast({ title: t('cloud.identity.captureSuccess') });
-                });
-              }}
-            >
-              <Fingerprint className="mr-2 h-4 w-4" />
-              {t('cloud.identity.captureAndBind')}
-            </Button>
-
-            <Button
-              variant="outline"
-              disabled={actionKey === 'restore-original'}
-              className="h-auto cursor-pointer justify-start rounded-xl px-4 py-3"
-              onClick={() => {
-                runAction('restore-original', async () => {
-                  await restoreCloudBaselineProfile({ accountId: account.id });
-                  toast({ title: t('cloud.identity.restoreOriginalSuccess') });
-                });
-              }}
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              {t('cloud.identity.restoreOriginal')}
-            </Button>
-
-            <Button
-              variant="outline"
-              disabled={actionKey === 'open-folder'}
-              className="h-auto cursor-pointer justify-start rounded-xl px-4 py-3"
-              onClick={() => {
-                runAction('open-folder', async () => {
-                  await openCloudIdentityStorageFolder();
-                  toast({ title: t('cloud.identity.openFolderSuccess') });
-                });
-              }}
-            >
-              <FolderOpen className="mr-2 h-4 w-4" />
-              {t('cloud.identity.openFolder')}
-            </Button>
-          </div>
-
-          {previewProfile ? (
-            <Card className="border-primary/20 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">{t('cloud.identity.previewTitle')}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {renderProfile(previewProfile, t)}
-                <div className="flex flex-wrap gap-2">
+              <Button variant="outline" disabled={refreshing} onClick={() => void refetch()}>
+                {t('action.retry')}
+              </Button>
+            </FeedbackState>
+          ) : (
+            <>
+              {actionKey !== null && (
+                <p role="status" className="text-info text-sm">
+                  {t('cloud.identity.updating')}
+                </p>
+              )}
+              {isError && (
+                <div
+                  role="alert"
+                  className="bg-warning-soft text-warning border-warning-border flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
+                >
+                  <span>{t('cloud.identity.refresh-failed')}</span>
                   <Button
+                    variant="outline"
                     size="sm"
-                    disabled={actionKey === 'confirm-generate'}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      runAction('confirm-generate', async () => {
-                        await bindCloudIdentityProfileWithPayload({
-                          accountId: account.id,
-                          profile: previewProfile,
-                        });
-                        setPreviewProfile(null);
-                        toast({ title: t('cloud.identity.generateSuccess') });
-                      });
-                    }}
+                    disabled={refreshing || actionKey !== null}
+                    onClick={() => void refetch()}
                   >
-                    {t('cloud.identity.confirm')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="cursor-pointer"
-                    onClick={() => setPreviewProfile(null)}
-                  >
-                    {t('cloud.identity.cancel')}
+                    {t('action.retry')}
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          ) : null}
+              )}
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <Button
+                  variant="outline"
+                  disabled={actionKey !== null || isQueryLoading || isError}
+                  className="h-auto justify-start rounded-lg px-4 py-3 whitespace-normal"
+                  onClick={() => {
+                    runAction('preview-generate', async () => {
+                      const profile = await previewGenerateCloudIdentityProfile();
+                      setPreviewProfile(profile);
+                    });
+                  }}
+                >
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  {t('cloud.identity.generateAndBind')}
+                </Button>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-            <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card className="shadow-sm">
+                <Button
+                  variant="outline"
+                  disabled={actionKey !== null || isQueryLoading || isError}
+                  className="h-auto justify-start rounded-lg px-4 py-3 whitespace-normal"
+                  onClick={() => {
+                    runAction('capture-bind', async () => {
+                      await bindCloudIdentityProfile({ accountId: account.id, mode: 'capture' });
+                      setPreviewProfile(null);
+                      toast({ title: t('cloud.identity.captureSuccess'), variant: 'success' });
+                    });
+                  }}
+                >
+                  <Fingerprint className="mr-2 h-4 w-4" />
+                  {t('cloud.identity.captureAndBind')}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  disabled={actionKey !== null || isQueryLoading || isError}
+                  className="h-auto justify-start rounded-lg px-4 py-3 whitespace-normal"
+                  onClick={() => {
+                    runAction('restore-original', async () => {
+                      await restoreCloudBaselineProfile({ accountId: account.id });
+                      toast({
+                        title: t('cloud.identity.restoreOriginalSuccess'),
+                        variant: 'success',
+                      });
+                    });
+                  }}
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  {t('cloud.identity.restoreOriginal')}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  disabled={actionKey !== null}
+                  className="h-auto justify-start rounded-lg px-4 py-3 whitespace-normal"
+                  onClick={() => {
+                    runAction('open-folder', async () => {
+                      await openCloudIdentityStorageFolder();
+                      toast({ title: t('cloud.identity.openFolderSuccess') });
+                    });
+                  }}
+                >
+                  <FolderOpen className="mr-2 h-4 w-4" />
+                  {t('cloud.identity.openFolder')}
+                </Button>
+              </div>
+
+              {previewProfile ? (
+                <Card className="border-primary/20 shadow-sm">
                   <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-sm">
-                      <Cpu className="text-muted-foreground h-4 w-4" />
-                      {t('cloud.identity.currentStorage')}
-                    </CardTitle>
+                    <CardTitle className="text-sm">{t('cloud.identity.previewTitle')}</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    {showLoadingPlaceholder ? (
-                      <div className="text-muted-foreground text-xs">
-                        {t('cloud.identity.loading')}
-                      </div>
-                    ) : (
-                      renderProfile(snapshot?.currentStorage, t)
-                    )}
+                  <CardContent className="space-y-4">
+                    {renderProfile(previewProfile, t)}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        disabled={actionKey !== null || isError}
+                        onClick={() => {
+                          runAction('confirm-generate', async () => {
+                            await bindCloudIdentityProfileWithPayload({
+                              accountId: account.id,
+                              profile: previewProfile,
+                            });
+                            setPreviewProfile(null);
+                            toast({
+                              title: t('cloud.identity.generateSuccess'),
+                              variant: 'success',
+                            });
+                          });
+                        }}
+                      >
+                        {t('cloud.identity.confirm')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={actionKey !== null}
+                        onClick={() => setPreviewProfile(null)}
+                      >
+                        {t('cloud.identity.cancel')}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
+              ) : null}
+
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Card className="shadow-sm">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-sm">
+                          <Cpu className="text-muted-foreground h-4 w-4" />
+                          {t('cloud.identity.currentStorage')}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {showLoadingPlaceholder ? (
+                          <div className="text-muted-foreground text-xs">
+                            {t('cloud.identity.loading')}
+                          </div>
+                        ) : (
+                          renderProfile(snapshot?.currentStorage, t)
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="shadow-sm">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-sm">
+                          <ShieldCheck className="text-muted-foreground h-4 w-4" />
+                          {t('cloud.identity.accountBinding')}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {showLoadingPlaceholder ? (
+                          <div className="text-muted-foreground text-xs">
+                            {t('cloud.identity.loading')}
+                          </div>
+                        ) : (
+                          renderProfile(snapshot?.boundProfile, t)
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card className="shadow-sm">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm">{t('cloud.identity.history')}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="max-h-[38vh] space-y-3 overflow-y-auto pr-1">
+                      {showLoadingPlaceholder ? (
+                        <div className="text-muted-foreground text-xs">
+                          {t('cloud.identity.loading')}
+                        </div>
+                      ) : null}
+
+                      {!showLoadingPlaceholder && history.length === 0 ? (
+                        <div className="text-muted-foreground text-xs">
+                          {t('cloud.identity.noHistory')}
+                        </div>
+                      ) : null}
+
+                      {!showLoadingPlaceholder
+                        ? history.map((version) => (
+                            <div key={version.id} className="bg-muted/20 rounded-xl border p-3">
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-medium">
+                                    {version.label}
+                                  </div>
+                                  <div className="text-muted-foreground text-xs">
+                                    {new Date(version.createdAt * 1000).toLocaleString()}
+                                  </div>
+                                </div>
+                                {version.isCurrent ? (
+                                  <Badge variant="secondary" className="shrink-0">
+                                    {t('cloud.identity.current')}
+                                  </Badge>
+                                ) : null}
+                              </div>
+
+                              {renderProfile(version.profile, t)}
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={version.isCurrent || actionKey !== null || isError}
+                                  onClick={() => {
+                                    runAction(`restore-${version.id}`, async () => {
+                                      await restoreCloudIdentityProfileRevision({
+                                        accountId: account.id,
+                                        versionId: version.id,
+                                      });
+                                      toast({
+                                        title: t('cloud.identity.restoreVersionSuccess'),
+                                        variant: 'success',
+                                      });
+                                    });
+                                  }}
+                                >
+                                  {t('cloud.identity.restore')}
+                                </Button>
+                                {!version.isCurrent ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={actionKey !== null || isError}
+                                    aria-label={t('cloud.identity.delete-version', {
+                                      label: version.label,
+                                    })}
+                                    onClick={() => {
+                                      runAction(`delete-${version.id}`, async () => {
+                                        await deleteCloudIdentityProfileRevision({
+                                          accountId: account.id,
+                                          versionId: version.id,
+                                        });
+                                        toast({
+                                          title: t('cloud.identity.deleteVersionSuccess'),
+                                          variant: 'success',
+                                        });
+                                      });
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))
+                        : null}
+                    </CardContent>
+                  </Card>
+                </div>
 
                 <Card className="shadow-sm">
                   <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-sm">
-                      <ShieldCheck className="text-muted-foreground h-4 w-4" />
-                      {t('cloud.identity.accountBinding')}
-                    </CardTitle>
+                    <CardTitle className="text-sm">{t('cloud.identity.baseline')}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {showLoadingPlaceholder ? (
@@ -285,110 +447,21 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
                         {t('cloud.identity.loading')}
                       </div>
                     ) : (
-                      renderProfile(snapshot?.boundProfile, t)
+                      renderProfile(snapshot?.baseline, t)
                     )}
                   </CardContent>
                 </Card>
               </div>
-
-              <Card className="shadow-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">{t('cloud.identity.history')}</CardTitle>
-                </CardHeader>
-                <CardContent className="max-h-[38vh] space-y-3 overflow-y-auto pr-1">
-                  {showLoadingPlaceholder ? (
-                    <div className="text-muted-foreground text-xs">
-                      {t('cloud.identity.loading')}
-                    </div>
-                  ) : null}
-
-                  {!showLoadingPlaceholder && history.length === 0 ? (
-                    <div className="text-muted-foreground text-xs">
-                      {t('cloud.identity.noHistory')}
-                    </div>
-                  ) : null}
-
-                  {!showLoadingPlaceholder
-                    ? history.map((version) => (
-                        <div key={version.id} className="bg-muted/20 rounded-xl border p-3">
-                          <div className="mb-2 flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-medium">{version.label}</div>
-                              <div className="text-muted-foreground text-xs">
-                                {new Date(version.createdAt * 1000).toLocaleString()}
-                              </div>
-                            </div>
-                            {version.isCurrent ? (
-                              <Badge variant="secondary" className="shrink-0">
-                                {t('cloud.identity.current')}
-                              </Badge>
-                            ) : null}
-                          </div>
-
-                          {renderProfile(version.profile, t)}
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={version.isCurrent || actionKey === `restore-${version.id}`}
-                              className="cursor-pointer"
-                              onClick={() => {
-                                runAction(`restore-${version.id}`, async () => {
-                                  await restoreCloudIdentityProfileRevision({
-                                    accountId: account.id,
-                                    versionId: version.id,
-                                  });
-                                  toast({ title: t('cloud.identity.restoreVersionSuccess') });
-                                });
-                              }}
-                            >
-                              {t('cloud.identity.restore')}
-                            </Button>
-                            {!version.isCurrent ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={actionKey === `delete-${version.id}`}
-                                className="cursor-pointer"
-                                onClick={() => {
-                                  runAction(`delete-${version.id}`, async () => {
-                                    await deleteCloudIdentityProfileRevision({
-                                      accountId: account.id,
-                                      versionId: version.id,
-                                    });
-                                    toast({ title: t('cloud.identity.deleteVersionSuccess') });
-                                  });
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))
-                    : null}
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">{t('cloud.identity.baseline')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {showLoadingPlaceholder ? (
-                  <div className="text-muted-foreground text-xs">{t('cloud.identity.loading')}</div>
-                ) : (
-                  renderProfile(snapshot?.baseline, t)
-                )}
-              </CardContent>
-            </Card>
-          </div>
+            </>
+          )}
         </div>
 
-        <DialogFooter className="border-t px-6 py-4">
-          <Button variant="ghost" className="cursor-pointer" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="shrink-0 border-t px-6 py-4">
+          <Button
+            variant="outline"
+            disabled={actionKey !== null}
+            onClick={() => onOpenChange(false)}
+          >
             {t('cloud.identity.close')}
           </Button>
         </DialogFooter>
