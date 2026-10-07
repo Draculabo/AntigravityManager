@@ -1,0 +1,12 @@
+diff --git a/node_modules/@electron-forge/core/dist/api/package.js b/node_modules/@electron-forge/core/dist/api/package.js
+--- a/node_modules/@electron-forge/core/dist/api/package.js
++++ b/node_modules/@electron-forge/core/dist/api/package.js
+@@ -177,7 +177,7 @@ const listrPackage = (childTrace, { dir: providedDir = process.cwd(), interactive = f
+                     }),
+                     hidePromiseFromPromisify(async (buildPath, electronVersion, pPlatform, pArch, done) => {
+-                        const bins = await (0, fast_glob_1.default)(node_path_1.default.join(buildPath, '**/.bin/**/*'));
++                        const bins = await (0, fast_glob_1.default)('**/.bin/**/*', { cwd: buildPath, absolute: true });
+                         for (const bin of bins) {
+                             await fs_extra_1.default.remove(bin);
+                         }
+                         done();

@@ -10,6 +10,7 @@
     "npm": ">=10"
   },
   "scripts": {
+    "postinstall": "patch-package --error-on-fail",
     "start": "electron-forge start",
     "build:core": "vite build --config vite.core.config.mts",
     "build:cli": "vite build --config vite.cli.config.mts",
@@ -119,6 +120,7 @@
     "icon-gen": "^5.0.0",
     "jsdom": "^27.1.0",
     "node-addon-api": "^8.3.1",
+    "patch-package": "^8.0.1",
     "prettier": "^3.6.2",
     "prettier-plugin-tailwindcss": "^0.7.1",
     "react-scan": "^0.5.7",

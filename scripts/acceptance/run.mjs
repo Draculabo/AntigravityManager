@@ -46,6 +46,8 @@ const suites = {
 };
 
 const unitFiles = [
+  '../build/forge-package-bin-scan.test.mjs',
+  '../build/publish-standalone-runtime.test.mjs',
   '../build/trace-standalone-runtime.test.mjs',
   './installers/prepare-windows-update-feed.test.mjs',
   './accounts/official-auth-state.test.mjs',

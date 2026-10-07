@@ -114,6 +114,7 @@ __pycache__/
 .Python
 dist/
 build/
+!scripts/build/
 
 # CLI User Data (don't commit personal configs)
 cli/aliases.json
