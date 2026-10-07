@@ -328,6 +328,17 @@ metadata before publishing a feed that points to the release asset. The updater 
 the library's installer verification. A local-feed override is used only when the explicit
 unmanaged-test flag is also set; ordinary installed builds use the configured release feed.
 
+Release-note requests accept a bounded semantic-version tag, not a renderer-provided retrieval
+URL. The app-shell owner constructs repository-specific metadata/API URLs, bounds HTTP responses
+to 2 MiB and descriptions to 262,144 characters, and applies a 20-second overall deadline with
+renderer cancellation. Response schemas and target-version checks run before descriptions reach
+the typed ORPC result; retrieval errors expose a fixed status rather than provider diagnostics.
+Release Markdown does not execute raw HTML or load images. Image descriptions and addresses,
+and links outside the navigation allowance, remain text. A separate main-process operation opens
+only HTTPS pages in this GitHub repository or GitHub profile-shaped destinations, excluding
+reserved site routes and credential-bearing URLs. This operation does not expand the existing
+general external-link allowlist.
+
 ## Required evidence
 
 Standalone runtime preparation downloads Node only from the official distribution and verifies

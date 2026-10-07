@@ -10,6 +10,7 @@
     "npm": ">=10"
   },
   "scripts": {
+    "preview:release-notes": "node scripts/preview-release-notes.mjs",
     "postinstall": "patch-package --error-on-fail",
     "start": "electron-forge start",
     "build:core": "vite build --config vite.core.config.mts",
@@ -207,7 +208,9 @@
     "react-dom": "^19.2.0",
     "react-error-boundary": "^6.1.0",
     "react-i18next": "^16.2.4",
+    "react-markdown": "^10.1.0",
     "reflect-metadata": "^0.2.2",
+    "remark-gfm": "^4.0.1",
     "rxjs": "^7.8.2",
     "semver": "^7.8.2",
     "smol-toml": "^1.9.0",

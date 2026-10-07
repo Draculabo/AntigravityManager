@@ -143,6 +143,16 @@ const en = {
     openLogs: 'Open Log Directory',
   },
   update: {
+    'release-notes': {
+      view: 'View changes',
+      title: 'Release notes',
+      loading: 'Loading release notes...',
+      failed: 'Could not load release notes. You can still download or install this update.',
+      empty: 'This release does not include release notes.',
+      history: 'Release history',
+      'release-page': 'Release page',
+      'link-failed': 'Could not open this link. Please try again.',
+    },
     title: 'Updates',
     checking: 'Checking...',
     checkNow: 'Check for Updates',

@@ -149,6 +149,19 @@ after the download completes. Install format is detected from installed package 
 unpacked builds use the manual release path. The MSI family applies to MSI-to-MSI upgrades;
 historical random-family MSI and cross-installer transitions require independent migration evidence.
 
+Update notices offer an on-demand release-notes dialog before installation and during background
+downloads. The app-shell main process reads the selected tag's `updater.json`, checks its version,
+and falls back to the GitHub API for that exact tag when metadata is missing, invalid or contains
+the legacy placeholder. The publishing workflow copies the Release body into metadata through
+[the metadata generator](../scripts/generate-updater-metadata.mjs). Description retrieval uses a
+separate typed app-shell ORPC operation and does not alter installer feeds or update policy.
+An open dialog stays attached to its selected release, while cancellable query state is cached
+only in renderer memory by tag. The dialog distinguishes empty descriptions from retrieval
+failures, provides retry and release/history links, and leaves download and installation available.
+Closing details does not dismiss the update notice; manually checking again restores a dismissed
+notice for an available update. Editing a published Release body requires resynchronizing its
+metadata asset for the preferred source to reflect that correction.
+
 The runtime pins Node 24.19.0, verifies its official download checksum and installs the checked-in
 production dependency lock in an isolated directory. The pinned build-only `@vercel/nft` tracer
 retains the built core, CLI and worker dependency graph, explicit target-native binaries and licenses.

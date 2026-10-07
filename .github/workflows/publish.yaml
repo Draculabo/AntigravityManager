@@ -296,16 +296,12 @@ jobs:
       - name: Generate updater metadata
         env:
           RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="${RELEASE_TAG#v}"
-          cat > release-assets/updater.json <<EOF
-          {
-            "version": "$version",
-            "notes": "See release page for details.",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "url": "https://github.com/Draculabo/AntigravityManager/releases/tag/${RELEASE_TAG}"
-          }
-          EOF
+          gh release view "$RELEASE_TAG" --json tagName,body,publishedAt,url > "$RUNNER_TEMP/updater-release.json"
+          node scripts/generate-updater-metadata.mjs \
+            --release-file "$RUNNER_TEMP/updater-release.json" \
+            --output release-assets/updater.json
 
       - name: Prepare Windows static update feed
         env:

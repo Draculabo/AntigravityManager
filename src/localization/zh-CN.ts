@@ -128,6 +128,16 @@ const zhCn = {
     openLogs: '打开日志目录',
   },
   update: {
+    'release-notes': {
+      view: '查看更新内容',
+      title: '更新说明',
+      loading: '正在加载更新说明...',
+      failed: '无法加载更新说明。你仍可下载或安装此更新。',
+      empty: '此版本未提供更新说明。',
+      history: '发布历史',
+      'release-page': '发布详情页',
+      'link-failed': '无法打开此链接，请重试。',
+    },
     title: '更新',
     checking: '正在检查...',
     checkNow: '检查更新',
