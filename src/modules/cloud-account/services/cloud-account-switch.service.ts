@@ -1,4 +1,8 @@
-import { prepareLaunchContext, prepareClientAccountWrite } from '@/modules/antigravity-runtime';
+import {
+  prepareLaunchContext,
+  prepareClientAccountWrite,
+  type ClientAccountStorage,
+} from '@/modules/antigravity-runtime';
 import { accountOwnerEvents } from './account-owner-events.service';
 import { isEmpty, isString } from 'lodash-es';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
@@ -31,8 +35,21 @@ import {
   markAccountStatusFromError,
   mergeRefreshedToken,
 } from './cloud-account-refresh-state.service';
-import { CloudAccountSwitchError } from './cloud-account-switch.error';
+import {
+  CloudAccountSwitchError,
+  readCloudAccountSwitchDiagnosticCode,
+} from './cloud-account-switch.error';
 import type { CloudAccountSwitchErrorCode } from './cloud-account-switch.schema';
+
+type SwitchStage =
+  | 'account-lookup'
+  | 'launch-preflight'
+  | 'identity-profile'
+  | 'token-refresh'
+  | 'enterprise-project'
+  | 'target-prepare'
+  | 'switch-execution'
+  | 'account-state-update';
 
 export interface CloudAccountSwitchOptions {
   presentationReason?: 'manual' | 'auto';
@@ -150,6 +167,9 @@ export async function switchCloudAccountCore(
     'cloud-account-switch',
     async () => {
       let failureCode: CloudAccountSwitchErrorCode = 'switch-failed';
+      let stage: SwitchStage = 'account-lookup';
+      let storage: ClientAccountStorage | null = null;
+      let failureReason: SwitchFailureReason = 'unknown';
       try {
         const account = await CloudAccountRepo.getAccount(accountId);
         if (!account) {
@@ -157,6 +177,7 @@ export async function switchCloudAccountCore(
         }
 
         logger.info(`Switching to cloud account: ${account.email} (${account.id})`);
+        stage = 'launch-preflight';
         const launchContext =
           appTarget === 'agy'
             ? undefined
@@ -168,6 +189,7 @@ export async function switchCloudAccountCore(
             appTarget: appTarget || 'classic',
           },
           async (trace) => {
+            stage = 'identity-profile';
             trace.phaseSync('deviceProfileSetupMs', () => {
               if (appTarget !== 'agy') {
                 ensureGlobalOriginalFromCurrentStorage(appTarget, launchContext?.pathOptions);
@@ -185,6 +207,7 @@ export async function switchCloudAccountCore(
               }
             });
 
+            stage = 'token-refresh';
             const tokenRefreshPromise = (async () => {
               const now = Math.floor(Date.now() / 1000);
               if (
@@ -222,17 +245,21 @@ export async function switchCloudAccountCore(
               await tokenRefreshPromise;
             });
 
+            stage = 'enterprise-project';
             await trace.phase('enterpriseProjectReadyMs', async () => {
               await ensureEnterpriseProjectReady(account);
             });
           },
         );
 
+        stage = 'target-prepare';
         const preparedWrite = await prepareClientAccountWrite(
           { email: account.email, name: account.name || account.email, token: account.token },
           appTarget,
           launchContext?.pathOptions,
         );
+        storage = preparedWrite.storage;
+        stage = 'switch-execution';
         await executeSwitchFlow({
           scope: 'cloud',
           appTarget,
@@ -243,9 +270,11 @@ export async function switchCloudAccountCore(
           launchContext,
           onFailure: (reason) => {
             failureCode = publicFailureCode(reason);
+            failureReason = reason;
           },
           performSwitch: preparedWrite.write,
           afterSwitchSuccess: async () => {
+            stage = 'account-state-update';
             CloudAccountRepo.updateLastUsed(account.id);
             CloudAccountRepo.setActive(account.id);
             CloudAccountSettingsStore.setActiveForTarget(appTarget, account.id);
@@ -266,7 +295,15 @@ export async function switchCloudAccountCore(
           },
         });
       } catch (error) {
-        logger.error('Failed to switch cloud account', { kind: failureCode });
+        const kind = error instanceof CloudAccountSwitchError ? error.switchCode : failureCode;
+        logger.error('Failed to switch cloud account', {
+          kind,
+          stage,
+          target: appTarget ?? 'classic',
+          storage,
+          reason: failureReason,
+          errorCode: readCloudAccountSwitchDiagnosticCode(error),
+        });
         throw error instanceof CloudAccountSwitchError
           ? error
           : new CloudAccountSwitchError(failureCode);

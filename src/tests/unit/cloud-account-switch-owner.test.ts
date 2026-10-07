@@ -18,6 +18,7 @@ const credentialWrite = vi.hoisted(() => vi.fn(async () => undefined));
 import { switchCloudAccountCore } from '@/modules/cloud-account/services/cloud-account-switch.service';
 import { accountOwnerEvents } from '@/modules/cloud-account/services/account-owner-events.service';
 import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
+import { logger } from '@/shared/logging/logger';
 
 const ownerState = vi.hoisted(() => ({
   activeId: null as string | null,
@@ -68,7 +69,13 @@ vi.mock('@/modules/cloud-account/persistence/cloud-account-settings-store', () =
     }),
   },
 }));
-vi.mock('@/modules/antigravity-runtime/credentials/clientAccountWrite', () => ({ prepareClientAccountWrite: vi.fn(async () => ({ storage: 'credential-store', write: credentialWrite })), resolveClientAccountStorage: vi.fn(async () => 'credential-store') }));
+vi.mock('@/modules/antigravity-runtime/credentials/clientAccountWrite', () => ({
+  prepareClientAccountWrite: vi.fn(async () => ({
+    storage: 'credential-store',
+    write: credentialWrite,
+  })),
+  resolveClientAccountStorage: vi.fn(async () => 'credential-store'),
+}));
 vi.mock('@/modules/cloud-account/persistence/cloud-account-device-binding-store', () => ({
   CloudAccountDeviceBindingStore: { setDeviceBinding: vi.fn() },
 }));
@@ -204,9 +211,7 @@ describe('core-owned cloud account switching', () => {
       'agy',
       account.id,
     );
-    expect(
-      credentialWrite,
-    ).toHaveBeenCalledExactlyOnceWith();
+    expect(credentialWrite).toHaveBeenCalledExactlyOnceWith();
     expect(await client.accountViews()).toMatchObject([
       { id: account.id, is_active: true, is_active_agy: true },
     ]);
@@ -238,14 +243,48 @@ describe('core-owned cloud account switching', () => {
       expect(JSON.stringify(error)).not.toMatch(/private-provider-detail|private-refresh-token/);
     }
     expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledExactlyOnceWith('Failed to switch cloud account', {
+      kind: 'reauth-required',
+      stage: 'token-refresh',
+      target: 'classic',
+      storage: null,
+      reason: 'unknown',
+      errorCode: 'unknown',
+    });
+  });
+  it('records a safe native write error code without changing the public error contract', async () => {
+    credentialWrite.mockRejectedValueOnce(
+      Object.assign(
+        new Error('private-provider access_token=fixture-access /Users/alice/private'),
+        { code: 'EACCES' },
+      ),
+    );
+    const client = await startOwner();
+    selectCloudAccountAdapter({ mode: 'standalone-core', client });
+    await expect(
+      createRouterClient(cloudRouter).switchCloudAccount({
+        accountId: account.id,
+        appTarget: 'agy',
+      }),
+    ).rejects.toMatchObject({
+      message: 'Cloud account switch failed',
+      data: { switchCode: 'target-write-failed' },
+    });
+    expect(logger.error).toHaveBeenCalledExactlyOnceWith('Failed to switch cloud account', {
+      kind: 'target-write-failed',
+      stage: 'switch-execution',
+      target: 'agy',
+      storage: 'credential-store',
+      reason: 'perform_switch_failed',
+      errorCode: 'EACCES',
+    });
+    expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
   });
   it('reports a failed remote switch without exposing its raw diagnostic text', async () => {
     const client = await startOwner();
     selectCloudAccountAdapter({ mode: 'standalone-core', client });
     const before = await client.accountSwitchStatus();
-    vi.mocked(
-      credentialWrite,
-    ).mockImplementationOnce(() => {
+    vi.mocked(credentialWrite).mockImplementationOnce(() => {
       throw new Error(
         'private-provider C:\\secret\\token.sqlite http://user:password@host process --credential',
       );

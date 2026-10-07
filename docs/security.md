@@ -60,6 +60,14 @@ Audit file export keeps body contents and destination paths outside renderer res
 
 Switch diagnostic transport exposes strict closed variants, finite counters/timestamps, a volatile owner-process epoch and bounded guard entries. Recent failure messages are replaced with fixed public text; raw instrumentation errors and unexpected hardening stages cannot cross this boundary. Remote diagnostic failure never substitutes Electron-local state.
 
+Cloud-account switch failure logs include the owner stage, target, resolved storage, flow failure
+reason and an allowlisted diagnostic error code. Arbitrary native/provider codes and causes are
+not included in that record. Public switch errors keep their fixed message and existing category.
+Sentry attaches recent logger entries as formatted strings so the SDK's default normalization
+depth preserves their text. These strings and the logger message redact common inline credential
+forms, encoded keyring payloads, email addresses and local user-directory names before capture;
+the account-load bug report uses the same text redactor.
+
 Local-import credential sessions remain in the selected owner. UUID capabilities carry no credential payload and are consumed once before persistence. Desktop capability affinity rejects sessions from a replaced adapter; core restart loses the old session namespace. Preview/result transport bounds every nested array, metadata string, count and timestamp, and rejects unknown fields. Owner shutdown clears reusable credential sessions and prevents late preview completion from reopening them. Remote failures return stable categories and cannot execute the embedded importer.
 
 Owner presentation hints contain only validated account IDs, closed event/target/language variants, bounded model IDs and finite credit values. They contain no account records, credentials, paths, provider diagnostics or arbitrary messages. A strict private read-only endpoint exposes bounded batches to Electron main; display metadata is separately resolved through strict account views. Unknown event variants fail closed. Presentation delivery is best effort, in memory only, and cannot change persisted owner results or trigger mutation retries.

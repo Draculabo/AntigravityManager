@@ -8,7 +8,10 @@ import {
 } from './shared/observability/openTelemetry';
 import { getQuickObservabilityConfig } from './shared/observability/observabilityConfig';
 import { filterCrashSafeSentryIntegrations } from './shared/observability/sentryIntegrations';
-import { redactSentryEventLocalPaths } from './shared/observability/sentryPrivacy';
+import {
+  redactDiagnosticText,
+  redactSentryEventLocalPaths,
+} from './shared/observability/sentryPrivacy';
 
 const quickConfig = getQuickObservabilityConfig(
   (message, error) => {
@@ -45,19 +48,16 @@ if (quickConfig.errorReportingEnabled) {
     Sentry.withScope((scope) => {
       scope.setTag('log_level', payload.level);
       scope.setContext('recent_logs', {
-        entries: payload.logs.map((entry) => ({
-          timestamp: new Date(entry.timestamp).toISOString(),
-          level: entry.level,
-          message: entry.message,
-          formatted: entry.formatted,
-        })),
+        // Objects inside this array exceed the SDK's default normalization depth.
+        entries: payload.logs.map((entry) => redactDiagnosticText(entry.formatted)),
       });
-      scope.setExtra('log_message', payload.message);
+      const message = redactDiagnosticText(payload.message);
+      scope.setExtra('log_message', message);
       if (payload.error) {
         Sentry.captureException(payload.error);
         return;
       }
-      Sentry.captureMessage(payload.message, 'error');
+      Sentry.captureMessage(message, 'error');
     });
   });
 } else {
