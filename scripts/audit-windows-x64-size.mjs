@@ -5,10 +5,12 @@ import { fileURLToPath } from 'url';
 const MIB = 1024 * 1024;
 
 export const DEFAULT_WINDOWS_X64_SIZE_BUDGETS = {
-  setupExeMiB: 150,
-  fullNupkgMiB: 150,
-  msiMiB: 150,
+  // Installers include the separately traced Node runtime as well as Electron.
+  setupExeMiB: 200,
+  fullNupkgMiB: 200,
+  msiMiB: 200,
   appAsarMiB: 120,
+  standaloneMiB: 120,
 };
 
 export function bytesToMiB(bytes) {
@@ -43,6 +45,10 @@ export function getWindowsX64SizeBudgetsFromEnv() {
     appAsarMiB: readBudgetFromEnv(
       'AGM_MAX_WIN32_X64_APP_ASAR_MB',
       DEFAULT_WINDOWS_X64_SIZE_BUDGETS.appAsarMiB,
+    ),
+    standaloneMiB: readBudgetFromEnv(
+      'AGM_MAX_WIN32_X64_STANDALONE_MB',
+      DEFAULT_WINDOWS_X64_SIZE_BUDGETS.standaloneMiB,
     ),
   };
 }
@@ -80,8 +86,9 @@ function findNewestMatchingFile(rootDir, predicate) {
   })[0];
 }
 
-function createArtifactRecord({ id, label, filePath, budgetMiB }) {
-  if (!filePath) {
+function createArtifactRecord({ id, label, filePath, budgetMiB, directory = false }) {
+  const artifactStat = filePath && existsSync(filePath) ? statSync(filePath) : null;
+  if (!artifactStat || (directory ? !artifactStat.isDirectory() : !artifactStat.isFile())) {
     return {
       id,
       label,
@@ -94,7 +101,9 @@ function createArtifactRecord({ id, label, filePath, budgetMiB }) {
     };
   }
 
-  const { size } = statSync(filePath);
+  const size = directory
+    ? listFilesRecursive(filePath).reduce((bytes, file) => bytes + statSync(file).size, 0)
+    : artifactStat.size;
   const sizeMiB = bytesToMiB(size);
   const ok = sizeMiB <= budgetMiB;
 
@@ -119,6 +128,7 @@ export function auditWindowsX64Sizes({
   const outDir = path.join(rootDir, 'out');
   const squirrelDir = path.join(outDir, 'make', 'squirrel.windows', 'x64');
   const wixDir = path.join(outDir, 'make', 'wix', 'x64');
+  const resourcesDir = path.join(outDir, 'Antigravity Manager-win32-x64', 'resources');
 
   const records = [
     createArtifactRecord({
@@ -147,13 +157,15 @@ export function auditWindowsX64Sizes({
     createArtifactRecord({
       id: 'appAsar',
       label: 'app.asar',
-      filePath: findNewestMatchingFile(
-        outDir,
-        (filePath) =>
-          filePath.endsWith(`${path.sep}resources${path.sep}app.asar`) &&
-          filePath.includes('-win32-x64'),
-      ),
+      filePath: path.join(resourcesDir, 'app.asar'),
       budgetMiB: budgets.appAsarMiB,
+    }),
+    createArtifactRecord({
+      id: 'standalone',
+      label: 'Standalone runtime',
+      filePath: path.join(resourcesDir, 'standalone'),
+      budgetMiB: budgets.standaloneMiB,
+      directory: true,
     }),
   ];
 
