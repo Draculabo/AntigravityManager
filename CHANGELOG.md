@@ -2,6 +2,29 @@
 
 # Changelog
 
+## [0.23.0](https://github.com/Draculabo/AntigravityManager/compare/v0.22.0...v0.23.0) (2026-10-07)
+
+### ✨ Features
+
+* **accounts:** add quota display controls and proxy account continuity ([e87d109](https://github.com/Draculabo/AntigravityManager/commit/e87d10933f712c7920f003cc3f5330c719740d19))
+* **cloud-account:** copy diagnostics when reporting account load errors ([f50096d](https://github.com/Draculabo/AntigravityManager/commit/f50096d7945c8e2742d1db4ddbdfb01207cf17d2))
+* **headless:** add standalone core and CLI with desktop integration ([8e0044e](https://github.com/Draculabo/AntigravityManager/commit/8e0044e405b2e640e52a2211f586105df0ee17a5))
+* **renderer:** add scoped account selection and query subscriptions ([8b8259a](https://github.com/Draculabo/AntigravityManager/commit/8b8259a73595a36ae4c2c5b47a1d696b36b2e22a))
+* **ui:** refine desktop layouts, dialogs and feedback ([96341da](https://github.com/Draculabo/AntigravityManager/commit/96341da6580fad6371ae1202dc742080009cdf55))
+
+### 🐛 Bug Fixes
+
+* **build:** account for standalone runtime in Windows size audit ([498eca8](https://github.com/Draculabo/AntigravityManager/commit/498eca8107636348a1cf33f78049137bd29d13e8))
+* **build:** make Windows runtime preparation and Forge packaging reliable ([91cf8e0](https://github.com/Draculabo/AntigravityManager/commit/91cf8e0183031e6349bf1921b883b7d858db5137))
+* **proxy:** preserve explicit quota resets and resolve automatic Flash routes ([036bb43](https://github.com/Draculabo/AntigravityManager/commit/036bb4394c219edeaf8d8af607d3505da87b15f0))
+* **proxy:** scope 64 MiB Fastify JSON body limit to model payload routes ([#335](https://github.com/Draculabo/AntigravityManager/issues/335)) ([54f1ca7](https://github.com/Draculabo/AntigravityManager/commit/54f1ca7a82a78197fa97624b61a526bc61b55b9d)), closes [#333](https://github.com/Draculabo/AntigravityManager/issues/333)
+* **runtime:** prevent client update locks and confirm sustained startup ([1482b53](https://github.com/Draculabo/AntigravityManager/commit/1482b5354ad89c7691aecb3955d2aee1bf31967f))
+
+### ✅ Tests
+
+* **proxy:** cover scoped payload limits and observability endpoints ([b0e1928](https://github.com/Draculabo/AntigravityManager/commit/b0e19280c308e70407eba6b89db9a408790d115d))
+* **renderer:** add Electron interaction and render isolation coverage ([d4cae1d](https://github.com/Draculabo/AntigravityManager/commit/d4cae1daff4d90a9489b4b09b4c92129cad5d78d))
+
 ## [0.22.0](https://github.com/Draculabo/AntigravityManager/compare/v0.21.2...v0.22.0) (2026-10-03)
 
 ### ✨ Features
