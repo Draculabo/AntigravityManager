@@ -18,6 +18,12 @@ shutdown coordinator drains owner work before either updater takes over. MSI and
 retain the manual release route. Forge packages the application once; electron-builder wraps that
 package as an NSIS installer without changing the application payload.
 
+The publisher installs project dependencies from the root lockfile in its own runner job before
+running update-feed checks or writing release assets. Installation includes development dependencies
+for the acceptance tools and disables lifecycle scripts because the publisher consumes prebuilt
+installers. The dispatcher declares its existing `cross-spawn` dependency explicitly instead of
+depending on another development tool to install it transitively.
+
 ## Alternatives considered
 
 - Replacing Squirrel with `electron-updater` was rejected because that library cannot update
@@ -40,3 +46,11 @@ The package-selection and feed-generation tests cover format routing, release UR
 SHA-512/size matching. A packaged and installed A-to-B run is required to establish actual
 download, restart and profile retention; other operating systems and architectures need their
 own installed acceptance evidence.
+
+The publish-job regression checks that locked JavaScript installation precedes feed validation,
+feed preparation and release writes. On 2026-10-07, a clean Ubuntu fixture reproduces the missing
+`commander` failure. The workflow installation command then installs 2,156 packages and all three
+feed checks pass under Node 25.2.1, including with `NODE_ENV=production`. Dependencies resolve
+inside the fixture, Electron's downloaded binary and rebuilt SQLite binary remain absent, and
+the temporary checkout is removed. GitHub's Node 22 publisher still requires a new workflow run
+after the fix lands; rerunning an old run retains that run's original workflow definition.

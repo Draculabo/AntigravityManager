@@ -11,6 +11,26 @@ import { prepareWindowsUpdateFeed } from '../../prepare-windows-update-feed.mjs'
 const releaseTag = 'v0.21.1';
 const repository = 'Draculabo/AntigravityManager';
 
+test('publish installs locked JavaScript dependencies before feed checks and release writes', () => {
+  const workflow = YAML.parse(
+    readFileSync(new URL('../../../.github/workflows/publish.yaml', import.meta.url), 'utf8'),
+  );
+  const steps = workflow.jobs.publish.steps;
+  const installation = steps.findIndex((step) => /^npm ci\b/.test(step.run?.trim() ?? ''));
+  assert(installation >= 0, 'Publish must install project dependencies in its own job');
+  assert.match(steps[installation].run, /--include=dev\b/);
+  assert.match(steps[installation].run, /--ignore-scripts\b/);
+  for (const command of [
+    'npm run test:acceptance -- installers feed',
+    'node scripts/prepare-windows-update-feed.mjs',
+    'gh release create',
+    'gh release upload',
+  ]) {
+    const consumer = steps.findIndex((step) => step.run?.includes(command));
+    assert(consumer > installation, `${command} must follow dependency installation`);
+  }
+});
+
 function makeFixture(root, corruptArch) {
   const sourceDir = path.join(root, 'source');
   for (const arch of ['x64', 'arm64']) {
