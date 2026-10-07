@@ -49,6 +49,9 @@ describe('Forge package ignore policy', () => {
   });
 
   it('blocks workspace-only folders from entering app.asar', () => {
+    expect(shouldIgnorePackagePath('/node_modules/.vite/deps/chunk.js')).toBe(true);
+    expect(shouldIgnorePackagePath('node_modules\\.vite\\deps\\chunk.js')).toBe(true);
+    expect(shouldIgnorePackagePath('/node_modules/.cache/build/index.js')).toBe(true);
     expect(shouldIgnorePackagePath('/dist/.runtime/win32-x64/standalone/node/node.exe')).toBe(true);
     expect(shouldIgnorePackagePath('/.codex/skills/example/SKILL.md')).toBe(true);
     expect(shouldIgnorePackagePath('/.agents/skills/example/SKILL.md')).toBe(true);
