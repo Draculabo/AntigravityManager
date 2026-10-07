@@ -414,6 +414,35 @@ relaunch may drop the temporary user-data argument.
 Check a missing feed, an interrupted download and a tampered installer separately. Packaging
 and feed tests alone do not establish installed updater behavior or cross-architecture acceptance.
 
+For release-note changes, run the focused `src/tests/unit/release-notes-*.test.ts` tests and
+`npm run type-check`. They cover publication-text serialization, exact-tag fallback and response
+validation, IPC target/link validation, Markdown/image behavior, download-time inspection, empty
+and retry states, dialog version identity and cancellation of late responses. The existing manual
+update and external-URL policy tests cover surrounding behavior. These tests do not prove a live
+GitHub publication, native browser launch, or installed updater acceptance.
+
+Run `npm run preview:release-notes` for an isolated Electron window using the production update
+notice, dialog, renderer IPC client and preload. Its controls select complete Markdown, empty
+content, one failure followed by retry, a delayed response, and available/downloading/downloaded
+notifications. Download and install actions are simulated; the fixture does not load accounts,
+start the gateway or install updates. Toggle its theme and resize the window to inspect scrolling
+and footer actions. Close the window to stop its local renderer server.
+
+`npm run preview:release-notes -- --live --tag v0.23.0` uses the production resolver against that
+published GitHub tag, including metadata validation and exact-tag fallback. Specify another
+published tag when needed. The interface defaults to Chinese; `--language en` selects English.
+If a shell wrapper drops npm's forwarded arguments, run
+`node scripts/preview-release-notes.mjs --live --tag v0.23.0` directly. The terminal reports the
+selected mode and tag, then confirms when the visible window is ready. It remains running until
+that window closes.
+
+`npm run test:performance -- release-notes.spec.mts` runs the repeatable isolated Electron checks
+through production preload and real MessagePort IPC, including native request cancellation,
+scrolling, themes, empty content and retry. Set `AGM_RELEASE_NOTES_LIVE_TAG` to a published tag
+to include the opt-in live resolver check. Screenshots are written under
+`test-results/playwright-performance`. This evidence does not establish installed updater behavior
+or GitHub Actions publication of new assets.
+
 ## Proxy-gateway coverage
 
 The proxy gateway exposes several compatibility surfaces. Select tests by protocol and behavior rather than running every proxy test automatically:

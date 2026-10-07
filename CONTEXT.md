@@ -48,6 +48,14 @@ _Avoid_: sync from IDE, account backup
 The local identity payload used to make an Antigravity app target present a stable machine identity.
 _Avoid_: machine info, fingerprint
 
+**Target Release**:
+The newer Antigravity Manager release offered to the user for an update. It identifies the version whose release notes apply to that update.
+_Avoid_: latest version when referring to an already selected update
+
+**Release Notes**:
+The complete published change description for one Antigravity Manager release, retained in its original language. Release notes cover that release alone rather than all changes since the user's installed version.
+_Avoid_: release history, upgrade summary, cumulative changelog
+
 ## Flagged Ambiguities
 
 **Account** currently means both local account snapshots and cloud accounts. Use **Cloud Account** for OAuth-backed accounts and **Antigravity App Target** when referring to the local installation being switched.

@@ -147,6 +147,17 @@ const fr = {
     openLogs: 'Ouvrir le dossier des journaux',
   },
   update: {
+    'release-notes': {
+      view: 'Voir les nouveautés',
+      title: 'Nouveautés de cette version',
+      loading: 'Chargement des notes de version…',
+      failed:
+        'Impossible de charger les notes de version. Réessayez ou ouvrez la page de la version.',
+      empty: 'Aucune note n’a été publiée pour cette version.',
+      history: 'Historique des versions',
+      'release-page': 'Page de la version',
+      'link-failed': 'Impossible d’ouvrir ce lien. Réessayez.',
+    },
     title: 'Mises a jour',
     checking: 'Verification...',
     checkNow: 'Rechercher des mises a jour',
