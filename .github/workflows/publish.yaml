@@ -190,6 +190,12 @@ jobs:
           node-version: 22
           cache: 'npm'
 
+      - name: Install publish dependencies
+        run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
+
+      - name: Test Windows update feed generation
+        run: npm run test:acceptance -- installers feed
+
       - name: Resolve release tag
         id: release_tag
         env:
@@ -300,9 +306,6 @@ jobs:
             "url": "https://github.com/Draculabo/AntigravityManager/releases/tag/${RELEASE_TAG}"
           }
           EOF
-
-      - name: Test Windows update feed generation
-        run: npm run test:acceptance -- installers feed
 
       - name: Prepare Windows static update feed
         env:
