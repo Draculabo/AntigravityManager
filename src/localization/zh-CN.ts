@@ -518,6 +518,10 @@ const zhCn = {
       description: '为发往 Google/Gemini API 的请求配置代理。',
       enable: '启用上游代理',
       url: '代理地址',
+      'configure-before-enabling':
+        '请先保存有效的 HTTP(S) 代理地址，再启用代理。清空地址也会关闭代理。',
+      'configuration-invalid': '上游代理已启用，但地址无效。请保存有效地址，或关闭代理。',
+      'url-invalid': '请输入有效的 HTTP 或 HTTPS 代理地址。',
       timeout: '请求超时 (秒)',
     },
     modelMapping: {
@@ -922,6 +926,8 @@ const zhCn = {
           'duplicate-account': '此 Google 账号已添加。',
           'browser-open-failed': '无法打开浏览器，请检查默认浏览器后重试。',
           'login-failed': '无法添加账号，请重试。',
+          'proxy-configuration-invalid':
+            '请在设置中保存有效的上游代理地址，或关闭上游代理，然后重新登录。',
         },
       },
       quotaRefreshed: '配额已刷新',

@@ -6,6 +6,7 @@ import {
   enrollGoogleAccount,
 } from './google-account-enrollment.service';
 import { logger } from '@/shared/logging/logger';
+import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 
 const LOOPBACK_HOST = '127.0.0.1';
 const SESSION_TIMEOUT_MS = 5 * 60_000;
@@ -213,14 +214,18 @@ export class HeadlessOAuthSessionService {
       this.remember(session);
       this.clearTimer(session);
     } catch (error) {
-      logger.error('Headless OAuth account enrollment failed', {
-        kind: error instanceof DuplicateGoogleAccountError ? 'duplicate' : 'enrollment',
-      });
+      if (!(error instanceof UpstreamProxyConfigurationError)) {
+        logger.error('Headless OAuth account enrollment failed', {
+          kind: error instanceof DuplicateGoogleAccountError ? 'duplicate' : 'enrollment',
+        });
+      }
       this.fail(
         session,
         error instanceof DuplicateGoogleAccountError
           ? 'Google account already exists'
-          : 'Google account enrollment failed',
+          : error instanceof UpstreamProxyConfigurationError
+            ? error.message
+            : 'Google account enrollment failed',
       );
     }
   }

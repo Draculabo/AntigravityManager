@@ -17,6 +17,11 @@ import { getNestServerStatus } from '@/server/main';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import { logger } from '@/shared/logging/logger';
+import {
+  assertValidUpstreamProxyConfig,
+  UpstreamProxyConfigurationError,
+  UpstreamProxyUrlSchema,
+} from './upstream-proxy.schema';
 
 export interface ServiceConfigOperations {
   read(): Promise<ServiceConfigSnapshot>;
@@ -41,7 +46,7 @@ export function projectServiceConfig(config: AppConfig): ServiceConfigSnapshot {
       ...proxy,
       upstream_proxy: { enabled: upstream_proxy.enabled },
       api_key_configured: Boolean(api_key),
-      upstream_proxy_configured: Boolean(upstream_proxy.url),
+      upstream_proxy_configured: UpstreamProxyUrlSchema.safeParse(upstream_proxy.url).success,
     },
   });
 }
@@ -124,28 +129,37 @@ export function createServiceConfigService(
     read: async () => projectServiceConfig(dependencies.load()),
     update: (input) => {
       const patch = ServiceConfigUpdateSchema.parse(input);
-      return mutate((previous) => ({
-        ...previous,
-        ...patch,
-        proxy: {
-          ...previous.proxy,
-          ...patch.proxy,
-          upstream_proxy: { ...previous.proxy.upstream_proxy, ...patch.proxy?.upstream_proxy },
-        },
-      }));
+      return mutate((previous) => {
+        const upstreamProxy = { ...previous.proxy.upstream_proxy, ...patch.proxy?.upstream_proxy };
+        if (patch.proxy?.upstream_proxy) {
+          assertValidUpstreamProxyConfig(upstreamProxy);
+        }
+        return {
+          ...previous,
+          ...patch,
+          proxy: { ...previous.proxy, ...patch.proxy, upstream_proxy: upstreamProxy },
+        };
+      });
     },
     writeSecret: (input) => {
       const secret = ServiceSecretWriteSchema.parse(input);
-      return mutate((previous) => ({
-        ...previous,
-        proxy:
-          secret.name === 'api-key'
-            ? { ...previous.proxy, api_key: secret.value ?? '' }
-            : {
-                ...previous.proxy,
-                upstream_proxy: { ...previous.proxy.upstream_proxy, url: secret.value ?? '' },
-              },
-      }));
+      return mutate((previous) => {
+        if (secret.name === 'api-key') {
+          return { ...previous, proxy: { ...previous.proxy, api_key: secret.value ?? '' } };
+        }
+        const url = secret.value?.trim() ?? '';
+        if (url && !UpstreamProxyUrlSchema.safeParse(url).success) {
+          throw new UpstreamProxyConfigurationError();
+        }
+        return {
+          ...previous,
+          proxy: {
+            ...previous.proxy,
+            // Clearing the address and disabling its use are one queued, atomic write.
+            upstream_proxy: { enabled: url ? previous.proxy.upstream_proxy.enabled : false, url },
+          },
+        };
+      });
     },
     revealSecret: async (name) => {
       const config = dependencies.load();

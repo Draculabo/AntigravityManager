@@ -558,6 +558,11 @@ const en = {
       description: 'Configure a proxy for outgoing requests to Google/Gemini APIs.',
       enable: 'Enable Upstream Proxy',
       url: 'Proxy URL',
+      'configure-before-enabling':
+        'Save a valid HTTP(S) proxy URL before enabling. Clearing the URL also disables the proxy.',
+      'configuration-invalid':
+        'The enabled upstream proxy has no valid URL. Save a valid address or disable the proxy.',
+      'url-invalid': 'Enter a valid HTTP or HTTPS proxy URL.',
       timeout: 'Request Timeout (Seconds)',
     },
     modelMapping: {
@@ -980,6 +985,8 @@ const en = {
           'browser-open-failed':
             'Could not open the browser. Check your default browser and retry.',
           'login-failed': 'Could not add the account. Please retry.',
+          'proxy-configuration-invalid':
+            'Save a valid upstream proxy address or disable the upstream proxy in Settings, then try signing in again.',
         },
       },
       quotaRefreshed: 'Quota refreshed',

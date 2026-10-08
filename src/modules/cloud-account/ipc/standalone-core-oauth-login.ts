@@ -128,7 +128,9 @@ export class StandaloneCoreOAuthLogin {
           ? 'login-cancelled'
           : error instanceof OAuthManagementError && error.code === 'LOGIN_ACTIVE'
             ? 'login-active'
-            : 'login-failed',
+            : error instanceof OAuthManagementError && error.code === 'PROXY_CONFIGURATION_INVALID'
+              ? 'proxy-configuration-invalid'
+              : 'login-failed',
       );
     } finally {
       this.sessionId = null;

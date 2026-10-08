@@ -4,6 +4,16 @@ import type { CloudAccountAlertPolicy } from '@/modules/cloud-account/services/c
 
 export const SERVICE_CONFIG_MAX_BYTES = 128 * 1024;
 export const ServiceConfigErrorCodeSchema = z.enum(['unavailable', 'invalid-input']);
+const ServiceConfigErrorDataSchema = z.strictObject({ configCode: ServiceConfigErrorCodeSchema });
+
+export function readServiceConfigErrorCode(error: unknown) {
+  if (typeof error !== 'object' || error === null || !('data' in error)) {
+    return null;
+  }
+  const result = ServiceConfigErrorDataSchema.safeParse(error.data);
+  return result.success ? result.data.configCode : null;
+}
+
 const text = z.string().max(4096);
 const model = z.string().max(256);
 const mapping = z.record(model, model).refine((value) => Object.keys(value).length <= 256);

@@ -399,6 +399,11 @@ const tr = {
       description: "Google/Gemini API'lerine giden istekler için bir proxy yapılandırın.",
       enable: "Üst Akış Proxy'sini Etkinleştir",
       url: "Proxy URL'si",
+      'configure-before-enabling':
+        'Etkinleştirmeden önce geçerli bir HTTP(S) proxy adresi kaydedin. Adresi temizlemek proxy’yi de kapatır.',
+      'configuration-invalid':
+        'Proxy etkin ancak adresi geçersiz. Geçerli bir adres kaydedin veya proxy’yi kapatın.',
+      'url-invalid': 'Geçerli bir HTTP veya HTTPS proxy adresi girin.',
       timeout: 'İstek Zaman Aşımı (Saniye)',
     },
     modelMapping: {
@@ -730,6 +735,8 @@ const tr = {
           'duplicate-account': 'Bu Google hesabı zaten ekli.',
           'browser-open-failed': 'Tarayıcı açılamadı. Varsayılan tarayıcınızı kontrol edin.',
           'login-failed': 'Hesap eklenemedi. Tekrar deneyin.',
+          'proxy-configuration-invalid':
+            'Ayarlarda geçerli bir proxy adresi kaydedin veya proxy’yi kapatın, ardından tekrar giriş yapın.',
         },
       },
       quotaRefreshed: 'Kota yenilendi',

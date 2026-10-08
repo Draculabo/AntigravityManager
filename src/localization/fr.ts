@@ -488,6 +488,11 @@ const fr = {
       description: 'Configurez un proxy pour les requetes sortantes vers les API Google/Gemini.',
       enable: 'Activer le proxy amont',
       url: 'URL du proxy',
+      'configure-before-enabling':
+        'Enregistrez une URL de proxy HTTP(S) valide avant de l’activer. Effacer l’URL désactive aussi le proxy.',
+      'configuration-invalid':
+        'Le proxy activé n’a pas d’URL valide. Enregistrez une adresse valide ou désactivez le proxy.',
+      'url-invalid': 'Saisissez une URL de proxy HTTP ou HTTPS valide.',
       timeout: 'Delai de requete (secondes)',
     },
     modelMapping: {
@@ -899,6 +904,8 @@ const fr = {
           'browser-open-failed':
             'Impossible d ouvrir le navigateur. Verifiez le navigateur par defaut.',
           'login-failed': 'Impossible d ajouter le compte. Reessayez.',
+          'proxy-configuration-invalid':
+            'Enregistrez une adresse de proxy valide ou désactivez le proxy dans les paramètres, puis réessayez de vous connecter.',
         },
       },
       quotaRefreshed: 'Quota actualise',

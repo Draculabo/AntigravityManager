@@ -19,6 +19,7 @@ export const DesktopOAuthLoginErrorCodeSchema = z.enum([
   'login-timeout',
   'duplicate-account',
   'browser-open-failed',
+  'proxy-configuration-invalid',
   'login-failed',
 ]);
 

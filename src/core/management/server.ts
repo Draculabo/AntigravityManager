@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 import { randomUUID } from 'node:crypto';
 import {
   CORE_OWNER_COMPATIBILITY,
@@ -126,6 +127,15 @@ export class ManagementServer {
           };
           return reply.send(response);
         } catch (error) {
+          if (error instanceof UpstreamProxyConfigurationError) {
+            const response: OAuthErrorResponse = {
+              version: MANAGEMENT_PROTOCOL_VERSION,
+              ok: false,
+              code: 'PROXY_CONFIGURATION_INVALID',
+              message: error.message,
+            };
+            return reply.code(400).send(response);
+          }
           const response: OAuthErrorResponse = {
             version: MANAGEMENT_PROTOCOL_VERSION,
             ok: false,

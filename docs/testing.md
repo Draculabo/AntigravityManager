@@ -168,6 +168,19 @@ Run `preload-traffic-events.test.ts`, `preload-sandbox.test.ts`, and
 
 ## Focused commands
 
+For upstream proxy configuration, run `upstream-proxy-config.test.ts`,
+`upstream-proxy-settings.test.ts`, `service-config.test.ts`, `desktop-oauth-login.test.ts`
+and `standalone-core-oauth-login.test.ts`. They cover saved-address validation, atomic clearing,
+concurrent updates, UI recovery and OAuth rejection before browser launch. Use a 15-second test
+timeout for the private management endpoint tests.
+
+`upstream-proxy-http.test.ts` uses real loopback sockets to verify explicit HTTP proxy routing.
+For an optional live connectivity check, set `AGM_LIVE_UPSTREAM_PROXY_URL` to a running HTTP(S)
+proxy address before running that file, and restore the environment variable afterwards. The
+live case sends only a synthetic invalid token and expects Google's 401 response; it does not
+perform authorization, save accounts or establish successful token exchange. A TUN connection
+alone does not prove the explicit proxy path; the loopback test checks that path separately.
+
 `cloud-account-plaintext-persistence.test.ts` exercises real SQLite account deletion, current-account
 reference cleanup at startup, repeat deletion, unrelated-setting preservation and transaction rollback
 using disposable databases. Run it with `cloud-account-settings-store.test.ts`,

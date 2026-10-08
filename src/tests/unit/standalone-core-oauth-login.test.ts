@@ -10,6 +10,8 @@ import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIServ
 import { HeadlessOAuthSessionService } from '@/modules/cloud-account/services/headless-oauth-session.service';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { ConfigManager } from '@/modules/config/ipc/manager';
+import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 
@@ -54,6 +56,40 @@ afterEach(async () => {
 });
 
 describe('remote desktop OAuth login', () => {
+  it('returns a configuration error through a real private endpoint before opening the browser', async () => {
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue({
+      ...DEFAULT_APP_CONFIG,
+      proxy: { ...DEFAULT_APP_CONFIG.proxy, upstream_proxy: { enabled: true, url: '' } },
+    });
+    const enroll = vi.fn();
+    const session = new HeadlessOAuthSessionService(enroll);
+    sessions.push(session);
+    const socketPath = await endpoint();
+    const server = new ManagementServer({
+      endpoint: socketPath,
+      getStatus: () => ({ state: 'running', pid: 123, gateway: { running: false, port: null } }),
+      shutdown: async () => {},
+      onShutdownError: vi.fn(),
+      oauth: session,
+    });
+    closeables.push(server);
+    await server.start();
+    const management = new ManagementClient(socketPath);
+    await expect(management.startOAuth()).rejects.toMatchObject({
+      code: 'PROXY_CONFIGURATION_INVALID',
+    });
+    const openExternal = vi.fn();
+    const login = new StandaloneCoreOAuthLogin({
+      management,
+      setPreference: vi.fn(),
+      accountViews: vi.fn(),
+      openExternal,
+    });
+    await expect(login.start()).rejects.toMatchObject({ loginCode: 'proxy-configuration-invalid' });
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(enroll).not.toHaveBeenCalled();
+  });
+
   it('forwards a pasted code to the core owner and returns the account view', async () => {
     vi.spyOn(GoogleAPIService, 'getActiveOAuthClientKey').mockReturnValue('client-a');
     vi.spyOn(GoogleAPIService, 'getAuthUrl').mockImplementation((_key, session) => {

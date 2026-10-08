@@ -1,4 +1,5 @@
 import { shell } from 'electron';
+import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 import { setTimeout as delay } from 'node:timers/promises';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import {
@@ -74,7 +75,9 @@ export class DesktopOAuthLogin {
           ? 'login-cancelled'
           : error instanceof OAuthLoginActiveError
             ? 'login-active'
-            : 'login-failed',
+            : error instanceof UpstreamProxyConfigurationError
+              ? 'proxy-configuration-invalid'
+              : 'login-failed',
       );
     }
 
