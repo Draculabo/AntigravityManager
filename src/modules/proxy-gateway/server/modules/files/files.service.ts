@@ -1,6 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
-import { forEach } from 'lodash-es';
+import { Inject, Injectable } from '@nestjs/common';
 
 import { FileContentStore } from './file-content-store.service';
 import {
@@ -9,16 +7,6 @@ import {
   type PutFileInput,
   type StoredFileRecord,
 } from './file-store.types';
-
-export interface FilesErrorResponse {
-  statusCode: number;
-  body: unknown;
-}
-
-interface FilesReply<TBody> {
-  body: TBody;
-  headers?: Record<string, string>;
-}
 
 export interface FilesPage {
   files: StoredFileRecord[];
@@ -73,26 +61,5 @@ export class FilesService {
       throw FileStoreError.notFound(value);
     }
     return handle;
-  }
-}
-
-/** Applies one Files operation to a Fastify reply without owning protocol envelopes. */
-export async function sendFilesResponse<TBody>(
-  res: FastifyReply,
-  operation: () => Promise<FilesReply<TBody>>,
-  toErrorResponse: (error: unknown) => FilesErrorResponse,
-  normalizeError?: (error: unknown) => unknown,
-): Promise<void> {
-  try {
-    const response = await operation();
-    if (response.headers) {
-      forEach(response.headers, (value, name) => {
-        res.header(name, value);
-      });
-    }
-    res.status(HttpStatus.OK).send(response.body);
-  } catch (error) {
-    const response = toErrorResponse(normalizeError ? normalizeError(error) : error);
-    res.status(response.statusCode).send(response.body);
   }
 }

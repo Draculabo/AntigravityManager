@@ -1,3 +1,5 @@
+import { createBatchHttpApp, batchTestHeaders } from '../helpers/batch-http-app';
+import type { LightMyRequestResponse } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,25 +9,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
 import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
-import { OpenAIBatchesController } from '@/modules/proxy-gateway/server/modules/batch/openai-batches.controller';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
 import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import { OPENAI_FILE_ID_PREFIX } from '@/modules/proxy-gateway/server/modules/files/openai-file-resource';
 
-function createReplyMock() {
-  const reply: Record<string, unknown> = {};
-  reply.status = vi.fn(() => reply);
-  reply.header = vi.fn(() => reply);
-  reply.send = vi.fn(() => reply);
-  return reply;
+function sent(reply: LightMyRequestResponse): any {
+  return reply.json();
 }
 
-function sent(reply: Record<string, unknown>): any {
-  return (reply.send as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-}
-
-function statusOf(reply: Record<string, unknown>): unknown {
-  return (reply.status as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+function statusOf(reply: LightMyRequestResponse): number {
+  return reply.statusCode;
 }
 
 function createTarget(handler: (request: unknown) => Promise<unknown>) {
@@ -50,14 +43,14 @@ function createFileStore(): FileContentStore {
   return new FileContentStore({ rootDirectory, sweepIntervalMs: 0 });
 }
 
-function createController(
+async function createController(
   target: ReturnType<typeof createTarget>,
   files?: FileContentStore,
   maxConcurrency = 2,
 ) {
   const runner = new BatchRunnerService({ maxConcurrency });
   runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
-  const controller = new OpenAIBatchesController(
+  const controller = await createBatchHttpApp(
     new BatchService(runner, files ? new FilesService(files) : undefined),
   );
   return { controller, runner };
@@ -87,7 +80,7 @@ describe('OpenAIBatchesController', () => {
         },
       ],
     }));
-    const { controller, runner } = createController(target, files);
+    const { controller, runner } = await createController(target, files);
 
     const inputFileId = await uploadJsonl(files, [
       {
@@ -98,15 +91,16 @@ describe('OpenAIBatchesController', () => {
       },
     ]);
 
-    const reply = createReplyMock();
-    await controller.create(
-      {
+    const reply = await controller.inject({
+      method: 'POST',
+      url: '/v1/batches',
+      headers: batchTestHeaders,
+      payload: {
         endpoint: '/v1/chat/completions',
         completion_window: '24h',
         input_file_id: inputFileId,
       },
-      reply as never,
-    );
+    });
 
     expect(statusOf(reply)).toBe(200);
     const batch = sent(reply);
@@ -131,17 +125,18 @@ describe('OpenAIBatchesController', () => {
   it('rejects a request whose input_file_id was never issued by this proxy', async () => {
     const files = createFileStore();
     const target = createTarget(async () => ({ id: 'unused' }));
-    const { controller } = createController(target, files);
+    const { controller } = await createController(target, files);
 
-    const reply = createReplyMock();
-    await controller.create(
-      {
+    const reply = await controller.inject({
+      method: 'POST',
+      url: '/v1/batches',
+      headers: batchTestHeaders,
+      payload: {
         endpoint: '/v1/chat/completions',
         completion_window: '24h',
         input_file_id: `file-${'0'.repeat(30)}ff`,
       },
-      reply as never,
-    );
+    });
 
     expect(statusOf(reply)).toBe(404);
     expect(sent(reply)).toMatchObject({ error: { type: 'invalid_request_error' } });
@@ -156,7 +151,7 @@ describe('OpenAIBatchesController', () => {
       }
       return { id: 'chatcmpl-ok', choices: [{ message: { content: 'fine' } }] };
     });
-    const { controller, runner } = createController(target, files, 2);
+    const { controller, runner } = await createController(target, files, 2);
 
     const inputFileId = await uploadJsonl(files, [
       {
@@ -176,11 +171,16 @@ describe('OpenAIBatchesController', () => {
       },
     ]);
 
-    const createReply = createReplyMock();
-    await controller.create(
-      { endpoint: '/v1/chat/completions', completion_window: '24h', input_file_id: inputFileId },
-      createReply as never,
-    );
+    const createReply = await controller.inject({
+      method: 'POST',
+      url: '/v1/batches',
+      headers: batchTestHeaders,
+      payload: {
+        endpoint: '/v1/chat/completions',
+        completion_window: '24h',
+        input_file_id: inputFileId,
+      },
+    });
     const created = sent(createReply);
     await runner.drain();
 
@@ -192,8 +192,11 @@ describe('OpenAIBatchesController', () => {
       'succeeded',
     ]);
 
-    const getReply = createReplyMock();
-    controller.get(created.id, getReply as never);
+    const getReply = await controller.inject({
+      method: 'GET',
+      url: `/v1/batches/${encodeURIComponent(created.id)}`,
+      headers: batchTestHeaders,
+    });
     const batch = sent(getReply);
     expect(batch.request_counts).toEqual({ total: 3, completed: 2, failed: 1 });
     expect(batch.output_file_id).toEqual(expect.stringMatching(/^file-/u));
@@ -216,18 +219,23 @@ describe('OpenAIBatchesController', () => {
       await gate;
       return { id: 'chatcmpl-late', choices: [{ message: { content: 'too late' } }] };
     });
-    const { controller, runner } = createController(target, files, 1);
+    const { controller, runner } = await createController(target, files, 1);
 
     const inputFileId = await uploadJsonl(files, [
       { custom_id: 'a', url: '/v1/chat/completions', body: { model: 'gpt-4o', messages: [] } },
       { custom_id: 'b', url: '/v1/chat/completions', body: { model: 'gpt-4o', messages: [] } },
     ]);
 
-    const createReply = createReplyMock();
-    await controller.create(
-      { endpoint: '/v1/chat/completions', completion_window: '24h', input_file_id: inputFileId },
-      createReply as never,
-    );
+    const createReply = await controller.inject({
+      method: 'POST',
+      url: '/v1/batches',
+      headers: batchTestHeaders,
+      payload: {
+        endpoint: '/v1/chat/completions',
+        completion_window: '24h',
+        input_file_id: inputFileId,
+      },
+    });
     const created = sent(createReply);
 
     for (
@@ -238,15 +246,21 @@ describe('OpenAIBatchesController', () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
 
-    const cancelReply = createReplyMock();
-    controller.cancel(created.id, cancelReply as never);
+    const cancelReply = await controller.inject({
+      method: 'POST',
+      url: `/v1/batches/${encodeURIComponent(created.id)}/cancel`,
+      headers: batchTestHeaders,
+    });
     expect(sent(cancelReply).status).toBe('cancelling');
 
     release?.();
     await runner.drain();
 
-    const getReply = createReplyMock();
-    controller.get(created.id, getReply as never);
+    const getReply = await controller.inject({
+      method: 'GET',
+      url: `/v1/batches/${encodeURIComponent(created.id)}`,
+      headers: batchTestHeaders,
+    });
     const batch = sent(getReply);
     expect(batch.status).toBe('cancelled');
     expect(batch.request_counts.total).toBe(2);
@@ -255,10 +269,13 @@ describe('OpenAIBatchesController', () => {
   it('answers an unknown batch id with a 404 in the OpenAI error envelope, not an empty success', async () => {
     const files = createFileStore();
     const target = createTarget(async () => ({ id: 'unused' }));
-    const { controller } = createController(target, files);
+    const { controller } = await createController(target, files);
 
-    const reply = createReplyMock();
-    controller.get('batch_000000000000000000000000', reply as never);
+    const reply = await controller.inject({
+      method: 'GET',
+      url: `/v1/batches/${encodeURIComponent('batch_000000000000000000000000')}`,
+      headers: batchTestHeaders,
+    });
 
     expect(statusOf(reply)).toBe(404);
     expect(sent(reply)).toMatchObject({
@@ -272,18 +289,23 @@ describe('OpenAIBatchesController', () => {
       id: 'chatcmpl-1',
       choices: [{ message: { content: 'ok' } }],
     }));
-    const { controller, runner } = createController(target, files, 1);
+    const { controller, runner } = await createController(target, files, 1);
 
     const inputFileId = await uploadJsonl(files, [
       { custom_id: 'line-1', url: '/v1/chat/completions', body: { model: 'gpt-4o', messages: [] } },
     ]);
     vi.spyOn(files, 'put').mockRejectedValue(new Error('disk is full'));
 
-    const createReply = createReplyMock();
-    await controller.create(
-      { endpoint: '/v1/chat/completions', completion_window: '24h', input_file_id: inputFileId },
-      createReply as never,
-    );
+    const createReply = await controller.inject({
+      method: 'POST',
+      url: '/v1/batches',
+      headers: batchTestHeaders,
+      payload: {
+        endpoint: '/v1/chat/completions',
+        completion_window: '24h',
+        input_file_id: inputFileId,
+      },
+    });
     const created = sent(createReply);
     await runner.drain();
 
@@ -295,22 +317,23 @@ describe('OpenAIBatchesController', () => {
     expect(job.outputFileId).toBeUndefined();
     expect(job.errorFileId).toBeUndefined();
 
-    const getReply = createReplyMock();
-    controller.get(created.id, getReply as never);
+    const getReply = await controller.inject({
+      method: 'GET',
+      url: `/v1/batches/${encodeURIComponent(created.id)}`,
+      headers: batchTestHeaders,
+    });
     const batch = sent(getReply);
     expect(batch.status).toBe('failed');
     expect(batch.output_file_id).toBeNull();
     expect(batch.error_file_id).toBeNull();
   });
 
-  it('expires a batch that outlives its completion window before anything ran', () => {
+  it('expires a batch that outlives its completion window before anything ran', async () => {
     const files = createFileStore();
     const target = createTarget(async () => ({ id: 'unused' }));
     const runner = new BatchRunnerService({ maxConcurrency: 1 });
     runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
-    const controller = new OpenAIBatchesController(
-      new BatchService(runner, new FilesService(files)),
-    );
+    const controller = await createBatchHttpApp(new BatchService(runner, new FilesService(files)));
 
     const created = runner.create(
       {
@@ -322,8 +345,11 @@ describe('OpenAIBatchesController', () => {
       Date.now() - 10_000,
     );
 
-    const reply = createReplyMock();
-    controller.get(`batch_${created.id}`, reply as never);
+    const reply = await controller.inject({
+      method: 'GET',
+      url: `/v1/batches/${encodeURIComponent(`batch_${created.id}`)}`,
+      headers: batchTestHeaders,
+    });
     const batch = sent(reply);
     expect(batch.status).toBe('expired');
     expect(batch.request_counts).toEqual({ total: 1, completed: 0, failed: 1 });
@@ -341,19 +367,23 @@ describe('OpenAIBatchesController', () => {
       );
     }
 
-    it('walks a real page, reaches the terminal page, and answers an unknown `after` with an empty terminal page instead of restarting at page one', () => {
+    it('walks a real page, reaches the terminal page, and answers an unknown `after` with an empty terminal page instead of restarting at page one', async () => {
       const target = createTarget(async () => ({ id: 'unused' }));
       const runner = new BatchRunnerService({ maxConcurrency: 1 });
       runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
-      const controller = new OpenAIBatchesController(new BatchService(runner));
+      const controller = await createBatchHttpApp(new BatchService(runner));
 
       const base = Date.now();
       const jobs = [0, 1, 2].map((i) => createJob(runner, base + i * 1000));
       // `list()` sorts newest-first: job 2 was created last, so it leads.
       const newestFirst = [jobs[2], jobs[1], jobs[0]];
 
-      const page1Reply = createReplyMock();
-      controller.list(page1Reply as never, '2');
+      const page1Reply = await controller.inject({
+        method: 'GET',
+        url: '/v1/batches',
+        headers: batchTestHeaders,
+        query: { limit: '2' },
+      });
       const page1 = sent(page1Reply);
       expect(page1.data.map((batch: any) => batch.id)).toEqual([
         `batch_${newestFirst[0].id}`,
@@ -361,14 +391,22 @@ describe('OpenAIBatchesController', () => {
       ]);
       expect(page1.has_more).toBe(true);
 
-      const page2Reply = createReplyMock();
-      controller.list(page2Reply as never, '2', page1.last_id);
+      const page2Reply = await controller.inject({
+        method: 'GET',
+        url: '/v1/batches',
+        headers: batchTestHeaders,
+        query: { limit: '2', after: page1.last_id },
+      });
       const page2 = sent(page2Reply);
       expect(page2.data.map((batch: any) => batch.id)).toEqual([`batch_${newestFirst[2].id}`]);
       expect(page2.has_more).toBe(false);
 
-      const unknownReply = createReplyMock();
-      controller.list(unknownReply as never, '2', `batch_${'f'.repeat(24)}`);
+      const unknownReply = await controller.inject({
+        method: 'GET',
+        url: '/v1/batches',
+        headers: batchTestHeaders,
+        query: { limit: '2', after: `batch_${'f'.repeat(24)}` },
+      });
       expect(statusOf(unknownReply)).toBe(200);
       const unknownPage = sent(unknownReply);
       expect(unknownPage.data).toEqual([]);

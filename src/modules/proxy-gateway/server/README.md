@@ -230,7 +230,7 @@ Pending upload sessions and their parts follow the repository's durable/in-memor
 
 Pending sessions are bounded three ways, matching the store they feed into: by size (a declared byte count over the per-file ceiling is refused at `create`, before any bytes are accepted), by time (a session expires one hour after `create` and answers `upload_expired` rather than silently taking more parts), and by count (a fixed ceiling on sessions held at once, configured via `AGM_UPLOADS_MAX_PENDING` / default 256, refused with `429` once reached). A sweep on the same interval as the file store's own reclaims sessions abandoned past their expiry.
 
-`bytes` at `complete` is a claim the assembled parts must match exactly; a short or long result is `byte_count_mismatch` in OpenAI's envelope with `param: "bytes"`, never a silent concatenation. `upload_id` and `part_id` are opaque server-issued strings, checked the same way a file handle is -- never built into a path. `OpenAIUploadsController` acts as a thin adapter delegating to `OpenAIUploadsService` and `sendFilesResponse`.
+`bytes` at `complete` is a claim the assembled parts must match exactly; a short or long result is `byte_count_mismatch` in OpenAI's envelope with `param: "bytes"`, never a silent concatenation. `upload_id` and `part_id` are opaque server-issued strings, checked the same way a file handle is -- never built into a path. `OpenAIUploadsController` delegates operations to `OpenAIUploadsService`, returns protocol objects with HTTP 200 and declares the existing error mapper through `ProtocolErrors`. Only multipart part uploads normalize transport upload errors; parsing remains explicit in that handler.
 
 As with Files, this is **local** session state, not provider-side storage: the file `complete` produces is read back through the ordinary `/v1/files` surface, and every later reference to it still travels to Google inline. No token saving is claimed here either.
 
@@ -355,6 +355,10 @@ a single user turn), `max_tokens_to_sample` becomes `max_tokens`, and the Messag
 rendered back as `{type, id, completion, stop_reason, stop, model}` with the leading space the
 old API always emitted. Streaming is refused with a `400` rather than half-served: the old
 `completion` event stream is a different wire format from the Messages SSE this proxy produces.
+
+The controller returns the completion object with HTTP 200 and uses `ProtocolErrors` with the
+existing legacy error mapper. It explicitly assigns `request-id` through a passthrough reply;
+the mapper reads that header to retain the same ID in each error body's `request_id`.
 
 ---
 

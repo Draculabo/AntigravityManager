@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Inject,
   Param,
   Post,
@@ -14,6 +16,7 @@ import type { FastifyReply } from 'fastify';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
 import { BatchService, sendBatchResponse } from './batch.service';
+import { ProtocolErrors } from '../../common/protocol-errors.decorator';
 import {
   ANTHROPIC_SERVABLE_BATCH_ENDPOINT,
   BatchJobError,
@@ -32,23 +35,19 @@ import {
  */
 @Controller('v1/messages/batches')
 @UseGuards(ProxyGuard)
+@ProtocolErrors(anthropicBatchErrorResponse)
 export class AnthropicMessageBatchesController {
   constructor(@Inject(BatchService) private readonly batches: BatchService) {}
 
   @Post()
-  create(@Body() body: Record<string, unknown>, @Res() res: FastifyReply): void {
-    sendBatchResponse(
-      res,
-      () => ({
-        body: toAnthropicMessageBatch(
-          this.batches.create({
-            dialect: 'anthropic',
-            endpoint: ANTHROPIC_SERVABLE_BATCH_ENDPOINT,
-            requests: parseAnthropicBatchRequests(body),
-          }),
-        ),
+  @HttpCode(HttpStatus.OK)
+  create(@Body() body: Record<string, unknown>) {
+    return toAnthropicMessageBatch(
+      this.batches.create({
+        dialect: 'anthropic',
+        endpoint: ANTHROPIC_SERVABLE_BATCH_ENDPOINT,
+        requests: parseAnthropicBatchRequests(body),
       }),
-      anthropicBatchErrorResponse,
     );
   }
 
@@ -64,36 +63,23 @@ export class AnthropicMessageBatchesController {
    */
   @Get()
   list(
-    @Res() res: FastifyReply,
     @Query('limit') limit?: string,
     @Query('after_id') afterId?: string,
     @Query('before_id') beforeId?: string,
   ) {
-    sendBatchResponse(
-      res,
-      () => {
-        const page = this.batches.listAnthropic(limit, afterId, beforeId);
-        const data = page.jobs.map((job) => toAnthropicMessageBatch(job));
-        return {
-          body: {
-            data,
-            has_more: page.hasMore,
-            first_id: data.at(0)?.id ?? null,
-            last_id: data.at(-1)?.id ?? null,
-          },
-        };
-      },
-      anthropicBatchErrorResponse,
-    );
+    const page = this.batches.listAnthropic(limit, afterId, beforeId);
+    const data = page.jobs.map((job) => toAnthropicMessageBatch(job));
+    return {
+      data,
+      has_more: page.hasMore,
+      first_id: data.at(0)?.id ?? null,
+      last_id: data.at(-1)?.id ?? null,
+    };
   }
 
   @Get(':id')
-  get(@Param('id') id: string, @Res() res: FastifyReply) {
-    sendBatchResponse(
-      res,
-      () => ({ body: toAnthropicMessageBatch(this.batches.get('anthropic', id)) }),
-      anthropicBatchErrorResponse,
-    );
+  get(@Param('id') id: string) {
+    return toAnthropicMessageBatch(this.batches.get('anthropic', id));
   }
 
   /**
@@ -124,33 +110,22 @@ export class AnthropicMessageBatchesController {
   }
 
   @Post(':id/cancel')
-  cancel(@Param('id') id: string, @Res() res: FastifyReply) {
-    sendBatchResponse(
-      res,
-      () => ({ body: toAnthropicMessageBatch(this.batches.cancel('anthropic', id)) }),
-      anthropicBatchErrorResponse,
-    );
+  @HttpCode(HttpStatus.OK)
+  cancel(@Param('id') id: string) {
+    return toAnthropicMessageBatch(this.batches.cancel('anthropic', id));
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @Res() res: FastifyReply) {
-    sendBatchResponse(
-      res,
-      () => {
-        const job = this.batches.get('anthropic', id);
-        if (!isTerminalBatchStatus(job.status)) {
-          throw new BatchJobError(
-            'invalid_request',
-            `Batch '${id}' is still ${job.status}; cancel it before deleting it`,
-            400,
-          );
-        }
-        this.batches.remove(job);
-        return {
-          body: { id: `${ANTHROPIC_BATCH_ID_PREFIX}${job.id}`, type: 'message_batch_deleted' },
-        };
-      },
-      anthropicBatchErrorResponse,
-    );
+  remove(@Param('id') id: string) {
+    const job = this.batches.get('anthropic', id);
+    if (!isTerminalBatchStatus(job.status)) {
+      throw new BatchJobError(
+        'invalid_request',
+        `Batch '${id}' is still ${job.status}; cancel it before deleting it`,
+        400,
+      );
+    }
+    this.batches.remove(job);
+    return { id: `${ANTHROPIC_BATCH_ID_PREFIX}${job.id}`, type: 'message_batch_deleted' };
   }
 }

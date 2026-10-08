@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -24,6 +23,11 @@ import {
 } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import { AdminGuard } from '../../guards/admin.guard';
+import { ZodSchemaPipe } from '../../common/zod-schema.pipe';
+import { AuditAdminOperation } from './admin-operation-audit.decorator';
+
+const UuidSchema = z.string().uuid();
+const SessionKeySchema = z.string().trim().min(1).max(512);
 
 const AuditListQuerySchema = TrafficAuditListInputSchema.extend({
   from: z.coerce.number().int().nonnegative().optional(),
@@ -57,8 +61,10 @@ export class AuditManagementController {
   }
 
   @Get('requests')
-  public list(@Query() query: Record<string, unknown>) {
-    return trafficAuditService.list(parseOrBadRequest(AuditListQuerySchema, query));
+  public list(
+    @Query(new ZodSchemaPipe(AuditListQuerySchema)) query: z.output<typeof AuditListQuerySchema>,
+  ) {
+    return trafficAuditService.list(query);
   }
 
   @Get('filter-options')
@@ -67,25 +73,27 @@ export class AuditManagementController {
   }
 
   @Get('requests/:requestId')
-  public detail(@Param('requestId') requestId: string) {
-    return trafficAuditService.detail(parseUuid(requestId));
+  public detail(@Param('requestId', new ZodSchemaPipe(UuidSchema)) requestId: string) {
+    return trafficAuditService.detail(requestId);
   }
 
   @Get('bodies/:bodyId/chunks')
-  public page(@Param('bodyId') bodyId: string, @Query() query: Record<string, unknown>) {
-    const parsedBodyId = parseUuid(bodyId);
-    const parsedQuery = parseOrBadRequest(AuditBodyPageQuerySchema, query);
-    return trafficAuditService.bodyPage({ bodyId: parsedBodyId, ...parsedQuery });
+  // Nest resolves parameter pipes in reverse order; preserve the UUID-first error response.
+  public page(
+    @Query(new ZodSchemaPipe(AuditBodyPageQuerySchema))
+    query: z.output<typeof AuditBodyPageQuerySchema>,
+    @Param('bodyId', new ZodSchemaPipe(UuidSchema)) bodyId: string,
+  ) {
+    return trafficAuditService.bodyPage({ bodyId, ...query });
   }
 
   @Get('bodies/:bodyId/content')
   public async content(
-    @Param('bodyId') bodyId: string,
+    @Param('bodyId', new ZodSchemaPipe(UuidSchema)) bodyId: string,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const parsedBodyId = parseUuid(bodyId);
     const firstPage = await trafficAuditService.bodyPage({
-      bodyId: parsedBodyId,
+      bodyId,
       cursor: 0,
       limitBytes: 1,
     });
@@ -96,12 +104,12 @@ export class AuditManagementController {
     reply.header('x-audit-body-bytes', String(firstPage.body.storedBytes));
     reply.header('x-audit-body-state', firstPage.body.state);
     reply.header('x-audit-body-partial', String(firstPage.body.partial));
-    return new StreamableFile(Readable.from(trafficAuditService.bodyContent(parsedBodyId)));
+    return new StreamableFile(Readable.from(trafficAuditService.bodyContent(bodyId)));
   }
 
   @Delete('requests/:requestId')
-  public async delete(@Param('requestId') requestId: string) {
-    return { affected: await trafficAuditService.delete(parseUuid(requestId)) };
+  public async delete(@Param('requestId', new ZodSchemaPipe(UuidSchema)) requestId: string) {
+    return { affected: await trafficAuditService.delete(requestId) };
   }
 
   @Delete('requests')
@@ -125,56 +133,38 @@ export class ThoughtManagementController {
   }
 
   @Get('sessions')
-  public list(@Query() query: Record<string, unknown>) {
-    const input = parseOrBadRequest(ThoughtListQuerySchema, query);
-    return thoughtStoreService.listSessions(input.limit, input.offset);
+  public list(
+    @Query(new ZodSchemaPipe(ThoughtListQuerySchema))
+    query: z.output<typeof ThoughtListQuerySchema>,
+  ) {
+    return thoughtStoreService.listSessions(query.limit, query.offset);
   }
 
   @Get('sessions/:sessionKey')
-  public get(@Param('sessionKey') sessionKey: string) {
-    return thoughtStoreService.getSession(parseSessionKey(sessionKey));
+  public get(@Param('sessionKey', new ZodSchemaPipe(SessionKeySchema)) sessionKey: string) {
+    return thoughtStoreService.getSession(sessionKey);
   }
 
   @Delete('sessions/:sessionKey')
-  public async delete(@Param('sessionKey') sessionKey: string) {
-    const affected = await thoughtStoreService.deleteSession(parseSessionKey(sessionKey));
-    trafficAuditService.recordAdminOperation('delete_thought_session', affected);
-    return { affected };
+  @AuditAdminOperation('delete_thought_session', (result: { affected: number }) => result.affected)
+  public async delete(
+    @Param('sessionKey', new ZodSchemaPipe(SessionKeySchema)) sessionKey: string,
+  ) {
+    return { affected: await thoughtStoreService.deleteSession(sessionKey) };
   }
 
   @Delete('sessions')
+  @AuditAdminOperation('clear_thought_sessions', (result: { affected: number }) => result.affected)
   public async clear() {
-    const affected = await thoughtStoreService.clear();
-    trafficAuditService.recordAdminOperation('clear_thought_sessions', affected);
-    return { affected };
+    return { affected: await thoughtStoreService.clear() };
   }
 
   @Post('repair')
   @HttpCode(HttpStatus.OK)
+  @AuditAdminOperation('repair_thought_store')
   public async repair() {
-    const result = await thoughtStoreService.repair();
-    trafficAuditService.recordAdminOperation('repair_thought_store');
-    return result;
+    return thoughtStoreService.repair();
   }
-}
-
-function parseUuid(value: string): string {
-  return parseOrBadRequest(z.string().uuid(), value);
-}
-
-function parseSessionKey(value: string): string {
-  return parseOrBadRequest(z.string().trim().min(1).max(512), value);
-}
-
-function parseOrBadRequest<TSchema extends z.ZodTypeAny>(
-  schema: TSchema,
-  value: unknown,
-): z.infer<TSchema> {
-  const result = schema.safeParse(value);
-  if (!result.success) {
-    throw new BadRequestException(result.error.flatten());
-  }
-  return result.data;
 }
 
 function contentTypeFor(kind: 'empty' | 'json' | 'text' | 'binary' | 'sse'): string {

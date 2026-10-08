@@ -84,19 +84,15 @@ describe('GeminiController Integration', () => {
       ),
     };
     const controller = new GeminiController(proxyService as any, accountLeaseService as any);
-    const replyList = createReplyMock();
-    const replyGet = createReplyMock();
+    const models = controller.listModels();
+    const model = controller.getModel('gemini-2.5-flash');
 
-    controller.listModels(replyList as any);
-    controller.getModel('gemini-2.5-flash', replyGet as any);
-
-    expect(replyList.status).toHaveBeenCalledWith(200);
-    expect(replyList.send).toHaveBeenCalledWith(
+    expect(models).toEqual(
       expect.objectContaining({
         models: expect.any(Array),
       }),
     );
-    expect(replyList.send).toHaveBeenCalledWith(
+    expect(models).toEqual(
       expect.objectContaining({
         models: expect.arrayContaining([
           expect.objectContaining({
@@ -119,8 +115,7 @@ describe('GeminiController Integration', () => {
         ]),
       }),
     );
-    expect(replyGet.status).toHaveBeenCalledWith(200);
-    expect(replyGet.send).toHaveBeenCalledWith(
+    expect(model).toEqual(
       expect.objectContaining({
         name: 'models/gemini-2.5-flash',
         displayName: 'gemini-2.5-flash',
@@ -130,11 +125,7 @@ describe('GeminiController Integration', () => {
 
   it('keeps Antigravity public presets before dynamic quota cache is available', () => {
     const controller = new GeminiController({} as any);
-    const reply = createReplyMock();
-
-    controller.listModels(reply as any);
-
-    const payload = reply.send.mock.calls[0][0];
+    const payload = controller.listModels();
     const names = payload.models.map((model: { name: string }) => model.name);
     expect(names).toEqual(
       expect.arrayContaining([
@@ -170,14 +161,11 @@ describe('GeminiController Integration', () => {
       ),
     };
     const controller = new GeminiController({} as any, accountLeaseService as any);
-    const reply = createReplyMock();
-
-    controller.listModels(reply as any);
+    const payload = controller.listModels();
     setServerConfig(DEFAULT_APP_CONFIG.proxy);
 
-    expect(reply.status).toHaveBeenCalledWith(200);
     expect(accountLeaseService.getAllRawQuotaModels).toHaveBeenCalledOnce();
-    expect(reply.send).toHaveBeenCalledWith({
+    expect(payload).toEqual({
       models: [
         {
           name: 'models/gemini-2.5-flash',

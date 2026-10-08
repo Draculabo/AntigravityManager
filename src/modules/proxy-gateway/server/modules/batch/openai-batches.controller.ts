@@ -1,9 +1,20 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
 import { BatchJobError } from './batch-job.types';
-import { BatchService, sendAsyncBatchResponse, sendBatchResponse } from './batch.service';
+import { BatchService } from './batch.service';
+import { ProtocolErrors } from '../../common/protocol-errors.decorator';
 import {
   normalizeBatchMetadata,
   openAIBatchErrorResponse,
@@ -18,33 +29,29 @@ import {
  */
 @Controller('v1/batches')
 @UseGuards(ProxyGuard)
+@ProtocolErrors(openAIBatchErrorResponse)
 export class OpenAIBatchesController {
   constructor(@Inject(BatchService) private readonly batches: BatchService) {}
 
   @Post()
-  async create(@Body() body: Record<string, unknown>, @Res() res: FastifyReply): Promise<void> {
-    await sendAsyncBatchResponse(
-      res,
-      async () => {
-        const endpoint = requireServableEndpoint(body?.endpoint);
-        const completionWindow = requireCompletionWindow(body?.completion_window);
-        const metadata = normalizeBatchMetadata(body?.metadata);
-        const inputFileId = requireString(body?.input_file_id, 'input_file_id');
-        const content = await this.batches.readOpenAIInput(inputFileId);
-        const lines = parseBatchInputJsonl(content, endpoint);
+  @HttpCode(HttpStatus.OK)
+  async create(@Body() body: Record<string, unknown>) {
+    const endpoint = requireServableEndpoint(body?.endpoint);
+    const completionWindow = requireCompletionWindow(body?.completion_window);
+    const metadata = normalizeBatchMetadata(body?.metadata);
+    const inputFileId = requireString(body?.input_file_id, 'input_file_id');
+    const content = await this.batches.readOpenAIInput(inputFileId);
+    const lines = parseBatchInputJsonl(content, endpoint);
 
-        const job = this.batches.create({
-          dialect: 'openai',
-          endpoint,
-          completionWindow,
-          inputFileId,
-          requests: lines,
-          ...(metadata ? { metadata } : {}),
-        });
-        return { body: toOpenAIBatchObject(job) };
-      },
-      openAIBatchErrorResponse,
-    );
+    const job = this.batches.create({
+      dialect: 'openai',
+      endpoint,
+      completionWindow,
+      inputFileId,
+      requests: lines,
+      ...(metadata ? { metadata } : {}),
+    });
+    return toOpenAIBatchObject(job);
   }
 
   /**
@@ -57,42 +64,27 @@ export class OpenAIBatchesController {
    * of silently looping back to page one.
    */
   @Get()
-  list(@Res() res: FastifyReply, @Query('limit') limit?: string, @Query('after') after?: string) {
-    sendBatchResponse(
-      res,
-      () => {
-        const page = this.batches.listOpenAI(limit, after);
-        const data = page.jobs.map((job) => toOpenAIBatchObject(job));
-        return {
-          body: {
-            object: 'list',
-            data,
-            first_id: data.at(0)?.id ?? null,
-            last_id: data.at(-1)?.id ?? null,
-            has_more: page.hasMore,
-          },
-        };
-      },
-      openAIBatchErrorResponse,
-    );
+  list(@Query('limit') limit?: string, @Query('after') after?: string) {
+    const page = this.batches.listOpenAI(limit, after);
+    const data = page.jobs.map((job) => toOpenAIBatchObject(job));
+    return {
+      object: 'list',
+      data,
+      first_id: data.at(0)?.id ?? null,
+      last_id: data.at(-1)?.id ?? null,
+      has_more: page.hasMore,
+    };
   }
 
   @Get(':id')
-  get(@Param('id') id: string, @Res() res: FastifyReply) {
-    sendBatchResponse(
-      res,
-      () => ({ body: toOpenAIBatchObject(this.batches.get('openai', id)) }),
-      openAIBatchErrorResponse,
-    );
+  get(@Param('id') id: string) {
+    return toOpenAIBatchObject(this.batches.get('openai', id));
   }
 
   @Post(':id/cancel')
-  cancel(@Param('id') id: string, @Res() res: FastifyReply) {
-    sendBatchResponse(
-      res,
-      () => ({ body: toOpenAIBatchObject(this.batches.cancel('openai', id)) }),
-      openAIBatchErrorResponse,
-    );
+  @HttpCode(HttpStatus.OK)
+  cancel(@Param('id') id: string) {
+    return toOpenAIBatchObject(this.batches.cancel('openai', id));
   }
 }
 

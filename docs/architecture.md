@@ -302,6 +302,43 @@ The proxy page's service control shows an account-risk notice before the first m
 
 The Electron main process starts and stops the NestJS/Fastify gateway through [src/server/main.ts](../src/server/main.ts). Protocol controllers, mappers, routing, quotas, retries, streaming state and provider adapters belong under `src/modules/proxy-gateway/server` or another proxy-gateway-owned directory.
 
+Audit and thought management query/path parameters use their existing Zod schemas
+through the gateway's [Zod parameter Pipe](../src/modules/proxy-gateway/server/common/zod-schema.pipe.ts).
+Validation preserves coercion, defaults and bad-request envelopes. Body chunk
+requests validate the path UUID before reporting query errors.
+
+Batch, ordinary Files, OpenAI Uploads and legacy Anthropic completion handlers declare their existing dialect error mapper
+through [ProtocolErrors](../src/modules/proxy-gateway/server/common/protocol-errors.decorator.ts).
+Its Interceptor maps handler failures into HTTP exceptions; guard authentication
+failures keep their existing handling. Ordinary methods return protocol objects,
+with POST success explicitly set to 200. Anthropic JSONL results keep manual
+response handling, as do Files content downloads. Files upload annotations retain
+upload-only error normalization; Uploads normalizes only multipart part errors.
+The shared `/v1/files` entry selects its error
+dialect from each request. Anthropic beta checks and multipart/raw-media parsing
+remain explicit in the Files controllers. Gemini model-entry batch submission
+keeps its existing adapter. Retry, account leases, cancellation and cleanup remain
+in their owning execution paths.
+
+The non-streaming Anthropic `/v1/complete` entry assigns its `request-id` header
+explicitly with a passthrough reply. Its error mapper reads that header to keep
+the error body's `request_id` correlated with the same response. Prompt conversion
+and stream refusal stay in the handler. Gemini model list/detail entries return
+their existing objects, including HTTP 200 fallback metadata for unknown models.
+
+Stored Responses read/delete handlers return their existing protocol objects and
+use Nest's not-found exception with the OpenAI error body for missing records.
+Unexpected store failures retain the framework's error handling. Response
+generation, continuation and durable storage remain service-owned.
+
+Thought management mutations declare their existing success-only administrative
+audit through [AuditAdminOperation](../src/modules/proxy-gateway/server/modules/observability/admin-operation-audit.decorator.ts).
+Each single-result handler finishes its mutation before the Interceptor records
+the operation and its affected count. Validation, authentication and mutation
+failures do not generate a successful audit event; recorder failures still
+propagate. Audit-store mutations retain their service-owned auditing, and client
+thinking endpoints retain explicit recording of counts absent from their response.
+
 The Anthropic mapper's system-instruction normalization removes complete Claude Code billing
 metadata lines before constructing the upstream request. This also applies to OpenAI requests
 that use the same normalization path. Fenced and inline code, user/tool messages, tool definitions
