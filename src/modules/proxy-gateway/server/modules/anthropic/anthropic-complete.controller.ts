@@ -1,10 +1,20 @@
 import { randomBytes } from 'node:crypto';
 
-import { Body, Controller, HttpStatus, Inject, Post, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Post,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
+import { ProtocolErrors } from '../../common/protocol-errors.decorator';
 import {
   AnthropicCompleteValidationError,
   anthropicCompleteErrorResponse,
@@ -33,39 +43,31 @@ export class AnthropicCompleteController {
   constructor(@Inject(AnthropicService) private readonly proxyService: AnthropicService) {}
 
   @Post()
-  async complete(@Body() body: unknown, @Res() res: FastifyReply): Promise<void> {
+  @HttpCode(HttpStatus.OK)
+  @ProtocolErrors((error, _request, reply) =>
+    anthropicCompleteErrorResponse(error, String(reply.getHeader('request-id'))),
+  )
+  async complete(@Body() body: unknown, @Res({ passthrough: true }) res: FastifyReply) {
     const requestId = `req_${randomBytes(12).toString('hex')}`;
-    try {
-      const request = normalizeAnthropicCompleteRequest(body);
-      if (request.stream) {
-        throw new AnthropicCompleteValidationError(
-          'stream is not supported on the deprecated /v1/complete endpoint; use /v1/messages for streaming',
-        );
-      }
-      const messagesRequest = toAnthropicMessagesRequest(request);
-      const result = await this.proxyService.handleAnthropicMessages(messagesRequest);
-      if (result instanceof Observable) {
-        // Defensive: `handleAnthropicMessages` only streams when `stream` is
-        // truthy on the request, which is refused above, but an Observable is
-        // never a valid answer to this endpoint either way.
-        throw new AnthropicCompleteValidationError(
-          'Upstream returned a stream for a non-streaming request',
-        );
-      }
-      const message = result;
-      res
-        .header('request-id', requestId)
-        .status(HttpStatus.OK)
-        .send(
-          toAnthropicCompletionResponse(
-            message,
-            request.model,
-            `compl_${requestId.slice('req_'.length)}`,
-          ),
-        );
-    } catch (error) {
-      const { statusCode, body: envelope } = anthropicCompleteErrorResponse(error, requestId);
-      res.header('request-id', requestId).status(statusCode).send(envelope);
+    res.header('request-id', requestId);
+    const request = normalizeAnthropicCompleteRequest(body);
+    if (request.stream) {
+      throw new AnthropicCompleteValidationError(
+        'stream is not supported on the deprecated /v1/complete endpoint; use /v1/messages for streaming',
+      );
     }
+    const messagesRequest = toAnthropicMessagesRequest(request);
+    const result = await this.proxyService.handleAnthropicMessages(messagesRequest);
+    if (result instanceof Observable) {
+      // Messages SSE is never a valid answer to the legacy completion protocol.
+      throw new AnthropicCompleteValidationError(
+        'Upstream returned a stream for a non-streaming request',
+      );
+    }
+    return toAnthropicCompletionResponse(
+      result,
+      request.model,
+      `compl_${requestId.slice('req_'.length)}`,
+    );
   }
 }

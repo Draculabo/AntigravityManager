@@ -66,30 +66,29 @@ export class GeminiController {
   ) {}
 
   @Get('models')
-  listModels(@Res() res: FastifyReply) {
+  listModels() {
     const models = this.buildGeminiModelList();
-    res.status(HttpStatus.OK).send({
+    return {
       models,
-    });
+    };
   }
 
   @Get('models/:model')
-  getModel(@Param('model') model: string, @Res() res: FastifyReply) {
+  getModel(@Param('model') model: string) {
     const targetName = model.startsWith('models/') ? model : `models/${model}`;
     const matched = this.buildGeminiModelList().find((item) => item.name === targetName);
 
     if (matched) {
-      res.status(HttpStatus.OK).send({
+      return {
         name: matched.name,
         displayName: matched.displayName,
-      });
-      return;
+      };
     }
 
-    res.status(HttpStatus.OK).send({
+    return {
       name: targetName,
       displayName: targetName.replace(/^models\//, ''),
-    });
+    };
   }
 
   @Post('models/:modelAction')

@@ -220,15 +220,3 @@ export function sendBatchResponse<TBody>(
     applyBatchError(res, error, toErrorResponse);
   }
 }
-
-export async function sendAsyncBatchResponse<TBody>(
-  res: FastifyReply,
-  operation: () => Promise<BatchReply<TBody>>,
-  toErrorResponse: (error: unknown) => BatchErrorResponse,
-): Promise<void> {
-  try {
-    applyBatchReply(res, await operation());
-  } catch (error) {
-    applyBatchError(res, error, toErrorResponse);
-  }
-}

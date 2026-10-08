@@ -1,24 +1,19 @@
+import { createBatchHttpApp, batchTestHeaders } from '../helpers/batch-http-app';
+import type { LightMyRequestResponse } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AnthropicMessageBatchesController } from '@/modules/proxy-gateway/server/modules/batch/anthropic-message-batches.controller';
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
 import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
 
-function createReplyMock() {
-  const reply: Record<string, unknown> = {};
-  reply.status = vi.fn(() => reply);
-  reply.header = vi.fn(() => reply);
-  reply.send = vi.fn(() => reply);
-  return reply;
+function sent(reply: LightMyRequestResponse): any {
+  return String(reply.headers['content-type']).startsWith('application/x-jsonl')
+    ? reply.body
+    : reply.json();
 }
 
-function sent(reply: Record<string, unknown>): any {
-  return (reply.send as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
-}
-
-function statusOf(reply: Record<string, unknown>): unknown {
-  return (reply.status as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+function statusOf(reply: LightMyRequestResponse): number {
+  return reply.statusCode;
 }
 
 function createTarget(handler: (request: unknown) => Promise<unknown>) {
@@ -29,10 +24,10 @@ function createTarget(handler: (request: unknown) => Promise<unknown>) {
   } satisfies Record<keyof BatchExecutionTarget, ReturnType<typeof vi.fn>>;
 }
 
-function createController(target: ReturnType<typeof createTarget>, maxConcurrency = 2) {
+async function createController(target: ReturnType<typeof createTarget>, maxConcurrency = 2) {
   const runner = new BatchRunnerService({ maxConcurrency });
   runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
-  return { controller: new AnthropicMessageBatchesController(new BatchService(runner)), runner };
+  return { controller: await createBatchHttpApp(new BatchService(runner)), runner };
 }
 
 function reply(text: string) {
@@ -47,11 +42,13 @@ function reply(text: string) {
 describe('AnthropicMessageBatchesController', () => {
   it('creates a batch from inline requests and runs it to completion', async () => {
     const target = createTarget(async () => reply('ok'));
-    const { controller, runner } = createController(target);
+    const { controller, runner } = await createController(target);
 
-    const createReply = createReplyMock();
-    controller.create(
-      {
+    const createReply = await controller.inject({
+      method: 'POST',
+      url: '/v1/messages/batches',
+      headers: batchTestHeaders,
+      payload: {
         requests: [
           {
             custom_id: 'line-1',
@@ -63,8 +60,7 @@ describe('AnthropicMessageBatchesController', () => {
           },
         ],
       },
-      createReply as never,
-    );
+    });
 
     expect(statusOf(createReply)).toBe(200);
     const created = sent(createReply);
@@ -73,8 +69,11 @@ describe('AnthropicMessageBatchesController', () => {
 
     await runner.drain();
 
-    const getReply = createReplyMock();
-    controller.get(created.id, getReply as never);
+    const getReply = await controller.inject({
+      method: 'GET',
+      url: `/v1/messages/batches/${encodeURIComponent(created.id)}`,
+      headers: batchTestHeaders,
+    });
     const batch = sent(getReply);
     expect(batch.processing_status).toBe('ended');
     expect(batch.request_counts).toMatchObject({ succeeded: 1, errored: 0 });
@@ -92,11 +91,13 @@ describe('AnthropicMessageBatchesController', () => {
       }
       return reply(`echo:${content}`);
     });
-    const { controller, runner } = createController(target);
+    const { controller, runner } = await createController(target);
 
-    const createReply = createReplyMock();
-    controller.create(
-      {
+    const createReply = await controller.inject({
+      method: 'POST',
+      url: '/v1/messages/batches',
+      headers: batchTestHeaders,
+      payload: {
         requests: [
           {
             custom_id: 'good',
@@ -116,15 +117,24 @@ describe('AnthropicMessageBatchesController', () => {
           },
         ],
       },
-      createReply as never,
-    );
+    });
     const created = sent(createReply);
     await runner.drain();
 
-    const resultsReply = createReplyMock();
-    controller.results(created.id, resultsReply as never);
+    const resultsReply = await controller.inject({
+      method: 'GET',
+      url: `/v1/messages/batches/${encodeURIComponent(created.id)}/results`,
+      headers: batchTestHeaders,
+    });
     expect(statusOf(resultsReply)).toBe(200);
     const jsonl = sent(resultsReply) as string;
+    expect({
+      contentType: resultsReply.headers['content-type'],
+      contentLength: resultsReply.headers['content-length'],
+    }).toEqual({
+      contentType: 'application/x-jsonl; charset=utf-8',
+      contentLength: String(Buffer.byteLength(jsonl, 'utf8')),
+    });
     const lines = jsonl
       .trim()
       .split('\n')
@@ -134,7 +144,7 @@ describe('AnthropicMessageBatchesController', () => {
     expect(lines.find((line) => line.custom_id === 'bad')?.result.type).toBe('errored');
   });
 
-  it('refuses results before the batch has ended', () => {
+  it('refuses results before the batch has ended', async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -143,11 +153,13 @@ describe('AnthropicMessageBatchesController', () => {
       await gate;
       return reply('late');
     });
-    const { controller } = createController(target, 1);
+    const { controller } = await createController(target, 1);
 
-    const createReply = createReplyMock();
-    controller.create(
-      {
+    const createReply = await controller.inject({
+      method: 'POST',
+      url: '/v1/messages/batches',
+      headers: batchTestHeaders,
+      payload: {
         requests: [
           {
             custom_id: 'line-1',
@@ -159,12 +171,14 @@ describe('AnthropicMessageBatchesController', () => {
           },
         ],
       },
-      createReply as never,
-    );
+    });
     const created = sent(createReply);
 
-    const resultsReply = createReplyMock();
-    controller.results(created.id, resultsReply as never);
+    const resultsReply = await controller.inject({
+      method: 'GET',
+      url: `/v1/messages/batches/${encodeURIComponent(created.id)}/results`,
+      headers: batchTestHeaders,
+    });
     expect(statusOf(resultsReply)).toBe(400);
 
     release?.();
@@ -179,11 +193,13 @@ describe('AnthropicMessageBatchesController', () => {
       await gate;
       return reply('too late');
     });
-    const { controller, runner } = createController(target, 1);
+    const { controller, runner } = await createController(target, 1);
 
-    const createReply = createReplyMock();
-    controller.create(
-      {
+    const createReply = await controller.inject({
+      method: 'POST',
+      url: '/v1/messages/batches',
+      headers: batchTestHeaders,
+      payload: {
         requests: [
           {
             custom_id: 'a',
@@ -203,8 +219,7 @@ describe('AnthropicMessageBatchesController', () => {
           },
         ],
       },
-      createReply as never,
-    );
+    });
     const created = sent(createReply);
 
     for (
@@ -215,15 +230,21 @@ describe('AnthropicMessageBatchesController', () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
 
-    const cancelReply = createReplyMock();
-    controller.cancel(created.id, cancelReply as never);
+    const cancelReply = await controller.inject({
+      method: 'POST',
+      url: `/v1/messages/batches/${encodeURIComponent(created.id)}/cancel`,
+      headers: batchTestHeaders,
+    });
     expect(sent(cancelReply).processing_status).toBe('canceling');
 
     release?.();
     await runner.drain();
 
-    const getReply = createReplyMock();
-    controller.get(created.id, getReply as never);
+    const getReply = await controller.inject({
+      method: 'GET',
+      url: `/v1/messages/batches/${encodeURIComponent(created.id)}`,
+      headers: batchTestHeaders,
+    });
     const batch = sent(getReply);
     expect(batch.processing_status).toBe('ended');
     expect(batch.request_counts).toMatchObject({ canceled: 2, succeeded: 0 });
@@ -231,11 +252,13 @@ describe('AnthropicMessageBatchesController', () => {
 
   it('deletes an ended batch and returns the Anthropic not-found envelope on later reads', async () => {
     const target = createTarget(async () => reply('done'));
-    const { controller, runner } = createController(target);
-    const createReply = createReplyMock();
+    const { controller, runner } = await createController(target);
 
-    controller.create(
-      {
+    const createReply = await controller.inject({
+      method: 'POST',
+      url: '/v1/messages/batches',
+      headers: batchTestHeaders,
+      payload: {
         requests: [
           {
             custom_id: 'line-1',
@@ -247,13 +270,15 @@ describe('AnthropicMessageBatchesController', () => {
           },
         ],
       },
-      createReply as never,
-    );
+    });
     const created = sent(createReply);
     await runner.drain();
 
-    const removeReply = createReplyMock();
-    controller.remove(created.id, removeReply as never);
+    const removeReply = await controller.inject({
+      method: 'DELETE',
+      url: `/v1/messages/batches/${encodeURIComponent(created.id)}`,
+      headers: batchTestHeaders,
+    });
 
     expect(statusOf(removeReply)).toBe(200);
     expect(sent(removeReply)).toEqual({
@@ -261,8 +286,11 @@ describe('AnthropicMessageBatchesController', () => {
       type: 'message_batch_deleted',
     });
 
-    const getReply = createReplyMock();
-    controller.get(created.id, getReply as never);
+    const getReply = await controller.inject({
+      method: 'GET',
+      url: `/v1/messages/batches/${encodeURIComponent(created.id)}`,
+      headers: batchTestHeaders,
+    });
 
     expect(statusOf(getReply)).toBe(404);
     expect(sent(getReply)).toMatchObject({
@@ -271,22 +299,25 @@ describe('AnthropicMessageBatchesController', () => {
     });
   });
 
-  it('answers an unknown batch id with a 404 in the Anthropic error envelope, not an empty success', () => {
+  it('answers an unknown batch id with a 404 in the Anthropic error envelope, not an empty success', async () => {
     const target = createTarget(async () => reply('unused'));
-    const { controller } = createController(target);
+    const { controller } = await createController(target);
 
-    const reply2 = createReplyMock();
-    controller.get(`msgbatch_${'0'.repeat(24)}`, reply2 as never);
+    const reply2 = await controller.inject({
+      method: 'GET',
+      url: `/v1/messages/batches/${encodeURIComponent(`msgbatch_${'0'.repeat(24)}`)}`,
+      headers: batchTestHeaders,
+    });
 
     expect(statusOf(reply2)).toBe(404);
     expect(sent(reply2)).toMatchObject({ type: 'error', error: { type: 'not_found_error' } });
   });
 
-  it('expires a batch that outlives its completion window', () => {
+  it('expires a batch that outlives its completion window', async () => {
     const target = createTarget(async () => reply('unused'));
     const runner = new BatchRunnerService({ maxConcurrency: 1 });
     runner.setExecutionTarget(target as unknown as BatchExecutionTarget);
-    const controller = new AnthropicMessageBatchesController(new BatchService(runner));
+    const controller = await createBatchHttpApp(new BatchService(runner));
 
     const created = runner.create(
       {
@@ -300,8 +331,11 @@ describe('AnthropicMessageBatchesController', () => {
       Date.now() - 10_000,
     );
 
-    const getReply = createReplyMock();
-    controller.get(`msgbatch_${created.id}`, getReply as never);
+    const getReply = await controller.inject({
+      method: 'GET',
+      url: `/v1/messages/batches/${encodeURIComponent(`msgbatch_${created.id}`)}`,
+      headers: batchTestHeaders,
+    });
     const batch = sent(getReply);
     expect(batch.processing_status).toBe('ended');
     expect(batch.request_counts.expired).toBe(1);
@@ -328,17 +362,21 @@ describe('AnthropicMessageBatchesController', () => {
       return runner;
     }
 
-    it('walks forward with after_id, reaches the terminal page, and 404s on an unknown after_id instead of restarting at page one', () => {
+    it('walks forward with after_id, reaches the terminal page, and 404s on an unknown after_id instead of restarting at page one', async () => {
       const runner = makeRunner();
-      const controller = new AnthropicMessageBatchesController(new BatchService(runner));
+      const controller = await createBatchHttpApp(new BatchService(runner));
 
       const base = Date.now();
       const jobs = [0, 1, 2].map((i) => createJob(runner, base + i * 1000));
       // `list()` sorts newest-first: job 2 was created last, so it leads.
       const newestFirst = [jobs[2], jobs[1], jobs[0]];
 
-      const page1Reply = createReplyMock();
-      controller.list(page1Reply as never, '2');
+      const page1Reply = await controller.inject({
+        method: 'GET',
+        url: '/v1/messages/batches',
+        headers: batchTestHeaders,
+        query: { limit: '2' },
+      });
       const page1 = sent(page1Reply);
       expect(page1.data.map((batch: any) => batch.id)).toEqual([
         `msgbatch_${newestFirst[0].id}`,
@@ -346,14 +384,22 @@ describe('AnthropicMessageBatchesController', () => {
       ]);
       expect(page1.has_more).toBe(true);
 
-      const page2Reply = createReplyMock();
-      controller.list(page2Reply as never, '2', page1.last_id);
+      const page2Reply = await controller.inject({
+        method: 'GET',
+        url: '/v1/messages/batches',
+        headers: batchTestHeaders,
+        query: { limit: '2', after_id: page1.last_id },
+      });
       const page2 = sent(page2Reply);
       expect(page2.data.map((batch: any) => batch.id)).toEqual([`msgbatch_${newestFirst[2].id}`]);
       expect(page2.has_more).toBe(false);
 
-      const unknownReply = createReplyMock();
-      controller.list(unknownReply as never, '2', `msgbatch_${'f'.repeat(24)}`);
+      const unknownReply = await controller.inject({
+        method: 'GET',
+        url: '/v1/messages/batches',
+        headers: batchTestHeaders,
+        query: { limit: '2', after_id: `msgbatch_${'f'.repeat(24)}` },
+      });
       expect(statusOf(unknownReply)).toBe(404);
       expect(sent(unknownReply)).toMatchObject({
         type: 'error',
@@ -361,49 +407,69 @@ describe('AnthropicMessageBatchesController', () => {
       });
     });
 
-    it('walks backward with before_id and reaches the terminal (newest) page', () => {
+    it('walks backward with before_id and reaches the terminal (newest) page', async () => {
       const runner = makeRunner();
-      const controller = new AnthropicMessageBatchesController(new BatchService(runner));
+      const controller = await createBatchHttpApp(new BatchService(runner));
 
       const base = Date.now();
       const jobs = [0, 1, 2].map((i) => createJob(runner, base + i * 1000));
       const newestFirst = [jobs[2], jobs[1], jobs[0]];
 
-      const step1Reply = createReplyMock();
-      controller.list(step1Reply as never, '1', undefined, `msgbatch_${newestFirst[2].id}`);
+      const step1Reply = await controller.inject({
+        method: 'GET',
+        url: '/v1/messages/batches',
+        headers: batchTestHeaders,
+        query: { limit: '1', before_id: `msgbatch_${newestFirst[2].id}` },
+      });
       const step1 = sent(step1Reply);
       expect(step1.data.map((batch: any) => batch.id)).toEqual([`msgbatch_${newestFirst[1].id}`]);
       expect(step1.has_more).toBe(true);
 
-      const step2Reply = createReplyMock();
-      controller.list(step2Reply as never, '1', undefined, `msgbatch_${newestFirst[1].id}`);
+      const step2Reply = await controller.inject({
+        method: 'GET',
+        url: '/v1/messages/batches',
+        headers: batchTestHeaders,
+        query: { limit: '1', before_id: `msgbatch_${newestFirst[1].id}` },
+      });
       const step2 = sent(step2Reply);
       expect(step2.data.map((batch: any) => batch.id)).toEqual([`msgbatch_${newestFirst[0].id}`]);
       expect(step2.has_more).toBe(false);
     });
 
-    it('rejects after_id and before_id given together', () => {
+    it('rejects after_id and before_id given together', async () => {
       const runner = makeRunner();
-      const controller = new AnthropicMessageBatchesController(new BatchService(runner));
+      const controller = await createBatchHttpApp(new BatchService(runner));
       const job = createJob(runner, Date.now());
 
-      const reply2 = createReplyMock();
-      controller.list(reply2 as never, undefined, `msgbatch_${job.id}`, `msgbatch_${job.id}`);
+      const reply2 = await controller.inject({
+        method: 'GET',
+        url: '/v1/messages/batches',
+        headers: batchTestHeaders,
+        query: { after_id: `msgbatch_${job.id}`, before_id: `msgbatch_${job.id}` },
+      });
       expect(statusOf(reply2)).toBe(400);
       expect(sent(reply2)).toMatchObject({ error: { type: 'invalid_request_error' } });
     });
 
-    it('enforces the documented 1-1000 limit range instead of accepting anything', () => {
+    it('enforces the documented 1-1000 limit range instead of accepting anything', async () => {
       const runner = makeRunner();
-      const controller = new AnthropicMessageBatchesController(new BatchService(runner));
+      const controller = await createBatchHttpApp(new BatchService(runner));
 
-      const tooLow = createReplyMock();
-      controller.list(tooLow as never, '0');
+      const tooLow = await controller.inject({
+        method: 'GET',
+        url: '/v1/messages/batches',
+        headers: batchTestHeaders,
+        query: { limit: '0' },
+      });
       expect(statusOf(tooLow)).toBe(400);
       expect(sent(tooLow)).toMatchObject({ error: { type: 'invalid_request_error' } });
 
-      const tooHigh = createReplyMock();
-      controller.list(tooHigh as never, '1001');
+      const tooHigh = await controller.inject({
+        method: 'GET',
+        url: '/v1/messages/batches',
+        headers: batchTestHeaders,
+        query: { limit: '1001' },
+      });
       expect(statusOf(tooHigh)).toBe(400);
       expect(sent(tooHigh)).toMatchObject({ error: { type: 'invalid_request_error' } });
     });

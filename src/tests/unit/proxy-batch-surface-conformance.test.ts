@@ -1,10 +1,15 @@
+import { createBatchHttpApp, batchTestHeaders } from '../helpers/batch-http-app';
+import type { LightMyRequestResponse } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AnthropicCompleteController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic-complete.controller';
+import {
+  createAnthropicCompleteHttpApp,
+  completionTestHeaders,
+} from '../helpers/anthropic-complete-http-app';
 import {
   normalizeAnthropicCompleteRequest,
   toAnthropicCompletionResponse,
@@ -14,7 +19,6 @@ import {
   toAnthropicMessageBatch,
   type AnthropicProcessingStatus,
 } from '@/modules/proxy-gateway/server/modules/batch/anthropic-batch-resource';
-import { AnthropicMessageBatchesController } from '@/modules/proxy-gateway/server/modules/batch/anthropic-message-batches.controller';
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
 import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
@@ -24,9 +28,7 @@ import {
 } from '@/modules/proxy-gateway/server/modules/batch/batch-job.types';
 import { respondGeminiBatchGenerateContent } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-submit';
 import { toGeminiOperation } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-resource';
-import { GeminiBatchesController } from '@/modules/proxy-gateway/server/modules/batch/gemini-batches.controller';
 import { toOpenAIBatchObject } from '@/modules/proxy-gateway/server/modules/batch/openai-batch-resource';
-import { OpenAIBatchesController } from '@/modules/proxy-gateway/server/modules/batch/openai-batches.controller';
 import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
 import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import { OPENAI_FILE_ID_PREFIX } from '@/modules/proxy-gateway/server/modules/files/openai-file-resource';
@@ -38,20 +40,38 @@ import { OPENAI_FILE_ID_PREFIX } from '@/modules/proxy-gateway/server/modules/fi
  * dialect.
  */
 
-function createReplyMock() {
-  const reply: Record<string, unknown> = {};
-  reply.status = vi.fn(() => reply);
-  reply.header = vi.fn(() => reply);
-  reply.send = vi.fn(() => reply);
+interface ReplyMock {
+  status: ReturnType<typeof vi.fn>;
+  header: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
+}
+
+function createReplyMock(): ReplyMock {
+  const reply: ReplyMock = {
+    status: vi.fn(),
+    header: vi.fn(),
+    send: vi.fn(),
+  };
+  reply.status.mockImplementation(() => reply);
+  reply.header.mockImplementation(() => reply);
+  reply.send.mockImplementation(() => reply);
   return reply;
 }
 
-function sent(reply: Record<string, unknown>): any {
-  return (reply.send as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+function sent(reply: ReturnType<typeof createReplyMock> | LightMyRequestResponse): any {
+  if ('json' in reply) {
+    return String(reply.headers['content-type']).startsWith('application/x-jsonl')
+      ? reply.body
+      : reply.json();
+  }
+  return reply.send.mock.calls.at(-1)?.[0];
 }
 
-function statusOf(reply: Record<string, unknown>): unknown {
-  return (reply.status as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+function statusOf(reply: ReturnType<typeof createReplyMock> | LightMyRequestResponse): unknown {
+  if ('statusCode' in reply) {
+    return reply.statusCode;
+  }
+  return reply.status.mock.calls.at(-1)?.[0];
 }
 
 const roots: string[] = [];
@@ -115,9 +135,9 @@ describe('one job, three dialects', () => {
     const target = createSharedTarget();
     const runner = createRunner(target as unknown as BatchExecutionTarget, 3);
     const batches = new BatchService(runner, new FilesService(files));
-    const openai = new OpenAIBatchesController(batches);
-    const anthropic = new AnthropicMessageBatchesController(batches);
-    const operations = new GeminiBatchesController(batches);
+    const openai = await createBatchHttpApp(batches);
+    const anthropic = await createBatchHttpApp(batches);
+    const operations = await createBatchHttpApp(batches);
 
     const inputFileId = await uploadJsonl(files, [
       {
@@ -126,16 +146,24 @@ describe('one job, three dialects', () => {
         body: { model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] },
       },
     ]);
-    const openaiCreate = createReplyMock();
-    await openai.create(
-      { endpoint: '/v1/chat/completions', completion_window: '24h', input_file_id: inputFileId },
-      openaiCreate as never,
-    );
+
+    const openaiCreate = await openai.inject({
+      method: 'POST',
+      url: '/v1/batches',
+      headers: batchTestHeaders,
+      payload: {
+        endpoint: '/v1/chat/completions',
+        completion_window: '24h',
+        input_file_id: inputFileId,
+      },
+    });
     const openaiCreated = sent(openaiCreate);
 
-    const anthropicCreate = createReplyMock();
-    anthropic.create(
-      {
+    const anthropicCreate = await anthropic.inject({
+      method: 'POST',
+      url: '/v1/messages/batches',
+      headers: batchTestHeaders,
+      payload: {
         requests: [
           {
             custom_id: 'line-1',
@@ -147,8 +175,7 @@ describe('one job, three dialects', () => {
           },
         ],
       },
-      anthropicCreate as never,
-    );
+    });
     const anthropicCreated = sent(anthropicCreate);
 
     const geminiCreate = createReplyMock();
@@ -186,16 +213,25 @@ describe('one job, three dialects', () => {
     expect(anthropicCreated.id).toMatch(/^msgbatch_[0-9a-f]{24}$/u);
     expect(geminiCreated.name).toMatch(/^batches\/[0-9a-f]{24}$/u);
 
-    const openaiGet = createReplyMock();
-    openai.get(openaiCreated.id, openaiGet as never);
+    const openaiGet = await openai.inject({
+      method: 'GET',
+      url: `/v1/batches/${encodeURIComponent(openaiCreated.id)}`,
+      headers: batchTestHeaders,
+    });
     const openaiBatch = sent(openaiGet);
 
-    const anthropicGet = createReplyMock();
-    anthropic.get(anthropicCreated.id, anthropicGet as never);
+    const anthropicGet = await anthropic.inject({
+      method: 'GET',
+      url: `/v1/messages/batches/${encodeURIComponent(anthropicCreated.id)}`,
+      headers: batchTestHeaders,
+    });
     const anthropicBatch = sent(anthropicGet);
 
-    const geminiGet = createReplyMock();
-    operations.get(geminiCreated.name, geminiGet as never);
+    const geminiGet = await operations.inject({
+      method: 'GET',
+      url: `/v1beta/batches/${encodeURIComponent(geminiCreated.name.replace(/^batches\//u, ''))}`,
+      headers: batchTestHeaders,
+    });
     const geminiOperation = sent(geminiGet);
 
     // Status vocabulary: each dialect's own set, not another's.
@@ -363,20 +399,30 @@ describe("errors stay in the caller's dialect", () => {
     // OpenAI
     const openaiTarget = createFailingTarget('handleChatCompletions');
     const openaiRunner = createRunner(openaiTarget as unknown as BatchExecutionTarget, 1);
-    const openaiController = new OpenAIBatchesController(
+    const openaiController = await createBatchHttpApp(
       new BatchService(openaiRunner, new FilesService(files)),
     );
     const inputFileId = await uploadJsonl(files, [
       { custom_id: 'bad', url: '/v1/chat/completions', body: { model: 'gpt-4o', messages: [] } },
     ]);
-    const openaiCreateReply = createReplyMock();
-    await openaiController.create(
-      { endpoint: '/v1/chat/completions', completion_window: '24h', input_file_id: inputFileId },
-      openaiCreateReply as never,
-    );
+
+    const openaiCreateReply = await openaiController.inject({
+      method: 'POST',
+      url: '/v1/batches',
+      headers: batchTestHeaders,
+      payload: {
+        endpoint: '/v1/chat/completions',
+        completion_window: '24h',
+        input_file_id: inputFileId,
+      },
+    });
     await openaiRunner.drain();
-    const openaiGetReply = createReplyMock();
-    openaiController.get(sent(openaiCreateReply).id, openaiGetReply as never);
+
+    const openaiGetReply = await openaiController.inject({
+      method: 'GET',
+      url: `/v1/batches/${encodeURIComponent(sent(openaiCreateReply).id)}`,
+      headers: batchTestHeaders,
+    });
     const openaiErrorFileId = sent(openaiGetReply).error_file_id.replace(/^file-/u, '');
     const openaiErrorLine = JSON.parse(
       (await files.get(openaiErrorFileId)).bytes.toString('utf-8').trim(),
@@ -391,21 +437,25 @@ describe("errors stay in the caller's dialect", () => {
     // Anthropic
     const anthropicTarget = createFailingTarget('handleAnthropicMessages');
     const anthropicRunner = createRunner(anthropicTarget as unknown as BatchExecutionTarget, 1);
-    const anthropicController = new AnthropicMessageBatchesController(
-      new BatchService(anthropicRunner),
-    );
-    const anthropicCreateReply = createReplyMock();
-    anthropicController.create(
-      {
+    const anthropicController = await createBatchHttpApp(new BatchService(anthropicRunner));
+
+    const anthropicCreateReply = await anthropicController.inject({
+      method: 'POST',
+      url: '/v1/messages/batches',
+      headers: batchTestHeaders,
+      payload: {
         requests: [
           { custom_id: 'bad', params: { model: 'claude-3', max_tokens: 8, messages: [] } },
         ],
       },
-      anthropicCreateReply as never,
-    );
+    });
     await anthropicRunner.drain();
-    const anthropicResultsReply = createReplyMock();
-    anthropicController.results(sent(anthropicCreateReply).id, anthropicResultsReply as never);
+
+    const anthropicResultsReply = await anthropicController.inject({
+      method: 'GET',
+      url: `/v1/messages/batches/${encodeURIComponent(sent(anthropicCreateReply).id)}/results`,
+      headers: batchTestHeaders,
+    });
     const anthropicLine = JSON.parse((sent(anthropicResultsReply) as string).trim());
     expect(anthropicLine).toEqual({
       custom_id: 'bad',
@@ -421,7 +471,7 @@ describe("errors stay in the caller's dialect", () => {
     // Gemini
     const geminiTarget = createFailingTarget('handleGeminiGenerateContent');
     const geminiRunner = createRunner(geminiTarget as unknown as BatchExecutionTarget, 1);
-    const geminiOperations = new GeminiBatchesController(new BatchService(geminiRunner));
+    const geminiOperations = await createBatchHttpApp(new BatchService(geminiRunner));
     const geminiCreateReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
       new BatchService(geminiRunner),
@@ -430,8 +480,12 @@ describe("errors stay in the caller's dialect", () => {
       geminiCreateReply as never,
     );
     await geminiRunner.drain();
-    const geminiGetReply = createReplyMock();
-    geminiOperations.get(sent(geminiCreateReply).name, geminiGetReply as never);
+
+    const geminiGetReply = await geminiOperations.inject({
+      method: 'GET',
+      url: `/v1beta/batches/${encodeURIComponent(sent(geminiCreateReply).name.replace(/^batches\//u, ''))}`,
+      headers: batchTestHeaders,
+    });
     const geminiLine = sent(geminiGetReply).response.inlinedResponses.inlinedResponses[0];
     expect(geminiLine).toEqual({
       metadata: { key: 'bad' },
@@ -452,14 +506,15 @@ describe("errors stay in the caller's dialect", () => {
     const target = createSharedTarget();
     const runner = createRunner(target as unknown as BatchExecutionTarget, 1);
     const batches = new BatchService(runner, new FilesService(files));
-    const openaiController = new OpenAIBatchesController(batches);
-    const anthropicController = new AnthropicMessageBatchesController(batches);
+    const openaiController = await createBatchHttpApp(batches);
+    const anthropicController = await createBatchHttpApp(batches);
 
-    const openaiReply = createReplyMock();
-    await openaiController.create(
-      { endpoint: '/v1/chat/completions', completion_window: '24h' },
-      openaiReply as never,
-    );
+    const openaiReply = await openaiController.inject({
+      method: 'POST',
+      url: '/v1/batches',
+      headers: batchTestHeaders,
+      payload: { endpoint: '/v1/chat/completions', completion_window: '24h' },
+    });
     expect(statusOf(openaiReply)).toBe(400);
     const openaiBody = sent(openaiReply);
     expect(openaiBody).toEqual({
@@ -471,8 +526,12 @@ describe("errors stay in the caller's dialect", () => {
       },
     });
 
-    const anthropicReply = createReplyMock();
-    anthropicController.create({ requests: [] }, anthropicReply as never);
+    const anthropicReply = await anthropicController.inject({
+      method: 'POST',
+      url: '/v1/messages/batches',
+      headers: batchTestHeaders,
+      payload: { requests: [] },
+    });
     expect(statusOf(anthropicReply)).toBe(400);
     const anthropicBody = sent(anthropicReply);
     expect(anthropicBody).toEqual({
@@ -507,12 +566,14 @@ describe("errors stay in the caller's dialect", () => {
     const target = createSharedTarget();
     const runner = createRunner(target as unknown as BatchExecutionTarget, 1);
     const batches = new BatchService(runner, new FilesService(files));
-    const openaiController = new OpenAIBatchesController(batches);
-    const anthropicController = new AnthropicMessageBatchesController(batches);
+    const openaiController = await createBatchHttpApp(batches);
+    const anthropicController = await createBatchHttpApp(batches);
 
-    const anthropicCreateReply = createReplyMock();
-    anthropicController.create(
-      {
+    const anthropicCreateReply = await anthropicController.inject({
+      method: 'POST',
+      url: '/v1/messages/batches',
+      headers: batchTestHeaders,
+      payload: {
         requests: [
           {
             custom_id: 'x',
@@ -524,15 +585,18 @@ describe("errors stay in the caller's dialect", () => {
           },
         ],
       },
-      anthropicCreateReply as never,
-    );
+    });
     const anthropicId = sent(anthropicCreateReply).id;
     const bareId = anthropicId.replace(/^msgbatch_/u, '');
 
     // The same id, fetched through the OpenAI surface, is 404 in the OpenAI
     // envelope -- not the Anthropic envelope, and not an empty 200.
-    const openaiGetReply = createReplyMock();
-    openaiController.get(`batch_${bareId}`, openaiGetReply as never);
+
+    const openaiGetReply = await openaiController.inject({
+      method: 'GET',
+      url: `/v1/batches/${encodeURIComponent(`batch_${bareId}`)}`,
+      headers: batchTestHeaders,
+    });
     expect(statusOf(openaiGetReply)).toBe(404);
     expect(sent(openaiGetReply)).toEqual({
       error: {
@@ -613,13 +677,13 @@ describe('/v1/complete round-trip fidelity', () => {
 
   it('refuses a streaming request with the documented Anthropic 400 shape, not merely a non-200', async () => {
     const proxyService = { handleAnthropicMessages: vi.fn() };
-    const controller = new AnthropicCompleteController(proxyService as any);
-    const reply = createReplyMock();
-
-    await controller.complete(
-      { model: 'claude-3', prompt: 'hi', max_tokens_to_sample: 16, stream: true },
-      reply as never,
-    );
+    const app = await createAnthropicCompleteHttpApp(proxyService);
+    const reply = await app.inject({
+      method: 'POST',
+      url: '/v1/complete',
+      headers: completionTestHeaders,
+      payload: { model: 'claude-3', prompt: 'hi', max_tokens_to_sample: 16, stream: true },
+    });
 
     expect(statusOf(reply)).toBe(400);
     expect(proxyService.handleAnthropicMessages).not.toHaveBeenCalled();

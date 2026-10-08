@@ -1,8 +1,8 @@
-import { Controller, Get, Inject, Param, Query, Res, UseGuards } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import { Controller, Get, Inject, Param, Query, UseGuards } from '@nestjs/common';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
-import { BatchService, sendBatchResponse } from './batch.service';
+import { BatchService } from './batch.service';
+import { ProtocolErrors } from '../../common/protocol-errors.decorator';
 import {
   GEMINI_BATCH_PREFIX,
   geminiBatchErrorResponse,
@@ -14,38 +14,21 @@ import {
  */
 @Controller('v1beta/batches')
 @UseGuards(ProxyGuard)
+@ProtocolErrors(geminiBatchErrorResponse)
 export class GeminiBatchesController {
   constructor(@Inject(BatchService) private readonly batches: BatchService) {}
 
   @Get()
-  list(
-    @Res() res: FastifyReply,
-    @Query('pageSize') pageSize?: string,
-    @Query('pageToken') pageToken?: string,
-  ) {
-    sendBatchResponse(
-      res,
-      () => {
-        const page = this.batches.listGemini(pageSize, pageToken);
-        return {
-          body: {
-            batches: page.jobs.map((job) => toGeminiOperation(job)),
-            ...(page.hasMore
-              ? { nextPageToken: `${GEMINI_BATCH_PREFIX}${page.jobs.at(-1)!.id}` }
-              : {}),
-          },
-        };
-      },
-      geminiBatchErrorResponse,
-    );
+  list(@Query('pageSize') pageSize?: string, @Query('pageToken') pageToken?: string) {
+    const page = this.batches.listGemini(pageSize, pageToken);
+    return {
+      batches: page.jobs.map((job) => toGeminiOperation(job)),
+      ...(page.hasMore ? { nextPageToken: `${GEMINI_BATCH_PREFIX}${page.jobs.at(-1)!.id}` } : {}),
+    };
   }
 
   @Get(':name')
-  get(@Param('name') name: string, @Res() res: FastifyReply) {
-    sendBatchResponse(
-      res,
-      () => ({ body: toGeminiOperation(this.batches.get('gemini', name)) }),
-      geminiBatchErrorResponse,
-    );
+  get(@Param('name') name: string) {
+    return toGeminiOperation(this.batches.get('gemini', name));
   }
 }

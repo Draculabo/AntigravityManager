@@ -1,26 +1,45 @@
+import { createBatchHttpApp, batchTestHeaders } from '../helpers/batch-http-app';
+import type { LightMyRequestResponse } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
 import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
 import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
 import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
 import { respondGeminiBatchGenerateContent } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-submit';
-import { GeminiBatchesController } from '@/modules/proxy-gateway/server/modules/batch/gemini-batches.controller';
 import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
 
-function createReplyMock() {
-  const reply: Record<string, unknown> = {};
-  reply.status = vi.fn(() => reply);
-  reply.header = vi.fn(() => reply);
-  reply.send = vi.fn(() => reply);
+interface ReplyMock {
+  status: ReturnType<typeof vi.fn>;
+  header: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
+}
+
+function createReplyMock(): ReplyMock {
+  const reply: ReplyMock = {
+    status: vi.fn(),
+    header: vi.fn(),
+    send: vi.fn(),
+  };
+  reply.status.mockImplementation(() => reply);
+  reply.header.mockImplementation(() => reply);
+  reply.send.mockImplementation(() => reply);
   return reply;
 }
 
-function sent(reply: Record<string, unknown>): any {
-  return (reply.send as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+function sent(reply: ReturnType<typeof createReplyMock> | LightMyRequestResponse): any {
+  if ('json' in reply) {
+    return String(reply.headers['content-type']).startsWith('application/x-jsonl')
+      ? reply.body
+      : reply.json();
+  }
+  return reply.send.mock.calls.at(-1)?.[0];
 }
 
-function statusOf(reply: Record<string, unknown>): unknown {
-  return (reply.status as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+function statusOf(reply: ReturnType<typeof createReplyMock> | LightMyRequestResponse): unknown {
+  if ('statusCode' in reply) {
+    return reply.statusCode;
+  }
+  return reply.status.mock.calls.at(-1)?.[0];
 }
 
 function createTarget(handler: (model: string, request: unknown) => Promise<unknown>) {
@@ -82,7 +101,7 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
   it('submits an inlined-requests batch and runs it to completion', async () => {
     const target = createTarget(async () => geminiReply('ok'));
     const runner = createRunner(target);
-    const operations = new GeminiBatchesController(new BatchService(runner));
+    const operations = await createBatchHttpApp(new BatchService(runner));
 
     const submitReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
@@ -107,8 +126,11 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
 
     await runner.drain();
 
-    const getReply = createReplyMock();
-    operations.get(operation.name, getReply as never);
+    const getReply = await operations.inject({
+      method: 'GET',
+      url: `/v1beta/batches/${encodeURIComponent(operation.name.replace(/^batches\//u, ''))}`,
+      headers: batchTestHeaders,
+    });
     const finished = sent(getReply);
     expect(finished.done).toBe(true);
     expect(finished.response.inlinedResponses.inlinedResponses).toEqual([
@@ -125,7 +147,7 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
       return geminiReply('ok');
     });
     const runner = createRunner(target);
-    const operations = new GeminiBatchesController(new BatchService(runner));
+    const operations = await createBatchHttpApp(new BatchService(runner));
 
     const submitReply = createReplyMock();
     await respondGeminiBatchGenerateContent(
@@ -148,8 +170,11 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
     const operation = sent(submitReply);
     await runner.drain();
 
-    const getReply = createReplyMock();
-    operations.get(operation.name, getReply as never);
+    const getReply = await operations.inject({
+      method: 'GET',
+      url: `/v1beta/batches/${encodeURIComponent(operation.name.replace(/^batches\//u, ''))}`,
+      headers: batchTestHeaders,
+    });
     const finished = sent(getReply);
     const lines = finished.response.inlinedResponses.inlinedResponses;
     expect(lines.find((line: any) => line.metadata.key === 'good').response).toBeDefined();
@@ -173,21 +198,24 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
     expect(sent(reply)).toMatchObject({ error: { status: 'INVALID_ARGUMENT' } });
   });
 
-  it('answers an unknown operation name with 404 in the Gemini error envelope, not an empty success', () => {
+  it('answers an unknown operation name with 404 in the Gemini error envelope, not an empty success', async () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target);
-    const operations = new GeminiBatchesController(new BatchService(runner));
+    const operations = await createBatchHttpApp(new BatchService(runner));
 
-    const reply = createReplyMock();
-    operations.get(`batches/${'0'.repeat(24)}`, reply as never);
+    const reply = await operations.inject({
+      method: 'GET',
+      url: `/v1beta/batches/${encodeURIComponent(`batches/${'0'.repeat(24)}`.replace(/^batches\//u, ''))}`,
+      headers: batchTestHeaders,
+    });
     expect(statusOf(reply)).toBe(404);
     expect(sent(reply)).toMatchObject({ error: { status: 'NOT_FOUND' } });
   });
 
-  it('expires a Gemini batch that outlives its completion window, reported through the operation', () => {
+  it('expires a Gemini batch that outlives its completion window, reported through the operation', async () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target, 1);
-    const operations = new GeminiBatchesController(new BatchService(runner));
+    const operations = await createBatchHttpApp(new BatchService(runner));
 
     const created = runner.create(
       {
@@ -199,17 +227,20 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
       Date.now() - 10_000,
     );
 
-    const getReply = createReplyMock();
-    operations.get(`batches/${created.id}`, getReply as never);
+    const getReply = await operations.inject({
+      method: 'GET',
+      url: `/v1beta/batches/${encodeURIComponent(`batches/${created.id}`.replace(/^batches\//u, ''))}`,
+      headers: batchTestHeaders,
+    });
     const operation = sent(getReply);
     expect(operation.done).toBe(true);
     expect(operation.error).toMatchObject({ status: 'DEADLINE_EXCEEDED' });
   });
 
-  it('pages newest first and preserves the first page for an aged-out well-formed token', () => {
+  it('pages newest first and preserves the first page for an aged-out well-formed token', async () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target, 1);
-    const operations = new GeminiBatchesController(new BatchService(runner));
+    const operations = await createBatchHttpApp(new BatchService(runner));
 
     const now = Date.now();
     const makeJob = (id: string, createdAtMs: number) =>
@@ -225,42 +256,62 @@ describe('Gemini :batchGenerateContent and /v1beta/batches', () => {
     const middle = makeJob('middle', now - 1000);
     const newest = makeJob('newest', now);
 
-    const page1Reply = createReplyMock();
-    operations.list(page1Reply as never, '1', undefined);
+    const page1Reply = await operations.inject({
+      method: 'GET',
+      url: '/v1beta/batches',
+      headers: batchTestHeaders,
+      query: { pageSize: '1' },
+    });
     const page1 = sent(page1Reply);
     expect(page1.batches).toHaveLength(1);
     expect(page1.batches[0].name).toBe(`batches/${newest.id}`);
     expect(page1.nextPageToken).toBe(`batches/${newest.id}`);
 
-    const page2Reply = createReplyMock();
-    operations.list(page2Reply as never, '1', page1.nextPageToken);
+    const page2Reply = await operations.inject({
+      method: 'GET',
+      url: '/v1beta/batches',
+      headers: batchTestHeaders,
+      query: { pageSize: '1', pageToken: page1.nextPageToken },
+    });
     const page2 = sent(page2Reply);
     expect(page2.batches).toHaveLength(1);
     expect(page2.batches[0].name).toBe(`batches/${middle.id}`);
     expect(page2.nextPageToken).toBe(`batches/${middle.id}`);
 
-    const page3Reply = createReplyMock();
-    operations.list(page3Reply as never, '1', page2.nextPageToken);
+    const page3Reply = await operations.inject({
+      method: 'GET',
+      url: '/v1beta/batches',
+      headers: batchTestHeaders,
+      query: { pageSize: '1', pageToken: page2.nextPageToken },
+    });
     const page3 = sent(page3Reply);
     expect(page3.batches).toHaveLength(1);
     expect(page3.batches[0].name).toBe(`batches/${oldest.id}`);
     expect(page3.nextPageToken).toBeUndefined();
 
-    const agedOutReply = createReplyMock();
-    operations.list(agedOutReply as never, '1', `batches/${'f'.repeat(24)}`);
+    const agedOutReply = await operations.inject({
+      method: 'GET',
+      url: '/v1beta/batches',
+      headers: batchTestHeaders,
+      query: { pageSize: '1', pageToken: `batches/${'f'.repeat(24)}` },
+    });
     expect(sent(agedOutReply)).toEqual({
       batches: [page1.batches[0]],
       nextPageToken: page1.nextPageToken,
     });
   });
 
-  it('rejects an unrecognized pageToken with the Gemini error envelope', () => {
+  it('rejects an unrecognized pageToken with the Gemini error envelope', async () => {
     const target = createTarget(async () => geminiReply('unused'));
     const runner = createRunner(target);
-    const operations = new GeminiBatchesController(new BatchService(runner));
+    const operations = await createBatchHttpApp(new BatchService(runner));
 
-    const reply = createReplyMock();
-    operations.list(reply as never, undefined, 'not-a-real-token');
+    const reply = await operations.inject({
+      method: 'GET',
+      url: '/v1beta/batches',
+      headers: batchTestHeaders,
+      query: { pageToken: 'not-a-real-token' },
+    });
     expect(statusOf(reply)).toBe(400);
     expect(sent(reply)).toMatchObject({ error: { status: 'INVALID_ARGUMENT' } });
   });

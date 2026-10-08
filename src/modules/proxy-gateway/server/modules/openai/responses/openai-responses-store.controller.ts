@@ -1,5 +1,12 @@
-import { Controller, Delete, Get, HttpStatus, Inject, Param, Res, UseGuards } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import {
+  Controller,
+  Delete,
+  Get,
+  Inject,
+  NotFoundException,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 
 import { ProxyGuard } from '../../../guards/proxy.guard';
 import { buildResponseNotFoundError } from './openai-responses-request';
@@ -22,28 +29,26 @@ export class OpenAIResponsesStoreController {
   ) {}
 
   @Get(':responseId')
-  public getResponse(@Param('responseId') responseId: string, @Res() res: FastifyReply): void {
-    const stored = this.responsesSessions.get(responseId)?.response;
-    if (!stored) {
-      res.status(HttpStatus.NOT_FOUND).send(buildResponseNotFoundError(responseId, 'id'));
-      return;
-    }
-
-    res.status(HttpStatus.OK).send(stored);
+  public getResponse(@Param('responseId') responseId: string) {
+    return this.requireStoredResponse(responseId);
   }
 
   @Delete(':responseId')
-  public deleteResponse(@Param('responseId') responseId: string, @Res() res: FastifyReply): void {
-    if (!this.responsesSessions.get(responseId)?.response) {
-      res.status(HttpStatus.NOT_FOUND).send(buildResponseNotFoundError(responseId, 'id'));
-      return;
-    }
-
+  public deleteResponse(@Param('responseId') responseId: string) {
+    this.requireStoredResponse(responseId);
     this.responsesSessions.delete(responseId);
-    res.status(HttpStatus.OK).send({
+    return {
       id: responseId,
       object: 'response',
       deleted: true,
-    });
+    };
+  }
+
+  private requireStoredResponse(responseId: string) {
+    const stored = this.responsesSessions.get(responseId)?.response;
+    if (!stored) {
+      throw new NotFoundException(buildResponseNotFoundError(responseId, 'id'));
+    }
+    return stored;
   }
 }

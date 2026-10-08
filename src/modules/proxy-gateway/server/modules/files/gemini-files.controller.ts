@@ -2,19 +2,21 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Inject,
   Param,
   Post,
   Query,
   Req,
-  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyRequest } from 'fastify';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
+import { ProtocolErrors } from '../../common/protocol-errors.decorator';
 import { FileStoreError } from './file-store.types';
-import { FilesService, sendFilesResponse } from './files.service';
+import { FilesService } from './files.service';
 import {
   geminiFileErrorResponse,
   readGeminiUploadDisplayName,
@@ -29,82 +31,51 @@ export class GeminiFilesController {
   constructor(@Inject(FilesService) private readonly files: FilesService) {}
 
   @Post('upload/v1beta/files')
-  async upload(
-    @Req() request: FastifyRequest,
-    @Res() res: FastifyReply,
-    @Query('uploadType') uploadType?: string,
-  ): Promise<void> {
-    await sendFilesResponse(
-      res,
-      async () => {
-        if (uploadType && !['media', 'multipart'].includes(uploadType)) {
-          throw new FileStoreError(
-            'invalid_id',
-            `uploadType=${uploadType} is not implemented; use media or multipart`,
-            400,
-          );
-        }
-        const upload = await parseFileUploadRequest(request);
-        const record = await this.files.create({
-          bytes: upload.bytes,
-          declaredMimeType: upload.mimeType,
-          displayName: readGeminiUploadDisplayName(upload.fields) ?? upload.filename,
-        });
-        return { body: { file: toGeminiFileResource(record, resolveBaseUrl(request)) } };
-      },
-      geminiFileErrorResponse,
-      normalizeUploadError,
-    );
+  @HttpCode(HttpStatus.OK)
+  @ProtocolErrors((error) => geminiFileErrorResponse(normalizeUploadError(error)))
+  async upload(@Req() request: FastifyRequest, @Query('uploadType') uploadType?: string) {
+    if (uploadType && !['media', 'multipart'].includes(uploadType)) {
+      throw new FileStoreError(
+        'invalid_id',
+        `uploadType=${uploadType} is not implemented; use media or multipart`,
+        400,
+      );
+    }
+    const upload = await parseFileUploadRequest(request);
+    const record = await this.files.create({
+      bytes: upload.bytes,
+      declaredMimeType: upload.mimeType,
+      displayName: readGeminiUploadDisplayName(upload.fields) ?? upload.filename,
+    });
+    return { file: toGeminiFileResource(record, resolveBaseUrl(request)) };
   }
 
   @Get('v1beta/files')
+  @ProtocolErrors(geminiFileErrorResponse)
   async list(
     @Req() request: FastifyRequest,
-    @Res() res: FastifyReply,
     @Query('pageSize') pageSize?: string,
     @Query('pageToken') pageToken?: string,
-  ): Promise<void> {
-    await sendFilesResponse(
-      res,
-      async () => {
-        const page = await this.files.list(pageSize, pageToken);
-        const baseUrl = resolveBaseUrl(request);
-        return {
-          body: {
-            files: page.files.map((record) => toGeminiFileResource(record, baseUrl)),
-            ...(page.nextPageToken ? { nextPageToken: page.nextPageToken } : {}),
-          },
-        };
-      },
-      geminiFileErrorResponse,
-    );
+  ) {
+    const page = await this.files.list(pageSize, pageToken);
+    const baseUrl = resolveBaseUrl(request);
+    return {
+      files: page.files.map((record) => toGeminiFileResource(record, baseUrl)),
+      ...(page.nextPageToken ? { nextPageToken: page.nextPageToken } : {}),
+    };
   }
 
   @Get('v1beta/files/:name')
-  async get(
-    @Param('name') name: string,
-    @Req() request: FastifyRequest,
-    @Res() res: FastifyReply,
-  ): Promise<void> {
-    await sendFilesResponse(
-      res,
-      async () => ({
-        body: toGeminiFileResource(await this.files.stat(name), resolveBaseUrl(request)),
-      }),
-      geminiFileErrorResponse,
-    );
+  @ProtocolErrors(geminiFileErrorResponse)
+  async get(@Param('name') name: string, @Req() request: FastifyRequest) {
+    return toGeminiFileResource(await this.files.stat(name), resolveBaseUrl(request));
   }
 
   @Delete('v1beta/files/:name')
-  async remove(@Param('name') name: string, @Res() res: FastifyReply): Promise<void> {
-    await sendFilesResponse(
-      res,
-      async () => {
-        await this.files.remove(name);
-        return { body: {} };
-      },
-      geminiFileErrorResponse,
-    );
+  @ProtocolErrors(geminiFileErrorResponse)
+  async remove(@Param('name') name: string) {
+    await this.files.remove(name);
+    return {};
   }
 }
 
