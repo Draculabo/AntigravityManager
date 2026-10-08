@@ -232,7 +232,9 @@ describe('selected Thought Store and cURL owners', () => {
       new Error('private database path and key'),
       '["gateway","thoughtRecord"]',
     );
-    expect(projected.message).toBe('AI reasoning history is unavailable right now. Please try again.');
+    expect(projected.message).toBe(
+      'AI reasoning history is unavailable right now. Please try again.',
+    );
     expect(projected.data).not.toHaveProperty('backendStack');
   });
 
@@ -263,7 +265,9 @@ describe('selected Thought Store and cURL owners', () => {
     });
     const opening = owner.openRecord({ sessionKey, id: 1 });
     owner.closeAdmission();
-    await expect(owner.stats()).rejects.toThrow('AI reasoning history is unavailable right now. Please try again.');
+    await expect(owner.stats()).rejects.toThrow(
+      'AI reasoning history is unavailable right now. Please try again.',
+    );
     let drained = false;
     const drain = owner.drain().then(() => {
       drained = true;

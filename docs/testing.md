@@ -88,6 +88,11 @@ real process under Electron. The existing AutoUnpackNatives plugin unpacks `.nod
 
 ## Type and React quality gates
 
+ESLint imports both `.gitignore` and `.prettierignore`. Generated Playwright output, packaged
+test fixtures and other ignored build products stay outside source linting, while production
+code and test sources remain in scope. This prevents saved minified bundles from consuming
+the lint process's heap during `npm run check:static`.
+
 `npm run verify:type-boundaries` blocks new production `any`, double assertions, native `fetch`, direct JSON assertions and `@ts-ignore` entries against `.agents/type-boundary-baseline.json`. Test, mock and generated sources are excluded. A controlled third-party adapter exception must be local, time-bounded and name its owner, tracking issue and reason.
 
 React Doctor runs in pull requests with changed-line scope and error blocking. Telemetry, score sharing and supply-chain analysis are disabled. A full scan is advisory and establishes the existing-work baseline. React Scan is injected only for an explicitly enabled development Electron session; it is not bundled or run in CI.

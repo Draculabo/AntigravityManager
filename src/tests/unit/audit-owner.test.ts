@@ -172,7 +172,9 @@ describe('selected audit owner', () => {
   it('keeps source failures and malformed inputs value-free at both public boundaries', async () => {
     const client = await remote();
     source.stats.mockRejectedValueOnce(new Error('private credential and path'));
-    await expect(client.audit.stats()).rejects.toThrow('Request history is unavailable right now. Please try again.');
+    await expect(client.audit.stats()).rejects.toThrow(
+      'Request history is unavailable right now. Please try again.',
+    );
     await expect(client.audit.detail({ id: 'private-value' })).rejects.toThrow(
       'Request history is unavailable right now. Please try again.',
     );
@@ -198,7 +200,9 @@ describe('selected audit owner', () => {
       accountIds: ['界'.repeat(310000)],
       modelFamilies: [],
     });
-    await expect(client.audit.filterOptions()).rejects.toThrow('Request history is unavailable right now. Please try again.');
+    await expect(client.audit.filterOptions()).rejects.toThrow(
+      'Request history is unavailable right now. Please try again.',
+    );
   });
 
   it('never falls back to an embedded worker after remote disconnect', async () => {
@@ -206,7 +210,9 @@ describe('selected audit owner', () => {
     const embedded = vi.spyOn(auditOwner, 'stats');
     await server?.close();
     server = undefined;
-    await expect(getAuditAdapter().stats()).rejects.toThrow('Request history is unavailable right now. Please try again.');
+    await expect(getAuditAdapter().stats()).rejects.toThrow(
+      'Request history is unavailable right now. Please try again.',
+    );
     expect(embedded).not.toHaveBeenCalled();
   });
 
@@ -221,7 +227,9 @@ describe('selected audit owner', () => {
     const read = owner.stats();
     const deletion = owner.delete({ id });
     owner.closeAdmission();
-    await expect(owner.stats()).rejects.toThrow('Request history is unavailable right now. Please try again.');
+    await expect(owner.stats()).rejects.toThrow(
+      'Request history is unavailable right now. Please try again.',
+    );
     let drained = false;
     const drain = owner.drain().then(() => {
       drained = true;
@@ -245,7 +253,9 @@ describe('selected audit owner', () => {
       return stats;
     });
     const admitted = Array.from({ length: 128 }, () => owner.stats());
-    await expect(owner.stats()).rejects.toThrow('Request history is unavailable right now. Please try again.');
+    await expect(owner.stats()).rejects.toThrow(
+      'Request history is unavailable right now. Please try again.',
+    );
     release?.();
     expect(await Promise.all(admitted)).toEqual(Array.from({ length: 128 }, () => stats));
   });

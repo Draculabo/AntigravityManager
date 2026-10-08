@@ -12,10 +12,12 @@ import { defineConfig } from 'eslint/config';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const gitIgnorePath = path.resolve(__dirname, '.gitignore');
 const prettierIgnorePath = path.resolve(__dirname, '.prettierignore');
 
 /** @type {import('eslint').Linter.Config[]} */
 export default defineConfig([
+  includeIgnoreFile(gitIgnorePath),
   includeIgnoreFile(prettierIgnorePath),
   {
     files: ['**/*.{js,mjs,cjs,ts,jsx,tsx}'],
