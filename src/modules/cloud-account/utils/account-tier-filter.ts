@@ -67,7 +67,9 @@ function getTierOptionSortRank(option: AccountTierOption): number {
   return KNOWN_TIER_ORDER[option.key] ?? 100;
 }
 
-export function buildAccountTierOptions(accounts: Array<Pick<CloudAccount, 'quota'>>): AccountTierOption[] {
+export function buildAccountTierOptions(
+  accounts: Array<Pick<CloudAccount, 'quota'>>,
+): AccountTierOption[] {
   const optionByKey = new Map<string, AccountTierOption>();
 
   for (const account of accounts) {
@@ -125,10 +127,7 @@ function sortCloudAccounts<T extends Pick<CloudAccount, 'quota' | 'last_used'>>(
 
 export function filterAndSortCloudAccounts<
   T extends Pick<CloudAccount, 'quota' | 'last_used' | 'is_active'>,
->(
-  accounts: T[],
-  options: FilterAndSortCloudAccountsOptions,
-): T[] {
+>(accounts: T[], options: FilterAndSortCloudAccountsOptions): T[] {
   const tierOptions = options.tierOptions ?? buildAccountTierOptions(accounts);
   const effectiveSelectedTierKeys = getEffectiveSelectedTierKeys(
     options.selectedTierKeys,
