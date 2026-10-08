@@ -9,6 +9,12 @@ import {
 } from '@/modules/cloud-account/services/desktop-oauth-login.error';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
+import { ConfigManager } from '@/modules/config/ipc/manager';
+import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import {
+  UpstreamProxyConfigurationError,
+  UPSTREAM_PROXY_CONFIGURATION_MESSAGE,
+} from '@/modules/config/upstream-proxy.schema';
 
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 
@@ -39,6 +45,58 @@ afterEach(async () => {
 });
 
 describe('desktop owner-side OAuth login', () => {
+  it.each([
+    '',
+    '   ',
+    'invalid-address',
+    'socks5://localhost:1080',
+    'http://user:%ZZ@localhost:7890',
+  ])('rejects an invalid enabled proxy before opening the browser: %s', async (url) => {
+    const configured = {
+      ...DEFAULT_APP_CONFIG,
+      proxy: { ...DEFAULT_APP_CONFIG.proxy, upstream_proxy: { enabled: true, url } },
+    };
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue(configured);
+    const enroll = vi.fn();
+    const session = new HeadlessOAuthSessionService(enroll);
+    sessions.push(session);
+    const openExternal = vi.fn();
+    const login = new DesktopOAuthLogin({
+      session,
+      selectClient: vi.fn(),
+      openExternal,
+      loadView: vi.fn(),
+    });
+
+    await expect(login.start()).rejects.toMatchObject({ loginCode: 'proxy-configuration-invalid' });
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(enroll).not.toHaveBeenCalled();
+
+    configured.proxy.upstream_proxy = { enabled: false, url };
+    openExternal.mockRejectedValueOnce(new Error('synthetic browser failure'));
+    await expect(login.start()).rejects.toMatchObject({ loginCode: 'browser-open-failed' });
+    expect(openExternal).toHaveBeenCalledOnce();
+  });
+
+  it('reports a proxy changed to an invalid state during authorization', async () => {
+    vi.spyOn(GoogleAPIService, 'getAuthUrl').mockReturnValue('https://accounts.google.com/');
+    const session = new HeadlessOAuthSessionService(
+      vi.fn().mockRejectedValue(new UpstreamProxyConfigurationError()),
+    );
+    sessions.push(session);
+    const openExternal = vi.fn(async () => {});
+    const login = new DesktopOAuthLogin({
+      session,
+      selectClient: vi.fn(),
+      openExternal,
+      loadView: vi.fn(),
+    });
+    const pending = login.start();
+    await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
+    login.submitCode('4/synthetic-code');
+    await expect(pending).rejects.toMatchObject({ loginCode: 'proxy-configuration-invalid' });
+  });
+
   it('accepts a manual code while the browser login is pending', async () => {
     vi.spyOn(GoogleAPIService, 'getActiveOAuthClientKey').mockReturnValue('client-a');
     vi.spyOn(GoogleAPIService, 'getAuthUrl').mockImplementation((_key, session) => {
@@ -142,6 +200,7 @@ describe('desktop owner-side OAuth login', () => {
     ['OAuth login timed out', 'login-timeout'],
     ['OAuth login was cancelled', 'login-cancelled'],
     ['Google account already exists', 'duplicate-account'],
+    [UPSTREAM_PROXY_CONFIGURATION_MESSAGE, 'proxy-configuration-invalid'],
     ['private provider details', 'login-failed'],
   ] as const)('maps session failure %s to a value-free code', async (message, loginCode) => {
     const session = {

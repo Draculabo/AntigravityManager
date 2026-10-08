@@ -9,6 +9,7 @@ import {
   ServiceConfigWriteResultSchema,
 } from './service-config.schema';
 import type { ServiceConfigOperations } from './service-config.service';
+import { UpstreamProxyConfigurationError } from './upstream-proxy.schema';
 import {
   CloudAccountAlertPolicySchema,
   CloudAccountAlertPolicyUpdateSchema,
@@ -26,7 +27,13 @@ export function configurationUnavailable() {
 async function safe<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work();
-  } catch {
+  } catch (error) {
+    if (error instanceof UpstreamProxyConfigurationError) {
+      throw new ORPCError('BAD_REQUEST', {
+        message: 'Upstream proxy configuration is invalid.',
+        data: { configCode: 'invalid-input' },
+      });
+    }
     throw configurationUnavailable();
   }
 }

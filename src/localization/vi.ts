@@ -396,6 +396,11 @@ const vi = {
       description: 'Cấu hình proxy cho các request đi ra Google/Gemini APIs.',
       enable: 'Bật proxy trung gian',
       url: 'Địa chỉ proxy',
+      'configure-before-enabling':
+        'Lưu địa chỉ proxy HTTP(S) hợp lệ trước khi bật. Xóa địa chỉ cũng sẽ tắt proxy.',
+      'configuration-invalid':
+        'Proxy đang bật nhưng địa chỉ không hợp lệ. Lưu địa chỉ hợp lệ hoặc tắt proxy.',
+      'url-invalid': 'Nhập địa chỉ proxy HTTP hoặc HTTPS hợp lệ.',
       timeout: 'Thời gian chờ request (giây)',
     },
     modelMapping: {
@@ -728,6 +733,8 @@ const vi = {
           'duplicate-account': 'Tài khoản Google này đã được thêm.',
           'browser-open-failed': 'Không thể mở trình duyệt. Hãy kiểm tra trình duyệt mặc định.',
           'login-failed': 'Không thể thêm tài khoản. Hãy thử lại.',
+          'proxy-configuration-invalid':
+            'Lưu địa chỉ proxy hợp lệ hoặc tắt proxy trong Cài đặt, sau đó thử đăng nhập lại.',
         },
       },
       quotaRefreshed: 'Đã làm mới quota',

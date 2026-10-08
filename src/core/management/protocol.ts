@@ -71,6 +71,7 @@ export const OAuthErrorResponseSchema = z.strictObject({
     'NOT_READY',
     'LOGIN_ACTIVE',
     'LOGIN_UNAVAILABLE',
+    'PROXY_CONFIGURATION_INVALID',
     'UNKNOWN_SESSION',
     'INVALID_REQUEST',
   ]),

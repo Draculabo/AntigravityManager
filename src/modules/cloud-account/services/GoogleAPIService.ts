@@ -3,6 +3,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import axios, { type AxiosProxyConfig, type AxiosRequestConfig } from 'axios';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import {
+  assertValidUpstreamProxyConfig,
+  UpstreamProxyConfigurationError,
+} from '@/modules/config/upstream-proxy.schema';
+import {
   buildUserAgent,
   FALLBACK_VERSION,
   resolveLocalInstalledVersion,
@@ -618,9 +622,7 @@ export class GoogleAPIService {
     try {
       const config = ConfigManager.loadConfig();
       if (config.proxy?.upstream_proxy?.enabled) {
-        if (!config.proxy.upstream_proxy.url) {
-          throw new Error('Upstream proxy is enabled but URL is not configured');
-        }
+        assertValidUpstreamProxyConfig(config.proxy.upstream_proxy);
         if (proxyTraceEnabled) {
           logger.info('[GoogleAPIService] Proxy source: config.proxy.upstream_proxy.url');
         }
@@ -629,6 +631,9 @@ export class GoogleAPIService {
         };
       }
     } catch (e) {
+      if (e instanceof UpstreamProxyConfigurationError) {
+        throw e;
+      }
       logger.error('[GoogleAPIService] Proxy configuration error', e);
       throw e;
     }
@@ -672,6 +677,7 @@ export class GoogleAPIService {
     oauthClientKey: string | undefined,
     session: { redirectUri: string; state: string },
   ): string {
+    assertValidUpstreamProxyConfig(ConfigManager.loadConfig().proxy.upstream_proxy);
     const oauthClient = OAuthClientRegistryService.selectAuthClient(oauthClientKey);
 
     const params = new URLSearchParams({

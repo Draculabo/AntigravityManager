@@ -12,6 +12,7 @@ import {
   OAuthStatusResponseSchema,
   type OAuthStartRequest,
   type OAuthCompleteRequest,
+  type OAuthErrorResponse,
 } from './protocol';
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -40,12 +41,7 @@ export class ManagementTimeoutError extends Error {
 
 export class OAuthManagementError extends Error {
   constructor(
-    readonly code:
-      | 'NOT_READY'
-      | 'LOGIN_ACTIVE'
-      | 'LOGIN_UNAVAILABLE'
-      | 'UNKNOWN_SESSION'
-      | 'INVALID_REQUEST',
+    readonly code: OAuthErrorResponse['code'],
     message: string,
   ) {
     super(message);

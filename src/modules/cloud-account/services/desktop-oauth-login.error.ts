@@ -1,4 +1,5 @@
 import { ORPCError } from '@orpc/server';
+import { UPSTREAM_PROXY_CONFIGURATION_MESSAGE } from '@/modules/config/upstream-proxy.schema';
 import {
   readDesktopOAuthLoginErrorCode,
   type DesktopOAuthLoginErrorCode,
@@ -13,6 +14,8 @@ export class DesktopOAuthLoginError extends Error {
 
 export function oauthFailureCode(message: string): DesktopOAuthLoginErrorCode {
   switch (message) {
+    case UPSTREAM_PROXY_CONFIGURATION_MESSAGE:
+      return 'proxy-configuration-invalid';
     case 'Google authorization was denied':
       return 'authorization-denied';
     case 'OAuth login timed out':

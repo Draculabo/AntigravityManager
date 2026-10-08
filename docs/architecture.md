@@ -12,6 +12,14 @@ adapter delegates to the desktop service or the standalone core. The service sch
 live in src/modules/config/service-config.\*. These interface names do not change the existing
 configuration file locations or stored account alert settings.
 
+Upstream proxy settings require a saved HTTP(S) URL before enabling. Clearing the URL disables
+the proxy in the same serialized configuration write. Secret-presence metadata reports whether
+the address is valid without exposing it. Legacy invalid enabled configurations remain editable;
+unrelated settings writes do not silently change their routing. Google login checks the proxy
+before returning an authorization URL and reports a fixed configuration failure through both
+desktop-embedded and standalone-core adapters. Configuration changes during authorization are
+checked again before token exchange. Invalid configurations never fall back to direct requests.
+
 ## Renderer state
 
 TanStack Query owns remote account data, configuration and mutation results. The account page

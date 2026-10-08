@@ -1,3 +1,4 @@
+import { UpstreamProxySettings } from '@/modules/config/components/UpstreamProxySettings';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTheme } from '@/components/shared/theme-provider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +20,6 @@ import { checkForUpdates, getAppVersion, getPlatform } from '@/modules/app-shell
 import { useTranslation } from 'react-i18next';
 import { setAppLanguage } from '@/modules/app-shell/actions/language';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
-import { ipc } from '@/ipc/manager';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, FolderOpen, RefreshCw, X, Settings, Palette, Users } from 'lucide-react';
 import { ModelVisibilitySettings } from '@/modules/config/components/ModelVisibilitySettings';
@@ -98,41 +98,6 @@ function SettingsPage() {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [isDetectingAgy, setIsDetectingAgy] = useState(false);
   const [isPatchingAgy, setIsPatchingAgy] = useState(false);
-  const [upstreamDraft, setUpstreamDraft] = useState<string | null>(null);
-  const [upstreamBusy, setUpstreamBusy] = useState(false);
-  const saveUpstreamProxy = async () => {
-    if (upstreamDraft === null) {
-      return;
-    }
-    setUpstreamBusy(true);
-    try {
-      const result = await ipc.client.config.service.writeSecret({
-        name: 'upstream-proxy',
-        value: upstreamDraft || null,
-      });
-      setUpstreamDraft(null);
-      await retryService();
-      toast({
-        title:
-          result.state === 'applied'
-            ? t('settings.toast.saved.title')
-            : t(
-                'settings.service-restart-required',
-                'Settings saved. Restart the service to apply all changes.',
-              ),
-      });
-    } catch {
-      toast({
-        title: t(
-          'settings.service-unavailable',
-          'Settings are unavailable right now. Please try again.',
-        ),
-        variant: 'destructive',
-      });
-    } finally {
-      setUpstreamBusy(false);
-    }
-  };
   const clarityAvailable = isClarityAvailable();
 
   const proxyConfig = config?.proxy;
@@ -1095,79 +1060,13 @@ function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="shadow-none">
-              <CardHeader className="p-4">
-                <CardTitle>{t('settings.proxy.title')}</CardTitle>
-                <CardDescription>{t('settings.proxy.description')}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4 p-4 pt-0">
-                <div className="flex items-center justify-between space-x-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="upstream-proxy-enabled">{t('settings.proxy.enable')}</Label>
-                  </div>
-                  <Switch
-                    id="upstream-proxy-enabled"
-                    checked={proxyConfig.upstream_proxy.enabled}
-                    onCheckedChange={(checked) =>
-                      updateProxyConfig({
-                        ...proxyConfig,
-                        upstream_proxy: { ...proxyConfig.upstream_proxy, enabled: checked },
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="upstream-proxy-url">{t('settings.proxy.url')}</Label>
-                  <Input
-                    id="upstream-proxy-url"
-                    placeholder={
-                      proxyConfig.upstream_proxy_configured
-                        ? t(
-                            'settings.service-secret-configured',
-                            'Configured. Reveal to edit or enter a replacement.',
-                          )
-                        : 'http://127.0.0.1:7890'
-                    }
-                    type="password"
-                    value={upstreamDraft ?? ''}
-                    onChange={(e) => setUpstreamDraft(e.target.value)}
-                    disabled={
-                      !serviceAvailable || !proxyConfig.upstream_proxy.enabled || upstreamBusy
-                    }
-                  />
-                  <Button
-                    disabled={!serviceAvailable || upstreamBusy}
-                    onClick={async () => {
-                      setUpstreamBusy(true);
-                      try {
-                        const result = await ipc.client.config.service.revealSecret({
-                          name: 'upstream-proxy',
-                        });
-                        setUpstreamDraft(result.value);
-                      } catch {
-                        toast({
-                          title: t(
-                            'settings.service-unavailable',
-                            'Settings are unavailable right now. Please try again.',
-                          ),
-                          variant: 'destructive',
-                        });
-                      } finally {
-                        setUpstreamBusy(false);
-                      }
-                    }}
-                  >
-                    {t('proxy.config.show_key')}
-                  </Button>
-                  <Button
-                    disabled={!serviceAvailable || upstreamBusy || upstreamDraft === null}
-                    onClick={() => void saveUpstreamProxy()}
-                  >
-                    {t('settings.service-save', 'Save')}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <UpstreamProxySettings
+              proxy={proxyConfig}
+              available={serviceAvailable}
+              onSaved={async () => {
+                await retryService();
+              }}
+            />
           </fieldset>
         </TabsContent>
       </Tabs>

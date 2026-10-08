@@ -228,6 +228,17 @@ describe('service configuration', () => {
     expect(await call(configRouter.service.read, undefined)).toEqual(saved.snapshot);
   }, 15000);
 
+  it('rejects enabling an upstream proxy without a saved address', async () => {
+    const { client } = await connected();
+    await client.writeServiceSecret({ name: 'upstream-proxy', value: null });
+    await client.updateServiceConfig({ proxy: { upstream_proxy: { enabled: false } } });
+    const before = await readDisk();
+    await expect(
+      client.updateServiceConfig({ proxy: { upstream_proxy: { enabled: true } } }),
+    ).rejects.toMatchObject({ data: { configCode: 'invalid-input' } });
+    expect(await readDisk()).toEqual(before);
+  }, 15000);
+
   it('replaces/removes secrets without returning them in writes; reveal is explicit', async () => {
     const { client } = await connected();
     expect(await client.revealServiceSecret('api-key')).toEqual({ value: 'fixture-key-private' });
@@ -238,8 +249,10 @@ describe('service configuration', () => {
     expect(write.snapshot.proxy.api_key_configured).toBe(true);
     expect(JSON.stringify(write)).not.toContain('replacement-private');
     expect(await client.revealServiceSecret('api-key')).toEqual({ value: 'replacement-private' });
-    await client.writeServiceSecret({ name: 'upstream-proxy', value: null });
+    const cleared = await client.writeServiceSecret({ name: 'upstream-proxy', value: null });
+    expect(cleared.snapshot.proxy.upstream_proxy).toEqual({ enabled: false });
     expect((await client.readServiceConfig()).proxy.upstream_proxy_configured).toBe(false);
+    expect((await readDisk()).proxy.upstream_proxy).toEqual({ enabled: false, url: '' });
     expect(await client.revealServiceSecret('upstream-proxy')).toEqual({ value: '' });
     await client.writeServiceSecret({ name: 'api-key', value: null });
     expect((await client.readServiceConfig()).proxy.api_key_configured).toBe(false);
