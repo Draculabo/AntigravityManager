@@ -34,6 +34,6 @@ support for enforcing Anthropic's disable_parallel_tool_use option.
 Ten complete tool-control regressions include a controller/service/upstream path. Together with
 Anthropic/parity coverage, 37 tests pass. The rebuilt prepared core receives two real parallel
 calls and successfully continues combined, adjacent and reversed-result histories. The original
-failure and passing run remain in the [live record](../../../../artifacts/schema-work-package/live-verification.md).
+failure and passing run remain in the local live record (`artifacts/schema-work-package/live-verification.md`).
 No history production change is needed for this witnessed case; retry history and other clients
 remain separate coverage gaps.

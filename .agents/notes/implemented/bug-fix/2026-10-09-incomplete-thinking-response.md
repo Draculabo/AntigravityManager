@@ -41,4 +41,4 @@ disclosed incomplete shape, then obtains two actual tool calls from the real str
 both file results in all three continuation arrangements. Audit confirms exactly one unary
 and one stream attempt on the same account for the initial request. The service restores its
 stopped state and saved settings are unchanged. See the
-[retry record](../../../../artifacts/schema-work-package/retry-verification.md).
+local retry record (`artifacts/schema-work-package/retry-verification.md`).

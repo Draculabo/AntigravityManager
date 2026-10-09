@@ -42,4 +42,4 @@ The initial focused run reproduces three failures: declaration restoration and b
 and unary real request paths. Regression coverage checks original output name/namespace and
 qualified continuation names, while existing flat-MCP tests remain intact. Executed checks and
 real default-upstream results are recorded in the
-[client verification record](../../../../artifacts/schema-work-package/client-matrix-verification-2026-10-09.md).
+local client verification record (`artifacts/schema-work-package/client-matrix-verification-2026-10-09.md`).

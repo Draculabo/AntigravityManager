@@ -13,7 +13,7 @@ calls are separate gates. See [Schema conversion](proxy-schema-conversion.md#dia
 `scripts/acceptance/schema/check-history-evidence.mjs` checks controlled missing-result failures
 and anonymous audit-attempt grouping using Node SQLite fixtures. Live history/resubmission and
 signature-recovery checks use the [development workflow](development.md#live-schema-acceptance).
-The [history evidence](../artifacts/schema-work-package/history-verification.md) distinguishes
+The local history evidence (`artifacts/schema-work-package/history-verification.md`) distinguishes
 client resubmission, observed internal recovery and remaining retry coverage.
 
 `node --test scripts/acceptance/schema/check-client-matrix.mjs` checks actual-client declaration
@@ -28,26 +28,26 @@ injection, SSE forwarding and per-request audit predicates. Live retry acceptanc
 actual provider tool calls and both controlled results; fixture success alone does not prove
 provider acceptance. Thought-only unary completion coverage runs through the Anthropic real
 service path with Gemini/parity coverage for the shared fallback. See the
-[retry record](../artifacts/schema-work-package/retry-verification.md) for disclosed injections,
+local retry record (`artifacts/schema-work-package/retry-verification.md`) for disclosed injections,
 natural provider failures and the remaining scope.
 
 The Schema work package uses the configured default primary route for required live
 tool/result and Schema diagnostic receipt acceptance. Backup-endpoint failover probes are
 supplementary. Their failed predicates remain failures without blocking that scoped package;
 they never establish a change in production endpoint policy. The
-[acceptance record](../artifacts/schema-work-package/retry-verification.md#acceptance-scope)
+local acceptance record (`artifacts/schema-work-package/retry-verification.md#acceptance-scope`)
 owns the user-confirmed scope and its evidence.
 
 Replay selection tests also compare default and unmarked cohorts through the compiled CLI.
 They require case-insensitive acceptance-header exclusion before limiting, conservative
 exclusion of unknown header provenance and no-evidence exit 2 for an all-marked sample.
-The [budget sample record](../artifacts/schema-work-package/budget-sampling-2026-10-09.md)
+The local budget sample record (`artifacts/schema-work-package/budget-sampling-2026-10-09.md`)
 separates observed converter behavior from unsupported organic-traffic claims.
 
 The isolated startup checks use the [development workflow](development.md#live-schema-acceptance).
 `check-startup-evidence.mjs` exercises the production launcher and acceptance helper with a
 controlled clock, including unavailable and stalled management probes and early child exit.
-The [startup record](../artifacts/schema-work-package/startup-verification.md) separates the
+The local startup record (`artifacts/schema-work-package/startup-verification.md`) separates the
 verified acceptance deadline correction from the unexplained historical timeout.
 
 - A passing command is evidence only for paths it executes.
