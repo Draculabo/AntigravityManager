@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   wsl: vi.fn(() => true),
   nativeStop: vi.fn(),
   existsSync: vi.fn(),
+  closeWindow: vi.fn(),
 }));
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>();
@@ -26,6 +27,9 @@ vi.mock('child_process', () => ({
 vi.mock('@/shared/platform/paths', () => ({ isWsl: mocks.wsl }));
 vi.mock('@/modules/antigravity-runtime/stopNativeProcessTree', () => ({
   stopNativeProcessTree: mocks.nativeStop,
+}));
+vi.mock('@/modules/antigravity-runtime/windowsNormalClose', () => ({
+  requestWindowsProcessClose: mocks.closeWindow,
 }));
 vi.mock('@/modules/antigravity-runtime/processObserver', () => ({
   observeProcesses: mocks.observe,
@@ -46,6 +50,7 @@ beforeEach(() => {
   mocks.existsSync.mockReturnValue(true);
   mocks.probeTimeout.mockReturnValue(4500);
   mocks.assert.mockImplementation(() => {});
+  mocks.closeWindow.mockResolvedValue(undefined);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -140,19 +145,60 @@ it('gives native exit confirmation the remaining operation budget after normal w
   mocks.wsl.mockReturnValue(false);
   mocks.probeTimeout.mockReturnValue(1000);
   mocks.observe.mockResolvedValueOnce([main]).mockResolvedValueOnce([]);
-  mocks.execFile.mockImplementation((_file, _args, _options, callback) => {
-    setTimeout(() => callback(null), 1500);
+  mocks.closeWindow.mockImplementationOnce(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
   });
   const stopped = stopFromContext(windowsContext, 5000);
   const result = expect(stopped).resolves.toBeUndefined();
   await vi.advanceTimersByTimeAsync(1500);
   await result;
   expect(mocks.observe.mock.calls).toEqual([
-    ['classic', 1000, windowsContext.executablePath],
+    ['classic', 5000, windowsContext.executablePath],
     ['classic', 3500, windowsContext.executablePath],
   ]);
-  expect(mocks.execFile).toHaveBeenCalledTimes(1);
+  expect(mocks.closeWindow).toHaveBeenCalledExactlyOnceWith(421);
+  expect(mocks.execFile).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it('allows a slow initial native snapshot within the total close budget', async () => {
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  mocks.wsl.mockReturnValue(false);
+  mocks.probeTimeout.mockReturnValue(1000);
+  mocks.observe
+    .mockImplementationOnce(async (_target, timeout: number) => {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(timeout, 1500)));
+      if (timeout < 1500) {
+        throw new Error('Incomplete native snapshot');
+      }
+      return [main];
+    })
+    .mockResolvedValueOnce([]);
+  const result = expect(stopFromContext(windowsContext, 5000)).resolves.toBeUndefined();
+  void result.catch(() => undefined);
+  await vi.advanceTimersByTimeAsync(1500);
+  await result;
+  expect(mocks.closeWindow).toHaveBeenCalledExactlyOnceWith(421);
+  expect(mocks.observe.mock.calls).toEqual([
+    ['classic', 5000, windowsContext.executablePath],
+    ['classic', 3500, windowsContext.executablePath],
+  ]);
+});
+
+it('does not request close after the initial snapshot consumes the operation deadline', async () => {
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  mocks.wsl.mockReturnValue(false);
+  mocks.observe.mockImplementationOnce(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 501));
+    return [main];
+  });
+  const result = expect(stopFromContext(windowsContext, 500)).rejects.toMatchObject({
+    messageKey: 'process-runtime.exit-unconfirmed',
+  });
+  await vi.advanceTimersByTimeAsync(501);
+  await result;
+  expect(mocks.closeWindow).not.toHaveBeenCalled();
+  expect(mocks.execFile).not.toHaveBeenCalled();
 });
 
 it('fails explicitly when a bounded close command fails', async () => {
@@ -166,55 +212,36 @@ it('fails explicitly when a bounded close command fails', async () => {
   expect(mocks.execFile).toHaveBeenCalledTimes(1);
 });
 
-it.each([
-  [true, 'C:\\Windows\\System32\\taskkill.exe'],
-  [false, 'taskkill.exe'],
-])(
-  'selects native Windows normal window close by file existence (exists=%s)',
-  async (exists, file) => {
-    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-    mocks.wsl.mockReturnValue(false);
-    mocks.existsSync.mockReturnValue(exists);
-    mocks.observe.mockResolvedValueOnce([main]).mockResolvedValueOnce([]);
-    mocks.execFile.mockImplementation((_file, _args, _options, callback) => callback(null));
-    await stopFromContext(windowsContext);
-    expect(mocks.existsSync).toHaveBeenCalledExactlyOnceWith('C:\\Windows\\System32\\taskkill.exe');
-    expect(mocks.execFile).toHaveBeenCalledExactlyOnceWith(
-      file,
-      ['/PID', '421'],
-      expect.objectContaining({ timeout: 10000, windowsHide: true }),
-      expect.any(Function),
-    );
-  },
-);
+it('requests native window close only for the verified Windows process', async () => {
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  mocks.wsl.mockReturnValue(false);
+  mocks.observe.mockResolvedValueOnce([main]).mockResolvedValueOnce([]);
+  await stopFromContext(windowsContext);
+  expect(mocks.closeWindow).toHaveBeenCalledExactlyOnceWith(421);
+  expect(mocks.execFile).not.toHaveBeenCalled();
+  expect(mocks.existsSync).not.toHaveBeenCalled();
+});
 
 it('does not retry native Windows normal window close after an execution failure', async () => {
   Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
   mocks.wsl.mockReturnValue(false);
   mocks.observe.mockResolvedValue([main]);
-  mocks.execFile.mockImplementation((_file, _args, _options, callback) =>
-    callback(new Error('command failed')),
-  );
+  mocks.closeWindow.mockRejectedValueOnce(new Error('window request failed'));
   await expect(stopFromContext(windowsContext)).rejects.toMatchObject({
     messageKey: 'process-runtime.close-failed',
   });
-  expect(mocks.execFile).toHaveBeenCalledExactlyOnceWith(
-    'C:\\Windows\\System32\\taskkill.exe',
-    ['/PID', '421'],
-    expect.objectContaining({ timeout: 10000, windowsHide: true }),
-    expect.any(Function),
-  );
+  expect(mocks.closeWindow).toHaveBeenCalledExactlyOnceWith(421);
+  expect(mocks.execFile).not.toHaveBeenCalled();
 });
 
 it('confirms native Windows exit despite normal window close failing for a retiring child', async () => {
   Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
   mocks.wsl.mockReturnValue(false);
   mocks.observe.mockResolvedValueOnce([main]).mockResolvedValue([]);
-  mocks.execFile.mockImplementation((_file, _args, _options, callback) =>
-    callback(Object.assign(new Error('child already exited'), { code: 128 })),
-  );
+  mocks.closeWindow.mockRejectedValueOnce(new Error('window already exited'));
   await expect(stopFromContext(windowsContext)).resolves.toBeUndefined();
-  expect(mocks.execFile).toHaveBeenCalledTimes(1);
+  expect(mocks.closeWindow).toHaveBeenCalledExactlyOnceWith(421);
+  expect(mocks.execFile).not.toHaveBeenCalled();
   expect(mocks.observe).toHaveBeenCalledTimes(3);
 });
 

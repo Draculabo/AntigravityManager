@@ -19,6 +19,8 @@ import { switchCloudAccountCore } from '@/modules/cloud-account/services/cloud-a
 import { accountOwnerEvents } from '@/modules/cloud-account/services/account-owner-events.service';
 import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { logger } from '@/shared/logging/logger';
+import * as runtimeStop from '@/modules/antigravity-runtime/stop';
+import { processError } from '@/modules/antigravity-runtime/processErrors';
 
 const ownerState = vi.hoisted(() => ({
   activeId: null as string | null,
@@ -176,6 +178,39 @@ async function startOwner(): Promise<CoreRpcClient> {
 }
 
 describe('core-owned cloud account switching', () => {
+  it.each(['desktop-embedded', 'standalone-core'] as const)(
+    'reports a refused client close without writing credentials or selecting the account (%s)',
+    async (mode) => {
+      if (mode === 'standalone-core') {
+        const client = await startOwner();
+        selectCloudAccountAdapter({ mode, client });
+      }
+      const stop = vi
+        .spyOn(runtimeStop, 'stopFromContext')
+        .mockRejectedValueOnce(processError('exit-unconfirmed'));
+      try {
+        await expect(
+          createRouterClient(cloudRouter).switchCloudAccount({ accountId: account.id }),
+        ).rejects.toMatchObject({
+          message: 'Cloud account switch failed',
+          data: { switchCode: 'process-close-failed' },
+        });
+        expect(credentialWrite).not.toHaveBeenCalled();
+        expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
+        expect(CloudAccountRepo.updateLastUsed).not.toHaveBeenCalled();
+        expect(logger.error).toHaveBeenCalledExactlyOnceWith('Failed to switch cloud account', {
+          kind: 'process-close-failed',
+          stage: 'switch-execution',
+          target: 'classic',
+          storage: 'credential-store',
+          reason: 'process_close_failed',
+          errorCode: 'ANTIGRAVITY_PROCESS_FAILED',
+        });
+      } finally {
+        stop.mockRestore();
+      }
+    },
+  );
   it('does not turn a presentation failure into an account switch failure', async () => {
     const cursor = accountOwnerEvents.read(undefined, 0);
     await expect(

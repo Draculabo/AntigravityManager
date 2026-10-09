@@ -749,6 +749,8 @@ const vi = {
         'account-not-found': 'Tài khoản này không còn tồn tại.',
         'reauth-required': 'Đăng nhập lại tài khoản này trước khi chuyển.',
         'identity-profile-required': 'Thiết lập hồ sơ nhận dạng trước khi chuyển.',
+        'process-close-failed':
+          'Không thể xác nhận Antigravity đã thoát. Hãy lưu công việc, xử lý các hộp thoại xác nhận và đóng Antigravity trước khi chuyển tài khoản lại.',
         'process-control-failed': 'Không thể đóng hoặc khởi động lại Antigravity. Hãy thử lại.',
         'target-write-failed': 'Không thể dùng tài khoản đã chọn trong Antigravity. Hãy thử lại.',
         'switch-failed': 'Không thể chuyển tài khoản. Hãy thử lại.',

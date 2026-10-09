@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => ({
   observe: vi.fn(),
   assert: vi.fn(),
   wsl: vi.fn(() => false),
-  updateGuard: vi.fn(),
 }));
 vi.mock('child_process', () => ({
   default: { spawn: mocks.spawn, exec: mocks.exec },
@@ -36,9 +35,6 @@ vi.mock('@/modules/antigravity-runtime/processObserver', () => ({
   getProcessProbeTimeout: () => 1000,
 }));
 vi.mock('@/shared/platform/paths', () => ({ isWsl: mocks.wsl }));
-vi.mock('@/modules/antigravity-runtime/windowsUpdate', () => ({
-  assertNoWindowsUpdate: mocks.updateGuard,
-}));
 vi.mock('@/shared/logging/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
 
 const context: LaunchContext = {
@@ -60,7 +56,6 @@ beforeEach(() => {
   mocks.prepare.mockResolvedValue(context);
   mocks.observe.mockResolvedValue([mainProcess]);
   mocks.assert.mockImplementation(() => undefined);
-  mocks.updateGuard.mockResolvedValue(undefined);
   mocks.spawn.mockImplementation(() => {
     const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
     queueMicrotask(() => child.emit('spawn'));
@@ -78,9 +73,9 @@ async function settleStartup(request: Promise<void>) {
 }
 
 describe('direct launch', () => {
-  it('does not launch the old client while its update installer is running', async () => {
-    mocks.updateGuard.mockRejectedValueOnce(processError('update-in-progress'));
-    await expect(startFromContext(context)).rejects.toMatchObject({
+  it('does not launch when context preflight finds a running update installer', async () => {
+    mocks.prepare.mockRejectedValueOnce(processError('update-in-progress'));
+    await expect(startAntigravity('classic')).rejects.toMatchObject({
       messageKey: 'process-runtime.update-in-progress',
     });
     expect(mocks.spawn).not.toHaveBeenCalled();
@@ -192,7 +187,40 @@ describe('direct launch', () => {
     });
     await vi.advanceTimersByTimeAsync(6000);
     await rejection;
-    expect(mocks.observe.mock.calls.map((call) => call[1])).toEqual([1000, 1000, 1000, 1000, 1000]);
+    expect(mocks.observe.mock.calls.map((call) => call[1])).toEqual([6000]);
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms a stable client when a native snapshot takes longer than one second', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    mocks.observe.mockImplementation(async (_target, timeout: number) => {
+      const queryMs = 1500;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(timeout, queryMs)));
+      if (timeout < queryMs) {
+        throw processError('probe-failed');
+      }
+      return [{ ...mainProcess, startTime: 1n }];
+    });
+    const startup = startFromContext(context);
+    const result = expect(startup).resolves.toBeUndefined();
+    void result.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(6000);
+    await result;
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    expect(mocks.observe).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not accept a stable observation delivered after the startup deadline', async () => {
+    mocks.observe.mockResolvedValueOnce([{ ...mainProcess, startTime: 1n }]);
+    mocks.observe.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      return [{ ...mainProcess, startTime: 1n }];
+    });
+    const result = expect(startFromContext(context)).rejects.toMatchObject({
+      messageKey: 'process-runtime.startup-unconfirmed',
+    });
+    await vi.advanceTimersByTimeAsync(6200);
+    await result;
     expect(mocks.spawn).toHaveBeenCalledTimes(1);
   });
 

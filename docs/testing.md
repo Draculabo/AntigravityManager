@@ -89,7 +89,12 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 
 After changing Windows client shutdown, run `node scripts/acceptance/accounts/test-windows-graceful-close.integration.mjs`
 on Windows. It runs production stop logic against temporary WinForms windows and verifies that
-normal close flushes an in-memory buffer while a cancelled close leaves the process alive.
+normal close flushes an in-memory buffer for visible and hidden windows, while a cancelled close
+leaves the process alive. Native Windows uses PID-scoped `WM_CLOSE` requests for unowned
+top-level windows; owned save/confirmation dialogs remain under the client's control.
+The focused `runtime-stop.test.ts` cases also cover slow initial native Windows observations
+and forbid posting close after the operation deadline. Startup slow-observation and late-result
+cases belong to `runtime-launch.test.ts`; neither operation extends its overall deadline.
 The fixture uses a scoped observer and does not prove official IDE conversation persistence.
 For official IDE evidence, prepare the isolated Windows account-switch profile, build the
 acceptance helpers, and run `node scripts/acceptance/accounts/test-official-ide-history.integration.mjs`.

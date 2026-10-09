@@ -751,6 +751,8 @@ const tr = {
         'account-not-found': 'Bu hesap artık kullanılamıyor.',
         'reauth-required': 'Hesap değiştirmeden önce yeniden giriş yapın.',
         'identity-profile-required': 'Hesap değiştirmeden önce kimlik profili oluşturun.',
+        'process-close-failed':
+          'Antigravity uygulamasının kapandığı doğrulanamadı. Çalışmanızı kaydedin, onay pencerelerini yanıtlayın ve hesabı yeniden değiştirmeden önce Antigravity uygulamasını kapatın.',
         'process-control-failed':
           'Antigravity kapatılamadı veya yeniden başlatılamadı. Tekrar deneyin.',
         'target-write-failed': "Seçilen hesap Antigravity'de kullanılamadı. Tekrar deneyin.",

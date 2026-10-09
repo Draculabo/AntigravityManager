@@ -10,6 +10,7 @@ import type { LaunchContext } from './types';
 import { processError } from './processErrors';
 import { usesWindowsRuntime } from './runtimePlatform';
 import { stopNativeProcessTree } from './stopNativeProcessTree';
+import { requestWindowsProcessClose } from './windowsNormalClose';
 
 const runFile = promisify(execFile);
 
@@ -20,12 +21,17 @@ export async function stopFromContext(
   const deadline = Date.now() + timeout;
   let processes = await observeProcesses(
     context.target,
-    Math.min(getProcessProbeTimeout(context.target, context.executablePath), timeout),
+    process.platform === 'win32'
+      ? timeout
+      : Math.min(getProcessProbeTimeout(context.target, context.executablePath), timeout),
     context.executablePath,
   );
   assertContextProcesses(context, processes);
   if (!processes.length) {
     return;
+  }
+  if (Date.now() >= deadline) {
+    throw processError('exit-unconfirmed');
   }
   if (process.platform === 'linux' && !usesWindowsRuntime(context.target, context.executablePath)) {
     await stopNativeProcessTree(processes, deadline);
@@ -79,20 +85,24 @@ export async function stopFromContext(
   }
   for (const item of processes) {
     if (usesWindowsRuntime(context.target, context.executablePath)) {
-      // Local taskkill without /F requests normal window close. Never escalate to /F:
-      // a save prompt or a refused close must leave the client alive.
-      const windowsTaskkill = 'C:\\Windows\\System32\\taskkill.exe';
-      const file = isWsl()
-        ? '/mnt/c/Windows/System32/taskkill.exe'
-        : existsSync(windowsTaskkill)
-          ? windowsTaskkill
-          : 'taskkill.exe';
+      // WM_CLOSE includes hidden windows and preserves save/cancel prompts. WSL retains
+      // taskkill's normal-close transport; neither path forces an unconfirmed client exit.
       try {
-        await runFile(file, ['/PID', String(item.pid)], {
-          windowsHide: true,
-          timeout: Math.max(1, deadline - Date.now()),
-          killSignal: 'SIGKILL',
-        });
+        if (process.platform === 'win32') {
+          await requestWindowsProcessClose(item.pid);
+        } else {
+          const windowsTaskkill = 'C:\\Windows\\System32\\taskkill.exe';
+          const file = isWsl()
+            ? '/mnt/c/Windows/System32/taskkill.exe'
+            : existsSync(windowsTaskkill)
+              ? windowsTaskkill
+              : 'taskkill.exe';
+          await runFile(file, ['/PID', String(item.pid)], {
+            windowsHide: true,
+            timeout: Math.max(1, deadline - Date.now()),
+            killSignal: 'SIGKILL',
+          });
+        }
       } catch (error) {
         logger.warn('Antigravity normal close request failed', {
           target: context.target,

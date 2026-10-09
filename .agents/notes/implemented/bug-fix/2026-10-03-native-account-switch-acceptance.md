@@ -8,7 +8,7 @@ Live Windows switching exhausted the AI-service exit budget while launching task
 
 ## Decision
 
-Terminate only verified dedicated AI service PIDs through Node's native process API. Preserve the existing Windows taskkill path policy for whole-application shutdown. After a native Windows taskkill error, inspect the captured PID within the original deadline and proceed only if it has disappeared; do not issue another termination command. Keep WSL Windows command-error behavior unchanged.
+Terminate only verified dedicated AI service PIDs through Node's native process API. The native Windows whole-application transport is superseded by [hidden-window normal close](2026-10-09-windows-hidden-client-close.md); the captured-PID re-observation and deadline policy still applies. After a close-request error, proceed only if the captured PID has disappeared; do not issue another termination command. Keep WSL Windows command-error behavior unchanged.
 
 Use the existing Koffi dependency with Win32 CredReadW and CredWriteW for the exact generic credential target gemini:antigravity. Keytar joins service/account with a slash, so its successful write and readback do not establish compatibility with the official client. Local vault calls and GetLastError run on the same thread; native allocations are freed and write buffers are cleared. Await reads in snapshot capture, prepared-writer verification and local discovery. Await the primary write before synchronizing client files. Do not construct targeted native Entries on the Windows read or write path. The official credential location and raw UTF-8 JSON contract remain unchanged.
 

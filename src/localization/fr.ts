@@ -920,6 +920,8 @@ const fr = {
         'account-not-found': "Ce compte n'est plus disponible.",
         'reauth-required': 'Reconnectez-vous à ce compte avant de basculer.',
         'identity-profile-required': 'Configurez un profil d’identité avant de basculer.',
+        'process-close-failed':
+          'Impossible de confirmer la fermeture d’Antigravity. Enregistrez votre travail, répondez aux fenêtres de confirmation et fermez Antigravity avant de changer de compte.',
         'process-control-failed': 'Impossible de fermer ou de redémarrer Antigravity. Réessayez.',
         'target-write-failed':
           'Impossible d’utiliser le compte choisi dans Antigravity. Réessayez.',
