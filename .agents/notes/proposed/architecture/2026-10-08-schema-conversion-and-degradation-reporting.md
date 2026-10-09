@@ -7,7 +7,7 @@ Design status: finalized with the user on 2026-10-08; implementation, real Pro/c
 Acceptance scope confirmed on 2026-10-09: the configured default primary endpoint is sufficient
 for this Schema work package. Backup-endpoint failover is supplementary and does not block
 scoped completion; failed probes retain their original verdicts. The
-[execution record](../../../../artifacts/schema-work-package/verification.md#scoped-completion-and-follow-up-coverage)
+local execution record (`artifacts/schema-work-package/verification.md#scoped-completion-and-follow-up-coverage`)
 owns the completed evidence and follow-up limits. No production routing policy changes.
 
 This note retains the approved proposal and design history. The [current Schema reference](../../../../docs/proxy-schema-conversion.md) describes implemented code behavior and links to separately recorded live acceptance. This supersedes the [stream-verification proposal](2026-10-08-model-discovery-and-stream-verification.md). The user's subsequent request to begin execution authorizes implementation and the scoped acceptance work.
@@ -76,8 +76,8 @@ to Relay's connection-IP fallback and replaces inherited user data with an expli
 object. The unchanged strict remote check passes on the actual gateway event; the
 [implemented privacy decision](../../implemented/security/2026-10-08-isolated-sentry-geo.md)
 owns that rationale. Final validation, retired Flash experiments and runtime dependency checks are recorded in the
-[execution report](../../../../artifacts/schema-work-package/verification.md) and
-[live evidence](../../../../artifacts/schema-work-package/live-verification.md).
+local execution report (`artifacts/schema-work-package/verification.md`) and
+local live evidence (`artifacts/schema-work-package/live-verification.md`).
 
 ### Approved product decisions and scope
 
@@ -214,7 +214,7 @@ The follow-up acquires two real parallel calls and verifies combined, adjacent a
 reversed-result histories against gemini-pro-agent. Each variant preserves original blocks/IDs
 and returns both markers. The prerequisite exposes a lost tool_choice field, fixed separately
 with failing-before-fix regressions and real upstream verification. No history rewrite is needed
-for this case. The [history follow-up](../../../../artifacts/schema-work-package/history-verification.md)
+for this case. The local history follow-up (`artifacts/schema-work-package/history-verification.md`)
 subsequently verifies both Pro/Flash directions, identical request resubmission and a real Flash
 400-to-200 signature-recovery retry with both results retained. Account rotation, network-error
 retry and other clients/models remain unverified. No production history change is justified.

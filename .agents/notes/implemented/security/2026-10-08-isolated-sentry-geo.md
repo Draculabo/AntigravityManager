@@ -42,4 +42,4 @@ geo and account data replaced. A separate case preserves ordinary reports. The r
 receiver requires the exact empty user override. A candidate event sent to the configured service,
 `ac3325c4ebfb40289dbca3e8144731c1`, is received at `2026-10-08T12:35:33.929000Z`; the unchanged
 strict event-detail check finds no nonempty user fields or unsafe entries. The subsequent real
-gateway evidence belongs in [the live verification record](../../../../artifacts/schema-work-package/live-verification.md).
+gateway evidence belongs in the local live verification record (`artifacts/schema-work-package/live-verification.md`).

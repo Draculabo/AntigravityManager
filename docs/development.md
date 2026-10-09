@@ -25,6 +25,8 @@ synthetic authentication; provider connectivity and remote Sentry delivery remai
 
 ### Live Schema acceptance
 
+Acceptance output under `artifacts/` is local workspace data and is ignored by Git. Generate it with the workflows below; referenced execution records are available only in the workspace where those checks ran.
+
 `node scripts/acceptance/schema/run-client-matrix.mjs [all|codex|opencode|claude]` runs the installed
 Windows clients through the default gateway and real Flash upstream. It requires the prepared
 standalone runtime, an unowned stopped profile and usable accounts. Each client uses isolated
@@ -98,7 +100,7 @@ excludes private identities and requires stopped-state restoration with unchange
 settings. Natural rate limits or other extra attempts keep the strict scenario failing.
 Network/rotation modes provide supplementary fault coverage; default-primary tool/result
 acceptance does not require a successful backup-endpoint probe. See the
-[scope record](../artifacts/schema-work-package/retry-verification.md#acceptance-scope).
+local scope record (`artifacts/schema-work-package/retry-verification.md#acceptance-scope`).
 `node --test scripts/acceptance/schema/check-retry-evidence.mjs` checks injection, forwarding,
 audit discrimination and privacy sensitivity using isolated fixtures.
 

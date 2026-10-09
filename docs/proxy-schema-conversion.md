@@ -1,7 +1,7 @@
 # Proxy Schema Conversion
 
 This reference describes the implemented Schema admission path. The
-[execution record](../artifacts/schema-work-package/verification.md) separates local regression,
+local execution record (`artifacts/schema-work-package/verification.md`) separates local regression,
 live client/provider evidence and remaining budget calibration. Acceptance for one model does
 not establish compatibility with every configured client or upstream model.
 

@@ -9,7 +9,7 @@ requests, but returns an empty final result. The controlled tool result reaches 
 and the answer reaches the client's assistant text event. The mapper appends an empty thinking
 signature carrier after that answer, so the CLI selects an empty last message. Some manually
 emitted carrier starts also bypass active-block tracking and lose their corresponding stop.
-The before/after records are in the [live evidence](../../../../artifacts/schema-work-package/live-verification.md).
+The before/after records are in the local live evidence (`artifacts/schema-work-package/live-verification.md`).
 
 ## Decision
 

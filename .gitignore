@@ -126,3 +126,5 @@ bun.lock
 .idea/
 # Local analysis metadata
 .code-review-graph/
+
+/artifacts/
