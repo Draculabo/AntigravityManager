@@ -20,6 +20,32 @@ private configuration operation. Core initialization follows profile ownership a
 shutdown bounds reporting flush independently from ownership release. Reporting does not own
 account selection, quota policy or persisted Responses formats.
 
+## Thought signature ownership
+
+OpenAI Chat and Anthropic Messages derive an in-memory signature scope from the proxy
+credential digest, a client session hint and a conversation content anchor. Session hints
+come from session/conversation headers, query parameters, then body metadata. The anchor
+contains the initial user content, system instructions and declared tool names, so a shared
+user ID or reused session ID cannot replace conversation ownership. Appended turns retain
+the anchor; changed initial context produces a cache miss. Identical context and hints under
+the same credential produce the same scope; clients that need independent identical
+conversations must supply distinct session IDs.
+
+Empty user preambles are ignored. Without meaningful user content, the complete available
+history becomes the anchor; an empty history receives a fresh scope and cannot recover a
+signature from another request.
+
+Account affinity uses the session hint when available and the content anchor otherwise.
+Signature ownership always includes the content anchor. Cache keys contain digests, never
+credentials or conversation text. The signature store refuses unscoped reads and writes.
+Unsigned historical tool calls recover only a matching scoped tool-call ID and tool name,
+subject to effective model compatibility. They do not borrow the latest signature from a
+session or from another request. Explicit signatures carried by the request remain intact.
+Responses continues to use its committed response/parent IDs for signature lineage.
+
+See the [ownership decision](../.agents/notes/implemented/bug-fix/2026-10-09-signature-session-isolation.md)
+for failure behavior and the limits of content-derived identity.
+
 ## Settings interfaces
 
 The renderer reads and updates proxy/runtime settings through config.service, account notification

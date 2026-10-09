@@ -1,10 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
+import {
+  resolveAnthropicSessionScope,
+  type SignatureScopeContext,
+} from '../../common/signature-session-scope';
 import { SchemaConversionBatch } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
 import {
   prepareClaudeSchemas,
   reportSchemaIssues,
 } from '@/modules/proxy-gateway/antigravity/schema/SchemaPreparation';
-import { isEmpty, isString } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import {
   GeminiClient,
@@ -121,6 +124,7 @@ export class AnthropicService extends BaseProxyService {
 
   async handleAnthropicMessages(
     request: AnthropicChatRequest,
+    requestContext?: SignatureScopeContext,
   ): Promise<AnthropicChatResponse | Observable<string>> {
     const batch = new SchemaConversionBatch();
     try {
@@ -131,7 +135,12 @@ export class AnthropicService extends BaseProxyService {
     }
     const appliedVariantRequest = applyAnthropicModelVariant(request);
     const routedRequest = appliedVariantRequest.request;
-    const sessionKey = this.extractAnthropicSessionKey(request);
+    const scope = resolveAnthropicSessionScope(
+      request,
+      requestContext?.headers,
+      requestContext?.url,
+    );
+    const sessionKey = scope.cacheKey;
     const signatureMessageCount = request.messages.filter(
       (message) => message.role !== 'system',
     ).length;
@@ -153,7 +162,7 @@ export class AnthropicService extends BaseProxyService {
     for (let i = 0; i < maxRetries; i++) {
       await this.waitBeforeRetry(i, maxRetries, 'Anthropic', retryState.graceRetryToken !== null);
 
-      const token = await this.selectRetryToken(retryState, targetModel, sessionKey);
+      const token = await this.selectRetryToken(retryState, targetModel, scope.affinityKey);
       if (!token) {
         if (lastError !== null) {
           throw this.resolveTerminalRetryError(retryState, lastError);
@@ -851,15 +860,5 @@ export class AnthropicService extends BaseProxyService {
         cache_read_input_tokens: response.usage?.cache_read_input_tokens,
       },
     };
-  }
-
-  private extractAnthropicSessionKey(request: AnthropicChatRequest): string | undefined {
-    const metadata = request.metadata;
-    const sessionCandidate =
-      metadata?.session_id ?? metadata?.sessionId ?? metadata?.user_id ?? metadata?.userId;
-    if (!isString(sessionCandidate) || isEmpty(sessionCandidate.trim())) {
-      return undefined;
-    }
-    return `anthropic:${sessionCandidate.trim()}`;
   }
 }

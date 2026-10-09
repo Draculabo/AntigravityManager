@@ -792,15 +792,9 @@ function buildContents(
             ? SignatureStore.getForToolCall({
                 ...signatureTarget,
                 toolCallId: block.id,
+                toolName: block.name,
                 sessionKey: signatureSessionKey,
-              }) ||
-              lastThoughtSignature ||
-              SignatureStore.getAt({
-                ...signatureTarget,
-                sessionKey: signatureSessionKey,
-                messageCount: i,
-              }) ||
-              SignatureStore.get({ ...signatureTarget, sessionKey: signatureSessionKey })
+              }) || lastThoughtSignature
             : lastThoughtSignature);
         if (finalSig) {
           part.thoughtSignature = finalSig;

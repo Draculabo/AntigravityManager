@@ -1,10 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
+import {
+  resolveOpenAISessionScope,
+  type SignatureScopeContext,
+} from '../../common/signature-session-scope';
 import { preparedSchemaState } from '@/modules/proxy-gateway/antigravity/schema/SchemaPreparation';
 import {
   prepareOpenAIRequestSchemas,
   type PreparedOpenAISchemas,
 } from './chat/openai-schema-preparation';
-import { isEmpty, isString } from 'lodash-es';
+import { isString } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -117,6 +121,7 @@ export class OpenAIService extends BaseProxyService {
     signal?: AbortSignal,
     responsesContext?: OpenAIResponsesExecutionContext,
     schemaPreparation?: PreparedOpenAISchemas,
+    requestContext?: SignatureScopeContext,
   ): Promise<OpenAIChatResponse | Observable<string>> {
     validateOpenAIInputAudio(request);
     validateOpenAIResponseFormat(request);
@@ -128,15 +133,16 @@ export class OpenAIService extends BaseProxyService {
         routedRequest,
         outputProtocol === 'responses' ? 'responses' : 'openai',
       );
+    const scope = resolveOpenAISessionScope(request, requestContext?.headers, requestContext?.url);
     const routingSessionKey = responsesContext
       ? this.toOpenAISessionKey(responsesContext.routingSessionId)
-      : this.extractOpenAISessionKey(request);
+      : scope.affinityKey;
     const signatureReadSessionKey = responsesContext
       ? this.toOpenAISessionKey(responsesContext.requestSessionId)
-      : routingSessionKey;
+      : scope.cacheKey;
     const responseSessionKey = responsesContext
       ? this.toOpenAISessionKey(responsesContext.responseId)
-      : routingSessionKey;
+      : scope.cacheKey;
     const clientToolNames = extractOpenAIToolNames(routedRequest.tools);
 
     const routingModel = routedRequest.model.toLowerCase().includes('-image')
@@ -876,6 +882,21 @@ export class OpenAIService extends BaseProxyService {
                         ).input,
                       )
                     : adaptedCommandArguments.arguments;
+                  const toolCallId = isString(functionCall.id)
+                    ? functionCall.id
+                    : `${functionName}-${uuidv4()}`;
+                  if (signature && signatureSourceModel) {
+                    SignatureStore.store({
+                      signature,
+                      model: signatureSourceModel,
+                      family: signatureSourceFamily,
+                      familyModel: signatureSourceFamilyModel,
+                      sessionKey: signatureSessionKey,
+                      messageCount: signatureMessageCount,
+                      toolCallId,
+                      toolName: functionCall.name,
+                    });
+                  }
                   const toolCallChunk = {
                     id: streamId,
                     object: 'chat.completion.chunk',
@@ -889,9 +910,7 @@ export class OpenAIService extends BaseProxyService {
                           tool_calls: [
                             {
                               index: toolCallIndex,
-                              id: isString(functionCall.id)
-                                ? functionCall.id
-                                : `${functionName}-${uuidv4()}`,
+                              id: toolCallId,
                               type: 'function',
                               function: {
                                 name: functionName,
@@ -1253,16 +1272,6 @@ export class OpenAIService extends BaseProxyService {
     tools: OpenAIChatRequest['tools'],
   ): ReturnType<typeof convertOpenAIToolsToAnthropicTools> {
     return convertOpenAIToolsToAnthropicTools(tools);
-  }
-
-  private extractOpenAISessionKey(request: OpenAIChatRequest): string | undefined {
-    const extra = request.extra;
-    const sessionCandidate =
-      extra?.session_id ?? extra?.sessionId ?? extra?.user_id ?? extra?.userId;
-    if (!isString(sessionCandidate) || isEmpty(sessionCandidate.trim())) {
-      return undefined;
-    }
-    return this.toOpenAISessionKey(sessionCandidate);
   }
 
   private toOpenAISessionKey(sessionId: string): string {

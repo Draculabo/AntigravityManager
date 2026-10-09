@@ -93,7 +93,7 @@ class NonStreamingProcessor {
       const toolId = fc.id || `${fc.name}-${uuidv4()}`;
 
       if (signature) {
-        this.storeSignature(signature, toolId);
+        this.storeSignature(signature, toolId, fc.name);
       }
 
       const toolUse: ContentBlock = {
@@ -183,7 +183,7 @@ class NonStreamingProcessor {
     }
   }
 
-  private storeSignature(signature: string, toolCallId?: string): void {
+  private storeSignature(signature: string, toolCallId?: string, toolName?: string): void {
     if (!this.options.model) {
       return;
     }
@@ -195,6 +195,7 @@ class NonStreamingProcessor {
       sessionKey: this.options.signatureSessionKey,
       messageCount: this.options.signatureMessageCount,
       toolCallId,
+      toolName,
     });
   }
 

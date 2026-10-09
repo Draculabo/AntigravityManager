@@ -6,6 +6,7 @@ import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anth
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
+import { resolveAnthropicSessionScope } from '@/modules/proxy-gateway/server/common/signature-session-scope';
 import {
   collect,
   createAccount,
@@ -522,7 +523,20 @@ describe('real request path, Anthropic messages surface', () => {
 
   it('binds signature provenance to the physical model after a web-search remap', async () => {
     const sessionId = 'anthropic-real-path-remap';
-    const sessionKey = `anthropic:${sessionId}`;
+    const request = {
+      max_tokens: 128,
+      metadata: { user_id: sessionId },
+      messages: [
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use' as const, id: 'call_old', name: 'lookup', input: {} }],
+        },
+      ],
+      model: 'gpt-oss-120b-medium',
+      stream: false,
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    };
+    const sessionKey = resolveAnthropicSessionScope(request).cacheKey;
     const staleSignature = 'gpt-oss-signature'.repeat(4);
     const returnedSignature = 'gemini-signature'.repeat(4);
     SignatureStore.store({
@@ -554,19 +568,7 @@ describe('real request path, Anthropic messages surface', () => {
     const lease = createLease([createAccount('acc-1')]);
     const { anthropicService } = createGateway(upstream, lease);
 
-    await anthropicService.handleAnthropicMessages({
-      max_tokens: 128,
-      metadata: { user_id: sessionId },
-      messages: [
-        {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'call_old', name: 'lookup', input: {} }],
-        },
-      ],
-      model: 'gpt-oss-120b-medium',
-      stream: false,
-      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-    } as never);
+    await anthropicService.handleAnthropicMessages(request);
 
     const body = upstream.calls[0]?.body;
     const historicalToolCall = body?.request.contents[0]?.parts.find((part) => part.functionCall);
