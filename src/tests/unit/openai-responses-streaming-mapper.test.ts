@@ -24,6 +24,7 @@ function createMapper(): OpenAIResponsesStreamingMapper {
     model: 'gemini-3-pro',
     responseId: 'resp_test',
     signatureSourceModel: 'gemini-3-pro',
+    signatureSessionKey: 'openai:resp_test',
   });
 }
 
@@ -563,7 +564,15 @@ describe('OpenAIResponsesStreamingMapper', () => {
       'response.custom_tool_call_input.done',
       'response.output_item.done',
     ]);
-    expect(SignatureStore.get({ model: 'gemini-3-pro' })).toBe('stored thought signature');
+    expect(
+      SignatureStore.getForToolCall({
+        model: 'gemini-3-pro',
+        sessionKey: 'openai:resp_test',
+        toolCallId: 'call_thought_1',
+        toolName: 'shell',
+      }),
+    ).toBe('stored thought signature');
+    expect(SignatureStore.get({ model: 'gemini-3-pro' })).toBeNull();
   });
 
   it('stores thought signatures under the supplied session key', () => {

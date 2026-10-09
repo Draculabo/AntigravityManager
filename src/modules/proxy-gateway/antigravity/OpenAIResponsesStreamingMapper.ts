@@ -475,7 +475,7 @@ export class OpenAIResponsesStreamingMapper {
       : splitName.name;
     const callId = functionCall.id || `call_${this.options.responseId}_${this.nextOutputIndex}`;
     if (signature) {
-      this.storeSignature(signature, callId);
+      this.storeSignature(signature, callId, functionCall.name);
     }
     if (functionCall.id && this.emittedToolCallIds.has(callId)) {
       return [];
@@ -608,7 +608,7 @@ export class OpenAIResponsesStreamingMapper {
     return events;
   }
 
-  private storeSignature(signature: string, toolCallId?: string): void {
+  private storeSignature(signature: string, toolCallId?: string, toolName?: string): void {
     if (!this.options.signatureSourceModel) {
       return;
     }
@@ -620,6 +620,7 @@ export class OpenAIResponsesStreamingMapper {
       sessionKey: this.options.signatureSessionKey,
       messageCount: this.options.signatureMessageCount,
       toolCallId,
+      toolName,
     });
   }
 

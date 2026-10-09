@@ -7,10 +7,11 @@ import {
   HttpStatus,
   Inject,
   Post,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
@@ -47,7 +48,11 @@ export class AnthropicCompleteController {
   @ProtocolErrors((error, _request, reply) =>
     anthropicCompleteErrorResponse(error, String(reply.getHeader('request-id'))),
   )
-  async complete(@Body() body: unknown, @Res({ passthrough: true }) res: FastifyReply) {
+  async complete(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: FastifyReply,
+    @Req() req?: FastifyRequest,
+  ) {
     const requestId = `req_${randomBytes(12).toString('hex')}`;
     res.header('request-id', requestId);
     const request = normalizeAnthropicCompleteRequest(body);
@@ -57,7 +62,10 @@ export class AnthropicCompleteController {
       );
     }
     const messagesRequest = toAnthropicMessagesRequest(request);
-    const result = await this.proxyService.handleAnthropicMessages(messagesRequest);
+    const result = await this.proxyService.handleAnthropicMessages(
+      messagesRequest,
+      req ? { headers: req.headers, url: req.url } : undefined,
+    );
     if (result instanceof Observable) {
       // Messages SSE is never a valid answer to the legacy completion protocol.
       throw new AnthropicCompleteValidationError(

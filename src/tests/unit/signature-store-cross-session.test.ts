@@ -8,6 +8,39 @@ describe('SignatureStore cross-session tool-call isolation', () => {
     SignatureStore.clear();
   });
 
+  it('never retains or recovers an unscoped signature', () => {
+    SignatureStore.store({ signature: 'unscoped-signature', model, toolCallId: 'call_reused' });
+    expect(SignatureStore.get({ model })).toBeNull();
+    expect(SignatureStore.getForToolCall({ model, toolCallId: 'call_reused' })).toBeNull();
+    expect(SignatureStore.take({ model })).toBeNull();
+  });
+
+  it('requires the matching tool name when recovering a scoped call', () => {
+    SignatureStore.store({
+      signature: 'read-signature',
+      model,
+      sessionKey: 'a',
+      toolCallId: 'call_reused',
+      toolName: 'read',
+    });
+    expect(
+      SignatureStore.getForToolCall({
+        model,
+        sessionKey: 'a',
+        toolCallId: 'call_reused',
+        toolName: 'write',
+      }),
+    ).toBeNull();
+    expect(
+      SignatureStore.getForToolCall({
+        model,
+        sessionKey: 'a',
+        toolCallId: 'call_reused',
+        toolName: 'read',
+      }),
+    ).toBe('read-signature');
+  });
+
   it('fails closed when the same tool-call id is reused by different sessions', () => {
     const toolCallId = 'call_reused';
     const sessionASignature = 'signature-from-session-a'.repeat(2);

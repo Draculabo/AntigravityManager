@@ -401,7 +401,7 @@ export class StreamingState {
     this.signatures.store(signature);
   }
 
-  public persistSignature(signature: string, toolCallId?: string): void {
+  public persistSignature(signature: string, toolCallId?: string, toolName?: string): void {
     if (!this.signatureContext.model) {
       return;
     }
@@ -413,6 +413,7 @@ export class StreamingState {
       sessionKey: this.signatureContext.sessionKey,
       messageCount: this.signatureContext.messageCount,
       toolCallId,
+      toolName,
     });
   }
   public handleParseError(rawData: string): string[] {
@@ -707,7 +708,7 @@ export class PartProcessor {
 
     if (signature) {
       toolUse.signature = signature;
-      this.state.persistSignature(signature, toolId);
+      this.state.persistSignature(signature, toolId, fc.name);
     }
 
     chunks.push(...this.state.startBlock('Function', toolUse));

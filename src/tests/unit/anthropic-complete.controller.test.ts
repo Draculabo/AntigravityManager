@@ -43,11 +43,14 @@ describe('AnthropicCompleteController HTTP', () => {
     });
     const requestId = reply.headers['request-id'];
     expect(requestId).toMatch(/^req_[a-f0-9]{24}$/u);
-    expect(handleAnthropicMessages).toHaveBeenCalledExactlyOnceWith({
-      model: 'claude-3',
-      max_tokens: 64,
-      messages: [{ role: 'user', content: 'Hello there' }],
-    });
+    expect(handleAnthropicMessages).toHaveBeenCalledExactlyOnceWith(
+      {
+        model: 'claude-3',
+        max_tokens: 64,
+        messages: [{ role: 'user', content: 'Hello there' }],
+      },
+      { headers: expect.objectContaining(headers), url: '/v1/complete' },
+    );
     expect({ status: reply.statusCode, body: reply.json() }).toEqual({
       status: 200,
       body: {
@@ -72,14 +75,17 @@ describe('AnthropicCompleteController HTTP', () => {
       prompt: '\n\nHuman: Continue this story\n\nAssistant: Once upon a time',
       max_tokens_to_sample: 32,
     });
-    expect(handleAnthropicMessages).toHaveBeenCalledExactlyOnceWith({
-      model: 'claude-3',
-      max_tokens: 32,
-      messages: [
-        { role: 'user', content: 'Continue this story' },
-        { role: 'assistant', content: 'Once upon a time' },
-      ],
-    });
+    expect(handleAnthropicMessages).toHaveBeenCalledExactlyOnceWith(
+      {
+        model: 'claude-3',
+        max_tokens: 32,
+        messages: [
+          { role: 'user', content: 'Continue this story' },
+          { role: 'assistant', content: 'Once upon a time' },
+        ],
+      },
+      { headers: expect.objectContaining(headers), url: '/v1/complete' },
+    );
     expect({ status: reply.statusCode, body: reply.json() }).toEqual({
       status: 200,
       body: {

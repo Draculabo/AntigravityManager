@@ -543,6 +543,11 @@ describe('ProxyController Integration', () => {
         model: 'gpt-4o',
         messages: [{ role: 'user', content: 'hello world' }],
       }),
+      'chat-completions',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
     );
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.send).toHaveBeenCalledWith(
@@ -999,6 +1004,11 @@ describe('ProxyController Integration', () => {
       expect.objectContaining({
         model: 'gemini-3.1-flash-image',
       }),
+      'chat-completions',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
     );
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.send).toHaveBeenCalledWith(
@@ -1032,32 +1042,39 @@ describe('ProxyController Integration', () => {
       reply as any,
     );
 
-    expect(proxyService.handleChatCompletions).toHaveBeenCalledWith({
-      image_size: '2K',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: 'draw from references, (natural lighting, realistic, photorealistic)',
-            },
-            {
-              type: 'image_url',
-              image_url: { url: 'data:image/png;base64,AQ==' },
-            },
-            {
-              type: 'image_url',
-              image_url: { url: 'data:image/webp;base64,Ag==' },
-            },
-          ],
-        },
-      ],
-      model: 'gemini-3.1-flash-image',
-      quality: undefined,
-      size: undefined,
-      stream: false,
-    });
+    expect(proxyService.handleChatCompletions).toHaveBeenCalledWith(
+      {
+        image_size: '2K',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'draw from references, (natural lighting, realistic, photorealistic)',
+              },
+              {
+                type: 'image_url',
+                image_url: { url: 'data:image/png;base64,AQ==' },
+              },
+              {
+                type: 'image_url',
+                image_url: { url: 'data:image/webp;base64,Ag==' },
+              },
+            ],
+          },
+        ],
+        model: 'gemini-3.1-flash-image',
+        quality: undefined,
+        size: undefined,
+        stream: false,
+      },
+      'chat-completions',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
     expect(reply.status).toHaveBeenCalledWith(200);
   });
 
@@ -1375,6 +1392,11 @@ describe('ProxyController Integration', () => {
 
     expect(proxyService.handleChatCompletions).toHaveBeenCalledWith(
       expect.objectContaining({ size: '1920x1080' }),
+      'chat-completions',
+      undefined,
+      undefined,
+      undefined,
+      { headers: { 'content-type': 'multipart/form-data; boundary=----parity' }, url: undefined },
     );
     expect(reply.status).toHaveBeenCalledWith(200);
   });

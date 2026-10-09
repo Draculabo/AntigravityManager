@@ -265,6 +265,8 @@ describe('thought signature compatibility', () => {
       signature: alphaSignature,
       model: SIGNATURE_MODEL,
       sessionKey: 'anthropic:session-alpha',
+      toolCallId: 'call_session_alpha',
+      toolName: 'get_weather',
     });
     SignatureStore.store({
       signature: 'thought-signature-for-session-beta',
@@ -352,7 +354,7 @@ describe('thought signature compatibility', () => {
     expect(SignatureStore.get({ model: SIGNATURE_MODEL, sessionKey })).toBe(rewindSignature);
   });
 
-  it('replays the signature matching each historical message index before the latest fallback', () => {
+  it('replays each historical tool signature by its scoped call identity', () => {
     const sessionKey = 'anthropic:multi-turn-session';
     const firstTurnSignature = 'first-turn-signature'.repeat(4);
     const latestTurnSignature = 'latest-turn-signature'.repeat(4);
@@ -362,12 +364,16 @@ describe('thought signature compatibility', () => {
       model: SIGNATURE_MODEL,
       sessionKey,
       messageCount: 1,
+      toolCallId: 'call_first_turn',
+      toolName: 'first_tool',
     });
     SignatureStore.store({
       signature: latestTurnSignature,
       model: SIGNATURE_MODEL,
       sessionKey,
       messageCount: 3,
+      toolCallId: 'call_latest_turn',
+      toolName: 'latest_tool',
     });
 
     const request: ClaudeRequest = {

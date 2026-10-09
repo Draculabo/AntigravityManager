@@ -292,9 +292,14 @@ export class OpenAIOperations extends BaseProxyController {
     };
     const abortScope = this.createRequestAbortScope(req, res);
     try {
-      const result = await (abortScope.signal
-        ? this.proxyService.handleChatCompletions(request, 'chat-completions', abortScope.signal)
-        : this.proxyService.handleChatCompletions(request));
+      const result = await this.proxyService.handleChatCompletions(
+        request,
+        'chat-completions',
+        abortScope.signal,
+        undefined,
+        undefined,
+        req ? { headers: req.headers, url: req.url } : undefined,
+      );
       if (body.stream && this.isObservableLike(result)) {
         this.writeSseResponse(res, result, true);
         return;
@@ -499,11 +504,9 @@ export class OpenAIOperations extends BaseProxyController {
    * OpenAI's distinction between the two is narrow: transcriptions return the speech in its own
    * language, translations return English.
    *
-   * One pass, not two. The reference composes transcribe-then-translate, but the step this base
-   * already has is "send the audio with an instruction", so asking for English in that same
-   * instruction is the same operation with different wording. It also keeps the audio from
-   * becoming prompt text: a transcription fed back into a second pass is untrusted content
-   * arriving where instructions live.
+   * A single model request sends the audio with an instruction to translate it into English.
+   * This avoids a separate transcription request and keeps the audio as input content rather
+   * than feeding a generated transcript back into a second request as instruction text.
    *
    * The caller's `prompt` is guidance appended to that instruction rather than a replacement for
    * it, because replacing it would drop the one thing this endpoint promises. Transcriptions
@@ -586,9 +589,14 @@ export class OpenAIOperations extends BaseProxyController {
       // Handles become inline content before the request is mapped: upstream
       // has no file plane, so a `file_id` left in place reaches nothing.
       const request = await expandFileReferences(body, 'openai-chat', this.files);
-      const result = await (abortScope.signal
-        ? this.proxyService.handleChatCompletions(request, 'chat-completions', abortScope.signal)
-        : this.proxyService.handleChatCompletions(request));
+      const result = await this.proxyService.handleChatCompletions(
+        request,
+        'chat-completions',
+        abortScope.signal,
+        undefined,
+        undefined,
+        req ? { headers: req.headers, url: req.url } : undefined,
+      );
 
       if (body.stream && this.isObservableLike(result)) {
         this.writeSseResponse(res, result, true);
@@ -784,9 +792,14 @@ export class OpenAIOperations extends BaseProxyController {
   ): Promise<void> {
     const abortScope = this.createRequestAbortScope(req, res);
     try {
-      const result = await (abortScope.signal
-        ? this.proxyService.handleChatCompletions(request, 'chat-completions', abortScope.signal)
-        : this.proxyService.handleChatCompletions(request));
+      const result = await this.proxyService.handleChatCompletions(
+        request,
+        'chat-completions',
+        abortScope.signal,
+        undefined,
+        undefined,
+        req ? { headers: req.headers, url: req.url } : undefined,
+      );
       if (result instanceof Observable) {
         this.logProxyEndpointError(
           path,
