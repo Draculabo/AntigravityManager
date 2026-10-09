@@ -2,6 +2,24 @@
 
 # Changelog
 
+## [0.24.0](https://github.com/Draculabo/AntigravityManager/compare/v0.23.0...v0.24.0) (2026-10-09)
+
+### ✨ Features
+
+* **app-shell:** show release notes before updating ([0004c18](https://github.com/Draculabo/AntigravityManager/commit/0004c18ed657d873745a0d7af9d0ff09f74de492))
+* **proxy-gateway:** prepare bounded schemas and report conversion failures ([d65e499](https://github.com/Draculabo/AntigravityManager/commit/d65e499a9fe52484d4008360e1cbf8e91b91c414))
+
+### 🐛 Bug Fixes
+
+* **ci:** install locked dependencies before publishing update feeds ([24e921f](https://github.com/Draculabo/AntigravityManager/commit/24e921f957d7a76718e1612988184ed5bde43a25))
+* **config:** reject invalid upstream proxy settings ([c43e115](https://github.com/Draculabo/AntigravityManager/commit/c43e115708da49339cef739efd48409c42ffce03))
+* preserve safe cloud switch diagnostics in Sentry ([ce4845b](https://github.com/Draculabo/AntigravityManager/commit/ce4845bd89c409eddd1db9d8d29bf6d52259b2a9))
+* **runtime:** close hidden Windows clients and confirm startup within deadline ([bf44c09](https://github.com/Draculabo/AntigravityManager/commit/bf44c094150a3ead9029b4d06766ba45421d6d3f))
+
+### ♻️ Code Refactoring
+
+* **proxy-gateway:** extract entry validation, errors and audit decorators ([45f995a](https://github.com/Draculabo/AntigravityManager/commit/45f995a41de0381a94214b276cbc0784444425a8))
+
 ## [0.23.0](https://github.com/Draculabo/AntigravityManager/compare/v0.22.0...v0.23.0) (2026-10-07)
 
 ### ✨ Features
