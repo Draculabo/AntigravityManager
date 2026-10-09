@@ -89,6 +89,9 @@ import type { OpenCodeOperations } from '@/modules/proxy-gateway/opencode-sync/o
 import type { LocalAccountOperations } from '@/modules/account/services/local-account-owner.service';
 
 export class CoreRpcClient {
+  async setErrorReportingEnabled(enabled: boolean): Promise<void> {
+    await this.rpc.errorReporting.setEnabled({ enabled });
+  }
   readonly ipcCapture: IpcCaptureOperations;
   readonly endpoint: string;
   readonly auditCurl: AuditCurlOperations;

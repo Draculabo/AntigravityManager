@@ -13,6 +13,7 @@ import { splitNamespaceToolName } from './ToolNamespace';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
 import type { OpenAIResponsesUsage } from './OpenAIUsageMapper';
 import { logger } from '@/shared/logging/logger';
+import type { OpenAITool } from '../server/common/interfaces/request-interfaces';
 
 export interface GeminiResponsesStreamPart {
   functionCall?: {
@@ -105,6 +106,7 @@ interface ActiveReasoningOutput {
 
 interface OpenAIResponsesStreamingMapperOptions {
   clientToolNames?: ReadonlySet<string>;
+  clientTools?: OpenAITool[];
   model: string;
   responseId: string;
   signatureMessageCount?: number;
@@ -467,7 +469,7 @@ export class OpenAIResponsesStreamingMapper {
     functionCall: NonNullable<GeminiResponsesStreamPart['functionCall']>,
     signature: string | undefined,
   ): string[] {
-    const splitName = splitNamespaceToolName(functionCall.name);
+    const splitName = splitNamespaceToolName(functionCall.name, this.options.clientTools);
     const functionName = this.options.clientToolNames
       ? selectClientCommandTool(splitName.name, this.options.clientToolNames)
       : splitName.name;

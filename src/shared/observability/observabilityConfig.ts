@@ -20,6 +20,9 @@ export function getQuickObservabilityConfig(
         ? desktopPreferencesPath
         : path.join(getAgentDir(), 'gui_config.json');
     if (fs.existsSync(configPath)) {
+      if (fs.statSync(configPath).size > (desktop ? 128 * 1024 : 1024 * 1024)) {
+        throw new Error('Observability preferences are too large.');
+      }
       const content = fs.readFileSync(configPath, 'utf-8');
       const raw: unknown = JSON.parse(content);
       const value = desktop ? z.object({ preferences: z.unknown() }).parse(raw).preferences : raw;

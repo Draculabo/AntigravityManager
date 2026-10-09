@@ -1,3 +1,5 @@
+import { logger } from '@/shared/logging/logger';
+
 export interface CoreShutdownResources {
   management: { beginShutdown?(): void; close(): Promise<void> };
   accountMutations?: {
@@ -10,6 +12,7 @@ export interface CoreShutdownResources {
   warmup?: { cancel(): void; drain(): Promise<void> };
   monitor?: { closeAdmission(): void; drain(): Promise<void> };
   diagnostics?: { shutdown(): Promise<void> };
+  observability?: { shutdown(): Promise<void> };
 }
 
 /** Keep shutdown idempotent while attempting both resource closures. */
@@ -22,6 +25,7 @@ export function createCoreShutdown({
   warmup,
   monitor,
   diagnostics,
+  observability,
 }: CoreShutdownResources): () => Promise<void> {
   let shutdownPromise: Promise<void> | null = null;
   return async () => {
@@ -45,6 +49,8 @@ export function createCoreShutdown({
       const [diagnosticsResult] = await Promise.allSettled([
         diagnostics?.shutdown() ?? Promise.resolve(),
       ]);
+      // Reporting is best-effort; its bounded flush must not prevent lease release.
+      await observability?.shutdown().catch(() => logger.warn('Core error reporting flush failed'));
       const failures = [
         oauthResult,
         managementResult,

@@ -45,4 +45,21 @@ describe('Responses tool namespaces', () => {
       name: 'mcp__github__search',
     });
   });
+
+  it('restores declared MCP namespaces while retaining flat MCP declarations', () => {
+    expect(
+      splitNamespaceToolName('mcp__probe__read_probe', [
+        {
+          type: 'namespace',
+          name: 'mcp__probe',
+          tools: [{ type: 'function', name: 'read_probe' }],
+        },
+      ]),
+    ).toEqual({ name: 'read_probe', namespace: 'mcp__probe' });
+    expect(
+      splitNamespaceToolName('mcp__probe__read_probe', [
+        { type: 'function', name: 'mcp__probe__read_probe' },
+      ]),
+    ).toEqual({ name: 'mcp__probe__read_probe' });
+  });
 });

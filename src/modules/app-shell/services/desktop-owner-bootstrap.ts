@@ -23,7 +23,7 @@ export interface DesktopOwnerBootstrapDependencies {
   profile: string;
   probeProfileOwner(): Promise<ProfileOwner | null>;
   launchCore(): Promise<LaunchedCore>;
-  selectStandaloneCore(handshake: CoreHandshake): void;
+  selectStandaloneCore(handshake: CoreHandshake): void | Promise<void>;
   stopVerifiedCore(handshake: CoreHandshake): Promise<void>;
 }
 
@@ -68,7 +68,7 @@ export async function bootstrapDesktopOwner(
     if (child?.pid === confirmed.pid && child.hasExited()) {
       throw new DesktopOwnerStartupError();
     }
-    dependencies.selectStandaloneCore(confirmed);
+    await dependencies.selectStandaloneCore(confirmed);
     const ownsLifecycle = child !== null && child.pid === confirmed.pid && !child.hasExited();
     let closing: Promise<void> | undefined;
     return {

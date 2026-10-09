@@ -3,7 +3,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { isEmpty, isPlainObject, isString, sortBy } from 'lodash-es';
 import { mapClaudeModelToGemini, normalizeGeminiModelAlias } from './ModelMapping';
 import { getMaxOutputTokens, getThinkingBudget } from './ModelSpecs';
-import { normalizeObjectJsonSchema, type JsonSchemaMap } from './JsonSchemaUtils';
+import { normalizeObjectJsonSchema } from './JsonSchemaUtils';
+import { SchemaConversionBatch, validateSchemaInput } from './schema/SchemaConversion';
+import { reportSchemaIssues } from './schema/SchemaPreparation';
 import { SignatureStore } from './SignatureStore';
 import {
   isGeminiFlashModel,
@@ -16,6 +18,7 @@ import { hasGlobalSystemPrompt, resolveGlobalSystemPrompt } from './GlobalSystem
 import { parseMarkdownImagesToGeminiParts } from './MarkdownImageParts';
 import { enhanceGeminiSkillsPrompt } from './SkillPromptEnhancer';
 import { toSnakeToolConfig } from './GeminiToolConfigCompat';
+import { buildToolConfig } from './ToolChoiceCompat';
 import {
   IMAGE_GENERATION_SAFETY_SETTINGS,
   resolveImageGenerationConfig,
@@ -34,7 +37,6 @@ import {
   ImageConfig,
   FunctionDeclaration,
   SafetySetting,
-  GeminiToolConfig,
   GeminiRequest,
 } from './types';
 import {
@@ -63,6 +65,8 @@ interface ResolvedRequestConfig {
 export type ClaudeRequestMapperMode = 'normal' | 'invalid-thought-signature-recovery';
 
 export interface ClaudeRequestMapperOptions {
+  schemasPrepared?: boolean;
+  cacheSchemas?: boolean;
   imageRequest?: ImageGenerationConfigInput;
   mode?: ClaudeRequestMapperMode;
   signatureTargetFamily?: string | null;
@@ -205,6 +209,7 @@ export function transformClaudeRequestIn(
     hasWebSearchTool,
     requestConfig.finalModel,
     isThinkingEnabled,
+    options.schemasPrepared === true,
   );
   // Update thinking config based on the final decision
   if (!isThinkingEnabled && generationConfig.thinkingConfig) {
@@ -225,7 +230,7 @@ export function transformClaudeRequestIn(
   );
 
   // 3. Tools
-  const tools = buildTools(claudeReq.tools, hasWebSearchTool, requestConfig.finalModel);
+  const tools = buildTools(claudeReq.tools, hasWebSearchTool, requestConfig.finalModel, options);
 
   // Build inner request
   const innerRequest: GeminiRequest = {
@@ -537,10 +542,6 @@ function resolveAdaptiveThinkingLevel(claudeReq: ClaudeRequest): 'low' | 'medium
     return 'medium';
   }
   return 'high';
-}
-
-function toToolSchema(schema: unknown): JsonSchemaMap {
-  return normalizeObjectJsonSchema(schema);
 }
 
 /**
@@ -904,14 +905,28 @@ function buildTools(
   tools: Tool[] | undefined,
   hasWebSearch: boolean,
   mappedModel: string,
+  options: ClaudeRequestMapperOptions,
 ): GeminiToolDeclaration[] | null {
   if (!tools || tools.length === 0) {
     return null;
   }
 
+  const batch = new SchemaConversionBatch();
+  if (!options.schemasPrepared) {
+    for (const tool of tools) {
+      if (!isGoogleSearchTool(tool)) {
+        validateSchemaInput(tool.input_schema ?? { type: 'object', properties: {} }, batch);
+      }
+    }
+  }
   const hasGoogleSearch = hasWebSearch || tools.some(isGoogleSearchTool);
-  const cacheKey = computeToolSchemaCacheKey(tools);
+  const cacheKey = options.cacheSchemas === false ? null : computeToolSchemaCacheKey(tools);
   let functionDeclarations = cacheKey ? lookupToolSchemaCache(cacheKey) : null;
+  if (functionDeclarations && !options.schemasPrepared) {
+    for (const declaration of functionDeclarations) {
+      validateSchemaInput(declaration.parameters, batch);
+    }
+  }
 
   if (!functionDeclarations) {
     functionDeclarations = [];
@@ -920,7 +935,14 @@ function buildTools(
         continue;
       }
       if (tool.name) {
-        const inputSchema = toToolSchema(tool.input_schema);
+        const inputSchema = options.schemasPrepared
+          ? structuredClone(tool.input_schema ?? { type: 'object', properties: {} })
+          : normalizeObjectJsonSchema(
+              tool.input_schema,
+              batch,
+              'tool',
+              functionDeclarations.length,
+            );
         functionDeclarations.push({
           name: tool.name,
           description: tool.description,
@@ -929,12 +951,13 @@ function buildTools(
       }
     }
 
-    if (cacheKey) {
+    if (cacheKey && !batch.degraded) {
       cacheToolSchemas(cacheKey, functionDeclarations);
     }
   }
 
   functionDeclarations = sortBy(functionDeclarations, (declaration) => declaration.name);
+  reportSchemaIssues(batch, 'anthropic');
 
   const toolList: GeminiToolDeclaration[] = [];
   if (functionDeclarations.length > 0) {
@@ -1042,6 +1065,7 @@ function buildGenerationConfig(
   hasWebSearch: boolean,
   mappedModel: string,
   isThinkingEnabled: boolean,
+  schemasPrepared: boolean,
 ): GenerationConfig {
   const source = String(claudeReq.metadata?.source || '').toLowerCase();
   const isOpenAIPath = source === 'openai';
@@ -1076,7 +1100,13 @@ function buildGenerationConfig(
     config.responseMimeType = 'application/json';
   } else if (responseFormatType === 'json_schema' && claudeReq.response_format?.json_schema) {
     config.responseMimeType = 'application/json';
-    config.responseSchema = normalizeObjectJsonSchema(claudeReq.response_format.json_schema.schema);
+    config.responseSchema = schemasPrepared
+      ? structuredClone(claudeReq.response_format.json_schema.schema)
+      : normalizeObjectJsonSchema(
+          claudeReq.response_format.json_schema.schema,
+          undefined,
+          'output',
+        );
   }
 
   if (isOpenAIPath) {
@@ -1116,28 +1146,6 @@ function buildGenerationConfig(
   }
   config.stopSequences = ['<|user|>', '<|endoftext|>', '<|end_of_turn|>', '[DONE]', '\n\nHuman:'];
   return config;
-}
-
-function buildToolConfig(toolChoice: ClaudeRequest['tool_choice']): GeminiToolConfig {
-  let mode = 'VALIDATED';
-  if (typeof toolChoice === 'string') {
-    if (toolChoice === 'none') {
-      mode = 'NONE';
-    } else if (toolChoice === 'auto') {
-      mode = 'AUTO';
-    } else {
-      mode = 'ANY';
-    }
-  } else if (toolChoice) {
-    mode = 'ANY';
-  }
-
-  return {
-    functionCallingConfig: {
-      mode,
-    },
-    includeServerSideToolInvocations: true,
-  };
 }
 
 /**

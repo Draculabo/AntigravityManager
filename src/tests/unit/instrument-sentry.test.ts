@@ -47,6 +47,7 @@ vi.mock('@sentry/electron/main', () => ({
 describe('Sentry logger reporting', () => {
   let report: Reporter;
   beforeAll(async () => {
+    vi.stubEnv('SENTRY_DSN', 'https://fixture@example.invalid/1');
     await import('@/instrument');
     report = mocks.registerReporter.mock.calls[0][0];
   });

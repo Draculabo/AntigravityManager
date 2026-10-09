@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { SchemaInputError } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { isFunction, isObjectLike } from 'lodash-es';
 import { Observable } from 'rxjs';
@@ -130,7 +131,7 @@ export abstract class BaseProxyController {
     res.status(status).send({
       error: {
         message,
-        type: 'server_error',
+        type: error instanceof SchemaInputError ? 'invalid_request_error' : 'server_error',
       },
     });
   }
@@ -148,7 +149,7 @@ export abstract class BaseProxyController {
     res.status(status).send({
       type: 'error',
       error: {
-        type: 'api_error',
+        type: error instanceof SchemaInputError ? 'invalid_request_error' : 'api_error',
         message,
       },
     });
@@ -171,6 +172,9 @@ export abstract class BaseProxyController {
   }
 
   private resolveErrorHttpStatus(message: string, error?: unknown): HttpStatus {
+    if (error instanceof SchemaInputError) {
+      return HttpStatus.BAD_REQUEST;
+    }
     if (error instanceof HttpException) {
       return error.getStatus() as HttpStatus;
     }

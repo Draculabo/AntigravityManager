@@ -69,6 +69,9 @@ export function coreEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     'TEMP',
     'SystemRoot',
     'WINDIR',
+    'SENTRY_DSN',
+    'SENTRY_RELEASE',
+    'ANTIGRAVITY_DESKTOP_PREFERENCES_PATH',
   ] as const;
   const environment: NodeJS.ProcessEnv = {};
   for (const name of allowed) {
@@ -82,6 +85,8 @@ export function coreEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 export async function launchDetachedCore(
   coreEntryPath: string,
   executable: string = process.execPath,
+  desktopPreferencesPath?: string,
+  errorReportingDsn?: string,
 ): Promise<LaunchedCore> {
   if (!fs.existsSync(coreEntryPath)) {
     throw new Error(`Core entry is missing: ${coreEntryPath}. Run npm run build:core first.`);
@@ -91,7 +96,13 @@ export async function launchDetachedCore(
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
-    env: coreEnvironment(process.env),
+    env: {
+      ...coreEnvironment(process.env),
+      ...(desktopPreferencesPath
+        ? { ANTIGRAVITY_DESKTOP_PREFERENCES_PATH: desktopPreferencesPath }
+        : {}),
+      ...(errorReportingDsn ? { SENTRY_DSN: errorReportingDsn } : {}),
+    },
   });
   await once(child, 'spawn');
   child.unref();

@@ -57,8 +57,23 @@ export function flattenOpenAITools(tools: OpenAITool[] | undefined): OpenAITool[
   return flattened;
 }
 
-export function splitNamespaceToolName(qualifiedName: string): SplitToolNamespace {
+export function splitNamespaceToolName(
+  qualifiedName: string,
+  clientTools?: OpenAITool[],
+): SplitToolNamespace {
   const name = qualifiedName.trim();
+  // Declarations distinguish namespaced MCP calls from legacy flat mcp__ names.
+  for (const tool of clientTools ?? []) {
+    if (tool.type !== 'namespace' || !tool.name) {
+      continue;
+    }
+    for (const child of flattenOpenAITools(tool.tools) ?? []) {
+      const childName = child.name ?? child.function?.name;
+      if (childName && qualifyNamespaceToolName(tool.name, childName) === name) {
+        return { name: childName, namespace: tool.name };
+      }
+    }
+  }
   if (name.startsWith('mcp__')) {
     return { name };
   }

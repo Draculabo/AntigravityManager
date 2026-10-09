@@ -1,4 +1,8 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  SchemaConversionBatch,
+  SchemaInputError,
+} from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
+import { reportSchemaIssues } from '@/modules/proxy-gateway/antigravity/schema/SchemaPreparation';
 import { z } from 'zod';
 import type {
   OpenAIChatRequest,
@@ -27,6 +31,16 @@ const ResponsesJsonSchemaFormatSchema = z.object({
   strict: z.boolean().optional(),
 });
 
+function rejectResponseFormat(protocol: 'openai' | 'responses'): never {
+  const batch = new SchemaConversionBatch();
+  batch.issue('invalid-input', false, null);
+  reportSchemaIssues(batch, protocol);
+  throw new SchemaInputError(
+    'invalid-input',
+    'Invalid response_format: json_schema must include an object schema and typed optional fields',
+  );
+}
+
 export function validateOpenAIResponseFormat(request: OpenAIChatRequest): void {
   const responseFormat = request.response_format;
   if (!responseFormat || responseFormat.type !== 'json_schema') {
@@ -35,9 +49,7 @@ export function validateOpenAIResponseFormat(request: OpenAIChatRequest): void {
 
   const parsed = OpenAIChatJsonSchemaResponseFormatSchema.safeParse(responseFormat);
   if (!parsed.success) {
-    throw new BadRequestException(
-      'Invalid response_format: json_schema must include an object schema and typed optional fields',
-    );
+    rejectResponseFormat('openai');
   }
 }
 
@@ -53,9 +65,7 @@ export function toResponsesOpenAIResponseFormat(value: unknown): OpenAIResponseF
 
   const jsonSchemaFormat = ResponsesJsonSchemaFormatSchema.safeParse(value);
   if (!jsonSchemaFormat.success) {
-    throw new BadRequestException(
-      'Invalid response_format: json_schema must include an object schema and typed optional fields',
-    );
+    rejectResponseFormat('responses');
   }
 
   const { data } = jsonSchemaFormat;

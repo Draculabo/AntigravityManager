@@ -82,6 +82,7 @@ const deviceProfile = {
 
 function operations(): CoreRpcOperations {
   return {
+    errorReporting: { setEnabled: vi.fn() },
     ipcCapture: ipcCaptureOwner,
     auditFile: auditFileOwner,
     audit: auditOwner,

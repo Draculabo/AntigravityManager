@@ -1,4 +1,8 @@
 import type { CoreRpcOperations, CoreRpcWorkLifecycle } from './operations';
+import {
+  errorReportingService,
+  createErrorReportingRouter,
+} from '@/modules/config/error-reporting.service';
 import { ipcCaptureOwner } from '@/modules/proxy-gateway/audit/ipc-capture-owner';
 import { createIpcCaptureRouter } from '@/modules/proxy-gateway/audit/ipc-capture.router';
 import { auditCurlOwner } from '@/modules/proxy-gateway/traffic-monitor/audit-curl-owner.service';
@@ -146,6 +150,7 @@ export function createCoreRpcOperations(
     openCode: openCodeOwner,
     agentTools: agentToolsOwner,
     localAccount: localAccountOwner,
+    errorReporting: errorReportingService,
     serviceConfig: {
       read: serviceConfigService.read,
       revealSecret: serviceConfigService.revealSecret,
@@ -286,6 +291,7 @@ export function createCoreRpcOperations(
 
 export function createCoreRpcRouter(operations: CoreRpcOperations) {
   return os.router({
+    errorReporting: createErrorReportingRouter(operations.errorReporting),
     ipcCapture: createIpcCaptureRouter(operations.ipcCapture),
     audit: createAuditOwnerRouter(operations.audit),
     thought: createThoughtOwnerRouter(operations.thought),

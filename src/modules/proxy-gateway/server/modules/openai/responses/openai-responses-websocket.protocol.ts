@@ -25,6 +25,12 @@ export type OpenAIResponsesWebSocketAction =
  * repair compacted tool transcripts, and inherit stable request fields.
  */
 export class OpenAIResponsesWebSocketProtocol {
+  constructor(
+    private readonly validateRequest?: (
+      request: Record<string, unknown>,
+      mode: 'prewarm' | 'generate',
+    ) => void,
+  ) {}
   private lastRequest: Record<string, unknown> | null = null;
   private lastResponseOutput: unknown[] = [];
   private lastResponseId = '';
@@ -133,6 +139,7 @@ export class OpenAIResponsesWebSocketProtocol {
     const normalized = { ...payload };
     delete normalized.type;
     delete normalized.generate;
+    this.validateRequest?.(normalized, 'prewarm');
     this.lastRequest = normalized;
     this.lastResponseOutput = [];
     this.lastResponseId = responseId;
@@ -151,6 +158,7 @@ export class OpenAIResponsesWebSocketProtocol {
       if (!getString(normalized, 'model')) {
         throw new Error('missing model in response.create request');
       }
+      this.validateRequest?.(normalized, 'generate');
       this.lastRequest = normalized;
       return normalized;
     }
@@ -168,22 +176,12 @@ export class OpenAIResponsesWebSocketProtocol {
       delete replacement.generate;
       delete replacement.previous_response_id;
       replacement.stream = true;
+      this.validateRequest?.(replacement, 'generate');
       this.lastRequest = replacement;
       return replacement;
     }
 
     const newInput = Array.isArray(payload.input) ? payload.input : [];
-    for (const item of newInput) {
-      const itemRecord = toRecord(item);
-      const type = itemRecord ? getString(itemRecord, 'type') : null;
-      if (type !== 'function_call_output' && type !== 'custom_tool_call_output') {
-        continue;
-      }
-      const callId = getString(itemRecord, 'call_id');
-      if (callId) {
-        this.lastResponsePendingToolCallIds.delete(callId);
-      }
-    }
 
     const previousInput = Array.isArray(this.lastRequest.input) ? this.lastRequest.input : [];
     const mergedInput = mergeOpenAIResponsesInputItems(
@@ -206,6 +204,18 @@ export class OpenAIResponsesWebSocketProtocol {
       }
     }
 
+    this.validateRequest?.(normalized, 'generate');
+    for (const item of newInput) {
+      const itemRecord = toRecord(item);
+      const type = itemRecord ? getString(itemRecord, 'type') : null;
+      if (type !== 'function_call_output' && type !== 'custom_tool_call_output') {
+        continue;
+      }
+      const callId = getString(itemRecord, 'call_id');
+      if (callId) {
+        this.lastResponsePendingToolCallIds.delete(callId);
+      }
+    }
     this.lastRequest = normalized;
     return normalized;
   }

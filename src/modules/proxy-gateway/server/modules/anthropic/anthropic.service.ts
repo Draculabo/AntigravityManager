@@ -1,4 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { SchemaConversionBatch } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
+import {
+  prepareClaudeSchemas,
+  reportSchemaIssues,
+} from '@/modules/proxy-gateway/antigravity/schema/SchemaPreparation';
 import { isEmpty, isString } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import {
@@ -84,6 +89,13 @@ export class AnthropicService extends BaseProxyService {
    * counting endpoint accepts only the contents and rejects the rest.
    */
   async handleAnthropicCountTokens(request: AnthropicChatRequest): Promise<number> {
+    const batch = new SchemaConversionBatch();
+    let prepared: ClaudeRequest;
+    try {
+      prepared = prepareClaudeSchemas(this.toClaudeRequest(request), batch);
+    } finally {
+      reportSchemaIssues(batch, 'anthropic-count-tokens');
+    }
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(request.model);
     const targetModel = routeResolution.resolvedModel;
     this.logger.log(
@@ -92,11 +104,12 @@ export class AnthropicService extends BaseProxyService {
 
     const requestUserAgent = await resolveRequestUserAgent();
     const geminiBody = transformClaudeRequestIn(
-      this.toClaudeRequest(request),
+      prepared,
       '',
       requestUserAgent,
       targetModel,
       'anthropic',
+      { schemasPrepared: true, cacheSchemas: !batch.degraded },
     );
 
     return this.countTokensWithLease(
@@ -109,6 +122,13 @@ export class AnthropicService extends BaseProxyService {
   async handleAnthropicMessages(
     request: AnthropicChatRequest,
   ): Promise<AnthropicChatResponse | Observable<string>> {
+    const batch = new SchemaConversionBatch();
+    try {
+      const prepared = prepareClaudeSchemas(this.toClaudeRequest(request), batch);
+      request = { ...request, tools: prepared.tools };
+    } finally {
+      reportSchemaIssues(batch, 'anthropic');
+    }
     const appliedVariantRequest = applyAnthropicModelVariant(request);
     const routedRequest = appliedVariantRequest.request;
     const sessionKey = this.extractAnthropicSessionKey(request);
@@ -174,6 +194,7 @@ export class AnthropicService extends BaseProxyService {
           signatureSessionKey: sessionKey,
           stream: request.stream === true,
           recoveryState,
+          cacheSchemas: !batch.degraded,
           variant: effectiveVariantRequest.variant ?? undefined,
         });
         if (execution.stream) {
@@ -221,6 +242,7 @@ export class AnthropicService extends BaseProxyService {
               signatureSessionKey: sessionKey,
               stream: request.stream === true,
               recoveryState,
+              cacheSchemas: !batch.degraded,
               variant: effectiveVariantRequest.variant ?? undefined,
             });
             if (execution.stream) {
@@ -292,6 +314,7 @@ export class AnthropicService extends BaseProxyService {
               signatureSessionKey: sessionKey,
               stream: request.stream === true,
               recoveryState,
+              cacheSchemas: !batch.degraded,
               variant: downgradedVariant.variant ?? undefined,
             });
             if (execution.stream) {
@@ -359,6 +382,7 @@ export class AnthropicService extends BaseProxyService {
     signatureSessionKey?: string;
     stream: boolean;
     recoveryState: AnthropicRecoveryState;
+    cacheSchemas: boolean;
     variant?: ResolvedModelVariant;
   }): Promise<AnthropicUpstreamResult> {
     const execute = async (
@@ -374,6 +398,8 @@ export class AnthropicService extends BaseProxyService {
         'anthropic',
         {
           mode,
+          schemasPrepared: true,
+          cacheSchemas: params.cacheSchemas,
           signatureTargetFamily: params.signatureFamily,
           signatureTargetFamilyModel: params.targetModel,
         },
@@ -793,6 +819,7 @@ export class AnthropicService extends BaseProxyService {
         input_schema: tool.input_schema,
         type: tool.type,
       })),
+      tool_choice: request.tool_choice,
       stream: request.stream,
       max_tokens: request.max_tokens,
       stop_sequences: request.stop_sequences,

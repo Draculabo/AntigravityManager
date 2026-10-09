@@ -1,4 +1,5 @@
 import type { IncomingMessage, Server } from 'node:http';
+import { SchemaInputError } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
 import type { Duplex } from 'node:stream';
 
 import { isObservable, type Observable, type Subscription } from 'rxjs';
@@ -10,6 +11,7 @@ import {
 } from './openai-responses-websocket.protocol';
 
 export interface OpenAIResponsesWebSocketServerDependencies {
+  validateRequest?: (request: Record<string, unknown>, mode: 'prewarm' | 'generate') => void;
   isAuthorized: (request: IncomingMessage) => boolean;
   streamRequest: (request: Record<string, unknown>) => Promise<Observable<unknown>>;
 }
@@ -57,7 +59,7 @@ function handleConnection(
   socket: WebSocket,
   dependencies: OpenAIResponsesWebSocketServerDependencies,
 ): void {
-  const protocol = new OpenAIResponsesWebSocketProtocol();
+  const protocol = new OpenAIResponsesWebSocketProtocol(dependencies.validateRequest);
   let activeSubscription: Subscription | null = null;
   let processing = Promise.resolve();
 
@@ -102,7 +104,8 @@ function handleConnection(
           type: 'error',
           error: {
             message: error instanceof Error ? error.message : String(error),
-            type: 'server_error',
+            type: error instanceof SchemaInputError ? 'invalid_request_error' : 'server_error',
+            ...(error instanceof SchemaInputError ? { code: 'invalid_schema' } : {}),
           },
         });
       });

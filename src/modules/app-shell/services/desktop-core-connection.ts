@@ -1,4 +1,7 @@
 import { launchDetachedCore, ServiceLauncher } from '@/cli/service-launcher';
+import { app } from 'electron';
+import path from 'node:path';
+import { desktopPreferencesStore } from '@/modules/config/ipc/desktop-preferences';
 import { setTimeout as delay } from 'node:timers/promises';
 import { getManagementEndpoint } from '@/core/management/endpoint';
 import { ManagementClient } from '@/core/management/client';
@@ -15,13 +18,23 @@ export function desktopCoreConnection(coreEntry: string, executable: string) {
     management: new ManagementClient(endpoint),
     profile: getProfileFingerprint(),
     probeProfileOwner: () => probeProfileOwner(ownerEndpoint),
-    launchCore: () => launchDetachedCore(coreEntry, executable),
-    selectStandaloneCore: (handshake: CoreHandshake) =>
+    launchCore: () =>
+      launchDetachedCore(
+        coreEntry,
+        executable,
+        path.join(app.getPath('userData'), 'desktop-preferences.json'),
+        process.env.SENTRY_DSN,
+      ),
+    selectStandaloneCore: async (handshake: CoreHandshake) => {
+      const client = new CoreRpcClient(endpoint, undefined, handshake.epoch);
+      const preferences = await desktopPreferencesStore.load();
+      await client.setErrorReportingEnabled(preferences.error_reporting_enabled);
       selectDesktopOwners({
         mode: 'standalone-core',
-        client: new CoreRpcClient(endpoint, undefined, handshake.epoch),
+        client,
         management: new ManagementClient(endpoint, undefined, handshake.epoch),
-      }),
+      });
+    },
     stopVerifiedCore: async (handshake: CoreHandshake) => {
       const management = new ManagementClient(endpoint, undefined, handshake.epoch);
       const current = await management.handshake();

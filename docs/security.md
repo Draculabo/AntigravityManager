@@ -2,6 +2,36 @@
 
 This document defines the security-sensitive boundaries that repository changes must preserve. Read it before changing preload exposure, IPC, credentials, logging, persistence, proxy authentication, updates or external process execution.
 
+## Schema diagnostics and Node reporting
+
+Schema diagnostic logs contain fixed issue categories, protocol, recovery flags, ordinal tool
+positions and bounded counters. Schema/ref strings, tool names, prompts, credentials and account
+identifiers do not enter those records. Isolated Sentry events replace inherited user data with
+`{ geo: {} }` and remove request,
+breadcrumbs, contexts, exception and extra fields; the logger supplies no surrounding logs.
+Reporter exceptions cannot fail gateway execution or recursively report themselves.
+
+Sentry Relay can derive geography from the connection IP even when `sendDefaultPii` is disabled
+and the event contains no IP. The empty geo object prevents that enrichment without sending
+identity, IP or location values. Check outbound envelopes and remote stored events separately;
+the strict remote privacy check still rejects any nonempty user data. The acceptance relay
+forwards the envelope to the configured Sentry project and retains only field-presence and
+empty-override booleans. It does not change project settings or export event bodies. See the
+[decision and remote evidence](../.agents/notes/implemented/security/2026-10-08-isolated-sentry-geo.md).
+
+Standalone core uses the explicit `@sentry/node` dependency, with automatic integrations disabled.
+General logger exceptions are copied with a redacted message/stack and without arbitrary provider
+error properties. `SENTRY_DSN` and `SENTRY_RELEASE` are runtime inputs. A desktop launch passes its
+exact preference location through `ANTIGRAVITY_DESKTOP_PREFERENCES_PATH`; a CLI launch without
+that location starts reporting disabled. The selected desktop owner receives preference changes
+through a Boolean-only private configuration route. Enabling after disabled startup installs
+the reporter; disabling prevents subsequent submissions. No second durable consent switch is
+introduced. The Node flush has a 2-second deadline and cannot retain profile ownership.
+
+The replay command reads the audit database without migrations or repairs. Private request data
+stays in memory, while output contains aggregate counters. Audit sanitization may change a Schema
+named `password` or `access_token`; modified data cannot establish an original production defect.
+
 ## Trust model
 
 - Electron main, preload and renderer are separate trust zones.

@@ -2,6 +2,24 @@
 
 This document is the current architectural map for Antigravity Manager. Read it before changing process boundaries, IPC, persistence, routing, or the proxy gateway. Decision rationale belongs in [Agent Notes](../.agents/notes/README.md), not here.
 
+## Gateway Schema admission
+
+OpenAI Chat, effective Responses requests and Anthropic Messages prepare tool parameter schemas
+before account selection and retry. Prepared request copies are reused by account and project
+fallbacks. Structured-output schemas reject conversion failures; eligible tool child nodes use
+a fixed string fallback while retaining the tool, sibling parameters and required relationship.
+Native Gemini dialect conversion remains separate. Responses WebSocket validates effective
+configuration before publishing prewarm events or replacing socket request state, and reuses
+its prepared schemas during generation. See the [Schema reference](proxy-schema-conversion.md)
+for supported references, bounds and error contracts.
+
+Error reporting uses runtime-specific Electron and Node SDK adapters. The logger submits one
+isolated bounded Schema summary per preparation, subject to consent and an available DSN.
+Desktop preference effects are serialized and forwarded to the selected core through a typed
+private configuration operation. Core initialization follows profile ownership acquisition;
+shutdown bounds reporting flush independently from ownership release. Reporting does not own
+account selection, quota policy or persisted Responses formats.
+
 ## Settings interfaces
 
 The renderer reads and updates proxy/runtime settings through config.service, account notification
