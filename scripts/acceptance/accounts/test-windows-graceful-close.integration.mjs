@@ -15,10 +15,23 @@ const source = path.join(root, 'fixture.cs');
 fs.writeFileSync(
   source,
   `using System; using System.IO; using System.Windows.Forms;
+class Confirmation : Form {
+  public string Marker;
+  protected override void WndProc(ref Message message) {
+    if (message.Msg == 0x0010) { File.WriteAllText(Marker+".dialog-close", "WM_CLOSE"); }
+    base.WndProc(ref message);
+  }
+}
 class Fixture {
   [STAThread] static void Main(string[] args) {
     var form = new Form(); form.Text = "Disposable account switch fixture";
     form.Shown += (s,e) => File.WriteAllText(args[0]+".ready", "ready");
+    if (args[1] == "refuse") {
+      var confirmation = new Confirmation(); confirmation.Marker=args[0]; confirmation.Text = "Disposable owned confirmation";
+      confirmation.FormClosed += (s,e) => File.WriteAllText(args[0]+".dialog-closed", "closed");
+      confirmation.Shown += (s,e) => File.WriteAllText(args[0]+".dialog-ready", "ready");
+      form.Shown += (s,e) => confirmation.Show(form);
+    }
     form.FormClosing += (s,e) => {
       File.WriteAllText(args[0]+".requested", "normal close received");
       if (args[1] == "refuse") { e.Cancel = true; return; }
@@ -39,6 +52,18 @@ const compiled = ts.transpileModule(stopSource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const nativeRequire = createRequire(import.meta.url);
+const closeCompiled = ts.transpileModule(
+  fs.readFileSync('src/modules/antigravity-runtime/windowsNormalClose.ts', 'utf8'),
+  {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      esModuleInterop: true,
+    },
+  },
+).outputText;
+const nativeClose = {};
+new Function('require', 'exports', closeCompiled)(nativeRequire, nativeClose);
 let child;
 let exited;
 const context = { target: 'ide', executablePath: exe, processes: [] };
@@ -56,6 +81,7 @@ const dependencies = {
   },
   './runtimePlatform': { usesWindowsRuntime: () => true },
   './stopNativeProcessTree': { stopNativeProcessTree: () => assert.fail('Unexpected Linux path') },
+  './windowsNormalClose': nativeClose,
 };
 const exported = {};
 new Function('require', 'exports', compiled)(
@@ -63,18 +89,29 @@ new Function('require', 'exports', compiled)(
   exported,
 );
 try {
-  for (const mode of ['accept', 'refuse']) {
-    const marker = path.join(root, mode);
+  for (const [mode, hidden] of [
+    ['accept', false],
+    ['accept', true],
+    ['refuse', false],
+  ]) {
+    const marker = path.join(root, `${mode}-${hidden ? 'hidden' : 'visible'}`);
     exited = false;
-    child = spawn(exe, [marker, mode], { stdio: 'ignore' });
+    child = spawn(exe, [marker, mode], { stdio: 'ignore', windowsHide: hidden });
     child.once('exit', () => {
       exited = true;
     });
     const deadline = Date.now() + 10000;
-    while (!fs.existsSync(marker + '.ready') && Date.now() < deadline) {
+    while (
+      (!fs.existsSync(marker + '.ready') ||
+        (mode === 'refuse' && !fs.existsSync(marker + '.dialog-ready'))) &&
+      Date.now() < deadline
+    ) {
       await delay(100);
     }
     assert(fs.existsSync(marker + '.ready'), 'Fixture window must be ready');
+    if (mode === 'refuse') {
+      assert(fs.existsSync(marker + '.dialog-ready'), 'Owned confirmation must be ready');
+    }
     if (mode === 'accept') {
       await exported.stopFromContext(context, 7000);
       assert(exited);
@@ -86,6 +123,16 @@ try {
       assert.equal(exited, false, 'A refused close must leave the client alive');
       assert(fs.existsSync(marker + '.requested'));
       assert.equal(fs.existsSync(marker + '.saved'), false);
+      assert.equal(
+        fs.existsSync(marker + '.dialog-close'),
+        false,
+        'Owned confirmation must remain open',
+      );
+      assert.equal(
+        fs.existsSync(marker + '.dialog-closed'),
+        false,
+        'Owned confirmation must not be dismissed',
+      );
       child.kill(); // Only this disposable fixture is terminated during cleanup.
       const cleanupDeadline = Date.now() + 5000;
       while (!exited && Date.now() < cleanupDeadline) {
@@ -93,7 +140,7 @@ try {
       }
       assert(exited, 'Fixture cleanup must finish within its deadline');
     }
-    console.log(JSON.stringify({ mode, result: 'passed' }));
+    console.log(JSON.stringify({ mode, hidden, result: 'passed' }));
   }
 } finally {
   if (child && !exited) {

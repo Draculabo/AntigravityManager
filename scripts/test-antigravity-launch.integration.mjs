@@ -134,6 +134,7 @@ class Fixture { static void Main(string[] args) {
     'processErrors',
     'runtimePlatform',
     'windowsUpdate',
+    'windowsNormalClose',
     'stop',
     'stopNativeProcessTree',
     'linuxProfileOwnership',

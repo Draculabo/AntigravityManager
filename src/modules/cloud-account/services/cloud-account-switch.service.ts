@@ -62,6 +62,7 @@ function publicFailureCode(reason: SwitchFailureReason): CloudAccountSwitchError
     case 'apply_device_profile_failed':
       return 'identity-profile-required';
     case 'process_close_failed':
+      return 'process-close-failed';
     case 'start_process_failed':
       return 'process-control-failed';
     case 'perform_switch_failed':

@@ -942,6 +942,8 @@ const zhCn = {
         'account-not-found': '此账号已不存在。',
         'reauth-required': '请重新登录此账号后再切换。',
         'identity-profile-required': '请先设置身份配置再切换。',
+        'process-close-failed':
+          '无法确认 Antigravity 已退出。请保存工作、处理确认窗口并关闭 Antigravity，再切换账号。',
         'process-control-failed': '无法关闭或重启 Antigravity，请重试。',
         'target-write-failed': '无法将所选账号应用到 Antigravity，请重试。',
         'switch-failed': '无法切换账号，请重试。',

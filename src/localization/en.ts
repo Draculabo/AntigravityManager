@@ -1001,6 +1001,8 @@ const en = {
         'account-not-found': 'This account is no longer available.',
         'reauth-required': 'Sign in to this account again before switching.',
         'identity-profile-required': 'Set up an identity profile before switching.',
+        'process-close-failed':
+          'Could not confirm that Antigravity exited. Save your work, resolve any confirmation dialogs, and close Antigravity before switching again.',
         'process-control-failed': 'Could not close or restart Antigravity. Please retry.',
         'target-write-failed': 'Could not use the selected account in Antigravity. Try again.',
         'switch-failed': 'Could not switch accounts. Please retry.',

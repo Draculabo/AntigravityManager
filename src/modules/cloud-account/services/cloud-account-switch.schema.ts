@@ -13,6 +13,7 @@ export const CloudAccountSwitchErrorCodeSchema = z.enum([
   'account-not-found',
   'reauth-required',
   'identity-profile-required',
+  'process-close-failed',
   'process-control-failed',
   'target-write-failed',
   'switch-failed',
