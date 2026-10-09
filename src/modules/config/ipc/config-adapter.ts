@@ -1,4 +1,5 @@
 import type { CoreRpcClient } from '@/core/rpc/client';
+import { errorReportingService, type ErrorReportingOperations } from '../error-reporting.service';
 import { serviceConfigService, type ServiceConfigOperations } from '../service-config.service';
 import {
   cloudAccountAlertPolicy,
@@ -14,11 +15,14 @@ type StandaloneCoreConfigClient = Pick<
   | 'generateServiceApiKey'
   | 'readAccountAlertPolicy'
   | 'updateAccountAlertPolicy'
+  | 'setErrorReportingEnabled'
 >;
 interface ConfigAdapter extends ServiceConfigOperations {
+  errorReporting: ErrorReportingOperations;
   accountAlertPolicy: CloudAccountAlertPolicyOperations;
 }
 let selected: ConfigAdapter = {
+  errorReporting: errorReportingService,
   ...serviceConfigService,
   accountAlertPolicy: cloudAccountAlertPolicy,
 };
@@ -31,8 +35,15 @@ export function selectConfigAdapter(
 ): void {
   selected =
     selection.mode === 'desktop-embedded'
-      ? { ...serviceConfigService, accountAlertPolicy: cloudAccountAlertPolicy }
+      ? {
+          ...serviceConfigService,
+          accountAlertPolicy: cloudAccountAlertPolicy,
+          errorReporting: errorReportingService,
+        }
       : {
+          errorReporting: {
+            setEnabled: (enabled) => selection.client.setErrorReportingEnabled(enabled),
+          },
           read: () => selection.client.readServiceConfig(),
           update: (input) => selection.client.updateServiceConfig(input),
           writeSecret: (input) => selection.client.writeServiceSecret(input),

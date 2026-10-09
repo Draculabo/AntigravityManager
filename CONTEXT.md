@@ -36,6 +36,10 @@ _Avoid_: API request, chat call
 The request shape sent from the proxy gateway toward the upstream model provider after protocol conversion, model mapping, and account lease resolution.
 _Avoid_: Gemini request, internal request
 
+**Tool Parameter Degradation**:
+A gateway compatibility outcome in which an unconvertible tool parameter definition is replaced with a simpler definition while the tool remains available. It is distinct from successful lossless conversion and from rejecting the gateway request.
+_Avoid_: schema repair, tool removal, successful conversion
+
 **Credential-Store Injection**:
 Writing cloud account token state into the Antigravity credential store format expected by a specific app target.
 _Avoid_: token restore, credential sync

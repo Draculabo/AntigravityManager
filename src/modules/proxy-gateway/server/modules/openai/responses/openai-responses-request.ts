@@ -11,6 +11,7 @@ import { BadRequestException } from '@nestjs/common';
 import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
 import { z } from 'zod';
 import { resolveResponsesInputType } from './responses-input-type';
+import { qualifyNamespaceToolName } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
 import { ApplyPatchFailureCompactor } from '@/modules/proxy-gateway/antigravity/ApplyPatchFailureCompaction';
 import { toCustomToolArguments } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
 import {
@@ -63,6 +64,7 @@ const ResponsesFunctionCallItemSchema = z.object({
   call_id: z.string().optional(),
   id: z.string().optional(),
   name: z.string().optional(),
+  namespace: z.string().optional(),
   arguments: z.unknown().optional(),
 });
 
@@ -97,6 +99,7 @@ const ResponsesCustomToolCallItemSchema = z.object({
   call_id: z.string().optional(),
   id: z.string().optional(),
   name: z.string().optional(),
+  namespace: z.string().optional(),
   input: z.string().optional(),
   status: z.string().optional(),
 });
@@ -372,7 +375,7 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
             ? 'shell'
             : item.type === 'web_search_call'
               ? 'builtin_web_search'
-              : (item.name ?? 'unknown');
+              : qualifyNamespaceToolName(item.namespace ?? '', item.name ?? 'unknown');
         callIdToToolName.set(callId, toolName);
       }
     }

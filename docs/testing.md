@@ -4,6 +4,52 @@ Select evidence according to the behavior a change can affect. Focused tests are
 
 ## Evidence principles
 
+Schema regression coverage includes `json-schema-reference-resolver`, `schema-admission`, tool
+mapper/cache compatibility and Responses WebSocket tests. Runtime reporting adds
+`error-reporting-runtime`, `core-error-reporting`, desktop preference propagation, instrumentation,
+core shutdown/startup and RPC coverage. Read-only audit replay and live coding-client/provider
+calls are separate gates. See [Schema conversion](proxy-schema-conversion.md#diagnostics-and-acceptance).
+
+`scripts/acceptance/schema/check-history-evidence.mjs` checks controlled missing-result failures
+and anonymous audit-attempt grouping using Node SQLite fixtures. Live history/resubmission and
+signature-recovery checks use the [development workflow](development.md#live-schema-acceptance).
+The [history evidence](../artifacts/schema-work-package/history-verification.md) distinguishes
+client resubmission, observed internal recovery and remaining retry coverage.
+
+`node --test scripts/acceptance/schema/check-client-matrix.mjs` checks actual-client declaration
+shapes, read-only forwarding guards, fixed-file MCP behavior, final-answer/result-continuation
+predicates and per-request upstream correlation. The real three-client matrix is a separate
+quota-consuming gate in the [development workflow](development.md#live-schema-acceptance).
+Client-local permission failures remain failures; successful MCP execution does not establish
+native Shell sandbox compatibility. Anonymous live records distinguish those tool paths.
+
+`check-retry-evidence.mjs` exercises a real loopback socket reset, bounded account-fault
+injection, SSE forwarding and per-request audit predicates. Live retry acceptance requires
+actual provider tool calls and both controlled results; fixture success alone does not prove
+provider acceptance. Thought-only unary completion coverage runs through the Anthropic real
+service path with Gemini/parity coverage for the shared fallback. See the
+[retry record](../artifacts/schema-work-package/retry-verification.md) for disclosed injections,
+natural provider failures and the remaining scope.
+
+The Schema work package uses the configured default primary route for required live
+tool/result and Schema diagnostic receipt acceptance. Backup-endpoint failover probes are
+supplementary. Their failed predicates remain failures without blocking that scoped package;
+they never establish a change in production endpoint policy. The
+[acceptance record](../artifacts/schema-work-package/retry-verification.md#acceptance-scope)
+owns the user-confirmed scope and its evidence.
+
+Replay selection tests also compare default and unmarked cohorts through the compiled CLI.
+They require case-insensitive acceptance-header exclusion before limiting, conservative
+exclusion of unknown header provenance and no-evidence exit 2 for an all-marked sample.
+The [budget sample record](../artifacts/schema-work-package/budget-sampling-2026-10-09.md)
+separates observed converter behavior from unsupported organic-traffic claims.
+
+The isolated startup checks use the [development workflow](development.md#live-schema-acceptance).
+`check-startup-evidence.mjs` exercises the production launcher and acceptance helper with a
+controlled clock, including unavailable and stalled management probes and early child exit.
+The [startup record](../artifacts/schema-work-package/startup-verification.md) separates the
+verified acceptance deadline correction from the unexplained historical timeout.
+
 - A passing command is evidence only for paths it executes.
 - Prefer user-visible output, persisted state, protocol output or another stable observable over private call sequences.
 - New validation scripts and regression tests must be capable of failing for a representative violation.

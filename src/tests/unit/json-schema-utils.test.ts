@@ -81,7 +81,10 @@ describe('cleanJsonSchema', () => {
             street: { type: 'string' },
           },
         },
-        malformed: {},
+        malformed: {
+          type: 'string',
+          description: 'Schema conversion fallback. Provide this parameter as a string.',
+        },
       },
     });
     expect(schema).not.toHaveProperty('$defs');

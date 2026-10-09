@@ -865,8 +865,15 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       accountIdOrEmail: 'acc-1',
       status: 429,
       body: '429 quota exceeded',
-      model: 'gemini-3-flash',
+      model: 'gemini-3-flash-agent',
     });
+    expect(
+      mockAccountLeaseService.getNextToken.mock.calls.map(([options]) => options.model),
+    ).toEqual(['gemini-3-flash-agent', 'gemini-3-flash-agent']);
+    expect(mockGeminiClient.generateInternal.mock.calls.map(([body]) => body.model)).toEqual([
+      'gemini-3-flash-agent',
+      'gemini-3-flash-agent',
+    ]);
     expect((result as any).candidates?.[0]?.content?.parts?.[0]?.text).toBe('ok');
   });
 
@@ -886,7 +893,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(internalPayload).not.toHaveProperty('sessionId');
   });
 
-  it('normalizes Gemini 3.1 preview alias to Gemini 3.1 Pro High for upstream', async () => {
+  it('resolves the Gemini 3.1 preview alias through the high variant for leasing and upstream', async () => {
     const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.generateInternal.mockResolvedValue({
@@ -899,7 +906,13 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     } as any);
 
     const internalPayload = mockGeminiClient.generateInternal.mock.calls[0][0];
-    expect(internalPayload.model).toBe('gemini-3.1-pro-high');
+    expect(mockAccountLeaseService.getNextToken.mock.calls[0][0].model).toBe('gemini-pro-agent');
+    expect(internalPayload).toMatchObject({
+      model: 'gemini-pro-agent',
+      request: {
+        generationConfig: { thinkingConfig: { includeThoughts: true, thinkingBudget: 10001 } },
+      },
+    });
   });
 
   it('keeps client-compatible Gemini usage while capturing full upstream audit usage', async () => {
@@ -1011,8 +1024,13 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(mockAccountLeaseService.getNextToken).toHaveBeenNthCalledWith(2, {
       sessionKey: undefined,
       excludeAccountIds: ['acc-1'],
-      model: 'gemini-3-flash',
+      model: 'gemini-3-flash-agent',
     });
+    expect(mockGeminiClient.generateInternal.mock.calls.map(([body]) => body.model)).toEqual([
+      'gemini-3-flash-agent',
+      'gemini-3-flash-agent',
+      'gemini-3-flash-agent',
+    ]);
     expect((result as any).candidates?.[0]?.content?.parts?.[0]?.text).toBe('ok');
   });
 

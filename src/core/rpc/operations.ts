@@ -47,8 +47,10 @@ import type { AgentToolsOperations } from '@/modules/proxy-gateway/agent-tools/a
 import type { AuditFileOperations } from '@/modules/proxy-gateway/audit/audit-file-owner.service';
 import type { ThoughtOperations } from '@/modules/proxy-gateway/thought-store/thought-owner.service';
 import type { AuditOperations } from '@/modules/proxy-gateway/audit/audit-owner.service';
+import { ErrorReportingOperations } from '@/modules/config/error-reporting.service';
 
 export interface CoreRpcOperations {
+  errorReporting: ErrorReportingOperations;
   ipcCapture: Pick<
     ReturnType<
       typeof import('@/modules/proxy-gateway/audit/ipc-capture-owner').createIpcCaptureOwner

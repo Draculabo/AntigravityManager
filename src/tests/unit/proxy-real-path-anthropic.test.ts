@@ -187,6 +187,113 @@ describe('real request path, Anthropic messages surface', () => {
     });
   });
 
+  it('replaces an unfinished thinking-only unary response with the streamed tool turn', async () => {
+    const upstream = createUpstream({
+      generate: {
+        candidates: [
+          { content: { role: 'model', parts: [{ thought: true, text: 'unfinished reasoning' }] } },
+        ],
+      },
+      streamFrames: [
+        geminiStreamFrame({
+          candidates: [
+            {
+              content: {
+                role: 'model',
+                parts: [
+                  {
+                    functionCall: {
+                      id: 'controlled-tool-1',
+                      name: 'probe_read',
+                      args: { file_path: 'C:/controlled/read.txt' },
+                    },
+                  },
+                ],
+              },
+              finishReason: 'STOP',
+            },
+          ],
+        }),
+      ],
+    });
+    const { anthropicService } = createGateway(upstream, createLease([createAccount('acc-1')]));
+    const response = await anthropicService.handleAnthropicMessages({
+      model: 'gemini-3.1-pro-high',
+      max_tokens: 128,
+      stream: false,
+      messages: [{ role: 'user', content: 'Read the controlled file.' }],
+      tools: [
+        {
+          name: 'probe_read',
+          input_schema: {
+            type: 'object',
+            properties: { file_path: { type: 'string' } },
+            required: ['file_path'],
+          },
+        },
+      ],
+      tool_choice: { type: 'tool', name: 'probe_read' },
+    });
+    expect(response).toMatchObject({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'controlled-tool-1',
+          name: 'probe_read',
+          input: { file_path: 'C:/controlled/read.txt' },
+        },
+      ],
+      stop_reason: 'tool_use',
+    });
+    expect(upstream.calls.map((call) => call.kind)).toEqual(['generate', 'stream']);
+  });
+
+  it('fails when both unary and streamed responses remain unfinished thinking', async () => {
+    const unfinished = {
+      candidates: [
+        { content: { role: 'model', parts: [{ thought: true, text: 'unfinished reasoning' }] } },
+      ],
+    };
+    const upstream = createUpstream({
+      generate: unfinished,
+      streamFrames: [geminiStreamFrame(unfinished)],
+    });
+    const { anthropicService } = createGateway(upstream, createLease([createAccount('acc-1')]));
+    await expect(
+      anthropicService.handleAnthropicMessages({
+        model: 'gemini-3.1-pro-high',
+        max_tokens: 128,
+        stream: false,
+        messages: [{ role: 'user', content: 'Reply.' }],
+      }),
+    ).rejects.toThrow('Upstream returned incomplete thinking-only response');
+  });
+
+  it('preserves a thinking-only response with an explicit token-limit finish', async () => {
+    const upstream = createUpstream({
+      generate: {
+        candidates: [
+          {
+            content: { role: 'model', parts: [{ thought: true, text: 'limited reasoning' }] },
+            finishReason: 'MAX_TOKENS',
+          },
+        ],
+      },
+    });
+    const { anthropicService } = createGateway(upstream, createLease([createAccount('acc-1')]));
+    const response = await anthropicService.handleAnthropicMessages({
+      model: 'gemini-3.1-pro-high',
+      max_tokens: 128,
+      stream: false,
+      messages: [{ role: 'user', content: 'Reply.' }],
+    });
+    expect(response).toMatchObject({
+      content: [{ type: 'thinking', thinking: 'limited reasoning' }],
+      stop_reason: 'max_tokens',
+    });
+    expect(upstream.calls.map((call) => call.kind)).toEqual(['generate']);
+  });
+
   it('returns a minimal non-empty response when both direct and streamed upstream responses are empty', async () => {
     const upstream = createUpstream({ generate: {}, streamFrames: [] });
     const lease = createLease([createAccount('acc-1')]);

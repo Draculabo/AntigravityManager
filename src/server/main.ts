@@ -9,12 +9,11 @@ import { OpenAIOperations } from '../modules/proxy-gateway/server/modules/openai
 import { ProxyService } from '../modules/proxy-gateway/server/proxy.service';
 import { DEFAULT_MAX_FILE_BYTES } from '../modules/proxy-gateway/server/modules/files/file-store.types';
 import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
-import { parseResponsesRequestBody } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+import { createResponsesWebSocketOperations } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.operations';
 import {
   extractApiKeyToken,
   hasConfiguredApiKey,
 } from '../modules/proxy-gateway/server/guards/api-key-auth.util';
-import { isObservable } from 'rxjs';
 import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
 import {
   DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES,
@@ -167,39 +166,13 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
     const openAIOperations = app.get(OpenAIOperations);
     const proxyService = app.get(ProxyService);
     detachResponsesWebSocketServer = attachOpenAIResponsesWebSocketServer(app.getHttpServer(), {
+      ...createResponsesWebSocketOperations(openAIOperations, proxyService),
       isAuthorized: (request) => {
         const configuredApiKey = getConfiguredApiKey();
         return (
           !hasConfiguredApiKey(configuredApiKey) ||
           extractApiKeyToken(request.headers) === configuredApiKey
         );
-      },
-      streamRequest: async (request) => {
-        const body = parseResponsesRequestBody(request);
-        if (!body) {
-          throw new Error('Invalid Responses WebSocket request');
-        }
-        const prepared = openAIOperations.prepareResponsesRequest(body);
-        if (!prepared) {
-          throw new Error(
-            `Unknown or expired previous_response_id: ${String(request.previous_response_id ?? '')}`,
-          );
-        }
-
-        const result = await proxyService.handleChatCompletions(
-          prepared.request,
-          'responses',
-          undefined,
-          {
-            requestSessionId: prepared.requestSessionId,
-            responseId: prepared.responseId,
-            routingSessionId: prepared.routingSessionId,
-          },
-        );
-        if (!isObservable(result)) {
-          throw new Error('Responses WebSocket request did not produce a stream');
-        }
-        return result;
       },
     });
     currentPort = port;

@@ -411,6 +411,21 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     expect(jsonSchemaMocks.normalizeObjectJsonSchema).toHaveBeenCalledTimes(1);
   });
 
+  it('does not cache degraded schemas', () => {
+    const request = createRequest({
+      tools: [
+        {
+          name: 'uncacheable_schema_tool',
+          input_schema: { type: 'object', properties: { value: { $ref: '#/missing' } } },
+        },
+      ],
+    });
+    const first = transformClaudeRequestIn(request, 'project-a', 'test-agent');
+    const second = transformClaudeRequestIn(request, 'project-a', 'test-agent');
+    expect(first.request.tools).toEqual(second.request.tools);
+    expect(jsonSchemaMocks.normalizeObjectJsonSchema).toHaveBeenCalledTimes(2);
+  });
+
   it('returns a fresh tool declaration copy from the cache', () => {
     const request = createRequest({
       tools: [

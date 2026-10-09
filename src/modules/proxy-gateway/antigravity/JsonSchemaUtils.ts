@@ -1,12 +1,16 @@
 import { isBoolean, isEqual, isNumber, isPlainObject, isString } from 'lodash-es';
-import { z } from 'zod';
-
-const JsonValueSchema = z.json();
-const JsonSchemaMapSchema = z.record(z.string(), JsonValueSchema);
-
-type JsonSchemaValue = z.output<typeof JsonValueSchema>;
-
-export type JsonSchemaMap = z.output<typeof JsonSchemaMapSchema>;
+import {
+  SchemaConversionBatch,
+  SchemaInputError,
+  validateSchemaInput,
+  type JsonValue as JsonSchemaValue,
+  type JsonSchemaMap,
+} from './schema/SchemaConversion';
+import {
+  resolveSchemaReferences,
+  recordTerminalSchemaIssue,
+} from './schema/JsonSchemaReferenceResolver';
+export type { JsonSchemaMap } from './schema/SchemaConversion';
 
 function isJsonSchemaMap(value: JsonSchemaValue): value is JsonSchemaMap {
   return isPlainObject(value);
@@ -70,25 +74,6 @@ function normalizeConstKeyword(map: JsonSchemaMap): boolean {
   return true;
 }
 
-function cloneJsonValue<TValue extends JsonSchemaValue>(value: TValue): TValue {
-  return structuredClone(value);
-}
-
-function cloneJsonSchemaMap(value: JsonSchemaMap): JsonSchemaMap {
-  const clonedValue = cloneJsonValue(value);
-  return isJsonSchemaMap(clonedValue) ? clonedValue : {};
-}
-
-/**
- * Recursively cleans JSON Schema to meet Gemini interface requirements
- *
- * 1. [New] Flatten $ref and $defs: Replace references with actual definitions to solve Gemini's lack of $ref support
- * 2. Collapse allOf/anyOf/oneOf into the node so the declared shape survives removal
- * 3. Remove unsupported fields: $schema, additionalProperties, format, default, uniqueItems, validation fields
- * 3. Handle Union types: ["string", "null"] -> "string"
- * 4. Convert type field values to lowercase (Gemini v1internal requirement)
- * 5. Remove numeric validation fields: multipleOf, exclusiveMinimum, exclusiveMaximum, etc.
- */
 /**
  * Merges a branch schema into the node, keeping whatever the node already declares.
  * `properties` merge key by key and `required` unions, so nothing already present is
@@ -151,102 +136,43 @@ function collapseSchemaBranches(map: JsonSchemaMap) {
 }
 
 export function cleanJsonSchema(value: JsonSchemaMap): void {
-  // 0. Preprocessing: Expand $ref (Schema Flattening)
-  if (isJsonSchemaMap(value)) {
-    const defs: JsonSchemaMap = {};
-
-    // Extract $defs or definitions
-    if (value['$defs']) {
-      if (isJsonSchemaMap(value['$defs'])) {
-        Object.assign(defs, value['$defs']);
-      }
-      delete value['$defs'];
-    }
-    if (value['definitions']) {
-      if (isJsonSchemaMap(value['definitions'])) {
-        Object.assign(defs, value['definitions']);
-      }
-      delete value['definitions'];
-    }
-
-    if (Object.keys(defs).length > 0) {
-      // Recursively replace references
-      flattenRefs(value, defs);
-    }
+  const batch = new SchemaConversionBatch();
+  validateSchemaInput(value, batch);
+  const resolved = resolveSchemaReferences(value, batch, 'compatibility', null);
+  for (const key of Object.keys(value)) {
+    delete value[key];
   }
-
-  // Recursive cleaning
+  Object.assign(value, resolved);
   cleanJsonSchemaRecursive(value);
 }
 
-export function normalizeObjectJsonSchema(schema: unknown): JsonSchemaMap {
-  const fallbackSchema: JsonSchemaMap = { type: 'object', properties: {} };
-  const parsedSchema = JsonSchemaMapSchema.safeParse(schema);
-  if (!parsedSchema.success) {
-    return fallbackSchema;
-  }
-
-  const normalizedSchema = cloneJsonSchemaMap(parsedSchema.data);
-  cleanJsonSchema(normalizedSchema);
-
-  if (!isString(normalizedSchema.type)) {
-    normalizedSchema.type = 'object';
-  }
-  if (
-    normalizedSchema.type === 'object' &&
-    (!normalizedSchema.properties || !isJsonSchemaMap(normalizedSchema.properties))
-  ) {
-    normalizedSchema.properties = {};
-  }
-
-  return normalizedSchema;
-}
-
-/**
- * Recursively expand $ref
- */
-function flattenRefs(value: JsonSchemaValue, defs: JsonSchemaMap): void {
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      flattenRefs(entry, defs);
+export function normalizeObjectJsonSchema(
+  schema: unknown,
+  batch = new SchemaConversionBatch(),
+  policy: 'tool' | 'output' = 'tool',
+  toolOrdinal: number | null = null,
+): JsonSchemaMap {
+  try {
+    const input =
+      schema === undefined && policy === 'tool' ? { type: 'object', properties: {} } : schema;
+    validateSchemaInput(input, batch);
+    const normalizedSchema = resolveSchemaReferences(input, batch, policy, toolOrdinal);
+    cleanJsonSchemaRecursive(normalizedSchema);
+    if (!isString(normalizedSchema.type)) {
+      normalizedSchema.type = 'object';
     }
-    return;
-  }
-
-  if (!isJsonSchemaMap(value)) {
-    return;
-  }
-
-  // Check and replace $ref
-  if (isString(value['$ref'])) {
-    const refPath = value['$ref'];
-    // Parse reference name (e.g. #/$defs/MyType -> MyType)
-    const parts = refPath.split('/');
-    const refName = parts[parts.length - 1] || refPath;
-
-    if (defs[refName]) {
-      const defSchema = defs[refName];
-      // $ref nodes should not have other properties, remove $ref directly
-      delete value['$ref'];
-
-      if (isJsonSchemaMap(defSchema)) {
-        for (const [key, schemaValue] of Object.entries(defSchema)) {
-          // Only insert if the key does not exist in current map (avoid overwrite)
-          if (value[key] === undefined) {
-            // Clone deep to avoid reference issues
-            value[key] = cloneJsonValue(schemaValue);
-          }
-        }
-
-        // Recursively process $refs in the newly merged content
-        flattenRefs(value, defs);
-      }
+    if (policy === 'tool' && normalizedSchema.type !== 'object') {
+      throw new SchemaInputError('invalid-root');
     }
-  }
-
-  // Recursively process all children
-  for (const child of Object.values(value)) {
-    flattenRefs(child, defs);
+    if (normalizedSchema.type === 'object' && !isJsonSchemaMap(normalizedSchema.properties)) {
+      normalizedSchema.properties = {};
+    }
+    // Compatibility cleanup can add descriptions or stringify const data. Charge its final result.
+    validateSchemaInput(normalizedSchema, batch, 'output');
+    return normalizedSchema;
+  } catch (error) {
+    recordTerminalSchemaIssue(batch, error, toolOrdinal);
+    throw error;
   }
 }
 
@@ -291,9 +217,19 @@ function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
     delete map.items;
   }
 
-  // 1. Recursively process all children first to ensure nested structures are cleaned
-  for (const child of Object.values(map)) {
-    cleanJsonSchemaRecursive(child);
+  // Literal data (const/enum/default/examples) is not a schema traversal edge.
+  if (isJsonSchemaMap(map.properties)) {
+    for (const child of Object.values(map.properties)) {
+      cleanJsonSchemaRecursive(child);
+    }
+  }
+  if (isJsonSchemaMap(map.items)) {
+    cleanJsonSchemaRecursive(map.items);
+  }
+  for (const keyword of ['allOf', 'anyOf', 'oneOf']) {
+    if (Array.isArray(map[keyword])) {
+      cleanJsonSchemaRecursive(map[keyword]);
+    }
   }
 
   // 2. Collect and process validation fields (Migration logic: Downgrade constraints to Hints in description)

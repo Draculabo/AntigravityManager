@@ -6,8 +6,86 @@ import { of } from 'rxjs';
 import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.protocol';
 import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
 import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+import { SchemaInputError } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
 
 describe('OpenAIResponsesWebSocketProtocol', () => {
+  it('retains admitted socket configuration after a rejected append', () => {
+    const protocol = new OpenAIResponsesWebSocketProtocol((request) => {
+      if (request.model === 'invalid') {
+        throw new SchemaInputError('invalid-root');
+      }
+    });
+    protocol.accept({ type: 'response.create', model: 'valid', input: [] });
+    expect(() => protocol.accept({ type: 'response.append', model: 'invalid', input: [] })).toThrow(
+      SchemaInputError,
+    );
+    expect(protocol.accept({ type: 'response.append', input: [] })).toEqual({
+      kind: 'request',
+      request: { model: 'valid', input: [], stream: true },
+    });
+  });
+  it('does not commit a prewarm whose schema preflight fails', () => {
+    const protocol = new OpenAIResponsesWebSocketProtocol((request) => {
+      if (request.tools) {
+        throw new SchemaInputError('invalid-root');
+      }
+    });
+    expect(() =>
+      protocol.accept({ type: 'response.create', generate: false, model: 'fixture', tools: [{}] }),
+    ).toThrow(SchemaInputError);
+    expect(protocol.getPreviousResponseId()).toBe('');
+    expect(() => protocol.accept({ type: 'response.append', input: [] })).toThrow(
+      'before response.create',
+    );
+    expect(
+      protocol.accept({ type: 'response.create', generate: false, model: 'fixture' }).kind,
+    ).toBe('local');
+  });
+
+  it('sends a local Schema input error over WebSocket before response.created', async () => {
+    const server = createServer();
+    let called = false;
+    const detach = attachOpenAIResponsesWebSocketServer(server, {
+      isAuthorized: () => true,
+      validateRequest: () => {
+        throw new SchemaInputError('invalid-root');
+      },
+      streamRequest: async () => {
+        called = true;
+        return of();
+      },
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Expected TCP address');
+    }
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/v1/responses`);
+    try {
+      const event = await new Promise<unknown>((resolve, reject) => {
+        socket.once('error', reject);
+        socket.once('open', () =>
+          socket.send(
+            JSON.stringify({ type: 'response.create', generate: false, model: 'fixture' }),
+          ),
+        );
+        socket.once('message', (data) => resolve(JSON.parse(data.toString())));
+      });
+      expect(event).toEqual({
+        type: 'error',
+        error: {
+          message: 'Invalid request schema: invalid-root',
+          type: 'invalid_request_error',
+          code: 'invalid_schema',
+        },
+      });
+      expect(called).toBe(false);
+    } finally {
+      socket.terminate();
+      detach();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
   it('handles the initial generate=false request locally and reuses it for the next append', () => {
     const protocol = new OpenAIResponsesWebSocketProtocol();
     const prewarm = protocol.accept({

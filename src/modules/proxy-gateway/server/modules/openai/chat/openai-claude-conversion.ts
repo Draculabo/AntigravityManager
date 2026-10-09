@@ -17,6 +17,7 @@ import {
 import { optimizeApplyPatch } from '@/modules/proxy-gateway/antigravity/ApplyPatchPreflight';
 import { mapGeminiFinishReasonToOpenAI } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { normalizeObjectJsonSchema } from '@/modules/proxy-gateway/antigravity/JsonSchemaUtils';
+import { SchemaConversionBatch } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
 import { toOpenAIUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 import {
   adaptCommandArguments,
@@ -41,6 +42,7 @@ import {
 
 export interface OpenAIConversionOptions {
   allowLocalVideoPaths?: boolean;
+  preparedSchemas?: Pick<ClaudeRequest, 'tools' | 'response_format'>;
 }
 
 const STALE_CODEX_MODEL_IDENTITY = 'You are Codex, an agent based on GPT-5.';
@@ -169,7 +171,9 @@ export function convertOpenAIToClaude(
     model: request.model,
     messages: anthropicMessages,
     system: systemPrompt,
-    tools: convertOpenAIToolsToAnthropicTools(request.tools),
+    tools: options.preparedSchemas
+      ? structuredClone(options.preparedSchemas.tools)
+      : convertOpenAIToolsToAnthropicTools(request.tools),
     thinking: request.thinking
       ? {
           type: request.thinking.type ?? 'enabled',
@@ -183,7 +187,9 @@ export function convertOpenAIToClaude(
     presence_penalty: request.presence_penalty,
     frequency_penalty: request.frequency_penalty,
     seed: request.seed,
-    response_format: request.response_format,
+    response_format: options.preparedSchemas
+      ? structuredClone(options.preparedSchemas.response_format)
+      : request.response_format,
     tool_choice: request.tool_choice,
     stream: request.stream,
     metadata: {
@@ -389,6 +395,7 @@ export function extractOpenAIToolNames(tools: OpenAIChatRequest['tools']): Reado
 
 export function convertOpenAIToolsToAnthropicTools(
   tools: OpenAIChatRequest['tools'],
+  batch = new SchemaConversionBatch(),
 ): AnthropicChatRequest['tools'] {
   if (!tools || tools.length === 0) {
     return undefined;
@@ -445,20 +452,10 @@ export function convertOpenAIToolsToAnthropicTools(
           },
           required: ['input'],
         }
-      : (tool.function?.parameters ??
-        (isPlainObject(tool.parameters)
-          ? (tool.parameters as Record<string, unknown>)
-          : {
-              type: 'object',
-              properties: {
-                content: {
-                  type: 'string',
-                  description: 'The raw content or patch to be applied',
-                },
-              },
-              required: ['content'],
-            }));
-    const inputSchema = normalizeObjectJsonSchema(parameters);
+      : tool.function?.parameters !== undefined
+        ? tool.function.parameters
+        : tool.parameters;
+    const inputSchema = normalizeObjectJsonSchema(parameters, batch, 'tool', result.length);
 
     result.push({
       name: functionName,
@@ -515,6 +512,7 @@ export function convertClaudeToOpenAIResponse(
   claudeResponse: ClaudeResponse,
   model: string,
   clientToolNames?: ReadonlySet<string>,
+  clientTools?: OpenAIChatRequest['tools'],
 ): OpenAIChatResponse {
   const contentBlocks = Array.isArray(claudeResponse?.content) ? claudeResponse.content : [];
 
@@ -550,7 +548,7 @@ export function convertClaudeToOpenAIResponse(
       > => block?.type === 'tool_use',
     )
     .map((block, index: number) => {
-      const splitName = splitNamespaceToolName(block.name || 'unknown_tool');
+      const splitName = splitNamespaceToolName(block.name || 'unknown_tool', clientTools);
       const functionName = clientToolNames
         ? selectClientCommandTool(splitName.name, clientToolNames)
         : splitName.name;

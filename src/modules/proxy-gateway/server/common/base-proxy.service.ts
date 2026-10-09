@@ -34,6 +34,7 @@ import { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces
 import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
 import { isProjectLicenseErrorMessage } from '@/modules/proxy-gateway/server/common/google-error-details';
 import { setCurrentAuditAccountId } from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import { isIncompleteThinkingResponse } from './incomplete-thinking-response';
 
 interface StreamIdleTimer {
   reset: () => void;
@@ -435,7 +436,9 @@ export abstract class BaseProxyService {
       return direct;
     }
 
-    this.logger.warn('Empty non-stream response detected, falling back to stream aggregation.');
+    this.logger.warn(
+      'Incomplete non-stream response detected, falling back to stream aggregation.',
+    );
     const stream = await this.geminiClient.streamGenerateInternal(
       body,
       accessToken,
@@ -444,7 +447,11 @@ export abstract class BaseProxyService {
       signal,
       options,
     );
-    return this.collectGeminiStreamAsResponse(stream);
+    const collected = await this.collectGeminiStreamAsResponse(stream);
+    if (isIncompleteThinkingResponse(collected)) {
+      throw new Error('Upstream returned incomplete thinking-only response');
+    }
+    return collected;
   }
 
   private hasUsableGeminiCandidate(response: GeminiResponse): boolean {
@@ -458,7 +465,7 @@ export abstract class BaseProxyService {
 
     const first = candidates[0];
     const parts = first?.content?.parts;
-    return Array.isArray(parts) && parts.length > 0;
+    return Array.isArray(parts) && parts.length > 0 && !isIncompleteThinkingResponse(response);
   }
 
   private collectGeminiStreamAsResponse(

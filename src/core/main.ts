@@ -15,6 +15,7 @@ import { createWeeklyWarmupExecutor } from '@/modules/proxy-gateway/weekly-warmu
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 import { shutdownDiagnosticStores } from '@/modules/proxy-gateway/diagnostics/shutdown';
 import { assertCoreRuntimeResources } from './runtime-resources';
+import { initializeCoreErrorReporting, flushErrorReporting } from './error-reporting';
 
 async function runCore(): Promise<void> {
   if (process.argv.includes('--help')) {
@@ -46,10 +47,11 @@ async function runCore(): Promise<void> {
     warmup: cloudAccountWeeklyWarmupRunner,
     monitor: CloudMonitorService,
     diagnostics: { shutdown: shutdownDiagnosticStores },
+    observability: { shutdown: flushErrorReporting },
   });
 
   const handleSignal = (): void => {
-    void shutdown().catch((error: unknown) => {
+    shutdown().catch((error: unknown) => {
       logger.error('Core shutdown failed', error);
       process.exitCode = 1;
     });
@@ -65,6 +67,7 @@ async function runCore(): Promise<void> {
       management,
       core,
       onManagementReady: () => {
+        initializeCoreErrorReporting();
         cloudAccountWeeklyWarmupRunner.start();
         CloudMonitorService.openAdmission();
         CloudMonitorService.syncSchedule();

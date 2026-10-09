@@ -13,6 +13,100 @@ Use npm only. The repository contains `package-lock.json`; do not introduce anot
 
 ## Common commands
 
+Schema replay uses `npm run test:schema:replay -- <audit-database-path>` with a Node runtime that
+provides `node:sqlite` (Node 22.17+ for this acceptance tool). It requires read access to the audit
+database and its SQLite sidecars, and writes only compiled replay code to a temporary directory.
+Results with no intact tool/output Schema samples do not satisfy the real-data gate. See the
+[Schema reference](proxy-schema-conversion.md) for selection and privacy requirements.
+
+Controlled Schema acceptance also offers `test:schema:client` with an installed Claude Code
+executable and `test:schema:sentry` after `prepare:standalone`. Both use loopback receivers and
+synthetic authentication; provider connectivity and remote Sentry delivery remain separate gates.
+
+### Live Schema acceptance
+
+`node scripts/acceptance/schema/run-client-matrix.mjs [all|codex|opencode|claude]` runs the installed
+Windows clients through the default gateway and real Flash upstream. It requires the prepared
+standalone runtime, an unowned stopped profile and usable accounts. Each client uses isolated
+temporary settings and a new probe file; the loopback relay forwards original request bytes,
+replaces synthetic credentials privately and buffers bounded responses to reject unsafe tool
+instructions. Codex uses a temporary stdio MCP tool that reads only the fixed probe; its Windows
+Shell execution-policy failures remain separate failed evidence. OpenCode permits reads and
+searches, with the relay enforcing the fixed-file target; Claude Code declares default tools and
+the inspected credential-free local MCP servers. Successful provider responses are never
+simulated. The gate requires an actual tool-result continuation, a matching final answer and
+correlated successful upstream attempts for every request. Recovered failures remain visible
+in anonymous evidence. Cleanup must restore the stopped state, preserve saved settings and
+remove the owned temporary profiles. This workflow consumes quota and writes only aggregate
+evidence under `artifacts/schema-work-package/live-results`; it does not perform a separate
+remote Sentry receipt check or calibrate budgets from organic traffic. Run
+`node --test scripts/acceptance/schema/check-client-matrix.mjs` for its protocol, guard, continuation
+and audit evidence controls.
+
+After `npm run prepare:standalone`, use `npm run test:schema:live -- gemini-3.1-pro-high` to test
+ordinary and degraded tool parameters against the real gateway and Google upstream. The harness
+also exercises current native Gemini Flash/Pro routes and installed Claude Code's Read tool.
+Use `npm run test:schema:live -- gemini-3.7-flash-high` for ordinary/degraded Flash tool loops;
+this is also the default model. The explicit `gemini-3-flash` option retains the retired-route
+failure probe. A provider retirement notice does not count as a successful tool call. It requires an
+unowned stopped profile, existing usable accounts, enabled desktop reporting preferences and
+configured Sentry credentials. The bundled read-only Sentry helper requires `SENTRY_AUTH_TOKEN`,
+`SENTRY_ORG` and `SENTRY_PROJECT`; values are resolved in memory from the shell/build environment.
+
+This command consumes provider quota and sends controlled diagnostic events to the configured
+remote Sentry project. Newly created probe files are the only allowed tool targets. It starts
+the core temporarily and shuts it down afterward, without saving proxy auto-start or client
+settings. Loopback observation relays forward the real client requests and SDK envelopes to
+their configured destinations; only bounded anonymous evidence is written under
+`artifacts/schema-work-package/live-results`. A single failed cycle makes the command fail.
+Ordinary acceptance also fails when remote Sentry receipt cannot be confirmed; an outbound
+envelope or HTTP 200 alone is insufficient. The relay records anonymous transport status to
+distinguish delivery failures from event-query failures.
+
+Append `client-mcp` to use default Claude Code declarations and the three inspected credential-free
+local MCP servers. This verifies actual declaration acceptance and a controlled Read cycle;
+it does not execute MCP business tools. Append `history` to acquire two real parallel calls and
+compare combined, adjacent and reversed-result histories without rewriting production history.
+Append `history extended` to compare identical resubmissions and bidirectional Pro/Flash
+continuation, choosing the source model in the first argument. Append `history recovery` to
+mutate only signatures in a controlled history and require final result matches plus actual
+upstream 400/200 attempts for one gateway request. A provider accepting the mutation does not
+prove recovery and keeps this check failing. Audit evidence retains anonymous scenario labels
+and per-request attempt counts. `node scripts/acceptance/schema/check-history-evidence.mjs`
+checks missing-result sensitivity and private audit-context exclusion using isolated fixtures.
+`node scripts/acceptance/schema/run-core-startup.mjs 5` isolates the prepared core's readiness
+and shutdown without submitting gateway requests or intentional diagnostic events. It requires
+an unowned stopped profile and restores that state; forced cleanup fails the command. Append
+`trace` for fixed test-owned preload markers separating process entry and the first event-loop
+turn. Only anonymous counts and timings are retained. The acceptance readiness window matches
+the production CLI's 45 seconds and bounds stalled probes.
+`node --test scripts/acceptance/schema/check-startup-evidence.mjs` compares a controlled slow
+start with the production launcher and verifies timeout/exit failure sensitivity.
+Append `client` to rerun a diagnosed client failure independently; this does not replace the
+full cycle record. Append `2.5.5` or `1.23.2` for an isolated User-Agent build experiment, or
+`production` for a transient backup-endpoint-only experiment. These modes identify themselves
+in the result and do not alter production routing, version selection or saved configuration.
+
+`node scripts/acceptance/schema/run-live-retry.mjs <network|rotation|incomplete|all> [gemini-3.7-flash-high|gemini-3.1-pro-high]`
+starts the prepared core with a temporary loopback relay. Network mode resets the first
+controlled continuation connection; rotation mode returns 503 for both addresses on the
+first account. Successful generations use the real provider. Incomplete mode injects a
+disclosed thought-only unary fragment on the initial tool request, then requires a real
+streamed tool turn and all result continuations. It never supplies successful tool calls.
+The gate correlates audit attempts within one gateway request, compares preserved contents,
+excludes private identities and requires stopped-state restoration with unchanged saved
+settings. Natural rate limits or other extra attempts keep the strict scenario failing.
+Network/rotation modes provide supplementary fault coverage; default-primary tool/result
+acceptance does not require a successful backup-endpoint probe. See the
+[scope record](../artifacts/schema-work-package/retry-verification.md#acceptance-scope).
+`node --test scripts/acceptance/schema/check-retry-evidence.mjs` checks injection, forwarding,
+audit discrimination and privacy sensitivity using isolated fixtures.
+
+`node scripts/acceptance/schema/verify-remote-event.mjs <event-id> <test-release>` reads the exact
+remote event and emits only closed diagnostic fields and privacy booleans. A nonempty stored
+user context keeps the strict privacy check failing even when receipt is confirmed. See the
+[security reference](security.md#schema-diagnostics-and-node-reporting).
+
 ```powershell
 npm install
 npm start

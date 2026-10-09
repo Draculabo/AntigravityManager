@@ -209,6 +209,7 @@ export interface GeminiContent {
 
 export interface GeminiPart {
   text?: string;
+  thought?: boolean;
   inlineData?: GeminiInlineData;
   fileData?: { fileUri: string; mimeType: string };
   thoughtSignature?: string;

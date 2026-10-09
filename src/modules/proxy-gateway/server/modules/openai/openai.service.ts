@@ -1,4 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { preparedSchemaState } from '@/modules/proxy-gateway/antigravity/schema/SchemaPreparation';
+import {
+  prepareOpenAIRequestSchemas,
+  type PreparedOpenAISchemas,
+} from './chat/openai-schema-preparation';
 import { isEmpty, isString } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
@@ -23,7 +28,10 @@ import {
   toCustomToolArguments,
 } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
 import { optimizeApplyPatch } from '@/modules/proxy-gateway/antigravity/ApplyPatchPreflight';
-import { splitNamespaceToolName } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
+import {
+  qualifyNamespaceToolName,
+  splitNamespaceToolName,
+} from '@/modules/proxy-gateway/antigravity/ToolNamespace';
 import {
   adaptCommandArguments,
   selectClientCommandTool,
@@ -108,11 +116,18 @@ export class OpenAIService extends BaseProxyService {
     outputProtocol: OpenAIOutputProtocol = 'chat-completions',
     signal?: AbortSignal,
     responsesContext?: OpenAIResponsesExecutionContext,
+    schemaPreparation?: PreparedOpenAISchemas,
   ): Promise<OpenAIChatResponse | Observable<string>> {
     validateOpenAIInputAudio(request);
     validateOpenAIResponseFormat(request);
     const appliedVariantRequest = applyOpenAIModelVariant(request);
     const routedRequest = appliedVariantRequest.request;
+    const { schemas: preparedSchemas, batch: schemaBatch } =
+      schemaPreparation ??
+      prepareOpenAIRequestSchemas(
+        routedRequest,
+        outputProtocol === 'responses' ? 'responses' : 'openai',
+      );
     const routingSessionKey = responsesContext
       ? this.toOpenAISessionKey(responsesContext.routingSessionId)
       : this.extractOpenAISessionKey(request);
@@ -181,7 +196,11 @@ export class OpenAIService extends BaseProxyService {
 
       markProxyNormalizationStarted();
       try {
-        const claudeRequest = this.convertOpenAIToClaude(accountRequest, signatureReadSessionKey);
+        const claudeRequest = this.convertOpenAIToClaude(
+          accountRequest,
+          signatureReadSessionKey,
+          preparedSchemas,
+        );
         const projectId = token.token.project_id ?? '';
         const requestUserAgent = await resolveRequestUserAgent();
         const geminiBody = transformClaudeRequestIn(
@@ -191,6 +210,7 @@ export class OpenAIService extends BaseProxyService {
           accountTargetModel,
           'openai',
           {
+            ...preparedSchemaState(schemaBatch),
             imageRequest: {
               imageSize: accountRequest.image_size,
               quality: accountRequest.quality,
@@ -231,6 +251,7 @@ export class OpenAIService extends BaseProxyService {
               token.id,
               this.takeImagePermit(retryState),
               responsesContext?.responseId,
+              routedRequest.tools,
             );
           } catch (streamError) {
             this.logger.warn(
@@ -262,6 +283,7 @@ export class OpenAIService extends BaseProxyService {
               claudeResponse,
               request.model,
               clientToolNames,
+              routedRequest.tools,
             );
             return outputProtocol === 'responses'
               ? this.createSyntheticResponsesStream(
@@ -270,6 +292,7 @@ export class OpenAIService extends BaseProxyService {
                   clientToolNames,
                   claudeRequest.messages.length,
                   responsesContext?.responseId,
+                  routedRequest.tools,
                 )
               : this.createSyntheticOpenAIStream(openaiResponse);
           }
@@ -297,7 +320,12 @@ export class OpenAIService extends BaseProxyService {
           this.logger.log(
             `Transformed Claude response snippet: ${safeStringifyPacket(claudeResponse).substring(0, 500)}`,
           );
-          return this.convertClaudeToOpenAIResponse(claudeResponse, request.model, clientToolNames);
+          return this.convertClaudeToOpenAIResponse(
+            claudeResponse,
+            request.model,
+            clientToolNames,
+            routedRequest.tools,
+          );
         }
       } catch (err) {
         if (err instanceof Error && this.isProjectContextError(err.message)) {
@@ -309,6 +337,7 @@ export class OpenAIService extends BaseProxyService {
             const claudeRequest = this.convertOpenAIToClaude(
               accountRequest,
               signatureReadSessionKey,
+              preparedSchemas,
             );
             const requestUserAgent = await resolveRequestUserAgent();
             const fallbackBody = transformClaudeRequestIn(
@@ -318,6 +347,7 @@ export class OpenAIService extends BaseProxyService {
               accountTargetModel,
               'openai',
               {
+                ...preparedSchemaState(schemaBatch),
                 imageRequest: {
                   imageSize: accountRequest.image_size,
                   quality: accountRequest.quality,
@@ -355,6 +385,7 @@ export class OpenAIService extends BaseProxyService {
                 token.id,
                 this.takeImagePermit(retryState),
                 responsesContext?.responseId,
+                routedRequest.tools,
               );
             }
 
@@ -378,6 +409,7 @@ export class OpenAIService extends BaseProxyService {
               claudeResponse,
               request.model,
               clientToolNames,
+              routedRequest.tools,
             );
           } catch (fallbackErr) {
             lastError = fallbackErr;
@@ -443,6 +475,7 @@ export class OpenAIService extends BaseProxyService {
     successAccountId?: string,
     imagePermit?: ImageSchedulerPermit | null,
     responseId?: string,
+    clientTools?: OpenAIChatRequest['tools'],
   ): Observable<string> {
     if (successAccountId && signatureSourceModel && !isGeminiImageModel(signatureSourceModel)) {
       this.markUpstreamSuccess(successAccountId, signatureSourceModel);
@@ -460,6 +493,7 @@ export class OpenAIService extends BaseProxyService {
         successAccountId,
         imagePermit,
         responseId,
+        clientTools,
       );
     }
     return this.processStreamResponse(
@@ -473,6 +507,7 @@ export class OpenAIService extends BaseProxyService {
       signatureSourceFamilyModel,
       successAccountId,
       imagePermit,
+      clientTools,
     );
   }
 
@@ -488,6 +523,7 @@ export class OpenAIService extends BaseProxyService {
     successAccountId?: string,
     imagePermit?: ImageSchedulerPermit | null,
     responseId?: string,
+    clientTools?: OpenAIChatRequest['tools'],
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
@@ -500,6 +536,7 @@ export class OpenAIService extends BaseProxyService {
       let sawMappedOutput = false;
       const mapper = new OpenAIResponsesStreamingMapper({
         clientToolNames,
+        clientTools,
         model,
         responseId: responseId ?? `resp_${uuidv4()}`,
         signatureMessageCount,
@@ -685,6 +722,7 @@ export class OpenAIService extends BaseProxyService {
     signatureSourceFamilyModel?: string | null,
     successAccountId?: string,
     imagePermit?: ImageSchedulerPermit | null,
+    clientTools?: OpenAIChatRequest['tools'],
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const decoder = new TextDecoder();
@@ -821,7 +859,7 @@ export class OpenAIService extends BaseProxyService {
                   }
                   emittedToolCalls.add(dedupeKey);
 
-                  const splitName = splitNamespaceToolName(functionCall.name);
+                  const splitName = splitNamespaceToolName(functionCall.name, clientTools);
                   const functionName = clientToolNames
                     ? selectClientCommandTool(splitName.name, clientToolNames)
                     : splitName.name;
@@ -1121,10 +1159,12 @@ export class OpenAIService extends BaseProxyService {
     clientToolNames?: ReadonlySet<string>,
     signatureMessageCount?: number,
     responseId?: string,
+    clientTools?: OpenAIChatRequest['tools'],
   ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const mapper = new OpenAIResponsesStreamingMapper({
         clientToolNames,
+        clientTools,
         model: response.model,
         responseId: responseId ?? `resp_${uuidv4()}`,
         signatureMessageCount,
@@ -1162,7 +1202,7 @@ export class OpenAIService extends BaseProxyService {
               toolCall.operation ??
               parseOpenAIFunctionArguments(toolCall.function?.arguments ?? '{}'),
             id: toolCall.call_id || toolCall.id,
-            name: functionName,
+            name: qualifyNamespaceToolName(toolCall.namespace ?? '', functionName),
           },
         })) {
           subscriber.next(event);
@@ -1184,8 +1224,10 @@ export class OpenAIService extends BaseProxyService {
   private convertOpenAIToClaude(
     request: OpenAIChatRequest,
     signatureSessionKey?: string,
+    preparedSchemas?: Pick<ClaudeRequest, 'tools' | 'response_format'>,
   ): ClaudeRequest {
     return convertOpenAIToClaude(request, signatureSessionKey, {
+      preparedSchemas,
       allowLocalVideoPaths: Boolean(getServerConfig()?.experimental?.allow_local_video_paths),
     });
   }
@@ -1194,6 +1236,7 @@ export class OpenAIService extends BaseProxyService {
     claudeResponse: ClaudeResponse,
     model: string,
     clientToolNames?: ReadonlySet<string>,
+    clientTools?: OpenAIChatRequest['tools'],
   ): OpenAIChatResponse {
     for (const contentBlock of claudeResponse.content) {
       if (contentBlock.type !== 'tool_use') {
@@ -1203,7 +1246,7 @@ export class OpenAIService extends BaseProxyService {
         this.logger?.debug('[OpenAI] command tool fallback_applied=true');
       }
     }
-    return convertClaudeToOpenAIResponse(claudeResponse, model, clientToolNames);
+    return convertClaudeToOpenAIResponse(claudeResponse, model, clientToolNames, clientTools);
   }
 
   private convertOpenAIToolsToAnthropicTools(
