@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReleaseNotesResult } from '@/modules/app-shell/update/releaseNotes.schema';
 import { ManualUpdateNotification } from '@/modules/app-shell/components/ManualUpdateNotification';
 
-const { releaseNotes, openReleaseNotesLink } = vi.hoisted(() => ({
+const { releaseNotes, openReleaseNotesLink, toast } = vi.hoisted(() => ({
   releaseNotes: vi.fn(),
   openReleaseNotesLink: vi.fn(),
+  toast: vi.fn(),
 }));
+vi.mock('@/components/ui/use-toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/ipc/manager', () => ({
   ipc: { client: { app: { releaseNotes, openReleaseNotesLink } } },
 }));
@@ -72,6 +74,30 @@ afterEach(() => {
 });
 
 describe('release-notes notification flow', () => {
+  it('reports a failed manual-download launch and keeps retry available', async () => {
+    vi.mocked(window.electron.openExternalUrl).mockRejectedValue(new Error('Launch failed'));
+    showNotification({ ...update, platform: 'linux', state: 'error' });
+    fireEvent.click(screen.getByRole('button', { name: 'update.available.manual-download' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledExactlyOnceWith({
+        title: 'update.available.open-download-failed',
+        variant: 'destructive',
+      }),
+    );
+    expect(screen.getByRole('button', { name: 'action.retry' })).toBeTruthy();
+    expect(dismissManualUpdate).not.toHaveBeenCalled();
+    expect(installUpdate).not.toHaveBeenCalled();
+  });
+
+  it('offers retry and a manual release link after a Linux download failure', async () => {
+    showNotification({ ...update, platform: 'linux', state: 'error' });
+    fireEvent.click(screen.getByRole('button', { name: 'update.available.manual-download' }));
+    expect(window.electron.openExternalUrl).toHaveBeenCalledWith(update.releaseUrl);
+    expect(installUpdate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'action.retry' }));
+    await waitFor(() => expect(downloadUpdate).toHaveBeenCalledTimes(1));
+  });
+
   it('keeps automatic downloads running when details are opened', async () => {
     releaseNotes.mockResolvedValue({
       status: 'ready',

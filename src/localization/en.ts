@@ -163,6 +163,8 @@ const en = {
       title: 'Update available',
       description: 'Version {{version}} is available on GitHub.',
       download: 'Download',
+      'manual-download': 'Manual download',
+      'open-download-failed': 'Could not open the download page',
       downloading: 'Downloading...',
       dismiss: 'Dismiss',
       macosUnsignedNote:

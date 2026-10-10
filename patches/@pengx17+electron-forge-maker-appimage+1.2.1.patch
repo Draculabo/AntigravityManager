@@ -1,0 +1,68 @@
+diff --git a/node_modules/@pengx17/electron-forge-maker-appimage/dist/src/MakerAppimage.js b/node_modules/@pengx17/electron-forge-maker-appimage/dist/src/MakerAppimage.js
+--- a/node_modules/@pengx17/electron-forge-maker-appimage/dist/src/MakerAppimage.js
++++ b/node_modules/@pengx17/electron-forge-maker-appimage/dist/src/MakerAppimage.js
+@@ -103,3 +103,3 @@
+             ];
+-            const stageDir = path_1.default.join(makeDir, "__appImage-x64");
++            const stageDir = path_1.default.join(makeDir, `__appImage-${targetArch}`);
+             if (!(0, fs_1.existsSync)(makeDir)) {
+@@ -121,3 +121,3 @@
+                 "--arch",
+-                "x64",
++                targetArch,
+                 "--output",
+@@ -142,3 +142,3 @@
+             const result = yield appBuilder.executeAppBuilderAsJson(args);
+-            yield (0, patch_apprun_1.patchAppImage)(appPath);
++            yield (0, patch_apprun_1.patchAppImage)(appPath, targetArch);
+             return [appPath];
+diff --git a/node_modules/@pengx17/electron-forge-maker-appimage/dist/src/patch-apprun.js b/node_modules/@pengx17/electron-forge-maker-appimage/dist/src/patch-apprun.js
+--- a/node_modules/@pengx17/electron-forge-maker-appimage/dist/src/patch-apprun.js
++++ b/node_modules/@pengx17/electron-forge-maker-appimage/dist/src/patch-apprun.js
+@@ -19,5 +19,5 @@
+ const scriptPath = path_1.default.resolve(__dirname, "../../scripts/patch-apprun.sh");
+-function patchAppImage(appFileName) {
++function patchAppImage(appFileName, targetArch) {
+     return __awaiter(this, void 0, void 0, function* () {
+-        (0, child_process_1.execSync)(`bash ${scriptPath} ${appFileName}`);
++        (0, child_process_1.execFileSync)("bash", [scriptPath, appFileName, targetArch]);
+     });
+diff --git a/node_modules/@pengx17/electron-forge-maker-appimage/scripts/patch-apprun.sh b/node_modules/@pengx17/electron-forge-maker-appimage/scripts/patch-apprun.sh
+--- a/node_modules/@pengx17/electron-forge-maker-appimage/scripts/patch-apprun.sh
++++ b/node_modules/@pengx17/electron-forge-maker-appimage/scripts/patch-apprun.sh
+@@ -3,6 +3,11 @@
+ # INPUT_APPIMAGE must be absolute path
+-INPUT_APPIMAGE=$1
++set -eu
++INPUT_APPIMAGE="$1"
+ 
+ # System architecture to create AppImage for - see options at https://github.com/AppImage/AppImageKit/releases/continuous/
+-SYSTEM_ARCH="x86_64"
++case "${2:-x64}" in
++  x64) SYSTEM_ARCH="x86_64" ;;
++  arm64) SYSTEM_ARCH="aarch64" ;;
++  *) echo "Unsupported AppImage architecture" >&2; exit 1 ;;
++esac
+ APPIMAGETOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-$SYSTEM_ARCH.AppImage"
+@@ -10,5 +15,6 @@
+ TMP_DIR=$(mktemp -d)
++trap 'rm -rf -- "$TMP_DIR"' EXIT
+ 
+-cd $TMP_DIR
+-cp $INPUT_APPIMAGE .
++cd "$TMP_DIR"
++cp "$INPUT_APPIMAGE" .
+ 
+@@ -17,3 +23,3 @@
+ 
+-echo $APP_IMAGE_TMP
++echo "$APP_IMAGE_TMP"
+ 
+@@ -50,5 +56,5 @@
+ # AppRun patched. Repack the AppImage
+-./appimagetool ./squashfs-root/ "$INPUT_APPIMAGE"
++ARCH="$SYSTEM_ARCH" ./appimagetool ./squashfs-root/ "$INPUT_APPIMAGE"
+ 
+-rm -rf $TMP_DIR
++# The EXIT trap removes only the directory allocated by mktemp.
+ 

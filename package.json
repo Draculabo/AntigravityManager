@@ -10,6 +10,9 @@
     "npm": ">=10"
   },
   "scripts": {
+    "make:appimage-update-fixture": "node scripts/acceptance/installers/make-appimage-update-fixture.mjs",
+    "test:appimage-download": "node --test scripts/acceptance/installers/appimage-updater-download.test.mjs scripts/acceptance/installers/appimage-maker.test.mjs",
+    "test:appimage-update": "node scripts/acceptance/installers/packaged-appimage-updater-native.mjs",
     "preview:release-notes": "node scripts/preview-release-notes.mjs",
     "postinstall": "patch-package --error-on-fail",
     "start": "electron-forge start",

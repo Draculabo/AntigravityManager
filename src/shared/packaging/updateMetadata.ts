@@ -11,5 +11,9 @@ export function shouldIncludeInElectronUpdaterMetadata({
     return extension === '.exe';
   }
 
+  if (platform === 'linux') {
+    return extension === '.AppImage';
+  }
+
   return extension !== '.msi';
 }

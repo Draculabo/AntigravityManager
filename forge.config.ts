@@ -172,6 +172,9 @@ const config: ForgeConfig = {
       _config.packagerConfig.extraResource = [
         'src/assets',
         path.join(process.cwd(), 'dist', '.runtime', `${platform}-${arch}`, 'standalone'),
+        ...(platform === 'linux'
+          ? [path.join(process.cwd(), 'resources/linux/app-update.yml')]
+          : []),
       ];
     },
     packageAfterCopy: async (_config, buildPath, _electronVersion, platform, arch) => {

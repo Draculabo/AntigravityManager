@@ -169,6 +169,8 @@ const fr = {
       title: 'Mise a jour disponible',
       description: 'La version {{version}} est disponible sur GitHub.',
       download: 'Telecharger',
+      'manual-download': 'Téléchargement manuel',
+      'open-download-failed': 'Impossible d’ouvrir la page de téléchargement',
       downloading: 'Telechargement...',
       dismiss: 'Ignorer',
       macosUnsignedNote:

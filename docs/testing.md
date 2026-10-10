@@ -483,6 +483,37 @@ relaunch may drop the temporary user-data argument.
 Check a missing feed, an interrupted download and a tampered installer separately. Packaging
 and feed tests alone do not establish installed updater behavior or cross-architecture acceptance.
 
+For Linux updater changes, run the focused `linux-appimage-*.test.ts`, update metadata,
+automatic fallback and notification tests, then `npm run type-check` and
+`npm run test:appimage-download`. The latter uses real HTTP downloads for x64 and ARM64 feeds,
+rejects SHA-512 mismatches and interrupted transfers, and checks the maker's architecture
+arguments and paths containing spaces. It does not execute the Linux installer.
+
+Run the native A-to-B check on a Linux desktop with AppImage/FUSE support and a disposable
+account. Build the current AppImage with `npm run make -- --platform linux --arch x64`
+(use `arm64` on an ARM64 host). Generate the previous-version fixture from that packaged
+app using an explicitly lower version and a new directory under `out`:
+
+```bash
+npm run make:appimage-update-fixture -- "out/Antigravity Manager-linux-x64" out/appimage-previous 0.23.0
+npm run test:appimage-update -- <previous.AppImage> <current.AppImage> <latest-linux.yml>
+```
+
+Supply real artifact paths under `out`; ARM64 uses `latest-linux-arm64.yml`. The previous
+fixture contains the current implementation with a lower package version, so this exercises
+updater behavior rather than historical database migration. The check copies the previous
+archive into its own temporary directory, starts a local feed, isolates HOME/XDG paths,
+rejects a missing feed and corrupt download, then retries the valid download. It clicks the
+restart action and checks the replacement hash, relaunched version in Settings and retained
+profile marker. A successful check saves a JSON result and Settings screenshot under `out`
+and removes only the owned fixture; failures retain it and its process log for diagnosis.
+The disposable account also isolates OS credential-store effects that HOME/XDG do not cover.
+The native check enables the existing diagnostic mode with debug port `0` and reads Chromium's
+`DevToolsActivePort` file for each process. This avoids a fixed-port conflict while the updater
+starts the new process before the old process fully exits.
+Run on each supported architecture before claiming native acceptance. No release publication
+is needed, and downloaded archives are not installed on ordinary quit.
+
 For release-note changes, run the focused `src/tests/unit/release-notes-*.test.ts` tests and
 `npm run type-check`. They cover publication-text serialization, exact-tag fallback and response
 validation, IPC target/link validation, Markdown/image behavior, download-time inspection, empty

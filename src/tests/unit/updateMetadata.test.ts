@@ -19,4 +19,12 @@ describe('electron-updater metadata packaging policy', () => {
       shouldIncludeInElectronUpdaterMetadata({ platform: 'linux', extension: '.AppImage' }),
     ).toBe(true);
   });
+
+  it('keeps distro installers out of the AppImage feed', () => {
+    expect(
+      ['.AppImage', '.deb', '.rpm', '.zip', '.msi'].map((extension) =>
+        shouldIncludeInElectronUpdaterMetadata({ platform: 'linux', extension }),
+      ),
+    ).toEqual([true, false, false, false, false]);
+  });
 });
