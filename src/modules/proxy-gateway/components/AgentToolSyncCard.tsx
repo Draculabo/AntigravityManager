@@ -130,6 +130,7 @@ export function AgentToolSyncCard({ tool, baseUrl, models }: Props) {
       });
     } catch (error) {
       toast({
+        error,
         title: t('agent-tools.action-error'),
         description: errorText(error),
         variant: 'destructive',

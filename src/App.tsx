@@ -8,7 +8,7 @@ import { router } from './modules/app-shell/routing/routes';
 import './localization/i18n';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@/components/shared/theme-provider';
-import { Toaster } from '@/components/ui/toaster';
+import { AppToaster } from '@/modules/app-shell/components/AppToaster';
 import { LOCAL_STORAGE_KEYS } from '@/shared/constants';
 import { ClarityBootstrap } from '@/components/shared/ClarityBootstrap';
 import { ManualUpdateNotification } from '@/modules/app-shell/components/ManualUpdateNotification';
@@ -41,7 +41,7 @@ root.render(
         <ClarityBootstrap />
         <App />
         <ManualUpdateNotification />
-        <Toaster />
+        <AppToaster />
       </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>,

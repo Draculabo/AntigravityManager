@@ -165,6 +165,7 @@ export const MainLayout: React.FC = () => {
               }
 
               toast({
+                error,
                 title: t('error.generic'),
                 description: getLocalizedErrorMessage(error, t),
                 variant: 'destructive',

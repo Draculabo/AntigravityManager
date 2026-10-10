@@ -215,6 +215,7 @@ function SettingsPage() {
       });
     } catch (error) {
       toast({
+        error,
         title: t('settings.account.agy_cli_detect_failed'),
         description: error instanceof Error ? error.message : String(error),
         variant: 'destructive',
@@ -243,6 +244,7 @@ function SettingsPage() {
       });
     } catch (error) {
       toast({
+        error,
         title: t('settings.account.agy_patch_failed'),
         description: error instanceof Error ? error.message : String(error),
         variant: 'destructive',
@@ -317,6 +319,7 @@ function SettingsPage() {
       }
     } catch (error) {
       toast({
+        error,
         title: t('update.checkFailed'),
         description: error instanceof Error ? error.message : t('common.unknown'),
         variant: 'destructive',
@@ -886,8 +889,9 @@ function SettingsPage() {
                       if (config) {
                         try {
                           await saveConfig({ ...config, quota_alert_enabled: checked });
-                        } catch {
+                        } catch (error) {
                           toast({
+                            error,
                             title: t('common.error'),
                             description: t('settings.notifications.saveFailed'),
                             variant: 'destructive',
@@ -916,8 +920,9 @@ function SettingsPage() {
                         if (config) {
                           try {
                             await saveConfig({ ...config, quota_alert_threshold: parsed });
-                          } catch {
+                          } catch (error) {
                             toast({
+                              error,
                               title: t('common.error'),
                               description: t('settings.notifications.thresholdSaveFailed'),
                               variant: 'destructive',
@@ -943,8 +948,9 @@ function SettingsPage() {
                       if (config) {
                         try {
                           await saveConfig({ ...config, ai_credits_alert_enabled: checked });
-                        } catch {
+                        } catch (error) {
                           toast({
+                            error,
                             title: t('common.error'),
                             description: t('settings.notifications.saveFailed'),
                             variant: 'destructive',
@@ -972,8 +978,9 @@ function SettingsPage() {
                         if (config) {
                           try {
                             await saveConfig({ ...config, ai_credits_alert_threshold: parsed });
-                          } catch {
+                          } catch (error) {
                             toast({
+                              error,
                               title: t('common.error'),
                               description: t('settings.notifications.aiCreditsThresholdSaveFailed'),
                               variant: 'destructive',

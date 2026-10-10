@@ -128,7 +128,8 @@ describe('service settings in the renderer', () => {
   });
 
   it('shows translated guidance instead of a backend error when saving fails', async () => {
-    api.updateService.mockRejectedValue(new Error('Internal service RPC failed'));
+    const error = new Error('Internal service RPC failed');
+    api.updateService.mockRejectedValue(error);
     const { result } = mount();
     await waitFor(() => expect(result.current.serviceAvailable).toBe(true));
 
@@ -144,6 +145,7 @@ describe('service settings in the renderer', () => {
     });
 
     expect(api.toast).toHaveBeenLastCalledWith({
+      error,
       title: 'settings.toast.saveFailed.title',
       description: 'settings.service-unavailable',
       variant: 'destructive',

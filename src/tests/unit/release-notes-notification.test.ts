@@ -75,11 +75,13 @@ afterEach(() => {
 
 describe('release-notes notification flow', () => {
   it('reports a failed manual-download launch and keeps retry available', async () => {
-    vi.mocked(window.electron.openExternalUrl).mockRejectedValue(new Error('Launch failed'));
+    const error = new Error('Launch failed');
+    vi.mocked(window.electron.openExternalUrl).mockRejectedValue(error);
     showNotification({ ...update, platform: 'linux', state: 'error' });
     fireEvent.click(screen.getByRole('button', { name: 'update.available.manual-download' }));
     await waitFor(() =>
       expect(toast).toHaveBeenCalledExactlyOnceWith({
+        error,
         title: 'update.available.open-download-failed',
         variant: 'destructive',
       }),

@@ -177,6 +177,16 @@ const en = {
     },
   },
   error: {
+    toast: {
+      'report-issue': 'Report to GitHub',
+      'no-details': 'No error stack is available. The notification text is shown when available.',
+      copied:
+        'Error information copied Paste it into the GitHub report, describe what you were doing, then submit.',
+      'copy-failed':
+        'Could not copy the error information Please try again. You can also open Details and copy the error manually.',
+      'open-failed':
+        'Could not open GitHub Your error information is copied. Open {{url}} and paste it into the report.',
+    },
     generic: 'An unexpected error occurred.',
     detailsTitle: 'Error details',
     detailsDescription:

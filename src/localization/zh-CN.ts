@@ -162,6 +162,13 @@ const zhCn = {
     },
   },
   error: {
+    toast: {
+      'report-issue': '上报到 GitHub',
+      'no-details': '当前错误未提供堆栈或更多详情。',
+      copied: '错误信息已复制。请在 GitHub 页面粘贴，补充出错前的操作，再提交问题。',
+      'copy-failed': '未能复制错误信息，请重试。也可以打开“详情”，手动复制。',
+      'open-failed': '未能打开 GitHub，但错误信息已复制。请打开 {{url}}，粘贴后提交问题。',
+    },
     generic: '发生未知错误。',
     detailsTitle: '错误详情',
     detailsDescription:

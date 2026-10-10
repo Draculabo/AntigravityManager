@@ -19,6 +19,7 @@ export function useOpenAccountValidationLink() {
     } catch (error) {
       const validationCode = readAccountValidationLinkErrorCode(error) ?? 'validation-link-failed';
       toast({
+        error,
         title: t('cloud.toast.validationLinkFailed.title'),
         description: t(`cloud.toast.validationLinkFailed.codes.${validationCode}`),
         variant: 'destructive',

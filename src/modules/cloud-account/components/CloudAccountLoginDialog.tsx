@@ -37,6 +37,7 @@ export function CloudAccountLoginDialog() {
       onError: (error) => {
         const loginCode = readDesktopOAuthLoginErrorCode(error) ?? 'login-failed';
         toast({
+          error,
           title: t('cloud.toast.addFailed.title'),
           description: t(`cloud.toast.addFailed.codes.${loginCode}`),
           variant: 'destructive',
@@ -57,6 +58,7 @@ export function CloudAccountLoginDialog() {
         onError: (error) => {
           const loginCode = readDesktopOAuthLoginErrorCode(error) ?? 'login-failed';
           toast({
+            error,
             title: t('cloud.toast.addFailed.title'),
             description: t(`cloud.toast.addFailed.codes.${loginCode}`),
             variant: 'destructive',
@@ -82,6 +84,7 @@ export function CloudAccountLoginDialog() {
       {
         onError: (error) => {
           toast({
+            error,
             title: t('cloud.toast.updateSettingsFailed'),
             description: getLocalizedErrorMessage(error, t),
             variant: 'destructive',

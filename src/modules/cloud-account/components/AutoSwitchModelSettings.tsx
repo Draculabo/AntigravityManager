@@ -106,10 +106,7 @@ function AutoSwitchModelSettingsInner({ accounts, initialConfig }: InnerProps) {
       });
     } catch (error) {
       console.error('Failed to save auto-switch model config:', error);
-      toast({
-        title: t('settings.autoSwitchModels.saveFailed'),
-        variant: 'destructive',
-      });
+      toast({ error, title: t('settings.autoSwitchModels.saveFailed'), variant: 'destructive' });
     }
   };
 

@@ -183,8 +183,9 @@ function ProxyPage() {
         setRevealedKey(result.value);
         setShowKey(true);
       }
-    } catch {
+    } catch (error) {
       toast({
+        error,
         title: t(
           'settings.service-unavailable',
           'Settings are unavailable right now. Please try again.',
@@ -257,8 +258,8 @@ function ProxyPage() {
       await navigator.clipboard.writeText(example(key));
       setCopied(type);
       setTimeout(() => setCopied(null), 2000);
-    } catch {
-      toast({ title: t('settings.service-unavailable'), variant: 'destructive' });
+    } catch (error) {
+      toast({ error, title: t('settings.service-unavailable'), variant: 'destructive' });
     }
   };
 
@@ -539,8 +540,9 @@ print(response.choices[0].message.content)`;
                             ),
                           });
                         }
-                      } catch {
+                      } catch (error) {
                         toast({
+                          error,
                           title: t(
                             'settings.service-unavailable',
                             'Settings are unavailable right now. Please try again.',

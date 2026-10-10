@@ -64,7 +64,8 @@ it('shows loading for a main-process switch, disables only that target, and reco
 });
 
 it('reports launch errors and clears local loading so the user can retry explicitly', async () => {
-  mocks.start.mockRejectedValue(new Error('startup unconfirmed'));
+  const error = new Error('startup unconfirmed');
+  mocks.start.mockRejectedValue(error);
   const view = render(
     React.createElement(QueryClientProvider, { client }, React.createElement(StatusBar)),
   );
@@ -73,6 +74,7 @@ it('reports launch errors and clears local loading so the user can retry explici
   fireEvent.click(button);
   await waitFor(() =>
     expect(mocks.toast).toHaveBeenCalledWith({
+      error,
       variant: 'destructive',
       description: 'startup unconfirmed',
     }),

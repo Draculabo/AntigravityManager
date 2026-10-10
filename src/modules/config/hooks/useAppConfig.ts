@@ -139,6 +139,7 @@ export function useAppConfig() {
       queryClient.invalidateQueries({ queryKey: ['desktopPreferences'] });
       queryClient.invalidateQueries({ queryKey: ['accountAlertPolicy'] });
       toast({
+        error: err,
         title: t('settings.toast.saveFailed.title'),
         description: t('settings.service-unavailable'),
         variant: 'destructive',

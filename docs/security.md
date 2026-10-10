@@ -50,13 +50,21 @@ preload event boundary and does not change Zod configuration in other processes.
 
 ## Sensitive data
 
-Cloud-account load errors offer an explicit bug-report action. It copies the app, OS, architecture,
+Error notifications and cloud-account load failures offer an explicit bug-report action. It copies the app, OS, architecture,
 Electron and Node versions together with the available error details to the clipboard, then opens
 the GitHub bug template without report contents in its URL. The environment endpoint excludes
 hostname, network addresses and account identifiers. The report masks common credential forms,
 email addresses and user-directory names; it does not read account records or log files. Users
 paste the report and submit it themselves. Clipboard failure prevents opening the form; browser
 failure preserves the copied report and provides the form URL for manual continuation.
+
+Notification callers pass the caught exception to the renderer's toast boundary, which immediately
+extracts the available stack and diagnostic fields and applies the existing redactor. Notification
+state retains this text snapshot, never the raw exception or arbitrary provider/account properties.
+The details dialog renders that same snapshot as selectable plain text and remains closable during
+report preparation. Public IPC sanitization stays unchanged; a backend stack removed by its owner
+cannot be reconstructed from the renderer's transport stack. Missing exceptions use the available
+notification text without creating a synthetic stack. Viewing details does not copy or send a report.
 
 Remote desktop bootstrap verifies core compatibility, readiness, PID, epoch and a profile
 fingerprint against the profile-owner probe before enabling owner operations. The fingerprint

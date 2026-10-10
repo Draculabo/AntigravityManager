@@ -162,6 +162,7 @@ function CloudAccountListContent() {
     }
 
     toast({
+      error,
       title: t('cloud.error.loadFailed'),
       description: getLocalizedErrorMessage(error, t),
       variant: 'destructive',
@@ -195,6 +196,7 @@ function CloudAccountListContent() {
         },
         onError: (err) =>
           toast({
+            error: err,
             title: t('cloud.toast.refreshFailed'),
             description: getLocalizedErrorMessage(err, t),
             variant: 'destructive',
@@ -216,6 +218,7 @@ function CloudAccountListContent() {
         onError: (err) => {
           const switchCode = readCloudAccountSwitchErrorCode(err) ?? 'switch-failed';
           toast({
+            error: err,
             title: t('cloud.toast.switchFailed'),
             description: t(`cloud.toast.switchFailureCodes.${switchCode}`),
             variant: 'destructive',
@@ -234,7 +237,8 @@ function CloudAccountListContent() {
             toast({ title: t('cloud.toast.deleted'), variant: 'success' });
             selectionStore.getState().setSelected(id, false);
           },
-          onError: () => toast({ title: t('cloud.toast.deleteFailed'), variant: 'destructive' }),
+          onError: (error) =>
+            toast({ error, title: t('cloud.toast.deleteFailed'), variant: 'destructive' }),
         },
       );
     }
@@ -254,8 +258,8 @@ function CloudAccountListContent() {
             title: checked ? t('cloud.toast.autoSwitchOn') : t('cloud.toast.autoSwitchOff'),
             variant: 'success',
           }),
-        onError: () =>
-          toast({ title: t('cloud.toast.updateSettingsFailed'), variant: 'destructive' }),
+        onError: (error) =>
+          toast({ error, title: t('cloud.toast.updateSettingsFailed'), variant: 'destructive' }),
       },
     );
   };
@@ -266,6 +270,7 @@ function CloudAccountListContent() {
       onSuccess: () => toast({ title: t('cloud.polling') }),
       onError: (err) =>
         toast({
+          error: err,
           title: t('cloud.toast.pollFailed'),
           description: getLocalizedErrorMessage(err, t),
           variant: 'destructive',

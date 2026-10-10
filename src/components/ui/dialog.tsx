@@ -30,17 +30,28 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { closeDisabled?: boolean }
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    closeDisabled?: boolean;
+    overlayClassName?: string;
+  }
 >(
   (
-    { className, children, closeDisabled = false, onOpenAutoFocus, onCloseAutoFocus, ...props },
+    {
+      className,
+      children,
+      closeDisabled = false,
+      overlayClassName,
+      onOpenAutoFocus,
+      onCloseAutoFocus,
+      ...props
+    },
     ref,
   ) => {
     const { t } = useTranslation();
     const previousFocus = React.useRef<HTMLElement | null>(null);
     return (
       <DialogPortal>
-        <DialogOverlay />
+        <DialogOverlay className={overlayClassName} />
         <DialogPrimitive.Content
           ref={ref}
           className={cn(
