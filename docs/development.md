@@ -11,6 +11,11 @@ This document covers contributor setup and routine commands. Command definitions
 
 Use npm only. The repository contains `package-lock.json`; do not introduce another package manager or lockfile.
 
+Linux AppImage packaging runs the maker's downloaded `appimagetool` with
+`--appimage-extract-and-run`, so the build step does not require FUSE libraries or mount
+access. Running the installed AppImage still requires a supported AppImage runtime
+environment. See [installer verification](testing.md) for build and native update checks.
+
 ## Common commands
 
 Schema replay uses `npm run test:schema:replay -- <audit-database-path>` with a Node runtime that

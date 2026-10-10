@@ -20,7 +20,10 @@ Package `resources/linux/app-update.yml` because the library reads its cache con
 even when the runtime supplies a feed explicitly. Exclude DEB/RPM from updater metadata.
 Patch the existing maker to forward the requested architecture through assembly and runtime
 repacking, and invoke Bash with separate arguments so paths containing spaces stay intact.
-Remove the patch when an upgraded maker supplies both fixes; its executable regression test
+Run the downloaded build tool with `--appimage-extract-and-run` so packaging does not
+require FUSE libraries or mount access on CI runners. This affects the build tool only;
+installed applications retain their existing AppImage runtime requirements.
+Remove the patch when an upgraded maker supplies these fixes; its executable regression test
 guards those requirements.
 
 Check the original archive and downloaded ELF/AppImage architecture before replacement.
@@ -51,6 +54,13 @@ Unit tests cover format detection, permissions, architecture, concurrent operati
 retry, cache loss, explicit installation, fallback and notification actions. The real HTTP
 download check covers both architecture feeds, checksum failure and interrupted transfers.
 The maker regression test checks architecture forwarding and argument-safe Bash execution.
+On Linux it also runs the patched shell script against tool fixtures that reject execution
+without extraction mode, covering both architectures and paths containing spaces.
+The release build runs this check before making Linux artifacts. A WSL2 x64 check on
+2026-10-10 blocks `dlopen` of `libfuse.so.2`: the unmodified invocation reproduces the CI
+failure, while extraction-mode repacking succeeds with the real `appimagetool` and
+application archive. The resulting type-2 x64 archive extracts with its application payload
+and patched AppRun intact. Native ARM64 execution remains a CI validation requirement.
 
 Native acceptance uses diagnostic port `0` and discovers each process through its isolated
 `DevToolsActivePort` file. A fixed port can remain occupied when the library starts the new
