@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check automatic release notes
+        run: npm run test:acceptance -- release notes
+
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }} # Use GH_TOKEN to trigger other workflows

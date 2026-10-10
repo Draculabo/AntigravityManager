@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { HashSchema, TagSchema } from './release-source.mjs';
 
@@ -21,7 +20,6 @@ export const DocumentSchema = z
   .strictObject({
     schemaVersion: z.literal(1),
     version: z.string().regex(/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/),
-    reviewed: z.literal(true),
     source: z.strictObject({ baseTag: TagSchema.nullable(), headSha: HashSchema }),
     overview: z.string().trim().min(1),
     highlights: z.array(ItemSchema).min(1).max(12),
@@ -38,38 +36,14 @@ export const DocumentSchema = z
     'Domain sections must be unique.',
   );
 
-export async function readDocument(file) {
-  let input;
-  try {
-    input = JSON.parse(await readFile(file, 'utf8'));
-  } catch {
-    throw new Error(
-      'A reviewed release document is required. Prepare and review release-notes/v<VERSION>.json before publishing.',
-    );
-  }
-  const result = DocumentSchema.safeParse(input);
-  if (!result.success) {
-    throw new Error(
-      'Release document is incomplete or invalid: review the overview, highlights, domain sections and source references.',
-    );
-  }
-  return result.data;
+function escapeText(text) {
+  return text.replace(/[\r\n]+/g, ' ').replace(/[\\`*_{}[\]<>#]/g, '\\$&');
 }
 
 function validateReferences(document, data) {
   const commits = new Map(data.commits.map((commit) => [commit.hash, commit]));
   const pulls = new Map(data.pullRequests.map((pull) => [pull.number, pull]));
   const covered = new Set();
-  const validateText = (text) => {
-    for (const match of text.matchAll(/#(\d+)|github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/g)) {
-      if (
-        !pulls.has(Number(match[1] || match[3])) ||
-        (match[2] && match[2].toLowerCase() !== data.repository.toLowerCase())
-      ) {
-        throw new Error('Release document text cites an unverified PR.');
-      }
-    }
-  };
   const validate = (item, details) => {
     for (const reference of item.references) {
       const [kind, id] = reference.split(':');
@@ -80,10 +54,7 @@ function validateReferences(document, data) {
         covered.add(reference);
       }
     }
-    validateText(`${item.title} ${item.text}`);
   };
-  validateText(document.overview);
-  document.upgradeNotes.forEach(validateText);
   document.highlights.forEach((item) => validate(item, false));
   document.sections.forEach((section) => section.items.forEach((item) => validate(item, true)));
   for (const commit of data.commits) {
@@ -149,7 +120,7 @@ export function renderReleaseDocument(
       })
       .join(', ');
   const item = (entry) =>
-    `- **${entry.title}** — ${entry.text} (${referenceLinks(entry.references)})`;
+    `- **${escapeText(entry.title)}** — ${escapeText(entry.text)} (${referenceLinks(entry.references)})`;
   const count = (amount, label) => `${amount} ${label}${amount === 1 ? '' : 's'}`;
   const lines = [
     `# 🚀 Antigravity Manager Release v${document.version}`,
@@ -157,7 +128,7 @@ export function renderReleaseDocument(
     `**Release Date:** ${date}`,
     `**${data.baseTag ? `Since ${data.baseTag}` : 'First release'}:** ${count(data.commits.length, 'commit')} · ${count(data.pullRequests.length, 'merged PR')} · ${count(people.length, 'verified contributor')}`,
     '',
-    `> ${document.overview}`,
+    `> ${escapeText(document.overview)}`,
     '',
     '---',
     '',
@@ -175,7 +146,7 @@ export function renderReleaseDocument(
       '',
       '## ⚙️ Upgrade Notes',
       '',
-      ...document.upgradeNotes.map((note) => `- ${note}`),
+      ...document.upgradeNotes.map((note) => `- ${escapeText(note)}`),
     );
   }
   lines.push(
@@ -196,7 +167,10 @@ export function renderReleaseDocument(
     ),
   ];
   if (unmapped.length) {
-    lines.push('', `Git authors without verified GitHub attribution: ${unmapped.join(' · ')}.`);
+    lines.push(
+      '',
+      `Git authors without verified GitHub attribution: ${unmapped.map(escapeText).join(' · ')}.`,
+    );
   }
   const bots = [
     ...new Set([
@@ -217,7 +191,7 @@ export function renderReleaseDocument(
       '',
       ...data.pullRequests.map(
         (pull) =>
-          `- ${pull.title} by @${pull.login} ([#${pull.number}](${repositoryUrl}/pull/${pull.number}))`,
+          `- ${escapeText(pull.title)} by @${pull.login} ([#${pull.number}](${repositoryUrl}/pull/${pull.number}))`,
       ),
       '',
       '</details>',

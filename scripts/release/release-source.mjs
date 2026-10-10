@@ -31,13 +31,12 @@ function filesInCommit(cwd, hash) {
     .filter(Boolean);
 }
 
-function isEditorialCommit(cwd, commit, version) {
+function isGeneratedReleaseCommit(cwd, commit, version) {
   const files = filesInCommit(cwd, commit.hash);
   return (
     files.length > 0 &&
-    (files.every((file) => file.startsWith('release-notes/')) ||
-      (commit.subject === `chore(release): ${version}` &&
-        files.every((file) => metadataFiles.has(file))))
+    commit.subject === `chore(release): ${version}` &&
+    files.every((file) => metadataFiles.has(file))
   );
 }
 
@@ -56,20 +55,5 @@ export function sourceCommits(cwd, baseTag, head, version) {
       const [hash, subject, authorName] = entry.split('\x1f');
       return { hash: HashSchema.parse(hash), subject, authorName };
     })
-    .filter((commit) => !isEditorialCommit(cwd, commit, version));
-}
-
-export function verifyReviewedRange(cwd, review, head, version) {
-  git(cwd, ['merge-base', '--is-ancestor', review.headSha, head]);
-  const reviewed = sourceCommits(cwd, review.baseTag, review.headSha, version);
-  const current = sourceCommits(cwd, review.baseTag, head, version);
-  if (
-    JSON.stringify(reviewed.map((commit) => commit.hash)) !==
-    JSON.stringify(current.map((commit) => commit.hash))
-  ) {
-    throw new Error(
-      'Release notes are stale: source commits changed after the reviewed draft. Regenerate and review the notes.',
-    );
-  }
-  return current;
+    .filter((commit) => !isGeneratedReleaseCommit(cwd, commit, version));
 }
