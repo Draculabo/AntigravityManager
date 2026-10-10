@@ -167,6 +167,65 @@ Use [testing.md](testing.md) to select checks according to the affected behavior
 4. Run focused evidence first, then add broader checks only for affected surfaces.
 5. Report the commands actually run and any platform, credential or environment coverage that remains unverified.
 
+## Release notes
+
+Semantic-release keeps the existing Conventional Commits version rules and publishes a reviewed
+release story from `release-notes/v<VERSION>.json`. The story includes a dated title, source-range
+statistics, overview, highlights, product-domain sections, optional upgrade notes, contributors,
+merged PR details and the full comparison link. GitHub Releases and `CHANGELOG.md` receive the
+same Markdown. The manual Release workflow remains the publication entry point.
+
+Prepare notes after the source changes are committed. The following example assumes the previous
+tag is `v0.24.0` and the next version selected by the commit rules is `0.25.0`; replace both values
+for the actual release. Drafting and previewing do not create tags, packages or Releases.
+
+```powershell
+node scripts/release/prepare-release-notes.mjs draft --base v0.24.0 --version 0.25.0 --output artifacts/release-notes/v0.25.0.json
+```
+
+The companion `.json.source.json` contains the verified commit range, associated merged PRs and
+authors. Write the draft's `overview`, `highlights` and each domain item's `title` and `text` in
+English, describing user-visible changes rather than repeating commit subjects. Keep each item's
+`references` as `commit:<full SHA>` or `pr:<number>` from the facts. Every source change must be
+covered in the domain sections; highlights can select the most useful changes. The available
+domains are `core`, `gateway`, `desktop`, `integrations`, `tooling`, `security` and `documentation`.
+Use each domain at most once. Add `upgradeNotes` only when there is actual upgrade action to take.
+Set `reviewed` to `true` after checking claims against the source changes, then preview:
+
+```powershell
+node scripts/release/prepare-release-notes.mjs preview --document artifacts/release-notes/v0.25.0.json --data artifacts/release-notes/v0.25.0.json.source.json --output artifacts/release-notes/v0.25.0.md
+```
+
+Commit the reviewed document as `release-notes/v0.25.0.json` in a notes-only commit before running
+the Release workflow. Keep the companion facts and Markdown preview under ignored `artifacts/`.
+The commands refuse to overwrite existing files; use a fresh output path when regenerating.
+New source commits require a new draft and review. A notes-only commit and semantic-release's
+generated version/changelog commit do not invalidate the reviewed source range or inflate its
+statistics. Statistics count non-merge source commits, unique associated merged PRs, and verified
+human GitHub authors. Unmapped Git author names receive separate credit without inflating the
+verified contributor count. Bots appear separately as maintenance contributors.
+
+Generation checks the version, previous tag, ancestry, exact source range, coverage and PR
+references. Missing, incomplete or stale documents stop the release before preparation. GitHub
+metadata failures also stop generation. PR links use GitHub's commit-to-PR association, limited to
+merged PRs targeting the current release branch in this repository. Direct commits link to their
+SHA; unmapped authors keep their Git name. Commit text and email addresses never infer PRs or logins.
+Commit references with associated PRs render as PR links automatically.
+
+The read-only metadata requests prefer `GH_TOKEN` over `GITHUB_TOKEN`, use a 15-second deadline
+per request and reject redirects. Public metadata can be read anonymously; private repositories
+require a token with repository access. Publication still requires the existing GitHub publisher
+permissions. Draft `--anonymous --local` supports unpushed commits with an explicit incomplete
+attribution marker in the preview; the publishing plugin does not permit this fallback. Omit
+`--base` only for the first release. Beta documents use the version and previous tag from the beta
+release range.
+
+Run `npm run test:acceptance -- release notes` for local acceptance. It exercises the configured
+semantic-release loader, metadata validation, regeneration after editorial commits, the real
+changelog writer, preview CLI and the real GitHub publisher body with fixture transports. It
+creates only isolated local Git repositories and does not publish. Live publication credentials
+remain a separate environment-dependent check.
+
 ## Generated and derived files
 
 - Do not edit `src/routeTree.gen.ts` manually.
