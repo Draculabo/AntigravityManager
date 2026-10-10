@@ -111,6 +111,26 @@ test('loading, empty, failure and notifications give usable feedback in Electron
         path: testInfo.outputPath(`notification-${variant}.png`),
         animations: 'disabled',
       });
+      if (variant === 'destructive') {
+        await expect(
+          notification.getByRole('button', { name: '上报到 GitHub', exact: true }),
+        ).toBeVisible();
+        const details = notification.getByRole('button', { name: '详情', exact: true });
+        await details.focus();
+        await page.keyboard.press('Space');
+        const dialog = page.getByRole('dialog', { name: '错误详情' });
+        await expect(dialog).toBeVisible();
+        await expect(dialog).toContainText('at readAccounts (accounts.ts:42:1)');
+        await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toHaveCount(2);
+        await expect(dialog).toBeInViewport();
+        await page.screenshot({
+          path: testInfo.outputPath('error-notification-details.png'),
+          animations: 'disabled',
+        });
+        await page.keyboard.press('Escape');
+        await expect(dialog).not.toBeVisible();
+        await expect(details).toBeFocused();
+      }
       await dismiss.focus();
       await page.keyboard.press('Space');
       await expect(notification).not.toBeVisible();

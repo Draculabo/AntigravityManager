@@ -69,8 +69,8 @@ export function ManualUpdateNotification() {
   const openManualDownload = async () => {
     try {
       await window.electron.openExternalUrl(update.releaseUrl);
-    } catch {
-      toast({ title: t('update.available.open-download-failed'), variant: 'destructive' });
+    } catch (error) {
+      toast({ error, title: t('update.available.open-download-failed'), variant: 'destructive' });
     }
   };
 

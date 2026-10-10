@@ -97,10 +97,11 @@ describe('CloudAccountLoadError', () => {
   it.each(['environment', 'clipboard'] as const)(
     'keeps the bug form closed if %s preparation fails and allows retry',
     async (failure) => {
+      const error = new Error(failure === 'environment' ? 'Unavailable' : 'Denied');
       if (failure === 'environment') {
-        mocks.environment.mockRejectedValueOnce(new Error('Unavailable'));
+        mocks.environment.mockRejectedValueOnce(error);
       } else {
-        vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('Denied'));
+        vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(error);
       }
       renderError();
       fireEvent.click(screen.getByRole('button', { name: 'cloud.error.report-issue' }));
@@ -108,6 +109,7 @@ describe('CloudAccountLoadError', () => {
         expect(mocks.toast.mock.calls).toEqual([
           [
             {
+              error,
               title: 'cloud.error.report-copy-failed',
               description: 'cloud.error.report-retry',
               variant: 'destructive',
@@ -122,13 +124,15 @@ describe('CloudAccountLoadError', () => {
   );
 
   it('preserves the copied report if opening GitHub fails', async () => {
-    openExternalUrl.mockRejectedValueOnce(new Error('Browser unavailable'));
+    const error = new Error('Browser unavailable');
+    openExternalUrl.mockRejectedValueOnce(error);
     renderError();
     fireEvent.click(screen.getByRole('button', { name: 'cloud.error.report-issue' }));
     await waitFor(() =>
       expect(mocks.toast.mock.calls).toEqual([
         [
           {
+            error,
             title: 'cloud.error.report-open-failed',
             description: 'cloud.error.report-manual-open',
             variant: 'destructive',

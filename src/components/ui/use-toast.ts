@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { Toast, ToastActionElement, ToastProps } from '@/components/ui/toast';
+import { getErrorDetailsText } from '@/shared/utils/errorMessages';
+import { redactDiagnosticText } from '@/shared/observability/sentryPrivacy';
 
 const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 1000000;
@@ -9,6 +11,7 @@ type ToasterToast = ToastProps & {
   title?: React.ReactNode;
   description?: React.ReactNode;
   action?: ToastActionElement;
+  errorDetails?: string;
 };
 
 const actionTypes = {
@@ -131,22 +134,36 @@ function dispatch(action: Action) {
   });
 }
 
-type Toast = Omit<ToasterToast, 'id'>;
+type Toast = Omit<ToasterToast, 'id' | 'errorDetails'> & { error?: unknown };
+
+/** Store a redacted snapshot, never the original exception or its provider/account properties. */
+function notificationProps({ error, ...props }: Toast) {
+  const details =
+    error !== undefined
+      ? getErrorDetailsText(error)
+      : [props.title, props.description].filter((value) => typeof value === 'string').join('\n\n');
+  return {
+    ...props,
+    ...(props.variant === 'destructive' || error !== undefined
+      ? { errorDetails: redactDiagnosticText(details) }
+      : {}),
+  };
+}
 
 function toast({ ...props }: Toast) {
   const id = genId();
 
-  const update = (props: ToasterToast) =>
+  const update = (props: Toast & { id: string }) =>
     dispatch({
       type: 'UPDATE_TOAST',
-      toast: { ...props, id },
+      toast: { ...notificationProps(props), id },
     });
   const dismiss = () => dispatch({ type: 'DISMISS_TOAST', toastId: id });
 
   dispatch({
     type: 'ADD_TOAST',
     toast: {
-      ...props,
+      ...notificationProps(props),
       id,
       open: true,
       onOpenChange: (open) => {

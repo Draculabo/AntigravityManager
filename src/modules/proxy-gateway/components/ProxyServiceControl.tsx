@@ -79,11 +79,7 @@ export function ProxyServiceControl({ config, onConfigChange, onError }: ProxySe
     } catch (error) {
       const description = error instanceof Error ? error.message : t('proxy.service.start_failed');
       onError(description);
-      toast({
-        title: t('proxy.service.start_failed'),
-        description,
-        variant: 'destructive',
-      });
+      toast({ error, title: t('proxy.service.start_failed'), description, variant: 'destructive' });
     } finally {
       operationPending.current = false;
       setPending(false);

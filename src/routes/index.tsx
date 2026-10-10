@@ -26,6 +26,7 @@ function HomePageErrorBoundary({ error, reset }: { error: unknown; reset: () => 
     }
 
     toast({
+      error,
       title: t('error.generic'),
       description: getLocalizedErrorMessage(error, t),
       variant: 'destructive',

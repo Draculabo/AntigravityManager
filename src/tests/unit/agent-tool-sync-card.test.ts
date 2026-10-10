@@ -99,16 +99,18 @@ describe('coding tool card', () => {
     expect(fixture.remove).not.toHaveBeenCalled();
   });
   it('keeps failed configuration open for retry and reports a safe error', async () => {
-    fixture.configure.mockRejectedValueOnce({
+    const error = {
       data: { agentToolCode: 'backup-failed' },
       message: 'fixture-private-secret',
-    });
+    };
+    fixture.configure.mockRejectedValueOnce(error);
     mount();
     await screen.findByText(baseUrl);
     fireEvent.click(screen.getByRole('button', { name: 'agent-tools.update' }));
     fireEvent.click(screen.getByRole('button', { name: 'agent-tools.confirm' }));
     await waitFor(() =>
       expect(fixture.toast).toHaveBeenCalledWith({
+        error,
         title: 'agent-tools.action-error',
         description: 'agent-tools.errors.backup-failed',
         variant: 'destructive',

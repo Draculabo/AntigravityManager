@@ -83,6 +83,7 @@ export function AntigravityClientCacheSettings() {
       }
     } catch (error) {
       toast({
+        error,
         title: t('settings.cache.failedTitle'),
         description: error instanceof Error ? error.message : String(error),
         variant: 'destructive',

@@ -150,6 +150,12 @@ React Doctor runs in pull requests with changed-line scope and error blocking. T
 
 ### Desktop workspace checks
 
+Run `error-toast.test.ts`, `toaster-feedback.test.ts`, `account-load-bug-report.test.ts` and
+`cloud-account-load-error.test.ts` for notification diagnostics. They cover original/backend stack
+selection, redaction, snapshot retention, dismissal, explicit reporting, clipboard/browser failures
+and retry. The feedback workspace Electron check exercises the details dialog and keyboard close
+with a synthetic stack; it does not submit a GitHub issue or expose real account credentials.
+
 Run `npm run test:performance -- desktop-workspace.spec.mts` to check the production shell,
 account page and Traffic Monitor in an isolated Electron window with synthetic data. The check
 covers light/dark screenshots, supporting theme-color text contrast, a 900-pixel window, keyboard selection, proxy-dialog focus return,

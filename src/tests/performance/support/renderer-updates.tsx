@@ -14,7 +14,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Route as ProxyRoute } from '@/routes/proxy';
 import { Route as SettingsRoute } from '@/routes/settings';
 import { ThemeProvider } from '@/components/shared/theme-provider';
-import { Toaster } from '@/components/ui/toaster';
+import { AppToaster } from '@/modules/app-shell/components/AppToaster';
 import { toast } from '@/components/ui/use-toast';
 import type { ToastProps } from '@/components/ui/toast';
 import en from '@/localization/en';
@@ -101,6 +101,7 @@ window.__rendererFeedback = {
           variant,
           title: i18next.t('cloud.error.loadFailed'),
           description: i18next.t('traffic.load-failed-description'),
+          error: new Error('Synthetic feedback failure\n    at readAccounts (accounts.ts:42:1)'),
         });
         break;
     }
@@ -218,7 +219,7 @@ createRoot(root).render(
     <ThemeProvider defaultTheme="light" storageKey="renderer-workspace-theme">
       <QueryClientProvider client={client}>
         <RouterProvider router={workspaceRouter} />
-        <Toaster />
+        <AppToaster />
       </QueryClientProvider>
     </ThemeProvider>
   ) : (

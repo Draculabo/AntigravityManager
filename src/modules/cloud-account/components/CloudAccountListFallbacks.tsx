@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { useToast } from '@/components/ui/use-toast';
+import { redactDiagnosticText } from '@/shared/observability/sentryPrivacy';
 import { ipc } from '@/ipc/manager';
 import { BUG_REPORT_URL, buildAccountLoadBugReport } from '../utils/account-load-bug-report';
 import {
@@ -44,7 +45,7 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
   const { toast } = useToast();
   const [reporting, setReporting] = useState(false);
   const message = error ? getLocalizedErrorMessage(error, t) : t('cloud.error.loadFailed');
-  const details = error ? getErrorDetailsText(error) : '';
+  const details = error ? redactDiagnosticText(getErrorDetailsText(error)) : '';
   const shouldShowDataRepairGuidance =
     isDataMigrationError(error) || isMasterKeyUnavailableError(error);
 
@@ -63,8 +64,9 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
         title: t('cloud.error.report-copied'),
         description: t('cloud.error.report-paste-guide'),
       });
-    } catch {
+    } catch (error) {
       toast({
+        error,
         title: t(copied ? 'cloud.error.report-open-failed' : 'cloud.error.report-copy-failed'),
         description: t(copied ? 'cloud.error.report-manual-open' : 'cloud.error.report-retry', {
           url: BUG_REPORT_URL,

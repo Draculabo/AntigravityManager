@@ -181,7 +181,8 @@ describe('ProxyServiceControl', () => {
   });
 
   it('reports a rejected start and allows an explicit retry without repeating the notice', async () => {
-    mocks.start.mockRejectedValueOnce(new Error('Gateway unavailable'));
+    const error = new Error('Gateway unavailable');
+    mocks.start.mockRejectedValueOnce(error);
     renderControl();
     requestStart();
     confirmStart();
@@ -191,6 +192,7 @@ describe('ProxyServiceControl', () => {
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith('Gateway unavailable');
     expect(mocks.save).not.toHaveBeenCalled();
     expect(mocks.toast).toHaveBeenCalledExactlyOnceWith({
+      error,
       title: en.proxy.service.start_failed,
       description: 'Gateway unavailable',
       variant: 'destructive',

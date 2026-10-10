@@ -30,7 +30,8 @@ const proxy = (enabled: boolean, configured: boolean) => ({
 
 describe('upstream proxy settings', () => {
   it('shows a configuration-specific error if the saved address disappears before enabling', async () => {
-    api.update.mockRejectedValueOnce({ data: { configCode: 'invalid-input' } });
+    const error = { data: { configCode: 'invalid-input' } };
+    api.update.mockRejectedValueOnce(error);
     render(
       createElement(UpstreamProxySettings, {
         proxy: proxy(false, true),
@@ -41,6 +42,7 @@ describe('upstream proxy settings', () => {
     fireEvent.click(screen.getByRole('switch'));
     await waitFor(() =>
       expect(api.toast).toHaveBeenCalledExactlyOnceWith({
+        error,
         title: 'settings.proxy.configuration-invalid',
         variant: 'destructive',
       }),
@@ -148,9 +150,11 @@ describe('upstream proxy settings', () => {
     expect(screen.getByRole('switch')).toHaveProperty('disabled', true);
     fireEvent.click(screen.getByRole('button', { name: 'settings.service-save' }));
     expect(api.writeSecret).toHaveBeenCalledOnce();
-    await act(async () => pending.reject(new Error('synthetic private proxy details')));
+    const error = new Error('synthetic private proxy details');
+    await act(async () => pending.reject(error));
     expect(input).toHaveProperty('value', 'http://localhost:7890');
     expect(api.toast).toHaveBeenCalledExactlyOnceWith({
+      error,
       title: 'settings.service-unavailable',
       variant: 'destructive',
     });

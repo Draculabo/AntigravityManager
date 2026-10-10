@@ -116,6 +116,7 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
     } catch (error) {
       const profileCode = readCloudIdentityProfileErrorCode(error) ?? 'profile-operation-failed';
       toast({
+        error,
         title: t('cloud.toast.actionFailed'),
         description: t(`cloud.identity.profile-errors.${profileCode}`),
         variant: 'destructive',

@@ -159,6 +159,16 @@ const vi = {
     },
   },
   error: {
+    toast: {
+      'report-issue': 'Báo cáo trên GitHub',
+      'no-details': 'Không có ngăn xếp lỗi. Nội dung thông báo được hiển thị nếu có.',
+      copied:
+        'Đã sao chép thông tin lỗi Dán vào biểu mẫu GitHub, mô tả thao tác trước khi gặp lỗi rồi gửi báo cáo.',
+      'copy-failed':
+        'Không thể sao chép thông tin lỗi Hãy thử lại. Bạn cũng có thể mở phần chi tiết và sao chép lỗi thủ công.',
+      'open-failed':
+        'Không thể mở GitHub Thông tin đã được sao chép. Mở {{url}} và dán vào báo cáo.',
+    },
     generic: 'Đã xảy ra lỗi không mong đợi.',
     detailsTitle: 'Chi tiết lỗi',
     detailsDescription:

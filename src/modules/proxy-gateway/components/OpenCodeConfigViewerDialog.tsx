@@ -44,6 +44,7 @@ export function OpenCodeConfigViewerDialog({ onOpenChange }: OpenCodeConfigViewe
       });
     } catch (error) {
       toast({
+        error,
         title: t('proxy.open-code.config-copy-failed', 'Failed to copy configuration'),
         description: error instanceof Error ? error.message : undefined,
         variant: 'destructive',

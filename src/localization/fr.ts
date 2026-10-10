@@ -183,6 +183,17 @@ const fr = {
     },
   },
   error: {
+    toast: {
+      'report-issue': 'Signaler sur GitHub',
+      'no-details':
+        'Aucune trace disponible. Le texte de la notification est affiché si disponible.',
+      copied:
+        'Informations sur l’erreur copiées Collez-les dans le formulaire GitHub, décrivez vos actions, puis envoyez le rapport.',
+      'copy-failed':
+        'Impossible de copier les informations Réessayez. Vous pouvez aussi ouvrir les détails et copier l’erreur manuellement.',
+      'open-failed':
+        'Impossible d’ouvrir GitHub Les informations sont copiées. Ouvrez {{url}} et collez-les dans le rapport.',
+    },
     generic: 'Une erreur inattendue s est produite.',
     detailsTitle: 'Details de l erreur',
     detailsDescription:

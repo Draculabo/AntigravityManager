@@ -39,8 +39,8 @@ export function CloudAccountProxyEditor({ accountId, configured }: CloudAccountP
     savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
   };
 
-  const showError = () => {
-    toast({ title: t('cloud.card.proxy-save-failed'), variant: 'destructive' });
+  const showError = (error?: unknown) => {
+    toast({ title: t('cloud.card.proxy-save-failed'), variant: 'destructive', error });
   };
 
   const saveReplacement = (event: FocusEvent<HTMLInputElement>) => {

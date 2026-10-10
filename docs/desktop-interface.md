@@ -82,6 +82,15 @@ components. The proxy start confirmation returns keyboard focus to the service c
 
 ## Loading, empty states and notifications
 
+Destructive notifications offer Report to GitHub and Details alongside any existing retry action.
+They remain visible until dismissed, unless the caller provides a duration or a newer notification
+replaces them. Details opens a scrollable, selectable plain-text snapshot of the available error
+stack with credentials, email addresses and user-directory names masked. The dialog retains its
+selected error when the notification closes or changes; Escape, the close icon and Close dismiss
+it. Closing returns focus to the trigger while it is still mounted. Reporting copies environment
+and the displayed details before opening the GitHub bug template for user review and submission.
+Preparation and browser failures remain visible with retry; closing the dialog stays available.
+
 `FeedbackState` is the shared presentation for loading, empty and failed reads. Loading states name
 the work in progress and expose a busy status. Empty account and traffic views describe what appears
 there and how to proceed; an account filter with no matches keeps its reset action. Failed account

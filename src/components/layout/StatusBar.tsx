@@ -44,7 +44,7 @@ function useServiceStatus(target: AntigravityAppTarget) {
     refetchInterval: 300,
   });
   const onError = (error: unknown) => {
-    toast({ variant: 'destructive', description: getLocalizedErrorMessage(error, t) });
+    toast({ error, variant: 'destructive', description: getLocalizedErrorMessage(error, t) });
   };
   const onSettled = () => {
     queryClient.invalidateQueries({ queryKey: ['process', 'status', target] });

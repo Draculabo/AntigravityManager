@@ -60,6 +60,7 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
       return true;
     } catch (error) {
       toast({
+        error,
         title: t('proxy.open-code.error-title', 'OpenCode update failed'),
         description:
           error instanceof Error

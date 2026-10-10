@@ -48,6 +48,7 @@ export function CloudAccountFileDialogs() {
       toast({ title: t('cloud.exportImport.exportSuccess') });
     } catch (error) {
       toast({
+        error,
         title: t('cloud.error.loadFailed'),
         description: fileErrorMessage(error),
         variant: 'destructive',
@@ -83,6 +84,7 @@ export function CloudAccountFileDialogs() {
         },
         onError: (error) => {
           toast({
+            error,
             title: t('cloud.error.loadFailed'),
             description: fileErrorMessage(error),
             variant: 'destructive',

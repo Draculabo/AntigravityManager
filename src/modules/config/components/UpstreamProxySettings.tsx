@@ -32,6 +32,7 @@ export function UpstreamProxySettings({ proxy, available, onSaved }: UpstreamPro
 
   const reportFailure = (error: unknown) => {
     toast({
+      error,
       title: t(
         readServiceConfigErrorCode(error) === 'invalid-input'
           ? 'settings.proxy.configuration-invalid'

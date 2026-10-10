@@ -160,6 +160,16 @@ const tr = {
     },
   },
   error: {
+    toast: {
+      'report-issue': 'GitHub üzerinden bildir',
+      'no-details': 'Hata yığını mevcut değil. Varsa bildirim metni gösterilir.',
+      copied:
+        'Hata bilgileri kopyalandı GitHub formuna yapıştırın, yaptığınız işlemleri açıklayın ve bildirimi gönderin.',
+      'copy-failed':
+        'Hata bilgileri kopyalanamadı Tekrar deneyin. Ayrıntıları açıp hatayı elle de kopyalayabilirsiniz.',
+      'open-failed':
+        'GitHub açılamadı Bilgiler kopyalandı. {{url}} adresini açıp bildirime yapıştırın.',
+    },
     generic: 'Beklenmeyen bir hata oluştu.',
     detailsTitle: 'Hata ayrıntıları',
     detailsDescription:
