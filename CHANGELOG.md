@@ -2,6 +2,65 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.25.0
+
+**Release Date:** 2026-10-10
+**Since v0.24.0:** 8 commits · 1 merged PR · 1 verified contributor
+
+> This release includes updates in Desktop & User Experience, Security & Reliability, Tooling & Maintenance.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — add Linux AppImage automatic updates ([b436dfd](https://github.com/Draculabo/AntigravityManager/commit/b436dfd9aafad26eb08b03e390d1dd58a2d093fc))
+- **Feature** — add error notification details and GitHub reports ([0217247](https://github.com/Draculabo/AntigravityManager/commit/0217247419057838d01ca05dd7e7c745b3fef5f3))
+- **Feature** — add sanitized diagnostic log attachments ([2d3f4c3](https://github.com/Draculabo/AntigravityManager/commit/2d3f4c3abcd9c661026745522cba933bba11b21b))
+- **Feature** — publish reviewed release notes with PR attribution ([20a29d9](https://github.com/Draculabo/AntigravityManager/commit/20a29d99ec0ab5011a40417e7371531de7ca9b16))
+- **Fix** — isolate thought signatures by conversation ownership ([43cc1c7](https://github.com/Draculabo/AntigravityManager/commit/43cc1c74f41f10a95f0054ad4b9c1b83f3aa7e9d))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.24.0 ([#341](https://github.com/Draculabo/AntigravityManager/pull/341))
+- **Feature** — add Linux AppImage automatic updates ([b436dfd](https://github.com/Draculabo/AntigravityManager/commit/b436dfd9aafad26eb08b03e390d1dd58a2d093fc))
+- **Feature** — add error notification details and GitHub reports ([0217247](https://github.com/Draculabo/AntigravityManager/commit/0217247419057838d01ca05dd7e7c745b3fef5f3))
+- **Feature** — add sanitized diagnostic log attachments ([2d3f4c3](https://github.com/Draculabo/AntigravityManager/commit/2d3f4c3abcd9c661026745522cba933bba11b21b))
+
+---
+
+## 🔒 Security & Reliability
+
+- **Fix** — isolate thought signatures by conversation ownership ([43cc1c7](https://github.com/Draculabo/AntigravityManager/commit/43cc1c74f41f10a95f0054ad4b9c1b83f3aa7e9d))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Feature** — publish reviewed release notes with PR attribution ([20a29d9](https://github.com/Draculabo/AntigravityManager/commit/20a29d99ec0ab5011a40417e7371531de7ca9b16))
+- **Fix** — run AppImage tool without FUSE ([30cfaf0](https://github.com/Draculabo/AntigravityManager/commit/30cfaf0171daf09e532a68a4e74c4789fca082c1))
+- **Fix** — generate update notes automatically in CI ([bd30113](https://github.com/Draculabo/AntigravityManager/commit/bd30113133fdb5c5e4b75ac2017c19b2341f6955))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.24.0 by @Draculabo ([#341](https://github.com/Draculabo/AntigravityManager/pull/341))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.24.0...v0.25.0
+
 ## [0.24.0](https://github.com/Draculabo/AntigravityManager/compare/v0.23.0...v0.24.0) (2026-10-09)
 
 ### ✨ Features
