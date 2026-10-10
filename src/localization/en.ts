@@ -177,6 +177,24 @@ const en = {
     },
   },
   error: {
+    logs: {
+      title: 'Sanitized log preview',
+      description:
+        'Optional: preview logs from the last 10 minutes, then save and manually attach the file to GitHub. Uncertain content is removed. Original logs are unchanged.',
+      generate: 'Generate sanitized log attachment',
+      save: 'Save reviewed attachment',
+      summary: '{{kib}} KiB · {{removed}} records with content removed · 1 MiB maximum',
+      missing: 'Missing or unreadable log sources: {{sources}}. This attachment is incomplete.',
+      truncated:
+        'Logs were truncated by the read or attachment limit. This attachment is incomplete.',
+      generating: 'Preparing sanitized logs…',
+      saving: 'Choose a save location…',
+      saved: 'Attachment saved. Add the file to your GitHub issue manually.',
+      cancelled: 'Save cancelled. You can choose a location again.',
+      expired: 'This preview expired. Generate a new attachment before saving.',
+      failed:
+        'No recent logs are available, or the attachment could not be generated or saved. Retry, or report the error details alone. Original logs are never used as a fallback.',
+    },
     toast: {
       'report-issue': 'Report to GitHub',
       'no-details': 'No error stack is available. The notification text is shown when available.',

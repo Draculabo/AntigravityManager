@@ -97,6 +97,7 @@ describe('Electron gateway read adapter', () => {
       },
     };
     const operations: CoreRpcOperations = {
+      diagnosticLogs: vi.fn(),
       errorReporting: { setEnabled: vi.fn() },
       auditFile: auditFileOwner,
       ipcCapture: ipcCaptureOwner,

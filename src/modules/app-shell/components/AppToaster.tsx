@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { ipc } from '@/ipc/manager';
 import { BUG_REPORT_URL, buildErrorBugReport } from '../bug-report';
+import { DiagnosticLogAttachment } from './DiagnosticLogAttachment';
 
 interface ErrorNotification {
   id: string;
@@ -111,7 +112,10 @@ export function AppToaster() {
           }
         }}
       >
-        <DialogContent className="z-[110] max-w-3xl" overlayClassName="z-[105]">
+        <DialogContent
+          className="z-[110] max-h-[90vh] max-w-3xl overflow-y-auto"
+          overlayClassName="z-[105]"
+        >
           <DialogHeader>
             <DialogTitle>{t('error.detailsTitle')}</DialogTitle>
             <DialogDescription>{t('error.detailsDescription')}</DialogDescription>
@@ -119,11 +123,12 @@ export function AppToaster() {
           <pre
             tabIndex={0}
             aria-label={t('error.detailsTitle')}
-            className="bg-muted text-foreground max-h-[55vh] overflow-auto rounded-md p-4 text-xs break-words whitespace-pre-wrap select-text"
+            className="bg-muted text-foreground max-h-[35vh] overflow-auto rounded-md p-4 text-xs break-words whitespace-pre-wrap select-text"
           >
             {selected?.details || t('error.toast.no-details')}
           </pre>
           {selected ? reportStatus(selected) : null}
+          {selected ? <DiagnosticLogAttachment key={selected.id} /> : null}
           <DialogFooter>
             {selected ? reportButton(selected) : null}
             <DialogClose asChild>

@@ -1,5 +1,6 @@
 import type { ManagementClient } from '@/core/management/client';
 import type { CoreRpcClient } from '@/core/rpc/client';
+import { selectDiagnosticLogOwner } from '../diagnostic-logs/desktop-service';
 import { selectCloudAccountAdapter } from '@/modules/cloud-account/ipc/cloud-account-adapter';
 import { selectConfigAdapter } from '@/modules/config/ipc/config-adapter';
 import { selectLocalAccountAdapter } from '@/modules/account/ipc/local-account-adapter';
@@ -18,6 +19,7 @@ type Selection =
 
 /** Synchronous composition, before renderer admission; no observer can see a partial selection. */
 export function selectDesktopOwners(selection: Selection): void {
+  selectDiagnosticLogOwner(selection);
   selectGatewayAdapter(selection);
   selectConfigAdapter(selection);
   selectLocalAccountAdapter(selection);

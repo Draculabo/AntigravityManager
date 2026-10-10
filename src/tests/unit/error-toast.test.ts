@@ -90,6 +90,7 @@ describe('error notification diagnostics', () => {
     expect(snapshot.errorDetails).not.toMatch(/synthetic-secret|PrivateUser|private@example/);
     source.data.backendStack = 'Changed after notification';
     const dialog = showDetails();
+    expect(within(dialog).getByRole('button', { name: 'error.logs.generate' })).toBeTruthy();
     expect(dialog.textContent).toContain(failure.data.backendStack);
     expect(dialog.textContent).not.toContain('Transport stack');
     expect(dialog.textContent).not.toContain('Changed after notification');

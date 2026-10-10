@@ -54,7 +54,7 @@ Error notifications and cloud-account load failures offer an explicit bug-report
 Electron and Node versions together with the available error details to the clipboard, then opens
 the GitHub bug template without report contents in its URL. The environment endpoint excludes
 hostname, network addresses and account identifiers. The report masks common credential forms,
-email addresses and user-directory names; it does not read account records or log files. Users
+email addresses and user-directory names; copying the report does not read account records or log files. Users
 paste the report and submit it themselves. Clipboard failure prevents opening the form; browser
 failure preserves the copied report and provides the form URL for manual continuation.
 
@@ -65,6 +65,29 @@ The details dialog renders that same snapshot as selectable plain text and remai
 report preparation. Public IPC sanitization stays unchanged; a backend stack removed by its owner
 cannot be reconstructed from the renderer's transport stack. Missing exceptions use the available
 notification text without creating a synthetic stack. Viewing details does not copy or send a report.
+
+The error details dialog offers an optional sanitized log attachment. Generation reads the ten
+minutes ending at its captured start time from rotating `app` logs and, in standalone mode, the
+selected core's rotating `core` logs. Core sanitization runs inside that owner; unavailable core
+logs never fall back to local core files. The reader excludes audit databases, request captures,
+account backups and symlinks. File selection, read work, retained previews and output are bounded;
+each source contributes at most 448 KiB and the complete UTF-8 attachment remains below 1 MiB.
+Missing sources and truncation appear in both preview and attachment.
+
+Uncertain records lose their entire free-text content, including prompts, tool arguments,
+request/response bodies, stacks, identities, paths and credentials. Only timestamps, levels,
+closed error codes, bounded HTTP statuses/timing/retry fields and specific Boolean diagnostics
+survive. A small set of exact fixed diagnostic messages can survive unchanged. Removed records
+are marked `Content removed`; arbitrary message prefixes, nested objects and string values are
+never preserved. This intentionally favors privacy over completeness.
+
+Only sanitized text crosses IPC. Electron main retains at most four expiring preview snapshots;
+the save endpoint accepts their UUID capabilities, never renderer-provided contents or paths.
+The trusted save dialog supplies the destination, and atomic export writes exactly the reviewed
+snapshot with restrictive POSIX permissions. Export rejects non-text destinations and the profile
+directory, protecting original logs and backups. Attachment routes bypass traffic auditing.
+Users preview, save and manually attach the file to GitHub. Generation or save failure leaves
+error-only reporting available and never substitutes original logs or uploads anything.
 
 Remote desktop bootstrap verifies core compatibility, readiness, PID, epoch and a profile
 fingerprint against the profile-owner probe before enabling owner operations. The fingerprint

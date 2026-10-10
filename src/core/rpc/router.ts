@@ -1,4 +1,6 @@
 import type { CoreRpcOperations, CoreRpcWorkLifecycle } from './operations';
+import { createDiagnosticLogCoreRouter } from '@/modules/app-shell/diagnostic-logs/core-router';
+import { readDiagnosticLogs } from '@/modules/app-shell/diagnostic-logs/read-logs';
 import {
   errorReportingService,
   createErrorReportingRouter,
@@ -142,6 +144,7 @@ export function createCoreRpcOperations(
   }
 
   return {
+    diagnosticLogs: (until) => readDiagnosticLogs('core', until),
     ipcCapture: ipcCaptureOwner,
     audit: auditOwner,
     thought: thoughtOwner,
@@ -291,6 +294,7 @@ export function createCoreRpcOperations(
 
 export function createCoreRpcRouter(operations: CoreRpcOperations) {
   return os.router({
+    diagnosticLogs: createDiagnosticLogCoreRouter(operations.diagnosticLogs),
     errorReporting: createErrorReportingRouter(operations.errorReporting),
     ipcCapture: createIpcCaptureRouter(operations.ipcCapture),
     audit: createAuditOwnerRouter(operations.audit),
