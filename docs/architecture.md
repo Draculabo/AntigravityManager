@@ -2,6 +2,14 @@
 
 This document is the current architectural map for Antigravity Manager. Read it before changing process boundaries, IPC, persistence, routing, or the proxy gateway. Decision rationale belongs in [Agent Notes](../.agents/notes/README.md), not here.
 
+## Error report attachments
+
+The app-shell module owns optional diagnostic log attachments. Electron main reads its `app`
+logs; standalone mode also reads a sanitized `core` snapshot through the selected owner's
+private RPC. The renderer receives only the preview and a temporary save capability. The main
+process holds that exact snapshot and owns the save dialog and atomic export. No log upload
+service or general filesystem API is exposed. See [the privacy and export policy](security.md#sensitive-data).
+
 ## Gateway Schema admission
 
 OpenAI Chat, effective Responses requests and Anthropic Messages prepare tool parameter schemas

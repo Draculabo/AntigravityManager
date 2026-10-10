@@ -1,4 +1,5 @@
 import type { AuditFileOperations } from '@/modules/proxy-gateway/audit/audit-file-owner.service';
+import { LogSourceSchema } from '@/modules/app-shell/diagnostic-logs/schema';
 import type { IpcCaptureOperations } from '@/modules/proxy-gateway/audit/ipc-capture-owner';
 import {
   IpcCaptureBeginResultSchema,
@@ -89,6 +90,9 @@ import type { OpenCodeOperations } from '@/modules/proxy-gateway/opencode-sync/o
 import type { LocalAccountOperations } from '@/modules/account/services/local-account-owner.service';
 
 export class CoreRpcClient {
+  async diagnosticLogs(until: number) {
+    return LogSourceSchema.parse(await this.rpc.diagnosticLogs({ until }));
+  }
   async setErrorReportingEnabled(enabled: boolean): Promise<void> {
     await this.rpc.errorReporting.setEnabled({ enabled });
   }

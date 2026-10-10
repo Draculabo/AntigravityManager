@@ -29,6 +29,8 @@ import { selectAgentToolsAdapter } from '@/modules/proxy-gateway/ipc/agent-tools
 import { gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
 import { createRouterClient } from '@orpc/server';
 import { runCli } from '@/cli/app';
+import { readDiagnosticLogs } from '@/modules/app-shell/diagnostic-logs/read-logs';
+import { LOG_SOURCE_MAX_BYTES } from '@/modules/app-shell/diagnostic-logs/schema';
 
 const closeables: Array<{ close(): Promise<void> }> = [];
 const directories: string[] = [];
@@ -82,6 +84,7 @@ const deviceProfile = {
 
 function operations(): CoreRpcOperations {
   return {
+    diagnosticLogs: vi.fn(),
     errorReporting: { setEnabled: vi.fn() },
     ipcCapture: ipcCaptureOwner,
     auditFile: auditFileOwner,
@@ -179,6 +182,39 @@ function operations(): CoreRpcOperations {
     gatewayStop: vi.fn(async () => ({ success: true as const })),
   };
 }
+
+it('transports only a core-sanitized log snapshot over the private pipe within its existing response cap', async () => {
+  const socketPath = await endpoint();
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-log-rpc-'));
+  directories.push(dir);
+  const until = Date.now();
+  const date = new Date(until);
+  const filename = `core-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}.log`;
+  const raw = `[${date.toISOString()}] [ERROR] private@example.invalid {"code":"ECONNRESET","status":502,"prompt":"synthetic-private-prompt"}\n`;
+  await fs.writeFile(path.join(dir, filename), raw.repeat(12000));
+  const rpc = operations();
+  rpc.diagnosticLogs = (time) => readDiagnosticLogs('core', time, dir);
+  const server = new ManagementServer({
+    endpoint: socketPath,
+    getStatus: () => ({
+      state: 'running',
+      pid: process.pid,
+      gateway: { running: false, port: null },
+    }),
+    shutdown: async () => {},
+    onShutdownError: vi.fn(),
+    rpc,
+  });
+  closeables.push(server);
+  await server.start();
+  const result = await new CoreRpcClient(socketPath).diagnosticLogs(until);
+  expect(result.role).toBe('core');
+  expect(result.truncated).toBe(true);
+  expect(result.records).toBeGreaterThan(0);
+  expect(result.text).not.toMatch(/private@example|synthetic-private-prompt/);
+  expect(result.text).toContain('{"code":"ECONNRESET","status":502}');
+  expect(Buffer.byteLength(result.text)).toBeLessThanOrEqual(LOG_SOURCE_MAX_BYTES);
+});
 
 describe('core application RPC', () => {
   it('configures and restores tools from CLI and the desktop adapter over real private RPC', async () => {

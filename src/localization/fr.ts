@@ -183,6 +183,7 @@ const fr = {
     },
   },
   error: {
+    logs: en.error.logs,
     toast: {
       'report-issue': 'Signaler sur GitHub',
       'no-details':

@@ -150,6 +150,12 @@ React Doctor runs in pull requests with changed-line scope and error blocking. T
 
 ### Desktop workspace checks
 
+Run `diagnostic-logs.test.ts` and `diagnostic-log-attachment.test.ts` for optional log attachments.
+They cover whole-record removal, strict diagnostic projection, the ten-minute window, rotation,
+size/missing flags, selected-owner failure, exact snapshot export, cancellation, retry and expiry.
+`core-rpc.test.ts` also transports a near-limit synthetic core snapshot over the real private
+pipe/socket. These checks never use production logs or submit a GitHub issue.
+
 Run `error-toast.test.ts`, `toaster-feedback.test.ts`, `account-load-bug-report.test.ts` and
 `cloud-account-load-error.test.ts` for notification diagnostics. They cover original/backend stack
 selection, redaction, snapshot retention, dismissal, explicit reporting, clipboard/browser failures

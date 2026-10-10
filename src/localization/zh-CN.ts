@@ -162,6 +162,23 @@ const zhCn = {
     },
   },
   error: {
+    logs: {
+      title: '脱敏日志预览',
+      description:
+        '可选：预览最近 10 分钟的日志，保存后手动附到 GitHub。不确定的内容将被移除，原始日志保持不变。',
+      generate: '生成脱敏日志附件',
+      save: '保存已预览的附件',
+      summary: '{{kib}} KiB · {{removed}} 条记录内容已移除 · 总量上限 1 MiB',
+      missing: '日志来源缺失或无法读取：{{sources}}。此附件不完整。',
+      truncated: '日志因读取或附件大小限制被截断，此附件不完整。',
+      generating: '正在生成脱敏日志…',
+      saving: '请选择保存位置…',
+      saved: '附件已保存，请手动添加到 GitHub Issue。',
+      cancelled: '已取消保存，可以重新选择保存位置。',
+      expired: '预览已过期，请重新生成附件后保存。',
+      failed:
+        '没有近期日志，或附件生成、保存失败。可以重试，也可以仅反馈错误详情。不会改用原始日志。',
+    },
     toast: {
       'report-issue': '上报到 GitHub',
       'no-details': '当前错误未提供堆栈或更多详情。',

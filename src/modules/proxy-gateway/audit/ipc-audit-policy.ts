@@ -3,6 +3,7 @@ export function isAuditManagementIpc(path: string): boolean {
     path.startsWith('gateway/audit') ||
     path.startsWith('gateway/thought') ||
     path.startsWith('config/') ||
+    path.startsWith('app/diagnosticLogs/') ||
     (path.startsWith('gateway/') && path.toLowerCase().includes('opencode'))
   );
 }
