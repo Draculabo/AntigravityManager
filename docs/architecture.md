@@ -201,6 +201,15 @@ after the download completes. Install format is detected from installed package 
 unpacked builds use the manual release path. The MSI family applies to MSI-to-MSI upgrades;
 historical random-family MSI and cross-installer transitions require independent migration evidence.
 
+Linux AppImage builds use an app-shell-owned `electron-updater` service. Only a packaged,
+writable AppImage with a matching ELF architecture activates it; DEB, RPM and unpacked builds
+use the manual release path. The service downloads a complete archive from the published
+architecture-specific `latest-linux*.yml` feed, verifies it through the updater library, and
+offers an explicit restart action. Ordinary quit does not install an update. The existing
+desktop shutdown coordinator closes the gateway and profile owner before replacement and
+relaunch. Forge packages the updater cache configuration and includes only AppImage assets in
+Linux updater metadata. Download failures expose retry and manual-download actions.
+
 Update notices offer an on-demand release-notes dialog before installation and during background
 downloads. The app-shell main process reads the selected tag's `updater.json`, checks its version,
 and falls back to the GitHub API for that exact tag when metadata is missing, invalid or contains

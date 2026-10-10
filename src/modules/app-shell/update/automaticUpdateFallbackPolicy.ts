@@ -1,6 +1,6 @@
 import type { ManualUpdateCheckResult } from './types';
 
-export function selectWindowsUpdateResult({
+export function selectAutomaticUpdateResult({
   electronUpdaterResult,
   manualResult,
 }: {

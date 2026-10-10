@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectWindowsUpdateResult } from '@/modules/app-shell/update/windowsUpdateFallbackPolicy';
+import { selectAutomaticUpdateResult } from '@/modules/app-shell/update/automaticUpdateFallbackPolicy';
 import type { ManualUpdateCheckResult } from '@/modules/app-shell/update/types';
 
 const electronUpdate: ManualUpdateCheckResult = {
@@ -26,10 +26,10 @@ const manualUpdate: ManualUpdateCheckResult = {
   },
 };
 
-describe('windows update fallback policy', () => {
+describe('automatic update fallback policy', () => {
   it('prefers electron-updater when it finds an automatic update', () => {
     expect(
-      selectWindowsUpdateResult({
+      selectAutomaticUpdateResult({
         electronUpdaterResult: electronUpdate,
         manualResult: manualUpdate,
       }),
@@ -38,7 +38,7 @@ describe('windows update fallback policy', () => {
 
   it('uses GitHub release fallback when electron-updater misses an available update', () => {
     expect(
-      selectWindowsUpdateResult({
+      selectAutomaticUpdateResult({
         electronUpdaterResult: { status: 'up-to-date' },
         manualResult: manualUpdate,
       }),
@@ -47,18 +47,18 @@ describe('windows update fallback policy', () => {
 
   it('uses GitHub release fallback when electron-updater errors before finding an update', () => {
     expect(
-      selectWindowsUpdateResult({
+      selectAutomaticUpdateResult({
         electronUpdaterResult: { status: 'error', message: 'latest.yml failed' },
         manualResult: manualUpdate,
       }),
     ).toBe(manualUpdate);
   });
 
-  it('returns the manual result for unmanaged Windows installs', () => {
+  it('returns the manual result for unsupported installation formats', () => {
     const manualUpToDate: ManualUpdateCheckResult = { status: 'up-to-date' };
 
     expect(
-      selectWindowsUpdateResult({
+      selectAutomaticUpdateResult({
         electronUpdaterResult: { status: 'unsupported' },
         manualResult: manualUpToDate,
       }),

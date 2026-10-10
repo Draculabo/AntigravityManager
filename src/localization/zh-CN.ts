@@ -148,6 +148,8 @@ const zhCn = {
       title: '发现新版本',
       description: 'GitHub 上已有 {{version}} 版本。',
       download: '下载',
+      'manual-download': '手动下载',
+      'open-download-failed': '无法打开下载页面',
       downloading: '正在下载...',
       dismiss: '关闭',
       macosUnsignedNote:

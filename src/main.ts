@@ -91,7 +91,7 @@ import {
   isElectronUpdaterDownloadReady,
   registerElectronUpdater,
 } from '@/modules/app-shell/update/electronUpdaterService';
-import { selectWindowsUpdateResult } from '@/modules/app-shell/update/windowsUpdateFallbackPolicy';
+import { selectAutomaticUpdateResult } from '@/modules/app-shell/update/automaticUpdateFallbackPolicy';
 import { getQuickObservabilityConfig } from '@/shared/observability/observabilityConfig';
 import { registerPerformanceRecorderIpc } from '@/modules/app-shell/performance-recorder/ipc';
 import { configurePerformanceRecorderCommandLine } from '@/modules/app-shell/performance-recorder/main-recorder';
@@ -287,17 +287,17 @@ function flushPendingManualUpdateNotification() {
   emitManualUpdateNotification(update);
 }
 
-async function checkWindowsUpdate(): Promise<Awaited<ReturnType<typeof checkManualUpdate>>> {
+async function checkAutomaticUpdate(): Promise<Awaited<ReturnType<typeof checkManualUpdate>>> {
   const electronUpdaterResult = await checkElectronUpdaterUpdate();
   if (electronUpdaterResult.status === 'available') {
     return electronUpdaterResult;
   }
 
   const manualResult = await checkManualUpdate(app.getVersion());
-  const result = selectWindowsUpdateResult({ electronUpdaterResult, manualResult });
+  const result = selectAutomaticUpdateResult({ electronUpdaterResult, manualResult });
   if (manualResult.status === 'available') {
     logger.warn(
-      `Update: electron-updater reported ${electronUpdaterResult.status}, but GitHub release fallback found ${manualResult.update.version}`,
+      `Update: automatic updater reported ${electronUpdaterResult.status}, but GitHub release fallback found ${manualResult.update.version}`,
     );
   }
 
@@ -305,8 +305,13 @@ async function checkWindowsUpdate(): Promise<Awaited<ReturnType<typeof checkManu
 }
 
 ipcMain.handle(IPC_CHANNELS.CHECK_FOR_UPDATES, async () => {
-  if (process.platform === 'win32') {
-    const result = await checkWindowsUpdate();
+  if (
+    (process.platform === 'win32' || process.platform === 'linux') &&
+    !isManualUpdateMockEnabled() &&
+    !isManualUpdateForceEnabled()
+  ) {
+    registerElectronUpdater(emitManualUpdateNotification);
+    const result = await checkAutomaticUpdate();
     if (result.status === 'available') {
       emitManualUpdateNotification(result.update, { force: true });
     }
@@ -662,9 +667,9 @@ const desktopShutdown = createDesktopShutdownCoordinator({
         if (result.status === 'started') {
           return;
         }
-        logger.warn(`WindowsUpdater: installation was not ready after shutdown: ${result.status}`);
+        logger.warn(`Update: installation was not ready after shutdown: ${result.status}`);
       } catch {
-        logger.warn('WindowsUpdater: installation failed to start after shutdown');
+        logger.warn('Update: installation failed to start after shutdown');
       }
     }
     app.quit();
@@ -719,10 +724,20 @@ async function checkForUpdates() {
     return;
   }
 
-  if (process.platform === 'win32' && !isMockingManualUpdate && !isForcingManualUpdate) {
+  if (
+    (process.platform === 'win32' || process.platform === 'linux') &&
+    !isMockingManualUpdate &&
+    !isForcingManualUpdate
+  ) {
     registerElectronUpdater(emitManualUpdateNotification);
-    const result = await checkWindowsUpdate();
+    const result = await checkAutomaticUpdate();
     if (result.status === 'available') {
+      if (
+        result.update.source !== 'electron-updater' &&
+        isManualUpdateSnoozed(getManualUpdateSnooze(), result.update.version)
+      ) {
+        return;
+      }
       emitManualUpdateNotification(result.update);
     }
     return;

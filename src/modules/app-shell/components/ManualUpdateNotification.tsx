@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { Download, RefreshCw, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 import { ReleaseNotesDialog } from './ReleaseNotesDialog';
 
 export function ManualUpdateNotification() {
   const { t } = useTranslation();
+  const { toast } = useToast();
   const [update, setUpdate] = useState<ManualUpdateInfo | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [detailsTarget, setDetailsTarget] = useState<ManualUpdateInfo | null>(null);
@@ -62,6 +64,14 @@ export function ManualUpdateNotification() {
   const dismiss = async () => {
     await window.electron.dismissManualUpdate(update.version);
     setUpdate(null);
+  };
+
+  const openManualDownload = async () => {
+    try {
+      await window.electron.openExternalUrl(update.releaseUrl);
+    } catch {
+      toast({ title: t('update.available.open-download-failed'), variant: 'destructive' });
+    }
   };
 
   const runPrimaryAction = async () => {
@@ -169,10 +179,15 @@ export function ManualUpdateNotification() {
               />
             </div>
           )}
-          <div className="mt-3 flex justify-between gap-2">
+          <div className="mt-3 flex flex-wrap justify-between gap-2">
             <Button variant="outline" size="sm" onClick={() => setDetailsTarget(update)}>
               {t('update.release-notes.view')}
             </Button>
+            {isError && (
+              <Button variant="outline" size="sm" onClick={openManualDownload}>
+                {t('update.available.manual-download')}
+              </Button>
+            )}
             {!isDownloading && (
               <Button size="sm" disabled={isWorking && !isDownloaded} onClick={runPrimaryAction}>
                 <ActionIcon className="mr-2 h-4 w-4" />

@@ -90,9 +90,12 @@ export function configurePerformanceRecorderCommandLine(): void {
 
   const rawPort = process.env[PERFORMANCE_RECORDER_DEBUG_PORT_ENV] ?? '9333';
   const port = Number(rawPort);
-  if (!Number.isInteger(port) || port < 1024 || port > 65_535) {
-    throw new Error(`${PERFORMANCE_RECORDER_DEBUG_PORT_ENV} must be a port from 1024 to 65535`);
+  if (!Number.isInteger(port) || (port === 0 ? rawPort !== '0' : port < 1024 || port > 65_535)) {
+    throw new Error(
+      `${PERFORMANCE_RECORDER_DEBUG_PORT_ENV} must be 0 or a port from 1024 to 65535`,
+    );
   }
+  // Port 0 gives overlapping old/new processes separate endpoints during updater acceptance.
   app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
   app.commandLine.appendSwitch('remote-debugging-port', String(port));
 }

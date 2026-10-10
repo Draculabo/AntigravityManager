@@ -358,6 +358,15 @@ metadata before publishing a feed that points to the release asset. The updater 
 the library's installer verification. A local-feed override is used only when the explicit
 unmanaged-test flag is also set; ordinary installed builds use the configured release feed.
 
+Linux automatic installation is limited to the original absolute, non-symlink AppImage path
+with writable file and parent directory. The app checks the type-2 AppImage header and matching
+x64 or ARM64 ELF machine before activating the updater and again on the downloaded archive.
+The library verifies SHA-512 before the archive is offered for installation; readiness also
+rechecks the cached file and original target. DEB/RPM installation and permission elevation
+are outside this path. The generic feed uses the repository's GitHub release assets, and a
+local URL requires the same explicit unmanaged-test flag. Release transport and metadata are
+trusted together: the checksum detects corruption, but is not an independent signing identity.
+
 Release-note requests accept a bounded semantic-version tag, not a renderer-provided retrieval
 URL. The app-shell owner constructs repository-specific metadata/API URLs, bounds HTTP responses
 to 2 MiB and descriptions to 262,144 characters, and applies a 20-second overall deadline with

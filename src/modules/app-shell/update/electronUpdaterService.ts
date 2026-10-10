@@ -14,6 +14,13 @@ import {
 import { detectWindowsUpdatePackage } from './windowsPackageFlavor';
 import { findLatestSquirrelVersion, readSquirrelReleases } from './windowsSquirrelFeed';
 import { getWindowsSquirrelVersion } from './windowsSquirrelInstall';
+import {
+  checkAppImageUpdate,
+  downloadAppImageUpdate,
+  installAppImageUpdate,
+  isAppImageUpdateReady,
+  registerAppImageUpdater,
+} from './linuxAppImageUpdater';
 
 type NotifyUpdate = (update: ManualUpdateInfo, options?: { force?: boolean }) => void;
 
@@ -40,7 +47,7 @@ function getUpdateFeedUrl(): string {
 }
 
 export function isElectronUpdaterSupported(platform = process.platform): boolean {
-  return platform === 'win32';
+  return platform === 'win32' || platform === 'linux';
 }
 
 function isElectronUpdaterEnabled(): boolean {
@@ -64,6 +71,10 @@ function toNotification(version: string, state: 'available' | 'downloaded'): Man
 }
 
 export function registerElectronUpdater(notify: NotifyUpdate): void {
+  if (process.platform === 'linux') {
+    registerAppImageUpdater(notify);
+    return;
+  }
   const kind = getWindowsUpdaterKind();
   if (kind === 'nsis') {
     registerNsisUpdater(notify);
@@ -111,6 +122,9 @@ export function registerElectronUpdater(notify: NotifyUpdate): void {
 }
 
 export async function checkElectronUpdaterUpdate(): Promise<ManualUpdateCheckResult> {
+  if (process.platform === 'linux') {
+    return checkAppImageUpdate();
+  }
   if (getWindowsUpdaterKind() === 'nsis') {
     return checkNsisUpdate();
   }
@@ -142,6 +156,9 @@ export async function checkElectronUpdaterUpdate(): Promise<ManualUpdateCheckRes
 }
 
 export async function downloadElectronUpdaterUpdate(): Promise<UpdateActionResult> {
+  if (process.platform === 'linux') {
+    return downloadAppImageUpdate();
+  }
   if (getWindowsUpdaterKind() === 'nsis') {
     return downloadNsisUpdate();
   }
@@ -195,6 +212,9 @@ export async function downloadElectronUpdaterUpdate(): Promise<UpdateActionResul
 }
 
 export function installElectronUpdaterUpdate(): UpdateActionResult {
+  if (process.platform === 'linux') {
+    return installAppImageUpdate();
+  }
   if (getWindowsUpdaterKind() === 'nsis') {
     if (!isNsisUpdateReady()) {
       return { status: 'not-available' };
@@ -215,6 +235,9 @@ export function installElectronUpdaterUpdate(): UpdateActionResult {
 }
 
 export function isElectronUpdaterDownloadReady(): boolean {
+  if (process.platform === 'linux') {
+    return isAppImageUpdateReady();
+  }
   if (getWindowsUpdaterKind() === 'nsis') {
     return isNsisUpdateReady();
   }
