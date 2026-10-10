@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -74,3 +75,83 @@ test('AppImage maker forwards the requested architecture and preserves path argu
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+for (const [arch, toolArch] of [
+  ['x64', 'x86_64'],
+  ['arm64', 'aarch64'],
+]) {
+  test(
+    `AppImage ${arch} repacking runs without FUSE and preserves its payload`,
+    {
+      skip: process.platform !== 'linux',
+    },
+    async () => {
+      const parent = await realpath(os.tmpdir());
+      const directory = await mkdtemp(path.join(parent, 'agm-appimage-repack-'));
+      try {
+        const bin = path.join(directory, 'bin');
+        const temporary = path.join(directory, 'temporary');
+        await Promise.all([mkdir(bin), mkdir(temporary)]);
+        const input = path.join(directory, 'Manager with spaces.AppImage');
+        await writeFile(
+          input,
+          `#!/usr/bin/env bash
+set -eu
+test "$1" = --appimage-extract
+mkdir squashfs-root
+printf '#!/usr/bin/env bash\\nexport EXISTING=retained\\nprintf payload\\n' > squashfs-root/AppRun
+`,
+          { mode: 0o755 },
+        );
+        await writeFile(
+          path.join(bin, 'wget'),
+          `#!/usr/bin/env bash
+set -eu
+test "$1" = -c
+test "$2" = "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-$EXPECTED_TOOL_ARCH.AppImage"
+test "$3" = -O
+cat > "$4" <<'TOOL'
+#!/usr/bin/env bash
+set -eu
+if [ "$1" != --appimage-extract-and-run ]; then
+  echo 'dlopen(): error loading libfuse.so.2' >&2
+  exit 1
+fi
+test "$ARCH" = "$EXPECTED_TOOL_ARCH"
+test "$2" = ./squashfs-root/
+test "$3" = "$EXPECTED_OUTPUT"
+grep -qx 'export EXISTING=retained' "$2/AppRun"
+grep -qx 'export ELECTRON_OZONE_PLATFORM_HINT=auto' "$2/AppRun"
+cp "$2/AppRun" "$3"
+TOOL
+`,
+          { mode: 0o755 },
+        );
+        const result = spawnSync(
+          'bash',
+          [path.join(makerRoot, 'scripts/patch-apprun.sh'), input, arch],
+          {
+            env: {
+              ...process.env,
+              PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+              TMPDIR: temporary,
+              EXPECTED_TOOL_ARCH: toolArch,
+              EXPECTED_OUTPUT: input,
+            },
+            encoding: 'utf8',
+            timeout: 30_000,
+            maxBuffer: 64 * 1024,
+          },
+        );
+        assert.equal(result.status, 0, `${result.error ?? ''}\n${result.stderr}`);
+        assert.equal(
+          await readFile(input, 'utf8'),
+          '#!/usr/bin/env bash\nexport EXISTING=retained\nexport ELECTRON_OZONE_PLATFORM_HINT=auto\nprintf payload\n',
+        );
+      } finally {
+        assert.equal(path.dirname(await realpath(directory)), parent);
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+}

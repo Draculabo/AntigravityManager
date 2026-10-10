@@ -58,10 +58,11 @@ diff --git a/node_modules/@pengx17/electron-forge-maker-appimage/scripts/patch-a
 -echo $APP_IMAGE_TMP
 +echo "$APP_IMAGE_TMP"
  
-@@ -50,5 +56,5 @@
+@@ -50,5 +56,6 @@
  # AppRun patched. Repack the AppImage
 -./appimagetool ./squashfs-root/ "$INPUT_APPIMAGE"
-+ARCH="$SYSTEM_ARCH" ./appimagetool ./squashfs-root/ "$INPUT_APPIMAGE"
++# Build runners may lack FUSE; extract the tool before running its payload.
++ARCH="$SYSTEM_ARCH" ./appimagetool --appimage-extract-and-run ./squashfs-root/ "$INPUT_APPIMAGE"
  
 -rm -rf $TMP_DIR
 +# The EXIT trap removes only the directory allocated by mktemp.

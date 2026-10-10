@@ -84,6 +84,10 @@ jobs:
           retry_wait_seconds: 30
           command: npm ci
 
+      - name: Check Linux AppImage maker and update downloads
+        if: matrix.platform == 'linux'
+        run: npm run test:appimage-download
+
       - name: Make Artifacts
         if: matrix.platform != 'darwin'
         env:
