@@ -43,12 +43,16 @@ const suites = {
   development: {
     connection: '../development/test-vite-development-connection.integration.mjs',
   },
+  release: {
+    notes: '../release/github-release-notes.test.mjs',
+  },
 };
 
 const unitFiles = [
   '../build/forge-package-bin-scan.test.mjs',
   '../build/publish-standalone-runtime.test.mjs',
   '../build/trace-standalone-runtime.test.mjs',
+  '../release/github-release-notes.test.mjs',
   './installers/prepare-windows-update-feed.test.mjs',
   './accounts/official-auth-state.test.mjs',
   './agents/clients.test.mjs',
