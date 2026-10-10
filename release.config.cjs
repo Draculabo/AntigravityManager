@@ -1,7 +1,7 @@
 /**
  * Semantic Release Configuration
  *
- * Analyze Conventional Commits for version selection and publish reviewed
+ * Analyze Conventional Commits for version selection and automatically publish
  * release notes with verified source references and contributor attribution.
  */
 

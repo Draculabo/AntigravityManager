@@ -174,62 +174,47 @@ Use [testing.md](testing.md) to select checks according to the affected behavior
 
 ## Release notes
 
-Semantic-release keeps the existing Conventional Commits version rules and publishes a reviewed
-release story from `release-notes/v<VERSION>.json`. The story includes a dated title, source-range
-statistics, overview, highlights, product-domain sections, optional upgrade notes, contributors,
-merged PR details and the full comparison link. GitHub Releases and `CHANGELOG.md` receive the
-same Markdown. The manual Release workflow remains the publication entry point.
+The GitHub Release workflow runs semantic-release, selects the version using the existing
+Conventional Commits rules, and generates release notes automatically. No versioned JSON
+release document or manual review step is required. The generated Markdown is supplied to
+both GitHub Releases and `CHANGELOG.md`.
 
-Prepare notes after the source changes are committed. The following example assumes the previous
-tag is `v0.24.0` and the next version selected by the commit rules is `0.25.0`; replace both values
-for the actual release. Drafting and previewing do not create tags, packages or Releases.
+The generator reads the exact Git range from the previous release tag to the release head.
+It groups changes by product area, uses verified merged PR titles when available, and retains
+commit descriptions for direct changes. A shared PR appears once while all of its source
+commits remain covered. Breaking changes, features, fixes and performance changes receive
+priority in the highlights. The overview names the affected areas; it does not invent product
+claims or upgrade instructions. Output quality depends on descriptive commit and PR titles.
 
-```powershell
-node scripts/release/prepare-release-notes.mjs draft --base v0.24.0 --version 0.25.0 --output artifacts/release-notes/v0.25.0.json
-```
+GitHub APIs supply PR links, authors and counts. Only merged PRs targeting the release branch
+in this repository qualify. Direct commits link to their SHA; unmapped authors retain their
+Git name, and bots receive separate maintenance credit. Commit text and email addresses never
+infer PR numbers or GitHub identities. Generated version/changelog commits are excluded from
+source statistics, so semantic-release regeneration keeps the same story after preparation.
+New source commits are included automatically.
 
-The companion `.json.source.json` contains the verified commit range, associated merged PRs and
-authors. Write the draft's `overview`, `highlights` and each domain item's `title` and `text` in
-English, describing user-visible changes rather than repeating commit subjects. Keep each item's
-`references` as `commit:<full SHA>` or `pr:<number>` from the facts. Every source change must be
-covered in the domain sections; highlights can select the most useful changes. The available
-domains are `core`, `gateway`, `desktop`, `integrations`, `tooling`, `security` and `documentation`.
-Use each domain at most once. Add `upgradeNotes` only when there is actual upgrade action to take.
-Set `reviewed` to `true` after checking claims against the source changes, then preview:
+Local preview is optional and does not publish, create tags or change package versions:
 
 ```powershell
-node scripts/release/prepare-release-notes.mjs preview --document artifacts/release-notes/v0.25.0.json --data artifacts/release-notes/v0.25.0.json.source.json --output artifacts/release-notes/v0.25.0.md
+node scripts/release/prepare-release-notes.mjs preview --base v0.24.0 --version 0.25.0 --output artifacts/release-notes/v0.25.0.md --anonymous
 ```
 
-Commit the reviewed document as `release-notes/v0.25.0.json` in a notes-only commit before running
-the Release workflow. Keep the companion facts and Markdown preview under ignored `artifacts/`.
-The commands refuse to overwrite existing files; use a fresh output path when regenerating.
-New source commits require a new draft and review. A notes-only commit and semantic-release's
-generated version/changelog commit do not invalidate the reviewed source range or inflate its
-statistics. Statistics count non-merge source commits, unique associated merged PRs, and verified
-human GitHub authors. Unmapped Git author names receive separate credit without inflating the
-verified contributor count. Bots appear separately as maintenance contributors.
+Replace the base and expected version for the actual range. Omit `--base` for a first release;
+beta previews use their own previous tag and expected version. Add `--head <ref>` to select an
+exact source ref. The command refuses to overwrite existing output. `--local` permits unpushed
+commits only in a preview and marks their attribution as incomplete; publication requires
+verified GitHub metadata for every source commit.
 
-Generation checks the version, previous tag, ancestry, exact source range, coverage and PR
-references. Missing, incomplete or stale documents stop the release before preparation. GitHub
-metadata failures also stop generation. PR links use GitHub's commit-to-PR association, limited to
-merged PRs targeting the current release branch in this repository. Direct commits link to their
-SHA; unmapped authors keep their Git name. Commit text and email addresses never infer PRs or logins.
-Commit references with associated PRs render as PR links automatically.
+Metadata requests prefer `GH_TOKEN` over `GITHUB_TOKEN`, have a 15-second deadline and reject
+redirects. Public metadata can be read anonymously; private repositories require access.
+Network and invalid metadata errors stop note generation and remain credential-safe. The
+Release workflow uses its existing publishing token; no AI service or additional key is needed.
 
-The read-only metadata requests prefer `GH_TOKEN` over `GITHUB_TOKEN`, use a 15-second deadline
-per request and reject redirects. Public metadata can be read anonymously; private repositories
-require a token with repository access. Publication still requires the existing GitHub publisher
-permissions. Draft `--anonymous --local` supports unpushed commits with an explicit incomplete
-attribution marker in the preview; the publishing plugin does not permit this fallback. Omit
-`--base` only for the first release. Beta documents use the version and previous tag from the beta
-release range.
-
-Run `npm run test:acceptance -- release notes` for local acceptance. It exercises the configured
-semantic-release loader, metadata validation, regeneration after editorial commits, the real
-changelog writer, preview CLI and the real GitHub publisher body with fixture transports. It
-creates only isolated local Git repositories and does not publish. Live publication credentials
-remain a separate environment-dependent check.
+Run `npm run test:acceptance -- release notes` for local acceptance. It exercises the actual
+semantic-release loader, changelog writer and GitHub publisher with isolated Git repositories
+and controlled publication transports, including a repository with no version JSON. The Release
+workflow runs this check before publication. Live credentials and a real release remain separate
+environment-dependent checks.
 
 ## Generated and derived files
 
