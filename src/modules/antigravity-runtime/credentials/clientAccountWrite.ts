@@ -11,8 +11,11 @@ import {
   readAntigravityCredentialStoreToken,
   writeAntigravityCredentialStoreToken,
 } from './antigravityCredentialStore';
+import { buildAntigravityCredentialPayload } from './antigravityCredentialPayload';
+import { writeAgyCliToken } from './agyCliTokenStore';
+import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
 
-export type ClientAccountStorage = 'credential-store' | 'sqlite';
+export type ClientAccountStorage = 'cli-session' | 'credential-store' | 'sqlite';
 
 export interface PreparedClientAccountWrite {
   readonly storage: ClientAccountStorage;
@@ -25,7 +28,7 @@ export async function resolveClientAccountStorage(
 ): Promise<ClientAccountStorage> {
   const target = resolveAntigravityAppTarget(appTarget);
   if (target === 'agy') {
-    return 'credential-store';
+    return 'cli-session';
   }
   if (target === 'ide') {
     return 'sqlite';
@@ -54,16 +57,23 @@ export async function prepareClientAccountWrite(
   const credentials = prepareClientAccountCredentials(input);
   const target = resolveAntigravityAppTarget(appTarget);
   const storage = await resolveClientAccountStorage(target, pathOptions);
+  if (target === 'agy') {
+    const payload = buildAntigravityCredentialPayload(credentials.token);
+    return {
+      storage,
+      write: async () => {
+        writeAgyCliToken(payload);
+        writeGoogleOAuthCredentials({ ...credentials.token, email: credentials.email });
+      },
+    };
+  }
   if (storage === 'credential-store') {
     return {
       storage,
       write: async () => {
-        await writeAntigravityCredentialStoreToken(
-          credentials.token,
-          target === 'agy'
-            ? { email: credentials.email, syncGoogleOAuthFiles: true }
-            : { syncClassicOAuthFile: true },
-        );
+        await writeAntigravityCredentialStoreToken(credentials.token, {
+          syncClassicOAuthFile: true,
+        });
         const written = await readAntigravityCredentialStoreToken();
         if (
           !written ||

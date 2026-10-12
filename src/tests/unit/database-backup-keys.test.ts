@@ -5,9 +5,14 @@ import { ProtobufUtils } from '@/shared/serialization/protobuf';
 
 const values = vi.hoisted(() => new Map<string, string>());
 const paths = vi.hoisted(() => vi.fn(() => ['/selected/state.vscdb']));
+const runtime = vi.hoisted(() => ({
+  storage: 'sqlite' as 'cli-session' | 'sqlite',
+  readClientAccountToken: vi.fn(),
+}));
 vi.mock('@/shared/platform/paths', () => ({ getAntigravityDbPaths: paths }));
 vi.mock('@/modules/antigravity-runtime', () => ({
-  resolveClientAccountStorage: async () => 'sqlite',
+  resolveClientAccountStorage: async () => runtime.storage,
+  readClientAccountToken: runtime.readClientAccountToken,
 }));
 vi.mock('drizzle-orm', async (original) => ({
   ...(await original<typeof import('drizzle-orm')>()),
@@ -36,6 +41,7 @@ vi.mock('@/shared/persistence/database/dbConnection', () => {
 beforeEach(() => {
   vi.clearAllMocks();
   values.clear();
+  runtime.storage = 'sqlite';
   vi.spyOn(fs, 'existsSync').mockReturnValue(true);
 });
 describe('account snapshot capture', () => {
@@ -78,6 +84,40 @@ describe('account snapshot capture', () => {
         'antigravityUnifiedStateSync.userStatus': user,
         'antigravityUnifiedStateSync.enterprisePreferences': project,
       },
+    });
+  });
+
+  it('captures an Agy CLI session without opening the host state database', async () => {
+    runtime.storage = 'cli-session';
+    runtime.readClientAccountToken.mockResolvedValue({
+      accessToken: 'cli-access',
+      refreshToken: 'cli-refresh',
+      expiryTimestamp: 1900000000,
+      idToken: 'cli-id',
+      projectId: 'cli-project',
+    });
+    const account = {
+      id: 'cli-fixture',
+      email: 'cli@example.invalid',
+      name: 'CLI Fixture',
+      created_at: '2026-01-01',
+      last_used: '2026-01-01',
+    };
+
+    const result = await backupAccount(account, 'agy');
+
+    expect(runtime.readClientAccountToken).toHaveBeenCalledWith('agy');
+    expect(paths).not.toHaveBeenCalled();
+    expect(
+      ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(
+        result.data['antigravityUnifiedStateSync.oauthToken']!,
+      ),
+    ).toEqual({
+      accessToken: 'cli-access',
+      refreshToken: 'cli-refresh',
+      expiryTimestamp: 1900000000,
+      idToken: 'cli-id',
+      isGcpTos: false,
     });
   });
 });

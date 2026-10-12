@@ -18,6 +18,8 @@ const state = vi.hoisted(() => ({
   backups: vi.fn(async (_path: string) => undefined),
   opens: vi.fn(),
   failKey: '',
+  writeAgyCliToken: vi.fn(),
+  writeGoogleOAuthCredentials: vi.fn(),
 }));
 vi.mock('@/shared/platform/paths', () => ({
   getAntigravityDbPaths: vi.fn(() => ['/fixture/state.vscdb']),
@@ -30,6 +32,12 @@ vi.mock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
 vi.mock('@/modules/antigravity-runtime/credentials/antigravityCredentialStore', () => ({
   writeAntigravityCredentialStoreToken: vi.fn(),
   readAntigravityCredentialStoreToken: vi.fn(),
+}));
+vi.mock('@/modules/antigravity-runtime/credentials/agyCliTokenStore', () => ({
+  writeAgyCliToken: state.writeAgyCliToken,
+}));
+vi.mock('@/modules/antigravity-runtime/credentials/googleOAuthCredentialStore', () => ({
+  writeGoogleOAuthCredentials: state.writeGoogleOAuthCredentials,
 }));
 vi.mock('drizzle-orm', async (original) => ({
   ...(await original<typeof import('drizzle-orm')>()),
@@ -114,6 +122,31 @@ afterEach(() => {
 });
 
 describe('client account destination', () => {
+  it('keeps an explicit CLI switch out of the host credential store', async () => {
+    const prepared = await prepareClientAccountWrite(credentials, 'agy');
+
+    expect(prepared.storage).toBe('cli-session');
+    await prepared.write();
+
+    expect(writeAntigravityCredentialStoreToken).not.toHaveBeenCalled();
+    expect(state.writeAgyCliToken).toHaveBeenCalledExactlyOnceWith(expect.any(String));
+    expect(state.writeGoogleOAuthCredentials).toHaveBeenCalledExactlyOnceWith({
+      ...credentials.token,
+      email: credentials.email,
+    });
+  });
+
+  it('reports required CLI OAuth file failures without changing host credentials', async () => {
+    state.writeGoogleOAuthCredentials.mockImplementationOnce(() => {
+      throw new Error('file sync failed');
+    });
+    const prepared = await prepareClientAccountWrite(credentials, 'agy');
+
+    await expect(prepared.write()).rejects.toThrow('file sync failed');
+
+    expect(writeAntigravityCredentialStoreToken).not.toHaveBeenCalled();
+  });
+
   it('confirms complete native credentials and rejects a stale readback', async () => {
     const prepared = await prepareClientAccountWrite(credentials, 'classic');
     vi.mocked(readAntigravityCredentialStoreToken).mockResolvedValue({
@@ -137,7 +170,7 @@ describe('client account destination', () => {
   });
   it('routes IDE, CLI and Classic versions without old-format or engine guesses', async () => {
     expect(await resolveClientAccountStorage('ide')).toBe('sqlite');
-    expect(await resolveClientAccountStorage('agy')).toBe('credential-store');
+    expect(await resolveClientAccountStorage('agy')).toBe('cli-session');
     expect(getAntigravityVersion).not.toHaveBeenCalled();
     expect(await resolveClientAccountStorage('classic')).toBe('credential-store');
     vi.mocked(getAntigravityVersion).mockResolvedValue({

@@ -165,20 +165,13 @@ describe('Linux credential store dual collection writes', () => {
     }
   });
 
-  it('does not replace the Classic file for an explicit CLI switch', async () => {
+  it('keeps Classic credential writes out of CLI OAuth files', async () => {
     mocks.spawnSync.mockReturnValue(secretToolUnavailable());
     const { writeAntigravityCredentialStoreToken } =
       await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
-    const target = path.join(mocks.homeDirectory(), '.gemini', 'jetski-standalone-oauth-token');
     await writeAntigravityCredentialStoreToken(TEST_TOKEN, { syncClassicOAuthFile: true });
-    const original = fs.readFileSync(target);
-    await writeAntigravityCredentialStoreToken(
-      { ...TEST_TOKEN, access_token: 'cli-account-access-token' },
-      { syncGoogleOAuthFiles: true, email: 'cli@example.com' },
-    );
-
-    expect(fs.readFileSync(target)).toEqual(original);
-    expect(mocks.writeGoogleOAuthCredentials).toHaveBeenCalledOnce();
+    expect(mocks.writeAgyCliToken).not.toHaveBeenCalled();
+    expect(mocks.writeGoogleOAuthCredentials).not.toHaveBeenCalled();
   });
 
   it('reports a required Classic file write failure instead of accepting only the keyring write', async () => {
