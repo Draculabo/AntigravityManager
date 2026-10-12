@@ -21,9 +21,20 @@ export const CloudAccountSwitchErrorCodeSchema = z.enum([
 
 export type CloudAccountSwitchErrorCode = z.infer<typeof CloudAccountSwitchErrorCodeSchema>;
 
-const CloudAccountSwitchErrorDataSchema = z.strictObject({
-  switchCode: CloudAccountSwitchErrorCodeSchema,
-});
+const CloudAccountSwitchORPCErrorDataSchema = z
+  .object({
+    switchCode: CloudAccountSwitchErrorCodeSchema,
+  })
+  .strip();
+
+export type CloudAccountSwitchORPCErrorData = z.infer<typeof CloudAccountSwitchORPCErrorDataSchema>;
+
+export function parseCloudAccountSwitchORPCErrorData(
+  value: unknown,
+): CloudAccountSwitchORPCErrorData | null {
+  const result = CloudAccountSwitchORPCErrorDataSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
 
 export function readCloudAccountSwitchErrorCode(
   error: unknown,
@@ -31,6 +42,5 @@ export function readCloudAccountSwitchErrorCode(
   if (typeof error !== 'object' || error === null || !('data' in error)) {
     return null;
   }
-  const result = CloudAccountSwitchErrorDataSchema.safeParse(error.data);
-  return result.success ? result.data.switchCode : null;
+  return parseCloudAccountSwitchORPCErrorData(error.data)?.switchCode ?? null;
 }
