@@ -1,19 +1,8 @@
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const pathsMock = vi.hoisted(() => ({
-  getAgyCliTokenPaths: vi.fn<() => string[]>(() => []),
-}));
-
-vi.mock('@/modules/antigravity-runtime/credentials/agyCliTokenPaths', () => ({
-  getAgyCliTokenPaths: pathsMock.getAgyCliTokenPaths,
-}));
-
-vi.mock('@/shared/logging/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
-}));
+import { writeAgyCliToken } from '@/modules/antigravity-runtime/credentials/agyCliTokenStore';
 
 const PAYLOAD = JSON.stringify({
   token: {
@@ -27,10 +16,12 @@ const PAYLOAD = JSON.stringify({
 
 describe('writeAgyCliToken', () => {
   let workDir: string;
+  let localTarget: string;
 
   beforeEach(() => {
     workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-token-'));
-    pathsMock.getAgyCliTokenPaths.mockReset();
+    localTarget = path.join(workDir, '.gemini', 'antigravity-cli', 'antigravity-oauth-token');
+    vi.spyOn(os, 'homedir').mockReturnValue(workDir);
   });
 
   afterEach(() => {
@@ -38,109 +29,50 @@ describe('writeAgyCliToken', () => {
     fs.rmSync(workDir, { recursive: true, force: true });
   });
 
-  it('initializes and confirms an explicit local CLI session before discovery', async () => {
-    vi.spyOn(os, 'homedir').mockReturnValue(workDir);
-    pathsMock.getAgyCliTokenPaths.mockReturnValue([]);
-    const { writeAgyCliToken } =
-      await import('@/modules/antigravity-runtime/credentials/agyCliTokenStore');
-    writeAgyCliToken(PAYLOAD, true);
-    expect(
-      fs.readFileSync(
-        path.join(workDir, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
-        'utf-8',
-      ),
-    ).toBe(PAYLOAD);
+  it('writes and confirms only the current environment CLI session', () => {
+    const otherEnvironmentTarget = path.join(workDir, 'wsl-session', 'antigravity-oauth-token');
+    fs.mkdirSync(path.dirname(otherEnvironmentTarget), { recursive: true });
+    fs.writeFileSync(otherEnvironmentTarget, 'other-account');
+
+    writeAgyCliToken(PAYLOAD);
+
+    expect(fs.readFileSync(localTarget, 'utf-8')).toBe(PAYLOAD);
+    expect(fs.readFileSync(otherEnvironmentTarget, 'utf-8')).toBe('other-account');
   });
 
-  it('fails an explicit CLI switch when the local session cannot be replaced', async () => {
-    vi.spyOn(os, 'homedir').mockReturnValue(workDir);
-    pathsMock.getAgyCliTokenPaths.mockReturnValue([]);
+  it('atomically replaces an existing local session', () => {
+    fs.mkdirSync(path.dirname(localTarget), { recursive: true });
+    fs.writeFileSync(localTarget, 'previous-account');
+
+    writeAgyCliToken(PAYLOAD);
+
+    expect(fs.readFileSync(localTarget, 'utf-8')).toBe(PAYLOAD);
+    expect(fs.readdirSync(path.dirname(localTarget))).toEqual(['antigravity-oauth-token']);
+  });
+
+  it('fails the switch and preserves the previous session when replacement fails', () => {
+    fs.mkdirSync(path.dirname(localTarget), { recursive: true });
+    fs.writeFileSync(localTarget, 'previous-account');
     vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
       throw new Error('replace failed');
     });
-    const { writeAgyCliToken } =
-      await import('@/modules/antigravity-runtime/credentials/agyCliTokenStore');
-    expect(() => writeAgyCliToken(PAYLOAD, true)).toThrow('replace failed');
+
+    expect(() => writeAgyCliToken(PAYLOAD)).toThrow('replace failed');
+    expect(fs.readFileSync(localTarget, 'utf-8')).toBe('previous-account');
+    expect(fs.readdirSync(path.dirname(localTarget))).toEqual(['antigravity-oauth-token']);
   });
 
-  it('writes the payload to every CLI install', async () => {
-    const first = path.join(workDir, 'first-token');
-    const second = path.join(workDir, 'second-token');
-    pathsMock.getAgyCliTokenPaths.mockReturnValue([first, second]);
-
-    const { writeAgyCliToken } =
-      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
-    writeAgyCliToken(PAYLOAD);
-
-    expect(fs.readFileSync(first, 'utf-8')).toBe(PAYLOAD);
-    expect(fs.readFileSync(second, 'utf-8')).toBe(PAYLOAD);
-  });
-
-  it('replaces an existing session in place', async () => {
-    const target = path.join(workDir, 'token');
-    fs.writeFileSync(target, 'previous account');
-    pathsMock.getAgyCliTokenPaths.mockReturnValue([target]);
-
-    const { writeAgyCliToken } =
-      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
-    writeAgyCliToken(PAYLOAD);
-
-    expect(fs.readFileSync(target, 'utf-8')).toBe(PAYLOAD);
-    // The temporary file must not survive the swap.
-    expect(fs.readdirSync(workDir)).toEqual(['token']);
-  });
-
-  it('keeps going when one install cannot be written', async () => {
-    const unwritable = path.join(workDir, 'missing-dir', 'token');
-    const reachable = path.join(workDir, 'token');
-    pathsMock.getAgyCliTokenPaths.mockReturnValue([unwritable, reachable]);
-
-    const { writeAgyCliToken } =
-      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
-
-    expect(() => writeAgyCliToken(PAYLOAD)).not.toThrow();
-    expect(fs.readFileSync(reachable, 'utf-8')).toBe(PAYLOAD);
-  });
-
-  it('removes the temporary credential when the atomic swap fails', async () => {
-    const target = path.join(workDir, 'token');
-    fs.writeFileSync(target, 'previous account');
-    pathsMock.getAgyCliTokenPaths.mockReturnValue([target]);
-    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
-      throw new Error('rename failed');
+  it('fails the switch when the local session readback differs', () => {
+    const readFileSync = fs.readFileSync.bind(fs);
+    vi.spyOn(fs, 'readFileSync').mockImplementation((target, options) => {
+      if (target === localTarget && options === 'utf-8') {
+        return 'stale-account';
+      }
+      return readFileSync(target, options);
     });
 
-    const { writeAgyCliToken } =
-      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
-    writeAgyCliToken(PAYLOAD);
-
-    expect(fs.readFileSync(target, 'utf-8')).toBe('previous account');
-    expect(fs.readdirSync(workDir)).toEqual(['token']);
-  });
-
-  it('skips ambiguous multi-user WSL targets while keeping local CLI sync', async () => {
-    const localTarget = path.join(workDir, 'local-token');
-    pathsMock.getAgyCliTokenPaths.mockReturnValue([
-      localTarget,
-      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\alice\\.gemini\\antigravity-cli\\antigravity-oauth-token',
-      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\bob\\.gemini\\antigravity-cli\\antigravity-oauth-token',
-    ]);
-
-    const { writeAgyCliToken } =
-      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
-
-    expect(() => writeAgyCliToken(PAYLOAD)).not.toThrow();
-    expect(fs.readFileSync(localTarget, 'utf-8')).toBe(PAYLOAD);
-    expect(fs.readdirSync(workDir)).toEqual(['local-token']);
-  });
-
-  it('does nothing when no CLI install is present', async () => {
-    pathsMock.getAgyCliTokenPaths.mockReturnValue([]);
-
-    const { writeAgyCliToken } =
-      await import('../../modules/antigravity-runtime/credentials/agyCliTokenStore');
-    writeAgyCliToken(PAYLOAD);
-
-    expect(fs.readdirSync(workDir)).toEqual([]);
+    expect(() => writeAgyCliToken(PAYLOAD)).toThrow(
+      'Client CLI session write could not be confirmed',
+    );
   });
 });

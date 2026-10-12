@@ -35,6 +35,8 @@ const nativeWindows = process.platform === 'win32';
 const credentialService = 'AntigravityManager.Acceptance.' + path.basename(root);
 const credentialAccount = 'synthetic';
 const credentialTarget = credentialService + ':' + credentialAccount;
+let agyCliPayload = null;
+let googleOAuthInput = null;
 const nativeDependencies = process.env.AGM_CLIENT_NATIVE_DEPS;
 const NativeDatabase = nativeDependencies
   ? createRequire(path.join(nativeDependencies, 'package.json'))('better-sqlite3')
@@ -63,10 +65,18 @@ Module._load = function (request, ...args) {
     };
   }
   if (nativeWindows && request === './agyCliTokenStore') {
-    return { writeAgyCliToken() {} };
+    return {
+      writeAgyCliToken(payload) {
+        agyCliPayload = payload;
+      },
+    };
   }
   if (nativeWindows && request === './googleOAuthCredentialStore') {
-    return { writeGoogleOAuthCredentials() {} };
+    return {
+      writeGoogleOAuthCredentials(input) {
+        googleOAuthInput = structuredClone(input);
+      },
+    };
   }
   if (request === 'better-sqlite3') {
     return NativeDatabase;
@@ -177,10 +187,10 @@ try {
   if (nativeWindows) {
     const {
       readAntigravityCredentialStoreToken,
+      writeAntigravityCredentialStoreToken,
     } = require('../src/modules/antigravity-runtime/credentials/antigravityCredentialStore.ts');
     for (const selected of [a, b, a]) {
-      const writer = await prepareClientAccountWrite(selected, 'agy');
-      await writer.write();
+      await writeAntigravityCredentialStoreToken(selected.token);
       const expected = {
         accessToken: selected.token.access_token,
         refreshToken: selected.token.refresh_token,
@@ -190,6 +200,22 @@ try {
       };
       assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
       assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
+    }
+    const hostCredential = await readAntigravityCredentialStoreToken();
+    for (const selected of [b, a]) {
+      agyCliPayload = null;
+      googleOAuthInput = null;
+      const writer = await prepareClientAccountWrite(selected, 'agy');
+      await writer.write();
+      const cliToken = JSON.parse(agyCliPayload).token;
+      assert.equal(cliToken.access_token, selected.token.access_token);
+      assert.equal(cliToken.refresh_token, selected.token.refresh_token);
+      assert.deepEqual(googleOAuthInput, {
+        ...selected.token,
+        project_id: selected.token.project_id,
+        email: selected.email,
+      });
+      assert.deepEqual(await readAntigravityCredentialStoreToken(), hostCredential);
     }
   }
   const rowsBeforeFailure = database.prepare('SELECT * FROM ItemTable ORDER BY key').all();
@@ -216,7 +242,10 @@ try {
         'recovery file untouched',
         'primary write transaction rollback',
         ...(nativeWindows
-          ? ['native Windows exact-target A-B-A, independent enumeration and nondestructive reads']
+          ? [
+              'native Windows exact-target A-B-A, independent enumeration and nondestructive reads',
+              'Agy CLI writes preserve the host credential target',
+            ]
           : []),
       ],
       status: 'passed',

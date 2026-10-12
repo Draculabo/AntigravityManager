@@ -6,11 +6,10 @@ import path from 'node:path';
 import { z } from 'zod';
 import { logger } from '@/shared/logging/logger';
 import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreToken';
-import { writeAgyCliToken } from './agyCliTokenStore';
-import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
 import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
 import { readWindowsCredential, writeWindowsCredential } from './windowsCredentialStore';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
+import { buildAntigravityCredentialPayload } from './antigravityCredentialPayload';
 
 export interface CredentialStoreToken {
   accessToken?: string;
@@ -59,23 +58,6 @@ const NestedCredentialPayloadSchema = z
     token: CredentialTokenPayloadSchema,
   })
   .passthrough();
-
-function buildCredentialStorePayload(token: CredentialStoreTokenInput): string {
-  const expiry = new Date(token.expiry_timestamp * 1000)
-    .toISOString()
-    .replace(/\.(\d{3})Z$/, '.$1000Z');
-  return JSON.stringify({
-    token: {
-      access_token: token.access_token,
-      token_type: 'Bearer',
-      refresh_token: token.refresh_token,
-      expiry,
-      ...(token.id_token ? { id_token: token.id_token } : {}),
-      ...(token.project_id ? { project_id: token.project_id } : {}),
-    },
-    auth_method: 'consumer',
-  });
-}
 
 function decodeCredentialStoreText(secret: Uint8Array): string {
   let payload: string;
@@ -307,21 +289,15 @@ function tryWriteLinuxSecretServiceCollection(
   }
 }
 
-export type CredentialStoreWriteOptions =
-  | {
-      syncGoogleOAuthFiles: true;
-      email: string;
-    }
-  | {
-      syncGoogleOAuthFiles?: false;
-      syncClassicOAuthFile?: true;
-    };
+export interface CredentialStoreWriteOptions {
+  syncClassicOAuthFile?: true;
+}
 
 export async function writeAntigravityCredentialStoreToken(
   token: CredentialStoreTokenInput,
   options: CredentialStoreWriteOptions = {},
 ): Promise<void> {
-  const payload = buildCredentialStorePayload(token);
+  const payload = buildAntigravityCredentialPayload(token);
   logger.info('Writing Antigravity token to system credential store');
 
   await writeToSystemCredentialStore(payload);
@@ -337,14 +313,6 @@ export async function writeAntigravityCredentialStoreToken(
       path.join(os.homedir(), '.gemini', 'jetski-standalone-oauth-token'),
       payload,
     );
-  }
-
-  // The CLI keeps the same payload in a file rather than the credential store,
-  // so it has to be updated here or it stays on the previous account.
-  writeAgyCliToken(payload, options.syncGoogleOAuthFiles === true);
-
-  if (options.syncGoogleOAuthFiles) {
-    writeGoogleOAuthCredentials({ ...token, email: options.email });
   }
 }
 

@@ -95,7 +95,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
         refresh_token: 'refresh-fixture',
         expiry_timestamp: 1_900_000_000,
       });
-      expect(mocks.writeAgyCliToken).toHaveBeenCalledTimes(1);
+      expect(mocks.writeAgyCliToken).not.toHaveBeenCalled();
     },
   );
 
@@ -147,49 +147,6 @@ describe('writeAntigravityCredentialStoreToken', () => {
     const args = mocks.execFileSync.mock.calls[0][1] as string[];
     expect(args).toEqual(['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-U', '-w']);
     expect(args).not.toContain('-A');
-  });
-
-  it('syncs generic Google OAuth files only when the caller marks an explicit Agy switch', async () => {
-    setPlatform('win32');
-    const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
-    const token = {
-      access_token: 'access-token',
-      refresh_token: 'refresh-token',
-      expiry_timestamp: 1_900_000_000,
-      id_token: 'id-token',
-    };
-    await writeAntigravityCredentialStoreToken(token, {
-      email: 'active@example.com',
-      syncGoogleOAuthFiles: true,
-    });
-
-    expect(mocks.writeGoogleOAuthCredentials).toHaveBeenCalledWith({
-      ...token,
-      email: 'active@example.com',
-    });
-  });
-  it('reports an explicit CLI switch failure when its required OAuth file sync fails', async () => {
-    setPlatform('win32');
-    mocks.writeGoogleOAuthCredentials.mockImplementationOnce(() => {
-      throw new Error('file sync failed');
-    });
-    const { writeAntigravityCredentialStoreToken } =
-      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
-    await expect(
-      writeAntigravityCredentialStoreToken(
-        {
-          access_token: 'access-token',
-          refresh_token: 'refresh-token',
-          expiry_timestamp: 1_900_000_000,
-        },
-        {
-          email: 'active@example.com',
-          syncGoogleOAuthFiles: true,
-        },
-      ),
-    ).rejects.toThrow('file sync failed');
-    expect(mocks.writeWindowsCredential).toHaveBeenCalledTimes(1);
   });
 
   it('propagates update failures without issuing a destructive delete command', async () => {

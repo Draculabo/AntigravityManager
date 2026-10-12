@@ -294,10 +294,10 @@ export async function backupAccount(
     backup_time: new Date().toISOString(),
   };
   const storage = await resolveClientAccountStorage(target, pathOptions);
-  if (storage === 'credential-store') {
+  if (storage !== 'sqlite') {
     const token = await readClientAccountToken(target);
     if (!token?.accessToken || !token.expiryTimestamp) {
-      throw new Error('Client credential store does not contain complete snapshot credentials');
+      throw new Error('Client authentication store does not contain complete snapshot credentials');
     }
     data['antigravityUnifiedStateSync.oauthToken'] = ProtobufUtils.createUnifiedOAuthToken(
       token.accessToken,
