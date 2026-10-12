@@ -57,6 +57,10 @@ export {
   type LocalAccountImportORPCErrorData,
   parseLocalAccountImportORPCErrorData,
 } from '@/modules/cloud-account/local-import/ipc/error-data';
+export {
+  type CloudAccountSwitchORPCErrorData,
+  parseCloudAccountSwitchORPCErrorData,
+} from '@/modules/cloud-account/services/cloud-account-switch.schema';
 
 export const cloudRouter = os.router({
   localImport: localAccountImportRouter,

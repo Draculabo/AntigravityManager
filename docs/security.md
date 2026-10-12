@@ -61,6 +61,8 @@ failure preserves the copied report and provides the form URL for manual continu
 Notification callers pass the caught exception to the renderer's toast boundary, which immediately
 extracts the available stack and diagnostic fields and applies the existing redactor. Notification
 state retains this text snapshot, never the raw exception or arbitrary provider/account properties.
+Cloud-account switch errors retain only their validated closed switch category across the public IPC
+boundary and expose the same value as a generic diagnostic code in copied bug-report details.
 The details dialog renders that same snapshot as selectable plain text and remains closable during
 report preparation. Public IPC sanitization stays unchanged; a backend stack removed by its owner
 cannot be reconstructed from the renderer's transport stack. Missing exceptions use the available

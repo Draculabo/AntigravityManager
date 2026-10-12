@@ -1,7 +1,9 @@
 import { accountRouter, databaseRouter } from '@/modules/account/ipc/router';
 import {
   cloudRouter,
+  type CloudAccountSwitchORPCErrorData,
   type LocalAccountImportORPCErrorData,
+  parseCloudAccountSwitchORPCErrorData,
   parseLocalAccountImportORPCErrorData,
 } from '@/modules/cloud-account/ipc/router';
 import { configRouter } from '@/modules/config/ipc/router';
@@ -24,6 +26,7 @@ interface BackendErrorDetails {
   backendMessage: string;
   backendStack?: string;
   backendValue?: string;
+  diagnosticCode?: CloudAccountSwitchORPCErrorData['switchCode'];
   requestPath: string;
 }
 
@@ -32,6 +35,7 @@ type PublicORPCErrorData =
   | OwnerOperationErrorData
   | BackendErrorDetails
   | (BackendErrorDetails & AppErrorData)
+  | (BackendErrorDetails & CloudAccountSwitchORPCErrorData)
   | (BackendErrorDetails & LocalAccountImportORPCErrorData);
 
 function stringifyUnknownError(error: unknown): string {
@@ -91,12 +95,22 @@ function createPublicORPCErrorData(error: unknown, requestPath: string): PublicO
     };
   }
 
-  const cloudAccountErrorData =
-    error instanceof ORPCError ? parseLocalAccountImportORPCErrorData(error.data) : null;
-  if (cloudAccountErrorData) {
+  const switchErrorData =
+    error instanceof ORPCError ? parseCloudAccountSwitchORPCErrorData(error.data) : null;
+  if (switchErrorData) {
     return {
       ...backendDetails,
-      ...cloudAccountErrorData,
+      ...switchErrorData,
+      diagnosticCode: switchErrorData.switchCode,
+    };
+  }
+
+  const localAccountImportErrorData =
+    error instanceof ORPCError ? parseLocalAccountImportORPCErrorData(error.data) : null;
+  if (localAccountImportErrorData) {
+    return {
+      ...backendDetails,
+      ...localAccountImportErrorData,
     };
   }
 

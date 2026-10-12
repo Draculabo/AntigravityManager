@@ -93,6 +93,7 @@ export function getErrorDetailsText(error: unknown): string {
   const backendMessage = getObjectProperty(data, 'backendMessage');
   const backendStack = getObjectProperty(data, 'backendStack');
   const backendValue = getObjectProperty(data, 'backendValue');
+  const diagnosticCode = getObjectProperty(data, 'diagnosticCode');
 
   if (isString(requestPath) && requestPath) {
     details.push(`Request path: ${requestPath}`);
@@ -110,6 +111,10 @@ export function getErrorDetailsText(error: unknown): string {
     details.push(`Backend message: ${backendMessage}`);
   } else if (rawMessage) {
     details.push(`Message: ${rawMessage}`);
+  }
+
+  if (isString(diagnosticCode) && diagnosticCode) {
+    details.push(`Diagnostic code: ${diagnosticCode}`);
   }
 
   if (isString(backendStack) && backendStack) {

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { AppError, getAppErrorData, shouldReportErrorToSentry } from '@/shared/errors/appError';
 import { toPublicORPCError } from '@/ipc/router';
 import { processError } from '@/modules/antigravity-runtime/processErrors';
+import { readCloudAccountSwitchErrorCode } from '@/modules/cloud-account/services/cloud-account-switch.schema';
+import { getErrorDetailsText } from '@/shared/utils/errorMessages';
 
 describe('AppError', () => {
   it('preserves process failure meaning across IPC without command arguments or credential data', () => {
@@ -116,6 +118,27 @@ describe('AppError', () => {
       requestPath: '["cloud","localImport","confirm"]',
     });
     expect(publicError.data).not.toHaveProperty('untrustedData');
+  });
+
+  it('preserves the closed cloud-account switch category at the public IPC boundary', () => {
+    const error = new ORPCError('BAD_REQUEST', {
+      data: {
+        switchCode: 'target-write-failed',
+        untrustedData: 'must-not-reach-renderer',
+      },
+      message: 'Cloud account switch failed',
+    });
+
+    const publicError = toPublicORPCError(error, '["cloud","switchCloudAccount"]');
+
+    expect(publicError.data).toMatchObject({
+      diagnosticCode: 'target-write-failed',
+      switchCode: 'target-write-failed',
+      requestPath: '["cloud","switchCloudAccount"]',
+    });
+    expect(publicError.data).not.toHaveProperty('untrustedData');
+    expect(readCloudAccountSwitchErrorCode(publicError)).toBe('target-write-failed');
+    expect(getErrorDetailsText(publicError)).toContain('Diagnostic code: target-write-failed');
   });
 
   it('uses plain language for invalid settings without exposing internal details', () => {
