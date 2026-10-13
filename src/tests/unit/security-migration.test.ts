@@ -23,6 +23,16 @@ const keyringMock = vi.hoisted(() => ({
   setSecret: vi.fn(),
   withTarget: vi.fn(),
 }));
+const windowsCredentialMock = vi.hoisted(() => ({ writeWindowsCredential: vi.fn() }));
+// Mock the current native writer as well as legacy keytar. Otherwise these
+// fixtures overwrite the user's real Windows credential store.
+vi.mock(
+  '@/modules/antigravity-runtime/credentials/windowsCredentialStore',
+  () => windowsCredentialMock,
+);
+vi.mock('koffi', () => {
+  throw new Error('Native credential APIs must be mocked in security migration tests.');
+});
 // The real writer targets the Antigravity CLI session file under the user's
 // home, so leaving it unmocked signs the live CLI out mid-test-run.
 const agyCliMock = vi.hoisted(() => ({ writeAgyCliToken: vi.fn() }));
@@ -243,19 +253,29 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expiry_timestamp: 1_700_000_000,
   };
 
-  it('writes the macOS keychain payload through stdin', async () => {
+  it('writes the complete macOS keychain payload as a password argument', async () => {
     setPlatform('darwin');
 
     const { writeAntigravityCredentialStoreToken } =
       await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
     await writeAntigravityCredentialStoreToken(token);
     expect(childProcessMock.execFileSync).toHaveBeenLastCalledWith(
-      'security',
-      ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'],
+      '/usr/bin/security',
+      [
+        'add-generic-password',
+        '-s',
+        'gemini',
+        '-a',
+        'antigravity',
+        '-A',
+        '-U',
+        '-w',
+        expect.stringMatching(/^go-keyring-base64:/),
+      ],
       expect.objectContaining({
-        input: expect.stringMatching(/^go-keyring-base64:/),
         encoding: 'utf-8',
-        stdio: ['pipe', 'ignore', 'ignore'],
+        stdio: 'ignore',
+        timeout: 10_000,
       }),
     );
   });
@@ -339,7 +359,7 @@ describe('writeAntigravityCredentialStoreToken', () => {
     const { writeAntigravityCredentialStoreToken } =
       await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
     await writeAntigravityCredentialStoreToken(token);
-    const secret = keytarMock.setPassword.mock.calls.at(-1)?.[2];
+    const secret = windowsCredentialMock.writeWindowsCredential.mock.calls.at(-1)?.[2];
     expect(keyringMock.withTarget).not.toHaveBeenCalled();
     expect(keyringMock.deleteCredential).not.toHaveBeenCalled();
     expect(secret).toContain('"access_token":"access-token"');
@@ -352,8 +372,8 @@ describe('writeAntigravityCredentialStoreToken', () => {
     const { writeAntigravityCredentialStoreToken } =
       await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
     await writeAntigravityCredentialStoreToken(token);
-    expect(keytarMock.setPassword).toHaveBeenCalledWith(
-      'gemini',
+    expect(windowsCredentialMock.writeWindowsCredential).toHaveBeenCalledWith(
+      'gemini:antigravity',
       'antigravity',
       expect.any(String),
     );
@@ -361,13 +381,17 @@ describe('writeAntigravityCredentialStoreToken', () => {
     expect(keyringMock.deleteCredential).not.toHaveBeenCalled();
   });
 
-  it('hands the credential store payload to the Antigravity CLI unchanged', async () => {
+  it('keeps a default credential-store update separate from the CLI session file', async () => {
     setPlatform('win32');
 
     const { writeAntigravityCredentialStoreToken } =
       await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
     await writeAntigravityCredentialStoreToken(token);
-    const secret = keytarMock.setPassword.mock.calls.at(-1)?.[2];
-    expect(agyCliMock.writeAgyCliToken).toHaveBeenCalledWith(secret, false);
+    expect(windowsCredentialMock.writeWindowsCredential).toHaveBeenCalledWith(
+      'gemini:antigravity',
+      'antigravity',
+      expect.stringContaining('"refresh_token":"refresh-token"'),
+    );
+    expect(agyCliMock.writeAgyCliToken).not.toHaveBeenCalled();
   });
 });

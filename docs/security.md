@@ -219,6 +219,16 @@ shutdown drains admitted switches before releasing persistence. Desktop shutdown
 switches and waits for admitted work within its bounded forced-exit window; a switch exceeding
 that window can be interrupted by process exit and must be retried after restart.
 
+On macOS, official-client credential reads and writes use `/usr/bin/security` with the
+`gemini` service and `antigravity` account. Writes pass the complete `go-keyring-base64:`
+value as the `-w` argument because password prompt input truncates long tokens. This value
+is briefly visible to processes permitted to inspect command arguments. Credential command
+output is not logged, and write failures discard the original subprocess error, including
+its command, cause and output. Existing items are updated with `-U` without deleting them
+first or reapplying their ACL; only initial creation uses `-A`. Complete credential readback
+remains required before a switch is confirmed. See the
+[macOS credential decision](../.agents/notes/implemented/security/2026-10-13-macos-client-credentials.md).
+
 Cloud identity-profile account operations use strict account, revision and profile schemas at
 the renderer and private core RPC boundaries. The selected account owner reads and writes bindings,
 baseline and history. The user-visible profile fields are returned for explicit profile management;
