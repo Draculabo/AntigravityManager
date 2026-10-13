@@ -785,9 +785,7 @@ export function CloudAccountCard({
           <AccountQuotaWindowSections
             quotaWindow={quotaWindow}
             weeklyItems={
-              isMinimalMode
-                ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem)
-                : weeklyQuotaItems
+              isMinimalMode ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem) : weeklyQuotaItems
             }
             fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
             weeklyHidden={isMinimalMode ? false : weeklyHidden}
@@ -1062,9 +1060,7 @@ export function CompactCloudAccountCard({
         <AccountQuotaWindowSections
           quotaWindow={quotaWindow}
           weeklyItems={
-            isMinimalMode
-              ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem)
-              : weeklyQuotaItems
+            isMinimalMode ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem) : weeklyQuotaItems
           }
           fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
           weeklyHidden={isMinimalMode ? false : weeklyHidden}
