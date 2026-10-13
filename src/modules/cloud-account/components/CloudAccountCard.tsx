@@ -826,7 +826,8 @@ export function CloudAccountCard({
       <CardFooter className="bg-muted/10 mt-auto flex h-11 shrink-0 items-center justify-between gap-3 overflow-hidden border-t p-2 px-4">
         <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
           <span className="text-muted-foreground truncate text-[11px]">
-            {t('cloud.card.used')} {formatAccountLastUsed(account.last_used, i18n.language)}
+            {t('cloud.card.used')}{' '}
+            {formatAccountLastUsed(account.last_used, i18n?.language ?? 'en')}
           </span>
           {account.proxy_configured && (
             <span className="text-primary bg-primary/10 border-primary/20 origin-right scale-90 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold">
