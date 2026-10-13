@@ -41,7 +41,7 @@ import {
   selectClientCommandTool,
 } from '@/modules/proxy-gateway/antigravity/CommandToolAdapter';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
-import { decodeSignature } from '@/modules/proxy-gateway/antigravity/signature-utils';
+import { readThoughtSignature } from '@/modules/proxy-gateway/antigravity/signature-utils';
 import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
 import {
   GeminiRequest,
@@ -843,7 +843,7 @@ export class OpenAIService extends BaseProxyService {
                   : isString(part.thought_signature)
                     ? part.thought_signature
                     : undefined;
-                const signature = decodeSignature(rawSignature);
+                const signature = readThoughtSignature(rawSignature);
                 if (signature) {
                   if (signatureSourceModel) {
                     SignatureStore.store({

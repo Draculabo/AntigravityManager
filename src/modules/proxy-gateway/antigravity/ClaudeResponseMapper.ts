@@ -7,7 +7,7 @@ import {
   Usage,
   GroundingMetadata,
 } from './types';
-import { decodeSignature } from './signature-utils';
+import { readThoughtSignature } from './signature-utils';
 import { toAnthropicMessageId } from './anthropic-message-id';
 import { SignatureStore } from './SignatureStore';
 import {
@@ -70,7 +70,7 @@ class NonStreamingProcessor {
   }
 
   private processPart(part: GeminiPart) {
-    const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature) || null;
+    const signature = readThoughtSignature(part.thoughtSignature ?? part.thought_signature) || null;
 
     // 1. Handle FunctionCall
     if (part.functionCall) {

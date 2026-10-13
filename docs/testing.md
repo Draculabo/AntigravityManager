@@ -56,6 +56,14 @@ verified acceptance deadline correction from the unexplained historical timeout.
 - Never weaken assertions, skip checks or narrow coverage solely to make a failure disappear.
 - Report only checks that actually ran; report blocked or unavailable evidence separately.
 
+`signature-utils.test.ts` checks exact preservation of opaque provider signatures, including
+Base64-encoded ASCII protobuf bytes and non-text binary bytes. `proxy-signature-roundtrip.test.ts`
+exercises streaming and non-streaming Anthropic, OpenAI Chat and Responses tool continuations
+through the production services with synthetic upstream responses. These assertions compare the
+next upstream signature with the original encoded value; they do not establish live Google
+acceptance. Run the adjacent isolation, Responses mapper and invalid-signature recovery suites
+when changing this boundary.
+
 ## Change-to-evidence matrix
 
 | Changed surface                       | Minimum local evidence                                                | Add when applicable                                                        |

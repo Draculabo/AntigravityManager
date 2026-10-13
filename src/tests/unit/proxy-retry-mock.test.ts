@@ -1709,6 +1709,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
     const service = new TestableOpenAIService();
     const stream = new EventEmitter();
     const sessionKey = 'chat-stream-parity-session';
+    const encodedSignature = Buffer.from('stable signature').toString('base64');
     SignatureStore.clear(sessionKey);
     const observable = (service as any).processStreamResponse(
       stream,
@@ -1743,7 +1744,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
                   {
                     thought: true,
                     text: 'reasoning text',
-                    thoughtSignature: Buffer.from('stable signature').toString('base64'),
+                    thoughtSignature: encodedSignature,
                   },
                   { functionCall: firstToolCall },
                   { functionCall: firstToolCall },
@@ -1803,9 +1804,9 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       completion_tokens: 4,
       total_tokens: 14,
     });
-    expect(SignatureStore.get({ model: 'gemini-3-flash', sessionKey })).toBe('stable signature');
+    expect(SignatureStore.get({ model: 'gemini-3-flash', sessionKey })).toBe(encodedSignature);
     expect(SignatureStore.getAt({ model: 'gemini-3-flash', sessionKey, messageCount: 6 })).toBe(
-      'stable signature',
+      encodedSignature,
     );
     expect(chunks.filter((chunk) => chunk.includes('data: [DONE]'))).toHaveLength(1);
 

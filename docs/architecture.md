@@ -30,6 +30,14 @@ account selection, quota policy or persisted Responses formats.
 
 ## Thought signature ownership
 
+Provider thought signatures are opaque strings. Response adapters preserve their exact encoding
+through client output, scoped caches and continuation requests; they never decode Base64 as UTF-8.
+ASCII-compatible protobuf bytes are still binary data. Empty signatures are omitted, while
+provider-specific opaque values and the existing validation placeholder remain unchanged.
+Previously corrupted client histories or persisted records are not rewritten. The existing
+targeted invalid-signature recovery remains available where supported. See the
+[encoding decision](../.agents/notes/implemented/bug-fix/2026-10-13-opaque-thought-signatures.md).
+
 OpenAI Chat and Anthropic Messages derive an in-memory signature scope from the proxy
 credential digest, a client session hint and a conversation content anchor. Session hints
 come from session/conversation headers, query parameters, then body metadata. The anchor
