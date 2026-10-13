@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { SignatureStore } from './SignatureStore';
-import { decodeSignature } from './signature-utils';
+import { readThoughtSignature } from './signature-utils';
 import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight';
 import { extractCustomToolInput, isCustomToolCall } from './CustomToolCall';
 import {
@@ -163,7 +163,7 @@ export class OpenAIResponsesStreamingMapper {
       return [];
     }
 
-    const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature);
+    const signature = readThoughtSignature(part.thoughtSignature ?? part.thought_signature);
     if (part.functionCall) {
       return this.processFunctionCall(part.functionCall, signature);
     }

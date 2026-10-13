@@ -7,7 +7,7 @@ import {
   UsageMetadata,
 } from './types';
 import { SignatureStore } from './SignatureStore';
-import { decodeSignature } from './signature-utils';
+import { readThoughtSignature } from './signature-utils';
 import { toAnthropicMessageId } from './anthropic-message-id';
 import { logger } from '@/shared/logging/logger';
 
@@ -476,7 +476,7 @@ export class PartProcessor {
 
   public process(part: GeminiPart): string[] {
     const chunks: string[] = [];
-    const signature = decodeSignature(part.thoughtSignature ?? part.thought_signature);
+    const signature = readThoughtSignature(part.thoughtSignature ?? part.thought_signature);
     if (signature) {
       this.state.persistSignature(signature);
     }

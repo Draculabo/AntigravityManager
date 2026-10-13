@@ -1,48 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { decodeSignature } from '../../modules/proxy-gateway/antigravity/signature-utils';
+import { readThoughtSignature } from '@/modules/proxy-gateway/antigravity/signature-utils';
 
-describe('decodeSignature', () => {
-  describe('Base64 decoding', () => {
-    it('should correctly decode valid Base64 signature', () => {
-      const original = 'valid-thinking-signature-12345';
-      const base64 = Buffer.from(original).toString('base64');
-      expect(decodeSignature(base64)).toBe(original);
-    });
-
-    it('should decode signature with special characters', () => {
-      const original = 'sig+with/special=chars==';
-      const base64 = Buffer.from(original).toString('base64');
-      expect(decodeSignature(base64)).toBe(original);
-    });
-
-    it('should decode UTF-8 signature text', () => {
-      const original = 'thinking-signature-test-utf8';
-      const base64 = Buffer.from(original).toString('base64');
-      expect(decodeSignature(base64)).toBe(original);
-    });
+describe('opaque thought signatures', () => {
+  it.each([
+    [
+      'ASCII protobuf bytes',
+      Buffer.from('\x12\x26\x0a\x24' + '00000000-0000-4000-8000-000000000347'),
+    ],
+    ['non-text binary bytes', Buffer.from([0xff, 0x00, 0x80, 0x12, 0x26])],
+    ['printable text bytes', Buffer.from('valid-thinking-signature-12345')],
+  ])('preserves the Base64 encoding of %s', (_description, bytes) => {
+    const signature = bytes.toString('base64');
+    expect(readThoughtSignature(signature)).toBe(signature);
   });
 
-  describe('Non-Base64 passthrough', () => {
-    it('should return non-Base64 strings as-is', () => {
-      expect(decodeSignature('plain-text-signature')).toBe('plain-text-signature');
-    });
-
-    it('should handle strings with invalid Base64 characters', () => {
-      expect(decodeSignature('not!valid@base64#')).toBe('not!valid@base64#');
-    });
+  it.each([
+    'plain-text-signature',
+    'not!valid@base64#',
+    'skip_thought_signature_validator',
+    '  opaque  ',
+  ])('preserves provider-specific opaque value %j', (signature) => {
+    expect(readThoughtSignature(signature)).toBe(signature);
   });
 
-  describe('Empty value handling', () => {
-    it('should return undefined for null input', () => {
-      expect(decodeSignature(null)).toBeUndefined();
-    });
-
-    it('should return undefined for undefined input', () => {
-      expect(decodeSignature(undefined)).toBeUndefined();
-    });
-
-    it('should return undefined for empty string', () => {
-      expect(decodeSignature('')).toBeUndefined();
-    });
+  it.each([null, undefined, ''])('omits an absent signature %j', (signature) => {
+    expect(readThoughtSignature(signature)).toBeUndefined();
   });
 });

@@ -52,25 +52,30 @@ describe('Claude stream final-answer compatibility', () => {
           content_block: { type: 'thinking', thinking: '' },
         },
         { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: '' } },
-        { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature } },
+        {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'signature_delta', signature: encoded },
+        },
         { type: 'content_block_stop', index: 0 },
         { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
         { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: answer } },
         { type: 'content_block_stop', index: 1 },
         ...terminal,
       ]);
-      expect(SignatureStore.getAt(context)).toBe(signature);
+      expect(SignatureStore.getAt(context)).toBe(encoded);
     },
   );
 
   it('retains a later signature in the session store without appending an empty client message', () => {
     const state = new StreamingState(context);
     const processor = new PartProcessor(state);
+    const encoded = Buffer.from(signature).toString('base64');
     const chunks = [
       ...processor.process({ text: answer }),
       ...processor.process({
         text: '',
-        thoughtSignature: Buffer.from(signature).toString('base64'),
+        thoughtSignature: encoded,
       }),
       ...state.emitFinish('STOP'),
     ];
@@ -81,6 +86,6 @@ describe('Claude stream final-answer compatibility', () => {
       { type: 'content_block_stop', index: 0 },
       ...terminal,
     ]);
-    expect(SignatureStore.getAt(context)).toBe(signature);
+    expect(SignatureStore.getAt(context)).toBe(encoded);
   });
 });
