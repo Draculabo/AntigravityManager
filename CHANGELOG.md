@@ -2,6 +2,53 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.25.1
+
+**Release Date:** 2026-10-13
+**Since v0.25.0:** 3 commits · 1 merged PR · 1 verified contributor
+
+> This release includes updates in Desktop & User Experience, Accounts & Core.
+
+---
+
+## ✨ Highlights
+
+- **Fix** — preserve cloud account switch diagnostics ([c7da73c](https://github.com/Draculabo/AntigravityManager/commit/c7da73c78a216d11c194e01864c92aa5fa33f0c7))
+- **Fix** — isolate Agy account switching by environment ([0d943eb](https://github.com/Draculabo/AntigravityManager/commit/0d943eb661a26141ad84eed6b951fdb353d5c258))
+- **Maintenance** — update package metadata to v0.25.0 ([#343](https://github.com/Draculabo/AntigravityManager/pull/343))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.25.0 ([#343](https://github.com/Draculabo/AntigravityManager/pull/343))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Fix** — preserve cloud account switch diagnostics ([c7da73c](https://github.com/Draculabo/AntigravityManager/commit/c7da73c78a216d11c194e01864c92aa5fa33f0c7))
+- **Fix** — isolate Agy account switching by environment ([0d943eb](https://github.com/Draculabo/AntigravityManager/commit/0d943eb661a26141ad84eed6b951fdb353d5c258))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.25.0 by @Draculabo ([#343](https://github.com/Draculabo/AntigravityManager/pull/343))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.25.0...v0.25.1
+
 # 🚀 Antigravity Manager Release v0.25.0
 
 **Release Date:** 2026-10-10
