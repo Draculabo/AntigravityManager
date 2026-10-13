@@ -10,6 +10,7 @@ import {
   readQuotaWindowPreference,
   saveQuotaWindowPreference,
 } from '@/modules/cloud-account/utils/quota-window-preference';
+import { isGeminiWeeklyQuotaItem } from '@/modules/cloud-account/utils/minimal-mode-preference';
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 afterEach(cleanup);
@@ -148,5 +149,68 @@ describe('quota window display', () => {
     };
     expect(readQuotaWindowPreference(unavailable)).toBe('both');
     expect(() => saveQuotaWindowPreference(unavailable, 'weekly')).not.toThrow();
+  });
+  it('filters out non-Gemini weekly items for minimal mode', () => {
+    const mixedGroups = [
+      ...groups,
+      {
+        display_name: 'Claude and GPT models',
+        description: 'Third-party limits',
+        buckets: [
+          {
+            bucket_id: 'weekly_claude',
+            window: 'WEEKLY',
+            display_name: 'Seven days',
+            remaining_fraction: 1.0,
+            reset_time: '2099-01-03T00:00:00Z',
+          },
+        ],
+      },
+    ];
+    const allWeeklyItems = selectWeeklyQuotaItems(mixedGroups);
+    expect(allWeeklyItems.length).toBe(2);
+
+    const minimalItems = allWeeklyItems.filter(isGeminiWeeklyQuotaItem);
+    expect(minimalItems.length).toBe(1);
+    expect(minimalItems[0]?.groupName).toBe('Gemini');
+  });
+  it('respects 5h and weekly quotaWindow switches in minimal mode', () => {
+    const minimalItems = selectWeeklyQuotaItems(groups).filter(isGeminiWeeklyQuotaItem);
+
+    // 5h window: shows 5h content, does not show weekly
+    const { rerender } = render(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: '5h',
+        fiveHourContent: createElement('span', null, '5h-gemini-panel'),
+        weeklyItems: minimalItems,
+        hasQuotaSummary: true,
+      }),
+    );
+    expect(screen.getByText('5h-gemini-panel')).toBeTruthy();
+    expect(screen.queryByText('Seven days')).toBeNull();
+
+    // weekly window: does not show 5h content, shows weekly
+    rerender(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: 'weekly',
+        fiveHourContent: createElement('span', null, '5h-gemini-panel'),
+        weeklyItems: minimalItems,
+        hasQuotaSummary: true,
+      }),
+    );
+    expect(screen.queryByText('5h-gemini-panel')).toBeNull();
+    expect(screen.getByText('Seven days')).toBeTruthy();
+
+    // both window: shows both
+    rerender(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: 'both',
+        fiveHourContent: createElement('span', null, '5h-gemini-panel'),
+        weeklyItems: minimalItems,
+        hasQuotaSummary: true,
+      }),
+    );
+    expect(screen.getByText('5h-gemini-panel')).toBeTruthy();
+    expect(screen.getByText('Seven days')).toBeTruthy();
   });
 });

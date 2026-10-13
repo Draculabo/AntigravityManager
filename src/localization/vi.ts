@@ -571,6 +571,8 @@ const vi = {
     'auto-switch-client': 'Tự đổi tài khoản ứng dụng',
     'auto-switch-description':
       'Đổi tài khoản trong Antigravity, IDE và CLI. Chọn tài khoản cho yêu cầu API trên trang API Proxy.',
+    'minimal-mode': 'Chế độ tối giản',
+    'minimal-mode-description': 'Chỉ hiển thị hạn ngạch Gemini và thời gian đặt lại chính',
     'quota-display': {
       title: 'Hiển thị hạn mức',
       description:

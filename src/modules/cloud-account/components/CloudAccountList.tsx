@@ -47,6 +47,10 @@ import {
   readQuotaWindowPreference,
   saveQuotaWindowPreference,
 } from '@/modules/cloud-account/utils/quota-window-preference';
+import {
+  readMinimalModePreference,
+  saveMinimalModePreference,
+} from '@/modules/cloud-account/utils/minimal-mode-preference';
 
 export function CloudAccountList() {
   return (
@@ -95,6 +99,13 @@ function CloudAccountListContent() {
   useEffect(() => {
     saveQuotaGroupVisibility(() => window.localStorage, quotaGroupVisibility);
   }, [quotaGroupVisibility]);
+
+  const [isMinimalMode, setIsMinimalMode] = useState<boolean>(() =>
+    readMinimalModePreference(() => window.localStorage),
+  );
+  useEffect(() => {
+    saveMinimalModePreference(() => window.localStorage, isMinimalMode);
+  }, [isMinimalMode]);
 
   const updateGridLayout = async (layout: GridLayout) => {
     if (config) {
@@ -358,6 +369,7 @@ function CloudAccountListContent() {
         gridLayout={gridLayout}
         quotaWindow={quotaWindow}
         quotaGroupVisibility={quotaGroupVisibility}
+        isMinimalMode={isMinimalMode}
         getTierOptionLabel={getTierOptionLabel}
         onToggleAutoSwitch={handleToggleAutoSwitch}
         onForcePoll={handleForcePoll}
@@ -375,6 +387,7 @@ function CloudAccountListContent() {
         }}
         onQuotaWindowChange={setQuotaWindow}
         onQuotaGroupVisibilityChange={setQuotaGroupVisibility}
+        onToggleMinimalMode={setIsMinimalMode}
       />
 
       <CloudAccountGrid
@@ -383,6 +396,7 @@ function CloudAccountListContent() {
         gridLayout={gridLayout}
         quotaWindow={quotaWindow}
         quotaGroupVisibility={quotaGroupVisibility}
+        isMinimalMode={isMinimalMode}
         manualRecommendation={manualRecommendation}
         hasActiveTierFilter={hasActiveTierFilter}
         refreshingAccountId={refreshingAccountId}

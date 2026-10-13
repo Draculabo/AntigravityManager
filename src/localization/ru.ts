@@ -581,6 +581,8 @@ const ru = {
     'auto-switch-client': 'Автосмена аккаунта в клиентах',
     'auto-switch-description':
       'Переключает аккаунты в Antigravity, IDE и CLI. Аккаунты для API-запросов настраиваются на странице API-прокси.',
+    'minimal-mode': 'Минималистичный режим',
+    'minimal-mode-description': 'Показывать только ключевые квоты и время сброса Gemini',
     'quota-display': {
       title: 'Отображение квот',
       description:

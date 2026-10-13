@@ -37,4 +37,4 @@ separate from complete task success: a client can receive successful responses a
 its local tools or exceed the task timeout.
 
 See the [architecture reference](../../../../docs/architecture.md) and
-[live acceptance report](../../../../artifacts/coding-tool-configuration-acceptance-2026-10-04.md).
+the local live acceptance report (`artifacts/coding-tool-configuration-acceptance-2026-10-04.md`).
