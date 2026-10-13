@@ -778,7 +778,7 @@ export function CloudAccountCard({
 
         <div className="space-y-2">
           <AccountQuotaWindowSections
-            quotaWindow={isMinimalMode ? 'both' : quotaWindow}
+            quotaWindow={quotaWindow}
             weeklyItems={
               isMinimalMode
                 ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem)
@@ -1049,7 +1049,7 @@ export function CompactCloudAccountCard({
         </div>
 
         <AccountQuotaWindowSections
-          quotaWindow={isMinimalMode ? 'both' : quotaWindow}
+          quotaWindow={quotaWindow}
           weeklyItems={
             isMinimalMode
               ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem)

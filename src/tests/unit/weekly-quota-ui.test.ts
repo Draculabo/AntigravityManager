@@ -174,4 +174,43 @@ describe('quota window display', () => {
     expect(minimalItems.length).toBe(1);
     expect(minimalItems[0]?.groupName).toBe('Gemini');
   });
+  it('respects 5h and weekly quotaWindow switches in minimal mode', () => {
+    const minimalItems = selectWeeklyQuotaItems(groups).filter(isGeminiWeeklyQuotaItem);
+
+    // 5h window: shows 5h content, does not show weekly
+    const { rerender } = render(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: '5h',
+        fiveHourContent: createElement('span', null, '5h-gemini-panel'),
+        weeklyItems: minimalItems,
+        hasQuotaSummary: true,
+      }),
+    );
+    expect(screen.getByText('5h-gemini-panel')).toBeTruthy();
+    expect(screen.queryByText('Seven days')).toBeNull();
+
+    // weekly window: does not show 5h content, shows weekly
+    rerender(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: 'weekly',
+        fiveHourContent: createElement('span', null, '5h-gemini-panel'),
+        weeklyItems: minimalItems,
+        hasQuotaSummary: true,
+      }),
+    );
+    expect(screen.queryByText('5h-gemini-panel')).toBeNull();
+    expect(screen.getByText('Seven days')).toBeTruthy();
+
+    // both window: shows both
+    rerender(
+      createElement(AccountQuotaWindowSections, {
+        quotaWindow: 'both',
+        fiveHourContent: createElement('span', null, '5h-gemini-panel'),
+        weeklyItems: minimalItems,
+        hasQuotaSummary: true,
+      }),
+    );
+    expect(screen.getByText('5h-gemini-panel')).toBeTruthy();
+    expect(screen.getByText('Seven days')).toBeTruthy();
+  });
 });
