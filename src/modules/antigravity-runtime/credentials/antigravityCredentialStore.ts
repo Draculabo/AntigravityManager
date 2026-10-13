@@ -167,11 +167,11 @@ function classifyCredentialStoreReadError(error: unknown): CredentialStoreReadEr
 }
 
 function createNativeCredentialEntry(): Entry {
-  // Secret Service interprets an explicit target as a collection name. The
-  // Windows credential target must not create a new Linux collection/prompt.
-  return process.platform === 'linux'
-    ? new Entry('gemini', 'antigravity')
-    : Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
+  // Only macOS and Linux reach the native keyring; Windows uses the
+  // `gemini:antigravity` credential target directly. Do not pass that target to
+  // `Entry.withTarget`: macOS expects a keychain kind (`User` / `System` /
+  // `Common` / `Dynamic`) and Secret Service treats it as a collection name.
+  return new Entry('gemini', 'antigravity');
 }
 
 function readViaNativeKeyring(): Uint8Array | null {

@@ -128,6 +128,9 @@ describe('readAntigravityCredentialStoreToken', () => {
     expect(await readAntigravityCredentialStoreToken()).toEqual({
       refreshToken: 'refresh-macos',
     });
+    // The macOS keyring rejects any target other than a keychain kind.
+    expect(mocks.createEntry).toHaveBeenCalledWith('gemini', 'antigravity');
+    expect(mocks.withTarget).not.toHaveBeenCalled();
   });
 
   it('uses the bounded Linux secret-tool fallback after native keyring failure', async () => {
