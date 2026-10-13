@@ -180,6 +180,25 @@ function readViaNativeKeyring(): Uint8Array | null {
   return secret ? Uint8Array.from(secret) : null;
 }
 
+function readViaMacOSSecurity(): Uint8Array | null {
+  const result = spawnSync(
+    '/usr/bin/security',
+    ['find-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w'],
+    { timeout: 10_000, maxBuffer: 64 * 1024 },
+  );
+  if (result.error) {
+    throw classifyCredentialStoreReadError(result.error);
+  }
+  // security returns errSecItemNotFound (-25300) as an 8-bit exit status.
+  if (result.status === 44) {
+    return null;
+  }
+  if (result.status !== 0) {
+    throw new CredentialStoreReadError('unavailable');
+  }
+  return result.stdout;
+}
+
 function readViaSecretTool(): Uint8Array | null {
   const lookupResult = spawnSync(
     'secret-tool',
@@ -208,6 +227,10 @@ function readViaSecretTool(): Uint8Array | null {
 }
 
 export async function readAntigravityCredentialStoreToken(): Promise<CredentialStoreToken | null> {
+  if (process.platform === 'darwin') {
+    const secret = readViaMacOSSecurity();
+    return secret ? parseCredentialStorePayload(decodeCredentialStoreText(secret)) : null;
+  }
   if (process.platform === 'win32') {
     try {
       const payload = await readWindowsCredential('gemini:antigravity');
@@ -320,9 +343,9 @@ function credentialStoreItemExists(): boolean {
   // `find-generic-password` reads only the item's attributes, not its secret, so it does not prompt
   // even when the ACL is restrictive. Exit status 0 means the item is present.
   const result = spawnSync(
-    'security',
+    '/usr/bin/security',
     ['find-generic-password', '-s', 'gemini', '-a', 'antigravity'],
-    { stdio: 'ignore' },
+    { stdio: 'ignore', timeout: 10_000 },
   );
   return result?.status === 0;
 }
@@ -342,13 +365,17 @@ async function writeToSystemCredentialStore(payload: string): Promise<void> {
     const args = alreadyExists
       ? ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-U', '-w']
       : ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'];
-    execFileSync('security', args, {
-      // Without an argv value, security reads the password and its confirmation.
-      // Keep both on stdin so the credential never appears in process arguments.
-      input: `${value}\n${value}\n`,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'ignore', 'ignore'],
-    });
+    try {
+      // An explicit -w value avoids getpass's 128-byte prompt limit. The
+      // credential is briefly present in argv; never retain the command error.
+      execFileSync('/usr/bin/security', [...args, value], {
+        encoding: 'utf-8',
+        stdio: 'ignore',
+        timeout: 10_000,
+      });
+    } catch {
+      throw new Error('Failed to write the Antigravity macOS credential store.');
+    }
     return;
   }
 
