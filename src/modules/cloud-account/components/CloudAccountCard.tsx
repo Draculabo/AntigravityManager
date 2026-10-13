@@ -69,7 +69,10 @@ import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
 import { isWeeklyQuotaBucket } from '@/modules/cloud-account/utils/quota-groups';
 import { useOpenAccountValidationLink } from '@/modules/cloud-account/hooks/useOpenAccountValidationLink';
-import { isGeminiWeeklyQuotaItem } from '@/modules/cloud-account/utils/minimal-mode-preference';
+import {
+  isGeminiWeeklyQuotaItem,
+  isGeminiQuotaGroup,
+} from '@/modules/cloud-account/utils/minimal-mode-preference';
 
 type ModelQuotaEntry = [string, CloudQuotaModelInfo];
 type LiveModelAvailability = Awaited<
@@ -459,33 +462,35 @@ export function CloudAccountCard({
         quota: account.quota ? { ...account.quota, models: providerModels } : undefined,
       })
     : null;
+  const overallQuotaBar =
+    providerStats && providerStats.visibleModels > 0 ? (
+      <div className="bg-muted/40 flex items-center justify-between rounded-lg px-3 py-1.5 text-xs">
+        <span className="font-medium">{t('settings.providerGroupings.overall')}</span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`font-mono font-bold ${getQuotaTextColorClass(providerStats.overallPercentage)}`}
+          >
+            {formatQuotaLabel(providerStats.overallPercentage)}
+          </span>
+          <div className="bg-muted h-1.5 w-16 overflow-hidden rounded-full">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${getQuotaBarColorClass(providerStats.overallPercentage)}`}
+              style={{
+                width: `${clampQuotaPercentage(providerStats.overallPercentage)}%`,
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   const providerGroupedQuotaSection =
     providerStats && providerStats.visibleModels > 0 ? (
       <>
-        <div className="bg-muted/40 flex items-center justify-between rounded-lg px-3 py-1.5 text-xs">
-          <span className="font-medium">{t('settings.providerGroupings.overall')}</span>
-          <div className="flex items-center gap-2">
-            <span
-              className={`font-mono font-bold ${getQuotaTextColorClass(providerStats.overallPercentage)}`}
-            >
-              {formatQuotaLabel(providerStats.overallPercentage)}
-            </span>
-            <div className="bg-muted h-1.5 w-16 overflow-hidden rounded-full">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${getQuotaBarColorClass(providerStats.overallPercentage)}`}
-                style={{
-                  width: `${clampQuotaPercentage(providerStats.overallPercentage)}%`,
-                }}
-              />
-            </div>
-          </div>
-        </div>
+        {overallQuotaBar}
 
         <div className="mt-3 space-y-2">
-          {(isMinimalMode
-            ? providerStats.providers.filter((group) => group.providerKey === 'gemini-')
-            : providerStats.providers
-          ).map((group) => (
+          {providerStats.providers.map((group) => (
             <ProviderGroup
               key={group.providerKey}
               stats={group}
@@ -788,27 +793,33 @@ export function CloudAccountCard({
             weeklyHidden={isMinimalMode ? false : weeklyHidden}
             hasQuotaSummary={account.quota?.quota_groups !== undefined}
             fiveHourContent={
-              <>
-                {providerGroupingsEnabled ? (
-                  <>
-                    {providerGroupedQuotaSection}
-                    {!providerGroupedQuotaSection && !hasDetailedQuota ? emptyQuotaState : null}
-                  </>
-                ) : hasVisibleQuotaModels ? (
-                  <div className="space-y-3">
-                    {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
-                    {!isMinimalMode && (
-                      <>
-                        <div className="pt-1" />
-                        {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
-                      </>
-                    )}
-                  </div>
-                ) : hasDetailedQuota ? null : (
-                  emptyQuotaState
-                )}
-                {!isMinimalMode && <DetailedQuotaDisplay groups={detailedGroups} />}
-              </>
+              isMinimalMode ? (
+                <>
+                  {overallQuotaBar}
+                  <DetailedQuotaDisplay groups={detailedGroups.filter(isGeminiQuotaGroup)} />
+                  {!overallQuotaBar && detailedGroups.filter(isGeminiQuotaGroup).length === 0
+                    ? emptyQuotaState
+                    : null}
+                </>
+              ) : (
+                <>
+                  {providerGroupingsEnabled ? (
+                    <>
+                      {providerGroupedQuotaSection}
+                      {!providerGroupedQuotaSection && !hasDetailedQuota ? emptyQuotaState : null}
+                    </>
+                  ) : hasVisibleQuotaModels ? (
+                    <div className="space-y-3">
+                      {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
+                      <div className="pt-1" />
+                      {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
+                    </div>
+                  ) : hasDetailedQuota ? null : (
+                    emptyQuotaState
+                  )}
+                  <DetailedQuotaDisplay groups={detailedGroups} />
+                </>
+              )
             }
           />
         </div>

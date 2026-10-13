@@ -1,3 +1,4 @@
+import type { CloudQuotaGroup } from '@/modules/cloud-account/types';
 import type { WeeklyQuotaItem } from '@/modules/cloud-account/utils/quota-groups';
 
 export const MINIMAL_MODE_STORAGE_KEY = 'accounts_minimal_mode';
@@ -42,6 +43,21 @@ export function isGeminiWeeklyQuotaItem(item: WeeklyQuotaItem): boolean {
     item.bucket?.bucket_id,
     item.bucket?.display_name,
     item.bucket?.description,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return /gemini/i.test(targetText);
+}
+
+/**
+ * Identifies whether a detailed quota group belongs to the Gemini family.
+ */
+export function isGeminiQuotaGroup(group: CloudQuotaGroup): boolean {
+  const targetText = [
+    group.display_name,
+    group.description,
+    ...group.buckets.flatMap((b) => [b.bucket_id, b.display_name, b.description]),
   ]
     .filter(Boolean)
     .join(' ');

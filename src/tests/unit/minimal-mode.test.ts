@@ -3,6 +3,7 @@ import {
   readMinimalModePreference,
   saveMinimalModePreference,
   isGeminiWeeklyQuotaItem,
+  isGeminiQuotaGroup,
 } from '@/modules/cloud-account/utils/minimal-mode-preference';
 import type { WeeklyQuotaItem } from '@/modules/cloud-account/utils/quota-groups';
 
@@ -74,5 +75,41 @@ describe('isGeminiWeeklyQuotaItem', () => {
       },
     };
     expect(isGeminiWeeklyQuotaItem(claudeItem)).toBe(false);
+  });
+});
+
+describe('isGeminiQuotaGroup', () => {
+  it('correctly matches Gemini Models quota group', () => {
+    const geminiGroup = {
+      display_name: 'Gemini Models',
+      description: 'Models within this group: Gemini Flash, Gemini Pro',
+      buckets: [
+        {
+          bucket_id: 'five-hour',
+          window: '5h',
+          display_name: 'Five Hour Limit Remaining',
+          remaining_fraction: 1.0,
+          reset_time: '2099-01-01T04:59:00Z',
+        },
+      ],
+    };
+    expect(isGeminiQuotaGroup(geminiGroup)).toBe(true);
+  });
+
+  it('correctly filters out Claude and GPT quota group', () => {
+    const claudeGroup = {
+      display_name: 'Claude and GPT models',
+      description: 'Models within this group: Claude Opus, Claude Sonnet, GPT-OSS',
+      buckets: [
+        {
+          bucket_id: 'five-hour',
+          window: '5h',
+          display_name: 'Five Hour Limit Remaining',
+          remaining_fraction: 1.0,
+          reset_time: '2099-01-01T04:59:00Z',
+        },
+      ],
+    };
+    expect(isGeminiQuotaGroup(claudeGroup)).toBe(false);
   });
 });
