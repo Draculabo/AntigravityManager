@@ -574,6 +574,8 @@ const tr = {
     'auto-switch-client': 'İstemci hesabını otomatik değiştir',
     'auto-switch-description':
       'Antigravity, IDE ve CLI hesaplarını değiştirir. API isteklerinde kullanılan hesapları API Proxy sayfasında seçebilirsiniz.',
+    'minimal-mode': 'Minimal mod',
+    'minimal-mode-description': 'Yalnızca temel Gemini kotalarını ve sıfırlama sürelerini göster',
     'quota-display': {
       title: 'Kota görünümü',
       description:

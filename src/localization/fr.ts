@@ -667,6 +667,9 @@ const fr = {
     'auto-switch-client': 'Changer automatiquement de compte dans les clients',
     'auto-switch-description':
       'Change les comptes dans Antigravity, IDE et CLI. Les comptes utilisés pour les requêtes API se règlent sur la page Proxy API.',
+    'minimal-mode': 'Mode minimal',
+    'minimal-mode-description':
+      'Afficher uniquement les quotas et temps de réinitialisation clés de Gemini',
     'quota-display': {
       title: 'Affichage des quotas',
       description:

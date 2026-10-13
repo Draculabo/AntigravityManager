@@ -44,7 +44,7 @@ cover adjacent instructions, session metadata, code examples, signed tool histor
 The stock Claude Code client completes the full HTML task on Windows and Linux with both CLI
 and Electron gateway owners. Each of the four tasks records three successful gateway requests;
 both desktop owners also pass the Traffic Monitor comparison. Full results and original failures
-remain in the [acceptance report](../../../../artifacts/live-proxy-acceptance-2026-10-04/report.md).
+remain in the local acceptance report (`artifacts/live-proxy-acceptance-2026-10-04/report.md`).
 These passes do not establish thinking capture: the repaired runs report zero reasoning tokens
 and no new Thought Store record.
 

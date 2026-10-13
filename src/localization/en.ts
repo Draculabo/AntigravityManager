@@ -753,6 +753,8 @@ const en = {
     'auto-switch-client': 'Auto-switch client account',
     'auto-switch-description':
       'Switches accounts in Antigravity, IDE, and CLI. Choose which accounts API requests use on the API Proxy page.',
+    'minimal-mode': 'Minimal mode',
+    'minimal-mode-description': 'Only show key Gemini quota and reset times',
     'quota-display': {
       title: 'Quota display',
       description:

@@ -19,6 +19,7 @@ interface CloudAccountGridProps {
   gridLayout: GridLayout;
   quotaWindow: QuotaWindow;
   quotaGroupVisibility: QuotaGroupVisibility;
+  isMinimalMode?: boolean;
   manualRecommendation: ManualAccountRecommendation | null;
   hasActiveTierFilter: boolean;
   refreshingAccountId?: string;
@@ -38,6 +39,7 @@ export function CloudAccountGrid({
   gridLayout,
   quotaWindow,
   quotaGroupVisibility,
+  isMinimalMode,
   manualRecommendation,
   hasActiveTierFilter,
   refreshingAccountId,
@@ -61,6 +63,7 @@ export function CloudAccountGrid({
             account={account}
             quotaWindow={quotaWindow}
             quotaGroupVisibility={quotaGroupVisibility}
+            isMinimalMode={isMinimalMode}
             onRefresh={onRefresh}
             onDelete={onDelete}
             onSwitch={onSwitch}
@@ -81,6 +84,7 @@ export function CloudAccountGrid({
             account={account}
             quotaWindow={quotaWindow}
             quotaGroupVisibility={quotaGroupVisibility}
+            isMinimalMode={isMinimalMode}
             onRefresh={onRefresh}
             onDelete={onDelete}
             onSwitch={onSwitch}
