@@ -167,11 +167,12 @@ function classifyCredentialStoreReadError(error: unknown): CredentialStoreReadEr
 }
 
 function createNativeCredentialEntry(): Entry {
-  // Secret Service interprets an explicit target as a collection name. The
-  // Windows credential target must not create a new Linux collection/prompt.
-  return process.platform === 'linux'
-    ? new Entry('gemini', 'antigravity')
-    : Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity');
+  // Secret Service interprets an explicit target as a collection name, and macOS
+  // expects a keychain kind ('User' | 'System' | ...), not an app-specific string.
+  // Only Windows uses target as the Credential Manager target name.
+  return process.platform === 'win32'
+    ? Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity')
+    : new Entry('gemini', 'antigravity');
 }
 
 function readViaNativeKeyring(): Uint8Array | null {
@@ -207,6 +208,39 @@ function readViaSecretTool(): Uint8Array | null {
   return payload ? Buffer.from(payload, 'utf-8') : null;
 }
 
+function readViaSecurityCli(): Uint8Array | null {
+  const lookupResult = spawnSync(
+    'security',
+    ['find-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w'],
+    {
+      encoding: 'utf-8',
+      timeout: 10_000,
+    },
+  );
+  if (!lookupResult) {
+    return null;
+  }
+  if (lookupResult.error) {
+    throw classifyCredentialStoreReadError(lookupResult.error);
+  }
+  if (lookupResult.status === 0) {
+    const payload = lookupResult.stdout?.trim();
+    return payload ? Buffer.from(payload, 'utf-8') : null;
+  }
+  if (lookupResult.status === 44) {
+    // 44 is errSecItemNotFound
+    return null;
+  }
+  const stderr = lookupResult.stderr?.toLowerCase() ?? '';
+  if (stderr.includes('permission denied') || stderr.includes('access denied')) {
+    throw new CredentialStoreReadError('permission-denied');
+  }
+  if (stderr.includes('locked')) {
+    throw new CredentialStoreReadError('locked');
+  }
+  return null;
+}
+
 export async function readAntigravityCredentialStoreToken(): Promise<CredentialStoreToken | null> {
   if (process.platform === 'win32') {
     try {
@@ -226,6 +260,27 @@ export async function readAntigravityCredentialStoreToken(): Promise<CredentialS
       const secretToolError = classifyCredentialStoreReadError(error);
       if (secretToolError.code !== 'unavailable') {
         throw secretToolError;
+      }
+    }
+
+    try {
+      const secret = readViaNativeKeyring();
+      return secret ? parseCredentialStorePayload(decodeCredentialStoreText(secret)) : null;
+    } catch (error) {
+      throw classifyCredentialStoreReadError(error);
+    }
+  }
+
+  if (process.platform === 'darwin') {
+    try {
+      const secret = readViaSecurityCli();
+      if (secret) {
+        return parseCredentialStorePayload(decodeCredentialStoreText(secret));
+      }
+    } catch (error) {
+      const securityCliError = classifyCredentialStoreReadError(error);
+      if (securityCliError.code !== 'unavailable') {
+        throw securityCliError;
       }
     }
 
@@ -338,16 +393,15 @@ async function writeToSystemCredentialStore(payload: string): Promise<void> {
     // as a change that needs the login-keychain password, and `-U` reapplies it on every update, so
     // each account switch pops a password prompt. Only pass `-A` when the item does not exist yet;
     // afterwards update the stored value without touching the ACL, which does not prompt.
+    // The password is provided via `-w` directly to avoid truncation: the `security` utility reads
+    // stdin via getpass(), which silently truncates passphrases at 128 characters.
     const alreadyExists = credentialStoreItemExists();
     const args = alreadyExists
-      ? ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-U', '-w']
-      : ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'];
+      ? ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-U', '-w', value]
+      : ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w', value];
     execFileSync('security', args, {
-      // Without an argv value, security reads the password and its confirmation.
-      // Keep both on stdin so the credential never appears in process arguments.
-      input: `${value}\n${value}\n`,
       encoding: 'utf-8',
-      stdio: ['pipe', 'ignore', 'ignore'],
+      stdio: ['ignore', 'ignore', 'ignore'],
     });
     return;
   }

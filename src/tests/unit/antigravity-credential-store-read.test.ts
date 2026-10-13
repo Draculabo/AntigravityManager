@@ -130,6 +130,29 @@ describe('readAntigravityCredentialStoreToken', () => {
     });
   });
 
+  it('reads macOS keychain directly via security CLI when available', async () => {
+    setPlatform('darwin');
+    const payload = JSON.stringify({
+      token: {
+        refresh_token: 'refresh-macos-cli',
+      },
+    });
+    mocks.spawnSync.mockReturnValue({
+      status: 0,
+      stdout: `go-keyring-base64:${Buffer.from(payload, 'utf-8').toString('base64')}`,
+    });
+    const { readAntigravityCredentialStoreToken } =
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    expect(await readAntigravityCredentialStoreToken()).toEqual({
+      refreshToken: 'refresh-macos-cli',
+    });
+    expect(mocks.spawnSync).toHaveBeenCalledWith(
+      'security',
+      ['find-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w'],
+      expect.objectContaining({ encoding: 'utf-8', timeout: 10_000 }),
+    );
+  });
+
   it('uses the bounded Linux secret-tool fallback after native keyring failure', async () => {
     setPlatform('linux');
     mocks.getSecret.mockImplementation(() => {
