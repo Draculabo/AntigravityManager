@@ -69,6 +69,7 @@ import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
 import { isWeeklyQuotaBucket } from '@/modules/cloud-account/utils/quota-groups';
 import { useOpenAccountValidationLink } from '@/modules/cloud-account/hooks/useOpenAccountValidationLink';
+import { isGeminiWeeklyQuotaItem } from '@/modules/cloud-account/utils/minimal-mode-preference';
 
 type ModelQuotaEntry = [string, CloudQuotaModelInfo];
 type LiveModelAvailability = Awaited<
@@ -202,6 +203,7 @@ interface CloudAccountCardProps {
   account: CloudAccountView;
   quotaWindow?: QuotaWindow;
   quotaGroupVisibility?: QuotaGroupVisibility;
+  isMinimalMode?: boolean;
   onRefresh: (id: string) => void;
   onDelete: (id: string) => void;
   onSwitch: (id: string, appTarget?: AntigravityAppTarget) => void;
@@ -218,6 +220,7 @@ export function CloudAccountCard({
   account,
   quotaWindow = 'both',
   quotaGroupVisibility = DEFAULT_QUOTA_GROUP_VISIBILITY,
+  isMinimalMode = false,
   onRefresh,
   onDelete,
   onSwitch,
@@ -479,7 +482,10 @@ export function CloudAccountCard({
         </div>
 
         <div className="mt-3 space-y-2">
-          {providerStats.providers.map((group) => (
+          {(isMinimalMode
+            ? providerStats.providers.filter((group) => group.providerKey === 'gemini-')
+            : providerStats.providers
+          ).map((group) => (
             <ProviderGroup
               key={group.providerKey}
               stats={group}
@@ -772,10 +778,14 @@ export function CloudAccountCard({
 
         <div className="space-y-2">
           <AccountQuotaWindowSections
-            quotaWindow={quotaWindow}
-            weeklyItems={weeklyQuotaItems}
-            fiveHourHidden={fiveHourHidden}
-            weeklyHidden={weeklyHidden}
+            quotaWindow={isMinimalMode ? 'both' : quotaWindow}
+            weeklyItems={
+              isMinimalMode
+                ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem)
+                : weeklyQuotaItems
+            }
+            fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
+            weeklyHidden={isMinimalMode ? false : weeklyHidden}
             hasQuotaSummary={account.quota?.quota_groups !== undefined}
             fiveHourContent={
               <>
@@ -787,13 +797,17 @@ export function CloudAccountCard({
                 ) : hasVisibleQuotaModels ? (
                   <div className="space-y-3">
                     {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
-                    <div className="pt-1" />
-                    {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
+                    {!isMinimalMode && (
+                      <>
+                        <div className="pt-1" />
+                        {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
+                      </>
+                    )}
                   </div>
                 ) : hasDetailedQuota ? null : (
                   emptyQuotaState
                 )}
-                <DetailedQuotaDisplay groups={detailedGroups} />
+                {!isMinimalMode && <DetailedQuotaDisplay groups={detailedGroups} />}
               </>
             }
           />
@@ -881,6 +895,7 @@ interface CompactCloudAccountCardProps {
   account: CloudAccountView;
   quotaWindow?: QuotaWindow;
   quotaGroupVisibility?: QuotaGroupVisibility;
+  isMinimalMode?: boolean;
   onRefresh: (id: string) => void;
   onDelete: (id: string) => void;
   onSwitch: (id: string, appTarget?: AntigravityAppTarget) => void;
@@ -896,6 +911,7 @@ export function CompactCloudAccountCard({
   account,
   quotaWindow = 'both',
   quotaGroupVisibility = DEFAULT_QUOTA_GROUP_VISIBILITY,
+  isMinimalMode = false,
   onRefresh,
   onDelete,
   onSwitch,
@@ -923,6 +939,11 @@ export function CompactCloudAccountCard({
   } = getVisibleAccountQuota(account.quota, config?.model_visibility ?? {}, quotaGroupVisibility);
 
   const compactQuotaItems = Object.entries(mergedModelQuotas)
+    .filter(
+      ([modelName]) =>
+        !isMinimalMode ||
+        (modelName.includes('gemini') && !GEMINI_LEGACY_MODEL_PATTERN.test(modelName)),
+    )
     .sort((a, b) => b[1].percentage - a[1].percentage)
     .map(([modelName, info]) => ({
       id: modelName,
@@ -1028,10 +1049,14 @@ export function CompactCloudAccountCard({
         </div>
 
         <AccountQuotaWindowSections
-          quotaWindow={quotaWindow}
-          weeklyItems={weeklyQuotaItems}
-          fiveHourHidden={fiveHourHidden}
-          weeklyHidden={weeklyHidden}
+          quotaWindow={isMinimalMode ? 'both' : quotaWindow}
+          weeklyItems={
+            isMinimalMode
+              ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem)
+              : weeklyQuotaItems
+          }
+          fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
+          weeklyHidden={isMinimalMode ? false : weeklyHidden}
           hasQuotaSummary={account.quota?.quota_groups !== undefined}
           variant="compact"
           fiveHourContent={<CompactModelQuotaDisplay items={compactQuotaItems} />}

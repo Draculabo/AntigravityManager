@@ -705,6 +705,8 @@ const zhCn = {
     'auto-switch-client': '客户端自动换号',
     'auto-switch-description':
       '控制 Antigravity、IDE 和 CLI 的账号切换。API 请求使用哪些账号，请在 API 反代页面设置。',
+    'minimal-mode': '极简模式',
+    'minimal-mode-description': '仅显示核心 Gemini 配额与重置时间',
     'quota-display': {
       title: '额度显示',
       description: '选择账号卡片显示哪些额度。仅影响显示，不改变实际额度或请求使用的账号。',

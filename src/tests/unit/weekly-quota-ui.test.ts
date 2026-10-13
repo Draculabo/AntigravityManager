@@ -10,6 +10,7 @@ import {
   readQuotaWindowPreference,
   saveQuotaWindowPreference,
 } from '@/modules/cloud-account/utils/quota-window-preference';
+import { isGeminiWeeklyQuotaItem } from '@/modules/cloud-account/utils/minimal-mode-preference';
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 afterEach(cleanup);
@@ -148,5 +149,29 @@ describe('quota window display', () => {
     };
     expect(readQuotaWindowPreference(unavailable)).toBe('both');
     expect(() => saveQuotaWindowPreference(unavailable, 'weekly')).not.toThrow();
+  });
+  it('filters out non-Gemini weekly items for minimal mode', () => {
+    const mixedGroups = [
+      ...groups,
+      {
+        display_name: 'Claude and GPT models',
+        description: 'Third-party limits',
+        buckets: [
+          {
+            bucket_id: 'weekly_claude',
+            window: 'WEEKLY',
+            display_name: 'Seven days',
+            remaining_fraction: 1.0,
+            reset_time: '2099-01-03T00:00:00Z',
+          },
+        ],
+      },
+    ];
+    const allWeeklyItems = selectWeeklyQuotaItems(mixedGroups);
+    expect(allWeeklyItems.length).toBe(2);
+
+    const minimalItems = allWeeklyItems.filter(isGeminiWeeklyQuotaItem);
+    expect(minimalItems.length).toBe(1);
+    expect(minimalItems[0]?.groupName).toBe('Gemini');
   });
 });
