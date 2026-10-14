@@ -1,5 +1,5 @@
 import { Entry } from '@napi-rs/keyring';
-import { execFileSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -10,6 +10,7 @@ import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
 import { readWindowsCredential, writeWindowsCredential } from './windowsCredentialStore';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { buildAntigravityCredentialPayload } from './antigravityCredentialPayload';
+import { readMacOSCredentialStore, writeMacOSCredentialStore } from './macosCredentialStore';
 
 export interface CredentialStoreToken {
   accessToken?: string;
@@ -122,6 +123,9 @@ function parseCredentialStorePayload(payload: string): CredentialStoreToken {
 export async function readClientAccountToken(
   target?: AntigravityAppTarget | null,
 ): Promise<CredentialStoreToken | null> {
+  if (process.platform === 'darwin') {
+    return readMacOSCredentialStore(true);
+  }
   if (target !== 'agy') {
     return readAntigravityCredentialStoreToken();
   }
@@ -180,25 +184,6 @@ function readViaNativeKeyring(): Uint8Array | null {
   return secret ? Uint8Array.from(secret) : null;
 }
 
-function readViaMacOSSecurity(): Uint8Array | null {
-  const result = spawnSync(
-    '/usr/bin/security',
-    ['find-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w'],
-    { timeout: 10_000, maxBuffer: 64 * 1024 },
-  );
-  if (result.error) {
-    throw classifyCredentialStoreReadError(result.error);
-  }
-  // security returns errSecItemNotFound (-25300) as an 8-bit exit status.
-  if (result.status === 44) {
-    return null;
-  }
-  if (result.status !== 0) {
-    throw new CredentialStoreReadError('unavailable');
-  }
-  return result.stdout;
-}
-
 function readViaSecretTool(): Uint8Array | null {
   const lookupResult = spawnSync(
     'secret-tool',
@@ -228,8 +213,7 @@ function readViaSecretTool(): Uint8Array | null {
 
 export async function readAntigravityCredentialStoreToken(): Promise<CredentialStoreToken | null> {
   if (process.platform === 'darwin') {
-    const secret = readViaMacOSSecurity();
-    return secret ? parseCredentialStorePayload(decodeCredentialStoreText(secret)) : null;
+    return readMacOSCredentialStore(true);
   }
   if (process.platform === 'win32') {
     try {
@@ -320,6 +304,10 @@ export async function writeAntigravityCredentialStoreToken(
   token: CredentialStoreTokenInput,
   options: CredentialStoreWriteOptions = {},
 ): Promise<void> {
+  if (process.platform === 'darwin') {
+    writeMacOSCredentialStore(token);
+    return;
+  }
   const payload = buildAntigravityCredentialPayload(token);
   logger.info('Writing Antigravity token to system credential store');
 
@@ -339,46 +327,11 @@ export async function writeAntigravityCredentialStoreToken(
   }
 }
 
-function credentialStoreItemExists(): boolean {
-  // `find-generic-password` reads only the item's attributes, not its secret, so it does not prompt
-  // even when the ACL is restrictive. Exit status 0 means the item is present.
-  const result = spawnSync(
-    '/usr/bin/security',
-    ['find-generic-password', '-s', 'gemini', '-a', 'antigravity'],
-    { stdio: 'ignore', timeout: 10_000 },
-  );
-  return result?.status === 0;
-}
-
 async function writeToSystemCredentialStore(payload: string): Promise<void> {
   if (process.platform === 'win32') {
     await writeWindowsCredential('gemini:antigravity', 'antigravity', payload);
     return;
   }
-  if (process.platform === 'darwin') {
-    const value = `go-keyring-base64:${Buffer.from(payload, 'utf-8').toString('base64')}`;
-    // `-A` sets the item's access-control list to "all applications". macOS treats writing the ACL
-    // as a change that needs the login-keychain password, and `-U` reapplies it on every update, so
-    // each account switch pops a password prompt. Only pass `-A` when the item does not exist yet;
-    // afterwards update the stored value without touching the ACL, which does not prompt.
-    const alreadyExists = credentialStoreItemExists();
-    const args = alreadyExists
-      ? ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-U', '-w']
-      : ['add-generic-password', '-s', 'gemini', '-a', 'antigravity', '-A', '-U', '-w'];
-    try {
-      // An explicit -w value avoids getpass's 128-byte prompt limit. The
-      // credential is briefly present in argv; never retain the command error.
-      execFileSync('/usr/bin/security', [...args, value], {
-        encoding: 'utf-8',
-        stdio: 'ignore',
-        timeout: 10_000,
-      });
-    } catch {
-      throw new Error('Failed to write the Antigravity macOS credential store.');
-    }
-    return;
-  }
-
   if (process.platform === 'linux' && isSecretToolAvailable()) {
     const loginWritten = tryWriteLinuxSecretServiceCollection(payload, 'login');
     const defaultWritten = tryWriteLinuxSecretServiceCollection(payload, 'default');

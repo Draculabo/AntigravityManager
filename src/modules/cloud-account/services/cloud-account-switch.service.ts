@@ -255,7 +255,14 @@ export async function switchCloudAccountCore(
 
         stage = 'target-prepare';
         const preparedWrite = await prepareClientAccountWrite(
-          { email: account.email, name: account.name || account.email, token: account.token },
+          {
+            email: account.email,
+            name: account.name || account.email,
+            token: account.token,
+            ...(process.platform === 'darwin' && account.device_profile
+              ? { serviceMachineId: account.device_profile.macMachineId }
+              : {}),
+          },
           appTarget,
           launchContext?.pathOptions,
         );
@@ -265,9 +272,12 @@ export async function switchCloudAccountCore(
           scope: 'cloud',
           appTarget,
           targetProfile: account.device_profile || null,
-          applyFingerprint: isIdentityProfileApplyEnabled(),
+          applyFingerprint:
+            process.platform === 'darwin'
+              ? Boolean(account.device_profile)
+              : isIdentityProfileApplyEnabled(),
           useCredentialStore: preparedWrite.storage === 'credential-store',
-          processExitTimeoutMs: 10000,
+          processExitTimeoutMs: process.platform === 'darwin' ? 20000 : 10000,
           launchContext,
           onFailure: (reason) => {
             failureCode = publicFailureCode(reason);

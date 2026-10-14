@@ -3,6 +3,7 @@ import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreTok
 export interface ClientAccountCredentials {
   email: string;
   name: string;
+  serviceMachineId?: string;
   token: CredentialStoreTokenInput & {
     project_id?: string;
     is_gcp_tos?: boolean;

@@ -14,6 +14,7 @@ import {
 import { buildAntigravityCredentialPayload } from './antigravityCredentialPayload';
 import { writeAgyCliToken } from './agyCliTokenStore';
 import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
+import { prepareMacOSClientAccountWrite } from './macosClientAccountWrite';
 
 export type ClientAccountStorage = 'cli-session' | 'credential-store' | 'sqlite';
 
@@ -28,7 +29,7 @@ export async function resolveClientAccountStorage(
 ): Promise<ClientAccountStorage> {
   const target = resolveAntigravityAppTarget(appTarget);
   if (target === 'agy') {
-    return 'cli-session';
+    return process.platform === 'darwin' ? 'credential-store' : 'cli-session';
   }
   if (target === 'ide') {
     return 'sqlite';
@@ -54,9 +55,13 @@ export async function prepareClientAccountWrite(
   appTarget?: AntigravityAppTarget,
   pathOptions?: PathResolutionOptions,
 ): Promise<PreparedClientAccountWrite> {
-  const credentials = prepareClientAccountCredentials(input);
+  const credentials =
+    process.platform === 'darwin' ? input : prepareClientAccountCredentials(input);
   const target = resolveAntigravityAppTarget(appTarget);
   const storage = await resolveClientAccountStorage(target, pathOptions);
+  if (process.platform === 'darwin') {
+    return prepareMacOSClientAccountWrite(input, target, storage, pathOptions);
+  }
   if (target === 'agy') {
     const payload = buildAntigravityCredentialPayload(credentials.token);
     return {

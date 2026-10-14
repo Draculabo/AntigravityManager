@@ -153,15 +153,22 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           launchContext || (await prepareLaunchContext(appTarget === 'ide' ? 'ide' : 'classic'));
         const hotSession = !useCredentialStore ? await prepareIdeHotSwitch(context) : null;
         if (applyFingerprint) {
-          if (!targetProfile) {
+          if (!targetProfile && !(process.platform === 'darwin' && useCredentialStore)) {
             stage = 'missing_profile';
             throw new Error('Account has no bound identity profile');
           }
           stage = 'apply';
-          ensureIdentityProfileStorage(appTarget, context.pathOptions);
+          if (!(process.platform === 'darwin' && useCredentialStore)) {
+            ensureIdentityProfileStorage(appTarget, context.pathOptions);
+          }
         }
         const writeSwitchState = async (applyProfile = true) => {
-          if (applyProfile && applyFingerprint && targetProfile) {
+          if (
+            applyProfile &&
+            applyFingerprint &&
+            targetProfile &&
+            !(process.platform === 'darwin' && useCredentialStore)
+          ) {
             stage = 'apply';
             trace.phaseSync('applyProfileMs', () => {
               applyDeviceProfile(targetProfile, appTarget, context.pathOptions);
@@ -169,7 +176,21 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           }
           stage = 'switch';
           await trace.phase('performSwitchMs', () => performSwitch(context.pathOptions));
-          if (applyFingerprint && !useCredentialStore) {
+          if (
+            applyProfile &&
+            applyFingerprint &&
+            targetProfile &&
+            process.platform === 'darwin' &&
+            useCredentialStore
+          ) {
+            stage = 'apply';
+            try {
+              applyDeviceProfile(targetProfile, appTarget, context.pathOptions);
+            } catch {
+              // Native targets can have no storage.json after the credential write succeeds.
+            }
+          }
+          if (applyFingerprint && !useCredentialStore && process.platform !== 'darwin') {
             trace.phaseSync('syncTelemetryServiceMachineIdMs', () => {
               syncTelemetryServiceMachineIdBestEffort(
                 targetProfile,
@@ -182,42 +203,70 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
 
         stage = 'preflight';
         let hotConfirmed = false;
+        let macOSCredentialsApplied = false;
         if (hotSession) {
           switchMode = 'hot';
           await writeSwitchState();
-          try {
-            stage = 'hot_stop';
-            const stopped = await trace.phase('hotServiceStopMs', hotSession.stopServices);
-            // The retiring service may flush cached credentials on exit. Reassert the selected
-            // account before confirming its replacement; a failed rewrite is a partial switch.
-            await writeSwitchState(false);
+          macOSCredentialsApplied = process.platform === 'darwin';
+          if (process.platform === 'darwin') {
+            let stopped = false;
+            try {
+              stage = 'hot_stop';
+              stopped = await trace.phase('hotServiceStopMs', hotSession.stopServices);
+            } catch {
+              logger.warn('IDE service stop failed; using a full restart');
+            }
             if (stopped) {
+              try {
+                await writeSwitchState(false);
+              } catch {
+                logger.warn('IDE credential reassertion failed after the initial write');
+              }
               stage = 'hot_confirm';
-              hotConfirmed = await trace.phase(
-                'hotServiceConfirmMs',
-                hotSession.confirmReplacement,
-              );
+              try {
+                hotConfirmed = await trace.phase(
+                  'hotServiceConfirmMs',
+                  hotSession.confirmReplacement,
+                );
+              } catch {
+                logger.warn('IDE services did not respawn; using a full restart');
+              }
             }
-            if (!hotConfirmed) {
-              await hotSession.assertCanRestart();
+          } else {
+            try {
+              stage = 'hot_stop';
+              const stopped = await trace.phase('hotServiceStopMs', hotSession.stopServices);
+              // The retiring service may flush cached credentials on exit. Reassert the selected
+              // account before confirming its replacement; a failed rewrite is a partial switch.
+              await writeSwitchState(false);
+              if (stopped) {
+                stage = 'hot_confirm';
+                hotConfirmed = await trace.phase(
+                  'hotServiceConfirmMs',
+                  hotSession.confirmReplacement,
+                );
+              }
+              if (!hotConfirmed) {
+                await hotSession.assertCanRestart();
+              }
+            } catch (error) {
+              logger.warn('IDE hot switch could not be confirmed', {
+                stage,
+                reason:
+                  error instanceof AppError
+                    ? error.messageKey
+                    : error instanceof Error
+                      ? error.name
+                      : 'unknown',
+              });
+              if (
+                error instanceof AppError &&
+                error.messageKey === 'process-runtime.switched-hot-unconfirmed'
+              ) {
+                throw error;
+              }
+              throw processError('switched-hot-unconfirmed');
             }
-          } catch (error) {
-            logger.warn('IDE hot switch could not be confirmed', {
-              stage,
-              reason:
-                error instanceof AppError
-                  ? error.messageKey
-                  : error instanceof Error
-                    ? error.name
-                    : 'unknown',
-            });
-            if (
-              error instanceof AppError &&
-              error.messageKey === 'process-runtime.switched-hot-unconfirmed'
-            ) {
-              throw error;
-            }
-            throw processError('switched-hot-unconfirmed');
           }
           if (!hotConfirmed) {
             switchMode = 'hot-fallback';
@@ -243,7 +292,9 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
             }
           });
 
-          await writeSwitchState();
+          if (!macOSCredentialsApplied) {
+            await writeSwitchState();
+          }
 
           stage = 'start';
           await trace.phase('startMs', async () => {
