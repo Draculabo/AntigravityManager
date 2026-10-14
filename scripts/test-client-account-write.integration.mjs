@@ -142,115 +142,166 @@ try {
   });
   const a = account('a');
   const b = account('b');
-  insert.run('workspace.keep', 'workspace-state');
-  const previousTopic = ProtobufUtils.createUnifiedStateEntry(
-    'unrelatedSentinel',
-    new Uint8Array([4, 5, 6]),
-  );
-  insert.run('antigravityUnifiedStateSync.oauthToken', previousTopic);
-  const recoveryPath = primary.replace(/\.vscdb$/, '.vscdb.backup');
-  fs.writeFileSync(recoveryPath, 'untouched-client-recovery');
-
-  const first = await prepareClientAccountWrite(a, 'ide', { userDataDir: root });
-  await first.write();
-  const captured = await backupAccount(
-    { id: 'a', email: a.email, name: a.name, created_at: '2026-01-01', last_used: '2026-01-01' },
-    'ide',
-    { userDataDir: root },
-  );
-  assert.deepEqual(credentialsFromAccountBackup(captured), {
-    ...a,
-    token: { ...a.token, is_gcp_tos: false },
-  });
-  const second = await prepareClientAccountWrite(b, 'ide', { userDataDir: root });
-  await second.write();
-  await second.write();
-  const read = (key) =>
-    database.prepare('SELECT value FROM ItemTable WHERE key = ?').get(key)?.value;
-  assert.equal(read('antigravityUnifiedStateSync.enterprisePreferences'), undefined);
-  const backup = new Database(primary + '.account-switch.backup', { readonly: true });
-  assert.equal(
-    JSON.parse(
-      backup.prepare("SELECT value FROM ItemTable WHERE key='antigravityAuthStatus'").get().value,
-    ).email,
-    a.email,
-  );
-  backup.close();
-  await restoreAccount(captured, 'ide', { userDataDir: root });
-  const token = ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(
-    read('antigravityUnifiedStateSync.oauthToken'),
-  );
-  assert.equal(token.accessToken, a.token.access_token);
-  assert.equal(token.idToken, a.token.id_token);
-  assert.equal(read('workspace.keep'), 'workspace-state');
-  assert.equal(fs.readFileSync(recoveryPath, 'utf8'), 'untouched-client-recovery');
-  if (nativeWindows) {
-    const {
-      readAntigravityCredentialStoreToken,
-      writeAntigravityCredentialStoreToken,
-    } = require('../src/modules/antigravity-runtime/credentials/antigravityCredentialStore.ts');
+  if (process.platform === 'darwin') {
+    insert.run('workspace.keep', 'workspace-state');
+    insert.run('antigravityAuthStatus', 'preserved');
+    insert.run('google.antigravity', 'preserved');
+    insert.run('jetskiStateSync.agentManagerInitState', 'previous');
+    const read = (key) =>
+      database.prepare('SELECT value FROM ItemTable WHERE key = ?').get(key)?.value;
     for (const selected of [a, b, a]) {
-      await writeAntigravityCredentialStoreToken(selected.token);
-      const expected = {
-        accessToken: selected.token.access_token,
-        refreshToken: selected.token.refresh_token,
-        expiryTimestamp: selected.token.expiry_timestamp,
-        idToken: selected.token.id_token,
-        ...(selected.token.project_id ? { projectId: selected.token.project_id } : {}),
-      };
-      assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
-      assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
-    }
-    const hostCredential = await readAntigravityCredentialStoreToken();
-    for (const selected of [b, a]) {
-      agyCliPayload = null;
-      googleOAuthInput = null;
-      const writer = await prepareClientAccountWrite(selected, 'agy');
+      const writer = await prepareClientAccountWrite(selected, 'ide', { userDataDir: root });
       await writer.write();
-      const cliToken = JSON.parse(agyCliPayload).token;
-      assert.equal(cliToken.access_token, selected.token.access_token);
-      assert.equal(cliToken.refresh_token, selected.token.refresh_token);
-      assert.deepEqual(googleOAuthInput, {
-        ...selected.token,
-        project_id: selected.token.project_id,
-        email: selected.email,
-      });
-      assert.deepEqual(await readAntigravityCredentialStoreToken(), hostCredential);
+      const token = ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(
+        read('antigravityUnifiedStateSync.oauthToken'),
+      );
+      assert.equal(token.accessToken, selected.token.access_token);
+      assert.equal(token.refreshToken, selected.token.refresh_token);
+      assert.equal(token.idToken, selected.token.id_token);
+      assert.equal(read('workspace.keep'), 'workspace-state');
+      assert.equal(read('antigravityAuthStatus'), 'preserved');
+      assert.equal(read('google.antigravity'), 'preserved');
+      assert.equal(read('jetskiStateSync.agentManagerInitState'), undefined);
+      if (!selected.token.project_id) {
+        assert.equal(read('antigravityUnifiedStateSync.enterprisePreferences'), undefined);
+      }
     }
+    database.exec(
+      "CREATE TRIGGER reject_status BEFORE INSERT ON ItemTable WHEN NEW.key='antigravityUnifiedStateSync.userStatus' BEGIN SELECT RAISE(ABORT,'fixture-write-failed'); END",
+    );
+    const failed = await prepareClientAccountWrite(b, 'ide', { userDataDir: root });
+    await assert.rejects(failed.write(), /fixture-write-failed/);
+    assert.equal(
+      ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(
+        read('antigravityUnifiedStateSync.oauthToken'),
+      ).accessToken,
+      b.token.access_token,
+    );
+    console.log(
+      JSON.stringify({
+        platform: 'darwin',
+        status: 'passed',
+        checks: [
+          'SQLite A-B-A',
+          'ID token',
+          'project clearing',
+          'unrelated rows',
+          'partial statement failure',
+        ],
+        keychainExecuted: false,
+      }),
+    );
+  } else {
+    insert.run('workspace.keep', 'workspace-state');
+    const previousTopic = ProtobufUtils.createUnifiedStateEntry(
+      'unrelatedSentinel',
+      new Uint8Array([4, 5, 6]),
+    );
+    insert.run('antigravityUnifiedStateSync.oauthToken', previousTopic);
+    const recoveryPath = primary.replace(/\.vscdb$/, '.vscdb.backup');
+    fs.writeFileSync(recoveryPath, 'untouched-client-recovery');
+
+    const first = await prepareClientAccountWrite(a, 'ide', { userDataDir: root });
+    await first.write();
+    const captured = await backupAccount(
+      { id: 'a', email: a.email, name: a.name, created_at: '2026-01-01', last_used: '2026-01-01' },
+      'ide',
+      { userDataDir: root },
+    );
+    assert.deepEqual(credentialsFromAccountBackup(captured), {
+      ...a,
+      token: { ...a.token, is_gcp_tos: false },
+    });
+    const second = await prepareClientAccountWrite(b, 'ide', { userDataDir: root });
+    await second.write();
+    await second.write();
+    const read = (key) =>
+      database.prepare('SELECT value FROM ItemTable WHERE key = ?').get(key)?.value;
+    assert.equal(read('antigravityUnifiedStateSync.enterprisePreferences'), undefined);
+    const backup = new Database(primary + '.account-switch.backup', { readonly: true });
+    assert.equal(
+      JSON.parse(
+        backup.prepare("SELECT value FROM ItemTable WHERE key='antigravityAuthStatus'").get().value,
+      ).email,
+      a.email,
+    );
+    backup.close();
+    await restoreAccount(captured, 'ide', { userDataDir: root });
+    const token = ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(
+      read('antigravityUnifiedStateSync.oauthToken'),
+    );
+    assert.equal(token.accessToken, a.token.access_token);
+    assert.equal(token.idToken, a.token.id_token);
+    assert.equal(read('workspace.keep'), 'workspace-state');
+    assert.equal(fs.readFileSync(recoveryPath, 'utf8'), 'untouched-client-recovery');
+    if (nativeWindows) {
+      const {
+        readAntigravityCredentialStoreToken,
+        writeAntigravityCredentialStoreToken,
+      } = require('../src/modules/antigravity-runtime/credentials/antigravityCredentialStore.ts');
+      for (const selected of [a, b, a]) {
+        await writeAntigravityCredentialStoreToken(selected.token);
+        const expected = {
+          accessToken: selected.token.access_token,
+          refreshToken: selected.token.refresh_token,
+          expiryTimestamp: selected.token.expiry_timestamp,
+          idToken: selected.token.id_token,
+          ...(selected.token.project_id ? { projectId: selected.token.project_id } : {}),
+        };
+        assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
+        assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
+      }
+      const hostCredential = await readAntigravityCredentialStoreToken();
+      for (const selected of [b, a]) {
+        agyCliPayload = null;
+        googleOAuthInput = null;
+        const writer = await prepareClientAccountWrite(selected, 'agy');
+        await writer.write();
+        const cliToken = JSON.parse(agyCliPayload).token;
+        assert.equal(cliToken.access_token, selected.token.access_token);
+        assert.equal(cliToken.refresh_token, selected.token.refresh_token);
+        assert.deepEqual(googleOAuthInput, {
+          ...selected.token,
+          project_id: selected.token.project_id,
+          email: selected.email,
+        });
+        assert.deepEqual(await readAntigravityCredentialStoreToken(), hostCredential);
+      }
+    }
+    const rowsBeforeFailure = database.prepare('SELECT * FROM ItemTable ORDER BY key').all();
+    database.exec(
+      "CREATE TRIGGER reject_auth BEFORE INSERT ON ItemTable WHEN NEW.key='antigravityAuthStatus' BEGIN SELECT RAISE(ABORT,'fixture-write-failed'); END",
+    );
+    const failed = await prepareClientAccountWrite(b, 'ide', { userDataDir: root });
+    await assert.rejects(failed.write(), /fixture-write-failed/);
+    assert.deepEqual(
+      database.prepare('SELECT * FROM ItemTable ORDER BY key').all(),
+      rowsBeforeFailure,
+    );
+    assert.equal(fs.readFileSync(recoveryPath, 'utf8'), 'untouched-client-recovery');
+    console.log(
+      JSON.stringify({
+        platform: process.platform,
+        runtime: process.versions.electron ? 'Electron' : 'Node',
+        checks: [
+          'A-B-A credentials and idToken',
+          'missing project cleared',
+          'WAL online backup',
+          'hot rewrite preserves first backup',
+          'unrelated state preserved',
+          'recovery file untouched',
+          'primary write transaction rollback',
+          ...(nativeWindows
+            ? [
+                'native Windows exact-target A-B-A, independent enumeration and nondestructive reads',
+                'Agy CLI writes preserve the host credential target',
+              ]
+            : []),
+        ],
+        status: 'passed',
+      }),
+    );
   }
-  const rowsBeforeFailure = database.prepare('SELECT * FROM ItemTable ORDER BY key').all();
-  database.exec(
-    "CREATE TRIGGER reject_auth BEFORE INSERT ON ItemTable WHEN NEW.key='antigravityAuthStatus' BEGIN SELECT RAISE(ABORT,'fixture-write-failed'); END",
-  );
-  const failed = await prepareClientAccountWrite(b, 'ide', { userDataDir: root });
-  await assert.rejects(failed.write(), /fixture-write-failed/);
-  assert.deepEqual(
-    database.prepare('SELECT * FROM ItemTable ORDER BY key').all(),
-    rowsBeforeFailure,
-  );
-  assert.equal(fs.readFileSync(recoveryPath, 'utf8'), 'untouched-client-recovery');
-  console.log(
-    JSON.stringify({
-      platform: process.platform,
-      runtime: process.versions.electron ? 'Electron' : 'Node',
-      checks: [
-        'A-B-A credentials and idToken',
-        'missing project cleared',
-        'WAL online backup',
-        'hot rewrite preserves first backup',
-        'unrelated state preserved',
-        'recovery file untouched',
-        'primary write transaction rollback',
-        ...(nativeWindows
-          ? [
-              'native Windows exact-target A-B-A, independent enumeration and nondestructive reads',
-              'Agy CLI writes preserve the host credential target',
-            ]
-          : []),
-      ],
-      status: 'passed',
-    }),
-  );
 } finally {
   database?.close();
   if (nativeWindows) {

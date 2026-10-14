@@ -6,6 +6,11 @@ const mocks = vi.hoisted(() => ({
   spawnSync: vi.fn(),
   withTarget: vi.fn(),
   readWindowsCredential: vi.fn(),
+  readMacOSCredentialStore: vi.fn(),
+}));
+vi.mock('@/modules/antigravity-runtime/credentials/macosCredentialStore', () => ({
+  readMacOSCredentialStore: mocks.readMacOSCredentialStore,
+  writeMacOSCredentialStore: vi.fn(),
 }));
 vi.mock('@/modules/antigravity-runtime/credentials/windowsCredentialStore', () => ({
   readWindowsCredential: mocks.readWindowsCredential,
@@ -51,6 +56,7 @@ describe('readAntigravityCredentialStoreToken', () => {
     mocks.createEntry.mockReset();
     mocks.spawnSync.mockReset();
     mocks.withTarget.mockReset();
+    mocks.readMacOSCredentialStore.mockReset();
     mocks.withTarget.mockReturnValue({
       getSecret: mocks.getSecret,
     });
@@ -111,61 +117,17 @@ describe('readAntigravityCredentialStoreToken', () => {
     });
   });
 
-  it('decodes a macOS go-keyring-base64 payload', async () => {
+  it('delegates macOS reads to the system-and-file lookup', async () => {
     setPlatform('darwin');
-    const payload = JSON.stringify({
-      token: {
-        refresh_token: 'refresh-macos',
-      },
-    });
-    mocks.spawnSync.mockReturnValue({
-      status: 0,
-      stdout: Buffer.from(
-        `go-keyring-base64:${Buffer.from(payload, 'utf-8').toString('base64')}\n`,
-      ),
-    });
+    mocks.readMacOSCredentialStore.mockReturnValue({ refreshToken: 'refresh-macos' });
     const { readAntigravityCredentialStoreToken } =
       await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
     expect(await readAntigravityCredentialStoreToken()).toEqual({
       refreshToken: 'refresh-macos',
     });
-    expect(mocks.spawnSync).toHaveBeenCalledWith(
-      '/usr/bin/security',
-      ['find-generic-password', '-s', 'gemini', '-a', 'antigravity', '-w'],
-      expect.objectContaining({ timeout: 10_000, maxBuffer: 64 * 1024 }),
-    );
+    expect(mocks.readMacOSCredentialStore).toHaveBeenCalledExactlyOnceWith(true);
     expect(mocks.createEntry).not.toHaveBeenCalled();
     expect(mocks.withTarget).not.toHaveBeenCalled();
-  });
-
-  it('returns null only for the macOS item-not-found exit status', async () => {
-    setPlatform('darwin');
-    mocks.spawnSync.mockReturnValue({ status: 44, stdout: Buffer.alloc(0) });
-    const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
-    expect(await readAntigravityCredentialStoreToken()).toBeNull();
-  });
-
-  it.each([
-    { status: 1, error: undefined, code: 'unavailable' },
-    {
-      status: null,
-      error: Object.assign(new Error('timeout with refresh-secret-leak'), { code: 'ETIMEDOUT' }),
-      code: 'timed-out',
-    },
-  ])('reports macOS read failures without credential output ($code)', async (result) => {
-    setPlatform('darwin');
-    mocks.spawnSync.mockReturnValue({
-      ...result,
-      stdout: Buffer.from('refresh-secret-leak'),
-      stderr: Buffer.from('refresh-secret-leak'),
-    });
-    const { readAntigravityCredentialStoreToken } =
-      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
-    await expect(readAntigravityCredentialStoreToken()).rejects.toMatchObject({
-      code: result.code,
-    });
-    await expect(readAntigravityCredentialStoreToken()).rejects.not.toThrow('refresh-secret-leak');
   });
 
   it('uses the bounded Linux secret-tool fallback after native keyring failure', async () => {

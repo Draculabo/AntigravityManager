@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { executeSwitchFlow } from '@/modules/antigravity-runtime/switch/switchFlow';
 import { switchContext } from '../support/runtime-switch-fixture';
 import { processError } from '@/modules/antigravity-runtime/processErrors';
@@ -33,17 +33,23 @@ vi.mock('@/modules/antigravity-runtime/switch/switchMetrics', () => ({
 }));
 vi.mock('@/shared/logging/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
 
+const originalPlatform = process.platform;
 beforeEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
   vi.clearAllMocks();
   mocks.prepare.mockResolvedValue(switchContext);
   mocks.stop.mockResolvedValue(undefined);
   mocks.start.mockResolvedValue(undefined);
   mocks.initialize.mockReset();
+  mocks.apply.mockReset();
   mocks.hot.mockReset().mockResolvedValue(null);
   mocks.stopServices.mockReset().mockResolvedValue(true);
   mocks.confirmReplacement.mockReset().mockResolvedValue(true);
   mocks.assertCanRestart.mockReset().mockResolvedValue(undefined);
 });
+afterEach(() =>
+  Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform }),
+);
 
 function options() {
   return {
@@ -64,6 +70,77 @@ describe('switch launch safety', () => {
     devDeviceId: 'device',
     sqmId: '{SQM}',
   };
+
+  it('applies the macOS native profile after credentials without a storage preflight gate', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' });
+    const events: string[] = [];
+    mocks.stop.mockImplementation(async () => {
+      events.push('close');
+    });
+    mocks.apply.mockImplementation(() => {
+      events.push('profile');
+      throw new Error('Missing storage.json');
+    });
+    mocks.start.mockImplementation(async () => {
+      events.push('start');
+    });
+    const request = {
+      ...options(),
+      appTarget: 'classic' as const,
+      useCredentialStore: true,
+      applyFingerprint: true,
+      targetProfile: profile,
+      performSwitch: vi.fn(async () => {
+        events.push('credentials');
+      }),
+    };
+    await executeSwitchFlow(request);
+    expect(events).toEqual(['close', 'credentials', 'profile', 'start']);
+    expect(mocks.initialize).not.toHaveBeenCalled();
+    expect(request.afterSwitchSuccess).toHaveBeenCalledOnce();
+  });
+
+  it('treats macOS hot-switch reassertion failure as best effort after the initial write', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' });
+    mocks.hot.mockResolvedValue({
+      stopServices: mocks.stopServices,
+      confirmReplacement: mocks.confirmReplacement,
+      assertCanRestart: mocks.assertCanRestart,
+    });
+    const request = {
+      ...options(),
+      appTarget: 'ide' as const,
+      launchContext: { ...switchContext, target: 'ide' as const },
+    };
+    request.performSwitch
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('rewrite failed'));
+    await executeSwitchFlow(request);
+    expect(mocks.confirmReplacement).toHaveBeenCalledOnce();
+    expect(request.afterSwitchSuccess).toHaveBeenCalledOnce();
+    expect(mocks.stop).not.toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
+  });
+
+  it('restarts macOS IDE without a third credential write when services fail to respawn', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'darwin' });
+    mocks.hot.mockResolvedValue({
+      stopServices: mocks.stopServices,
+      confirmReplacement: mocks.confirmReplacement,
+      assertCanRestart: mocks.assertCanRestart,
+    });
+    mocks.confirmReplacement.mockResolvedValue(false);
+    const request = {
+      ...options(),
+      appTarget: 'ide' as const,
+      launchContext: { ...switchContext, target: 'ide' as const },
+    };
+    await executeSwitchFlow(request);
+    expect(request.performSwitch).toHaveBeenCalledTimes(2);
+    expect(mocks.assertCanRestart).not.toHaveBeenCalled();
+    expect(mocks.stop).toHaveBeenCalledOnce();
+    expect(mocks.start).toHaveBeenCalledOnce();
+  });
 
   it('closes a running IDE before writing credentials when hot switching is unavailable', async () => {
     const events: string[] = [];

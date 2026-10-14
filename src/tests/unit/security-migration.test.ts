@@ -255,29 +255,32 @@ describe('writeAntigravityCredentialStoreToken', () => {
 
   it('writes the complete macOS keychain payload as a password argument', async () => {
     setPlatform('darwin');
+    childProcessMock.spawnSync.mockReturnValue({
+      status: 0,
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.alloc(0),
+    });
 
     const { writeAntigravityCredentialStoreToken } =
       await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
     await writeAntigravityCredentialStoreToken(token);
-    expect(childProcessMock.execFileSync).toHaveBeenLastCalledWith(
-      '/usr/bin/security',
-      [
-        'add-generic-password',
-        '-s',
-        'gemini',
-        '-a',
-        'antigravity',
-        '-A',
-        '-U',
-        '-w',
-        expect.stringMatching(/^go-keyring-base64:/),
-      ],
-      expect.objectContaining({
-        encoding: 'utf-8',
-        stdio: 'ignore',
-        timeout: 10_000,
-      }),
-    );
+    expect(childProcessMock.spawnSync).toHaveBeenNthCalledWith(1, 'security', [
+      'delete-generic-password',
+      '-s',
+      'gemini',
+      '-a',
+      'antigravity',
+    ]);
+    expect(childProcessMock.spawnSync).toHaveBeenLastCalledWith('security', [
+      'add-generic-password',
+      '-s',
+      'gemini',
+      '-a',
+      'antigravity',
+      '-w',
+      expect.stringMatching(/^go-keyring-base64:/),
+      '-A',
+    ]);
   });
 
   it('writes raw JSON payload to Linux secret-tool first', async () => {

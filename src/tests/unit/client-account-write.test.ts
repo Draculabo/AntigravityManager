@@ -103,7 +103,9 @@ const credentials: ClientAccountCredentials = {
     is_gcp_tos: true,
   },
 };
+const originalPlatform = process.platform;
 beforeEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
   vi.clearAllMocks();
   state.rows.clear();
   state.failKey = '';
@@ -118,6 +120,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
   vi.restoreAllMocks();
 });
 

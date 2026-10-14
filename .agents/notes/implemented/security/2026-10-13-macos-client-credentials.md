@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Superseded by [the complete client installation decision](2026-10-14-macos-client-credential-chain.md).
+
 ## Problem
 
 System command transport replaces native macOS reads and truncated password prompt writes;

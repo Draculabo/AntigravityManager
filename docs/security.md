@@ -219,15 +219,32 @@ shutdown drains admitted switches before releasing persistence. Desktop shutdown
 switches and waits for admitted work within its bounded forced-exit window; a switch exceeding
 that window can be interrupted by process exit and must be retried after restart.
 
-On macOS, official-client credential reads and writes use `/usr/bin/security` with the
-`gemini` service and `antigravity` account. Writes pass the complete `go-keyring-base64:`
-value as the `-w` argument because password prompt input truncates long tokens. This value
-is briefly visible to processes permitted to inspect command arguments. Credential command
-output is not logged, and write failures discard the original subprocess error, including
-its command, cause and output. Existing items are updated with `-U` without deleting them
-first or reapplying their ACL; only initial creation uses `-A`. Complete credential readback
-remains required before a switch is confirmed. See the
-[macOS credential decision](../.agents/notes/implemented/security/2026-10-13-macos-client-credentials.md).
+On macOS, official-client credential reads and writes invoke `security` through PATH with
+the `gemini` service and `antigravity` account. Installation attempts deletion first, then
+creation with the complete `go-keyring-base64:` value after `-w` and `-A` last. The encoded
+payload contains a nested token and optional root-level ID token. There is no update-in-place,
+existence probe or subprocess deadline. The value is briefly visible to processes permitted
+to inspect command arguments. Command failures discard the original subprocess error and
+sanitize native stderr; credential values are never logged. `-A` permits application access
+without a per-application access list. Deletion followed by failed creation can remove the
+previous item; this installation path is an explicit exception to migration preservation below.
+
+Successful creation mirrors the CLI token, flat OAuth token and active Google account files
+under `.gemini`. Writes are direct; POSIX permission changes to `0600` are best effort.
+CLI mirror failure is nonfatal, OAuth mirror failure stops the remaining mirror writes, and
+the account file replaces its old-account list with an empty list. Classic installation has
+no readback gate. Agy verifies only the system item's refresh token, with no file fallback
+for confirmation. Ordinary reads can fall back to CLI then OAuth files on a failed Keychain
+lookup; malformed successful output and process execution errors do not fall back.
+
+Mac client SQLite injection uses the shared `ItemTable` Drizzle schema, a best-effort
+`.backup` copy and sequential upserts and deletions,
+without transaction rollback or full-field readback. Native installation failure can fall
+back to an existing client database and remain nonfatal even if that injection fails.
+Identity-profile updates and optional service-machine-ID writes are also best effort.
+Official-client identity and AI request acceptance must therefore be checked independently
+of the Manager's success notification. See the
+[macOS credential decision](../.agents/notes/implemented/security/2026-10-14-macos-client-credential-chain.md).
 
 Cloud identity-profile account operations use strict account, revision and profile schemas at
 the renderer and private core RPC boundaries. The selected account owner reads and writes bindings,
