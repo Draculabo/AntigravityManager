@@ -105,6 +105,8 @@ const entry = new keyring.Entry(service, 'native-probe');
   } else if (phase === 'core') {
     const key = await keytar.getPassword(service, 'MasterKeyV2');
     assert(key && /^[a-f0-9]{64}$/i.test(key), 'Core did not persist its synthetic master key');
+  } else if (phase === 'empty-core') {
+    assert.equal(await keytar.getPassword(service, 'MasterKeyV2'), null, 'An empty plaintext profile must not generate a master key');
   } else {
     entry.deleteCredential();
     new keyring.Entry(service, 'opencode-proxy-key').deleteCredential();
@@ -171,10 +173,19 @@ try {
       rollupOptions: {
         ...loaded.config.build.rollupOptions,
         external: [...loaded.config.build.rollupOptions.external, 'electron', 'electron/main'],
-        input: path.join(project, 'scripts/acceptance/runtime/core-bootstrap-native-entry.ts'),
+        input: {
+          bootstrap: path.join(
+            project,
+            'scripts/acceptance/runtime/core-bootstrap-native-entry.ts',
+          ),
+          'security-probe': path.join(
+            project,
+            'scripts/acceptance/runtime/installed-security-native-entry.ts',
+          ),
+        },
         output: {
           format: 'cjs',
-          entryFileNames: 'bootstrap.cjs',
+          entryFileNames: '[name].cjs',
           chunkFileNames: 'acceptance-[name]-[hash].cjs',
         },
       },
@@ -233,12 +244,11 @@ keyring.Entry = class {
     return new ActualEntry(${JSON.stringify(service)}, account);
   }
 };
-process.on('exit', () => require('node:fs').writeFileSync(require('node:path').join(${JSON.stringify(directory)}, 'rss-' + process.pid + '.json'), JSON.stringify({ pid: process.pid, peakRssKiB: process.resourceUsage().maxRSS })));
 `,
   );
   await writeFile(
     path.join(core, 'isolated-core.cjs'),
-    `require(${JSON.stringify(homePreload)}); require(${JSON.stringify(keyringPreload)}); process.execArgv.push('--require', ${JSON.stringify(homePreload)}); require('./main.cjs');\n`,
+    `require(${JSON.stringify(homePreload)}); require(${JSON.stringify(keyringPreload)}); process.execArgv.push('--require', ${JSON.stringify(homePreload)}); process.on('exit', () => require('node:fs').writeFileSync(require('node:path').join(${JSON.stringify(directory)}, 'rss-' + process.pid + '.json'), JSON.stringify({ pid: process.pid, peakRssKiB: process.resourceUsage().maxRSS }))); require('./main.cjs');\n`,
   );
   const presentationPreload = path.join(core, 'presentation-only.cjs');
   await writeFile(
@@ -260,7 +270,28 @@ require('@napi-rs/keyring').Entry = class { constructor() { forbidden(); } };
   console.log(
     run(['--require', presentationPreload, path.join(core, 'bootstrap.cjs')], 180_000).trim(),
   );
+  run(['-e', credentialCheck, service, 'empty-core']);
+  process.stdout.write(
+    run([
+      '--require',
+      homePreload,
+      '--require',
+      keyringPreload,
+      path.join(core, 'security-probe.cjs'),
+      'write',
+    ]),
+  );
   run(['-e', credentialCheck, service, 'core']);
+  process.stdout.write(
+    run([
+      '--require',
+      homePreload,
+      '--require',
+      keyringPreload,
+      path.join(core, 'security-probe.cjs'),
+      'reopen',
+    ]),
+  );
   const metrics = [];
   for (const file of await readdir(directory)) {
     if (/^rss-\d+\.json$/.test(file)) {

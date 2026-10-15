@@ -20,6 +20,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getLocalizedErrorMessage } from '@/shared/utils/errorMessages';
+import { readFinalizedOperationDiagnostic } from '@/shared/observability/operationDiagnostic';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
 import { isNumber } from 'lodash-es';
 import {
@@ -231,7 +232,9 @@ function CloudAccountListContent() {
           toast({
             error: err,
             title: t('cloud.toast.switchFailed'),
-            description: t(`cloud.toast.switchFailureCodes.${switchCode}`),
+            description: readFinalizedOperationDiagnostic(err)
+              ? getLocalizedErrorMessage(err, t)
+              : t(`cloud.toast.switchFailureCodes.${switchCode}`),
             variant: 'destructive',
           });
         },

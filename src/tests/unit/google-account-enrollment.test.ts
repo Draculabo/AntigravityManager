@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+vi.mock('@/modules/identity-profile/public', () => ({
+  prepareDesktopIdentityStorage: vi.fn(async () => undefined),
+}));
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountRefreshService } from '@/modules/cloud-account/services/CloudAccountRefreshService';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';

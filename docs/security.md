@@ -32,6 +32,49 @@ The replay command reads the audit database without migrations or repairs. Priva
 stays in memory, while output contains aggregate counters. Audit sanitization may change a Schema
 named `password` or `access_token`; modified data cannot establish an original production defect.
 
+## Correlated operation reports
+
+Google-login and cloud-switch public diagnostics are strict closed variants limited to 2 KiB
+of UTF-8 JSON. They contain a random operation UUID, stage/category, observed allowlisted native
+or upstream codes, optional HTTP status and an SDK reporting receipt. Rejected Google HTTP
+responses can also retain the native Node route (HTTPS CONNECT/forward proxy/origin/unknown), literal destination
+class (loopback/non-loopback/unknown), TLS/plain/unknown transport and response media class.
+The CONNECT destination describes the proxy host; a hostname has unknown destination class; no DNS or response origin is inferred. These closed
+observations do not prove which intermediary generated a response. Addresses, proxy URLs,
+headers and response bodies are excluded. Login tracks persistence
+as not attempted, confirmed or uncertain. Switch readback retains Boolean matches, never stored
+or expected credentials. At most four classified causes survive; raw causes stay in the owner.
+The UUID is a support reference, not a capability or account identifier.
+
+The logger serializes only fully validated terminal diagnostics without generic token-key masking,
+so safe readback booleans and repeated cause evidence retain their exact types. Other log arguments
+still use generic sanitization, which masks secrets and replaces actual ancestor cycles while
+preserving repeated sanitized sibling values.
+
+Operation SDK capture requires the existing reporting consent and DSN. `captured` means only
+that capture returned an event ID; it does not establish delivery or storage. Disabled,
+unconfigured, unavailable and expected outcomes retain local references. Dispatch throws do
+not fail or retry business execution. Cancellation, authorization denial and duplicate-account
+outcomes are not unexpected-error events. Ordinary forwarding of a finalized diagnostic does
+not capture it again. A lost private response can still produce a distinct coordinator-side
+transport report for an uncertain remote outcome.
+
+Each capture uses a temporary SDK scope and a synthetic classified exception. The operation
+projection replaces the normalized event with allowlisted content: up to twelve safe step
+observations, at most four allowlisted repository source coordinates, closed OS/runtime metadata,
+release/environment and non-identifying trace IDs. Diagnostic contexts remain below 16 KiB;
+overflow drops observations while preserving the primary failure. User data, request data,
+surrounding log prose, automatic breadcrumbs, arbitrary extras and absolute paths are excluded.
+The empty geo override prevents IP-derived user geography. Safe repository coordinates are
+optional when the runtime stack lacks a recognized source suffix; no synthetic caller stack is
+sent to public IPC. The owner tag is `operation_runtime`, since Sentry can derive and replace
+the reserved `runtime` tag from runtime context. UUIDs/event IDs do not enter fingerprints.
+
+The SDK capture does not wait for HTTP or flush. Event receipt is established separately by
+a read-only Sentry query; no Sentry read token is shipped or exposed through IPC. Existing
+account storage, native credential effects, retries and owner lifecycle remain authoritative.
+Diagnostics add no durable queue, account scan, automatic OAuth replay or switch retry.
+
 ## Trust model
 
 - Electron main, preload and renderer are separate trust zones.
@@ -61,10 +104,11 @@ failure preserves the copied report and provides the form URL for manual continu
 Notification callers pass the caught exception to the renderer's toast boundary, which immediately
 extracts the available stack and diagnostic fields and applies the existing redactor. Notification
 state retains this text snapshot, never the raw exception or arbitrary provider/account properties.
-Cloud-account switch errors retain only their validated closed switch category across the public IPC
-boundary and expose the same value as a generic diagnostic code in copied bug-report details.
+Google-login and cloud-switch errors retain their validated feature category and
+[correlated diagnostic](#correlated-operation-reports) across public IPC. These details use the
+safe summary instead of raw backend or renderer transport stacks.
 The details dialog renders that same snapshot as selectable plain text and remains closable during
-report preparation. Public IPC sanitization stays unchanged; a backend stack removed by its owner
+report preparation. A backend stack removed by its owner
 cannot be reconstructed from the renderer's transport stack. Missing exceptions use the available
 notification text without creating a synthetic stack. Viewing details does not copy or send a report.
 
@@ -79,7 +123,9 @@ Missing sources and truncation appear in both preview and attachment.
 Uncertain records lose their entire free-text content, including prompts, tool arguments,
 request/response bodies, stacks, identities, paths and credentials. Only timestamps, levels,
 closed error codes, bounded HTTP statuses/timing/retry fields and specific Boolean diagnostics
-survive. A small set of exact fixed diagnostic messages can survive unchanged. Removed records
+survive. Versioned `Operation diagnostic v1` and `Operation step v1` records also retain their
+validated closed fields and UUID; unknown fields and continuations invalidate the complete record.
+A UUID in an arbitrary message does not authorize its contents. A small set of exact fixed diagnostic messages can survive unchanged. Removed records
 are marked `Content removed`; arbitrary message prefixes, nested objects and string values are
 never preserved. This intentionally favors privacy over completeness.
 
@@ -465,3 +511,27 @@ Use [testing.md](testing.md) to select focused tests. Security-sensitive changes
 - platform-specific evidence when behavior depends on the OS keyring, native modules, Electron packaging or installers.
 
 If platform evidence cannot run locally, report it as unverified rather than replacing it with a mock-only claim.
+
+## Classic terms state
+
+Windows Classic retention reads the official app_storage.json only in the captured profile.
+It observes the last accepted username and string standard/GCP flag, without accepting terms or
+synthesizing an account's first acceptance. Its Manager-owned history lives under
+.antigravity-agent/classic-terms/<profile-digest>.json, with format version 1 and at most 256
+account digest/type pairs. It contains no plaintext email, token or provider response. Digests are
+local pseudonymous identifiers, not encryption. Entries belong to the exact canonical profile,
+executable identity and product/build version; changed revisions or malformed history require
+manual confirmation again. Unavailable client version leaves retention disabled for that switch.
+The first baseline cannot establish which earlier client version originally accepted an existing
+record. Exact legal terms revisions are not exposed by this storage contract; the official
+standard/GCP check remains authoritative and no version-independent consent is inferred.
+
+Writes require a stopped captured client and merge only the two consent fields into validated,
+bounded official JSON. The owner rechecks process state and file contents before replacement,
+uses a synchronized sibling temporary file and verifies readback. Links and oversized files are
+rejected. Unrelated settings are retained. History is saved before replacing a valid baseline;
+invalidation clears stale official fields before committing the new revision, so failed writes
+cannot silently import stale consent on retry. Prelaunch recovery restores only this invocation's
+consent fields and refuses to overwrite later acceptance. These are local filesystem checks,
+not a lock enforced by the official client; independently started external writers can still race.
+No raw file contents, paths or identities enter the new diagnostic messages.

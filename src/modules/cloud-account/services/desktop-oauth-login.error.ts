@@ -1,38 +1,29 @@
 import { ORPCError } from '@orpc/server';
-import { UPSTREAM_PROXY_CONFIGURATION_MESSAGE } from '@/modules/config/upstream-proxy.schema';
 import {
   readDesktopOAuthLoginErrorCode,
+  parseDesktopOAuthLoginErrorData,
   type DesktopOAuthLoginErrorCode,
 } from './desktop-oauth-login.schema';
+import type { GoogleLoginDiagnostic } from './operation-diagnostic.schema';
 
 export class DesktopOAuthLoginError extends Error {
-  constructor(readonly loginCode: DesktopOAuthLoginErrorCode) {
+  constructor(
+    readonly loginCode: DesktopOAuthLoginErrorCode,
+    readonly diagnostic?: GoogleLoginDiagnostic,
+  ) {
     super('Google account login failed');
     this.name = 'DesktopOAuthLoginError';
   }
 }
 
-export function oauthFailureCode(message: string): DesktopOAuthLoginErrorCode {
-  switch (message) {
-    case UPSTREAM_PROXY_CONFIGURATION_MESSAGE:
-      return 'proxy-configuration-invalid';
-    case 'Google authorization was denied':
-      return 'authorization-denied';
-    case 'OAuth login timed out':
-      return 'login-timeout';
-    case 'OAuth login was cancelled':
-      return 'login-cancelled';
-    case 'Google account already exists':
-      return 'duplicate-account';
-    default:
-      return 'login-failed';
-  }
-}
-
 export function toDesktopOAuthLoginORPCError(error: unknown) {
+  const forwarded = error instanceof ORPCError ? parseDesktopOAuthLoginErrorData(error.data) : null;
   const loginCode =
     readDesktopOAuthLoginErrorCode(error) ??
     (error instanceof DesktopOAuthLoginError ? error.loginCode : 'login-failed');
+  const diagnostic =
+    forwarded?.diagnostic ??
+    (error instanceof DesktopOAuthLoginError ? error.diagnostic : undefined);
   const status =
     loginCode === 'login-active'
       ? 'CONFLICT'
@@ -41,6 +32,9 @@ export function toDesktopOAuthLoginORPCError(error: unknown) {
         : 'BAD_REQUEST';
   return new ORPCError(status, {
     message: 'Google account login failed',
-    data: { loginCode },
+    data: {
+      loginCode,
+      ...(diagnostic ? { diagnostic } : {}),
+    },
   });
 }

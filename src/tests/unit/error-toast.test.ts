@@ -14,6 +14,7 @@ import { AppToaster } from '@/modules/app-shell/components/AppToaster';
 import { toast, useToast } from '@/components/ui/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { BUG_REPORT_URL, buildErrorBugReport } from '@/modules/app-shell/bug-report';
+import { loginDiagnostic } from '../fixtures/oauth-diagnostic';
 
 const api = vi.hoisted(() => ({ environment: vi.fn() }));
 vi.mock('@/ipc/manager', () => ({
@@ -73,6 +74,35 @@ function showDetails() {
 }
 
 describe('error notification diagnostics', () => {
+  it('copies the immutable operation reference and receipt without retaining raw exceptions', async () => {
+    const diagnostic = {
+      ...loginDiagnostic('login-failed'),
+      stage: 'token-exchange' as const,
+      reason: 'dns-failed' as const,
+      nativeCode: 'ENOTFOUND' as const,
+      reporting: { state: 'captured' as const, eventId: 'a'.repeat(32) },
+    };
+    const source = { message: 'private-sentinel', stack: 'private-sentinel', data: { diagnostic } };
+    notify(source);
+    const { result } = renderHook(useToast);
+    expect(result.current.toasts[0]).not.toHaveProperty('error');
+    source.data.diagnostic = {
+      ...diagnostic,
+      diagnosticId: '22222222-2222-4222-8222-222222222222',
+    };
+    const dialog = showDetails();
+    const details = within(dialog).getByLabelText('error.detailsTitle').textContent ?? '';
+    expect(details).toContain(diagnostic.diagnosticId);
+    expect(details).toContain('ENOTFOUND');
+    expect(details).toContain('a'.repeat(32));
+    expect(details).toContain('delivery not confirmed');
+    expect(details).not.toMatch(/private-sentinel|22222222-2222/);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'error.toast.report-issue' }));
+    await waitFor(() => expect(openExternalUrl).toHaveBeenCalledOnce());
+    expect(navigator.clipboard.writeText).toHaveBeenCalledExactlyOnceWith(
+      buildErrorBugReport(environment, details),
+    );
+  });
   it('stores only a redacted snapshot and shows the backend stack rather than the transport stack', async () => {
     const source = {
       ...failure,

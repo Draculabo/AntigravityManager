@@ -1,4 +1,5 @@
 import type { ProcessInfo } from '@draculabo/sysinfo-process-enhanced';
+import { hasErrorCode } from '@/shared/errors/error-guards';
 import { readNativeProcessSnapshot } from '@/shared/platform/nativeProcessQuery';
 import { processError } from './processErrors';
 import type { RuntimeProcess } from './types';
@@ -64,7 +65,7 @@ export async function stopNativeProcessTree(
     try {
       process.kill(pid, value);
     } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) {
+      if (!hasErrorCode(error, 'ESRCH')) {
         throw processError('close-failed');
       }
     }

@@ -1,5 +1,4 @@
 import { shell } from 'electron';
-import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 import { setTimeout as delay } from 'node:timers/promises';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import {
@@ -18,13 +17,15 @@ import {
 } from '@/modules/cloud-account/services/cloud-account-oauth-settings.service';
 import { normalizeTrustedGoogleValidationUrl } from '@/modules/cloud-account/utils/google-validation-url';
 import { notifyTrayUpdate } from './quota-refresh-desktop';
-import {
-  DesktopOAuthLoginError,
-  oauthFailureCode,
-} from '@/modules/cloud-account/services/desktop-oauth-login.error';
+import { DesktopOAuthLoginError } from '@/modules/cloud-account/services/desktop-oauth-login.error';
+import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
+import { classifyOperationCause } from '@/modules/cloud-account/services/operation-cause';
 
 interface OAuthSessionClient {
-  start(): ReturnType<HeadlessOAuthSessionService['start']>;
+  start(
+    clientKey?: string,
+    operation?: GoogleLoginOperation,
+  ): ReturnType<HeadlessOAuthSessionService['start']>;
   status(sessionId: string): HeadlessOAuthStatus | null;
   cancel(sessionId: string): Promise<void>;
   completeCode(sessionId: string, code: string): boolean;
@@ -47,13 +48,20 @@ export class DesktopOAuthLogin {
   constructor(private readonly dependencies: DesktopOAuthLoginDependencies) {}
 
   async start(oauthClientKey?: string): Promise<CloudAccountView> {
+    const operation = new GoogleLoginOperation();
     if (this.stopping) {
-      throw new DesktopOAuthLoginError('login-cancelled');
+      throw new DesktopOAuthLoginError(
+        'login-cancelled',
+        operation.finish(undefined, 'cancelled', true),
+      );
     }
     if (this.pending) {
-      throw new DesktopOAuthLoginError('login-active');
+      throw new DesktopOAuthLoginError(
+        'login-active',
+        operation.finish(undefined, 'login-active', true),
+      );
     }
-    const pending = this.run(oauthClientKey);
+    const pending = this.run(operation, oauthClientKey);
     this.pending = pending;
     const clearPending = () => {
       if (this.pending === pending) {
@@ -64,69 +72,96 @@ export class DesktopOAuthLogin {
     return pending;
   }
 
-  private async run(oauthClientKey?: string): Promise<CloudAccountView> {
-    let started: Awaited<ReturnType<OAuthSessionClient['start']>>;
+  private async run(
+    operation: GoogleLoginOperation,
+    oauthClientKey?: string,
+  ): Promise<CloudAccountView> {
+    let started: Awaited<ReturnType<OAuthSessionClient['start']>> | undefined;
     try {
-      this.dependencies.selectClient(oauthClientKey);
-      started = await this.dependencies.session.start();
-    } catch (error) {
-      throw new DesktopOAuthLoginError(
-        this.stopping
-          ? 'login-cancelled'
-          : error instanceof OAuthLoginActiveError
-            ? 'login-active'
-            : error instanceof UpstreamProxyConfigurationError
-              ? 'proxy-configuration-invalid'
-              : 'login-failed',
-      );
-    }
-
-    this.sessionId = started.sessionId;
-    try {
+      await operation.run('client-selection', () => this.dependencies.selectClient(oauthClientKey));
+      started = await this.dependencies.session.start(undefined, operation);
+      this.sessionId = started.sessionId;
+      operation.enter('authorization-url');
       const authorizationUrl = normalizeTrustedGoogleValidationUrl(started.authorizationUrl);
       if (!authorizationUrl) {
+        const diagnostic = operation.finish(undefined, 'malformed-response');
         await this.dependencies.session.cancel(started.sessionId).catch(() => undefined);
-        throw new DesktopOAuthLoginError('login-failed');
+        throw new DesktopOAuthLoginError('login-failed', diagnostic);
       }
       try {
-        await this.dependencies.openExternal(authorizationUrl);
-      } catch {
+        await operation.run('browser-open', () => this.dependencies.openExternal(authorizationUrl));
+      } catch (error) {
+        const diagnostic = operation.finish(error);
         await this.dependencies.session.cancel(started.sessionId).catch(() => undefined);
-        throw new DesktopOAuthLoginError('browser-open-failed');
+        throw new DesktopOAuthLoginError('browser-open-failed', diagnostic);
       }
 
+      // A callback can start enrollment before the browser-open promise completes.
+      if (operation.stage === 'browser-open') {
+        operation.enter('authorization');
+      }
       while (true) {
         const status = this.dependencies.session.status(started.sessionId);
         if (!status || this.stopping) {
           throw new DesktopOAuthLoginError('login-cancelled');
         }
         if (status.state === 'failed') {
-          throw new DesktopOAuthLoginError(oauthFailureCode(status.message));
+          throw new DesktopOAuthLoginError(status.loginCode, status.diagnostic);
         }
         if (status.state === 'succeeded') {
-          try {
-            const view = await this.dependencies.loadView(status.account.id);
-            if (view && !this.stopping) {
-              return view;
-            }
-          } catch {
-            // Persistence diagnostics remain in the owner process.
+          operation.accountCommit = 'confirmed';
+          const view = await operation.run(
+            'view-load',
+            () => this.dependencies.loadView(status.account.id),
+            'storage-failed',
+          );
+          if (view && !this.stopping) {
+            return view;
           }
           throw new DesktopOAuthLoginError(this.stopping ? 'login-cancelled' : 'login-failed');
         }
         await delay(150);
       }
+    } catch (error) {
+      if (error instanceof DesktopOAuthLoginError && error.diagnostic) {
+        throw error;
+      }
+      const loginCode = this.stopping
+        ? 'login-cancelled'
+        : error instanceof DesktopOAuthLoginError
+          ? error.loginCode
+          : error instanceof OAuthLoginActiveError
+            ? 'login-active'
+            : classifyOperationCause(error).primary.reason === 'proxy-configuration-invalid'
+              ? 'proxy-configuration-invalid'
+              : 'login-failed';
+      throw new DesktopOAuthLoginError(
+        loginCode,
+        error instanceof OAuthLoginActiveError && error.diagnostic
+          ? error.diagnostic
+          : operation.finish(
+              error,
+              loginCode === 'login-cancelled' ? 'cancelled' : undefined,
+              loginCode === 'login-active' || loginCode === 'login-cancelled',
+            ),
+      );
     } finally {
-      if (this.sessionId === started.sessionId) {
+      if (started && this.sessionId === started.sessionId) {
         this.sessionId = null;
       }
     }
   }
 
   submitCode(code: string): void {
+    const operation = new GoogleLoginOperation();
+    operation.enter('authorization');
     const sessionId = this.sessionId;
     if (!sessionId || !this.dependencies.session.completeCode(sessionId, code)) {
-      throw new DesktopOAuthLoginError('login-failed');
+      operation.accountCommit = sessionId ? 'uncertain' : 'not-attempted';
+      throw new DesktopOAuthLoginError(
+        'login-failed',
+        operation.finish(undefined, 'unavailable', true),
+      );
     }
   }
 

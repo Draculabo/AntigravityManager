@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { isWsl } from '@/shared/platform/paths';
 import { promisify } from 'node:util';
 import { logger } from '@/shared/logging/logger';
+import { hasErrorCode } from '@/shared/errors/error-guards';
 
 import { getProcessProbeTimeout, observeProcesses } from './processObserver';
 import { assertContextProcesses } from './launchContext';
@@ -123,7 +124,7 @@ export async function stopFromContext(
       try {
         process.kill(item.pid, 'SIGKILL');
       } catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) {
+        if (!hasErrorCode(error, 'ESRCH')) {
           throw processError('close-failed');
         }
       }

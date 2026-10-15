@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import { OAuthClientKeySchema } from '@/modules/cloud-account/services/oauth-client-preference.schema';
 import { DesktopOAuthCodeSchema } from '@/modules/cloud-account/services/desktop-oauth-login.schema';
+import { DesktopOAuthLoginErrorCodeSchema } from '@/modules/cloud-account/services/desktop-oauth-login.schema';
+import { GoogleLoginDiagnosticSchema } from '@/modules/cloud-account/diagnostics';
 
-export const MANAGEMENT_PROTOCOL_VERSION = 1;
+export const MANAGEMENT_PROTOCOL_VERSION = 2;
 export const OAuthSessionIdSchema = z.uuid();
 
 export const ManagementStatusResponseSchema = z.object({
@@ -25,6 +27,7 @@ export const ManagementShutdownResponseSchema = z.object({
 });
 
 export const OAuthStartRequestSchema = z.strictObject({
+  diagnosticId: z.uuid(),
   oauthClientKey: OAuthClientKeySchema.optional(),
 });
 
@@ -49,6 +52,7 @@ export const OAuthStartResponseSchema = z.strictObject({
   ok: z.literal(true),
   sessionId: OAuthSessionIdSchema,
   authorizationUrl: z.url(),
+  diagnosticId: z.uuid(),
 });
 
 export const OAuthStatusResponseSchema = z.strictObject({
@@ -60,7 +64,12 @@ export const OAuthStatusResponseSchema = z.strictObject({
       state: z.literal('succeeded'),
       account: z.strictObject({ id: z.uuid(), email: z.email() }),
     }),
-    z.strictObject({ state: z.literal('failed'), message: z.string().max(200) }),
+    z.strictObject({
+      state: z.literal('failed'),
+      message: z.string().max(200),
+      loginCode: DesktopOAuthLoginErrorCodeSchema,
+      diagnostic: GoogleLoginDiagnosticSchema,
+    }),
   ]),
 });
 
@@ -76,6 +85,7 @@ export const OAuthErrorResponseSchema = z.strictObject({
     'INVALID_REQUEST',
   ]),
   message: z.string().max(200),
+  diagnostic: GoogleLoginDiagnosticSchema.optional(),
 });
 
 export type ManagementStatusResponse = z.infer<typeof ManagementStatusResponseSchema>;

@@ -7,21 +7,20 @@ import {
   CloudAccountViewSchema,
   type CloudAccountView,
 } from '@/modules/cloud-account/services/cloud-account-view';
+import { DesktopOAuthLoginError } from '@/modules/cloud-account/services/desktop-oauth-login.error';
 import {
-  DesktopOAuthLoginError,
-  oauthFailureCode,
-} from '@/modules/cloud-account/services/desktop-oauth-login.error';
+  GoogleLoginOperation,
+  GoogleLoginStepError,
+} from '@/modules/cloud-account/services/google-login-operation';
+import type { HeadlessOAuthStatus } from '@/modules/cloud-account/services/headless-oauth-session.service';
 import { normalizeTrustedGoogleValidationUrl } from '@/modules/cloud-account/utils/google-validation-url';
 
 interface RemoteOAuthManagement {
-  startOAuth(oauthClientKey?: string): Promise<{ sessionId: string; authorizationUrl: string }>;
-  oauthStatus(
-    sessionId: string,
-  ): Promise<
-    | { state: 'pending' }
-    | { state: 'succeeded'; account: { id: string; email: string } }
-    | { state: 'failed'; message: string }
-  >;
+  startOAuth(
+    oauthClientKey?: string,
+    diagnosticId?: string,
+  ): Promise<{ sessionId: string; authorizationUrl: string; diagnosticId: string }>;
+  oauthStatus(sessionId: string): Promise<HeadlessOAuthStatus>;
   cancelOAuth(sessionId: string): Promise<void>;
   completeOAuth(sessionId: string, code: string): Promise<void>;
 }
@@ -40,29 +39,53 @@ export class StandaloneCoreOAuthLogin {
   private stopping = false;
 
   async submitCode(code: string): Promise<void> {
+    const operation = new GoogleLoginOperation();
+    operation.enter('authorization');
     const sessionId = this.sessionId;
     if (!sessionId || this.stopping) {
-      throw new DesktopOAuthLoginError('login-failed');
+      throw new DesktopOAuthLoginError(
+        'login-failed',
+        operation.finish(undefined, 'unavailable', true),
+      );
     }
+    operation.accountCommit = 'uncertain';
     try {
-      await this.dependencies.management.completeOAuth(sessionId, code);
-    } catch {
-      throw new DesktopOAuthLoginError('login-failed');
+      await operation.run(
+        'management-transport',
+        () => this.dependencies.management.completeOAuth(sessionId, code),
+        'management-failed',
+      );
+    } catch (error) {
+      const cause = error instanceof GoogleLoginStepError ? error.cause : error;
+      const expected =
+        cause instanceof OAuthManagementError &&
+        ['UNKNOWN_SESSION', 'INVALID_REQUEST'].includes(cause.code);
+      throw new DesktopOAuthLoginError(
+        'login-failed',
+        operation.finish(error, undefined, expected),
+      );
     }
   }
 
   constructor(private readonly dependencies: StandaloneCoreOAuthLoginDependencies) {}
 
   async start(oauthClientKey?: string): Promise<CloudAccountView> {
+    const operation = new GoogleLoginOperation();
     if (this.stopping) {
-      throw new DesktopOAuthLoginError('login-cancelled');
+      throw new DesktopOAuthLoginError(
+        'login-cancelled',
+        operation.finish(undefined, 'cancelled', true),
+      );
     }
     if (this.pending) {
-      throw new DesktopOAuthLoginError('login-active');
+      throw new DesktopOAuthLoginError(
+        'login-active',
+        operation.finish(undefined, 'login-active', true),
+      );
     }
-    const pending = this.run(oauthClientKey);
+    const pending = this.run(operation, oauthClientKey);
     this.pending = pending;
-    void pending.then(
+    pending.then(
       () => this.clearPending(pending),
       () => this.clearPending(pending),
     );
@@ -75,38 +98,66 @@ export class StandaloneCoreOAuthLogin {
     }
   }
 
-  private async run(oauthClientKey?: string): Promise<CloudAccountView> {
+  private async run(
+    operation: GoogleLoginOperation,
+    oauthClientKey?: string,
+  ): Promise<CloudAccountView> {
     let ownerFinished = false;
     try {
       if (oauthClientKey) {
-        await this.dependencies.setPreference(oauthClientKey);
+        await operation.run('client-selection', () =>
+          this.dependencies.setPreference(oauthClientKey),
+        );
       }
       if (this.stopping) {
         throw new DesktopOAuthLoginError('login-cancelled');
       }
-      const started = await this.dependencies.management.startOAuth(oauthClientKey);
+      const started = await operation.run(
+        'management-transport',
+        () =>
+          this.dependencies.management.startOAuth(oauthClientKey, operation.context.diagnosticId),
+        'management-failed',
+      );
+      if (started.diagnosticId !== operation.context.diagnosticId) {
+        throw new Error('OAuth operation identity does not match the owner');
+      }
       this.sessionId = started.sessionId;
       if (this.stopping) {
         throw new DesktopOAuthLoginError('login-cancelled');
       }
+      operation.enter('authorization-url');
       const authorizationUrl = normalizeTrustedGoogleValidationUrl(started.authorizationUrl);
       if (!authorizationUrl) {
         throw new DesktopOAuthLoginError('login-failed');
       }
       try {
-        await this.dependencies.openExternal(authorizationUrl);
-      } catch {
-        throw new DesktopOAuthLoginError('browser-open-failed');
+        await operation.run('browser-open', () => this.dependencies.openExternal(authorizationUrl));
+      } catch (error) {
+        throw new DesktopOAuthLoginError('browser-open-failed', operation.finish(error));
       }
+      // Once authorization is available, a transport loss cannot establish whether the owner persisted it.
+      operation.accountCommit = 'uncertain';
       while (!this.stopping) {
-        const status = await this.dependencies.management.oauthStatus(started.sessionId);
+        const status = await operation.run(
+          'management-transport',
+          () => this.dependencies.management.oauthStatus(started.sessionId),
+          'management-failed',
+        );
         if (status.state === 'failed') {
           ownerFinished = true;
-          throw new DesktopOAuthLoginError(oauthFailureCode(status.message));
+          if (status.diagnostic.diagnosticId !== operation.context.diagnosticId) {
+            throw new Error('OAuth failure identity does not match the owner');
+          }
+          throw new DesktopOAuthLoginError(status.loginCode, status.diagnostic);
         }
         if (status.state === 'succeeded') {
           ownerFinished = true;
-          const accounts = await this.dependencies.accountViews();
+          operation.accountCommit = 'confirmed';
+          const accounts = await operation.run(
+            'view-load',
+            this.dependencies.accountViews,
+            'storage-failed',
+          );
           const account = accounts.find((entry) => entry.id === status.account.id);
           if (account && !this.stopping) {
             return CloudAccountViewSchema.parse(account);
@@ -120,17 +171,37 @@ export class StandaloneCoreOAuthLogin {
       if (!ownerFinished) {
         await this.cancelPendingSession();
       }
-      if (error instanceof DesktopOAuthLoginError) {
+      if (error instanceof DesktopOAuthLoginError && error.diagnostic) {
         throw error;
       }
-      throw new DesktopOAuthLoginError(
-        this.stopping
-          ? 'login-cancelled'
+      if (
+        error instanceof OAuthManagementError &&
+        error.diagnostic &&
+        error.diagnostic.diagnosticId !== operation.context.diagnosticId
+      ) {
+        throw new DesktopOAuthLoginError(
+          'login-failed',
+          operation.finish(undefined, 'management-failed'),
+        );
+      }
+      const loginCode = this.stopping
+        ? 'login-cancelled'
+        : error instanceof DesktopOAuthLoginError
+          ? error.loginCode
           : error instanceof OAuthManagementError && error.code === 'LOGIN_ACTIVE'
             ? 'login-active'
             : error instanceof OAuthManagementError && error.code === 'PROXY_CONFIGURATION_INVALID'
               ? 'proxy-configuration-invalid'
-              : 'login-failed',
+              : 'login-failed';
+      throw new DesktopOAuthLoginError(
+        loginCode,
+        error instanceof OAuthManagementError && error.diagnostic
+          ? error.diagnostic
+          : operation.finish(
+              error,
+              loginCode === 'login-cancelled' ? 'cancelled' : undefined,
+              loginCode === 'login-cancelled' || loginCode === 'login-active',
+            ),
       );
     } finally {
       this.sessionId = null;

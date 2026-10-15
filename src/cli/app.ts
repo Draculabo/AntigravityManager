@@ -1,5 +1,7 @@
 import { Command, CommanderError } from 'commander';
-import { setTimeout as delay } from 'node:timers/promises';
+import { readFinalizedOperationDiagnostic } from '@/shared/observability/operationDiagnostic';
+import { formatOperationDiagnostic } from '@/shared/observability/operationDiagnosticText';
+import { loginGoogleAccount } from './google-login';
 import type { ServiceLauncher } from './service-launcher';
 import type { ManagementClient } from '@/core/management/client';
 import { registerAccountCommands, type AccountCommandClient } from './account-commands';
@@ -69,27 +71,7 @@ export async function runCli(
   account
     .command('login')
     .description('Authorize a Google account through the standalone core')
-    .action(async () => {
-      if (!oauth) {
-        throw new Error('OAuth management is unavailable');
-      }
-      await launcher.start();
-      const session = await oauth.startOAuth();
-      output.stdout(`Open this URL in a browser on this machine:\n${session.authorizationUrl}\n`);
-      const deadline = Date.now() + 6 * 60_000;
-      while (Date.now() < deadline) {
-        const status = await oauth.oauthStatus(session.sessionId);
-        if (status.state === 'succeeded') {
-          output.stdout(`Google account added: ${status.account.email}\n`);
-          return;
-        }
-        if (status.state === 'failed') {
-          throw new Error(status.message);
-        }
-        await delay(500);
-      }
-      throw new Error('OAuth login timed out');
-    });
+    .action(async () => loginGoogleAccount(oauth, () => launcher.start(), output));
 
   try {
     await command.parseAsync(args, { from: 'user' });
@@ -104,6 +86,10 @@ export async function runCli(
     output.stderr(
       `${agentToolCommandError(error) ?? (error instanceof Error ? error.message : 'Unknown CLI error')}\n`,
     );
+    const diagnostic = readFinalizedOperationDiagnostic(error);
+    if (diagnostic) {
+      output.stderr(`${formatOperationDiagnostic(diagnostic)}\n`);
+    }
     return 1;
   }
 }

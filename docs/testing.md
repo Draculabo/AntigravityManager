@@ -64,6 +64,67 @@ next upstream signature with the original encoded value; they do not establish l
 acceptance. Run the adjacent isolation, Responses mapper and invalid-signature recovery suites
 when changing this boundary.
 
+## Account-operation diagnostic acceptance
+
+The focused `correlated-operation-diagnostics` and `google-login-diagnostics` suites exercise
+classification, bounded/cyclic causes, SDK receipts, scope isolation, forwarding suppression and
+safe projections. Login failures pass through enrollment, the callback listener, public IPC,
+details and report text. Remote HTTP rejection uses a real loopback HTTP proxy with Axios'
+Node adapter and the private management endpoint; provider credentials and persistence are
+synthetic or blocked. The adjacent OAuth, switch-owner, management/RPC, CLI, error-toast and
+attachment suites cover their existing side effects and error contracts.
+
+`npm run test:diagnostics:sentry` runs the actual Node and Electron SDK adapters against a
+bounded local receiver with isolated opted-in preferences. `--offline` returns HTTP 503 while
+checking local receipt semantics. `--packaged` additionally builds and runs an isolated Electron
+ASAR diagnostic executable, with profile path resolution redirected before loading the SDK.
+This harness contains no account/credential owner and does not verify a full product installer,
+native keyring or live Google authorization.
+
+The service-launcher suite accepts a healthy core becoming ready after 60 seconds, verifies the
+90-second default deadline for an unavailable child, and checks that waiting does not launch
+another child. Packaged acceptance keeps CDP and window discovery bounded and attempts desktop
+closure and core shutdown independently during recovery.
+
+On Windows, `npm run test:diagnostics:packaged -- <desktop-executable>` exercises the full
+packaged or installed product with empty isolated profiles and reporting disabled. Both
+desktop owner modes must retain login and switch diagnostics through the production preload
+and public IPC; the real login toast must expose its reference in Error details. The packaged
+CLI exchanges a synthetic authorization code through a local proxy returning HTTP 503 and
+must use HTTPS CONNECT and retain the upstream status/code and closed HTTP evidence in its
+terminal diagnostic and local log. The focused logging regression checks the actual Winston
+transport output: shared cause evidence and safe readback booleans must survive strict parsing,
+while generic payloads still mask secrets and actual cycles. No real Google
+authorization or official-client credential write is attempted. The check requires an existing
+application master key, compares both master-key slots without printing their contents, restores
+Windows login settings and removes only its isolated profiles.
+
+For installation evidence on a clean authorized Windows host, append `--operation-diagnostics`
+to `npm run test:acceptance -- installers msi <current-msi>`. The installer guard refuses to
+replace an existing product in the same upgrade family. Running the diagnostics against the
+packaged executable validates its payload, not MSI installation or upgrade behavior.
+
+The standalone native runtime gate retains its throwing Electron substitute and presentation-side
+SQLite, worker and keyring guards. It uses the Electron-free app-shell connection for management
+and verified shutdown; the full Electron gate separately covers the desktop connection facade.
+An empty plaintext account profile must not create a master key. The security probe then explicitly
+initializes encryption, verifies the uniquely scoped native key, and decrypts its synthetic payload
+in a second process. Native credential cleanup covers both the CRUD probe and that generated key.
+
+`--live` forwards only validated non-secret event items to the configured Sentry DSN. A successful
+SDK receipt, flush or HTTP response is insufficient to prove storage: read the stored event
+using the private read-only token and compare UUID, `operation_runtime`, stage, reason, release
+and the privacy projection. The token remains outside the application. These controls do not
+establish that a synthetic failure caused an existing user's incident.
+
+Google HTTP failure diagnostics have real loopback origin and proxy controls in
+`google-http-evidence.test.ts` and `google-login-diagnostics.test.ts`. They verify proxy CONNECT authentication, 502 HTML
+and 503 OAuth JSON across refresh, private management, public IPC, details and reporting.
+`correlated-operation-diagnostics.test.ts` verifies the same closed fields in Sentry projection,
+sanitation and the public byte budget. These controls do not identify the source of an earlier 502.
+The proxy transport tests also require cancellation to close a stalled CONNECT socket and
+preserve NO_PROXY behavior. The local acceptance unit suite also checks read-only Classic terms-file classification.
+
 ## Change-to-evidence matrix
 
 | Changed surface                       | Minimum local evidence                                                | Add when applicable                                                        |
@@ -641,3 +702,14 @@ For real cloud and local account A-B-A checks through the CLI and Electron owner
 `node scripts/test-ide-hot-switch.integration.mjs` exercises the production process selector and service lifecycle against isolated native binaries on Windows, Linux and macOS. Three account-marker changes verify two AI services below direct and utility-host parents, replacement credentials, stable main-process identity, continued terminal progress and an unchanged in-memory workspace. Discovery and cleanup are restricted to the generated fixture directory. Run with the native platform dependency installed; do not reuse Windows-only `node_modules` for a Linux check.
 
 The focused `ide-hot-switch.test.ts` and `runtime-switch.test.ts` suites cover identity reuse, deadlines, partial writes, fallback and user-closed windows. They also verify that a directly owned machine AI service selects the full-restart path without terminating it during preflight, and that the captured IDE closes before account writes and receives exactly one launch. These checks do not replace official IDE UI account-switch acceptance or establish readiness of real AI requests. A workspace service replacing a machine service with the same binary is not recovery. Live process-only termination on official IDE 2.5.5 in Windows and WSL leaves the machine service absent; WSL additionally reproduces a real chat request to its dead endpoint. Bare-metal Linux and macOS remain unverified.
+
+### Classic terms retention
+
+The classic-terms-switch suite runs the production switch flow against real temporary official
+and history files. It covers A-B-A-B retention, loss during close, missing first consent,
+installation revision invalidation, corrupted history, observed standard/GCP changes, profile
+isolation, concurrent reopening/settings writes, invalid JSON, durable write failure and field-only
+rollback. Existing cloud-account, local-owner, runtime-switch, credential-write and switch-guard
+suites cover the call sites. Native macOS/Linux behavior is unchanged and explicitly excluded
+from the Windows retention path. See [live acceptance](account-switch-acceptance.md#diagnose-repeated-classic-terms)
+for manual first consent, repeated switches and restart evidence.

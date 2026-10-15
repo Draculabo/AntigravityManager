@@ -80,7 +80,7 @@ import { AccountValidationUrlResultSchema } from '@/modules/cloud-account/servic
 import { toAccountValidationLinkORPCError } from '@/modules/cloud-account/services/account-validation-link.error';
 import { switchCloudAccountCore } from '@/modules/cloud-account/services/cloud-account-switch.service';
 import {
-  CloudAccountSwitchInputSchema,
+  CoreCloudAccountSwitchInputSchema,
   CloudAccountSwitchResultSchema,
 } from '@/modules/cloud-account/services/cloud-account-switch.schema';
 import { toCloudAccountSwitchORPCError } from '@/modules/cloud-account/services/cloud-account-switch.error';
@@ -247,9 +247,9 @@ export function createCoreRpcOperations(
           throw toSyncLocalAccountORPCError(error);
         }
       }),
-    accountSwitch: (accountId, appTarget) =>
+    accountSwitch: (accountId, appTarget, diagnosticId?: string) =>
       runAccountMutation(async () => {
-        await switchCloudAccountCore(accountId, appTarget);
+        await switchCloudAccountCore(accountId, appTarget, { diagnosticId });
         return { success: true };
       }),
     accountProfileGet: getCloudIdentityProfiles,
@@ -366,11 +366,15 @@ export function createCoreRpcRouter(operations: CoreRpcOperations) {
       .output(CloudAccountViewSchema.nullable())
       .handler(({ input }) => operations.accountSyncFromIde(input.appTarget)),
     accountSwitch: os
-      .input(CloudAccountSwitchInputSchema)
+      .input(CoreCloudAccountSwitchInputSchema)
       .output(CloudAccountSwitchResultSchema)
       .handler(async ({ input }) => {
         try {
-          return await operations.accountSwitch(input.accountId, input.appTarget);
+          return await operations.accountSwitch(
+            input.accountId,
+            input.appTarget,
+            input.diagnosticId,
+          );
         } catch (error) {
           throw toCloudAccountSwitchORPCError(error);
         }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CredentialReadbackError } from '@/shared/auth/credentialReadbackError';
 import {
   readCloudAccountSwitchDiagnosticCode,
   toCloudAccountSwitchORPCError,
@@ -18,7 +19,9 @@ describe('cloud account switch diagnostic codes', () => {
   it('identifies failed credential readback without attaching the credential values', () => {
     expect(
       readCloudAccountSwitchDiagnosticCode(
-        new Error('Client credential-store write could not be confirmed'),
+        new CredentialReadbackError('Client credential-store write could not be confirmed', {
+          refreshToken: false,
+        }),
       ),
     ).toBe('credential-readback-mismatch');
   });

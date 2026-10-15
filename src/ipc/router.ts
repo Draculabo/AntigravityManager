@@ -5,6 +5,8 @@ import {
   type LocalAccountImportORPCErrorData,
   parseCloudAccountSwitchORPCErrorData,
   parseLocalAccountImportORPCErrorData,
+  parseDesktopOAuthLoginErrorData,
+  type DesktopOAuthLoginErrorData,
 } from '@/modules/cloud-account/ipc/router';
 import { configRouter } from '@/modules/config/ipc/router';
 import { gatewayAuditMiddleware, gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
@@ -36,6 +38,7 @@ type PublicORPCErrorData =
   | BackendErrorDetails
   | (BackendErrorDetails & AppErrorData)
   | (BackendErrorDetails & CloudAccountSwitchORPCErrorData)
+  | (BackendErrorDetails & DesktopOAuthLoginErrorData)
   | (BackendErrorDetails & LocalAccountImportORPCErrorData);
 
 function stringifyUnknownError(error: unknown): string {
@@ -98,11 +101,23 @@ function createPublicORPCErrorData(error: unknown, requestPath: string): PublicO
   const switchErrorData =
     error instanceof ORPCError ? parseCloudAccountSwitchORPCErrorData(error.data) : null;
   if (switchErrorData) {
+    if (switchErrorData.diagnostic) {
+      delete backendDetails.backendStack;
+    }
     return {
       ...backendDetails,
       ...switchErrorData,
       diagnosticCode: switchErrorData.switchCode,
     };
+  }
+
+  const loginErrorData =
+    error instanceof ORPCError ? parseDesktopOAuthLoginErrorData(error.data) : null;
+  if (loginErrorData) {
+    if (loginErrorData.diagnostic) {
+      delete backendDetails.backendStack;
+    }
+    return { ...backendDetails, ...loginErrorData };
   }
 
   const localAccountImportErrorData =
@@ -155,8 +170,17 @@ const logMiddleware = os.middleware(async ({ next, path }) => {
     return await next({});
   } catch (err) {
     const ownerError = projectOwnerOperationError(err, requestPath);
-    logger.error(`[ORPC] Error in handler for ${requestPath}:`, ownerError ? ownerError.data : err);
-    throw ownerError ?? toPublicORPCError(err, requestPath);
+    const publicError = ownerError ?? toPublicORPCError(err, requestPath);
+    const featureDiagnostic =
+      err instanceof ORPCError
+        ? (parseDesktopOAuthLoginErrorData(err.data)?.diagnostic ??
+          parseCloudAccountSwitchORPCErrorData(err.data)?.diagnostic)
+        : null;
+    logger.error(
+      `[ORPC] Error in handler for ${requestPath}:`,
+      featureDiagnostic ? publicError : ownerError ? ownerError.data : err,
+    );
+    throw publicError;
   }
 });
 

@@ -63,6 +63,31 @@ app.on('window-all-closed', () => app.quit());
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const page = browser.contexts().flatMap((context) => context.pages())[0];
   await page.waitForURL('file:**');
+  await page.locator('#state').evaluate((element) => {
+    element.textContent = 'Accept and continue';
+  });
+  const termsBlocked = await verifyClientIdentity(browser, 'fixture@example.com', async () => true);
+  assert.equal(
+    termsBlocked.clientIdentityConfirmed,
+    false,
+    'A signed-in account behind a required terms page must not pass official readiness',
+  );
+  assert.equal(termsBlocked.clientScreen.termsRequired, true);
+  assert.equal(termsBlocked.clientVerification, 'credentials-and-window-only');
+  const initializing = verifyClientIdentity(browser, 'fixture@example.com', async () => true);
+  void initializing.catch(() => {});
+  assert.equal(
+    await Promise.race([initializing.then(() => 'completed'), delay(750).then(() => 'pending')]),
+    'pending',
+    'An initial terms screen must allow the official renderer to finish loading account state',
+  );
+  await page.locator('#state').evaluate((element) => {
+    element.textContent = 'Ready';
+  });
+  assert.equal((await initializing).clientIdentityConfirmed, true);
+  await page.locator('#state').evaluate((element) => {
+    element.textContent = 'Authenticating...';
+  });
   const verification = verifyClientIdentity(browser, 'fixture@example.com', async () => false);
   void verification.catch(() => {});
   const early = await Promise.race([
@@ -81,6 +106,37 @@ app.on('window-all-closed', () => app.quit());
   assert.equal(result.clientIdentityConfirmed, true);
   assert.equal(result.clientIdentityVisible, true);
   assert.equal(result.clientSignedIn, false);
+  await page.evaluate(() => {
+    document.body.innerHTML = '<p>Loading</p>';
+  });
+  const delayedPanel = verifyClientIdentity(browser, 'fixture@example.com', async () => false);
+  void delayedPanel.catch(() => {});
+  await delay(750);
+  await page.evaluate(() => {
+    document.body.innerHTML = '<button>Settings</button>';
+    document.querySelector('button').addEventListener('click', () => {
+      document.body.innerHTML = '<p>fixture@example.com</p><p>Ready</p>';
+    });
+  });
+  await page.getByText('fixture@example.com', { exact: true }).waitFor({
+    state: 'visible',
+    timeout: 3000,
+  });
+  assert.equal((await delayedPanel).clientIdentityConfirmed, true);
+  let acceptance = { state: 'other-account', tosType: 'standard' };
+  const persistence = verifyClientIdentity(browser, 'fixture@example.com', async () => true, {
+    readTermsAcceptance: async () => acceptance,
+  });
+  void persistence.catch(() => {});
+  assert.equal(
+    await Promise.race([persistence.then(() => 'completed'), delay(750).then(() => 'pending')]),
+    'pending',
+    'A hidden terms page must not pass before the selected account acceptance reaches disk',
+  );
+  acceptance = { state: 'recorded', tosType: 'standard' };
+  const persisted = await persistence;
+  assert.equal(persisted.clientIdentityConfirmed, true);
+  assert.deepEqual(persisted.clientTermsAcceptance, acceptance);
   console.log(
     JSON.stringify({
       platform: process.platform,

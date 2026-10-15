@@ -27,7 +27,12 @@ import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { AgentToolsService } from '@/modules/proxy-gateway/agent-tools/agent-tools.service';
 import { selectAgentToolsAdapter } from '@/modules/proxy-gateway/ipc/agent-tools-adapter';
 import { gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
-import { createRouterClient } from '@orpc/server';
+import { createRouterClient, ORPCError } from '@orpc/server';
+import { CloudAccountSwitchError } from '@/modules/cloud-account/services/cloud-account-switch.error';
+import {
+  CloudSwitchDiagnosticSchema,
+  type CloudSwitchDiagnostic,
+} from '@/modules/cloud-account/services/operation-diagnostic.schema';
 import { runCli } from '@/cli/app';
 import { readDiagnosticLogs } from '@/modules/app-shell/diagnostic-logs/read-logs';
 import { LOG_SOURCE_MAX_BYTES } from '@/modules/app-shell/diagnostic-logs/schema';
@@ -400,7 +405,11 @@ describe('core application RPC', () => {
     expect(await client.refreshAccountQuota(account.id)).toEqual(accountView);
     expect(await client.syncFromIde('ide')).toEqual(accountView);
     expect(await client.switchCloudAccount(account.id, 'ide')).toBeUndefined();
-    expect(rpc.accountSwitch).toHaveBeenCalledWith(account.id, 'ide');
+    expect(rpc.accountSwitch).toHaveBeenCalledExactlyOnceWith(
+      account.id,
+      'ide',
+      expect.stringMatching(/^[a-f0-9-]{36}$/),
+    );
     expect(await client.getIdentityProfiles(account.id)).toEqual({
       history: [],
       boundProfile: deviceProfile,
@@ -512,6 +521,45 @@ describe('core application RPC', () => {
     }
   });
 
+  it('preserves the owner diagnostic on a reconstructed ORPCError over the private endpoint', async () => {
+    const socketPath = await endpoint();
+    const rpc = operations();
+    let diagnostic: CloudSwitchDiagnostic | undefined;
+    rpc.accountSwitch = vi.fn(async (_accountId, _appTarget, diagnosticId) => {
+      diagnostic = CloudSwitchDiagnosticSchema.parse({
+        schemaVersion: 1,
+        diagnosticId,
+        operation: 'cloud-account-switch',
+        stage: 'target-write',
+        reason: 'permission-denied',
+        nativeCode: 'EACCES',
+        target: 'agy',
+        storage: 'cli-session',
+        rollback: 'not-attempted',
+        reporting: { state: 'not-reported', reason: 'disabled' },
+      });
+      throw new CloudAccountSwitchError('target-write-failed', diagnostic);
+    });
+    const server = new ManagementServer({
+      endpoint: socketPath,
+      getStatus: () => ({ state: 'running', pid: 123, gateway: { running: false, port: null } }),
+      shutdown: async () => {},
+      onShutdownError: vi.fn(),
+      rpc,
+    });
+    closeables.push(server);
+    await server.start();
+
+    const error = await new CoreRpcClient(socketPath)
+      .switchCloudAccount(account.id, 'agy')
+      .catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(ORPCError);
+    if (!(error instanceof ORPCError)) {
+      throw new Error('Expected the private client to reconstruct an ORPCError');
+    }
+    expect(error.data).toEqual({ switchCode: 'target-write-failed', diagnostic });
+  });
+
   it('returns a stable switch error over the private endpoint without owner diagnostics', async () => {
     const socketPath = await endpoint();
     const rpc = operations();
@@ -535,7 +583,11 @@ describe('core application RPC', () => {
       expect(error).toMatchObject({ data: { switchCode: 'switch-failed' } });
       expect(JSON.stringify(error)).not.toMatch(/private-access-token|proxy-user:proxy-password/);
     }
-    expect(rpc.accountSwitch).toHaveBeenCalledWith(account.id, 'agy');
+    expect(rpc.accountSwitch).toHaveBeenCalledExactlyOnceWith(
+      account.id,
+      'agy',
+      expect.stringMatching(/^[a-f0-9-]{36}$/),
+    );
   });
 
   it('allows quota refresh to finish beyond the five-second management timeout', async () => {

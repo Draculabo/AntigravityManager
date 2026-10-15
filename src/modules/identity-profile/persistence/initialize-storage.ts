@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { hasErrorCode } from '@/shared/errors/error-guards';
 import type { DeviceProfile } from '../types';
 
 const StorageObjectSchema = z.record(z.string(), z.unknown());
@@ -37,7 +38,7 @@ export function initializeStorageFile(
         // Publishing a complete inode is atomic and EEXIST preserves a concurrent creator.
         fs.linkSync(temporaryPath, storagePath);
       } catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) {
+        if (!hasErrorCode(error, 'EEXIST')) {
           throw error;
         }
       }

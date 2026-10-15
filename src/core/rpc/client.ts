@@ -48,7 +48,7 @@ import {
   type CloudAccountImportSummary,
   type ImportStrategy,
 } from '@/modules/cloud-account/services/cloud-account-file.schema';
-import { createORPCClient } from '@orpc/client';
+import { createORPCClient, ORPCError } from '@orpc/client';
 import { RPCLink } from '@orpc/client/fetch';
 import type { RouterClient } from '@orpc/server';
 import { z } from 'zod';
@@ -75,6 +75,9 @@ import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarge
 import { CloudAccountSecurityStatusSchema } from '@/modules/cloud-account/services/cloud-account-security-status.schema';
 import { AccountValidationUrlResultSchema } from '@/modules/cloud-account/services/account-validation-link.schema';
 import { CloudAccountSwitchResultSchema } from '@/modules/cloud-account/services/cloud-account-switch.schema';
+import { parseCloudAccountSwitchORPCErrorData } from '@/modules/cloud-account/services/cloud-account-switch.schema';
+import { CloudSwitchDiagnosticSchema } from '@/modules/cloud-account/diagnostics';
+import { OperationContext } from '@/shared/observability/operationContext';
 import {
   CloudIdentityProfileSchema,
   CloudIdentityProfilesSnapshotSchema,
@@ -309,9 +312,35 @@ export class CoreRpcClient {
   }
 
   async switchCloudAccount(accountId: string, appTarget?: AntigravityAppTarget): Promise<void> {
-    CloudAccountSwitchResultSchema.parse(
-      await this.accountMutationRpc.accountSwitch({ accountId, appTarget }),
-    );
+    const operation = new OperationContext('cloud-account-switch');
+    try {
+      CloudAccountSwitchResultSchema.parse(
+        await this.accountMutationRpc.accountSwitch({
+          accountId,
+          appTarget,
+          diagnosticId: operation.diagnosticId,
+        }),
+      );
+    } catch (error) {
+      const forwarded =
+        error instanceof ORPCError ? parseCloudAccountSwitchORPCErrorData(error.data) : null;
+      if (forwarded?.diagnostic?.diagnosticId === operation.diagnosticId) {
+        throw error;
+      }
+      throw new ORPCError('INTERNAL_SERVER_ERROR', {
+        message: 'Cloud account switch failed',
+        data: {
+          switchCode: 'switch-failed',
+          diagnostic: CloudSwitchDiagnosticSchema.parse(
+            operation.finish({
+              stage: 'management-transport',
+              reason: 'management-failed',
+              target: appTarget ?? 'classic',
+            }),
+          ),
+        },
+      });
+    }
   }
 
   async getIdentityProfiles(accountId: string): Promise<DeviceProfilesSnapshot> {

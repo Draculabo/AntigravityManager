@@ -11,6 +11,8 @@ import type { CloudAccount } from '@/modules/cloud-account/types';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { diagnosticId, loginDiagnostic } from '../fixtures/oauth-diagnostic';
+import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
 import {
   UpstreamProxyConfigurationError,
   UPSTREAM_PROXY_CONFIGURATION_MESSAGE,
@@ -105,7 +107,8 @@ describe('desktop owner-side OAuth login', () => {
       url.searchParams.set('state', session.state);
       return url.toString();
     });
-    const enroll = vi.fn(async () => ({ id: view.id, email: view.email }) as CloudAccount);
+    const enrollment = Promise.withResolvers<CloudAccount>();
+    const enroll = vi.fn(async () => enrollment.promise);
     const session = new HeadlessOAuthSessionService(enroll);
     sessions.push(session);
     const openExternal = vi.fn(async (_url: string) => {});
@@ -120,10 +123,29 @@ describe('desktop owner-side OAuth login', () => {
     await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
     const redirect = new URL(openExternal.mock.calls[0][0]).searchParams.get('redirect_uri');
     login.submitCode('4/manual-code');
+    await vi.waitFor(() => expect(enroll).toHaveBeenCalledOnce());
+    let rejectedCode: unknown;
+    try {
+      login.submitCode('4/replay-before-completion');
+    } catch (error) {
+      rejectedCode = error;
+    }
+    expect(rejectedCode).toMatchObject({
+      loginCode: 'login-failed',
+      diagnostic: {
+        stage: 'authorization',
+        reason: 'unavailable',
+        accountCommit: 'uncertain',
+        reporting: { state: 'not-reported', reason: 'expected-outcome' },
+      },
+    });
+    enrollment.resolve({ id: view.id, email: view.email } as CloudAccount);
     expect(await pending).toEqual(view);
     expect(enroll).toHaveBeenCalledExactlyOnceWith('4/manual-code', {
       oauthClientKey: 'client-a',
       redirectUri: redirect,
+
+      operation: expect.any(GoogleLoginOperation),
     });
     expect(() => login.submitCode('4/replay')).toThrow();
   });
@@ -166,6 +188,8 @@ describe('desktop owner-side OAuth login', () => {
     expect(enroll).toHaveBeenCalledExactlyOnceWith('private-code', {
       oauthClientKey: 'client-b',
       redirectUri: redirect,
+
+      operation: expect.any(GoogleLoginOperation),
     });
     expect(reload).toHaveBeenCalledOnce();
     expect(JSON.stringify(view)).not.toMatch(/private-code|access_token|refresh_token/);
@@ -174,6 +198,7 @@ describe('desktop owner-side OAuth login', () => {
   it('cancels a pending session if the browser cannot open', async () => {
     const session = {
       start: vi.fn(async () => ({
+        diagnosticId,
         sessionId: 's1',
         authorizationUrl: 'https://accounts.google.com/',
       })),
@@ -205,10 +230,16 @@ describe('desktop owner-side OAuth login', () => {
   ] as const)('maps session failure %s to a value-free code', async (message, loginCode) => {
     const session = {
       start: vi.fn(async () => ({
+        diagnosticId,
         sessionId: 's1',
         authorizationUrl: 'https://accounts.google.com/',
       })),
-      status: vi.fn(() => ({ state: 'failed' as const, message })),
+      status: vi.fn(() => ({
+        state: 'failed' as const,
+        message,
+        loginCode,
+        diagnostic: loginDiagnostic(loginCode),
+      })),
       cancel: vi.fn(async () => {}),
       completeCode: vi.fn(() => true),
       stop: vi.fn(async () => {}),

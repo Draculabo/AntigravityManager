@@ -6,6 +6,12 @@ import DailyRotateFile from 'winston-daily-rotate-file';
 import { getAgentDir } from '@/shared/platform/paths';
 import { shouldReportErrorToSentry } from '@/shared/errors/appError';
 import { safeStringifyPacket, sanitizeObject } from '@/shared/security/sensitiveDataMasking';
+import {
+  OperationDiagnosticSchema,
+  readFinalizedOperationDiagnostic,
+  type OperationReport,
+} from '@/shared/observability/operationDiagnostic';
+import { currentOperationIdentity } from '@/shared/observability/operationScope';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
@@ -27,7 +33,8 @@ type SentryReporter = (payload: {
   error?: Error;
   logs: LogEntry[];
   isolated?: boolean;
-}) => void;
+  operation?: OperationReport;
+}) => string | void;
 
 /**
  * Safely stringify an object, handling circular references
@@ -36,6 +43,11 @@ type SentryReporter = (payload: {
  */
 function safeStringify(obj: unknown): string {
   try {
+    // The closed diagnostic schema permits safe readback booleans and repeated cause evidence.
+    const diagnostic = OperationDiagnosticSchema.safeParse(obj);
+    if (diagnostic.success) {
+      return JSON.stringify(diagnostic.data);
+    }
     return safeStringifyPacket(obj);
   } catch {
     return '[Unserializable]';
@@ -155,7 +167,14 @@ class Logger {
   }
 
   private write(level: LogLevel, message: string, args: unknown[], isolated: boolean) {
-    const formattedArgs = this.formatArgs(args);
+    const operation = currentOperationIdentity();
+    const formattedArgs = this.formatArgs(
+      operation &&
+        !message.startsWith('Operation diagnostic ') &&
+        !message.startsWith('Operation step ')
+        ? [...args, operation]
+        : args,
+    );
     const sanitizedMessage = String(sanitizeObject(message));
     const mergedMessage = formattedArgs ? `${sanitizedMessage} ${formattedArgs}` : sanitizedMessage;
     const now = Date.now();
@@ -178,7 +197,9 @@ class Logger {
       level === 'error' &&
       this.sentryEnabled &&
       this.sentryReporter &&
+      !operation &&
       shouldReportErrorToSentry(mergedMessage) &&
+      !args.some((value) => readFinalizedOperationDiagnostic(value) !== null) &&
       shouldReportErrorToSentry(this.extractError(args))
     ) {
       try {

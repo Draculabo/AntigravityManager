@@ -111,24 +111,46 @@ describe('ServiceLauncher', () => {
     expect(launchCore).toHaveBeenCalledOnce();
   });
 
-  it('accepts a packaged cold start that becomes ready after 28 seconds', async () => {
+  it.each([28_000, 60_000])(
+    'accepts a packaged cold start ready after %i ms',
+    async (readyAfter) => {
+      const time = clock();
+      const launcher = new ServiceLauncher({
+        probeProfileOwner: async () => null,
+        management: {
+          status: async () => {
+            if (time.now() < readyAfter) {
+              throw new ServiceNotRunningError();
+            }
+            return running;
+          },
+          shutdown: async () => {},
+        },
+        launchCore: async () => ({ hasExited: () => false }),
+        ...time,
+      });
+
+      expect(await launcher.start()).toEqual({ status: running, alreadyRunning: false });
+    },
+  );
+
+  it('keeps the default startup wait bounded without relaunching', async () => {
     const time = clock();
+    const launchCore = vi.fn(async () => ({ hasExited: () => false }));
     const launcher = new ServiceLauncher({
-      probeProfileOwner: async () => null,
       management: {
-        status: async () => {
-          if (time.now() < 28_000) {
-            throw new ServiceNotRunningError();
-          }
-          return running;
+        status: async (): Promise<CoreStatus> => {
+          throw new ServiceNotRunningError();
         },
         shutdown: async () => {},
       },
-      launchCore: async () => ({ hasExited: () => false }),
+      probeProfileOwner: async () => null,
+      launchCore,
       ...time,
     });
-
-    expect(await launcher.start()).toEqual({ status: running, alreadyRunning: false });
+    await expect(launcher.start()).rejects.toThrow('Core startup timed out');
+    expect(time.now()).toBe(90_100);
+    expect(launchCore).toHaveBeenCalledOnce();
   });
 
   it('reports early child exit and bounded startup timeout', async () => {

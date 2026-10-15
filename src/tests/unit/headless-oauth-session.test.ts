@@ -1,3 +1,5 @@
+import { loginDiagnostic } from '../fixtures/oauth-diagnostic';
+import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
 import http from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
@@ -65,6 +67,8 @@ describe('headless OAuth session', () => {
     expect(enroll).toHaveBeenCalledExactlyOnceWith('4/manual-code', {
       oauthClientKey: 'manual-client',
       redirectUri: redirect,
+
+      operation: expect.any(GoogleLoginOperation),
     });
     expect(service.completeCode(started.sessionId, '4/late-code')).toBe(false);
     await expect(request(`${redirect}?code=4/late-code&state=wrong`)).rejects.toThrow();
@@ -83,6 +87,8 @@ describe('headless OAuth session', () => {
     expect(enroll).toHaveBeenCalledExactlyOnceWith('callback-code', {
       oauthClientKey: 'test-client',
       redirectUri: redirect,
+
+      operation: expect.any(GoogleLoginOperation),
     });
   });
 
@@ -117,6 +123,8 @@ describe('headless OAuth session', () => {
     expect(enroll).toHaveBeenCalledExactlyOnceWith('secret-code', {
       oauthClientKey: 'test-client',
       redirectUri: callback,
+
+      operation: expect.any(GoogleLoginOperation),
     });
     expect(reload).toHaveBeenCalledOnce();
     expect(GoogleAPIService.getAuthUrl).toHaveBeenCalledWith('test-client', {
@@ -143,6 +151,8 @@ describe('headless OAuth session', () => {
     expect(enroll).toHaveBeenCalledWith('private-code', {
       oauthClientKey: 'explicit-client',
       redirectUri: callbackUrl,
+
+      operation: expect.any(GoogleLoginOperation),
     });
   });
 
@@ -158,6 +168,9 @@ describe('headless OAuth session', () => {
     expect(service.status(first.sessionId)).toEqual({
       state: 'failed',
       message: 'OAuth login was cancelled',
+
+      loginCode: 'login-cancelled',
+      diagnostic: loginDiagnostic('login-cancelled', first.diagnosticId),
     });
     await expect(request(`${firstCallback}?code=late&state=late`)).rejects.toThrow();
 
@@ -213,6 +226,9 @@ describe('headless OAuth session', () => {
       expect(service.status(first.sessionId)).toEqual({
         state: 'failed',
         message: 'Google authorization was denied',
+
+        loginCode: 'authorization-denied',
+        diagnostic: loginDiagnostic('authorization-denied', first.diagnosticId),
       }),
     );
     expect(enroll).not.toHaveBeenCalled();
@@ -221,6 +237,9 @@ describe('headless OAuth session', () => {
     expect(service.status(first.sessionId)).toEqual({
       state: 'failed',
       message: 'Google authorization was denied',
+
+      loginCode: 'authorization-denied',
+      diagnostic: loginDiagnostic('authorization-denied', first.diagnosticId),
     });
   });
 
@@ -232,6 +251,9 @@ describe('headless OAuth session', () => {
       expect(service.status(started.sessionId)).toEqual({
         state: 'failed',
         message: 'OAuth login timed out',
+
+        loginCode: 'login-timeout',
+        diagnostic: loginDiagnostic('login-timeout', started.diagnosticId),
       }),
     );
     expect(enroll).not.toHaveBeenCalled();
@@ -271,9 +293,9 @@ describe('headless OAuth session', () => {
     const starting = service.start();
     const shutdown = service.stop();
 
-    await expect(starting).rejects.toThrow('unavailable during shutdown');
+    await expect(starting).rejects.toMatchObject({ loginCode: 'login-cancelled' });
     await shutdown;
-    await expect(service.start()).rejects.toThrow('unavailable during shutdown');
+    await expect(service.start()).rejects.toMatchObject({ loginCode: 'login-cancelled' });
     expect(GoogleAPIService.getAuthUrl).not.toHaveBeenCalled();
   });
 
@@ -283,11 +305,14 @@ describe('headless OAuth session', () => {
     const callback = new URL(started.authorizationUrl).searchParams.get('redirect_uri');
     const shutdown = service.stop();
 
-    await expect(service.start()).rejects.toThrow('unavailable during shutdown');
+    await expect(service.start()).rejects.toMatchObject({ loginCode: 'login-cancelled' });
     await shutdown;
     expect(service.status(started.sessionId)).toEqual({
       state: 'failed',
       message: 'OAuth login was cancelled',
+
+      loginCode: 'login-cancelled',
+      diagnostic: loginDiagnostic('login-cancelled', started.diagnosticId),
     });
     await expect(request(`${callback}?code=late&state=late`)).rejects.toThrow();
   });

@@ -10,6 +10,32 @@ private RPC. The renderer receives only the preview and a temporary save capabil
 process holds that exact snapshot and owns the save dialog and atomic export. No log upload
 service or general filesystem API is exposed. See [the privacy and export policy](security.md#sensitive-data).
 
+## Correlated account-operation diagnostics
+
+Google login and cloud-account switching create a UUID in the trusted coordinator before
+dispatch. The selected owner records stages, classifies terminal failures and finalizes a
+reporting receipt once. Feature services own the login/switch variants; shared observability
+owns invocation-local correlation and SDK dispatch. Async log scopes end with their invocation
+and do not supply credentials, provider bodies or arbitrary metadata to reporting.
+
+The desktop public envelope preserves validated `loginCode`/`switchCode` and the safe diagnostic.
+Standalone management and RPC carry the coordinator's identity; consumers reject mismatched
+identities. Management response version and owner compatibility are `2`; the handshake envelope
+format and diagnostic schema remain `1`. An incompatible owner fails startup verification before
+account mutations, with no local owner fallback.
+
+The renderer retains a text snapshot for details and explicit reporting. The CLI prints the
+same safe reference on failure. Account persistence certainty is independent of presentation:
+view/finalization failures after a completed write require checking the account list, and lost
+remote outcomes remain uncertain. Reporting receipt semantics, privacy bounds and attachment
+records are defined in [the security reference](security.md#correlated-operation-reports).
+
+Google API HTTPS requests tunnel through HTTP(S) proxies with a per-request CONNECT agent.
+Explicit account/configuration settings retain precedence over environment routing, which honors
+NO_PROXY. The same abort signal covers the request and proxy handshake; the owner destroys
+the agent after the buffered response or failure. Rejected responses contribute only closed
+connection evidence to diagnostics. There is no automatic direct fallback or added retry.
+
 ## Gateway Schema admission
 
 OpenAI Chat, effective Responses requests and Anthropic Messages prepare tool parameter schemas
@@ -101,6 +127,25 @@ components. Statistics polling and queued notifications do not update the reques
 The existing list polling, detail refresh, category filtering and manual refresh policy remain
 in effect; these UI states are not copied into a global store.
 
+## Classic terms retention
+
+The antigravity-runtime module owns Windows Classic terms retention. Cloud accounts and local
+snapshots pass the target email into the shared switch flow. For credential-store Classic
+clients, the flow captures the official last-accepted record before closing the captured client,
+then saves and restores the selected account's observed record after confirmed exit and credential
+write, before launch. The history is scoped to the canonical profile and installation revision.
+The first observation adopts the existing official record as its baseline; later installation
+changes invalidate that baseline. Standard/GCP type is the observed official value, and the
+client remains responsible for checking its current required type.
+
+The bounded Manager-owned history file contains account digests and closed terms-type values.
+The official file keeps its existing format; only the two consent fields are merged by atomic
+replacement. Invalid official JSON aborts without replacing it. History and official writes must
+succeed before launch. A prelaunch failure rolls back only consent fields when they still match
+this invocation's write. An attempted or uncertain launch prevents file rollback against a possibly
+running client. Credential injection retains its existing failure semantics; consent rollback does
+not imply credential rollback. See [the storage and privacy rules](security.md#classic-terms-state).
+
 ## Runtime topology
 
 ```plaintext
@@ -122,7 +167,7 @@ Electron Main
 
 The Electron main process is the trusted application host. The renderer is treated as an untrusted UI process and receives only the APIs exposed by [src/preload.ts](../src/preload.ts). The preload creates the MessagePort transport used by the renderer-side ORPC client in [src/ipc/manager.ts](../src/ipc/manager.ts). Main-process RPC handling is installed by [src/ipc/handler.ts](../src/ipc/handler.ts).
 
-An explicitly launched standalone Node core is also available through `npm run build:core` and `npm run start:core`. [src/core/main.ts](../src/core/main.ts) initializes the existing account persistence and local database, then starts the existing NestJS gateway when the saved proxy configuration enables auto start. It exposes status and shutdown through a Fastify HTTP server bound only to a Unix socket in a private runtime directory or a Windows named pipe. Before either runtime loads profile configuration or opens account/database storage, it claims the same process-lifetime profile ownership endpoint. An existing owner makes the other runtime fail closed with the owner kind and PID. Stale Unix socket recovery uses an exclusive guard so competing starters cannot both claim the endpoint. Desktop-embedded ownership remains the default. The desktop can instead attach to a verified standalone core through the startup composition described below.
+An explicitly launched standalone Node core is also available through `npm run build:core` and `npm run start:core`. [src/core/main.ts](../src/core/main.ts) initializes the existing account persistence and local database, then starts the existing NestJS gateway when the saved proxy configuration enables auto start. It exposes status and shutdown through a Fastify HTTP server bound only to a Unix socket in a private runtime directory or a Windows named pipe. Before either runtime loads profile configuration or opens account/database storage, it claims the same process-lifetime profile ownership endpoint. An existing owner makes the other runtime fail closed with the owner kind and PID. Stale Unix socket recovery uses an exclusive guard so competing starters cannot both claim the endpoint. Desktop-embedded ownership remains the default. The desktop can instead attach to a verified standalone core through the startup composition described below. The service launcher allows a bounded 90-second readiness budget for cold bundled/native module loading; a successful start still requires a running management response and the desktop verifies the same profile, epoch, PID and live lease before selecting the owner. It launches at most one child per invocation while waiting.
 
 The same private endpoint hosts a separate [core application RPC router](../src/core/rpc/router.ts) under `/rpc`. Its oRPC client uses the existing local pipe/socket and offers ping, gateway status, context-cache counters, gateway start/stop, credential-free cloud-account summaries, strict cloud-account views, manual quota refresh, proxy replacement/removal and account deletion. Application calls are accepted only while the core is running; shutdown closes admission, cancels and drains warmups, and drains the management server before stopping persistence or releasing profile ownership. Long-running account mutations have a separate bounded client and server timeout because they can call several upstream endpoints. Electron's existing MessagePort router delegates gateway status, context-cache reads, start and stop to an explicitly selected [gateway adapter](../src/modules/proxy-gateway/ipc/gateway-adapter.ts). Default desktop startup selects the desktop-embedded implementation; the standalone-core implementation calls the core RPC client and propagates transport failures without falling back to desktop-embedded state. Both runtimes use the same [gateway lifecycle service](../src/modules/proxy-gateway/services/gateway-lifecycle.service.ts) to serialize start and stop. Core management status follows completed standalone-core lifecycle mutations. The cloud-account list, manual quota refresh, IDE sync, proxy writes, deletion and OAuth-client preference follow the same pattern through a feature-owned [account adapter](../src/modules/cloud-account/ipc/cloud-account-adapter.ts). Its desktop-embedded and core RPC list paths share the [list service](../src/modules/cloud-account/services/cloud-account-list.service.ts), including active-target resolution and the legacy OAuth-client-key backfill. Default Electron startup selects the desktop-embedded account adapter; standalone-core failures do not fall back to local persistence. Legacy local-account operations also follow the selected owner described below; desktop ownership composition follows the startup mode. Configuration key generation uses the selected service adapter. The cloud-account list and account-returning mutations project an explicit [renderer view](../src/modules/cloud-account/services/cloud-account-view.ts) before crossing MessagePort; internal account services retain the full account model.
 
@@ -198,6 +243,12 @@ through the existing service launcher, and verifies the private handshake twice 
 owner probe. Compatibility version, ready state, PID, epoch and profile fingerprint must agree.
 No raw profile path or credential crosses this handshake. A failed standalone-core startup exits with a
 fixed error and cannot open the profile locally.
+
+The app-shell `standaloneCoreConnection` owns profile-scoped management, owner observation and
+verified terminal drain without Electron or owner-local storage. The desktop connection facade
+supplies Electron launch context, persisted reporting consent and feature-owner selection. Native
+Node composition can exercise the same connection/drain boundary while rejecting Electron imports
+and presentation-side SQLite, worker and keyring access.
 
 Only a verified standalone-core owner selects the complete account/configuration/legacy/OpenCode/gateway/
 audit/Thought/capture composition, synchronously before MessagePort admission and window creation.

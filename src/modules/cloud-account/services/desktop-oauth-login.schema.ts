@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { OAuthClientKeySchema } from './oauth-client-preference.schema';
+import { GoogleLoginDiagnosticSchema } from './operation-diagnostic.schema';
 
 export const DesktopOAuthLoginInputSchema = z.strictObject({
   oauthClientKey: OAuthClientKeySchema.optional(),
@@ -25,9 +26,18 @@ export const DesktopOAuthLoginErrorCodeSchema = z.enum([
 
 export type DesktopOAuthLoginErrorCode = z.infer<typeof DesktopOAuthLoginErrorCodeSchema>;
 
-const DesktopOAuthLoginErrorDataSchema = z.strictObject({
-  loginCode: DesktopOAuthLoginErrorCodeSchema,
-});
+export const DesktopOAuthLoginErrorDataSchema = z
+  .object({
+    loginCode: DesktopOAuthLoginErrorCodeSchema,
+    diagnostic: GoogleLoginDiagnosticSchema.optional(),
+  })
+  .strip();
+export type DesktopOAuthLoginErrorData = z.infer<typeof DesktopOAuthLoginErrorDataSchema>;
+
+export function parseDesktopOAuthLoginErrorData(value: unknown) {
+  const result = DesktopOAuthLoginErrorDataSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
 
 export function readDesktopOAuthLoginErrorCode(error: unknown): DesktopOAuthLoginErrorCode | null {
   if (typeof error !== 'object' || error === null || !('data' in error)) {

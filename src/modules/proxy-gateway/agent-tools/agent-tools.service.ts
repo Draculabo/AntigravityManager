@@ -1,6 +1,7 @@
 import { readFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { hasErrorCode } from '@/shared/errors/error-guards';
 import { writeFileAtomic } from '@/shared/persistence/atomic-json-file';
 import { sanitizeObject } from '@/shared/security/sensitiveDataMasking';
 import { configureClaude, readClaudeSettings, removeClaudeConnection } from './claude-settings';
@@ -27,7 +28,7 @@ interface Dependencies {
   write?: typeof writeFileAtomic;
 }
 function missing(error: unknown) {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+  return hasErrorCode(error, 'ENOENT');
 }
 async function read(path: string): Promise<string | null> {
   try {

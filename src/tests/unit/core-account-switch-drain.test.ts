@@ -29,7 +29,9 @@ describe('core cloud account switch lifecycle', () => {
     });
 
     const switching = operations.accountSwitch('account-1', 'agy');
-    expect(switchCloudAccountCore).toHaveBeenCalledExactlyOnceWith('account-1', 'agy');
+    expect(switchCloudAccountCore).toHaveBeenCalledExactlyOnceWith('account-1', 'agy', {
+      diagnosticId: undefined,
+    });
     operations.closeAccountMutationAdmission();
     let drained = false;
     const draining = operations.drainAccountMutations().then(() => {

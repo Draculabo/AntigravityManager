@@ -1,6 +1,8 @@
 import type { TFunction } from 'i18next';
 import { isNumber, isPlainObject, isString } from 'lodash-es';
 import { getAppErrorData } from '@/shared/errors/appError';
+import { readFinalizedOperationDiagnostic } from '@/shared/observability/operationDiagnostic';
+import { formatOperationDiagnostic } from '@/shared/observability/operationDiagnosticText';
 
 function getObjectProperty(error: unknown, key: string): unknown {
   if ((typeof error !== 'object' && typeof error !== 'function') || error === null) {
@@ -58,6 +60,35 @@ export function isMasterKeyUnavailableError(error: unknown): boolean {
 }
 
 export function getLocalizedErrorMessage(error: unknown, t: TFunction): string {
+  const diagnostic = readFinalizedOperationDiagnostic(error);
+  if (diagnostic) {
+    if (diagnostic.accountCommit === 'confirmed' || diagnostic.accountCommit === 'uncertain') {
+      return t('operation-diagnostics.check-account-list', {
+        defaultValue:
+          'The account may already be saved. Refresh the account list before signing in again.',
+      });
+    }
+    const recovery =
+      diagnostic.reason === 'proxy-configuration-invalid'
+        ? 'check-proxy'
+        : [
+              'dns-failed',
+              'connection-refused',
+              'connection-reset',
+              'timed-out',
+              'tls-failed',
+              'network-failed',
+            ].includes(diagnostic.reason)
+          ? 'check-connection'
+          : diagnostic.reason === 'process-close-failed'
+            ? 'close-client'
+            : diagnostic.reason === 'reauth-required'
+              ? 'reauthorize'
+              : 'retry';
+    return t(`operation-diagnostics.${recovery}`, {
+      defaultValue: 'The operation failed. Check the diagnostic details and retry.',
+    });
+  }
   const appErrorData = getAppErrorData(error);
   if (appErrorData) {
     const message = t(appErrorData.messageKey, {
@@ -84,6 +115,10 @@ export function getLocalizedErrorMessage(error: unknown, t: TFunction): string {
 }
 
 export function getErrorDetailsText(error: unknown): string {
+  const diagnostic = readFinalizedOperationDiagnostic(error);
+  if (diagnostic) {
+    return formatOperationDiagnostic(diagnostic);
+  }
   const data = getErrorData(error);
   const rawMessage = getRawErrorMessage(error);
   const details: string[] = [];

@@ -5,7 +5,7 @@ export async function verifyClientIdentity(
   browser,
   email,
   signedIn,
-  { rendererRetried = false, completeSetup = false } = {},
+  { rendererRetried = false, completeSetup = false, readTermsAcceptance } = {},
 ) {
   const deadline = Date.now() + 30000;
   let page;
@@ -81,6 +81,7 @@ export async function verifyClientIdentity(
       const recovered = await verifyClientIdentity(browser, email, signedIn, {
         rendererRetried: true,
         completeSetup,
+        readTermsAcceptance,
       });
       return { ...recovered, rendererRecoveredFromInitialFailure: true };
     }
@@ -110,22 +111,26 @@ export async function verifyClientIdentity(
   }
   const identity = page.getByText(email, { exact: false }).filter({ visible: true }).first();
   let visible = await identity.isVisible().catch(() => false);
-  if (!visible) {
+  async function revealAccountPanel() {
     const accountButton = page
       .getByRole('button', { name: /^(Accounts?|Manage Account|Quick Settings Panel|Profile)$/i })
       .first();
     if (await accountButton.isVisible().catch(() => false)) {
       await accountButton.click();
-    } else {
-      const settings = page.getByRole('button', { name: 'Settings', exact: true });
-      if (await settings.isVisible().catch(() => false)) {
-        await settings.click();
-      }
+      return true;
     }
+    const settings = page.getByRole('button', { name: 'Settings', exact: true });
+    if (await settings.isVisible().catch(() => false)) {
+      await settings.click();
+      return true;
+    }
+    return false;
   }
+  let accountPanelOpened = visible || (await revealAccountPanel());
   const authenticationDeadline = Date.now() + 60000;
   let authenticated = false;
   let screen;
+  let termsAcceptance;
   while (Date.now() < authenticationDeadline) {
     visible = await identity.isVisible().catch(() => false);
     authenticated = await signedIn();
@@ -135,11 +140,20 @@ export async function verifyClientIdentity(
         onboarding: /Welcome|Get started|Set up|Next/i.test(text),
         signInRequired: /Sign in|Log in/i.test(text),
         authenticating: /Authenticating/i.test(text),
+        termsRequired: /Accept and continue/i.test(text),
         textLength: text.length,
       };
     });
-    if (authenticated || (visible && !screen.authenticating && !screen.signInRequired)) {
+    termsAcceptance = await readTermsAcceptance?.();
+    if (
+      (!readTermsAcceptance || termsAcceptance?.state === 'recorded') &&
+      !screen.termsRequired &&
+      (authenticated || (visible && !screen.authenticating && !screen.signInRequired))
+    ) {
       break;
+    }
+    if (!visible && !accountPanelOpened && !screen.termsRequired) {
+      accountPanelOpened = await revealAccountPanel();
     }
     await delay(500);
   }
@@ -147,11 +161,19 @@ export async function verifyClientIdentity(
     clientWindow: true,
     clientIdentityVisible: visible,
     clientSignedIn: authenticated,
+    ...(readTermsAcceptance ? { clientTermsAcceptance: termsAcceptance } : {}),
     clientIdentityConfirmed:
-      authenticated || (visible && !screen.authenticating && !screen.signInRequired),
-    clientVerification: visible ? 'identity-visible' : 'credentials-and-window-only',
+      (!readTermsAcceptance || termsAcceptance?.state === 'recorded') &&
+      !screen.termsRequired &&
+      (authenticated || (visible && !screen.authenticating && !screen.signInRequired)),
+    clientVerification:
+      visible &&
+      !screen.termsRequired &&
+      (!readTermsAcceptance || termsAcceptance?.state === 'recorded')
+        ? 'identity-visible'
+        : 'credentials-and-window-only',
   };
-  if (!visible) {
+  if (!visible || screen.termsRequired) {
     result.clientScreen = screen;
   }
   return result;

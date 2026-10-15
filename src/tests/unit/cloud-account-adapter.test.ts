@@ -32,6 +32,7 @@ import { readIdeAccountSyncErrorCode } from '@/modules/cloud-account/services/id
 import { updateTrayMenu } from '@/modules/app-shell/ipc/tray/handler';
 import { readAccountValidationLinkErrorCode } from '@/modules/cloud-account/services/account-validation-link.schema';
 import { desktopOAuthLogin } from '@/modules/cloud-account/ipc/desktop-oauth-login';
+import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
 
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 vi.mock('@/modules/cloud-account/ipc/handler', () => ({}));
@@ -77,10 +78,16 @@ describe('cloud account read adapter', () => {
     const socketPath = await endpoint();
     const loginView = { ...view, id: '11111111-1111-4111-8111-111111111111' };
     const oauth = {
-      start: vi.fn(async (key?: string) => ({
-        sessionId: '11111111-1111-4111-8111-111111111111',
-        authorizationUrl: `https://accounts.google.com/o/oauth2/v2/auth?client=${key}`,
-      })),
+      start: vi.fn(
+        async (
+          key?: string,
+          operation?: import('@/modules/cloud-account/services/google-login-operation').GoogleLoginOperation,
+        ) => ({
+          diagnosticId: operation?.context.diagnosticId ?? '11111111-1111-4111-8111-222222222222',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          authorizationUrl: `https://accounts.google.com/o/oauth2/v2/auth?client=${key}`,
+        }),
+      ),
       status: vi.fn(() => ({
         state: 'succeeded' as const,
         account: { id: loginView.id, email: loginView.email },
@@ -118,7 +125,10 @@ describe('cloud account read adapter', () => {
     expect(await rendererCloud.startAuthFlow({ oauthClientKey: 'remote-client' })).toEqual(
       loginView,
     );
-    expect(oauth.start).toHaveBeenCalledExactlyOnceWith('remote-client');
+    expect(oauth.start).toHaveBeenCalledExactlyOnceWith(
+      'remote-client',
+      expect.any(GoogleLoginOperation),
+    );
     expect(client.setActiveOAuthClient).toHaveBeenCalledExactlyOnceWith('remote-client');
     expect(shell.openExternal).toHaveBeenCalledWith(
       'https://accounts.google.com/o/oauth2/v2/auth?client=remote-client',

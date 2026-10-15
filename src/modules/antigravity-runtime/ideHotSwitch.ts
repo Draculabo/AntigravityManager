@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { ProcessInfo } from '@draculabo/sysinfo-process-enhanced';
+import { hasErrorCode } from '@/shared/errors/error-guards';
 import { readNativeProcessSnapshot } from '@/shared/platform/nativeProcessQuery';
 import { assertContextProcesses } from './launchContext';
 import { observeProcesses } from './processObserver';
@@ -165,7 +166,7 @@ export async function prepareIdeHotSwitch(
           // Node uses TerminateProcess on Windows; no shell startup consumes the exit budget.
           process.kill(service.pid, 'SIGKILL');
         } catch (error) {
-          if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) {
+          if (!hasErrorCode(error, 'ESRCH')) {
             return false;
           }
         }

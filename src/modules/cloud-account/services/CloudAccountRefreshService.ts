@@ -108,7 +108,7 @@ export class CloudAccountRefreshService {
       }
 
       await evictAccountFromActiveLeaseCache(request.accountId);
-      throw new CloudAccountRefreshBlockedError(request.accountId, error);
+      throw new CloudAccountRefreshBlockedError(request.accountId, { cause: error });
     }
   }
 

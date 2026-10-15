@@ -1,17 +1,22 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { normalize } from '@sentry/core';
 import type { logger } from '@/shared/logging/logger';
+import type { ErrorEvent } from '@sentry/node';
+import { loginDiagnostic } from '../fixtures/oauth-diagnostic';
 
 type Reporter = NonNullable<Parameters<typeof logger.setSentryReporter>[0]>;
+type EventContext = NonNullable<ErrorEvent['contexts']>[string];
 
 const mocks = vi.hoisted(() => {
   const scope = {
     setTag: vi.fn(),
-    setContext: vi.fn<(name: string, context: object) => void>(),
+    setContext: vi.fn<(name: string, context: EventContext) => void>(),
     setExtra: vi.fn(),
+    setFingerprint: vi.fn(),
   };
   return {
     scope,
+    init: vi.fn<(options: { beforeSend(event: ErrorEvent): ErrorEvent | null }) => void>(),
     registerReporter: vi.fn<(reporter: Reporter) => void>(),
     captureMessage: vi.fn(),
     captureException: vi.fn(),
@@ -38,7 +43,7 @@ vi.mock('@/shared/observability/observabilityConfig', () => ({
   getQuickObservabilityConfig: () => ({ telemetryEnabled: false, errorReportingEnabled: true }),
 }));
 vi.mock('@sentry/electron/main', () => ({
-  init: vi.fn(),
+  init: mocks.init,
   withScope: mocks.withScope,
   captureMessage: mocks.captureMessage,
   captureException: mocks.captureException,
@@ -46,13 +51,46 @@ vi.mock('@sentry/electron/main', () => ({
 
 describe('Sentry logger reporting', () => {
   let report: Reporter;
+  let beforeSend: (event: ErrorEvent) => ErrorEvent | null;
   beforeAll(async () => {
     vi.stubEnv('SENTRY_DSN', 'https://fixture@example.invalid/1');
     await import('@/instrument');
     report = mocks.registerReporter.mock.calls[0][0];
+    beforeSend = mocks.init.mock.calls[0][0].beforeSend;
   });
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('returns the SDK receipt and projects operation captures after default normalization', () => {
+    const { reporting, ...failure } = loginDiagnostic('login-failed');
+    expect(reporting.state).toBe('not-reported');
+    const operation = { failure, steps: [], stepsTruncated: false };
+    mocks.captureException.mockReturnValueOnce('a'.repeat(32));
+    expect(report({ level: 'error', message: 'private-sentinel', logs: [], operation })).toBe(
+      'a'.repeat(32),
+    );
+    expect(mocks.captureException).toHaveBeenCalledOnce();
+    const exception = mocks.captureException.mock.calls[0][0];
+    expect(exception.stack).toBeUndefined();
+    expect(exception.cause).toBeUndefined();
+    const serialized = mocks.scope.setContext.mock.calls[0][1];
+    expect(normalize({ operation_diagnostic: serialized }, 3)).toEqual({
+      operation_diagnostic: serialized,
+    });
+    const projected = beforeSend({
+      type: undefined,
+      tags: Object.fromEntries(mocks.scope.setTag.mock.calls),
+      contexts: { operation_diagnostic: serialized },
+      user: { email: 'private-sentinel' },
+      extra: { payload: 'private-sentinel' },
+      breadcrumbs: [{ message: 'private-sentinel' }],
+      release: 'antigravity-manager@0.25.1',
+    });
+    expect(projected?.tags?.runtime).toBe('desktop-embedded');
+    expect(projected?.contexts?.operation_diagnostic).toEqual(operation);
+    expect(JSON.stringify(projected)).not.toContain('private-sentinel');
+    expect(mocks.scope.setExtra).not.toHaveBeenCalled();
   });
 
   it('keeps recent log text readable after SDK context normalization', () => {

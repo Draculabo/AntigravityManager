@@ -8,7 +8,7 @@ import type { LaunchedCore } from '@/cli/service-launcher';
 
 const handshake: CoreHandshake = {
   version: 1,
-  compatibility: 1,
+  compatibility: 2,
   kind: 'core',
   pid: 123,
   epoch: '11111111-1111-4111-8111-111111111111',
@@ -142,7 +142,7 @@ describe('desktop owner bootstrap', () => {
   });
 
   it('rejects incompatible versions and non-core identities at the handshake boundary', () => {
-    expect(CoreHandshakeSchema.safeParse({ ...handshake, compatibility: 2 }).success).toBe(false);
+    expect(CoreHandshakeSchema.safeParse({ ...handshake, compatibility: 1 }).success).toBe(false);
     expect(CoreHandshakeSchema.safeParse({ ...handshake, kind: 'desktop' }).success).toBe(false);
     expect(CoreHandshakeSchema.safeParse({ ...handshake, secret: 'unexpected' }).success).toBe(
       false,

@@ -5,27 +5,35 @@ import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIServ
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { logger } from '@/shared/logging/logger';
 import { prepareDesktopIdentityStorage } from '@/modules/identity-profile/public';
+import { GoogleLoginOperation, GoogleLoginStepError } from './google-login-operation';
 
-export class DuplicateGoogleAccountError extends Error {
+export class DuplicateGoogleAccountError extends GoogleLoginStepError {
   constructor() {
-    super('Google account already exists');
+    super('duplicate-check', 'not-attempted', 'duplicate-account', undefined);
+    this.message = 'Google account already exists';
     this.name = 'DuplicateGoogleAccountError';
   }
 }
 
-/** Exchange a Google authorization code and persist the resulting encrypted account. */
+/** Exchange a Google authorization code and persist the resulting account in the owned profile. */
 export async function enrollGoogleAccount(
   code: string,
-  options: { oauthClientKey?: string; redirectUri: string },
+  options: { oauthClientKey?: string; redirectUri: string; operation?: GoogleLoginOperation },
 ): Promise<CloudAccount> {
-  const tokenResp = await GoogleAPIService.exchangeCode(
-    code,
-    undefined,
-    options.oauthClientKey,
-    options.redirectUri,
+  const operation = options.operation ?? new GoogleLoginOperation();
+  const tokenResp = await operation.run('token-exchange', () =>
+    GoogleAPIService.exchangeCode(code, undefined, options.oauthClientKey, options.redirectUri),
   );
-  const userInfo = await GoogleAPIService.getUserInfo(tokenResp.access_token);
-  if (await CloudAccountRepo.getAccountByEmail(userInfo.email)) {
+  const userInfo = await operation.run('user-info', () =>
+    GoogleAPIService.getUserInfo(tokenResp.access_token),
+  );
+  if (
+    await operation.run(
+      'duplicate-check',
+      () => CloudAccountRepo.getAccountByEmail(userInfo.email),
+      'storage-failed',
+    )
+  ) {
     throw new DuplicateGoogleAccountError();
   }
 
@@ -54,9 +62,19 @@ export async function enrollGoogleAccount(
   if (!account.token.refresh_token) {
     logger.warn('OAuth token exchange returned no refresh token; the account may expire soon');
   }
-  await prepareDesktopIdentityStorage();
-  await CloudAccountRepo.addAccount(account);
-  await CloudAccountRefreshService.clearFailureState(account.id);
+  await operation.run('identity-preparation', prepareDesktopIdentityStorage, 'storage-failed');
+  operation.accountCommit = 'uncertain';
+  await operation.run(
+    'account-persist',
+    () => CloudAccountRepo.addAccount(account),
+    'storage-failed',
+  );
+  operation.accountCommit = 'confirmed';
+  await operation.run(
+    'account-finalize',
+    () => CloudAccountRefreshService.clearFailureState(account.id),
+    'storage-failed',
+  );
 
   try {
     const quota = await GoogleAPIService.fetchQuota(account.token.access_token);

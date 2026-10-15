@@ -130,7 +130,9 @@ function sanitizeWithSeen(
       return CIRCULAR_PLACEHOLDER;
     }
     seen.add(obj);
-    return obj.map((item) => sanitizeWithSeen(item, seen));
+    const sanitized = obj.map((item) => sanitizeWithSeen(item, seen));
+    seen.delete(obj);
+    return sanitized;
   }
 
   if (obj instanceof Error) {
@@ -138,11 +140,13 @@ function sanitizeWithSeen(
       return CIRCULAR_PLACEHOLDER;
     }
     seen.add(obj);
-    return {
+    const sanitized = {
       name: obj.name,
       message: sanitizeWithSeen(obj.message, seen, 'message'),
       stack: sanitizeWithSeen(obj.stack, seen, 'stack'),
     };
+    seen.delete(obj);
+    return sanitized;
   }
 
   if (isObjectLike(obj)) {
@@ -160,6 +164,7 @@ function sanitizeWithSeen(
         sanitized[key] = sanitizeWithSeen(value, seen, key, objectMimeType);
       }
     }
+    seen.delete(obj);
     return sanitized;
   }
 
@@ -168,6 +173,7 @@ function sanitizeWithSeen(
 
 /**
  * Recursively sanitizes an object by masking sensitive field values.
+ * Tracks the active ancestor path so repeated sibling references retain their sanitized content.
  * Handles circular references by replacing them with '[Circular]'.
  */
 export function sanitizeObject(obj: unknown): unknown {
