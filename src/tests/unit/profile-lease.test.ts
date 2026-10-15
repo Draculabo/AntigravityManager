@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
-import net, { type Server } from 'node:net';
+import net, { type Server, type Socket } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ProfileLease,
   ProfileOwnershipError,
@@ -19,7 +19,9 @@ async function endpoint(): Promise<string> {
   if (process.platform === 'win32') {
     return `\\\\.\\pipe\\agm-lease-test-${path.basename(directory)}`;
   }
-  return path.join(directory, 'runtime', 'owner.sock');
+  const runtime = path.join(directory, 'runtime');
+  await fs.mkdir(runtime, { mode: 0o700 });
+  return path.join(runtime, 'owner.sock');
 }
 
 async function serve(socketPath: string, response: string): Promise<void> {
@@ -35,6 +37,7 @@ async function serve(socketPath: string, response: string): Promise<void> {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(leases.splice(0).map((lease) => lease.close()));
   await Promise.all(
     servers
@@ -47,6 +50,26 @@ afterEach(async () => {
 });
 
 describe('profile ownership lease', () => {
+  it('keeps ownership when a connected probe reports a connection reset', async () => {
+    const socketPath = await endpoint();
+    const createServer = vi.spyOn(net, 'createServer');
+    const lease = new ProfileLease('core', { endpoint: socketPath });
+    leases.push(lease);
+    await lease.acquire();
+    const server = createServer.mock.results[0].value;
+    const connection = new Promise<Socket>((resolve) => server.once('connection', resolve));
+    const probing = probeProfileOwner(socketPath);
+    const socket = await connection;
+    await probing;
+    const reset = Object.assign(new Error('Synthetic peer disconnected'), { code: 'ECONNRESET' });
+    expect(() => socket.emit('error', reset)).not.toThrow();
+    expect(await probeProfileOwner(socketPath)).toEqual({
+      version: 1,
+      kind: 'core',
+      pid: process.pid,
+    });
+  });
+
   it('exposes only owner identity and rejects a second runtime', async () => {
     const socketPath = await endpoint();
     const desktop = new ProfileLease('desktop', { endpoint: socketPath });

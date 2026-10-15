@@ -1,6 +1,7 @@
 // @vitest-environment node
 import http from 'node:http';
 import { once } from 'node:events';
+import type { Duplex } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
@@ -19,8 +20,13 @@ function configureProxy(url: string) {
 }
 
 describe('Google API HTTP proxy transport', () => {
-  it('sends the Google profile request through the configured HTTP proxy using real sockets', async () => {
-    const requests: Array<{ method: string | undefined; url: string | undefined }> = [];
+  it('uses CONNECT for Google HTTPS and preserves a proxy rejection without forwarding credentials', async () => {
+    const requests: Array<{
+      method: string | undefined;
+      url: string | undefined;
+      authorization?: string;
+    }> = [];
+    const sockets = new Set<Duplex>();
     const profile = {
       id: 'synthetic-user',
       email: 'synthetic@example.com',
@@ -31,6 +37,16 @@ describe('Google API HTTP proxy transport', () => {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify(profile));
     });
+    proxy.on('connect', (request, socket) => {
+      sockets.add(socket);
+      socket.once('close', () => sockets.delete(socket));
+      requests.push({
+        method: request.method,
+        url: request.url,
+        authorization: request.headers.authorization,
+      });
+      socket.end('HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
+    });
     proxy.listen(0, '127.0.0.1');
     await once(proxy, 'listening');
     try {
@@ -39,14 +55,20 @@ describe('Google API HTTP proxy transport', () => {
         throw new Error('The synthetic proxy has no TCP port.');
       }
       configureProxy(`http://127.0.0.1:${address.port}`);
-      expect(await GoogleAPIService.getUserInfo('synthetic-invalid-token')).toEqual({
-        ...profile,
-        verified_email: false,
+      await expect(GoogleAPIService.getUserInfo('synthetic-invalid-token')).rejects.toMatchObject({
+        classification: {
+          reason: 'http-rejected',
+          upstreamStatus: 502,
+          http: { route: 'https-connect' },
+        },
       });
       expect(requests).toEqual([
-        { method: 'GET', url: 'https://www.googleapis.com/oauth2/v2/userinfo' },
+        { method: 'CONNECT', url: 'www.googleapis.com:443', authorization: undefined },
       ]);
     } finally {
+      for (const socket of sockets) {
+        socket.destroy();
+      }
       proxy.closeAllConnections();
       await new Promise<void>((resolve, reject) =>
         proxy.close((error) => (error ? reject(error) : resolve())),

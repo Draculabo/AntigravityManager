@@ -20,6 +20,9 @@ import type { CloudAccount } from '@/modules/cloud-account/types';
 
 vi.mock('electron', () => ({ dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() } }));
 vi.mock('@/modules/cloud-account/ipc/handler', () => ({}));
+vi.mock('@/modules/identity-profile/public', () => ({
+  prepareDesktopIdentityStorage: vi.fn(async () => ({})),
+}));
 vi.mock('@/modules/cloud-account/services/cloud-account-switch.service', () => ({
   switchCloudAccountCore: vi.fn(),
 }));

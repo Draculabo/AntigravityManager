@@ -17,6 +17,11 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@/modules/antigravity-runtime/stop', () => ({ stopFromContext: mocks.stop }));
 vi.mock('@/modules/antigravity-runtime/launch', () => ({ startFromContext: mocks.start }));
+vi.mock('@/modules/antigravity-runtime/launchContext', async (original) => ({
+  ...(await original<typeof import('@/modules/antigravity-runtime/launchContext')>()),
+  // Keep real fixture paths case-sensitive while exercising the Windows-only policy.
+  canonicalPath: (value: string) => path.resolve(value),
+}));
 vi.mock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
   getAntigravityVersion: mocks.version,
 }));
@@ -40,9 +45,11 @@ vi.mock('@/shared/logging/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn
 
 let directory: string;
 let context: LaunchContext;
+const originalPlatform = process.platform;
 const username = 'jetski.onboarding.lastLoginUsername';
 const tos = 'jetski.onboarding.lastLoginIsGcpTos';
 beforeEach(async () => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-classic-terms-'));
   const profile = path.join(directory, 'client');
   await fs.mkdir(profile);
@@ -63,6 +70,7 @@ beforeEach(async () => {
   vi.mocked(observeProcesses).mockReset().mockResolvedValue([]);
 });
 afterEach(async () => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
   await fs.rm(directory, { recursive: true, force: true });
   vi.clearAllMocks();
   vi.restoreAllMocks();

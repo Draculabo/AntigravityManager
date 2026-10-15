@@ -1,7 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { convertEncryptedAccountFields } from '@/modules/cloud-account/persistence/convert-encrypted-account-fields';
 
 const mocks = vi.hoisted(() => ({
+  directory: '',
   rows: [] as Array<{
     id: string;
     tokenJson: string;
@@ -9,7 +13,9 @@ const mocks = vi.hoisted(() => ({
     healthJson: string | null;
   }>,
   writes: [] as Array<{ id: string; values: object }>,
-  backup: vi.fn(async () => {}),
+  backup: vi.fn(async (destination: string) => {
+    fs.writeFileSync(destination, 'synthetic encrypted backup');
+  }),
   close: vi.fn(),
   initializeMasterKey: vi.fn(async () => {}),
   decryptWithMigration: vi.fn(async (value: string) => ({ value })),
@@ -17,7 +23,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/shared/platform/paths', () => ({
-  getCloudAccountsDbPath: () => 'test-accounts.db',
+  getCloudAccountsDbPath: () => path.join(mocks.directory, 'test-accounts.db'),
 }));
 vi.mock('@/shared/logging/logger', () => ({
   logger: { info: vi.fn() },
@@ -46,6 +52,7 @@ const token = JSON.stringify({
 const ciphertext = 'agm_enc_v1:0011:2233:4455';
 
 beforeEach(() => {
+  mocks.directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-account-conversion-'));
   vi.clearAllMocks();
   mocks.rows = [];
   mocks.writes = [];
@@ -63,6 +70,10 @@ beforeEach(() => {
     });
   });
   mocks.decryptWithMigration.mockResolvedValue({ value: token });
+});
+
+afterEach(() => {
+  fs.rmSync(mocks.directory, { recursive: true, force: true });
 });
 
 describe('convertEncryptedAccountFields', () => {
@@ -102,14 +113,20 @@ describe('convertEncryptedAccountFields', () => {
       }
       return { value: plaintext };
     });
-    mocks.backup.mockImplementationOnce(async () => {
+    mocks.backup.mockImplementationOnce(async (destination) => {
       expect(mocks.writes).toEqual([]);
+      fs.writeFileSync(destination, 'synthetic encrypted backup');
     });
 
     await convertEncryptedAccountFields();
 
     expect(mocks.initializeMasterKey).toHaveBeenCalledOnce();
     expect(mocks.backup).toHaveBeenCalledOnce();
+    const backupPath = mocks.backup.mock.calls[0][0];
+    expect(fs.readFileSync(backupPath, 'utf8')).toBe('synthetic encrypted backup');
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(backupPath).mode & 0o777).toBe(0o600);
+    }
     expect(mocks.writes).toEqual([
       { id: 'a', values: { tokenJson: token, quotaJson: quota, healthJson: health } },
     ]);

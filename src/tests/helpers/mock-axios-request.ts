@@ -1,5 +1,6 @@
 import axios, { AxiosHeaders, type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { vi } from 'vitest';
+import type { Agent } from 'node:http';
 
 export interface MockHttpResponse {
   json?: () => Promise<unknown>;
@@ -13,6 +14,8 @@ export interface MockHttpRequestOptions {
   headers?: AxiosRequestConfig['headers'];
   method?: string;
   proxy?: AxiosRequestConfig['proxy'];
+  httpAgent?: Agent;
+  httpsAgent?: Agent;
   signal?: AxiosRequestConfig['signal'];
 }
 
@@ -29,6 +32,8 @@ export function mockAxiosRequests(transport: MockHttpTransport) {
       headers: config.headers,
       method: config.method,
       proxy: config.proxy,
+      httpAgent: config.httpAgent,
+      httpsAgent: config.httpsAgent,
       signal: config.signal,
     });
     const data = response.json

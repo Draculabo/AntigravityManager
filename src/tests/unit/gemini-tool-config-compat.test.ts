@@ -39,11 +39,17 @@ describe('Gemini tool configuration compatibility', () => {
             ? 'AUTO'
             : 'ANY';
     expect(result.toolConfig).toEqual({
-      functionCallingConfig: { mode },
+      functionCallingConfig: {
+        mode,
+        ...(typeof tool_choice === 'object' ? { allowedFunctionNames: ['read_file'] } : {}),
+      },
       includeServerSideToolInvocations: true,
     });
     expect(result.tool_config).toEqual({
-      function_calling_config: { mode },
+      function_calling_config: {
+        mode,
+        ...(typeof tool_choice === 'object' ? { allowed_function_names: ['read_file'] } : {}),
+      },
       include_server_side_tool_invocations: true,
     });
     expect(result.tools).toHaveLength(1);

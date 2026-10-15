@@ -1,5 +1,8 @@
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { ManagementServer } from '@/core/management/server';
 import { ManagementClient } from '@/core/management/client';
 import { StandaloneCoreOAuthLogin } from '@/modules/cloud-account/ipc/standalone-core-oauth-login';
@@ -47,6 +50,7 @@ vi.mock('koffi', () => ({
 const report = vi.fn<ErrorReportingRuntime['report']>(() => 'a'.repeat(32));
 const sessions: HeadlessOAuthSessionService[] = [];
 const servers: ManagementServer[] = [];
+const directories: string[] = [];
 const view: CloudAccountView = {
   id: '11111111-1111-4111-8111-111111111111',
   provider: 'google',
@@ -86,6 +90,9 @@ beforeEach(() => {
 afterEach(async () => {
   await Promise.all(sessions.splice(0).map((session) => session.stop()));
   await Promise.all(servers.splice(0).map((server) => server.close()));
+  await Promise.all(
+    directories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })),
+  );
   configureErrorReportingRuntime(
     { initialize() {}, report() {}, flush: async () => true },
     false,
@@ -103,10 +110,12 @@ async function failLogin(
   const session = new HeadlessOAuthSessionService(enrollGoogleAccount);
   sessions.push(session);
   const openExternal = vi.fn(async (_url: string) => undefined);
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-diagnostic-'));
+  directories.push(directory);
   const endpoint =
     process.platform === 'win32'
       ? `\\\\.\\pipe\\agm-diagnostic-${randomUUID()}`
-      : `${process.env.TMP ?? '/tmp'}/agm-diagnostic-${randomUUID()}.sock`;
+      : path.join(directory, 'core.sock');
   const server = new ManagementServer({
     endpoint,
     oauth: session,

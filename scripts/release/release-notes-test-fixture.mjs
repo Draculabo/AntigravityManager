@@ -30,6 +30,8 @@ export async function fixture(t) {
   git(cwd, ['init', '-q']);
   git(cwd, ['config', 'user.name', 'Fixture Author']);
   git(cwd, ['config', 'user.email', 'fixture@example.invalid']);
+  git(cwd, ['config', 'commit.gpgsign', 'false']);
+  git(cwd, ['config', 'tag.gpgSign', 'false']);
   await commit(cwd, 'base.txt', 'chore: initial state');
   git(cwd, ['tag', 'v0.24.0']);
   const head = await commit(cwd, 'src/update.txt', 'fix(update): restore updates');

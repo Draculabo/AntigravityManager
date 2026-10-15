@@ -7,7 +7,10 @@ import test from 'node:test';
 import { verifyRuntimeBoundaries } from './verify-runtime-boundaries.mjs';
 
 function runGit(rootDir, args) {
-  const result = spawnSync('git', args, { cwd: rootDir, encoding: 'utf8' });
+  const result = spawnSync('git', ['-c', 'commit.gpgsign=false', ...args], {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
 
   assert.equal(result.status, 0, result.stderr);
 }

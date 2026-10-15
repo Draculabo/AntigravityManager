@@ -14,7 +14,11 @@ concurrency:
 
 jobs:
   tests-unit:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -27,10 +31,12 @@ jobs:
         run: npm ci
       - name: Run governance checks
         run: npm run check:governance
+      - name: Run Git hook integration tests
+        run: npm run test:git-hooks
       - name: Run type check
         run: npm run type-check
       - name: Run unit tests
-        run: npm run test:unit
+        run: npm run test:unit -- --run
       - name: Run acceptance harness unit tests
         run: npm run test:acceptance -- unit
 
