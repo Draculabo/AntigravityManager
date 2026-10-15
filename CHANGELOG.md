@@ -2,6 +2,78 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.25.2
+
+**Release Date:** 2026-10-15
+**Since v0.25.1:** 10 commits · 2 merged PRs · 2 verified contributors
+
+> This release includes updates in Desktop & User Experience, Tooling & Maintenance, Security & Reliability, Accounts & Core, Documentation.
+
+---
+
+## ✨ Highlights
+
+- **Fix** — preserve opaque thought signatures ([93b8aef](https://github.com/Draculabo/AntigravityManager/commit/93b8aefac12104b9d8df8001afe2797de4fd9889))
+- **Fix** — preserve complete macOS client credentials ([2eecc3d](https://github.com/Draculabo/AntigravityManager/commit/2eecc3d6a58df0c6163173ed6c7a81a51c63102f))
+- **Fix** — align macOS client credential installation ([304484d](https://github.com/Draculabo/AntigravityManager/commit/304484d8c13d36eb4d64e5a90e5ec25b01b5c7d5))
+- **Fix** — improve account switching and diagnostics ([9f2ab5a](https://github.com/Draculabo/AntigravityManager/commit/9f2ab5a3ca46fc272c80e7cec3625e3654f129ef))
+- **Fix** — restore cross-platform CI test coverage ([9d4b5c4](https://github.com/Draculabo/AntigravityManager/commit/9d4b5c4f2aac858aefcb07a9df08b21f64146d86))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.25.1 ([#346](https://github.com/Draculabo/AntigravityManager/pull/346))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Change** — Set up a minimalist mode with just refresh period, weekly time cycle and one-click switch ([#348](https://github.com/Draculabo/AntigravityManager/pull/348))
+- **Maintenance** — split AI review and validation workflow ([b516b29](https://github.com/Draculabo/AntigravityManager/commit/b516b297a11059474221292685ba930129d5c80a))
+- **Maintenance** — strengthen agent workflow and add Lefthook gates ([c132fa6](https://github.com/Draculabo/AntigravityManager/commit/c132fa6144be02928e326d22ccebef5e3ef4f053))
+- **Fix** — restore cross-platform CI test coverage ([9d4b5c4](https://github.com/Draculabo/AntigravityManager/commit/9d4b5c4f2aac858aefcb07a9df08b21f64146d86))
+
+---
+
+## 🔒 Security & Reliability
+
+- **Fix** — preserve opaque thought signatures ([93b8aef](https://github.com/Draculabo/AntigravityManager/commit/93b8aefac12104b9d8df8001afe2797de4fd9889))
+- **Fix** — preserve complete macOS client credentials ([2eecc3d](https://github.com/Draculabo/AntigravityManager/commit/2eecc3d6a58df0c6163173ed6c7a81a51c63102f))
+- **Fix** — align macOS client credential installation ([304484d](https://github.com/Draculabo/AntigravityManager/commit/304484d8c13d36eb4d64e5a90e5ec25b01b5c7d5))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Fix** — improve account switching and diagnostics ([9f2ab5a](https://github.com/Draculabo/AntigravityManager/commit/9f2ab5a3ca46fc272c80e7cec3625e3654f129ef))
+
+---
+
+## 📚 Documentation
+
+- **Documentation** — clarify AI review workflow ([8f6d2e3](https://github.com/Draculabo/AntigravityManager/commit/8f6d2e383417fdff7f2ba14f6feb7b5385a395bd))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo · @FisherMS
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.25.1 by @Draculabo ([#346](https://github.com/Draculabo/AntigravityManager/pull/346))
+- Set up a minimalist mode with just refresh period, weekly time cycle and one-click switch by @FisherMS ([#348](https://github.com/Draculabo/AntigravityManager/pull/348))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.25.1...v0.25.2
+
 # 🚀 Antigravity Manager Release v0.25.1
 
 **Release Date:** 2026-10-13
