@@ -16,6 +16,8 @@ Validate the behavior a diff can affect without reflexively running the full rep
 
 ## Select evidence
 
+- Locate an existing runner in [scripts/README.md](../../../scripts/README.md), then follow [scripts/AGENTS.md](../../../scripts/AGENTS.md) before execution. Use its prerequisites, effects and evidence limits to select the check; add a runner only for a demonstrated coverage gap.
+- When tests or fixtures acquire resources, mutate global state or depend on asynchronous/platform behavior, use [test reliability](../../../docs/test-reliability.md) to establish isolation, readiness and cleanup before selecting commands. Use its diagnosis procedure for intermittent failures.
 - Start with the owning unit or integration test file.
 - Add `npm run type-check` for shared types, public exports, IPC contracts and module-boundary changes.
 - Add `npm run check:agent-contracts` for `AGENTS.md`, governance docs, Agent Notes or project Skills.
@@ -26,6 +28,8 @@ Validate the behavior a diff can affect without reflexively running the full rep
 - When a PR base, head or merge base changes after validation, recalculate the changed paths and rerun only evidence affected by the new diff. Retain earlier evidence only for unchanged behavior and inputs.
 
 Do not use a passing mock-only test as proof of native Electron, keyring, installer or live-provider behavior. Do not repeat an already passing command unless later edits invalidated its evidence.
+
+The [Git hooks](../../../docs/development.md#local-git-checks) run staged whitespace checks, conditional agent contracts and a pre-push type-check. Do not manually repeat type-check solely to precede a push; the hook runs it. These checks do not replace the focused behavior evidence selected above, and their worktree checks do not attest to a different staged or pushed snapshot.
 
 ## Handle results
 

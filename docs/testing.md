@@ -4,6 +4,8 @@ Select evidence according to the behavior a change can affect. Focused tests are
 
 ## Evidence principles
 
+Before selecting a repository runner, use [the script guide](../scripts/README.md) and [script instructions](../scripts/AGENTS.md) to identify its existing entry, prerequisites and effects. [Test reliability](test-reliability.md) owns resource isolation, asynchronous completion and intermittent-failure diagnosis. [Failure ownership](error-handling.md) defines which state and recovery outcomes failure-path checks must establish.
+
 Schema regression coverage includes `json-schema-reference-resolver`, `schema-admission`, tool
 mapper/cache compatibility and Responses WebSocket tests. Runtime reporting adds
 `error-reporting-runtime`, `core-error-reporting`, desktop preference propagation, instrumentation,
@@ -144,6 +146,13 @@ preserve NO_PROXY behavior. The local acceptance unit suite also checks read-onl
 | Packaging, updater or native artifact      | Owning packaging/update tests                                         | Installer, updater or platform acceptance when the shipped artifact path changes                        |
 | Documentation or agent governance          | `npm run check:agent-contracts` and focused Prettier                  | `npm run check:governance` when governance rules or runtime boundaries change                           |
 | Cross-platform or repository-wide behavior | Focused tests for each affected surface                               | CI platform matrix or explicitly requested full rehearsal                                               |
+
+For Git hook installation, configuration or dispatch changes, run `npm run test:git-hooks` plus
+`npm run check:agent-contracts` and focused formatting. The integration fixtures exercise installed
+Lefthook hooks through real temporary-repository commits and local bare-remote pushes, including
+failed checks, staged additions/deletions/renames, partial staging, preserved hooks and recovery.
+They do not push to GitHub or establish GUI Git environment support. [Local Git checks](development.md#local-git-checks)
+owns the automatic gates; CI includes their integration tests through `npm run check:ci`.
 
 For cloud-account plaintext storage, run the focused mock tests with `npm test -- --run
 src/tests/unit/convert-encrypted-account-fields.test.ts

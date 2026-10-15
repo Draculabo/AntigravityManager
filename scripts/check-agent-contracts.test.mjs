@@ -12,6 +12,11 @@ const REQUIRED_GOVERNANCE_FILES = [
   'docs/development.md',
   'docs/security.md',
   'docs/testing.md',
+  'docs/error-handling.md',
+  'docs/test-reliability.md',
+  'scripts/AGENTS.md',
+  'scripts/README.md',
+  'lefthook.yml',
   'src/modules/AGENTS.md',
   'src/modules/proxy-gateway/AGENTS.md',
   'src/shared/persistence/AGENTS.md',
@@ -62,6 +67,56 @@ test('requires the semantic review skill', async (context) => {
 
   assert.deepEqual(validateAgentContracts(rootDir), {
     errors: ['missing required governance file: .agents/skills/agm-code-review/SKILL.md'],
+  });
+});
+
+test('requires script instructions and failure/reliability references', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+  for (const relativePath of [
+    'docs/error-handling.md',
+    'docs/test-reliability.md',
+    'scripts/AGENTS.md',
+    'scripts/README.md',
+  ]) {
+    await rm(path.join(rootDir, relativePath));
+  }
+
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: [
+      'missing required governance file: docs/error-handling.md',
+      'missing required governance file: docs/test-reliability.md',
+      'missing required governance file: scripts/AGENTS.md',
+      'missing required governance file: scripts/README.md',
+    ],
+  });
+});
+
+test('checks links in the test reliability reference', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+  await writeFixtureFile(
+    rootDir,
+    'docs/test-reliability.md',
+    '# Reliability\n\nSee [missing](missing.md).\n',
+  );
+
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: ['docs/test-reliability.md: missing local link target: missing.md'],
+  });
+});
+
+test('checks executable command references in the script guide', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+  await writeFixtureFile(
+    rootDir,
+    'scripts/README.md',
+    '# Scripts\n\nRun `npm run check:missing`.\n',
+  );
+
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: ['scripts/README.md: references missing npm script: check:missing'],
   });
 });
 
