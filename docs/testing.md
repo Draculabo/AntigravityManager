@@ -127,20 +127,23 @@ preserve NO_PROXY behavior. The local acceptance unit suite also checks read-onl
 
 ## Change-to-evidence matrix
 
-| Changed surface                       | Minimum local evidence                                                | Add when applicable                                                        |
-| ------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Pure utility, mapper or codec         | Owning Vitest file                                                    | Adjacent tests for a shared type or caller contract                        |
-| React component or hook               | Owning Testing Library/Vitest file                                    | Focused E2E for navigation, preload or multi-window behavior               |
-| Route definition                      | Related component test and `npm run type-check`                       | Focused Playwright flow for user navigation changes                        |
-| ORPC schema or handler                | Owning handler/router test and `npm run type-check`                   | Renderer consumer test when the result or error contract changes           |
-| Preload bridge                        | `preload-sandbox.test.ts`, affected IPC test and `npm run type-check` | Focused Electron E2E when exposure or lifecycle changes                    |
-| Electron main lifecycle               | Owning startup, window, tray or process tests                         | Focused E2E; package when bundled runtime behavior changes                 |
-| SQLite repository or codec            | Owning database/persistence tests                                     | Backup, restore, migration or durability tests for format changes          |
-| Credential or security behavior       | Credential-store and sensitive-data tests                             | Migration and platform-specific evidence when storage providers change     |
-| Proxy request/response mapper         | Owning protocol mapper and streaming tests                            | Real-path parity or controller integration tests                           |
-| Gateway controller/service            | Owning integration and endpoint-coverage tests                        | E2E or live-provider evidence only when the external provider path changes |
-| Packaging, updater or native artifact | Owning packaging/update tests                                         | `npm run package`, size audit or platform build when artifacts change      |
-| Documentation or agent governance     | `npm run check:governance` and formatting                             | Link/build checks owned by the affected documentation system               |
+| Changed surface                            | Minimum local evidence                                                | Add when applicable                                                                                     |
+| ------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Pure utility, mapper or codec              | Owning Vitest file                                                    | Adjacent tests for a shared type or caller contract                                                     |
+| Shared types, public exports or boundaries | `npm run type-check` and owning tests                                 | `npm run check:governance` when dependency direction or boundary rules change                           |
+| React component or hook                    | Owning Testing Library/Vitest file                                    | Focused E2E for navigation, preload or multi-window behavior                                            |
+| Route definition                           | Related component test and `npm run type-check`                       | Focused Playwright flow for user navigation changes                                                     |
+| Cross-module or process-spanning user flow | Owning integration tests for each changed layer                       | Focused Playwright/Electron acceptance when navigation, preload, lifecycle or packaging changes         |
+| ORPC schema or handler                     | Owning handler/router test and `npm run type-check`                   | Renderer consumer test when the result or error contract changes                                        |
+| Preload bridge                             | `preload-sandbox.test.ts`, affected IPC test and `npm run type-check` | Focused Electron E2E when exposure or lifecycle changes                                                 |
+| Electron main lifecycle                    | Owning startup, window, tray or process tests                         | Focused E2E; package when bundled runtime behavior changes                                              |
+| SQLite repository or codec                 | Owning database/persistence tests                                     | Backup, restore, migration or durability tests for format changes                                       |
+| Credential or security behavior            | Credential-store and sensitive-data tests                             | Native keyring or platform acceptance when storage providers change; mocks do not prove native behavior |
+| Proxy request/response mapper              | Owning protocol mapper and streaming tests                            | Real-path parity or controller integration tests                                                        |
+| Gateway controller/service                 | Owning integration and endpoint-coverage tests                        | E2E or live-provider evidence only when the external provider path changes                              |
+| Packaging, updater or native artifact      | Owning packaging/update tests                                         | Installer, updater or platform acceptance when the shipped artifact path changes                        |
+| Documentation or agent governance          | `npm run check:agent-contracts` and focused Prettier                  | `npm run check:governance` when governance rules or runtime boundaries change                           |
+| Cross-platform or repository-wide behavior | Focused tests for each affected surface                               | CI platform matrix or explicitly requested full rehearsal                                               |
 
 For cloud-account plaintext storage, run the focused mock tests with `npm test -- --run
 src/tests/unit/convert-encrypted-account-fields.test.ts

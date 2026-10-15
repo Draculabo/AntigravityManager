@@ -15,6 +15,7 @@ const REQUIRED_FILES = [
   'src/modules/proxy-gateway/AGENTS.md',
   'src/shared/persistence/AGENTS.md',
   '.agents/notes/README.md',
+  '.agents/skills/agm-code-review/SKILL.md',
   '.agents/skills/agm-validate-change/SKILL.md',
 ];
 

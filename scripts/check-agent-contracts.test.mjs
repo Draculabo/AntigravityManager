@@ -16,6 +16,7 @@ const REQUIRED_GOVERNANCE_FILES = [
   'src/modules/proxy-gateway/AGENTS.md',
   'src/shared/persistence/AGENTS.md',
   '.agents/notes/README.md',
+  '.agents/skills/agm-code-review/SKILL.md',
   '.agents/skills/agm-validate-change/SKILL.md',
 ];
 
@@ -52,6 +53,16 @@ test('accepts a complete governance fixture', async (context) => {
   context.after(async () => rm(rootDir, { recursive: true, force: true }));
 
   assert.deepEqual(validateAgentContracts(rootDir), { errors: [] });
+});
+
+test('requires the semantic review skill', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+  await rm(path.join(rootDir, '.agents/skills/agm-code-review/SKILL.md'));
+
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: ['missing required governance file: .agents/skills/agm-code-review/SKILL.md'],
+  });
 });
 
 test('rejects a broken local Markdown link', async (context) => {
