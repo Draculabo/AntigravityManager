@@ -15,6 +15,7 @@ Instructions in a deeper `AGENTS.md` supplement this file for that subtree. Keep
 
 - Use Node.js `>=22.14.0`, npm `>=10` and the checked-in `package-lock.json`. Do not use pnpm, Yarn or Bun.
 - Prefer project scripts from `package.json`; do not invent a parallel command when an owning script exists.
+- Before running or changing repository scripts, read [scripts/AGENTS.md](scripts/AGENTS.md) and use [scripts/README.md](scripts/README.md) to locate existing verification and preparation tools.
 - The primary development shell is PowerShell on Windows. Keep scripts portable when CI or packaged behavior is cross-platform.
 - When `.codegraph/` exists, use CodeGraph before text search to understand symbols and call paths. Use `ast-grep` for syntax-aware structural search, bulk refactoring, custom lint checks, vulnerability patterns and framework/API migrations.
 - Bound commands with unknown output and inspect the smallest relevant context.
@@ -47,6 +48,7 @@ See [src/modules/AGENTS.md](src/modules/AGENTS.md), [src/modules/proxy-gateway/A
 - Make the smallest complete change. Do not add dependencies, abstractions, compatibility paths or defensive states without a current owner and demonstrated need.
 - Always use braces for control flow. Keep `return`, `throw` and similar statements on their own lines.
 - Comments and JSDoc explain non-obvious contracts, invariants, trade-offs and safe use. Do not restate visible control flow or keep changelog commentary in source.
+- For failure, recovery, cancellation or background-task changes, follow [failure ownership](docs/error-handling.md) to define partial effects, safe continuation and final reporting.
 - Prefer Radix primitives and Tailwind utilities for UI. Put user-visible strings in `react-i18next` resources using kebab-case keys.
 - Avoid growing large modules. Prefer a new owned module for new behavior when a source file is already near 800 lines; target cohesive production modules below roughly 500 lines where practical.
 
@@ -83,9 +85,11 @@ For high-risk or difficult-to-reverse decisions, add or update an [Agent Note](.
 
 - Focused tests are the local default. Do not run the full E2E, packaging or platform matrix for an unrelated local change.
 - A behavior change needs a test or runnable check that would fail for its regression. Do not weaken assertions, skip failures or use a narrower scope merely to get green.
+- For asynchronous, resource-owning or intermittent tests and acceptance scripts, follow [test reliability](docs/test-reliability.md) for isolation, observable completion and diagnosis.
 - Prefer equality of complete result objects or event sequences when the whole result is the behavior under test.
 - Do not add tests for removed behavior, statically fixed values or impossible hostile inputs at typed same-process boundaries.
 - Run `npm run check:agent-contracts` for changes to agent instructions, governance documentation, Agent Notes or project Skills.
+- Install the project Git hooks with `npm run hooks:install` after an install that skipped lifecycle scripts. [Local Git checks](docs/development.md#local-git-checks) defines the automatic commit/push gates and their scope.
 - Run `npm run type-check` when shared types, public exports, IPC contracts or module boundaries change.
 - Report environment-dependent evidence such as native keyring, Electron packaging, installer and live-provider checks as unverified when it cannot run.
 

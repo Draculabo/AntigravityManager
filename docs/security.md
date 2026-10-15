@@ -2,6 +2,8 @@
 
 This document defines the security-sensitive boundaries that repository changes must preserve. Read it before changing preload exposure, IPC, credentials, logging, persistence, proxy authentication, updates or external process execution.
 
+For partial writes, uncertain outcomes and failed recovery, follow [failure ownership](error-handling.md). The affected feature remains responsible for establishing safe state; diagnostics alone do not establish recovery.
+
 ## Schema diagnostics and Node reporting
 
 Schema diagnostic logs contain fixed issue categories, protocol, recovery flags, ordinal tool

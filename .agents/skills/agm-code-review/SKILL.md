@@ -20,8 +20,11 @@ Review the exact change for defects that mechanical checks cannot establish. For
 - **Contracts and data:** Check validation and transformations at external, persisted and process boundaries. For SQLite, Drizzle, credentials and backups, inspect privacy, atomicity, recovery and migration behavior.
 - **Proxy behavior:** Trace request and response mapping through status handling, streaming, errors, cancellation and retries. Check that diagnostics retain useful context without exposing secrets.
 - **Async lifecycle:** Follow success, failure, cancellation, timeout and partial-completion paths. Check race behavior, process and resource cleanup, and bounded retry behavior.
+- **Failure state:** Apply [failure ownership](../../../docs/error-handling.md) to changed errors and recovery. Verify the state after partial writes, unknown remote outcomes and failed rollback; trace safe continuation and final reporting to their owners.
+- **Alternate callers and limits:** Trace denials through the operation that executes them, including alternate entry points. Check retained values against their authoritative source and measure limits on the complete emitted result, including metadata and UTF-8 bytes when applicable.
 - **User experience:** For UI changes, check loading, empty and error states, retry behavior, keyboard access, localization ownership and whether user-visible errors match the actual failure.
 - **Evidence quality:** Confirm tests exercise an observable behavior that would fail for the regression. Match mocks, integration tests, packaged checks and native or live evidence to the behavior each can establish. Do not treat mocks as proof of native, installer, updater or live-provider behavior.
+- **Runner reliability:** Apply [test reliability](../../../docs/test-reliability.md) to asynchronous, native or resource-owning tests and [script instructions](../../../scripts/AGENTS.md) to changed runners. Verify readiness, isolated resources, full teardown and a representative negative case for changed acceptance predicates. Check that the entry point matches the shipped behavior being claimed.
 - **Change hygiene:** Check that current documentation and comments match behavior, Agent Notes record durable decisions, and the diff contains no unrelated files, generated output, secrets or user-owned changes.
 
 ## Report findings

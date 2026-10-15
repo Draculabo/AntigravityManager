@@ -4,25 +4,40 @@ This is a current reference for build and acceptance tooling. Application busine
 `src/cli`, `src/core` and the owning `src/modules` feature. These scripts prepare artifacts or exercise
 that implementation; they do not implement an additional application runtime.
 
+Agents use this directory as the first place to locate runnable verification evidence. Read
+[script instructions](AGENTS.md) before running or changing a runner. [Testing strategy](../docs/testing.md)
+owns the change-to-evidence matrix; this guide identifies existing tools and their effects.
+
 ## Directory ownership
 
-| Directory | Responsibility |
-| --- | --- |
-| `build/` | Prepare the standalone runtime, trace its dependencies and create NSIS from the Forge package. |
-| `acceptance/runtime/` | Native SQLite, diagnostic workers, standalone startup and packaged desktop checks. |
-| `acceptance/installers/` | MSI, Squirrel and NSIS installation/update checks and controlled upgrade fixtures. |
-| `acceptance/accounts/` | Account switch readback, official-client sign-in and conversation preservation. |
-| `acceptance/agents/` | One-click tool configuration, complete coding tasks, traffic monitor comparison and reports. |
-| `acceptance/multimodal/` | Image/video input and image output checks. |
-| `acceptance/thinking/` | Reasoning signatures and multi-turn tool continuation across supported protocols. |
-| `acceptance/helpers/` | Preparation or cleanup used by multiple acceptance runners. |
-| `acceptance/fixtures/` | Fixed media inputs; runtime-specific fixture constants stay with their runtime suite. |
-| `development/` | Development-server connection regression checks. |
+| Directory                 | Responsibility                                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------------------------- |
+| `build/`                  | Prepare the standalone runtime, trace its dependencies and create NSIS from the Forge package. |
+| `acceptance/runtime/`     | Native SQLite, diagnostic workers, standalone startup and packaged desktop checks.             |
+| `acceptance/installers/`  | MSI, Squirrel and NSIS installation/update checks and controlled upgrade fixtures.             |
+| `acceptance/accounts/`    | Account switch readback, official-client sign-in and conversation preservation.                |
+| `acceptance/agents/`      | One-click tool configuration, complete coding tasks, traffic monitor comparison and reports.   |
+| `acceptance/multimodal/`  | Image/video input and image output checks.                                                     |
+| `acceptance/thinking/`    | Reasoning signatures and multi-turn tool continuation across supported protocols.              |
+| `acceptance/schema/`      | Schema replay, actual coding-client/provider checks and bounded diagnostic evidence.           |
+| `acceptance/diagnostics/` | Node/Electron SDK reporting and packaged operation-diagnostic checks.                          |
+| `acceptance/helpers/`     | Preparation or cleanup used by multiple acceptance runners.                                    |
+| `acceptance/fixtures/`    | Fixed media inputs; runtime-specific fixture constants stay with their runtime suite.          |
+| `development/`            | Development-server connection regression checks.                                               |
+| `release/`                | Release-note generation, source metadata and controlled publication tests.                     |
 
 Existing governance, performance and release utilities remain at the root. npm commands are defined
 in [package.json](../package.json); use their names rather than relying on a script's filesystem path.
 The scripts source directory is excluded from the application package. Build outputs are delivered
 through the configured Forge resource and installer steps.
+
+## Git hooks
+
+`git/` owns the Lefthook adapter, guarded installation, staged-governance selector and preserved
+pre-commit hook invocation. Use `npm run hooks:install` to install, `npm run hooks:pre-commit` or
+`npm run hooks:pre-push` to check manually, and `npm run test:git-hooks` for isolated integration
+evidence. [Local Git checks](../docs/development.md#local-git-checks) owns installation, automatic
+checks, current-worktree limitations, CodeGraph coexistence and recovery.
 
 ## Unified acceptance entry
 
@@ -42,6 +57,25 @@ for its help. There is no automatic all-platform, live-account or installer sequ
 generator commands remain build commands because they create test artifacts rather than validate them.
 
 ## Choose the appropriate check
+
+Select evidence by the affected behavior, then inspect the owning command or SOP before execution:
+
+| Verification need                          | Existing entry                                                           | Prerequisites and effects                                                                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent instructions, Skills and Agent Notes | `npm run check:agent-contracts`                                          | Checks governance fixtures, local links and named npm commands; does not exercise application behavior.                                                                    |
+| Change scope                               | `npm run change-scope -- --base HEAD` for worktree changes               | Reads Git metadata. Outgoing/PR changes require the verified base and head rather than an assumed base.                                                                    |
+| Pure acceptance harness behavior           | `npm run test:acceptance -- unit` or the owning `node --test` file       | Uses synthetic fixtures; see the coverage and exclusions below.                                                                                                            |
+| Native core, preload or desktop behavior   | `npm run test:acceptance -- runtime <check>`                             | Select the check listed by top-level help; built artifacts, matching native ABI and isolated state depend on the check.                                                    |
+| Real account switching or client history   | `npm run test:acceptance -- accounts <check>`                            | Follow the [account SOP](../docs/account-switch-acceptance.md); may close clients or change shared credentials and must verify restoration.                                |
+| Real coding-client or provider behavior    | `agents`, `multimodal` or `thinking` acceptance suites                   | Follow the linked SOPs below; may consume quota or change isolated tool configuration.                                                                                     |
+| Schema replay and live protocol diagnosis  | Existing `test:schema:*` npm commands                                    | Follow [live Schema acceptance](../docs/development.md#live-schema-acceptance); replay, live requests and remote reporting have different effects.                         |
+| Diagnostic reporting                       | `npm run test:diagnostics:sentry` or `npm run test:diagnostics:packaged` | Follow [diagnostic acceptance](../docs/testing.md#account-operation-diagnostic-acceptance); default/local, packaged and live reporting modes establish different evidence. |
+| Installer or updater behavior              | `npm run test:acceptance -- installers <check>`                          | Requires the matching artifact and owning [delivery procedure](../docs/testing.md#standalone-delivery-acceptance); may install or update software.                         |
+
+Build commands, fixture generators, report aggregation and release tools are separate operations.
+Creating an artifact or summarizing a report does not prove the behavior of the resulting product.
+The table is a discovery aid, not an instruction to run every suite. Public CLI help and `package.json`
+own the available commands; the owning SOP specifies exact arguments and environment requirements.
 
 `npm run test:acceptance -- unit` runs the local Node test suites for dependency tracing, update feed
 selection, authentication-state interpretation, tool configuration, audit pagination, report verdicts,
@@ -72,6 +106,17 @@ Follow the [account SOP](../docs/account-switch-acceptance.md),
 The report command also supports `--refresh PROFILE_HOME REPORT...`. It rebuilds the model request
 window from the still-running local acceptance gateway, writes separate `report.reconciled.json`
 files and summarizes the refreshed reports. The original reports are preserved.
+
+## Record acceptance evidence
+
+Record the command, revision and tested artifact/runtime, platform, selected scenario, expected observable
+and actual result. Include cleanup/restoration results and a sanitized report path when the runner emits one.
+Separate preparation, synthetic checks, native checks and live-provider evidence in the result. A process
+exit code alone cannot establish real account identity, persisted consent or successful recovery.
+
+When no existing runner covers the behavior, add the smallest owned scenario using the
+[script instructions](AGENTS.md) and [reliability rules](../docs/test-reliability.md). Preserve a representative
+failing case so a changed acceptance rule can demonstrate rejection as well as success.
 
 ## File conventions
 
