@@ -36,6 +36,8 @@ The [Git hooks](../../../docs/development.md#local-git-checks) run staged whites
 
 If a relevant check fails, diagnose that failure before widening scope. Do not skip it, weaken assertions or attribute it to the environment without concrete environment evidence. Stop when fixing it would require authority or scope beyond the requested change.
 
+When the change follows a regression, repeated CI failure, reopened issue, rollback or failed live acceptance, apply the capture criteria in [Agent lessons](../../lessons.md). Record a candidate only when the evidence shows a reusable prevention gap; link the test, script or review rule that should prevent recurrence.
+
 ## Pull request checks
 
 After a user-authorized push, inspect CI checks for the exact pushed head. Report queued or running checks as pending and failed checks as failures; do not describe pending checks as passing. Add stack synchronization or history-rewrite steps only if the project adopts stacked pull requests.
