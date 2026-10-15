@@ -20,20 +20,26 @@ const affected = staged.stdout
       /(^|\/)AGENTS\.md$/.test(file) ||
       /^(docs\/.*\.md|\.agents\/(notes|skills)\/)/.test(file) ||
       /^(package(-lock)?\.json|lefthook\.yml|scripts\/README\.md)$/.test(file) ||
-      /^scripts\/(check-agent-contracts(?:\.test)?\.mjs|git\/)/.test(file),
+      /^scripts\/(check-agent-contracts(?:\.test)?\.mjs|agent-document-lifecycle(?:\.test)?\.mjs|git\/|quality\/)/.test(
+        file,
+      ) ||
+      /^\.github\/workflows\/(testing|lint|format)\.yaml$/.test(file),
   );
 
 if (affected) {
   process.stdout.write('Validating governance in the current worktree for staged changes.\n');
-  const result = spawn.sync('npm', ['run', 'check:agent-contracts'], {
-    stdio: 'inherit',
-    windowsHide: true,
-  });
-  if (result.error || result.status !== 0) {
-    process.stderr.write(
-      'Agent contracts failed. Run npm run check:agent-contracts and fix the reported errors.\n',
-    );
-    process.exitCode = result.status ?? 1;
+  for (const script of ['check:agent-contracts', 'check:quality']) {
+    const result = spawn.sync('npm', ['run', script], {
+      stdio: 'inherit',
+      windowsHide: true,
+    });
+    if (result.error || result.signal || result.status !== 0) {
+      process.stderr.write(
+        `Governance check failed. Run npm run ${script} and fix the reported errors.\n`,
+      );
+      process.exitCode = result.status || 1;
+      break;
+    }
   }
 } else {
   process.stdout.write('No staged governance changes; agent contracts skipped.\n');

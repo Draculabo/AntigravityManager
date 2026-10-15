@@ -12,6 +12,7 @@ Give each fact one authoritative location and link to it elsewhere:
 - `security.md`: trust zones, sensitive data and high-risk boundaries.
 - `.agents/notes/`: decision rationale, alternatives and consequences.
 - Feature documentation: feature behavior and user-facing operation owned by that feature.
+- Upgrade guides: required user actions, recovery and downgrade limits for incompatible changes; follow [the guide rules](upgrade-guides/README.md).
 
 Do not copy complete command lists from `package.json`, restate source types, or reproduce another document's detailed explanation. Link to the owner and add only the context required by the current document.
 

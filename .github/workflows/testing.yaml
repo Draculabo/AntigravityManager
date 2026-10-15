@@ -29,16 +29,8 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
-      - name: Run governance checks
-        run: npm run check:governance
-      - name: Run Git hook integration tests
-        run: npm run test:git-hooks
-      - name: Run type check
-        run: npm run type-check
-      - name: Run unit tests
-        run: npm run test:unit -- --run
-      - name: Run acceptance harness unit tests
-        run: npm run test:acceptance -- unit
+      - name: Run shared test checks
+        run: npm run check:ci -- tests
 
   # NOTE: E2E tests are disabled in CI because Electron apps require a graphical environment.
   # Run E2E tests locally with: npm run test:e2e

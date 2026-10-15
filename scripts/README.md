@@ -39,6 +39,43 @@ pre-commit hook invocation. Use `npm run hooks:install` to install, `npm run hoo
 evidence. [Local Git checks](../docs/development.md#local-git-checks) owns installation, automatic
 checks, current-worktree limitations, CodeGraph coexistence and recovery.
 
+The commit hook lints staged JavaScript and TypeScript blobs with the current worktree ESLint
+configuration. It leaves the index and unstaged edits intact. Governance changes also check the
+shared CI wiring. These checks do not establish a passing application test suite.
+
+## Quality checks
+
+`npm run check:agent-contracts` also validates upgrade guide structure and explicit Agent Note
+replacement/archive metadata. Its fixtures cover missing recovery instructions, invalid versions,
+one-way links, archive dates and replacement cycles. Current links remain checked; frozen archive
+body examples are historical. The [upgrade guide rules](../docs/upgrade-guides/README.md) and
+[note retention rules](../.agents/notes/README.md#supersession-and-retention) own human review.
+
+`quality/checks.mjs` owns the check inventory, purpose descriptions, local groups and CI lanes.
+Use `npm run check:ci -- --list` to discover the current commands without running them; add a lane
+before `--list` to inspect just that selection. `npm run check:ci` executes the complete registered
+selection, which includes repository-wide tests and formatting and may be expensive. Focused npm
+commands remain available for ordinary development.
+
+`npm run check:quality` verifies the registry against package scripts and the actual workflow jobs.
+Each registered check needs a nonempty purpose and a CI lane. The required jobs execute their lane
+unconditionally, propagate failure and retain the declared platforms. Local governance/static
+commands select entries from the same inventory. `npm run test:quality` exercises the real runner
+with synthetic commands and deliberately invalid workflow fixtures.
+
+Every npm verification command named `test`, `test:*`, `check:*` or `verify:*` is classified as a CI
+leaf, a shared aggregate or an explained additional entry point. New unclassified commands fail
+the contracts. The full `--list` output also describes aliases, nested checks and manually selected
+acceptance commands. Additional entries are excluded from the automatic selection; live and native
+checks retain their owning prerequisites and authorization.
+
+The runner executes checks sequentially, stops after a failure and reports remaining checks as
+`not-run`. It prints duration and exit information; an aborted or failed child cannot count as a
+pass. CI keeps test, lint and formatting lanes in separate jobs. Registry checks do not attest to
+GitHub scheduling, package installation, native integrations or live providers. New checks update
+the registry description and their owning procedure; the executable inventory avoids duplicating
+the command list here. Acceptance scripts remain owned by the dispatcher below.
+
 ## Unified acceptance entry
 
 `npm run test:acceptance -- --help` lists the available suites. Choose a suite and check, followed by

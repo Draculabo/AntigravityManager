@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { validateDocumentLifecycle } from './agent-document-lifecycle.mjs';
 
 export const ROOT_AGENT_LINE_LIMIT = 180;
 
@@ -13,6 +14,7 @@ const REQUIRED_FILES = [
   'docs/testing.md',
   'docs/error-handling.md',
   'docs/test-reliability.md',
+  'docs/upgrade-guides/README.md',
   'scripts/AGENTS.md',
   'scripts/README.md',
   'lefthook.yml',
@@ -61,8 +63,9 @@ function collectMarkdownFiles(directory) {
 function governanceFiles(rootDir) {
   const explicitFiles = REQUIRED_FILES.map((file) => path.join(rootDir, file)).filter(existsSync);
   const noteFiles = collectMarkdownFiles(path.join(rootDir, '.agents', 'notes'));
+  const guideFiles = collectMarkdownFiles(path.join(rootDir, 'docs', 'upgrade-guides'));
 
-  return [...new Set([...explicitFiles, ...noteFiles])].sort();
+  return [...new Set([...explicitFiles, ...noteFiles, ...guideFiles])].sort();
 }
 
 function validateMarkdownLinks(rootDir, filePath, content, errors) {
@@ -127,10 +130,13 @@ function validateAgentNote(rootDir, filePath, errors) {
     return;
   }
 
-  const [lifecycle] = relativeToNotes.split('/');
+  const [directory] = relativeToNotes.split('/');
+  const lifecycle = directory === 'archived' ? 'implemented' : directory;
 
   if (!(lifecycle in NOTE_REQUIRED_SECTIONS)) {
-    errors.push(`${relativeToNotes}: Agent Note must be under proposed, implemented or rejected`);
+    errors.push(
+      `${relativeToNotes}: Agent Note must be under proposed, implemented, rejected or archived`,
+    );
     return;
   }
 
@@ -205,13 +211,26 @@ export function validateAgentContracts(rootDir) {
 
   for (const filePath of governanceFiles(resolvedRoot)) {
     const content = readText(filePath);
-    validateMarkdownLinks(resolvedRoot, filePath, content, errors);
-    validateReferencedScripts(resolvedRoot, filePath, content, packageScripts, errors);
+    const archived =
+      path.relative(path.join(resolvedRoot, '.agents', 'notes'), filePath).split(path.sep)[0] ===
+      'archived';
+    if (!archived) {
+      validateMarkdownLinks(resolvedRoot, filePath, content, errors);
+      validateReferencedScripts(resolvedRoot, filePath, content, packageScripts, errors);
+    }
 
     if (filePath.startsWith(path.join(resolvedRoot, '.agents', 'notes'))) {
       validateAgentNote(resolvedRoot, filePath, errors);
     }
   }
+
+  errors.push(
+    ...validateDocumentLifecycle(
+      resolvedRoot,
+      collectMarkdownFiles(path.join(resolvedRoot, '.agents', 'notes')),
+      collectMarkdownFiles(path.join(resolvedRoot, 'docs', 'upgrade-guides')),
+    ),
+  );
 
   return { errors };
 }
