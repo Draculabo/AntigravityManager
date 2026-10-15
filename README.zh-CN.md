@@ -5,7 +5,7 @@
 <h1 align="center">Antigravity Manager</h1>
 
 <p align="center">
-  <strong>🚀 专业的 Google Gemini & Claude AI 多账号管理器</strong>
+  <strong>Antigravity 的 Google 账号管理、额度追踪与本地 API 网关</strong>
 </p>
 
 <p align="center">
@@ -42,382 +42,323 @@
 
 ---
 
-## 📖 目录
+Antigravity Manager 是一款桌面应用，专用于管理 Antigravity 客户端（包括 Classic、Antigravity IDE 及 `agy` CLI）使用的 Google 账号。它提供模型额度实时监控、客户端账号平滑切换，并通过内置的高性能本地 API 网关将模型能力桥接至 Claude Code、Codex、OpenCode 等 AI 编程工具。
 
-- [为什么选择 Antigravity Manager？](#-为什么选择-antigravity-manager)
-- [功能特性](#-功能特性)
-- [截图预览](#-截图预览)
-- [快速开始](#-快速开始)
-- [技术栈](#️-技术栈)
-- [开发指南](#-开发指南)
-- [文档](#-文档)
-- [常见问题](#-常见问题)
-- [贡献指南](#-贡献指南)
-- [许可证](#-许可证)
+## 目录
+
+- [下载与安装](#下载与安装)
+- [Nix / NixOS](#nix--nixos)
+- [首次使用](#首次使用)
+- [主要功能](#主要功能)
+- [界面截图](#界面截图)
+- [数据与账号风险](#数据与账号风险)
+- [排错与问题反馈](#排错与问题反馈)
+- [开发与文档](#开发与文档)
+- [贡献指南](#贡献指南)
+- [许可证](#许可证)
+- [免责声明](#免责声明)
 
 ---
 
-## ✨ 为什么选择 Antigravity Manager？
+## 下载与安装
 
-在使用 Antigravity IDE 时，你是否遇到过这些问题？
+请前往 [GitHub Releases](https://github.com/Draculabo/AntigravityManager/releases/latest) 下载适合您操作系统与处理器架构的安装包。各版本的可用文件与变更说明以发布页为准。
 
-- 😫 单个账号额度很快用完，需要频繁手动切换
-- 🔄 管理多个 Google/Claude 账号非常麻烦
-- 📊 不知道当前账号还剩多少额度
-- ⏰ 担心错过额度重置时间
-- 🔌 需要可靠的本地 API 代理用于开发工具
+| 平台    | 架构支持                                 | 安装包格式                                          |
+| ------- | ---------------------------------------- | --------------------------------------------------- |
+| Windows | x64、ARM64                               | NSIS 安装包（`-nsis.exe`）；x64 额外提供 MSI 安装包 |
+| macOS   | Apple Silicon（`arm64`）、Intel（`x64`） | DMG 安装镜像；另提供免安装 ZIP 压缩包               |
+| Linux   | x64、ARM64                               | AppImage、DEB、RPM 安装包                           |
 
-**Antigravity Manager** 就是为解决这些问题而生的！它是一个专业的 Electron 桌面应用，帮助你：
-
-- ✅ **无限账号池** - 添加任意数量的 Google Gemini / Claude 账号
-- ✅ **智能自动切换** - 额度不足或被限速时自动切换到下一个可用账号
-- ✅ **实时监控** - 可视化显示所有账号的额度使用情况
-- ✅ **本地 API 代理** - 内置兼容 OpenAI/Anthropic 协议的代理服务器
-- ✅ **安全加密** - AES-256-GCM 加密存储敏感信息
-
-> [!WARNING]
-> **反向代理账户风险**
+> [!NOTE]
 >
-> 自二月份以来，谷歌已加大打击力度。在使用此软件期间，仅仅切换账户不会对您的谷歌账户造成任何影响。但是，如果您将其用于反向代理等用途，则违反了谷歌的服务条款，并可能导致账户被暂停。
->
-> **请使用您可以承受损失的账户。**
+> - **架构标识**：文件名包含 `arm64` 或 `aarch64` 表示 ARM64，`x64`、`amd64` 或 `x86_64` 表示 x64。
+> - **Windows**：以 `-nsis.exe` 结尾的是标准 NSIS 安装程序。升级已有版本时，请沿用原来的安装包类型。
+> - **macOS**：打开前请先将应用拖移到 `/Applications` 目录中。
+> - **Linux**：请选择适合发行版的包格式；运行 AppImage 需具备相应的系统运行时环境。
+> - 桌面安装包已内置应用运行时。Node.js 和 npm 仅用于[源码开发](#开发与文档)。
 
-首次在 **API 反代** 页面点击 **启动服务** 时，需要确认上述风险后才会启动。取消或关闭确认弹窗不会开启反向代理。
+### 其他安装方式
 
----
+- **Arch Linux**：可通过 `yay -S antigravity-manager-bin` 安装[社区维护的 AUR 包](https://aur.archlinux.org/packages/antigravity-manager-bin)（版本与可用性独立于 GitHub Releases）。
 
-## 🎯 功能特性
+### Nix / NixOS
 
-<table>
-  <tr>
-    <td width="50%">
-      <h3>☁️ 云账号池管理</h3>
-      <ul>
-        <li>通过 OAuth 添加无限 Google Gemini / Claude 账号</li>
-        <li>显示头像、邮箱、状态和最后使用时间</li>
-        <li>实时状态监控（活跃、限速、过期）</li>
-      </ul>
-    </td>
-    <td width="50%">
-      <h3>📊 实时额度监控</h3>
-      <ul>
-        <li>多模型支持：gemini-pro、claude-3-5-sonnet 等</li>
-        <li>可视化进度条配色指示器</li>
-        <li>自动刷新与手动刷新</li>
-      </ul>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🔄 智能自动切换</h3>
-      <ul>
-        <li>无限池模式，智能选择备用账号</li>
-        <li>额度低于 5% 或被限速时自动切换</li>
-        <li>后台每 5 分钟自动监控</li>
-      </ul>
-    </td>
-    <td width="50%">
-      <h3>🔐 安全优先</h3>
-      <ul>
-        <li>AES-256-GCM 加密敏感数据</li>
-        <li>集成操作系统原生凭证管理器</li>
-        <li>自动迁移旧版明文数据</li>
-      </ul>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>💾 账号备份</h3>
-      <ul>
-        <li>捕获账号状态快照</li>
-        <li>在已保存的账号间快速切换</li>
-        <li>查看、整理和删除快照</li>
-      </ul>
-    </td>
-    <td width="50%">
-      <h3>⚙️ 进程控制</h3>
-      <ul>
-        <li>自动检测 Antigravity 是否运行</li>
-        <li>通过 URI 协议或可执行文件启动</li>
-        <li>优雅关闭或强制终止</li>
-      </ul>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🔌 本地 API 代理</h3>
-      <ul>
-        <li>兼容 OpenAI & Anthropic API 协议</li>
-        <li>可配置端口和请求超时</li>
-        <li>模型映射（如：Claude → Gemini）</li>
-      </ul>
-    </td>
-    <td width="50%">
-      <h3>🛠️ 开发者工具</h3>
-      <ul>
-        <li>内置 cURL & Python 代码生成</li>
-        <li>可视化服务状态监控</li>
-        <li>一键重新生成 API Key</li>
-      </ul>
-    </td>
-  </tr>
-</table>
+启用 Nix flakes 后，可在 Linux x64 或 ARM64 上直接运行：
 
-### 更多功能
-
-- **🖥️ 系统托盘** - 后台运行，托盘图标和右键菜单
-- **🔗 IDE 同步** - 自动扫描导入 IDE 的 `state.vscdb` 账号
-- **📦 批量操作** - 批量刷新和删除多个账号
-- **📤 JSON 导出/导入** - 导出和导入账号池，支持架构验证和去重
-- **🔔 桌面通知** - 模型配额低于设定阈值时自动提醒
-- **🌐 单账号代理** - 为每个账号单独配置 HTTP/SOCKS5 代理
-- **📊 智能排序** - 按最近使用、总体配额或特定模型组排序
-- **📋 紧凑布局** - 水平密集视图，最大化可见账号数量
-- **🌏 国际化** - 多语言支持（English / 中文 / Русский）
-- **🎨 现代 UI** - 基于 React、TailwindCSS 和 Shadcn UI 构建
-
----
-
-## 📸 截图预览
-
-<p align="center">
-  <img src="docs/assets/screenshot-main.png" alt="主界面" width="80%" />
-</p>
-
-<p align="center">
-  <img src="docs/assets/screenshot-proxy.png" alt="代理界面" width="48%" />
-  <img src="docs/assets/screenshot-setting.png" alt="设置界面" width="48%" />
-</p>
-
----
-
-## 🚀 快速开始
-
-### 下载安装
-
-从 [Releases](https://github.com/Draculabo/AntigravityManager/releases) 页面下载适合你平台的最新版本。
-
-| 平台                | 下载链接                                                                       |
-| ------------------- | ------------------------------------------------------------------------------ |
-| Windows (x64/ARM64) | [.exe 安装包](https://github.com/Draculabo/AntigravityManager/releases/latest) |
-| macOS               | [.dmg 安装包](https://github.com/Draculabo/AntigravityManager/releases/latest) |
-| Linux               | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest) |
-| NixOS / Nix         | `nix run github:Draculabo/AntigravityManager`                                  |
-
-### ❄️ Nix 集成
-
-你可以通过项目提供的 flake 将 Antigravity Manager 集成到你的 Nix 配置中。
-
-#### 🛠️ NixOS / Home Manager
-
-先在你的 `flake.nix` 的 `inputs` 中加入：
-
-```nix
-inputs = {
-  nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-  antigravity-manager.url = "github:Draculabo/AntigravityManager";
-};
+```bash
+nix run github:Draculabo/AntigravityManager
 ```
 
-然后把 `antigravity-manager.overlays.default` 添加到 `nixpkgs.overlays`。这样会基于你自己的 `nixpkgs` 实例构建，并继承你的全局配置。
+若需加入 NixOS 系统配置，在 flake 中添加输入：
 
 ```nix
-# 添加到你的 NixOS/Home Manager 配置中
-{
+inputs.antigravity-manager.url = "github:Draculabo/AntigravityManager";
+```
+
+随后在具备 `inputs` 的 NixOS 模块中应用 overlay：
+
+```nix
+{ inputs, pkgs, ... }: {
   nixpkgs.overlays = [ inputs.antigravity-manager.overlays.default ];
-
-  # Antigravity Manager 使用非自由许可证 (cc-by-nc-sa-40)
   nixpkgs.config.allowUnfree = true;
-
-  environment.systemPackages = [
-    pkgs.antigravity-manager
-  ];
+  environment.systemPackages = [ pkgs.antigravity-manager ];
 }
 ```
 
-#### 💻 开发 Shell
+Home Manager 用户请使用 `home.packages`，并在对应的 nixpkgs 实例上配置 overlay 与 unfree 策略。更多说明与开发 Shell 配置见 [Nix 集成指南](docs/development.md#nix-integration)。
 
-如果你已经使用上面的 overlay，也可以直接在 `devShell` 里加入：
+---
 
-```nix
-devShells.default = pkgs.mkShell {
-  packages = [
-    pkgs.antigravity-manager
-  ];
-};
-```
+## 首次使用
+
+### 添加账号并切换客户端
+
+1. 打开 Manager，通过系统默认浏览器完成授权以添加 Google 账号。若本机已有账号会话，可使用**从本机导入**，查看预览无误后确认导入。
+2. 刷新额度，查看各账号的可用模型、剩余额度与重置时间。模型权限取决于账号与上游服务，支持显示 Gemini、Claude 等系列模型。
+3. 在顶部工具栏选择目标客户端：**Antigravity (Classic)**、**Antigravity IDE** 或 **agy CLI**。切换桌面客户端时可能需要重启该客户端，请在切换前保存其中的未存工作。
+4. 点击切换到选定账号，随后在官方客户端中核验实际登录身份；若首次启动出现条款确认，请在官方客户端内确认完成。
+5. 按需在工具栏启用**自动切换**。客户端切换与代理网关的账号调度采用独立的策略。
+
+自动切换、额度窗口和可选的每周预热行为见[账号与额度指南](docs/modules/cloud-account/overview.md)。
+
+### 接入编程工具或 API 客户端
+
+1. 添加可用的 Google 账号并刷新确认额度正常。
+2. 打开 **API 反代** 页面，阅读[数据与账号风险](#数据与账号风险)，并在首次启动服务时确认风险告知弹窗。
+3. 点击 **Claude Code**、**Codex** 或 **OpenCode** 配置卡片，选择对应模型并检查设置后一键应用配置。若使用其他 API 客户端，直接使用 Manager 显示的网关地址与 API Key 即可。
+4. 重新打开已配置的工具并发起一次测试请求。可在 **流量监控** 中查看实时请求与结果明细（仅保存配置不代表网络链路已调通）。
+
+工具配置会修改本地客户端设置。备份、移除连接与恢复行为见[工具配置与恢复指南](docs/modules/proxy-gateway/agent-tools.md)。
+
+---
+
+## 主要功能
+
+| 功能模块           | 核心能力说明                                                                                        |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| **Google 账号池**  | 浏览器授权登录、本机已有会话一键发现、账号状态监测、批量操作与 JSON 导入导出                        |
+| **额度多维追踪**   | 5 小时滚动窗口、每周周期与合并视图；支持模型过滤、排序及手动或定时后台刷新                          |
+| **客户端账号切换** | 支持 Classic、IDE 与 agy CLI 手动切换；支持基于额度不足（<5%）或限速的自动轮换                      |
+| **本地 API 网关**  | 兼容 OpenAI (Chat / Responses)、Anthropic (Messages) 与原生 Gemini 协议；支持流式传输与思考过程保留 |
+| **编程工具配置**   | 一键自动配置 Claude Code、Codex 与 OpenCode 连接，提供原子更新与一键备份还原                        |
+| **备份与身份配置** | 本地账号快照备份与恢复，支持独立的客户端身份配置（Identity Profiles）隔离                           |
+| **诊断与问题排查** | 实时请求流量查看、响应耗时、错误详情、诊断编号记录，以及支持自动脱敏的 GitHub 反馈                  |
+| **桌面集成体验**   | 原生系统托盘、额度告警通知、紧凑布局模式，支持简体中文、英文及俄语三语界面                          |
 
 > [!NOTE]
-> 由于该包是非自由软件，你必须在 `nixpkgs` 配置中开启 `allowUnfree = true;`，否则会评估失败。
-
-### 从源码构建
-
-#### 前置要求
-
-- Node.js `>=22.14.0`
-- npm `>=10`
-
-#### 步骤
-
-```bash
-# 克隆仓库
-git clone https://github.com/Draculabo/AntigravityManager.git
-cd AntigravityManager
-
-# 安装锁定版本的依赖
-npm ci
-
-# 启动开发模式
-npm start
-
-# 构建生产版本
-npm run make
-```
+>
+> - 协议兼容性受请求功能、模型和上游行为影响。支持的路径及限制见[网关文档](docs/modules/proxy-gateway/README.md)。
+> - 每周预热默认关闭，启用后会发送真实模型请求，可能消耗额度或 AI credits。启用前请阅读其[行为与限制](docs/modules/cloud-account/overview.md#weekly-warmup)。
 
 ---
 
-## 🛠️ 技术栈
+## 界面截图
 
-| 类别         | 技术                                                                                                                |
-| ------------ | ------------------------------------------------------------------------------------------------------------------- |
-| **核心**     | [Electron](https://www.electronjs.org/)、[React](https://react.dev/)、[TypeScript](https://www.typescriptlang.org/) |
-| **构建工具** | [Vite](https://vitejs.dev/)                                                                                         |
-| **样式**     | [TailwindCSS](https://tailwindcss.com/)、[Shadcn UI](https://ui.shadcn.com/)                                        |
-| **状态管理** | [TanStack Query](https://tanstack.com/query/latest)、[TanStack Router](https://tanstack.com/router/latest)          |
-| **数据库**   | [Better-SQLite3](https://github.com/WiseLibs/better-sqlite3)                                                        |
-| **测试**     | [Vitest](https://vitest.dev/)、[Playwright](https://playwright.dev/)                                                |
 
----
-
-## 💻 开发指南
-
-### 可用脚本
-
-| 命令                   | 描述                     |
-| ---------------------- | ------------------------ |
-| `npm start`            | 启动开发模式             |
-| `npm run lint`         | 运行 ESLint 检查         |
-| `npm run format:write` | 使用 Prettier 格式化代码 |
-| `npm run test:unit`    | 运行单元测试             |
-| `npm run test:e2e`     | 运行 E2E 测试            |
-| `npm run test:all`     | 运行所有测试             |
-| `npm run type-check`   | TypeScript 类型检查      |
-| `npm run make`         | 构建生产包               |
-
-### 项目结构
-
-```
-AntigravityManager/
-├── src/
-│   ├── modules/         # 按功能职责组织的代码
-│   ├── core/            # 共享应用运行时
-│   ├── cli/             # 独立命令行运行时
-│   └── shared/          # 跨功能基础能力
-├── docs/                # 通用文档和模块指南
-└── .github/             # GitHub 配置
-```
-
----
-
-## 📚 文档
-
-文档入口见[文档索引](docs/README.md)和[功能模块文档索引](docs/modules/README.md)。
-
-### Proxyman 调试指南
-
-如果你希望用 Proxyman 抓取和排查 Antigravity 或 Antigravity Manager 的流量，请先阅读：
-
-- [Proxyman Installation and Basic Setup on Windows](./docs/modules/proxy-gateway/debugging/proxyman-setup-windows.md)
-- [Proxyman Debugging Guide for Antigravity and Antigravity Manager](./docs/modules/proxy-gateway/debugging/proxyman.md)
-
----
-
-## ❓ 常见问题
+<p align="center">
+  <img src="docs/assets/screenshot-main.png" alt="当前账号总览" width="90%" />
+</p>
 
 <details>
-<summary><b>Q: 程序无法启动怎么办？</b></summary>
+<summary><strong>API 反代：服务配置、工具集成、模型映射与示例</strong></summary>
 
-请检查：
+<br />
 
-1. 使用 `npm ci` 安装锁定版本的依赖。
-2. 确认 Node.js 版本为 `>=22.14.0`，npm 版本为 `>=10`。
-3. 尝试删除 `node_modules` 后重新安装
+**服务状态与基础配置**
+
+<p align="center">
+  <img src="docs/assets/screenshot-proxy.png" alt="服务状态与基础配置" width="90%" />
+</p>
+
+**Claude Code、Codex 与 OpenCode 的完整操作区**
+
+<p align="center">
+  <img src="docs/assets/screenshot-proxy-tools.png" alt="Claude Code、Codex 与 OpenCode 的完整操作区" width="90%" />
+</p>
+
+**模型映射**
+
+<p align="center">
+  <img src="docs/assets/screenshot-proxy-models.png" alt="模型映射" width="90%" />
+</p>
+
+**请求记录与推理历史保留设置**
+
+<p align="center">
+  <img src="docs/assets/screenshot-proxy-records.png" alt="请求记录与推理历史保留设置" width="90%" />
+</p>
+
+**OpenAI 协议的 cURL 与 Python 示例**
+
+<p align="center">
+  <img src="docs/assets/screenshot-proxy-examples-openai.png" alt="OpenAI 协议的 cURL 与 Python 示例" width="90%" />
+</p>
+
+**Anthropic 协议的 cURL 与 Python 示例**
+
+<p align="center">
+  <img src="docs/assets/screenshot-proxy-examples-anthropic.png" alt="Anthropic 协议的 cURL 与 Python 示例" width="90%" />
+</p>
 
 </details>
 
 <details>
-<summary><b>Q: 账号登录失败？</b></summary>
+<summary><strong>流量监控</strong></summary>
 
-1. 确保网络连接正常
-2. 尝试清除应用数据后重新登录
-3. 检查账号是否被 Google/Claude 限制
+<br />
 
-</details>
+**模型请求明细与筛选过滤**
 
-<details>
-<summary><b>Q: macOS 上提示 Keychain/凭据管理不可用，OAuth 无法保存？</b></summary>
-
-这是 macOS 安全机制导致的常见问题，通常出现在未签名的应用或从 Downloads 直接运行的场景。
-这是**临时方案**，仅适合个人设备：
-
-1. 将应用移动到 `/Applications`
-2. 打开终端执行以下命令（每次更新后都需要重新执行）
-
-```plaintext
-sudo xattr -dr com.apple.quarantine "/Applications/Antigravity Manager.app"
-codesign --force --deep --sign - "/Applications/Antigravity Manager.app"
-```
-
-重新打开应用后，Keychain 应会提示授权（可选“始终允许”）。
+<p align="center">
+  <img src="docs/assets/screenshot-traffic.png" alt="模型请求与筛选器" width="90%" />
+</p>
 
 </details>
 
 <details>
-<summary><b>Q: 如何反馈问题或建议？</b></summary>
+<summary><strong>设置：常规、模型与代理</strong></summary>
 
-请通过 [GitHub Issues](https://github.com/Draculabo/AntigravityManager/issues) 提交问题或建议。
+<br />
+
+**外观、账号刷新与启动设置**
+
+<p align="center">
+  <img src="docs/assets/screenshot-setting.png" alt="外观、账号刷新与启动设置" width="90%" />
+</p>
+
+**客户端缓存与应用信息**
+
+<p align="center">
+  <img src="docs/assets/screenshot-settings-cache-about.png" alt="客户端缓存与应用信息" width="90%" />
+</p>
+
+**隐私选项与通知阈值**
+
+<p align="center">
+  <img src="docs/assets/screenshot-settings-privacy-notifications.png" alt="隐私选项与通知阈值" width="90%" />
+</p>
+
+**模型可见性**
+
+<p align="center">
+  <img src="docs/assets/screenshot-settings-models.png" alt="模型可见性" width="90%" />
+</p>
+
+**自动切换模型与每周额度预热**
+
+<p align="center">
+  <img src="docs/assets/screenshot-settings-model-automation.png" alt="自动切换模型与每周额度预热" width="90%" />
+</p>
+
+**本地服务与上游代理设置**
+
+<p align="center">
+  <img src="docs/assets/screenshot-settings-proxy.png" alt="本地服务与上游代理设置" width="90%" />
+</p>
+
+</details>
+
+<details>
+<summary><strong>CLI 命令行输出</strong></summary>
+
+<br />
+
+**命令行帮助与服务运行状态**
+
+<p align="center">
+  <img src="docs/assets/screenshot-cli.png" alt="实际 CLI 帮助与服务停止状态输出" width="90%" />
+</p>
 
 </details>
 
 ---
 
-## 🌟 Star History
-
-<a href="https://github.com/Draculabo/AntigravityManager/stargazers">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Draculabo/AntigravityManager&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=Draculabo/AntigravityManager&type=Date" />
-    <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Draculabo/AntigravityManager&type=Date" />
-  </picture>
-</a>
-
----
-
-## 🤝 贡献指南
-
-欢迎贡献代码！请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解详情。
-
-我们遵循 [Contributor Covenant](CODE_OF_CONDUCT.md) 行为准则。
-
----
-
-## 📄 许可证
-
-[CC BY-NC-SA 4.0](LICENSE)
-
----
-
-## ⚠️ 免责声明
+## 数据与账号风险
 
 > [!WARNING]
-> **仅供学习研究使用**
+> 云账号 OAuth token 以**明文 JSON 存储在本地 SQLite 数据库中**。能够读取数据库的人也能读取这些 token。完整账号导出和备份还可能包含 token 与代理凭据。请保护数据目录和备份，不要将它们附到公开 issue 中。
+
+其他凭据存储沿用各自的系统钥匙串或加密存储策略。完整策略、迁移行为与诊断隐私说明见[安全与数据边界](docs/security.md)。
+
+> [!WARNING]
+> 反向代理用途可能违反服务提供方的条款，并导致账号受限或暂停。请仅使用能够承担损失的账号。Manager 不保证账号安全、模型可用性或持续访问。
+
+首次从桌面端启动代理需要确认风险提示；取消或关闭弹窗时，服务保持停止。请保护代理 API Key，并在允许其他设备连接前检查网络访问范围。
+
+---
+
+## 排错与问题反馈
+
+### 安装后的应用无法启动
+
+确认安装包与操作系统、CPU 架构匹配，并记录应用版本和具体错误。源码运行请检查[开发前置要求](docs/development.md#prerequisites)。安装包用户反馈时，请说明安装包类型，以及错误发生在安装阶段还是启动阶段。
+
+### 登录或账号切换失败
+
+错误通知提供**详情**入口时，先查看其中内容，保留诊断编号，并记录目标客户端、平台和失败操作。检查网络、代理设置，以及官方客户端是否仍有待完成的首次设置。重置应用数据前请先备份数据目录。
+
+macOS 用户应区分应用启动警告、OAuth 保存失败和客户端切换失败。这些问题发生在不同环节，修改凭据或应用签名前应先记录具体错误。
+
+### 编程工具无法访问模型
+
+确认网关已启动、账号有权访问所选模型，以及工具使用了页面显示的地址和 Key。环境变量、命令行选项或直登插件可能覆盖保存的配置。检查**流量监控**，并参考[工具配置指南](docs/modules/proxy-gateway/agent-tools.md)。
+
+### 反馈问题
+
+错误通知提供 **Report to GitHub** 操作时，可以使用它复制环境信息和脱敏后的错误详情，再打开 issue 模板。粘贴和提交前请检查报告内容。也可以直接在 [GitHub Issues](https://github.com/Draculabo/AntigravityManager/issues) 中提供复现步骤、版本、操作系统、架构和诊断编号。
+
+公开报告中请排除 token、API Key、账号数据库、私人提示词和未经检查的日志。
+
+---
+
+## 开发与文档
+
+源码开发需要 Node.js `>=22.14.0`、npm `>=10`，以及对应平台的原生模块构建环境。请使用仓库中的 npm 锁文件：
+
+```bash
+git clone https://github.com/Draculabo/AntigravityManager.git
+cd AntigravityManager
+npm ci
+npm start
+```
+
+构建、本地 Git 检查和平台要求见[开发指南](docs/development.md)，桌面与独立 CLI/core 的运行方式见[架构指南](docs/architecture.md)。按改动选择验证方式时参考[测试指南](docs/testing.md)，验收工具入口见[脚本指南](scripts/README.md)。
+
+| 文档                                                 | 内容说明                                 |
+| ---------------------------------------------------- | ---------------------------------------- |
+| [文档索引](docs/README.md)                           | 通用指南与文档职责划分                   |
+| [功能模块索引](docs/modules/README.md)               | 按所属功能组织的指南索引                 |
+| [架构指南](docs/architecture.md)                     | Electron、渲染进程、独立 core 与模块边界 |
+| [账号与额度](docs/modules/cloud-account/overview.md) | 账号管理、额度视图、自动切换与每周预热   |
+| [代理网关](docs/modules/proxy-gateway/README.md)     | 协议兼容、编程工具配置与流量排查         |
+| [安全规范](docs/security.md)                         | 凭据存储、备份策略、诊断与信任边界       |
+
+---
+
+## 贡献指南
+
+提交改动前请阅读[贡献指南](CONTRIBUTING.md)。项目遵循 [Contributor Covenant](CODE_OF_CONDUCT.md) 行为准则。
+
+---
+
+## 许可证
+
+本项目基于 [CC BY-NC-SA 4.0](LICENSE) 许可协议开源，商业使用严格禁止。
+
+---
+
+## 免责声明
+
+> [!WARNING]
+> **仅供教育与研究使用**
 >
-> 本项目仅供教育和研究目的，按"原样"提供，不提供任何保证。**严禁商业使用。**
+> 本项目仅供教育和研究目的，按“原样”提供，不提供任何形式的明示或暗示保证。**严禁商业使用。**
 >
-> 使用本软件即表示您同意不会将其用于任何商业目的，并自行负责确保您的使用符合所有适用法律法规。作者和贡献者对因使用本软件而产生的任何滥用或损害不承担责任。
+> 使用本软件即表示您同意不会将其用于任何商业目的，并自行负责确保您的使用符合所有适用的法律法规与服务条款。作者和贡献者对因使用本软件而产生的任何滥用、账号处罚或损害不承担责任。
 
 ---
 
 <p align="center">
-  如果这个项目对你有帮助，请给一个 ⭐ Star 支持！
+  如果这个项目对你有帮助，请给一个 ⭐ <strong>Star</strong> 支持！
 </p>
