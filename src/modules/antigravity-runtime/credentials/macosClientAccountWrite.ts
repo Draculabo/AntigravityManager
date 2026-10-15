@@ -3,6 +3,7 @@ import { logger } from '@/shared/logging/logger';
 import { getAntigravityDbPaths, type PathResolutionOptions } from '@/shared/platform/paths';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { ClientAccountCredentials } from './clientAccount';
+import { CredentialReadbackError } from '@/shared/auth/credentialReadbackError';
 import type { ClientAccountStorage, PreparedClientAccountWrite } from './clientAccountWrite';
 import {
   readMacOSCredentialStore,
@@ -51,8 +52,13 @@ export function prepareMacOSClientAccountWrite(
           !credentials.token.refresh_token ||
           stored.refreshToken !== credentials.token.refresh_token
         ) {
-          throw new Error(
+          throw new CredentialReadbackError(
             'Stored agy credentials do not match the selected account; the switch was not confirmed.',
+            {
+              refreshToken:
+                Boolean(credentials.token.refresh_token) &&
+                stored.refreshToken === credentials.token.refresh_token,
+            },
           );
         }
         return;

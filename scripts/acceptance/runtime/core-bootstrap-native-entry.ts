@@ -8,7 +8,8 @@ import { createServer } from 'node:net';
 import { DEFAULT_APP_CONFIG } from '../../../src/modules/config/types';
 import { getAgentDir } from '../../../src/shared/platform/paths';
 import { bootstrapDesktopOwner } from '../../../src/modules/app-shell/services/desktop-owner-bootstrap';
-import { desktopCoreConnection } from '../../../src/modules/app-shell/services/desktop-core-connection';
+import { standaloneCoreConnection } from '../../../src/modules/app-shell/services/standalone-core-connection';
+import { selectDesktopOwners } from '../../../src/modules/app-shell/services/desktop-owner-selection';
 import { getCloudAccountAdapter } from '../../../src/modules/cloud-account/ipc/cloud-account-adapter';
 import { getConfigAdapter } from '../../../src/modules/config/ipc/config-adapter';
 import { getAuditAdapter } from '../../../src/modules/proxy-gateway/ipc/audit-adapter';
@@ -16,6 +17,7 @@ import { ipcAuditRecorder } from '../../../src/modules/proxy-gateway/audit/ipc-a
 import { CoreRpcClient } from '../../../src/core/rpc/client';
 import { ManagementClient } from '../../../src/core/management/client';
 import { getManagementEndpoint } from '../../../src/core/management/endpoint';
+import type { CoreHandshake } from '../../../src/core/management/handshake';
 import {
   LARGE_THOUGHT_BYTES,
   LARGE_THOUGHT_SESSION,
@@ -47,7 +49,18 @@ async function check(): Promise<void> {
     }),
   );
   const children: ChildProcess[] = [];
-  const connection = desktopCoreConnection(path.join(directory, 'main.cjs'), process.execPath);
+  const connection = {
+    ...standaloneCoreConnection(),
+    selectStandaloneCore: async (handshake: CoreHandshake) => {
+      const client = new CoreRpcClient(getManagementEndpoint(), undefined, handshake.epoch);
+      await client.setErrorReportingEnabled(false);
+      selectDesktopOwners({
+        mode: 'standalone-core',
+        client,
+        management: new ManagementClient(getManagementEndpoint(), undefined, handshake.epoch),
+      });
+    },
+  };
   const forbidden = async (): Promise<never> => {
     throw new Error('Desktop opened owner-local state');
   };

@@ -17,10 +17,29 @@ import {
 const credentialWrite = vi.hoisted(() => vi.fn(async () => undefined));
 import { switchCloudAccountCore } from '@/modules/cloud-account/services/cloud-account-switch.service';
 import { accountOwnerEvents } from '@/modules/cloud-account/services/account-owner-events.service';
-import { getSwitchGuardSnapshot } from '@/modules/antigravity-runtime/switch/switchGuard';
+import {
+  getSwitchGuardSnapshot,
+  runWithSwitchGuard,
+} from '@/modules/antigravity-runtime/switch/switchGuard';
 import { logger } from '@/shared/logging/logger';
 import * as runtimeStop from '@/modules/antigravity-runtime/stop';
+import * as runtimeLaunch from '@/modules/antigravity-runtime/launchContext';
 import { processError } from '@/modules/antigravity-runtime/processErrors';
+import {
+  CloudSwitchDiagnosticSchema,
+  type CloudSwitchDiagnostic,
+} from '@/modules/cloud-account/services/operation-diagnostic.schema';
+
+function expectTerminalDiagnostic(expected: Omit<CloudSwitchDiagnostic, 'diagnosticId'>) {
+  const records = vi
+    .mocked(logger.info)
+    .mock.calls.filter((call) => call[0] === 'Operation diagnostic v1');
+  expect(records).toHaveLength(1);
+  const actual = CloudSwitchDiagnosticSchema.parse(records[0][1]);
+  expect(records).toEqual([
+    ['Operation diagnostic v1', { ...expected, diagnosticId: actual.diagnosticId }],
+  ]);
+}
 
 const ownerState = vi.hoisted(() => ({
   activeId: null as string | null,
@@ -179,6 +198,63 @@ async function startOwner(): Promise<CoreRpcClient> {
 
 describe('core-owned cloud account switching', () => {
   it.each(['desktop-embedded', 'standalone-core'] as const)(
+    'reports client discovery failure before preparing target credentials (%s)',
+    async (mode) => {
+      if (mode === 'standalone-core') {
+        const client = await startOwner();
+        selectCloudAccountAdapter({ mode, client });
+      }
+      const prepare = vi
+        .spyOn(runtimeLaunch, 'prepareLaunchContext')
+        .mockRejectedValueOnce(processError('probe-failed'));
+      try {
+        await expect(
+          createRouterClient(cloudRouter).switchCloudAccount({ accountId: account.id }),
+        ).rejects.toMatchObject({
+          message: 'Cloud account switch failed',
+          data: { switchCode: 'switch-failed' },
+        });
+        expect(credentialWrite).not.toHaveBeenCalled();
+        expect(CloudAccountRepo.updateToken).not.toHaveBeenCalled();
+        expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
+        expectTerminalDiagnostic({
+          schemaVersion: 1,
+          operation: 'cloud-account-switch',
+          stage: 'client-selection',
+          target: 'classic',
+          reason: 'unknown',
+          nativeCode: 'ANTIGRAVITY_PROCESS_FAILED',
+          rollback: 'not-attempted',
+          causes: [{ reason: 'unknown', nativeCode: 'ANTIGRAVITY_PROCESS_FAILED' }],
+          reporting: { state: 'not-reported', reason: 'disabled' },
+        });
+      } finally {
+        prepare.mockRestore();
+      }
+    },
+  );
+  it('keeps a reference for a rejected concurrent switch without entering account storage', async () => {
+    const release = Promise.withResolvers<void>();
+    const active = runWithSwitchGuard('local-account-switch', () => release.promise);
+    try {
+      await expect(switchCloudAccountCore(account.id, 'ide')).rejects.toMatchObject({
+        switchCode: 'switch-failed',
+        diagnostic: {
+          stage: 'management-transport',
+          reason: 'locked',
+          target: 'ide',
+          reporting: { state: 'not-reported', reason: 'expected-outcome' },
+        },
+      });
+      expect(CloudAccountRepo.getAccount).not.toHaveBeenCalled();
+      expect(credentialWrite).not.toHaveBeenCalled();
+      expect(getSwitchGuardSnapshot()).toEqual({ activeOwner: 'local-account-switch' });
+    } finally {
+      release.resolve();
+      await active;
+    }
+  });
+  it.each(['desktop-embedded', 'standalone-core'] as const)(
     'reports a refused client close without writing credentials or selecting the account (%s)',
     async (mode) => {
       if (mode === 'standalone-core') {
@@ -198,13 +274,17 @@ describe('core-owned cloud account switching', () => {
         expect(credentialWrite).not.toHaveBeenCalled();
         expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
         expect(CloudAccountRepo.updateLastUsed).not.toHaveBeenCalled();
-        expect(logger.error).toHaveBeenCalledExactlyOnceWith('Failed to switch cloud account', {
-          kind: 'process-close-failed',
-          stage: 'switch-execution',
+        expectTerminalDiagnostic({
+          schemaVersion: 1,
+          operation: 'cloud-account-switch',
+          stage: 'process-close',
           target: 'classic',
           storage: 'credential-store',
-          reason: 'process_close_failed',
-          errorCode: 'ANTIGRAVITY_PROCESS_FAILED',
+          reason: 'process-close-failed',
+          nativeCode: 'ANTIGRAVITY_PROCESS_FAILED',
+          rollback: 'not-attempted',
+          causes: [{ reason: 'unknown', nativeCode: 'ANTIGRAVITY_PROCESS_FAILED' }],
+          reporting: { state: 'not-reported', reason: 'disabled' },
         });
       } finally {
         stop.mockRestore();
@@ -278,13 +358,15 @@ describe('core-owned cloud account switching', () => {
       expect(JSON.stringify(error)).not.toMatch(/private-provider-detail|private-refresh-token/);
     }
     expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
-    expect(logger.error).toHaveBeenCalledExactlyOnceWith('Failed to switch cloud account', {
-      kind: 'reauth-required',
+    expectTerminalDiagnostic({
+      schemaVersion: 1,
+      operation: 'cloud-account-switch',
       stage: 'token-refresh',
       target: 'classic',
-      storage: null,
-      reason: 'unknown',
-      errorCode: 'unknown',
+      reason: 'reauth-required',
+      rollback: 'not-attempted',
+      causes: [{ reason: 'unknown' }],
+      reporting: { state: 'not-reported', reason: 'disabled' },
     });
   });
   it('records a safe native write error code without changing the public error contract', async () => {
@@ -305,13 +387,17 @@ describe('core-owned cloud account switching', () => {
       message: 'Cloud account switch failed',
       data: { switchCode: 'target-write-failed' },
     });
-    expect(logger.error).toHaveBeenCalledExactlyOnceWith('Failed to switch cloud account', {
-      kind: 'target-write-failed',
-      stage: 'switch-execution',
+    expectTerminalDiagnostic({
+      schemaVersion: 1,
+      operation: 'cloud-account-switch',
+      stage: 'target-write',
       target: 'agy',
       storage: 'credential-store',
-      reason: 'perform_switch_failed',
-      errorCode: 'EACCES',
+      reason: 'permission-denied',
+      nativeCode: 'EACCES',
+      rollback: 'not-attempted',
+      causes: [{ reason: 'permission-denied', nativeCode: 'EACCES' }],
+      reporting: { state: 'not-reported', reason: 'disabled' },
     });
     expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
   });

@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -25,6 +26,7 @@ const children = [];
 const memory = [];
 let connection;
 const resources = path.join(path.dirname(executable), 'resources', 'standalone');
+const loadPackaged = createRequire(path.join(resources, 'package.json'));
 const environment = {
   ...process.env,
   HOME: home,
@@ -106,7 +108,9 @@ async function launch() {
   );
   await page.getByRole('main').waitFor({ state: 'visible', timeout: 45_000 });
   await page.locator('a[href="/settings"]').first().click();
-  await page.locator('h2').first().waitFor({ state: 'visible', timeout: 15_000 });
+  await page
+    .getByRole('heading', { name: 'Settings', exact: true })
+    .waitFor({ state: 'visible', timeout: 15_000 });
   return { child, browser, page };
 }
 
@@ -156,7 +160,18 @@ try {
   await build({
     ...loaded.config,
     configFile: false,
-    plugins: [],
+    plugins: [
+      {
+        name: 'use-packaged-process-query',
+        enforce: 'pre',
+        resolveId(source) {
+          if (source === '@draculabo/sysinfo-process-enhanced') {
+            // The fixture observes processes through the packaged native binary, not Rollup.
+            return { id: loadPackaged.resolve(source), external: true };
+          }
+        },
+      },
+    ],
     logLevel: 'error',
     ssr: { noExternal: true, external: [] },
     build: {

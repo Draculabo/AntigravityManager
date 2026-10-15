@@ -1,5 +1,6 @@
 import en from './en';
 const fr = {
+  'operation-diagnostics': en['operation-diagnostics'],
   'agent-tools': {
     title: 'Connecter vos outils de programmation',
     description: 'Choisissez un outil pour utiliser vos modèles via Antigravity Manager.',

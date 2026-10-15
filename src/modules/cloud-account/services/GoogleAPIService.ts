@@ -18,6 +18,13 @@ import {
   OAuthClientRegistryService,
 } from './OAuthClientRegistryService';
 import { GOOGLE_OAUTH_SCOPE } from '@/shared/auth/googleOAuthScopes';
+import { GoogleApiDiagnosticError, upstreamClassification } from './operation-cause';
+import type {
+  CauseClassification,
+  HttpResponseEvidence,
+} from '@/shared/observability/operationDiagnostic';
+import { readHttpResponseEvidence } from './google-http-evidence';
+import { createGoogleProxyAgent } from './google-proxy-agent';
 
 // --- Constants & Config ---
 const URLS = {
@@ -105,14 +112,18 @@ function extractOAuthErrorDescription(errorText: string): string | undefined {
   return undefined;
 }
 
-export class OAuthTokenRefreshError extends Error {
+export class OAuthTokenRefreshError extends GoogleApiDiagnosticError {
   constructor(
     readonly code: string | null,
     readonly status: number,
     readonly clientKey: string,
     readonly description?: string,
+    http?: HttpResponseEvidence,
   ) {
-    super(`Token refresh failed for OAuth client [${clientKey}]: ${code ?? `HTTP ${status}`}`);
+    super(
+      `Token refresh failed for OAuth client [${clientKey}]: ${code ?? `HTTP ${status}`}`,
+      upstreamClassification(status, code, http),
+    );
     this.name = 'OAuthTokenRefreshError';
   }
 }
@@ -142,6 +153,7 @@ function createGoogleApiRequestSignal(
 interface GoogleApiHttpResponse {
   data: unknown;
   status: number;
+  http?: HttpResponseEvidence;
 }
 
 type GoogleApiProxyOptions = Pick<AxiosRequestConfig, 'proxy'>;
@@ -220,20 +232,30 @@ async function requestGoogleApi(
   url: string,
   options: GoogleApiRequestOptions,
 ): Promise<GoogleApiHttpResponse> {
-  const response = await axios.request<unknown>({
-    data: options.data,
-    headers: options.headers,
-    method: options.method,
-    proxy: options.proxy,
-    signal: options.signal,
-    url,
-    validateStatus: () => true,
-  });
-
-  return {
-    data: response.data,
-    status: response.status,
-  };
+  const agent = createGoogleProxyAgent(url, options.proxy, options.signal);
+  try {
+    const response = await axios.request<unknown>({
+      data: options.data,
+      headers: options.headers,
+      method: options.method,
+      // HTTPS must stay encrypted through HTTP(S) proxies; Axios absolute-form forwarding does not tunnel it.
+      proxy: false,
+      httpAgent: agent,
+      httpsAgent: agent,
+      signal: options.signal,
+      url,
+      validateStatus: () => true,
+    });
+    return {
+      data: response.data,
+      status: response.status,
+      ...(!isSuccessfulHttpStatus(response.status)
+        ? { http: readHttpResponseEvidence(response) }
+        : {}),
+    };
+  } finally {
+    agent?.destroy();
+  }
 }
 
 async function waitForAbortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
@@ -276,9 +298,15 @@ export interface UserInfo {
   picture?: string;
 }
 
-export class GoogleUserInfoHttpError extends Error {
-  constructor(readonly status: number) {
-    super(`Failed to fetch user info: HTTP ${status}`);
+export class GoogleUserInfoHttpError extends GoogleApiDiagnosticError {
+  constructor(
+    readonly status: number,
+    http?: HttpResponseEvidence,
+  ) {
+    super(
+      `Failed to fetch user info: HTTP ${status}`,
+      upstreamClassification(status, undefined, http),
+    );
     this.name = 'GoogleUserInfoHttpError';
   }
 }
@@ -411,10 +439,17 @@ interface ProjectContext {
   subscriptionTier?: string;
 }
 
-function parseTokenResponse(payload: unknown, oauthClientKey: string): TokenResponse {
+function parseTokenResponse(
+  payload: unknown,
+  oauthClientKey: string,
+  status: number,
+): TokenResponse {
   const parsed = TokenResponseSchema.safeParse(payload);
   if (!parsed.success) {
-    throw new Error('Received malformed OAuth token response from Google APIs');
+    throw new GoogleApiDiagnosticError('Received malformed OAuth token response from Google APIs', {
+      reason: 'malformed-response',
+      upstreamStatus: status,
+    });
   }
 
   return {
@@ -644,9 +679,7 @@ export class GoogleAPIService {
 
     if (httpProxy || httpsProxy) {
       if (proxyTraceEnabled) {
-        logger.info(
-          `[GoogleAPIService] Proxy source: HTTP(S)_PROXY env (http: ${httpProxy ?? 'none'}, https: ${httpsProxy ?? 'none'})`,
-        );
+        logger.info('[GoogleAPIService] Proxy source: HTTP(S)_PROXY env');
       }
       // Axios' Node adapter reads HTTP(S)_PROXY and NO_PROXY through proxy-from-env.
       return {};
@@ -654,9 +687,7 @@ export class GoogleAPIService {
 
     if (electronProxyServer) {
       if (proxyTraceEnabled) {
-        logger.info(
-          `[GoogleAPIService] Proxy source: ELECTRON_PROXY_SERVER env (${electronProxyServer})`,
-        );
+        logger.info('[GoogleAPIService] Proxy source: ELECTRON_PROXY_SERVER env');
       }
       return {
         proxy: parseAxiosProxyUrl(electronProxyServer),
@@ -709,6 +740,7 @@ export class GoogleAPIService {
     }
 
     const attemptErrors: string[] = [];
+    let lastFailure: CauseClassification | undefined;
 
     for (const client of candidates) {
       const params = new URLSearchParams({
@@ -740,11 +772,17 @@ export class GoogleAPIService {
       } catch (error) {
         logger.error(`[GoogleAPIService] Token exchange transport failed for client=${client.key}`);
         if (isTimedOutHttpRequest(error, requestSignal.timeoutSignal)) {
-          throw new Error(
+          throw new GoogleApiDiagnosticError(
             'Token exchange timed out. Please check your network connection and try again.',
+            { reason: 'timed-out' },
+            error,
           );
         }
-        throw new Error('Token exchange transport failed');
+        throw new GoogleApiDiagnosticError(
+          'Token exchange transport failed',
+          { reason: 'network-failed' },
+          error,
+        );
       }
 
       logger.info(
@@ -752,10 +790,15 @@ export class GoogleAPIService {
       );
 
       if (isSuccessfulHttpStatus(response.status)) {
-        return parseTokenResponse(response.data, client.key);
+        return parseTokenResponse(response.data, client.key, response.status);
       }
 
       const text = responseDataToText(response.data);
+      lastFailure = upstreamClassification(
+        response.status,
+        parseOAuthErrorResponse(text)?.error,
+        response.http,
+      );
       attemptErrors.push(
         `${client.key} => ${extractOAuthErrorCode(text) ?? `HTTP ${response.status}`}`,
       );
@@ -766,12 +809,20 @@ export class GoogleAPIService {
         continue;
       }
 
-      throw new Error(
+      throw new GoogleApiDiagnosticError(
         `Token exchange failed for client [${client.key}]: ${extractOAuthErrorCode(text) ?? `HTTP ${response.status}`}`,
+        upstreamClassification(
+          response.status,
+          parseOAuthErrorResponse(text)?.error,
+          response.http,
+        ),
       );
     }
 
-    throw new Error(`Token exchange failed for all OAuth clients: ${attemptErrors.join(' | ')}`);
+    throw new GoogleApiDiagnosticError(
+      `Token exchange failed for all OAuth clients: ${attemptErrors.join(' | ')}`,
+      lastFailure ?? { reason: 'unknown' },
+    );
   }
 
   /**
@@ -789,6 +840,7 @@ export class GoogleAPIService {
     }
 
     const attemptErrors: string[] = [];
+    let lastFailure: CauseClassification | undefined;
 
     for (const client of candidates) {
       const params = new URLSearchParams({
@@ -811,18 +863,32 @@ export class GoogleAPIService {
           });
         } catch (error) {
           if (isTimedOutHttpRequest(error, requestAbort.timeoutSignal)) {
-            throw new Error(
+            throw new GoogleApiDiagnosticError(
               'Token refresh timed out. Please check your network connection and try again.',
+              { reason: 'timed-out' },
+              error,
             );
           }
-          throw error;
+          if (error instanceof UpstreamProxyConfigurationError || requestSignal?.aborted) {
+            throw error;
+          }
+          throw new GoogleApiDiagnosticError(
+            'Token refresh transport failed',
+            { reason: 'network-failed' },
+            error,
+          );
         }
 
         if (isSuccessfulHttpStatus(response.status)) {
-          return parseTokenResponse(response.data, client.key);
+          return parseTokenResponse(response.data, client.key, response.status);
         }
 
         const text = responseDataToText(response.data);
+        lastFailure = upstreamClassification(
+          response.status,
+          parseOAuthErrorResponse(text)?.error,
+          response.http,
+        );
         const errorCode = extractOAuthErrorCode(text);
         attemptErrors.push(`${client.key} => ${errorCode ?? `HTTP ${response.status}`}`);
         if (errorCode === 'invalid_grant' && attempt === 0) {
@@ -841,11 +907,15 @@ export class GoogleAPIService {
           response.status,
           client.key,
           extractOAuthErrorDescription(text),
+          response.http,
         );
       }
     }
 
-    throw new Error(`Token refresh failed for all OAuth clients: ${attemptErrors.join(' | ')}`);
+    throw new GoogleApiDiagnosticError(
+      `Token refresh failed for all OAuth clients: ${attemptErrors.join(' | ')}`,
+      lastFailure ?? { reason: 'unknown' },
+    );
   }
 
   /**
@@ -867,15 +937,24 @@ export class GoogleAPIService {
       });
     } catch (error) {
       if (isTimedOutHttpRequest(error, requestAbort.timeoutSignal)) {
-        throw new Error(
+        throw new GoogleApiDiagnosticError(
           'User info request timed out. Please check your network connection and try again.',
+          { reason: 'timed-out' },
+          error,
         );
       }
-      throw error;
+      if (error instanceof UpstreamProxyConfigurationError || requestSignal?.aborted) {
+        throw error;
+      }
+      throw new GoogleApiDiagnosticError(
+        'User info transport failed',
+        { reason: 'network-failed' },
+        error,
+      );
     }
 
     if (!isSuccessfulHttpStatus(response.status)) {
-      throw new GoogleUserInfoHttpError(response.status);
+      throw new GoogleUserInfoHttpError(response.status, response.http);
     }
 
     try {
@@ -887,8 +966,12 @@ export class GoogleAPIService {
         name: parsed.name ?? parsed.email,
       };
     } catch (err) {
-      logger.error('[GoogleAPIService] Malformed user info response:', err);
-      throw new Error('Received malformed user info from Google APIs');
+      logger.error('[GoogleAPIService] Malformed user info response');
+      throw new GoogleApiDiagnosticError(
+        'Received malformed user info from Google APIs',
+        { reason: 'malformed-response', upstreamStatus: response.status },
+        err,
+      );
     }
   }
 

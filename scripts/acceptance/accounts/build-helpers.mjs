@@ -1,6 +1,16 @@
 import path from 'node:path';
+import { Command } from 'commander';
 import { build, loadConfigFromFile } from 'vite';
 const root = process.cwd();
+const options = new Command()
+  .option(
+    '--output <directory>',
+    'Compiled helper output directory',
+    'out/account-switch-acceptance/helpers',
+  )
+  .parse()
+  .opts();
+const output = path.resolve(root, options.output);
 const artifacts = path.join(root, 'scripts/acceptance/accounts');
 const loaded = await loadConfigFromFile(
   { command: 'build', mode: 'production' },
@@ -13,7 +23,7 @@ await build({
   logLevel: 'error',
   build: {
     ...loaded.config.build,
-    outDir: path.join(root, 'out/account-switch-acceptance/helpers'),
+    outDir: output,
     emptyOutDir: true,
     sourcemap: false,
     rollupOptions: {
@@ -27,7 +37,7 @@ await build({
   configFile: false,
   logLevel: 'error',
   build: {
-    outDir: path.join(root, 'out/account-switch-acceptance/helpers'),
+    outDir: output,
     emptyOutDir: false,
     lib: {
       entry: path.join(artifacts, 'renderer-entry.ts'),

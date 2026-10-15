@@ -19,10 +19,15 @@ import {
   recordSwitchFailure,
   recordSwitchSuccess,
 } from '@/modules/antigravity-runtime/switch/switchMetrics';
+import { prepareClassicTermsSwitch, type ClassicTermsSwitch } from '../terms/classicTermsSwitch';
 import { withTimingTrace } from '@/shared/observability/timingTrace';
 
 export interface SwitchFlowOptions {
+  onDiagnosticStage?(
+    stage: 'identity-preparation' | 'target-write' | 'process-close' | 'process-start',
+  ): void;
   scope: 'local' | 'cloud';
+  accountEmail?: string;
   targetProfile: DeviceProfile | null;
   appTarget?: AntigravityAppTarget;
   applyFingerprint: boolean;
@@ -129,10 +134,13 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
       processExitTimeoutMs,
     },
     async (trace) => {
+      let terms: ClassicTermsSwitch | null = null;
+      let startAttempted = false;
       try {
         if (isCliTarget) {
           logger.info('Skipping GUI process steps for agy CLI switch');
           stage = 'switch';
+          options.onDiagnosticStage?.('target-write');
           await trace.phase('performSwitchMs', () => performSwitch());
           if (applyFingerprint) {
             stage = 'apply';
@@ -152,6 +160,9 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
         const context =
           launchContext || (await prepareLaunchContext(appTarget === 'ide' ? 'ide' : 'classic'));
         const hotSession = !useCredentialStore ? await prepareIdeHotSwitch(context) : null;
+        if (useCredentialStore && options.accountEmail) {
+          terms = await prepareClassicTermsSwitch(context, options.accountEmail);
+        }
         if (applyFingerprint) {
           if (!targetProfile && !(process.platform === 'darwin' && useCredentialStore)) {
             stage = 'missing_profile';
@@ -175,6 +186,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
             });
           }
           stage = 'switch';
+          options.onDiagnosticStage?.('target-write');
           await trace.phase('performSwitchMs', () => performSwitch(context.pathOptions));
           if (
             applyProfile &&
@@ -212,6 +224,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
             let stopped = false;
             try {
               stage = 'hot_stop';
+              options.onDiagnosticStage?.('process-close');
               stopped = await trace.phase('hotServiceStopMs', hotSession.stopServices);
             } catch {
               logger.warn('IDE service stop failed; using a full restart');
@@ -235,6 +248,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           } else {
             try {
               stage = 'hot_stop';
+              options.onDiagnosticStage?.('process-close');
               const stopped = await trace.phase('hotServiceStopMs', hotSession.stopServices);
               // The retiring service may flush cached credentials on exit. Reassert the selected
               // account before confirming its replacement; a failed rewrite is a partial switch.
@@ -278,6 +292,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
 
         if (!hotConfirmed) {
           stage = 'close';
+          options.onDiagnosticStage?.('process-close');
           await trace.phase('closeMs', async () => {
             try {
               await stopFromContext(context, processExitTimeoutMs);
@@ -296,7 +311,11 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
             await writeSwitchState();
           }
 
+          stage = 'switch';
+          await terms?.apply();
           stage = 'start';
+          startAttempted = true;
+          options.onDiagnosticStage?.('process-start');
           await trace.phase('startMs', async () => {
             try {
               await startFromContext(context);
@@ -311,6 +330,15 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
         }
         recordSwitchSuccess(scope);
       } catch (error) {
+        if (!startAttempted && terms) {
+          try {
+            await terms.rollback();
+          } catch (rollbackError) {
+            onFailure?.('perform_switch_failed');
+            recordSwitchFailure(scope, 'perform_switch_failed', 'Classic terms recovery failed');
+            throw new AggregateError([error, rollbackError], 'Classic terms recovery failed');
+          }
+        }
         const reason = toSwitchFailureReason(stage, error);
         const message = getErrorMessage(error);
         failureReason = reason;

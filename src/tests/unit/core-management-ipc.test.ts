@@ -70,7 +70,7 @@ describe('core management IPC', () => {
     const handshake = await new ManagementClient(socketPath).handshake();
     expect(handshake).toEqual({
       version: 1,
-      compatibility: 1,
+      compatibility: 2,
       kind: 'core',
       pid: 123,
       epoch: expect.any(String),
@@ -108,11 +108,11 @@ describe('core management IPC', () => {
 
     expect(await request(socketPath, 'GET', '/v1/status')).toEqual({
       status: 200,
-      body: { version: 1, ok: true, status },
+      body: { version: 2, ok: true, status },
     });
     expect(await request(socketPath, 'POST', '/v1/shutdown')).toEqual({
       status: 200,
-      body: { version: 1, ok: true, shuttingDown: true },
+      body: { version: 2, ok: true, shuttingDown: true },
     });
     await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
   });

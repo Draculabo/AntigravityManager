@@ -1,4 +1,12 @@
 const zhCn = {
+  'operation-diagnostics': {
+    'check-account-list': '账号可能已经保存，请先刷新账号列表，再决定是否重新登录。',
+    'check-proxy': '请检查上游代理设置后重试。',
+    'check-connection': '请检查网络、代理和系统时间后重试，详情中包含实际观察到的错误。',
+    'close-client': '请保存工作并关闭客户端后重新切换账号。',
+    reauthorize: '请重新登录此账号以更新授权。',
+    retry: '操作失败，请查看诊断详情后重试。',
+  },
   'agent-tools': {
     title: '连接你的 AI 编程工具',
     description: '选择常用工具，通过 Antigravity Manager 使用你的可用模型。',

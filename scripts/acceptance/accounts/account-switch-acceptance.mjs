@@ -11,6 +11,8 @@ import { createCommand, connectBrowser } from './process-actions.mjs';
 import { createCredentialReadback } from './credential-readback.mjs';
 import { verifyClientIdentity } from './client-ui.mjs';
 import { readOfficialSignedIn } from './official-auth-state.mjs';
+import { readClassicTermsAcceptance } from './classic-terms-state.mjs';
+import { captureWindowsCredential } from './windows-credential-recovery.mjs';
 
 const options = new Command()
   .requiredOption('--owner <owner>', 'cli or electron')
@@ -89,6 +91,20 @@ const Database = nativeRequire('better-sqlite3');
 const config = JSON.parse(
   await fs.readFile(path.join(home, '.antigravity-agent/gui_config.json'), 'utf8'),
 );
+const classicProfile = path.join(home, 'client-classic');
+if (!options.target || options.target === 'classic') {
+  const profileArgument = config.antigravity_args?.find((argument) =>
+    argument.startsWith('--user-data-dir='),
+  );
+  assert(profileArgument, 'Classic acceptance requires an explicit isolated user-data-dir');
+  const configuredProfile = path.resolve(profileArgument.slice('--user-data-dir='.length));
+  const expectedProfile = path.resolve(classicProfile);
+  assert.equal(
+    process.platform === 'win32' ? configuredProfile.toLowerCase() : configuredProfile,
+    process.platform === 'win32' ? expectedProfile.toLowerCase() : expectedProfile,
+    'Classic acceptance must inspect the configured isolated profile',
+  );
+}
 const report = {
   version: 1,
   platform: process.platform,
@@ -110,8 +126,7 @@ let desktop;
 let desktopError;
 let desktopBrowser;
 let page;
-let originalCredential;
-let credentialCaptured = false;
+let credentialRecovery;
 let stage = 'startup';
 
 const command = createCommand(environment);
@@ -223,10 +238,18 @@ async function verify(target, id, alias, source, since) {
         browser,
         expected.email,
         () => readOfficialSignedIn(home, target, since),
-        { completeSetup: options.completeClientSetup },
+        {
+          completeSetup: options.completeClientSetup,
+          ...(target === 'classic'
+            ? {
+                readTermsAcceptance: () =>
+                  readClassicTermsAcceptance(classicProfile, expected.email),
+              }
+            : {}),
+        },
       ),
     );
-    if (!result.clientIdentityVisible && result.clientSignedIn) {
+    if (!result.clientIdentityVisible && result.clientSignedIn && result.clientIdentityConfirmed) {
       result.clientVerification = 'official-auth-log-and-live-google';
     }
   } else if (options.probeCli) {
@@ -253,8 +276,7 @@ async function verify(target, id, alias, source, since) {
 
 try {
   if (process.platform === 'win32') {
-    originalCredential = await library.readWindowsCredential('gemini:antigravity');
-    credentialCaptured = true;
+    credentialRecovery = captureWindowsCredential(nativeRequire, 'gemini:antigravity');
   }
   if (options.owner === 'cli') {
     await command(node, [cli, 'service', 'start']);
@@ -433,20 +455,19 @@ try {
     await Promise.race([desktopBrowser.close().catch(() => {}), delay(3000)]);
   }
   desktop?.kill();
-  if (credentialCaptured) {
-    if (originalCredential !== null) {
-      await library.writeWindowsCredential('gemini:antigravity', 'antigravity', originalCredential);
-    } else {
-      runtimeRequire('@napi-rs/keyring')
-        .Entry.withTarget('gemini:antigravity', 'gemini', 'antigravity')
-        .deleteCredential();
+  if (credentialRecovery) {
+    try {
+      report.cleanup.originalCredentialRestored = credentialRecovery.restore();
+    } catch (error) {
+      report.cleanup.originalCredentialRestored = false;
+      report.cleanup.credentialRecoveryError = error instanceof Error ? error.name : 'UnknownError';
     }
-    report.cleanup.originalCredentialRestored =
-      (await library.readWindowsCredential('gemini:antigravity')) === originalCredential;
   }
   report.finishedAt = new Date().toISOString();
   report.status =
     report.failure ||
+    report.cleanup.originalCredentialRestored === false ||
+    report.cleanup.ownerStopped === false ||
     report.results.some((result) => result.status === 'failed') ||
     !report.results.length
       ? 'failed'

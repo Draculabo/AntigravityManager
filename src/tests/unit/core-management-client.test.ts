@@ -3,6 +3,8 @@ import http, { type Server } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { diagnosticId } from '../fixtures/oauth-diagnostic';
+import type { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
 import {
   ManagementClient,
   ManagementProtocolError,
@@ -98,7 +100,8 @@ describe('ManagementClient', () => {
   it('starts and polls OAuth without returning an authorization code', async () => {
     const socketPath = await endpoint();
     const oauth = {
-      start: vi.fn(async () => ({
+      start: vi.fn(async (_key?: string, operation?: GoogleLoginOperation) => ({
+        diagnosticId: operation?.context.diagnosticId ?? diagnosticId,
         sessionId: '11111111-1111-4111-8111-111111111111',
         authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test',
       })),
@@ -119,11 +122,15 @@ describe('ManagementClient', () => {
     await server.start();
 
     const client = new ManagementClient(socketPath);
-    expect(await client.startOAuth('client-b')).toEqual({
+    expect(await client.startOAuth('client-b', diagnosticId)).toEqual({
+      diagnosticId,
       sessionId: '11111111-1111-4111-8111-111111111111',
       authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test',
     });
-    expect(oauth.start).toHaveBeenCalledExactlyOnceWith('client-b');
+    expect(oauth.start).toHaveBeenCalledExactlyOnceWith(
+      'client-b',
+      expect.objectContaining({ context: expect.objectContaining({ diagnosticId }) }),
+    );
     expect(await client.oauthStatus('11111111-1111-4111-8111-111111111111')).toEqual({
       state: 'pending',
     });

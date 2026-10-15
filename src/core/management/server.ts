@@ -1,5 +1,4 @@
 import fs from 'node:fs/promises';
-import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 import { randomUUID } from 'node:crypto';
 import {
   CORE_OWNER_COMPATIBILITY,
@@ -14,6 +13,9 @@ import { registerCoreRpcRoutes } from '@/core/rpc/server';
 import { CORE_ACCOUNT_MUTATION_TIMEOUT_MS } from '@/core/rpc/timeouts';
 import type { CoreRpcOperations } from '@/core/rpc/router';
 import { MANAGEMENT_PROTOCOL_VERSION, type ManagementResponse } from './protocol';
+import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
+import { classifyOperationCause } from '@/modules/cloud-account/services/operation-cause';
+import { UPSTREAM_PROXY_CONFIGURATION_MESSAGE } from '@/modules/config/upstream-proxy.schema';
 import {
   OAuthStartRequestSchema,
   OAuthCompleteRequestSchema,
@@ -118,8 +120,9 @@ export class ManagementServer {
           };
           return reply.code(400).send(response);
         }
+        const operation = new GoogleLoginOperation(input.data.diagnosticId);
         try {
-          const started = await oauth.start(input.data.oauthClientKey);
+          const started = await oauth.start(input.data.oauthClientKey, operation);
           const response: OAuthStartResponse = {
             version: MANAGEMENT_PROTOCOL_VERSION,
             ok: true,
@@ -127,12 +130,13 @@ export class ManagementServer {
           };
           return reply.send(response);
         } catch (error) {
-          if (error instanceof UpstreamProxyConfigurationError) {
+          if (classifyOperationCause(error).primary.reason === 'proxy-configuration-invalid') {
             const response: OAuthErrorResponse = {
               version: MANAGEMENT_PROTOCOL_VERSION,
               ok: false,
               code: 'PROXY_CONFIGURATION_INVALID',
-              message: error.message,
+              message: UPSTREAM_PROXY_CONFIGURATION_MESSAGE,
+              diagnostic: operation.finish(error),
             };
             return reply.code(400).send(response);
           }
@@ -140,6 +144,11 @@ export class ManagementServer {
             version: MANAGEMENT_PROTOCOL_VERSION,
             ok: false,
             code: error instanceof OAuthLoginActiveError ? 'LOGIN_ACTIVE' : 'LOGIN_UNAVAILABLE',
+            diagnostic: operation.finish(
+              error,
+              error instanceof OAuthLoginActiveError ? 'login-active' : undefined,
+              error instanceof OAuthLoginActiveError,
+            ),
             message:
               error instanceof OAuthLoginActiveError
                 ? 'OAuth login is already active'

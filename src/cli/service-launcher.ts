@@ -7,18 +7,15 @@ import type { CoreStatus } from '@/core/core-service';
 import { ServiceNotRunningError } from '@/core/management/client';
 import type { ProfileOwner } from '@/core/ownership/profile-lease';
 import { ProfileOwnershipError } from '@/core/ownership/profile-lease';
+import { hasErrorCode } from '@/shared/errors/error-guards';
 
-// A packaged cold start can load native modules for longer than 15 seconds on Windows.
-const STARTUP_TIMEOUT_MS = 45_000;
+// Allow bounded headroom for cold bundled/native module loading before declaring the owner unavailable.
+const STARTUP_TIMEOUT_MS = 90_000;
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 100;
 
 function isClosingConnection(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    (error.code === 'ECONNRESET' || error.code === 'EPIPE')
-  );
+  return hasErrorCode(error, 'ECONNRESET') || hasErrorCode(error, 'EPIPE');
 }
 
 export interface ManagementPort {

@@ -1,4 +1,5 @@
 import axios, { isAxiosError } from 'axios';
+import { randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 import type { CoreStatus } from '@/core/core-service';
 import { CORE_OWNER_EPOCH_HEADER, CoreHandshakeSchema, type CoreHandshake } from './handshake';
@@ -43,6 +44,7 @@ export class OAuthManagementError extends Error {
   constructor(
     readonly code: OAuthErrorResponse['code'],
     message: string,
+    readonly diagnostic?: OAuthErrorResponse['diagnostic'],
   ) {
     super(message);
     this.name = 'OAuthManagementError';
@@ -114,7 +116,11 @@ export class ManagementClient {
     if (response.status !== 200) {
       const oauthError = OAuthErrorResponseSchema.safeParse(payload);
       if (oauthError.success) {
-        throw new OAuthManagementError(oauthError.data.code, oauthError.data.message);
+        throw new OAuthManagementError(
+          oauthError.data.code,
+          oauthError.data.message,
+          oauthError.data.diagnostic,
+        );
       }
       throw new ManagementProtocolError(`Management request returned HTTP ${response.status}`);
     }
@@ -140,11 +146,20 @@ export class ManagementClient {
 
   async startOAuth(
     oauthClientKey?: string,
-  ): Promise<{ sessionId: string; authorizationUrl: string }> {
+    diagnosticId: string = randomUUID(),
+  ): Promise<{ sessionId: string; authorizationUrl: string; diagnosticId: string }> {
     const response = await this.request('POST', '/v1/oauth/start', OAuthStartResponseSchema, {
       oauthClientKey,
+      diagnosticId,
     });
-    return { sessionId: response.sessionId, authorizationUrl: response.authorizationUrl };
+    if (response.diagnosticId !== diagnosticId) {
+      throw new ManagementProtocolError('OAuth operation identity does not match the request');
+    }
+    return {
+      sessionId: response.sessionId,
+      authorizationUrl: response.authorizationUrl,
+      diagnosticId: response.diagnosticId,
+    };
   }
 
   async oauthStatus(

@@ -102,6 +102,7 @@ export interface CoreRpcOperations {
   accountSwitch(
     accountId: string,
     appTarget?: AntigravityAppTarget,
+    diagnosticId?: string,
   ): Promise<z.infer<typeof CloudAccountSwitchResultSchema>>;
   accountProfileGet(accountId: string): ReturnType<typeof getCloudIdentityProfiles>;
   accountProfilePreview(): ReturnType<typeof previewGenerateCloudIdentityProfile>;

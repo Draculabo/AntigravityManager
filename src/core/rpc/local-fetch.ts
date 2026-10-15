@@ -8,6 +8,7 @@ import {
 import { ServiceNotRunningError } from '@/core/management/client';
 import { SERVICE_CONFIG_MAX_BYTES } from '@/modules/config/service-config.schema';
 import { OPEN_CODE_SYNC_MAX_BYTES } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.schema';
+import { isErrorWithCode } from '@/shared/errors/error-guards';
 
 const MAX_REQUEST_BYTES = 4096;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -27,7 +28,7 @@ function classifyError(error: unknown, signal: AbortSignal): Error {
   let code: unknown;
   if (isAxiosError(error)) {
     code = error.code;
-  } else if (error instanceof Error && 'code' in error) {
+  } else if (isErrorWithCode(error)) {
     code = error.code;
   }
   if (code === 'ENOENT' || code === 'ECONNREFUSED') {

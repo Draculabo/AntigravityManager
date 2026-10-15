@@ -6,13 +6,18 @@ import {
   enrollGoogleAccount,
 } from './google-account-enrollment.service';
 import { logger } from '@/shared/logging/logger';
-import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
+import { UPSTREAM_PROXY_CONFIGURATION_MESSAGE } from '@/modules/config/upstream-proxy.schema';
+import { GoogleLoginOperation } from './google-login-operation';
+import { DesktopOAuthLoginError } from './desktop-oauth-login.error';
+import type { DesktopOAuthLoginErrorCode } from './desktop-oauth-login.schema';
+import type { GoogleLoginDiagnostic } from './operation-diagnostic.schema';
+import { classifyOperationCause } from './operation-cause';
 
 const LOOPBACK_HOST = '127.0.0.1';
 const SESSION_TIMEOUT_MS = 5 * 60_000;
 
 export class OAuthLoginActiveError extends Error {
-  constructor() {
+  constructor(readonly diagnostic?: GoogleLoginDiagnostic) {
     super('An OAuth login is already in progress');
     this.name = 'OAuthLoginActiveError';
   }
@@ -21,9 +26,15 @@ export class OAuthLoginActiveError extends Error {
 export type HeadlessOAuthStatus =
   | { state: 'pending' }
   | { state: 'succeeded'; account: { id: string; email: string } }
-  | { state: 'failed'; message: string };
+  | {
+      state: 'failed';
+      message: string;
+      loginCode: DesktopOAuthLoginErrorCode;
+      diagnostic: GoogleLoginDiagnostic;
+    };
 
 interface OAuthSession {
+  operation: GoogleLoginOperation;
   id: string;
   state: string;
   redirectUri: string;
@@ -39,7 +50,11 @@ interface OAuthSession {
 export class HeadlessOAuthSessionService {
   private session: OAuthSession | null = null;
   private readonly completed = new Map<string, HeadlessOAuthStatus>();
-  private starting: Promise<{ sessionId: string; authorizationUrl: string }> | null = null;
+  private starting: Promise<{
+    sessionId: string;
+    authorizationUrl: string;
+    diagnosticId: string;
+  }> | null = null;
   private stopping = false;
 
   constructor(
@@ -48,15 +63,21 @@ export class HeadlessOAuthSessionService {
     private readonly timeoutMs: number = SESSION_TIMEOUT_MS,
   ) {}
 
-  async start(oauthClientKey?: string): Promise<{ sessionId: string; authorizationUrl: string }> {
+  async start(
+    oauthClientKey?: string,
+    operation = new GoogleLoginOperation(),
+  ): Promise<{ sessionId: string; authorizationUrl: string; diagnosticId: string }> {
     if (this.stopping) {
-      throw new Error('OAuth login is unavailable during shutdown');
+      throw new DesktopOAuthLoginError(
+        'login-cancelled',
+        operation.finish(undefined, 'cancelled', true),
+      );
     }
     if (this.starting || this.session?.status.state === 'pending') {
-      throw new OAuthLoginActiveError();
+      throw new OAuthLoginActiveError(operation.finish(undefined, 'login-active', true));
     }
 
-    const starting = this.startSession(oauthClientKey);
+    const starting = operation.context.run(() => this.startSession(oauthClientKey, operation));
     this.starting = starting;
     try {
       return await starting;
@@ -67,9 +88,11 @@ export class HeadlessOAuthSessionService {
 
   private async startSession(
     oauthClientKey?: string,
-  ): Promise<{ sessionId: string; authorizationUrl: string }> {
+    operation = new GoogleLoginOperation(),
+  ): Promise<{ sessionId: string; authorizationUrl: string; diagnosticId: string }> {
     const clientKey = oauthClientKey ?? GoogleAPIService.getActiveOAuthClientKey();
     const session: OAuthSession = {
+      operation,
       id: crypto.randomUUID(),
       state: crypto.randomBytes(32).toString('base64url'),
       redirectUri: '',
@@ -89,7 +112,9 @@ export class HeadlessOAuthSessionService {
     session.server.get('/oauth-callback', (request, reply) =>
       this.handleCallback(session, request, reply),
     );
-    await session.server.listen({ port: 0, host: LOOPBACK_HOST });
+    await operation.run('callback-listen', () =>
+      session.server.listen({ port: 0, host: LOOPBACK_HOST }),
+    );
 
     const address = session.server.server.address();
     if (!address || typeof address === 'string') {
@@ -99,18 +124,28 @@ export class HeadlessOAuthSessionService {
     session.redirectUri = `http://${LOOPBACK_HOST}:${address.port}/oauth-callback`;
     try {
       if (this.stopping) {
-        throw new Error('OAuth login is unavailable during shutdown');
+        throw new DesktopOAuthLoginError(
+          'login-cancelled',
+          operation.finish(undefined, 'cancelled', true),
+        );
       }
-      const authorizationUrl = GoogleAPIService.getAuthUrl(clientKey, {
-        redirectUri: session.redirectUri,
-        state: session.state,
-      });
+      const authorizationUrl = await operation.run('authorization-url', () =>
+        GoogleAPIService.getAuthUrl(clientKey, {
+          redirectUri: session.redirectUri,
+          state: session.state,
+        }),
+      );
       this.session = session;
       session.timer = setTimeout(() => {
-        this.fail(session, 'OAuth login timed out');
+        this.fail(session, 'login-timeout', 'OAuth login timed out', undefined, 'timed-out');
       }, this.timeoutMs);
       session.timer.unref();
-      return { sessionId: session.id, authorizationUrl };
+      operation.enter('authorization');
+      return {
+        sessionId: session.id,
+        authorizationUrl,
+        diagnosticId: operation.context.diagnosticId,
+      };
     } catch (error) {
       await this.closeListener(session);
       throw error;
@@ -136,7 +171,7 @@ export class HeadlessOAuthSessionService {
     }
     session.consumed = true;
     this.clearTimer(session);
-    session.enrollment = this.complete(session, code);
+    session.enrollment = session.operation.context.run(() => this.complete(session, code));
     return true;
   }
 
@@ -147,26 +182,34 @@ export class HeadlessOAuthSessionService {
   ): void {
     const url = new URL(request.url, session.redirectUri);
     if (url.searchParams.get('state') !== session.state) {
-      void response.code(400).send('Invalid authorization state');
+      response.code(400).send('Invalid authorization state');
       return;
     }
     if (this.stopping) {
-      void response.code(503).send('OAuth login is unavailable');
+      response.code(503).send('OAuth login is unavailable');
       return;
     }
     if (session.consumed || session.status.state !== 'pending') {
-      void response.code(409).send('Authorization already handled');
+      response.code(409).send('Authorization already handled');
       return;
     }
     if (url.searchParams.has('error')) {
       session.consumed = true;
-      response.raw.once('finish', () => this.fail(session, 'Google authorization was denied'));
-      void response.code(400).send('Authorization denied. Return to the terminal.');
+      response.raw.once('finish', () =>
+        this.fail(
+          session,
+          'authorization-denied',
+          'Google authorization was denied',
+          undefined,
+          'authorization-denied',
+        ),
+      );
+      response.code(400).send('Authorization denied. Return to the terminal.');
       return;
     }
     const code = url.searchParams.get('code');
     if (!code) {
-      void response.code(400).send('Missing authorization code');
+      response.code(400).send('Missing authorization code');
       return;
     }
 
@@ -177,19 +220,25 @@ export class HeadlessOAuthSessionService {
     // Release the browser response before closing the listener and exchanging the code.
     response.raw.once('finish', () => {
       if (this.stopping) {
-        this.fail(session, 'OAuth login was cancelled');
+        this.fail(session, 'login-cancelled', 'OAuth login was cancelled', undefined, 'cancelled');
         enrollment.resolve();
         return;
       }
-      void this.complete(session, code).then(enrollment.resolve);
+      session.operation.context.run(() => this.complete(session, code)).then(enrollment.resolve);
     });
     response.raw.once('close', () => {
       if (!response.raw.writableFinished) {
-        this.fail(session, 'OAuth callback connection closed');
+        this.fail(
+          session,
+          'login-failed',
+          'OAuth callback connection closed',
+          undefined,
+          'network-failed',
+        );
         enrollment.resolve();
       }
     });
-    void response.code(200).type('text/html; charset=utf-8').send(`<!doctype html>
+    response.code(200).type('text/html; charset=utf-8').send(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Login Successful</title></head>
 <body style="font-family:sans-serif;text-align:center;padding-top:50px">
 <h1>Login Successful</h1>
@@ -204,6 +253,7 @@ export class HeadlessOAuthSessionService {
       const account = await this.enroll(code, {
         oauthClientKey: session.clientKey,
         redirectUri: session.redirectUri,
+        operation: session.operation,
       });
       try {
         await this.reloadGatewayAccounts();
@@ -214,30 +264,54 @@ export class HeadlessOAuthSessionService {
       this.remember(session);
       this.clearTimer(session);
     } catch (error) {
-      if (!(error instanceof UpstreamProxyConfigurationError)) {
-        logger.error('Headless OAuth account enrollment failed', {
-          kind: error instanceof DuplicateGoogleAccountError ? 'duplicate' : 'enrollment',
-        });
-      }
+      const proxyInvalid =
+        classifyOperationCause(error).primary.reason === 'proxy-configuration-invalid';
       this.fail(
         session,
         error instanceof DuplicateGoogleAccountError
+          ? 'duplicate-account'
+          : proxyInvalid
+            ? 'proxy-configuration-invalid'
+            : 'login-failed',
+        error instanceof DuplicateGoogleAccountError
           ? 'Google account already exists'
-          : error instanceof UpstreamProxyConfigurationError
-            ? error.message
+          : proxyInvalid
+            ? UPSTREAM_PROXY_CONFIGURATION_MESSAGE
             : 'Google account enrollment failed',
+        error,
+        error instanceof DuplicateGoogleAccountError ? 'duplicate-account' : undefined,
       );
     }
   }
 
-  private fail(session: OAuthSession, message: string): void {
+  private fail(
+    session: OAuthSession,
+    loginCode: DesktopOAuthLoginErrorCode,
+    message: string,
+    error?: unknown,
+    reason?: GoogleLoginDiagnostic['reason'],
+  ): void {
     if (session.status.state !== 'pending') {
       return;
     }
-    session.status = { state: 'failed', message };
+    const expected = [
+      'duplicate-account',
+      'authorization-denied',
+      'login-cancelled',
+      'login-active',
+    ].includes(loginCode);
+    if (error === undefined) {
+      session.operation.enter('authorization');
+    }
+    session.status = {
+      state: 'failed',
+      message,
+      loginCode,
+      diagnostic: session.operation.finish(error, reason, expected),
+    };
     this.remember(session);
     this.clearTimer(session);
-    void this.closeListener(session).catch((error: unknown) => {
+    this.closeListener(session).catch((error: unknown) => {
       logger.warn('Failed to close OAuth callback listener', error);
     });
   }
@@ -275,7 +349,7 @@ export class HeadlessOAuthSessionService {
     if (!session || session.id !== sessionId || session.enrollment) {
       return;
     }
-    this.fail(session, 'OAuth login was cancelled');
+    this.fail(session, 'login-cancelled', 'OAuth login was cancelled', undefined, 'cancelled');
     await this.closeListener(session);
   }
 
@@ -292,8 +366,7 @@ export class HeadlessOAuthSessionService {
       await session.enrollment;
     }
     if (session.status.state === 'pending') {
-      session.status = { state: 'failed', message: 'OAuth login was cancelled' };
-      this.remember(session);
+      this.fail(session, 'login-cancelled', 'OAuth login was cancelled', undefined, 'cancelled');
     }
     this.clearTimer(session);
     await this.closeListener(session);

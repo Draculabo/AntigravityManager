@@ -11,6 +11,10 @@ import {
 import { isolateSentryDiagnostic } from '@/shared/observability/sentryDiagnostic';
 import { logger } from '@/shared/logging/logger';
 import { sanitizeReportedError } from '@/shared/observability/reportedError';
+import {
+  attachOperationScope,
+  projectOperationSentryEvent,
+} from '@/shared/observability/operationSentry';
 
 /** Called after the profile lease is acquired, before gateway admission. */
 export function initializeCoreErrorReporting(): void {
@@ -29,6 +33,10 @@ export function initializeCoreErrorReporting(): void {
           defaultIntegrations: false,
           sendDefaultPii: false,
           beforeSend(event) {
+            const projected = projectOperationSentryEvent(event);
+            if (projected !== event) {
+              return projected;
+            }
             isolateSentryDiagnostic(event);
             redactSentryEventLocalPaths(event);
             return event;
@@ -36,8 +44,14 @@ export function initializeCoreErrorReporting(): void {
         });
       },
       report: (payload) => {
+        let eventId: string | undefined;
         Sentry.withScope((scope) => {
           scope.setTag('runtime', 'standalone-core');
+          if (payload.operation) {
+            scope.setTag('operation_runtime', 'standalone-core');
+            eventId = Sentry.captureException(attachOperationScope(scope, payload.operation));
+            return;
+          }
           if (payload.isolated) {
             scope.setTag('isolated_diagnostic', 'true');
             scope.setFingerprint(['schema-conversion']);
@@ -52,6 +66,7 @@ export function initializeCoreErrorReporting(): void {
             Sentry.captureMessage(redactDiagnosticText(payload.message), 'error');
           }
         });
+        return eventId;
       },
       flush: (timeoutMs) => Sentry.flush(timeoutMs),
     },

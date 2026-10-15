@@ -1,3 +1,4 @@
+import { isErrorWithCode } from '@/shared/errors/error-guards';
 import type {
   LocalAccountDiscoveryFailure,
   LocalAccountDiscoveryFailureCode,
@@ -20,7 +21,7 @@ interface ErrorLike {
 
 function getErrorLike(error: unknown): ErrorLike {
   if (error instanceof Error) {
-    const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+    const code = isErrorWithCode(error) ? error.code : undefined;
     return {
       code,
       message: error.message,

@@ -35,11 +35,16 @@ import {
   markAccountStatusFromError,
   mergeRefreshedToken,
 } from './cloud-account-refresh-state.service';
-import {
-  CloudAccountSwitchError,
-  readCloudAccountSwitchDiagnosticCode,
-} from './cloud-account-switch.error';
+import { CloudAccountSwitchError } from './cloud-account-switch.error';
 import type { CloudAccountSwitchErrorCode } from './cloud-account-switch.schema';
+import { OperationContext } from '@/shared/observability/operationContext';
+import {
+  CloudSwitchDiagnosticSchema,
+  type CloudSwitchDiagnostic,
+} from './operation-diagnostic.schema';
+import { classifyOperationCause } from './operation-cause';
+import { CredentialReadbackError } from '@/shared/auth/credentialReadbackError';
+import { AppError } from '@/shared/errors/appError';
 
 type SwitchStage =
   | 'account-lookup'
@@ -52,6 +57,7 @@ type SwitchStage =
   | 'account-state-update';
 
 export interface CloudAccountSwitchOptions {
+  diagnosticId?: string;
   presentationReason?: 'manual' | 'auto';
   onSuccess?(account: CloudAccount): Promise<void> | void;
 }
@@ -70,6 +76,65 @@ function publicFailureCode(reason: SwitchFailureReason): CloudAccountSwitchError
     default:
       return 'switch-failed';
   }
+}
+
+function diagnosticStageFor(
+  stage: SwitchStage,
+  reason: SwitchFailureReason,
+  error?: unknown,
+): CloudSwitchDiagnostic['stage'] {
+  if (error instanceof CredentialReadbackError) {
+    return 'credential-readback';
+  }
+  switch (reason) {
+    case 'process_close_failed':
+      return 'process-close';
+    case 'start_process_failed':
+      return 'process-start';
+    case 'apply_device_profile_failed':
+    case 'missing_bound_profile':
+      return 'identity-preparation';
+    case 'perform_switch_failed':
+      return 'target-write';
+  }
+  switch (stage) {
+    case 'account-lookup':
+      return 'account-load';
+    case 'launch-preflight':
+      return 'client-selection';
+    case 'token-refresh':
+      return 'token-refresh';
+    case 'identity-profile':
+      return 'identity-preparation';
+    case 'account-state-update':
+      return 'account-finalize';
+    default:
+      return 'target-write';
+  }
+}
+
+function diagnosticReasonFor(
+  kind: CloudAccountSwitchErrorCode,
+  reason: SwitchFailureReason,
+  observed: CloudSwitchDiagnostic['reason'],
+  error: unknown,
+): CloudSwitchDiagnostic['reason'] {
+  if (error instanceof CredentialReadbackError) {
+    return 'credential-readback-mismatch';
+  }
+  if (kind === 'account-not-found') {
+    return 'account-not-found';
+  }
+  if (kind === 'reauth-required') {
+    return 'reauth-required';
+  }
+  if (reason === 'process_close_failed') {
+    return 'process-close-failed';
+  }
+  if (reason === 'start_process_failed') {
+    return 'process-start-failed';
+  }
+  return observed;
 }
 
 function isEnterpriseClient(clientKey?: string): boolean {
@@ -164,162 +229,226 @@ export async function switchCloudAccountCore(
   appTarget?: AntigravityAppTarget,
   options: CloudAccountSwitchOptions = {},
 ): Promise<void> {
-  await runWithSwitchGuard(
-    'cloud-account-switch',
-    async () => {
-      let failureCode: CloudAccountSwitchErrorCode = 'switch-failed';
-      let stage: SwitchStage = 'account-lookup';
-      let storage: ClientAccountStorage | null = null;
-      let failureReason: SwitchFailureReason = 'unknown';
-      try {
-        const account = await CloudAccountRepo.getAccount(accountId);
-        if (!account) {
-          throw new CloudAccountSwitchError('account-not-found');
-        }
-
-        logger.info(`Switching to cloud account: ${account.email} (${account.id})`);
-        stage = 'launch-preflight';
-        const launchContext =
-          appTarget === 'agy'
-            ? undefined
-            : await prepareLaunchContext(appTarget === 'ide' ? 'ide' : 'classic');
-        await withTimingTrace(
-          'switch.cloud.prepare',
-          {
-            accountId: account.id,
-            appTarget: appTarget || 'classic',
-          },
-          async (trace) => {
-            stage = 'identity-profile';
-            trace.phaseSync('deviceProfileSetupMs', () => {
-              if (appTarget !== 'agy') {
-                ensureGlobalOriginalFromCurrentStorage(appTarget, launchContext?.pathOptions);
-              }
-
-              if (!account.device_profile) {
-                const generated = generateDeviceProfile();
-                CloudAccountDeviceBindingStore.setDeviceBinding(
-                  account.id,
-                  generated,
-                  'auto_generated',
-                );
-                saveGlobalOriginalProfile(generated);
-                account.device_profile = generated;
-              }
-            });
-
-            stage = 'token-refresh';
-            const tokenRefreshPromise = (async () => {
-              const now = Math.floor(Date.now() / 1000);
-              if (
-                !isString(account.token.refresh_token) ||
-                isEmpty(account.token.refresh_token.trim())
-              ) {
-                logger.warn(
-                  `Token for ${account.email} has no refresh token; switched IDE session may expire without recovery.`,
-                );
-                return;
-              }
-
-              logger.info(`Refreshing token for ${account.email} before IDE injection...`);
-              try {
-                const refreshedToken = await CloudAccountRefreshService.refreshAccessToken(
-                  createCloudAccountRefreshRequest(account),
-                );
-
-                const updatedToken = mergeRefreshedToken(account.token, refreshedToken, now);
-                await CloudAccountRepo.updateToken(account.id, updatedToken);
-
-                account.token = updatedToken;
-                logger.info(`Token refreshed for ${account.email}`);
-              } catch (error) {
-                logger.warn('Failed to refresh token before IDE injection', error);
-                await markAccountStatusFromError(account, error);
-                if (error instanceof CloudAccountRefreshBlockedError) {
-                  throw new CloudAccountSwitchError('reauth-required');
-                }
-                throw new Error(formatSwitchRefreshError(error));
-              }
-            })();
-
-            await trace.phase('tokenRefreshMs', async () => {
-              await tokenRefreshPromise;
-            });
-
-            stage = 'enterprise-project';
-            await trace.phase('enterpriseProjectReadyMs', async () => {
-              await ensureEnterpriseProjectReady(account);
-            });
-          },
-        );
-
-        stage = 'target-prepare';
-        const preparedWrite = await prepareClientAccountWrite(
-          {
-            email: account.email,
-            name: account.name || account.email,
-            token: account.token,
-            ...(process.platform === 'darwin' && account.device_profile
-              ? { serviceMachineId: account.device_profile.macMachineId }
-              : {}),
-          },
-          appTarget,
-          launchContext?.pathOptions,
-        );
-        storage = preparedWrite.storage;
-        stage = 'switch-execution';
-        await executeSwitchFlow({
-          scope: 'cloud',
-          appTarget,
-          targetProfile: account.device_profile || null,
-          applyFingerprint:
-            process.platform === 'darwin'
-              ? Boolean(account.device_profile)
-              : isIdentityProfileApplyEnabled(),
-          useCredentialStore: preparedWrite.storage === 'credential-store',
-          processExitTimeoutMs: process.platform === 'darwin' ? 20000 : 10000,
-          launchContext,
-          onFailure: (reason) => {
-            failureCode = publicFailureCode(reason);
-            failureReason = reason;
-          },
-          performSwitch: preparedWrite.write,
-          afterSwitchSuccess: async () => {
-            stage = 'account-state-update';
-            CloudAccountRepo.updateLastUsed(account.id);
-            CloudAccountRepo.setActive(account.id);
-            CloudAccountSettingsStore.setActiveForTarget(appTarget, account.id);
-            await clearAccountStatus(account);
-
-            logger.info(`Successfully switched to cloud account: ${account.email}`);
-            accountOwnerEvents.publish({
-              kind: 'account-switched',
-              accountId: account.id,
-              target: appTarget ?? 'classic',
-              reason: options.presentationReason ?? 'manual',
-            });
-            try {
-              await options.onSuccess?.(account);
-            } catch {
-              logger.warn('Account switch presentation effect failed');
+  const operation = new OperationContext('cloud-account-switch', options.diagnosticId);
+  try {
+    await operation.run(() =>
+      runWithSwitchGuard(
+        'cloud-account-switch',
+        async () => {
+          let failureCode: CloudAccountSwitchErrorCode = 'switch-failed';
+          let stage: SwitchStage = 'account-lookup';
+          let storage: ClientAccountStorage | null = null;
+          let failureReason: SwitchFailureReason = 'unknown';
+          let writeFailure: unknown;
+          const setStage = (next: SwitchStage) => {
+            stage = next;
+            operation.observe(diagnosticStageFor(next, 'unknown'), 'started');
+          };
+          operation.observe('account-load', 'started');
+          try {
+            const account = await CloudAccountRepo.getAccount(accountId);
+            if (!account) {
+              throw new CloudAccountSwitchError('account-not-found');
             }
-          },
-        });
-      } catch (error) {
-        const kind = error instanceof CloudAccountSwitchError ? error.switchCode : failureCode;
-        logger.error('Failed to switch cloud account', {
-          kind,
-          stage,
+
+            logger.info(`Switching to cloud account: ${account.email} (${account.id})`);
+            setStage('launch-preflight');
+            const launchContext =
+              appTarget === 'agy'
+                ? undefined
+                : await prepareLaunchContext(appTarget === 'ide' ? 'ide' : 'classic');
+            await withTimingTrace(
+              'switch.cloud.prepare',
+              {
+                accountId: account.id,
+                appTarget: appTarget || 'classic',
+              },
+              async (trace) => {
+                setStage('identity-profile');
+                trace.phaseSync('deviceProfileSetupMs', () => {
+                  if (appTarget !== 'agy') {
+                    ensureGlobalOriginalFromCurrentStorage(appTarget, launchContext?.pathOptions);
+                  }
+
+                  if (!account.device_profile) {
+                    const generated = generateDeviceProfile();
+                    CloudAccountDeviceBindingStore.setDeviceBinding(
+                      account.id,
+                      generated,
+                      'auto_generated',
+                    );
+                    saveGlobalOriginalProfile(generated);
+                    account.device_profile = generated;
+                  }
+                });
+
+                setStage('token-refresh');
+                const tokenRefreshPromise = (async () => {
+                  const now = Math.floor(Date.now() / 1000);
+                  if (
+                    !isString(account.token.refresh_token) ||
+                    isEmpty(account.token.refresh_token.trim())
+                  ) {
+                    logger.warn(
+                      `Token for ${account.email} has no refresh token; switched IDE session may expire without recovery.`,
+                    );
+                    return;
+                  }
+
+                  logger.info(`Refreshing token for ${account.email} before IDE injection...`);
+                  try {
+                    const refreshedToken = await CloudAccountRefreshService.refreshAccessToken(
+                      createCloudAccountRefreshRequest(account),
+                    );
+
+                    const updatedToken = mergeRefreshedToken(account.token, refreshedToken, now);
+                    await CloudAccountRepo.updateToken(account.id, updatedToken);
+
+                    account.token = updatedToken;
+                    logger.info(`Token refreshed for ${account.email}`);
+                  } catch (error) {
+                    logger.warn('Failed to refresh token before IDE injection', error);
+                    await markAccountStatusFromError(account, error);
+                    if (error instanceof CloudAccountRefreshBlockedError) {
+                      throw new CloudAccountSwitchError('reauth-required');
+                    }
+                    throw new Error(formatSwitchRefreshError(error), { cause: error });
+                  }
+                })();
+
+                await trace.phase('tokenRefreshMs', async () => {
+                  await tokenRefreshPromise;
+                });
+
+                setStage('enterprise-project');
+                await trace.phase('enterpriseProjectReadyMs', async () => {
+                  await ensureEnterpriseProjectReady(account);
+                });
+              },
+            );
+
+            setStage('target-prepare');
+            const preparedWrite = await prepareClientAccountWrite(
+              {
+                email: account.email,
+                name: account.name || account.email,
+                token: account.token,
+                ...(process.platform === 'darwin' && account.device_profile
+                  ? { serviceMachineId: account.device_profile.macMachineId }
+                  : {}),
+              },
+              appTarget,
+              launchContext?.pathOptions,
+            );
+            storage = preparedWrite.storage;
+            setStage('switch-execution');
+            await executeSwitchFlow({
+              scope: 'cloud',
+              accountEmail: account.email,
+              appTarget,
+              targetProfile: account.device_profile || null,
+              applyFingerprint:
+                process.platform === 'darwin'
+                  ? Boolean(account.device_profile)
+                  : isIdentityProfileApplyEnabled(),
+              useCredentialStore: preparedWrite.storage === 'credential-store',
+              processExitTimeoutMs: process.platform === 'darwin' ? 20000 : 10000,
+              launchContext,
+              onFailure: (reason) => {
+                failureCode = publicFailureCode(reason);
+                failureReason = reason;
+              },
+              onDiagnosticStage: (next) => operation.observe(next, 'started'),
+              performSwitch: async () => {
+                try {
+                  await preparedWrite.write();
+                  writeFailure = undefined;
+                } catch (error) {
+                  writeFailure = error;
+                  throw error;
+                }
+              },
+              afterSwitchSuccess: async () => {
+                setStage('account-state-update');
+                CloudAccountRepo.updateLastUsed(account.id);
+                CloudAccountRepo.setActive(account.id);
+                CloudAccountSettingsStore.setActiveForTarget(appTarget, account.id);
+                await clearAccountStatus(account);
+
+                logger.info(`Successfully switched to cloud account: ${account.email}`);
+                accountOwnerEvents.publish({
+                  kind: 'account-switched',
+                  accountId: account.id,
+                  target: appTarget ?? 'classic',
+                  reason: options.presentationReason ?? 'manual',
+                });
+                try {
+                  await options.onSuccess?.(account);
+                } catch {
+                  logger.warn('Account switch presentation effect failed');
+                }
+              },
+            });
+          } catch (error) {
+            const kind = error instanceof CloudAccountSwitchError ? error.switchCode : failureCode;
+            const primaryError =
+              kind === 'target-write-failed' && writeFailure ? writeFailure : error;
+            const classified = classifyOperationCause(primaryError);
+            const diagnosticStage = diagnosticStageFor(stage, failureReason, primaryError);
+            const reason = diagnosticReasonFor(
+              kind,
+              failureReason,
+              classified.primary.reason,
+              primaryError,
+            );
+            const diagnostic = CloudSwitchDiagnosticSchema.parse(
+              operation.finish(
+                {
+                  stage: diagnosticStage,
+                  ...classified.primary,
+                  reason,
+                  target: appTarget ?? 'classic',
+                  ...(storage ? { storage } : {}),
+                  rollback: 'not-attempted',
+                  causes: classified.causes,
+                  ...(classified.causesTruncated ? { causesTruncated: true } : {}),
+                  ...(primaryError instanceof CredentialReadbackError
+                    ? { readback: primaryError.matches }
+                    : {}),
+                },
+                false,
+                classified.sourceLocations,
+              ),
+            );
+            throw new CloudAccountSwitchError(kind, diagnostic);
+          }
+        },
+        appTarget,
+      ),
+    );
+  } catch (error) {
+    if (error instanceof CloudAccountSwitchError && error.diagnostic) {
+      throw error;
+    }
+    const classified = classifyOperationCause(error);
+    const diagnostic = CloudSwitchDiagnosticSchema.parse(
+      operation.finish(
+        {
+          stage: 'management-transport',
+          ...classified.primary,
+          reason:
+            error instanceof AppError && error.messageKey === 'process-runtime.busy'
+              ? 'locked'
+              : classified.primary.reason,
           target: appTarget ?? 'classic',
-          storage,
-          reason: failureReason,
-          errorCode: readCloudAccountSwitchDiagnosticCode(error),
-        });
-        throw error instanceof CloudAccountSwitchError
-          ? error
-          : new CloudAccountSwitchError(failureCode);
-      }
-    },
-    appTarget,
-  );
+          rollback: 'not-attempted',
+          causes: classified.causes,
+          ...(classified.causesTruncated ? { causesTruncated: true } : {}),
+        },
+        error instanceof AppError && !error.reportToSentry,
+        classified.sourceLocations,
+      ),
+    );
+    throw new CloudAccountSwitchError('switch-failed', diagnostic);
+  }
 }

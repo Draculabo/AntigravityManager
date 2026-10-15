@@ -4,6 +4,7 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
+import { hasErrorCode, isErrorWithCode } from '@/shared/errors/error-guards';
 import { logger } from '@/shared/logging/logger';
 import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreToken';
 import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
@@ -136,7 +137,7 @@ export async function readClientAccountToken(
     );
     return parseCredentialStorePayload(payload);
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+    if (hasErrorCode(error, 'ENOENT')) {
       return null;
     }
     throw classifyCredentialStoreReadError(error);
@@ -148,10 +149,7 @@ function classifyCredentialStoreReadError(error: unknown): CredentialStoreReadEr
     return error;
   }
   const message = error instanceof Error ? error.message.toLowerCase() : '';
-  const code =
-    error instanceof Error && 'code' in error && typeof error.code === 'string'
-      ? error.code.toLowerCase()
-      : '';
+  const code = isErrorWithCode(error) ? error.code.toLowerCase() : '';
 
   if (code === 'etimedout' || message.includes('timed out')) {
     return new CredentialStoreReadError('timed-out');

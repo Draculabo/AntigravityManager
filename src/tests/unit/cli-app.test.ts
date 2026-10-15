@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { runCli } from '@/cli/app';
+import { loginDiagnostic } from '../fixtures/oauth-diagnostic';
 
 function harness() {
   const stdout: string[] = [];
@@ -21,6 +22,38 @@ function harness() {
 }
 
 describe('Node CLI', () => {
+  it('keeps the owner diagnostic reference on stderr and preserves the failure exit code', async () => {
+    const test = harness();
+    test.launcher.start.mockResolvedValue({ status: { pid: 123 }, alreadyRunning: false });
+    const diagnostic = {
+      ...loginDiagnostic('login-failed'),
+      stage: 'token-exchange' as const,
+      reason: 'http-rejected' as const,
+      upstreamStatus: 503,
+      reporting: { state: 'captured' as const, eventId: 'a'.repeat(32) },
+    };
+    const oauth = {
+      startOAuth: vi.fn(async (_key?: string, id = diagnostic.diagnosticId) => {
+        diagnostic.diagnosticId = id;
+        return {
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          diagnosticId: id,
+          authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=synthetic',
+        };
+      }),
+      oauthStatus: vi.fn(async () => ({
+        state: 'failed' as const,
+        loginCode: 'login-failed' as const,
+        message: 'private-sentinel',
+        diagnostic,
+      })),
+    };
+    expect(await runCli(['account', 'login'], test.launcher, test.output, oauth)).toBe(1);
+    expect(test.stderr.join('')).toContain(diagnostic.diagnosticId);
+    expect(test.stderr.join('')).toContain('Upstream HTTP status: 503');
+    expect(test.stderr.join('')).toContain('delivery not confirmed');
+    expect(test.stderr.join('')).not.toContain('private-sentinel');
+  });
   it('shows package-generated help and marks absent service with a stable exit code', async () => {
     const test = harness();
     expect(await runCli(['--help'], test.launcher, test.output)).toBe(0);
@@ -55,10 +88,11 @@ describe('Node CLI', () => {
     const test = harness();
     test.launcher.start.mockResolvedValue({ status: { pid: 123 }, alreadyRunning: false });
     const oauth = {
-      startOAuth: vi.fn().mockResolvedValue({
+      startOAuth: vi.fn(async (_key?: string, id = '11111111-1111-4111-8111-111111111111') => ({
         sessionId: '11111111-1111-4111-8111-111111111111',
+        diagnosticId: id,
         authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test',
-      }),
+      })),
       oauthStatus: vi.fn().mockResolvedValue({
         state: 'succeeded',
         account: { id: '22222222-2222-4222-8222-222222222222', email: 'example@example.com' },

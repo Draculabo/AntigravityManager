@@ -15,6 +15,7 @@ import { buildAntigravityCredentialPayload } from './antigravityCredentialPayloa
 import { writeAgyCliToken } from './agyCliTokenStore';
 import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
 import { prepareMacOSClientAccountWrite } from './macosClientAccountWrite';
+import { CredentialReadbackError } from '@/shared/auth/credentialReadbackError';
 
 export type ClientAccountStorage = 'cli-session' | 'credential-store' | 'sqlite';
 
@@ -88,7 +89,16 @@ export async function prepareClientAccountWrite(
           written.idToken !== (credentials.token.id_token || undefined) ||
           written.projectId !== (credentials.token.project_id || undefined)
         ) {
-          throw new Error('Client credential-store write could not be confirmed');
+          throw new CredentialReadbackError(
+            'Client credential-store write could not be confirmed',
+            {
+              accessToken: written?.accessToken === credentials.token.access_token,
+              refreshToken: written?.refreshToken === credentials.token.refresh_token,
+              expiry: written?.expiryTimestamp === credentials.token.expiry_timestamp,
+              idToken: written?.idToken === (credentials.token.id_token || undefined),
+              projectId: written?.projectId === (credentials.token.project_id || undefined),
+            },
+          );
         }
       },
     };

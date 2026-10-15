@@ -7,11 +7,10 @@ import path from 'node:path';
 import { loginSettings } from '../helpers/windows-login-settings.mjs';
 
 assert.equal(process.platform, 'win32');
-assert(
-  process.argv.length === 3 || process.argv.length === 4,
-  'Supply current MSI and optional previous MSI',
-);
-const msi = await realpath(path.resolve(process.argv[2]));
+const operationDiagnostics = process.argv.includes('--operation-diagnostics');
+const inputs = process.argv.slice(2).filter((argument) => argument !== '--operation-diagnostics');
+assert(inputs.length === 1 || inputs.length === 2, 'Supply current MSI and optional previous MSI');
+const msi = await realpath(path.resolve(inputs[0]));
 assert.equal(path.extname(msi), '.msi');
 const parent = await realpath(os.tmpdir());
 const directory = await mkdtemp(path.join(parent, 'agm-installed-msi-'));
@@ -80,7 +79,7 @@ assert.deepEqual(
   'Refuse to replace any existing product in this MSI family',
 );
 assert.match(properties.platform, /^x64;/);
-const previousMsi = process.argv[3] ? await realpath(path.resolve(process.argv[3])) : null;
+const previousMsi = inputs[1] ? await realpath(path.resolve(inputs[1])) : null;
 const previous = previousMsi ? inspectInstaller(previousMsi) : null;
 if (previous) {
   assert.equal(previous.UpgradeCode, properties.UpgradeCode);
@@ -189,6 +188,11 @@ try {
   process.stdout.write(
     run(process.execPath, ['scripts/acceptance/runtime/packaged-desktop-native.mjs', executable]),
   );
+  if (operationDiagnostics) {
+    process.stdout.write(
+      run(process.execPath, ['scripts/acceptance/diagnostics/packaged-operations.mjs', executable]),
+    );
+  }
   complete = true;
 } catch (error) {
   acceptanceError = error;

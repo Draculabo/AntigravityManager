@@ -229,6 +229,7 @@ export async function switchAccount(
 
       await executeSwitchFlow({
         scope: 'local',
+        accountEmail: account.email,
         launchContext,
         appTarget,
         targetProfile: account.deviceProfile || null,

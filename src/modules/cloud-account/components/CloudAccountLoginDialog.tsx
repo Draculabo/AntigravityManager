@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
 import { getLocalizedErrorMessage } from '@/shared/utils/errorMessages';
+import { readFinalizedOperationDiagnostic } from '@/shared/observability/operationDiagnostic';
 import {
   useStartGoogleAuthFlow,
   useSubmitGoogleAuthCode,
@@ -10,6 +12,22 @@ import {
 } from '../hooks/useCloudAccounts';
 import { readDesktopOAuthLoginErrorCode } from '../services/desktop-oauth-login.schema';
 import { CloudAccountAuthDialog } from './CloudAccountAuthDialog';
+
+function loginFailureDescription(error: unknown, t: TFunction): string {
+  const loginCode = readDesktopOAuthLoginErrorCode(error) ?? 'login-failed';
+  const diagnostic = readFinalizedOperationDiagnostic(error);
+  if (
+    diagnostic &&
+    (diagnostic.accountCommit === 'confirmed' ||
+      diagnostic.accountCommit === 'uncertain' ||
+      !['duplicate-account', 'authorization-denied', 'login-active', 'login-cancelled'].includes(
+        loginCode,
+      ))
+  ) {
+    return getLocalizedErrorMessage(error, t);
+  }
+  return t(`cloud.toast.addFailed.codes.${loginCode}`);
+}
 
 export function CloudAccountLoginDialog() {
   const { t } = useTranslation();
@@ -35,11 +53,10 @@ export function CloudAccountLoginDialog() {
         toast({ title: t('cloud.toast.addSuccess'), variant: 'success' });
       },
       onError: (error) => {
-        const loginCode = readDesktopOAuthLoginErrorCode(error) ?? 'login-failed';
         toast({
           error,
           title: t('cloud.toast.addFailed.title'),
-          description: t(`cloud.toast.addFailed.codes.${loginCode}`),
+          description: loginFailureDescription(error, t),
           variant: 'destructive',
         });
       },
@@ -56,11 +73,10 @@ export function CloudAccountLoginDialog() {
       {
         onSuccess: () => setAuthCode(''),
         onError: (error) => {
-          const loginCode = readDesktopOAuthLoginErrorCode(error) ?? 'login-failed';
           toast({
             error,
             title: t('cloud.toast.addFailed.title'),
-            description: t(`cloud.toast.addFailed.codes.${loginCode}`),
+            description: loginFailureDescription(error, t),
             variant: 'destructive',
           });
         },

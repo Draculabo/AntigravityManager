@@ -8,6 +8,10 @@ import {
 import { isolateSentryDiagnostic } from './shared/observability/sentryDiagnostic';
 import { logger } from './shared/logging/logger';
 import {
+  attachOperationScope,
+  projectOperationSentryEvent,
+} from './shared/observability/operationSentry';
+import {
   initializeOpenTelemetry,
   shutdownOpenTelemetry,
 } from './shared/observability/openTelemetry';
@@ -47,6 +51,10 @@ configureErrorReportingRuntime(
           return filterCrashSafeSentryIntegrations(defaultIntegrations);
         },
         beforeSend(event) {
+          const projected = projectOperationSentryEvent(event);
+          if (projected !== event) {
+            return projected;
+          }
           isolateSentryDiagnostic(event);
           redactSentryEventLocalPaths(event);
           return event;
@@ -54,8 +62,14 @@ configureErrorReportingRuntime(
       });
     },
     report: (payload) => {
+      let eventId: string | undefined;
       Sentry.withScope((scope) => {
         scope.setTag('runtime', 'desktop-embedded');
+        if (payload.operation) {
+          scope.setTag('operation_runtime', 'desktop-embedded');
+          eventId = Sentry.captureException(attachOperationScope(scope, payload.operation));
+          return;
+        }
         if (payload.isolated) {
           scope.setTag('isolated_diagnostic', 'true');
           scope.setFingerprint(['schema-conversion']);
@@ -73,6 +87,7 @@ configureErrorReportingRuntime(
         }
         Sentry.captureMessage(message, 'error');
       });
+      return eventId;
     },
     flush: (timeoutMs) => Sentry.flush(timeoutMs),
   },

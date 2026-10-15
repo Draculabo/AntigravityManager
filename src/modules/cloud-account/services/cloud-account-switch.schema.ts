@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CloudAccountIdSchema } from './cloud-account-mutation.schema';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
+import { CloudSwitchDiagnosticSchema } from './operation-diagnostic.schema';
 
 export const CloudAccountSwitchInputSchema = z.strictObject({
   accountId: CloudAccountIdSchema,
@@ -8,6 +9,9 @@ export const CloudAccountSwitchInputSchema = z.strictObject({
 });
 
 export const CloudAccountSwitchResultSchema = z.strictObject({ success: z.literal(true) });
+export const CoreCloudAccountSwitchInputSchema = CloudAccountSwitchInputSchema.extend({
+  diagnosticId: z.uuid(),
+});
 
 export const CloudAccountSwitchErrorCodeSchema = z.enum([
   'account-not-found',
@@ -24,6 +28,7 @@ export type CloudAccountSwitchErrorCode = z.infer<typeof CloudAccountSwitchError
 const CloudAccountSwitchORPCErrorDataSchema = z
   .object({
     switchCode: CloudAccountSwitchErrorCodeSchema,
+    diagnostic: CloudSwitchDiagnosticSchema.optional(),
   })
   .strip();
 

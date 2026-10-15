@@ -1,3 +1,4 @@
+import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
@@ -12,6 +13,7 @@ import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-ac
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { diagnosticId, loginDiagnostic } from '../fixtures/oauth-diagnostic';
 
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 
@@ -122,11 +124,23 @@ describe('remote desktop OAuth login', () => {
     const pending = login.start();
     await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
     const redirect = new URL(openExternal.mock.calls[0][0]).searchParams.get('redirect_uri');
+    await expect(login.submitCode('')).rejects.toMatchObject({
+      loginCode: 'login-failed',
+      diagnostic: {
+        stage: 'management-transport',
+        reason: 'management-failed',
+        accountCommit: 'uncertain',
+        reporting: { state: 'not-reported', reason: 'expected-outcome' },
+      },
+    });
+    expect(enroll).not.toHaveBeenCalled();
     await login.submitCode('4/manual-code');
     expect(await pending).toEqual(view);
     expect(enroll).toHaveBeenCalledExactlyOnceWith('4/manual-code', {
       oauthClientKey: 'client-a',
       redirectUri: redirect,
+
+      operation: expect.any(GoogleLoginOperation),
     });
     await expect(login.submitCode('4/replay')).rejects.toMatchObject({ loginCode: 'login-failed' });
   }, 15_000);
@@ -178,6 +192,8 @@ describe('remote desktop OAuth login', () => {
     expect(enroll).toHaveBeenCalledExactlyOnceWith('private-code', {
       oauthClientKey: 'explicit-client',
       redirectUri: redirect,
+
+      operation: expect.any(GoogleLoginOperation),
     });
     expect(accountViews).toHaveBeenCalledOnce();
     expect(JSON.stringify(await pending)).not.toMatch(/private-code|refresh_token|sessionId|state/);
@@ -188,7 +204,11 @@ describe('remote desktop OAuth login', () => {
     ['https://accounts.google.com/', 'browser-open-failed'],
   ] as const)('cancels an unsafe or unopened core session', async (authorizationUrl, loginCode) => {
     const management = {
-      startOAuth: vi.fn(async () => ({ sessionId: view.id, authorizationUrl })),
+      startOAuth: vi.fn(async (_key?: string, id = diagnosticId) => ({
+        sessionId: view.id,
+        authorizationUrl,
+        diagnosticId: id,
+      })),
       oauthStatus: vi.fn(async () => ({ state: 'pending' as const })),
       cancelOAuth: vi.fn(async () => {}),
       completeOAuth: vi.fn(async () => {}),
@@ -250,7 +270,8 @@ describe('remote desktop OAuth login', () => {
 
   it('closes only its pending core session on desktop shutdown', async () => {
     const management = {
-      startOAuth: vi.fn(async () => ({
+      startOAuth: vi.fn(async (_key?: string, id = diagnosticId) => ({
+        diagnosticId: id,
         sessionId: view.id,
         authorizationUrl: 'https://accounts.google.com/',
       })),
@@ -276,14 +297,21 @@ describe('remote desktop OAuth login', () => {
   });
 
   it('collapses owner and transport failures to stable renderer categories', async () => {
+    let ownerDiagnosticId = diagnosticId;
     const management = {
-      startOAuth: vi.fn(async () => ({
-        sessionId: view.id,
-        authorizationUrl: 'https://accounts.google.com/',
-      })),
+      startOAuth: vi.fn(async (_key?: string, id = diagnosticId) => {
+        ownerDiagnosticId = id;
+        return {
+          diagnosticId: id,
+          sessionId: view.id,
+          authorizationUrl: 'https://accounts.google.com/',
+        };
+      }),
       oauthStatus: vi.fn(async () => ({
         state: 'failed' as const,
         message: 'private provider token and callback state',
+        loginCode: 'login-failed' as const,
+        diagnostic: loginDiagnostic('login-failed', ownerDiagnosticId),
       })),
       cancelOAuth: vi.fn(async () => {}),
       completeOAuth: vi.fn(async () => {}),

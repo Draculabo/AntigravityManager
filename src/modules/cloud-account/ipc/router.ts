@@ -18,6 +18,10 @@ import {
   CloudAccountExportResultSchema,
 } from '../services/cloud-account-file.schema';
 import { z } from 'zod';
+export {
+  parseDesktopOAuthLoginErrorData,
+  type DesktopOAuthLoginErrorData,
+} from '../services/desktop-oauth-login.schema';
 import { os } from '@orpc/server';
 import { openCloudIdentityStorageFolder } from './handler';
 import {

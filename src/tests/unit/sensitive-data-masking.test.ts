@@ -159,6 +159,32 @@ describe('sensitive data masking', () => {
   });
 
   describe('safeStringifyPacket', () => {
+    it('preserves repeated references while masking secrets and actual cycles', () => {
+      const repeated: { route: string; token: string; self?: unknown } = {
+        route: 'https-connect',
+        token: 'private-sentinel',
+      };
+      repeated.self = repeated;
+      const array = [repeated];
+      const error = new Error('safe message');
+      const value = {
+        http: repeated,
+        causes: [{ http: repeated }],
+        arrays: [array, array],
+        errors: [error, error],
+      };
+      const safe = { route: 'https-connect', token: '[REDACTED]', self: '[Circular]' };
+      const safeError = { name: 'Error', message: 'safe message', stack: error.stack };
+      const expected = {
+        http: safe,
+        causes: [{ http: safe }],
+        arrays: [[safe], [safe]],
+        errors: [safeError, safeError],
+      };
+      expect(sanitizeObject(value)).toEqual(expected);
+      expect(JSON.parse(safeStringifyPacket(value))).toEqual(expected);
+    });
+
     it('stringifies with sensitive fields masked', () => {
       const out = safeStringifyPacket({ user: 'a', password: 'p' });
       expect(out).toContain('"user":"a"');

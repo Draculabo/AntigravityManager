@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { parseCloudOperationDiagnostic } from '@/modules/cloud-account/diagnostics';
+import { OperationStepRecordSchema } from '@/shared/observability/operationDiagnostic';
 
 const ErrorCodeSchema = z.enum([
   'ECONNREFUSED',
@@ -45,6 +47,30 @@ const SAFE_MESSAGES = new Set([
 
 /** Unknown prose, nested values and continuations are discarded, not regex-redacted. */
 export function sanitizeLogRecord(message: string): { text: string; removed: boolean } {
+  const stepMarker = 'Operation step v1 ';
+  if (message.startsWith(stepMarker)) {
+    try {
+      const parsed: unknown = JSON.parse(message.slice(stepMarker.length));
+      const step = OperationStepRecordSchema.safeParse(parsed);
+      if (step.success) {
+        return { text: `${stepMarker}${JSON.stringify(step.data)}`, removed: false };
+      }
+    } catch {
+      // Only closed structured step records can retain the operation identity.
+    }
+  }
+  const marker = 'Operation diagnostic v1 ';
+  if (message.startsWith(marker)) {
+    try {
+      const parsed: unknown = JSON.parse(message.slice(marker.length));
+      const diagnostic = parseCloudOperationDiagnostic(parsed);
+      if (diagnostic) {
+        return { text: `${marker}${JSON.stringify(diagnostic)}`, removed: false };
+      }
+    } catch {
+      // A marker alone cannot authorize arbitrary prose, fields or nested data.
+    }
+  }
   if (SAFE_MESSAGES.has(message)) {
     return { text: message, removed: false };
   }
