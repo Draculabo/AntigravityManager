@@ -8,6 +8,8 @@ pre-commit:
       run: git diff --cached --check
     - name: agent-contracts
       run: node scripts/git/check-staged-governance.mjs
+    - name: staged-lint
+      run: node scripts/git/check-staged-lint.mjs
     - name: previous-pre-commit
       run: node scripts/git/run-previous-pre-commit.mjs
 

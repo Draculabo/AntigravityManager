@@ -188,15 +188,17 @@ that integration; a failed install does not establish that the previous push pol
 
 [lefthook.yml](../lefthook.yml) owns the configured jobs:
 
-| Hook         | Automatic evidence                                                                                                                                             |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pre-commit` | `git diff --cached --check`, then `npm run check:agent-contracts` when staged governance paths are affected, then the preserved pre-commit hook if one exists. |
-| `pre-push`   | `npm run type-check` for each invocation, including new branches.                                                                                              |
+| Hook         | Automatic evidence                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pre-commit` | Staged whitespace; Agent and quality contracts for affected governance paths; ESLint on staged code; then the preserved pre-commit hook if one exists. |
+| `pre-push`   | `npm run type-check` for each invocation, including new branches.                                                                                      |
 
 The governance selector reads NUL-delimited index paths and treats additions, deletions and both
 sides of renames as affected. It covers Agent instructions, Agent Notes, project Skills, Markdown
-under `docs`, the script guide, the validator, hook scripts, package metadata and Lefthook configuration.
-Whitespace checks inspect the index. Agent contracts and type-check read the current worktree;
+under `docs`, the script guide, the validator, hook/quality scripts, package metadata, Lefthook and
+the test/lint/format workflow configuration. Whitespace and code lint inspect the index. Code lint
+uses the current ESLint configuration and does not apply fixes; staged deletions are excluded and
+renamed source is checked at its new path. Agent/quality contracts and type-check read the current worktree;
 when it differs from the staged or outgoing revision, establish the intended revision's evidence
 separately before claiming it passes. These hooks do not replace focused behavior or platform tests.
 

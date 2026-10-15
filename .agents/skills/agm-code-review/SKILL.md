@@ -26,6 +26,7 @@ Review the exact change for defects that mechanical checks cannot establish. For
 - **Evidence quality:** Confirm tests exercise an observable behavior that would fail for the regression. Match mocks, integration tests, packaged checks and native or live evidence to the behavior each can establish. Do not treat mocks as proof of native, installer, updater or live-provider behavior.
 - **Runner reliability:** Apply [test reliability](../../../docs/test-reliability.md) to asynchronous, native or resource-owning tests and [script instructions](../../../scripts/AGENTS.md) to changed runners. Verify readiness, isolated resources, full teardown and a representative negative case for changed acceptance predicates. Check that the entry point matches the shipped behavior being claimed.
 - **Change hygiene:** Check that current documentation and comments match behavior, Agent Notes record durable decisions, and the diff contains no unrelated files, generated output, secrets or user-owned changes.
+- **Upgrade and decision history:** For incompatible user data, configuration, CLI or public API changes, check [upgrade instructions](../../../docs/upgrade-guides/README.md) against actual migration, recovery and downgrade evidence. Follow [note retention](../../notes/README.md#supersession-and-retention) when a decision is replaced; retain partial obligations, verify replacement links and review archive-body changes as historical edits, not link maintenance.
 
 ## Report findings
 

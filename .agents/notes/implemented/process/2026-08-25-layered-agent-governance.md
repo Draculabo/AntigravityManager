@@ -29,7 +29,7 @@ Focused validation is the local default. The changed runtime surface determines 
 
 Agents load a shorter root contract and discover detail through scope and task type. Maintainers must update the owning document instead of repeating a fact elsewhere. High-risk decisions gain an explicit rationale record, while routine changes avoid documentation ceremony.
 
-The governance system now has more files, so broken links, stale script references and invalid Agent Note lifecycle metadata require an automated gate. Code dependency boundaries remain prose-only until existing imports are audited and an enforceable baseline is introduced separately.
+The governance system has more files, so broken links, stale script references and invalid Agent Note lifecycle metadata require an automated gate. Runtime dependency enforcement has its own implementation and evidence in the [testing reference](../../../../docs/testing.md); it complements document governance without changing these ownership decisions.
 
 ## Verification
 

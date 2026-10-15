@@ -14,6 +14,7 @@ const REQUIRED_GOVERNANCE_FILES = [
   'docs/testing.md',
   'docs/error-handling.md',
   'docs/test-reliability.md',
+  'docs/upgrade-guides/README.md',
   'scripts/AGENTS.md',
   'scripts/README.md',
   'lefthook.yml',
@@ -175,6 +176,53 @@ test('rejects an Agent Note whose status does not match its lifecycle', async (c
   assert.deepEqual(validateAgentContracts(rootDir), {
     errors: [
       'implemented/process/2026-08-25-example.md: status must match lifecycle "implemented"',
+    ],
+  });
+});
+
+test('accepts a frozen archive body and checks current reciprocal replacement metadata', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(() => rm(rootDir, { recursive: true, force: true }));
+  const sections =
+    '\n## Problem\nOriginal context.\n\n## Decision\nRecorded choice.\n\n## Alternatives considered\nAlternative.\n\n## Consequences\nEffect.\n\n## Verification\nObserved evidence.\n';
+  await writeFixtureFile(
+    rootDir,
+    '.agents/notes/archived/process/2026-10-01-old.md',
+    '# Agent Note: Old\n\nStatus: implemented\nArchived: 2026-10-15\nSuperseded by: [Current](../../implemented/process/2026-10-15-current.md)\n' +
+      sections +
+      '\nHistorical [path](removed.md) and `npm run removed-command`.\n',
+  );
+  await writeFixtureFile(
+    rootDir,
+    '.agents/notes/implemented/process/2026-10-15-current.md',
+    '# Agent Note: Current\n\nStatus: implemented\nSupersedes: [Old](../../archived/process/2026-10-01-old.md)\n' +
+      sections,
+  );
+  assert.deepEqual(validateAgentContracts(rootDir), { errors: [] });
+  await writeFixtureFile(
+    rootDir,
+    '.agents/notes/implemented/process/2026-10-15-current.md',
+    '# Agent Note: Current\n\nStatus: implemented\n' + sections,
+  );
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: [
+      '.agents/notes/archived/process/2026-10-01-old.md: replacement must link back with Supersedes.',
+    ],
+  });
+});
+
+test('proposed notes cannot be represented as completed archives', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(() => rm(rootDir, { recursive: true, force: true }));
+  await writeFixtureFile(
+    rootDir,
+    '.agents/notes/archived/process/2026-10-01-old.md',
+    '# Agent Note: Old\n\nStatus: proposed\nArchived: 2026-10-15\n\n## Problem\n## Decision\n## Alternatives considered\n## Consequences\n## Verification\n',
+  );
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: [
+      'archived/process/2026-10-01-old.md: status must match lifecycle "implemented"',
+      '.agents/notes/archived/process/2026-10-01-old.md: a retired note must name one complete replacement.',
     ],
   });
 });

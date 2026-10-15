@@ -129,10 +129,19 @@ preserve NO_PROXY behavior. The local acceptance unit suite also checks read-onl
 
 ## Change-to-evidence matrix
 
+Upgrade instructions and Agent Note replacement/archive metadata are checked by
+`npm run check:agent-contracts`. These fixtures validate document structure and relationships;
+they do not establish migration or recovery correctness. Underlying data changes still require
+the persistence, backup and native evidence selected below. Archive-body preservation and the
+decision to require a guide remain semantic review responsibilities.
+
 The [Tests workflow](../.github/workflows/testing.yaml) runs Node 22 on Ubuntu and Windows,
 including governance, installed Git hook integration, type checking, the complete Vitest unit
 suite and acceptance harness unit tests. Local Git hooks run only their documented baseline;
 they do not establish a passing unit suite or CI result.
+The test, lint and formatting jobs select lanes from the [shared check inventory](../scripts/README.md#quality-checks).
+`npm run check:quality` rejects missing lane invocations, suppressed failures and platform loss;
+`npm run test:quality` checks these denials through synthetic workflows and the real runner.
 Vitest caps workers at four to bound concurrent module loading across development and CI hosts;
 the existing test and hook timeouts remain unchanged.
 
@@ -161,9 +170,12 @@ client. Native socket fixtures own their parent directories and clean up listene
 | Cross-platform or repository-wide behavior | Focused tests for each affected surface                               | CI platform matrix or explicitly requested full rehearsal                                               |
 
 For Git hook installation, configuration or dispatch changes, run `npm run test:git-hooks` plus
-`npm run check:agent-contracts` and focused formatting. The integration fixtures exercise installed
+`npm run check:agent-contracts`, `npm run check:quality` and focused formatting. The integration fixtures exercise installed
 Lefthook hooks through real temporary-repository commits and local bare-remote pushes, including
 failed checks, staged additions/deletions/renames, partial staging, preserved hooks and recovery.
+They also verify that staged lint errors block a commit despite a corrected worktree, that valid
+staged code can commit without consuming invalid unstaged edits, and that CI changes trigger the
+quality contracts. Neither lint nor the adapter stages fixes or creates a stash.
 They do not push to GitHub or establish GUI Git environment support. [Local Git checks](development.md#local-git-checks)
 owns the automatic gates; CI includes their integration tests through `npm run check:ci`.
 

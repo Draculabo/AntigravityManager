@@ -11,6 +11,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const installer = path.join(root, 'scripts/git/install-hooks.mjs');
 const lefthook = path.join(root, 'scripts/git/run-lefthook.mjs');
 const selector = path.join(root, 'scripts/git/check-staged-governance.mjs');
+const stagedLint = path.join(root, 'scripts/git/check-staged-lint.mjs');
 const previousHook = path.join(root, 'scripts/git/run-previous-pre-commit.mjs');
 const quote = (value) => JSON.stringify(value.replaceAll('\\', '/'));
 
@@ -53,13 +54,19 @@ async function fixture(context) {
   const configuration = (await readFile(path.join(root, 'lefthook.yml'), 'utf8'))
     .replace('node scripts/git/run-lefthook.mjs', `node ${quote(lefthook)}`)
     .replace('node scripts/git/check-staged-governance.mjs', `node ${quote(selector)}`)
+    .replace('node scripts/git/check-staged-lint.mjs', `node ${quote(stagedLint)}`)
     .replace('node scripts/git/run-previous-pre-commit.mjs', `node ${quote(previousHook)}`);
   await writeFile(path.join(cwd, 'lefthook.yml'), configuration);
+  await writeFile(
+    path.join(cwd, 'eslint.config.mjs'),
+    "export default [{ files: ['**/*.mjs'], rules: { 'no-debugger': 'error' } }];\n",
+  );
   await writeFile(
     path.join(cwd, 'package.json'),
     JSON.stringify({
       scripts: {
         'check:agent-contracts': 'node gate.mjs governance',
+        'check:quality': 'node gate.mjs quality',
         'type-check': 'node gate.mjs types',
       },
     }),
@@ -115,6 +122,83 @@ test('installed hook rejects staged whitespace even if the worktree is clean', a
   assert.match(git(cwd, 'show', ':code.txt'), /bad trailing whitespace/);
   assert.equal(await readFile(path.join(cwd, 'code.txt'), 'utf8'), 'clean worktree\n');
   assert.equal(git(cwd, 'stash', 'list'), '');
+});
+
+test('installed hook rejects staged lint errors hidden by a clean worktree', async (context) => {
+  const { cwd } = await fixture(context);
+  await writeFile(path.join(cwd, 'code with spaces.mjs'), 'debugger;\n');
+  git(cwd, 'add', '--', 'code with spaces.mjs');
+  await writeFile(path.join(cwd, 'code with spaces.mjs'), 'export const valid = true;\n');
+  const index = git(cwd, 'ls-files', '--stage');
+  assert.equal(install(cwd).status, 0);
+  const result = run(cwd, 'git', ['commit', '--quiet', '-m', 'fixture invalid staged code']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout + result.stderr, /no-debugger/);
+  assert.equal(git(cwd, 'ls-files', '--stage'), index);
+  assert.equal(
+    await readFile(path.join(cwd, 'code with spaces.mjs'), 'utf8'),
+    'export const valid = true;\n',
+  );
+  assert.equal(git(cwd, 'stash', 'list'), '');
+});
+
+test('installed lint commits valid index code while retaining invalid unstaged edits', async (context) => {
+  const { cwd } = await fixture(context);
+  const staged = 'export const valid = true;\n';
+  await writeFile(path.join(cwd, 'code.mjs'), staged);
+  git(cwd, 'add', '--', 'code.mjs');
+  await writeFile(path.join(cwd, 'code.mjs'), 'debugger;\n');
+  assert.equal(install(cwd).status, 0);
+  git(cwd, 'commit', '--quiet', '-m', 'fixture valid staged code');
+  assert.equal(git(cwd, 'show', 'HEAD:code.mjs'), staged.trim());
+  assert.equal(await readFile(path.join(cwd, 'code.mjs'), 'utf8'), 'debugger;\n');
+  assert.equal(git(cwd, 'stash', 'list'), '');
+});
+
+test('installed lint checks renamed source and ignores staged deletions', async (context) => {
+  const { cwd } = await fixture(context);
+  await writeFile(path.join(cwd, 'old.mjs'), 'debugger;\n');
+  git(cwd, 'add', '--', 'old.mjs');
+  git(cwd, 'commit', '--quiet', '-m', 'fixture existing code');
+  assert.equal(install(cwd).status, 0);
+  git(cwd, 'mv', '--', 'old.mjs', 'new name.mjs');
+  const denied = run(cwd, 'git', ['commit', '--quiet', '-m', 'fixture rename']);
+  assert.notEqual(denied.status, 0);
+  assert.match(denied.stdout + denied.stderr, /new name.mjs/);
+  assert.match(denied.stdout + denied.stderr, /no-debugger/);
+  await rm(path.join(cwd, 'new name.mjs'));
+  git(cwd, 'add', '--update', '--', 'new name.mjs');
+  git(cwd, 'commit', '--quiet', '-m', 'fixture deletion');
+  assert.equal(git(cwd, 'ls-files'), '');
+});
+
+test('installed hook checks quality contracts when CI configuration changes', async (context) => {
+  const { cwd } = await fixture(context);
+  await mkdir(path.join(cwd, '.github/workflows'), { recursive: true });
+  await writeFile(path.join(cwd, '.github/workflows/testing.yaml'), 'name: Fixture\n');
+  await writeFile(path.join(cwd, 'quality.fail'), '');
+  git(cwd, 'add', '--', '.github/workflows/testing.yaml');
+  assert.equal(install(cwd).status, 0);
+  const denied = run(cwd, 'git', ['commit', '--quiet', '-m', 'fixture missing CI check']);
+  assert.notEqual(denied.status, 0);
+  assert.match(denied.stdout + denied.stderr, /quality fixture failure/);
+  assert.equal(await readFile(path.join(cwd, 'observed.log'), 'utf8'), 'governance\nquality\n');
+});
+
+test('installed hook selects document lifecycle validator changes for governance', async (context) => {
+  const { cwd } = await fixture(context);
+  await mkdir(path.join(cwd, 'scripts'), { recursive: true });
+  await writeFile(
+    path.join(cwd, 'scripts/agent-document-lifecycle.mjs'),
+    'export const policy = true;\n',
+  );
+  await writeFile(path.join(cwd, 'governance.fail'), '');
+  git(cwd, 'add', '--', 'scripts/agent-document-lifecycle.mjs');
+  assert.equal(install(cwd).status, 0);
+  const denied = run(cwd, 'git', ['commit', '--quiet', '-m', 'fixture lifecycle policy']);
+  assert.notEqual(denied.status, 0);
+  assert.match(denied.stdout + denied.stderr, /governance fixture failure/);
+  assert.equal(await readFile(path.join(cwd, 'observed.log'), 'utf8'), 'governance\n');
 });
 
 for (const change of ['add', 'delete', 'rename']) {

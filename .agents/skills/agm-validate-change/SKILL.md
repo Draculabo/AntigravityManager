@@ -21,6 +21,7 @@ Validate the behavior a diff can affect without reflexively running the full rep
 - Start with the owning unit or integration test file.
 - Add `npm run type-check` for shared types, public exports, IPC contracts and module-boundary changes.
 - Add `npm run check:agent-contracts` for `AGENTS.md`, governance docs, Agent Notes or project Skills.
+- The same check covers [upgrade guide](../../../docs/upgrade-guides/README.md) structure and explicit note replacement links. It does not prove that a migration, recovery or downgrade works; run the owning behavior checks and report unavailable environment evidence.
 - Run Prettier against changed documentation paths. Avoid the repository-wide `npm run format` when unrelated untracked trees exist under the repository root.
 - Add focused Playwright evidence for user flows that require the packaged Electron boundary, not for a purely local component change.
 - Add packaging, native keyring, updater or live-provider evidence only when the diff can affect that environment-dependent path.
@@ -29,7 +30,7 @@ Validate the behavior a diff can affect without reflexively running the full rep
 
 Do not use a passing mock-only test as proof of native Electron, keyring, installer or live-provider behavior. Do not repeat an already passing command unless later edits invalidated its evidence.
 
-The [Git hooks](../../../docs/development.md#local-git-checks) run staged whitespace checks, conditional agent contracts and a pre-push type-check. Do not manually repeat type-check solely to precede a push; the hook runs it. These checks do not replace the focused behavior evidence selected above, and their worktree checks do not attest to a different staged or pushed snapshot.
+The [Git hooks](../../../docs/development.md#local-git-checks) run staged whitespace and code lint, conditional Agent/quality contracts and a pre-push type-check. Code lint reads index blobs with the current ESLint configuration. Do not manually repeat type-check solely to precede a push; the hook runs it. These checks do not replace focused behavior evidence, and worktree configuration/contracts do not attest to a different staged or pushed snapshot. For check registration, runner or CI wiring changes, run `npm run test:quality` and `npm run check:quality`; use `npm run check:ci -- --list` to inspect the shared inventory without executing the full selection.
 
 ## Handle results
 

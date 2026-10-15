@@ -98,6 +98,7 @@ For high-risk or difficult-to-reverse decisions, add or update an [Agent Note](.
 - Follow [docs/AGENTS.md](docs/AGENTS.md) for documentation placement and writing rules.
 - Current behavior belongs in architecture, testing, security, development or feature references. Rationale and rejected alternatives belong in Agent Notes.
 - Update README/JSDoc and affected reference docs in the same change as their behavior. Do not rely on a future plan document as authority for shipped behavior.
+- For user-observable incompatibilities, follow [upgrade instructions](docs/upgrade-guides/README.md) in the introducing change. When replacing a decision, follow [note retention](.agents/notes/README.md#supersession-and-retention) and preserve still-active obligations.
 - Keep Markdown links relative and specify a language for every fenced code block.
 
 ## Worktree and Git safety
