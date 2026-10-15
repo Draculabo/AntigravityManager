@@ -22,7 +22,7 @@ Schema replay uses `npm run test:schema:replay -- <audit-database-path>` with a 
 provides `node:sqlite` (Node 22.17+ for this acceptance tool). It requires read access to the audit
 database and its SQLite sidecars, and writes only compiled replay code to a temporary directory.
 Results with no intact tool/output Schema samples do not satisfy the real-data gate. See the
-[Schema reference](proxy-schema-conversion.md) for selection and privacy requirements.
+[Schema reference](./modules/proxy-gateway/schema-conversion.md) for selection and privacy requirements.
 
 Controlled Schema acceptance also offers `test:schema:client` with an installed Claude Code
 executable and `test:schema:sentry` after `prepare:standalone`. Both use loopback receivers and
@@ -115,7 +115,7 @@ user context keeps the strict privacy check failing even when receipt is confirm
 [security reference](security.md#schema-diagnostics-and-node-reporting).
 
 ```powershell
-npm install
+npm ci
 npm start
 npm run type-check
 npm run lint

@@ -12,7 +12,7 @@ Unsigned Flash tool-call handling, platform tray assets, weekly quota presentati
 
 Preserve the upstream signature conditions and real-signature precedence at the owning mappers. Share native Gemini envelope construction between user requests and internal warmup. Use the established Claude mapper for Claude warmup, including its token-budget behavior. On macOS use `tray.png` as a template image; elsewhere use `icon.png` without template rendering. Existing packaged assets remain unchanged.
 
-Keep warmup scheduling and persisted policy in cloud-account, with a narrow type-only contract and an injected proxy-gateway executor. Requests remain in process and reuse the existing transport. Weekly presentation selects actual weekly buckets and preserves non-weekly details in the other view. Current behavior and recovery instructions are owned by [cloud features](../../../../docs/cloud_features.md) and [proxy compatibility](../../../../docs/proxy-compatibility.md).
+Keep warmup scheduling and persisted policy in cloud-account, with a narrow type-only contract and an injected proxy-gateway executor. Requests remain in process and reuse the existing transport. Weekly presentation selects actual weekly buckets and preserves non-weekly details in the other view. Current behavior and recovery instructions are owned by [cloud features](../../../../docs/modules/cloud-account/overview.md) and [proxy compatibility](../../../../docs/modules/proxy-gateway/compatibility.md).
 
 ## Alternatives considered
 

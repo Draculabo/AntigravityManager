@@ -50,7 +50,7 @@
 - [快速开始](#-快速开始)
 - [技术栈](#️-技术栈)
 - [开发指南](#-开发指南)
-- [调试文档](#-调试文档)
+- [文档](#-文档)
 - [常见问题](#-常见问题)
 - [贡献指南](#-贡献指南)
 - [许可证](#-许可证)
@@ -254,8 +254,8 @@ devShells.default = pkgs.mkShell {
 
 #### 前置要求
 
-- Node.js v18 或更高版本
-- npm 或 yarn
+- Node.js `>=22.14.0`
+- npm `>=10`
 
 #### 步骤
 
@@ -264,8 +264,8 @@ devShells.default = pkgs.mkShell {
 git clone https://github.com/Draculabo/AntigravityManager.git
 cd AntigravityManager
 
-# 安装依赖
-npm install
+# 安装锁定版本的依赖
+npm ci
 
 # 启动开发模式
 npm start
@@ -309,23 +309,26 @@ npm run make
 ```
 AntigravityManager/
 ├── src/
-│   ├── main.ts          # Electron 主进程
-│   ├── preload.ts       # 预加载脚本
-│   ├── renderer/        # React 渲染进程
-│   ├── ipc/             # IPC 通信处理
-│   └── server/          # 内置服务器
-├── docs/                # 文档和资源
+│   ├── modules/         # 按功能职责组织的代码
+│   ├── core/            # 共享应用运行时
+│   ├── cli/             # 独立命令行运行时
+│   └── shared/          # 跨功能基础能力
+├── docs/                # 通用文档和模块指南
 └── .github/             # GitHub 配置
 ```
 
 ---
 
-## 🔍 调试文档
+## 📚 文档
+
+文档入口见[文档索引](docs/README.md)和[功能模块文档索引](docs/modules/README.md)。
+
+### Proxyman 调试指南
 
 如果你希望用 Proxyman 抓取和排查 Antigravity 或 Antigravity Manager 的流量，请先阅读：
 
-- [Proxyman Installation and Basic Setup on Windows](docs/proxyman-install.md)
-- [Proxyman Debugging Guide for Antigravity and Antigravity Manager](docs/proxyman-debugging.md)
+- [Proxyman Installation and Basic Setup on Windows](./docs/modules/proxy-gateway/debugging/proxyman-setup-windows.md)
+- [Proxyman Debugging Guide for Antigravity and Antigravity Manager](./docs/modules/proxy-gateway/debugging/proxyman.md)
 
 ---
 
@@ -336,8 +339,8 @@ AntigravityManager/
 
 请检查：
 
-1. 确保已安装所有依赖：`npm install`
-2. 检查 Node.js 版本是否 >= 18
+1. 使用 `npm ci` 安装锁定版本的依赖。
+2. 确认 Node.js 版本为 `>=22.14.0`，npm 版本为 `>=10`。
 3. 尝试删除 `node_modules` 后重新安装
 
 </details>

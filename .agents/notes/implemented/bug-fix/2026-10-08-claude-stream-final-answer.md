@@ -42,4 +42,4 @@ signatures and verify scoped signature retention. Streaming-state, malformed-inp
 signature compatibility, tool-call leakage and real-path Anthropic/parity tests pass. The real
 CLI rerun against `gemini-pro-agent` executes Read, returns its result and matches the final
 answer. The separate Flash failure stays in the full acceptance result. See the
-[current Schema and stream reference](../../../../docs/proxy-schema-conversion.md).
+[current Schema and stream reference](../../../../docs/modules/proxy-gateway/schema-conversion.md).

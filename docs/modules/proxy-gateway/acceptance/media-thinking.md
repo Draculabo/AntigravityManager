@@ -1,7 +1,7 @@
 # Live media and thinking acceptance tutorial
 
 This tutorial checks the live gateway through each Windows/Linux and standalone CLI/Electron
-owner combination. Use the [agent task SOP](live-agent-acceptance.md) for complete coding tasks
+owner combination. Use the [agent task SOP](./live-agent.md) for complete coding tasks
 and Traffic Monitor UI comparisons; media and thinking reports are separate evidence.
 
 ## Prepare each owner

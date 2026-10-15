@@ -456,7 +456,7 @@ supported; Windows access follows the containing profile's ACL. Do not share, lo
 these files. Backups and arbitrary client settings never cross the control transport; previews
 project only model/address fields and a hidden credential marker. The user confirms complete
 restore in the UI or supplies CLI `--yes`. See
-[coding-tool-configuration.md](coding-tool-configuration.md) for the difference between removal
+[agent-tools reference](./modules/proxy-gateway/agent-tools.md) for the difference between removal
 and restoration.
 
 Installer, updater, shell, subprocess and binary-patching changes are high risk. Validate exact targets and arguments, preserve platform quoting rules, and avoid command construction from untrusted strings. Update sources and artifacts must retain the repository's existing integrity and signing expectations.

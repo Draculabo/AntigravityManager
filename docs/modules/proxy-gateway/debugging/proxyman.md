@@ -5,7 +5,7 @@ This guide explains how to use Proxyman for two debugging targets:
 1. The installed official `Antigravity` desktop client
 2. The `Antigravity Manager` development build from this repository
 
-Before you start, complete [Proxyman Installation and Basic Setup on Windows](./proxyman-install.md).
+Before you start, complete [Proxyman Installation and Basic Setup on Windows](./proxyman-setup-windows.md).
 
 ## Scope
 
@@ -30,7 +30,8 @@ This project is also an Electron app, but it additionally includes Node, Undici,
 
 - Electron main-process outbound requests
 - renderer-side requests
-- upstream requests emitted by `src/server/`
+- upstream requests handled by `src/modules/proxy-gateway/server/`; `src/server/` owns gateway
+  startup and shutdown.
 
 ## Debug the Installed Official Antigravity Client
 
@@ -38,7 +39,7 @@ This project is also an Electron app, but it additionally includes Node, Undici,
 
 Use the provided script:
 
-- [scripts/start-antigravity-with-proxyman.ps1](../scripts/start-antigravity-with-proxyman.ps1)
+- [scripts/start-antigravity-with-proxyman.ps1](../../../../scripts/start-antigravity-with-proxyman.ps1)
 
 This should be the default path for the installed official client because it already does the following:
 
@@ -171,7 +172,7 @@ Check:
 
 Background setup guide:
 
-- [Proxyman Installation and Basic Setup on Windows](./proxyman-install.md)
+- [Proxyman Installation and Basic Setup on Windows](./proxyman-setup-windows.md)
 
 ### I Can See Browser Traffic but Not Node or Main-Process Traffic
 
@@ -217,7 +218,7 @@ Keep local debugging settings out of the repository and out of public issue thre
 
 ### Official Antigravity Client
 
-1. Complete [Proxyman Installation and Basic Setup on Windows](./proxyman-install.md).
+1. Complete [Proxyman Installation and Basic Setup on Windows](./proxyman-setup-windows.md).
 2. Open Proxyman.
 3. Run:
 
@@ -229,7 +230,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-antigravity-with-proxym
 
 ### Antigravity Manager in This Repository
 
-1. Complete [Proxyman Installation and Basic Setup on Windows](./proxyman-install.md).
+1. Complete [Proxyman Installation and Basic Setup on Windows](./proxyman-setup-windows.md).
 2. Open PowerShell.
 3. Set `HTTP_PROXY`, `HTTPS_PROXY`, and `NODE_EXTRA_CA_CERTS`.
 4. Run `npm start`.
@@ -240,5 +241,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-antigravity-with-proxym
 
 ## Related Files
 
-- Setup guide: [Proxyman Installation and Basic Setup on Windows](./proxyman-install.md)
-- Official-client launcher: [scripts/start-antigravity-with-proxyman.ps1](../scripts/start-antigravity-with-proxyman.ps1)
+- Setup guide: [Proxyman Installation and Basic Setup on Windows](./proxyman-setup-windows.md)
+- Official-client launcher: [scripts/start-antigravity-with-proxyman.ps1](../../../../scripts/start-antigravity-with-proxyman.ps1)

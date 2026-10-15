@@ -42,8 +42,8 @@ client write fails. The original client backup remains available for recovery.
   and requires a trusted computer. A direct-login plugin can use a different provider.
 
 Original Claude/Codex backups may contain prior client credentials. See the private-file policy
-in [security.md](security.md). Configuration and previews do not prove upstream availability.
-Use the [live acceptance SOP](live-agent-acceptance.md) to verify requests and traffic records.
+in [security.md](../../security.md). Configuration and previews do not prove upstream availability.
+Use the [live acceptance SOP](./acceptance/live-agent.md) to verify requests and traffic records.
 
 The SOP accepts `--client-settings PATH` for Claude/Codex directories produced by one-click
 configuration. This mode does not supply model, provider, endpoint or authorization overrides

@@ -48,4 +48,4 @@ removal, backup/write failures, RPC secret projection and configuration-path ove
 component, selected-owner and configuration-queue tests cover the runtime contracts. Build and
 live client evidence are recorded separately; no mocked test is treated as upstream acceptance.
 Current operations and risks are documented in
-[the feature reference](../../../../docs/coding-tool-configuration.md).
+[the feature reference](../../../../docs/modules/proxy-gateway/agent-tools.md).

@@ -46,4 +46,4 @@ no account penalty, preserved context, and one recovery prompt. Packaged live re
 attempts are recorded separately in the coding-tool acceptance evidence. Loopback HTTP tests
 verify that ordinary generation restores cached thoughts while streaming and non-streaming
 recovery transmit the clean request unchanged. See the
-[coding-tool reference](../../../../docs/coding-tool-configuration.md).
+[coding-tool reference](../../../../docs/modules/proxy-gateway/agent-tools.md).

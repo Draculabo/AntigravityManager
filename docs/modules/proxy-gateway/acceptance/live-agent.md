@@ -162,7 +162,7 @@ when the separate `traffic-ui-report.json` passes. Missing or expired audit reco
 
 ## Media, thinking and shell diagnostics
 
-Use the [media and thinking tutorial](live-proxy-media-thinking-acceptance.md) for synthetic
+Use the [media and thinking tutorial](./media-thinking.md) for synthetic
 image/video cases and a two-turn tool result with preserved thinking history.
 
 `--codex-shell-profile disabled` supplies Codex's `allow_login_shell=false` process option for

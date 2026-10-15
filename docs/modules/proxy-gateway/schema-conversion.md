@@ -61,7 +61,7 @@ The diagnostic summary contains only protocol, issue categories, recovery flags,
 and bounded counts. It excludes names, schema/ref text, prompts, accounts and filesystem paths.
 Sentry diagnostic events remove inherited request, user, breadcrumb and recent-log context.
 Disabled reporting or unavailable transport leaves local logs available; submission is not a
-delivery guarantee. See [security](security.md#schema-diagnostics-and-node-reporting).
+delivery guarantee. See [security](../../security.md#schema-diagnostics-and-node-reporting).
 
 Use `npm run test:schema:replay -- <audit-database-path> [limit] [all|unmarked]` for read-only replay. The bounded
 limit defaults to 1,000 records. Selection joins request metadata and filters model traffic for
@@ -100,7 +100,7 @@ a local envelope receiver. It checks one isolated event and excludes inherited s
 context. It sends no remote Sentry event. Live tests must separately verify provider tool calls
 and actual remote Sentry receipt. These acceptance commands never alter client-global settings.
 
-The [live gateway workflow](development.md#live-schema-acceptance) uses the prepared core,
+The [live gateway workflow](../../development.md#live-schema-acceptance) uses the prepared core,
 existing account policies and read-only controlled tools. It records final tool-result matches,
 local diagnostic summaries, physical upstream models, remote event identifiers and shutdown
 restoration. A failed model cycle remains a failed check even when other cycles succeed.

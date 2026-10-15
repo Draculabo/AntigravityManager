@@ -10,7 +10,7 @@ OpenAI Chat, Responses, Anthropic, and native Gemini adapters all produce intern
 
 `BaseProxyService.applyInternalGenerationConstraints` sets `body.request.systemInstruction.role` to `user` when a system instruction already exists, immediately before delegating to generation constraints and before the request reaches the Gemini client. `GeminiRequest.systemInstruction.role` is optional in the internal type because protocol mappers construct the pre-normalized shape. No mapper creates a system instruction merely to add the role.
 
-The current compatibility contract is documented in [the proxy compatibility reference](../../../../docs/proxy-compatibility.md).
+The current compatibility contract is documented in [the proxy compatibility reference](../../../../docs/modules/proxy-gateway/compatibility.md).
 
 ## Alternatives considered
 
