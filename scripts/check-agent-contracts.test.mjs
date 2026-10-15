@@ -22,6 +22,7 @@ const REQUIRED_GOVERNANCE_FILES = [
   'src/modules/proxy-gateway/AGENTS.md',
   'src/shared/persistence/AGENTS.md',
   '.agents/notes/README.md',
+  '.agents/lessons.md',
   '.agents/skills/agm-code-review/SKILL.md',
   '.agents/skills/agm-validate-change/SKILL.md',
 ];
@@ -48,7 +49,31 @@ async function createValidFixture() {
   await writeFixtureFile(
     rootDir,
     'AGENTS.md',
-    '# Instructions\n\nSee [architecture](docs/architecture.md). Run `npm run check:agent-contracts`.\n',
+    '# Instructions\n\nSee [architecture](docs/architecture.md) and [Agent lessons](.agents/lessons.md). Run `npm run check:agent-contracts`.\n',
+  );
+  await writeFixtureFile(
+    rootDir,
+    '.agents/lessons.md',
+    [
+      '# Agent Lessons',
+      '',
+      '## When to capture',
+      '',
+      'Capture evidence-backed repeat prevention gaps.',
+      '',
+      '## Candidate format',
+      '',
+      'Use the required fields for every candidate.',
+      '',
+      '## Promotion',
+      '',
+      'Promote recurring lessons to their owning rule.',
+      '',
+      '## Active candidates',
+      '',
+      'No active candidates.',
+      '',
+    ].join('\n'),
   );
 
   return rootDir;
@@ -69,6 +94,83 @@ test('requires the semantic review skill', async (context) => {
   assert.deepEqual(validateAgentContracts(rootDir), {
     errors: ['missing required governance file: .agents/skills/agm-code-review/SKILL.md'],
   });
+});
+
+test('requires the lessons route for triggered failure reviews', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+  await writeFixtureFile(
+    rootDir,
+    'AGENTS.md',
+    '# Instructions\n\nSee [architecture](docs/architecture.md). Run `npm run check:agent-contracts`.\n',
+  );
+
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: ['AGENTS.md must link triggered failure reviews to .agents/lessons.md'],
+  });
+});
+
+test('requires evidence and a prevention check for every active lesson candidate', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+  await writeFixtureFile(
+    rootDir,
+    '.agents/lessons.md',
+    [
+      '# Agent Lessons',
+      '',
+      '## When to capture',
+      'Capture evidenced gaps.',
+      '## Candidate format',
+      'Use all required fields.',
+      '## Promotion',
+      'Promote recurring rules.',
+      '## Active candidates',
+      '### Candidate: ci-fixture-portability',
+      '- **Rule:** Keep platform policy fixtures explicit.',
+      '- **Cause:** Host platform was assumed.',
+      '- **Prevention:** [Run the targeted suite](../docs/testing.md).',
+      '- **Occurrences:** CI failure on Linux, 2026-10-15.',
+      '- **Owner:** [Testing strategy](../docs/testing.md).',
+      '',
+    ].join('\n'),
+  );
+
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: [
+      '.agents/lessons.md: candidate "ci-fixture-portability" needs a non-empty Evidence field',
+    ],
+  });
+});
+
+test('accepts a complete active lesson candidate', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(async () => rm(rootDir, { recursive: true, force: true }));
+  await writeFixtureFile(
+    rootDir,
+    '.agents/lessons.md',
+    [
+      '# Agent Lessons',
+      '',
+      '## When to capture',
+      'Capture evidenced gaps.',
+      '## Candidate format',
+      'Use all required fields.',
+      '## Promotion',
+      'Promote recurring rules.',
+      '## Active candidates',
+      '### Candidate: ci-fixture-portability',
+      '- **Rule:** Keep platform policy fixtures explicit.',
+      '- **Evidence:** [Failing CI run](https://example.com/ci/123).',
+      '- **Cause:** Host platform was assumed.',
+      '- **Prevention:** [Run the targeted suite](../docs/testing.md).',
+      '- **Occurrences:** 1 independent incident, 2026-10-15.',
+      '- **Owner:** [Testing strategy](../docs/testing.md).',
+      '',
+    ].join('\n'),
+  );
+
+  assert.deepEqual(validateAgentContracts(rootDir), { errors: [] });
 });
 
 test('requires script instructions and failure/reliability references', async (context) => {
