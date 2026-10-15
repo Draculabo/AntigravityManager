@@ -98,6 +98,10 @@ export class ProfileLease {
       pid: process.pid,
     };
     const server = net.createServer((socket: Socket) => {
+      // A liveness probe may disconnect before reading; its failure must not release the lease.
+      socket.on('error', () => {
+        socket.destroy();
+      });
       socket.end(`${JSON.stringify(identity)}\n`);
     });
     try {

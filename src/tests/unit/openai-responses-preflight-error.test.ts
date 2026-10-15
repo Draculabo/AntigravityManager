@@ -68,7 +68,7 @@ describe('OpenAI Responses preflight errors', () => {
     expect(reply.body).toMatchObject({
       error: {
         message: expect.stringMatching(/Invalid response_format/),
-        type: 'server_error',
+        type: 'invalid_request_error',
       },
     });
     expect(upstream.calls).toHaveLength(0);

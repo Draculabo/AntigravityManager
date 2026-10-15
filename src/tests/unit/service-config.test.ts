@@ -368,7 +368,6 @@ describe('service configuration', () => {
       'Settings are unavailable right now',
     );
     const saved = await call(configRouter.desktop.save, {
-      ...initial,
       theme: 'dark',
       auto_startup: true,
       owner_mode: 'standalone-core',

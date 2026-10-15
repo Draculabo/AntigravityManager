@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -23,6 +24,27 @@ import {
 
 const require = createRequire(import.meta.url);
 const config = require('../../release.config.cjs');
+
+test('fixture commits and tags do not require inherited signing credentials', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'agm-release-signing-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const globalConfig = path.join(directory, 'gitconfig');
+  await writeFile(globalConfig, '[commit]\n gpgsign = true\n[tag]\n gpgsign = true\n');
+  const previous = process.env.GIT_CONFIG_GLOBAL;
+  try {
+    process.env.GIT_CONFIG_GLOBAL = globalConfig;
+    const f = await fixture(t);
+    assert.equal(resolveHead(f.cwd, 'HEAD'), f.data.headSha);
+    assert.match(resolveHead(f.cwd, 'v0.24.0'), /^[a-f0-9]{40}$/);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.GIT_CONFIG_GLOBAL;
+    } else {
+      process.env.GIT_CONFIG_GLOBAL = previous;
+    }
+  }
+});
+
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const { default: loadPlugins } = await import(
   pathToFileURL(

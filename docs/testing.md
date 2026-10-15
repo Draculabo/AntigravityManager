@@ -129,6 +129,19 @@ preserve NO_PROXY behavior. The local acceptance unit suite also checks read-onl
 
 ## Change-to-evidence matrix
 
+The [Tests workflow](../.github/workflows/testing.yaml) runs Node 22 on Ubuntu and Windows,
+including governance, installed Git hook integration, type checking, the complete Vitest unit
+suite and acceptance harness unit tests. Local Git hooks run only their documented baseline;
+they do not establish a passing unit suite or CI result.
+Vitest caps workers at four to bound concurrent module loading across development and CI hosts;
+the existing test and hook timeouts remain unchanged.
+
+For a reported CI test failure, record the failing revision and job, reproduce its selected tests,
+then run the complete unit suite on the affected OS after the fix. A focused pass does not clear
+known failures in other files. Windows policy tests explicitly select the Windows branch while
+keeping actual fixture paths valid on the host; mocked discovery must not depend on an installed
+client. Native socket fixtures own their parent directories and clean up listeners before removal.
+
 | Changed surface                            | Minimum local evidence                                                | Add when applicable                                                                                     |
 | ------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | Pure utility, mapper or codec              | Owning Vitest file                                                    | Adjacent tests for a shared type or caller contract                                                     |

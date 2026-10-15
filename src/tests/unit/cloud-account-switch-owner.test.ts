@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createRouterClient } from '@orpc/server';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ManagementServer } from '@/core/management/server';
 import { CoreRpcClient } from '@/core/rpc/client';
 import { createCoreRpcOperations } from '@/core/rpc/router';
@@ -164,6 +164,21 @@ vi.mock('@/shared/logging/logger', () => ({
 let server: ManagementServer | null = null;
 let directory: string | null = null;
 
+vi.mock('@/modules/antigravity-runtime/terms/classicTermsSwitch', () => ({
+  prepareClassicTermsSwitch: vi.fn(async () => null),
+}));
+beforeEach(() => {
+  const profile = path.join(os.tmpdir(), 'agm-switch-owner-fixture');
+  vi.spyOn(runtimeLaunch, 'prepareLaunchContext').mockResolvedValue({
+    target: 'classic',
+    executablePath: path.join(profile, 'Antigravity.exe'),
+    args: [],
+    defaultUserDataDir: profile,
+    pathOptions: { userDataDir: profile },
+    processes: [],
+  });
+});
+
 afterEach(async () => {
   selectCloudAccountAdapter({ mode: 'desktop-embedded' });
   await server?.close();
@@ -177,6 +192,7 @@ afterEach(async () => {
   ownerState.activeAgyId = null;
   ownerState.lastUsedId = null;
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 async function startOwner(): Promise<CoreRpcClient> {

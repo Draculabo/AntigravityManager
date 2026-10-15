@@ -15,6 +15,7 @@ vi.mock('@/shared/security/security', async () => {
   const crypto = await import('@/shared/security/crypto');
   const key = Buffer.alloc(32, 7);
   return {
+    initializeMasterKey: vi.fn(async () => undefined),
     encrypt: vi.fn(async (text: string) => crypto.encryptWithKey(key, text)),
     decrypt: vi.fn(async (text: string) => {
       const payload = crypto.parseEncryptedPayload(text);

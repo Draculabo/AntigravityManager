@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { traceRuntime } from './trace-standalone-runtime.mjs';
 
 test('runtime tracing excludes host assets while retaining all explicit native entries', async () => {
+  await mkdir(path.resolve('dist/.runtime'), { recursive: true });
   const parent = await realpath(path.resolve('dist/.runtime'));
   const root = await mkdtemp(path.join(parent, 'trace-fixture-'));
   const outsideParent = await realpath(os.tmpdir());

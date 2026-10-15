@@ -1,5 +1,13 @@
 import { EventEmitter } from 'node:events';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const originalPlatform = process.platform;
+beforeEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+});
+afterEach(() => {
+  Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
+});
 
 const mock = vi.hoisted(() => ({
   check: vi.fn(),

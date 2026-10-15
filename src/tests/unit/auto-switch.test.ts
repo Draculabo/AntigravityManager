@@ -14,8 +14,8 @@ vi.mock('@/modules/cloud-account/persistence/cloud-account-settings-store', () =
   },
 }));
 
-vi.mock('@/modules/cloud-account/ipc/handler', () => ({
-  switchCloudAccount: vi.fn(),
+vi.mock('@/modules/cloud-account/services/cloud-account-switch.service', () => ({
+  switchCloudAccountCore: vi.fn(),
 }));
 
 vi.mock('@/shared/logging/logger', () => ({

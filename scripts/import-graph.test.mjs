@@ -23,6 +23,7 @@ async function createImportGraphFixture() {
   runGit(rootDir, ['init']);
   runGit(rootDir, ['config', 'user.name', 'Agent Test']);
   runGit(rootDir, ['config', 'user.email', 'agent-test@example.com']);
+  runGit(rootDir, ['config', 'commit.gpgsign', 'false']);
   await writeFixtureFile(
     rootDir,
     'tsconfig.json',

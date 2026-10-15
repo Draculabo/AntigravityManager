@@ -12,6 +12,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Bound concurrent module loading on hosts that report many logical CPUs.
+    maxWorkers: 4,
     globals: true,
     environment: 'happy-dom',
     include: ['src/tests/unit/**/*.test.ts'],

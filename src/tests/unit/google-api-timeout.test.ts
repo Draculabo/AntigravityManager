@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { isString } from 'lodash-es';
 import { mockAxiosRequests } from '../helpers/mock-axios-request';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 // Mock module to test timeout behavior
 describe('GoogleAPIService Timeout', () => {
@@ -254,6 +255,27 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.resetModules();
+    for (const name of [
+      'http_proxy',
+      'HTTP_PROXY',
+      'https_proxy',
+      'HTTPS_PROXY',
+      'ALL_PROXY',
+      'all_proxy',
+      'NO_PROXY',
+      'no_proxy',
+      'npm_config_http_proxy',
+      'npm_config_https_proxy',
+      'npm_config_proxy',
+      'npm_config_no_proxy',
+      'ELECTRON_PROXY_SERVER',
+    ]) {
+      vi.stubEnv(name, '');
+    }
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it('loads AI credits from loadCodeAssist project context', async () => {
@@ -649,7 +671,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('defers HTTP(S) environment proxy selection to Axios when no account proxy is provided', async () => {
+  it('routes HTTP(S) environment proxies through a CONNECT agent', async () => {
     process.env.HTTP_PROXY = 'http://127.0.0.1:9090';
     process.env.HTTPS_PROXY = 'http://127.0.0.1:9090';
     process.env.NO_PROXY = 'localhost,127.0.0.1,::1';
@@ -676,14 +698,18 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     await expect(GoogleAPIService.fetchAICredits('access-token')).resolves.toBeNull();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[1]?.proxy).toBeUndefined();
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      proxy: false,
+      httpAgent: expect.any(HttpsProxyAgent),
+      httpsAgent: expect.objectContaining({ proxy: new URL('http://127.0.0.1:9090') }),
+    });
 
     delete process.env.HTTP_PROXY;
     delete process.env.HTTPS_PROXY;
     delete process.env.NO_PROXY;
   });
 
-  it('maps the Electron proxy environment fallback to Axios proxy options', async () => {
+  it('routes the Electron proxy environment fallback through a CONNECT agent', async () => {
     process.env.ELECTRON_PROXY_SERVER = 'http://127.0.0.1:9090';
 
     const fetchMock = vi.fn().mockResolvedValueOnce({
@@ -708,10 +734,10 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     await expect(GoogleAPIService.fetchAICredits('access-token')).resolves.toBeNull();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[1]?.proxy).toMatchObject({
-      host: '127.0.0.1',
-      port: 9090,
-      protocol: 'http',
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      proxy: false,
+      httpAgent: expect.any(HttpsProxyAgent),
+      httpsAgent: expect.objectContaining({ proxy: new URL('http://127.0.0.1:9090') }),
     });
 
     delete process.env.ELECTRON_PROXY_SERVER;
@@ -744,14 +770,12 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
       ),
     ).resolves.toBeNull();
 
-    expect(fetchMock.mock.calls[0]?.[1]?.proxy).toMatchObject({
-      auth: {
-        password: 'password value',
-        username: 'account@user',
-      },
-      host: '127.0.0.1',
-      port: 9180,
-      protocol: 'http',
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      proxy: false,
+      httpAgent: expect.any(HttpsProxyAgent),
+      httpsAgent: expect.objectContaining({
+        proxy: new URL('http://account%40user:password%20value@127.0.0.1:9180'),
+      }),
     });
 
     delete process.env.HTTPS_PROXY;
