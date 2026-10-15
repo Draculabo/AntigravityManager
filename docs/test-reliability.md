@@ -14,7 +14,7 @@ For each acquired resource, identify its owner, unique allocation, readiness sig
 - Allocate writable fixture directories atomically with `mkdtemp`. Keep parser examples and expected paths separate from directories actually acquired by a test.
 - Namespace databases, sockets, reports and profiles per run. Resolve cleanup paths and verify they remain inside the owned temporary root before recursive removal.
 - Prefer injected dependencies over global mutation. When changing environment variables, working directory, timers or hooks, register restoration immediately and preserve the difference between absent and present values.
-- Isolated Chromium profiles do not isolate the Windows OS credential store. Live account acceptance follows the [account-switch SOP](account-switch-acceptance.md), captures the original credential before any write and verifies exact restoration. A missing backup prevents the write; a cleanup failure fails acceptance.
+- Isolated Chromium profiles do not isolate the Windows OS credential store. Live account acceptance follows the [account-switch SOP](./modules/antigravity-runtime/account-switch-acceptance.md), captures the original credential before any write and verifies exact restoration. A missing backup prevents the write; a cleanup failure fails acceptance.
 - Preserve evidence of failure without exporting credentials, account identities or private profile contents. Temporary-state cleanup does not authorize deleting unrelated installations, user directories or repository worktrees.
 
 ## Wait for observable state

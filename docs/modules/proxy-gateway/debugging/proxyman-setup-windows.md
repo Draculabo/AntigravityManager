@@ -6,7 +6,7 @@ This guide covers the Proxyman prerequisites for contributors:
 2. Trust the Proxyman certificate so HTTPS traffic can be decrypted
 3. Verify that Proxyman is working before you start debugging Antigravity traffic
 
-If your goal is to debug the installed Antigravity client or this repository's development build, continue with [Proxyman Debugging Guide](./proxyman-debugging.md).
+If your goal is to debug the installed Antigravity client or this repository's development build, continue with [Proxyman Debugging Guide](./proxyman.md).
 
 ## Scope
 
@@ -129,7 +129,7 @@ Official reference:
 
 Once Proxyman is installed, trusted, and verified, continue with:
 
-- [Proxyman Debugging Guide](./proxyman-debugging.md)
+- [Proxyman Debugging Guide](./proxyman.md)
 
 ## References
 

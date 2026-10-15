@@ -10,7 +10,7 @@ scoped completion; failed probes retain their original verdicts. The
 local execution record (`artifacts/schema-work-package/verification.md#scoped-completion-and-follow-up-coverage`)
 owns the completed evidence and follow-up limits. No production routing policy changes.
 
-This note retains the approved proposal and design history. The [current Schema reference](../../../../docs/proxy-schema-conversion.md) describes implemented code behavior and links to separately recorded live acceptance. This supersedes the [stream-verification proposal](2026-10-08-model-discovery-and-stream-verification.md). The user's subsequent request to begin execution authorizes implementation and the scoped acceptance work.
+This note retains the approved proposal and design history. The [current Schema reference](../../../../docs/modules/proxy-gateway/schema-conversion.md) describes implemented code behavior and links to separately recorded live acceptance. This supersedes the [stream-verification proposal](2026-10-08-model-discovery-and-stream-verification.md). The user's subsequent request to begin execution authorizes implementation and the scoped acceptance work.
 
 ## Problem
 

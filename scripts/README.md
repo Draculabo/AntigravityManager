@@ -103,7 +103,7 @@ Select evidence by the affected behavior, then inspect the owning command or SOP
 | Change scope                               | `npm run change-scope -- --base HEAD` for worktree changes               | Reads Git metadata. Outgoing/PR changes require the verified base and head rather than an assumed base.                                                                    |
 | Pure acceptance harness behavior           | `npm run test:acceptance -- unit` or the owning `node --test` file       | Uses synthetic fixtures; see the coverage and exclusions below.                                                                                                            |
 | Native core, preload or desktop behavior   | `npm run test:acceptance -- runtime <check>`                             | Select the check listed by top-level help; built artifacts, matching native ABI and isolated state depend on the check.                                                    |
-| Real account switching or client history   | `npm run test:acceptance -- accounts <check>`                            | Follow the [account SOP](../docs/account-switch-acceptance.md); may close clients or change shared credentials and must verify restoration.                                |
+| Real account switching or client history   | `npm run test:acceptance -- accounts <check>`                            | Follow the [account SOP](../docs/modules/antigravity-runtime/account-switch-acceptance.md); may close clients or change shared credentials and must verify restoration.    |
 | Real coding-client or provider behavior    | `agents`, `multimodal` or `thinking` acceptance suites                   | Follow the linked SOPs below; may consume quota or change isolated tool configuration.                                                                                     |
 | Schema replay and live protocol diagnosis  | Existing `test:schema:*` npm commands                                    | Follow [live Schema acceptance](../docs/development.md#live-schema-acceptance); replay, live requests and remote reporting have different effects.                         |
 | Diagnostic reporting                       | `npm run test:diagnostics:sentry` or `npm run test:diagnostics:packaged` | Follow [diagnostic acceptance](../docs/testing.md#account-operation-diagnostic-acceptance); default/local, packaged and live reporting modes establish different evidence. |
@@ -136,9 +136,9 @@ for the policy timing variants and regression mode.
 Live account, model and installer suites have separate explicit commands. They require prepared
 isolated profiles, platform artifacts and, for model tasks, an authorized account with sufficient
 quota. A pure harness test does not prove that an installed client or upstream model works.
-Follow the [account SOP](../docs/account-switch-acceptance.md),
-[coding-tool SOP](../docs/live-agent-acceptance.md) or
-[media and thinking SOP](../docs/live-proxy-media-thinking-acceptance.md) as appropriate.
+Follow the [account SOP](../docs/modules/antigravity-runtime/account-switch-acceptance.md),
+[coding-tool SOP](../docs/modules/proxy-gateway/acceptance/live-agent.md) or
+[media and thinking SOP](../docs/modules/proxy-gateway/acceptance/media-thinking.md) as appropriate.
 
 The report command also supports `--refresh PROFILE_HOME REPORT...`. It rebuilds the model request
 window from the still-running local acceptance gateway, writes separate `report.reconciled.json`

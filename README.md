@@ -50,7 +50,7 @@
 - [Quick Start](#-quick-start)
 - [Tech Stack](#️-tech-stack)
 - [Development](#-development)
-- [Debugging Docs](#-debugging-docs)
+- [Documentation](#-documentation)
 - [FAQ](#-faq)
 - [Contributing](#-contributing)
 - [License](#-license)
@@ -189,22 +189,21 @@ The first time you click **Start Service** on the API Proxy page, you must ackno
   <img src="docs/assets/screenshot-setting.png" alt="Settings Interface" width="48%" />
 </p>
 
-
 ---
 
-## � Quick Start
+## 🚀 Quick Start
 
 ### Download
 
 Download the latest release for your platform from the [Releases](https://github.com/Draculabo/AntigravityManager/releases) page.
 
-| Platform | Download |
-|----------|----------|
+| Platform            | Download                                                                          |
+| ------------------- | --------------------------------------------------------------------------------- |
 | Windows (x64/ARM64) | [.exe installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
-| macOS | [.dmg installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
-| Linux | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest) |
-| Arch Linux (AUR) | `yay -S antigravity-manager-bin` |
-| NixOS / Nix | `nix run github:Draculabo/AntigravityManager` |
+| macOS               | [.dmg installer](https://github.com/Draculabo/AntigravityManager/releases/latest) |
+| Linux               | [.deb / .rpm](https://github.com/Draculabo/AntigravityManager/releases/latest)    |
+| Arch Linux (AUR)    | `yay -S antigravity-manager-bin`                                                  |
+| NixOS / Nix         | `nix run github:Draculabo/AntigravityManager`                                     |
 
 ### ❄️ Nix Integration
 
@@ -227,9 +226,9 @@ To integrate with your system, add `antigravity-manager.overlays.default` to you
 # Add to your NixOS/Home Manager configuration
 {
   nixpkgs.overlays = [ inputs.antigravity-manager.overlays.default ];
-  
+
   # Antigravity Manager has an unfree license (cc-by-nc-sa-40)
-  nixpkgs.config.allowUnfree = true; 
+  nixpkgs.config.allowUnfree = true;
 
   environment.systemPackages = [
     pkgs.antigravity-manager
@@ -256,8 +255,8 @@ devShells.default = pkgs.mkShell {
 
 #### Prerequisites
 
-- Node.js v18 or higher
-- npm or yarn
+- Node.js `>=22.14.0`
+- npm `>=10`
 
 #### Steps
 
@@ -266,8 +265,8 @@ devShells.default = pkgs.mkShell {
 git clone https://github.com/Draculabo/AntigravityManager.git
 cd AntigravityManager
 
-# Install dependencies
-npm install
+# Install the locked dependencies
+npm ci
 
 # Start development
 npm start
@@ -278,56 +277,59 @@ npm run make
 
 ---
 
-## �🛠️ Tech Stack
+## 🛠️ Tech Stack
 
-| Category | Technologies |
-|----------|-------------|
-| **Core** | [Electron](https://www.electronjs.org/), [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/) |
-| **Build Tool** | [Vite](https://vitejs.dev/) |
-| **Styling** | [TailwindCSS](https://tailwindcss.com/), [Shadcn UI](https://ui.shadcn.com/) |
-| **State** | [TanStack Query](https://tanstack.com/query/latest), [TanStack Router](https://tanstack.com/router/latest) |
-| **Database** | [Better-SQLite3](https://github.com/WiseLibs/better-sqlite3) |
-| **Testing** | [Vitest](https://vitest.dev/), [Playwright](https://playwright.dev/) |
+| Category       | Technologies                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Core**       | [Electron](https://www.electronjs.org/), [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/) |
+| **Build Tool** | [Vite](https://vitejs.dev/)                                                                                         |
+| **Styling**    | [TailwindCSS](https://tailwindcss.com/), [Shadcn UI](https://ui.shadcn.com/)                                        |
+| **State**      | [TanStack Query](https://tanstack.com/query/latest), [TanStack Router](https://tanstack.com/router/latest)          |
+| **Database**   | [Better-SQLite3](https://github.com/WiseLibs/better-sqlite3)                                                        |
+| **Testing**    | [Vitest](https://vitest.dev/), [Playwright](https://playwright.dev/)                                                |
 
 ---
 
-## � Development
+## 💻 Development
 
 ### Available Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm start` | Start the app in development mode |
-| `npm run lint` | Run ESLint to check for code issues |
-| `npm run format:write` | Format code with Prettier |
-| `npm run test:unit` | Run unit tests with Vitest |
-| `npm run test:e2e` | Run E2E tests with Playwright |
-| `npm run test:all` | Run all tests |
-| `npm run type-check` | Run TypeScript type checking |
-| `npm run make` | Build production packages |
+| Command                | Description                         |
+| ---------------------- | ----------------------------------- |
+| `npm start`            | Start the app in development mode   |
+| `npm run lint`         | Run ESLint to check for code issues |
+| `npm run format:write` | Format code with Prettier           |
+| `npm run test:unit`    | Run unit tests with Vitest          |
+| `npm run test:e2e`     | Run E2E tests with Playwright       |
+| `npm run test:all`     | Run all tests                       |
+| `npm run type-check`   | Run TypeScript type checking        |
+| `npm run make`         | Build production packages           |
 
 ### Project Structure
 
 ```
 AntigravityManager/
 ├── src/
-│   ├── main.ts          # Electron main process
-│   ├── preload.ts       # Preload script
-│   ├── renderer/        # React renderer process
-│   ├── ipc/             # IPC communication handlers
-│   └── server/          # Built-in server
-├── docs/                # Documentation and assets
+│   ├── modules/         # Feature-owned code
+│   ├── core/            # Shared application runtime
+│   ├── cli/             # Standalone command-line runtime
+│   └── shared/          # Cross-feature primitives
+├── docs/                # Cross-cutting and module-owned guides
 └── .github/             # GitHub configuration
 ```
 
 ---
 
-## 🔍 Debugging Docs
+## 📚 Documentation
 
-If you want to inspect Antigravity or Antigravity Manager traffic with Proxyman, start here:
+Browse the [documentation index](./docs/README.md) or the [feature module index](./docs/modules/README.md).
 
-- [Proxyman Installation and Basic Setup on Windows](docs/proxyman-install.md)
-- [Proxyman Debugging Guide for Antigravity and Antigravity Manager](docs/proxyman-debugging.md)
+### Proxy debugging guides
+
+To inspect Antigravity or Antigravity Manager traffic with Proxyman, start here:
+
+- [Proxyman Installation and Basic Setup on Windows](./docs/modules/proxy-gateway/debugging/proxyman-setup-windows.md)
+- [Proxyman Debugging Guide for Antigravity and Antigravity Manager](./docs/modules/proxy-gateway/debugging/proxyman.md)
 
 ---
 
@@ -337,8 +339,9 @@ If you want to inspect Antigravity or Antigravity Manager traffic with Proxyman,
 <summary><b>Q: The app won't start?</b></summary>
 
 Please check:
-1. Make sure all dependencies are installed: `npm install`
-2. Check if Node.js version is >= 18
+
+1. Install the locked dependencies with `npm ci`.
+2. Check that Node.js is `>=22.14.0` and npm is `>=10`.
 3. Try deleting `node_modules` and reinstalling
 
 </details>

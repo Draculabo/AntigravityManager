@@ -44,7 +44,7 @@ fallbacks. Structured-output schemas reject conversion failures; eligible tool c
 a fixed string fallback while retaining the tool, sibling parameters and required relationship.
 Native Gemini dialect conversion remains separate. Responses WebSocket validates effective
 configuration before publishing prewarm events or replacing socket request state, and reuses
-its prepared schemas during generation. See the [Schema reference](proxy-schema-conversion.md)
+its prepared schemas during generation. See the [Schema reference](./modules/proxy-gateway/schema-conversion.md)
 for supported references, bounds and error contracts.
 
 Error reporting uses runtime-specific Electron and Node SDK adapters. The logger submits one
@@ -227,7 +227,9 @@ Each `BoundedSqliteWorker` instance closes terminally: new reads/writes and lazy
 
 Audit and Thought Store services distinguish reusable `close()` from terminal `shutdown()`. Process shutdown rejects new reads, capture, repair and configuration work, stops maintenance and gives accepted body/SSE writes, hydration and repair up to two seconds to drain. Accepted repair may finish replacing its worker during drain; once drain finishes or times out, worker access and recreation are sealed. Both stores are attempted even when the gateway was never started or is already stopped, and failed closure propagates. Core shutdown drains standalone-core IPC capabilities before terminal diagnostics and retains the profile lease on failure. Desktop exit uses the same store teardown under its existing three-second forced-exit bound, which can interrupt cleanup.
 
-The [ownership cutover audit](ownership-cutover-audit.md) records migrated owner boundaries and remaining release gates. Desktop bootstrap selects all migrated feature owners together; native delivery and platform acceptance determine release readiness.
+The [ownership cutover audit](ownership-cutover-audit.md) is a historical snapshot and is not a
+current readiness report. Desktop bootstrap selects all migrated feature owners together; native
+delivery and platform acceptance determine release readiness.
 
 ### Desktop owner bootstrap
 
@@ -366,6 +368,9 @@ Feature-specific components, hooks, IPC routers, services, persistence and types
 - `identity-profile`: identity profile behavior and dialog UI.
 - `proxy-gateway`: local HTTP gateway, protocol mapping, model routing and gateway administration.
 
+See the [module documentation index](modules/README.md) for current feature guides and acceptance
+procedures grouped by these owners.
+
 Generic UI primitives belong in `src/components/ui`; application-wide composition belongs in `src/components/layout` or `src/components/shared`. A component stays in its feature when its language or behavior depends on that feature, even if it is visually reusable.
 
 ## Antigravity process operations
@@ -499,7 +504,7 @@ kept for diagnosis.
 
 Protocol-facing behavior is a compatibility surface. Changes to request mapping, streaming event order, tool calls, usage accounting, error responses, model selection or durable response state require the focused tests listed in [testing.md](testing.md) and may require an Agent Note.
 
-The [proxy compatibility reference](proxy-compatibility.md) describes current Responses history, reasoning, tool configuration and explicit-cache contracts.
+The [proxy compatibility reference](./modules/proxy-gateway/compatibility.md) describes current Responses history, reasoning, tool configuration and explicit-cache contracts.
 
 ## Persistence and credentials
 
@@ -509,7 +514,7 @@ OpenCode in desktop-embedded or standalone-core mode. Typed RPC exposes bounded 
 connection-only previews and recovery operations; only the selected owner reads files and
 connection keys. CLI commands live under `src/cli`. Both shutdown paths close tool admission and
 drain admitted work before closing configuration mutation admission, since Codex setup can add
-a review route. See [coding-tool-configuration.md](coding-tool-configuration.md) for file ownership
+a review route. See the [agent-tools reference](./modules/proxy-gateway/agent-tools.md) for file ownership
 and recovery behavior.
 
 Shared SQLite connection and schema utilities live under `src/shared/persistence/database`. Feature-specific repositories and codecs remain with their feature. Persisted rows are untrusted when read and must be narrowed through the owning schema or codec.

@@ -10,7 +10,7 @@ Schema regression coverage includes `json-schema-reference-resolver`, `schema-ad
 mapper/cache compatibility and Responses WebSocket tests. Runtime reporting adds
 `error-reporting-runtime`, `core-error-reporting`, desktop preference propagation, instrumentation,
 core shutdown/startup and RPC coverage. Read-only audit replay and live coding-client/provider
-calls are separate gates. See [Schema conversion](proxy-schema-conversion.md#diagnostics-and-acceptance).
+calls are separate gates. See [Schema conversion](./modules/proxy-gateway/schema-conversion.md#diagnostics-and-acceptance).
 
 `scripts/acceptance/schema/check-history-evidence.mjs` checks controlled missing-result failures
 and anonymous audit-attempt grouping using Node SQLite fixtures. Live history/resubmission and
@@ -275,7 +275,7 @@ navigation state, sidebar preference restoration and Chinese copy. Screenshots a
 test output directory. The fixture has no real preload, credentials, database or upstream service;
 this evidence does not establish installer behavior or macOS/Linux native integration.
 
-The [desktop interface reference](desktop-interface.md) owns the presentation conventions.
+The [desktop interface reference](./modules/app-shell/desktop-interface.md) owns the presentation conventions.
 
 Run `npm run test:performance -- feedback-workspace.spec.mts` to check deferred reads, empty account
 and traffic views, failed reads with retry, and all four notification variants in isolated Electron.
@@ -377,7 +377,7 @@ and `service-config.test.ts`. They cover file recovery, secret projection, write
 CLI confirmation and shutdown dependencies. Also run `core-rpc.test.ts` and
 `gateway-adapter.test.ts` when the selected-owner wiring changes. Build core and CLI after
 changing the TOML dependency. These checks do not replace real installed-client requests;
-report platform and upstream evidence separately using the [SOP](live-agent-acceptance.md).
+report platform and upstream evidence separately using the [SOP](./modules/proxy-gateway/acceptance/live-agent.md).
 
 Run a specific Vitest file:
 
@@ -510,7 +510,7 @@ removed only from the verified temporary directory.
 ## Standalone delivery acceptance
 
 For live provider task acceptance across standalone CLI and Electron owners on Windows and Linux,
-follow [Live agent acceptance](live-agent-acceptance.md). The runner records a bounded audit and
+follow [Live agent acceptance](./modules/proxy-gateway/acceptance/live-agent.md). The runner records a bounded audit and
 token report for a real file-writing task; a successful HTTP response alone does not pass the task.
 
 `npm run package` prepares the standalone resource tree as part of Forge packaging. For a local
@@ -734,7 +734,7 @@ These fixtures do not write live OS credentials or prove official-client account
 
 ## IDE hot-switch lifecycle checks
 
-For real cloud and local account A-B-A checks through the CLI and Electron owners, follow the [account switching acceptance tutorial](account-switch-acceptance.md). It distinguishes official login confirmation from credential-only evidence and records the Linux restart-only limitation.
+For real cloud and local account A-B-A checks through the CLI and Electron owners, follow the [account switching acceptance tutorial](./modules/antigravity-runtime/account-switch-acceptance.md). It distinguishes official login confirmation from credential-only evidence and records the Linux restart-only limitation.
 
 `node scripts/test-ide-hot-switch.integration.mjs` exercises the production process selector and service lifecycle against isolated native binaries on Windows, Linux and macOS. Three account-marker changes verify two AI services below direct and utility-host parents, replacement credentials, stable main-process identity, continued terminal progress and an unchanged in-memory workspace. Discovery and cleanup are restricted to the generated fixture directory. Run with the native platform dependency installed; do not reuse Windows-only `node_modules` for a Linux check.
 
@@ -748,5 +748,5 @@ installation revision invalidation, corrupted history, observed standard/GCP cha
 isolation, concurrent reopening/settings writes, invalid JSON, durable write failure and field-only
 rollback. Existing cloud-account, local-owner, runtime-switch, credential-write and switch-guard
 suites cover the call sites. Native macOS/Linux behavior is unchanged and explicitly excluded
-from the Windows retention path. See [live acceptance](account-switch-acceptance.md#diagnose-repeated-classic-terms)
+from the Windows retention path. See [live acceptance](./modules/antigravity-runtime/account-switch-acceptance.md#diagnose-repeated-classic-terms)
 for manual first consent, repeated switches and restart evidence.
