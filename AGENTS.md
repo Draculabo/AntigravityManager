@@ -60,12 +60,22 @@ See [src/modules/AGENTS.md](src/modules/AGENTS.md), [src/modules/proxy-gateway/A
 
 ## Change workflow
 
-1. Identify the owning module and every runtime boundary the change crosses.
-2. Read the nearest instructions, current architecture reference and owning tests.
+Route the task before editing:
+
+- Do not automatically invoke OpenSpec prompts or skills for project work; use this workflow unless the user explicitly requests OpenSpec.
+- Read-only investigation ends with findings and evidence; do not create implementation files.
+- Bug fixes begin by reproducing or isolating the reported behavior and defining the observable regression check.
+- Routine feature work names the user-visible outcome, owning module and acceptance behavior before implementation.
+- Multi-module, cross-boundary or high-risk work starts with a concise plan covering scope, owners, contracts, acceptance evidence and recovery. Record durable or difficult-to-reverse decisions in an Agent Note.
+
+For implementation work:
+
+1. Record the repository, branch and starting worktree state so pre-existing user changes remain untouched.
+2. Identify the owning module and every runtime boundary the change crosses; read the nearest instructions, current architecture reference and owning tests.
 3. Inspect relevant consumers before changing a shared or public contract.
 4. Implement the smallest complete slice and update its tests and current documentation together.
-5. Use [agm-validate-change](.agents/skills/agm-validate-change/SKILL.md) to select focused evidence from [docs/testing.md](docs/testing.md); widen only when the affected surface requires it.
-6. Complete the final semantic review in the review section of [agm-validate-change](.agents/skills/agm-validate-change/SKILL.md), then report findings, evidence and remaining risks.
+5. Use [agm-validate-change](.agents/skills/agm-validate-change/SKILL.md) to establish change scope and select focused evidence from [docs/testing.md](docs/testing.md); widen only when the affected surface requires it.
+6. Complete the final semantic review with [agm-code-review](.agents/skills/agm-code-review/SKILL.md), then report findings, evidence and remaining risks.
 
 For high-risk or difficult-to-reverse decisions, add or update an [Agent Note](.agents/notes/README.md) in the same change.
 
