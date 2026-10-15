@@ -1,17 +1,17 @@
 ---
 name: agm-validate-change
-description: Select and run the smallest reliable validation set for an Antigravity Manager worktree change. Use after implementing repository changes or before claiming they are validated; do not use for read-only analysis.
+description: Select focused validation evidence and review the final semantic diff for an Antigravity Manager change. Use after implementation or before reporting work complete; do not use for read-only analysis.
 ---
 
-# Validate an Antigravity Manager Change
+# Validate and Review an Antigravity Manager Change
 
 Validate the behavior a diff can affect without reflexively running the full repository suite. [Testing strategy](../../../docs/testing.md) owns the change-to-evidence mapping; the nearest `AGENTS.md` owns additional requirements.
 
 ## Inspect the change
 
-1. Confirm the repository root, branch and worktree status.
-2. Inspect staged, unstaged and relevant untracked files without modifying unrelated user work.
-3. Classify each changed path as documentation/governance, renderer UI, routing, IPC/preload, Electron main lifecycle, persistence/security, proxy protocol/server, build/update or shared contract.
+1. Confirm the repository root, branch and starting worktree state. Separate this task's files from pre-existing user changes.
+2. For current worktree changes, run `npm run change-scope -- --base HEAD`. For outgoing commits, verify the actual target base first, then pass it with `--base`; use `--head` only for a specific head other than `HEAD`. Never guess a base. Keep the report output bounded; compare it with the starting state, then inspect task-owned changes while excluding pre-existing user-owned files.
+3. Classify each task-owned changed path as documentation/governance, renderer UI, routing, IPC/preload, Electron main lifecycle, persistence/security, proxy protocol/server, build/update or shared contract.
 4. Identify behavior that crosses more than one category; those paths need evidence from each affected side.
 
 ## Select evidence
@@ -28,6 +28,19 @@ Do not use a passing mock-only test as proof of native Electron, keyring, instal
 ## Handle results
 
 If a relevant check fails, diagnose that failure before widening scope. Do not skip it, weaken assertions or attribute it to the environment without concrete environment evidence. Stop when fixing it would require authority or scope beyond the requested change.
+
+## Review the final diff
+
+After relevant fixes and checks, review the task-owned final diff once for defects that mechanical gates may miss. Use the exact scope established above and read the nearest `AGENTS.md` plus the relevant [architecture](../../../docs/architecture.md), [security](../../../docs/security.md), [testing](../../../docs/testing.md) and Agent Note guidance.
+
+- Trace changed interfaces in both directions. Check ownership, validation, transformations and dependency direction against the module and process boundaries.
+- Follow failure paths to their final state and user-visible result. Check cancellation, retries, concurrency, timeouts, partial completion and resource cleanup.
+- For persistence, credentials, authentication, IPC, process execution, packaging or updates, verify trust boundaries, data exposure and recovery behavior.
+- For UI changes, check asynchronous states, error and empty states, accessibility, localization ownership and whether copy or diagnostics match actual behavior.
+- For behavior changes, confirm tests would fail for the intended regression. For asynchronous, native, platform-sensitive or resource-owning tests, inspect isolation, synchronization, timeouts and cleanup; mocks do not prove native or packaged behavior.
+- Confirm documentation and comments match current behavior and implemented Agent Notes match the changed code. Check for unrelated task files, generated output, secrets and user-owned paths.
+
+Report actionable findings before summary. Each finding needs a precise file and line, impact, and evidence from the diff or execution path. Separate blockers from non-blocking suggestions. Omit style preferences, speculative risks and issues already covered by passing mechanical checks. If there are no findings, say so and name any important behavior the review could not verify.
 
 Report:
 

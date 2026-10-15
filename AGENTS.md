@@ -64,8 +64,8 @@ See [src/modules/AGENTS.md](src/modules/AGENTS.md), [src/modules/proxy-gateway/A
 2. Read the nearest instructions, current architecture reference and owning tests.
 3. Inspect relevant consumers before changing a shared or public contract.
 4. Implement the smallest complete slice and update its tests and current documentation together.
-5. Select focused evidence from [docs/testing.md](docs/testing.md); widen only when the affected surface requires it.
-6. Review the final diff for unrelated work, generated output, secrets and documentation drift.
+5. Use [agm-validate-change](.agents/skills/agm-validate-change/SKILL.md) to select focused evidence from [docs/testing.md](docs/testing.md); widen only when the affected surface requires it.
+6. Complete the final semantic review in the review section of [agm-validate-change](.agents/skills/agm-validate-change/SKILL.md), then report findings, evidence and remaining risks.
 
 For high-risk or difficult-to-reverse decisions, add or update an [Agent Note](.agents/notes/README.md) in the same change.
 
