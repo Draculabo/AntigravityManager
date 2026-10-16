@@ -49,7 +49,7 @@ describe('CloudAccountListSummary minimal mode', () => {
         activeAccounts: 1,
         rateLimitedAccounts: 0,
         overallQuotaPercentage: 82.8,
-        effectiveQuotaStatus: 'success',
+        effectiveQuotaStatus: 'high',
         isMinimalMode: false,
       }),
     );
@@ -72,7 +72,7 @@ describe('CloudAccountListSummary minimal mode', () => {
         activeAccounts: 1,
         rateLimitedAccounts: 0,
         overallQuotaPercentage: 82.8,
-        effectiveQuotaStatus: 'success',
+        effectiveQuotaStatus: 'high',
         isMinimalMode: true,
       }),
     );
@@ -88,9 +88,13 @@ describe('CloudAccountListSummary minimal mode', () => {
     const standardDl = container.querySelector('dl.grid-cols-2.xl\\:grid-cols-4');
     expect(standardDl).toBeNull();
 
-    // The compact summary dl should exist
+    // The compact summary dl should exist with background color styling
     const compactDl = container.querySelector('dl.divide-border');
     expect(compactDl).not.toBeNull();
+    expect(container.querySelector('.bg-info-soft')).not.toBeNull();
+    expect(container.querySelector('.bg-success-soft')).not.toBeNull();
+    expect(container.querySelector('.bg-warning-soft')).not.toBeNull();
+    expect(container.querySelector('.bg-card')).not.toBeNull();
   });
 });
 
@@ -108,7 +112,10 @@ describe('CloudAccountToolbar minimal mode', () => {
     currentSort: 'recently-used' as const,
     gridLayout: 'auto' as const,
     quotaWindow: 'both' as const,
-    quotaGroupVisibility: { gemini: true, claude: true },
+    quotaGroupVisibility: {
+      fiveHour: { gemini: true, claude: true },
+      weekly: { gemini: true, claude: true },
+    },
     getTierOptionLabel: (_key: string, label: string) => label,
     onToggleAutoSwitch: vi.fn(),
     onForcePoll: vi.fn(),
