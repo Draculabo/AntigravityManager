@@ -95,49 +95,55 @@ export function CloudAccountToolbar({
 
   return (
     <div className="bg-card rounded-lg border">
-      <div className="flex flex-wrap items-center gap-2 p-3">
-        <div className="flex items-center gap-3 px-1 py-1">
-          <div className="flex items-center gap-2">
-            <Zap
-              className={`h-4 w-4 ${autoSwitchEnabled ? 'text-primary' : 'text-muted-foreground'}`}
+      {!isMinimalMode && (
+        <div className="flex flex-wrap items-center gap-2 p-3">
+          <div className="flex items-center gap-3 px-1 py-1">
+            <div className="flex items-center gap-2">
+              <Zap
+                className={`h-4 w-4 ${autoSwitchEnabled ? 'text-primary' : 'text-muted-foreground'}`}
+              />
+              <Label
+                htmlFor="auto-switch"
+                className="cursor-default text-sm font-medium"
+                title={t('cloud.auto-switch-description')}
+              >
+                {t('cloud.auto-switch-client')}
+              </Label>
+            </div>
+            <Switch
+              id="auto-switch"
+              checked={!!autoSwitchEnabled}
+              onCheckedChange={onToggleAutoSwitch}
+              disabled={isSettingsLoading || isSetAutoSwitchPending}
             />
-            <Label
-              htmlFor="auto-switch"
-              className="cursor-default text-sm font-medium"
-              title={t('cloud.auto-switch-description')}
-            >
-              {t('cloud.auto-switch-client')}
-            </Label>
           </div>
-          <Switch
-            id="auto-switch"
-            checked={!!autoSwitchEnabled}
-            onCheckedChange={onToggleAutoSwitch}
-            disabled={isSettingsLoading || isSetAutoSwitchPending}
-          />
+
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onForcePoll}
+            title={t('cloud.checkQuota')}
+            aria-label={t('cloud.checkQuota')}
+            disabled={isForcePollPending}
+            className="cursor-default"
+          >
+            <RefreshCcw className={`h-4 w-4 ${isForcePollPending ? 'animate-spin' : ''}`} />
+          </Button>
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <LocalAccountImportDialog />
+
+            <CloudAccountFileDialogs />
+            <CloudAccountLoginDialog />
+          </div>
         </div>
+      )}
 
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={onForcePoll}
-          title={t('cloud.checkQuota')}
-          aria-label={t('cloud.checkQuota')}
-          disabled={isForcePollPending}
-          className="cursor-default"
-        >
-          <RefreshCcw className={`h-4 w-4 ${isForcePollPending ? 'animate-spin' : ''}`} />
-        </Button>
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <LocalAccountImportDialog />
-
-          <CloudAccountFileDialogs />
-          <CloudAccountLoginDialog />
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
+      <div
+        className={`flex flex-wrap items-center gap-2 px-3 py-2 ${
+          !isMinimalMode ? 'border-t' : ''
+        }`}
+      >
         <CloudAccountSelectAllButton visibleAccountIds={visibleAccountIds} />
         <AccountTierFilterDropdown
           options={tierOptions}
