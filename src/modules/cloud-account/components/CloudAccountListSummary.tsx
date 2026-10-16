@@ -15,6 +15,7 @@ interface CloudAccountListSummaryProps {
   rateLimitedAccounts: number;
   overallQuotaPercentage: number | null;
   effectiveQuotaStatus: QuotaStatus;
+  isMinimalMode?: boolean;
 }
 
 export function CloudAccountListSummary({
@@ -23,8 +24,60 @@ export function CloudAccountListSummary({
   rateLimitedAccounts,
   overallQuotaPercentage,
   effectiveQuotaStatus,
+  isMinimalMode = false,
 }: CloudAccountListSummaryProps) {
   const { t } = useTranslation();
+
+  if (isMinimalMode) {
+    return (
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="bg-info-soft text-info border-info-border flex size-11 shrink-0 items-center justify-center rounded-xl border">
+            <Users className="size-5" aria-hidden="true" />
+          </div>
+          <div className="flex min-w-0 flex-col gap-1">
+            <h1 className="text-foreground text-2xl font-semibold tracking-tight">
+              {t('cloud.title')}
+            </h1>
+            <p className="text-muted-foreground max-w-2xl text-sm">{t('cloud.description')}</p>
+          </div>
+        </div>
+
+        <dl className="divide-border rounded-lg border bg-card shadow-sm grid grid-cols-2 divide-y sm:grid-cols-4 sm:divide-x sm:divide-y-0 shrink-0">
+          <div className="px-3 py-1.5 text-center sm:px-4 sm:py-2">
+            <dt className="text-muted-foreground text-xs whitespace-nowrap">{t('cloud.total-accounts')}</dt>
+            <dd className="text-foreground text-sm font-semibold tabular-nums sm:text-base">
+              {totalAccounts}
+            </dd>
+          </div>
+          <div className="px-3 py-1.5 text-center sm:px-4 sm:py-2">
+            <dt className="text-muted-foreground text-xs whitespace-nowrap">{t('cloud.card.active')}</dt>
+            <dd className="text-foreground text-sm font-semibold tabular-nums sm:text-base">
+              {activeAccounts}
+            </dd>
+          </div>
+          <div className="px-3 py-1.5 text-center sm:px-4 sm:py-2">
+            <dt className="text-muted-foreground text-xs whitespace-nowrap">{t('cloud.card.rateLimited')}</dt>
+            <dd className="text-foreground text-sm font-semibold tabular-nums sm:text-base">
+              {rateLimitedAccounts}
+            </dd>
+          </div>
+          <div className="px-3 py-1.5 text-center sm:px-4 sm:py-2">
+            <dt className="text-muted-foreground text-xs whitespace-nowrap">{t('cloud.globalQuota')}</dt>
+            <dd
+              className={`text-sm font-semibold tabular-nums sm:text-base ${
+                overallQuotaPercentage !== null
+                  ? GLOBAL_QUOTA_TEXT_COLOR_CLASS_BY_STATUS[effectiveQuotaStatus]
+                  : 'text-muted-foreground'
+              }`}
+            >
+              {overallQuotaPercentage !== null ? `${overallQuotaPercentage}%` : '-'}
+            </dd>
+          </div>
+        </dl>
+      </header>
+    );
+  }
 
   return (
     <header className="space-y-5">

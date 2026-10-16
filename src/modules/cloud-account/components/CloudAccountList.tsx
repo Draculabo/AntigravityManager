@@ -356,6 +356,7 @@ function CloudAccountListContent() {
         rateLimitedAccounts={rateLimitedAccounts}
         overallQuotaPercentage={overallQuotaPercentage}
         effectiveQuotaStatus={effectiveQuotaStatus}
+        isMinimalMode={isMinimalMode}
       />
 
       <CloudAccountToolbar
