@@ -46,6 +46,7 @@ Antigravity Manager is a desktop application for managing the Google accounts us
 
 ## Contents
 
+- [Sponsors](#sponsors)
 - [Download and install](#download-and-install)
 - [Nix / NixOS](#nix--nixos)
 - [First use](#first-use)
@@ -57,6 +58,14 @@ Antigravity Manager is a desktop application for managing the Google accounts us
 - [Contributing](#contributing)
 - [License](#license)
 - [Disclaimer](#disclaimer)
+
+---
+
+## Sponsors
+
+|                                                                  Sponsor                                                                  | Description                                                                                                                                                                                                                                                                                                                |
+| :---------------------------------------------------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a href="https://www.swiftproxy.net/?ref=Draculabo"><img src="docs/assets/sponsors/swiftproxy-en.png" alt="Swiftproxy" width="200" /></a> | **[Swiftproxy](https://www.swiftproxy.net/?ref=Draculabo)** offers rotating and static residential proxies with 90M+ IPs across 220+ locations. Supporting HTTP(S), SOCKS5, and sticky sessions, Swiftproxy is ideal for AI workflows, automation, and API access. Plans start at $0.7/GB. Use code `PROXY90` for 10% off. |
 
 ---
 
