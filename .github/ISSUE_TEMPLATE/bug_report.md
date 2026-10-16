@@ -6,16 +6,19 @@ labels: bug
 assignees: ''
 ---
 
+<!-- Do not report security vulnerabilities here. Use https://github.com/Draculabo/AntigravityManager/security/advisories/new instead. -->
+
 ## Describe the Bug
 
 A clear and concise description of what the bug is.
 
 ## Steps To Reproduce
 
-1. Go to '...'
-2. Click on '...'
-3. Scroll down to '...'
-4. See error
+1. Start from ...
+2. Perform ...
+3. Observe ...
+
+State whether the problem occurs every time. If a minimal example is needed, use synthetic data.
 
 ## Expected Behavior
 
@@ -25,15 +28,28 @@ A clear and concise description of what you expected to happen.
 
 What actually happened.
 
-## Screenshots
+## Screenshots or Diagnostic Details
 
-If applicable, add screenshots to help explain your problem.
+Include the exact error text or diagnostic reference when available. Remove account names,
+email addresses, tokens, authorization headers and private paths from logs and screenshots.
+Do not attach account databases, full backups, environment files or raw credential documents.
 
 ## Environment
 
-- **OS**: [e.g., Windows 11, macOS Sonoma, Ubuntu 22.04]
-- **App Version**: [e.g., 0.0.1]
-- **Node.js Version**: [e.g., 18.17.0]
+- **App version**:
+- **Operating system and version**:
+- **CPU architecture**: [e.g., x64 or arm64]
+- **Installation source and package type**: [e.g., GitHub Release MSI, DMG, AppImage, or source checkout]
+- **Failure stage**: [installation, startup, or an action inside the app]
+- **Target client and version**: [if account switching or a coding tool is affected]
+
+### Source Development Only
+
+<!-- Packaged-app users can remove this section; Node.js and npm are not required to use the installed app. -->
+
+- **Git commit**:
+- **Node.js and npm versions**:
+- **Command run and relevant output**:
 
 ## Additional Context
 

@@ -4,6 +4,16 @@ Use this index to find the current owner for project behavior. Root-level guides
 cross feature boundaries; feature behavior and acceptance procedures are grouped by the owning
 `src/modules/<feature>/` module.
 
+## First contribution
+
+1. Start with [Contributing](../CONTRIBUTING.md) to choose a task and understand the PR workflow.
+2. Use the [development quick start](development.md#quick-start) to install and run the desktop app.
+3. Find the owner in the [module index](modules/README.md), then read the relevant
+   [architecture boundaries](architecture.md) before changing cross-process behavior.
+4. Select [contributor checks](testing.md#checks-for-a-contribution) for the affected behavior.
+
+Documentation-only contributions do not require a running app or provider credentials.
+
 ## Cross-cutting references
 
 - [Architecture](architecture.md): runtime topology, module ownership, dependency direction and

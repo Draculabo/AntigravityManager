@@ -6,6 +6,7 @@ This document covers contributor setup and routine commands. Command definitions
 
 - Node.js `>=22.14.0`.
 - npm `>=10`.
+- Git for cloning the repository and contributing changes.
 - A supported Electron development environment for the target operating system.
 - Native build prerequisites when rebuilding `better-sqlite3`, keyring packages or Electron-native modules.
 
@@ -15,6 +16,60 @@ Linux AppImage packaging runs the maker's downloaded `appimagetool` with
 `--appimage-extract-and-run`, so the build step does not require FUSE libraries or mount
 access. Running the installed AppImage still requires a supported AppImage runtime
 environment. See [installer verification](testing.md) for build and native update checks.
+
+When an install needs to compile a native module, prepare the target platform's toolchain:
+
+| Platform | Native rebuild prerequisites                                                                                      |
+| -------- | ----------------------------------------------------------------------------------------------------------------- |
+| Windows  | Python and Visual Studio's **Desktop development with C++** workload; use tools matching the target architecture. |
+| macOS    | Python and Xcode Command Line Tools, which provide Clang and Make.                                                |
+| Linux    | Python, Make and a C/C++ toolchain such as GCC; additional system libraries depend on the module being built.     |
+
+These are the baseline [node-gyp requirements](https://github.com/nodejs/node-gyp#installation).
+Use the failing dependency's instructions for extra SDK or system-library requirements, and
+keep the complete installation error when asking for help.
+
+## Quick start
+
+Run these commands from the repository root after cloning the fork:
+
+Confirm the reported Node.js and npm versions satisfy the prerequisites before installing.
+
+```powershell
+node --version
+npm --version
+npm ci
+npm start
+```
+
+Keep dependency lifecycle scripts and optional dependencies enabled. Normal installation applies
+the development patch and installs local Git checks. If installation fails, keep the error and
+resolve its prerequisite before starting the application; see [environment failures](#environment-failures).
+
+`npm start` starts Electron Forge with Vite in development mode. A successful desktop launch opens the application window;
+startup and gateway diagnostics appear in the terminal, while renderer diagnostics appear in
+Chromium DevTools. Stop the development process when finished.
+
+The default launch can use the normal local profile and saved auto-start settings. It is not an
+isolated test profile. Close another runtime using the same profile, protect existing profile
+data and use the owning isolated acceptance procedure before testing account switching or other
+credential-changing operations. Documentation edits and ordinary local unit tests do not need
+provider credentials or a running desktop app.
+
+See [local Git checks](#local-git-checks) for hook installation and recovery when lifecycle
+scripts were skipped. Do not bypass an installation failure with `--ignore-scripts` as a general fix.
+
+## Choose a development target
+
+| Target                            | Entry and expected result                                                                                                                                                                           |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop UI or embedded gateway    | `npm start` builds and starts the Electron development app. This is the default contribution path.                                                                                                  |
+| Standalone core                   | `npm run build:core` produces the core build; `npm run start:core` starts it with the existing profile configuration. It may start the gateway when saved auto-start is enabled.                    |
+| CLI                               | `npm run build:cli` builds the CLI. Consult the [runtime architecture](architecture.md#runtime-topology) for its runtime preparation and profile ownership before invoking state-changing commands. |
+| Documentation or pure logic tests | Edit the owning document or run the focused test without launching Electron or a provider.                                                                                                          |
+
+The desktop and standalone core share profile ownership. A running owner prevents a second
+runtime from opening that profile; see [Architecture](architecture.md#runtime-topology).
 
 ## Common commands
 

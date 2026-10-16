@@ -1,185 +1,138 @@
 # Contributing to Antigravity Manager
 
-First off, thank you for considering contributing to Antigravity Manager! 🎉
+Contributions can improve the desktop application, local API gateway, documentation and
+translations. This guide covers choosing a task, preparing a change and submitting a pull
+request. Follow the [Code of Conduct](CODE_OF_CONDUCT.md) when participating.
 
-It's people like you that make Antigravity Manager such a great tool. We welcome contributions from everyone, whether it's a bug report, feature suggestion, documentation improvement, or code contribution.
+## Choose a contribution
 
-## 📋 Table of Contents
+Search existing issues and pull requests before opening a new one.
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Development Setup](#development-setup)
-- [Making Changes](#making-changes)
-- [Pull Request Process](#pull-request-process)
-- [Style Guidelines](#style-guidelines)
-- [Reporting Bugs](#reporting-bugs)
-- [Suggesting Features](#suggesting-features)
+| Contribution                          | Where to start                                                                                                                                                   |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Report a bug                          | [Bug report](https://github.com/Draculabo/AntigravityManager/issues/new?template=bug_report.md): include the app version, platform and reproducible steps.       |
+| Suggest a feature                     | [Feature request](https://github.com/Draculabo/AntigravityManager/issues/new?template=feature_request.md): explain the problem, use case and current workaround. |
+| Improve documentation                 | Make a focused correction, or use the [documentation index](docs/README.md) to find the owning guide.                                                            |
+| Fix code or improve the UI            | Start with an [existing issue](https://github.com/Draculabo/AntigravityManager/issues), nearby tests and the [module index](docs/modules/README.md).             |
+| Improve translations                  | Follow the existing `react-i18next` resources in `src/localization` and preserve translation keys and placeholders.                                              |
+| Ask a question or discuss an approach | Use [GitHub Discussions](https://github.com/Draculabo/AntigravityManager/discussions).                                                                           |
+| Report a security vulnerability       | Follow [private reporting](SECURITY.md#reporting-a-vulnerability). Do not post vulnerabilities or credentials in public issues.                                  |
 
-## 📜 Code of Conduct
+Documentation, reproduction steps and testing feedback are useful contributions even without
+a code change. If an issue has no clear implementation direction, describe the proposed scope
+before investing in a large change.
 
-This project and everyone participating in it is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
+## Before starting
 
-## 🚀 Getting Started
+Small bug fixes and documentation corrections can go directly to a pull request. Discuss new
+features, substantial UI changes and cross-module refactors in an issue or discussion first.
+Keep each PR focused on one problem so its behavior and validation are easy to review.
 
-1. **Fork the repository** on GitHub
-2. **Clone your fork** locally:
-   ```bash
+For changes to credentials, authentication, IPC, persistence, installers or updates, read the
+[security reference](docs/security.md) and describe compatibility, partial effects and recovery
+before implementation. Follow the [upgrade guide rules](docs/upgrade-guides/README.md) when
+users must take action after an incompatible change.
+
+## Set up for development
+
+Use Node.js `>=22.14.0`, npm `>=10` and the checked-in `package-lock.json`. Do not add a second
+package manager or lockfile. Native module prerequisites depend on the target platform; see
+[Development](docs/development.md#prerequisites).
+
+1. Fork the repository on GitHub.
+2. Clone the fork and add the original repository as `upstream`:
+
+   ```powershell
    git clone https://github.com/YOUR_USERNAME/AntigravityManager.git
    cd AntigravityManager
-   ```
-3. **Add the upstream remote**:
-   ```bash
    git remote add upstream https://github.com/Draculabo/AntigravityManager.git
+   git switch -c fix/describe-the-problem
    ```
 
-## 💻 Development Setup
+3. Follow the [quick start](docs/development.md#quick-start) to install dependencies and start
+   Electron. Documentation-only work does not require launching the application.
 
-### Prerequisites
+The default development launch is not an isolated test profile. Read the quick-start data
+precautions before using account operations. Routine documentation and local unit tests do not
+require provider credentials; live-account and installer checks have separate prerequisites.
 
-- Node.js v18 or higher
-- npm (comes with Node.js)
-- Git
+## Find the owning module
 
-### Installation
+| Area                                    | Location and guidance                                                                               |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Feature UI, hooks and business logic    | `src/modules/<feature>`; use the [module index](docs/modules/README.md).                            |
+| Routes                                  | `src/routes`; do not edit generated `src/routeTree.gen.ts`.                                         |
+| Generic UI                              | `src/components`; follow the existing Radix and Tailwind patterns.                                  |
+| Cross-feature primitives                | `src/shared`; move code here only when it has a real second consumer.                               |
+| API gateway                             | `src/modules/proxy-gateway/server`; see the [gateway guides](docs/modules/proxy-gateway/README.md). |
+| IPC, runtime and persistence boundaries | Read [Architecture](docs/architecture.md) and the nearest `AGENTS.md` before editing.               |
 
-```bash
-# Install dependencies
-npm install
+Keep renderer code separate from main-process, filesystem and database implementations. Use
+the existing typed preload/IPC/ORPC surface for cross-process operations. Place user-visible
+strings in the existing localization resources rather than embedding them in components.
 
-# Start development server
-npm start
-```
+## Make a focused change
 
-### Available Scripts
+- Inspect the owning implementation and nearby tests before editing.
+- Add a regression check for a bug fix, or verify the new behavior for a feature.
+- Preserve public protocol behavior unless the change explicitly addresses that contract.
+- Update the owning reference when behavior or an operation changes. Avoid duplicating rules
+  already maintained in architecture, testing or security documentation.
+- Keep unrelated formatting, dependency upgrades and file moves out of the PR. Format only
+  files changed for the task, and review the resulting diff.
+- Do not commit credentials, account databases, private logs, environment files or generated
+  application packages. Use synthetic data in fixtures and redact screenshots.
 
-| Command                | Description                         |
-| ---------------------- | ----------------------------------- |
-| `npm start`            | Start the app in development mode   |
-| `npm run lint`         | Run ESLint to check for code issues |
-| `npm run format:write` | Format code with Prettier           |
-| `npm run test:unit`    | Run unit tests with Vitest          |
-| `npm run test:e2e`     | Run E2E tests with Playwright       |
-| `npm run test:all`     | Run all tests                       |
-| `npm run type-check`   | Run TypeScript type checking        |
-| `npm run make`         | Build production packages           |
+Use TypeScript and the existing ESLint/Prettier configuration. Comments should explain contracts
+or non-obvious decisions. Follow [Conventional Commits](https://www.conventionalcommits.org/),
+for example `fix(proxy-gateway): preserve model error responses` or
+`docs(contributing): clarify local setup`.
 
-## ✏️ Making Changes
+Keep the branch current with its intended PR target. For work targeting `main`, fetch
+`upstream` and review changes from `upstream/main` before integrating them. Stage only the
+files or hunks belonging to the contribution; inspect the staged diff before committing.
 
-1. **Create a new branch** from `main`:
+## Validate your change
 
-   ```bash
-   git checkout -b feature/your-feature-name
-   # or
-   git checkout -b fix/your-bug-fix
-   ```
+Use the [change-to-evidence matrix](docs/testing.md#change-to-evidence-matrix) to select checks.
+The following table is a navigation aid, not a replacement for that matrix.
 
-2. **Make your changes** and commit them:
+| Change                                    | Validation entry                                                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Documentation                             | [Contributor checks](docs/testing.md#checks-for-a-contribution): contracts and formatting of changed files. |
+| Utility, mapper, component or hook        | Owning test file; add caller tests when the contract changes.                                               |
+| Shared types or process/module boundaries | Type checking and affected consumer/integration tests.                                                      |
+| Gateway, persistence or lifecycle         | The owning integration tests and the corresponding matrix row.                                              |
+| Native modules, installers or updates     | The platform-specific procedure linked from the testing guide.                                              |
+| Real accounts or providers                | The owning acceptance procedure, including prerequisites, effects and cleanup.                              |
 
-   ```bash
-   git add .
-   git commit -m "feat: add amazing new feature"
-   ```
+Do not run every test or installer check for an unrelated local change. Do not hide a known
+failure by selecting only passing tests. Record checks not run and explain why; a mock, build
+or local hook does not prove native or live-provider behavior.
 
-3. **Keep your branch updated**:
-   ```bash
-   git fetch upstream
-   git rebase upstream/main
-   ```
+The [local Git checks](docs/development.md#local-git-checks) provide automatic baseline checks.
+They do not replace behavior tests. `npm run format` checks the entire workspace, while
+`npm run format:write` modifies it; prefer explicitly named changed paths for a focused PR.
 
-### Commit Message Guidelines
+## Open a pull request
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/). Each commit message should be structured as follows:
+Push the contribution branch to the fork and open a PR against the agreed target branch
+(`main` for ordinary contributions). The [PR template](.github/PULL_REQUEST_TEMPLATE.md) asks for:
 
-```
-<type>(<scope>): <description>
+- The problem, related issue when applicable, and resulting behavior.
+- Screenshots or a short recording for visible UI changes, with private information removed.
+- Commands or manual checks actually run, their results and the relevant platform.
+- Checks not run, known limitations and compatibility or recovery information when applicable.
 
-[optional body]
+Documentation-only changes need documentation evidence, not an unrelated application test run.
+For runtime changes, distinguish a focused local pass from full CI or platform acceptance.
 
-[optional footer(s)]
-```
+## Review and follow-up
 
-**Types:**
+Respond to review feedback with the resulting change or an explanation of the trade-off.
+After updates, rerun checks affected by the new diff and update the PR's validation section.
+Keep failed, pending and unverified checks distinct from passing results.
 
-- `feat`: A new feature
-- `fix`: A bug fix
-- `docs`: Documentation only changes
-- `style`: Changes that don't affect code meaning (formatting, etc.)
-- `refactor`: Code change that neither fixes a bug nor adds a feature
-- `perf`: Performance improvement
-- `test`: Adding or correcting tests
-- `chore`: Changes to build process or auxiliary tools
-
-**Examples:**
-
-```
-feat(auth): add Google OAuth support
-fix(quota): resolve quota refresh timeout issue
-docs(readme): update installation instructions
-```
-
-## 🔄 Pull Request Process
-
-1. **Update documentation** if you're changing functionality
-2. **Add tests** for new features
-3. **Ensure all tests pass**: `npm run test:all`
-4. **Ensure code is formatted**: `npm run format:write`
-5. **Ensure no lint errors**: `npm run lint`
-6. **Push to your fork** and create a Pull Request
-
-### PR Checklist
-
-- [ ] My code follows the project's style guidelines
-- [ ] I have performed a self-review of my code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or my feature works
-- [ ] New and existing unit tests pass locally with my changes
-
-## 🎨 Style Guidelines
-
-### TypeScript/JavaScript
-
-- Use TypeScript for all new code
-- Follow the existing code style (enforced by ESLint and Prettier)
-- Use meaningful variable and function names
-- Add JSDoc comments for public APIs
-
-### React Components
-
-- Use functional components with hooks
-- Keep components small and focused
-- Use TypeScript interfaces for props
-- Follow the existing file structure
-
-### CSS/Styling
-
-- Use TailwindCSS utility classes
-- Follow the design system in `components.json`
-- Ensure responsive design
-
-## 🐛 Reporting Bugs
-
-Found a bug? Please [create an issue](https://github.com/Draculabo/AntigravityManager/issues/new?template=bug_report.md) with:
-
-- **Clear title** describing the issue
-- **Steps to reproduce** the behavior
-- **Expected behavior** vs actual behavior
-- **Screenshots** if applicable
-- **Environment details** (OS, app version)
-
-## 💡 Suggesting Features
-
-Have an idea? Please [create an issue](https://github.com/Draculabo/AntigravityManager/issues/new?template=feature_request.md) with:
-
-- **Clear description** of the feature
-- **Use case** - why is this feature needed?
-- **Possible implementation** ideas (optional)
-
-## 🙏 Thank You
-
-Your contributions help make Antigravity Manager better for everyone. Thank you for taking the time to contribute!
-
----
-
-If you have any questions, feel free to open an issue or reach out to the maintainers.
+If the scope expands, update the PR title and description so reviewers can assess the final
+change. Ask questions in the PR or [Discussions](https://github.com/Draculabo/AntigravityManager/discussions)
+when the next step is unclear.

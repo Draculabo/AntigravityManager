@@ -1,28 +1,11 @@
 # Security Policy
 
-## 🔒 Security Features
+This policy covers private vulnerability reporting, supported versions and disclosure. The
+[security reference](docs/security.md) owns implementation details and trust boundaries.
 
-Antigravity Manager takes security seriously. Here are the security measures we've implemented:
-
-### Encryption
-
-- **AES-256-GCM** encryption for all sensitive data (`token_json`, `quota_json`)
-- Unique initialization vectors (IV) for each encryption operation
-- Authenticated encryption to prevent tampering
-
-### Credential Storage
-
-- **Windows**: Windows Credential Manager
-- **macOS**: macOS Keychain
-- **Linux**: Secret Service API / libsecret
-
-Master keys are stored in the OS native credential manager via `keytar`, never in plain text files.
-
-### Data Protection
-
-- Sensitive tokens are encrypted before storage in SQLite database
-- Automatic migration of legacy plaintext data on application startup
-- No sensitive data is logged or transmitted to external services
+Cloud-account OAuth tokens are stored as plaintext JSON in the local SQLite database. Full
+backups and exports can contain tokens and proxy credentials. Protect those files and do not
+attach them to public issues; see [sensitive data](docs/security.md#sensitive-data).
 
 ## 📋 Supported Versions
 
@@ -33,7 +16,7 @@ Master keys are stored in the OS native credential manager via `keytar`, never i
 
 We only provide security updates for the latest version. Please ensure you're running the most recent release.
 
-## 🚨 Reporting a Vulnerability
+## Reporting a Vulnerability
 
 We take all security vulnerabilities seriously. Thank you for helping to improve the security of Antigravity Manager.
 
