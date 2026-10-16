@@ -7,13 +7,13 @@ Run commands from the repository root unless a step specifies another directory.
 ## Local Git checks
 
 The locked Lefthook development dependency installs the hooks during normal dependency installation.
-The project `prepare` script also runs the guarded installer; after `npm ci --ignore-scripts`, run
-`npm run hooks:install` explicitly. CI and production installs skip the project installer.
+The project `prepare` script also runs the guarded installer; after `pnpm install --frozen-lockfile --ignore-scripts`, run
+`pnpm run hooks:install` explicitly. CI and production installs skip the project installer.
 The installer skips source directories that are not their own Git checkout root, refuses custom
 `core.hooksPath` settings and unmanaged pre-push hooks, and never resets Git configuration or uses
 force installation. A plain checkout and its linked worktrees share Git's hook directory; each
 active checkout must have the project configuration, scripts and development dependencies available.
-The dependency's own install step runs before `prepare` and can already preserve an existing hook
+The allowlisted dependency's own install step runs before `prepare` and can already preserve an existing hook
 as `.old`. The guarded installer also refuses a preserved pre-push hook because it has not been
 integrated into the configured jobs. Use the recovery command below to restore it before resolving
 that integration; a failed install does not establish that the previous push policy is active.
@@ -23,7 +23,7 @@ that integration; a failed install does not establish that the previous push pol
 | Hook         | Automatic evidence                                                                                                                                     |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `pre-commit` | Staged whitespace; Agent and quality contracts for affected governance paths; ESLint on staged code; then the preserved pre-commit hook if one exists. |
-| `pre-push`   | `npm run type-check` for each invocation, including new branches.                                                                                      |
+| `pre-push`   | `pnpm run type-check` for each invocation, including new branches.                                                                                     |
 
 The governance selector reads NUL-delimited index paths and treats additions, deletions and both
 sides of renames as affected. It covers Agent instructions, Agent Notes, project Skills, Markdown
@@ -40,11 +40,11 @@ pre-commit hook as `pre-commit.old`; the final job executes that hook, retaining
 behavior and its original failure policy. Reinstallation preserves the backup. Keep that private
 backup available for recovery rather than committing its machine-specific contents.
 
-To run a gate manually, use `npm run hooks:pre-commit` or `npm run hooks:pre-push`.
+To run a gate manually, use `pnpm run hooks:pre-commit` or `pnpm run hooks:pre-push`.
 Fix the reported failure before retrying; do not bypass a failed gate without explicit user direction.
-Use `npm run test:git-hooks` after changing hook configuration, installation or dispatch behavior.
+Use `pnpm run test:git-hooks` after changing hook configuration, installation or dispatch behavior.
 It installs real hooks in temporary repositories, exercises rejected commits and a local bare-remote
-push, and verifies preservation and skip behavior. `npm run check:ci` includes these tests.
+push, and verifies preservation and skip behavior. `pnpm run check:ci` includes these tests.
 
 Recovery uses the installed dependency's `node node_modules/lefthook/bin/index.js uninstall` command,
 which restores preserved hooks; inspect the resulting hooks before continuing. Custom hook paths
@@ -53,12 +53,12 @@ Node on their executable path; a successful terminal check does not establish GU
 
 ## Hook verification
 
-For Git hook installation, configuration or dispatch changes, run `npm run test:git-hooks` plus
-`npm run check:agent-contracts`, `npm run check:quality` and focused formatting. The integration fixtures exercise installed
+For Git hook installation, configuration or dispatch changes, run `pnpm run test:git-hooks` plus
+`pnpm run check:agent-contracts`, `pnpm run check:quality` and focused formatting. The integration fixtures exercise installed
 Lefthook hooks through real temporary-repository commits and local bare-remote pushes, including
 failed checks, staged additions/deletions/renames, partial staging, preserved hooks and recovery.
 They also verify that staged lint errors block a commit despite a corrected worktree, that valid
 staged code can commit without consuming invalid unstaged edits, and that CI changes trigger the
 quality contracts. Neither lint nor the adapter stages fixes or creates a stash.
 They do not push to GitHub or establish GUI Git environment support. [Local Git checks](#local-git-checks)
-owns the automatic gates; CI includes their integration tests through `npm run check:ci`.
+owns the automatic gates; CI includes their integration tests through `pnpm run check:ci`.

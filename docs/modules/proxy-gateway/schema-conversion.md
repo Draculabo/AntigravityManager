@@ -63,12 +63,12 @@ Sentry diagnostic events remove inherited request, user, breadcrumb and recent-l
 Disabled reporting or unavailable transport leaves local logs available; submission is not a
 delivery guarantee. See [security](../../security/diagnostics.md#schema-diagnostics-and-node-reporting).
 
-Schema replay uses `npm run test:schema:replay -- <audit-database-path>` with a Node runtime that
-provides `node:sqlite` (Node 22.17+ for this acceptance tool). It requires read access to the audit
+Schema replay uses `pnpm run test:schema:replay <audit-database-path>` with the pinned Node runtime, which
+provides `node:sqlite`. It requires read access to the audit
 database and its SQLite sidecars, and writes only compiled replay code to a temporary directory.
 Results with no intact tool/output Schema samples do not satisfy the real-data gate. Selection and privacy requirements are described below.
 
-Use `npm run test:schema:replay -- <audit-database-path> [limit] [all|unmarked]` for read-only replay. The bounded
+Use `pnpm run test:schema:replay <audit-database-path> [limit] [all|unmarked]` for read-only replay. The bounded
 limit defaults to 1,000 records. Selection joins request metadata and filters model traffic for
 OpenAI, Anthropic and compatible protocols before applying that limit; IPC/admin data cannot
 consume the sample window. Bodies must be complete, nonpartial, nonoversized JSON. Replay verifies
@@ -84,7 +84,7 @@ An unmarked request is not proven organic traffic: older probes or other test cl
 the marker. Neither cohort alone establishes a production failure rate or all-client budget
 calibration. Selection/provenance exclusions do not enter body-integrity counters.
 
-`npm run test:schema:client -- <claude-executable> [Read|default|configured-mcp|configured-full]` runs a real Claude Code client
+`pnpm run test:schema:client <claude-executable> [Read|default|configured-mcp|configured-full]` runs a real Claude Code client
 in bare mode against a local controlled response server. The default Read mode limits the declared
 tool set; `default` samples the built-in declarations available in bare mode. Execution remains
 allowlisted to Read in both modes. MCP/plugins/session persistence are disabled and authentication
@@ -100,7 +100,7 @@ retains bare mode. Tool search is disabled so declarations appear in actual requ
 and the built-in MCP startup wait are execution-allowlisted. The sampler retains aggregate
 counts, operation budgets and converted-schema hashes, never raw schemas or client context.
 
-`npm run test:schema:sentry` runs the real Node SDK from the prepared standalone runtime against
+`pnpm run test:schema:sentry` runs the real Node SDK from the prepared standalone runtime against
 a local envelope receiver. It checks one isolated event and excludes inherited synthetic private
 context. It sends no remote Sentry event. Live tests must separately verify provider tool calls
 and actual remote Sentry receipt. These acceptance commands never alter client-global settings.
@@ -161,10 +161,10 @@ remote Sentry receipt check or calibrate budgets from organic traffic. Run
 `node --test scripts/acceptance/schema/check-client-matrix.mjs` for its protocol, guard, continuation
 and audit evidence controls.
 
-After `npm run prepare:standalone`, use `npm run test:schema:live -- gemini-3.1-pro-high` to test
+After `pnpm run prepare:standalone`, use `pnpm run test:schema:live gemini-3.1-pro-high` to test
 ordinary and degraded tool parameters against the real gateway and Google upstream. The harness
 also exercises current native Gemini Flash/Pro routes and installed Claude Code's Read tool.
-Use `npm run test:schema:live -- gemini-3.7-flash-high` for ordinary/degraded Flash tool loops;
+Use `pnpm run test:schema:live gemini-3.7-flash-high` for ordinary/degraded Flash tool loops;
 this is also the default model. The explicit `gemini-3-flash` option retains the retired-route
 failure probe. A provider retirement notice does not count as a successful tool call. It requires an
 unowned stopped profile, existing usable accounts, enabled desktop reporting preferences and

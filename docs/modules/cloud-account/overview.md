@@ -98,7 +98,7 @@ policy. Do not put account tokens in logs, reports, IPC diagnostics, screenshots
 
 ## Focused persistence checks
 
-For cloud-account plaintext storage, run the focused mock tests with `npm test -- --run
+For cloud-account plaintext storage, run the focused mock tests with `pnpm test --run
 src/tests/unit/convert-encrypted-account-fields.test.ts
 src/tests/unit/cloud-account-batch-writer.test.ts`. The real SQLite reopen and old-ciphertext backup
 test needs the installed Electron ABI on Windows:

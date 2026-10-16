@@ -64,18 +64,19 @@ Antigravity Manager is a desktop application for managing the Google accounts us
 
 Download an installer for your operating system and processor architecture from [GitHub Releases](https://github.com/Draculabo/AntigravityManager/releases/latest). Available files and release notes on that page are authoritative for each version.
 
-| Platform | Architectures                          | Packages                                      |
-| -------- | -------------------------------------- | --------------------------------------------- |
+| Platform | Architectures                          | Packages                                             |
+| -------- | -------------------------------------- | ---------------------------------------------------- |
 | Windows  | x64, ARM64                             | NSIS setup (`-nsis.exe`); MSI also available for x64 |
-| macOS    | Apple Silicon (`arm64`), Intel (`x64`) | DMG installers; ZIP standalone archives       |
-| Linux    | x64, ARM64                             | AppImage, DEB, RPM packages                   |
+| macOS    | Apple Silicon (`arm64`), Intel (`x64`) | DMG installers; ZIP standalone archives              |
+| Linux    | x64, ARM64                             | AppImage, DEB, RPM packages                          |
 
 > [!NOTE]
+>
 > - **Architecture names**: Choose `arm64` or `aarch64` for ARM64, and `x64`, `amd64` or `x86_64` for x64 according to the asset name.
 > - **Windows**: Executables ending in `-nsis.exe` identify standard NSIS installers. Keep the same installer family when updating an existing installation.
 > - **macOS**: Move the application to `/Applications` before opening it.
 > - **Linux**: Select the package appropriate for your distribution; running AppImage requires a supported runtime environment.
-> - Desktop packages include their application runtime. Node.js and npm are required only for [source development](#development-and-documentation).
+> - Desktop packages include their application runtime. Node.js and pnpm are required only for [source development](#development-and-documentation).
 
 ### Other installation options
 
@@ -134,25 +135,25 @@ Tool configuration changes local client settings. Read the [configuration and re
 
 ## Features
 
-| Area | What Manager provides |
-| --- | --- |
-| **Google account pool** | Browser authorization, local account discovery, account status, batch actions and JSON import/export |
-| **Quota views** | Five-hour, weekly or combined views; model visibility controls, sorting and manual or periodic refresh |
-| **Client account switching** | Manual switching for Classic, IDE and agy CLI, with optional automatic switching based on account quota and rate limits |
-| **Local API gateway** | OpenAI Chat Completions and Responses, Anthropic Messages and native Gemini interfaces, with model routing and streaming |
-| **Coding tool setup** | Configure Claude Code, Codex and OpenCode connections, with tool-specific backup and recovery |
-| **Backups and identity profiles** | Local account snapshots and restoration, plus optional client identity-profile management |
-| **Diagnostics** | Traffic inspection, error details, diagnostic references for supported operations and a user-reviewed GitHub report flow |
-| **Desktop controls** | System tray, quota notifications, appearance settings, compact account layouts and English, Chinese and Russian UI |
+| Area                              | What Manager provides                                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Google account pool**           | Browser authorization, local account discovery, account status, batch actions and JSON import/export                     |
+| **Quota views**                   | Five-hour, weekly or combined views; model visibility controls, sorting and manual or periodic refresh                   |
+| **Client account switching**      | Manual switching for Classic, IDE and agy CLI, with optional automatic switching based on account quota and rate limits  |
+| **Local API gateway**             | OpenAI Chat Completions and Responses, Anthropic Messages and native Gemini interfaces, with model routing and streaming |
+| **Coding tool setup**             | Configure Claude Code, Codex and OpenCode connections, with tool-specific backup and recovery                            |
+| **Backups and identity profiles** | Local account snapshots and restoration, plus optional client identity-profile management                                |
+| **Diagnostics**                   | Traffic inspection, error details, diagnostic references for supported operations and a user-reviewed GitHub report flow |
+| **Desktop controls**              | System tray, quota notifications, appearance settings, compact account layouts and English, Chinese and Russian UI       |
 
 > [!NOTE]
+>
 > - Protocol compatibility depends on the requested feature, model and upstream behavior. See the [gateway reference](docs/modules/proxy-gateway/README.md) for supported paths and limitations.
 > - Weekly warmup is optional and off by default. It sends real model requests and can consume quota or AI credits. See its [behavior and limits](docs/modules/cloud-account/overview.md#weekly-warmup) before enabling it.
 
 ---
 
 ## Screenshots
-
 
 <p align="center">
   <img src="docs/assets/screenshot-main.png" alt="Current account overview" width="90%" />
@@ -166,31 +167,37 @@ Expand each section to view the screens by feature. Long pages are captured in s
 <br />
 
 **Service status and basic configuration**
+
 <p align="center">
   <img src="docs/assets/screenshot-proxy.png" alt="Service status and basic configuration" width="90%" />
 </p>
 
 **Complete Claude Code, Codex and OpenCode controls**
+
 <p align="center">
   <img src="docs/assets/screenshot-proxy-tools.png" alt="Complete Claude Code, Codex and OpenCode controls" width="90%" />
 </p>
 
 **Model mapping**
+
 <p align="center">
   <img src="docs/assets/screenshot-proxy-models.png" alt="Model mapping" width="90%" />
 </p>
 
 **Request and reasoning history retention**
+
 <p align="center">
   <img src="docs/assets/screenshot-proxy-records.png" alt="Request and reasoning history retention" width="90%" />
 </p>
 
 **OpenAI protocol examples in cURL and Python**
+
 <p align="center">
   <img src="docs/assets/screenshot-proxy-examples-openai.png" alt="OpenAI protocol examples in cURL and Python" width="90%" />
 </p>
 
 **Anthropic protocol examples in cURL and Python**
+
 <p align="center">
   <img src="docs/assets/screenshot-proxy-examples-anthropic.png" alt="Anthropic protocol examples in cURL and Python" width="90%" />
 </p>
@@ -203,6 +210,7 @@ Expand each section to view the screens by feature. Long pages are captured in s
 <br />
 
 **Model requests and filters (no model requests)**
+
 <p align="center">
   <img src="docs/assets/screenshot-traffic.png" alt="Model requests and filters (no model requests)" width="90%" />
 </p>
@@ -215,31 +223,37 @@ Expand each section to view the screens by feature. Long pages are captured in s
 <br />
 
 **Appearance, account refresh and startup**
+
 <p align="center">
   <img src="docs/assets/screenshot-setting.png" alt="Appearance, account refresh and startup" width="90%" />
 </p>
 
 **Client cache and application information**
+
 <p align="center">
   <img src="docs/assets/screenshot-settings-cache-about.png" alt="Client cache and application information" width="90%" />
 </p>
 
 **Privacy options and notification thresholds**
+
 <p align="center">
   <img src="docs/assets/screenshot-settings-privacy-notifications.png" alt="Privacy options and notification thresholds" width="90%" />
 </p>
 
 **Model visibility**
+
 <p align="center">
   <img src="docs/assets/screenshot-settings-models.png" alt="Model visibility" width="90%" />
 </p>
 
 **Auto-switch models and weekly quota warmup**
+
 <p align="center">
   <img src="docs/assets/screenshot-settings-model-automation.png" alt="Auto-switch models and weekly quota warmup" width="90%" />
 </p>
 
 **Local service and upstream proxy settings**
+
 <p align="center">
   <img src="docs/assets/screenshot-settings-proxy.png" alt="Local service and upstream proxy settings" width="90%" />
 </p>
@@ -252,6 +266,7 @@ Expand each section to view the screens by feature. Long pages are captured in s
 <br />
 
 **Command line help and stopped-service output**
+
 <p align="center">
   <img src="docs/assets/screenshot-cli.png" alt="Actual CLI help and stopped-service output from an isolated profile" width="90%" />
 </p>
@@ -300,25 +315,25 @@ Exclude tokens, API keys, account databases, private prompts and unreviewed logs
 
 ## Development and documentation
 
-Source development requires Node.js `>=22.14.0`, npm `>=10` and the native build prerequisites for your platform. Use the checked-in npm lockfile:
+Source development requires Node.js `24.22.0`, pnpm `10.34.6` and the native build prerequisites for your platform. Use the checked-in pnpm lockfile:
 
 ```bash
 git clone https://github.com/Draculabo/AntigravityManager.git
 cd AntigravityManager
-npm ci
-npm start
+pnpm install --frozen-lockfile
+pnpm start
 ```
 
 See [Development](docs/development.md) for builds, local Git checks and platform requirements, and [Architecture](docs/architecture.md) for desktop and standalone CLI/core operation. Use [Testing](docs/testing.md) to choose validation, and the [script guide](scripts/README.md) to locate acceptance tools.
 
-| Reference | Contents |
-| --- | --- |
-| [Documentation index](docs/README.md) | Cross-cutting guides and documentation ownership |
-| [Feature module index](docs/modules/README.md) | Guides grouped by the responsible feature |
-| [Architecture](docs/architecture.md) | Electron, renderer, standalone core and module boundaries |
+| Reference                                                    | Contents                                                        |
+| ------------------------------------------------------------ | --------------------------------------------------------------- |
+| [Documentation index](docs/README.md)                        | Cross-cutting guides and documentation ownership                |
+| [Feature module index](docs/modules/README.md)               | Guides grouped by the responsible feature                       |
+| [Architecture](docs/architecture.md)                         | Electron, renderer, standalone core and module boundaries       |
 | [Accounts and quota](docs/modules/cloud-account/overview.md) | Account management, quota views, automatic switching and warmup |
-| [Proxy gateway](docs/modules/proxy-gateway/README.md) | Protocol compatibility, coding tools and traffic debugging |
-| [Security](docs/security.md) | Credentials, backups, diagnostics and trust boundaries |
+| [Proxy gateway](docs/modules/proxy-gateway/README.md)        | Protocol compatibility, coding tools and traffic debugging      |
+| [Security](docs/security.md)                                 | Credentials, backups, diagnostics and trust boundaries          |
 
 ---
 

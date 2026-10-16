@@ -39,4 +39,4 @@ Do not present an unimplemented plan as current behavior. When a plan ships, upd
 
 ## Validation
 
-Run `npm run check:agent-contracts` after changing agent instructions, governance documents, Agent Notes or project Skills. Format only changed documentation paths. The repository ignores `.agents/` in Prettier, so pass an empty temporary `--ignore-path` when checking explicitly named files there. `npm run format` recursively scans the repository root, including unrelated untracked trees, so use it only when the full workspace is in scope.
+Run `pnpm run check:agent-contracts` after changing agent instructions, governance documents, Agent Notes or project Skills. Format only changed documentation paths. The repository ignores `.agents/` in Prettier, so pass an empty temporary `--ignore-path` when checking explicitly named files there. `pnpm run format` recursively scans the repository root, including unrelated untracked trees, so use it only when the full workspace is in scope.

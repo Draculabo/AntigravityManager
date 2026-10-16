@@ -120,13 +120,13 @@ function validateMarkdownLinks(rootDir, filePath, content, errors) {
 function validateReferencedScripts(rootDir, filePath, content, packageScripts, errors) {
   const relativeFile = toPosixPath(path.relative(rootDir, filePath));
   const referencedScripts = [
-    ...content.matchAll(/\bnpm\s+run\s+([a-zA-Z0-9:_-]+)\b/g),
-    ...content.matchAll(/\bnpm\s+(start|test)\b/g),
+    ...content.matchAll(/\bpnpm\s+run\s+([a-zA-Z0-9:_-]+)\b/g),
+    ...content.matchAll(/\bpnpm\s+(start|test)\b/g),
   ].map((match) => match[1]);
 
   for (const scriptName of referencedScripts) {
     if (!(scriptName in packageScripts)) {
-      errors.push(`${relativeFile}: references missing npm script: ${scriptName}`);
+      errors.push(`${relativeFile}: references missing pnpm script: ${scriptName}`);
     }
   }
 }

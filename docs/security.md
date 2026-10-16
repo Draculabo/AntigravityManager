@@ -62,7 +62,7 @@ Use [testing.md](testing.md) to select focused tests. Security-sensitive changes
 
 - the owning behavior test;
 - a test demonstrating rejection or sanitization at the actual runtime boundary;
-- `npm run type-check` when a public or cross-process type changes;
+- `pnpm run type-check` when a public or cross-process type changes;
 - platform-specific evidence when behavior depends on the OS keyring, native modules, Electron packaging or installers.
 
 If platform evidence cannot run locally, report it as unverified rather than replacing it with a mock-only claim.

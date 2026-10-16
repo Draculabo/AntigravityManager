@@ -2,18 +2,18 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export function createNpmInvocation(platform, npmArguments) {
+export function createPnpmInvocation(platform, pnpmArguments) {
   if (platform === 'win32') {
-    // Node 22 rejects direct spawning of the npm.cmd shim with EINVAL, so invoke it through cmd.exe.
+    // Node rejects direct spawning of the pnpm.cmd shim with EINVAL, so invoke it through cmd.exe.
     return {
-      arguments: ['/d', '/s', '/c', ['npm.cmd', ...npmArguments].join(' ')],
+      arguments: ['/d', '/s', '/c', ['pnpm.cmd', ...pnpmArguments].join(' ')],
       command: process.env.ComSpec ?? 'cmd.exe',
     };
   }
 
   return {
-    arguments: npmArguments,
-    command: 'npm',
+    arguments: pnpmArguments,
+    command: 'pnpm',
   };
 }
 
@@ -21,7 +21,7 @@ export function startPerformanceRecorder() {
   const outputDirectory = resolve(
     process.env.ANTIGRAVITY_PERFORMANCE_OUTPUT_DIR ?? 'test-results/performance',
   );
-  const invocation = createNpmInvocation(process.platform, ['start']);
+  const invocation = createPnpmInvocation(process.platform, ['start']);
   const child = spawn(invocation.command, invocation.arguments, {
     env: {
       ...process.env,

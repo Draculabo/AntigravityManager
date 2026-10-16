@@ -1,10 +1,10 @@
-import { spawn } from 'node:child_process';
+import spawn from 'cross-spawn';
 
 const args = process.argv.slice(2);
 const separatorIndex = args.indexOf('--');
 const mode = (separatorIndex >= 0 ? args[0] : args[0]) || 'console';
 const optionArgs = separatorIndex >= 0 ? args.slice(1, separatorIndex) : args.slice(1);
-const commandArgs = separatorIndex >= 0 ? args.slice(separatorIndex + 1) : ['npm', 'start'];
+const commandArgs = separatorIndex >= 0 ? args.slice(separatorIndex + 1) : ['pnpm', 'start'];
 
 function readOption(name) {
   const prefix = `${name}=`;
@@ -24,11 +24,11 @@ function readOption(name) {
 function getCommand() {
   const [rawCommand, ...rawArgs] = commandArgs;
   if (!rawCommand) {
-    return { command: 'npm', args: ['start'] };
+    return { command: 'pnpm', args: ['start'] };
   }
 
   return {
-    command: process.platform === 'win32' && rawCommand === 'npm' ? 'npm.cmd' : rawCommand,
+    command: rawCommand,
     args: rawArgs,
   };
 }

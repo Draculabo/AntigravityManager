@@ -124,7 +124,7 @@ try {
   await pipeline(archiveTar({ cwd: source }, ['.']), extractTar({ cwd: root }));
   for (const [file, expected] of [
     [executable, manifest.nodeExecutableSha256],
-    [path.join(root, 'package-lock.json'), manifest.lockSha256],
+    [path.join(root, 'pnpm-lock.yaml'), manifest.lockSha256],
     [path.join(root, 'core', 'main.cjs'), manifest.coreSha256],
     [path.join(root, 'cli', 'main.cjs'), manifest.cliSha256],
     [path.join(root, 'core', 'traffic-audit.worker.js'), manifest.auditWorkerSha256],

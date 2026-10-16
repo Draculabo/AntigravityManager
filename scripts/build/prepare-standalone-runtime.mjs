@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -11,7 +11,10 @@ import { publishStandaloneRuntime, RuntimeRecoveryError } from './publish-standa
 import { materializeRuntime } from './trace-standalone-runtime.mjs';
 
 // Match the Node ABI exercised by the standalone native acceptance suite.
-export const nodeVersion = '24.19.0';
+export const nodeVersion = (
+  await readFile(new URL('../../.nvmrc', import.meta.url), 'utf8')
+).trim();
+assert.match(nodeVersion, /^24\.\d+\.\d+$/, 'Expected a pinned Node 24 release');
 const project = process.cwd();
 const platform = process.argv[2] ?? process.platform;
 const arch = process.argv[3] ?? process.arch;
@@ -19,8 +22,11 @@ assert.equal(platform, process.platform, 'Native packaging requires a matching h
 assert.equal(arch, process.arch, 'Native packaging requires a matching host architecture');
 assert(['win32', 'darwin', 'linux'].includes(platform));
 assert(['x64', 'arm64'].includes(arch));
-const npmCli = process.env.npm_execpath;
-assert(npmCli, 'Run this script through npm run prepare:standalone');
+const pnpmCli = process.env.npm_execpath;
+assert(
+  pnpmCli && process.env.npm_config_user_agent?.startsWith('pnpm/10.'),
+  'Run this script through the pinned pnpm run prepare:standalone command',
+);
 const parent = path.join(project, 'dist', '.runtime', `${platform}-${arch}`);
 await mkdir(parent, { recursive: true });
 const resolvedParent = await realpath(parent);
@@ -136,48 +142,37 @@ try {
     npm_config_target: nodeVersion,
     npm_config_arch: arch,
     npm_config_platform: platform,
-    npm_config_cache: path.join(stage, 'npm-cache'),
+    npm_config_cache: path.join(stage, 'package-cache'),
     npm_config_devdir: path.join(stage, 'node-gyp-cache'),
   };
   delete environment.NODE_PATH;
   delete environment.NODE_OPTIONS;
   delete environment.npm_config_nodedir;
-  // npm ci owns dependency resolution; rebuild only this isolated Node tree.
+  delete environment.npm_config_ignore_scripts;
+  delete environment.npm_config_registry;
+  environment.npm_config_registry = 'https://registry.npmjs.org/';
+  // Install from the same frozen lockfile, then rebuild only this isolated Node tree.
   await cp(path.join(project, 'package.json'), path.join(installRoot, 'package.json'));
-  await cp(path.join(project, 'package-lock.json'), path.join(installRoot, 'package-lock.json'));
+  for (const file of ['pnpm-lock.yaml', 'pnpm-workspace.yaml']) {
+    await cp(path.join(project, file), path.join(installRoot, file));
+  }
+  await cp(path.join(project, 'patches'), path.join(installRoot, 'patches'), { recursive: true });
+  await cp(path.join(project, '.npmrc'), path.join(installRoot, '.npmrc'));
   console.log('Installing locked production dependencies into isolated runtime');
   await run(
     nodeExecutable,
-    [
-      npmCli,
-      'ci',
-      '--omit=dev',
-      '--ignore-scripts',
-      '--no-audit',
-      '--no-fund',
-      // Local registry preferences must not redirect the lockfile's package URLs.
-      '--replace-registry-host=never',
-    ],
+    [pnpmCli, 'install', '--prod', '--frozen-lockfile', '--ignore-scripts'],
     installRoot,
     environment,
   );
   await run(
     nodeExecutable,
-    [
-      npmCli,
-      'rebuild',
-      'better-sqlite3',
-      'keytar',
-      'koffi',
-      '@napi-rs/keyring',
-      '--no-audit',
-      '--no-fund',
-    ],
+    [pnpmCli, 'rebuild', 'better-sqlite3', 'keytar', 'koffi', '@napi-rs/keyring'],
     installRoot,
     environment,
   );
-  await run(process.execPath, [npmCli, 'run', 'build:core'], project);
-  await run(process.execPath, [npmCli, 'run', 'build:cli'], project);
+  await run(process.execPath, [pnpmCli, 'run', 'build:core'], project);
+  await run(process.execPath, [pnpmCli, 'run', 'build:cli'], project);
   const bundleCopy = { recursive: true, filter: (file) => !file.endsWith('.map') };
   await cp(path.join(project, 'dist', 'core'), path.join(installRoot, 'core'), bundleCopy);
   await cp(path.join(project, 'dist', 'cli'), path.join(installRoot, 'cli'), bundleCopy);
@@ -213,7 +208,7 @@ try {
     nodeAsset: asset,
     nodeAssetSha256: checksum,
     nodeExecutableSha256: await hash(runtimeNode),
-    lockSha256: await hash(path.join(root, 'package-lock.json')),
+    lockSha256: await hash(path.join(root, 'pnpm-lock.yaml')),
     coreSha256: await hash(path.join(root, 'core', 'main.cjs')),
     cliSha256: await hash(path.join(root, 'cli', 'main.cjs')),
     auditWorkerSha256: await hash(path.join(root, 'core', 'traffic-audit.worker.js')),

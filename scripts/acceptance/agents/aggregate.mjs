@@ -31,7 +31,7 @@ if (reportPaths[0] === '--refresh') {
   const [, profileHome, ...sources] = reportPaths;
   assert(
     profileHome && sources.length,
-    'Usage: npm run test:acceptance -- agents report --refresh PROFILE_HOME REPORT...',
+    'Usage: pnpm run test:acceptance agents report --refresh PROFILE_HOME REPORT...',
   );
   reportPaths = await refreshReports(profileHome, sources);
 }

@@ -35,7 +35,7 @@ users must take action after an incompatible change.
 
 ## Set up for development
 
-Use Node.js `>=22.14.0`, npm `>=10` and the checked-in `package-lock.json`. Do not add a second
+Use Node.js `24.22.0`, pnpm `10.34.6` and the checked-in `pnpm-lock.yaml`. Do not add a second
 package manager or lockfile. Native module prerequisites depend on the target platform; see
 [Development](docs/development.md#prerequisites).
 
@@ -111,8 +111,8 @@ failure by selecting only passing tests. Record checks not run and explain why; 
 or local hook does not prove native or live-provider behavior.
 
 The [local Git checks](docs/development/git-checks.md#local-git-checks) provide automatic baseline checks.
-They do not replace behavior tests. `npm run format` checks the entire workspace, while
-`npm run format:write` modifies it; prefer explicitly named changed paths for a focused PR.
+They do not replace behavior tests. `pnpm run format` checks the entire workspace, while
+`pnpm run format:write` modifies it; prefer explicitly named changed paths for a focused PR.
 
 ## Open a pull request
 

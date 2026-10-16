@@ -76,7 +76,7 @@ Antigravity Manager 是一款桌面应用，专用于管理 Antigravity 客户�
 > - **Windows**：以 `-nsis.exe` 结尾的是标准 NSIS 安装程序。升级已有版本时，请沿用原来的安装包类型。
 > - **macOS**：打开前请先将应用拖移到 `/Applications` 目录中。
 > - **Linux**：请选择适合发行版的包格式；运行 AppImage 需具备相应的系统运行时环境。
-> - 桌面安装包已内置应用运行时。Node.js 和 npm 仅用于[源码开发](#开发与文档)。
+> - 桌面安装包已内置应用运行时。Node.js 和 pnpm 仅用于[源码开发](#开发与文档)。
 
 ### 其他安装方式
 
@@ -154,7 +154,6 @@ Home Manager 用户请使用 `home.packages`，并在对应的 nixpkgs 实例上
 ---
 
 ## 界面截图
-
 
 <p align="center">
   <img src="docs/assets/screenshot-main.png" alt="当前账号总览" width="90%" />
@@ -314,13 +313,13 @@ macOS 用户应区分应用启动警告、OAuth 保存失败和客户端切换�
 
 ## 开发与文档
 
-源码开发需要 Node.js `>=22.14.0`、npm `>=10`，以及对应平台的原生模块构建环境。请使用仓库中的 npm 锁文件：
+源码开发需要 Node.js `24.22.0`、pnpm `10.34.6`，以及对应平台的原生模块构建环境。请使用仓库中的 pnpm 锁文件：
 
 ```bash
 git clone https://github.com/Draculabo/AntigravityManager.git
 cd AntigravityManager
-npm ci
-npm start
+pnpm install --frozen-lockfile
+pnpm start
 ```
 
 构建、本地 Git 检查和平台要求见[开发指南](docs/development.md)，桌面与独立 CLI/core 的运行方式见[架构指南](docs/architecture.md)。按改动选择验证方式时参考[测试指南](docs/testing.md)，验收工具入口见[脚本指南](scripts/README.md)。

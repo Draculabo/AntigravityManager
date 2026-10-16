@@ -16,12 +16,14 @@ test('publish installs locked JavaScript dependencies before feed checks and rel
     readFileSync(new URL('../../../.github/workflows/publish.yaml', import.meta.url), 'utf8'),
   );
   const steps = workflow.jobs.publish.steps;
-  const installation = steps.findIndex((step) => /^npm ci\b/.test(step.run?.trim() ?? ''));
+  const installation = steps.findIndex((step) =>
+    /^pnpm install --frozen-lockfile\b/.test(step.run?.trim() ?? ''),
+  );
   assert(installation >= 0, 'Publish must install project dependencies in its own job');
-  assert.match(steps[installation].run, /--include=dev\b/);
+  assert.match(steps[installation].run, /--prod=false\b/);
   assert.match(steps[installation].run, /--ignore-scripts\b/);
   for (const command of [
-    'npm run test:acceptance -- installers feed',
+    'pnpm run test:acceptance installers feed',
     'node scripts/prepare-windows-update-feed.mjs',
     'gh release create',
     'gh release upload',

@@ -130,7 +130,7 @@ $env:NODE_EXTRA_CA_CERTS = "$env:APPDATA\\Proxyman\\certificate\\certs\\ca.pem"
 # Enable only for temporary TLS debugging
 $env:NODE_TLS_REJECT_UNAUTHORIZED = "0"
 
-npm start
+pnpm start
 ```
 
 This primarily affects:
@@ -151,10 +151,10 @@ $env:NO_PROXY = "localhost,127.0.0.1,::1"
 $env:NODE_EXTRA_CA_CERTS = "$env:APPDATA\\Proxyman\\certificate\\certs\\ca.pem"
 $env:NODE_TLS_REJECT_UNAUTHORIZED = "0"
 
-npm start -- --proxy-server="http://127.0.0.1:9090" --proxy-bypass-list="<local>;localhost;127.0.0.1;::1"
+pnpm start -- --proxy-server="http://127.0.0.1:9090" --proxy-bypass-list="<local>;localhost;127.0.0.1;::1"
 ```
 
-If your local `npm start` flow does not forward arguments to Electron Forge, use one of these fallback approaches:
+If your local `pnpm start` flow does not forward arguments to Electron Forge, use one of these fallback approaches:
 
 - capture only Node and main-process traffic
 - wrap the Electron launch in your own PowerShell or VS Code task
@@ -233,7 +233,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-antigravity-with-proxym
 1. Complete [Proxyman Installation and Basic Setup on Windows](./proxyman-setup-windows.md).
 2. Open PowerShell.
 3. Set `HTTP_PROXY`, `HTTPS_PROXY`, and `NODE_EXTRA_CA_CERTS`.
-4. Run `npm start`.
+4. Run `pnpm start`.
 5. Filter Proxyman traffic by domains such as:
    - `googleapis.com`
    - `googleusercontent.com`

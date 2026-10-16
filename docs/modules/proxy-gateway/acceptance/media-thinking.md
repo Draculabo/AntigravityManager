@@ -8,8 +8,8 @@ and Traffic Monitor UI comparisons; media and thinking reports are separate evid
 
 1. Use an isolated profile with authorized test accounts, a configured gateway key and model
    quota. Keep other clients idle during each measured request window.
-   Use a native checkout with its platform's npm dependencies. Windows `node_modules` cannot
-   supply Linux `sharp` binaries; run the owning npm setup in a Linux checkout or reuse an
+   Use a native checkout with its platform's pnpm dependencies. Windows `node_modules` cannot
+   supply Linux `sharp` binaries; run the owning pnpm setup in a Linux checkout or reuse an
    already prepared Linux dependency workspace for isolated acceptance.
 2. Start the standalone service for a CLI cell. For an Electron cell, stop the standalone owner
    and prepare `desktop-data/desktop-preferences.json` with `preferences.owner_mode` set to
@@ -42,11 +42,11 @@ The input model defaults to `gemini-3.1-pro-high`; generation/editing default to
 `gemini-3.1-flash-image`. `--model` explicitly selects another available model.
 
 ```powershell
-npm run test:acceptance -- multimodal request --case chat-video --owner cli --gateway http://127.0.0.1:PORT --profile-home C:\path\to\isolated-profile --output C:\path\to\results
+pnpm run test:acceptance multimodal request --case chat-video --owner cli --gateway http://127.0.0.1:PORT --profile-home C:\path\to\isolated-profile --output C:\path\to\results
 ```
 
 ```bash
-npm run test:acceptance -- multimodal electron --electron-bin /path/to/antigravity-manager --multimodal-case image-edit --gateway http://127.0.0.1:PORT --profile-home /path/to/isolated-profile --output /path/to/results
+pnpm run test:acceptance multimodal electron --electron-bin /path/to/antigravity-manager --multimodal-case image-edit --gateway http://127.0.0.1:PORT --profile-home /path/to/isolated-profile --output /path/to/results
 ```
 
 The SOP uses only bundled synthetic fixtures. It checks the HTTP result, semantic recognition,
@@ -66,11 +66,11 @@ to semantic passes. Rerun the affected cases.
 Run `openai`, `anthropic` and `gemini` for each platform and owner:
 
 ```powershell
-npm run test:acceptance -- thinking request --protocol openai --owner cli --gateway http://127.0.0.1:PORT --profile-home C:\path\to\isolated-profile --output C:\path\to\results
+pnpm run test:acceptance thinking request --protocol openai --owner cli --gateway http://127.0.0.1:PORT --profile-home C:\path\to\isolated-profile --output C:\path\to\results
 ```
 
 ```bash
-npm run test:acceptance -- thinking electron --electron-bin /path/to/antigravity-manager --thinking-protocol anthropic --gateway http://127.0.0.1:PORT --profile-home /path/to/isolated-profile --output /path/to/results
+pnpm run test:acceptance thinking electron --electron-bin /path/to/antigravity-manager --thinking-protocol anthropic --gateway http://127.0.0.1:PORT --profile-home /path/to/isolated-profile --output /path/to/results
 ```
 
 The first turn must call `lookup_number` exactly once with no arguments. The SOP returns the

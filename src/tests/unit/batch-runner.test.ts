@@ -285,6 +285,8 @@ describe('batch runner', () => {
     });
 
     neverSettles.resolve(undefined);
+    // Finish the simulated old process before afterEach removes its state directory.
+    await first.drain();
   });
 
   it('expires a batch that outlives its completion window', async () => {

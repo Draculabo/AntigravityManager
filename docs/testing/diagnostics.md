@@ -14,7 +14,7 @@ Node adapter and the private management endpoint; provider credentials and persi
 synthetic or blocked. The adjacent OAuth, switch-owner, management/RPC, CLI, error-toast and
 attachment suites cover their existing side effects and error contracts.
 
-`npm run test:diagnostics:sentry` runs the actual Node and Electron SDK adapters against a
+`pnpm run test:diagnostics:sentry` runs the actual Node and Electron SDK adapters against a
 bounded local receiver with isolated opted-in preferences. `--offline` returns HTTP 503 while
 checking local receipt semantics. `--packaged` additionally builds and runs an isolated Electron
 ASAR diagnostic executable, with profile path resolution redirected before loading the SDK.
@@ -26,7 +26,7 @@ The service-launcher suite accepts a healthy core becoming ready after 60 second
 another child. Packaged acceptance keeps CDP and window discovery bounded and attempts desktop
 closure and core shutdown independently during recovery.
 
-On Windows, `npm run test:diagnostics:packaged -- <desktop-executable>` exercises the full
+On Windows, `pnpm run test:diagnostics:packaged <desktop-executable>` exercises the full
 packaged or installed product with empty isolated profiles and reporting disabled. Both
 desktop owner modes must retain login and switch diagnostics through the production preload
 and public IPC; the real login toast must expose its reference in Error details. The packaged
@@ -40,7 +40,7 @@ application master key, compares both master-key slots without printing their co
 Windows login settings and removes only its isolated profiles.
 
 For installation evidence on a clean authorized Windows host, append `--operation-diagnostics`
-to `npm run test:acceptance -- installers msi <current-msi>`. The installer guard refuses to
+to `pnpm run test:acceptance installers msi <current-msi>`. The installer guard refuses to
 replace an existing product in the same upgrade family. Running the diagnostics against the
 packaged executable validates its payload, not MSI installation or upgrade behavior.
 

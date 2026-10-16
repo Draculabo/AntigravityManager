@@ -1,0 +1,31 @@
+packages:
+  - '.'
+
+nodeLinker: hoisted
+
+# Keep native downloads and rebuilds explicit under pnpm's lifecycle policy.
+onlyBuiltDependencies:
+  - '@bitdisaster/exe-icon-extractor'
+  - '@nestjs/core'
+  - '@sentry/cli'
+  - '@swc/core'
+  - better-sqlite3
+  - electron
+  - electron-winstaller
+  - esbuild
+  - fs-xattr
+  - fsevents
+  - keytar
+  - koffi
+  - lefthook
+  - macos-alias
+  - protobufjs
+  - sharp
+
+overrides:
+  handlebars: '^4.7.9'
+  tar: '^7.5.22'
+
+patchedDependencies:
+  '@electron-forge/core@7.11.1': patches/@electron-forge__core@7.11.1.patch
+  '@bitdisaster/exe-icon-extractor@1.0.10': patches/@bitdisaster__exe-icon-extractor@1.0.10.patch

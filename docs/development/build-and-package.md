@@ -6,19 +6,19 @@ Run commands from the repository root unless a step specifies another directory.
 
 ## Native dependency preparation
 
-Native process queries use `@draculabo/sysinfo-process-enhanced`. npm installs the matching prebuilt platform package; keep optional dependencies enabled. No Rust build is needed in this repository. For a different packaging architecture, install dependencies on the target runner as the release workflow does.
+Native process queries use `@draculabo/sysinfo-process-enhanced`. pnpm installs the matching prebuilt platform package; keep optional dependencies enabled. No Rust build is needed in this repository. For a different packaging architecture, install dependencies on the target runner as the release workflow does.
 
-`npm ci` applies the [Forge 7.11.1 development patch](../../patches/@electron-forge+core+7.11.1.dev.patch) through `postinstall`. Forge's package-bin cleanup uses a relative glob with the package directory as `cwd`, so Windows path separators cannot make it scan unrelated workspace profiles. If dependencies were intentionally installed with `--ignore-scripts`, run `npm run postinstall` before packaging. The isolated production runtime does not run Forge or installation hooks. Remove the patch when the installed Forge version includes this scoped scan and Windows packaging passes with inaccessible directories elsewhere in the workspace.
+`pnpm install --frozen-lockfile` applies the [Forge 7.11.1 patch](../../patches/@electron-forge__core@7.11.1.patch) through `patchedDependencies`. Forge's package-bin cleanup uses a relative glob with the package directory as `cwd`, so Windows path separators cannot make it scan unrelated workspace profiles. The patch is also applied when lifecycle scripts are disabled. Remove it when the installed Forge version includes this scoped scan and Windows packaging passes with inaccessible directories elsewhere in the workspace.
 
 ## Build and package
 
 Run these only when the changed artifact or platform requires them. A successful source build
 does not establish installer, native keyring or live-provider behavior.
 
-- `npm run package` creates an unpacked application bundle.
-- `npm run make` creates platform distributables and is slower and more environment-sensitive than packaging.
-- `npm run audit:size:win32:x64` checks the default Forge output: Squirrel EXE/NuGet and WiX MSI installers have a 200 MiB budget including the standalone runtime; `app.asar` and the uncompressed standalone tree each have an independent 120 MiB budget. The audit selects packaged resources directly and does not scan acceptance profiles elsewhere in `out`. Vite dependency caches under `node_modules/.vite` are excluded from packaging; the production bundles under the root `.vite` remain required.
-- Packaging prepares standalone runtime dependencies in an isolated directory. Its `npm ci` preserves the package URLs in `package-lock.json` with `--replace-registry-host=never`, so a local npm mirror setting cannot redirect locked official-registry downloads to an unavailable mirror archive. Dependency versions, integrity checks and global npm configuration remain unchanged.
+- `pnpm run package` creates an unpacked application bundle.
+- `pnpm run make` creates platform distributables and is slower and more environment-sensitive than packaging.
+- `pnpm run audit:size:win32:x64` checks the default Forge output: Squirrel EXE/NuGet and WiX MSI installers have a 200 MiB budget including the standalone runtime; `app.asar` and the uncompressed standalone tree each have an independent 120 MiB budget. The audit selects packaged resources directly and does not scan acceptance profiles elsewhere in `out`. Vite dependency caches under `node_modules/.vite` are excluded from packaging; the production bundles under the root `.vite` remain required.
+- Packaging prepares standalone runtime dependencies in an isolated directory. Its `pnpm install --prod --frozen-lockfile --ignore-scripts` uses the same lockfile, pnpm settings and native-build allowlist as development. Native dependencies are rebuilt only in that isolated tree with its bundled Node version; desktop dependencies remain untouched.
 - Runtime installation and dependency tracing use separate staging directories. Native-module and command checks run against the traced output before publication. On Windows, publication copies the validated tree after backing up any existing generated runtime, avoiding populated-directory rename failures. A failed copy restores the backup; failed recovery retains its staging directory and reports the recovery path. Forge consumes the output only after publication completes. Other platforms publish by directory rename.
 
 Linux AppImage packaging runs the maker's downloaded `appimagetool` with
@@ -37,3 +37,5 @@ the previous tree for explicit recovery.
 Dependency tracing scopes filesystem reads to the staging root, rejects cross-drive host paths
 and external link targets, and requires the target native binaries before materialization.
 Optional import warnings are reviewed explicitly; unknown warnings fail preparation.
+
+The Windows-only optional icon extractor has a [const-correctness patch](../../patches/@bitdisaster__exe-icon-extractor@1.0.10.patch) for compilation with the Node 24 toolchain. It changes only the error-message parameter to a read-only pointer. Remove the patch when the dependency includes this correction and a clean Windows install compiles it successfully.

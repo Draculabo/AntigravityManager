@@ -10,3 +10,5 @@ openspec/
 .agent/
 .claude/
 .codex
+# pnpm owns generated lockfile formatting.
+/pnpm-lock.yaml

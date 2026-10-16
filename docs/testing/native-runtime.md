@@ -6,7 +6,7 @@ Run commands from the repository root unless a step specifies another directory.
 
 ## Audit and Thought workers
 
-After `npm run start` has built the production traffic-audit and Thought Store workers, run their
+After `pnpm run start` has built the production traffic-audit and Thought Store workers, run their
 native SQLite persistence checks under Electron's matching Node runtime:
 
 ```powershell
@@ -17,10 +17,10 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 This checks real worker messages, database reopen, body paging, retention and physical disk
 reclamation. It supplements, but does not replace, live gateway/provider acceptance.
 
-After `npm run build:core`, check the standalone core's built audit and Thought Store workers:
+After `pnpm run build:core`, check the standalone core's built audit and Thought Store workers:
 
 ```powershell
-npm run test:acceptance -- runtime diagnostics --smoke
+pnpm run test:acceptance runtime diagnostics --smoke
 ```
 
 This checks both emitted worker entries, real SQLite initialization, empty statistics and
@@ -35,7 +35,7 @@ retention, terminal owner drain, installer delivery or compatibility on other op
 For the SQLite worker shutdown primitive, run:
 
 ```powershell
-npm run test:unit -- --run src/tests/unit/sqlite-worker-shutdown.test.ts
+pnpm run test:unit --run src/tests/unit/sqlite-worker-shutdown.test.ts
 ```
 
 This uses real Node worker threads with an in-memory test protocol. It covers admission closure,
@@ -45,7 +45,7 @@ forbidden restart. It does not open SQLite or validate terminal feature-service/
 For terminal diagnostic-store admission and core ownership ordering, run:
 
 ```powershell
-npm run test:unit -- --run src/tests/unit/diagnostic-store-shutdown.test.ts src/tests/unit/core-shutdown.test.ts src/tests/unit/gateway-start.test.ts
+pnpm run test:unit --run src/tests/unit/diagnostic-store-shutdown.test.ts src/tests/unit/core-shutdown.test.ts src/tests/unit/gateway-start.test.ts
 ```
 
 These tests cover lazy stores with no gateway, admitted serialization/SSE finish/Thought hydration,
@@ -56,7 +56,7 @@ or the desktop forced-exit timing under production load.
 For IPC audit metadata/context and desktop admission/drain behavior, run:
 
 ```powershell
-npm run test:unit -- --run src/tests/unit/ipc-audit-recorder.test.ts src/tests/unit/ipc-capture.test.ts src/tests/unit/ipc-capture-capacity.test.ts src/tests/unit/core-rpc.test.ts src/tests/unit/desktop-shutdown.test.ts
+pnpm run test:unit --run src/tests/unit/ipc-audit-recorder.test.ts src/tests/unit/ipc-capture.test.ts src/tests/unit/ipc-capture-capacity.test.ts src/tests/unit/core-rpc.test.ts src/tests/unit/desktop-shutdown.test.ts
 ```
 
 The capacity test sends logical bodies at 100 MiB minus one byte, exactly 100 MiB and one byte
@@ -75,7 +75,7 @@ The optional runtime root selects an isolated installation of the same locked na
 dependency version; omitting it uses the workspace dependency tree.
 
 ```powershell
-npm run test:acceptance -- runtime diagnostics --runtime-root C:\matching-node-runtime
+pnpm run test:acceptance runtime diagnostics --runtime-root C:\matching-node-runtime
 ```
 
 The launcher reuses the core Vite configuration and Electron-import rejection to build a test-only
@@ -94,7 +94,7 @@ For desktop owner selection, run the owning bootstrap, management IPC, launcher 
 shutdown tests. After `build:core`, the process acceptance command is:
 
 ```powershell
-npm run test:acceptance -- runtime bootstrap --runtime-root C:\matching-node-runtime
+pnpm run test:acceptance runtime bootstrap --runtime-root C:\matching-node-runtime
 ```
 
 This starts the built standalone core in an isolated home with matching native SQLite, verifies

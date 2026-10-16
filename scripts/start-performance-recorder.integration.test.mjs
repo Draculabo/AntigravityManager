@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createNpmInvocation } from './start-performance-recorder.mjs';
+import { createPnpmInvocation } from './start-performance-recorder.mjs';
 
 function executeInvocation(invocation, environment) {
   return new Promise((resolve, reject) => {
@@ -24,14 +24,14 @@ function executeInvocation(invocation, environment) {
 }
 
 test(
-  'executes the Windows npm invocation through a real command shell',
+  'executes the Windows pnpm invocation through a real command shell',
   { skip: process.platform !== 'win32' },
   async (context) => {
-    const fixtureDirectory = await mkdtemp(path.join(tmpdir(), 'agm-npm-shim-'));
+    const fixtureDirectory = await mkdtemp(path.join(tmpdir(), 'agm-pnpm-shim-'));
     context.after(async () => rm(fixtureDirectory, { recursive: true, force: true }));
-    await writeFile(path.join(fixtureDirectory, 'npm.cmd'), '@echo off\r\necho 10.99.0\r\n');
+    await writeFile(path.join(fixtureDirectory, 'pnpm.cmd'), '@echo off\r\necho 10.99.0\r\n');
 
-    const result = await executeInvocation(createNpmInvocation('win32', ['--version']), {
+    const result = await executeInvocation(createPnpmInvocation('win32', ['--version']), {
       ...process.env,
       PATH: `${fixtureDirectory};${process.env.PATH ?? ''}`,
     });

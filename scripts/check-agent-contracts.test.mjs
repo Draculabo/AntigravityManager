@@ -49,7 +49,7 @@ async function createValidFixture() {
   await writeFixtureFile(
     rootDir,
     'AGENTS.md',
-    '# Instructions\n\nSee [architecture](docs/architecture.md) and [Agent lessons](.agents/lessons.md). Run `npm run check:agent-contracts`.\n',
+    '# Instructions\n\nSee [architecture](docs/architecture.md) and [Agent lessons](.agents/lessons.md). Run `pnpm run check:agent-contracts`.\n',
   );
   await writeFixtureFile(
     rootDir,
@@ -102,7 +102,7 @@ test('requires the lessons route for triggered failure reviews', async (context)
   await writeFixtureFile(
     rootDir,
     'AGENTS.md',
-    '# Instructions\n\nSee [architecture](docs/architecture.md). Run `npm run check:agent-contracts`.\n',
+    '# Instructions\n\nSee [architecture](docs/architecture.md). Run `pnpm run check:agent-contracts`.\n',
   );
 
   assert.deepEqual(validateAgentContracts(rootDir), {
@@ -215,11 +215,11 @@ test('checks executable command references in the script guide', async (context)
   await writeFixtureFile(
     rootDir,
     'scripts/README.md',
-    '# Scripts\n\nRun `npm run check:missing`.\n',
+    '# Scripts\n\nRun `pnpm run check:missing`.\n',
   );
 
   assert.deepEqual(validateAgentContracts(rootDir), {
-    errors: ['scripts/README.md: references missing npm script: check:missing'],
+    errors: ['scripts/README.md: references missing pnpm script: check:missing'],
   });
 });
 
@@ -237,17 +237,17 @@ test('rejects a broken local Markdown link', async (context) => {
   });
 });
 
-test('rejects a reference to a missing npm script', async (context) => {
+test('rejects a reference to a missing pnpm script', async (context) => {
   const rootDir = await createValidFixture();
   context.after(async () => rm(rootDir, { recursive: true, force: true }));
   await writeFixtureFile(
     rootDir,
     'docs/development.md',
-    '# Development\n\nRun `npm run check:missing`.\n',
+    '# Development\n\nRun `pnpm run check:missing`.\n',
   );
 
   assert.deepEqual(validateAgentContracts(rootDir), {
-    errors: ['docs/development.md: references missing npm script: check:missing'],
+    errors: ['docs/development.md: references missing pnpm script: check:missing'],
   });
 });
 
@@ -292,7 +292,7 @@ test('accepts a frozen archive body and checks current reciprocal replacement me
     '.agents/notes/archived/process/2026-10-01-old.md',
     '# Agent Note: Old\n\nStatus: implemented\nArchived: 2026-10-15\nSuperseded by: [Current](../../implemented/process/2026-10-15-current.md)\n' +
       sections +
-      '\nHistorical [path](removed.md) and `npm run removed-command`.\n',
+      '\nHistorical [path](removed.md) and `pnpm run removed-command`.\n',
   );
   await writeFixtureFile(
     rootDir,

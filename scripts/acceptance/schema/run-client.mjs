@@ -6,7 +6,7 @@ import os from 'node:os';
 
 if (!process.argv[2]) {
   throw new Error(
-    'Usage: npm run test:schema:client -- <claude-executable> [Read|default|configured-mcp|configured-full]',
+    'Usage: pnpm run test:schema:client <claude-executable> [Read|default|configured-mcp|configured-full]',
   );
 }
 const directory = await mkdtemp(path.join(os.tmpdir(), 'agm-schema-client-'));

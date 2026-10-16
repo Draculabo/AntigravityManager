@@ -24,7 +24,7 @@ export const CHECKS = [
     script: 'check:quality',
     lane: 'shared',
     groups: ['governance'],
-    description: 'Verify check registration, npm entry points and CI lane coverage.',
+    description: 'Verify check registration, pnpm entry points and CI lane coverage.',
   },
   {
     script: 'test:quality',

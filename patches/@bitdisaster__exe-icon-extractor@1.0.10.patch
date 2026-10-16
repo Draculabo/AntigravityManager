@@ -1,0 +1,6 @@
+diff --git a/src/module.cc b/src/module.cc
+--- a/src/module.cc
++++ b/src/module.cc
+@@ -269 +269 @@
+-void throwIfNotSuccess(napi_env env, napi_status status, char* msg) {
++void throwIfNotSuccess(napi_env env, napi_status status, const char* msg) {

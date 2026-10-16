@@ -26,7 +26,7 @@ owns the change-to-evidence matrix; this guide identifies existing tools and the
 | `development/`            | Development-server connection regression checks.                                               |
 | `release/`                | Release-note generation, source metadata and controlled publication tests.                     |
 
-Existing governance, performance and release utilities remain at the root. npm commands are defined
+Existing governance, performance and release utilities remain at the root. pnpm commands are defined
 in [package.json](../package.json); use their names rather than relying on a script's filesystem path.
 The scripts source directory is excluded from the application package. Build outputs are delivered
 through the configured Forge resource and installer steps.
@@ -34,8 +34,8 @@ through the configured Forge resource and installer steps.
 ## Git hooks
 
 `git/` owns the Lefthook adapter, guarded installation, staged-governance selector and preserved
-pre-commit hook invocation. Use `npm run hooks:install` to install, `npm run hooks:pre-commit` or
-`npm run hooks:pre-push` to check manually, and `npm run test:git-hooks` for isolated integration
+pre-commit hook invocation. Use `pnpm run hooks:install` to install, `pnpm run hooks:pre-commit` or
+`pnpm run hooks:pre-push` to check manually, and `pnpm run test:git-hooks` for isolated integration
 evidence. [Local Git checks](../docs/development/git-checks.md#local-git-checks) owns installation, automatic
 checks, current-worktree limitations, CodeGraph coexistence and recovery.
 
@@ -45,25 +45,25 @@ shared CI wiring. These checks do not establish a passing application test suite
 
 ## Quality checks
 
-`npm run check:agent-contracts` also validates upgrade guide structure and explicit Agent Note
+`pnpm run check:agent-contracts` also validates upgrade guide structure and explicit Agent Note
 replacement/archive metadata. Its fixtures cover missing recovery instructions, invalid versions,
 one-way links, archive dates and replacement cycles. Current links remain checked; frozen archive
 body examples are historical. The [upgrade guide rules](../docs/upgrade-guides/README.md) and
 [note retention rules](../.agents/notes/README.md#supersession-and-retention) own human review.
 
 `quality/checks.mjs` owns the check inventory, purpose descriptions, local groups and CI lanes.
-Use `npm run check:ci -- --list` to discover the current commands without running them; add a lane
-before `--list` to inspect just that selection. `npm run check:ci` executes the complete registered
-selection, which includes repository-wide tests and formatting and may be expensive. Focused npm
+Use `pnpm run check:ci --list` to discover the current commands without running them; add a lane
+before `--list` to inspect just that selection. `pnpm run check:ci` executes the complete registered
+selection, which includes repository-wide tests and formatting and may be expensive. Focused pnpm
 commands remain available for ordinary development.
 
-`npm run check:quality` verifies the registry against package scripts and the actual workflow jobs.
+`pnpm run check:quality` verifies the registry against package scripts and the actual workflow jobs.
 Each registered check needs a nonempty purpose and a CI lane. The required jobs execute their lane
 unconditionally, propagate failure and retain the declared platforms. Local governance/static
-commands select entries from the same inventory. `npm run test:quality` exercises the real runner
+commands select entries from the same inventory. `pnpm run test:quality` exercises the real runner
 with synthetic commands and deliberately invalid workflow fixtures.
 
-Every npm verification command named `test`, `test:*`, `check:*` or `verify:*` is classified as a CI
+Every pnpm verification command named `test`, `test:*`, `check:*` or `verify:*` is classified as a CI
 leaf, a shared aggregate or an explained additional entry point. New unclassified commands fail
 the contracts. The full `--list` output also describes aliases, nested checks and manually selected
 acceptance commands. Additional entries are excluded from the automatic selection; live and native
@@ -78,18 +78,18 @@ the command list here. Acceptance scripts remain owned by the dispatcher below.
 
 ## Unified acceptance entry
 
-`npm run test:acceptance -- --help` lists the available suites. Choose a suite and check, followed by
+`pnpm run test:acceptance --help` lists the available suites. Choose a suite and check, followed by
 the existing check arguments; the dispatcher forwards them unchanged and starts only that check.
 For example:
 
 ```powershell
-npm run test:acceptance -- unit
-npm run test:acceptance -- runtime bootstrap --runtime-root C:\matching-node-runtime
-npm run test:acceptance -- accounts prepare
-npm run test:acceptance -- agents report /path/to/report.json
+pnpm run test:acceptance unit
+pnpm run test:acceptance runtime bootstrap --runtime-root C:\matching-node-runtime
+pnpm run test:acceptance accounts prepare
+pnpm run test:acceptance agents report /path/to/report.json
 ```
 
-Use `npm run test:acceptance -- installers --help` to list installer checks, or another suite name
+Use `pnpm run test:acceptance installers --help` to list installer checks, or another suite name
 for its help. There is no automatic all-platform, live-account or installer sequence. The fixture
 generator commands remain build commands because they create test artifacts rather than validate them.
 
@@ -97,32 +97,32 @@ generator commands remain build commands because they create test artifacts rath
 
 Select evidence by the affected behavior, then inspect the owning command or SOP before execution:
 
-| Verification need                          | Existing entry                                                           | Prerequisites and effects                                                                                                                                                              |
-| ------------------------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent instructions, Skills and Agent Notes | `npm run check:agent-contracts`                                          | Checks governance fixtures, local links and named npm commands; does not exercise application behavior.                                                                                |
-| Change scope                               | `npm run change-scope -- --base HEAD` for worktree changes               | Reads Git metadata. Outgoing/PR changes require the verified base and head rather than an assumed base.                                                                                |
-| Pure acceptance harness behavior           | `npm run test:acceptance -- unit` or the owning `node --test` file       | Uses synthetic fixtures; see the coverage and exclusions below.                                                                                                                        |
-| Native core, preload or desktop behavior   | `npm run test:acceptance -- runtime <check>`                             | Select the check listed by top-level help; built artifacts, matching native ABI and isolated state depend on the check.                                                                |
-| Real account switching or client history   | `npm run test:acceptance -- accounts <check>`                            | Follow the [account SOP](../docs/modules/antigravity-runtime/account-switch-acceptance.md); may close clients or change shared credentials and must verify restoration.                |
-| Real coding-client or provider behavior    | `agents`, `multimodal` or `thinking` acceptance suites                   | Follow the linked SOPs below; may consume quota or change isolated tool configuration.                                                                                                 |
-| Schema replay and live protocol diagnosis  | Existing `test:schema:*` npm commands                                    | Follow [live Schema acceptance](../docs/modules/proxy-gateway/schema-conversion.md#live-schema-acceptance); replay, live requests and remote reporting have different effects.         |
-| Diagnostic reporting                       | `npm run test:diagnostics:sentry` or `npm run test:diagnostics:packaged` | Follow [diagnostic acceptance](../docs/testing/diagnostics.md#account-operation-diagnostic-acceptance); default/local, packaged and live reporting modes establish different evidence. |
-| Installer or updater behavior              | `npm run test:acceptance -- installers <check>`                          | Requires the matching artifact and owning [delivery procedure](../docs/testing/delivery.md#standalone-delivery-acceptance); may install or update software.                            |
+| Verification need                          | Existing entry                                                             | Prerequisites and effects                                                                                                                                                              |
+| ------------------------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent instructions, Skills and Agent Notes | `pnpm run check:agent-contracts`                                           | Checks governance fixtures, local links and named pnpm commands; does not exercise application behavior.                                                                               |
+| Change scope                               | `pnpm run change-scope --base HEAD` for worktree changes                   | Reads Git metadata. Outgoing/PR changes require the verified base and head rather than an assumed base.                                                                                |
+| Pure acceptance harness behavior           | `pnpm run test:acceptance unit` or the owning `node --test` file           | Uses synthetic fixtures; see the coverage and exclusions below.                                                                                                                        |
+| Native core, preload or desktop behavior   | `pnpm run test:acceptance runtime <check>`                                 | Select the check listed by top-level help; built artifacts, matching native ABI and isolated state depend on the check.                                                                |
+| Real account switching or client history   | `pnpm run test:acceptance accounts <check>`                                | Follow the [account SOP](../docs/modules/antigravity-runtime/account-switch-acceptance.md); may close clients or change shared credentials and must verify restoration.                |
+| Real coding-client or provider behavior    | `agents`, `multimodal` or `thinking` acceptance suites                     | Follow the linked SOPs below; may consume quota or change isolated tool configuration.                                                                                                 |
+| Schema replay and live protocol diagnosis  | Existing `test:schema:*` pnpm commands                                     | Follow [live Schema acceptance](../docs/modules/proxy-gateway/schema-conversion.md#live-schema-acceptance); replay, live requests and remote reporting have different effects.         |
+| Diagnostic reporting                       | `pnpm run test:diagnostics:sentry` or `pnpm run test:diagnostics:packaged` | Follow [diagnostic acceptance](../docs/testing/diagnostics.md#account-operation-diagnostic-acceptance); default/local, packaged and live reporting modes establish different evidence. |
+| Installer or updater behavior              | `pnpm run test:acceptance installers <check>`                              | Requires the matching artifact and owning [delivery procedure](../docs/testing/delivery.md#standalone-delivery-acceptance); may install or update software.                            |
 
 Build commands, fixture generators, report aggregation and release tools are separate operations.
 Creating an artifact or summarizing a report does not prove the behavior of the resulting product.
 The table is a discovery aid, not an instruction to run every suite. Public CLI help and `package.json`
 own the available commands; the owning SOP specifies exact arguments and environment requirements.
 
-`npm run test:acceptance -- unit` runs the local Node test suites for dependency tracing, update feed
+`pnpm run test:acceptance unit` runs the local Node test suites for dependency tracing, update feed
 selection, authentication-state interpretation, tool configuration, audit pagination, report verdicts,
 media validation, protocol continuation and native-fixture isolation. It needs installed project
 dependencies, but does not sign in to providers, send model requests, open an application window,
 install software or load SQLite native binaries. `check:ci` and `test:all` include this command;
-the default Vitest `npm test` command remains scoped to application unit tests.
+the default Vitest `pnpm test` command remains scoped to application unit tests.
 
 Native acceptance needs built entries and dependencies matching the executing Node or Electron ABI.
-`npm run test:acceptance -- runtime diagnostics --smoke` checks just the built standalone workers.
+`pnpm run test:acceptance runtime diagnostics --smoke` checks just the built standalone workers.
 The same command without `--smoke` checks service operations and terminal lifecycle.
 Both Node service runners accept `--runtime-root <directory>` for their complete checks, allowing
 the fixture to use a separately prepared native dependency tree without rebuilding desktop dependencies.

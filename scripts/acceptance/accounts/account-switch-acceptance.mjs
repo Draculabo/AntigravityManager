@@ -30,7 +30,7 @@ const options = new Command()
   )
   .option('--electron-bin <path>', 'Current Electron executable for the electron owner')
   .option('--electron-app <path>', 'Source application directory when using development Electron')
-  .option('--attach-electron', 'Attach to the isolated Manager started with npm start', false)
+  .option('--attach-electron', 'Attach to the isolated Manager started with pnpm start', false)
   .option('--native-root <path>', 'ABI-compatible native libraries for the report process')
   .option('--target <target>', 'Only run one client: classic, ide or agy')
   .option(

@@ -9,7 +9,7 @@ const args = process.argv.slice(2);
 const smokeOnly = args.length === 1 && args[0] === '--smoke';
 assert(
   smokeOnly || args.length === 0 || (args.length === 2 && args[0] === '--runtime-root'),
-  'Usage: npm run test:acceptance -- runtime diagnostics [--smoke | --runtime-root <directory>]',
+  'Usage: pnpm run test:acceptance runtime diagnostics [--smoke | --runtime-root <directory>]',
 );
 
 if (smokeOnly) {
