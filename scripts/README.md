@@ -36,7 +36,7 @@ through the configured Forge resource and installer steps.
 `git/` owns the Lefthook adapter, guarded installation, staged-governance selector and preserved
 pre-commit hook invocation. Use `npm run hooks:install` to install, `npm run hooks:pre-commit` or
 `npm run hooks:pre-push` to check manually, and `npm run test:git-hooks` for isolated integration
-evidence. [Local Git checks](../docs/development.md#local-git-checks) owns installation, automatic
+evidence. [Local Git checks](../docs/development/git-checks.md#local-git-checks) owns installation, automatic
 checks, current-worktree limitations, CodeGraph coexistence and recovery.
 
 The commit hook lints staged JavaScript and TypeScript blobs with the current worktree ESLint
@@ -97,17 +97,17 @@ generator commands remain build commands because they create test artifacts rath
 
 Select evidence by the affected behavior, then inspect the owning command or SOP before execution:
 
-| Verification need                          | Existing entry                                                           | Prerequisites and effects                                                                                                                                                  |
-| ------------------------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent instructions, Skills and Agent Notes | `npm run check:agent-contracts`                                          | Checks governance fixtures, local links and named npm commands; does not exercise application behavior.                                                                    |
-| Change scope                               | `npm run change-scope -- --base HEAD` for worktree changes               | Reads Git metadata. Outgoing/PR changes require the verified base and head rather than an assumed base.                                                                    |
-| Pure acceptance harness behavior           | `npm run test:acceptance -- unit` or the owning `node --test` file       | Uses synthetic fixtures; see the coverage and exclusions below.                                                                                                            |
-| Native core, preload or desktop behavior   | `npm run test:acceptance -- runtime <check>`                             | Select the check listed by top-level help; built artifacts, matching native ABI and isolated state depend on the check.                                                    |
-| Real account switching or client history   | `npm run test:acceptance -- accounts <check>`                            | Follow the [account SOP](../docs/modules/antigravity-runtime/account-switch-acceptance.md); may close clients or change shared credentials and must verify restoration.    |
-| Real coding-client or provider behavior    | `agents`, `multimodal` or `thinking` acceptance suites                   | Follow the linked SOPs below; may consume quota or change isolated tool configuration.                                                                                     |
-| Schema replay and live protocol diagnosis  | Existing `test:schema:*` npm commands                                    | Follow [live Schema acceptance](../docs/development.md#live-schema-acceptance); replay, live requests and remote reporting have different effects.                         |
-| Diagnostic reporting                       | `npm run test:diagnostics:sentry` or `npm run test:diagnostics:packaged` | Follow [diagnostic acceptance](../docs/testing.md#account-operation-diagnostic-acceptance); default/local, packaged and live reporting modes establish different evidence. |
-| Installer or updater behavior              | `npm run test:acceptance -- installers <check>`                          | Requires the matching artifact and owning [delivery procedure](../docs/testing.md#standalone-delivery-acceptance); may install or update software.                         |
+| Verification need                          | Existing entry                                                           | Prerequisites and effects                                                                                                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent instructions, Skills and Agent Notes | `npm run check:agent-contracts`                                          | Checks governance fixtures, local links and named npm commands; does not exercise application behavior.                                                                                |
+| Change scope                               | `npm run change-scope -- --base HEAD` for worktree changes               | Reads Git metadata. Outgoing/PR changes require the verified base and head rather than an assumed base.                                                                                |
+| Pure acceptance harness behavior           | `npm run test:acceptance -- unit` or the owning `node --test` file       | Uses synthetic fixtures; see the coverage and exclusions below.                                                                                                                        |
+| Native core, preload or desktop behavior   | `npm run test:acceptance -- runtime <check>`                             | Select the check listed by top-level help; built artifacts, matching native ABI and isolated state depend on the check.                                                                |
+| Real account switching or client history   | `npm run test:acceptance -- accounts <check>`                            | Follow the [account SOP](../docs/modules/antigravity-runtime/account-switch-acceptance.md); may close clients or change shared credentials and must verify restoration.                |
+| Real coding-client or provider behavior    | `agents`, `multimodal` or `thinking` acceptance suites                   | Follow the linked SOPs below; may consume quota or change isolated tool configuration.                                                                                                 |
+| Schema replay and live protocol diagnosis  | Existing `test:schema:*` npm commands                                    | Follow [live Schema acceptance](../docs/modules/proxy-gateway/schema-conversion.md#live-schema-acceptance); replay, live requests and remote reporting have different effects.         |
+| Diagnostic reporting                       | `npm run test:diagnostics:sentry` or `npm run test:diagnostics:packaged` | Follow [diagnostic acceptance](../docs/testing/diagnostics.md#account-operation-diagnostic-acceptance); default/local, packaged and live reporting modes establish different evidence. |
+| Installer or updater behavior              | `npm run test:acceptance -- installers <check>`                          | Requires the matching artifact and owning [delivery procedure](../docs/testing/delivery.md#standalone-delivery-acceptance); may install or update software.                            |
 
 Build commands, fixture generators, report aggregation and release tools are separate operations.
 Creating an artifact or summarizing a report does not prove the behavior of the resulting product.
@@ -130,7 +130,7 @@ See [the testing strategy](../docs/testing.md) for runtime prerequisites and mat
 
 The `runtime preload-csp` check builds the production preload and exercises its traffic callbacks
 inside an isolated real Electron window, without accounts or upstream requests. See the
-[CSP acceptance procedure](../docs/testing.md#preload-traffic-events-under-content-security-policy)
+[CSP acceptance procedure](../docs/modules/app-shell/testing.md#preload-traffic-events-under-content-security-policy)
 for the policy timing variants and regression mode.
 
 Live account, model and installer suites have separate explicit commands. They require prepared

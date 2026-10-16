@@ -8,7 +8,7 @@ The app-shell module owns optional diagnostic log attachments. Electron main rea
 logs; standalone mode also reads a sanitized `core` snapshot through the selected owner's
 private RPC. The renderer receives only the preview and a temporary save capability. The main
 process holds that exact snapshot and owns the save dialog and atomic export. No log upload
-service or general filesystem API is exposed. See [the privacy and export policy](security.md#sensitive-data).
+service or general filesystem API is exposed. See [the privacy and export policy](modules/app-shell/security.md#error-details-and-report-exports).
 
 ## Correlated account-operation diagnostics
 
@@ -28,7 +28,7 @@ The renderer retains a text snapshot for details and explicit reporting. The CLI
 same safe reference on failure. Account persistence certainty is independent of presentation:
 view/finalization failures after a completed write require checking the account list, and lost
 remote outcomes remain uncertain. Reporting receipt semantics, privacy bounds and attachment
-records are defined in [the security reference](security.md#correlated-operation-reports).
+records are defined in [the security reference](security/diagnostics.md#correlated-operation-reports).
 
 Google API HTTPS requests tunnel through HTTP(S) proxies with a per-request CONNECT agent.
 Explicit account/configuration settings retain precedence over environment routing, which honors
@@ -144,7 +144,7 @@ replacement. Invalid official JSON aborts without replacing it. History and offi
 succeed before launch. A prelaunch failure rolls back only consent fields when they still match
 this invocation's write. An attempted or uncertain launch prevents file rollback against a possibly
 running client. Credential injection retains its existing failure semantics; consent rollback does
-not imply credential rollback. See [the storage and privacy rules](security.md#classic-terms-state).
+not imply credential rollback. See [the storage and privacy rules](modules/antigravity-runtime/security.md#classic-terms-state).
 
 ## Runtime topology
 
@@ -221,7 +221,7 @@ Thought session/record summaries, statistics and delete/clear/repair use the [se
 
 cURL construction retains its 8 MiB replay-body limit, explicit current-key opt-in and upstream-credential prohibition. Final shell quoting can expand the command, so its capability permits up to 64 MiB. Electron main captures the selected owner across opening, reading and cleanup, then immediately writes the command to the clipboard. Renderer responses expose copied status only. Consumed/closed/expired capabilities release buffers; owner drain clears remaining snapshots. These capabilities do not establish whole-application standalone-core ownership.
 
-The core build emits `traffic-audit.worker.js` and `thought-store.worker.js` alongside `main.cjs`, matching the Node services' worker paths. Their SQLite binary must match the standalone Node runtime; the desktop's Electron native binary is a separate runtime artifact. See [worker verification](testing.md#focused-commands) for the limited native smoke coverage.
+The core build emits `traffic-audit.worker.js` and `thought-store.worker.js` alongside `main.cjs`, matching the Node services' worker paths. Their SQLite binary must match the standalone Node runtime; the desktop's Electron native binary is a separate runtime artifact. See [worker verification](testing/native-runtime.md#audit-and-thought-workers) for the limited native smoke coverage.
 
 Each `BoundedSqliteWorker` instance closes terminally: new reads/writes and lazy startup are rejected as soon as closing starts. Concurrent closes share one result. Accepted commands and the shutdown acknowledgement share the two-second default deadline; termination is awaited even after timeout. Timeout, acknowledgement and termination failures remain observable through the rejected close result.
 

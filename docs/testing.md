@@ -33,126 +33,11 @@ is not a pass; explain the gap rather than suppressing it or narrowing away a kn
 
 Before selecting a repository runner, use [the script guide](../scripts/README.md) and [script instructions](../scripts/AGENTS.md) to identify its existing entry, prerequisites and effects. [Test reliability](test-reliability.md) owns resource isolation, asynchronous completion and intermittent-failure diagnosis. [Failure ownership](error-handling.md) defines which state and recovery outcomes failure-path checks must establish.
 
-Schema regression coverage includes `json-schema-reference-resolver`, `schema-admission`, tool
-mapper/cache compatibility and Responses WebSocket tests. Runtime reporting adds
-`error-reporting-runtime`, `core-error-reporting`, desktop preference propagation, instrumentation,
-core shutdown/startup and RPC coverage. Read-only audit replay and live coding-client/provider
-calls are separate gates. See [Schema conversion](./modules/proxy-gateway/schema-conversion.md#diagnostics-and-acceptance).
-
-`scripts/acceptance/schema/check-history-evidence.mjs` checks controlled missing-result failures
-and anonymous audit-attempt grouping using Node SQLite fixtures. Live history/resubmission and
-signature-recovery checks use the [development workflow](development.md#live-schema-acceptance).
-The local history evidence (`artifacts/schema-work-package/history-verification.md`) distinguishes
-client resubmission, observed internal recovery and remaining retry coverage.
-
-`node --test scripts/acceptance/schema/check-client-matrix.mjs` checks actual-client declaration
-shapes, read-only forwarding guards, fixed-file MCP behavior, final-answer/result-continuation
-predicates and per-request upstream correlation. The real three-client matrix is a separate
-quota-consuming gate in the [development workflow](development.md#live-schema-acceptance).
-Client-local permission failures remain failures; successful MCP execution does not establish
-native Shell sandbox compatibility. Anonymous live records distinguish those tool paths.
-
-`check-retry-evidence.mjs` exercises a real loopback socket reset, bounded account-fault
-injection, SSE forwarding and per-request audit predicates. Live retry acceptance requires
-actual provider tool calls and both controlled results; fixture success alone does not prove
-provider acceptance. Thought-only unary completion coverage runs through the Anthropic real
-service path with Gemini/parity coverage for the shared fallback. See the
-local retry record (`artifacts/schema-work-package/retry-verification.md`) for disclosed injections,
-natural provider failures and the remaining scope.
-
-The Schema work package uses the configured default primary route for required live
-tool/result and Schema diagnostic receipt acceptance. Backup-endpoint failover probes are
-supplementary. Their failed predicates remain failures without blocking that scoped package;
-they never establish a change in production endpoint policy. The
-local acceptance record (`artifacts/schema-work-package/retry-verification.md#acceptance-scope`)
-owns the user-confirmed scope and its evidence.
-
-Replay selection tests also compare default and unmarked cohorts through the compiled CLI.
-They require case-insensitive acceptance-header exclusion before limiting, conservative
-exclusion of unknown header provenance and no-evidence exit 2 for an all-marked sample.
-The local budget sample record (`artifacts/schema-work-package/budget-sampling-2026-10-09.md`)
-separates observed converter behavior from unsupported organic-traffic claims.
-
-The isolated startup checks use the [development workflow](development.md#live-schema-acceptance).
-`check-startup-evidence.mjs` exercises the production launcher and acceptance helper with a
-controlled clock, including unavailable and stalled management probes and early child exit.
-The local startup record (`artifacts/schema-work-package/startup-verification.md`) separates the
-verified acceptance deadline correction from the unexplained historical timeout.
-
 - A passing command is evidence only for paths it executes.
 - Prefer user-visible output, persisted state, protocol output or another stable observable over private call sequences.
 - New validation scripts and regression tests must be capable of failing for a representative violation.
 - Never weaken assertions, skip checks or narrow coverage solely to make a failure disappear.
 - Report only checks that actually ran; report blocked or unavailable evidence separately.
-
-`signature-utils.test.ts` checks exact preservation of opaque provider signatures, including
-Base64-encoded ASCII protobuf bytes and non-text binary bytes. `proxy-signature-roundtrip.test.ts`
-exercises streaming and non-streaming Anthropic, OpenAI Chat and Responses tool continuations
-through the production services with synthetic upstream responses. These assertions compare the
-next upstream signature with the original encoded value; they do not establish live Google
-acceptance. Run the adjacent isolation, Responses mapper and invalid-signature recovery suites
-when changing this boundary.
-
-## Account-operation diagnostic acceptance
-
-The focused `correlated-operation-diagnostics` and `google-login-diagnostics` suites exercise
-classification, bounded/cyclic causes, SDK receipts, scope isolation, forwarding suppression and
-safe projections. Login failures pass through enrollment, the callback listener, public IPC,
-details and report text. Remote HTTP rejection uses a real loopback HTTP proxy with Axios'
-Node adapter and the private management endpoint; provider credentials and persistence are
-synthetic or blocked. The adjacent OAuth, switch-owner, management/RPC, CLI, error-toast and
-attachment suites cover their existing side effects and error contracts.
-
-`npm run test:diagnostics:sentry` runs the actual Node and Electron SDK adapters against a
-bounded local receiver with isolated opted-in preferences. `--offline` returns HTTP 503 while
-checking local receipt semantics. `--packaged` additionally builds and runs an isolated Electron
-ASAR diagnostic executable, with profile path resolution redirected before loading the SDK.
-This harness contains no account/credential owner and does not verify a full product installer,
-native keyring or live Google authorization.
-
-The service-launcher suite accepts a healthy core becoming ready after 60 seconds, verifies the
-90-second default deadline for an unavailable child, and checks that waiting does not launch
-another child. Packaged acceptance keeps CDP and window discovery bounded and attempts desktop
-closure and core shutdown independently during recovery.
-
-On Windows, `npm run test:diagnostics:packaged -- <desktop-executable>` exercises the full
-packaged or installed product with empty isolated profiles and reporting disabled. Both
-desktop owner modes must retain login and switch diagnostics through the production preload
-and public IPC; the real login toast must expose its reference in Error details. The packaged
-CLI exchanges a synthetic authorization code through a local proxy returning HTTP 503 and
-must use HTTPS CONNECT and retain the upstream status/code and closed HTTP evidence in its
-terminal diagnostic and local log. The focused logging regression checks the actual Winston
-transport output: shared cause evidence and safe readback booleans must survive strict parsing,
-while generic payloads still mask secrets and actual cycles. No real Google
-authorization or official-client credential write is attempted. The check requires an existing
-application master key, compares both master-key slots without printing their contents, restores
-Windows login settings and removes only its isolated profiles.
-
-For installation evidence on a clean authorized Windows host, append `--operation-diagnostics`
-to `npm run test:acceptance -- installers msi <current-msi>`. The installer guard refuses to
-replace an existing product in the same upgrade family. Running the diagnostics against the
-packaged executable validates its payload, not MSI installation or upgrade behavior.
-
-The standalone native runtime gate retains its throwing Electron substitute and presentation-side
-SQLite, worker and keyring guards. It uses the Electron-free app-shell connection for management
-and verified shutdown; the full Electron gate separately covers the desktop connection facade.
-An empty plaintext account profile must not create a master key. The security probe then explicitly
-initializes encryption, verifies the uniquely scoped native key, and decrypts its synthetic payload
-in a second process. Native credential cleanup covers both the CRUD probe and that generated key.
-
-`--live` forwards only validated non-secret event items to the configured Sentry DSN. A successful
-SDK receipt, flush or HTTP response is insufficient to prove storage: read the stored event
-using the private read-only token and compare UUID, `operation_runtime`, stage, reason, release
-and the privacy projection. The token remains outside the application. These controls do not
-establish that a synthetic failure caused an existing user's incident.
-
-Google HTTP failure diagnostics have real loopback origin and proxy controls in
-`google-http-evidence.test.ts` and `google-login-diagnostics.test.ts`. They verify proxy CONNECT authentication, 502 HTML
-and 503 OAuth JSON across refresh, private management, public IPC, details and reporting.
-`correlated-operation-diagnostics.test.ts` verifies the same closed fields in Sentry projection,
-sanitation and the public byte budget. These controls do not identify the source of an earlier 502.
-The proxy transport tests also require cancellation to close a stalled CONNECT socket and
-preserve NO_PROXY behavior. The local acceptance unit suite also checks read-only Classic terms-file classification.
 
 ## Change-to-evidence matrix
 
@@ -196,79 +81,7 @@ client. Native socket fixtures own their parent directories and clean up listene
 | Documentation or agent governance          | `npm run check:agent-contracts` and focused Prettier                  | `npm run check:governance` when governance rules or runtime boundaries change                           |
 | Cross-platform or repository-wide behavior | Focused tests for each affected surface                               | CI platform matrix or explicitly requested full rehearsal                                               |
 
-For Git hook installation, configuration or dispatch changes, run `npm run test:git-hooks` plus
-`npm run check:agent-contracts`, `npm run check:quality` and focused formatting. The integration fixtures exercise installed
-Lefthook hooks through real temporary-repository commits and local bare-remote pushes, including
-failed checks, staged additions/deletions/renames, partial staging, preserved hooks and recovery.
-They also verify that staged lint errors block a commit despite a corrected worktree, that valid
-staged code can commit without consuming invalid unstaged edits, and that CI changes trigger the
-quality contracts. Neither lint nor the adapter stages fixes or creates a stash.
-They do not push to GitHub or establish GUI Git environment support. [Local Git checks](development.md#local-git-checks)
-owns the automatic gates; CI includes their integration tests through `npm run check:ci`.
-
-For cloud-account plaintext storage, run the focused mock tests with `npm test -- --run
-src/tests/unit/convert-encrypted-account-fields.test.ts
-src/tests/unit/cloud-account-batch-writer.test.ts`. The real SQLite reopen and old-ciphertext backup
-test needs the installed Electron ABI on Windows:
-
-```powershell
-$env:ELECTRON_RUN_AS_NODE = '1'
-& .\node_modules\electron\dist\electron.exe .\node_modules\vitest\vitest.mjs run src/tests/unit/cloud-account-plaintext-persistence.test.ts
-```
-
 `npm run check:governance` analyzes the current worktree, including untracked source files and unstaged deletions, and enforces every runtime boundary rule. It is not a report-only check.
-
-## Native process queries
-
-After changing Windows client shutdown, run `node scripts/acceptance/accounts/test-windows-graceful-close.integration.mjs`
-on Windows. It runs production stop logic against temporary WinForms windows and verifies that
-normal close flushes an in-memory buffer for visible and hidden windows, while a cancelled close
-leaves the process alive. Native Windows uses PID-scoped `WM_CLOSE` requests for unowned
-top-level windows; owned save/confirmation dialogs remain under the client's control.
-The focused `runtime-stop.test.ts` cases also cover slow initial native Windows observations
-and forbid posting close after the operation deadline. Startup slow-observation and late-result
-cases belong to `runtime-launch.test.ts`; neither operation extends its overall deadline.
-The fixture uses a scoped observer and does not prove official IDE conversation persistence.
-For official IDE evidence, prepare the isolated Windows account-switch profile, build the
-acceptance helpers, and run `node scripts/acceptance/accounts/test-official-ide-history.integration.mjs`.
-Close other IDE profiles first. The check submits a unique test marker, verifies the exact
-reply, uses production normal close/relaunch, and opens the same history entry by its captured identifier.
-Its sanitized report separates normal close, restart and conversation restoration; a
-successful close does not by itself establish conversation persistence.
-Run the same harness with `--switch-accounts` to verify A → B → A using the prepared
-isolated account pair. It checks credential readback, Google identity and official IDE
-identity at each switch, reopens the same conversation, stops the isolated service and
-restores the original shared Windows credential. Run `--during-generation` separately
-to verify the visible generation cancel control immediately before normal close. It captures
-two actual response excerpts and separately checks their presence in the official conversation
-SQLite `steps.step_payload` before close, after relaunch, and in the reopened official UI.
-The database checks are read-only and apply to the inspected IDE 2.5.5 schema; they do not
-migrate or modify official data. Use the prepared standalone Node executable matching the
-native SQLite build. Add `--extended-close` only for a separate 60-second diagnostic;
-the standard harness budget remains 15 seconds and the production default is unchanged.
-Reports distinguish a missing history entry from missing persisted response text.
-The official history picker collapses each group to four entries. The harness expands
-`fastpick-show-more-*` options and enumerates only `fastpick-item-*` entries before comparison;
-show-more controls are not conversations.
-These modes write separate sanitized reports under `out/account-switch-acceptance`.
-The native launch harness separately verifies that windowless Windows fixtures are refused;
-its forced cleanup targets only disposable fixture processes.
-
-The published `@draculabo/sysinfo-process-enhanced` dependency provides read-only process
-queries. After `npm ci`, run `node scripts/test-sysinfo.integration.mjs`.
-Run the same script under Electron with `ELECTRON_RUN_AS_NODE=1` to verify native loading
-and real process metadata. The check uses a dedicated temporary child with spaces,
-Unicode, quotes, empty argv and trailing backslashes; it does not target installed apps.
-The existing Antigravity launch integration script verifies the production observer on
-native Windows, Linux and optionally WSL Windows interop.
-
-After changing native dependency or packaging configuration, run `npm run package`.
-Forge forces native module rebuilding for its Electron target. A preceding standalone Node build
-can replace a binary even when cached Electron rebuild metadata remains present. Verify the actual
-packaged loader; a successful Forge exit code alone does not establish ABI compatibility.
-Verify the main package remains inside `app.asar`, its matching platform binary exists
-under `app.asar.unpacked/node_modules/@draculabo`, and the packaged loader can query a
-real process under Electron. The existing AutoUnpackNatives plugin unpacks `.node` files.
 
 ## Type and React quality gates
 
@@ -281,115 +94,7 @@ the lint process's heap during `npm run check:static`.
 
 React Doctor runs in pull requests with changed-line scope and error blocking. Telemetry, score sharing and supply-chain analysis are disabled. A full scan is advisory and establishes the existing-work baseline. React Scan is injected only for an explicitly enabled development Electron session; it is not bundled or run in CI.
 
-### Desktop workspace checks
-
-Run `diagnostic-logs.test.ts` and `diagnostic-log-attachment.test.ts` for optional log attachments.
-They cover whole-record removal, strict diagnostic projection, the ten-minute window, rotation,
-size/missing flags, selected-owner failure, exact snapshot export, cancellation, retry and expiry.
-`core-rpc.test.ts` also transports a near-limit synthetic core snapshot over the real private
-pipe/socket. These checks never use production logs or submit a GitHub issue.
-
-Run `error-toast.test.ts`, `toaster-feedback.test.ts`, `account-load-bug-report.test.ts` and
-`cloud-account-load-error.test.ts` for notification diagnostics. They cover original/backend stack
-selection, redaction, snapshot retention, dismissal, explicit reporting, clipboard/browser failures
-and retry. The feedback workspace Electron check exercises the details dialog and keyboard close
-with a synthetic stack; it does not submit a GitHub issue or expose real account credentials.
-
-Run `npm run test:performance -- desktop-workspace.spec.mts` to check the production shell,
-account page and Traffic Monitor in an isolated Electron window with synthetic data. The check
-covers light/dark screenshots, supporting theme-color text contrast, a 900-pixel window, keyboard selection, proxy-dialog focus return,
-navigation state, sidebar preference restoration and Chinese copy. Screenshots are saved in the
-test output directory. The fixture has no real preload, credentials, database or upstream service;
-this evidence does not establish installer behavior or macOS/Linux native integration.
-
-The [desktop interface reference](./modules/app-shell/desktop-interface.md) owns the presentation conventions.
-
-Run `npm run test:performance -- feedback-workspace.spec.mts` to check deferred reads, empty account
-and traffic views, failed reads with retry, and all four notification variants in isolated Electron.
-It verifies visible close controls, keyboard dismissal, reduced motion and a 900-pixel window.
-Read results and notification content are synthetic; reporting issues and authorization are not
-performed. The focused traffic-feedback unit check additionally verifies that a failed background
-refresh retains previously loaded records until retry succeeds.
-
-Run `npm run test:performance -- settings-workspace.spec.mts` to check proxy configuration and
-settings in the same isolated fixture. It covers keyboard tab and disclosure navigation, retained
-tool-panel disclosure state, masked connection keys, start-confirmation focus return, protocol
-selection, the settings theme switch and layout at 900 pixels. Screenshots include both themes
-and narrow windows. This check does not start the proxy, save tool configuration, patch clients
-or use real account data.
-
-Run `npm run test:performance -- dialog-workspace.spec.mts` to check account sign-in, import/export
-dialog dismissal, batch deletion cancellation, traffic-row keyboard activation and request details.
-It verifies focus return, manual-code reset, translated status and metadata, retry after a failed
-read, unavailable records, body selection, editor theme and a narrow detail window. Data and read failures are
-synthetic; this check does not perform Google authorization, delete accounts or copy credentials.
-
-Run `npm run test:performance -- tool-dialog-workspace.spec.mts` to check device information,
-local account import preview, tool setup and configuration previews, and cache confirmation in a 900-by-700 Electron window.
-It checks address validation, retry after synthetic read failures, scrolling with visible footer
-actions, cancellation focus, focus return and a dark configuration preview. It does not change
-device information, write tool settings, clear caches or use the system clipboard. Focused unit
-checks exercise pending-action guards, local import cancellation and partial cache results.
-
-### Renderer update profiling
-
-Run `npm run test:performance -- renderer-updates.spec.mts` to measure account-page and
-Traffic Monitor updates in isolated Electron windows. The fixture renders production
-components with React Compiler and React Profiler, using 100 synthetic accounts and 50
-synthetic traffic records. It has no production preload, database or provider connection.
-
-The scenarios cover single-account selection, login input, account model availability,
-statistics changes, queued traffic notifications on an older page and search input.
-Component invocation counts are the regression gate. Profiler render durations are
-diagnostic values from the local development renderer, not production latency guarantees.
-Reports are written under `test-results/playwright-performance`.
-
-For an optional Git comparison, set `AGM_RENDERER_PROFILE_BASELINE` to the commit to compare
-before running the same command. The harness loads the relevant baseline source in memory;
-it does not switch branches or modify the worktree. Run it again after changes to the account
-selection store, account availability selector or Traffic Monitor state boundaries.
-
-## Preload traffic events under Content Security Policy
-
-Run `npm run test:acceptance -- runtime preload-csp --policy-timing initial` and
-repeat with `--policy-timing after-preload`. The check builds the production preload
-through Forge's Vite configuration and launches a real Electron window using the
-current main-window execution settings in a temporary profile. It verifies that
-the page rejects dynamic compilation, delivers 100 valid traffic events in order,
-updates the visible count, filters invalid events, and stops callbacks after unsubscribe.
-All temporary window/profile/build files are removed; sanitized reports remain under `out`.
-
-Use `--expect-regression` only against the unfixed preload to confirm the same native
-check detects event loss and compilation errors. A successful Node VM or Vitest check
-does not replace this Electron evidence. The fixture uses synthetic events and does
-not prove live-provider requests, the full Traffic Monitor React page, or installer behavior.
-
-Run `preload-traffic-events.test.ts`, `preload-sandbox.test.ts`, and
-`browser-window-security.test.ts` for the adjacent unit contracts.
-
 ## Focused commands
-
-For upstream proxy configuration, run `upstream-proxy-config.test.ts`,
-`upstream-proxy-settings.test.ts`, `service-config.test.ts`, `desktop-oauth-login.test.ts`
-and `standalone-core-oauth-login.test.ts`. They cover saved-address validation, atomic clearing,
-concurrent updates, UI recovery and OAuth rejection before browser launch. Use a 15-second test
-timeout for the private management endpoint tests.
-
-`upstream-proxy-http.test.ts` uses real loopback sockets to verify explicit HTTP proxy routing.
-For an optional live connectivity check, set `AGM_LIVE_UPSTREAM_PROXY_URL` to a running HTTP(S)
-proxy address before running that file, and restore the environment variable afterwards. The
-live case sends only a synthetic invalid token and expects Google's 401 response; it does not
-perform authorization, save accounts or establish successful token exchange. A TUN connection
-alone does not prove the explicit proxy path; the loopback test checks that path separately.
-
-`cloud-account-plaintext-persistence.test.ts` exercises real SQLite account deletion, current-account
-reference cleanup at startup, repeat deletion, unrelated-setting preservation and transaction rollback
-using disposable databases. Run it with `cloud-account-settings-store.test.ts`,
-`cloud-account-adapter.test.ts`, `core-rpc.test.ts` and `convert-encrypted-account-fields.test.ts`
-for the adjacent desktop and standalone contracts. When the workspace SQLite binary was rebuilt
-for Electron, run the same Vitest entry with the matching Electron executable and
-`ELECTRON_RUN_AS_NODE=1`; do not rebuild it for Node over the desktop binary just to run these tests.
-This establishes native persistence behavior, not installed-client sign-out or live-provider requests.
 
 Build and acceptance scripts are organized by responsibility; see the
 [script reference](../scripts/README.md) for directory ownership and prerequisites.
@@ -397,14 +102,6 @@ Run `npm run test:acceptance -- unit` for the pure Node harness tests. It exerci
 protocol/report logic without live accounts, provider requests, application windows or installers.
 `check:ci` and `test:all` include this check. Native, installed and live acceptance remain separate
 explicit commands because they require matching native binaries, platform artifacts or prepared accounts.
-
-For coding tool configuration, run `agent-tools.test.ts`, `cli-agent-tools.test.ts`,
-`agent-tool-sync-card.test.ts`, `opencode-model-sync-dialog.test.ts`, `opencode-installation.test.ts`
-and `service-config.test.ts`. They cover file recovery, secret projection, write failure, selection,
-CLI confirmation and shutdown dependencies. Also run `core-rpc.test.ts` and
-`gateway-adapter.test.ts` when the selected-owner wiring changes. Build core and CLI after
-changing the TOML dependency. These checks do not replace real installed-client requests;
-report platform and upstream evidence separately using the [SOP](./modules/proxy-gateway/acceptance/live-agent.md).
 
 Run a specific Vitest file:
 
@@ -424,92 +121,6 @@ Run a focused Playwright file:
 npm run test:e2e -- src/tests/e2e/<flow>.spec.ts
 ```
 
-Run the real Windows command-shell smoke test for the performance recorder launcher:
-
-```powershell
-npm run test:performance-recorder-process
-```
-
-This process-level test uses a temporary `npm.cmd` fixture and runs outside Vitest's `no-app-launch` guard. It skips on non-Windows platforms; the default Vitest suite validates only the launch-command contract and does not start child processes.
-
-After `npm run start` has built the production traffic-audit and Thought Store workers, run their
-native SQLite persistence checks under Electron's matching Node runtime:
-
-```powershell
-$env:ELECTRON_RUN_AS_NODE = '1'
-& .\node_modules\electron\dist\electron.exe scripts\acceptance\runtime\traffic-audit-native.test.mjs
-```
-
-This checks real worker messages, database reopen, body paging, retention and physical disk
-reclamation. It supplements, but does not replace, live gateway/provider acceptance.
-
-After `npm run build:core`, check the standalone core's built audit and Thought Store workers:
-
-```powershell
-npm run test:acceptance -- runtime diagnostics --smoke
-```
-
-This checks both emitted worker entries, real SQLite initialization, empty statistics and
-shutdown. Run it with a `better-sqlite3` binary matching the executing Node ABI. Desktop
-dependencies rebuilt for Electron do not establish plain Node compatibility. Use an isolated
-copy of `dist/core` with the same dependency version and a matching native binary rather than
-rebuilding the desktop dependency tree. Passing this smoke does not establish database reopen,
-retention, terminal owner drain, installer delivery or compatibility on other operating systems.
-
-For the SQLite worker shutdown primitive, run:
-
-```powershell
-npm run test:unit -- --run src/tests/unit/sqlite-worker-shutdown.test.ts
-```
-
-This uses real Node worker threads with an in-memory test protocol. It covers admission closure,
-accepted-command drain, concurrent closes, missing acknowledgements, termination failure and
-forbidden restart. It does not open SQLite or validate terminal feature-service/profile teardown.
-
-For terminal diagnostic-store admission and core ownership ordering, run:
-
-```powershell
-npm run test:unit -- --run src/tests/unit/diagnostic-store-shutdown.test.ts src/tests/unit/core-shutdown.test.ts src/tests/unit/gateway-start.test.ts
-```
-
-These tests cover lazy stores with no gateway, admitted serialization/SSE finish/Thought hydration,
-no worker recreation, both-store cleanup and lease retention after failure. Service worker mocks
-supplement the real-thread primitive tests; they do not establish native SQLite, packaged Electron
-or the desktop forced-exit timing under production load.
-
-For IPC audit metadata/context and desktop admission/drain behavior, run:
-
-```powershell
-npm run test:unit -- --run src/tests/unit/ipc-audit-recorder.test.ts src/tests/unit/ipc-capture.test.ts src/tests/unit/ipc-capture-capacity.test.ts src/tests/unit/core-rpc.test.ts src/tests/unit/desktop-shutdown.test.ts
-```
-
-The capacity test sends logical bodies at 100 MiB minus one byte, exactly 100 MiB and one byte
-above the limit, checking stored prefixes, full digests and completion accounting without retaining
-the entire output in the persistence substitute. Private-endpoint tests cover large session/model
-metadata and the existing sanitized error snapshot. These checks do not measure whole-process RSS.
-
-After `build:core`, run the native diagnostic-service lifecycle check with a matching Node SQLite
-binary. It also writes and reopens prepared remote-capture bodies through the real service/worker;
-the separate private-endpoint tests exercise transport with substituted persistence. Neither check
-establishes installed desktop cutover or full-core process ownership.
-
-The optional runtime root selects an isolated installation of the same locked native
-dependency version; omitting it uses the workspace dependency tree.
-
-```powershell
-npm run test:acceptance -- runtime diagnostics --runtime-root C:\matching-node-runtime
-```
-
-The launcher reuses the core Vite configuration and Electron-import rejection to build a test-only
-service entry beside that runtime, then copies the built SQLite worker entries. Its child process
-isolates `os.homedir()` before application imports. It opens real databases in the temporary home,
-checks audit redaction and IPC completion, closes both stores terminally, rejects old-owner reuse
-and reopens persisted audit/Thought/signature records through fresh owners. An oversized logical
-body also verifies the real SQLite stored prefix, full digest and partial flag after reopen. The
-child has a 60-second deadline for this capacity case. Generated files are
-removed only inside the verified temporary directory. It does not start a gateway, management
-server or complete core process, access keyring credentials, or validate remote IPC/installer flows.
-
 Run static checks when a shared type, import surface, public export or cross-module contract changes:
 
 ```powershell
@@ -518,196 +129,7 @@ npm run lint
 npm run format
 ```
 
-For desktop owner selection, run the owning bootstrap, management IPC, launcher and desktop
-shutdown tests. After `build:core`, the process acceptance command is:
-
-```powershell
-npm run test:acceptance -- runtime bootstrap --runtime-root C:\matching-node-runtime
-```
-
-This starts the built standalone core in an isolated home with matching native SQLite, verifies
-remote adapter operations and capture, preserves an external attachment, waits for terminal lease
-release and reopens persisted audit records. The presentation process has fail-fast SQLite, keytar
-and Worker sentinels. The core uses a disposable in-memory keytar substitute; the check never
-accesses the real OS credential store. It executes the desktop bootstrap composition under Node,
-not Electron windows or an installer. Platform packaging, real OS keyrings and live providers
-remain unverified by this command. Child processes have bounded cleanup, and generated files are
-removed only from the verified temporary directory.
-
-## Standalone delivery acceptance
-
-For live provider task acceptance across standalone CLI and Electron owners on Windows and Linux,
-follow [Live agent acceptance](./modules/proxy-gateway/acceptance/live-agent.md). The runner records a bounded audit and
-token report for a real file-writing task; a successful HTTP response alone does not pass the task.
-
-`npm run package` prepares the standalone resource tree as part of Forge packaging. For a local
-verification build, set `AGM_PACKAGE_OUTPUT` to an isolated output directory and
-`AGM_DISABLE_SENTRY_UPLOAD=1` to suppress build-time source-map upload. Release defaults are unchanged.
-Preparation requires the target platform and architecture to match the native build host.
-
-`node --test scripts/build/trace-standalone-runtime.test.mjs` checks exclusion of host assets and retention
-of required native entries through the actual dependency tracer.
-
-Run `npm run test:acceptance -- runtime installed <packaged-resources>/standalone` against the actual resources.
-The check copies them outside the repository and removes Node search-path overrides. It verifies
-SQLite WAL/read/write/reopen, real OS credential create/read/update/delete across process restarts,
-both workers, core owner bootstrap, representative remote adapters, gateway start/stop and its
-unauthenticated rejection, external attachment, shutdown, persisted reopen, owned-process crash
-recovery and stale-epoch rejection. The whole-run timeout accommodates four cold starts and three
-terminal drains; individual production startup and shutdown deadlines remain unchanged.
-Credentials use a random test-only service name; a test preload maps core
-keytar and OpenCode native keyring calls to that name while using the actual native OS store. No production credentials are
-read or changed. The presentation composition executes under Node with fail-fast native sentinels,
-so this is not an Electron window, installer, live-provider or other-platform acceptance. Core peak
-RSS covers an empty profile and audit activity, not the supported large-body ceiling.
-
-Add `--capacity` to read a repository-seeded existing Thought record just below 64 MiB three times.
-The check streams every chunk into a full digest, verifies cursor completion and capability closure,
-then repeats terminal reopen and crash recovery. It records core peak RSS. This is persisted-record
-read compatibility; it does not prove admission of a new 64 MiB capture into the background write
-queue, whose byte budget is a separate backpressure contract. Three reads do not establish soak-test
-memory behavior.
-
-On Windows, `npm run test:acceptance -- runtime desktop <packaged-desktop-executable>` opens real packaged
-Electron windows in an isolated profile. It checks embedded and remote startup, settings navigation,
-preference restart, packaged CLI service lifecycle, external-core retention and process crashes.
-It snapshots and restores only the application's Windows login settings. The actual desktop uses
-the normal application keyring service; run this check only with explicit authorization for the host.
-It does not install or upgrade the application. Installer recovery and other operating systems
-remain separate acceptance requirements.
-
-The Windows desktop check records main-process working set and peak working set, plus idle core
-working set, in `artifacts/runtime24-desktop-memory.json`. These are individual process observations,
-not the total Electron renderer/process-group memory.
-
-On an explicitly authorized Windows host, run `npm run test:acceptance -- installers msi <current-msi>` under
-the normal user token. It refuses an already registered product or upgrade family, installs into
-an isolated directory, removes one owned worker, verifies exact Windows Installer repair, and runs
-the native and real-window checks against the installed resources. It uninstalls only verified test
-product identities, checks their registration is gone, and restores previous application shortcuts
-and login settings. The existing Squirrel installation registration must remain unchanged.
-
-For a cross-version fixture, `npm run make:msi-upgrade-fixture -- <packaged-app> <new-out-subdirectory>`
-uses the configured WiX maker with the previous patch version. Supply that MSI as the second argument
-to `test:acceptance -- installers msi`. The check requires identical upgrade families, different product codes and
-x64 metadata, verifies the old product is removed, and preserves an external profile fixture during
-upgrade. Both installers contain the current application payload; this verifies installer mechanics,
-not historical application/database migration. Existing MSI releases with random upgrade identities
-and Squirrel-to-MSI migration are not covered by this fixture.
-WiX cleans the previous installation directory during upgrade; user profiles must remain outside
-that directory. The profile fixture checks this actual layout, not retention of unmanaged install files.
-
-For an existing Squirrel installation, copy its `Update.exe`, root executable, icon, `packages`
-directory and versioned app directory into a dedicated directory directly under the OS temporary
-directory, with the copied install root named `antigravity_manager`. Then run
-`npm run test:acceptance -- installers squirrel-upgrade <authentic-install> <temporary-copy> <squirrel-feed>`.
-The feed must contain the current `RELEASES` and full `.nupkg`. The check verifies selected source
-and copy hashes, updates only the copy from authentic 0.19.0 through its copied `Update.exe`, and
-runs the installed native and real-window checks against the updated app. It snapshots and restores
-the application's Squirrel registration, shortcuts and login settings and removes only the verified
-temporary fixture after success. An external profile marker survives the update. This establishes
-Squirrel package compatibility on the host; it does not replace the user's installed app or prove
-historical account/database migration, an in-place rollback or a Squirrel-to-MSI transition.
-
-For Windows updater changes, run the package-selection unit test and
-`npm run test:acceptance -- installers feed`. Build the NSIS installer from the same Forge packaged app with
-`npm run make:nsis -- x64 <packaged-app>`; the script checks its installer against the generated
-`latest-nsis-x64.yml`. An installed NSIS A-to-B check must exercise a local feed, automatic `.exe`
-download, an explicit restart action, the relaunched version and an external profile marker.
-`npm run make:nsis-update-fixture -- <packaged-app> <unused-out-directory>` makes the previous
-patch-version installer from the same application payload for that check.
-`npm run test:acceptance -- installers nsis-updater <previous-installer> <current-installer> <current-latest-yml>`
-installs the fixture on an authorized Windows x64 host, checks the app's automatic update and
-restores its shortcuts and login settings. Run it only from a disposable Windows account: the
-installer's automatic relaunch uses that account's default app profile, even when the previous
-process had a temporary profile argument. The check refuses an existing default NSIS installation
-or app profile.
-The packaged Squirrel in-app updater check (`npm run test:acceptance -- installers squirrel-updater`) also
-requires a disposable Windows account with no existing app profile because its installer
-relaunch may drop the temporary user-data argument.
-Check a missing feed, an interrupted download and a tampered installer separately. Packaging
-and feed tests alone do not establish installed updater behavior or cross-architecture acceptance.
-
-For Linux updater changes, run the focused `linux-appimage-*.test.ts`, update metadata,
-automatic fallback and notification tests, then `npm run type-check` and
-`npm run test:appimage-download`. The latter uses real HTTP downloads for x64 and ARM64 feeds,
-rejects SHA-512 mismatches and interrupted transfers, and checks the maker's architecture
-arguments and paths containing spaces. It does not execute the Linux installer.
-
-Run the native A-to-B check on a Linux desktop with AppImage/FUSE support and a disposable
-account. Build the current AppImage with `npm run make -- --platform linux --arch x64`
-(use `arm64` on an ARM64 host). Generate the previous-version fixture from that packaged
-app using an explicitly lower version and a new directory under `out`:
-
-```bash
-npm run make:appimage-update-fixture -- "out/Antigravity Manager-linux-x64" out/appimage-previous 0.23.0
-npm run test:appimage-update -- <previous.AppImage> <current.AppImage> <latest-linux.yml>
-```
-
-Supply real artifact paths under `out`; ARM64 uses `latest-linux-arm64.yml`. The previous
-fixture contains the current implementation with a lower package version, so this exercises
-updater behavior rather than historical database migration. The check copies the previous
-archive into its own temporary directory, starts a local feed, isolates HOME/XDG paths,
-rejects a missing feed and corrupt download, then retries the valid download. It clicks the
-restart action and checks the replacement hash, relaunched version in Settings and retained
-profile marker. A successful check saves a JSON result and Settings screenshot under `out`
-and removes only the owned fixture; failures retain it and its process log for diagnosis.
-The disposable account also isolates OS credential-store effects that HOME/XDG do not cover.
-The native check enables the existing diagnostic mode with debug port `0` and reads Chromium's
-`DevToolsActivePort` file for each process. This avoids a fixed-port conflict while the updater
-starts the new process before the old process fully exits.
-Run on each supported architecture before claiming native acceptance. No release publication
-is needed, and downloaded archives are not installed on ordinary quit.
-
-For release-note changes, run the focused `src/tests/unit/release-notes-*.test.ts` tests and
-`npm run type-check`. They cover publication-text serialization, exact-tag fallback and response
-validation, IPC target/link validation, Markdown/image behavior, download-time inspection, empty
-and retry states, dialog version identity and cancellation of late responses. The existing manual
-update and external-URL policy tests cover surrounding behavior. These tests do not prove a live
-GitHub publication, native browser launch, or installed updater acceptance.
-
-Run `npm run preview:release-notes` for an isolated Electron window using the production update
-notice, dialog, renderer IPC client and preload. Its controls select complete Markdown, empty
-content, one failure followed by retry, a delayed response, and available/downloading/downloaded
-notifications. Download and install actions are simulated; the fixture does not load accounts,
-start the gateway or install updates. Toggle its theme and resize the window to inspect scrolling
-and footer actions. Close the window to stop its local renderer server.
-
-`npm run preview:release-notes -- --live --tag v0.23.0` uses the production resolver against that
-published GitHub tag, including metadata validation and exact-tag fallback. Specify another
-published tag when needed. The interface defaults to Chinese; `--language en` selects English.
-If a shell wrapper drops npm's forwarded arguments, run
-`node scripts/preview-release-notes.mjs --live --tag v0.23.0` directly. The terminal reports the
-selected mode and tag, then confirms when the visible window is ready. It remains running until
-that window closes.
-
-`npm run test:performance -- release-notes.spec.mts` runs the repeatable isolated Electron checks
-through production preload and real MessagePort IPC, including native request cancellation,
-scrolling, themes, empty content and retry. Set `AGM_RELEASE_NOTES_LIVE_TAG` to a published tag
-to include the opt-in live resolver check. Screenshots are written under
-`test-results/playwright-performance`. This evidence does not establish installed updater behavior
-or GitHub Actions publication of new assets.
-
-## Proxy-gateway coverage
-
-The proxy gateway exposes several compatibility surfaces. Select tests by protocol and behavior rather than running every proxy test automatically:
-
-- Request and response conversion: the owning OpenAI, Anthropic or Gemini mapper tests.
-- Streaming changes: streaming mapper/state, malformed-stream and stream-error tests.
-- Tool behavior: tool mapper, namespace and custom tool-call tests.
-- Model routing: model availability, alias agreement and routing-policy tests.
-- Retry, quota and account leasing: the owning policy/service tests.
-- Public endpoint changes: endpoint coverage, controller integration and real-path parity tests.
-- Management parameter Pipes: [observability controller integration tests](../src/tests/unit/observability-controller.integration.test.ts), including coercion/defaults, complete bad-request envelopes, rejection before storage access and path-before-query error precedence.
-- Batch error decorators: [HTTP error integration tests](../src/tests/unit/batch-protocol-errors.integration.test.ts) and the owning OpenAI, Anthropic and Gemini Batch controller tests. Exercise the real Nest/Fastify pipeline; direct controller calls bypass Guards, Pipes and Interceptors. Preserve complete dialect envelopes, authentication denials, POST status 200 and JSONL headers.
-- Files error decorators: [Files HTTP integration tests](../src/tests/unit/files-protocol-errors.integration.test.ts) and [Files API tests](../src/tests/unit/files-api.test.ts). Cover per-request dialect selection, upload-only normalization, beta checks, authentication, complete error envelopes, POST status 200 and binary download headers using actual multipart/raw-media requests.
-- OpenAI Uploads adapters: [Uploads HTTP error tests](../src/tests/unit/openai-uploads-errors.integration.test.ts) and [Uploads protocol tests](../src/tests/unit/openai-uploads.test.ts). Cover complete error envelopes, guard denials, part-only normalization, multipart parsing order, POST status 200, assembly, cancellation, expiry and restart. [Uploads store tests](../src/tests/unit/openai-uploads-store.test.ts) cover persisted-record revival and capacity independently of HTTP.
-- Management operation audits: [observability controller integration tests](../src/tests/unit/observability-controller.integration.test.ts). Verify success-only recording after deferred mutations, exact affected counts including zero, unchanged repair results, and propagation of recorder failures.
-- Stored Responses adapters: [controller HTTP tests](../src/tests/unit/openai-responses-store.controller.test.ts) cover replay, delete, missing records, authentication and unexpected store failures. Durable Responses behavior also requires response/session store and durability tests.
-- Legacy Anthropic completion adapter: [controller HTTP tests](../src/tests/unit/anthropic-complete.controller.test.ts) cover prompt conversion, stream refusal, complete error envelopes, HTTP 200 and per-request correlation between headers and bodies, including concurrent failures. Guard denials bypass completion error mapping.
-- Gemini model queries: [model HTTP tests](../src/tests/unit/gemini-models-http.integration.test.ts) cover complete catalog metadata, known and unknown model projections, authentication and unexpected catalog failures. Existing controller tests cover presets and raw-quota filtering.
-
-When a change affects both streaming and non-streaming paths, test both. When it changes externally visible protocol output, prefer exact object or event-sequence assertions over checking individual fields independently.
+The formatting command above scans the complete workspace. For a focused change, use explicitly named paths as described in [contributor checks](#checks-for-a-contribution).
 
 ## Persistence and security coverage
 
@@ -728,52 +150,34 @@ Packaging and distributable generation are separate evidence. Run `npm run packa
 
 ## Environment-dependent evidence
 
-The Antigravity launch regression has an isolated native process check, separate from Vitest's no-app-launch guard:
-
-```bash
-node scripts/test-antigravity-launch.integration.mjs
-node scripts/test-antigravity-launch.integration.mjs --wsl-interop
-```
-
-Run the first command with Windows Node.js or Linux Node.js and a C compiler. The second uses Linux Node.js in WSL and the installed Windows .NET Framework C# compiler. Both create a temporary fixture and exercise production launch, process observation and stop code. Native Windows copies the Node executable into the fixture directory and performs three consecutive launch/close cycles. Each main process has one utility host with seven same-executable workers: client-process arguments, TypeScript-style `--useNodeIpc`, and workers without known helper arguments are covered. It verifies that only the main process confirms startup, all nine processes exit on the first close request, and each cycle dispatches exactly one launch. Linux and WSL interop check one launch/close cycle. All modes check argv round trips and no reopening after close. Discovery is restricted to the fixture's full executable path; no installed Antigravity is started or closed. Windows execution needs permission to query and terminate the fixture processes. This evidence does not replace real account-switch acceptance, desktop acceptance with the official `.deb` or macOS Launch Services.
-
-For desktop acceptance, use an isolated Manager configuration and application home directory, a fresh main/renderer build, and the real process IPC. In WSLg, configure the extracted Linux executable explicitly to select native process observation; use an isolated XDG handler registration when reproducing the old URI behavior. Verify the actual application window as well as process confirmation, loading and disabled controls, busy errors, invalid executable errors, confirmation timeout without retry, path conflicts before close, and no reopening after manual close. Record the exact OS and official application versions. An extracted `.deb` with a profile-local handler does not establish system-wide installer or GNOME acceptance; account credential injection and macOS Launch Services need separate evidence.
-
 Some Electron, OS keyring, native-module, live-provider, update and packaging paths depend on platform capabilities or credentials. Record the exact skipped evidence and why. A focused test passing with mocked Electron or keyring modules does not prove the corresponding native integration.
 
-## Client credential storage checks
+## Topic guides
 
-The focused `client-account-write.test.ts`, `snapshot-credentials.test.ts`, `account-backup-file.test.ts`, `database-backup-keys.test.ts` and account handler suites cover destination routing, preflight, preserved topic rows, missing projects, primary-store failures, encrypted snapshot round trips and historical snapshot input. Credential-store and CLI suites cover native readback, required file failures and isolation of the local CLI session from other operating-system environments. `antigravityVersion.test.ts` covers version caching, coalescing, metadata changes and probe deadlines.
+Select the owner after choosing evidence in the matrix. These guides preserve the scenario
+prerequisites, failure checks, cleanup and limits of what each result establishes.
 
-`node scripts/test-client-account-write.integration.mjs` exercises real SQLite under Electron on Windows and Node on Linux/macOS with isolated synthetic credentials. Windows and Linux verify WAL-aware backups, repeated writes to one captured destination, A-to-B-to-A restoration, unchanged client recovery files and full transaction rollback on an injected primary-write failure. The Mac branch verifies sequential writes, root-level ID-token input, unchanged unrelated cache/auth rows, project removal and retained earlier statements after a later failure; it does not invoke Keychain. Windows additionally exercises the production Win32 credential adapter with exact-target A-to-B-to-A writes, independent keytar enumeration and repeated nondestructive reads. The credential target is redirected to a unique synthetic target and deleted during cleanup. Mocked CLI and Google destinations verify that an Agy switch does not change that host credential on Windows and Linux. For Linux validation from Windows, install Linux native dependencies in an isolated directory and set `AGM_CLIENT_NATIVE_DEPS` to that directory; Windows native modules cannot validate the Linux path.
+| Changed behavior                                                | Detailed evidence                                                                                |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Core ownership, native workers, shutdown and private capture    | [Native runtime acceptance](testing/native-runtime.md)                                           |
+| Account conversion, deletion and SQLite reopen                  | [Cloud-account persistence checks](modules/cloud-account/overview.md#focused-persistence-checks) |
+| Gateway protocols, signatures and coding-tool configuration     | [Gateway testing](modules/proxy-gateway/testing.md)                                              |
+| Client processes, credential destinations and account switching | [Client runtime testing](modules/antigravity-runtime/testing.md)                                 |
+| Renderer, notification and preload behavior                     | [Desktop testing](modules/app-shell/testing.md)                                                  |
+| SDK reporting and account-operation diagnostics                 | [Diagnostic acceptance](testing/diagnostics.md)                                                  |
+| Packaged runtime, installation and updates                      | [Delivery acceptance](testing/delivery.md)                                                       |
 
-`macos-client-account-chain.test.ts` compares complete command arguments, three cache files
-and SQLite protobuf bytes against synthetic contract fixtures. It covers deletion/create
-ordering, long tokens, seconds/milliseconds expiry, root ID tokens, mirror failures, existing
-database fallback, partial SQLite writes, refresh-token-only reads and Agy confirmation.
-The fixtures record the expected encoded payloads, file contents and database entries.
-Isolated synthetic files and a command recorder validate data and command compatibility;
-these checks do not execute the real macOS `security` tool, its access prompts
-or POSIX permission changes. The native SQLite check on Windows establishes byte and
-statement compatibility only, not Mac runtime acceptance.
+Existing section links remain navigation entries for the moved topics below.
 
-These fixtures do not write live OS credentials or prove official-client account identity. Release acceptance still requires two authorized test accounts, real IDE switching with the mode selected from its service structure, Classic restart switching, CLI identity checks and a real AI request after each switch. Supervised-service hot switching preserves the same window/workspace; machine-service fallback must confirm full shutdown and one restart. Confirm that a closed window is not reopened. On macOS, best-effort database fallback can return success despite failed injection, so verify the actual client account rather than relying on the notification. Physical macOS acceptance must cover A-B-A through both CLI and Electron owners, Keychain permissions, the three local mirrors and real AI requests. System-wide Linux desktop acceptance requires a separate run.
-
-## IDE hot-switch lifecycle checks
-
-For real cloud and local account A-B-A checks through the CLI and Electron owners, follow the [account switching acceptance tutorial](./modules/antigravity-runtime/account-switch-acceptance.md). It distinguishes official login confirmation from credential-only evidence and records the Linux restart-only limitation.
-
-`node scripts/test-ide-hot-switch.integration.mjs` exercises the production process selector and service lifecycle against isolated native binaries on Windows, Linux and macOS. Three account-marker changes verify two AI services below direct and utility-host parents, replacement credentials, stable main-process identity, continued terminal progress and an unchanged in-memory workspace. Discovery and cleanup are restricted to the generated fixture directory. Run with the native platform dependency installed; do not reuse Windows-only `node_modules` for a Linux check.
-
-The focused `ide-hot-switch.test.ts` and `runtime-switch.test.ts` suites cover identity reuse, deadlines, partial writes, fallback and user-closed windows. They also verify that a directly owned machine AI service selects the full-restart path without terminating it during preflight, and that the captured IDE closes before account writes and receives exactly one launch. These checks do not replace official IDE UI account-switch acceptance or establish readiness of real AI requests. A workspace service replacing a machine service with the same binary is not recovery. Live process-only termination on official IDE 2.5.5 in Windows and WSL leaves the machine service absent; WSL additionally reproduces a real chat request to its dead endpoint. Bare-metal Linux and macOS remain unverified.
-
-### Classic terms retention
-
-The classic-terms-switch suite runs the production switch flow against real temporary official
-and history files. It covers A-B-A-B retention, loss during close, missing first consent,
-installation revision invalidation, corrupted history, observed standard/GCP changes, profile
-isolation, concurrent reopening/settings writes, invalid JSON, durable write failure and field-only
-rollback. Existing cloud-account, local-owner, runtime-switch, credential-write and switch-guard
-suites cover the call sites. Native macOS/Linux behavior is unchanged and explicitly excluded
-from the Windows retention path. See [live acceptance](./modules/antigravity-runtime/account-switch-acceptance.md#diagnose-repeated-classic-terms)
-for manual first consent, repeated switches and restart evidence.
+| Topic                                                                                                                 | Current owner                                                                              |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| <a id="account-operation-diagnostic-acceptance"></a>Account-operation diagnostic acceptance                           | [Guide](testing/diagnostics.md#account-operation-diagnostic-acceptance)                    |
+| <a id="native-process-queries"></a>Native process queries                                                             | [Guide](modules/antigravity-runtime/testing.md#native-process-queries)                     |
+| <a id="desktop-workspace-checks"></a>Desktop workspace checks                                                         | [Guide](modules/app-shell/testing.md#desktop-workspace-checks)                             |
+| <a id="renderer-update-profiling"></a>Renderer update profiling                                                       | [Guide](modules/app-shell/testing.md#renderer-update-profiling)                            |
+| <a id="preload-traffic-events-under-content-security-policy"></a>Preload traffic events under Content Security Policy | [Guide](modules/app-shell/testing.md#preload-traffic-events-under-content-security-policy) |
+| <a id="standalone-delivery-acceptance"></a>Standalone delivery acceptance                                             | [Guide](testing/delivery.md#standalone-delivery-acceptance)                                |
+| <a id="proxy-gateway-coverage"></a>Proxy-gateway coverage                                                             | [Guide](modules/proxy-gateway/testing.md#proxy-gateway-coverage)                           |
+| <a id="client-credential-storage-checks"></a>Client credential storage checks                                         | [Guide](modules/antigravity-runtime/testing.md#client-credential-storage-checks)           |
+| <a id="ide-hot-switch-lifecycle-checks"></a>IDE hot-switch lifecycle checks                                           | [Guide](modules/antigravity-runtime/testing.md#ide-hot-switch-lifecycle-checks)            |
+| <a id="classic-terms-retention"></a>Classic terms retention                                                           | [Guide](modules/antigravity-runtime/testing.md#classic-terms-retention)                    |

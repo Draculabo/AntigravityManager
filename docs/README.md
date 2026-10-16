@@ -32,6 +32,22 @@ Documentation-only contributions do not require a running app or provider creden
 
 See the [module documentation index](modules/README.md) for guides grouped by source ownership.
 
+## Topic guides
+
+The root guides contain shared rules and entry points. Detailed procedures and contracts have
+their own owners:
+
+- Development: [build and package](development/build-and-package.md), [Git checks](development/git-checks.md),
+  [diagnostics](development/diagnostics.md), [Nix](development/nix.md) and [release tooling](development/release-tooling.md).
+- Security: [diagnostic privacy](security/diagnostics.md), [private runtime transport](security/runtime-transport.md)
+  and the feature contracts linked from [Security](security.md#topic-guides).
+- Testing: [native runtime](testing/native-runtime.md), [diagnostics](testing/diagnostics.md),
+  [delivery](testing/delivery.md) and the feature coverage linked from [Testing](testing.md#topic-guides).
+
+Add shared policy to a root guide, feature behavior to its module guide, and execution steps to
+the owning procedure. Dated execution results remain in their evidence records; keep active
+acceptance requirements and unresolved limits in the current reference.
+
 ## Historical records
 
 [Ownership cutover audit](ownership-cutover-audit.md) is a dated architecture snapshot, not a
