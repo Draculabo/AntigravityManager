@@ -6,21 +6,23 @@ labels: enhancement
 assignees: ''
 ---
 
-## Is your feature request related to a problem?
+## Problem and Use Case
 
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+Describe who encounters the problem, which workflow is affected and why the current behavior
+is insufficient. Include a concrete example when possible.
 
-## Describe the solution you'd like
+## Expected Outcome
 
-A clear and concise description of what you want to happen.
+Explain what should become possible or easier. Describe the observable result rather than
+requiring a specific implementation.
 
-## Describe alternatives you've considered
+## Current Workaround and Alternatives
 
-A clear and concise description of any alternative solutions or features you've considered.
+Describe the current workaround, its limitations and any alternatives considered.
 
-## Additional context
+## Implementation Ideas or Additional Context (Optional)
 
-Add any other context or screenshots about the feature request here.
+Link related discussions or add redacted mockups. Technical implementation ideas are optional.
 
 ## Are you willing to contribute?
 

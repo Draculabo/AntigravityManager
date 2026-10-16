@@ -2,6 +2,33 @@
 
 Select evidence according to the behavior a change can affect. Focused tests are the normal local default; exhaustive suites and platform matrices belong in CI or an explicitly requested full rehearsal.
 
+## Checks for a contribution
+
+Start with the [contribution workflow](../CONTRIBUTING.md) and select the row matching the
+changed behavior in the [change-to-evidence matrix](#change-to-evidence-matrix). Run the owning
+test first; add broader checks for affected consumers, public contracts or runtime boundaries.
+
+For documentation-only changes, run the contract check and format check against the actual
+changed paths, for example:
+
+```powershell
+npm run check:agent-contracts
+npx prettier --check CONTRIBUTING.md docs/development.md
+```
+
+Replace the example paths with the changed documentation and template files. The repository
+ignores `.agents/` and files named `README.md` in Prettier; checking those explicitly named files
+requires an empty temporary `--ignore-path`. Do not run the repository-wide formatter across
+unrelated untracked trees.
+
+For a code change, run one owning Vitest file with `npm test -- <test-file>` and use the matrix
+for additional evidence. Live-account, packaging and platform acceptance are separate procedures;
+ordinary local checks do not require provider credentials. Git hooks check only their documented
+baseline and do not establish a passing behavior suite.
+
+Report the command, result, platform and checks not run. A failure or unavailable prerequisite
+is not a pass; explain the gap rather than suppressing it or narrowing away a known failure.
+
 ## Evidence principles
 
 Before selecting a repository runner, use [the script guide](../scripts/README.md) and [script instructions](../scripts/AGENTS.md) to identify its existing entry, prerequisites and effects. [Test reliability](test-reliability.md) owns resource isolation, asynchronous completion and intermittent-failure diagnosis. [Failure ownership](error-handling.md) defines which state and recovery outcomes failure-path checks must establish.
