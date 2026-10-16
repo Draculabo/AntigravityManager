@@ -24,6 +24,8 @@ const WorkflowSchema = z.object({
       steps: z.array(
         z.object({
           run: z.string().optional(),
+          uses: z.string().optional(),
+          with: z.object({ 'node-version-file': z.string().optional() }).optional(),
           if: z.union([z.string(), z.boolean()]).optional(),
           'continue-on-error': z.boolean().optional(),
         }),
@@ -36,7 +38,7 @@ function readText(root, file) {
   return readFileSync(path.join(root, file), 'utf8');
 }
 
-/** Check the actual npm and Actions entry points, rather than a second list of expected tests. */
+/** Check the actual pnpm and Actions entry points, rather than a second list of expected tests. */
 export function validateQualityContracts(root) {
   const errors = [];
   const scripts = PackageSchema.parse(JSON.parse(readText(root, 'package.json'))).scripts;
@@ -48,7 +50,7 @@ export function validateQualityContracts(root) {
     }
     seen.add(check.script);
     if (!scripts[check.script]) {
-      errors.push(`Registered check references missing npm script: ${check.script}`);
+      errors.push(`Registered check references missing pnpm script: ${check.script}`);
     }
     if (
       check.script === 'check:ci' ||
@@ -64,7 +66,7 @@ export function validateQualityContracts(root) {
       errors.push(`Verification command is both a CI leaf and an additional entry: ${script}`);
     }
     if (!scripts[script]) {
-      errors.push(`Additional entry references missing npm script: ${script}`);
+      errors.push(`Additional entry references missing pnpm script: ${script}`);
     }
   }
   const aggregates = ['check:ci', 'check:governance', 'check:static'];
@@ -92,7 +94,7 @@ export function validateQualityContracts(root) {
   if (scripts['check:quality'] !== 'node scripts/quality/contracts.mjs') {
     errors.push('check:quality must execute the quality contract validator.');
   }
-  if (!readText(root, 'scripts/README.md').includes('npm run check:ci -- --list')) {
+  if (!readText(root, 'scripts/README.md').includes('pnpm run check:ci --list')) {
     errors.push('scripts/README.md must link to the executable check inventory.');
   }
   for (const [name, lane] of Object.entries(CI_LANES)) {
@@ -105,7 +107,20 @@ export function validateQualityContracts(root) {
       errors.push(`${lane.workflow}: missing required job ${lane.job}.`);
       continue;
     }
-    const expected = `npm run check:ci -- ${name}`;
+    const setup = job.steps.findIndex((step) => step.uses?.startsWith('pnpm/action-setup@'));
+    const node = job.steps.findIndex((step) => step.uses?.startsWith('actions/setup-node@'));
+    const install = job.steps.findIndex(
+      (step) => step.run?.trim() === 'pnpm install --frozen-lockfile',
+    );
+    if (
+      setup < 0 ||
+      node <= setup ||
+      install <= node ||
+      job.steps[node].with?.['node-version-file'] !== '.nvmrc'
+    ) {
+      errors.push(`${lane.workflow}: use pinned pnpm and Node before a frozen dependency install.`);
+    }
+    const expected = `pnpm run check:ci ${name}`;
     const steps = job.steps.filter((step) => step.run?.trim() === expected);
     if (steps.length !== 1) {
       errors.push(`${lane.workflow}: ${lane.job} must execute exactly once: ${expected}`);

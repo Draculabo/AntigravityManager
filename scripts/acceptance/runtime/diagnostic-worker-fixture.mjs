@@ -16,7 +16,7 @@ function openWorker(name, workerName = 'traffic-audit') {
   const workerPath = path.resolve(__dirname, `../../../.vite/build/${workerName}.worker.js`);
   assert.ok(
     fs.existsSync(workerPath),
-    'Build the production traffic audit worker with npm run start first',
+    'Build the production traffic audit worker with pnpm run start first',
   );
   const databasePath = path.join(testDirectory, `${name}.db`);
   const worker = new Worker(workerPath, { workerData: { databasePath } });

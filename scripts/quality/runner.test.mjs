@@ -67,7 +67,7 @@ test('failed checks stop execution and leave later checks visibly not run', asyn
   );
 });
 
-test('npm arguments reach unit and acceptance commands without broadening the selected suite', async (t) => {
+test('pnpm arguments reach unit and acceptance commands without broadening the selected suite', async (t) => {
   const checks = selectChecks('tests').filter((check) =>
     ['test:unit', 'test:acceptance'].includes(check.script),
   );
@@ -91,7 +91,7 @@ test('CLI returns failure for a failed child and does not execute anything in li
   });
   assert.ifError(list.error);
   assert.equal(list.status, 0, list.stderr);
-  assert.match(list.stdout, /npm run type-check/);
+  assert.match(list.stdout, /pnpm run type-check/);
   const fullList = spawnSync(process.execPath, [runner, '--list'], {
     cwd,
     encoding: 'utf8',

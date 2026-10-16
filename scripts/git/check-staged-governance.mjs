@@ -19,7 +19,9 @@ const affected = staged.stdout
     (file) =>
       /(^|\/)AGENTS\.md$/.test(file) ||
       /^(docs\/.*\.md|\.agents\/(notes|skills)\/)/.test(file) ||
-      /^(package(-lock)?\.json|lefthook\.yml|scripts\/README\.md)$/.test(file) ||
+      /^(package\.json|pnpm-(lock|workspace)\.yaml|\.nvmrc|\.npmrc|lefthook\.yml|scripts\/README\.md)$/.test(
+        file,
+      ) ||
       /^scripts\/(check-agent-contracts(?:\.test)?\.mjs|agent-document-lifecycle(?:\.test)?\.mjs|git\/|quality\/)/.test(
         file,
       ) ||
@@ -29,13 +31,13 @@ const affected = staged.stdout
 if (affected) {
   process.stdout.write('Validating governance in the current worktree for staged changes.\n');
   for (const script of ['check:agent-contracts', 'check:quality']) {
-    const result = spawn.sync('npm', ['run', script], {
+    const result = spawn.sync('pnpm', ['run', script], {
       stdio: 'inherit',
       windowsHide: true,
     });
     if (result.error || result.signal || result.status !== 0) {
       process.stderr.write(
-        `Governance check failed. Run npm run ${script} and fix the reported errors.\n`,
+        `Governance check failed. Run pnpm run ${script} and fix the reported errors.\n`,
       );
       process.exitCode = result.status || 1;
       break;

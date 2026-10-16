@@ -57,7 +57,7 @@ Required sections:
 
 Proposed notes use future tense for intended behavior. Implemented notes describe shipped behavior in the present tense. Rejected notes keep the proposal and put the rejection reason on the status line.
 
-Run `npm run check:agent-contracts` after adding, moving or editing an Agent Note.
+Run `pnpm run check:agent-contracts` after adding, moving or editing an Agent Note.
 
 ## Supersession and retention
 

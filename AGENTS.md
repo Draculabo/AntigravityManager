@@ -13,7 +13,7 @@ Instructions in a deeper `AGENTS.md` supplement this file for that subtree. Keep
 
 ## Environment and tools
 
-- Use Node.js `>=22.14.0`, npm `>=10` and the checked-in `package-lock.json`. Do not use pnpm, Yarn or Bun.
+- Use Node.js `24.22.0` from `.nvmrc`, pnpm `10.34.6` from `packageManager` and the checked-in `pnpm-lock.yaml`. Do not use npm, Yarn or Bun for project dependency management.
 - Prefer project scripts from `package.json`; do not invent a parallel command when an owning script exists.
 - Before running or changing repository scripts, read [scripts/AGENTS.md](scripts/AGENTS.md) and use [scripts/README.md](scripts/README.md) to locate existing verification and preparation tools.
 - The primary development shell is PowerShell on Windows. Keep scripts portable when CI or packaged behavior is cross-platform.
@@ -89,9 +89,9 @@ For high-risk or difficult-to-reverse decisions, add or update an [Agent Note](.
 - For asynchronous, resource-owning or intermittent tests and acceptance scripts, follow [test reliability](docs/test-reliability.md) for isolation, observable completion and diagnosis.
 - Prefer equality of complete result objects or event sequences when the whole result is the behavior under test.
 - Do not add tests for removed behavior, statically fixed values or impossible hostile inputs at typed same-process boundaries.
-- Run `npm run check:agent-contracts` for changes to agent instructions, governance documentation, Agent Notes or project Skills.
-- Install the project Git hooks with `npm run hooks:install` after an install that skipped lifecycle scripts. [Local Git checks](docs/development.md#local-git-checks) defines the automatic commit/push gates and their scope.
-- Run `npm run type-check` when shared types, public exports, IPC contracts or module boundaries change.
+- Run `pnpm run check:agent-contracts` for changes to agent instructions, governance documentation, Agent Notes or project Skills.
+- Install the project Git hooks with `pnpm run hooks:install` after an install that skipped lifecycle scripts. [Local Git checks](docs/development.md#local-git-checks) defines the automatic commit/push gates and their scope.
+- Run `pnpm run type-check` when shared types, public exports, IPC contracts or module boundaries change.
 - Report environment-dependent evidence such as native keyring, Electron packaging, installer and live-provider checks as unverified when it cannot run.
 
 ## Documentation and decisions

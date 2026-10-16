@@ -9,13 +9,13 @@ Electron main, renderer, GPU, and utility processes. It is disabled unless
 Start the development app in one terminal:
 
 ```powershell
-npm run start:performance
+pnpm run start:performance
 ```
 
 Wait until the application window is ready, then run the stress scenario in another terminal:
 
 ```powershell
-npm run test:performance
+pnpm run test:performance
 ```
 
 The default scenario assumes the Manager UI is in English and rapidly clicks the `button` whose
@@ -26,13 +26,13 @@ another interaction:
 ```powershell
 $env:ANTIGRAVITY_PERFORMANCE_SELECTOR='button[aria-label="Open settings"]'
 $env:ANTIGRAVITY_PERFORMANCE_CLICK_COUNT='100'
-npm run test:performance
+pnpm run test:performance
 ```
 
 The development debugging endpoint listens only on `127.0.0.1:9333`. Override the port in both
 terminals with `ANTIGRAVITY_PERFORMANCE_DEBUG_PORT` if necessary.
 
-Stop the normal development instance before running `npm run start:performance`. Performance mode
+Stop the normal development instance before running `pnpm run start:performance`. Performance mode
 uses the same Manager data as a normal development run, so only exercise UI paths that are safe
 against the current local accounts and configuration. The recorder itself only reads process
 metrics and writes trace artifacts.

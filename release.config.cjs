@@ -86,7 +86,7 @@ const releaseConfig = {
         changelogTitle: '<a name="readme-top"></a>\n\n# Changelog',
       },
     ],
-    '@semantic-release/npm', // Updates package.json and npm-shrinkwrap.json
+    './scripts/release/update-package-version.mjs',
     [
       '@semantic-release/github',
       {
@@ -99,7 +99,7 @@ const releaseConfig = {
     [
       '@semantic-release/git',
       {
-        assets: ['CHANGELOG.md', 'package.json', 'package-lock.json', 'npm-shrinkwrap.json'],
+        assets: ['CHANGELOG.md', 'package.json', 'pnpm-lock.yaml'],
         message: 'chore(release): ${nextRelease.version}\n\n${nextRelease.notes}',
       },
     ],

@@ -50,11 +50,13 @@ jobs:
       - name: Checkout git repo
         uses: actions/checkout@v4
 
-      - name: Install Node and NPM
-        uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v4
         with:
-          node-version: 22
-          cache: 'npm'
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
 
       - name: Install Linux dependencies
         if: matrix.platform == 'linux'
@@ -82,11 +84,11 @@ jobs:
           max_attempts: 3
           timeout_minutes: 20
           retry_wait_seconds: 30
-          command: npm ci
+          command: pnpm install --frozen-lockfile
 
       - name: Check Linux AppImage maker and update downloads
         if: matrix.platform == 'linux'
-        run: npm run test:appimage-download
+        run: pnpm run test:appimage-download
 
       - name: Make Artifacts
         if: matrix.platform != 'darwin'
@@ -104,15 +106,15 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+        run: pnpm run make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
 
       - name: Audit Windows x64 package size
         if: matrix.platform == 'win32' && matrix.arch == 'x64'
-        run: npm run audit:size:win32:x64
+        run: pnpm run audit:size:win32:x64
 
       - name: Make NSIS automatic-update installer
         if: matrix.platform == 'win32'
-        run: npm run make:nsis -- ${{ matrix.arch }}
+        run: pnpm run make:nsis ${{ matrix.arch }}
 
       # DMG creation may be flaky on GitHub macOS runners, so retry the full darwin make.
       - name: Make Artifacts (darwin with retry)
@@ -122,7 +124,7 @@ jobs:
           max_attempts: 3
           timeout_minutes: 20
           retry_wait_seconds: 20
-          command: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+          command: pnpm run make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
         env:
           NODE_OPTIONS: --max-old-space-size=8192
           AGM_OTEL_DEBUG: 'false'
@@ -188,17 +190,19 @@ jobs:
           merge-multiple: true
           path: release-assets
 
-      - name: Install Node and NPM
-        uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v4
         with:
-          node-version: 22
-          cache: 'npm'
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
 
       - name: Install publish dependencies
-        run: npm ci --include=dev --ignore-scripts --no-audit --no-fund
+        run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
 
       - name: Test Windows update feed generation
-        run: npm run test:acceptance -- installers feed
+        run: pnpm run test:acceptance installers feed
 
       - name: Resolve release tag
         id: release_tag

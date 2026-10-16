@@ -16,4 +16,4 @@ pre-commit:
 pre-push:
   jobs:
     - name: type-check
-      run: npm run type-check
+      run: pnpm run type-check

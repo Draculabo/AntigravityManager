@@ -3,12 +3,7 @@ import { z } from 'zod';
 
 export const HashSchema = z.string().regex(/^[a-f0-9]{40}$/);
 export const TagSchema = z.string().regex(/^v\d+\.\d+\.\d+(?:-[\w.-]+)?$/);
-const metadataFiles = new Set([
-  'CHANGELOG.md',
-  'package.json',
-  'package-lock.json',
-  'npm-shrinkwrap.json',
-]);
+const metadataFiles = new Set(['CHANGELOG.md', 'package.json', 'pnpm-lock.yaml']);
 
 export function git(cwd, args) {
   return execFileSync('git', args, {

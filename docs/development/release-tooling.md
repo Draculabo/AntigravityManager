@@ -42,10 +42,10 @@ redirects. Public metadata can be read anonymously; private repositories require
 Network and invalid metadata errors stop note generation and remain credential-safe. The
 Release workflow uses its existing publishing token; no AI service or additional key is needed.
 
-Run `npm run test:acceptance -- release notes` for local acceptance. It exercises the actual
+Run `pnpm run test:acceptance release notes` for local acceptance. It exercises the actual
 semantic-release loader, changelog writer and GitHub publisher with isolated Git repositories
 and controlled publication transports, including a repository with no version JSON. The Release
 workflow runs this check before publication. Live credentials and a real release remain separate
 environment-dependent checks.
 
-The release publisher installs the locked project dependencies in its own job with `npm ci --include=dev --ignore-scripts --no-audit --no-fund`. It requires the JavaScript acceptance dispatcher and YAML parser, but processes prebuilt artifacts without downloading Electron or rebuilding native modules. Update-feed checks run before release creation or asset upload.
+The release publisher installs the locked project dependencies in its own job with `pnpm install --frozen-lockfile --include=dev --ignore-scripts --no-audit --no-fund`. It requires the JavaScript acceptance dispatcher and YAML parser, but processes prebuilt artifacts without downloading Electron or rebuilding native modules. Update-feed checks run before release creation or asset upload.

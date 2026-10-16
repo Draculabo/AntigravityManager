@@ -9,10 +9,10 @@ import { ADDITIONAL_CHECKS, selectChecks, SELECTIONS } from './checks.mjs';
 export function runChecks(checks, cwd = process.cwd()) {
   const results = [];
   for (const check of checks) {
-    const args = ['run', check.script, ...(check.args.length ? ['--', ...check.args] : [])];
-    console.log(`\n[quality] npm ${args.join(' ')}`);
+    const args = ['run', check.script, ...check.args];
+    console.log(`\n[quality] pnpm ${args.join(' ')}`);
     const started = performance.now();
-    const child = spawn.sync('npm', args, { cwd, stdio: 'inherit', windowsHide: true });
+    const child = spawn.sync('pnpm', args, { cwd, stdio: 'inherit', windowsHide: true });
     const status = child.error || child.signal || child.status !== 0 ? 'failed' : 'passed';
     results.push({
       script: check.script,
@@ -45,13 +45,13 @@ const program = new Command()
     if (options.list) {
       for (const check of checks) {
         console.log(
-          `npm run ${check.script}${check.args.length ? ` -- ${check.args.join(' ')}` : ''}\n  ${check.description}`,
+          `pnpm run ${check.script}${check.args.length ? ` ${check.args.join(' ')}` : ''}\n  ${check.description}`,
         );
       }
       if (selection === 'all') {
         console.log('\nAdditional entry points (not separate CI checks):');
         for (const [script, reason] of Object.entries(ADDITIONAL_CHECKS)) {
-          console.log(`npm run ${script}\n  ${reason}`);
+          console.log(`pnpm run ${script}\n  ${reason}`);
         }
       }
       return;

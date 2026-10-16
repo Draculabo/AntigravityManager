@@ -9,7 +9,7 @@ import YAML from 'yaml';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const arch = process.argv[2];
 if (arch !== 'x64' && arch !== 'arm64') {
-  throw new Error('Usage: npm run make:nsis -- <x64|arm64> [packaged-app]');
+  throw new Error('Usage: pnpm run make:nsis <x64|arm64> [packaged-app]');
 }
 
 const packaged = path.resolve(

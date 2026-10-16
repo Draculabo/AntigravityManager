@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { prepare as prepareVersion } from './update-package-version.mjs';
 import { generateNotes } from './github-release-notes.mjs';
 import { collectReleaseData, repositoryName } from './github-release-data.mjs';
 import { renderReleaseDocument } from './release-document.mjs';
@@ -444,4 +445,34 @@ test('source titles render as text rather than injecting Markdown links or headi
   const notes = renderReleaseDocument(createAutomaticStory('0.24.1', data), data);
   assert.ok(notes.includes('\\[Unsafe\\](https://example.invalid) \\#999'));
   assert.ok(notes.includes('[#123](https://github.com/fixture/project/pull/123)'));
+});
+
+test('release preparation versions the private manifest without creating or rewriting locks', async (t) => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'agm-pnpm-release-'));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const original = {
+    name: 'fixture',
+    private: true,
+    version: '1.0.0',
+    packageManager: 'pnpm@10.34.6',
+  };
+  await writeFile(path.join(cwd, 'package.json'), JSON.stringify(original));
+  const lock = 'lockfileVersion: 9.0\n';
+  await writeFile(path.join(cwd, 'pnpm-lock.yaml'), lock);
+  await prepareVersion({}, { cwd, nextRelease: { version: '1.1.0-beta.1' }, logger: { log() {} } });
+  assert.deepEqual(JSON.parse(await readFile(path.join(cwd, 'package.json'), 'utf8')), {
+    ...original,
+    version: '1.1.0-beta.1',
+  });
+  assert.equal(await readFile(path.join(cwd, 'pnpm-lock.yaml'), 'utf8'), lock);
+  for (const file of ['package-lock.json', 'npm-shrinkwrap.json']) {
+    await assert.rejects(readFile(path.join(cwd, file)), { code: 'ENOENT' });
+  }
+  await assert.rejects(
+    prepareVersion({}, { cwd, nextRelease: { version: '../invalid' }, logger: { log() {} } }),
+  );
+  assert.equal(
+    JSON.parse(await readFile(path.join(cwd, 'package.json'), 'utf8')).version,
+    '1.1.0-beta.1',
+  );
 });

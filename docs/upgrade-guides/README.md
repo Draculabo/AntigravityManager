@@ -42,7 +42,7 @@ the migration or downgrade works.
 
 ## Validation and review
 
-`npm run check:agent-contracts` checks guide placement, version metadata, local links, named npm
+`pnpm run check:agent-contracts` checks guide placement, version metadata, local links, named pnpm
 commands and nonempty sections. Placeholder-only sections fail. Code review determines whether a
 guide is required and whether the instructions match actual behavior; format checks cannot make
 those judgments. Follow [testing strategy](../testing.md) for the migration, restore, installer or

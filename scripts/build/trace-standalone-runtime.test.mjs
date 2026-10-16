@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -61,6 +63,27 @@ test('runtime tracing excludes host assets while retaining all explicit native e
     for (const binary of binaries) {
       await file(binary, Buffer.alloc(0));
     }
+    // pnpm's store imports have multiple hardlinks, including content shared across packages.
+    const declarations = [];
+    for (let i = 0; i < 80; i++) {
+      const name = 'linked-fixture-' + String(i).padStart(3, '0');
+      await file('store/' + name + '.js', 'module.exports = ' + i + ';');
+      await file('node_modules/' + name + '/package.json', JSON.stringify({ main: 'index.js' }));
+      await link(
+        path.join(root, 'store', name + '.js'),
+        path.join(root, 'node_modules', name, 'index.js'),
+      );
+      if (i === 0) {
+        await file('store/LICENSE', 'Shared fixture license');
+      }
+      await link(
+        path.join(root, 'store/LICENSE'),
+        path.join(root, 'node_modules', name, 'LICENSE'),
+      );
+      declarations.push(`require('${name}');`);
+    }
+    const core = await readFile(path.join(root, 'core/main.cjs'), 'utf8');
+    await file('core/main.cjs', core + declarations.join(''));
     const trace = await traceRuntime(root);
     assert.equal(trace.warnings.length, 1);
     assert.match(trace.warnings[0], /Failed to resolve dependency "original-fs"/);
@@ -68,6 +91,40 @@ test('runtime tracing excludes host assets while retaining all explicit native e
     assert(!trace.files.some((entry) => entry.includes('host-only-marker')));
     for (const binary of binaries) {
       assert(trace.files.includes(path.normalize(binary)), `Missing native entry: ${binary}`);
+    }
+    await file('node/fixture', 'Node resource');
+    await file('assets/fixture', 'Asset resource');
+    await file('pnpm-lock.yaml', 'lockfileVersion: 9.0\n');
+    await file('LICENSE', 'Runtime license');
+    const output = path.join(outside, 'materialized');
+    const moduleUrl = pathToFileURL(
+      path.resolve('scripts/build/trace-standalone-runtime.mjs'),
+    ).href;
+    const child = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import {materializeRuntime} from ${JSON.stringify(moduleUrl)}; await materializeRuntime(${JSON.stringify(root)}, ${JSON.stringify(output)});`,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        windowsHide: true,
+      },
+    );
+    assert.ifError(child.error);
+    assert.equal(child.status, 0, child.stderr);
+    for (let i = 0; i < 80; i++) {
+      const name = 'linked-fixture-' + String(i).padStart(3, '0');
+      assert.equal(
+        await readFile(path.join(output, 'node_modules', name, 'index.js'), 'utf8'),
+        'module.exports = ' + i + ';',
+      );
+      assert.equal(
+        await readFile(path.join(output, 'node_modules', name, 'LICENSE'), 'utf8'),
+        'Shared fixture license',
+      );
     }
   } finally {
     assert.equal(path.dirname(await realpath(root)), parent);

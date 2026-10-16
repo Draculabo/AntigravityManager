@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import promises from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
@@ -122,4 +123,17 @@ test('the installed Forge bin cleanup scans only its package directory', async (
   );
   assert.deepEqual(removed, [bin]);
   assert(scanned.length > 0);
+});
+
+test('standalone preparation rejects an npm invocation before staging dependencies', () => {
+  const result = spawnSync(process.execPath, ['scripts/build/prepare-standalone-runtime.mjs'], {
+    env: { ...process.env, npm_config_user_agent: 'npm/11.19.1', npm_execpath: 'npm-cli.js' },
+    encoding: 'utf8',
+    timeout: 10_000,
+    windowsHide: true,
+  });
+  assert.ifError(result.error);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Run this script through the pinned pnpm/);
+  assert.doesNotMatch(result.stdout, /Preparing standalone/);
 });

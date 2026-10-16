@@ -45,10 +45,10 @@ Do not attach account databases, full backups, environment files or raw credenti
 
 ### Source Development Only
 
-<!-- Packaged-app users can remove this section; Node.js and npm are not required to use the installed app. -->
+<!-- Packaged-app users can remove this section; Node.js and pnpm are not required to use the installed app. -->
 
 - **Git commit**:
-- **Node.js and npm versions**:
+- **Node.js and pnpm versions**:
 - **Command run and relevant output**:
 
 ## Additional Context

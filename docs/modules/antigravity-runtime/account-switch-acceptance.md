@@ -18,7 +18,7 @@ This procedure checks real account switching through both Manager CLI and Electr
 
 ## Run the matrix
 
-1. Build the acceptance helpers using `npm run test:acceptance -- accounts prepare`. Use `--output <directory>` to keep a separate verification run's bundles, and supply that directory with `--helpers` when running the matrix.
+1. Build the acceptance helpers using `pnpm run test:acceptance accounts prepare`. Use `--output <directory>` to keep a separate verification run's bundles, and supply that directory with `--helpers` when running the matrix.
 2. Run the acceptance command with `--owner cli` or `--owner electron`, a prepared `--runtime-root`, `--profile-home`, `--accounts-file`, and `--output`.
 3. Add `--local-snapshots` for cloud and local A-B-A switching. Add `--probe-cli` to require a real provider response from the official Antigravity CLI.
 4. For Electron, provide `--electron-bin` and optionally `--electron-app`. The runner invokes the renderer's real preload MessagePort transport.

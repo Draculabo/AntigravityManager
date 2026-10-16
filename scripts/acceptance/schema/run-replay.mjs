@@ -6,7 +6,7 @@ import os from 'node:os';
 
 if (!process.argv[2]) {
   throw new Error(
-    'Usage: npm run test:schema:replay -- <audit-database-path> [limit] [all|unmarked]',
+    'Usage: pnpm run test:schema:replay <audit-database-path> [limit] [all|unmarked]',
   );
 }
 const directory = await mkdtemp(path.join(os.tmpdir(), 'agm-schema-replay-'));

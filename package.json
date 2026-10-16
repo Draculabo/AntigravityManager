@@ -6,15 +6,14 @@
   "main": ".vite/build/main.js",
   "private": true,
   "engines": {
-    "node": ">=22.14.0",
-    "npm": ">=10"
+    "node": ">=24.22.0 <25",
+    "pnpm": "10.34.6"
   },
   "scripts": {
     "make:appimage-update-fixture": "node scripts/acceptance/installers/make-appimage-update-fixture.mjs",
     "test:appimage-download": "node --test scripts/acceptance/installers/appimage-updater-download.test.mjs scripts/acceptance/installers/appimage-maker.test.mjs",
     "test:appimage-update": "node scripts/acceptance/installers/packaged-appimage-updater-native.mjs",
     "preview:release-notes": "node scripts/preview-release-notes.mjs",
-    "postinstall": "patch-package --error-on-fail",
     "prepare": "node scripts/git/install-hooks.mjs",
     "hooks:install": "node scripts/git/install-hooks.mjs",
     "hooks:pre-commit": "node scripts/git/run-lefthook.mjs run pre-commit",
@@ -27,9 +26,9 @@
     "start:core": "node dist/core/main.cjs",
     "start:cli": "node dist/cli/main.cjs",
     "start:performance": "node scripts/start-performance-recorder.mjs",
-    "start:otel:console": "node scripts/run-with-otel.mjs console -- npm start",
-    "start:otel:otlp": "node scripts/run-with-otel.mjs otlp -- npm start",
-    "start:otel:off": "node scripts/run-with-otel.mjs off -- npm start",
+    "start:otel:console": "node scripts/run-with-otel.mjs console -- pnpm start",
+    "start:otel:otlp": "node scripts/run-with-otel.mjs otlp -- pnpm start",
+    "start:otel:off": "node scripts/run-with-otel.mjs off -- pnpm start",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "make:nsis": "node scripts/build/make-nsis.mjs",
@@ -37,7 +36,7 @@
     "updater:serve-feed": "node scripts/serve-local-update-feed.mjs",
     "audit:size:win32:x64": "node scripts/audit-windows-x64-size.mjs",
     "publish": "electron-forge publish",
-    "check:agent-contracts": "npm run test:agent-contracts && node scripts/check-agent-contracts.mjs",
+    "check:agent-contracts": "pnpm run test:agent-contracts && node scripts/check-agent-contracts.mjs",
     "change-scope": "node scripts/change-scope.mjs",
     "analyze:imports": "node scripts/import-graph.mjs",
     "verify:boundaries": "node scripts/verify-runtime-boundaries.mjs --report",
@@ -71,7 +70,7 @@
     "test:performance-recorder-process": "node --test scripts/start-performance-recorder.integration.test.mjs",
     "make:squirrel-update-fixture": "node scripts/acceptance/installers/make-squirrel-update-fixture.mjs",
     "make:msi-upgrade-fixture": "node scripts/acceptance/installers/make-msi-upgrade-fixture.mjs",
-    "test:all": "vitest run && npm run test:acceptance -- unit && playwright test",
+    "test:all": "vitest run && pnpm run test:acceptance unit && playwright test",
     "type-check": "tsc --noEmit",
     "verify:type-boundaries": "node scripts/verify-type-boundaries.mjs",
     "test:acceptance": "node scripts/acceptance/run.mjs"
@@ -141,7 +140,6 @@
     "jsdom": "^27.1.0",
     "lefthook": "2.2.2",
     "node-addon-api": "^8.3.1",
-    "patch-package": "^8.0.1",
     "prettier": "^3.6.2",
     "prettier-plugin-tailwindcss": "^0.7.1",
     "react-scan": "^0.5.7",
@@ -247,15 +245,5 @@
     "zod": "^4.1.12",
     "zustand": "^5.0.15"
   },
-  "trustedDependencies": [
-    "@bitdisaster/exe-icon-extractor",
-    "@nestjs/core",
-    "@sentry/cli",
-    "@swc/core",
-    "protobufjs"
-  ],
-  "overrides": {
-    "handlebars": "^4.7.9",
-    "tar": "^7.5.22"
-  }
+  "packageManager": "pnpm@10.34.6"
 }

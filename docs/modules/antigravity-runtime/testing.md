@@ -45,7 +45,7 @@ its forced cleanup targets only disposable fixture processes.
 ### Process query dependency
 
 The published `@draculabo/sysinfo-process-enhanced` dependency provides read-only process
-queries. After `npm ci`, run `node scripts/test-sysinfo.integration.mjs`.
+queries. After `pnpm install --frozen-lockfile`, run `node scripts/test-sysinfo.integration.mjs`.
 Run the same script under Electron with `ELECTRON_RUN_AS_NODE=1` to verify native loading
 and real process metadata. The check uses a dedicated temporary child with spaces,
 Unicode, quotes, empty argv and trailing backslashes; it does not target installed apps.
@@ -54,7 +54,7 @@ native Windows, Linux and optionally WSL Windows interop.
 
 ### Packaged process loader
 
-After changing native dependency or packaging configuration, run `npm run package`.
+After changing native dependency or packaging configuration, run `pnpm run package`.
 Forge forces native module rebuilding for its Electron target. A preceding standalone Node build
 can replace a binary even when cached Electron rebuild metadata remains present. Verify the actual
 packaged loader; a successful Forge exit code alone does not establish ABI compatibility.

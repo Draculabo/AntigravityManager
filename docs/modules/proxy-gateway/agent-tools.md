@@ -86,7 +86,7 @@ hidden preview, removes the connection and restores the backup. Windows startup 
 is saved and restored; Linux uses `--no-sandbox` only for this isolated acceptance process.
 
 ```powershell
-npm run test:acceptance -- agents configure --electron-bin <packaged-executable> --profile-home <isolated-profile> --output <report-directory> --client codex --bin <codex-executable> --live true
+pnpm run test:acceptance agents configure --electron-bin <packaged-executable> --profile-home <isolated-profile> --output <report-directory> --client codex --bin <codex-executable> --live true
 ```
 
 Repeat with `--client claude` and its executable, on each platform. `--live true` runs the existing

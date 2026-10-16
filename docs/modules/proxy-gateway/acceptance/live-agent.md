@@ -46,11 +46,11 @@ Use the installed binary paths and profile directories for each platform. `--gat
 loopback HTTP origin. The same command is run once for `claude`, `codex` and `opencode` in each cell.
 
 ```powershell
-npm run test:acceptance -- agents task --client codex --owner cli --gateway http://127.0.0.1:PORT --profile-home C:\path\to\isolated-profile --output C:\path\to\private-results --bin C:\path\to\codex.exe
+pnpm run test:acceptance agents task --client codex --owner cli --gateway http://127.0.0.1:PORT --profile-home C:\path\to\isolated-profile --output C:\path\to\private-results --bin C:\path\to\codex.exe
 ```
 
 ```bash
-npm run test:acceptance -- agents task --client opencode --owner electron --gateway http://127.0.0.1:PORT --profile-home /path/to/isolated-profile --output /path/to/private-results --bin /path/to/opencode --opencode-major 2
+pnpm run test:acceptance agents task --client opencode --owner electron --gateway http://127.0.0.1:PORT --profile-home /path/to/isolated-profile --output /path/to/private-results --bin /path/to/opencode --opencode-major 2
 ```
 
 Replace `--client`, `--owner`, the platform paths and port for each cell. The runner always creates
@@ -72,11 +72,11 @@ beside the task report. A failed task can still have an accurate monitor; keep b
 The monitor check does not copy credentials, export bodies, or inspect private reasoning text.
 
 ```powershell
-npm run test:acceptance -- agents electron --electron-bin C:\path\to\antigravity-manager.exe --client codex --bin C:\path\to\codex.exe --gateway http://127.0.0.1:PORT --profile-home C:\path\to\isolated-profile --output C:\path\to\private-results
+pnpm run test:acceptance agents electron --electron-bin C:\path\to\antigravity-manager.exe --client codex --bin C:\path\to\codex.exe --gateway http://127.0.0.1:PORT --profile-home C:\path\to\isolated-profile --output C:\path\to\private-results
 ```
 
 ```bash
-npm run test:acceptance -- agents electron --electron-bin /usr/bin/antigravity-manager --client opencode --bin /path/to/opencode --gateway http://127.0.0.1:PORT --profile-home /path/to/isolated-profile --output /path/to/private-results --opencode-major 2
+pnpm run test:acceptance agents electron --electron-bin /usr/bin/antigravity-manager --client opencode --bin /path/to/opencode --gateway http://127.0.0.1:PORT --profile-home /path/to/isolated-profile --output /path/to/private-results --opencode-major 2
 ```
 
 For a repeatable token regression gate, establish an accepted baseline per client, platform,
@@ -127,7 +127,7 @@ comparison. Keep failed runs in the table; a successful gateway request can stil
 artifact or have declined tools.
 
 ```bash
-npm run test:acceptance -- agents report /path/to/first/report.json /path/to/second/report.json
+pnpm run test:acceptance agents report /path/to/first/report.json /path/to/second/report.json
 ```
 
 If a run fails, retain its report and the generated workspace until the client, gateway and owner
@@ -150,7 +150,7 @@ and recomputes the task verdict from the complete saved model window. It does no
 again; client events, artifact checks and Thought Store snapshots still refer to the original run.
 
 ```bash
-npm run test:acceptance -- agents report --refresh /path/to/isolated-profile /path/to/report.json
+pnpm run test:acceptance agents report --refresh /path/to/isolated-profile /path/to/report.json
 ```
 
 To compare the real desktop with an existing Electron task report, stop any standalone owner and

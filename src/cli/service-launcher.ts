@@ -86,7 +86,7 @@ export async function launchDetachedCore(
   errorReportingDsn?: string,
 ): Promise<LaunchedCore> {
   if (!fs.existsSync(coreEntryPath)) {
-    throw new Error(`Core entry is missing: ${coreEntryPath}. Run npm run build:core first.`);
+    throw new Error(`Core entry is missing: ${coreEntryPath}. Run pnpm run build:core first.`);
   }
 
   const child = spawn(executable, [coreEntryPath], {

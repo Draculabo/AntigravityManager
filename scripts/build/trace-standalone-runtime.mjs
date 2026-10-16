@@ -185,8 +185,9 @@ export async function traceRuntime(root) {
 export async function materializeRuntime(root, output) {
   const trace = await traceRuntime(root);
   await mkdir(output);
-  await pipeline(archiveTar({ cwd: root }, trace.files), extractTar({ cwd: output }));
-  for (const resource of ['node', 'assets', 'package.json', 'package-lock.json', 'LICENSE']) {
+  // Serialize tar jobs: concurrent hardlink entries can leave the pack queue unsettled.
+  await pipeline(archiveTar({ cwd: root, jobs: 1 }, trace.files), extractTar({ cwd: output }));
+  for (const resource of ['node', 'assets', 'package.json', 'pnpm-lock.yaml', 'LICENSE']) {
     await cp(path.join(root, resource), path.join(output, resource), { recursive: true });
   }
   await writeFile(

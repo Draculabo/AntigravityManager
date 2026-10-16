@@ -159,13 +159,13 @@ const config: ForgeConfig = {
   rebuildConfig: { force: true },
   hooks: {
     prePackage: async (_config, platform, arch) => {
-      const npmCli = process.env.npm_execpath;
-      if (!npmCli) {
-        throw new Error('Package through the owning npm script');
+      const pnpmCli = process.env.npm_execpath;
+      if (!pnpmCli || !process.env.npm_config_user_agent?.startsWith('pnpm/10.')) {
+        throw new Error('Package through the owning pnpm script');
       }
       await promisify(execFile)(
         process.execPath,
-        [npmCli, 'run', 'prepare:standalone', '--', platform, arch],
+        [pnpmCli, 'run', 'prepare:standalone', platform, arch],
         { cwd: process.cwd(), windowsHide: true, timeout: 900_000, maxBuffer: 16_384 },
       );
       _config.packagerConfig ??= {};

@@ -12,8 +12,8 @@ For documentation-only changes, run the contract check and format check against 
 changed paths, for example:
 
 ```powershell
-npm run check:agent-contracts
-npx prettier --check CONTRIBUTING.md docs/development.md
+pnpm run check:agent-contracts
+pnpm exec prettier --check CONTRIBUTING.md docs/development.md
 ```
 
 Replace the example paths with the changed documentation and template files. The repository
@@ -21,7 +21,7 @@ ignores `.agents/` and files named `README.md` in Prettier; checking those expli
 requires an empty temporary `--ignore-path`. Do not run the repository-wide formatter across
 unrelated untracked trees.
 
-For a code change, run one owning Vitest file with `npm test -- <test-file>` and use the matrix
+For a code change, run one owning Vitest file with `pnpm test <test-file>` and use the matrix
 for additional evidence. Live-account, packaging and platform acceptance are separate procedures;
 ordinary local checks do not require provider credentials. Git hooks check only their documented
 baseline and do not establish a passing behavior suite.
@@ -42,18 +42,18 @@ Before selecting a repository runner, use [the script guide](../scripts/README.m
 ## Change-to-evidence matrix
 
 Upgrade instructions and Agent Note replacement/archive metadata are checked by
-`npm run check:agent-contracts`. These fixtures validate document structure and relationships;
+`pnpm run check:agent-contracts`. These fixtures validate document structure and relationships;
 they do not establish migration or recovery correctness. Underlying data changes still require
 the persistence, backup and native evidence selected below. Archive-body preservation and the
 decision to require a guide remain semantic review responsibilities.
 
-The [Tests workflow](../.github/workflows/testing.yaml) runs Node 22 on Ubuntu and Windows,
+The [Tests workflow](../.github/workflows/testing.yaml) runs the pinned Node 24 on Ubuntu and Windows,
 including governance, installed Git hook integration, type checking, the complete Vitest unit
 suite and acceptance harness unit tests. Local Git hooks run only their documented baseline;
 they do not establish a passing unit suite or CI result.
 The test, lint and formatting jobs select lanes from the [shared check inventory](../scripts/README.md#quality-checks).
-`npm run check:quality` rejects missing lane invocations, suppressed failures and platform loss;
-`npm run test:quality` checks these denials through synthetic workflows and the real runner.
+`pnpm run check:quality` rejects missing lane invocations, suppressed failures and platform loss;
+`pnpm run test:quality` checks these denials through synthetic workflows and the real runner.
 Vitest caps workers at four to bound concurrent module loading across development and CI hosts;
 the existing test and hook timeouts remain unchanged.
 
@@ -63,34 +63,34 @@ known failures in other files. Windows policy tests explicitly select the Window
 keeping actual fixture paths valid on the host; mocked discovery must not depend on an installed
 client. Native socket fixtures own their parent directories and clean up listeners before removal.
 
-| Changed surface                            | Minimum local evidence                                                | Add when applicable                                                                                     |
-| ------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Pure utility, mapper or codec              | Owning Vitest file                                                    | Adjacent tests for a shared type or caller contract                                                     |
-| Shared types, public exports or boundaries | `npm run type-check` and owning tests                                 | `npm run check:governance` when dependency direction or boundary rules change                           |
-| React component or hook                    | Owning Testing Library/Vitest file                                    | Focused E2E for navigation, preload or multi-window behavior                                            |
-| Route definition                           | Related component test and `npm run type-check`                       | Focused Playwright flow for user navigation changes                                                     |
-| Cross-module or process-spanning user flow | Owning integration tests for each changed layer                       | Focused Playwright/Electron acceptance when navigation, preload, lifecycle or packaging changes         |
-| ORPC schema or handler                     | Owning handler/router test and `npm run type-check`                   | Renderer consumer test when the result or error contract changes                                        |
-| Preload bridge                             | `preload-sandbox.test.ts`, affected IPC test and `npm run type-check` | Focused Electron E2E when exposure or lifecycle changes                                                 |
-| Electron main lifecycle                    | Owning startup, window, tray or process tests                         | Focused E2E; package when bundled runtime behavior changes                                              |
-| SQLite repository or codec                 | Owning database/persistence tests                                     | Backup, restore, migration or durability tests for format changes                                       |
-| Credential or security behavior            | Credential-store and sensitive-data tests                             | Native keyring or platform acceptance when storage providers change; mocks do not prove native behavior |
-| Proxy request/response mapper              | Owning protocol mapper and streaming tests                            | Real-path parity or controller integration tests                                                        |
-| Gateway controller/service                 | Owning integration and endpoint-coverage tests                        | E2E or live-provider evidence only when the external provider path changes                              |
-| Packaging, updater or native artifact      | Owning packaging/update tests                                         | Installer, updater or platform acceptance when the shipped artifact path changes                        |
-| Documentation or agent governance          | `npm run check:agent-contracts` and focused Prettier                  | `npm run check:governance` when governance rules or runtime boundaries change                           |
-| Cross-platform or repository-wide behavior | Focused tests for each affected surface                               | CI platform matrix or explicitly requested full rehearsal                                               |
+| Changed surface                            | Minimum local evidence                                                 | Add when applicable                                                                                     |
+| ------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Pure utility, mapper or codec              | Owning Vitest file                                                     | Adjacent tests for a shared type or caller contract                                                     |
+| Shared types, public exports or boundaries | `pnpm run type-check` and owning tests                                 | `pnpm run check:governance` when dependency direction or boundary rules change                          |
+| React component or hook                    | Owning Testing Library/Vitest file                                     | Focused E2E for navigation, preload or multi-window behavior                                            |
+| Route definition                           | Related component test and `pnpm run type-check`                       | Focused Playwright flow for user navigation changes                                                     |
+| Cross-module or process-spanning user flow | Owning integration tests for each changed layer                        | Focused Playwright/Electron acceptance when navigation, preload, lifecycle or packaging changes         |
+| ORPC schema or handler                     | Owning handler/router test and `pnpm run type-check`                   | Renderer consumer test when the result or error contract changes                                        |
+| Preload bridge                             | `preload-sandbox.test.ts`, affected IPC test and `pnpm run type-check` | Focused Electron E2E when exposure or lifecycle changes                                                 |
+| Electron main lifecycle                    | Owning startup, window, tray or process tests                          | Focused E2E; package when bundled runtime behavior changes                                              |
+| SQLite repository or codec                 | Owning database/persistence tests                                      | Backup, restore, migration or durability tests for format changes                                       |
+| Credential or security behavior            | Credential-store and sensitive-data tests                              | Native keyring or platform acceptance when storage providers change; mocks do not prove native behavior |
+| Proxy request/response mapper              | Owning protocol mapper and streaming tests                             | Real-path parity or controller integration tests                                                        |
+| Gateway controller/service                 | Owning integration and endpoint-coverage tests                         | E2E or live-provider evidence only when the external provider path changes                              |
+| Packaging, updater or native artifact      | Owning packaging/update tests                                          | Installer, updater or platform acceptance when the shipped artifact path changes                        |
+| Documentation or agent governance          | `pnpm run check:agent-contracts` and focused Prettier                  | `pnpm run check:governance` when governance rules or runtime boundaries change                          |
+| Cross-platform or repository-wide behavior | Focused tests for each affected surface                                | CI platform matrix or explicitly requested full rehearsal                                               |
 
-`npm run check:governance` analyzes the current worktree, including untracked source files and unstaged deletions, and enforces every runtime boundary rule. It is not a report-only check.
+`pnpm run check:governance` analyzes the current worktree, including untracked source files and unstaged deletions, and enforces every runtime boundary rule. It is not a report-only check.
 
 ## Type and React quality gates
 
 ESLint imports both `.gitignore` and `.prettierignore`. Generated Playwright output, packaged
 test fixtures and other ignored build products stay outside source linting, while production
 code and test sources remain in scope. This prevents saved minified bundles from consuming
-the lint process's heap during `npm run check:static`.
+the lint process's heap during `pnpm run check:static`.
 
-`npm run verify:type-boundaries` blocks new production `any`, double assertions, native `fetch`, direct JSON assertions and `@ts-ignore` entries against `.agents/type-boundary-baseline.json`. Test, mock and generated sources are excluded. A controlled third-party adapter exception must be local, time-bounded and name its owner, tracking issue and reason.
+`pnpm run verify:type-boundaries` blocks new production `any`, double assertions, native `fetch`, direct JSON assertions and `@ts-ignore` entries against `.agents/type-boundary-baseline.json`. Test, mock and generated sources are excluded. A controlled third-party adapter exception must be local, time-bounded and name its owner, tracking issue and reason.
 
 React Doctor runs in pull requests with changed-line scope and error blocking. Telemetry, score sharing and supply-chain analysis are disabled. A full scan is advisory and establishes the existing-work baseline. React Scan is injected only for an explicitly enabled development Electron session; it is not bundled or run in CI.
 
@@ -98,7 +98,7 @@ React Doctor runs in pull requests with changed-line scope and error blocking. T
 
 Build and acceptance scripts are organized by responsibility; see the
 [script reference](../scripts/README.md) for directory ownership and prerequisites.
-Run `npm run test:acceptance -- unit` for the pure Node harness tests. It exercises local fixtures and
+Run `pnpm run test:acceptance unit` for the pure Node harness tests. It exercises local fixtures and
 protocol/report logic without live accounts, provider requests, application windows or installers.
 `check:ci` and `test:all` include this check. Native, installed and live acceptance remain separate
 explicit commands because they require matching native binaries, platform artifacts or prepared accounts.
@@ -106,27 +106,27 @@ explicit commands because they require matching native binaries, platform artifa
 Run a specific Vitest file:
 
 ```powershell
-npm test -- src/tests/unit/<behavior>.test.ts
+pnpm test src/tests/unit/<behavior>.test.ts
 ```
 
 Run tests matching a name:
 
 ```powershell
-npm test -- -t "<behavior>"
+pnpm test -t "<behavior>"
 ```
 
 Run a focused Playwright file:
 
 ```powershell
-npm run test:e2e -- src/tests/e2e/<flow>.spec.ts
+pnpm run test:e2e src/tests/e2e/<flow>.spec.ts
 ```
 
 Run static checks when a shared type, import surface, public export or cross-module contract changes:
 
 ```powershell
-npm run type-check
-npm run lint
-npm run format
+pnpm run type-check
+pnpm run lint
+pnpm run format
 ```
 
 The formatting command above scans the complete workspace. For a focused change, use explicitly named paths as described in [contributor checks](#checks-for-a-contribution).
@@ -142,11 +142,11 @@ Do not add hostile-input tests to same-process values that TypeScript fully cons
 Use the full local approximation when the user requests it, when diagnosing CI, or when a change is genuinely repository-wide:
 
 ```powershell
-npm run check:ci
-npm run test:e2e
+pnpm run check:ci
+pnpm run test:e2e
 ```
 
-Packaging and distributable generation are separate evidence. Run `npm run package` or `npm run make` only when build configuration, native dependencies, packaged paths, update behavior or artifacts can be affected.
+Packaging and distributable generation are separate evidence. Run `pnpm run package` or `pnpm run make` only when build configuration, native dependencies, packaged paths, update behavior or artifacts can be affected.
 
 ## Environment-dependent evidence
 

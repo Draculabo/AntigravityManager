@@ -31,7 +31,7 @@ async function fixture(t) {
     'check:quality': 'node scripts/quality/contracts.mjs',
   });
   await write(cwd, 'package.json', JSON.stringify({ scripts }));
-  await write(cwd, 'scripts/README.md', 'Run `npm run check:ci -- --list`.\n');
+  await write(cwd, 'scripts/README.md', 'Run `pnpm run check:ci --list`.\n');
   await write(
     cwd,
     'scripts/quality/contracts.mjs',
@@ -46,7 +46,12 @@ async function fixture(t) {
           [lane.job]: {
             'runs-on': lane.platforms.length > 1 ? '${{ matrix.os }}' : lane.platforms[0],
             ...(lane.platforms.length > 1 ? { strategy: { matrix: { os: lane.platforms } } } : {}),
-            steps: [{ run: `npm run check:ci -- ${name}` }],
+            steps: [
+              { uses: 'pnpm/action-setup@v4', with: { run_install: false } },
+              { uses: 'actions/setup-node@v4', with: { 'node-version-file': '.nvmrc' } },
+              { run: 'pnpm install --frozen-lockfile' },
+              { run: `pnpm run check:ci ${name}` },
+            ],
           },
         },
       }),
@@ -69,7 +74,7 @@ test('accepts all CI lanes using the shared registry', async (t) => {
 test('real validator rejects a workflow that loses the shared test command', async (t) => {
   const cwd = await fixture(t);
   await mutateWorkflow(cwd, (job) => {
-    job.steps = [{ run: 'npm run test:unit -- --run' }];
+    job.steps = [{ run: 'pnpm run test:unit --run' }];
   });
   const result = spawnSync(process.execPath, [validator, cwd], {
     encoding: 'utf8',
@@ -77,7 +82,7 @@ test('real validator rejects a workflow that loses the shared test command', asy
   });
   assert.ifError(result.error);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /must execute exactly once: npm run check:ci -- tests/);
+  assert.match(result.stderr, /must execute exactly once: pnpm run check:ci tests/);
 });
 
 test('another CI lane blocks missing test wiring before its own check starts', async (t) => {
@@ -107,19 +112,19 @@ for (const bypass of [
     const cwd = await fixture(t);
     await mutateWorkflow(cwd, (job) => {
       if (bypass === 'conditional-step') {
-        job.steps[0].if = 'false';
+        job.steps.at(-1).if = 'false';
       }
       if (bypass === 'conditional-job') {
         job.if = 'false';
       }
       if (bypass === 'ignored-step') {
-        job.steps[0]['continue-on-error'] = true;
+        job.steps.at(-1)['continue-on-error'] = true;
       }
       if (bypass === 'ignored-job') {
         job['continue-on-error'] = true;
       }
       if (bypass === 'masked-command') {
-        job.steps[0].run += ' || true';
+        job.steps.at(-1).run += ' || true';
       }
     });
     assert.notEqual(validateQualityContracts(cwd).length, 0);
@@ -136,14 +141,14 @@ test('rejects dropping Windows from the actual CI matrix', async (t) => {
   ]);
 });
 
-test('rejects missing registered npm commands and an independently maintained aggregate', async (t) => {
+test('rejects missing registered pnpm commands and an independently maintained aggregate', async (t) => {
   const cwd = await fixture(t);
   const pkg = JSON.parse(await readFile(path.join(cwd, 'package.json'), 'utf8'));
   delete pkg.scripts['test:git-hooks'];
-  pkg.scripts['check:ci'] = 'npm test';
+  pkg.scripts['check:ci'] = 'pnpm test';
   await write(cwd, 'package.json', JSON.stringify(pkg));
   assert.deepEqual(validateQualityContracts(cwd), [
-    'Registered check references missing npm script: test:git-hooks',
+    'Registered check references missing pnpm script: test:git-hooks',
     'check:ci must use the shared quality runner.',
   ]);
 });
@@ -174,4 +179,22 @@ test('rejects a new verification command without CI registration or an additiona
   assert.deepEqual(validateQualityContracts(cwd), [
     'Unclassified verification command: test:forgotten. Register a CI check or explain its additional entry point.',
   ]);
+});
+
+test('rejects CI installs that bypass the pinned toolchain or frozen lockfile', async (t) => {
+  for (const scenario of ['node', 'pnpm', 'lock']) {
+    const cwd = await fixture(t);
+    await mutateWorkflow(cwd, (job) => {
+      if (scenario === 'node') {
+        job.steps[1].with = { 'node-version': 22 };
+      } else if (scenario === 'pnpm') {
+        job.steps.splice(0, 1);
+      } else {
+        job.steps[2].run = 'pnpm install --no-frozen-lockfile';
+      }
+    });
+    assert(
+      validateQualityContracts(cwd).some((error) => error.includes('use pinned pnpm and Node')),
+    );
+  }
 });
