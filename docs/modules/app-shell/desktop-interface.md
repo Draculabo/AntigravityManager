@@ -130,5 +130,5 @@ These presentation conventions apply to the shared shell, the four views above a
 request, device, import and tool dialogs described here. Additional feature flows still require
 their own behavior review. This is not
 a claim of complete native platform integration.
-See [desktop renderer checks](../../testing.md#desktop-workspace-checks) for the isolated Electron checks
+See [desktop renderer checks](testing.md#desktop-workspace-checks) for the isolated Electron checks
 and screenshots.

@@ -11,9 +11,14 @@ that module; cross-cutting runtime and security contracts remain in the root-lev
 - [Schema conversion](schema-conversion.md): schema selection, conversion limits and diagnostics.
 - [Coding tool configuration](agent-tools.md): configure and recover Claude Code, Codex and
   OpenCode connections to the local gateway.
+- [Security contracts](security.md): audit/Thought retention, content export, coding-tool files
+  and local media access.
 
 ## Acceptance and troubleshooting
 
+- [Gateway testing](testing.md): protocol selection, Schema/signature evidence, proxy configuration
+  and controller coverage.
+- [Native runtime acceptance](../../testing/native-runtime.md): worker lifecycle and private capture.
 - [Live agent acceptance](acceptance/live-agent.md): real client request and traffic evidence.
 - [Media and thinking acceptance](acceptance/media-thinking.md): focused protocol checks for
   media and multi-turn reasoning/tool flows.

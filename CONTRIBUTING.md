@@ -110,7 +110,7 @@ Do not run every test or installer check for an unrelated local change. Do not h
 failure by selecting only passing tests. Record checks not run and explain why; a mock, build
 or local hook does not prove native or live-provider behavior.
 
-The [local Git checks](docs/development.md#local-git-checks) provide automatic baseline checks.
+The [local Git checks](docs/development/git-checks.md#local-git-checks) provide automatic baseline checks.
 They do not replace behavior tests. `npm run format` checks the entire workspace, while
 `npm run format:write` modifies it; prefer explicitly named changed paths for a focused PR.
 

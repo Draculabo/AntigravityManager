@@ -37,8 +37,17 @@ not trigger an automatic second launch. Follow the [account switching acceptance
 for CLI and Electron evidence.
 
 Classic terms acceptance is separate from device identity profiles; see the
-[security reference](../../security.md#classic-terms-state) and the acceptance tutorial above.
+[security reference](../antigravity-runtime/security.md#classic-terms-state) and the acceptance tutorial above.
 
 The focused [identity-profile storage tests](../../../src/tests/unit/identity-profile-storage.test.ts)
 cover storage initialization and preservation behavior. Use the central
 [testing strategy](../../testing.md) to select evidence for broader changes.
+
+## Account transport security
+
+Cloud identity-profile account operations use strict account, revision and profile schemas at
+the renderer and private core RPC boundaries. The selected account owner reads and writes bindings,
+baseline and history. The user-visible profile fields are returned for explicit profile management;
+account tokens, storage paths, SQLite diagnostics and stacks are not part of that result. Failures
+cross the boundaries only as stable profile categories. Mutations join the core account-work drain.
+Opening the storage folder remains in Electron main and returns no path to React.

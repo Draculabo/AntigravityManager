@@ -84,12 +84,35 @@ internal HTTP endpoint or authentication bypass is exposed.
 ## Persistence and security
 
 Cloud account credentials are stored in the local application profile database. The
-[security reference](../../security.md#persistence) owns the storage, backup, access and recovery
+[account storage contract](security.md#account-storage-and-conversion) owns the representation, conversion backup and recovery
 policy. Do not put account tokens in logs, reports, IPC diagnostics, screenshots, or test fixtures.
 
 ## Related references
 
+- [Cloud-account security](security.md): storage conversion, OAuth sessions, strict public views,
+  imports/exports and background-operation boundaries.
 - [Architecture and module boundaries](../../architecture.md#feature-ownership)
 - [Identity profile and desktop storage initialization](../identity-profile/overview.md)
 - [Testing strategy](../../testing.md)
 - [Failure ownership and recovery](../../error-handling.md)
+
+## Focused persistence checks
+
+For cloud-account plaintext storage, run the focused mock tests with `npm test -- --run
+src/tests/unit/convert-encrypted-account-fields.test.ts
+src/tests/unit/cloud-account-batch-writer.test.ts`. The real SQLite reopen and old-ciphertext backup
+test needs the installed Electron ABI on Windows:
+
+```powershell
+$env:ELECTRON_RUN_AS_NODE = '1'
+& .\node_modules\electron\dist\electron.exe .\node_modules\vitest\vitest.mjs run src/tests/unit/cloud-account-plaintext-persistence.test.ts
+```
+
+`cloud-account-plaintext-persistence.test.ts` exercises real SQLite account deletion, current-account
+reference cleanup at startup, repeat deletion, unrelated-setting preservation and transaction rollback
+using disposable databases. Run it with `cloud-account-settings-store.test.ts`,
+`cloud-account-adapter.test.ts`, `core-rpc.test.ts` and `convert-encrypted-account-fields.test.ts`
+for the adjacent desktop and standalone contracts. When the workspace SQLite binary was rebuilt
+for Electron, run the same Vitest entry with the matching Electron executable and
+`ELECTRON_RUN_AS_NODE=1`; do not rebuild it for Node over the desktop binary just to run these tests.
+This establishes native persistence behavior, not installed-client sign-out or live-provider requests.
