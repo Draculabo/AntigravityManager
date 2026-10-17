@@ -20,6 +20,12 @@ export function formatOperationDiagnostic(diagnostic: OperationDiagnostic): stri
   if (diagnostic.nativeCode) {
     lines.push(`Native code: ${diagnostic.nativeCode}`);
   }
+  if (diagnostic.process) {
+    lines.push(`Process failure: ${diagnostic.process.reason}`);
+    if (diagnostic.process.windowsErrorCode !== undefined) {
+      lines.push(`Windows error code: ${diagnostic.process.windowsErrorCode}`);
+    }
+  }
   if (diagnostic.accountCommit) {
     lines.push(`Account persistence: ${diagnostic.accountCommit}`);
   }

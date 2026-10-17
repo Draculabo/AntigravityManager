@@ -112,12 +112,18 @@ export async function stopFromContext(
         });
         const remaining = deadline - Date.now();
         if (remaining <= 0) {
-          throw processError('close-failed');
+          throw processError('close-failed', error);
         }
-        const observed = await observeProcesses(context.target, remaining, context.executablePath);
+        let observed;
+        try {
+          observed = await observeProcesses(context.target, remaining, context.executablePath);
+        } catch {
+          // Failed verification must not replace the earlier native close evidence.
+          throw processError('probe-failed', error);
+        }
         assertContextProcesses(context, observed);
         if (observed.some((row) => row.pid === item.pid)) {
-          throw processError('close-failed');
+          throw processError('close-failed', error);
         }
       }
     } else {
@@ -125,7 +131,7 @@ export async function stopFromContext(
         process.kill(item.pid, 'SIGKILL');
       } catch (error) {
         if (!hasErrorCode(error, 'ESRCH')) {
-          throw processError('close-failed');
+          throw processError('close-failed', error);
         }
       }
     }
@@ -144,7 +150,7 @@ export async function stopFromContext(
     } catch (error) {
       // A query consuming the final close budget cannot establish that the client exited.
       if (usesWindowsRuntime(context.target, context.executablePath) && Date.now() >= deadline) {
-        throw processError('exit-unconfirmed');
+        throw processError('exit-unconfirmed', error);
       }
       throw error;
     }

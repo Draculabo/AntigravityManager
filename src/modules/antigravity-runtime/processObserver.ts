@@ -10,7 +10,10 @@ import type { GuiTarget, RuntimeProcess } from './types';
 import { usesWindowsRuntime } from './runtimePlatform';
 import { readNativeProcessSnapshot } from '@/shared/platform/nativeProcessQuery';
 import { logger } from '@/shared/logging/logger';
-import { isAntigravityWindowsInstaller } from '@/shared/platform/antigravityProcessIdentity';
+import {
+  getAntigravityExecutableTarget,
+  isAntigravityWindowsInstaller,
+} from '@/shared/platform/antigravityProcessIdentity';
 import { readWslWindowsProcesses } from './windowsInterop';
 
 class UnreadableProcessMetadata extends Error {}
@@ -95,11 +98,10 @@ function matchesTarget(
   const candidate = { name, executablePath, commandLine };
   const options = { isWsl: isWsl() && windows };
   return (
-    (/antigravity/i.test(name) &&
-      isTargetAntigravityProcessCandidate(candidate, target, {
-        ignoreExecutableConfiguration: true,
-        ...options,
-      })) ||
+    isTargetAntigravityProcessCandidate(candidate, target, {
+      ignoreExecutableConfiguration: true,
+      ...options,
+    }) ||
     (capturedExecutablePath
       ? areExecutablePathsEquivalent(
           isWsl() && windows ? toWslPath(capturedExecutablePath) : capturedExecutablePath,
@@ -156,7 +158,7 @@ async function scan(
     }
     if (!row.exe || !row.cmd.length) {
       // A visible app with unreadable metadata cannot prove absence or a safe data directory.
-      if (/antigravity/i.test(row.name) && /ide/i.test(row.name) === (target === 'ide')) {
+      if (getAntigravityExecutableTarget(row.name) === target) {
         logger.warn('Application process metadata could not be read', {
           target,
           pid: row.pid,

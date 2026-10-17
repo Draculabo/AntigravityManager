@@ -238,10 +238,17 @@ describe('core-owned cloud account switching', () => {
           operation: 'cloud-account-switch',
           stage: 'client-selection',
           target: 'classic',
-          reason: 'unknown',
+          reason: 'unavailable',
           nativeCode: 'ANTIGRAVITY_PROCESS_FAILED',
+          process: { reason: 'probe-failed' },
           rollback: 'not-attempted',
-          causes: [{ reason: 'unknown', nativeCode: 'ANTIGRAVITY_PROCESS_FAILED' }],
+          causes: [
+            {
+              reason: 'unavailable',
+              nativeCode: 'ANTIGRAVITY_PROCESS_FAILED',
+              process: { reason: 'probe-failed' },
+            },
+          ],
           reporting: { state: 'not-reported', reason: 'disabled' },
         });
       } finally {
@@ -298,8 +305,15 @@ describe('core-owned cloud account switching', () => {
           storage: 'credential-store',
           reason: 'process-close-failed',
           nativeCode: 'ANTIGRAVITY_PROCESS_FAILED',
+          process: { reason: 'exit-unconfirmed' },
           rollback: 'not-attempted',
-          causes: [{ reason: 'unknown', nativeCode: 'ANTIGRAVITY_PROCESS_FAILED' }],
+          causes: [
+            {
+              reason: 'timed-out',
+              nativeCode: 'ANTIGRAVITY_PROCESS_FAILED',
+              process: { reason: 'exit-unconfirmed' },
+            },
+          ],
           reporting: { state: 'not-reported', reason: 'disabled' },
         });
       } finally {

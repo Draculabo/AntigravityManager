@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ProcessDiagnosticSchema } from './processDiagnostic';
 
 export const ReportingReceiptSchema = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('captured'), eventId: z.string().regex(/^[a-f0-9]{32}$/) }),
@@ -118,6 +119,7 @@ export const CauseClassificationSchema = z.strictObject({
   upstreamStatus: z.number().int().min(100).max(599).optional(),
   upstreamCode: UpstreamDiagnosticCodeSchema.optional(),
   http: HttpResponseEvidenceSchema.optional(),
+  process: ProcessDiagnosticSchema.optional(),
 });
 export type CauseClassification = z.infer<typeof CauseClassificationSchema>;
 

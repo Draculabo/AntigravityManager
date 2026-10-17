@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AntigravityProcessError } from '@/modules/antigravity-runtime/processErrors';
 import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 import {
   NativeDiagnosticCodeSchema,
@@ -40,6 +41,22 @@ export function upstreamClassification(
 const ErrorFieldsSchema = z.object({ code: z.unknown().optional(), cause: z.unknown().optional() });
 
 function classifyOne(error: unknown): CauseClassification {
+  if (error instanceof AntigravityProcessError) {
+    const process = error.processDiagnostic;
+    const reason =
+      process.windowsErrorCode === 5
+        ? 'permission-denied'
+        : ['exit-unconfirmed', 'startup-unconfirmed'].includes(process.reason)
+          ? 'timed-out'
+          : ['close-failed', 'window-close-failed', 'no-closable-window'].includes(process.reason)
+            ? 'process-close-failed'
+            : process.reason === 'launch-failed'
+              ? 'process-start-failed'
+              : process.reason === 'busy' || process.reason === 'update-in-progress'
+                ? 'locked'
+                : 'unavailable';
+    return { reason, nativeCode: error.code, process };
+  }
   if (error instanceof GoogleApiDiagnosticError) {
     return error.classification;
   }
@@ -143,9 +160,8 @@ export function classifyOperationCause(error: unknown): {
     const fields = ErrorFieldsSchema.safeParse(current);
     current = fields.success ? fields.data.cause : undefined;
   }
-  const primary = causes.find(
-    (value) => value.reason !== 'unknown' && value.reason !== 'network-failed',
-  ) ??
+  const primary = causes.find((value) => value.process?.windowsErrorCode !== undefined) ??
+    causes.find((value) => value.reason !== 'unknown' && value.reason !== 'network-failed') ??
     causes.find((value) => value.reason !== 'unknown') ??
     causes.find((value) => value.nativeCode !== undefined) ?? { reason: 'unknown' as const };
   return {

@@ -22,3 +22,38 @@ describe('Windows installer process identity', () => {
     ).toBe(false);
   });
 });
+
+describe('client executable identity', () => {
+  it.each([
+    'antigravity-hans-gui.exe',
+    'antigravity-patch.exe',
+    'notepad.exe',
+    'antigravity-ide-patch.exe',
+  ])('does not identify %s from its name, directory or arguments', (name) => {
+    const executablePath = `C:\\Antigravity IDE\\${name}`;
+    for (const target of ['classic', 'ide'] as const) {
+      expect(
+        isTargetAntigravityProcessCandidate(
+          { name, executablePath, commandLine: `"${executablePath}" --target Antigravity` },
+          target,
+          { ignoreExecutableConfiguration: true },
+        ),
+      ).toBe(false);
+    }
+  });
+  it.each([
+    ['Antigravity.exe', 'classic'],
+    ['antigravity', 'classic'],
+    ['Antigravity IDE.exe', 'ide'],
+    ['antigravity-ide', 'ide'],
+  ] as const)('recognizes the exact %s binary', (name, target) => {
+    const executablePath = `C:\\Apps\\${name}`;
+    expect(
+      isTargetAntigravityProcessCandidate(
+        { name, executablePath, commandLine: `"${executablePath}"` },
+        target,
+        { ignoreExecutableConfiguration: true },
+      ),
+    ).toBe(true);
+  });
+});

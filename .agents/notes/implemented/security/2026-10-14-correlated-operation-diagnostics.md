@@ -44,8 +44,9 @@ it again. A rejected manual code submission has a separate attempt reference and
 existing login running. Expected cancellation, denial, duplicate-account and admission outcomes
 remain local diagnostics rather than unexpected Sentry events.
 
-Management response version and owner compatibility advance together from `1` to `2`.
-The handshake envelope and diagnostic schema remain `1`. An older owner fails verification
+Management response version is `2`. Owner compatibility is `3` for the closed process-failure
+observations added after the initial correlated diagnostics. The handshake envelope and diagnostic
+schema remain `1`. An older owner fails verification
 before account mutations; desktop never starts a local account owner as a fallback.
 
 ### Classification and persistence certainty
@@ -61,6 +62,10 @@ outcomes remain uncertain. UI guidance directs these users to check or refresh t
 list, without automatically replaying authorization or switching.
 
 Switch failures preserve their public category, primary stage and native classification.
+Process errors carry a typed reason and optional observed Win32 code through the owning cause
+chain. Classification never infers a reason from native message text. Exact native observations
+take precedence over an outer generic process failure. The report template and references are
+preserved by the [process and support-report fix](../bug-fix/2026-10-17-process-identity-and-support-reports.md).
 Credential readback retains Boolean comparisons only. The existing switch flow has no rollback
 operation, so its diagnostic records `not-attempted`; diagnostics do not add rollback effects.
 

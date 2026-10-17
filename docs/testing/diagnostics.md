@@ -21,6 +21,14 @@ ASAR diagnostic executable, with profile path resolution redirected before loadi
 This harness contains no account/credential owner and does not verify a full product installer,
 native keyring or live Google authorization.
 
+The SDK receiver also compares complete process-close failures for denied posting followed by
+failed re-observation, failed enumeration, missing application windows, exit timeout, native-call
+failure and missing system-directory configuration. Both SDK adapters must retain classified
+causes and observed Windows codes, correlate the diagnostic UUID with the capture event ID, and
+keep private native prose out of the outgoing envelope. These injected failures establish
+transport fidelity, not the native cause of a reporter's earlier incident. A missing process
+observation must fail the receiver comparison even if the SDK returns an event ID.
+
 The service-launcher suite accepts a healthy core becoming ready after 60 seconds, verifies the
 90-second default deadline for an unavailable child, and checks that waiting does not launch
 another child. Packaged acceptance keeps CDP and window discovery bounded and attempts desktop

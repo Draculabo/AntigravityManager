@@ -44,6 +44,40 @@ afterEach(() => {
   Object.defineProperty(process, 'platform', { value: platform, configurable: true });
 });
 describe('bounded process observation', () => {
+  it('keeps genuine competing installations visible to preflight conflict checks', async () => {
+    const rival = {
+      ...main,
+      pid: 70,
+      exe: 'D:\\Other\\Antigravity.exe',
+      cmd: ['D:\\Other\\Antigravity.exe'],
+    };
+    mocks.native.mockResolvedValue([main, rival]);
+    expect(await observeProcesses('classic', 1000, main.exe)).toEqual([
+      { pid: 42, executablePath: main.exe, args: [], startTime: 1n },
+      { pid: 70, executablePath: rival.exe, args: [], startTime: 1n },
+    ]);
+  });
+  it('ignores third-party Antigravity tools before selection and close', async () => {
+    const tool = {
+      ...main,
+      pid: 70,
+      name: 'antigravity-hans-gui.exe',
+      exe: 'D:\\Helpers\\antigravity-hans-gui.exe',
+      cmd: ['D:\\Helpers\\antigravity-hans-gui.exe'],
+    };
+    mocks.native.mockResolvedValue([main, tool]);
+    expect(await observeProcesses('classic')).toEqual([
+      { pid: 42, executablePath: main.exe, args: [], startTime: 1n },
+    ]);
+    mocks.native.mockResolvedValue([tool]);
+    expect(await observeProcesses('classic', 1000, main.exe)).toEqual([]);
+  });
+  it('does not wait for unreadable metadata on third-party tools', async () => {
+    mocks.native.mockResolvedValue([
+      { ...main, pid: 70, name: 'antigravity-hans-gui.exe', exe: undefined, cmd: [] },
+    ]);
+    expect(await observeProcesses('classic', 100)).toEqual([]);
+  });
   it('does not treat a pending Windows update installer as a competing client', async () => {
     const installer =
       'C:\\Users\\Test\\AppData\\Local\\antigravity-updater\\pending\\Antigravity-x64.exe';

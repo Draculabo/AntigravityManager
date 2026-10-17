@@ -13,12 +13,16 @@ preload event boundary and does not change Zod configuration in other processes.
 
 ## Error details and report exports
 
-Error notifications and cloud-account load failures offer an explicit bug-report action. It copies the app, OS, architecture,
-Electron and Node versions together with the available error details to the clipboard, then opens
+Error notifications and cloud-account load failures offer an explicit bug-report action. It copies the complete
+checked-in GitHub bug template, filling the app, OS, architecture, Electron and Node versions and
+the available error details in their template sections, then opens
 the GitHub bug template without report contents in its URL. The environment endpoint excludes
 hostname, network addresses and account identifiers. The report masks common credential forms,
 email addresses and user-directory names; copying the report does not read account records or log files. Users
-paste the report and submit it themselves. Clipboard failure prevents opening the form; browser
+paste the complete report into the issue body, complete the description and reproduction steps,
+and submit it themselves. The diagnostic block retains the operation UUID and, when captured,
+the Sentry event ID. Neither an SDK receipt nor opening the template proves remote delivery.
+Clipboard failure prevents opening the form; browser
 failure preserves the copied report and provides the form URL for manual continuation.
 
 Notification callers pass the caught exception to the renderer's toast boundary, which immediately

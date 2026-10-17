@@ -121,6 +121,7 @@ export function AppToaster() {
             <DialogDescription>{t('error.detailsDescription')}</DialogDescription>
           </DialogHeader>
           <pre
+            translate="no"
             tabIndex={0}
             aria-label={t('error.detailsTitle')}
             className="bg-muted text-foreground max-h-[35vh] overflow-auto rounded-md p-4 text-xs break-words whitespace-pre-wrap select-text"

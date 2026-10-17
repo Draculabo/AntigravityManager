@@ -50,6 +50,8 @@ function compileModule(source, name) {
     '@/shared/platform/antigravityProcessIdentity': './process-identity.cjs',
     '@/shared/logging/logger': './fixture-logger.cjs',
     '@/shared/errors/appError': './app-error.cjs',
+    '@/shared/errors/error-guards': './error-guards.cjs',
+    '@/shared/observability/processDiagnostic': './process-diagnostic.cjs',
   })) {
     code = code.replaceAll(JSON.stringify(original), JSON.stringify(replacement));
   }
@@ -145,6 +147,8 @@ class Fixture { static void Main(string[] args) {
   compileModule('src/shared/platform/antigravityProcessIdentity.ts', 'process-identity');
   compileModule('src/shared/platform/nativeProcessQuery.ts', 'native-query');
   compileModule('src/shared/errors/appError.ts', 'app-error');
+  compileModule('src/shared/errors/error-guards.ts', 'error-guards');
+  compileModule('src/shared/observability/processDiagnostic.ts', 'process-diagnostic');
   fs.writeFileSync(
     path.join(root, 'fixture-native-query.cjs'),
     `const {readNativeProcessSnapshot}=require('./native-query.cjs');
@@ -218,8 +222,12 @@ class Fixture { static void Main(string[] args) {
     const closing = Date.now();
     if (windows || wsl) {
       // These console fixtures have no window. Production must refuse to force their exit.
-      await assert.rejects(stopFromContext(context, 2500), {
-        messageKey: 'process-runtime.close-failed',
+      await assert.rejects(stopFromContext(context, 2500), (error) => {
+        assert.equal(error.messageKey, 'process-runtime.close-failed');
+        if (windows) {
+          assert.equal(error.cause?.processDiagnostic?.reason, 'no-closable-window');
+        }
+        return true;
       });
       assert.equal((await observeProcesses(context.target)).length, 1);
       execFileSync(

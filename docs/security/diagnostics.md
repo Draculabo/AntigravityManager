@@ -46,6 +46,13 @@ as not attempted, confirmed or uncertain. Switch readback retains Boolean matche
 or expected credentials. At most four classified causes survive; raw causes stay in the owner.
 The UUID is a support reference, not a capability or account identifier.
 
+Process failures also retain a closed process reason and, when observed from Win32, an unsigned
+32-bit Windows error code. A failed normal-close request preserves that evidence through its
+outer failure; no-window, enumeration, posting, native-call and exit-timeout outcomes remain
+distinct. Raw causes stay in the owner. Paths, process IDs, command lines and native error prose
+are excluded from this projection. The public category can remain `process-close-failed` while
+the process observation and cause list identify an access-denied native result.
+
 The logger serializes only fully validated terminal diagnostics without generic token-key masking,
 so safe readback booleans and repeated cause evidence retain their exact types. Other log arguments
 still use generic sanitization, which masks secrets and replaces actual ancestor cycles while

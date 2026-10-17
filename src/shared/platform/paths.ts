@@ -4,7 +4,10 @@ import fs from 'fs';
 import { execSync } from 'child_process';
 import type { ProcessInfo } from '@draculabo/sysinfo-process-enhanced';
 import { readNativeProcessSnapshot } from './nativeProcessQuery';
-import { isAntigravityWindowsInstaller } from './antigravityProcessIdentity';
+import {
+  getAntigravityExecutableTarget,
+  isAntigravityWindowsInstaller,
+} from './antigravityProcessIdentity';
 import { z } from 'zod';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
@@ -169,11 +172,6 @@ export function areExecutablePathsEquivalent(
   return leftNormalized === rightNormalized;
 }
 
-function hasAntigravityIdeMarker(value: string): boolean {
-  const normalizedValue = value.toLowerCase();
-  return normalizedValue.includes('antigravity ide') || normalizedValue.includes('antigravity-ide');
-}
-
 const ANTIGRAVITY_HELPER_PROCESS_NAME_PATTERNS = [
   'helper',
   'plugin',
@@ -230,9 +228,9 @@ export function isTargetAntigravityProcessCandidate(
     : getConfiguredAntigravityExecutablePath('ide', true, options);
   const commandExecutablePath = parseCommandLineArguments(processItem.commandLine)[0] || '';
   const processExecutablePath = processItem.executablePath ?? '';
-  const executableIdentity = `${processItem.executablePath || ''} ${commandExecutablePath}`;
-  const hasAntigravityProcessIdentity =
-    nameLower.includes('antigravity') || executableIdentity.toLowerCase().includes('antigravity');
+  const executableTarget = getAntigravityExecutableTarget(
+    processExecutablePath || commandExecutablePath || processItem.name,
+  );
   const matchesClassicPath =
     configuredClassicPath !== null &&
     processExecutablePath !== '' &&
@@ -241,11 +239,7 @@ export function isTargetAntigravityProcessCandidate(
     configuredIdePath !== null &&
     processExecutablePath !== '' &&
     areExecutablePathsEquivalent(configuredIdePath, processExecutablePath, options);
-  const isIde =
-    hasAntigravityIdeMarker(nameLower) ||
-    hasAntigravityIdeMarker(executableIdentity) ||
-    (hasAntigravityProcessIdentity && hasAntigravityIdeMarker(cmdLower)) ||
-    matchesIdePath;
+  const isIde = executableTarget === 'ide' || matchesIdePath;
 
   if (isAntigravityHelperProcess(nameLower, cmdLower)) {
     return false;
@@ -269,7 +263,7 @@ export function isTargetAntigravityProcessCandidate(
   }
 
   return (
-    (nameLower.includes('antigravity') || cmdLower.includes('antigravity')) &&
+    (executableTarget === 'classic' || matchesClassicPath) &&
     !isIde &&
     !nameLower.includes('manager') &&
     !cmdLower.includes('manager') &&

@@ -20,7 +20,7 @@ and do not supply credentials, provider bodies or arbitrary metadata to reportin
 
 The desktop public envelope preserves validated `loginCode`/`switchCode` and the safe diagnostic.
 Standalone management and RPC carry the coordinator's identity; consumers reject mismatched
-identities. Management response version and owner compatibility are `2`; the handshake envelope
+identities. Management response version is `2` and owner compatibility is `3`; the handshake envelope
 format and diagnostic schema remain `1`. An incompatible owner fails startup verification before
 account mutations, with no local owner fallback.
 

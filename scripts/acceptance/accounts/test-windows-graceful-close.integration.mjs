@@ -52,18 +52,30 @@ const compiled = ts.transpileModule(stopSource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const nativeRequire = createRequire(import.meta.url);
-const closeCompiled = ts.transpileModule(
-  fs.readFileSync('src/modules/antigravity-runtime/windowsNormalClose.ts', 'utf8'),
-  {
+function loadProductionModule(file, dependencies = {}) {
+  const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2022,
       esModuleInterop: true,
     },
-  },
-).outputText;
-const nativeClose = {};
-new Function('require', 'exports', closeCompiled)(nativeRequire, nativeClose);
+  }).outputText;
+  const exported = {};
+  new Function('require', 'exports', code)(
+    (name) => dependencies[name] ?? nativeRequire(name),
+    exported,
+  );
+  return exported;
+}
+const processErrors = loadProductionModule('src/modules/antigravity-runtime/processErrors.ts', {
+  '@/shared/errors/appError': loadProductionModule('src/shared/errors/appError.ts'),
+});
+const nativeClose = loadProductionModule('src/modules/antigravity-runtime/windowsNormalClose.ts', {
+  './processErrors': processErrors,
+  '@/shared/observability/processDiagnostic': loadProductionModule(
+    'src/shared/observability/processDiagnostic.ts',
+  ),
+});
 let child;
 let exited;
 const context = { target: 'ide', executablePath: exe, processes: [] };
@@ -75,10 +87,8 @@ const dependencies = {
     observeProcesses: async () => (exited ? [] : [{ pid: child.pid }]),
   },
   './launchContext': { assertContextProcesses: () => {} },
-  './processErrors': {
-    processError: (reason) =>
-      Object.assign(new Error(reason), { messageKey: `process-runtime.${reason}` }),
-  },
+  './processErrors': processErrors,
+  '@/shared/errors/error-guards': loadProductionModule('src/shared/errors/error-guards.ts'),
   './runtimePlatform': { usesWindowsRuntime: () => true },
   './stopNativeProcessTree': { stopNativeProcessTree: () => assert.fail('Unexpected Linux path') },
   './windowsNormalClose': nativeClose,

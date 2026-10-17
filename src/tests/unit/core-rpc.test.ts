@@ -530,15 +530,16 @@ describe('core application RPC', () => {
         schemaVersion: 1,
         diagnosticId,
         operation: 'cloud-account-switch',
-        stage: 'target-write',
-        reason: 'permission-denied',
-        nativeCode: 'EACCES',
-        target: 'agy',
-        storage: 'cli-session',
+        stage: 'process-close',
+        reason: 'process-close-failed',
+        nativeCode: 'ANTIGRAVITY_PROCESS_FAILED',
+        process: { reason: 'window-close-failed', windowsErrorCode: 5 },
+        target: 'classic',
+        storage: 'credential-store',
         rollback: 'not-attempted',
         reporting: { state: 'not-reported', reason: 'disabled' },
       });
-      throw new CloudAccountSwitchError('target-write-failed', diagnostic);
+      throw new CloudAccountSwitchError('process-close-failed', diagnostic);
     });
     const server = new ManagementServer({
       endpoint: socketPath,
@@ -551,13 +552,13 @@ describe('core application RPC', () => {
     await server.start();
 
     const error = await new CoreRpcClient(socketPath)
-      .switchCloudAccount(account.id, 'agy')
+      .switchCloudAccount(account.id, 'classic')
       .catch((error: unknown) => error);
     expect(error).toBeInstanceOf(ORPCError);
     if (!(error instanceof ORPCError)) {
       throw new Error('Expected the private client to reconstruct an ORPCError');
     }
-    expect(error.data).toEqual({ switchCode: 'target-write-failed', diagnostic });
+    expect(error.data).toEqual({ switchCode: 'process-close-failed', diagnostic });
   });
 
   it('returns a stable switch error over the private endpoint without owner diagnostics', async () => {

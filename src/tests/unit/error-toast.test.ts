@@ -92,6 +92,9 @@ describe('error notification diagnostics', () => {
     };
     const dialog = showDetails();
     const details = within(dialog).getByLabelText('error.detailsTitle').textContent ?? '';
+    expect(within(dialog).getByLabelText('error.detailsTitle').getAttribute('translate')).toBe(
+      'no',
+    );
     expect(details).toContain(diagnostic.diagnosticId);
     expect(details).toContain('ENOTFOUND');
     expect(details).toContain('a'.repeat(32));
