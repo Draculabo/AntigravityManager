@@ -4,6 +4,15 @@ This reference selects process, credential and switch evidence. Use the [account
 
 Run commands from the repository root unless a step specifies another directory.
 
+The focused `antigravity-process-identity.test.ts` and `runtime-observer.test.ts` suites reject
+third-party tool names, product text in unrelated folders/arguments and unreadable tool metadata.
+They retain supported binary names, configured/captured executable identity and genuine competing
+installations for conflict checks. `windows-normal-close.test.ts` covers targeted native window
+requests, access-denied codes, missing windows, enumeration failure and native resource cleanup.
+`process-failure-diagnostics.test.ts` checks the resulting closed evidence through Sentry projection
+and sanitized logs; `cloud-account-switch-owner.test.ts` and `core-rpc.test.ts` verify desktop/core
+failure transport and that close failure stops credential writes.
+
 ## Native process queries
 
 ### Window close and official history

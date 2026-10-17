@@ -2,9 +2,17 @@ import { createServer } from 'node:http';
 import { gunzipSync } from 'node:zlib';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
+import { processError } from '../../../src/modules/antigravity-runtime/processErrors';
+import { classifyOperationCause } from '../../../src/modules/cloud-account/services/operation-cause';
 import { OperationContext } from '../../../src/shared/observability/operationContext';
-import { OperationReportSchema } from '../../../src/shared/observability/operationDiagnostic';
+import {
+  OperationReportSchema,
+  type OperationDiagnostic,
+  type OperationReport,
+} from '../../../src/shared/observability/operationDiagnostic';
+import { formatOperationDiagnostic } from '../../../src/shared/observability/operationDiagnosticText';
 import { setErrorReportingEnabled } from '../../../src/shared/observability/errorReporting';
 import { logger } from '../../../src/shared/logging/logger';
 
@@ -32,8 +40,7 @@ export async function verifyOperationReporting(
   let eventsReceived = 0;
   let privacyPassed = true;
   let remoteAccepted = false;
-  let receivedEventId: string | undefined;
-  let receivedDiagnosticId: string | undefined;
+  const received = new Map<string, { eventId: string; report: OperationReport }>();
   const receiver = createServer((request, response) => {
     const buffers: Buffer[] = [];
     let bytes = 0;
@@ -65,9 +72,9 @@ export async function verifyOperationReporting(
               release: z.literal(process.env.SENTRY_RELEASE),
               tags: z.object({
                 diagnostic_id: z.uuid(),
-                operation: z.literal('google-login'),
-                stage: z.literal('token-exchange'),
-                reason: z.literal('http-rejected'),
+                operation: OperationReportSchema.shape.failure.shape.operation,
+                stage: OperationReportSchema.shape.failure.shape.stage,
+                reason: OperationReportSchema.shape.failure.shape.reason,
                 operation_runtime: z.literal(runtime),
               }),
               contexts: z.object({ operation_diagnostic: OperationReportSchema }),
@@ -76,8 +83,10 @@ export async function verifyOperationReporting(
             .parse(JSON.parse(lines[index + 1]));
           eventsReceived += 1;
           eventLines.push(lines[index], lines[index + 1]);
-          receivedEventId = event.event_id;
-          receivedDiagnosticId = event.tags.diagnostic_id;
+          received.set(event.tags.diagnostic_id, {
+            eventId: event.event_id,
+            report: event.contexts.operation_diagnostic,
+          });
           const raw: unknown = JSON.parse(lines[index + 1]);
           privacyPassed =
             privacyPassed &&
@@ -85,8 +94,9 @@ export async function verifyOperationReporting(
             !['request', 'breadcrumbs', 'extra', 'server_name'].some(
               (key) => typeof raw === 'object' && raw !== null && key in raw,
             ) &&
-            event.contexts.operation_diagnostic.failure.upstreamStatus === 503 &&
-            event.contexts.operation_diagnostic.failure.upstreamCode === 'temporarily_unavailable';
+            event.tags.operation === event.contexts.operation_diagnostic.failure.operation &&
+            event.tags.stage === event.contexts.operation_diagnostic.failure.stage &&
+            event.tags.reason === event.contexts.operation_diagnostic.failure.reason;
         }
         if (!privacyPassed) {
           response.writeHead(400).end('{}');
@@ -159,7 +169,48 @@ export async function verifyOperationReporting(
       accountCommit: 'not-attempted',
     });
     logger.error('Controlled forwarded diagnostic', { diagnostic: terminal });
+    const terminals: OperationDiagnostic[] = [terminal];
+    for (const error of [
+      processError('probe-failed', processError('window-close-failed', undefined, 5)),
+      processError('close-failed', processError('window-enumeration-failed', undefined, 5)),
+      processError('close-failed', processError('no-closable-window')),
+      processError('exit-unconfirmed', processError('probe-failed')),
+      processError(
+        'close-failed',
+        processError('native-call-failed', new Error('controlled-private')),
+      ),
+      processError('close-failed', processError('system-directory-unavailable')),
+    ]) {
+      const classified = classifyOperationCause(error);
+      const operation = new OperationContext('cloud-account-switch');
+      operation.observe('process-close', 'started');
+      const diagnostic = operation.finish({
+        stage: 'process-close',
+        ...classified.primary,
+        reason: 'process-close-failed',
+        target: 'classic',
+        storage: 'credential-store',
+        rollback: 'not-attempted',
+        causes: classified.causes,
+      });
+      terminals.push(diagnostic);
+      logger.error('Controlled forwarded diagnostic', { diagnostic });
+    }
     const flushed = await sdk.flush(15_000);
+    const evidencePassed = terminals.every((diagnostic) => {
+      const { reporting, ...failure } = diagnostic;
+      const event = received.get(diagnostic.diagnosticId);
+      const details = formatOperationDiagnostic(diagnostic);
+      return (
+        reporting.state === 'captured' &&
+        event !== undefined &&
+        reporting.eventId === event.eventId &&
+        isDeepStrictEqual(event.report.failure, failure) &&
+        details.includes(`Diagnostic ID: ${diagnostic.diagnosticId}`) &&
+        details.includes(`Sentry event ID: ${reporting.eventId}`) &&
+        (!diagnostic.process || details.includes(`Process failure: ${diagnostic.process.reason}`))
+      );
+    });
     setErrorReportingEnabled(false);
     const disabled = new OperationContext('google-login').finish({
       stage: 'token-exchange',
@@ -172,6 +223,12 @@ export async function verifyOperationReporting(
       offline,
       eventsReceived,
       privacyPassed,
+      evidencePassed,
+      processCases: terminals.slice(1).map((diagnostic) => ({
+        diagnosticId: diagnostic.diagnosticId,
+        process: diagnostic.process,
+        reporting: diagnostic.reporting,
+      })),
       remoteAccepted,
       flushed,
       diagnosticId: terminal.diagnosticId,
@@ -182,11 +239,9 @@ export async function verifyOperationReporting(
     await writeFile(path.join(directory, `${runtime}.json`), JSON.stringify(result, null, 2));
     process.stdout.write(`${JSON.stringify(result)}\n`);
     if (
-      eventsReceived !== 1 ||
+      eventsReceived !== terminals.length ||
       !privacyPassed ||
-      terminal.reporting.state !== 'captured' ||
-      terminal.reporting.eventId !== receivedEventId ||
-      terminal.diagnosticId !== receivedDiagnosticId ||
+      !evidencePassed ||
       disabled.reporting.state !== 'not-reported' ||
       disabled.reporting.reason !== 'disabled' ||
       (live && !remoteAccepted) ||

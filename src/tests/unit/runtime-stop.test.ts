@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { stopFromContext } from '@/modules/antigravity-runtime/stop';
 import { switchContext } from '../support/runtime-switch-fixture';
+import { processError } from '@/modules/antigravity-runtime/processErrors';
 
 const mocks = vi.hoisted(() => ({
   observe: vi.fn(),
@@ -70,14 +71,17 @@ it('never forces termination when a Windows client refuses normal close', async 
 });
 
 it('reports an unconfirmed exit when the last Windows observation consumes the close deadline', async () => {
+  const cause = processError('probe-failed');
   mocks.observe.mockResolvedValueOnce([main]).mockImplementationOnce(async () => {
     await new Promise((resolve) => setTimeout(resolve, 501));
-    throw new Error('probe deadline exceeded');
+    throw cause;
   });
   mocks.execFile.mockImplementation((_file, _args, _options, callback) => callback(null));
   const result = expect(stopFromContext(windowsContext, 500)).rejects.toMatchObject({
     messageKey: 'process-runtime.exit-unconfirmed',
+    cause,
   });
+  void result.catch(() => undefined);
   await vi.advanceTimersByTimeAsync(501);
   await result;
   expect(mocks.execFile).toHaveBeenCalledTimes(1);
@@ -226,9 +230,25 @@ it('does not retry native Windows normal window close after an execution failure
   Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
   mocks.wsl.mockReturnValue(false);
   mocks.observe.mockResolvedValue([main]);
-  mocks.closeWindow.mockRejectedValueOnce(new Error('window request failed'));
+  const cause = processError('window-close-failed', undefined, 5);
+  mocks.closeWindow.mockRejectedValueOnce(cause);
   await expect(stopFromContext(windowsContext)).rejects.toMatchObject({
     messageKey: 'process-runtime.close-failed',
+    cause,
+  });
+  expect(mocks.closeWindow).toHaveBeenCalledExactlyOnceWith(421);
+  expect(mocks.execFile).not.toHaveBeenCalled();
+});
+
+it('retains a denied Windows close when re-observation also fails', async () => {
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  mocks.wsl.mockReturnValue(false);
+  mocks.observe.mockResolvedValueOnce([main]).mockRejectedValueOnce(processError('probe-failed'));
+  const cause = processError('window-close-failed', undefined, 5);
+  mocks.closeWindow.mockRejectedValueOnce(cause);
+  await expect(stopFromContext(windowsContext)).rejects.toMatchObject({
+    processDiagnostic: { reason: 'probe-failed' },
+    cause,
   });
   expect(mocks.closeWindow).toHaveBeenCalledExactlyOnceWith(421);
   expect(mocks.execFile).not.toHaveBeenCalled();

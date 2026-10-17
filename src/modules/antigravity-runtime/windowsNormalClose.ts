@@ -1,20 +1,26 @@
 import path from 'node:path';
 import type { KoffiFunc } from 'koffi';
 import koffi from 'koffi';
+import { AntigravityProcessError, processError } from './processErrors';
+import { ProcessDiagnosticSchema } from '@/shared/observability/processDiagnostic';
 
 /** Queue normal close for this process's unowned top-level windows, including hidden ones. */
 export async function requestWindowsProcessClose(pid: number): Promise<void> {
   const root = process.env.SystemRoot;
   if (!root || !path.win32.isAbsolute(root)) {
-    throw new Error('Windows system directory is unavailable');
+    throw processError('system-directory-unavailable');
   }
-  const user = koffi.load(path.win32.join(root, 'System32', 'User32.dll'));
-  const kernel = koffi.load(path.win32.join(root, 'System32', 'Kernel32.dll'));
+  let user: ReturnType<typeof koffi.load> | undefined;
+  let kernel: ReturnType<typeof koffi.load> | undefined;
   let callback: bigint | undefined;
   try {
+    user = koffi.load(path.win32.join(root, 'System32', 'User32.dll'));
+    kernel = koffi.load(path.win32.join(root, 'System32', 'Kernel32.dll'));
     const getLastError = kernel.func('uint32_t __stdcall GetLastError()') as KoffiFunc<
       () => number
     >;
+    const lastError = () =>
+      ProcessDiagnosticSchema.shape.windowsErrorCode.unwrap().parse(getLastError());
     const windowPid = user.func(
       'uint32_t __stdcall GetWindowThreadProcessId(void *window, _Out_ uint32_t *pid)',
     ) as KoffiFunc<(window: bigint, pid: number[]) => number>;
@@ -45,7 +51,7 @@ export async function requestWindowsProcessClose(pid: number): Promise<void> {
           // WM_CLOSE
           queued++;
         } else {
-          const code = getLastError();
+          const code = lastError();
           if (code !== 1400) {
             // The window can disappear between enumeration and posting.
             failureCode ??= code;
@@ -55,19 +61,24 @@ export async function requestWindowsProcessClose(pid: number): Promise<void> {
       return 1;
     }, koffi.pointer(callbackType));
     if (!enumerate(callback, 0)) {
-      throw new Error(`Windows window enumeration failed (${getLastError()})`);
+      throw processError('window-enumeration-failed', undefined, lastError());
     }
     if (failureCode !== undefined) {
-      throw new Error(`Windows normal close request failed (${failureCode})`);
+      throw processError('window-close-failed', undefined, failureCode);
     }
     if (!queued) {
-      throw new Error('Windows process has no closable top-level windows');
+      throw processError('no-closable-window');
     }
+  } catch (error) {
+    if (error instanceof AntigravityProcessError) {
+      throw error;
+    }
+    throw processError('native-call-failed', error);
   } finally {
     if (callback !== undefined) {
       koffi.unregister(callback);
     }
-    kernel.unload();
-    user.unload();
+    kernel?.unload();
+    user?.unload();
   }
 }

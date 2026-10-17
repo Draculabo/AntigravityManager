@@ -70,7 +70,7 @@ describe('core management IPC', () => {
     const handshake = await new ManagementClient(socketPath).handshake();
     expect(handshake).toEqual({
       version: 1,
-      compatibility: 2,
+      compatibility: 3,
       kind: 'core',
       pid: 123,
       epoch: expect.any(String),
