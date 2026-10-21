@@ -658,6 +658,7 @@ const fr = {
     checkQuota: 'Verifier le quota maintenant',
     polling: 'Interrogation declenchee',
     globalQuota: 'Quota global',
+    weeklyQuota: 'Quota hebdomadaire',
     layout: {
       auto: 'Auto',
       twoCol: '2 colonnes',

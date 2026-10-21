@@ -19,6 +19,7 @@ import {
   prioritizeRecommendedAccount,
   type ManualAccountRecommendation,
 } from '@/modules/cloud-account/utils/manual-account-recommendation';
+import { selectWeeklyQuotaItems } from '@/modules/cloud-account/utils/quota-groups';
 
 const EMPTY_ACCOUNTS: CloudAccountView[] = [];
 const EMPTY_SELECTED_TIER_KEYS: string[] = [];
@@ -37,6 +38,8 @@ export interface CloudAccountListView {
   rateLimitedAccounts: number;
   overallQuotaPercentage: number | null;
   effectiveQuotaStatus: QuotaStatus;
+  overallWeeklyQuotaPercentage: number | null;
+  effectiveWeeklyQuotaStatus: QuotaStatus;
 }
 
 function calculateOverallQuotaPercentage(
@@ -63,6 +66,24 @@ function calculateOverallQuotaPercentage(
 
   const averagePercentage =
     sumBy(visibleModelInfos, (modelInfo) => modelInfo.percentage) / visibleModelInfos.length;
+
+  return roundQuotaPercentage(averagePercentage);
+}
+
+function calculateOverallWeeklyQuotaPercentage(accounts: CloudAccountView[]): number | null {
+  if (accounts.length === 0) {
+    return null;
+  }
+
+  const weeklyItems = flatMap(accounts, (account) =>
+    selectWeeklyQuotaItems(account.quota?.quota_groups),
+  );
+
+  if (isEmpty(weeklyItems)) {
+    return null;
+  }
+
+  const averagePercentage = sumBy(weeklyItems, (item) => item.percentage) / weeklyItems.length;
 
   return roundQuotaPercentage(averagePercentage);
 }
@@ -122,6 +143,14 @@ export function useCloudAccountListView(
   const overallQuotaStatus =
     overallQuotaPercentage === null ? null : getQuotaStatus(overallQuotaPercentage);
 
+  const overallWeeklyQuotaPercentage = useMemo(
+    () => calculateOverallWeeklyQuotaPercentage(sortedAccounts),
+    [sortedAccounts],
+  );
+
+  const overallWeeklyQuotaStatus =
+    overallWeeklyQuotaPercentage === null ? null : getQuotaStatus(overallWeeklyQuotaPercentage);
+
   return {
     sortedAccounts,
     manualRecommendation,
@@ -136,5 +165,7 @@ export function useCloudAccountListView(
       .length,
     overallQuotaPercentage,
     effectiveQuotaStatus: overallQuotaStatus ?? 'low',
+    overallWeeklyQuotaPercentage,
+    effectiveWeeklyQuotaStatus: overallWeeklyQuotaStatus ?? 'low',
   };
 }

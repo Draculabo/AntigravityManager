@@ -703,6 +703,7 @@ const zhCn = {
     checkQuota: '立即检查配额',
     polling: '已触发轮询',
     globalQuota: '全局配额',
+    weeklyQuota: '每周配额',
     layout: {
       auto: '自动',
       twoCol: '2 列',

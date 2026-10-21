@@ -129,6 +129,8 @@ function CloudAccountListContent() {
     rateLimitedAccounts,
     overallQuotaPercentage,
     effectiveQuotaStatus,
+    overallWeeklyQuotaPercentage,
+    effectiveWeeklyQuotaStatus,
   } = useCloudAccountListView(accounts, config, currentSort);
 
   const { refreshSelectedAccounts, deleteSelectedAccounts } = useCloudAccountBatchActions({
@@ -356,6 +358,8 @@ function CloudAccountListContent() {
         rateLimitedAccounts={rateLimitedAccounts}
         overallQuotaPercentage={overallQuotaPercentage}
         effectiveQuotaStatus={effectiveQuotaStatus}
+        overallWeeklyQuotaPercentage={overallWeeklyQuotaPercentage}
+        effectiveWeeklyQuotaStatus={effectiveWeeklyQuotaStatus}
         isMinimalMode={isMinimalMode}
       />
 

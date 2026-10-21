@@ -571,6 +571,7 @@ const ru = {
     checkQuota: 'Проверить квоту',
     polling: 'Опрос запущен',
     globalQuota: 'Глобальная квота',
+    weeklyQuota: 'Недельная квота',
     layout: {
       auto: 'Авто',
       twoCol: '2 колонки',

@@ -564,6 +564,7 @@ const tr = {
     checkQuota: 'Kotayı Şimdi Kontrol Et',
     polling: 'Sorgulama tetiklendi',
     globalQuota: 'Genel Kota',
+    weeklyQuota: 'Haftalık Kota',
     layout: {
       auto: 'Otomatik',
       twoCol: '2 Sütun',

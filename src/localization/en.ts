@@ -753,6 +753,7 @@ const en = {
     checkQuota: 'Check Quota Now',
     polling: 'Polling triggered',
     globalQuota: 'Global Quota',
+    weeklyQuota: 'Weekly Quota',
     layout: {
       auto: 'Auto',
       twoCol: '2 Columns',

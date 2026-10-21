@@ -3,6 +3,7 @@ import {
   readMinimalModePreference,
   saveMinimalModePreference,
   isGeminiWeeklyQuotaItem,
+  isClaudeOrGptWeeklyQuotaItem,
   isGeminiQuotaGroup,
 } from '@/modules/cloud-account/utils/minimal-mode-preference';
 import type { WeeklyQuotaItem } from '@/modules/cloud-account/utils/quota-groups';
@@ -75,6 +76,44 @@ describe('isGeminiWeeklyQuotaItem', () => {
       },
     };
     expect(isGeminiWeeklyQuotaItem(claudeItem)).toBe(false);
+  });
+});
+
+describe('isClaudeOrGptWeeklyQuotaItem', () => {
+  it('correctly matches Claude and GPT weekly items', () => {
+    const claudeItem: WeeklyQuotaItem = {
+      id: 'claude-1',
+      groupName: 'Claude and GPT',
+      bucketLabel: 'Weekly Limit Remaining',
+      percentage: 100,
+      resetTime: '2099-01-01T00:00:00Z',
+      bucket: {
+        bucket_id: 'claude_weekly',
+        window: 'WEEKLY',
+        display_name: 'Weekly Limit Remaining',
+        remaining_fraction: 1.0,
+        reset_time: '2099-01-01T00:00:00Z',
+      },
+    };
+    expect(isClaudeOrGptWeeklyQuotaItem(claudeItem)).toBe(true);
+  });
+
+  it('correctly filters out Gemini weekly items', () => {
+    const geminiItem: WeeklyQuotaItem = {
+      id: 'gemini-1',
+      groupName: 'Gemini',
+      bucketLabel: 'Weekly Limit Remaining',
+      percentage: 55,
+      resetTime: '2099-01-01T00:00:00Z',
+      bucket: {
+        bucket_id: 'gemini_weekly',
+        window: 'WEEKLY',
+        display_name: 'Weekly Limit Remaining',
+        remaining_fraction: 0.55,
+        reset_time: '2099-01-01T00:00:00Z',
+      },
+    };
+    expect(isClaudeOrGptWeeklyQuotaItem(geminiItem)).toBe(false);
   });
 });
 
