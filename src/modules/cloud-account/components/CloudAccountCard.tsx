@@ -63,7 +63,10 @@ import {
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 import { DetailedQuotaDisplay } from '@/modules/cloud-account/components/DetailedQuotaDisplay';
 import { AccountQuotaWindowSections } from '@/modules/cloud-account/components/AccountQuotaWindowSections';
-import { CompactModelQuotaDisplay } from '@/modules/cloud-account/components/CompactModelQuotaDisplay';
+import {
+  CompactModelQuotaDisplay,
+  type CompactModelQuotaItem,
+} from '@/modules/cloud-account/components/CompactModelQuotaDisplay';
 import { ManualRecommendationBadge } from '@/modules/cloud-account/components/ManualRecommendationBadge';
 import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/manual-account-recommendation';
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
@@ -73,6 +76,7 @@ import {
   isGeminiWeeklyQuotaItem,
   isClaudeOrGptWeeklyQuotaItem,
   isGeminiQuotaGroup,
+  isClaudeOrGptQuotaGroup,
 } from '@/modules/cloud-account/utils/minimal-mode-preference';
 
 type ModelQuotaEntry = [string, CloudQuotaModelInfo];
@@ -786,7 +790,11 @@ export function CloudAccountCard({
           <AccountQuotaWindowSections
             quotaWindow={quotaWindow}
             weeklyItems={
-              isMinimalMode ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem) : weeklyQuotaItems
+              isMinimalMode
+                ? weeklyQuotaItems.filter(
+                    (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
+                  )
+                : weeklyQuotaItems
             }
             fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
             weeklyHidden={isMinimalMode ? false : weeklyHidden}
@@ -795,8 +803,15 @@ export function CloudAccountCard({
               isMinimalMode ? (
                 <>
                   {overallQuotaBar}
-                  <DetailedQuotaDisplay groups={detailedGroups.filter(isGeminiQuotaGroup)} />
-                  {!overallQuotaBar && detailedGroups.filter(isGeminiQuotaGroup).length === 0
+                  <DetailedQuotaDisplay
+                    groups={detailedGroups.filter(
+                      (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+                    )}
+                  />
+                  {!overallQuotaBar &&
+                  detailedGroups.filter(
+                    (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+                  ).length === 0
                     ? emptyQuotaState
                     : null}
                 </>
@@ -944,12 +959,13 @@ export function CompactCloudAccountCard({
 
   const {
     models: mergedModelQuotas,
+    groups: detailedGroups,
     weeklyItems: weeklyQuotaItems,
     fiveHourHidden,
     weeklyHidden,
   } = getVisibleAccountQuota(account.quota, config?.model_visibility ?? {}, quotaGroupVisibility);
 
-  const compactQuotaItems = Object.entries(mergedModelQuotas)
+  const modelQuotaItems = Object.entries(mergedModelQuotas)
     .filter(
       ([modelName]) =>
         !isMinimalMode ||
@@ -963,6 +979,41 @@ export function CompactCloudAccountCard({
       percentage: info.percentage,
       resetTime: info.resetTime,
     }));
+
+  const hasClaudeModel = modelQuotaItems.some((item) => /claude/i.test(item.id));
+  const hasGeminiModel = modelQuotaItems.some((item) => item.id.includes('gemini'));
+
+  const nonWeeklyGroupItems: CompactModelQuotaItem[] = detailedGroups
+    .filter(
+      (group) => !isMinimalMode || isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+    )
+    .flatMap((group) => {
+      const isClaudeGroup = isClaudeOrGptQuotaGroup(group);
+      const isGeminiGroup = isGeminiQuotaGroup(group);
+      if (isClaudeGroup && hasClaudeModel) {
+        return [];
+      }
+      if (isGeminiGroup && hasGeminiModel) {
+        return [];
+      }
+      const nonWeeklyBuckets = group.buckets.filter((bucket) => !isWeeklyQuotaBucket(bucket));
+      return nonWeeklyBuckets.map((bucket) => {
+        const groupName = group.display_name.replace(/\s+models?$/i, '').trim();
+        const label =
+          nonWeeklyBuckets.length > 1 && bucket.display_name
+            ? `${groupName} · ${bucket.display_name}`
+            : groupName || bucket.display_name || t('cloud.card.quotaGroupUnknown');
+        return {
+          id: `${group.display_name}:${bucket.bucket_id}:${bucket.window}`,
+          label,
+          percentage: Math.round(bucket.remaining_fraction * 100),
+          resetTime: bucket.reset_time,
+        };
+      });
+    })
+    .sort((a, b) => b.percentage - a.percentage);
+
+  const compactQuotaItems = [...modelQuotaItems, ...nonWeeklyGroupItems];
 
   const aiCredits = account.quota?.ai_credits;
   const shouldShowAiCredits =
