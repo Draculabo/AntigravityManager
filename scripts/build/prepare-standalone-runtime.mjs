@@ -159,20 +159,27 @@ try {
   await cp(path.join(project, 'patches'), path.join(installRoot, 'patches'), { recursive: true });
   await cp(path.join(project, '.npmrc'), path.join(installRoot, '.npmrc'));
   console.log('Installing locked production dependencies into isolated runtime');
-  await run(
+  const isJsPnpm = pnpmCli.endsWith('.js') || pnpmCli.endsWith('.cjs') || pnpmCli.endsWith('.mjs');
+  const runPnpm = (nodeRunner, args, cwd, env) => {
+    if (isJsPnpm) {
+      return run(nodeRunner, [pnpmCli, ...args], cwd, env);
+    }
+    return run(pnpmCli, args, cwd, env);
+  };
+  await runPnpm(
     nodeExecutable,
-    [pnpmCli, 'install', '--prod', '--frozen-lockfile', '--ignore-scripts'],
+    ['install', '--prod', '--frozen-lockfile', '--ignore-scripts'],
     installRoot,
     environment,
   );
-  await run(
+  await runPnpm(
     nodeExecutable,
-    [pnpmCli, 'rebuild', 'better-sqlite3', 'keytar', 'koffi', '@napi-rs/keyring'],
+    ['rebuild', 'better-sqlite3', 'keytar', 'koffi', '@napi-rs/keyring'],
     installRoot,
     environment,
   );
-  await run(process.execPath, [pnpmCli, 'run', 'build:core'], project);
-  await run(process.execPath, [pnpmCli, 'run', 'build:cli'], project);
+  await runPnpm(process.execPath, ['run', 'build:core'], project);
+  await runPnpm(process.execPath, ['run', 'build:cli'], project);
   const bundleCopy = { recursive: true, filter: (file) => !file.endsWith('.map') };
   await cp(path.join(project, 'dist', 'core'), path.join(installRoot, 'core'), bundleCopy);
   await cp(path.join(project, 'dist', 'cli'), path.join(installRoot, 'cli'), bundleCopy);

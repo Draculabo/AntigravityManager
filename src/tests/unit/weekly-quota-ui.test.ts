@@ -94,16 +94,20 @@ describe('quota window display', () => {
     );
 
     expect(screen.getByRole('group', { name: 'cloud.quota-window.five-hours-short' })).toBeTruthy();
-    const geminiModelItem = screen.getByText('Gemini Pro').parentElement;
+    const geminiModelItem = screen.getByText('Gemini Pro').closest('.flex-col');
     expect(geminiModelItem?.classList.contains('flex-col')).toBe(true);
-    expect(geminiModelItem?.lastElementChild?.getAttribute('role')).toBe('progressbar');
+    expect(geminiModelItem?.querySelector('[role="progressbar"]')).toBeTruthy();
     expect(screen.getByText('Claude Sonnet')).toBeTruthy();
+    expect(screen.getByText('64%')).toBeTruthy();
+    expect(screen.getByText('42%')).toBeTruthy();
     expect(
       screen.getByRole('group', { name: 'cloud.quota-window.compact-weekly-short' }),
     ).toBeTruthy();
-    const weeklyGeminiItem = screen.getByText('Gemini').parentElement;
+    const weeklyGeminiItem = screen.getByText('Gemini').closest('.flex-col');
     expect(weeklyGeminiItem?.classList.contains('flex-col')).toBe(true);
-    expect(weeklyGeminiItem?.lastElementChild?.getAttribute('role')).toBe('progressbar');
+    expect(weeklyGeminiItem?.querySelector('[role="progressbar"]')).toBeTruthy();
+    expect(screen.getByText('90%')).toBeTruthy();
+    expect(screen.getByText(/cloud\.card\.resetPrefix/)).toBeTruthy();
   });
   it('shows five-hour and weekly quota together in the combined view', () => {
     render(
