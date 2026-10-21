@@ -131,4 +131,15 @@ describe('account quota group visibility', () => {
     expect(screen.queryByText('Claude 5h')).toBeNull();
     expect(screen.queryByText('Claude weekly')).toBeNull();
   });
+  it('renders Claude quota bars in CompactCloudAccountCard even when isMinimalMode is true', () => {
+    render(
+      createElement(CompactCloudAccountCard, {
+        account,
+        ...callbacks,
+        isMinimalMode: true,
+      }),
+    );
+    expect(screen.getByText('Claude Sonnet')).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: 'Claude: Claude weekly' })).toBeTruthy();
+  });
 });

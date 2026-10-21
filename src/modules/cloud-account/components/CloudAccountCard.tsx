@@ -71,6 +71,7 @@ import { isWeeklyQuotaBucket } from '@/modules/cloud-account/utils/quota-groups'
 import { useOpenAccountValidationLink } from '@/modules/cloud-account/hooks/useOpenAccountValidationLink';
 import {
   isGeminiWeeklyQuotaItem,
+  isClaudeOrGptWeeklyQuotaItem,
   isGeminiQuotaGroup,
 } from '@/modules/cloud-account/utils/minimal-mode-preference';
 
@@ -952,7 +953,8 @@ export function CompactCloudAccountCard({
     .filter(
       ([modelName]) =>
         !isMinimalMode ||
-        (modelName.includes('gemini') && !GEMINI_LEGACY_MODEL_PATTERN.test(modelName)),
+        (modelName.includes('gemini') && !GEMINI_LEGACY_MODEL_PATTERN.test(modelName)) ||
+        /claude|gpt/i.test(modelName),
     )
     .sort((a, b) => b[1].percentage - a[1].percentage)
     .map(([modelName, info]) => ({
@@ -1061,7 +1063,11 @@ export function CompactCloudAccountCard({
         <AccountQuotaWindowSections
           quotaWindow={quotaWindow}
           weeklyItems={
-            isMinimalMode ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem) : weeklyQuotaItems
+            isMinimalMode
+              ? weeklyQuotaItems.filter(
+                  (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
+                )
+              : weeklyQuotaItems
           }
           fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
           weeklyHidden={isMinimalMode ? false : weeklyHidden}

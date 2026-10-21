@@ -51,6 +51,24 @@ export function isGeminiWeeklyQuotaItem(item: WeeklyQuotaItem): boolean {
 }
 
 /**
+ * Identifies whether a weekly quota item belongs to Claude or GPT.
+ */
+export function isClaudeOrGptWeeklyQuotaItem(item: WeeklyQuotaItem): boolean {
+  const targetText = [
+    item.groupName,
+    item.groupDescription,
+    item.bucketLabel,
+    item.bucket?.bucket_id,
+    item.bucket?.display_name,
+    item.bucket?.description,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return /claude|gpt|3p/i.test(targetText);
+}
+
+/**
  * Identifies whether a detailed quota group belongs to the Gemini family.
  */
 export function isGeminiQuotaGroup(group: CloudQuotaGroup): boolean {

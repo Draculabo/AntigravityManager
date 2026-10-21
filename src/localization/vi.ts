@@ -561,6 +561,7 @@ const vi = {
     checkQuota: 'Kiểm tra quota ngay',
     polling: 'Đã kích hoạt polling',
     globalQuota: 'Quota tổng',
+    weeklyQuota: 'Quota tuần',
     layout: {
       auto: 'Tự động',
       twoCol: '2 cột',
