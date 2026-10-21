@@ -14,6 +14,7 @@ vi.mock('react-i18next', () => ({
         'cloud.card.active': 'Active',
         'cloud.card.rateLimited': 'Rate Limited',
         'cloud.globalQuota': 'Global Quota',
+        'cloud.weeklyQuota': 'Weekly Quota',
         'cloud.auto-switch-client': 'Auto-switch client account',
         'cloud.minimal-mode': 'Minimal mode',
       };
@@ -73,6 +74,8 @@ describe('CloudAccountListSummary minimal mode', () => {
         rateLimitedAccounts: 0,
         overallQuotaPercentage: 82.8,
         effectiveQuotaStatus: 'high',
+        overallWeeklyQuotaPercentage: 91.5,
+        effectiveWeeklyQuotaStatus: 'high',
         isMinimalMode: true,
       }),
     );
@@ -83,6 +86,8 @@ describe('CloudAccountListSummary minimal mode', () => {
     expect(screen.getByText('1')).not.toBeNull();
     expect(screen.getByText('0')).not.toBeNull();
     expect(screen.getByText('82.8%')).not.toBeNull();
+    expect(screen.getByText('Weekly Quota')).not.toBeNull();
+    expect(screen.getByText('91.5%')).not.toBeNull();
 
     // The standard large cards grid should not exist
     const standardDl = container.querySelector('dl.grid-cols-2.xl\\:grid-cols-4');
@@ -94,7 +99,7 @@ describe('CloudAccountListSummary minimal mode', () => {
     expect(container.querySelector('.bg-info-soft')).not.toBeNull();
     expect(container.querySelector('.bg-success-soft')).not.toBeNull();
     expect(container.querySelector('.bg-warning-soft')).not.toBeNull();
-    expect(container.querySelector('.bg-card')).not.toBeNull();
+    expect(container.querySelectorAll('.bg-card').length).toBe(2);
   });
 });
 
