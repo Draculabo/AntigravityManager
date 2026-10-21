@@ -961,6 +961,7 @@ export function CompactCloudAccountCard({
       id: modelName,
       label: formatModelDisplayName(modelName),
       percentage: info.percentage,
+      resetTime: info.resetTime,
     }));
 
   const aiCredits = account.quota?.ai_credits;
