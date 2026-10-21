@@ -5,6 +5,7 @@ import {
   isGeminiWeeklyQuotaItem,
   isClaudeOrGptWeeklyQuotaItem,
   isGeminiQuotaGroup,
+  isClaudeOrGptQuotaGroup,
 } from '@/modules/cloud-account/utils/minimal-mode-preference';
 import type { WeeklyQuotaItem } from '@/modules/cloud-account/utils/quota-groups';
 
@@ -150,5 +151,23 @@ describe('isGeminiQuotaGroup', () => {
       ],
     };
     expect(isGeminiQuotaGroup(claudeGroup)).toBe(false);
+    expect(isClaudeOrGptQuotaGroup(claudeGroup)).toBe(true);
+  });
+
+  it('correctly filters out Gemini quota group for isClaudeOrGptQuotaGroup', () => {
+    const geminiGroup = {
+      display_name: 'Google Gemini',
+      description: 'Models within this group: Gemini Flash, Gemini Pro',
+      buckets: [
+        {
+          bucket_id: 'five-hour',
+          window: '5h',
+          display_name: 'Five Hour Limit Remaining',
+          remaining_fraction: 1.0,
+          reset_time: '2099-01-01T04:59:00Z',
+        },
+      ],
+    };
+    expect(isClaudeOrGptQuotaGroup(geminiGroup)).toBe(false);
   });
 });

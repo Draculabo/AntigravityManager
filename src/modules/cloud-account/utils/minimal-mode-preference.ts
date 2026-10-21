@@ -82,3 +82,18 @@ export function isGeminiQuotaGroup(group: CloudQuotaGroup): boolean {
 
   return /gemini/i.test(targetText);
 }
+
+/**
+ * Identifies whether a detailed quota group belongs to Claude or GPT.
+ */
+export function isClaudeOrGptQuotaGroup(group: CloudQuotaGroup): boolean {
+  const targetText = [
+    group.display_name,
+    group.description,
+    ...group.buckets.flatMap((b) => [b.bucket_id, b.display_name, b.description]),
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return /claude|gpt|3p/i.test(targetText);
+}

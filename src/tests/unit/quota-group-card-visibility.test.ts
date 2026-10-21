@@ -142,4 +142,73 @@ describe('account quota group visibility', () => {
     expect(screen.getByText('Claude Sonnet')).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Claude: Claude weekly' })).toBeTruthy();
   });
+
+  it('renders Claude 5h quota group bar in CompactCloudAccountCard when checked and hides when unchecked', () => {
+    const googleAccount: CloudAccountView = {
+      ...account,
+      id: 'google-account-with-group-claude',
+      quota: {
+        models: {
+          'gemini-3.8-flash-tiered': { percentage: 100, resetTime: '2099-01-01T04:58:00Z' },
+        },
+        quota_groups: [
+          {
+            display_name: 'Claude and GPT models',
+            description: 'Shared quota',
+            buckets: [
+              {
+                bucket_id: '3p-5h',
+                window: '5h',
+                display_name: '5 hour',
+                remaining_fraction: 1.0,
+                reset_time: '2099-01-01T04:58:00Z',
+              },
+              {
+                bucket_id: 'weekly',
+                window: 'WEEKLY',
+                display_name: 'Seven days',
+                remaining_fraction: 1.0,
+                reset_time: '2099-01-07T00:00:00Z',
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    // When 5h Claude is checked
+    const { rerender } = render(
+      createElement(CompactCloudAccountCard, {
+        account: googleAccount,
+        ...callbacks,
+        isMinimalMode: true,
+        quotaGroupVisibility: {
+          fiveHour: { gemini: true, claude: true },
+          weekly: { gemini: true, claude: true },
+        },
+      }),
+    );
+
+    expect(screen.getAllByText('Claude and GPT').length).toBe(2);
+    expect(screen.getByRole('progressbar', { name: 'Claude and GPT' })).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: 'Claude and GPT: Seven days' })).toBeTruthy();
+
+    // When 5h Claude is unchecked, it hides the 5h bar while weekly remains
+    cleanup();
+    render(
+      createElement(CompactCloudAccountCard, {
+        account: googleAccount,
+        ...callbacks,
+        isMinimalMode: true,
+        quotaGroupVisibility: {
+          fiveHour: { gemini: true, claude: false },
+          weekly: { gemini: true, claude: true },
+        },
+      }),
+    );
+
+    expect(screen.queryByRole('progressbar', { name: 'Claude and GPT' })).toBeNull();
+    expect(screen.getByRole('progressbar', { name: 'Claude and GPT: Seven days' })).toBeTruthy();
+    expect(screen.getAllByText('Claude and GPT').length).toBe(1);
+  });
 });
