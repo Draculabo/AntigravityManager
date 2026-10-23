@@ -58,6 +58,58 @@ describe('quota model families', () => {
     });
   });
 
+  it('aggregates Gemini 4 Argon tiers into one family entry', () => {
+    const aggregated = aggregateQuotaModelFamilies({
+      'gemini-4-argon-low': quota(90, '2026-10-30T08:00:00.000Z'),
+      'gemini-4-argon-medium': quota(42, '2026-10-30T12:00:00.000Z'),
+      'gemini-4-argon-high': quota(12, '2026-10-30T10:00:00.000Z'),
+    });
+
+    expect(aggregated).toEqual({
+      'gemini-4-argon': {
+        percentage: 12,
+        resetTime: '2026-10-30T08:00:00.000Z',
+        display_name: 'Gemini 4 Argon',
+      },
+    });
+    expect(getQuotaModelFamilyId('models/gemini-4-argon-high')).toBe('gemini-4-argon');
+  });
+
+  it('aggregates Gemini 3.8 Flash tiers into one family entry', () => {
+    const aggregated = aggregateQuotaModelFamilies({
+      'gemini-3.8-flash-low': quota(70, '2026-10-30T08:00:00.000Z'),
+      'gemini-3.8-flash-medium': quota(35, '2026-10-30T11:00:00.000Z'),
+      'gemini-3.8-flash-high': quota(55, '2026-10-30T09:00:00.000Z'),
+    });
+
+    expect(aggregated).toEqual({
+      'gemini-3.8-flash': {
+        percentage: 35,
+        resetTime: '2026-10-30T08:00:00.000Z',
+        display_name: 'Gemini 3.8 Flash',
+      },
+    });
+    expect(getQuotaModelFamilyId('gemini-3.8-flash-tiered')).toBe('gemini-3.8-flash');
+  });
+
+  it('renders Gemini 4 Argon and Gemini 3.8 Flash as one presentation row each', () => {
+    const presented = getVisibleQuotaModelsForPresentation(
+      {
+        'models/gemini-4-argon-low': quota(90, '2026-10-30T08:00:00.000Z'),
+        'gemini-4-argon-high': quota(12, '2026-10-30T10:00:00.000Z'),
+        'gemini-3.8-flash-low': quota(70, '2026-10-30T09:00:00.000Z'),
+        'gemini-3.8-flash-high': quota(55, '2026-10-30T11:00:00.000Z'),
+      },
+      {},
+    );
+
+    expect(Object.keys(presented)).toEqual(['gemini-4-argon', 'gemini-3.8-flash']);
+    expect(presented['gemini-4-argon']).toMatchObject({
+      percentage: 12,
+      display_name: 'Gemini 4 Argon',
+    });
+  });
+
   it('keeps unknown models, including names containing thinking', () => {
     const aggregated = aggregateQuotaModelFamilies({
       'vendor-experimental-thinking-v9': quota(23, 'not-a-date'),
