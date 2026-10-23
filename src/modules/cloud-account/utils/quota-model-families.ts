@@ -1,6 +1,8 @@
 import type { CloudQuotaModelInfo } from '@/modules/cloud-account/types';
 
 const FAMILY_DISPLAY_NAMES: Record<string, string> = {
+  'gemini-4-argon': 'Gemini 4 Argon',
+  'gemini-3.8-flash': 'Gemini 3.8 Flash',
   'gemini-3.1-pro': 'Gemini 3.1 Pro',
   'gemini-3.7-flash': 'Gemini 3.7 Flash',
   'gemini-3.5-flash': 'Gemini 3.5 Flash',
@@ -53,6 +55,14 @@ export function getQuotaModelFamilyId(modelId: string): string {
     normalized.startsWith('gemini-pro-agent')
   ) {
     return 'gemini-3.1-pro';
+  }
+
+  if (normalized.startsWith('gemini-4-argon')) {
+    return 'gemini-4-argon';
+  }
+
+  if (normalized.startsWith('gemini-3.8-flash')) {
+    return 'gemini-3.8-flash';
   }
 
   if (normalized.startsWith('gemini-3.7-flash') || normalized.startsWith('gemini-3.6-flash')) {

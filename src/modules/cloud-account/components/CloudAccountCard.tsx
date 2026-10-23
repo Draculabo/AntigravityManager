@@ -167,6 +167,18 @@ function getAvailabilityModelCandidates(modelName: string): Set<string> {
     candidates.add('gemini-3-flash-agent');
   }
 
+  if (normalized === 'gemini-4-argon') {
+    candidates.add('gemini-4-argon-low');
+    candidates.add('gemini-4-argon-medium');
+    candidates.add('gemini-4-argon-high');
+  }
+
+  if (normalized === 'gemini-3.8-flash') {
+    candidates.add('gemini-3.8-flash-low');
+    candidates.add('gemini-3.8-flash-medium');
+    candidates.add('gemini-3.8-flash-high');
+  }
+
   if (normalized === 'gemini-3.7-flash') {
     candidates.add('gemini-3.7-flash-low');
     candidates.add('gemini-3.7-flash-medium');
