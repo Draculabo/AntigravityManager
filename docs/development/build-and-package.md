@@ -21,10 +21,15 @@ does not establish installer, native keyring or live-provider behavior.
 - Packaging prepares standalone runtime dependencies in an isolated directory. Its `pnpm install --prod --frozen-lockfile --ignore-scripts` uses the same lockfile, pnpm settings and native-build allowlist as development. Native dependencies are rebuilt only in that isolated tree with its bundled Node version; desktop dependencies remain untouched.
 - Runtime installation and dependency tracing use separate staging directories. Native-module and command checks run against the traced output before publication. On Windows, publication copies the validated tree after backing up any existing generated runtime, avoiding populated-directory rename failures. A failed copy restores the backup; failed recovery retains its staging directory and reports the recovery path. Forge consumes the output only after publication completes. Other platforms publish by directory rename.
 
+pnpm applies the [AppImage maker patch](../../patches/@pengx17__electron-forge-maker-appimage@1.2.1.patch)
+through `patchedDependencies`, including installations with lifecycle scripts disabled. The patch
+preserves the requested x64 or arm64 architecture and paths containing spaces.
 Linux AppImage packaging runs the maker's downloaded `appimagetool` with
 `--appimage-extract-and-run`, so the build step does not require FUSE libraries or mount
 access. Running the installed AppImage still requires a supported AppImage runtime
-environment. See [installer verification](../testing.md) for build and native update checks.
+environment. Remove the patch when the maker includes these behaviors and
+`pnpm run test:appimage-download` passes on Linux for both architectures.
+See [installer verification](../testing.md) for build and native update checks.
 
 ## Runtime preparation integrity
 

@@ -27,5 +27,6 @@ overrides:
   tar: '^7.5.22'
 
 patchedDependencies:
+  '@pengx17/electron-forge-maker-appimage@1.2.1': patches/@pengx17__electron-forge-maker-appimage@1.2.1.patch
   '@electron-forge/core@7.11.1': patches/@electron-forge__core@7.11.1.patch
   '@bitdisaster/exe-icon-extractor@1.0.10': patches/@bitdisaster__exe-icon-extractor@1.0.10.patch
