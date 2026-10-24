@@ -202,6 +202,7 @@ const tr = {
     'collapse-sidebar': 'Kenar çubuğunu daralt',
     'expand-sidebar': 'Kenar çubuğunu genişlet',
     accounts: 'Hesaplar',
+    workspaces: 'Çalışma Alanları',
     proxy: 'API Proxy',
     settings: 'Ayarlar',
   },

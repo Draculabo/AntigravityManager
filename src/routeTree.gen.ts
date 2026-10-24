@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProxyRouteImport } from './routes/proxy'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TrafficRouteImport } from './routes/traffic'
+import { Route as WorkspacesRouteImport } from './routes/workspaces'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,18 +35,25 @@ const TrafficRoute = TrafficRouteImport.update({
   path: '/traffic',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspacesRoute = WorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/proxy': typeof ProxyRoute
   '/settings': typeof SettingsRoute
   '/traffic': typeof TrafficRoute
+  '/workspaces': typeof WorkspacesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/proxy': typeof ProxyRoute
   '/settings': typeof SettingsRoute
   '/traffic': typeof TrafficRoute
+  '/workspaces': typeof WorkspacesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,14 @@ export interface FileRoutesById {
   '/proxy': typeof ProxyRoute
   '/settings': typeof SettingsRoute
   '/traffic': typeof TrafficRoute
+  '/workspaces': typeof WorkspacesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/proxy' | '/settings' | '/traffic'
+  fullPaths: '/' | '/proxy' | '/settings' | '/traffic' | '/workspaces'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/proxy' | '/settings' | '/traffic'
-  id: '__root__' | '/' | '/proxy' | '/settings' | '/traffic'
+  to: '/' | '/proxy' | '/settings' | '/traffic' | '/workspaces'
+  id: '__root__' | '/' | '/proxy' | '/settings' | '/traffic' | '/workspaces'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +76,7 @@ export interface RootRouteChildren {
   ProxyRoute: typeof ProxyRoute
   SettingsRoute: typeof SettingsRoute
   TrafficRoute: typeof TrafficRoute
+  WorkspacesRoute: typeof WorkspacesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +109,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TrafficRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workspaces': {
+      id: '/workspaces'
+      path: '/workspaces'
+      fullPath: '/workspaces'
+      preLoaderRoute: typeof WorkspacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +124,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProxyRoute: ProxyRoute,
   SettingsRoute: SettingsRoute,
   TrafficRoute: TrafficRoute,
+  WorkspacesRoute: WorkspacesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

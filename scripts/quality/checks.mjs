@@ -132,6 +132,7 @@ export const ADDITIONAL_CHECKS = {
     'Selected Electron profiling scenarios require an isolated graphical environment.',
   'test:performance-recorder-process':
     'Native Windows command-shell regression; select for recorder changes.',
+  'test:workspace': 'Workspace profile multi-instance isolation and persistence unit test suite.',
   'test:all': 'Full unit, harness and Electron rehearsal; select explicitly for its broad scope.',
 };
 

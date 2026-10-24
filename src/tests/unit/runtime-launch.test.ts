@@ -67,7 +67,7 @@ afterEach(() => {
   Object.defineProperty(process, 'platform', { value: platform, configurable: true });
 });
 
-async function settleStartup(request: Promise<void>) {
+async function settleStartup(request: Promise<unknown>) {
   await vi.advanceTimersByTimeAsync(1000);
   await request;
 }
@@ -202,7 +202,7 @@ describe('direct launch', () => {
       return [{ ...mainProcess, startTime: 1n }];
     });
     const startup = startFromContext(context);
-    const result = expect(startup).resolves.toBeUndefined();
+    const result = expect(startup).resolves.toEqual({ pid: 81234 });
     void result.catch(() => undefined);
     await vi.advanceTimersByTimeAsync(6000);
     await result;
@@ -273,7 +273,7 @@ describe('direct launch', () => {
     await settleStartup(startFromContext(mac));
     expect(mocks.spawn).toHaveBeenCalledExactlyOnceWith(
       'open',
-      ['/Custom/Antigravity IDE.app', '--args', ...mac.args],
+      ['-n', '/Custom/Antigravity IDE.app', '--args', ...mac.args],
       expect.objectContaining({ stdio: 'ignore' }),
     );
   });

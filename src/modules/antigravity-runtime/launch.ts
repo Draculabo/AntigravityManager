@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
 import path from 'path';
 import {
   resolveAntigravityAppTarget,
@@ -6,12 +6,26 @@ import {
 } from '@/shared/platform/antigravityAppTarget';
 import { logger } from '@/shared/logging/logger';
 import { AppError } from '@/shared/errors/appError';
-import { prepareLaunchContext, assertContextProcesses } from './launchContext';
-import { observeProcesses } from './processObserver';
+import {
+  prepareLaunchContext,
+  assertContextProcesses,
+  filterContextProcesses,
+} from './launchContext';
+import { observeProcesses } from '@/modules/antigravity-runtime/processObserver';
 import { runProcessOperation } from './operation';
 import { processError } from './processErrors';
 import type { LaunchContext, RuntimeProcess } from './types';
 import { usesWindowsRuntime } from './runtimePlatform';
+
+function filterTargetProcesses(
+  context: LaunchContext,
+  processes: readonly RuntimeProcess[],
+): readonly RuntimeProcess[] {
+  if (typeof filterContextProcesses === 'function') {
+    return filterContextProcesses(context, processes);
+  }
+  return processes;
+}
 
 export function launchEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env = { ...source };
@@ -55,7 +69,7 @@ async function dispatchLaunch(context: LaunchContext): Promise<void> {
     const bundle = /^(.*?\.app)(?:\/|$)/i.exec(executable)?.[1];
     if (bundle) {
       executable = 'open';
-      args = [bundle, ...(args.length ? ['--args', ...args] : [])];
+      args = ['-n', bundle, ...(args.length ? ['--args', ...args] : [])];
     }
   } else if (process.platform === 'linux' && !usesWindowsRuntime(context.target, executable)) {
     const gpu = process.env.ANTIGRAVITY_MANAGER_ENABLE_LINUX_GPU?.trim().toLowerCase();
@@ -85,8 +99,8 @@ async function dispatchLaunch(context: LaunchContext): Promise<void> {
   });
 }
 
-/** One dispatch only; a short-lived launcher cannot confirm startup. */
-export async function startFromContext(context: LaunchContext): Promise<void> {
+/** One dispatch only; a short-lived launcher cannot confirm startup. Returns confirmed PID. */
+export async function startFromContext(context: LaunchContext): Promise<{ pid: number }> {
   logger.info(`Starting Antigravity target: ${context.target}`);
   try {
     await dispatchLaunch(context);
@@ -99,11 +113,12 @@ export async function startFromContext(context: LaunchContext): Promise<void> {
     try {
       // Startup can tolerate a slow snapshot within its operation deadline. Repeated
       // status-sized probe timeouts otherwise prevent a stable client being confirmed.
-      const processes = await observeProcesses(
+      const rawProcesses = await observeProcesses(
         context.target,
         deadline - Date.now(),
         context.executablePath,
       );
+      const processes = filterTargetProcesses(context, rawProcesses);
       assertContextProcesses(context, processes);
       const now = Date.now();
       if (now >= deadline) {
@@ -119,9 +134,11 @@ export async function startFromContext(context: LaunchContext): Promise<void> {
       }
       candidates = current;
       // Update handoffs and single-instance launchers can exit just after the first snapshot.
-      if ([...candidates.values()].some((item) => now - item.since >= 1000)) {
-        logger.info(`Antigravity startup confirmed: ${context.target}`);
-        return;
+      const confirmed = [...candidates.entries()].find(([_pid, item]) => now - item.since >= 1000);
+      if (confirmed) {
+        const pid = confirmed[0];
+        logger.info(`Antigravity startup confirmed: ${context.target} (pid: ${pid})`);
+        return { pid };
       }
     } catch (error) {
       candidates.clear();

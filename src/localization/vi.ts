@@ -201,6 +201,7 @@ const vi = {
     'collapse-sidebar': 'Thu gọn thanh bên',
     'expand-sidebar': 'Mở rộng thanh bên',
     accounts: 'Tài khoản',
+    workspaces: 'Không gian làm việc',
     proxy: 'API Proxy',
     settings: 'Cài đặt',
   },

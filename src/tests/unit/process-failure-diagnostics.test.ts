@@ -50,6 +50,7 @@ describe('process failure classification', () => {
         report(event) {
           if (event.operation) {
             reports.push({
+              type: undefined,
               tags: { operation_diagnostic_schema: '1' },
               contexts: normalize(
                 { operation_diagnostic: { serialized: JSON.stringify(event.operation) } },
@@ -102,6 +103,7 @@ describe('process failure classification', () => {
       const { reporting: _reporting, ...failure } = malformed;
       expect(
         projectOperationSentryEvent({
+          type: undefined,
           tags: { operation_diagnostic_schema: '1' },
           contexts: {
             operation_diagnostic: {

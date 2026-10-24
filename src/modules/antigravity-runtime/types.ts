@@ -15,6 +15,11 @@ export interface RuntimeProcess {
   readonly cwd?: string;
 }
 
+export interface LaunchContextOptions {
+  readonly userDataDir?: string;
+  readonly projectPath?: string;
+}
+
 /** Captured before closing the app; reused by injection, profile writes and launch. */
 export interface LaunchContext {
   readonly target: GuiTarget;
@@ -23,4 +28,5 @@ export interface LaunchContext {
   readonly defaultUserDataDir: string;
   readonly pathOptions: Readonly<PathResolutionOptions>;
   readonly processes: readonly RuntimeProcess[];
+  readonly projectPath?: string;
 }

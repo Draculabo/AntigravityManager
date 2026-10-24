@@ -205,6 +205,7 @@ const ru = {
     'collapse-sidebar': 'Свернуть боковую панель',
     'expand-sidebar': 'Развернуть боковую панель',
     accounts: 'Аккаунты',
+    workspaces: 'Рабочие области',
     proxy: 'API Прокси',
     settings: 'Настройки',
   },

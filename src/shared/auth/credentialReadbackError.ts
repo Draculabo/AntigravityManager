@@ -9,11 +9,10 @@ export interface CredentialReadbackMatches {
 /** A readback failure carries equality results only, never expected or stored credentials. */
 export class CredentialReadbackError extends Error {
   readonly code = 'credential-readback-mismatch';
-  constructor(
-    message: string,
-    readonly matches: CredentialReadbackMatches,
-  ) {
+  readonly matches: CredentialReadbackMatches;
+  constructor(message: string, matches: CredentialReadbackMatches) {
     super(message);
     this.name = 'CredentialReadbackError';
+    this.matches = matches;
   }
 }

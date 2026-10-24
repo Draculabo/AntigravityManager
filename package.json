@@ -51,6 +51,7 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "test": "vitest run",
+    "test:workspace": "NODE_OPTIONS=\"--loader ./scripts/vitest-loader.mjs\" vitest run src/tests/unit/workspace-*.test.*",
     "test:agent-contracts": "node --test scripts/check-agent-contracts.test.mjs scripts/agent-document-lifecycle.test.mjs",
     "test:change-scope": "node --test scripts/change-scope.test.mjs",
     "test:import-graph": "node --test scripts/import-graph.test.mjs",

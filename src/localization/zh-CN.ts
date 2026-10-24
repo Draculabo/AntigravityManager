@@ -223,6 +223,7 @@ const zhCn = {
     'collapse-sidebar': '收起侧栏',
     'expand-sidebar': '展开侧栏',
     accounts: '账号',
+    workspaces: '工作区',
     proxy: 'API 反代',
     settings: '设置',
     traffic: '流量',

@@ -1,5 +1,19 @@
-export { prepareLaunchContext } from './launchContext';
-export type { LaunchContext } from './types';
+export { prepareLaunchContext, resolveLaunchContext } from './launchContext';
+export { canonicalPath, filesystemPath, userDataDirs } from './runtimePaths';
+export {
+  groupProcessesByUserDataDir,
+  getProcessUserDataDir,
+  observeProcesses,
+} from './processObserver';
+export { startFromContext } from './launch';
+export { stopFromContext } from './stop';
+export { runProcessOperation, getProcessOperation, reserveSwitch } from './operation';
+export type {
+  LaunchContext,
+  LaunchContextOptions,
+  RuntimeProcess,
+  ProcessOperation,
+} from './types';
 export {
   prepareClientAccountWrite,
   resolveClientAccountStorage,

@@ -247,6 +247,7 @@ const en = {
     'collapse-sidebar': 'Collapse sidebar',
     'expand-sidebar': 'Expand sidebar',
     accounts: 'Accounts',
+    workspaces: 'Workspaces',
     proxy: 'API Proxy',
     settings: 'Settings',
     traffic: 'Traffic',

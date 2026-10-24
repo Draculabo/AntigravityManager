@@ -4,6 +4,7 @@ import {
   isConfiguredTargetExecutableProcessCandidate,
   getConfiguredAntigravityExecutablePath,
   areExecutablePathsEquivalent,
+  getAppDataDir,
 } from '@/shared/platform/paths';
 import { processError } from './processErrors';
 import type { GuiTarget, RuntimeProcess } from './types';
@@ -15,6 +16,9 @@ import {
   isAntigravityWindowsInstaller,
 } from '@/shared/platform/antigravityProcessIdentity';
 import { readWslWindowsProcesses } from './windowsInterop';
+import { canonicalPath, userDataDirs, toWindowsPath, toWslPath } from './runtimePaths';
+
+export { toWindowsPath, toWslPath };
 
 class UnreadableProcessMetadata extends Error {}
 
@@ -25,18 +29,6 @@ export function getProcessProbeTimeout(
   // Cold PowerShell/CIM startup exceeds one second on some Windows/WSL hosts.
   // Callers still cap this budget to their remaining operation deadline.
   return process.platform !== 'win32' && usesWindowsRuntime(target, executablePath) ? 4500 : 1000;
-}
-
-export function toWslPath(value: string): string {
-  return value
-    .replace(/^([a-z]):[\\/]/i, (_, drive: string) => `/mnt/${drive.toLowerCase()}/`)
-    .replace(/\\/g, '/');
-}
-
-export function toWindowsPath(value: string): string {
-  return value
-    .replace(/^\/mnt\/([a-z])\//, (_, drive: string) => `${drive.toUpperCase()}:\\`)
-    .replace(/\//g, '\\');
 }
 
 /** Windows command lines follow CRT quote/backslash rules, not shell syntax. */
@@ -77,6 +69,59 @@ export function parseProcessArguments(command: string): string[] {
     args.push(value);
   }
   return args;
+}
+
+/**
+ * Extracts the single target user-data-dir from process command line arguments.
+ * Resolves relative paths against `cwd`.
+ * Throws `directory-conflict` if argument is malformed or conflicting.
+ */
+export function getProcessUserDataDir(args: readonly string[], cwd?: string): string | null;
+export function getProcessUserDataDir(proc: RuntimeProcess): string | null;
+export function getProcessUserDataDir(
+  argsOrProc: readonly string[] | RuntimeProcess,
+  cwd?: string,
+): string | null {
+  const args = 'args' in argsOrProc ? argsOrProc.args : argsOrProc;
+  const effectiveCwd = 'cwd' in argsOrProc ? argsOrProc.cwd : cwd;
+  const dirs = userDataDirs(args, effectiveCwd);
+  if (!dirs.length) {
+    return null;
+  }
+  const first = dirs[0];
+  if (dirs.some((d) => canonicalPath(d) !== canonicalPath(first))) {
+    throw processError('directory-conflict');
+  }
+  return first;
+}
+
+/**
+ * Groups observed processes by their canonical user-data-dir path.
+ * Processes without an explicit `--user-data-dir` flag are assigned to the
+ * canonical default directory (with Linux profile ownership validation).
+ */
+export function groupProcessesByUserDataDir(
+  target: GuiTarget,
+  processes: readonly RuntimeProcess[],
+  defaultDir?: string,
+): Map<string, RuntimeProcess[]> {
+  const groups = new Map<string, RuntimeProcess[]>();
+  const fallbackDir = defaultDir ?? getAppDataDir(target);
+  const canonicalFallback = canonicalPath(fallbackDir);
+
+  for (const proc of processes) {
+    const rawDir = getProcessUserDataDir(proc);
+    const key = rawDir ? canonicalPath(rawDir) : canonicalFallback;
+
+    const list = groups.get(key);
+    if (list) {
+      list.push(proc);
+    } else {
+      groups.set(key, [proc]);
+    }
+  }
+
+  return groups;
 }
 
 function matchesTarget(
@@ -214,12 +259,27 @@ async function scan(
   });
 }
 
+let processObserverOverride:
+  | ((target: GuiTarget, timeout?: number, executablePath?: string) => Promise<RuntimeProcess[]>)
+  | null = null;
+
+export function setProcessObserverOverride(
+  fn:
+    | ((target: GuiTarget, timeout?: number, executablePath?: string) => Promise<RuntimeProcess[]>)
+    | null,
+): void {
+  processObserverOverride = fn;
+}
+
 /** Bounds observation; expired native results are ignored and interop children are cancelled. */
 export async function observeProcesses(
   target: GuiTarget,
   timeout = getProcessProbeTimeout(target),
   executablePath?: string,
 ): Promise<RuntimeProcess[]> {
+  if (processObserverOverride) {
+    return processObserverOverride(target, timeout, executablePath);
+  }
   const controller = new AbortController();
   const deadline = Date.now() + timeout;
   let timer: ReturnType<typeof setTimeout> | undefined;

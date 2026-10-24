@@ -230,6 +230,7 @@ const fr = {
     'collapse-sidebar': 'Réduire la barre latérale',
     'expand-sidebar': 'Développer la barre latérale',
     accounts: 'Comptes',
+    workspaces: 'Espaces de travail',
     proxy: 'Proxy API',
     settings: 'Parametres',
     traffic: 'Trafic',

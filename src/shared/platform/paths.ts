@@ -12,7 +12,10 @@ import { z } from 'zod';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
-type PathApi = Pick<typeof path, 'dirname' | 'join' | 'normalize' | 'resolve'>;
+type PathApi = Pick<
+  typeof path,
+  'dirname' | 'join' | 'normalize' | 'resolve' | 'basename' | 'relative' | 'isAbsolute'
+>;
 
 const AntigravityManagerConfigSchema = z.object({
   antigravity_executable: z.string().nullable().optional(),
@@ -660,6 +663,42 @@ export function getProxyStateDir(options?: PathResolutionOptions): string {
 
 export function getCloudAccountsDbPath(options?: PathResolutionOptions): string {
   return getCurrentPlatformPathApi(options).join(getAgentDir(options), 'cloud_accounts.db');
+}
+
+/**
+ * Resolves the base directory where isolated workspace profiles are stored.
+ * E.g., ~/.config/AntigravityManager/profiles on Linux,
+ * %APPDATA%\AntigravityManager\profiles on Windows,
+ * ~/Library/Application Support/AntigravityManager/profiles on macOS.
+ */
+export function getProfilesBaseDir(options?: PathResolutionOptions): string {
+  const pathApi = getCurrentPlatformPathApi(options);
+  return pathApi.join(getAppDataDir(undefined, options), '..', 'AntigravityManager', 'profiles');
+}
+
+/**
+ * Resolves the dedicated user data directory for a specific workspace profile.
+ * E.g., ~/.config/AntigravityManager/profiles/<profileId> on Linux.
+ * Strictly enforces that profileId is a safe identifier and never escapes the profiles base directory.
+ */
+export function getProfileUserDataDir(profileId: string, options?: PathResolutionOptions): string {
+  const safeId = typeof profileId === 'string' ? profileId.trim() : '';
+  if (!safeId || safeId === '.' || safeId === '..' || !/^[a-zA-Z0-9_-]+$/.test(safeId)) {
+    throw new Error(
+      `Invalid workspace profile ID: "${profileId}". Profile ID must only contain alphanumeric characters, dashes, and underscores.`,
+    );
+  }
+
+  const pathApi = getCurrentPlatformPathApi(options);
+  const baseDir = pathApi.resolve(getProfilesBaseDir(options));
+  const resolved = pathApi.resolve(baseDir, safeId);
+  const relative = pathApi.relative(baseDir, resolved);
+
+  if (relative === '' || relative.startsWith('..') || pathApi.isAbsolute(relative)) {
+    throw new Error(`Invalid workspace profile ID: "${profileId}" escapes profiles directory.`);
+  }
+
+  return resolved;
 }
 
 export function getAntigravityDbPaths(
