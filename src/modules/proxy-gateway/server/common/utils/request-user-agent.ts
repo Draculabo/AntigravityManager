@@ -10,6 +10,11 @@ import { logger } from '../../../../../shared/logging/logger';
 const REMOTE_VERSION_URL = 'https://antigravity-auto-updater-974169037036.us-central1.run.app';
 const CHANGELOG_URL = 'https://antigravity.google/changelog';
 export const FALLBACK_VERSION = '2.0.3';
+/**
+ * Hub release verified to receive every quota-summary group, including Gemini 4 Argon. Google
+ * withholds newer groups from older hub versions, so this is a floor rather than a fallback.
+ */
+export const HUB_CLIENT_MIN_VERSION = '2.26.0';
 const DEFAULT_REMOTE_TIMEOUT_MS = 2500;
 const VERSION_REGEX = /\d+\.\d+\.\d+/g;
 const userAgentHttpClient = createAxiosHttpClient(axios.create());
@@ -65,6 +70,14 @@ export function buildUserAgent(version: string): string {
   return `antigravity/${version} ${getPlatformTag()}/${getArchTag()}`;
 }
 
+/**
+ * Builds the identity the Antigravity app's language server sends to Cloud Code. Google gates
+ * model-specific quota groups on this `hub` client type; the bare identity never receives them.
+ */
+export function buildHubUserAgent(version: string): string {
+  return `antigravity/hub/${version} (aidev_client; os_type=${getPlatformTag()}; arch=${getArchTag()})`;
+}
+
 function compareSemverVersions(left: string, right: string): number {
   const leftParts = left.split('.').map((part) => Number.parseInt(part, 10));
   const rightParts = right.split('.').map((part) => Number.parseInt(part, 10));
@@ -109,6 +122,14 @@ function shouldSkipRemoteVersionLookup(): boolean {
 export function resolveLocalInstalledVersion(): string | null {
   const version = getCachedAntigravityVersion()?.shortVersion;
   return version ? extractHighestSemver(version) : null;
+}
+
+/** Uses a confirmed newer local install when available and never reports below the hub floor. */
+export function resolveHubClientVersion(): string {
+  const localVersion = resolveLocalInstalledVersion();
+  return localVersion && compareSemverVersions(localVersion, HUB_CLIENT_MIN_VERSION) > 0
+    ? localVersion
+    : HUB_CLIENT_MIN_VERSION;
 }
 
 async function resolveLocalInstalledVersionAsync(): Promise<string | null> {

@@ -1,3 +1,4 @@
+import { findKey } from 'lodash-es';
 import type { CloudQuotaModelInfo } from '@/modules/cloud-account/types';
 
 const FAMILY_DISPLAY_NAMES: Record<string, string> = {
@@ -26,6 +27,12 @@ function normalizeModelId(modelId: string): string {
     .replace(/^models\//i, '')
     .trim()
     .toLowerCase();
+}
+
+/** Resolves a registered family from its exact product name, ignoring case and outer spaces. */
+export function getQuotaModelFamilyIdByDisplayName(displayName: string): string | undefined {
+  const normalized = displayName.trim().toLowerCase();
+  return findKey(FAMILY_DISPLAY_NAMES, (familyName) => familyName.toLowerCase() === normalized);
 }
 
 export function getQuotaModelFamilyId(modelId: string): string {
