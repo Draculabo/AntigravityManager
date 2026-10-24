@@ -23,6 +23,15 @@ The weekly view includes provider buckets whose `window` or `bucket_id` contains
 substituting model quota when those buckets are missing. The five-hour view retains non-weekly
 detailed buckets.
 
+Grouped quota comes from the Cloud Code quota summary. Manager requests it from the Daily host,
+then production, then sandbox, and moves to the next host after any rejection except HTTP 401.
+The summary request identifies itself as the Antigravity app's `hub` client, because Google does
+not return model-specific groups such as Gemini 4 Argon to the bare client identity; model quota
+requests keep the existing client identity. A group named exactly after one registered model family, such as
+Gemini 4 Argon on Google AI Pro, limits only that family. It is displayed like any other group
+(Gemini 4 Argon has only a weekly bucket, so it appears only in the weekly view), but scores,
+recommendations and automatic switching for models of other families ignore it.
+
 ## Automatic switching
 
 The account monitor polls quota every five minutes by default. With automatic switching enabled,
@@ -47,8 +56,9 @@ provider.
 Eligibility requires a Google account without a non-active status or forbidden quota flag, at
 least `0.999` remaining fraction, and a valid reset timestamp that passed less than six days ago.
 The selected Gemini or Claude group must be enabled. Weekly requests use `gemini-3-flash` or
-`claude-sonnet-4-6` as the representative model. Missing weekly groups and unavailable project
-context are not replaced with guessed values.
+`claude-sonnet-4-6` as the representative model. A group dedicated to one model family is warmed
+only when the representative model belongs to that family, so Gemini 4 Argon is not warmed.
+Missing weekly groups and unavailable project context are not replaced with guessed values.
 
 Warmup consumes real model quota and may use AI credits. An accepted HTTP response is recorded as
 success; it does not prove that the provider restarted a weekly timer or completed generation. The

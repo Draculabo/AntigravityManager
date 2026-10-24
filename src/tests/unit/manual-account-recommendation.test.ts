@@ -119,6 +119,40 @@ describe('manual account recommendation', () => {
     ).toBe('claude-eligible');
   });
 
+  it('ignores the dedicated Gemini 4 Argon weekly limit for Gemini Flash recommendations', () => {
+    const resetTime = '2026-09-28T10:00:00Z';
+    const accounts = [
+      createAccount('argon-exhausted', {
+        models: { 'gemini-3.8-flash-high': model(90) },
+        quotaGroups: [
+          weeklyGroup('Gemini Models', 80, resetTime),
+          weeklyGroup('Gemini 4 Argon', 0, resetTime),
+        ],
+      }),
+      createAccount('argon-full', {
+        models: { 'gemini-3.8-flash-high': model(90) },
+        quotaGroups: [
+          weeklyGroup('Gemini Models', 60, resetTime),
+          weeklyGroup('Gemini 4 Argon', 100, resetTime),
+        ],
+      }),
+    ];
+
+    expect(
+      getManualAccountRecommendation(accounts, {
+        sortKey: 'quota-flash',
+        modelVisibility: {},
+        now: NOW,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        accountId: 'argon-exhausted',
+        context: 'flash',
+        weeklyPercentage: 80,
+      }),
+    );
+  });
+
   it('does not recommend accounts with stale, missing, or invalid weekly data', () => {
     const accounts = [
       createAccount('missing-weekly', { models: { 'gemini-3-flash': model(80) } }),
