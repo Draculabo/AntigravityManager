@@ -47,6 +47,8 @@
     "check:ci": "node scripts/quality/run.mjs",
     "check:quality": "node scripts/quality/contracts.mjs",
     "test:quality": "node --test scripts/quality/contracts.test.mjs scripts/quality/runner.test.mjs",
+    "review:eval": "node scripts/review-eval/run.mjs",
+    "test:review-eval": "node --test scripts/review-eval/run.test.mjs",
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:write": "prettier --write .",

@@ -121,17 +121,42 @@ Push the contribution branch to the fork and open a PR against the agreed target
 
 - The problem, related issue when applicable, and resulting behavior.
 - Screenshots or a short recording for visible UI changes, with private information removed.
-- Commands or manual checks actually run, their results and the relevant platform.
-- Checks not run, known limitations and compatibility or recovery information when applicable.
+- The tested revision/artifact, environment, commands or manual checks, results and sanitized evidence.
+- Risk, affected consumers/platforms, persistent or external side effects and recovery evidence.
+- Checks not run, known limitations and what the available evidence cannot establish.
 
 Documentation-only changes need documentation evidence, not an unrelated application test run.
 For runtime changes, distinguish a focused local pass from full CI or platform acceptance.
+
+### Risk and recovery
+
+Authors propose a risk level; reviewers confirm it from changed behavior and consumers, using
+sensitive paths as a prompt to investigate rather than a substitute for that assessment.
+
+| Risk   | Typical behavior                                                                                       | Review and evidence                                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Low    | Copy or local pure transformations without external side effects                                       | Owning checks and semantic review.                                                               |
+| Medium | Business policies, protocol conversion, asynchronous lifecycle or shared contracts                     | Affected consumers and failure paths, with maintainer confirmation.                              |
+| High   | Credential/account writes, durable formats, updates/installers or CI/release execution and permissions | Relevant native/platform evidence, recovery evidence and explicit human maintainer confirmation. |
+
+An unverified high-risk path remains a stated evidence gap for the maintainer to resolve. Automated
+review does not supply required human confirmation or authorize merging.
+
+Describe whether a code revert restores behavior and whether local state, data or external effects
+also need recovery. Record compatibility and downgrade limits. Distinguish executed recovery from
+an untested procedure; use the existing upgrade guide rules for incompatible changes. Small changes
+can give a short explanation, including why no state recovery is needed.
 
 ## Review and follow-up
 
 Respond to review feedback with the resulting change or an explanation of the trade-off.
 After updates, rerun checks affected by the new diff and update the PR's validation section.
 Keep failed, pending and unverified checks distinct from passing results.
+
+The [review skill](.agents/skills/agm-code-review/SKILL.md#review-rounds-and-resolution) owns review
+rounds, finding IDs and escalation. Keep its compact record in the task report or authorized PR
+discussion rather than adding a repository file per review. Maintainers resolve disputed findings
+and explicitly accept limitations; reaching a round limit never clears an unresolved defect.
 
 If the scope expands, update the PR title and description so reviewers can assess the final
 change. Ask questions in the PR or [Discussions](https://github.com/Draculabo/AntigravityManager/discussions)

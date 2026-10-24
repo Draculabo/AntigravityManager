@@ -32,6 +32,10 @@ Use one entry per distinct gap, with a lowercase hyphenated slug and every field
 
 Keep evidence sanitized. Do not include credentials, private account data, authorization headers or raw private logs. An unconfirmed cause is not eligible for promotion.
 
+Confirmed historical defects may also seed the manually selected [review evaluation](../docs/testing/review-evaluation.md)
+when they add a useful causal case and repaired control. Evaluating a case is separate from promoting
+a prevention rule; the occurrence threshold and canonical-owner requirements below still apply.
+
 ## Promotion
 
 Promote a candidate after three independent incidents show the same prevention gap. A maintainer may promote a single independently verified incident earlier when it presents a material safety, security or data-integrity risk; record the reason in the owning Agent Note.

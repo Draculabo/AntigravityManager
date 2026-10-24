@@ -13,6 +13,37 @@ Review the exact change for defects that mechanical checks cannot establish. For
 2. For a pull request, verify the actual base and head from its metadata before calculating the changed paths and diff. Include any relevant uncommitted work separately; never guess either ref.
 3. Read the changed code, affected consumers and the nearest `AGENTS.md`. Read the architecture, security or testing reference when the changed boundary needs it.
 4. If the PR base, head or merge base changed after earlier review, recalculate the diff and review the newly affected paths. Preserve earlier findings only when their cited code and scope still match.
+5. Confirm the author's [risk and recovery assessment](../../../CONTRIBUTING.md#risk-and-recovery) from the actual behavior and consumers. Identify missing evidence and human confirmation separately from code defects.
+
+## Review rounds and resolution
+
+1. **First round:** Review the complete requested diff and relevant consumers, contracts and failure paths. Gather all supported findings in that pass; there is no finding quota.
+2. **Follow-up rounds:** Review the changes since the previously reviewed head, verify open findings and trace consumers affected by the fixes. Expand scope for changed contracts, broader behavior or base/merge-base changes, and record why. Reuse evidence only for unchanged behavior and inputs, following the validation skill.
+3. **After the third substantive round:** If blocking issues remain, stop the automatic edit/review cycle and report unresolved IDs, attempted fixes, conflicting constraints and whether to repair locally, redesign or split the change. A maintainer chooses continuation; the limit is not approval. A round is a completed review of a changed snapshot, not a clarification or repeated review of identical input. Stop earlier when findings are resolved and evidence gaps are clearly reported.
+
+Give each finding a stable ID such as `R1`. Keep its trigger, precise file/line, traceable behavior,
+impact and evidence together. State the required behavior rather than prescribing an incidental
+implementation. Reopen a resolved ID only with new evidence or a regression, explaining the reason;
+report the full affected scope of a defect class together instead of repeating individual instances.
+
+Track each ID as **open**, **fixed** (revision and supporting evidence), **not a defect** (contract or
+counterevidence), or **accepted limitation** (explicit human maintainer decision, impact and reason).
+An agent cannot accept a limitation on the maintainer's behalf. Label pre-existing defects and
+explain whether they affect this change's decision. Newly discovered serious security or data
+integrity defects still require handling regardless of the round or original scope. Agreement from
+another model is supporting input, not proof.
+
+Keep this compact record in the task report or an authorized PR discussion; do not create a tracked
+file per review or publish comments without authorization:
+
+```plaintext
+Reviewed base/head and worktree scope:
+Round and scope changes:
+Open findings:
+Resolved IDs, decisions and evidence:
+Validation gaps and required human confirmation:
+Conclusion:
+```
 
 ## Review the behavior
 
@@ -34,3 +65,6 @@ Review the exact change for defects that mechanical checks cannot establish. For
 Report actionable defects first, ordered by impact. Each finding includes a precise file and line, the affected behavior, impact and supporting evidence from the diff or execution path. Separate blocking findings from non-blocking suggestions. Omit style preferences, speculative risks and issues already established by passing mechanical checks.
 
 If there are no findings, say so and identify material behavior the review could not verify. A review does not replace executed validation; report validation evidence and unverified environments separately.
+
+When changing this review policy, prompts or reviewer configuration, use the bounded historical
+[review evaluation](../../../docs/testing/review-evaluation.md) and report its coverage limits.

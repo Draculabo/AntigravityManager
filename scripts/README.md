@@ -25,6 +25,7 @@ owns the change-to-evidence matrix; this guide identifies existing tools and the
 | `acceptance/fixtures/`    | Fixed media inputs; runtime-specific fixture constants stay with their runtime suite.          |
 | `development/`            | Development-server connection regression checks.                                               |
 | `release/`                | Release-note generation, source metadata and controlled publication tests.                     |
+| `review-eval/`            | Manually prepared historical source audits, evaluator rubrics and adjudicated reports.          |
 
 Existing governance, performance and release utilities remain at the root. pnpm commands are defined
 in [package.json](../package.json); use their names rather than relying on a script's filesystem path.
@@ -77,6 +78,12 @@ the registry description and their owning procedure; the executable inventory av
 the command list here. Acceptance scripts remain owned by the dispatcher below.
 
 ## Unified acceptance entry
+
+Historical reviewer evaluation uses `pnpm run review:eval prepare` and `pnpm run review:eval score`.
+Follow the [evaluation procedure](../docs/testing/review-evaluation.md) for local-history prerequisites,
+source isolation, human adjudication and evidence limits. Preparation writes a new directory outside
+the repository; scoring is read-only. Neither command invokes a model or a provider.
+`pnpm run test:review-eval` exercises the harness and historical probes and is manually selected.
 
 `pnpm run test:acceptance --help` lists the available suites. Choose a suite and check, followed by
 the existing check arguments; the dispatcher forwards them unchanged and starts only that check.
