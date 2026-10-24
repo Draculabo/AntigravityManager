@@ -408,9 +408,9 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
         }),
       })
       .mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        text: vi.fn().mockResolvedValue('INVALID_ARGUMENT'),
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ groups: [] }),
       });
 
     mockAxiosRequests(fetchMock);
@@ -497,6 +497,8 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     } as any);
 
     const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+    const { FALLBACK_VERSION, buildUserAgent, resolveLocalInstalledVersion } =
+      await import('../../modules/proxy-gateway/server/common/utils/request-user-agent');
     vi.spyOn(GoogleAPIService, 'fetchProjectContext').mockResolvedValue({
       projectId: 'project-1',
       subscriptionTier: 'pro',
@@ -519,8 +521,137 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
         },
       ],
     });
-    expect(fetchMock.mock.calls[1]?.[0]).toContain('retrieveUserQuotaSummary');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+    );
     expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ project: 'project-1' }));
+    // Only the summary adopts the hub identity; model quota keeps the existing client identity.
+    expect(fetchMock.mock.calls[0]?.[1]?.headers?.['User-Agent']).toBe(
+      buildUserAgent(resolveLocalInstalledVersion() ?? FALLBACK_VERSION),
+    );
+    expect(fetchMock.mock.calls[1]?.[1]?.headers?.['User-Agent']).toMatch(
+      /^antigravity\/hub\/2\.26\.0 \(aidev_client; os_type=(windows|darwin|linux); arch=[^)]+\)$/,
+    );
+  });
+
+  it('moves to the next summary host after it rejects the request with and without project', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          models: {
+            'gemini-3.8-flash-high': {
+              quotaInfo: { remainingFraction: 0.9, resetTime: '2026-10-24T12:00:00Z' },
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 403 })
+      .mockResolvedValueOnce({ ok: false, status: 403 })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          groups: [
+            {
+              displayName: 'Gemini 4 Argon',
+              buckets: [
+                {
+                  bucketId: 'gemini-argon-wtu-weekly',
+                  window: 'weekly',
+                  remainingFraction: 0.42,
+                  resetTime: '2026-10-30T06:50:31Z',
+                  displayName: 'Gemini 4 Argon Weekly Limit',
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+    mockAxiosRequests(fetchMock);
+
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue({
+      proxy: { upstream_proxy: { enabled: false } },
+    } as any);
+
+    const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+    vi.spyOn(GoogleAPIService, 'fetchProjectContext').mockResolvedValue({
+      projectId: 'project-1',
+      subscriptionTier: 'pro',
+    });
+
+    const quota = await GoogleAPIService.fetchQuota('access-token');
+
+    expect(quota.quota_groups).toEqual([
+      {
+        display_name: 'Gemini 4 Argon',
+        description: undefined,
+        buckets: [
+          {
+            bucket_id: 'gemini-argon-wtu-weekly',
+            window: 'weekly',
+            remaining_fraction: 0.42,
+            reset_time: '2026-10-30T06:50:31Z',
+            display_name: 'Gemini 4 Argon Weekly Limit',
+            description: undefined,
+          },
+        ],
+      },
+    ]);
+    expect(fetchMock.mock.calls.slice(1).map(([url, options]) => [url, options?.body])).toEqual([
+      [
+        'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+        JSON.stringify({ project: 'project-1' }),
+      ],
+      [
+        'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+        JSON.stringify({}),
+      ],
+      [
+        'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+        JSON.stringify({ project: 'project-1' }),
+      ],
+    ]);
+  });
+
+  it('stops the grouped quota summary lookup when the credential is rejected', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          models: {
+            'gemini-3-flash': {
+              quotaInfo: { remainingFraction: 0.7, resetTime: '2026-05-05T00:00:00Z' },
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 401 });
+
+    mockAxiosRequests(fetchMock);
+
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    vi.spyOn(ConfigManager, 'loadConfig').mockReturnValue({
+      proxy: { upstream_proxy: { enabled: false } },
+    } as any);
+
+    const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+    vi.spyOn(GoogleAPIService, 'fetchProjectContext').mockResolvedValue({
+      projectId: 'project-1',
+      subscriptionTier: 'pro',
+    });
+
+    const quota = await GoogleAPIService.fetchQuota('access-token');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(quota.quota_groups).toBeUndefined();
+    expect(quota.models).toMatchObject({ 'gemini-3-flash': { percentage: 70 } });
   });
 
   it('retries grouped quota summary on the same endpoint without project after project 403', async () => {
@@ -588,7 +719,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({}));
   });
 
-  it('keeps model quota results when grouped quota summary fails', async () => {
+  it('keeps model quota results when grouped quota summary fails on every host', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -605,7 +736,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
           },
         }),
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         ok: false,
         status: 400,
         text: vi.fn().mockResolvedValue('INVALID_ARGUMENT'),
@@ -628,7 +759,9 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
       subscriptionTier: 'pro',
     });
 
-    await expect(GoogleAPIService.fetchQuota('access-token')).resolves.toMatchObject({
+    const quota = await GoogleAPIService.fetchQuota('access-token');
+
+    expect(quota).toMatchObject({
       models: {
         'gemini-3-flash': {
           percentage: 65,
@@ -636,6 +769,12 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
         },
       },
     });
+    expect(quota.quota_groups).toBeUndefined();
+    expect(fetchMock.mock.calls.slice(1).map(([url]) => url)).toEqual([
+      'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+      'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+      'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
+    ]);
   });
 
   it('keeps forbidden behavior when quota still returns 403 without project', async () => {
@@ -802,9 +941,9 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
         }),
       })
       .mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        text: vi.fn().mockResolvedValue('INVALID_ARGUMENT'),
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ groups: [] }),
       });
 
     mockAxiosRequests(fetchMock);

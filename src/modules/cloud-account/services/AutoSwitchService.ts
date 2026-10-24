@@ -12,8 +12,10 @@ import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarge
 import {
   applyQuotaLowerBound,
   collectQuotaGroupBucketPercentages,
+  getDedicatedQuotaGroupFamilyId,
   getMinimumQuotaPercentage,
 } from '@/modules/cloud-account/utils/quota-groups';
+import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 
 interface AccountSelectionScore {
   priorityScore: number | null;
@@ -299,6 +301,13 @@ export class AutoSwitchService {
 
     if (depletedGroups.length > 0) {
       const anyAffected = depletedGroups.some((group) => {
+        const dedicatedFamilyId = getDedicatedQuotaGroupFamilyId(group);
+        if (dedicatedFamilyId !== undefined) {
+          return enabledModels.some(
+            ([modelId]) => getQuotaModelFamilyId(modelId) === dedicatedFamilyId,
+          );
+        }
+
         const groupText = [group.display_name, group.description]
           .filter(Boolean)
           .join(' ')

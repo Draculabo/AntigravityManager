@@ -145,6 +145,35 @@ describe('weekly warmup candidate selection', () => {
     expect(candidates[0].historyKey).not.toContain('example.com');
   });
 
+  it('warms a dedicated model-family group only when the representative model belongs to it', () => {
+    const account = makeAccount('pro-account', 'Gemini Models', 'gemini-weekly');
+    const dedicatedGroup = (displayName: string, bucketId: string) => ({
+      display_name: displayName,
+      buckets: [
+        {
+          bucket_id: bucketId,
+          window: 'weekly',
+          remaining_fraction: 1,
+          reset_time: RESET_TIME,
+        },
+      ],
+    });
+    account.quota!.quota_groups!.push(
+      dedicatedGroup('Gemini 4 Argon', 'gemini-argon-wtu-weekly'),
+      dedicatedGroup('Claude Opus 4.6', 'claude-opus-weekly'),
+      dedicatedGroup('Claude Sonnet 4.6', 'claude-sonnet-weekly'),
+    );
+
+    expect(
+      selectWeeklyWarmupCandidates([account], CONFIG, emptyHistory, RESET_TIMESTAMP).map(
+        ({ bucketId, group, model }) => ({ bucketId, group, model }),
+      ),
+    ).toEqual([
+      { bucketId: 'gemini-weekly', group: 'gemini', model: 'gemini-3-flash' },
+      { bucketId: 'claude-sonnet-weekly', group: 'claude', model: 'claude-sonnet-4-6' },
+    ]);
+  });
+
   it('respects the enabled group list, account status, quota threshold, and existing history', () => {
     const claude = makeAccount('claude-account', 'Claude Models', 'claude-weekly');
     const gemini = makeAccount('gemini-account', 'Gemini Models', 'gemini-weekly');

@@ -3,7 +3,11 @@ import { z } from 'zod';
 
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { selectWeeklyQuotaItems } from '@/modules/cloud-account/utils/quota-groups';
+import {
+  getDedicatedQuotaGroupFamilyId,
+  selectWeeklyQuotaItems,
+} from '@/modules/cloud-account/utils/quota-groups';
+import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 import { logger } from '@/shared/logging/logger';
 import { GoogleAPIService } from './GoogleAPIService';
 import { CloudAccountRepo } from '../persistence/cloudHandler';
@@ -53,6 +57,11 @@ function parseResetTimestamp(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const REPRESENTATIVE_MODELS: Record<WeeklyWarmupGroup, WeeklyWarmupRequest['model']> = {
+  claude: 'claude-sonnet-4-6',
+  gemini: 'gemini-3-flash',
+};
+
 function classifyGroup(groupName: string, bucketId: string): WeeklyWarmupGroup {
   const normalized = `${groupName} ${bucketId}`.toLowerCase();
   return normalized.includes('claude') || normalized.includes('3p') ? 'claude' : 'gemini';
@@ -88,7 +97,17 @@ export function selectWeeklyWarmupCandidates(
       return [];
     }
 
-    return selectWeeklyQuotaItems(account.quota?.quota_groups).flatMap((item) => {
+    // A representative request consumes a group dedicated to one model family only when that
+    // family is its own, so groups such as Gemini 4 Argon are never warmed.
+    const warmableGroups = account.quota?.quota_groups?.filter((group) => {
+      const familyId = getDedicatedQuotaGroupFamilyId(group);
+      return (
+        familyId === undefined ||
+        familyId ===
+          getQuotaModelFamilyId(REPRESENTATIVE_MODELS[classifyGroup(group.display_name, '')])
+      );
+    });
+    return selectWeeklyQuotaItems(warmableGroups).flatMap((item) => {
       const resetTimestamp = parseResetTimestamp(item.resetTime);
       if (
         item.bucket.remaining_fraction < 0.999 ||
@@ -116,7 +135,7 @@ export function selectWeeklyWarmupCandidates(
           bucketId: item.bucket.bucket_id,
           group,
           historyKey,
-          model: group === 'claude' ? 'claude-sonnet-4-6' : 'gemini-3-flash',
+          model: REPRESENTATIVE_MODELS[group],
           resetTimestamp,
         },
       ];

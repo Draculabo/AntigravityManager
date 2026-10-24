@@ -75,6 +75,43 @@ function quotaWithClaudeGroup(modelPercentage: number, groupFraction: number): C
   };
 }
 
+function quotaWithArgonGroup(
+  models: CloudQuotaData['models'],
+  geminiWeeklyFraction: number,
+  argonWeeklyFraction: number,
+): CloudQuotaData {
+  return {
+    models,
+    quota_groups: [
+      {
+        display_name: 'Gemini Models',
+        description: 'Models within this group: Gemini Flash, Gemini Pro',
+        buckets: [
+          {
+            bucket_id: 'gemini-weekly',
+            window: 'weekly',
+            remaining_fraction: geminiWeeklyFraction,
+            reset_time: '',
+          },
+        ],
+      },
+      {
+        display_name: 'Gemini 4 Argon',
+        description:
+          'For paid Pro plans, Argon quota is separate. Higher Argon quota (included as part of the larger Gemini quota bucket) is available on Ultra plans.',
+        buckets: [
+          {
+            bucket_id: 'gemini-argon-wtu-weekly',
+            window: 'weekly',
+            remaining_fraction: argonWeeklyFraction,
+            reset_time: '',
+          },
+        ],
+      },
+    ],
+  };
+}
+
 describe('AutoSwitchService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -572,6 +609,66 @@ describe('AutoSwitchService', () => {
 
     await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
       id: 'first',
+    });
+  });
+
+  it('applies a depleted Gemini 4 Argon group only to enabled Argon models', async () => {
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    const flashOnly = createAccount(
+      'flash-only',
+      quotaWithArgonGroup({ 'gemini-3.8-flash-high': { percentage: 90, resetTime: '' } }, 0.9, 0),
+    );
+    const withArgonModel = createAccount(
+      'with-argon-model',
+      quotaWithArgonGroup(
+        {
+          'gemini-3.8-flash-high': { percentage: 90, resetTime: '' },
+          'models/gemini-4-argon-high': { percentage: 80, resetTime: '' },
+        },
+        0.9,
+        0,
+      ),
+    );
+
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({});
+    const argonEnabled = {
+      flashOnly: AutoSwitchService.isAccountDepleted(flashOnly),
+      withArgonModel: AutoSwitchService.isAccountDepleted(withArgonModel),
+    };
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({
+      'gemini-4-argon-high': { enabled: false, priority: false },
+    });
+    const argonDisabled = AutoSwitchService.isAccountDepleted(withArgonModel);
+
+    expect({ argonEnabled, argonDisabled }).toEqual({
+      argonEnabled: { flashOnly: false, withArgonModel: true },
+      argonDisabled: false,
+    });
+  });
+
+  it('does not let a dedicated Gemini 4 Argon group lower other Gemini cohort scores', async () => {
+    const { CloudAccountRepo } = await import('@/modules/cloud-account/persistence/cloudHandler');
+    const { CloudAccountSettingsStore } =
+      await import('@/modules/cloud-account/persistence/cloud-account-settings-store');
+    const { AutoSwitchService } =
+      await import('@/modules/cloud-account/services/AutoSwitchService');
+
+    const flash = (percentage: number) => ({
+      'gemini-3.8-flash-high': { percentage, resetTime: '' },
+    });
+    vi.mocked(CloudAccountSettingsStore.getSetting).mockReturnValue({});
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      createAccount('current', quotaWithArgonGroup(flash(50), 0.5, 1)),
+      createAccount('flash-high-argon-exhausted', quotaWithArgonGroup(flash(90), 0.9, 0)),
+      createAccount('flash-medium-argon-full', quotaWithArgonGroup(flash(60), 0.6, 1)),
+    ]);
+
+    await expect(AutoSwitchService.findBestAccount('current')).resolves.toMatchObject({
+      id: 'flash-high-argon-exhausted',
     });
   });
 });
