@@ -158,6 +158,10 @@ const config: ForgeConfig = {
   // Standalone Node builds can replace a binary while Electron rebuild metadata stays cached.
   rebuildConfig: { force: true },
   hooks: {
+    generateAssets: async () => {
+      const { ensureBetterSqliteElectron } = await import('./scripts/rebuild-better-sqlite3.mjs');
+      ensureBetterSqliteElectron();
+    },
     prePackage: async (_config, platform, arch) => {
       const pnpmCli = process.env.npm_execpath;
       if (!pnpmCli || !process.env.npm_config_user_agent?.startsWith('pnpm/10.')) {
