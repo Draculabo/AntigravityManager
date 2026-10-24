@@ -21,6 +21,8 @@ import {
 } from '@/modules/workspace/types';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 
+import { dialog } from 'electron';
+
 // Un-mock better-sqlite3 for genuine SQLite persistence
 vi.mock('better-sqlite3', async () => {
   const { createRequire } = await import('node:module');
@@ -124,6 +126,10 @@ describe('Workspace Profile Router IPC (R1) - Genuine Integration', () => {
 
     const router = createWorkspaceRouter(service);
     client = createRouterClient(router);
+
+    vi.spyOn(dialog, 'showOpenDialog').mockImplementation((...args) =>
+      dialogMocks.showOpenDialog(...args),
+    );
   });
 
   afterEach(() => {

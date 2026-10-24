@@ -456,6 +456,9 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
     client = createRouterClient(router);
 
     mocks.showOpenDialog.mockReset();
+    vi.spyOn(dialog, 'showOpenDialog').mockImplementation((...args) =>
+      mocks.showOpenDialog(...args),
+    );
   });
 
   afterEach(() => {

@@ -163,11 +163,17 @@ const config: ForgeConfig = {
       if (!pnpmCli || !process.env.npm_config_user_agent?.startsWith('pnpm/10.')) {
         throw new Error('Package through the owning pnpm script');
       }
-      await promisify(execFile)(
-        process.execPath,
-        [pnpmCli, 'run', 'prepare:standalone', platform, arch],
-        { cwd: process.cwd(), windowsHide: true, timeout: 900_000, maxBuffer: 16_384 },
-      );
+      const isJs = pnpmCli.endsWith('.js') || pnpmCli.endsWith('.cjs') || pnpmCli.endsWith('.mjs');
+      const cmd = isJs ? process.execPath : pnpmCli;
+      const args = isJs
+        ? [pnpmCli, 'run', 'prepare:standalone', platform, arch]
+        : ['run', 'prepare:standalone', platform, arch];
+      await promisify(execFile)(cmd, args, {
+        cwd: process.cwd(),
+        windowsHide: true,
+        timeout: 900_000,
+        maxBuffer: 16_384,
+      });
       _config.packagerConfig ??= {};
       _config.packagerConfig.extraResource = [
         'src/assets',
