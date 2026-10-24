@@ -224,6 +224,10 @@ const vi = {
     lastUsed: 'Đã dùng {{time}}',
     switchToAntigravity: 'Chuyển sang Antigravity',
     switchToIde: 'Chuyển sang Antigravity IDE',
+    launchIsolatedIde: 'Khởi chạy IDE cô lập',
+    launchIsolatedIdeSuccess: 'Đã khởi chạy IDE cô lập',
+    launchIsolatedIdeSuccessDesc: 'Đã khởi chạy phiên bản IDE cô lập cho {{name}}',
+    launchIsolatedIdeError: 'Khởi chạy thất bại',
   },
   home: {
     title: 'Tài khoản',

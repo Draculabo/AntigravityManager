@@ -7,6 +7,7 @@ import {
   GetWorkspaceProfileInputSchema,
   LaunchWorkspaceInputSchema,
   LaunchWorkspaceResultSchema,
+  LaunchForAccountInputSchema,
   SelectDirectoryInputSchema,
   StopWorkspaceInputSchema,
   UpdateWorkspaceProfileInputSchema,
@@ -122,6 +123,17 @@ export function createWorkspaceRouter(
       .handler(async ({ input }) => {
         try {
           return await service.launch(input.id);
+        } catch (error) {
+          throw toWorkspaceORPCError(error);
+        }
+      }),
+
+    launchForAccount: os
+      .input(LaunchForAccountInputSchema)
+      .output(LaunchWorkspaceResultSchema)
+      .handler(async ({ input }) => {
+        try {
+          return await service.launchForAccount(input.accountId);
         } catch (error) {
           throw toWorkspaceORPCError(error);
         }

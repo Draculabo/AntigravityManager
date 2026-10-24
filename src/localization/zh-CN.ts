@@ -380,6 +380,10 @@ const zhCn = {
     lastUsed: '上次使用 {{time}}',
     switchToAntigravity: '切换到 Antigravity',
     switchToIde: '切换到 Antigravity IDE',
+    launchIsolatedIde: '启动独立 IDE',
+    launchIsolatedIdeSuccess: '已启动独立 IDE',
+    launchIsolatedIdeSuccessDesc: '已为 {{name}} 启动独立 IDE 实例',
+    launchIsolatedIdeError: '启动失败',
   },
   home: {
     title: '账号列表',

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { logger } from '@/shared/logging/logger';
 import { projectCloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import type { CloudAccount } from '@/modules/cloud-account/types';
@@ -14,6 +15,7 @@ import {
   type WorkspaceProfileStatus,
   type WorkspaceProfileView,
   WorkspaceNotFoundError,
+  AccountNotFoundError,
   WorkspaceValidationError,
   ActiveWorkspaceDeletionError,
   WorkspaceDirectoryError,
@@ -45,6 +47,24 @@ export interface WorkspaceProfileServiceDependencies {
 }
 
 export function createWorkspaceProfileService(deps: WorkspaceProfileServiceDependencies) {
+  const launchProfile = async (id: string): Promise<{ pid: number }> => {
+    const profile = await deps.profileRepo.getProfile(id);
+    if (!profile) {
+      throw new WorkspaceNotFoundError(id);
+    }
+
+    let pid = 0;
+    if (deps.lifecycleDelegate) {
+      const result = await deps.lifecycleDelegate.launch(id);
+      pid = result.pid;
+    }
+
+    await deps.profileRepo.updateLastLaunched(id);
+    return { pid };
+  };
+
+  const inFlightLaunchesByAccount = new Map<string, Promise<{ pid: number }>>();
+
   return {
     /**
      * Lists all workspace profiles enriched with bound Google account views and running status.
@@ -246,19 +266,79 @@ export function createWorkspaceProfileService(deps: WorkspaceProfileServiceDepen
      * Launches the workspace profile via lifecycle delegate and records launch timestamp.
      */
     async launch(id: string): Promise<{ pid: number }> {
-      const profile = await deps.profileRepo.getProfile(id);
-      if (!profile) {
-        throw new WorkspaceNotFoundError(id);
+      return await launchProfile(id);
+    },
+
+    /**
+     * Finds or creates an isolated workspace profile for the given Google account and launches it.
+     * Injects credentials and spawns the isolated IDE via WorkspaceLifecycleService.
+     */
+    async launchForAccount(accountId: string): Promise<{ pid: number }> {
+      const normalizedAccountId = (accountId ?? '').trim();
+      if (!normalizedAccountId) {
+        throw new AccountNotFoundError(accountId);
       }
 
-      let pid = 0;
-      if (deps.lifecycleDelegate) {
-        const result = await deps.lifecycleDelegate.launch(id);
-        pid = result.pid;
+      const existingLaunch = inFlightLaunchesByAccount.get(normalizedAccountId);
+      if (existingLaunch) {
+        return await existingLaunch;
       }
 
-      await deps.profileRepo.updateLastLaunched(id);
-      return { pid };
+      const executeLaunch = async (): Promise<{ pid: number }> => {
+        // 1. Verify bound Google account exists
+        const account = await deps.cloudAccountRepo.getAccount(normalizedAccountId);
+        if (!account) {
+          throw new AccountNotFoundError(normalizedAccountId);
+        }
+
+        // 2. Find existing profiles bound to this account
+        const existingProfiles = await deps.profileRepo.getProfilesByAccountId(account.id);
+        let targetProfile: WorkspaceProfile;
+
+        if (existingProfiles.length > 0) {
+          // Prioritize most recently launched, then most recently created
+          const sorted = [...existingProfiles].sort((a, b) => {
+            const aTime = a.lastLaunchedAt ?? a.createdAt;
+            const bTime = b.lastLaunchedAt ?? b.createdAt;
+            return bTime - aTime;
+          });
+          targetProfile = sorted[0];
+        } else {
+          // Sanitize name: remove all control characters (\x00-\x1F, \x7F), truncate safely to <= 100 chars without severing surrogate pairs
+          const rawString = account.name?.trim() || account.email?.trim() || 'Workspace';
+          const rawName = rawString
+            .split('')
+            .map((char) => {
+              const code = char.charCodeAt(0);
+              return (code >= 0 && code <= 31) || code === 127 ? ' ' : char;
+            })
+            .join('')
+            .trim();
+          let truncated = rawName.slice(0, 100);
+          if (/[\uD800-\uDBFF]$/.test(truncated)) {
+            truncated = truncated.slice(0, -1);
+          }
+          const defaultName = truncated.trim() || 'Workspace';
+          const home = os.homedir();
+          const defaultProjectPath =
+            home && path.isAbsolute(home) && fs.existsSync(home) ? home : path.resolve('.');
+          targetProfile = await deps.profileRepo.createProfile({
+            name: defaultName,
+            accountId: account.id,
+            projectPath: defaultProjectPath,
+          });
+        }
+
+        return await launchProfile(targetProfile.id);
+      };
+
+      const launchPromise = executeLaunch();
+      inFlightLaunchesByAccount.set(normalizedAccountId, launchPromise);
+      try {
+        return await launchPromise;
+      } finally {
+        inFlightLaunchesByAccount.delete(normalizedAccountId);
+      }
     },
 
     /**

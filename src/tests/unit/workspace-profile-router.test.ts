@@ -379,6 +379,253 @@ describe('Workspace Profile Router IPC (R1) - Genuine Integration', () => {
   });
 
   // =========================================================================
+  // 5b. Router Procedure: launchForAccount
+  // =========================================================================
+  describe('workspaceRouter.launchForAccount', () => {
+    it('automatically provisions a default workspace profile and launches it when none exists', async () => {
+      const initialProfiles = await WorkspaceProfileRepo.getProfilesByAccountId(seedAccount.id);
+      expect(initialProfiles).toHaveLength(0);
+
+      const result = await client.launchForAccount({ accountId: seedAccount.id });
+      expect(result).toBeDefined();
+      expect(result.pid).toBe(54321);
+
+      const createdProfiles = await WorkspaceProfileRepo.getProfilesByAccountId(seedAccount.id);
+      expect(createdProfiles).toHaveLength(1);
+      const profile = createdProfiles[0];
+      expect(profile.name).toBe(seedAccount.name);
+      expect(profile.accountId).toBe(seedAccount.id);
+      expect(path.isAbsolute(profile.projectPath)).toBe(true);
+      expect(fs.existsSync(profile.userDataDir)).toBe(true);
+      expect(lifecycleDelegate.launch).toHaveBeenCalledWith(profile.id);
+    });
+
+    it('launches existing workspace profile without creating a duplicate profile', async () => {
+      const projectDir = path.join(tempDir, 'existing-account-profile');
+      fs.mkdirSync(projectDir, { recursive: true });
+
+      const existing = await client.create({
+        name: 'Existing Account Profile',
+        accountId: seedAccount.id,
+        projectPath: projectDir,
+      });
+
+      const initialCount = (await WorkspaceProfileRepo.getProfilesByAccountId(seedAccount.id))
+        .length;
+
+      const result = await client.launchForAccount({ accountId: seedAccount.id });
+      expect(result).toBeDefined();
+      expect(result.pid).toBe(54321);
+      expect(lifecycleDelegate.launch).toHaveBeenCalledWith(existing.id);
+
+      const finalCount = (await WorkspaceProfileRepo.getProfilesByAccountId(seedAccount.id)).length;
+      expect(finalCount).toBe(initialCount);
+    });
+
+    it('throws BAD_REQUEST when bound account does not exist in pool', async () => {
+      await expect(
+        client.launchForAccount({ accountId: 'non-existent-account-id' }),
+      ).rejects.toMatchObject({
+        code: 'BAD_REQUEST',
+      });
+    });
+
+    it('throws BAD_REQUEST on validation failure with empty accountId', async () => {
+      await expect(client.launchForAccount({ accountId: '' })).rejects.toMatchObject({
+        code: 'BAD_REQUEST',
+      });
+    });
+
+    it('prioritizes most recently launched profile when multiple profiles exist for the account', async () => {
+      const dir1 = path.join(tempDir, 'account-profile-older');
+      const dir2 = path.join(tempDir, 'account-profile-newer');
+      fs.mkdirSync(dir1, { recursive: true });
+      fs.mkdirSync(dir2, { recursive: true });
+
+      await client.create({
+        name: 'Older Profile',
+        accountId: seedAccount.id,
+        projectPath: dir1,
+      });
+
+      const newerProfile = await client.create({
+        name: 'Newer Active Profile',
+        accountId: seedAccount.id,
+        projectPath: dir2,
+      });
+
+      // Mark newer profile as launched
+      await WorkspaceProfileRepo.updateLastLaunched(newerProfile.id);
+
+      const result = await client.launchForAccount({ accountId: seedAccount.id });
+      expect(result.pid).toBe(54321);
+      expect(lifecycleDelegate.launch).toHaveBeenCalledWith(newerProfile.id);
+    });
+
+    it('sanitizes special characters, null bytes, newlines, and unicode emoji without error', async () => {
+      const exoticAccount = {
+        ...seedAccount,
+        id: 'account-exotic-1',
+        name: 'Super Engineer\x00\nWith Lots Of Emojis 🚀✨🔥 and Extra Characters That Extend Very Long '.repeat(
+          3,
+        ),
+      };
+      cloudAccountRepoMock.getAccount.mockImplementation(async (id: string) => {
+        if (id === exoticAccount.id) return exoticAccount;
+        if (id === seedAccount.id) return seedAccount;
+        return null;
+      });
+
+      const result = await client.launchForAccount({ accountId: exoticAccount.id });
+      expect(result.pid).toBe(54321);
+
+      const created = await WorkspaceProfileRepo.getProfilesByAccountId(exoticAccount.id);
+      expect(created).toHaveLength(1);
+      expect(created[0].name.length).toBeLessThanOrEqual(100);
+      expect(created[0].name).not.toContain('\x00');
+      expect(created[0].name).not.toContain('\n');
+    });
+
+    it('handles concurrent launchForAccount calls for the same unprovisioned account without duplicate profiles', async () => {
+      const concurrentAccount = {
+        ...seedAccount,
+        id: 'account-concurrent-race',
+        name: 'Concurrent Race Test Account',
+      };
+      cloudAccountRepoMock.getAccount.mockImplementation(async (id: string) => {
+        if (id === concurrentAccount.id) return concurrentAccount;
+        if (id === seedAccount.id) return seedAccount;
+        return null;
+      });
+
+      const initialProfiles = await WorkspaceProfileRepo.getProfilesByAccountId(
+        concurrentAccount.id,
+      );
+      expect(initialProfiles).toHaveLength(0);
+
+      const [res1, res2, res3] = await Promise.all([
+        client.launchForAccount({ accountId: concurrentAccount.id }),
+        client.launchForAccount({ accountId: concurrentAccount.id }),
+        client.launchForAccount({ accountId: concurrentAccount.id }),
+      ]);
+
+      expect(res1.pid).toBe(54321);
+      expect(res2.pid).toBe(54321);
+      expect(res3.pid).toBe(54321);
+
+      const created = await WorkspaceProfileRepo.getProfilesByAccountId(concurrentAccount.id);
+      expect(created).toHaveLength(1);
+      expect(created[0].accountId).toBe(concurrentAccount.id);
+    });
+
+    it('sanitizes full range of ASCII control characters and DEL without error', async () => {
+      const dirtyAccount = {
+        ...seedAccount,
+        id: 'account-control-chars',
+        name: 'Evil\x00Name\x07With\x08Bell\x1bEsc\x1fUnit\x7fDel',
+      };
+      cloudAccountRepoMock.getAccount.mockImplementation(async (id: string) => {
+        if (id === dirtyAccount.id) return dirtyAccount;
+        if (id === seedAccount.id) return seedAccount;
+        return null;
+      });
+
+      const result = await client.launchForAccount({ accountId: dirtyAccount.id });
+      expect(result.pid).toBe(54321);
+
+      const created = await WorkspaceProfileRepo.getProfilesByAccountId(dirtyAccount.id);
+      expect(created).toHaveLength(1);
+      const hasControlChar = created[0].name
+        .split('')
+        .some((c) => (c.charCodeAt(0) >= 0 && c.charCodeAt(0) <= 31) || c.charCodeAt(0) === 127);
+      expect(hasControlChar).toBe(false);
+    });
+
+    it('supports calling launchForAccount as a destructured function without this context loss', async () => {
+      const service = createWorkspaceProfileService({
+        profileRepo: WorkspaceProfileRepo,
+        cloudAccountRepo: cloudAccountRepoMock,
+        lifecycleDelegate,
+      });
+      const { launchForAccount } = service;
+      const result = await launchForAccount(seedAccount.id);
+      expect(result.pid).toBe(54321);
+    });
+
+    it('falls back to "Workspace" when account name and email are both empty or whitespace', async () => {
+      const blankAccount = {
+        ...seedAccount,
+        id: 'account-blank-identifiers',
+        name: '   ',
+        email: '   ',
+      };
+      cloudAccountRepoMock.getAccount.mockImplementation(async (id: string) => {
+        if (id === blankAccount.id) return blankAccount;
+        if (id === seedAccount.id) return seedAccount;
+        return null;
+      });
+
+      const result = await client.launchForAccount({ accountId: blankAccount.id });
+      expect(result.pid).toBe(54321);
+
+      const created = await WorkspaceProfileRepo.getProfilesByAccountId(blankAccount.id);
+      expect(created).toHaveLength(1);
+      expect(created[0].name).toBe('Workspace');
+    });
+
+    it('handles unicode surrogate pair at character 100 truncation boundary without dangling high surrogates', async () => {
+      const surrogateAccount = {
+        ...seedAccount,
+        id: 'account-surrogate-split',
+        name: 'A'.repeat(99) + '🚀',
+      };
+      cloudAccountRepoMock.getAccount.mockImplementation(async (id: string) => {
+        if (id === surrogateAccount.id) return surrogateAccount;
+        if (id === seedAccount.id) return seedAccount;
+        return null;
+      });
+
+      const result = await client.launchForAccount({ accountId: surrogateAccount.id });
+      expect(result.pid).toBe(54321);
+
+      const created = await WorkspaceProfileRepo.getProfilesByAccountId(surrogateAccount.id);
+      expect(created).toHaveLength(1);
+      expect(created[0].name).toBe('A'.repeat(99));
+      expect(created[0].name.length).toBe(99);
+      expect(/[\uD800-\uDBFF]$/.test(created[0].name)).toBe(false);
+    });
+
+    it('frees in-flight launch lock on failure so subsequent attempts can succeed', async () => {
+      const flakyAccount = {
+        ...seedAccount,
+        id: 'account-flaky-launch',
+        name: 'Flaky Launch Account',
+      };
+      cloudAccountRepoMock.getAccount.mockImplementation(async (id: string) => {
+        if (id === flakyAccount.id) return flakyAccount;
+        if (id === seedAccount.id) return seedAccount;
+        return null;
+      });
+
+      vi.mocked(lifecycleDelegate.launch).mockRejectedValueOnce(
+        new Error('Process spawn failed temporarily'),
+      );
+
+      await expect(client.launchForAccount({ accountId: flakyAccount.id })).rejects.toMatchObject({
+        code: 'INTERNAL_SERVER_ERROR',
+      });
+
+      // Subsequent call should not be stuck on inFlightLaunchesByAccount and should succeed
+      const secondResult = await client.launchForAccount({ accountId: flakyAccount.id });
+      expect(secondResult.pid).toBe(54321);
+
+      // Verify no duplicate profile was created on the second attempt
+      const profiles = await WorkspaceProfileRepo.getProfilesByAccountId(flakyAccount.id);
+      expect(profiles).toHaveLength(1);
+    });
+  });
+
+  // =========================================================================
   // 6. Router Procedure: delete
   // =========================================================================
   describe('workspaceRouter.delete', () => {

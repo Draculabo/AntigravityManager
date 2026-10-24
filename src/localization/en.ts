@@ -413,6 +413,10 @@ const en = {
     lastUsed: 'Last used {{time}}',
     switchToAntigravity: 'Switch to Antigravity',
     switchToIde: 'Switch to Antigravity IDE',
+    launchIsolatedIde: 'Launch Isolated IDE',
+    launchIsolatedIdeSuccess: 'Isolated IDE Launched',
+    launchIsolatedIdeSuccessDesc: 'Launched isolated IDE instance for {{name}}',
+    launchIsolatedIdeError: 'Launch Failed',
   },
   home: {
     title: 'Accounts',

@@ -315,6 +315,10 @@ const fr = {
     lastUsed: 'Derniere utilisation {{time}}',
     switchToAntigravity: 'Basculer vers Antigravity',
     switchToIde: 'Basculer vers Antigravity IDE',
+    launchIsolatedIde: 'Lancer un IDE isolé',
+    launchIsolatedIdeSuccess: 'IDE isolé lancé',
+    launchIsolatedIdeSuccessDesc: "Instance d'IDE isolée lancée pour {{name}}",
+    launchIsolatedIdeError: 'Échec du lancement',
   },
   home: {
     title: 'Comptes',

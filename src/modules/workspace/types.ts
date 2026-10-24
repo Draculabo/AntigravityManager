@@ -68,6 +68,12 @@ export const LaunchWorkspaceResultSchema = z.object({
 });
 export type LaunchWorkspaceResult = z.infer<typeof LaunchWorkspaceResultSchema>;
 
+/** Launch for account input */
+export const LaunchForAccountInputSchema = z.object({
+  accountId: z.string().trim().min(1, 'Bound Google Account ID is required'),
+});
+export type LaunchForAccountInput = z.infer<typeof LaunchForAccountInputSchema>;
+
 /** Stop input */
 export const StopWorkspaceInputSchema = z.object({
   id: z.string().uuid('Invalid workspace ID format'),

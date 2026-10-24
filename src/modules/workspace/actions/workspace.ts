@@ -35,6 +35,10 @@ export function launchWorkspace(id: string): Promise<LaunchWorkspaceResult> {
   return ipc.client.workspace.launch({ id });
 }
 
+export function launchWorkspaceForAccount(accountId: string): Promise<LaunchWorkspaceResult> {
+  return ipc.client.workspace.launchForAccount({ accountId });
+}
+
 export function stopWorkspace(id: string): Promise<void> {
   return ipc.client.workspace.stop({ id });
 }
