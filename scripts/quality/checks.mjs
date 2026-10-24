@@ -113,6 +113,8 @@ export const SELECTIONS = ['all', 'governance', 'static', ...Object.keys(CI_LANE
 export const ADDITIONAL_CHECKS = {
   test: 'One-shot unit alias; CI uses test:unit with its explicit run argument.',
   'test:agent-contracts': 'Harness tests already invoked by check:agent-contracts.',
+  'test:review-eval':
+    'Manual historical review harness/probes require local case revisions; not an automatic model evaluation.',
   'test:watch': 'Interactive watch mode; use one-shot unit checks in CI.',
   'verify:boundaries': 'Advisory dependency report; CI uses the enforcing variant.',
   'verify:root-ipc-boundary': 'Focused root IPC check covered by the complete boundary gate.',

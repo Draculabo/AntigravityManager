@@ -8,6 +8,9 @@ The repository already had a detailed testing matrix and focused validation skil
 
 ## Decision
 
+- Require contribution risk, revision-scoped evidence and recovery reporting in the existing PR template; [contribution guidance](../../../../CONTRIBUTING.md#risk-and-recovery) owns the levels and human confirmation.
+- Keep review rounds, stable finding IDs, resolution evidence and escalation after three substantive unresolved rounds in the existing review skill. Follow-up reviews trace fixes and affected consumers; the limit never clears a defect. This preserves bounded human attention without adding an automatic merge path.
+- Use the manually selected [historical evaluation](../../../../docs/testing/review-evaluation.md) for reviewer changes. Separate source inputs from evaluator rubrics and require human adjudication; harness/probe passes are not model performance results. No CI baseline project, scheduled review or CI workflow change is introduced by this extension.
 - Route read-only investigations, bug fixes, routine features and multi-boundary or high-risk changes differently in the root instructions.
 - Reproduce or isolate a reported bug and define the observable regression check before changing code.
 - Require a concise plan for multi-module or high-risk work, and preserve durable decisions in Agent Notes.
