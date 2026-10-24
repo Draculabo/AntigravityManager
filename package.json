@@ -151,7 +151,7 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3",
     "unplugin-swc": "^1.5.9",
-    "vite": "^5.4.21",
+    "vite": "^7.3.7",
     "vitest": "^4.0.8"
   },
   "dependencies": {
