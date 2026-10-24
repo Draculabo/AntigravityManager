@@ -71,8 +71,8 @@ export function buildUserAgent(version: string): string {
 }
 
 /**
- * Builds the identity the Antigravity app's language server sends to Cloud Code. Google gates
- * model-specific quota groups on this `hub` client type; the bare identity never receives them.
+ * Builds the `hub` client identity of the Antigravity app's language server. Google gates
+ * model-specific quota groups on the client type; the bare identity does not receive them.
  */
 export function buildHubUserAgent(version: string): string {
   return `antigravity/hub/${version} (aidev_client; os_type=${getPlatformTag()}; arch=${getArchTag()})`;

@@ -25,9 +25,9 @@ detailed buckets.
 
 Grouped quota comes from the Cloud Code quota summary. Manager requests it from the Daily host,
 then production, then sandbox, and moves to the next host after any rejection except HTTP 401.
-The summary request identifies itself as the Antigravity app's `hub` client, because Google returns
-model-specific groups such as Gemini 4 Argon only to that client; model quota requests keep the
-existing client identity. A group named exactly after one registered model family, such as
+The summary request identifies itself as the Antigravity app's `hub` client, because Google does
+not return model-specific groups such as Gemini 4 Argon to the bare client identity; model quota
+requests keep the existing client identity. A group named exactly after one registered model family, such as
 Gemini 4 Argon on Google AI Pro, limits only that family. It is displayed like any other group
 (Gemini 4 Argon has only a weekly bucket, so it appears only in the weekly view), but scores,
 recommendations and automatic switching for models of other families ignore it.

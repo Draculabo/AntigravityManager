@@ -6,13 +6,15 @@ Status: implemented
 
 Google AI Pro accounts have a separate weekly Gemini 4 Argon limit that the Antigravity app shows
 as a third quota-summary group, but Manager stored only the Gemini and Claude/GPT groups. Stored
-snapshots for four AI Pro accounts contained no Argon group, so the renderer was not dropping it.
-Two request differences explain the gap. The app's language server sends Cloud Code requests to
-the Daily host with a `hub` client identity, while Manager asked the sandbox host first with the
-bare `antigravity/<version> <os>/<arch>` identity, often with the `2.0.3` fallback version. Public
-same-token comparisons show that the bare identity never receives the Argon group and that `hub`
-identities at current versions do. Manager also ended the summary lookup on the first non-429 4xx,
-so an account whose sandbox summary returned 403 lost every group without trying another host.
+snapshots for several AI Pro accounts contained no Argon group, so the renderer was not dropping it.
+Two request differences explain the gap. The app starts its language server with
+`--subclient_type hub` and the Daily Cloud Code endpoint, while Manager asked the sandbox host
+first with the bare `antigravity/<version> <os>/<arch>` identity. Public comparisons that reuse one
+OAuth token report that the bare identity at a current version receives only two groups on Daily,
+while `hub` and `cli` identities above a minimum version also receive the Argon group, and that
+production returns two groups even to `hub`. Manager also ended the summary lookup on the first
+non-429 4xx, so an account whose sandbox summary returned 403 lost every group without trying
+another host.
 
 ## Decision
 
@@ -31,7 +33,8 @@ it unless the representative warmup model belongs to that family.
 
 ## Alternatives considered
 
-- Reordering hosts without changing the identity would still receive two groups on Daily.
+- Reordering hosts without changing the identity would still receive two groups on Daily,
+  according to the public comparisons; the live check changed host order and identity together.
 - Keeping HTTP 400 terminal, as the
   [project-context lookup](../architecture/2026-09-16-project-context-fallback-and-reset-time.md)
   does, was not selected for the summary. The three hosts are separate deployments, host-specific

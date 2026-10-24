@@ -1245,7 +1245,7 @@ export class GoogleAPIService {
     axiosOptions: GoogleApiProxyOptions,
   ): Promise<QuotaGroup[] | undefined> {
     const payload: { project?: string } = projectId ? { project: projectId } : {};
-    // Model-specific groups such as Gemini 4 Argon are returned only to the hub client identity.
+    // Model-specific groups such as Gemini 4 Argon are not returned to the bare client identity.
     const headers = buildInternalApiHeaders(
       accessToken,
       buildHubUserAgent(resolveHubClientVersion()),
