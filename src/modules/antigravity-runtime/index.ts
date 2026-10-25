@@ -25,3 +25,4 @@ export {
   readClientAccountToken,
   CredentialStoreReadError,
 } from './credentials/antigravityCredentialStore';
+export { buildAntigravityCredentialPayload } from './credentials/antigravityCredentialPayload';

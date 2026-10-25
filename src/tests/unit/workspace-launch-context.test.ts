@@ -144,6 +144,20 @@ describe('Workspace Launch Context & Process Isolation (R2)', () => {
       expect(Object.isFrozen(context.pathOptions)).toBe(true);
       expect(Object.isFrozen(context.processes)).toBe(true);
     });
+
+    it('attaches and freezes isolated environment variables in launch context', () => {
+      const customEnv = {
+        HOME: '/tmp/isolated-home',
+        DBUS_SESSION_BUS_ADDRESS: 'disabled:',
+      };
+      const context = resolveLaunchContext('ide', [], {
+        userDataDir: profileDirA,
+        env: customEnv,
+      });
+
+      expect(context.env).toEqual(customEnv);
+      expect(Object.isFrozen(context.env)).toBe(true);
+    });
   });
 
   // --- Tier 2: Boundary & Corner Cases (Concurrency & Isolation) ---

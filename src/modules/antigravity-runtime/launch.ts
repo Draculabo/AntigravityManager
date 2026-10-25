@@ -27,8 +27,11 @@ function filterTargetProcesses(
   return processes;
 }
 
-export function launchEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const env = { ...source };
+export function launchEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+  extraEnv?: Record<string, string>,
+): NodeJS.ProcessEnv {
+  const env = { ...source, ...extraEnv };
   const mount = source.APPDIR;
   if (!mount || !/^\/tmp\/\.mount_[^/]+/.test(mount)) {
     return env;
@@ -80,6 +83,13 @@ async function dispatchLaunch(context: LaunchContext): Promise<void> {
         }
       }
     }
+    const isIsolatedProfile =
+      (Boolean(context.pathOptions.userDataDir) &&
+        context.pathOptions.userDataDir !== context.defaultUserDataDir) ||
+      Boolean(context.env?.HOME);
+    if (isIsolatedProfile && !args.includes('--password-store=basic')) {
+      args.push('--password-store=basic');
+    }
   }
   // WSL interop executes the mounted .exe directly; argv never passes through cmd.exe.
   await new Promise<void>((resolve, reject) => {
@@ -89,7 +99,7 @@ async function dispatchLaunch(context: LaunchContext): Promise<void> {
       // SW_HIDE can suppress a GUI application's first window on Windows.
       windowsHide: process.platform !== 'win32',
       ...(process.platform === 'win32' ? { cwd: path.win32.dirname(executable) } : {}),
-      env: launchEnvironment(),
+      env: launchEnvironment(process.env, context.env),
     });
     child.once('error', () => reject(processError('launch-failed')));
     child.once('spawn', () => {

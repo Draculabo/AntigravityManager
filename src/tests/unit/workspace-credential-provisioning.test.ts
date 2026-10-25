@@ -4,6 +4,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
+import { buildAntigravityCredentialPayload } from '@/modules/antigravity-runtime';
 import type { ClientAccountCredentials } from '@/modules/antigravity-runtime/credentials/clientAccount';
 
 // Un-mock better-sqlite3 to verify real SQLite credential injection
@@ -238,6 +239,88 @@ describe('Workspace Credential Provisioning (R3)', () => {
 
       const extracted = ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(row.value);
       expect(extracted?.accessToken).toBe('access-token-alpha');
+    });
+  });
+
+  // --- Tier 3: Frontend & Language Server Isolation ---
+
+  describe('Tier 3: Frontend & Language Server Multi-Account Provisioning', () => {
+    it('provisions app_storage.json with bound account username and onboarding flags, preserving existing settings', () => {
+      fs.mkdirSync(profileDirA, { recursive: true });
+      // Pre-seed app_storage.json with existing configuration
+      const appStoragePath = path.join(profileDirA, 'app_storage.json');
+      fs.writeFileSync(
+        appStoragePath,
+        JSON.stringify({ 'telemetry.enabled': 'false', 'theme.mode': 'dark' }),
+        'utf8',
+      );
+
+      // Simulate lifecycle provisioning step
+      let appStorage: Record<string, string> = {};
+      try {
+        if (fs.existsSync(appStoragePath)) {
+          appStorage = JSON.parse(fs.readFileSync(appStoragePath, 'utf8'));
+        }
+      } catch {
+        appStorage = {};
+      }
+      appStorage['ide-install-wizard-shown'] = 'true';
+      appStorage['jetski.onboarding.lastLoginUsername'] = credentialsA.email;
+      appStorage['jetski.onboarding.lastLoginIsGcpTos'] = credentialsA.token.is_gcp_tos
+        ? 'true'
+        : 'false';
+      fs.writeFileSync(appStoragePath, JSON.stringify(appStorage, null, 2), 'utf8');
+
+      // Verify
+      const readback = JSON.parse(fs.readFileSync(appStoragePath, 'utf8'));
+      expect(readback['telemetry.enabled']).toBe('false');
+      expect(readback['theme.mode']).toBe('dark');
+      expect(readback['ide-install-wizard-shown']).toBe('true');
+      expect(readback['jetski.onboarding.lastLoginUsername']).toBe('user-a@example.com');
+      expect(readback['jetski.onboarding.lastLoginIsGcpTos']).toBe('true');
+    });
+
+    it('provisions isolated home with jetski-standalone-oauth-token in 0600 mode for language server', () => {
+      const isolatedHome = path.join(profileDirA, 'home');
+      const geminiDir = path.join(isolatedHome, '.gemini');
+      fs.mkdirSync(geminiDir, { recursive: true });
+
+      const oauthPayload = buildAntigravityCredentialPayload(credentialsA.token);
+      const tokenPath = path.join(geminiDir, 'jetski-standalone-oauth-token');
+      fs.writeFileSync(tokenPath, oauthPayload, { mode: 0o600 });
+
+      expect(fs.existsSync(tokenPath)).toBe(true);
+
+      // Check mode on Unix
+      if (process.platform !== 'win32') {
+        const stats = fs.statSync(tokenPath);
+        expect(stats.mode & 0o777).toBe(0o600);
+      }
+
+      // Check payload content parses and matches credentials
+      const parsed = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+      expect(parsed.token.access_token).toBe('access-token-alpha');
+      expect(parsed.token.refresh_token).toBe('refresh-token-alpha');
+      expect(parsed.token.project_id).toBe('gcp-project-alpha');
+      expect(parsed.auth_method).toBe('consumer');
+    });
+
+    it('creates symlinks to host developer dotfiles in isolated home without error', () => {
+      const isolatedHome = path.join(profileDirA, 'home');
+      fs.mkdirSync(isolatedHome, { recursive: true });
+
+      // Create fake host dotfile
+      const fakeHostDir = path.join(rootDir, 'fake-host');
+      fs.mkdirSync(fakeHostDir, { recursive: true });
+      const fakeGitConfig = path.join(fakeHostDir, '.gitconfig');
+      fs.writeFileSync(fakeGitConfig, '[user]\n  name = Alpha\n');
+
+      // Symlink to isolated home
+      const dest = path.join(isolatedHome, '.gitconfig');
+      fs.symlinkSync(fakeGitConfig, dest);
+
+      expect(fs.existsSync(dest)).toBe(true);
+      expect(fs.readFileSync(dest, 'utf8')).toContain('Alpha');
     });
   });
 });

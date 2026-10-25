@@ -268,6 +268,7 @@ export function resolveLaunchContext(
       ),
     ),
     projectPath: options?.projectPath ? filesystemPath(options.projectPath) : undefined,
+    env: options?.env ? Object.freeze({ ...options.env }) : undefined,
   });
 }
 

@@ -1,7 +1,9 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { logger } from '@/shared/logging/logger';
 import {
+  buildAntigravityCredentialPayload,
   canonicalPath,
   getProcessUserDataDir,
   observeProcesses,
@@ -113,14 +115,62 @@ export function createWorkspaceLifecycleService(
         userDataDir: profile.userDataDir,
       });
       await preparedWrite.write();
+
+      // 2. Provision frontend state in app_storage.json
+      const appStoragePath = path.join(profile.userDataDir, 'app_storage.json');
+      let appStorage: Record<string, string> = {};
+      try {
+        if (fs.existsSync(appStoragePath)) {
+          appStorage = JSON.parse(fs.readFileSync(appStoragePath, 'utf8'));
+        }
+      } catch {
+        appStorage = {};
+      }
+      appStorage['ide-install-wizard-shown'] = 'true';
+      appStorage['jetski.onboarding.lastLoginUsername'] = account.email;
+      appStorage['jetski.onboarding.lastLoginIsGcpTos'] = account.token?.is_gcp_tos
+        ? 'true'
+        : 'false';
+      fs.writeFileSync(appStoragePath, JSON.stringify(appStorage, null, 2), 'utf8');
+
+      // 3. Provision isolated home & language_server OAuth credentials
+      const isolatedHome = path.join(profile.userDataDir, 'home');
+      const geminiDir = path.join(isolatedHome, '.gemini');
+      fs.mkdirSync(geminiDir, { recursive: true });
+
+      // Link developer shell configuration from host user home if present
+      const hostHome = os.homedir();
+      for (const dotfile of ['.gitconfig', '.ssh', '.bashrc', '.zshrc', '.profile']) {
+        const src = path.join(hostHome, dotfile);
+        const dest = path.join(isolatedHome, dotfile);
+        if (fs.existsSync(src) && !fs.existsSync(dest)) {
+          try {
+            fs.symlinkSync(src, dest);
+          } catch {
+            // Ignore symlink failure across filesystems or permission boundaries
+          }
+        }
+      }
+
+      // Write standalone OAuth token read by the IDE language server
+      const oauthPayload = buildAntigravityCredentialPayload(account.token);
+      fs.writeFileSync(path.join(geminiDir, 'jetski-standalone-oauth-token'), oauthPayload, {
+        mode: 0o600,
+      });
+
       logger.info(
         `Provisioned credentials into workspace profile ${profileId} (${profile.userDataDir})`,
       );
 
-      // 2. Prepare launch context targeting profile userDataDir and projectPath
+      // 4. Prepare launch context targeting profile userDataDir, projectPath, and isolated environment
       const context = await prepareLaunchContext('ide', {
         userDataDir: profile.userDataDir,
         projectPath: profile.projectPath,
+        env: {
+          HOME: isolatedHome,
+          ...(process.platform === 'win32' ? { USERPROFILE: isolatedHome } : {}),
+          DBUS_SESSION_BUS_ADDRESS: 'disabled:',
+        },
       });
 
       // 3. Dispatch launch inside scoped process operation lock
