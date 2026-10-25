@@ -644,6 +644,40 @@ export function getAppDataDir(
   }
 }
 
+/**
+ * Resolves the host Antigravity extensions directory.
+ * E.g., ~/.antigravity/extensions on Linux and macOS,
+ * %USERPROFILE%\.antigravity\extensions on Windows,
+ * /mnt/c/Users/${winUser}/.antigravity/extensions on WSL.
+ */
+export function getAntigravityExtensionsDir(options?: PathResolutionOptions): string {
+  const home = os.homedir();
+  if (resolveIsWsl(options)) {
+    const winUser = getWindowsUser();
+    return `/mnt/c/Users/${winUser}/.antigravity/extensions`;
+  }
+
+  const currentPlatform = getCurrentPlatform(options);
+  if (currentPlatform === 'win32') {
+    const userProfile = process.env.USERPROFILE || home;
+    return path.win32.join(userProfile, '.antigravity', 'extensions');
+  }
+
+  return path.posix.join(home, '.antigravity', 'extensions');
+}
+
+/**
+ * Resolves the host Antigravity User configuration directory.
+ * E.g., ~/.config/Antigravity/User on Linux,
+ * ~/Library/Application Support/Antigravity/User on macOS,
+ * %APPDATA%\Antigravity\User on Windows.
+ */
+export function getAntigravityHostUserDir(options?: PathResolutionOptions): string {
+  const classicAppData = getAppDataDir('classic', options);
+  const pathApi = getCurrentPlatformPathApi(options);
+  return pathApi.join(classicAppData, 'User');
+}
+
 export function getAgentDir(options?: PathResolutionOptions): string {
   return getCurrentPlatformPathApi(options).join(os.homedir(), '.antigravity-agent');
 }

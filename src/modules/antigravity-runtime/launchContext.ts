@@ -246,6 +246,11 @@ export function resolveLaunchContext(
     // Standalone Electron clients require Chromium's single-argument switch form.
     args.push(`--user-data-dir=${argDir}`);
   }
+  if (options?.extensionsDir) {
+    const extensionsDir = filesystemPath(options.extensionsDir);
+    const argExtensionsDir = isWsl() && windows ? toWindowsPath(extensionsDir) : extensionsDir;
+    args.push(`--extensions-dir=${argExtensionsDir}`);
+  }
   if (options?.projectPath) {
     const projectPath = filesystemPath(options.projectPath);
     args.push(isWsl() && windows ? toWindowsPath(projectPath) : projectPath);
@@ -269,6 +274,7 @@ export function resolveLaunchContext(
     ),
     projectPath: options?.projectPath ? filesystemPath(options.projectPath) : undefined,
     env: options?.env ? Object.freeze({ ...options.env }) : undefined,
+    extensionsDir: options?.extensionsDir ? filesystemPath(options.extensionsDir) : undefined,
   });
 }
 

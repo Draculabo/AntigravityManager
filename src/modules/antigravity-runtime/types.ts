@@ -19,6 +19,7 @@ export interface LaunchContextOptions {
   readonly userDataDir?: string;
   readonly projectPath?: string;
   readonly env?: Record<string, string>;
+  readonly extensionsDir?: string;
 }
 
 /** Captured before closing the app; reused by injection, profile writes and launch. */
@@ -31,4 +32,5 @@ export interface LaunchContext {
   readonly processes: readonly RuntimeProcess[];
   readonly projectPath?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly extensionsDir?: string;
 }

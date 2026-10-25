@@ -363,5 +363,7 @@ import { WorkspaceLifecycleService } from './workspace-lifecycle.service';
 export const WorkspaceProfileService = createWorkspaceProfileService({
   profileRepo: WorkspaceProfileRepo,
   cloudAccountRepo: defaultCloudAccountRepo,
-  lifecycleDelegate: WorkspaceLifecycleService,
+  get lifecycleDelegate() {
+    return WorkspaceLifecycleService;
+  },
 });

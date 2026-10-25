@@ -262,6 +262,20 @@ describe('Workspace Launch Context & Process Isolation (R2)', () => {
         fs.unlinkSync(symlinkProfileDir);
       }
     });
+
+    it('appends --extensions-dir when extensionsDir option is specified in LaunchContextOptions', () => {
+      const extensionsDir = path.join(root, 'host-extensions');
+      fs.mkdirSync(extensionsDir, { recursive: true });
+
+      const context = resolveLaunchContext('ide', [], {
+        userDataDir: profileDirA,
+        extensionsDir,
+      });
+
+      expect(context.args).toContain(`--user-data-dir=${profileDirA}`);
+      expect(context.args).toContain(`--extensions-dir=${extensionsDir}`);
+      expect(context.extensionsDir).toBe(extensionsDir);
+    });
   });
 
   // --- Tier 3: Process Observer Grouping & Scoped Operation Locking ---

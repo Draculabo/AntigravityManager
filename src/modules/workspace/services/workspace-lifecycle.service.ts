@@ -23,6 +23,8 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStatus,
 } from '../types';
+import { getAntigravityExtensionsDir } from '@/shared/platform/paths';
+import { provisionWorkspaceProfileSharing } from './workspace-provisioning';
 
 export interface WorkspaceLifecycleServiceDependencies {
   profileRepo?: typeof WorkspaceProfileRepo;
@@ -162,10 +164,17 @@ export function createWorkspaceLifecycleService(
         `Provisioned credentials into workspace profile ${profileId} (${profile.userDataDir})`,
       );
 
-      // 4. Prepare launch context targeting profile userDataDir, projectPath, and isolated environment
+      // 4. Provision workspace profile sharing: extensions, editor settings, agent skills, and recent history
+      provisionWorkspaceProfileSharing({
+        profileUserDataDir: profile.userDataDir,
+        isolatedHome,
+      });
+
+      // 5. Prepare launch context targeting profile userDataDir, projectPath, and isolated environment
       const context = await prepareLaunchContext('ide', {
         userDataDir: profile.userDataDir,
         projectPath: profile.projectPath,
+        extensionsDir: getAntigravityExtensionsDir(),
         env: {
           HOME: isolatedHome,
           ...(process.platform === 'win32' ? { USERPROFILE: isolatedHome } : {}),

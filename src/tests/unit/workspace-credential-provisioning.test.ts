@@ -6,6 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
 import { buildAntigravityCredentialPayload } from '@/modules/antigravity-runtime';
 import type { ClientAccountCredentials } from '@/modules/antigravity-runtime/credentials/clientAccount';
+import {
+  isPathAbsent,
+  provisionEditorSettings,
+  provisionExtensionsSharing,
+  provisionGeminiCustomizations,
+  provisionWorkspaceProfileSharing,
+  safeSymlink,
+  seedRecentProjectHistory,
+} from '@/modules/workspace/services/workspace-provisioning';
 
 // Un-mock better-sqlite3 to verify real SQLite credential injection
 vi.mock('better-sqlite3', async () => {
@@ -321,6 +330,544 @@ describe('Workspace Credential Provisioning (R3)', () => {
 
       expect(fs.existsSync(dest)).toBe(true);
       expect(fs.readFileSync(dest, 'utf8')).toContain('Alpha');
+    });
+  });
+
+  // --- Tier 4: Extensions Sharing & Launch Integration (R1) ---
+
+  describe('Tier 4: Extensions Sharing & Launch Integration (R1)', () => {
+    it('provisions extensions sharing via idempotent symlink from host extensions directory', () => {
+      const hostExtensionsDir = path.join(rootDir, 'host-extensions');
+      const extPackageJson = path.join(
+        hostExtensionsDir,
+        'publisher.my-extension-1.0.0',
+        'package.json',
+      );
+      fs.mkdirSync(path.dirname(extPackageJson), { recursive: true });
+      fs.writeFileSync(extPackageJson, JSON.stringify({ name: 'my-extension', version: '1.0.0' }));
+
+      const isolatedHomeA = path.join(profileDirA, 'home');
+      fs.mkdirSync(profileDirA, { recursive: true });
+      fs.mkdirSync(isolatedHomeA, { recursive: true });
+
+      provisionExtensionsSharing(profileDirA, isolatedHomeA, hostExtensionsDir);
+
+      const profileExtLink = path.join(profileDirA, 'extensions');
+      const homeExtLink = path.join(isolatedHomeA, '.antigravity', 'extensions');
+
+      expect(fs.existsSync(profileExtLink)).toBe(true);
+      expect(fs.lstatSync(profileExtLink).isSymbolicLink()).toBe(true);
+      expect(fs.existsSync(homeExtLink)).toBe(true);
+      expect(fs.lstatSync(homeExtLink).isSymbolicLink()).toBe(true);
+
+      const readback = JSON.parse(
+        fs.readFileSync(
+          path.join(profileExtLink, 'publisher.my-extension-1.0.0', 'package.json'),
+          'utf8',
+        ),
+      );
+      expect(readback.name).toBe('my-extension');
+      expect(readback.version).toBe('1.0.0');
+    });
+
+    it('extensions symlink creation is idempotent and preserves pre-existing profile extensions directory', () => {
+      const hostExtensionsDir = path.join(rootDir, 'host-extensions');
+      fs.mkdirSync(hostExtensionsDir, { recursive: true });
+
+      // Profile already has a physical extensions directory with local extensions
+      const profileExtDir = path.join(profileDirA, 'extensions');
+      const localExtPkg = path.join(profileExtDir, 'local.pkg', 'package.json');
+      fs.mkdirSync(path.dirname(localExtPkg), { recursive: true });
+      fs.writeFileSync(localExtPkg, JSON.stringify({ name: 'local-pkg' }));
+
+      const isolatedHomeA = path.join(profileDirA, 'home');
+      fs.mkdirSync(isolatedHomeA, { recursive: true });
+
+      // Action: should not overwrite existing physical directory
+      provisionExtensionsSharing(profileDirA, isolatedHomeA, hostExtensionsDir);
+
+      expect(fs.lstatSync(profileExtDir).isSymbolicLink()).toBe(false);
+      expect(fs.existsSync(localExtPkg)).toBe(true);
+      const pkg = JSON.parse(fs.readFileSync(localExtPkg, 'utf8'));
+      expect(pkg.name).toBe('local-pkg');
+
+      // Now run on a profile with a valid symlink to test idempotency
+      const isolatedHomeB = path.join(profileDirB, 'home');
+      fs.mkdirSync(profileDirB, { recursive: true });
+      fs.mkdirSync(isolatedHomeB, { recursive: true });
+      provisionExtensionsSharing(profileDirB, isolatedHomeB, hostExtensionsDir);
+      expect(fs.lstatSync(path.join(profileDirB, 'extensions')).isSymbolicLink()).toBe(true);
+
+      // Re-provisioning does not throw and leaves link intact
+      expect(() => {
+        provisionExtensionsSharing(profileDirB, isolatedHomeB, hostExtensionsDir);
+      }).not.toThrow();
+      expect(fs.lstatSync(path.join(profileDirB, 'extensions')).isSymbolicLink()).toBe(true);
+    });
+
+    it('gracefully proceeds when host extensions directory does not exist', () => {
+      const nonExistentHostDir = path.join(rootDir, 'does-not-exist');
+      const isolatedHomeA = path.join(profileDirA, 'home');
+      fs.mkdirSync(profileDirA, { recursive: true });
+      fs.mkdirSync(isolatedHomeA, { recursive: true });
+
+      expect(() => {
+        provisionExtensionsSharing(profileDirA, isolatedHomeA, nonExistentHostDir);
+      }).not.toThrow();
+
+      expect(fs.existsSync(path.join(profileDirA, 'extensions'))).toBe(false);
+    });
+  });
+
+  // --- Tier 5: Editor Configuration & Custom Agent Skills Inheritance (R2) ---
+
+  describe('Tier 5: Editor Configuration & Custom Agent Skills Inheritance (R2)', () => {
+    it('idempotently symlinks host settings.json, keybindings.json, and snippets/ into profile User directory', () => {
+      const hostUserDir = path.join(rootDir, 'host-user');
+      fs.mkdirSync(path.join(hostUserDir, 'snippets'), { recursive: true });
+
+      fs.writeFileSync(
+        path.join(hostUserDir, 'settings.json'),
+        JSON.stringify({ 'editor.fontSize': 14, 'workbench.colorTheme': 'Default Dark+' }),
+      );
+      fs.writeFileSync(
+        path.join(hostUserDir, 'keybindings.json'),
+        JSON.stringify([
+          { key: 'ctrl+k ctrl+s', command: 'workbench.action.openGlobalKeybindings' },
+        ]),
+      );
+      fs.writeFileSync(
+        path.join(hostUserDir, 'snippets', 'typescript.json'),
+        JSON.stringify({ log: { prefix: 'clog', body: ['console.log($1);'] } }),
+      );
+
+      fs.mkdirSync(profileDirA, { recursive: true });
+      provisionEditorSettings(profileDirA, hostUserDir);
+
+      const profileSettings = path.join(profileDirA, 'User', 'settings.json');
+      const profileKeybindings = path.join(profileDirA, 'User', 'keybindings.json');
+      const profileSnippets = path.join(profileDirA, 'User', 'snippets');
+
+      expect(fs.existsSync(profileSettings)).toBe(true);
+      expect(fs.lstatSync(profileSettings).isSymbolicLink()).toBe(true);
+      expect(fs.existsSync(profileKeybindings)).toBe(true);
+      expect(fs.lstatSync(profileKeybindings).isSymbolicLink()).toBe(true);
+      expect(fs.existsSync(profileSnippets)).toBe(true);
+      expect(fs.lstatSync(profileSnippets).isSymbolicLink()).toBe(true);
+
+      const readSnippet = JSON.parse(
+        fs.readFileSync(path.join(profileSnippets, 'typescript.json'), 'utf8'),
+      );
+      expect(readSnippet.log.prefix).toBe('clog');
+    });
+
+    it('does NOT overwrite existing customized profile editor settings', () => {
+      const hostUserDir = path.join(rootDir, 'host-user');
+      fs.mkdirSync(hostUserDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(hostUserDir, 'settings.json'),
+        JSON.stringify({ 'editor.fontSize': 14 }),
+      );
+
+      // Pre-create customized profile settings as a physical file
+      const profileUserDir = path.join(profileDirA, 'User');
+      fs.mkdirSync(profileUserDir, { recursive: true });
+      const profileSettings = path.join(profileUserDir, 'settings.json');
+      fs.writeFileSync(profileSettings, JSON.stringify({ 'editor.fontSize': 20 }));
+
+      provisionEditorSettings(profileDirA, hostUserDir);
+
+      expect(fs.lstatSync(profileSettings).isSymbolicLink()).toBe(false);
+      const readback = JSON.parse(fs.readFileSync(profileSettings, 'utf8'));
+      expect(readback['editor.fontSize']).toBe(20);
+    });
+
+    it('symlinks host agent skills (config, antigravity, skills) into profile isolated home .gemini directory', () => {
+      const hostGeminiDir = path.join(rootDir, 'host-gemini');
+      const skillFile = path.join(hostGeminiDir, 'config', 'skills', 'custom-skill', 'SKILL.md');
+      const templateFile = path.join(hostGeminiDir, 'antigravity', 'templates', 'agent.json');
+      const userSkillFile = path.join(hostGeminiDir, 'skills', 'user-skill', 'SKILL.md');
+
+      fs.mkdirSync(path.dirname(skillFile), { recursive: true });
+      fs.mkdirSync(path.dirname(templateFile), { recursive: true });
+      fs.mkdirSync(path.dirname(userSkillFile), { recursive: true });
+
+      fs.writeFileSync(skillFile, '# Custom Skill');
+      fs.writeFileSync(templateFile, JSON.stringify({ name: 'template' }));
+      fs.writeFileSync(userSkillFile, '# User Skill');
+
+      const isolatedHomeA = path.join(profileDirA, 'home');
+      fs.mkdirSync(isolatedHomeA, { recursive: true });
+
+      provisionGeminiCustomizations(isolatedHomeA, hostGeminiDir);
+
+      const profileGemini = path.join(isolatedHomeA, '.gemini');
+      expect(fs.lstatSync(path.join(profileGemini, 'config')).isSymbolicLink()).toBe(true);
+      expect(fs.lstatSync(path.join(profileGemini, 'antigravity')).isSymbolicLink()).toBe(true);
+      expect(fs.lstatSync(path.join(profileGemini, 'skills')).isSymbolicLink()).toBe(true);
+
+      expect(
+        fs.readFileSync(
+          path.join(profileGemini, 'config', 'skills', 'custom-skill', 'SKILL.md'),
+          'utf8',
+        ),
+      ).toBe('# Custom Skill');
+    });
+
+    it('handles absent optional host skills directories gracefully', () => {
+      const hostGeminiDir = path.join(rootDir, 'host-gemini-minimal');
+      fs.mkdirSync(path.join(hostGeminiDir, 'config'), { recursive: true });
+      // antigravity and skills do not exist
+
+      const isolatedHomeA = path.join(profileDirA, 'home');
+      fs.mkdirSync(isolatedHomeA, { recursive: true });
+
+      expect(() => {
+        provisionGeminiCustomizations(isolatedHomeA, hostGeminiDir);
+      }).not.toThrow();
+
+      const profileGemini = path.join(isolatedHomeA, '.gemini');
+      expect(fs.existsSync(path.join(profileGemini, 'config'))).toBe(true);
+      expect(fs.existsSync(path.join(profileGemini, 'antigravity'))).toBe(false);
+      expect(fs.existsSync(path.join(profileGemini, 'skills'))).toBe(false);
+    });
+  });
+
+  // --- Tier 6: Recent Project History Seeding (R3) ---
+
+  describe('Tier 6: Recent Project History Seeding (R3)', () => {
+    it('seeds history.recentlyOpenedPathsList from host state.vscdb into profile state.vscdb ItemTable', () => {
+      // 1. Setup host database
+      const hostDbDir = path.join(rootDir, 'host-storage');
+      fs.mkdirSync(hostDbDir, { recursive: true });
+      const hostDbPath = path.join(hostDbDir, 'state.vscdb');
+      const hostDb = new Database(hostDbPath);
+      hostDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      const historyPayload = JSON.stringify({
+        entries: [{ folderUri: 'file:///home/user/project-alpha', label: 'project-alpha' }],
+      });
+      hostDb
+        .prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)')
+        .run('history.recentlyOpenedPathsList', historyPayload);
+      hostDb.close();
+
+      // 2. Setup profile database
+      const profileStorageDir = path.join(profileDirA, 'User', 'globalStorage');
+      fs.mkdirSync(profileStorageDir, { recursive: true });
+      const profileDbPath = path.join(profileStorageDir, 'state.vscdb');
+      const profileDb = new Database(profileDbPath);
+      profileDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      profileDb
+        .prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)')
+        .run('antigravityAuthStatus', '{"email":"user-a@example.com"}');
+      profileDb.close();
+
+      // 3. Action
+      seedRecentProjectHistory({ profileUserDataDir: profileDirA, hostDbPath });
+
+      // 4. Verify profile DB
+      const verifyDb = new Database(profileDbPath, { readonly: true });
+      const row = verifyDb
+        .prepare("SELECT value FROM ItemTable WHERE key = 'history.recentlyOpenedPathsList'")
+        .get() as { value: string } | undefined;
+      verifyDb.close();
+
+      expect(row).toBeDefined();
+      expect(row?.value).toBe(historyPayload);
+    });
+
+    it('does NOT overwrite history.recentlyOpenedPathsList if already present in profile state.vscdb', () => {
+      // Host database with host project
+      const hostDbDir = path.join(rootDir, 'host-storage');
+      fs.mkdirSync(hostDbDir, { recursive: true });
+      const hostDbPath = path.join(hostDbDir, 'state.vscdb');
+      const hostDb = new Database(hostDbPath);
+      hostDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      const hostPayload = JSON.stringify({
+        entries: [{ folderUri: 'file:///home/user/host-project' }],
+      });
+      hostDb
+        .prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)')
+        .run('history.recentlyOpenedPathsList', hostPayload);
+      hostDb.close();
+
+      // Profile database already has a custom project
+      const profileStorageDir = path.join(profileDirA, 'User', 'globalStorage');
+      fs.mkdirSync(profileStorageDir, { recursive: true });
+      const profileDbPath = path.join(profileStorageDir, 'state.vscdb');
+      const profileDb = new Database(profileDbPath);
+      profileDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      const profileExistingPayload = JSON.stringify({
+        entries: [{ folderUri: 'file:///home/user/profile-custom' }],
+      });
+      profileDb
+        .prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)')
+        .run('history.recentlyOpenedPathsList', profileExistingPayload);
+      profileDb.close();
+
+      // Action
+      seedRecentProjectHistory({ profileUserDataDir: profileDirA, hostDbPath });
+
+      // Verify profile history was NOT overwritten
+      const verifyDb = new Database(profileDbPath, { readonly: true });
+      const row = verifyDb
+        .prepare("SELECT value FROM ItemTable WHERE key = 'history.recentlyOpenedPathsList'")
+        .get() as { value: string } | undefined;
+      verifyDb.close();
+
+      expect(row?.value).toBe(profileExistingPayload);
+      expect(row?.value).not.toBe(hostPayload);
+    });
+
+    it('handles missing host state.vscdb or absent history key without throwing', () => {
+      const profileStorageDir = path.join(profileDirA, 'User', 'globalStorage');
+      fs.mkdirSync(profileStorageDir, { recursive: true });
+      const profileDbPath = path.join(profileStorageDir, 'state.vscdb');
+      const profileDb = new Database(profileDbPath);
+      profileDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      profileDb.close();
+
+      // Scenario A: non-existent host DB
+      expect(() => {
+        seedRecentProjectHistory({
+          profileUserDataDir: profileDirA,
+          hostDbPath: path.join(rootDir, 'non-existent.vscdb'),
+        });
+      }).not.toThrow();
+
+      // Scenario B: host DB exists but has no history key
+      const hostDbDir = path.join(rootDir, 'host-storage-empty');
+      fs.mkdirSync(hostDbDir, { recursive: true });
+      const hostDbPath = path.join(hostDbDir, 'state.vscdb');
+      const hostDb = new Database(hostDbPath);
+      hostDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      hostDb.close();
+
+      expect(() => {
+        seedRecentProjectHistory({ profileUserDataDir: profileDirA, hostDbPath });
+      }).not.toThrow();
+
+      const verifyDb = new Database(profileDbPath, { readonly: true });
+      const row = verifyDb
+        .prepare("SELECT value FROM ItemTable WHERE key = 'history.recentlyOpenedPathsList'")
+        .get();
+      verifyDb.close();
+      expect(row).toBeUndefined();
+    });
+  });
+
+  // --- Tier 7: Security & Credential Isolation Invariants ---
+
+  describe('Tier 7: Security & Credential Isolation Invariants', () => {
+    it('strict credential isolation: jetski-standalone-oauth-token is NEVER symlinked or copied from host', () => {
+      const fakeHostGemini = path.join(rootDir, 'fake-host-gemini');
+      fs.mkdirSync(fakeHostGemini, { recursive: true });
+      fs.writeFileSync(
+        path.join(fakeHostGemini, 'jetski-standalone-oauth-token'),
+        JSON.stringify({ token: { access_token: 'HOST-LEAK-TOKEN' } }),
+      );
+
+      // Profile provisioning writes independent token
+      const isolatedHomeA = path.join(profileDirA, 'home');
+      const geminiDir = path.join(isolatedHomeA, '.gemini');
+      fs.mkdirSync(geminiDir, { recursive: true });
+
+      const oauthPayload = buildAntigravityCredentialPayload(credentialsA.token);
+      const tokenPath = path.join(geminiDir, 'jetski-standalone-oauth-token');
+      fs.writeFileSync(tokenPath, oauthPayload, { mode: 0o600 });
+
+      // Run profile sharing pointing to fake host gemini
+      provisionWorkspaceProfileSharing({
+        profileUserDataDir: profileDirA,
+        isolatedHome: isolatedHomeA,
+        hostGeminiDir: fakeHostGemini,
+      });
+
+      // Verify token is a physical file, NOT a symlink
+      expect(fs.lstatSync(tokenPath).isSymbolicLink()).toBe(false);
+      const parsed = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+      expect(parsed.token.access_token).toBe('access-token-alpha');
+      expect(parsed.token.access_token).not.toBe('HOST-LEAK-TOKEN');
+    });
+
+    it('strict credential isolation: host auth tokens in state.vscdb are NEVER seeded or leaked during history sync', () => {
+      // Host database containing live auth credentials
+      const hostDbDir = path.join(rootDir, 'host-auth-storage');
+      fs.mkdirSync(hostDbDir, { recursive: true });
+      const hostDbPath = path.join(hostDbDir, 'state.vscdb');
+      const hostDb = new Database(hostDbPath);
+      hostDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      const insert = hostDb.prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)');
+      insert.run('history.recentlyOpenedPathsList', '{"entries":[]}');
+      insert.run('antigravityUnifiedStateSync.oauthToken', 'HOST_SECRET_TOKEN_DO_NOT_LEAK');
+      insert.run('antigravityAuthStatus', '{"email":"host-secret@example.com"}');
+      insert.run('antigravityOnboarding', 'true');
+      hostDb.close();
+
+      // Profile database for Developer Alpha
+      const profileStorageDir = path.join(profileDirA, 'User', 'globalStorage');
+      fs.mkdirSync(profileStorageDir, { recursive: true });
+      const profileDbPath = path.join(profileStorageDir, 'state.vscdb');
+      const profileDb = new Database(profileDbPath);
+      profileDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      const profileInsert = profileDb.prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)');
+      const alphaBase64 = ProtobufUtils.createUnifiedOAuthToken(
+        credentialsA.token.access_token,
+        credentialsA.token.refresh_token,
+        credentialsA.token.expiry_timestamp,
+        credentialsA.token.is_gcp_tos,
+        credentialsA.token.id_token,
+        credentialsA.email,
+      );
+      profileInsert.run('antigravityUnifiedStateSync.oauthToken', alphaBase64);
+      profileInsert.run(
+        'antigravityAuthStatus',
+        JSON.stringify({ name: credentialsA.name, email: credentialsA.email }),
+      );
+      profileDb.close();
+
+      // Action: seed history
+      seedRecentProjectHistory({ profileUserDataDir: profileDirA, hostDbPath });
+
+      // Verification
+      const verifyDb = new Database(profileDbPath, { readonly: true });
+      const authRow = verifyDb
+        .prepare("SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'")
+        .get() as { value: string };
+      const tokenRow = verifyDb
+        .prepare("SELECT value FROM ItemTable WHERE key = 'antigravityUnifiedStateSync.oauthToken'")
+        .get() as { value: string };
+      verifyDb.close();
+
+      expect(authRow.value).toContain('user-a@example.com');
+      expect(authRow.value).not.toContain('host-secret@example.com');
+
+      const extracted = ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(tokenRow.value);
+      expect(extracted?.accessToken).toBe('access-token-alpha');
+      expect(tokenRow.value).not.toBe('HOST_SECRET_TOKEN_DO_NOT_LEAK');
+    });
+
+    it('strict credential isolation: app_storage.json is an independent physical file reflecting only bound account', () => {
+      fs.mkdirSync(profileDirA, { recursive: true });
+      const appStoragePath = path.join(profileDirA, 'app_storage.json');
+      fs.writeFileSync(
+        appStoragePath,
+        JSON.stringify({
+          'ide-install-wizard-shown': 'true',
+          'jetski.onboarding.lastLoginUsername': credentialsA.email,
+        }),
+      );
+
+      const isolatedHomeA = path.join(profileDirA, 'home');
+      fs.mkdirSync(isolatedHomeA, { recursive: true });
+
+      provisionWorkspaceProfileSharing({
+        profileUserDataDir: profileDirA,
+        isolatedHome: isolatedHomeA,
+      });
+
+      expect(fs.lstatSync(appStoragePath).isSymbolicLink()).toBe(false);
+      const parsed = JSON.parse(fs.readFileSync(appStoragePath, 'utf8'));
+      expect(parsed['jetski.onboarding.lastLoginUsername']).toBe('user-a@example.com');
+    });
+  });
+
+  // --- Tier 8: Defensive Execution & Error Resilience (R4) ---
+
+  describe('Tier 8: Defensive Execution & Error Resilience (R4)', () => {
+    it('resilience against locked host state.vscdb (SQLITE_BUSY / lock)', () => {
+      const hostDbDir = path.join(rootDir, 'host-locked-storage');
+      fs.mkdirSync(hostDbDir, { recursive: true });
+      const hostDbPath = path.join(hostDbDir, 'state.vscdb');
+      const hostDb = new Database(hostDbPath);
+      hostDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      hostDb
+        .prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)')
+        .run('history.recentlyOpenedPathsList', '{"entries":[]}');
+
+      // Hold an exclusive lock
+      hostDb.exec('PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE;');
+
+      const profileStorageDir = path.join(profileDirA, 'User', 'globalStorage');
+      fs.mkdirSync(profileStorageDir, { recursive: true });
+      const profileDbPath = path.join(profileStorageDir, 'state.vscdb');
+      const profileDb = new Database(profileDbPath);
+      profileDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      profileDb.close();
+
+      // Seeding with short timeout (50ms) should gracefully catch SQLITE_BUSY and not hang or throw
+      expect(() => {
+        seedRecentProjectHistory({
+          profileUserDataDir: profileDirA,
+          hostDbPath,
+          timeoutMs: 50,
+        });
+      }).not.toThrow();
+
+      // Clean up lock
+      try {
+        hostDb.exec('ROLLBACK;');
+        hostDb.close();
+      } catch {
+        // ignore
+      }
+    });
+
+    it('resilience against corrupt host state.vscdb', () => {
+      const hostDbDir = path.join(rootDir, 'host-corrupt-storage');
+      fs.mkdirSync(hostDbDir, { recursive: true });
+      const hostDbPath = path.join(hostDbDir, 'state.vscdb');
+      fs.writeFileSync(hostDbPath, 'GARBAGE_NOT_A_VALID_SQLITE_DATABASE');
+
+      const profileStorageDir = path.join(profileDirA, 'User', 'globalStorage');
+      fs.mkdirSync(profileStorageDir, { recursive: true });
+      const profileDbPath = path.join(profileStorageDir, 'state.vscdb');
+      const profileDb = new Database(profileDbPath);
+      profileDb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+      profileDb.close();
+
+      expect(() => {
+        seedRecentProjectHistory({ profileUserDataDir: profileDirA, hostDbPath });
+      }).not.toThrow();
+    });
+
+    it('resilience against symlink creation failure (EPERM / EXDEV / permission denied)', () => {
+      const hostUserDir = path.join(rootDir, 'host-user-symlink-err');
+      fs.mkdirSync(hostUserDir, { recursive: true });
+      fs.writeFileSync(path.join(hostUserDir, 'settings.json'), '{}');
+
+      fs.mkdirSync(profileDirA, { recursive: true });
+
+      const symlinkSpy = vi.spyOn(fs, 'symlinkSync').mockImplementation(() => {
+        throw new Error('EXDEV: cross-device link not permitted');
+      });
+
+      expect(() => {
+        provisionEditorSettings(profileDirA, hostUserDir);
+      }).not.toThrow();
+
+      symlinkSpy.mockRestore();
+    });
+
+    it('safeSymlink removes stale symlinks and isPathAbsent handles ENOENT cleanly', () => {
+      const targetA = path.join(rootDir, 'target-a.txt');
+      const targetB = path.join(rootDir, 'target-b.txt');
+      const linkPath = path.join(rootDir, 'my-link.txt');
+
+      fs.writeFileSync(targetA, 'content A');
+      fs.writeFileSync(targetB, 'content B');
+
+      // 1. Initial link
+      expect(safeSymlink(targetA, linkPath, 'file')).toBe(true);
+      expect(fs.readFileSync(linkPath, 'utf8')).toBe('content A');
+
+      // 2. Retarget link to targetB: safeSymlink should replace stale link
+      expect(safeSymlink(targetB, linkPath, 'file')).toBe(true);
+      expect(fs.readFileSync(linkPath, 'utf8')).toBe('content B');
+
+      // 3. Test isPathAbsent
+      expect(isPathAbsent(path.join(rootDir, 'totally-missing'))).toBe(true);
+      expect(isPathAbsent(targetA)).toBe(false);
     });
   });
 });

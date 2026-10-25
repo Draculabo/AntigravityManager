@@ -68,6 +68,12 @@ export function launchEnvironment(
 async function dispatchLaunch(context: LaunchContext): Promise<void> {
   let executable = context.executablePath;
   let args = [...context.args];
+  if (
+    context.extensionsDir &&
+    !args.some((arg) => arg === '--extensions-dir' || arg.startsWith('--extensions-dir='))
+  ) {
+    args.push(`--extensions-dir=${context.extensionsDir}`);
+  }
   if (process.platform === 'darwin') {
     const bundle = /^(.*?\.app)(?:\/|$)/i.exec(executable)?.[1];
     if (bundle) {
