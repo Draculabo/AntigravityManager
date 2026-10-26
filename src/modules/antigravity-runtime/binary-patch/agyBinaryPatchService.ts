@@ -6,6 +6,8 @@ import { promisify } from 'util';
 import {
   AgyBinaryFormat,
   AgyBinaryPatchAnalysis,
+  AgyBinaryPatchBufferResult,
+  AgyBinaryPatchError,
   patchAgyBinaryBuffer,
 } from '@/modules/antigravity-runtime/binary-patch/agyBinaryPatchCore';
 import { hasErrorCode } from '@/shared/errors/error-guards';
@@ -166,7 +168,24 @@ export async function patchAgyBinaryFile(
   const filePath = await resolveAgyExecutablePath(configuredPath);
   const sourceStats = await fs.promises.stat(filePath);
   const source = await fs.promises.readFile(filePath);
-  const patchResult = patchAgyBinaryBuffer(source);
+  let patchResult: AgyBinaryPatchBufferResult;
+  try {
+    patchResult = patchAgyBinaryBuffer(source);
+  } catch (error) {
+    if (
+      error instanceof AgyBinaryPatchError &&
+      (error.code === 'PATTERN_NOT_FOUND' || error.code === 'AMBIGUOUS_PATTERN')
+    ) {
+      const sha256 = crypto.createHash('sha256').update(source).digest('hex');
+      const failure = new AgyBinaryPatchError(
+        error.code,
+        `${error.message} This CLI build cannot be safely matched by the current patch rules. SHA-256: ${sha256}. No executable or backup was changed.`,
+      );
+      failure.cause = error;
+      throw failure;
+    }
+    throw error;
+  }
 
   if (patchResult.analysis.status === 'already-patched') {
     return {

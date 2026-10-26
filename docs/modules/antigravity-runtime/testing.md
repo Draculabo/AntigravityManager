@@ -102,6 +102,73 @@ statement compatibility only, not Mac runtime acceptance.
 
 These fixtures do not write live OS credentials or prove official-client account identity. Release acceptance still requires two authorized test accounts, real IDE switching with the mode selected from its service structure, Classic restart switching, CLI identity checks and a real AI request after each switch. Supervised-service hot switching preserves the same window/workspace; machine-service fallback must confirm full shutdown and one restart. Confirm that a closed window is not reopened. On macOS, best-effort database fallback can return success despite failed injection, so verify the actual client account rather than relying on the notification. Physical macOS acceptance must cover A-B-A through both CLI and Electron owners, Keychain permissions, the three local mirrors and real AI requests. System-wide Linux desktop acceptance requires a separate run.
 
+## Agy binary patch compatibility
+
+Executable format recognition is separate from patch compatibility. The core recognizes PE,
+ELF and Mach-O containers and selected architectures. The x64 matcher uses bounded PE or
+ELF PIE sections and Go pc/line metadata to identify `Manager.userInputLoop` and
+`AuthStatus.EligibilityError`. It requires a direct call, a nil-error test and a conditional
+jump to the local `Eligibility Check` UI block. Only that six-byte jump is replaced; the error
+function and authentication paths are unchanged. Missing, ambiguous or unfamiliar layouts fail
+before writing. The previous global x86 byte signature is removed because it matched unrelated
+stream-error handling in official Windows 1.1.2. ELF sections must agree with load-segment
+mappings. For the verified Linux PIE layout, relative relocations identify Go module data and
+its text bounds; the Go text base can differ from the ELF `.text` start. Missing or ambiguous
+relocations are rejected rather than replaced with a guessed base.
+
+The following evidence was collected on 2026-10-25 and 2026-10-26. Executable SHA-256 values and the target
+analysis are recorded in the [patch decision](../../../.agents/notes/implemented/bug-fix/2026-10-25-agy-patch-build-diagnostics.md).
+
+| CLI build                            | Established evidence                                                                                                                                                      | Limits                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Official Windows x64 1.4.7           | One intended branch; exact six-byte replacement; file-service backup, idempotence, `--version` startup and exact restoration on an independent copy                       | No live conversation or server-side eligibility verification                                 |
+| Installed Windows x64 1.3.6          | Same file-service and startup checks on an independent copy                                                                                                               | Installed artifact identity only; no official archive verification or live conversation      |
+| Official Linux x64 glibc 1.4.7       | Native file-service patching in WSL Ubuntu with Node 24.22.0; exact six-byte replacement, executable permissions, backup, idempotence, rejection, startup and restoration | No Linux Electron UI, musl/ARM64 build, bare-metal installer or live conversation validation |
+| Official Windows x64 1.1.2           | Rejected; the old signature identifies `SendSideQuestion.func2`, not the input-loop eligibility gate                                                                      | Its older inline eligibility layout is not implemented                                       |
+| Official macOS ARM64 1.1.2           | One existing ARM64 match; exact four-byte buffer replacement and idempotence                                                                                              | No native macOS execution or codesigning                                                     |
+| Official macOS ARM64 1.0.4 and 1.1.9 | Rejected by existing ARM64 rules                                                                                                                                          | No native execution                                                                          |
+
+Other Windows/Linux builds require the same semantic checks; version strings alone do not establish
+compatibility. The new matcher does not implement x86 Mach-O or non-PIE ELF layouts. Native
+macOS patch acceptance is unverified. See the [recovery guide](../../upgrade-guides/next/agy-binary-patch.md)
+before reusing a CLI that an older Manager reported as patched.
+
+On 2026-10-26, a fresh main/preload/renderer build was exercised in Electron 37.10.3 on Windows
+with an empty, isolated account profile and real IPC. Settings-page actions verified a disabled
+patch button for an empty path, persisted CLI paths, successful 1.4.7/1.3.6 patching, exact backups,
+six-byte-only changes and repeated-operation notifications without another write. Windows
+1.1.2 displayed the rejection, SHA-256 and no-write explanation; the input and directory remained
+unchanged, and the patch button recovered. The run recorded no renderer page errors. Backups
+were restored, the desktop closed, Windows login settings were restored and checked, and the
+isolated profile was removed. This source-build check does not establish installer behavior or
+a live conversation with an ineligible account.
+
+The Linux file-service check runs on WSL2 Ubuntu x64, kernel `6.6.87.1-microsoft-standard-WSL2`,
+glibc `2.35`, with the production service bundled from the current source. It copies the official
+CLI into an owned Linux `/tmp` directory and isolates its HOME/XDG paths. Original, patched
+and restored `--version` invocations all report `1.4.7`. File mode `0751` survives replacement.
+A deliberately altered input-loop symbol is rejected while preserving that input, the existing
+backup and the directory listing. The runner restores original bytes and removes its own
+directory; it does not modify an installed CLI, credentials or the downloaded source artifact.
+
+The file service reports missing or ambiguous patterns with the source SHA-256 and the existing
+error code before backup or replacement. Its "No executable or backup was changed" statement
+applies only to this preflight rejection. Preserve the digest with the CLI version, architecture,
+installation source and exact error when reporting a build. Treat the digest as file identity,
+not proof of its authenticity or compatibility. Do not infer support from a version number or
+recommend a downgrade without matching real-build evidence.
+
+Run `pnpm test src/tests/unit/agy-binary-patch.test.ts src/tests/unit/agy-pe-eligibility.test.ts src/tests/unit/agy-elf-eligibility.test.ts`
+for the owning checks. Their minimal PE/ELF/Go fixtures establish target relationships, rejection
+of the old false positive, bounded parsing and relocation resolution, idempotence and file-service behavior. They do not
+establish support for an additional real CLI build. Real-build acceptance
+requires verified artifacts, semantic confirmation of the target branch, exact changed-byte
+verification and independent file copies. Retain unique-match rejection, unknown-build rejection,
+idempotence and backup/recovery checks. Static matching or a successful byte replacement alone
+does not establish a working account conversation. The Windows file-service checks execute only
+`--version` in an isolated profile, restore from their own backup, verify the original bytes and
+remove their independent copies. They do not change the installed CLI or account state.
+
 ## IDE hot-switch lifecycle checks
 
 For real cloud and local account A-B-A checks through the CLI and Electron owners, follow the [account switching acceptance tutorial](account-switch-acceptance.md). It distinguishes official login confirmation from credential-only evidence and records the Linux restart-only limitation.
