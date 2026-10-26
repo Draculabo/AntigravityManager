@@ -86,6 +86,19 @@ export const SelectDirectoryInputSchema = z.object({
 });
 export type SelectDirectoryInput = z.infer<typeof SelectDirectoryInputSchema>;
 
+/** Sync / Reconcile All Profiles output */
+export const SyncWorkspaceProfilesResultSchema = z.object({
+  reconciledCount: z.number().int().nonnegative(),
+  profiles: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      reconciled: z.boolean(),
+    }),
+  ),
+});
+export type SyncWorkspaceProfilesResult = z.infer<typeof SyncWorkspaceProfilesResultSchema>;
+
 /** Runtime status schema */
 export const WorkspaceProfileStatusSchema = z.object({
   running: z.boolean(),

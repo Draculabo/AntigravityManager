@@ -10,6 +10,7 @@ import {
   LaunchForAccountInputSchema,
   SelectDirectoryInputSchema,
   StopWorkspaceInputSchema,
+  SyncWorkspaceProfilesResultSchema,
   UpdateWorkspaceProfileInputSchema,
   WorkspaceProfileSchema,
   WorkspaceProfileViewSchema,
@@ -165,6 +166,14 @@ export function createWorkspaceRouter(
           throw toWorkspaceORPCError(error);
         }
       }),
+
+    syncAll: os.output(SyncWorkspaceProfilesResultSchema).handler(async () => {
+      try {
+        return await service.syncAll();
+      } catch (error) {
+        throw toWorkspaceORPCError(error);
+      }
+    }),
   });
 }
 

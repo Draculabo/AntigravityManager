@@ -8,10 +8,13 @@ import { buildAntigravityCredentialPayload } from '@/modules/antigravity-runtime
 import type { ClientAccountCredentials } from '@/modules/antigravity-runtime/credentials/clientAccount';
 import {
   isPathAbsent,
+  isStaleOrScaffoldGeminiDir,
+  mergeUniqueConversationsToHost,
   provisionEditorSettings,
   provisionExtensionsSharing,
   provisionGeminiCustomizations,
   provisionWorkspaceProfileSharing,
+  reconcileAllWorkspaceProfiles,
   safeSymlink,
   seedRecentProjectHistory,
 } from '@/modules/workspace/services/workspace-provisioning';
@@ -868,6 +871,219 @@ describe('Workspace Credential Provisioning (R3)', () => {
       // 3. Test isPathAbsent
       expect(isPathAbsent(path.join(rootDir, 'totally-missing'))).toBe(true);
       expect(isPathAbsent(targetA)).toBe(false);
+    });
+  });
+
+  describe('Self-Healing Gemini Customizations & Sync Across Profiles', () => {
+    let hostGeminiDir: string;
+    let profileGeminiDir: string;
+    let isolatedHome: string;
+
+    beforeEach(() => {
+      hostGeminiDir = path.join(rootDir, 'host-gemini');
+      isolatedHome = path.join(profileDirA, 'home');
+      profileGeminiDir = path.join(isolatedHome, '.gemini');
+
+      // Setup populated host Gemini directory
+      fs.mkdirSync(path.join(hostGeminiDir, 'antigravity', 'brain', 'host-conv-1'), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(hostGeminiDir, 'antigravity', 'brain', 'host-conv-1', 'transcript.jsonl'),
+        '{"role":"user","content":"Hello from host"}',
+      );
+      fs.mkdirSync(path.join(hostGeminiDir, 'config', 'skills', 'skill-alpha'), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(hostGeminiDir, 'config', 'skills', 'skill-alpha', 'SKILL.md'),
+        '# Alpha Skill',
+      );
+
+      // Create host conversation_summaries.db
+      const hostDb = new Database(
+        path.join(hostGeminiDir, 'antigravity', 'conversation_summaries.db'),
+      );
+      hostDb.exec(`
+        CREATE TABLE conversation_summaries (
+          conversation_id text PRIMARY KEY,
+          title text NOT NULL DEFAULT ""
+        );
+        INSERT INTO conversation_summaries (conversation_id, title) VALUES ('host-conv-1', 'Host Conversation');
+      `);
+      hostDb.close();
+    });
+
+    it('isStaleOrScaffoldGeminiDir detects empty/scaffold antigravity directory as stale', () => {
+      const scaffoldAntigravity = path.join(rootDir, 'test-scaffold-antigravity');
+      fs.mkdirSync(path.join(scaffoldAntigravity, 'brain'), { recursive: true });
+      fs.mkdirSync(path.join(scaffoldAntigravity, 'conversations'), { recursive: true });
+      fs.mkdirSync(path.join(scaffoldAntigravity, 'builtin'), { recursive: true });
+      fs.mkdirSync(path.join(scaffoldAntigravity, 'crashes'), { recursive: true });
+      fs.mkdirSync(path.join(scaffoldAntigravity, 'bin'), { recursive: true });
+      fs.writeFileSync(path.join(scaffoldAntigravity, 'installation_id'), 'id-12345');
+      fs.writeFileSync(path.join(scaffoldAntigravity, 'antigravity_state.pbtxt'), 'active: true');
+
+      const db = new Database(path.join(scaffoldAntigravity, 'conversation_summaries.db'));
+      db.exec(
+        'CREATE TABLE conversation_summaries (conversation_id text PRIMARY KEY, title text);',
+      );
+      db.close();
+
+      expect(isStaleOrScaffoldGeminiDir(scaffoldAntigravity, 'antigravity')).toBe(true);
+    });
+
+    it('isStaleOrScaffoldGeminiDir detects populated antigravity directory with transcripts as non-stale', () => {
+      const populatedAntigravity = path.join(rootDir, 'test-pop-antigravity');
+      fs.mkdirSync(path.join(populatedAntigravity, 'brain', 'user-conv-99'), { recursive: true });
+      fs.writeFileSync(
+        path.join(populatedAntigravity, 'brain', 'user-conv-99', 'transcript.jsonl'),
+        '{"role":"user","content":"Important transcript"}',
+      );
+
+      expect(isStaleOrScaffoldGeminiDir(populatedAntigravity, 'antigravity')).toBe(false);
+    });
+
+    it('isStaleOrScaffoldGeminiDir detects empty/scaffold config directory as stale and populated config as non-stale', () => {
+      const scaffoldConfig = path.join(rootDir, 'test-scaffold-config');
+      fs.mkdirSync(path.join(scaffoldConfig, 'plugins'), { recursive: true });
+      fs.mkdirSync(path.join(scaffoldConfig, 'projects'), { recursive: true });
+      fs.mkdirSync(path.join(scaffoldConfig, 'sidecars'), { recursive: true });
+      fs.writeFileSync(path.join(scaffoldConfig, 'mcp_config.json'), '');
+      fs.writeFileSync(path.join(scaffoldConfig, 'config.json'), '{}');
+
+      expect(isStaleOrScaffoldGeminiDir(scaffoldConfig, 'config')).toBe(true);
+
+      // Now add a custom skill
+      fs.mkdirSync(path.join(scaffoldConfig, 'skills', 'custom-skill'), { recursive: true });
+      fs.writeFileSync(path.join(scaffoldConfig, 'skills', 'custom-skill', 'SKILL.md'), '# Custom');
+      expect(isStaleOrScaffoldGeminiDir(scaffoldConfig, 'config')).toBe(false);
+    });
+
+    it('replaces pre-existing stale physical antigravity and config scaffolding with live symlinks', () => {
+      // Create stale scaffolding in profileGeminiDir (just like the Antigravity IDE binary creates)
+      const profileAntigravity = path.join(profileGeminiDir, 'antigravity');
+      const profileConfig = path.join(profileGeminiDir, 'config');
+      fs.mkdirSync(path.join(profileAntigravity, 'brain'), { recursive: true });
+      fs.mkdirSync(path.join(profileAntigravity, 'conversations'), { recursive: true });
+      fs.writeFileSync(path.join(profileAntigravity, 'installation_id'), 'scaffold-id');
+      const scaffoldDb = new Database(path.join(profileAntigravity, 'conversation_summaries.db'));
+      scaffoldDb.exec(
+        'CREATE TABLE conversation_summaries (conversation_id text PRIMARY KEY, title text);',
+      );
+      scaffoldDb.close();
+
+      fs.mkdirSync(path.join(profileConfig, 'plugins'), { recursive: true });
+      fs.writeFileSync(path.join(profileConfig, 'mcp_config.json'), '{}');
+
+      // Profile has isolated oauth token
+      fs.writeFileSync(
+        path.join(profileGeminiDir, 'jetski-standalone-oauth-token'),
+        'isolated-token-alpha',
+        { mode: 0o600 },
+      );
+
+      // Run provisionGeminiCustomizations
+      provisionGeminiCustomizations(isolatedHome, hostGeminiDir);
+
+      // Verify antigravity and config are now symlinks to host
+      expect(fs.lstatSync(profileAntigravity).isSymbolicLink()).toBe(true);
+      expect(fs.lstatSync(profileConfig).isSymbolicLink()).toBe(true);
+
+      // Verify host brain transcripts and skills are accessible through profile symlinks
+      expect(
+        fs.existsSync(path.join(profileAntigravity, 'brain', 'host-conv-1', 'transcript.jsonl')),
+      ).toBe(true);
+      expect(fs.existsSync(path.join(profileConfig, 'skills', 'skill-alpha', 'SKILL.md'))).toBe(
+        true,
+      );
+
+      // STRICT CREDENTIAL ISOLATION: Token is untouched and isolated
+      expect(
+        fs.lstatSync(path.join(profileGeminiDir, 'jetski-standalone-oauth-token')).isSymbolicLink(),
+      ).toBe(false);
+      expect(
+        fs.readFileSync(path.join(profileGeminiDir, 'jetski-standalone-oauth-token'), 'utf8'),
+      ).toBe('isolated-token-alpha');
+    });
+
+    it('preserves pre-existing customized physical directories without overwriting', () => {
+      const profileAntigravity = path.join(profileGeminiDir, 'antigravity');
+      fs.mkdirSync(path.join(profileAntigravity, 'brain', 'unique-user-conv'), { recursive: true });
+      fs.writeFileSync(
+        path.join(profileAntigravity, 'brain', 'unique-user-conv', 'transcript.jsonl'),
+        '{"role":"user","content":"User local conversation"}',
+      );
+
+      const userDb = new Database(path.join(profileAntigravity, 'conversation_summaries.db'));
+      userDb.exec(`
+        CREATE TABLE conversation_summaries (conversation_id text PRIMARY KEY, title text);
+        INSERT INTO conversation_summaries (conversation_id, title) VALUES ('unique-user-conv', 'Local User Conv');
+      `);
+      userDb.close();
+
+      provisionGeminiCustomizations(isolatedHome, hostGeminiDir);
+
+      // Customized antigravity remains a physical directory, NOT overwritten by symlink
+      expect(fs.lstatSync(profileAntigravity).isSymbolicLink()).toBe(false);
+      expect(
+        fs.existsSync(
+          path.join(profileAntigravity, 'brain', 'unique-user-conv', 'transcript.jsonl'),
+        ),
+      ).toBe(true);
+
+      // Verify mergeUniqueConversationsToHost standalone functionality
+      mergeUniqueConversationsToHost(profileAntigravity, path.join(hostGeminiDir, 'antigravity'));
+      expect(
+        fs.existsSync(
+          path.join(hostGeminiDir, 'antigravity', 'brain', 'unique-user-conv', 'transcript.jsonl'),
+        ),
+      ).toBe(true);
+      const hostDb = new Database(
+        path.join(hostGeminiDir, 'antigravity', 'conversation_summaries.db'),
+        {
+          readonly: true,
+        },
+      );
+      const mergedRow = hostDb
+        .prepare("SELECT * FROM conversation_summaries WHERE conversation_id = 'unique-user-conv'")
+        .get() as { conversation_id?: string; title?: string } | undefined;
+      hostDb.close();
+      expect(mergedRow).toBeDefined();
+      expect(mergedRow?.title).toBe('Local User Conv');
+    });
+
+    it('reconcileAllWorkspaceProfiles synchronizes multiple registered profiles cleanly', async () => {
+      const mockProfileRepo = {
+        listProfiles: async () => [
+          {
+            id: 'mock-p1',
+            name: 'Profile One',
+            accountId: 'acc-1',
+            projectPath: rootDir,
+            userDataDir: profileDirA,
+            createdAt: 1000,
+            lastLaunchedAt: null,
+          },
+          {
+            id: 'mock-p2',
+            name: 'Profile Two',
+            accountId: 'acc-2',
+            projectPath: rootDir,
+            userDataDir: profileDirB,
+            createdAt: 2000,
+            lastLaunchedAt: null,
+          },
+        ],
+      };
+
+      const result = await reconcileAllWorkspaceProfiles({
+        profileRepo: mockProfileRepo as never,
+        hostGeminiDir,
+      });
+
+      expect(result.reconciledCount).toBe(2);
+      expect(result.profiles.every((p) => p.reconciled)).toBe(true);
     });
   });
 });

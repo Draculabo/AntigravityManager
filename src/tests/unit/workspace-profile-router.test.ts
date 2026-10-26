@@ -750,7 +750,19 @@ describe('Workspace Profile Router IPC (R1) - Genuine Integration', () => {
   });
 
   // =========================================================================
-  // 8. Error Mapping: toWorkspaceORPCError
+  // 8. Router Procedure: syncAll
+  // =========================================================================
+  describe('workspaceRouter.syncAll', () => {
+    it('synchronizes and reconciles all workspace profiles', async () => {
+      const result = await client.syncAll();
+      expect(result).toBeDefined();
+      expect(typeof result.reconciledCount).toBe('number');
+      expect(Array.isArray(result.profiles)).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // 9. Error Mapping: toWorkspaceORPCError
   // =========================================================================
   describe('toWorkspaceORPCError Translation Matrix', () => {
     it('maps domain errors to corresponding oRPC status codes', () => {

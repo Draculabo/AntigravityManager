@@ -20,7 +20,9 @@ import {
   ActiveWorkspaceDeletionError,
   WorkspaceDirectoryError,
   type WorkspaceLifecycleDelegate,
+  type SyncWorkspaceProfilesResult,
 } from '../types';
+import { reconcileAllWorkspaceProfiles } from './workspace-provisioning';
 
 export type { WorkspaceLifecycleDelegate };
 
@@ -353,6 +355,15 @@ export function createWorkspaceProfileService(deps: WorkspaceProfileServiceDepen
       if (deps.lifecycleDelegate) {
         await deps.lifecycleDelegate.stop(id);
       }
+    },
+
+    /**
+     * Synchronizes and self-heals conversations, skills, and extensions across all workspace profiles.
+     */
+    async syncAll(): Promise<SyncWorkspaceProfilesResult> {
+      return await reconcileAllWorkspaceProfiles({
+        profileRepo: deps.profileRepo,
+      });
     },
   };
 }

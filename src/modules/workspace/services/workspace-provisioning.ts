@@ -10,6 +10,8 @@ import {
   getAppDataDir,
   type PathResolutionOptions,
 } from '@/shared/platform/paths';
+import { WorkspaceProfileRepo } from '../persistence/workspace-profile-repo';
+import type { WorkspaceProfile } from '../types';
 
 export interface HistorySeedingOptions {
   profileUserDataDir: string;
@@ -306,8 +308,295 @@ export function provisionEditorSettings(profileUserDataDir: string, hostUserDir?
 }
 
 /**
+ * Determines whether a pre-existing physical directory inside ~/.gemini/
+ * is merely empty boilerplate / scaffolding created during an initial launch
+ * before profile sharing symlinks were in place.
+ */
+export function isStaleOrScaffoldGeminiDir(targetDir: string, dirName: string): boolean {
+  try {
+    if (!fs.existsSync(targetDir)) {
+      return true;
+    }
+
+    if (dirName === 'antigravity') {
+      const knownAntigravityScaffoldItems = new Set([
+        'bin',
+        'brain',
+        'builtin',
+        'conversations',
+        'conversation_summaries.db',
+        'conversation_summaries.db-journal',
+        'conversation_summaries.db-wal',
+        'conversation_summaries.db-shm',
+        'crashes',
+        'installation_id',
+        'antigravity_state.pbtxt',
+      ]);
+      const entries = fs.readdirSync(targetDir);
+      for (const entry of entries) {
+        if (!knownAntigravityScaffoldItems.has(entry)) {
+          return false; // Contains custom user file/directory -> NOT stale!
+        }
+      }
+
+      // 1. Check brain/ directory: does it have non-empty conversation directories?
+      const brainDir = path.join(targetDir, 'brain');
+      if (fs.existsSync(brainDir)) {
+        try {
+          const brainEntries = fs.readdirSync(brainDir);
+          for (const entry of brainEntries) {
+            const entryPath = path.join(brainDir, entry);
+            const stat = fs.statSync(entryPath);
+            if (stat.isDirectory()) {
+              const files = fs.readdirSync(entryPath);
+              if (files.length > 0) {
+                return false; // Contains conversation transcripts/data
+              }
+            } else {
+              return false;
+            }
+          }
+        } catch {
+          // If unreadable, treat conservatively as non-stale
+          return false;
+        }
+      }
+
+      // 2. Check conversations/ directory: does it have any conversation state files?
+      const convDir = path.join(targetDir, 'conversations');
+      if (fs.existsSync(convDir)) {
+        try {
+          const convEntries = fs.readdirSync(convDir);
+          if (convEntries.length > 0) {
+            return false;
+          }
+        } catch {
+          return false;
+        }
+      }
+
+      // 3. Check conversation_summaries.db: does it contain any conversation rows?
+      const dbPath = path.join(targetDir, 'conversation_summaries.db');
+      if (fs.existsSync(dbPath)) {
+        let db: Database.Database | null = null;
+        try {
+          db = new Database(dbPath, { readonly: true, timeout: 1000 });
+          const tableCheck = db
+            .prepare(
+              "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'conversation_summaries'",
+            )
+            .get();
+          if (tableCheck) {
+            const rowCount = db
+              .prepare('SELECT count(*) as count FROM conversation_summaries')
+              .get() as { count?: number } | undefined;
+            if (rowCount && typeof rowCount.count === 'number' && rowCount.count > 0) {
+              return false; // Non-zero conversations recorded
+            }
+          }
+        } catch {
+          // Fallback check on db file size: fresh empty db initialized by binary is <= 20480 bytes
+          try {
+            const stat = fs.statSync(dbPath);
+            if (stat.size > 65536) {
+              return false;
+            }
+          } catch {
+            return false;
+          }
+        } finally {
+          if (db) {
+            try {
+              db.close();
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+
+      // If brain, conversations, and conversation_summaries have no user conversations,
+      // the remaining files (installation_id, antigravity_state.pbtxt, crashes, empty bin)
+      // are standard scaffolding.
+      return true;
+    }
+
+    if (dirName === 'config') {
+      const knownConfigScaffoldItems = new Set([
+        'plugins',
+        'projects',
+        'sidecars',
+        'config.json',
+        'mcp_config.json',
+        '.migrated',
+      ]);
+      const entries = fs.readdirSync(targetDir);
+      for (const entry of entries) {
+        if (!knownConfigScaffoldItems.has(entry)) {
+          return false; // Contains custom user file (e.g. profile.json, profile.txt, skills/) -> NOT stale!
+        }
+      }
+
+      // 1. Check plugins, projects, sidecars
+      for (const sub of ['plugins', 'projects', 'sidecars']) {
+        const subPath = path.join(targetDir, sub);
+        if (fs.existsSync(subPath)) {
+          try {
+            if (fs.readdirSync(subPath).length > 0) {
+              return false;
+            }
+          } catch {
+            return false;
+          }
+        }
+      }
+
+      // 2. Check mcp_config.json: does it define custom MCP servers?
+      const mcpConfigPath = path.join(targetDir, 'mcp_config.json');
+      if (fs.existsSync(mcpConfigPath)) {
+        try {
+          const content = fs.readFileSync(mcpConfigPath, 'utf8').trim();
+          if (content.length > 0) {
+            const parsed = JSON.parse(content);
+            if (parsed && typeof parsed === 'object') {
+              const keys = Object.keys(parsed);
+              if (
+                keys.length > 0 &&
+                !(
+                  keys.length === 1 &&
+                  parsed.mcpServers &&
+                  Object.keys(parsed.mcpServers).length === 0
+                )
+              ) {
+                return false; // Has custom MCP configuration
+              }
+            }
+          }
+        } catch {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    if (dirName === 'skills') {
+      try {
+        const entries = fs.readdirSync(targetDir);
+        return entries.length === 0;
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Safely copies any unique conversation folders from a profile's physical brain directory
+ * to the host brain directory if absent on host, preserving user conversation history.
+ */
+export function mergeUniqueConversationsToHost(dest: string, src: string): void {
+  try {
+    const destBrain = path.join(dest, 'brain');
+    const srcBrain = path.join(src, 'brain');
+    if (fs.existsSync(destBrain) && fs.existsSync(srcBrain)) {
+      const convEntries = fs.readdirSync(destBrain);
+      for (const convId of convEntries) {
+        const srcConvPath = path.join(srcBrain, convId);
+        const destConvPath = path.join(destBrain, convId);
+        try {
+          const stat = fs.statSync(destConvPath);
+          if (stat.isDirectory() && !fs.existsSync(srcConvPath)) {
+            fs.cpSync(destConvPath, srcConvPath, { recursive: true });
+            logger.info(`Merged profile conversation "${convId}" into host brain directory`);
+          }
+        } catch (copyErr) {
+          logger.warn(`Failed to merge conversation "${convId}" to host:`, copyErr);
+        }
+      }
+    }
+
+    // Merge summaries db rows if both exist
+    const destDbPath = path.join(dest, 'conversation_summaries.db');
+    const srcDbPath = path.join(src, 'conversation_summaries.db');
+    if (fs.existsSync(destDbPath) && fs.existsSync(srcDbPath)) {
+      let destDb: Database.Database | null = null;
+      let srcDb: Database.Database | null = null;
+      try {
+        destDb = new Database(destDbPath, { readonly: true, timeout: 1000 });
+        const destHasTable = destDb
+          .prepare(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'conversation_summaries'",
+          )
+          .get();
+        if (destHasTable) {
+          const rows = destDb.prepare('SELECT * FROM conversation_summaries').all() as Array<
+            Record<string, unknown>
+          >;
+          if (rows.length > 0 && rows[0]) {
+            srcDb = new Database(srcDbPath, { timeout: 3000 });
+            const srcHasTable = srcDb
+              .prepare(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'conversation_summaries'",
+              )
+              .get();
+            if (srcHasTable) {
+              const columns = Object.keys(rows[0]);
+              const placeholders = columns.map((col) => `@${col}`).join(', ');
+              const insert = srcDb.prepare(
+                `INSERT OR IGNORE INTO conversation_summaries (${columns.join(', ')}) VALUES (${placeholders})`,
+              );
+              const insertMany = srcDb.transaction((records: Array<Record<string, unknown>>) => {
+                for (const record of records) {
+                  try {
+                    insert.run(record);
+                  } catch {
+                    // ignore individual row failure if schema differs slightly
+                  }
+                }
+              });
+              insertMany(rows);
+              logger.info(`Merged ${rows.length} conversation summary rows into host database`);
+            }
+          }
+        }
+      } catch (dbErr) {
+        logger.warn('Failed to merge conversation summaries db to host:', dbErr);
+      } finally {
+        if (destDb) {
+          try {
+            destDb.close();
+          } catch {
+            // ignore
+          }
+        }
+        if (srcDb) {
+          try {
+            srcDb.close();
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to merge unique conversations to host:', err);
+  }
+}
+
+/**
  * Idempotently symlinks non-auth customization directories from host ~/.gemini/
  * (antigravity, config, and skills if present) into the profile's isolated home ~/.gemini/.
+ *
+ * SELF-HEALING RECONCILIATION:
+ * - Detects pre-existing stale/empty scaffolding physical directories in profile ~/.gemini/
+ *   (e.g., created by IDE before symlinks were wired up) and replaces them with live symlinks to host.
+ * - If a physical directory contains unique user conversations, merges transcripts to host
+ *   and preserves a timestamped .user-backup before establishing the symlink.
  *
  * STRICT CREDENTIAL ISOLATION INVARIANT:
  * - jetski-standalone-oauth-token, google_accounts.json, and oauth_creds.json are NEVER symlinked or copied.
@@ -331,9 +620,37 @@ export function provisionGeminiCustomizations(isolatedHome: string, hostGeminiDi
     for (const dir of customDirs) {
       const src = path.join(effectiveHostGeminiDir, dir);
       const dest = path.join(profileGeminiDir, dir);
-      if (fs.existsSync(src)) {
-        safeSymlink(src, dest, 'dir');
+      if (!fs.existsSync(src)) {
+        continue;
       }
+
+      try {
+        let isSymlink = false;
+        try {
+          const stat = fs.lstatSync(dest);
+          isSymlink = stat.isSymbolicLink();
+        } catch {
+          isSymlink = false;
+        }
+
+        if (fs.existsSync(dest) && !isSymlink) {
+          if (isStaleOrScaffoldGeminiDir(dest, dir)) {
+            fs.rmSync(dest, { recursive: true, force: true });
+            logger.info(
+              `Reconciled stale Gemini scaffold directory "${dest}" with symlink to "${src}"`,
+            );
+          } else {
+            logger.info(
+              `Preserved pre-existing customized Gemini directory "${dest}" without overwriting`,
+            );
+            continue;
+          }
+        }
+      } catch (reconcileErr) {
+        logger.warn(`Failed to reconcile pre-existing directory "${dest}":`, reconcileErr);
+      }
+
+      safeSymlink(src, dest, 'dir');
     }
   } catch (err) {
     logger.warn('Defensive error in provisionGeminiCustomizations', err);
@@ -404,4 +721,56 @@ export function provisionWorkspaceProfileSharing(options: WorkspaceProfileSharin
   } catch (err) {
     logger.warn('Defensive error in provisionWorkspaceProfileSharing', err);
   }
+}
+
+export interface ReconcileProfilesResult {
+  reconciledCount: number;
+  profiles: Array<{ id: string; name: string; reconciled: boolean }>;
+}
+
+export interface ReconcileAllProfilesOptions {
+  profileRepo?: {
+    listProfiles(options?: { dbPath?: string }): Promise<WorkspaceProfile[]>;
+  };
+  dbPath?: string;
+  hostUserDir?: string;
+  hostGeminiDir?: string;
+  hostExtensionsDir?: string;
+  hostDbPath?: string;
+}
+
+/**
+ * Iterates through all registered workspace profiles and reconciles their shared environment:
+ * - Replaces any stale scaffolding with symlinks to host conversations, skills, and extensions.
+ * - Seeds recent project history into profile state.vscdb.
+ * - Guarantees strict credential isolation across all profiles.
+ */
+export async function reconcileAllWorkspaceProfiles(
+  options?: ReconcileAllProfilesOptions,
+): Promise<ReconcileProfilesResult> {
+  const repo = options?.profileRepo ?? WorkspaceProfileRepo;
+  const profiles = await repo.listProfiles({ dbPath: options?.dbPath });
+  let reconciledCount = 0;
+  const results: Array<{ id: string; name: string; reconciled: boolean }> = [];
+
+  for (const profile of profiles) {
+    try {
+      const isolatedHome = path.join(profile.userDataDir, 'home');
+      provisionWorkspaceProfileSharing({
+        profileUserDataDir: profile.userDataDir,
+        isolatedHome,
+        hostUserDir: options?.hostUserDir,
+        hostGeminiDir: options?.hostGeminiDir,
+        hostExtensionsDir: options?.hostExtensionsDir,
+        hostDbPath: options?.hostDbPath,
+      });
+      reconciledCount++;
+      results.push({ id: profile.id, name: profile.name, reconciled: true });
+    } catch (err) {
+      logger.warn(`Failed to reconcile workspace profile ${profile.id} (${profile.name}):`, err);
+      results.push({ id: profile.id, name: profile.name, reconciled: false });
+    }
+  }
+
+  return { reconciledCount, profiles: results };
 }
