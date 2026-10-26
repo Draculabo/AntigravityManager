@@ -2,6 +2,67 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.27.0
+
+**Release Date:** 2026-10-26
+**Since v0.26.0:** 7 commits · 4 merged PRs · 3 verified contributors
+
+> This release includes updates in Desktop & User Experience, Accounts & Core, Tooling & Maintenance.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — add support for unified state sync account info and active acco… ([#372](https://github.com/Draculabo/AntigravityManager/pull/372))
+- **Fix** — fetch the Gemini 4 Argon quota group ([#369](https://github.com/Draculabo/AntigravityManager/pull/369))
+- **Fix** — upgrade vite to 7 so vitest starts ([#370](https://github.com/Draculabo/AntigravityManager/pull/370))
+- **Fix** — repair AGY eligibility patch targeting ([79f6214](https://github.com/Draculabo/AntigravityManager/commit/79f62146e0777359fe7f55284b95c4961ac1c2f1))
+- **Fix** — separate client usage from account actions ([6317b78](https://github.com/Draculabo/AntigravityManager/commit/6317b78df70c6604669188be15d98411ab00c2cf))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.26.0 ([#368](https://github.com/Draculabo/AntigravityManager/pull/368))
+- **Fix** — repair AGY eligibility patch targeting ([79f6214](https://github.com/Draculabo/AntigravityManager/commit/79f62146e0777359fe7f55284b95c4961ac1c2f1))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Fix** — fetch the Gemini 4 Argon quota group ([#369](https://github.com/Draculabo/AntigravityManager/pull/369))
+- **Feature** — add support for unified state sync account info and active acco… ([#372](https://github.com/Draculabo/AntigravityManager/pull/372))
+- **Fix** — separate client usage from account actions ([6317b78](https://github.com/Draculabo/AntigravityManager/commit/6317b78df70c6604669188be15d98411ab00c2cf))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Fix** — upgrade vite to 7 so vitest starts ([#370](https://github.com/Draculabo/AntigravityManager/pull/370))
+- **Maintenance** — add risk-aware review workflow ([7ef7706](https://github.com/Draculabo/AntigravityManager/commit/7ef7706732329c69fb530a75c2d5f2baf374a084))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@aglinxinyuan · @Draculabo · @FisherMS
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.26.0 by @Draculabo ([#368](https://github.com/Draculabo/AntigravityManager/pull/368))
+- fix(cloud-account): fetch the Gemini 4 Argon quota group by @aglinxinyuan ([#369](https://github.com/Draculabo/AntigravityManager/pull/369))
+- fix(build): upgrade vite to 7 so vitest starts by @aglinxinyuan ([#370](https://github.com/Draculabo/AntigravityManager/pull/370))
+- feat: add support for unified state sync account info and active acco… by @FisherMS ([#372](https://github.com/Draculabo/AntigravityManager/pull/372))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.26.0...v0.27.0
+
 # 🚀 Antigravity Manager Release v0.26.0
 
 **Release Date:** 2026-10-23
