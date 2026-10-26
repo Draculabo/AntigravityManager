@@ -1,4 +1,5 @@
 import fs from 'fs';
+import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
@@ -7,25 +8,12 @@ import {
   patchAgyBinaryBuffer,
 } from '@/modules/antigravity-runtime/binary-patch/agyBinaryPatchCore';
 import { patchAgyBinaryFile } from '@/modules/antigravity-runtime/binary-patch/agyBinaryPatchService';
+import { createPeEligibilityBinary, PE_GATE_OFFSET } from '../fixtures/agy-pe-eligibility';
 
 const X86_PATTERN = Buffer.from([
   0x41, 0x80, 0x3c, 0x24, 0x00, 0x0f, 0x85, 0x11, 0x22, 0x33, 0x44, 0x48, 0x8d, 0x05, 0x55, 0x66,
   0x77, 0x88, 0xbb, 0x18,
 ]);
-
-function createPeX64Binary(patternOffsets: number[]): Buffer {
-  const binary = Buffer.alloc(0x300);
-  binary.write('MZ', 0, 'ascii');
-  binary.writeUInt32LE(0x80, 0x3c);
-  binary.write('PE\0\0', 0x80, 'binary');
-  binary.writeUInt16LE(0x8664, 0x84);
-
-  for (const offset of patternOffsets) {
-    X86_PATTERN.copy(binary, offset);
-  }
-
-  return binary;
-}
 
 function createMachOArm64Binary(): Buffer {
   const binary = Buffer.alloc(0x100);
@@ -78,20 +66,22 @@ function createUniversalMachOBinary(): Buffer {
 
 describe('agy binary patch core', () => {
   it('patches the unique x86_64 eligibility branch in a PE executable', () => {
-    const source = createPeX64Binary([0x100]);
+    const source = createPeEligibilityBinary();
 
     const result = patchAgyBinaryBuffer(source);
 
     expect(result.analysis).toEqual({
       architectures: ['x86_64'],
       format: 'pe',
-      patchedOffsets: [0x105],
+      patchedOffsets: [PE_GATE_OFFSET],
       status: 'patched',
     });
-    expect(Array.from(result.buffer.subarray(0x105, 0x10b))).toEqual([
+    expect(Array.from(result.buffer.subarray(PE_GATE_OFFSET, PE_GATE_OFFSET + 6))).toEqual([
       0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
     ]);
-    expect(Array.from(source.subarray(0x105, 0x10b))).toEqual([0x0f, 0x85, 0x11, 0x22, 0x33, 0x44]);
+    expect(Array.from(source.subarray(PE_GATE_OFFSET, PE_GATE_OFFSET + 6))).toEqual([
+      0x0f, 0x85, 0x92, 0x00, 0x00, 0x00,
+    ]);
   });
 
   it('patches the ARM64 cbz instruction in a Mach-O executable', () => {
@@ -138,38 +128,31 @@ describe('agy binary patch core', () => {
     expect(result.buffer.equals(source)).toBe(true);
   });
 
-  it('patches both architecture slices in a universal Mach-O executable', () => {
-    const result = patchAgyBinaryBuffer(createUniversalMachOBinary());
+  it('leaves every universal slice untouched when the x86 target cannot be established', () => {
+    const source = createUniversalMachOBinary();
+    const original = Buffer.from(source);
 
-    expect(result.analysis).toEqual({
-      architectures: ['x86_64', 'arm64'],
-      format: 'mach-o-universal',
-      patchedOffsets: [0x145, 0x250],
-      status: 'patched',
-    });
-    expect(Array.from(result.buffer.subarray(0x145, 0x14b))).toEqual([
-      0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
-    ]);
-    expect(result.buffer.readUInt32LE(0x250)).toBe(0x14000004);
+    expect(() => patchAgyBinaryBuffer(source)).toThrow('No x86_64 eligibility pattern was found.');
+    expect(source).toEqual(original);
   });
 
   it('reports an already patched x86_64 executable without changing it', () => {
-    const source = createPeX64Binary([0x100]);
-    source.fill(0x90, 0x105, 0x10b);
+    const source = createPeEligibilityBinary();
+    source.fill(0x90, PE_GATE_OFFSET, PE_GATE_OFFSET + 6);
 
     const result = patchAgyBinaryBuffer(source);
 
     expect(result.analysis).toEqual({
       architectures: ['x86_64'],
       format: 'pe',
-      patchedOffsets: [0x105],
+      patchedOffsets: [PE_GATE_OFFSET],
       status: 'already-patched',
     });
     expect(result.buffer.equals(source)).toBe(true);
   });
 
   it('rejects an ambiguous executable instead of patching the first match', () => {
-    const source = createPeX64Binary([0x100, 0x180]);
+    const source = createPeEligibilityBinary([0x520, 0x540]);
 
     expect(() => patchAgyBinaryBuffer(source)).toThrowError(
       new AgyBinaryPatchError(
@@ -190,10 +173,44 @@ describe('agy binary patch core', () => {
 });
 
 describe('agy binary patch service', () => {
+  it.each([
+    { offsets: [], code: 'PATTERN_NOT_FOUND', message: 'No x86_64 eligibility pattern was found.' },
+    {
+      offsets: [0x520, 0x540],
+      code: 'AMBIGUOUS_PATTERN',
+      message: 'Found 2 x86_64 eligibility patterns; expected exactly one.',
+    },
+  ] as const)(
+    'reports $code with the build digest before any file mutation',
+    async ({ offsets, code, message }) => {
+      const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-patch-rejected-'));
+      const executablePath = path.join(tempDirectory, 'agy.exe');
+      const source = createPeEligibilityBinary([...offsets]);
+      const existingBackup = Buffer.from('previous-version-backup');
+      fs.writeFileSync(executablePath, source);
+      fs.writeFileSync(`${executablePath}.bak`, existingBackup);
+      const sha256 = crypto.createHash('sha256').update(source).digest('hex');
+
+      try {
+        await expect(patchAgyBinaryFile(executablePath)).rejects.toMatchObject({
+          name: 'AgyBinaryPatchError',
+          code,
+          message: `${message} This CLI build cannot be safely matched by the current patch rules. SHA-256: ${sha256}. No executable or backup was changed.`,
+          cause: { name: 'AgyBinaryPatchError', code, message },
+        });
+        expect(fs.readFileSync(executablePath)).toEqual(source);
+        expect(fs.readFileSync(`${executablePath}.bak`)).toEqual(existingBackup);
+        expect(fs.readdirSync(tempDirectory).sort()).toEqual(['agy.exe', 'agy.exe.bak']);
+      } finally {
+        fs.rmSync(tempDirectory, { force: true, recursive: true });
+      }
+    },
+  );
+
   it('backs up, patches, and verifies an agy executable', async () => {
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-patch-'));
     const executablePath = path.join(tempDirectory, 'agy.exe');
-    const source = createPeX64Binary([0x100]);
+    const source = createPeEligibilityBinary();
     fs.writeFileSync(executablePath, source);
     const realExecutablePath = await fs.promises.realpath(executablePath);
     const backupPath = `${realExecutablePath}.bak`;
@@ -206,13 +223,13 @@ describe('agy binary patch service', () => {
         backupPath,
         filePath: realExecutablePath,
         format: 'pe',
-        patchedOffsets: [0x105],
+        patchedOffsets: [PE_GATE_OFFSET],
         status: 'patched',
       });
       expect(fs.readFileSync(backupPath).equals(source)).toBe(true);
-      expect(Array.from(fs.readFileSync(executablePath).subarray(0x105, 0x10b))).toEqual([
-        0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
-      ]);
+      expect(
+        Array.from(fs.readFileSync(executablePath).subarray(PE_GATE_OFFSET, PE_GATE_OFFSET + 6)),
+      ).toEqual([0x90, 0x90, 0x90, 0x90, 0x90, 0x90]);
     } finally {
       fs.rmSync(tempDirectory, { force: true, recursive: true });
     }
@@ -221,8 +238,8 @@ describe('agy binary patch service', () => {
   it('does not rewrite or create another backup for an already patched executable', async () => {
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-patch-'));
     const executablePath = path.join(tempDirectory, 'agy.exe');
-    const source = createPeX64Binary([0x100]);
-    source.fill(0x90, 0x105, 0x10b);
+    const source = createPeEligibilityBinary();
+    source.fill(0x90, PE_GATE_OFFSET, PE_GATE_OFFSET + 6);
     fs.writeFileSync(executablePath, source);
     const realExecutablePath = await fs.promises.realpath(executablePath);
 
@@ -234,7 +251,7 @@ describe('agy binary patch service', () => {
         backupPath: null,
         filePath: realExecutablePath,
         format: 'pe',
-        patchedOffsets: [0x105],
+        patchedOffsets: [PE_GATE_OFFSET],
         status: 'already-patched',
       });
       expect(fs.existsSync(`${executablePath}.bak`)).toBe(false);
@@ -269,7 +286,7 @@ describe('agy binary patch service', () => {
   it('rejects files that are not named agy or agy.exe', async () => {
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-patch-'));
     const executablePath = path.join(tempDirectory, 'Antigravity.exe');
-    fs.writeFileSync(executablePath, createPeX64Binary([0x100]));
+    fs.writeFileSync(executablePath, createPeEligibilityBinary());
 
     try {
       await expect(patchAgyBinaryFile(executablePath)).rejects.toThrow(
