@@ -171,6 +171,44 @@ describe('account snapshot capture', () => {
       });
     });
 
+    it.each([undefined, '', ' \t '])(
+      'reads field 7 when userStatus field 3 is absent or blank (%j)',
+      (field3) => {
+        const payload = new Uint8Array([
+          ...(field3 === undefined ? [] : ProtobufUtils.encodeStringField(3, field3)),
+          ...ProtobufUtils.encodeStringField(7, 'field7@example.invalid'),
+        ]);
+        values.set(
+          'antigravityUnifiedStateSync.userStatus',
+          ProtobufUtils.createUnifiedStateEntry('userStatusSentinelKey', payload),
+        );
+        values.set(
+          'antigravityAuthStatus',
+          JSON.stringify({ email: 'stale@example.invalid', name: 'Stale' }),
+        );
+
+        expect(getCurrentAccountInfo('ide')).toEqual({
+          email: 'field7@example.invalid',
+          name: '',
+          isAuthenticated: true,
+        });
+      },
+    );
+
+    it('falls back to legacy account info when unified userStatus is corrupt', () => {
+      values.set('antigravityUnifiedStateSync.userStatus', 'not-protobuf');
+      values.set(
+        'antigravityAuthStatus',
+        JSON.stringify({ email: 'legacy@example.invalid', name: 'Legacy' }),
+      );
+
+      expect(getCurrentAccountInfo('ide')).toEqual({
+        email: 'legacy@example.invalid',
+        name: 'Legacy',
+        isAuthenticated: true,
+      });
+    });
+
     it('falls back to legacy antigravityAuthStatus when unified keys are absent', () => {
       values.set(
         'antigravityAuthStatus',

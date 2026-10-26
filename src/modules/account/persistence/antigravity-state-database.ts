@@ -194,14 +194,14 @@ function readCurrentAccountInfoFromDbPath(
       try {
         const decoded = ProtobufUtils.decodeUnifiedStateEntry(unifiedUserValue);
         if (decoded.sentinelKey === 'userStatusSentinelKey') {
-          const emailBytes =
-            ProtobufUtils.getField(decoded.payload, 3) ||
-            ProtobufUtils.getField(decoded.payload, 7);
-          if (emailBytes) {
-            const email = new TextDecoder().decode(emailBytes).trim();
-            if (email) {
-              logger.info(`Account info from unified user status: email=${email}`);
-              return { email, name: '', isAuthenticated: true };
+          for (const field of [3, 7]) {
+            const emailBytes = ProtobufUtils.getField(decoded.payload, field);
+            if (emailBytes) {
+              const email = new TextDecoder().decode(emailBytes).trim();
+              if (email) {
+                logger.info(`Account info from unified user status: email=${email}`);
+                return { email, name: '', isAuthenticated: true };
+              }
             }
           }
         }

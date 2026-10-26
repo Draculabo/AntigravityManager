@@ -12,6 +12,12 @@ references that point to it; it does not sign that account out of an official cl
 replacement. Startup cleanup removes stale references without switching clients. Account deletion
 and reference cleanup share a SQLite transaction, so cleanup failure rolls back the deletion.
 
+Account cards always offer a Use dropdown. App, IDE and CLI badges below the email identify the
+clients using that account; accounts without an active client show Not in use. Each client tracks
+its account independently, so multiple accounts can have usage badges. The dropdown disables only
+targets already using that account, or all targets while its switch is pending. Quota refresh
+ordering and tier filters do not redefine client usage.
+
 Quota views can show five-hour, weekly, or combined windows, with the combined view as the default.
 Gemini and Claude visibility is configured independently for each window and applies to normal,
 list, compact, and provider-grouped cards. These controls filter presentation only: they do not
