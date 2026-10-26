@@ -233,6 +233,7 @@ interface CloudAccountCardProps {
   isRefreshing?: boolean;
   isDeleting?: boolean;
   isSwitching?: boolean;
+  isActive?: boolean;
   recommendationContext?: ManualRecommendationContext;
 }
 
@@ -250,6 +251,7 @@ export function CloudAccountCard({
   isRefreshing,
   isDeleting,
   isSwitching,
+  isActive: isActiveProp,
   recommendationContext,
 }: CloudAccountCardProps) {
   const { t, i18n } = useTranslation();
@@ -268,6 +270,7 @@ export function CloudAccountCard({
     account.is_active_ide ||
     account.is_active_agy
   );
+  const isActive = isActiveProp !== undefined ? isActiveProp : isActiveAnywhere;
 
   const getQuotaTextColorClass = (percentage: number) => {
     const quotaStatus = getQuotaStatus(percentage);
@@ -718,18 +721,18 @@ export function CloudAccountCard({
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={isActiveAnywhere ? 'ghost' : 'secondary'}
+                  variant={isActive ? 'ghost' : 'secondary'}
                   size="sm"
                   className={cn(
                     'h-7 cursor-pointer px-2.5 text-[11px] font-semibold transition-all duration-200',
-                    isActiveAnywhere
+                    isActive
                       ? 'bg-green-500/10 text-green-600 hover:bg-green-500/15 dark:text-green-500'
                       : '',
                   )}
                 >
                   {isSwitching ? (
                     <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
-                  ) : isActiveAnywhere ? (
+                  ) : isActive ? (
                     <span className="relative mr-1.5 flex h-1.5 w-1.5">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
                       <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500"></span>
@@ -737,7 +740,7 @@ export function CloudAccountCard({
                   ) : (
                     <Power className="mr-1 h-3 w-3" />
                   )}
-                  {isActiveAnywhere ? t('cloud.card.active') : t('cloud.card.use')}
+                  {isActive ? t('cloud.card.active') : t('cloud.card.use')}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -941,6 +944,7 @@ interface CompactCloudAccountCardProps {
   isRefreshing?: boolean;
   isDeleting?: boolean;
   isSwitching?: boolean;
+  isActive?: boolean;
   switchingTarget?: AntigravityAppTarget;
   recommendationContext?: ManualRecommendationContext;
 }
@@ -957,6 +961,7 @@ export function CompactCloudAccountCard({
   isRefreshing,
   isDeleting,
   isSwitching,
+  isActive: isActiveProp,
   recommendationContext,
 }: CompactCloudAccountCardProps) {
   const { t } = useTranslation();
@@ -968,6 +973,7 @@ export function CompactCloudAccountCard({
     account.is_active_ide ||
     account.is_active_agy
   );
+  const isActive = isActiveProp !== undefined ? isActiveProp : isActiveAnywhere;
 
   const {
     models: mergedModelQuotas,
@@ -1150,18 +1156,18 @@ export function CompactCloudAccountCard({
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button
-                variant={isActiveAnywhere ? 'ghost' : 'secondary'}
+                variant={isActive ? 'ghost' : 'secondary'}
                 size="sm"
                 className={cn(
                   'h-7 cursor-pointer px-2.5 text-[11px] font-semibold transition-all duration-200',
-                  isActiveAnywhere
+                  isActive
                     ? 'bg-green-500/10 text-green-600 hover:bg-green-500/15 dark:text-green-500'
                     : '',
                 )}
               >
                 {isSwitching ? (
                   <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
-                ) : isActiveAnywhere ? (
+                ) : isActive ? (
                   <span className="relative mr-1.5 flex h-1.5 w-1.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500"></span>
@@ -1169,7 +1175,7 @@ export function CompactCloudAccountCard({
                 ) : (
                   <Power className="mr-1 h-3 w-3" />
                 )}
-                {isActiveAnywhere ? t('cloud.card.active') : t('cloud.card.use')}
+                {isActive ? t('cloud.card.active') : t('cloud.card.use')}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
