@@ -1,6 +1,6 @@
 {
   "name": "antigravity-manager",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "private": true,
   "productName": "Antigravity Manager",
   "description": "Antigravity Manager - Electron App",
