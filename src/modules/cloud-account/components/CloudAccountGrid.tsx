@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { SelectableCloudAccountCard } from './SelectableCloudAccountCard';
 import { useTranslation } from 'react-i18next';
 import { FeedbackState } from '@/components/ui/feedback-state';
@@ -55,14 +54,6 @@ export function CloudAccountGrid({
 }: CloudAccountGridProps) {
   const { t } = useTranslation();
 
-  const firstActiveAccountId = useMemo(
-    () =>
-      accounts.find(
-        (a) => a.is_active || a.is_active_ide || a.is_active_classic || a.is_active_agy,
-      )?.id,
-    [accounts],
-  );
-
   return (
     <div className={GRID_LAYOUT_CLASSES[gridLayout]}>
       {accounts.map((account) =>
@@ -70,7 +61,6 @@ export function CloudAccountGrid({
           <CompactCloudAccountCard
             key={account.id}
             account={account}
-            isActive={account.id === firstActiveAccountId}
             quotaWindow={quotaWindow}
             quotaGroupVisibility={quotaGroupVisibility}
             isMinimalMode={isMinimalMode}
@@ -92,7 +82,6 @@ export function CloudAccountGrid({
           <SelectableCloudAccountCard
             key={account.id}
             account={account}
-            isActive={account.id === firstActiveAccountId}
             quotaWindow={quotaWindow}
             quotaGroupVisibility={quotaGroupVisibility}
             isMinimalMode={isMinimalMode}
