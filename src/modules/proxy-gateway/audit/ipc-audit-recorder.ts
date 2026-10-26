@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { trafficAuditService, type TrafficAuditService } from './traffic-audit.service';
 import {
   createThoughtSessionKey,
+  type TrafficAuditRequestContext,
   runWithTrafficAuditRequestContext,
 } from './traffic-audit-context';
 import { isAuditManagementIpc, readIpcSessionId } from './ipc-audit-policy';
@@ -43,28 +44,28 @@ export function createIpcAuditRecorder(source: IpcAuditSource = trafficAuditServ
           trafficClass: 'ipc',
           url: `/ipc/${auditPath}`,
         });
-    return runWithTrafficAuditRequestContext(
-      {
-        attemptSequence: 0,
-        parent,
-        thoughtSessionKey: createThoughtSessionKey({}, sessionId ?? `request-${randomUUID()}`),
-        thoughtSessionStable: Boolean(sessionId),
-      },
-      async () => {
-        try {
-          const result = await next();
-          source.completeParent(parent, {
-            outcome: 'completed',
-            responseBody: result.output,
-            status: 200,
-          });
-          return result;
-        } catch (error) {
-          source.completeParent(parent, { error, outcome: 'internal_error', status: 500 });
-          throw error;
-        }
-      },
-    );
+    const context: TrafficAuditRequestContext = {
+      attemptSequence: 0,
+      parent,
+      thoughtSessionKey: createThoughtSessionKey({}, sessionId ?? `request-${randomUUID()}`),
+      thoughtSessionStable: Boolean(sessionId),
+    };
+    return runWithTrafficAuditRequestContext(context, async () => {
+      try {
+        const result = await next();
+        source.completeParent(parent, {
+          outcome: 'completed',
+          responseBody: result.output,
+          status: 200,
+        });
+        return result;
+      } catch (error) {
+        source.completeParent(parent, { error, outcome: 'internal_error', status: 500 });
+        throw error;
+      } finally {
+        context.thoughtCaptureLease?.release();
+      }
+    });
   }
 
   return {

@@ -23,6 +23,7 @@ const audit = vi.hoisted(() => ({ completeParent: vi.fn() }));
 vi.mock('@/modules/proxy-gateway/audit/traffic-audit.service', () => ({
   trafficAuditService: {
     startParent: () => ({ id: 'parent', startedAt: 1, trafficClass: 'model' }),
+    captureGeneration: () => 0,
     startAttempt: () => null,
     completeAttempt: vi.fn(),
     completeParent: audit.completeParent,
@@ -158,7 +159,7 @@ describe('fallback diagnostics through HTTP entry points', () => {
     });
     expect(reply.statusCode).toBe(403);
     expect(reply.json()).toEqual({
-      error: { message: 'Agent Platform API is disabled', type: 'server_error' },
+      error: { message: 'Agent Platform API is disabled', type: 'invalid_request_error' },
     });
     expect(audit.completeParent).toHaveBeenCalledWith(
       expect.anything(),
@@ -176,7 +177,7 @@ describe('fallback diagnostics through HTTP entry points', () => {
     });
     expect(reply.statusCode).toBe(403);
     expect(reply.json()).toEqual({
-      error: { message: 'Invalid credentials', type: 'server_error' },
+      error: { message: 'Invalid credentials', type: 'invalid_request_error' },
     });
     expect(audit.completeParent).toHaveBeenCalledWith(
       expect.anything(),

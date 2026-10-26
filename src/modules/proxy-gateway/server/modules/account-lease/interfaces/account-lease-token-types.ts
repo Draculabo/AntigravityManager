@@ -6,6 +6,8 @@ import type {
 } from '@/modules/cloud-account/types';
 
 export interface AccountLeaseTokenData {
+  /** In-process writeback baseline shared only by this cache entry and its queued snapshots. */
+  stored_context?: { account: CloudAccount };
   email: string;
   account_id: string;
   access_token: string;
@@ -19,6 +21,8 @@ export interface AccountLeaseTokenData {
   session_id?: string;
   upstream_proxy_url?: string;
   device_profile?: CloudAccount['device_profile'];
+  proxy_priority?: number;
+  proxy_enabled?: boolean;
   validation_blocked_until_ms?: number;
   service_disabled?: boolean;
   oauth_health?: CloudAccountHealth['oauth'];

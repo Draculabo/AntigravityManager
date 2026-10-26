@@ -109,6 +109,17 @@ export class DiagnosticContentCapabilities {
     }
   }
 
+  invalidate(
+    kind: ContentIdentity['kind'],
+    matches: (resourceId: string) => boolean = () => true,
+  ): void {
+    for (const [id, content] of this.retained) {
+      if (content.descriptor.kind === kind && matches(content.descriptor.resourceId)) {
+        this.remove(id);
+      }
+    }
+  }
+
   private resolve(input: ContentIdentity): RetainedContent {
     this.expire();
     const content = this.retained.get(input.capabilityId);

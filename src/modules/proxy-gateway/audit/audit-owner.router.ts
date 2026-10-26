@@ -4,6 +4,7 @@ import {
   AuditResetDropStatsInputSchema,
   type AuditOperations,
 } from './audit-owner.service';
+import { UsageRangeInputSchema, UsageRangeResultSchema } from './usage-range.schema';
 import {
   AuditIdInputSchema,
   AuditMutationResultSchema,
@@ -41,6 +42,10 @@ export function createAuditOwnerRouter(owner: AuditOperations) {
     filterOptions: procedure
       .output(TrafficAuditFilterOptionsSchema)
       .handler(() => owner.filterOptions()),
+    usageRange: procedure
+      .input(UsageRangeInputSchema)
+      .output(UsageRangeResultSchema)
+      .handler(({ input }) => owner.usageRange(input)),
     detail: procedure
       .input(AuditIdInputSchema)
       .output(TrafficAuditDetailSchema.nullable())

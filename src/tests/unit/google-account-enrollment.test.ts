@@ -29,7 +29,11 @@ describe('Google account enrollment', () => {
       picture: '',
     });
     vi.spyOn(CloudAccountRepo, 'getAccountByEmail').mockResolvedValue(null);
-    const add = vi.spyOn(CloudAccountRepo, 'addAccount').mockResolvedValue(undefined);
+    const add = vi.spyOn(CloudAccountRepo, 'insertAccount').mockImplementation(async (account) => ({
+      ...account,
+      lifecycle_generation: 'b'.repeat(32),
+    }));
+    vi.spyOn(CloudAccountRepo, 'assertCurrentAccount').mockImplementation(() => undefined);
     vi.spyOn(CloudAccountRefreshService, 'clearFailureState').mockResolvedValue(undefined);
     vi.spyOn(GoogleAPIService, 'fetchQuota').mockResolvedValue({ models: {} });
     vi.spyOn(GoogleAPIService, 'fetchAICredits').mockResolvedValue(null);
@@ -69,7 +73,7 @@ describe('Google account enrollment', () => {
       picture: '',
     });
     vi.spyOn(CloudAccountRepo, 'getAccountByEmail').mockResolvedValue({ id: 'existing' } as never);
-    const add = vi.spyOn(CloudAccountRepo, 'addAccount');
+    const add = vi.spyOn(CloudAccountRepo, 'insertAccount');
 
     await expect(
       enrollGoogleAccount('code-test', { redirectUri: 'http://127.0.0.1:12345/oauth-callback' }),

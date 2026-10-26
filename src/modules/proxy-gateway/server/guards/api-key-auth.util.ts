@@ -1,13 +1,10 @@
 import { isEmpty, isString } from 'lodash-es';
 import type { IncomingHttpHeaders } from 'node:http';
+export { hasConfiguredApiKey } from '@/shared/security/api-key';
 
 export type RequestHeaderValue = IncomingHttpHeaders[string];
 
 export type RequestHeaders = IncomingHttpHeaders;
-
-export function hasConfiguredApiKey(apiKey: string | undefined): apiKey is string {
-  return isString(apiKey) && !isEmpty(apiKey.trim());
-}
 
 export function extractApiKeyToken(headers: RequestHeaders): string | null {
   const authorizationHeader = readHeaderValue(headers['authorization']);

@@ -64,6 +64,77 @@ function createPolicy(tokenCache: Map<string, AccountLeaseTokenData>) {
 }
 
 describe('AccountLeaseQuotaRefreshPolicy', () => {
+  it.each(['deleted', 'replaced', 'grant-changed'] as const)(
+    'discards a quota result when the selected entry was %s during the probe',
+    async (change) => {
+      const token = createToken();
+      const tokenCache = new Map([['acc-1', token]]);
+      const { policy, upstream, accountStore, setLockoutUntilIso, clearRecoveredQuotaLocks } =
+        createPolicy(tokenCache);
+      const probe =
+        Promise.withResolvers<Awaited<ReturnType<AccountLeaseUpstream['fetchQuota']>>>();
+      vi.mocked(upstream.fetchQuota).mockReturnValue(probe.promise);
+      const pending = policy.refreshRealtimeQuotaAndReconcileLimit(
+        'acc-1',
+        RateLimitReason.QuotaExhausted,
+        'gemini-2.5-flash',
+      );
+      if (change === 'deleted') {
+        tokenCache.delete('acc-1');
+      } else if (change === 'replaced') {
+        tokenCache.set('acc-1', createToken());
+      } else {
+        token.refresh_token = 'replacement-grant';
+      }
+      const current = tokenCache.get('acc-1');
+      probe.resolve({ models: { 'gemini-2.5-flash': { percentage: 0, resetTime: 'later' } } });
+      expect(await pending).toBe('stale');
+      expect(tokenCache.get('acc-1')).toBe(current);
+      expect(accountStore.updateQuota).not.toHaveBeenCalled();
+      expect(setLockoutUntilIso).not.toHaveBeenCalled();
+      expect(clearRecoveredQuotaLocks).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not publish a quota write that completed after eviction', async () => {
+    const tokenCache = new Map([['acc-1', createToken()]]);
+    const { policy, upstream, accountStore, clearRecoveredQuotaLocks } = createPolicy(tokenCache);
+    const entered = Promise.withResolvers<void>();
+    const written = Promise.withResolvers<void>();
+    vi.mocked(upstream.fetchQuota).mockResolvedValue({
+      models: { 'gemini-2.5-flash': { percentage: 50, resetTime: 'later' } },
+    });
+    vi.mocked(accountStore.updateQuota).mockImplementation(async () => {
+      entered.resolve();
+      await written.promise;
+    });
+    const pending = policy.refreshRealtimeQuotaAndReconcileLimit(
+      'acc-1',
+      RateLimitReason.QuotaExhausted,
+    );
+    await entered.promise;
+    tokenCache.delete('acc-1');
+    written.resolve();
+    expect(await pending).toBe('stale');
+    expect([...tokenCache]).toEqual([]);
+    expect(clearRecoveredQuotaLocks).not.toHaveBeenCalled();
+  });
+
+  it('does not turn an obsolete failed probe into fallback rate-limit evidence', async () => {
+    const tokenCache = new Map([['acc-1', createToken()]]);
+    const { policy, upstream, accountStore } = createPolicy(tokenCache);
+    const probe = Promise.withResolvers<Awaited<ReturnType<AccountLeaseUpstream['fetchQuota']>>>();
+    vi.mocked(upstream.fetchQuota).mockReturnValue(probe.promise);
+    const pending = policy.refreshRealtimeQuotaAndReconcileLimit(
+      'acc-1',
+      RateLimitReason.QuotaExhausted,
+    );
+    tokenCache.delete('acc-1');
+    probe.reject(new Error('Probe unavailable'));
+    expect(await pending).toBe('stale');
+    expect(accountStore.updateQuota).not.toHaveBeenCalled();
+  });
+
   it('sets precise lockout from cached quota reset times', () => {
     const tokenCache = new Map([
       [
@@ -120,7 +191,7 @@ describe('AccountLeaseQuotaRefreshPolicy', () => {
     ).resolves.toBe('recovered');
 
     expect(upstream.fetchQuota).toHaveBeenCalledWith('access-token', 'http://127.0.0.1:8080');
-    expect(accountStore.updateQuota).toHaveBeenCalledWith('acc-1', quota);
+    expect(accountStore.updateQuota).toHaveBeenCalledWith('acc-1', quota, expect.any(Function));
     expect(tokenCache.get('acc-1')).toEqual(
       expect.objectContaining({
         model_quotas: {

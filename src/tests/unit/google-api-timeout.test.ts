@@ -535,6 +535,8 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
   });
 
   it('moves to the next summary host after it rejects the request with and without project', async () => {
+    const observedAt = 1_793_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(observedAt);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -595,6 +597,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
             bucket_id: 'gemini-argon-wtu-weekly',
             window: 'weekly',
             remaining_fraction: 0.42,
+            observed_at: observedAt,
             reset_time: '2026-10-30T06:50:31Z',
             display_name: 'Gemini 4 Argon Weekly Limit',
             description: undefined,

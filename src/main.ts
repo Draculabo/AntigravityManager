@@ -51,7 +51,10 @@ import {
 import { drainDesktopCloudAccountSwitches } from '@/modules/cloud-account/ipc/cloud-account-switch-desktop';
 import { createWeeklyWarmupExecutor } from '@/modules/proxy-gateway/weekly-warmup-executor';
 import { subscribeSelectedAuditEvents } from '@/modules/proxy-gateway/ipc/audit-presentation';
-import { exportSelectedAuditBody } from '@/modules/proxy-gateway/ipc/audit-file-desktop';
+import {
+  exportSelectedAuditBody,
+  exportSelectedAuditSession,
+} from '@/modules/proxy-gateway/ipc/audit-file-desktop';
 
 // Static Imports to fix Bundle Resolution Errors
 import { disableWindowsPowerThrottling } from '@/shared/platform/windowsPowerThrottling';
@@ -61,6 +64,7 @@ import {
   setTrayLanguage,
   destroyTray,
   setTrayMainWindow,
+  isTrayReady,
 } from '@/modules/app-shell/ipc/tray/handler';
 import { restoreExistingWindow } from '@/modules/app-shell/utils/windowActivation';
 import { rpcHandler } from './ipc/handler';
@@ -322,6 +326,23 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  IPC_CHANNELS.SAVE_TRAFFIC_AUDIT_SESSION,
+  async (_event, sessionId: string, suggestedName: string) => {
+    return exportSelectedAuditSession(sessionId, suggestedName, async (safeName) => {
+      const options = {
+        defaultPath: safeName,
+        title: 'Save traffic audit session',
+        filters: [{ name: 'NDJSON', extensions: ['ndjson'] }],
+      };
+      const result = globalMainWindow
+        ? await dialog.showSaveDialog(globalMainWindow, options)
+        : await dialog.showSaveDialog(options);
+      return result.canceled ? null : (result.filePath ?? null);
+    });
+  },
+);
+
 ipcMain.handle(IPC_CHANNELS.GET_OBSERVABILITY_CONFIG, () => {
   return getQuickObservabilityConfig(
     (message, error) => {
@@ -417,11 +438,11 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
     webPreferences: {
       backgroundThrottling: true,
       devTools: inDevelopment,
-      sandbox: false,
-      webviewTag: true,
+      sandbox: true,
+      webviewTag: false,
       webSecurity: !inDevelopment,
-      contextIsolation: false,
-      nodeIntegration: true,
+      contextIsolation: true,
+      nodeIntegration: false,
       nodeIntegrationInSubFrames: false,
       preload: preload,
     },
@@ -430,6 +451,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   globalMainWindow = mainWindow;
   setTrayMainWindow(mainWindow);
   logger.info('createWindow: BrowserWindow instance created');
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   if (startHidden) {
     mainWindow.hide();
     logger.info('createWindow: startHidden enabled, window hidden');
@@ -474,6 +496,10 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
 
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
+      if (!isTrayReady()) {
+        logger.warn('Window close allowed because the tray is unavailable');
+        return;
+      }
       event.preventDefault();
       if (mainWindow.isFullScreen()) {
         mainWindow.setFullScreen(false);
@@ -712,6 +738,10 @@ async function checkForUpdates() {
 async function setupORPC() {
   ipcMain.on(IPC_CHANNELS.START_ORPC_SERVER, (event) => {
     logger.info('IPC: Received START_ORPC_SERVER');
+    if (!globalMainWindow || event.sender.id !== globalMainWindow.webContents.id) {
+      logger.warn('IPC: Rejected START_ORPC_SERVER from an unknown renderer');
+      return;
+    }
     const [port] = event.ports;
 
     if (process.env.DEBUG_ORPC_PACKETS === 'true') {

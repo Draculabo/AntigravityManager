@@ -3,11 +3,13 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { FeedbackState } from '@/components/ui/feedback-state';
+import { Button } from '@/components/ui/button';
 
 import type { TrafficClass } from '@/modules/proxy-gateway/audit/traffic-classifier';
 import type { TrafficAuditSummary } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 
 import { formatTrafficTime } from '../format-traffic-time';
+import { useTrafficColumnWidths } from './use-traffic-column-widths';
 
 export function TrafficTable({
   items,
@@ -26,28 +28,74 @@ export function TrafficTable({
   const parentRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const columns = useMemo(() => columnsFor(tab, (key) => t(key)), [tab, t]);
+  const { widths, unsaved, resize, startDrag, reset } = useTrafficColumnWidths(
+    tab,
+    columns.ids,
+    columns.widths,
+  );
   const virtualizer = useVirtualizer({
     count: items.length,
     estimateSize: () => 44,
     getScrollElement: () => parentRef.current,
     overscan: 8,
   });
-  const columns = useMemo(() => columnsFor(tab, (key) => t(key)), [tab, t]);
+  const template = columns.ids.map((id) => `${widths[id] ?? columns.widths[id]}px`).join(' ');
+  const tableWidth = columns.ids.reduce(
+    (total, id) => total + widths[id],
+    24 + 12 * (columns.ids.length - 1),
+  );
 
   return (
-    <div className="min-h-0 flex-1 px-6 py-4">
-      <div className="flex h-full min-h-72 flex-col overflow-hidden rounded-lg border">
+    <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
+      <div className="mb-2 flex items-center justify-end gap-2">
+        {unsaved && (
+          <span role="status" className="text-muted-foreground text-xs">
+            {t('traffic.columns-unsaved')}
+          </span>
+        )}
+        <Button size="sm" variant="ghost" onClick={reset}>
+          {t('traffic.reset-columns')}
+        </Button>
+      </div>
+      <div className="flex min-h-72 flex-1 flex-col overflow-hidden rounded-lg border">
         <div ref={headerRef} className="shrink-0 overflow-hidden border-b">
           <div
             className="bg-muted/40 text-muted-foreground grid h-9 items-center gap-3 px-3 text-[11px] font-medium tracking-wide uppercase"
             style={{
-              gridTemplateColumns: columns.template,
-              minWidth: tab === 'model' ? 1200 : undefined,
+              gridTemplateColumns: template,
+              width: tableWidth,
+              minWidth: '100%',
             }}
           >
-            {columns.labels.map((label) => (
-              <span key={label} className="truncate">
+            {columns.labels.map((label, index) => (
+              <span key={columns.ids[index]} className="relative truncate pr-2">
                 {label}
+                {
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={t('traffic.resize-column', { column: label })}
+                    aria-valuemin={45}
+                    aria-valuemax={640}
+                    aria-valuenow={widths[columns.ids[index]]}
+                    tabIndex={0}
+                    className="hover:bg-primary/50 focus:bg-primary focus-visible:ring-ring absolute top-0 right-0 h-full w-1 cursor-col-resize touch-none outline-none focus-visible:ring-2"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      startDrag(columns.ids[index], event.clientX, event.pointerId);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowLeft') {
+                        event.preventDefault();
+                        resize(columns.ids[index], -16);
+                      } else if (event.key === 'ArrowRight') {
+                        event.preventDefault();
+                        resize(columns.ids[index], 16);
+                      }
+                    }}
+                  />
+                }
               </span>
             ))}
           </div>
@@ -101,7 +149,8 @@ export function TrafficTable({
               className="relative w-full"
               style={{
                 height: virtualizer.getTotalSize(),
-                minWidth: tab === 'model' ? 1200 : undefined,
+                width: tableWidth,
+                minWidth: '100%',
               }}
             >
               {virtualizer.getVirtualItems().map((virtualRow) => {
@@ -115,7 +164,7 @@ export function TrafficTable({
                         style={{
                           height: virtualRow.size,
                           transform: `translateY(${virtualRow.start}px)`,
-                          gridTemplateColumns: columns.template,
+                          gridTemplateColumns: template,
                         }}
                         onFocus={() => setFocusedIndex(virtualRow.index)}
                         onClick={() => onOpen(item.id)}
@@ -146,7 +195,13 @@ export function TrafficTable({
   );
 }
 
-function columnsFor(tab: TrafficClass, t: (key: string) => string) {
+interface ColumnLayout {
+  ids: string[];
+  labels: string[];
+  widths: Record<string, number>;
+}
+
+function columnsFor(tab: TrafficClass, t: (key: string) => string): ColumnLayout {
   if (tab === 'ipc') {
     return {
       labels: [
@@ -156,7 +211,8 @@ function columnsFor(tab: TrafficClass, t: (key: string) => string) {
         t('traffic.duration'),
         'ID',
       ],
-      template: '150px minmax(240px,1fr) 110px 90px minmax(180px,0.7fr)',
+      ids: ['time', 'operation', 'result', 'duration', 'id'],
+      widths: { time: 150, operation: 240, result: 110, duration: 90, id: 180 },
     };
   }
   if (tab === 'system') {
@@ -168,7 +224,8 @@ function columnsFor(tab: TrafficClass, t: (key: string) => string) {
         t('traffic.status'),
         t('traffic.duration'),
       ],
-      template: '150px minmax(280px,1fr) 120px 80px 90px',
+      ids: ['time', 'operation', 'result', 'status', 'duration'],
+      widths: { time: 150, operation: 280, result: 120, status: 80, duration: 90 },
     };
   }
   if (tab === 'auxiliary') {
@@ -181,7 +238,8 @@ function columnsFor(tab: TrafficClass, t: (key: string) => string) {
         t('traffic.status'),
         t('traffic.duration'),
       ],
-      template: '150px minmax(260px,1fr) 110px 110px 70px 90px',
+      ids: ['time', 'endpoint', 'protocol', 'result', 'status', 'duration'],
+      widths: { time: 150, endpoint: 260, protocol: 110, result: 110, status: 70, duration: 90 },
     };
   }
   return {
@@ -195,7 +253,17 @@ function columnsFor(tab: TrafficClass, t: (key: string) => string) {
       t('traffic.duration'),
       t('traffic.endpoint'),
     ],
-    template: '150px minmax(200px,1fr) 180px 100px 110px 105px 80px minmax(230px,1fr)',
+    ids: ['time', 'model', 'account', 'tokens', 'modality', 'result', 'duration', 'endpoint'],
+    widths: {
+      time: 150,
+      model: 200,
+      account: 180,
+      tokens: 100,
+      modality: 110,
+      result: 105,
+      duration: 80,
+      endpoint: 230,
+    },
   };
 }
 
@@ -314,9 +382,11 @@ function Outcome({ value }: { value: string }) {
       className={`w-fit rounded-md px-2 py-0.5 text-[11px] font-medium ${
         value === 'completed'
           ? 'bg-success-soft text-success'
-          : value === 'in_progress'
-            ? 'bg-info-soft text-info'
-            : 'bg-destructive/10 text-destructive'
+          : value === 'capture_interrupted'
+            ? 'bg-warning-soft text-warning'
+            : value === 'in_progress'
+              ? 'bg-info-soft text-info'
+              : 'bg-destructive/10 text-destructive'
       }`}
     >
       {t(`traffic.outcomes.${value}`, { defaultValue: value })}
@@ -325,5 +395,9 @@ function Outcome({ value }: { value: string }) {
 }
 
 function duration(item: TrafficAuditSummary): string {
-  return item.durationMs === null ? 'running' : `${item.durationMs} ms`;
+  return item.durationMs === null
+    ? item.outcome === 'in_progress'
+      ? 'running'
+      : '—'
+    : `${item.durationMs} ms`;
 }

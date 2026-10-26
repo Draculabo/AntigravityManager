@@ -13,7 +13,7 @@ function readNumber(value: AuditJsonObject | null, keys: readonly string[]): num
   }
   for (const key of keys) {
     const candidate = value[key];
-    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+    if (typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 0) {
       return candidate;
     }
   }

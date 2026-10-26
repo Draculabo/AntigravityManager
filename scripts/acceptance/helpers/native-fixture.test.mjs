@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { withNativeFixture } from './native-fixture.mjs';
+import { runNativeEntry, withNativeFixture } from './native-fixture.mjs';
 
 test('native fixture copies built entries, isolates home and cleans up after a failed check', async () => {
   const originalDirectory = process.cwd();
@@ -35,6 +35,27 @@ test('native fixture copies built entries, isolates home and cleans up after a f
           'main.cjs',
         ]);
         assert.match(await readFile(fixture.preload, 'utf8'), /AGM_DIAGNOSTIC_TEST_HOME/);
+        const profileEntry = path.join(fixture.directory, 'profile.cjs');
+        const profileResult = path.join(fixture.directory, 'profile.json');
+        await writeFile(
+          profileEntry,
+          `require('node:fs').writeFileSync(${JSON.stringify(profileResult)}, JSON.stringify({ home: require('node:os').homedir(), roaming: process.env.APPDATA, local: process.env.LOCALAPPDATA, user: process.env.USERPROFILE, config: process.env.XDG_CONFIG_HOME, data: process.env.XDG_DATA_HOME }));`,
+        );
+        runNativeEntry(
+          fixture,
+          'profile.cjs',
+          'Native fixture must isolate platform profile roots',
+        );
+        const profile = JSON.parse(await readFile(profileResult, 'utf8'));
+        assert.equal(profile.home, fixture.home);
+        for (const key of ['roaming', 'local', 'user', 'config', 'data']) {
+          assert.equal(typeof profile[key], 'string', `${key} must be explicitly isolated`);
+          const relative = path.relative(fixture.home, profile[key]);
+          assert(
+            !relative.startsWith('..') && !path.isAbsolute(relative),
+            `${key} escaped the fixture home`,
+          );
+        }
         throw failure;
       }),
       (error) => error === failure,

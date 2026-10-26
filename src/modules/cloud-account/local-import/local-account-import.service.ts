@@ -27,7 +27,7 @@ const FAILURE_MESSAGES: Record<LocalAccountImportFailureCode, string> = {
 
 export interface LocalAccountImportDependencies {
   getAccounts: () => Promise<CloudAccount[]>;
-  upsertAccounts: (accounts: CloudAccount[]) => Promise<void>;
+  upsertAccounts: (accounts: CloudAccount[], expectedAccounts: CloudAccount[]) => Promise<void>;
   createId: () => string;
   now: () => number;
 }
@@ -142,9 +142,9 @@ function createNewAccount(
 function createDefaultDependencies(): LocalAccountImportDependencies {
   return {
     getAccounts: () => CloudAccountRepo.getAccounts(),
-    upsertAccounts: async (accounts) => {
+    upsertAccounts: async (accounts, expectedAccounts) => {
       await prepareDesktopIdentityStorage();
-      await upsertCloudAccountsAtomically(accounts);
+      await upsertCloudAccountsAtomically(accounts, expectedAccounts);
     },
     createId: randomUUID,
     now: () => Math.floor(Date.now() / 1000),
@@ -172,7 +172,7 @@ export class LocalAccountImportService {
   ): Promise<LocalAccountImportResult> {
     let existingAccounts: CloudAccount[];
     try {
-      existingAccounts = await this.dependencies.getAccounts();
+      existingAccounts = structuredClone(await this.dependencies.getAccounts());
     } catch {
       return {
         imported: [],
@@ -290,7 +290,10 @@ export class LocalAccountImportService {
     }
 
     try {
-      await this.dependencies.upsertAccounts(planned.map(({ account }) => account));
+      await this.dependencies.upsertAccounts(
+        planned.map(({ account }) => account),
+        existingAccounts,
+      );
       return {
         imported: planned.map(({ result }) => result),
         skipped,

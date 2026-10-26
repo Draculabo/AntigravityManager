@@ -11,6 +11,82 @@ export interface ClassifiedError {
   message: string;
 }
 
+export type UpstreamTransportFailure =
+  | 'timeout'
+  | 'transfer'
+  | 'connection'
+  | 'network'
+  | 'cancelled';
+
+/** Recognized transport codes take precedence over free-form message text. */
+export function classifyTransportError(error: Error): UpstreamTransportFailure | undefined {
+  const rawCode: unknown = Reflect.get(error, 'code');
+  const code = typeof rawCode === 'string' ? rawCode.toUpperCase() : '';
+  if (error.name === 'AbortError' || code === 'ERR_CANCELED' || code === 'ABORT_ERR') {
+    return 'cancelled';
+  }
+  switch (code) {
+    case 'ETIMEDOUT':
+    case 'ESOCKETTIMEDOUT':
+    case 'ECONNABORTED':
+      return 'timeout';
+    case 'ECONNRESET':
+    case 'EPIPE':
+    case 'ERR_STREAM_PREMATURE_CLOSE':
+      return 'transfer';
+    case 'ECONNREFUSED':
+      return 'connection';
+    case 'ENOTFOUND':
+    case 'EAI_AGAIN':
+    case 'ENETUNREACH':
+    case 'EHOSTUNREACH':
+    case 'ERR_NETWORK':
+      return 'network';
+  }
+  const msg = error.message.toLowerCase();
+  if (msg.includes('cancelled') || msg.includes('canceled')) {
+    return 'cancelled';
+  }
+  if (
+    msg.includes('timeout') ||
+    msg.includes('timed out') ||
+    msg.includes('timedout') ||
+    msg.includes('deadline exceeded') ||
+    msg.includes('deadline_exceeded')
+  ) {
+    return 'timeout';
+  }
+  if (
+    msg.includes('reading body from connection') ||
+    msg.includes('reading a body from connection') ||
+    msg.includes('epipe') ||
+    msg.includes('reset') ||
+    msg.includes('socket') ||
+    msg.includes('broken pipe') ||
+    msg.includes('aborted')
+  ) {
+    return 'transfer';
+  }
+  if (
+    msg.includes('econnrefused') ||
+    msg.includes('connection refused') ||
+    msg.includes('failed to connect') ||
+    msg.startsWith('connect ') ||
+    msg.includes('secure tls connection was established')
+  ) {
+    return 'connection';
+  }
+  if (
+    msg.includes('enotfound') ||
+    msg.includes('eai_again') ||
+    msg.includes('network') ||
+    msg.includes('dns')
+  ) {
+    return 'network';
+  }
+  return undefined;
+}
+
 /**
  * Classify a stream error and return user-friendly message
  *
@@ -18,33 +94,35 @@ export interface ClassifiedError {
  * @returns Classified error with type and localized message
  */
 export function classifyStreamError(error: Error): ClassifiedError {
-  const msg = error.message.toLowerCase();
-
-  if (msg.includes('timeout') || msg.includes('timedout')) {
+  const failure = classifyTransportError(error);
+  if (failure === 'cancelled') {
+    return { type: 'cancelled_error', message: 'Request cancelled.' };
+  }
+  if (failure === 'timeout') {
     return {
       type: 'timeout_error',
       message: 'Request timed out. Please check your network connection or try again later.',
     };
   }
 
-  if (msg.includes('econnrefused') || msg.includes('connect')) {
+  if (failure === 'transfer') {
+    return {
+      type: 'stream_error',
+      message: 'Data transfer interrupted. Please try again later.',
+    };
+  }
+
+  if (failure === 'connection') {
     return {
       type: 'connection_error',
       message: 'Unable to connect to server. Please check your network.',
     };
   }
 
-  if (msg.includes('enotfound') || msg.includes('network') || msg.includes('dns')) {
+  if (failure === 'network') {
     return {
       type: 'network_error',
       message: 'Network connection failed. Please check your network settings.',
-    };
-  }
-
-  if (msg.includes('socket') || msg.includes('aborted') || msg.includes('reset')) {
-    return {
-      type: 'stream_error',
-      message: 'Data transfer interrupted. Please try again later.',
     };
   }
 

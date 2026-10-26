@@ -56,6 +56,9 @@ const electronBridge = {
   saveTrafficAuditBody: (bodyId: string, suggestedName: string) => {
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_TRAFFIC_AUDIT_BODY, bodyId, suggestedName);
   },
+  saveTrafficAuditSession: (sessionId: string, suggestedName: string) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SAVE_TRAFFIC_AUDIT_SESSION, sessionId, suggestedName);
+  },
   ...(import.meta.env.ANTIGRAVITY_ENABLE_PERFORMANCE_RECORDER === '1'
     ? {
         startPerformanceRecording: (label: string) => {

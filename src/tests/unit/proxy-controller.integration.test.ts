@@ -63,14 +63,14 @@ describe('ProxyController Integration', () => {
     OpenAIResponsesSessionStore.clear();
   });
 
-  it('preserves Responses tool choice and sampling compatibility fields', () => {
+  it('preserves Responses tool choice and sampling compatibility fields', async () => {
     const proxyService = {
       handleChatCompletions: vi.fn(),
       handleAnthropicMessages: vi.fn(),
     };
     const controller = new ProxyController(proxyService as any);
 
-    const prepared = controller.prepareResponsesRequest({
+    const prepared = await controller.prepareResponsesRequest({
       model: 'gpt-5-codex',
       input: 'update the file',
       tool_choice: { type: 'function', function: { name: 'apply_patch' } },
@@ -87,13 +87,13 @@ describe('ProxyController Integration', () => {
     });
   });
 
-  it('drops incomplete custom calls and their matching outputs from Responses history', () => {
+  it('drops incomplete custom calls and their matching outputs from Responses history', async () => {
     const controller = new ProxyController({
       handleChatCompletions: vi.fn(),
       handleAnthropicMessages: vi.fn(),
     } as any);
 
-    const prepared = controller.prepareResponsesRequest({
+    const prepared = await controller.prepareResponsesRequest({
       model: 'gpt-5-codex',
       input: [
         {
@@ -124,43 +124,38 @@ describe('ProxyController Integration', () => {
     ]);
   });
 
-  it('drops orphan custom tool outputs from Responses history', () => {
+  it('rejects orphan custom tool outputs from Responses history', async () => {
     const controller = new ProxyController({
       handleChatCompletions: vi.fn(),
       handleAnthropicMessages: vi.fn(),
     } as any);
 
-    const prepared = controller.prepareResponsesRequest({
-      model: 'gpt-5-codex',
-      input: [
-        {
-          type: 'custom_tool_call_output',
-          call_id: 'call_missing',
-          output: 'No matching call exists.',
-        },
-        {
-          type: 'message',
-          role: 'user',
-          content: 'Continue without the orphan output.',
-        },
-      ],
-    });
-
-    expect(prepared?.request.messages).toEqual([
-      {
-        role: 'user',
-        content: 'Continue without the orphan output.',
-      },
-    ]);
+    await expect(
+      controller.prepareResponsesRequest({
+        model: 'gpt-5-codex',
+        input: [
+          {
+            type: 'custom_tool_call_output',
+            call_id: 'call_missing',
+            output: 'No matching call exists.',
+          },
+          {
+            type: 'message',
+            role: 'user',
+            content: 'Continue without the orphan output.',
+          },
+        ],
+      }),
+    ).rejects.toThrow('Invalid tool history at input[0]: missing-pending-call.');
   });
 
-  it('accepts a Responses message item that omits type when role is present', () => {
+  it('accepts a Responses message item that omits type when role is present', async () => {
     const controller = new ProxyController({
       handleChatCompletions: vi.fn(),
       handleAnthropicMessages: vi.fn(),
     } as any);
 
-    const prepared = controller.prepareResponsesRequest({
+    const prepared = await controller.prepareResponsesRequest({
       model: 'gpt-5-codex',
       input: [
         {
@@ -181,19 +176,19 @@ describe('ProxyController Integration', () => {
         content: 'Keep this role-bearing message.',
       },
       {
-        role: 'user',
+        role: 'assistant',
         content: 'Treat a non-string type as absent.',
       },
     ]);
   });
 
-  it('rewrites only a terminal assistant text prefill as a user message', () => {
+  it('preserves terminal assistant prefill for generation admission', async () => {
     const controller = new ProxyController({
       handleChatCompletions: vi.fn(),
       handleAnthropicMessages: vi.fn(),
     } as any);
 
-    const prepared = controller.prepareResponsesRequest({
+    const prepared = await controller.prepareResponsesRequest({
       model: 'gpt-5-codex',
       input: [
         {
@@ -215,19 +210,19 @@ describe('ProxyController Integration', () => {
         content: 'Complete this prefix.',
       },
       {
-        role: 'user',
+        role: 'assistant',
         content: 'The answer begins',
       },
     ]);
   });
 
-  it('drops leading orphan tool history after the system prefix', () => {
+  it('preserves a complete leading tool round after the system prefix', async () => {
     const controller = new ProxyController({
       handleChatCompletions: vi.fn(),
       handleAnthropicMessages: vi.fn(),
     } as any);
 
-    const prepared = controller.prepareResponsesRequest({
+    const prepared = await controller.prepareResponsesRequest({
       model: 'gpt-5-codex',
       instructions: 'Follow the project instructions.',
       input: [
@@ -256,13 +251,25 @@ describe('ProxyController Integration', () => {
         content: 'Follow the project instructions.',
       },
       {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_orphan',
+            type: 'function',
+            function: { name: 'read_file', arguments: '{}' },
+          },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'call_orphan', name: 'read_file', content: 'stale output' },
+      {
         role: 'user',
         content: 'Start from this request.',
       },
     ]);
   });
 
-  it('compacts repeated apply_patch failures in Responses history', () => {
+  it('compacts repeated apply_patch failures in Responses history', async () => {
     const controller = new ProxyController({
       handleChatCompletions: vi.fn(),
       handleAnthropicMessages: vi.fn(),
@@ -273,7 +280,7 @@ describe('ProxyController Integration', () => {
       'const value = 1;',
     ].join('\n');
 
-    const prepared = controller.prepareResponsesRequest({
+    const prepared = await controller.prepareResponsesRequest({
       model: 'gpt-5-codex',
       input: [
         {
@@ -696,6 +703,8 @@ describe('ProxyController Integration', () => {
         requestSessionId: expect.any(String),
         responseId: expect.any(String),
       }),
+      undefined,
+      undefined,
     );
   });
 
@@ -891,7 +900,7 @@ describe('ProxyController Integration', () => {
     ]);
   });
 
-  it('drops repaired tool-only history when a compacted continuation has no ordinary message', async () => {
+  it('preserves repaired tool-only history when a compacted continuation has no ordinary message', async () => {
     const patch = '*** Begin Patch\n*** Add File: src/new.ts\n+export {};\n*** End Patch';
     const proxyService = {
       handleChatCompletions: vi
@@ -958,7 +967,21 @@ describe('ProxyController Integration', () => {
     );
 
     const continuationRequest = proxyService.handleChatCompletions.mock.calls[1][0];
-    expect(continuationRequest.messages).toEqual([{ role: 'user', content: '' }]);
+    expect(continuationRequest.messages).toEqual([
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_patch_compacted',
+            type: 'function',
+            function: { name: 'apply_patch', arguments: JSON.stringify({ input: patch }) },
+            custom_input: patch,
+          },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'call_patch_compacted', name: 'apply_patch', content: 'Done' },
+    ]);
   });
 
   it('rejects an unknown previous_response_id', async () => {

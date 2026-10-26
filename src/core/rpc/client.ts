@@ -61,6 +61,10 @@ import { CloudAccountSummarySchema } from '@/modules/cloud-account/services/clou
 import { CloudAccountViewSchema } from '@/modules/cloud-account/services/cloud-account-view';
 import { CloudAccountMutationResultSchema } from '@/modules/cloud-account/services/cloud-account-mutation.schema';
 import {
+  CloudAccountRoutingResultSchema,
+  type SetCloudAccountRoutingInput,
+} from '@/modules/cloud-account/services/cloud-account-routing.schema';
+import {
   ActiveOAuthClientSchema,
   OAuthClientDescriptorSchema,
   SetActiveOAuthClientResultSchema,
@@ -93,6 +97,16 @@ import { createLocalAccountClient } from '@/modules/account/services/local-accou
 import { createOpenCodeClient } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.client';
 import { createAgentToolsClient } from '@/modules/proxy-gateway/agent-tools/agent-tools.client';
 import type { AgentToolsOperations } from '@/modules/proxy-gateway/agent-tools/agent-tools.service';
+import type { DshOperations } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.service';
+import {
+  DshPreviewSchema,
+  DshStatusSchema,
+  DshWriteResultSchema,
+  type DshPreviewInput,
+  type DshProfileInput,
+  type DshRemoveInput,
+  type DshSyncInput,
+} from '@/modules/proxy-gateway/dsh-sync/dsh-owner.schema';
 import type { OpenCodeOperations } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.service';
 import type { LocalAccountOperations } from '@/modules/account/services/local-account-owner.service';
 
@@ -112,6 +126,7 @@ export class CoreRpcClient {
   readonly auditFile: AuditFileOperations;
   readonly openCode: OpenCodeOperations;
   readonly agentTools: AgentToolsOperations;
+  readonly dsh: DshOperations;
   readonly localAccounts: LocalAccountOperations;
   async readAccountAlertPolicy() {
     return CloudAccountAlertPolicySchema.parse(await this.rpc.accountAlertPolicy.read());
@@ -183,6 +198,15 @@ export class CoreRpcClient {
     this.thought = createThoughtClient(this.accountMutationRpc.thought);
     this.auditCurl = createAuditCurlClient(this.accountMutationRpc.auditCurl);
     this.auditFile = {
+      exportSession: async (input) => {
+        try {
+          return AuditFileExportResultSchema.parse(
+            await this.accountMutationRpc.auditFile.exportSession(input),
+          );
+        } catch {
+          throw new AuditFileOwnerError();
+        }
+      },
       exportBody: async (input) => {
         try {
           return AuditFileExportResultSchema.parse(
@@ -195,6 +219,16 @@ export class CoreRpcClient {
     };
     this.openCode = createOpenCodeClient(this.accountMutationRpc.openCode);
     this.agentTools = createAgentToolsClient(this.accountMutationRpc.agentTools);
+    this.dsh = {
+      status: async (input: DshProfileInput) =>
+        DshStatusSchema.parse(await this.accountMutationRpc.dsh.status(input)),
+      preview: async (input: DshPreviewInput) =>
+        DshPreviewSchema.parse(await this.accountMutationRpc.dsh.preview(input)),
+      sync: async (input: DshSyncInput) =>
+        DshWriteResultSchema.parse(await this.accountMutationRpc.dsh.sync(input)),
+      remove: async (input: DshRemoveInput) =>
+        DshWriteResultSchema.parse(await this.accountMutationRpc.dsh.remove(input)),
+    };
     this.localAccounts = createLocalAccountClient(
       this.rpc.localAccount,
       this.accountMutationRpc.localAccount,
@@ -412,6 +446,10 @@ export class CoreRpcClient {
 
   async setAccountProxy(accountId: string, proxyUrl: string | null): Promise<void> {
     CloudAccountMutationResultSchema.parse(await this.rpc.accountSetProxy({ accountId, proxyUrl }));
+  }
+
+  async setAccountRouting(input: SetCloudAccountRoutingInput): Promise<void> {
+    CloudAccountRoutingResultSchema.parse(await this.rpc.accountSetRouting(input));
   }
 
   async deleteCloudAccount(accountId: string): Promise<void> {

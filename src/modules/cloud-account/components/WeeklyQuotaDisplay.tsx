@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CompactQuotaRow } from '@/modules/cloud-account/components/CompactQuotaRow';
+import { QuotaBucketEvidence } from './QuotaBucketEvidence';
+import { useQuotaResetClock } from '../hooks/use-quota-reset-clock';
 import type { WeeklyQuotaItem } from '@/modules/cloud-account/utils/quota-groups';
 import {
   QUOTA_BAR_COLOR_CLASS_BY_STATUS,
@@ -28,6 +30,7 @@ export function WeeklyQuotaDisplay({
   variant = 'card',
 }: WeeklyQuotaDisplayProps) {
   const { t } = useTranslation();
+  const now = useQuotaResetClock(items.map((item) => item.resetTime));
 
   if (items.length === 0) {
     return (
@@ -104,6 +107,7 @@ export function WeeklyQuotaDisplay({
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
+                    <QuotaBucketEvidence bucket={item.bucket} now={now} />
                     <p className="text-xs">
                       {groupName}: {item.percentage}%
                     </p>
@@ -164,6 +168,7 @@ export function WeeklyQuotaDisplay({
                 unknown: t('cloud.card.resetUnknown'),
               })}
             </div>
+            <QuotaBucketEvidence bucket={item.bucket} now={now} />
           </div>
         );
       })}

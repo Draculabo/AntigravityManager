@@ -5,6 +5,7 @@ import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exce
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { ProxyAccountUnavailableError } from '@/modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
+import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 
 function createToken(id: string): CloudAccount {
   return {
@@ -25,7 +26,14 @@ function createToken(id: string): CloudAccount {
 
 function createPolicy() {
   const accountLeaseService = {
+    isLeaseCurrent: vi.fn(() => true),
+    isLeaseEligible: vi.fn(() => true),
+    acceptLeaseCompletion: vi.fn(() => true),
+    rejectSession: vi.fn(),
+    getRetryAccountPoolSize: vi.fn().mockResolvedValue(1),
+    getOrdinaryRetryWaitMs: vi.fn().mockReturnValue(0),
     getNextToken: vi.fn(),
+    getEligibleRetryAccountCount: vi.fn().mockReturnValue(0),
     getNextImageToken: vi.fn(),
     recordParityError: vi.fn(),
     markAsForbidden: vi.fn(),
@@ -53,6 +61,101 @@ function createPolicy() {
 }
 
 describe('ProxyRetryService', () => {
+  it.each([false, true])(
+    'keeps account targeting separate from effort for image=%s',
+    async (image) => {
+      const { policy, accountLeaseService } = createPolicy();
+      const state = policy.createTokenRetryState();
+      const token = createToken('target-account');
+      const controller = new AbortController();
+      accountLeaseService.getNextToken.mockResolvedValue(token);
+      accountLeaseService.getNextImageToken.mockResolvedValue({
+        token,
+        permit: { release: vi.fn() },
+      });
+      const model = image ? 'gemini-3.1-flash-image' : 'gemini-3-flash';
+      expect(
+        await policy.selectRetryToken(
+          state,
+          model,
+          'target-session',
+          image,
+          controller.signal,
+          'high',
+          token.id,
+        ),
+      ).toBe(token);
+      const select = image
+        ? accountLeaseService.getNextImageToken
+        : accountLeaseService.getNextToken;
+      expect(select).toHaveBeenCalledExactlyOnceWith({
+        sessionKey: 'target-session',
+        excludeAccountIds: [],
+        model,
+        effort: 'high',
+        targetAccountId: token.id,
+        signal: controller.signal,
+      });
+      policy.releaseImagePermit(state);
+    },
+  );
+
+  it.each([400, 401, 403, 404, 429, 500, 503])(
+    'abandons observed account affinity only for an account-affecting HTTP failure: %i',
+    async (status) => {
+      const { policy, accountLeaseService } = createPolicy();
+      const state = policy.createTokenRetryState();
+      const token = createToken('affinity-classification');
+      accountLeaseService.getNextToken.mockResolvedValue(token);
+      await policy.selectRetryToken(state, 'gemini-3-flash');
+      policy.recordFailure(
+        state,
+        new UpstreamRequestError({ status, message: 'controlled upstream failure' }),
+      );
+      expect(accountLeaseService.rejectSession.mock.calls.map(([account]) => account.id)).toEqual(
+        [401, 403, 429, 500, 503].includes(status) ? [token.id] : [],
+      );
+    },
+  );
+
+  it('abandons transport-failed affinity while retaining the exact diagnostic', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const state = policy.createTokenRetryState();
+    const token = createToken('affinity-transport');
+    accountLeaseService.getNextToken.mockResolvedValue(token);
+    await policy.selectRetryToken(state, 'gemini-3-flash');
+    const failure = new Error('socket hang up');
+    policy.recordFailure(state, failure);
+    expect(accountLeaseService.rejectSession).toHaveBeenCalledExactlyOnceWith(token);
+    expect(policy.resolveTerminalError(state, failure)).toBe(failure);
+  });
+  it.each([
+    [0, 3],
+    [1, 3],
+    [2, 4],
+    [3, 6],
+    [6, 12],
+    [20, 12],
+  ])(
+    'sets the ordinary ceiling from a %i-account snapshot to %i attempts',
+    async (poolSize, expected) => {
+      const { policy, accountLeaseService } = createPolicy();
+      accountLeaseService.getRetryAccountPoolSize.mockResolvedValue(poolSize);
+      expect(await policy.getMaxRetryAttempts('gemini-3-flash')).toBe(expected);
+      expect(accountLeaseService.getRetryAccountPoolSize).toHaveBeenCalledWith(
+        'gemini-3-flash',
+        undefined,
+      );
+    },
+  );
+
+  it('keeps image budgets independent of ordinary pool expansion', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    expect(await policy.getMaxRetryAttempts('gemini-3.1-flash-image')).toBe(3);
+    expect(await policy.getMaxRetryAttempts('gemini-3-flash', true)).toBe(3);
+    expect(accountLeaseService.getRetryAccountPoolSize).not.toHaveBeenCalled();
+  });
+
   it('classifies retryable upstream failures consistently', () => {
     const { policy } = createPolicy();
 
@@ -96,11 +199,16 @@ describe('ProxyRetryService', () => {
       sessionKey: 'session-1',
       excludeAccountIds: [],
       model: 'gemini-3-flash',
+      signal: undefined,
+      selectionDeadlineMs: expect.any(Number),
     });
     expect(accountLeaseService.getNextToken).toHaveBeenNthCalledWith(2, {
       sessionKey: 'session-1',
       excludeAccountIds: ['acc-1'],
       model: 'gemini-3-flash',
+      allowSelectionWait: false,
+      signal: undefined,
+      selectionDeadlineMs: accountLeaseService.getNextToken.mock.calls[0][0].selectionDeadlineMs,
     });
   });
 
@@ -417,6 +525,21 @@ describe('ProxyRetryService', () => {
     expect(policy.shouldRecordImagePenaltyBeforeGrace('gemini-3.1-pro-high', error)).toBe(false);
   });
 
+  it('does not penalise an account for a broken upstream proxy configuration', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-1',
+      'gemini-3-flash',
+      new UpstreamProxyConfigurationError(),
+    );
+
+    expect(accountLeaseService.markAsForbidden).not.toHaveBeenCalled();
+    expect(accountLeaseService.markAsRateLimited).not.toHaveBeenCalled();
+    expect(accountLeaseService.markFromUpstreamError).not.toHaveBeenCalled();
+    expect(accountLeaseService.getRemainingRateLimitWait).not.toHaveBeenCalled();
+  });
+
   it('routes structured upstream errors to account lease upstream error handling', async () => {
     const { policy, accountLeaseService } = createPolicy();
 
@@ -594,7 +717,10 @@ describe('ProxyRetryService', () => {
         'acc-image',
         'gemini-3-pro-image',
         new UpstreamRequestError({
-          message: `image request failed with ${status}`,
+          message:
+            status === 404
+              ? 'Model gemini-3-pro-image is not supported'
+              : 'Access to model gemini-3-pro-image is denied',
           status,
         }),
       );
@@ -605,7 +731,7 @@ describe('ProxyRetryService', () => {
         expect.arrayContaining([
           expect.objectContaining({
             accountId: 'acc-image',
-            modelId: 'gemini-3-pro-image',
+            modelId: 'gemini-pro-image',
             reason,
           }),
         ]),

@@ -13,7 +13,7 @@ import {
   resolveHubClientVersion,
   resolveLocalInstalledVersion,
 } from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
-import { isEmpty, isNumber, isString } from 'lodash-es';
+import { isNumber, isString } from 'lodash-es';
 import { logger } from '@/shared/logging/logger';
 import {
   type OAuthClientDescriptor,
@@ -28,6 +28,8 @@ import type {
 import { readHttpResponseEvidence } from './google-http-evidence';
 import { createGoogleProxyAgent } from './google-proxy-agent';
 import { populateSyntheticArgonModels } from '@/modules/cloud-account/utils/quota-groups';
+import type { CloudSubscriptionState } from '../types';
+import { observeSubscription } from '../utils/subscription-tier';
 
 // --- Constants & Config ---
 const URLS = {
@@ -329,6 +331,7 @@ export interface QuotaData {
   models: Record<string, ModelQuotaInfo>;
   model_forwarding_rules?: Record<string, string>;
   subscription_tier?: string;
+  subscription?: CloudSubscriptionState;
   is_forbidden?: boolean;
   ai_credits?: { credits: number; expiryDate: string };
   quota_groups?: QuotaGroup[];
@@ -352,6 +355,7 @@ export interface QuotaBucket {
   window: string;
   remaining_fraction: number;
   reset_time: string;
+  observed_at?: number;
   display_name?: string;
   description?: string;
 }
@@ -371,19 +375,36 @@ const AvailableCreditRawSchema = z.object({
 
 const TierRawSchema = z.object({
   is_default: z.boolean().optional(),
-  id: z.string().optional(),
+  id: z
+    .string()
+    .max(256)
+    .nullish()
+    .transform((value) => value ?? undefined),
   quotaTier: z.string().optional(),
-  name: z.string().optional(),
+  name: z
+    .string()
+    .max(256)
+    .nullish()
+    .transform((value) => value ?? undefined),
   slug: z.string().optional(),
   availableCredits: z.array(AvailableCreditRawSchema).optional(),
 });
 
 const LoadProjectResponseSchema = z.object({
-  cloudaicompanionProject: z.string().optional(),
-  currentTier: TierRawSchema.optional(),
-  paidTier: TierRawSchema.optional(),
-  allowedTiers: z.array(TierRawSchema).optional(),
-  ineligibleTiers: z.array(z.object({ reasonCode: z.string().optional() })).optional(),
+  cloudaicompanionProject: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? undefined),
+  currentTier: TierRawSchema.nullish().transform((value) => value ?? undefined),
+  paidTier: TierRawSchema.nullish().transform((value) => value ?? undefined),
+  allowedTiers: z
+    .array(TierRawSchema)
+    .nullish()
+    .transform((value) => value ?? undefined),
+  ineligibleTiers: z
+    .array(z.object({ reasonCode: z.string().optional() }))
+    .nullish()
+    .transform((value) => value ?? undefined),
 });
 
 const ModelInfoRawSchema = z.object({
@@ -421,7 +442,7 @@ const QuotaSummaryResponseSchema = z.object({
             z.object({
               bucketId: z.string().optional(),
               window: z.string().optional(),
-              remainingFraction: z.number().optional(),
+              remainingFraction: z.number().min(0).max(1).optional(),
               resetTime: z.string().optional(),
               displayName: z.string().optional(),
               description: z.string().optional(),
@@ -441,6 +462,7 @@ type QuotaSummaryResponse = z.infer<typeof QuotaSummaryResponseSchema>;
 interface ProjectContext {
   projectId?: string;
   subscriptionTier?: string;
+  subscription?: CloudSubscriptionState;
 }
 
 function parseTokenResponse(
@@ -497,40 +519,6 @@ function buildInternalApiHeaders(
   };
 }
 
-function resolveSubscriptionTier(payload: LoadProjectResponse): string | undefined {
-  const paidTier = payload.paidTier;
-  if (isString(paidTier?.name) && !isEmpty(paidTier.name.trim())) {
-    return paidTier.name;
-  }
-  if (isString(paidTier?.id) && !isEmpty(paidTier.id.trim())) {
-    return paidTier.id;
-  }
-
-  const ineligible = Array.isArray(payload.ineligibleTiers) && payload.ineligibleTiers.length > 0;
-  if (!ineligible) {
-    const currentTier = payload.currentTier;
-    if (isString(currentTier?.name) && !isEmpty(currentTier.name.trim())) {
-      return currentTier.name;
-    }
-    if (isString(currentTier?.id) && !isEmpty(currentTier.id.trim())) {
-      return currentTier.id;
-    }
-  }
-
-  if (Array.isArray(payload.allowedTiers)) {
-    const preferredAllowedTier =
-      payload.allowedTiers.find((tier) => tier.is_default === true) ?? payload.allowedTiers[0];
-    if (isString(preferredAllowedTier?.name) && !isEmpty(preferredAllowedTier.name.trim())) {
-      return ineligible ? `${preferredAllowedTier.name} (Restricted)` : preferredAllowedTier.name;
-    }
-    if (isString(preferredAllowedTier?.id) && !isEmpty(preferredAllowedTier.id.trim())) {
-      return ineligible ? `${preferredAllowedTier.id} (Restricted)` : preferredAllowedTier.id;
-    }
-  }
-
-  return undefined;
-}
-
 function isTrackedModel(modelName: string): boolean {
   return /^(gemini|claude|gpt|image|imagen)/i.test(modelName);
 }
@@ -577,18 +565,26 @@ function toQuotaGroups(data: QuotaSummaryResponse): QuotaGroup[] | undefined {
     return undefined;
   }
 
+  const observedAt = Date.now();
   const groups = data.groups.map((group) => ({
     display_name: group.displayName || '',
     description: group.description,
     buckets: Array.isArray(group.buckets)
-      ? group.buckets.map((bucket) => ({
-          bucket_id: bucket.bucketId || '',
-          window: bucket.window || '',
-          remaining_fraction: bucket.remainingFraction ?? 0,
-          reset_time: bucket.resetTime || '',
-          display_name: bucket.displayName,
-          description: bucket.description,
-        }))
+      ? group.buckets.flatMap((bucket) =>
+          bucket.remainingFraction === undefined
+            ? []
+            : [
+                {
+                  bucket_id: bucket.bucketId || '',
+                  window: bucket.window || '',
+                  remaining_fraction: bucket.remainingFraction,
+                  reset_time: bucket.resetTime || '',
+                  observed_at: observedAt,
+                  display_name: bucket.displayName,
+                  description: bucket.description,
+                },
+              ],
+        )
       : [],
   }));
 
@@ -745,6 +741,7 @@ export class GoogleAPIService {
       throw new Error('No OAuth clients configured');
     }
 
+    const axiosOptions = this.getAxiosOptions(proxyUrl);
     const attemptErrors: string[] = [];
     let lastFailure: CauseClassification | undefined;
 
@@ -760,7 +757,6 @@ export class GoogleAPIService {
       logger.info(
         `[GoogleAPIService] Attempting token exchange with client=${client.key}, endpoint=${URLS.TOKEN}`,
       );
-      const axiosOptions = this.getAxiosOptions(proxyUrl);
       logger.info(
         `[GoogleAPIService] Axios options: ${JSON.stringify({ hasExplicitProxy: axiosOptions.proxy !== undefined })}`,
       );
@@ -840,11 +836,13 @@ export class GoogleAPIService {
     preferredClientKey?: string,
     requestSignal?: AbortSignal,
   ): Promise<TokenResponse> {
+    requestSignal?.throwIfAborted();
     const candidates = OAuthClientRegistryService.getCandidateClients(preferredClientKey);
     if (candidates.length === 0) {
       throw new Error('No OAuth clients configured');
     }
 
+    const axiosOptions = this.getAxiosOptions(proxyUrl);
     const attemptErrors: string[] = [];
     let lastFailure: CauseClassification | undefined;
 
@@ -857,6 +855,7 @@ export class GoogleAPIService {
       });
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
+        requestSignal?.throwIfAborted();
         const requestAbort = createGoogleApiRequestSignal(REQUEST_TIMEOUT_MS, requestSignal);
         let response: GoogleApiHttpResponse;
         try {
@@ -865,7 +864,7 @@ export class GoogleAPIService {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             method: 'POST',
             signal: requestAbort.signal,
-            ...this.getAxiosOptions(proxyUrl),
+            ...axiosOptions,
           });
         } catch (error) {
           if (isTimedOutHttpRequest(error, requestAbort.timeoutSignal)) {
@@ -885,6 +884,7 @@ export class GoogleAPIService {
           );
         }
 
+        requestSignal?.throwIfAborted();
         if (isSuccessfulHttpStatus(response.status)) {
           return parseTokenResponse(response.data, client.key, response.status);
         }
@@ -984,6 +984,9 @@ export class GoogleAPIService {
   public static async fetchProjectContext(
     accessToken: string,
     proxyUrl?: string,
+    signal?: AbortSignal,
+    deadlineAt = Date.now() + REQUEST_TIMEOUT_MS,
+    proxyOptions?: GoogleApiProxyOptions,
   ): Promise<ProjectContext> {
     const body = {
       metadata: { ideType: 'ANTIGRAVITY' },
@@ -991,16 +994,23 @@ export class GoogleAPIService {
 
     let projectId: string | undefined;
     let subscriptionTier: string | undefined;
+    let subscription: CloudSubscriptionState | undefined;
     let lastError: unknown;
-    const axiosOptions = this.getAxiosOptions(proxyUrl);
+    const axiosOptions = proxyOptions ?? this.getAxiosOptions(proxyUrl);
 
     for (
       let endpointIndex = 0;
       endpointIndex < PROJECT_CONTEXT_ENDPOINTS.length;
       endpointIndex += 1
     ) {
+      signal?.throwIfAborted();
       const endpoint = PROJECT_CONTEXT_ENDPOINTS[endpointIndex];
       const hasNextEndpoint = endpointIndex < PROJECT_CONTEXT_ENDPOINTS.length - 1;
+      const remainingMs = deadlineAt - Date.now();
+      if (remainingMs <= 0) {
+        lastError = new Error('Google API request deadline exceeded during project-context lookup');
+        break;
+      }
       let response: GoogleApiHttpResponse;
 
       try {
@@ -1008,10 +1018,14 @@ export class GoogleAPIService {
           data: JSON.stringify(body),
           headers: buildInternalApiHeaders(accessToken),
           method: 'POST',
-          signal: createGoogleApiRequestSignal(REQUEST_TIMEOUT_MS).signal,
+          signal: createGoogleApiRequestSignal(remainingMs, signal).signal,
           ...axiosOptions,
         });
+        if (Date.now() >= deadlineAt) {
+          throw new Error('Google API request deadline exceeded during project-context lookup');
+        }
       } catch (error) {
+        signal?.throwIfAborted();
         lastError = error;
         if (hasNextEndpoint) {
           logger.warn(
@@ -1023,12 +1037,15 @@ export class GoogleAPIService {
         break;
       }
 
+      signal?.throwIfAborted();
       if (isSuccessfulHttpStatus(response.status)) {
         const data = parseLoadProjectResponse(response.data);
         if (isString(data.cloudaicompanionProject)) {
           projectId = data.cloudaicompanionProject;
         }
-        subscriptionTier = resolveSubscriptionTier(data);
+        const observedSubscription = observeSubscription(data, Date.now());
+        subscription = observedSubscription;
+        subscriptionTier = observedSubscription.observation.tier;
         break;
       }
 
@@ -1049,14 +1066,18 @@ export class GoogleAPIService {
     return {
       projectId,
       subscriptionTier,
+      subscription,
     };
   }
 
   public static async fetchProjectId(
     accessToken: string,
     proxyUrl?: string,
+    signal?: AbortSignal,
   ): Promise<string | null> {
-    const context = await this.fetchProjectContext(accessToken, proxyUrl);
+    const context = signal
+      ? await this.fetchProjectContext(accessToken, proxyUrl, signal)
+      : await this.fetchProjectContext(accessToken, proxyUrl);
     return context.projectId ?? null;
   }
 
@@ -1134,14 +1155,30 @@ export class GoogleAPIService {
   /**
    * Core logic: Fetches detailed model quota information.
    */
-  static async fetchQuota(accessToken: string, proxyUrl?: string): Promise<QuotaData> {
+  static async fetchQuota(
+    accessToken: string,
+    proxyUrl?: string,
+    signal?: AbortSignal,
+  ): Promise<QuotaData> {
+    const deadlineAt = Date.now() + REQUEST_TIMEOUT_MS;
+    const axiosOptions = this.getAxiosOptions(proxyUrl);
     let projectContext: ProjectContext = {};
     try {
-      projectContext = await this.fetchProjectContext(accessToken, proxyUrl);
+      projectContext = await this.fetchProjectContext(
+        accessToken,
+        proxyUrl,
+        signal,
+        deadlineAt,
+        axiosOptions,
+      );
     } catch (error) {
+      signal?.throwIfAborted();
+      projectContext = {
+        subscription: { refresh_status: 'failed', checked_at: Date.now() },
+      };
       logger.warn(
         '[GoogleAPIService] Project context unavailable; continuing quota lookup without project',
-        error instanceof Error ? error.message : String(error),
+        error,
       );
     }
 
@@ -1149,7 +1186,6 @@ export class GoogleAPIService {
 
     const payload: { project?: string } = projectId ? { project: projectId } : {};
     let lastError: Error | null = null;
-    const axiosOptions = this.getAxiosOptions(proxyUrl);
 
     for (let endpointIndex = 0; endpointIndex < QUOTA_API_ENDPOINTS.length; endpointIndex++) {
       const endpoint = QUOTA_API_ENDPOINTS[endpointIndex];
@@ -1158,15 +1194,24 @@ export class GoogleAPIService {
       let retriedWithoutProject = false;
 
       while (true) {
+        const remainingMs = deadlineAt - Date.now();
+        if (remainingMs <= 0) {
+          throw new Error('Google API request deadline exceeded during quota lookup');
+        }
+        signal?.throwIfAborted();
         try {
           const response = await requestGoogleApi(endpoint, {
             data: JSON.stringify(currentPayload),
             headers: buildInternalApiHeaders(accessToken),
             method: 'POST',
-            signal: createGoogleApiRequestSignal(REQUEST_TIMEOUT_MS).signal,
+            signal: createGoogleApiRequestSignal(remainingMs, signal).signal,
             ...axiosOptions,
           });
+          if (Date.now() >= deadlineAt) {
+            throw new Error('Google API request deadline exceeded during quota lookup');
+          }
 
+          signal?.throwIfAborted();
           if (!isSuccessfulHttpStatus(response.status)) {
             const status = response.status;
 
@@ -1198,7 +1243,10 @@ export class GoogleAPIService {
               );
               lastError = new Error(errorMsg);
 
-              await delay(1000);
+              await waitForAbortableDelay(
+                Math.min(1000, Math.max(0, deadlineAt - Date.now())),
+                signal,
+              );
               break;
             }
 
@@ -1207,7 +1255,17 @@ export class GoogleAPIService {
 
           const data = parseFetchModelsResponse(response.data);
           const result = this.toQuotaData(data, subscriptionTier);
-          const quotaGroups = await this.fetchQuotaSummary(accessToken, projectId, axiosOptions);
+          if (projectContext.subscription) {
+            result.subscription = projectContext.subscription;
+          }
+          const quotaGroups = await this.fetchQuotaSummary(
+            accessToken,
+            projectId,
+            axiosOptions,
+            signal,
+            deadlineAt,
+          );
+          signal?.throwIfAborted();
           if (quotaGroups) {
             result.quota_groups = quotaGroups;
             populateSyntheticArgonModels(result.models, quotaGroups);
@@ -1221,6 +1279,7 @@ export class GoogleAPIService {
 
           return result;
         } catch (error: unknown) {
+          signal?.throwIfAborted();
           const errorMsg = error instanceof Error ? error.message : String(error);
           lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -1237,7 +1296,10 @@ export class GoogleAPIService {
             logger.warn(
               `[GoogleAPIService] Quota API request failed at ${endpoint}: ${errorMsg}. Falling back to next endpoint`,
             );
-            await delay(1000);
+            await waitForAbortableDelay(
+              Math.min(1000, Math.max(0, deadlineAt - Date.now())),
+              signal,
+            );
             break;
           }
 
@@ -1253,6 +1315,8 @@ export class GoogleAPIService {
     accessToken: string,
     projectId: string | undefined,
     axiosOptions: GoogleApiProxyOptions,
+    signal: AbortSignal | undefined,
+    deadlineAt: number,
   ): Promise<QuotaGroup[] | undefined> {
     const payload: { project?: string } = projectId ? { project: projectId } : {};
     // Model-specific groups such as Gemini 4 Argon are not returned to the bare client identity.
@@ -1266,15 +1330,24 @@ export class GoogleAPIService {
       let retriedWithoutProject = false;
 
       while (true) {
+        const remainingMs = deadlineAt - Date.now();
+        if (remainingMs <= 0) {
+          return undefined;
+        }
+        signal?.throwIfAborted();
         try {
           const response = await requestGoogleApi(endpoint, {
             data: JSON.stringify(currentPayload),
             headers,
             method: 'POST',
-            signal: createGoogleApiRequestSignal(REQUEST_TIMEOUT_MS).signal,
+            signal: createGoogleApiRequestSignal(remainingMs, signal).signal,
             ...axiosOptions,
           });
+          if (Date.now() >= deadlineAt) {
+            return undefined;
+          }
 
+          signal?.throwIfAborted();
           if (!isSuccessfulHttpStatus(response.status)) {
             logger.warn(
               `[GoogleAPIService] Quota summary API ${endpoint} returned ${response.status}`,
@@ -1297,6 +1370,7 @@ export class GoogleAPIService {
 
           return toQuotaGroups(parseQuotaSummaryResponse(response.data));
         } catch (error) {
+          signal?.throwIfAborted();
           logger.warn(`[GoogleAPIService] Quota summary API request failed at ${endpoint}`, error);
           break;
         }

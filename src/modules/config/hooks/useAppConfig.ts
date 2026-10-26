@@ -62,23 +62,29 @@ export function useAppConfig() {
         throw new Error('Settings are unavailable right now. Please try again.');
       }
       let state: 'applied' | 'restart-required' = 'applied';
-      if (change.service) {
-        const saved = await ipc.client.config.service.update(change.service);
-        queryClient.setQueryData(['serviceConfig'], saved.snapshot);
-        result = { ...result, ...saved.snapshot };
-        state = saved.state;
+      try {
+        if (change.service) {
+          const saved = await ipc.client.config.service.update(change.service);
+          queryClient.setQueryData(['serviceConfig'], saved.snapshot);
+          result = { ...result, ...saved.snapshot };
+          state = saved.state;
+        }
+        if (change.desktop) {
+          const saved = await ipc.client.config.desktop.save(change.desktop);
+          queryClient.setQueryData(['desktopPreferences'], saved);
+          result = { ...result, ...saved };
+        }
+        if (change.accountAlertPolicy) {
+          const saved = await ipc.client.config.accountAlertPolicy.update(
+            change.accountAlertPolicy,
+          );
+          queryClient.setQueryData(['accountAlertPolicy'], saved);
+          result = { ...result, ...saved };
+        }
+        return { config: result, state, error: null };
+      } catch (error) {
+        return { config: result, state, error };
       }
-      if (change.desktop) {
-        const saved = await ipc.client.config.desktop.save(change.desktop);
-        queryClient.setQueryData(['desktopPreferences'], saved);
-        result = { ...result, ...saved };
-      }
-      if (change.accountAlertPolicy) {
-        const saved = await ipc.client.config.accountAlertPolicy.update(change.accountAlertPolicy);
-        queryClient.setQueryData(['accountAlertPolicy'], saved);
-        result = { ...result, ...saved };
-      }
-      return { config: result, state };
     },
   });
   const mutateConfig = updateConfig.mutateAsync;
@@ -115,6 +121,22 @@ export function useAppConfig() {
       }
       const saved = await mutateConfig({ newConfig: nextConfig, previous });
       const savedConfig = saved.config;
+      if (saved.error) {
+        setDraft(null);
+        lastStableConfigRef.current = savedConfig;
+        const error =
+          saved.error instanceof Error ? saved.error : new Error('Failed to save settings');
+        toast({
+          error: saved.error,
+          title: t('settings.toast.saveFailed.title'),
+          description: t('settings.service-unavailable'),
+          variant: 'destructive',
+        });
+        for (const item of pendingBatch) {
+          item.reject(error);
+        }
+        return;
+      }
       if (latestConfigRef.current === nextConfig) {
         setDraft(null);
       }

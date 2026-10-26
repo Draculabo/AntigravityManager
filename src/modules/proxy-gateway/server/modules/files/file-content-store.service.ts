@@ -51,6 +51,7 @@ export class FileContentStore {
   constructor(@Optional() @Inject(FILE_STORE_OPTIONS) options?: FileStoreOptions) {
     this.disk = new FileStoreDisk(
       options?.rootDirectory ?? join(tmpdir(), 'antigravity-manager', 'proxy-files'),
+      options?.propagateIndexWriteErrors === true,
     );
     this.maxFileBytes = options?.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
     this.maxStoreBytes = options?.maxStoreBytes ?? DEFAULT_MAX_STORE_BYTES;

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -109,7 +110,7 @@ for (const operation of ['resetDropStats', 'clear']) {
   }
 }
 
-test('production retention prunes obsolete drops and preserves recent drops', async () => {
+test('production retention bounds drop buckets and preserves newer counts without age expiry', async () => {
   const audit = openWorker('drop-retention');
   try {
     const now = Date.now();
@@ -125,9 +126,137 @@ test('production retention prunes obsolete drops and preserves recent drops', as
         trafficClass,
       });
     }
-    assert.equal((await audit.command('stats', null)).droppedCount, 10);
-    await audit.command('maintenance', { ...retention(100), summaryRetentionDays: 1 });
-    assert.equal((await audit.command('stats', null)).droppedCount, 3);
+    for (let index = 0; index < 127; index += 1) {
+      await audit.command('drop', {
+        count: 1,
+        droppedBytes: 0,
+        lastSeen: now - 1,
+        reason: `fixture-${index}`,
+        trafficClass: 'system',
+      });
+    }
+    assert.equal((await audit.command('stats', null)).droppedCount, 137);
+    await audit.command('maintenance', retention(100));
+    assert.equal((await audit.command('stats', null)).droppedCount, 130);
+    const db = new Database(audit.databasePath, { readonly: true });
+    try {
+      assert.equal(db.prepare('SELECT COUNT(*) count FROM audit_drop_stats').get().count, 128);
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT traffic_class scope,count FROM audit_drop_stats WHERE traffic_class<>'system' ORDER BY traffic_class",
+          )
+          .all(),
+        [{ scope: 'ipc', count: 3 }],
+      );
+    } finally {
+      db.close();
+    }
+  } finally {
+    await audit.close();
+  }
+});
+
+test('production session snapshot fingerprints settled scoped records and rejects active or oversized sessions', async () => {
+  const audit = openWorker('session-export-snapshot', 'traffic-audit', {
+    workerPath: process.env.AGM_AUDIT_WORKER_ENTRY,
+  });
+  const sessionId = `session:affinity:v1:${'a'.repeat(64)}`;
+  const id = randomUUID();
+  try {
+    await audit.command('insertParent', { ...parent(id, 'model', Date.now()), sessionId });
+    await assert.rejects(audit.command('sessionSnapshot', { sessionId }), /active|limits/u);
+    await audit.command('completeParent', completedParent(id, { sessionId }));
+    const restoredId = randomUUID();
+    await audit.command('insertParent', {
+      ...parent(restoredId, 'model', Date.now()),
+      sessionId: 'legacy-unscoped',
+    });
+    await audit.command('completeParent', completedParent(restoredId, { sessionId }));
+    assert.equal((await audit.command('detail', { id: restoredId })).request.sessionId, sessionId);
+    assert.equal((await audit.command('sessionSnapshot', { sessionId })).ids.length, 2);
+    await audit.command('delete', { id: restoredId });
+    const initial = await audit.command('sessionSnapshot', { sessionId });
+    assert.deepEqual(initial.ids, [id]);
+    assert.match(initial.fingerprint, /^[a-f0-9]{64}$/u);
+    assert.deepEqual(await audit.command('sessionSnapshot', { sessionId }), initial);
+    await audit.command('completeParent', completedParent(id, { outputTokens: 42 }));
+    assert.notEqual(
+      (await audit.command('sessionSnapshot', { sessionId })).fingerprint,
+      initial.fingerprint,
+    );
+    await audit.command('delete', { id });
+    assert.deepEqual((await audit.command('sessionSnapshot', { sessionId })).ids, []);
+    await assert.rejects(audit.command('sessionSnapshot', { sessionId: 'legacy-unscoped' }));
+    const db = new Database(audit.databasePath);
+    try {
+      const insert = db.prepare(
+        "INSERT INTO request_logs(id,timestamp,method,url,protocol,traffic_class,request_headers,session_id,outcome,completed_at) VALUES (?,1,'POST','/v1/messages','anthropic','model','{}',?,'completed',2)",
+      );
+      db.transaction(() => {
+        for (let index = 0; index < 2001; index += 1) {
+          insert.run(randomUUID(), sessionId);
+        }
+      })();
+    } finally {
+      db.close();
+    }
+    await assert.rejects(audit.command('sessionSnapshot', { sessionId }), /request limit/u);
+  } finally {
+    await audit.close();
+  }
+});
+
+test('exact saved-session filter preserves full tenant scope, paging and system union semantics', async () => {
+  const audit = openWorker('exact-session', 'traffic-audit', {
+    workerPath: process.env.AGM_AUDIT_WORKER_ENTRY,
+  });
+  const session = 'tenant-one:session_%';
+  try {
+    for (const [id, trafficClass, sessionId, timestamp] of [
+      ['first', 'model', session, 1],
+      ['second', 'model', session, 2],
+      ['other-tenant', 'model', 'tenant-two:session_%', 3],
+      ['longer', 'model', `${session}-suffix`, 4],
+      ['no-session', 'model', null, 5],
+      ['system-match', 'system', session, 6],
+      ['system-other', 'system', 'other', 7],
+    ]) {
+      await audit.command('insertParent', { ...parent(id, trafficClass, timestamp), sessionId });
+    }
+    await audit.command('adminEvent', {
+      affectedCount: null,
+      error: null,
+      operation: 'fixture',
+      outcome: 'completed',
+      timestamp: 8,
+    });
+    const query = { limit: 1, offset: 0, trafficClass: 'model', sessionId: session };
+    const first = await audit.command('list', query);
+    assert.equal(first.total, 2);
+    assert.deepEqual(
+      first.items.map((item) => item.id),
+      ['second'],
+    );
+    assert.deepEqual(
+      (await audit.command('list', { ...query, offset: 1 })).items.map((item) => item.id),
+      ['first'],
+    );
+    const system = await audit.command('list', { ...query, limit: 20, trafficClass: 'system' });
+    assert.equal(system.total, 1);
+    assert.deepEqual(
+      system.items.map((item) => item.id),
+      ['system-match'],
+    );
+    assert.equal((await audit.command('list', { ...query, sessionId: 'session_%' })).total, 0);
+    assert.equal(
+      (await audit.command('detail', { id: 'other-tenant' })).request.sessionId,
+      'tenant-two:session_%',
+    );
+    assert.equal(
+      (await audit.command('list', { limit: 20, offset: 0, trafficClass: 'model' })).total,
+      5,
+    );
   } finally {
     await audit.close();
   }
@@ -253,7 +382,9 @@ test('future audit schema is rejected without archiving or replacing its data', 
   database.pragma('user_version = 5');
   database.close();
 
-  const workerPath = path.resolve(__dirname, '../../../.vite/build/traffic-audit.worker.js');
+  const workerPath =
+    process.env.AGM_AUDIT_WORKER_ENTRY ??
+    path.resolve(__dirname, '../../../.vite/build/traffic-audit.worker.js');
   const worker = new Worker(workerPath, { workerData: { databasePath: audit.databasePath } });
   const failure = await new Promise((resolve) => worker.once('error', resolve));
   assert.match(failure.message, /Unsupported traffic audit schema version: 5/);

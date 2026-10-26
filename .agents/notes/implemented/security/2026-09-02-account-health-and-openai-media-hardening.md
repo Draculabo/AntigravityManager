@@ -16,6 +16,15 @@ OAuth `invalid_grant` is retried once against the same client after an abortable
 
 The renderer can request `openAccountValidationLink(accountId)` only. The main process rereads the encrypted record and opens only HTTPS URLs on the exact `accounts.google.com` host.
 
+OAuth refresh additionally captures the persisted account's identity, creation time,
+grant, client and proxy context. The health mutation owner asserts that context
+after its final awaited account read, before writing. A stale result cannot clear
+or increment a replacement account's OAuth state. Lease-cache synchronization and
+eviction receive a private expected credential context and check it synchronously
+at the mutation point. A mismatch fails explicitly, retaining an original provider
+error as cause without classifying it as another confirmed invalid grant. Current
+behavior and limits belong to [OAuth refresh ownership](../../../../docs/modules/cloud-account/overview.md#oauth-refresh-ownership).
+
 OpenAI `json_schema` is cloned and cleaned before becoming Gemini `responseSchema`. Inline audio accepts strict base64 or an audio data URL, is capped at 15 MiB, is magic-byte sniffed where possible, and never fetches URLs or reads client-supplied filesystem paths.
 
 OpenAI Chat `video_url` uses the gateway's compatibility source order: data URL, HTTP(S) URL, existing local path or `file://` URL, then raw Base64. Local path reads are controlled by the persisted `proxy.experimental.allow_local_video_paths` setting, default to disabled and observe hot configuration updates for each request. Disabled mode performs no filesystem probe or read; explicit local path forms are rejected lexically while ambiguous non-URL strings keep the raw-Base64 fallback. Enabling the setting deliberately grants every client accepted by the existing proxy authentication boundary access to any regular file readable by the desktop process; there is no directory allowlist. The Settings and Proxy surfaces state that scope next to the switch. Video payloads above the 20 MiB interoperability recommendation are warned about but not rejected.
@@ -25,6 +34,10 @@ OpenAI Chat `video_url` uses the gateway's compatibility source order: data URL,
 - Reusing `status` and `status_reason` was rejected because rate-limit display state cannot express independent sticky validation and OAuth eligibility safely.
 - Permanently excluding a validation-blocked account until background monitoring succeeds was rejected because monitoring can be disabled; the ten-minute deadline must govern scheduler eligibility directly.
 - Keeping the first `invalid_grant` only in memory was rejected because restart would defeat the two-operation confirmation threshold.
+- Checking only before provider dispatch was rejected because deletion, reauthorization
+  or queued health work can change ownership while the provider response is pending.
+- An account-ID-only running-cache effect was rejected because a new credential
+  context can replace that ID after the health write and before cache synchronization.
 - Accepting arbitrary renderer-provided verification URLs or remote audio URLs was rejected because both cross a privileged network or shell boundary.
 - Enabling local video paths by default was rejected because upgrading must not silently broaden existing clients from model access to filesystem access.
 - Adding a directory allowlist was rejected for this opt-in because the selected compatibility contract intentionally allows arbitrary readable-file access once the user enables it.
@@ -35,6 +48,19 @@ The accounts table gains one additive nullable column with no down migration. He
 
 Turning on local video paths is a broad trust decision rather than a per-file grant. An API key limits who can exercise it only when the user configured and kept that key private; a gateway without an API key is loopback-only but still trusts every local caller. Local file reads are synchronous to preserve the existing synchronous mapper contract and conversion order, so very large files can block the gateway and increase memory use.
 
+Refresh context comparisons introduce no new database schema, persisted generation,
+credential location or provider retry. Already dispatched writes and caller-owned
+token/status updates retain existing semantics. Same-value delete/recreate histories,
+full deletion cleanup and overlapping account-cache loads remain separate D01-R12
+obligations. The operation lock still serializes requests for one account ID.
+
 ## Verification
 
 Focused tests cover JSON Schema mapping and malformed envelopes, audio validation and mapping, `video_url` source ordering and MIME aliases, zero filesystem access while disabled, enabled ordinary paths and `file://` URLs, warning-only oversized payloads, tool-result ordering and fallback, empty-user role preservation, configuration migration and disk reload, and hot configuration changes on the real OpenAI service path. They also cover deadline-based validation quarantine, OAuth confirmation persistence and cancellation, running-cache eviction, typed-only lease rotation, serialized full-refresh operations, distinct-grant reimport recovery, unchanged-export reimport retention, the closed health schema and export stripping, plus preservation of terminal upstream 403 responses after account exhaustion. Type checking, formatting, linting and agent-contract checks are run for the final change.
+
+Context-ownership regressions cover old success/failure after deletion or a changed
+grant/client/proxy, stale requests before dispatch, queued health mutations and the
+running lease's synchronous side-effect guard. The eight initial context controls
+all fail against the previous implementation. Controlled evidence is recorded in
+the D01 OAuth context report (local artifact `D01-oauth-context-implementation.md` in the 2026-10-11 review collection);
+live-provider acceptance remains deferred.

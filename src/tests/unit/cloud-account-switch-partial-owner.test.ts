@@ -50,6 +50,7 @@ describe('Partial cloud account switching across owners', () => {
       expect(credentialWrite).toHaveBeenCalledTimes(2);
       expect(start).not.toHaveBeenCalled();
       expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
+      expect(CloudAccountRepo.finalizeSwitch).not.toHaveBeenCalled();
       expect(CloudAccountRepo.updateLastUsed).not.toHaveBeenCalled();
     },
   );

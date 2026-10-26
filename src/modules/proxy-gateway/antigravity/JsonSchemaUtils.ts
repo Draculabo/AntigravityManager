@@ -20,26 +20,7 @@ function isJsonSchemaPrimitive(value: JsonSchemaValue): value is string | number
   return isString(value) || isNumber(value) || isBoolean(value);
 }
 
-function inferConstSchemaType(value: JsonSchemaValue): string | undefined {
-  if (isString(value)) {
-    return 'string';
-  }
-  if (isNumber(value)) {
-    return Number.isInteger(value) ? 'integer' : 'number';
-  }
-  if (isBoolean(value)) {
-    return 'boolean';
-  }
-  if (Array.isArray(value)) {
-    return 'array';
-  }
-  if (isJsonSchemaMap(value)) {
-    return 'object';
-  }
-  return undefined;
-}
-
-function stringifyConstEnumValue(value: JsonSchemaValue): string {
+function stringifyEnumValue(value: JsonSchemaValue): string {
   if (isString(value)) {
     return value;
   }
@@ -56,13 +37,7 @@ function normalizeConstKeyword(map: JsonSchemaMap): boolean {
 
   const constValue = map.const;
   delete map.const;
-
-  if (map.type === undefined) {
-    const inferredType = inferConstSchemaType(constValue);
-    if (inferredType) {
-      map.type = inferredType;
-    }
-  }
+  map.type = 'string';
 
   if (map.enum === undefined) {
     map.enum = [];
@@ -190,7 +165,7 @@ function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
   }
 
   const map = value;
-  const hadConst = normalizeConstKeyword(map);
+  normalizeConstKeyword(map);
 
   if (isJsonSchemaMap(map.properties)) {
     const properties = map.properties;
@@ -235,30 +210,17 @@ function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
   // 2. Collect and process validation fields (Migration logic: Downgrade constraints to Hints in description)
   const constraints: string[] = [];
 
-  if (hadConst && Array.isArray(map.enum)) {
-    map.enum = map.enum.map(stringifyConstEnumValue);
-  }
-
   const enumValues = map.enum;
   if (enumValues !== undefined) {
     if (!Array.isArray(enumValues)) {
       delete map.enum;
     } else {
-      const primitiveEnumValues = enumValues.filter(isJsonSchemaPrimitive);
-      const schemaType = isString(map.type) ? map.type.toLowerCase() : '';
-      const supportsGeminiStringEnum = ['string', 'integer', 'number'].includes(schemaType);
-
-      if (primitiveEnumValues.length === 0) {
+      const stringEnumValues = enumValues.map(stringifyEnumValue).filter((entry) => entry !== '');
+      if (stringEnumValues.length === 0) {
         delete map.enum;
-      } else if (supportsGeminiStringEnum) {
-        map.enum = primitiveEnumValues.map(String);
-      } else if (primitiveEnumValues.every(isString)) {
-        if (primitiveEnumValues.length !== enumValues.length) {
-          map.enum = primitiveEnumValues;
-        }
       } else {
-        constraints.push(`enum: ${primitiveEnumValues.join(', ')}`);
-        delete map.enum;
+        map.enum = stringEnumValues;
+        map.type = 'string';
       }
     }
   }

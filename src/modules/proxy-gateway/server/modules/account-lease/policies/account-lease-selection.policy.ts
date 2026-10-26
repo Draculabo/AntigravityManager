@@ -1,5 +1,13 @@
+import { AccountLeaseAffinity } from './account-lease-affinity';
+import { AccountLeaseSelectionWait } from './account-lease-selection-wait';
+
 export type AccountLeaseSelectionMode = 'cache-first' | 'balance' | 'performance-first';
 export type AccountLeaseSelectionEntry<T> = [string, T];
+
+type PrioritizedLeaseToken = {
+  proxy_priority?: number;
+  proxy_enabled?: boolean;
+};
 
 export interface AccountLeaseRateLimitReader {
   isRateLimited(accountId: string, model?: string): boolean;
@@ -25,9 +33,13 @@ interface AccountLeaseSelectionLogger {
 
 export interface AccountLeaseSelectionRequest<T> {
   allTokens: Array<AccountLeaseSelectionEntry<T>>;
+  isCurrentCandidate?: (accountId: string, token: T) => boolean;
+  waitBudget?: AccountLeaseSelectionWait;
+  signal?: AbortSignal;
   getModelQuota?: (accountId: string, token: T, model: string) => number | undefined;
   sessionKey?: string;
   model?: string;
+  effort?: string;
   now: number;
   accountCooldowns: Map<string, number>;
   rateLimitTracker: AccountLeaseRateLimitReader;
@@ -35,22 +47,15 @@ export interface AccountLeaseSelectionRequest<T> {
   logger: AccountLeaseSelectionLogger;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 export class AccountLeaseSelectionPolicy {
   private currentIndex = 0;
-  private accountFirstBindings = new Map<string, string>();
-  private lastAccountSelectionStrategy?: AccountLeaseSelectionConfig['accountSelectionStrategy'];
-  private sessionBindings: Map<string, { accountId: string; expiresAt: number }> = new Map();
   private parityRequestCount = 0;
   private parityErrorCount = 0;
   private noGoBlocked = false;
   private shadowComparisonCount = 0;
   private shadowMismatchCount = 0;
+
+  constructor(private readonly affinity = new AccountLeaseAffinity()) {}
 
   getShadowComparisonCount(): number {
     return this.shadowComparisonCount;
@@ -61,25 +66,16 @@ export class AccountLeaseSelectionPolicy {
   }
 
   clearSessions(): void {
-    this.sessionBindings.clear();
+    this.affinity.clear();
   }
 
   clearAccountSessions(accountId: string): void {
-    for (const [model, id] of this.accountFirstBindings) {
-      if (id === accountId) {
-        this.accountFirstBindings.delete(model);
-      }
-    }
-    for (const [sessionKey, binding] of this.sessionBindings) {
-      if (binding.accountId === accountId) {
-        this.sessionBindings.delete(sessionKey);
-      }
-    }
+    this.affinity.clearAccount(accountId);
   }
 
   resetSelectionState(): void {
     this.currentIndex = 0;
-    this.accountFirstBindings.clear();
+    this.affinity.clearModels();
   }
 
   recordParityError(
@@ -114,50 +110,60 @@ export class AccountLeaseSelectionPolicy {
   async selectCandidate<T>(
     request: AccountLeaseSelectionRequest<T>,
   ): Promise<AccountLeaseSelectionEntry<T> | null> {
-    this.clearExpiredSessionBindings(request.now);
-
-    if (this.lastAccountSelectionStrategy !== request.config.accountSelectionStrategy) {
-      this.accountFirstBindings.clear();
-      this.lastAccountSelectionStrategy = request.config.accountSelectionStrategy;
+    if (request.signal?.aborted) {
+      return null;
     }
-    // This user-selected strategy is independent of the experimental parity scheduler.
-    if (request.config.accountSelectionStrategy === 'account-first') {
-      return this.selectAccountFirstCandidate(request);
-    }
-
-    if (this.shouldExecuteShadowComparison(request.config)) {
+    // Binary ID order is deterministic across reloads and locales. Keep the caller's pool intact.
+    request = {
+      ...request,
+      allTokens: request.allTokens
+        .filter(([, token]) => this.isProxyEnabled(token))
+        .filter(([id, token]) => this.isCurrent(request, id, token))
+        .sort(([leftId, leftToken], [rightId, rightToken]) => {
+          const priorityDifference =
+            this.proxyPriority(leftToken) - this.proxyPriority(rightToken);
+          if (priorityDifference !== 0) {
+            return priorityDifference;
+          }
+          return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+        }),
+    };
+    this.affinity.cleanup(request.now);
+    this.affinity.setStrategy(request.config.accountSelectionStrategy);
+    if (
+      request.config.accountSelectionStrategy !== 'account-first' &&
+      this.shouldExecuteShadowComparison(request.config)
+    ) {
       this.executeShadowComparison(request);
     }
 
-    let selectedTokenEntry = this.isParitySchedulingEnabled(request.config)
-      ? await this.selectParityTokenCandidate(request)
-      : this.selectLegacyTokenCandidate(request);
-
-    if (!selectedTokenEntry) {
-      const minWaitSeconds = request.allTokens
-        .map(([accountId]) =>
-          request.rateLimitTracker.getRemainingWaitSeconds(accountId, request.model),
-        )
-        .filter((waitSeconds) => waitSeconds > 0)
-        .reduce<number | undefined>(
-          (minimum, waitSeconds) =>
-            minimum === undefined ? waitSeconds : Math.min(minimum, waitSeconds),
-          undefined,
-        );
-
-      if (minWaitSeconds !== undefined && minWaitSeconds <= 2) {
-        await delay(minWaitSeconds * 1000);
-        const retryRequest = {
-          ...request,
-          now: Date.now(),
-        };
-        selectedTokenEntry = this.isParitySchedulingEnabled(request.config)
-          ? await this.selectParityTokenCandidate(retryRequest)
-          : this.selectLegacyTokenCandidate(retryRequest);
+    const waitBudget =
+      request.waitBudget ?? new AccountLeaseSelectionWait(request.config.maxWaitMs, request.signal);
+    const stickyWaitMs = this.stickyWaitMs(request);
+    const waited = stickyWaitMs > 0 && (await waitBudget.wait(stickyWaitMs));
+    if (request.signal?.aborted) {
+      return null;
+    }
+    if (waited) {
+      request = { ...request, now: Date.now() };
+    }
+    let selectedTokenEntry = this.selectImmediateCandidate(request);
+    if (!selectedTokenEntry && !waited) {
+      const waits = request.allTokens
+        .filter(([id, token]) => this.isCurrent(request, id, token))
+        .map(([id]) => this.remainingWaitMs(request, id))
+        .filter((ms) => ms > 0);
+      const minWaitMs = waits.length > 0 ? Math.min(...waits) : Infinity;
+      if (minWaitMs <= 2000 && (await waitBudget.wait(minWaitMs))) {
+        selectedTokenEntry = this.selectImmediateCandidate({ ...request, now: Date.now() });
       }
     }
 
-    if (selectedTokenEntry && this.isParitySchedulingEnabled(request.config)) {
+    if (
+      selectedTokenEntry &&
+      request.config.accountSelectionStrategy !== 'account-first' &&
+      this.isParitySchedulingEnabled(request.config)
+    ) {
       this.parityRequestCount++;
     }
 
@@ -165,13 +171,66 @@ export class AccountLeaseSelectionPolicy {
   }
 
   bindSession(sessionKey: string | undefined, accountId: string, expiresAt: number): void {
-    if (!sessionKey) {
-      return;
+    this.affinity.bindSession(sessionKey, accountId, expiresAt);
+  }
+
+  private isCurrent<T>(request: AccountLeaseSelectionRequest<T>, id: string, token: T): boolean {
+    if (request.isCurrentCandidate?.(id, token) === false) {
+      return false;
     }
-    this.sessionBindings.set(sessionKey, {
-      accountId,
-      expiresAt,
-    });
+    if (request.config.accountSelectionStrategy !== 'account-first' || !request.model) {
+      return true;
+    }
+    const quota = request.getModelQuota?.(id, token, request.model);
+    return quota === undefined || !Number.isFinite(quota) || quota > 0;
+  }
+
+  private stickyWaitMs<T>(request: AccountLeaseSelectionRequest<T>): number {
+    if (
+      request.config.accountSelectionStrategy === 'account-first' ||
+      !this.isParitySchedulingEnabled(request.config) ||
+      request.config.schedulingMode !== 'cache-first' ||
+      request.allTokens.some(
+        ([id]) => id === request.config.preferredAccountId && this.isEligible(request, id),
+      )
+    ) {
+      return 0;
+    }
+    const binding = this.getValidSessionBinding(request.sessionKey, request.now);
+    const sticky = request.allTokens.find(([id]) => id === binding?.accountId);
+    return sticky ? this.remainingWaitMs(request, sticky[0]) : 0;
+  }
+
+  private isEligible<T>(request: AccountLeaseSelectionRequest<T>, id: string): boolean {
+    return (
+      (request.accountCooldowns.get(id) ?? 0) <= request.now &&
+      !request.rateLimitTracker.isRateLimited(id, request.model)
+    );
+  }
+
+  private remainingWaitMs<T>(request: AccountLeaseSelectionRequest<T>, id: string): number {
+    return Math.max(
+      0,
+      (request.accountCooldowns.get(id) ?? 0) - Date.now(),
+      request.rateLimitTracker.getRemainingWaitSeconds(id, request.model) * 1000,
+    );
+  }
+
+  private selectImmediateCandidate<T>(
+    request: AccountLeaseSelectionRequest<T>,
+  ): AccountLeaseSelectionEntry<T> | null {
+    request = {
+      ...request,
+      allTokens: request.allTokens
+        .filter(([, token]) => this.isProxyEnabled(token))
+        .filter(([id, token]) => this.isCurrent(request, id, token)),
+    };
+    if (request.config.accountSelectionStrategy === 'account-first') {
+      return this.selectAccountFirstCandidate(request);
+    }
+    return this.isParitySchedulingEnabled(request.config)
+      ? this.selectParityTokenCandidate(request)
+      : this.selectLegacyTokenCandidate(request);
   }
 
   private selectAccountFirstCandidate<T>(
@@ -183,26 +242,12 @@ export class AccountLeaseSelectionPolicy {
       request.now,
       request.accountCooldowns,
       request.rateLimitTracker,
-    ).filter(([id, token]) => {
-      const quota = request.model ? request.getModelQuota?.(id, token, request.model) : undefined;
-      return quota === undefined || !Number.isFinite(quota) || quota > 0;
-    });
+    );
     const model = request.model?.trim().toLowerCase() ?? '';
     const preferred = candidates.find(([id]) => id === request.config.preferredAccountId);
     const session = this.findStickySessionToken(candidates, request.sessionKey, request.now);
-    const retained = candidates.find(([id]) => id === this.accountFirstBindings.get(model));
-    const selected = preferred ?? session ?? retained ?? candidates[0] ?? null;
-    if (selected) {
-      // Bound state for callers that provide many distinct model identifiers.
-      if (!this.accountFirstBindings.has(model) && this.accountFirstBindings.size >= 256) {
-        const oldest = this.accountFirstBindings.keys().next().value;
-        if (oldest !== undefined) {
-          this.accountFirstBindings.delete(oldest);
-        }
-      }
-      this.accountFirstBindings.set(model, selected[0]);
-    }
-    return selected;
+    const retained = candidates.find(([id]) => id === this.affinity.getModelAccount(model));
+    return preferred ?? session ?? retained ?? this.highestPriorityGroup(candidates)[0] ?? null;
   }
 
   private collectEligibleTokens<T>(
@@ -225,14 +270,7 @@ export class AccountLeaseSelectionPolicy {
     sessionKey: string | undefined,
     now: number,
   ): { accountId: string; expiresAt: number } | null {
-    if (!sessionKey) {
-      return null;
-    }
-    const stickyBinding = this.sessionBindings.get(sessionKey);
-    if (!stickyBinding || stickyBinding.expiresAt <= now) {
-      return null;
-    }
-    return stickyBinding;
+    return this.affinity.getSession(sessionKey, now) ?? null;
   }
 
   private findStickySessionToken<T>(
@@ -309,12 +347,14 @@ export class AccountLeaseSelectionPolicy {
       return stickyToken;
     }
 
-    return this.pickRoundRobinEntry(this.weightedCandidates(availableTokens, request));
+    return this.pickRoundRobinEntry(
+      this.weightedCandidates(this.highestPriorityGroup(availableTokens), request),
+    );
   }
 
-  private async selectParityTokenCandidate<T>(
+  private selectParityTokenCandidate<T>(
     request: AccountLeaseSelectionRequest<T>,
-  ): Promise<AccountLeaseSelectionEntry<T> | null> {
+  ): AccountLeaseSelectionEntry<T> | null {
     const availableTokens = this.collectEligibleTokens(
       request.allTokens,
       request.model,
@@ -343,34 +383,9 @@ export class AccountLeaseSelectionPolicy {
       return stickyToken;
     }
 
-    const stickyBinding = this.getValidSessionBinding(request.sessionKey, request.now);
-    if (stickyBinding && request.config.schedulingMode === 'cache-first') {
-      const waitSec = request.rateLimitTracker.getRemainingWaitSeconds(
-        stickyBinding.accountId,
-        request.model,
-      );
-      const waitMs = waitSec * 1000;
-      if (waitMs > 0 && waitMs <= request.config.maxWaitMs) {
-        await delay(waitMs);
-        const refreshedAvailable = this.collectEligibleTokens(
-          request.allTokens,
-          request.model,
-          Date.now(),
-          request.accountCooldowns,
-          request.rateLimitTracker,
-        );
-        const stickyAfterWait =
-          refreshedAvailable.find(([accountId]) => accountId === stickyBinding.accountId) ?? null;
-        if (stickyAfterWait) {
-          return stickyAfterWait;
-        }
-        if (refreshedAvailable.length > 0) {
-          return this.pickRoundRobinEntry(this.weightedCandidates(refreshedAvailable, request));
-        }
-      }
-    }
-
-    return this.pickRoundRobinEntry(this.weightedCandidates(availableTokens, request));
+    return this.pickRoundRobinEntry(
+      this.weightedCandidates(this.highestPriorityGroup(availableTokens), request),
+    );
   }
 
   private predictLegacyAccountCandidateId<T>(
@@ -396,7 +411,9 @@ export class AccountLeaseSelectionPolicy {
       return stickyToken[0];
     }
 
-    return this.peekRoundRobinCandidateAccountId(this.weightedCandidates(availableTokens, request));
+    return this.peekRoundRobinCandidateAccountId(
+      this.weightedCandidates(this.highestPriorityGroup(availableTokens), request),
+    );
   }
 
   private predictParityAccountCandidateId<T>(
@@ -430,7 +447,35 @@ export class AccountLeaseSelectionPolicy {
       return stickyToken[0];
     }
 
-    return this.peekRoundRobinCandidateAccountId(this.weightedCandidates(availableTokens, request));
+    return this.peekRoundRobinCandidateAccountId(
+      this.weightedCandidates(this.highestPriorityGroup(availableTokens), request),
+    );
+  }
+
+  private isProxyEnabled<T>(token: T): boolean {
+    const candidate = token as T & PrioritizedLeaseToken;
+    return candidate.proxy_enabled !== false;
+  }
+
+  private proxyPriority<T>(token: T): number {
+    const candidate = token as T & PrioritizedLeaseToken;
+    const priority = candidate.proxy_priority;
+    return typeof priority === 'number' &&
+      Number.isInteger(priority) &&
+      priority >= 1 &&
+      priority <= 100
+      ? priority
+      : 50;
+  }
+
+  private highestPriorityGroup<T>(
+    candidates: Array<AccountLeaseSelectionEntry<T>>,
+  ): Array<AccountLeaseSelectionEntry<T>> {
+    if (candidates.length === 0) {
+      return [];
+    }
+    const minimum = Math.min(...candidates.map(([, token]) => this.proxyPriority(token)));
+    return candidates.filter(([, token]) => this.proxyPriority(token) === minimum);
   }
 
   private executeShadowComparison<T>(request: AccountLeaseSelectionRequest<T>): void {
@@ -460,14 +505,6 @@ export class AccountLeaseSelectionPolicy {
       request.logger.error(
         `Parity no-go triggered by mismatch threshold: rate=${mismatchRate.toFixed(4)}, comparisons=${this.shadowComparisonCount}`,
       );
-    }
-  }
-
-  private clearExpiredSessionBindings(now: number): void {
-    for (const [sessionKey, binding] of this.sessionBindings.entries()) {
-      if (binding.expiresAt <= now) {
-        this.sessionBindings.delete(sessionKey);
-      }
     }
   }
 }

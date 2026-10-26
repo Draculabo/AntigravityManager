@@ -151,29 +151,32 @@ describe('LocalAccountImportService', () => {
 
     const result = await service.importSession(session);
 
-    expect(upsertAccounts).toHaveBeenCalledWith([
-      {
-        id: 'new-account-id',
-        provider: 'google',
-        email: 'new@example.com',
-        name: 'New User',
-        avatar_url: 'https://example.com/new-user.png',
-        token: {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          expires_in: 1_000,
-          expiry_timestamp: 1_800_001_000,
-          token_type: 'Bearer',
+    expect(upsertAccounts).toHaveBeenCalledWith(
+      [
+        {
+          id: 'new-account-id',
+          provider: 'google',
           email: 'new@example.com',
-          project_id: 'new-project',
-          id_token: 'new-id-secret',
+          name: 'New User',
+          avatar_url: 'https://example.com/new-user.png',
+          token: {
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_in: 1_000,
+            expiry_timestamp: 1_800_001_000,
+            token_type: 'Bearer',
+            email: 'new@example.com',
+            project_id: 'new-project',
+            id_token: 'new-id-secret',
+          },
+          created_at: 1_800_000_000,
+          last_used: 1_800_000_000,
+          status: 'active',
+          is_active: false,
         },
-        created_at: 1_800_000_000,
-        last_used: 1_800_000_000,
-        status: 'active',
-        is_active: false,
-      },
-    ]);
+      ],
+      [],
+    );
     expect(result).toEqual({
       imported: [
         {
@@ -208,20 +211,23 @@ describe('LocalAccountImportService', () => {
 
     const result = await service.importSession(session);
 
-    expect(upsertAccounts).toHaveBeenCalledWith([
-      {
-        ...existingAccount,
-        token: {
-          ...existingAccount.token,
-          access_token: 'new-access',
-          refresh_token: 'shared-refresh',
-          expires_in: 0,
-          expiry_timestamp: 0,
-          project_id: 'existing-project',
-          id_token: 'new-id-token',
+    expect(upsertAccounts).toHaveBeenCalledWith(
+      [
+        {
+          ...existingAccount,
+          token: {
+            ...existingAccount.token,
+            access_token: 'new-access',
+            refresh_token: 'shared-refresh',
+            expires_in: 0,
+            expiry_timestamp: 0,
+            project_id: 'existing-project',
+            id_token: 'new-id-token',
+          },
         },
-      },
-    ]);
+      ],
+      [existingAccount],
+    );
     expect(result).toEqual({
       imported: [
         {

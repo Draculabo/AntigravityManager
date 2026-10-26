@@ -12,6 +12,10 @@ let lastAccount: TrayAccount | null = null;
 let lastLanguage: string = 'en';
 let onQuitRequested: (() => void | Promise<void>) | null = null;
 
+export function isTrayReady(): boolean {
+  return tray !== null;
+}
+
 function getQuotaText(account: TrayAccount | null, texts: TrayTexts): string[] {
   if (!account) return [`${texts.quota}: --`];
   if (!account.quota || !account.quota.models) return [`${texts.quota}: ${texts.unknown_quota}`];
@@ -41,7 +45,7 @@ export function setTrayMainWindow(mainWindow: BrowserWindow | null): void {
   globalMainWindow = mainWindow;
 }
 
-export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | Promise<void>) {
+export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | Promise<void>): boolean {
   globalMainWindow = mainWindow;
   onQuitRequested = quitHandler ?? null;
 
@@ -74,7 +78,7 @@ export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | P
   // Verify icon is valid before creating tray
   if (icon.isEmpty()) {
     logger.error(`Tray icon not found or invalid at path: ${iconPath}`);
-    return;
+    return false;
   }
 
   configureTrayIcon(icon, process.platform);
@@ -93,6 +97,7 @@ export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | P
   });
 
   updateTrayMenu(null);
+  return true;
 }
 
 export function updateTrayMenu(account: TrayAccount | null, language?: string) {

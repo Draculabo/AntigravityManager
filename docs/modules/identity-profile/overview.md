@@ -28,6 +28,25 @@ The adjacent `state.vscdb` is created only by an existing identity write or cred
 when needed. Initialization does not create authentication records or modify the newer Hub's
 `app_storage.json`.
 
+## Global original baseline
+
+`device_original.json` keeps the first published global-original profile. Baseline
+and desktop-storage creation share the identity-profile owner's exclusive file
+publisher: write a complete private sibling file, link it into the missing target,
+then remove the temporary name. A concurrent target creator wins without being
+overwritten. Existing baseline bytes, including malformed data, are preserved;
+the baseline reader retains its validation and warning behavior.
+
+Publication and cleanup failures propagate without retry or a direct-write fallback.
+If both fail, an aggregate error retains both original failures. A publication
+failure does not expose a partial target; a cleanup failure can occur after a valid
+target was already published. Temporary files use unique names and private creation
+permissions. This establishes complete-file publication, not crash/power-loss durability
+or a transaction with account bindings, client storage and OS credentials.
+
+Cloud-account owns [guarded account binding](../cloud-account/overview.md#device-binding-ownership)
+and reports a later baseline failure without pretending its database commit rolled back.
+
 ## Read and failure behavior
 
 Read-only identity queries do not create files, and CLI account switching does not initialize

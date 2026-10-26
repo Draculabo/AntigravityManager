@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
+import type { RequestHeaders } from '@/modules/proxy-gateway/server/guards/api-key-auth.util';
 import {
   resolveAnthropicSessionScope,
   resolveOpenAISessionScope,
@@ -29,6 +31,145 @@ const resolveAnthropicSignatureScope = (...args: Parameters<typeof resolveAnthro
   resolveAnthropicSessionScope(...args).cacheKey;
 
 describe('signature conversation scope', () => {
+  afterEach(() => SignatureStore.clear());
+  it('fingerprints large initial content without serializing a second complete copy', () => {
+    const text = 'A'.repeat(3 * 1024 * 1024);
+    const request = { ...openAI, messages: [{ role: 'user', content: text }] };
+    const stringify = JSON.stringify;
+    const spy = vi.spyOn(JSON, 'stringify').mockImplementation((value: unknown) => {
+      if (
+        value === text ||
+        value === request ||
+        (Array.isArray(value) && value.some((item) => item === text || item === request.messages))
+      ) {
+        throw new Error('Complete content serialization');
+      }
+      return stringify(value);
+    });
+    let result: ReturnType<typeof resolveOpenAISessionScope>;
+    try {
+      result = resolveOpenAISessionScope(request);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(result.cacheKey).toMatch(/^[^:]+:scope:v\d+:[a-f0-9]{64}$/);
+    expect(result.cacheKey).not.toContain(text.slice(0, 128));
+  });
+  it('keeps credential representations equivalent while separating the anonymous scope', () => {
+    expect(resolveOpenAISessionScope(openAI, { authorization: 'Bearer synthetic-a' })).toEqual(
+      resolveOpenAISessionScope(openAI, { 'x-api-key': 'synthetic-a' }),
+    );
+    const anonymous = resolveOpenAISessionScope(openAI);
+    const named = resolveOpenAISessionScope(openAI, { authorization: 'Bearer anonymous' });
+    expect(anonymous.cacheKey).not.toBe(named.cacheKey);
+    expect(anonymous.affinityKey).not.toBe(named.affinityKey);
+  });
+  it('cold-misses legacy scoped signatures without deleting or reading through to them', () => {
+    const current = resolveOpenAISessionScope(openAI);
+    const legacyKey = current.cacheKey.replace(/^([^:]+):scope:v\d+:/, '$1:scope:');
+    expect(legacyKey).not.toBe(current.cacheKey);
+    const model = 'gemini-pro-agent';
+    SignatureStore.store({
+      model,
+      sessionKey: legacyKey,
+      signature: 'legacy-signature',
+      toolCallId: 'call',
+      toolName: 'read',
+    });
+    expect(
+      SignatureStore.getForToolCall({
+        model,
+        sessionKey: current.cacheKey,
+        toolCallId: 'call',
+        toolName: 'read',
+      }),
+    ).toBeNull();
+    SignatureStore.store({
+      model,
+      sessionKey: current.cacheKey,
+      signature: 'current-signature',
+      toolCallId: 'call',
+      toolName: 'read',
+    });
+    expect(
+      SignatureStore.getForToolCall({
+        model,
+        sessionKey: current.cacheKey,
+        toolCallId: 'call',
+        toolName: 'read',
+      }),
+    ).toBe('current-signature');
+    expect(
+      SignatureStore.getForToolCall({
+        model,
+        sessionKey: legacyKey,
+        toolCallId: 'call',
+        toolName: 'read',
+      }),
+    ).toBe('legacy-signature');
+  });
+  it('keeps all initial system/developer instructions but ignores later system additions in the anchor', () => {
+    const initial: OpenAIChatRequest = {
+      ...openAI,
+      messages: [
+        { role: 'system', content: 'Initial A' },
+        { role: 'developer', content: 'Initial B' },
+        { role: 'user', content: 'Task A' },
+      ],
+    };
+    const baseline = resolveOpenAISessionScope(initial);
+    expect(
+      resolveOpenAISessionScope({
+        ...initial,
+        messages: [
+          ...initial.messages,
+          { role: 'assistant', content: 'ok' },
+          { role: 'system', content: 'Later instruction' },
+        ],
+      }),
+    ).toEqual(baseline);
+    expect(
+      resolveOpenAISessionScope({
+        ...initial,
+        messages: [
+          initial.messages[0],
+          { role: 'developer', content: 'Changed initial B' },
+          initial.messages[2],
+        ],
+      }).cacheKey,
+    ).not.toBe(baseline.cacheKey);
+    const noPrefix = { ...initial, messages: [{ role: 'user', content: 'Task A' }] };
+    expect(
+      resolveOpenAISessionScope({
+        ...noPrefix,
+        messages: [...noPrefix.messages, { role: 'system', content: 'Not initial' }],
+      }),
+    ).toEqual(resolveOpenAISessionScope(noPrefix));
+  });
+  it('uses the bounded winner for both protocols without weakening tenant isolation', () => {
+    for (const resolve of [
+      (headers: RequestHeaders) => resolveOpenAISessionScope(openAI, headers),
+      (headers: RequestHeaders) => resolveAnthropicSessionScope(anthropic, headers),
+    ]) {
+      const selected = resolve({
+        'a-custom-session-id': 'loser',
+        'x-claude-code-session-id': 'winner',
+        authorization: 'Bearer synthetic-a',
+      });
+      expect(selected).toEqual(
+        resolve({ 'x-claude-code-session-id': 'winner', authorization: 'Bearer synthetic-a' }),
+      );
+      const other = resolve({ 'x-claude-code-session-id': 'winner', 'x-api-key': 'synthetic-b' });
+      expect(other.cacheKey).not.toBe(selected.cacheKey);
+      expect(other.affinityKey).not.toBe(selected.affinityKey);
+      expect(selected.hint).toEqual({
+        source: 'header',
+        field: 'x-claude-code-session-id',
+        invalidCandidates: 0,
+      });
+      expect(JSON.stringify(selected)).not.toMatch(/winner|loser|synthetic-a/);
+    }
+  });
   it('skips empty user preambles instead of merging later distinct tasks', () => {
     const empty = { role: 'user', content: '' };
     expect(resolveOpenAISignatureScope({ ...openAI, messages: [empty, ...openAI.messages] })).toBe(
@@ -70,7 +211,10 @@ describe('signature conversation scope', () => {
 
   it('recognizes query session IDs after headers and before body hints', () => {
     const a = resolveOpenAISessionScope(openAI, {}, '/v1/chat/completions?session_id=query');
-    expect(a).toEqual(resolveOpenAISessionScope({ ...openAI, extra: { session_id: 'query' } }));
+    expect(a).toEqual({
+      ...resolveOpenAISessionScope({ ...openAI, extra: { session_id: 'query' } }),
+      hint: { source: 'query', field: 'session_id', invalidCandidates: 0 },
+    });
     expect(
       resolveOpenAISessionScope(openAI, { 'x-session-id': 'header' }, '/?session_id=query'),
     ).toEqual(resolveOpenAISessionScope(openAI, { 'x-session-id': 'header' }));

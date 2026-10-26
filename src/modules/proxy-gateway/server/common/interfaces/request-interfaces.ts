@@ -18,7 +18,11 @@ export interface OpenAIChatRequest {
   frequency_penalty?: number;
   seed?: number;
   max_tokens?: number;
+  max_completion_tokens?: number;
+  maxCompletionTokens?: number;
+  maxTokens?: number;
   stream?: boolean;
+  stream_options?: { include_usage?: boolean } | null;
   /** Ask the gateway to keep the completion so its GET route can replay it. */
   store?: boolean;
   image_size?: string;
@@ -28,6 +32,7 @@ export interface OpenAIChatRequest {
   tool_choice?: string | { type: string; function?: { name: string } };
   thinking?: OpenAIThinkingConfig;
   reasoning_effort?: string;
+  reasoning?: OpenAIReasoningConfig;
   response_format?: OpenAIResponseFormat;
   extra?: Record<string, unknown>;
 }
@@ -46,6 +51,11 @@ export interface OpenAIThinkingConfig {
   type?: string;
   budget_tokens?: number;
   effort?: string;
+}
+
+export interface OpenAIReasoningConfig {
+  effort?: string;
+  max_tokens?: number;
 }
 
 export interface OpenAIMessage {

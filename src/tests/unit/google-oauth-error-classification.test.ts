@@ -5,7 +5,8 @@ import {
   OAuthTokenRefreshError,
 } from '@/modules/cloud-account/services/GoogleAPIService';
 import { OAuthClientRegistryService } from '@/modules/cloud-account/services/OAuthClientRegistryService';
-import { mockAxiosRequests } from '../helpers/mock-axios-request';
+import { ConfigManager } from '@/modules/config/ipc/manager';
+import { mockAxiosRequests, type MockHttpRequestOptions } from '../helpers/mock-axios-request';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -63,6 +64,79 @@ describe('Google OAuth client error classification', () => {
     expect(
       new URLSearchParams(fetchMock.mock.calls[1]?.[1]?.body as URLSearchParams).get('client_id'),
     ).toBe('id');
+  });
+
+  it('keeps one proxy snapshot across the invalid_grant confirmation retry', async () => {
+    vi.useFakeTimers();
+    let proxyUrl = 'http://127.0.0.1:8080';
+    vi.spyOn(ConfigManager, 'loadConfig').mockImplementation(
+      () =>
+        ({
+          proxy: {
+            upstream_proxy: {
+              enabled: true,
+              url: proxyUrl,
+            },
+          },
+        }) as never,
+    );
+    vi.spyOn(OAuthClientRegistryService, 'getCandidateClients').mockReturnValue([
+      { key: 'client-a', client_id: 'id', client_secret: 'secret', source: 'custom' },
+    ] as never);
+    const proxyHrefs: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, options: MockHttpRequestOptions) => {
+      const agent = options.httpsAgent as { proxy?: URL } | undefined;
+      proxyHrefs.push(agent?.proxy?.href ?? '');
+      proxyUrl = 'http://127.0.0.1:9090';
+      return new Response('{"error":"invalid_grant"}', {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    mockAxiosRequests(fetchMock);
+
+    const refresh = GoogleAPIService.refreshAccessToken('refresh-token');
+    const rejection = expect(refresh).rejects.toBeInstanceOf(OAuthTokenRefreshError);
+    await vi.advanceTimersByTimeAsync(500);
+    await rejection;
+
+    expect(proxyHrefs).toEqual(['http://127.0.0.1:8080/', 'http://127.0.0.1:8080/']);
+  });
+
+  it('keeps one proxy snapshot while authorization exchange tries another OAuth client', async () => {
+    let proxyUrl = 'http://127.0.0.1:8080';
+    vi.spyOn(ConfigManager, 'loadConfig').mockImplementation(
+      () =>
+        ({
+          proxy: {
+            upstream_proxy: {
+              enabled: true,
+              url: proxyUrl,
+            },
+          },
+        }) as never,
+    );
+    vi.spyOn(OAuthClientRegistryService, 'getCandidateClients').mockReturnValue([
+      { key: 'client-a', client_id: 'id-a', client_secret: 'secret-a', source: 'custom' },
+      { key: 'client-b', client_id: 'id-b', client_secret: 'secret-b', source: 'custom' },
+    ] as never);
+    const proxyHrefs: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, options: MockHttpRequestOptions) => {
+      const agent = options.httpsAgent as { proxy?: URL } | undefined;
+      proxyHrefs.push(agent?.proxy?.href ?? '');
+      proxyUrl = 'http://127.0.0.1:9090';
+      return new Response('{"error":"invalid_client"}', {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    mockAxiosRequests(fetchMock);
+
+    await expect(
+      GoogleAPIService.exchangeCode('authorization-code', undefined, undefined, 'redirect-uri'),
+    ).rejects.toThrow('Token exchange failed for all OAuth clients');
+
+    expect(proxyHrefs).toEqual(['http://127.0.0.1:8080/', 'http://127.0.0.1:8080/']);
   });
 
   it('aborts immediately during the invalid_grant confirmation delay', async () => {

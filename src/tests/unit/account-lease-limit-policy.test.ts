@@ -100,6 +100,45 @@ describe('AccountLeaseLimitPolicy', () => {
     expect(policy.isRateLimited('acc-1', 'gemini-3.1-flash-lite')).toBe(false);
   });
 
+  it('uses the resolved account for resource escalation and resets it without clearing another quota', async () => {
+    const { policy, refreshRealtimeQuotaAndReconcileLimit } = createPolicy();
+    const tracker = policy.getRateLimitTracker();
+    const hardReset = Date.now() + 3_600_000;
+    tracker.setLockoutUntilIso(
+      'acc-1',
+      new Date(hardReset).toISOString(),
+      RateLimitReason.QuotaExhausted,
+      'model-hard',
+    );
+    const resource = {
+      status: 429,
+      body: 'RESOURCE_EXHAUSTED: Resource has been exhausted.',
+    };
+    await policy.markFromUpstreamError({
+      ...resource,
+      accountIdOrEmail: 'lease@example.com',
+      model: 'model-x',
+    });
+    expect(tracker.getRemainingWaitSeconds('acc-1', 'model-x')).toBe(5);
+    expect(tracker.getRemainingWaitSeconds('acc-1', 'model-y')).toBe(0);
+    await policy.markFromUpstreamError({
+      ...resource,
+      accountIdOrEmail: 'acc-1',
+      model: 'model-y',
+    });
+    expect(tracker.getRemainingWaitSeconds('acc-1', 'model-y')).toBe(15);
+
+    policy.markModelSuccess('lease@example.com', 'model-y');
+    await policy.markFromUpstreamError({
+      ...resource,
+      accountIdOrEmail: 'acc-1',
+      model: 'model-y',
+    });
+    expect(tracker.getRemainingWaitSeconds('acc-1', 'model-y')).toBe(5);
+    expect(tracker.getRemainingWaitSeconds('acc-1', 'model-hard')).toBe(3600);
+    expect(refreshRealtimeQuotaAndReconcileLimit).not.toHaveBeenCalled();
+  });
+
   it('clears a transient account-level 429 only after a real model success', async () => {
     const { policy } = createPolicy();
 

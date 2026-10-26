@@ -12,7 +12,15 @@ import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/servi
 import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 
 const accountLease = {
+  isLeaseCurrent: vi.fn(() => true),
+  isLeaseEligible: vi.fn(() => true),
+  acceptLeaseCompletion: vi.fn(() => true),
+  commitSession: vi.fn(),
+  rejectSession: vi.fn(),
   getNextToken: vi.fn(),
+  getEligibleRetryAccountCount: vi.fn().mockReturnValue(0),
+  getRetryAccountPoolSize: vi.fn().mockResolvedValue(1),
+  getOrdinaryRetryWaitMs: vi.fn().mockReturnValue(0),
   getNextImageToken: vi.fn(),
   markAsRateLimited: vi.fn(),
   markModelSuccess: vi.fn(),
@@ -264,33 +272,49 @@ describe('Gemini image rate-limit lifecycle', () => {
     expect(releaseImagePermit).toHaveBeenCalledTimes(1);
   });
 
-  it('clears a streaming image lock only after image data and a clean end', async () => {
-    const service = createService();
-    const stream = new EventEmitter();
-    accountLease.getNextToken.mockResolvedValue(createToken('acc-stream-image'));
-    geminiClient.streamGenerateInternal.mockResolvedValue(stream);
+  it.each([true, false])(
+    'requires a terminal image event before clearing a streaming lock: %s',
+    async (terminal) => {
+      const service = createService();
+      const stream = new EventEmitter();
+      accountLease.getNextToken.mockResolvedValue(createToken('acc-stream-image'));
+      geminiClient.streamGenerateInternal.mockResolvedValue(stream);
 
-    const result = await service.handleGeminiStreamGenerateContent(
-      'models/gemini-3-pro-image',
-      imageRequest,
-    );
-    result.subscribe({ next: () => {} });
-    stream.emit(
-      'data',
-      Buffer.from(
-        'data: {"response":{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"AQ=="}}]}}]}}\n\n',
-      ),
-    );
+      const result = await service.handleGeminiStreamGenerateContent(
+        'models/gemini-3-pro-image',
+        imageRequest,
+      );
+      result.subscribe({ next: () => {} });
+      stream.emit(
+        'data',
+        Buffer.from(
+          `data: ${JSON.stringify({
+            response: {
+              candidates: [
+                {
+                  content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'AQ==' } }] },
+                  ...(terminal ? { finishReason: 'STOP' } : {}),
+                },
+              ],
+            },
+          })}\n\n`,
+        ),
+      );
 
-    expect(accountLease.markModelSuccess).not.toHaveBeenCalled();
-    expect(releaseImagePermit).not.toHaveBeenCalled();
-    stream.emit('end');
-    expect(accountLease.markModelSuccess).toHaveBeenCalledWith(
-      'acc-stream-image',
-      'gemini-3-pro-image',
-    );
-    expect(releaseImagePermit).toHaveBeenCalledTimes(1);
-  });
+      expect(accountLease.markModelSuccess).not.toHaveBeenCalled();
+      expect(releaseImagePermit).not.toHaveBeenCalled();
+      stream.emit('end');
+      if (terminal) {
+        expect(accountLease.markModelSuccess).toHaveBeenCalledExactlyOnceWith(
+          'acc-stream-image',
+          'gemini-3-pro-image',
+        );
+      } else {
+        expect(accountLease.markModelSuccess).not.toHaveBeenCalled();
+      }
+      expect(releaseImagePermit).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('does not clear a streaming image lock after an application error frame', async () => {
     const service = createService();
@@ -341,7 +365,7 @@ describe('Gemini image rate-limit lifecycle', () => {
   it('does not lose the first image chunk from a real readable stream', async () => {
     const service = createService();
     const firstChunk =
-      'data: {"response":{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"AQ=="}}]}}]}}\n\n';
+      'data: {"response":{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"AQ=="}}]},"finishReason":"STOP"}]}}\n\n';
     const stream = Readable.from([Buffer.from(firstChunk)]);
     accountLease.getNextToken.mockResolvedValue(createToken('acc-stream-readable'));
     geminiClient.streamGenerateInternal.mockResolvedValue(stream);

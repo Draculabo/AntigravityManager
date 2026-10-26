@@ -163,6 +163,39 @@ describe('ConfigManager alias migration', () => {
     expect(() => JSON.parse(fs.readFileSync(configPath, 'utf-8'))).not.toThrow();
   });
 
+  it('treats blank files as recoverable defaults but preserves corrupt JSON in strict mode', async () => {
+    const { ConfigLoadError, ConfigManager } = await import('@/modules/config/ipc/manager');
+
+    fs.writeFileSync(configPath, ' \r\n\t', 'utf8');
+    expect(ConfigManager.loadConfig(true).proxy.port).toBeGreaterThanOrEqual(1024);
+
+    fs.writeFileSync(configPath, '{broken', 'utf8');
+    expect(() => ConfigManager.loadConfig(true)).toThrowError(ConfigLoadError);
+    expect(() => ConfigManager.loadConfig(true)).toThrow('Configuration JSON is invalid');
+    expect(fs.readFileSync(configPath, 'utf8')).toBe('{broken');
+  });
+
+  it('rejects schema-invalid configuration instead of exposing unvalidated values', async () => {
+    fs.writeFileSync(configPath, JSON.stringify({ proxy: { port: 'not-a-port' } }), 'utf8');
+    const { ConfigLoadError, ConfigManager } = await import('@/modules/config/ipc/manager');
+
+    expect(() => ConfigManager.loadConfig(true)).toThrowError(ConfigLoadError);
+    expect(ConfigManager.getCachedConfig()).toBeNull();
+  });
+
+  it('fills the network policy defaults for configurations from before D23', async () => {
+    writeLegacyConfig();
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    expect(ConfigManager.loadConfig(true).proxy.network).toEqual({
+      lan_access: false,
+      ip_filter_mode: 'off',
+      ip_allowlist: [],
+      ip_blocklist: [],
+      allowlist_takes_precedence: true,
+      trusted_proxy_cidrs: [],
+    });
+  });
+
   it('migrates a config handed straight to save without a load', async () => {
     // The IPC path can save a config the renderer built, which never passed through loadConfig.
     const { ConfigManager } = await import('@/modules/config/ipc/manager');

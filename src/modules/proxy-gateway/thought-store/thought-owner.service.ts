@@ -1,17 +1,22 @@
 import { z } from 'zod';
+// Compose the selected process's lazy recovery owner even before the HTTP gateway starts.
+import '../server/modules/openai/responses/responses-session-owner';
 import {
   thoughtStoreService,
   type ThoughtStoreService,
   HARD_MAX_THOUGHT_SESSION_BYTES,
 } from './thought-store.service';
-import {
-  ThoughtSessionListSchema,
-  ThoughtRecordSummaryListSchema,
-  ThoughtStoreStatsSchema,
-} from './thought-store.types';
+import { ThoughtSessionListSchema, ThoughtStoreStatsSchema } from './thought-store.types';
 import { trafficAuditService, type TrafficAuditService } from '../audit/traffic-audit.service';
-import { AuditMutationResultSchema, AuditRepairResultSchema } from '../audit/audit-owner.schema';
+import { AuditRepairResultSchema } from '../audit/audit-owner.schema';
+import {
+  ThoughtRecordPageInputSchema,
+  ThoughtRecordPageSchema,
+  decodeThoughtRecordPage,
+  ThoughtMutationReceiptSchema,
+} from './thought-management.schema';
 import { DiagnosticContentCapabilities } from '../diagnostics/content-capability';
+import { ThoughtCaptureLeases } from './thought-capture-leases';
 import {
   ContentReadInputSchema,
   ContentIdentitySchema,
@@ -35,8 +40,9 @@ import {
 
 type ThoughtSource = Pick<
   ThoughtStoreService,
-  'listSessions' | 'listRecords' | 'getRecord' | 'stats' | 'deleteSession' | 'clear' | 'repair'
->;
+  'listSessions' | 'listRecordPage' | 'getRecord' | 'stats' | 'deleteSession' | 'clear' | 'repair'
+> &
+  Partial<Pick<ThoughtStoreService, 'subscribeInvalidation'>>;
 
 export function createThoughtOwner(
   source: ThoughtSource = thoughtStoreService,
@@ -44,6 +50,16 @@ export function createThoughtOwner(
   content = new DiagnosticContentCapabilities(),
 ) {
   let accepting = true;
+  const contentReads = new ThoughtCaptureLeases();
+  const invalidate = (sessionKey?: string) => {
+    contentReads.revoke(sessionKey);
+    content.invalidate(
+      'thought',
+      (resourceId) =>
+        sessionKey === undefined || resourceId.slice(0, resourceId.lastIndexOf('/')) === sessionKey,
+    );
+  };
+  const unsubscribe = source.subscribeInvalidation?.(invalidate);
   let tail = Promise.resolve();
   const pending = new Set<Promise<unknown>>();
   function run<T>(work: () => Promise<T>): Promise<T> {
@@ -70,33 +86,36 @@ export function createThoughtOwner(
           await source.listSessions(parsed.limit, parsed.offset, parsed.search, parsed.model),
         );
       }),
-    records: (input: z.infer<typeof ThoughtSessionInputSchema>) =>
-      run(async () =>
-        parseThoughtResponse(
-          ThoughtRecordSummaryListSchema,
-          await source.listRecords(ThoughtSessionInputSchema.parse(input).sessionKey),
-        ),
-      ),
+    records: (input: z.input<typeof ThoughtRecordPageInputSchema>) =>
+      run(async () => {
+        const parsed = ThoughtRecordPageInputSchema.parse(input);
+        return decodeThoughtRecordPage(
+          parseThoughtResponse(ThoughtRecordPageSchema, await source.listRecordPage(parsed)),
+          parsed,
+        );
+      }),
     stats: () =>
       run(async () => parseThoughtResponse(ThoughtStoreStatsSchema, await source.stats())),
     delete: (input: z.infer<typeof ThoughtSessionInputSchema>) =>
       run(async () => {
-        const affected = await source.deleteSession(
-          ThoughtSessionInputSchema.parse(input).sessionKey,
-        );
-        const result = parseThoughtResponse(AuditMutationResultSchema, { affected });
-        audit.recordAdminOperation('delete_thought_session', affected);
+        const sessionKey = ThoughtSessionInputSchema.parse(input).sessionKey;
+        invalidate(sessionKey);
+        const affected = await source.deleteSession(sessionKey);
+        const result = parseThoughtResponse(ThoughtMutationReceiptSchema, affected);
+        audit.recordAdminOperation('delete_thought_session', result.sessions);
         return result;
       }),
     clear: () =>
       run(async () => {
+        invalidate();
         const affected = await source.clear();
-        const result = parseThoughtResponse(AuditMutationResultSchema, { affected });
-        audit.recordAdminOperation('clear_thought_sessions', affected);
+        const result = parseThoughtResponse(ThoughtMutationReceiptSchema, affected);
+        audit.recordAdminOperation('clear_thought_sessions', result.sessions);
         return result;
       }),
     repair: () =>
       run(async () => {
+        invalidate();
         const result = parseThoughtResponse(AuditRepairResultSchema, await source.repair());
         audit.recordAdminOperation('repair_thought_store');
         return result;
@@ -104,43 +123,61 @@ export function createThoughtOwner(
     openRecord: (input: ThoughtRecordInput) =>
       run(async () => {
         const parsed = ThoughtRecordInputSchema.parse(input);
-        const record = ThoughtRecordSchema.nullable().parse(
-          await source.getRecord(parsed.sessionKey, parsed.id),
-        );
-        if (!record) {
-          return null;
-        }
-        if (record.id !== parsed.id) {
-          throw new ThoughtOwnerError();
-        }
-        const thoughtBytes = Buffer.byteLength(record.thought, 'utf8');
-        const visibleBytes = Buffer.byteLength(record.visible, 'utf8');
-        const signatureBytes =
-          record.signature === null ? null : Buffer.byteLength(record.signature, 'utf8');
-        if (
-          thoughtBytes > HARD_MAX_THOUGHT_SESSION_BYTES ||
-          thoughtBytes + visibleBytes + (signatureBytes ?? 0) > DIAGNOSTIC_RETAINED_BYTES
-        ) {
-          throw new ThoughtOwnerError();
-        }
-        const { thought: _thought, visible: _visible, signature: _signature, ...metadata } = record;
-        const boundedMetadata = parseThoughtResponse(ThoughtRecordMetadataSchema, metadata);
-        const transfer = content.open('thought', thoughtResourceId(parsed), [
-          Buffer.from(record.thought, 'utf8'),
-          Buffer.from(record.visible, 'utf8'),
-          Buffer.from(record.signature ?? '', 'utf8'),
-        ]);
+        const lease = contentReads.acquire(parsed.sessionKey);
         try {
-          return parseThoughtResponse(ThoughtRecordOpenSchema, {
-            transfer,
-            metadata: boundedMetadata,
-            thoughtBytes,
-            visibleBytes,
-            signatureBytes,
-          });
-        } catch (error) {
-          content.release(transfer);
-          throw error;
+          const record = ThoughtRecordSchema.nullable().parse(
+            await source.getRecord(parsed.sessionKey, parsed.id),
+          );
+          if (!lease.valid) {
+            throw new ThoughtOwnerError();
+          }
+          if (!record) {
+            return null;
+          }
+          if (record.id !== parsed.id) {
+            throw new ThoughtOwnerError();
+          }
+          const thoughtBytes = Buffer.byteLength(record.thought, 'utf8');
+          const visibleBytes = Buffer.byteLength(record.visible, 'utf8');
+          const signatureBytes =
+            record.signature === null ? null : Buffer.byteLength(record.signature, 'utf8');
+          const partSignatures = Buffer.from(JSON.stringify(record.partSignatures), 'utf8');
+          if (
+            thoughtBytes > HARD_MAX_THOUGHT_SESSION_BYTES ||
+            thoughtBytes + visibleBytes + (signatureBytes ?? 0) + partSignatures.length >
+              DIAGNOSTIC_RETAINED_BYTES
+          ) {
+            throw new ThoughtOwnerError();
+          }
+          const {
+            thought: _thought,
+            visible: _visible,
+            signature: _signature,
+            partSignatures: _parts,
+            ...metadata
+          } = record;
+          const boundedMetadata = parseThoughtResponse(ThoughtRecordMetadataSchema, metadata);
+          const transfer = content.open('thought', thoughtResourceId(parsed), [
+            Buffer.from(record.thought, 'utf8'),
+            Buffer.from(record.visible, 'utf8'),
+            Buffer.from(record.signature ?? '', 'utf8'),
+            partSignatures,
+          ]);
+          try {
+            return parseThoughtResponse(ThoughtRecordOpenSchema, {
+              transfer,
+              metadata: boundedMetadata,
+              thoughtBytes,
+              visibleBytes,
+              signatureBytes,
+              partSignaturesBytes: partSignatures.length,
+            });
+          } catch (error) {
+            content.release(transfer);
+            throw error;
+          }
+        } finally {
+          lease.release();
         }
       }),
     readContent: (input: ContentReadInput) =>
@@ -158,6 +195,7 @@ export function createThoughtOwner(
     },
     drain: async () => {
       await Promise.allSettled([...pending]);
+      unsubscribe?.();
       content.close();
     },
   };

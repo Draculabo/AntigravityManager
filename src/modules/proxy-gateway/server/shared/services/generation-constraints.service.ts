@@ -1,7 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigManager } from '@/modules/config/ipc/manager';
 import { isNumber, isString } from 'lodash-es';
 import { getMaxOutputTokens, getThinkingBudget } from '../../../antigravity/ModelSpecs';
 import type { GeminiInternalRequest } from '../../../antigravity/types';
+import { resolveGenerationPlan } from '../generation-plan';
 
 /**
  * Injection token for the account-side capability reader. A token rather than the concrete
@@ -44,23 +46,59 @@ export class GenerationConstraintsService {
     }
 
     if (registered) {
-      generationConfig.maxOutputTokens = registered.maxOutputTokens;
-      if (registered.thinkingBudget === 0) {
+      const registeredPlan = resolveGenerationPlan({
+        source: 'gateway',
+        model,
+        registeredThinkingBudget:
+          this.resolveConfiguredThinkingBudget(model) ?? registered.thinkingBudget,
+        registeredMaxOutputTokens: registered.maxOutputTokens,
+        outputCap: this.getModelOutputCap(accountId, model),
+        thinkingCap: this.getModelThinkingBudget(accountId, model),
+        includeThoughts: registered.includeThoughts,
+      });
+      generationConfig.maxOutputTokens = registeredPlan.maxOutputTokens;
+      if (registeredPlan.thinking.kind === 'disabled') {
         delete generationConfig.thinkingConfig;
-      } else {
+      } else if (registeredPlan.thinking.kind === 'adaptive') {
         generationConfig.thinkingConfig = {
-          includeThoughts: registered.includeThoughts,
-          thinkingBudget: registered.thinkingBudget,
+          includeThoughts: registeredPlan.includeThoughts,
+          thinkingBudget: -1,
+        };
+      } else if (registeredPlan.thinking.kind === 'budget') {
+        generationConfig.thinkingConfig = {
+          includeThoughts: registeredPlan.includeThoughts,
+          thinkingBudget: registeredPlan.thinking.budget,
         };
       }
       return;
     }
 
     if (enforceAuthoritativeThinkingBudget) {
-      generationConfig.thinkingConfig = {
-        includeThoughts: true,
-        thinkingBudget: this.getModelThinkingBudget(accountId, model),
-      };
+      // Authoritative requests still go through the shared planner so a configured
+      // -1 or an account-scale budget cannot bypass the output/thinking caps.
+      const authoritativeBudget =
+        this.resolveConfiguredThinkingBudget(model) ??
+        this.getModelThinkingBudget(accountId, model);
+      const authoritativePlan = resolveGenerationPlan({
+        source: 'gateway',
+        model,
+        // A 0 capability budget means "thinking disabled for this model", so it must
+        // stay on the registered path where 0 is meaningful instead of gateway 0.
+        registeredThinkingBudget: authoritativeBudget,
+        registeredMaxOutputTokens: generationConfig.maxOutputTokens,
+        outputCap: this.getModelOutputCap(accountId, model),
+        thinkingCap: this.getModelThinkingBudget(accountId, model),
+      });
+      generationConfig.maxOutputTokens = authoritativePlan.maxOutputTokens;
+      if (authoritativePlan.thinking.kind === 'disabled') {
+        delete generationConfig.thinkingConfig;
+      } else {
+        generationConfig.thinkingConfig = {
+          includeThoughts: true,
+          thinkingBudget:
+            authoritativePlan.thinking.kind === 'budget' ? authoritativePlan.thinking.budget : -1,
+        };
+      }
     }
 
     const outputCap = this.getModelOutputCap(accountId, model);
@@ -73,9 +111,7 @@ export class GenerationConstraintsService {
       | undefined;
     const adaptiveSentinel =
       thinkingConfig &&
-      (isString(thinkingConfig.thinkingLevel) ||
-        thinkingConfig.thinkingBudget === -1 ||
-        thinkingConfig.thinkingBudget === 32768);
+      (isString(thinkingConfig.thinkingLevel) || thinkingConfig.thinkingBudget === -1 || false);
 
     /**
      * Opus 4.6 rejects otherwise-valid combinations observed with generic thinking
@@ -103,8 +139,15 @@ export class GenerationConstraintsService {
         delete thinkingConfig.thinkingLevel;
       }
 
-      if (isNumber(thinkingConfig.thinkingBudget) && thinkingConfig.thinkingBudget < 0) {
-        thinkingConfig.thinkingBudget = Math.min(thinkingBudgetCap, 24576);
+      if (isNumber(thinkingConfig.thinkingBudget) && thinkingConfig.thinkingBudget < -1) {
+        throw new Error('thinkingBudget must be -1 or a non-negative integer');
+      }
+
+      if (thinkingConfig.thinkingBudget === -1) {
+        const modelDefault = this.getModelThinkingBudget(accountId, model);
+        if (modelDefault >= 0) {
+          thinkingConfig.thinkingBudget = Math.min(modelDefault, Math.max(0, outputCap - 1));
+        }
       }
 
       if (
@@ -118,20 +161,26 @@ export class GenerationConstraintsService {
         );
 
         if (adaptiveSentinel) {
-          if (
-            generationConfig.maxOutputTokens === undefined ||
-            generationConfig.maxOutputTokens < 131072
-          ) {
-            generationConfig.maxOutputTokens = 131072;
+          if (generationConfig.maxOutputTokens === undefined) {
+            generationConfig.maxOutputTokens = outputCap;
           }
         } else if (
           generationConfig.maxOutputTokens === undefined ||
           generationConfig.maxOutputTokens <= thinkingConfig.thinkingBudget
         ) {
           const hasExplicitMax = generationConfig.maxOutputTokens !== undefined;
-          const overhead = hasExplicitMax ? 8192 : 32768;
-          const minRequired = Math.min(outputCap, thinkingConfig.thinkingBudget + overhead);
-          generationConfig.maxOutputTokens = minRequired;
+          const explicitMax = generationConfig.maxOutputTokens;
+          if (
+            hasExplicitMax &&
+            explicitMax !== undefined &&
+            thinkingConfig.thinkingBudget >= 6 * explicitMax
+          ) {
+            thinkingConfig.thinkingBudget = Math.max(0, explicitMax - 1024);
+          } else {
+            const overhead = hasExplicitMax ? 1024 : 32768;
+            const minRequired = Math.min(outputCap, thinkingConfig.thinkingBudget + overhead);
+            generationConfig.maxOutputTokens = minRequired;
+          }
         }
       }
     }
@@ -145,6 +194,36 @@ export class GenerationConstraintsService {
         outputCap,
       );
     }
+  }
+
+  private resolveConfiguredThinkingBudget(model: string): number | undefined {
+    const configured = ConfigManager.getCachedConfig()?.proxy.thinking_budget;
+    if (!configured || configured.control_source !== 'gateway') {
+      return undefined;
+    }
+    const normalized = this.normalizeModelIdentifier(model).toLowerCase();
+    if (normalized.includes('claude')) {
+      if (normalized.includes('low')) return configured.claude_low;
+      if (normalized.includes('medium')) return configured.claude_medium;
+      if (
+        normalized.includes('high') ||
+        normalized.includes('opus') ||
+        normalized.includes('sonnet')
+      )
+        return configured.claude_high;
+      return configured.claude_budget;
+    }
+    if (normalized.includes('pro')) {
+      return normalized.includes('low') ? configured.pro_low : configured.pro_high;
+    }
+    if (normalized.includes('flash')) {
+      if (normalized.includes('low')) return configured.flash_low;
+      if (normalized.includes('medium')) return configured.flash_medium;
+      if (normalized.includes('tiered') || normalized.includes('automatic'))
+        return configured.flash_tiered;
+      return configured.flash_high;
+    }
+    return undefined;
   }
 
   private normalizeModelIdentifier(model: string): string {

@@ -14,6 +14,7 @@ import {
 } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import type { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 import type { InternalGenerationOptions } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 
@@ -37,6 +38,7 @@ export interface UpstreamCall {
   accessToken: string;
   body: GeminiInternalRequest;
   kind: 'generate' | 'stream';
+  options?: InternalGenerationOptions;
 }
 
 export interface UpstreamCountTokensCall {
@@ -90,9 +92,14 @@ export function createUpstream(options: {
         _proxy?: string,
         _headers?: Record<string, string>,
         _signal?: AbortSignal,
-        _options?: InternalGenerationOptions,
+        generationOptions?: InternalGenerationOptions,
       ): Promise<unknown> => {
-        calls.push({ accessToken, body, kind: 'generate' });
+        calls.push({
+          accessToken,
+          body,
+          kind: 'generate',
+          ...(generationOptions ? { options: generationOptions } : {}),
+        });
         const armed = options.generate;
         if (armed === undefined) {
           throw new Error('the test did not arm a non-stream upstream response');
@@ -107,9 +114,14 @@ export function createUpstream(options: {
         _proxy?: string,
         _headers?: Record<string, string>,
         _signal?: AbortSignal,
-        _options?: InternalGenerationOptions,
+        generationOptions?: InternalGenerationOptions,
       ): Promise<Readable> => {
-        calls.push({ accessToken, body, kind: 'stream' });
+        calls.push({
+          accessToken,
+          body,
+          kind: 'stream',
+          ...(generationOptions ? { options: generationOptions } : {}),
+        });
         if (options.streamError) {
           throw options.streamError;
         }
@@ -128,6 +140,7 @@ export function createUpstream(options: {
 
 /** The account lease, reduced to the two interfaces the shared services actually ask for. */
 export function createLease(accounts: CloudAccount[]) {
+  const blockedAccountIds = new Set<string>();
   const penalties: Array<{ accountId: string; kind: string }> = [];
   const validationQuarantines: Array<{
     accountId: string;
@@ -137,13 +150,39 @@ export function createLease(accounts: CloudAccount[]) {
 
   return {
     getModelOutputLimitForAccount: vi.fn(() => undefined),
+    isLeaseCurrent: vi.fn((token: CloudAccount) => accounts.includes(token)),
+    isLeaseEligible: vi.fn((token: CloudAccount) => accounts.includes(token)),
+    acceptLeaseCompletion: vi.fn((token: CloudAccount) => accounts.includes(token)),
+    commitSession: vi.fn(),
+    rejectSession: vi.fn(),
+    getRetryAccountPoolSize: vi.fn(async () => accounts.length),
+    getOrdinaryRetryWaitMs: vi.fn((options: { accountId?: string }): number | null =>
+      accounts.some(
+        (account) =>
+          !blockedAccountIds.has(account.id) &&
+          (!options.accountId || account.id === options.accountId),
+      )
+        ? 0
+        : null,
+    ),
     getModelThinkingBudgetForAccount: vi.fn(() => undefined),
+    getEligibleRetryAccountCount: vi.fn((options: { excludeAccountIds?: string[] }) => {
+      const excluded = new Set(options.excludeAccountIds ?? []);
+      return accounts.filter(
+        (account) => !excluded.has(account.id) && !blockedAccountIds.has(account.id),
+      ).length;
+    }),
     getNextToken: vi.fn(async (options?: { excludeAccountIds?: string[] }) => {
       const excluded = new Set(options?.excludeAccountIds ?? []);
-      return accounts.find((candidate) => !excluded.has(candidate.id)) ?? null;
+      return (
+        accounts.find(
+          (candidate) => !excluded.has(candidate.id) && !blockedAccountIds.has(candidate.id),
+        ) ?? null
+      );
     }),
     getRemainingRateLimitWait: vi.fn(() => 0),
     markAsForbidden: vi.fn((accountId: string) => {
+      blockedAccountIds.add(accountId);
       penalties.push({ accountId, kind: 'forbidden' });
     }),
     markAsRateLimited: vi.fn((accountId: string) => {
@@ -154,11 +193,15 @@ export function createLease(accounts: CloudAccount[]) {
     }),
     markValidationRequired: vi.fn(
       async (params: { accountId: string; verificationUrl?: string; description?: string }) => {
-        validationQuarantines.push(params);
+        blockedAccountIds.add(params.accountId);
+        validationQuarantines.push({
+          accountId: params.accountId,
+          verificationUrl: params.verificationUrl,
+          description: params.description,
+        });
       },
     ),
     markModelSuccess: vi.fn(),
-    markModelUnrequestable: vi.fn(),
     penalties,
     validationQuarantines,
     recordParityError: vi.fn(),
@@ -172,11 +215,11 @@ export type FakeLease = ReturnType<typeof createLease>;
 /** The real shared services, wired the way `SharedServicesModule` wires them. */
 export function createGateway(
   upstream: FakeUpstream,
-  lease: FakeLease,
+  lease: FakeLease | AccountLeaseService,
   routeMissJournal?: ModelRouteMissJournalService,
+  availability: ModelAvailabilityService = proxyModelAvailabilityStore,
 ) {
   const logger = { log: vi.fn(), warn: vi.fn() };
-  const availability = proxyModelAvailabilityStore as unknown as ModelAvailabilityService;
   const routing = new ModelRoutingService(routeMissJournal);
   const constraints = new GenerationConstraintsService(lease);
   const retry = new ProxyRetryService(lease, logger, availability);

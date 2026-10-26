@@ -6,9 +6,18 @@ import { Observable } from 'rxjs';
 import { writeProxySseResponse } from './proxy-sse-response';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import type { FileReferenceError } from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
+import { resolveUpstreamErrorHttpStatus } from './upstream-error-http-status';
+import { publicProxyErrorMessage } from './public-error-message';
+import { anthropicHttpErrorType, openAIHttpErrorFields } from './public-http-error-fields';
+import { redactDiagnosticText } from '@/shared/observability/sentryPrivacy';
 import { ProxyAccountUnavailableError } from '@/modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
+import { publicProxyRequestId } from './public-request-id';
 
 export function applyProxyRetryAfterHeader(res: FastifyReply, error: unknown): void {
+  const requestId = publicProxyRequestId(res.request);
+  if (requestId) {
+    res.header('X-Request-Id', requestId);
+  }
   if (
     error instanceof ProxyAccountUnavailableError &&
     error.retryAfterSeconds !== undefined &&
@@ -94,7 +103,7 @@ export abstract class BaseProxyController {
     if (dialect === 'anthropic') {
       res.status(error.httpStatus).send({
         type: 'error',
-        error: { type: 'invalid_request_error', message: error.message },
+        error: { type: 'invalid_request_error', message: publicProxyErrorMessage(error.message) },
       });
       return;
     }
@@ -102,7 +111,7 @@ export abstract class BaseProxyController {
       res.status(error.httpStatus).send({
         error: {
           code: error.httpStatus,
-          message: error.message,
+          message: publicProxyErrorMessage(error.message),
           status: error.httpStatus === 404 ? 'NOT_FOUND' : 'INVALID_ARGUMENT',
         },
       });
@@ -111,7 +120,7 @@ export abstract class BaseProxyController {
     res.status(error.httpStatus).send({
       error: {
         code: 'file_not_found',
-        message: error.message,
+        message: publicProxyErrorMessage(error.message),
         param: error.param,
         type: 'invalid_request_error',
       },
@@ -130,8 +139,8 @@ export abstract class BaseProxyController {
     applyProxyRetryAfterHeader(res, error);
     res.status(status).send({
       error: {
-        message,
-        type: error instanceof SchemaInputError ? 'invalid_request_error' : 'server_error',
+        message: publicProxyErrorMessage(message),
+        ...openAIHttpErrorFields(status, error),
       },
     });
   }
@@ -148,9 +157,12 @@ export abstract class BaseProxyController {
     applyProxyRetryAfterHeader(res, error);
     res.status(status).send({
       type: 'error',
+      ...(publicProxyRequestId(res.request)
+        ? { request_id: publicProxyRequestId(res.request) }
+        : {}),
       error: {
-        type: error instanceof SchemaInputError ? 'invalid_request_error' : 'api_error',
-        message,
+        type: anthropicHttpErrorType(status),
+        message: publicProxyErrorMessage(message),
       },
     });
   }
@@ -178,14 +190,9 @@ export abstract class BaseProxyController {
     if (error instanceof HttpException) {
       return error.getStatus() as HttpStatus;
     }
-    if (
-      error instanceof UpstreamRequestError &&
-      Number.isInteger(error.status) &&
-      error.status !== undefined &&
-      error.status >= 400 &&
-      error.status <= 599
-    ) {
-      return error.status as HttpStatus;
+    const upstreamStatus = resolveUpstreamErrorHttpStatus(error);
+    if (upstreamStatus !== undefined) {
+      return upstreamStatus;
     }
 
     const lowered = message.toLowerCase();
@@ -194,15 +201,6 @@ export abstract class BaseProxyController {
     }
     if (lowered.includes('all accounts exhausted') || lowered.includes('no available accounts')) {
       return HttpStatus.TOO_MANY_REQUESTS;
-    }
-    if (
-      lowered.includes('network socket disconnected') ||
-      lowered.includes('secure tls connection was established') ||
-      lowered.includes('socket hang up') ||
-      lowered.includes('econnreset') ||
-      lowered.includes('eai_again')
-    ) {
-      return HttpStatus.SERVICE_UNAVAILABLE;
     }
     if (lowered.includes('401') || lowered.includes('unauthorized')) {
       return HttpStatus.UNAUTHORIZED;
@@ -231,9 +229,12 @@ export abstract class BaseProxyController {
     message: string,
     error?: unknown,
   ): void {
-    const base = `[${endpoint}] status=${status} message=${message}`;
+    const base = `[${endpoint}] status=${status} message=${redactDiagnosticText(message)}`;
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
-      this.logger.error(base, error instanceof Error ? error.stack : undefined);
+      this.logger.error(
+        base,
+        error instanceof Error && error.stack ? redactDiagnosticText(error.stack) : undefined,
+      );
       return;
     }
     this.logger.warn(base);

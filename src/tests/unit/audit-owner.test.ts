@@ -13,11 +13,30 @@ import { subscribeSelectedAuditEvents } from '@/modules/proxy-gateway/ipc/audit-
 import { toPublicORPCError } from '@/ipc/router';
 import type { TrafficAuditEvent } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 import type { TrafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
+import type { UsageRangeResult } from '@/modules/proxy-gateway/audit/usage-range.schema';
 
 const id = randomUUID();
+const usageInput = { accountId: 'account-one', modelIds: ['claude-sonnet'], from: 1000, to: 2000 };
+const usageResult: UsageRangeResult = {
+  ...usageInput,
+  asOf: 1800,
+  coverage: 'retained-local-records',
+  accountIdentity: 'stored-account-id',
+  timeBasis: 'request-start',
+  recordedRequests: 1,
+  countedRequests: 1,
+  ambiguousRequests: 0,
+  missingUsageRequests: 0,
+  missingCachedRequests: 0,
+  inputTokens: 100,
+  outputTokens: 20,
+  cachedTokens: 60,
+  totalTokens: 120,
+};
 const stats = {
   bodyStoredBytes: 123,
   databaseBytes: 456,
+  archives: { status: 'complete' as const, bytes: 0, files: 0 },
   droppedCount: 0,
   incompleteBodies: 0,
   lastDropReason: null,
@@ -36,6 +55,7 @@ let stopPresentation: (() => void) | undefined;
 const source = {
   list: vi.fn(async () => ({ items: [], total: 0 })),
   filterOptions: vi.fn(async () => ({ accountIds: ['account-one'], modelFamilies: ['gemini'] })),
+  usageRange: vi.fn(async () => usageResult),
   detail: vi.fn(async () => null),
   bodyPage: vi.fn<TrafficAuditService['bodyPage']>(async () => null),
   bodySearch: vi.fn(async () => ({ matches: [], truncated: false })),
@@ -97,6 +117,63 @@ async function remote() {
 }
 
 describe('selected audit owner', () => {
+  it('carries the entire saved-session filter through embedded and standalone owners', async () => {
+    const input = {
+      limit: 50,
+      offset: 0,
+      sessionId: 'tenant-one:session_%',
+      trafficClass: 'model' as const,
+    };
+    expect(await owner.list(input)).toEqual({ items: [], total: 0 });
+    expect(source.list).toHaveBeenLastCalledWith(input);
+    await remote();
+    expect(await getAuditAdapter().list(input)).toEqual({ items: [], total: 0 });
+    expect(source.list).toHaveBeenLastCalledWith(input);
+  });
+  it('projects usage-query desktop failures through the audit-specific public error contract', () => {
+    const projected = toPublicORPCError(
+      new Error('synthetic private usage failure'),
+      '["gateway","auditUsageRange"]',
+    );
+    expect(projected.message).toBe('Request history is unavailable right now. Please try again.');
+    expect(projected.data).toEqual({
+      auditCode: 'operation-failed',
+      backendCode: 'SERVICE_UNAVAILABLE',
+      backendStatus: 503,
+      backendName: 'ORPCError',
+      backendMessage: 'Request history is unavailable right now. Please try again.',
+      requestPath: '["gateway","auditUsageRange"]',
+    });
+  });
+  it('routes bounded usage reads through either owner without using the embedded store remotely', async () => {
+    expect(await owner.usageRange(usageInput)).toEqual(usageResult);
+    await remote();
+    const embedded = vi.spyOn(auditOwner, 'usageRange');
+    expect(await getAuditAdapter().usageRange(usageInput)).toEqual(usageResult);
+    expect(source.usageRange).toHaveBeenCalledWith(usageInput);
+    expect(embedded).not.toHaveBeenCalled();
+    await server?.close();
+    server = undefined;
+    await expect(getAuditAdapter().usageRange(usageInput)).rejects.toThrow(
+      'Request history is unavailable right now',
+    );
+    expect(embedded).not.toHaveBeenCalled();
+  });
+  it('rejects malformed range inputs, failed reads and inconsistent results without returning zero usage', async () => {
+    const client = await remote();
+    await expect(client.audit.usageRange({ ...usageInput, modelIds: [] })).rejects.toThrow(
+      'Request history is unavailable right now',
+    );
+    expect(source.usageRange).not.toHaveBeenCalled();
+    source.usageRange.mockRejectedValueOnce(new Error('synthetic private database failure'));
+    await expect(client.audit.usageRange(usageInput)).rejects.toThrow(
+      'Request history is unavailable right now',
+    );
+    source.usageRange.mockResolvedValueOnce({ ...usageResult, totalTokens: 999 });
+    await expect(client.audit.usageRange(usageInput)).rejects.toThrow(
+      'Request history is unavailable right now',
+    );
+  });
   it('preserves persisted administrative IDs for detail and deletion', async () => {
     const client = await remote();
     expect(await client.audit.detail({ id: 'admin:42' })).toBeNull();

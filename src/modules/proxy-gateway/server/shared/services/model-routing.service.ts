@@ -21,6 +21,21 @@ import { ModelRouteMissJournalService } from './model-route-miss-journal.service
  */
 export type ModelRouteSource = 'canonical' | 'built-in' | 'configured' | 'dynamic-legacy' | 'miss';
 
+export type ModelRouteMatch =
+  | 'dynamic-forwarding'
+  | 'exact'
+  | 'case-folded-exact'
+  | 'claude-normalized-exact'
+  | 'wildcard'
+  | 'anthropic-family'
+  | 'built-in'
+  | 'passthrough';
+
+export interface ModelRouteRule {
+  alias: string;
+  target: string;
+}
+
 export interface ModelRouteResolution {
   /** The model id exactly as the client sent it (before prefix stripping). */
   requestedModel: string;
@@ -29,10 +44,23 @@ export interface ModelRouteResolution {
   /** The id this gateway will send upstream. */
   resolvedModel: string;
   source: ModelRouteSource;
+  /** The concrete rule that selected the target. */
+  match: ModelRouteMatch;
+  /** The user-configured rule responsible for a configured match. */
+  matchedRule?: ModelRouteRule;
 }
 
 function normalizeModelId(model: string): string {
-  return model.replace(/^models\//i, '').trim();
+  return model.trim().replace(/^models\//i, '');
+}
+
+function normalizeClaudeModelId(model: string): string {
+  return model
+    .trim()
+    .toLowerCase()
+    .replace(/^models\//, '')
+    .replace(/^anthropic\//, '')
+    .replaceAll('.', '-');
 }
 
 @Injectable()
@@ -58,10 +86,16 @@ export class ModelRoutingService {
     const config = getServerConfig();
     const configuredMapping = getConfiguredModelMapping(config);
 
-    const customExactMapping: Record<string, string> = {};
-    const wildcardMapping: Array<{ pattern: RegExp; target: string }> = [];
+    const customExactMapping: Array<{ alias: string; target: string }> = [];
+    const wildcardMapping: Array<{
+      pattern: RegExp;
+      target: string;
+      specificity: number;
+      configuredIndex: number;
+      alias: string;
+    }> = [];
 
-    for (const [key, target] of Object.entries(configuredMapping)) {
+    for (const [configuredIndex, [key, target]] of Object.entries(configuredMapping).entries()) {
       if (!key || !target) {
         continue;
       }
@@ -71,22 +105,14 @@ export class ModelRoutingService {
         wildcardMapping.push({
           pattern: new RegExp(`^${escaped}$`, 'i'),
           target,
+          specificity: key.replaceAll('*', '').length,
+          configuredIndex,
+          alias: key,
         });
         continue;
       }
 
-      customExactMapping[key] = target;
-    }
-
-    for (const wildcardRule of wildcardMapping) {
-      if (wildcardRule.pattern.test(normalizedModel)) {
-        return {
-          requestedModel: model,
-          normalizedModel,
-          resolvedModel: wildcardRule.target,
-          source: 'configured',
-        };
-      }
+      customExactMapping.push({ alias: key, target });
     }
 
     const dynamicForwarded = getDynamicForwardingTarget(normalizedModel);
@@ -96,28 +122,87 @@ export class ModelRoutingService {
         normalizedModel,
         resolvedModel: normalizeGeminiModelAlias(dynamicForwarded),
         source: 'dynamic-legacy',
+        match: 'dynamic-forwarding',
       };
     }
 
-    if (customExactMapping[normalizedModel]) {
+    const exact = customExactMapping.find((entry) => entry.alias.trim() === normalizedModel.trim());
+    if (exact) {
       return {
         requestedModel: model,
         normalizedModel,
-        resolvedModel: normalizeGeminiModelAlias(customExactMapping[normalizedModel]),
+        resolvedModel: normalizeGeminiModelAlias(exact.target),
         source: 'configured',
+        match: 'exact',
+        matchedRule: exact,
       };
+    }
+
+    const caseFolded = this.resolveUniqueEquivalentMapping(
+      customExactMapping,
+      normalizedModel,
+      (alias, requested) => alias.trim().toLowerCase() === requested.trim().toLowerCase(),
+      'case-insensitive',
+    );
+    if (caseFolded) {
+      return {
+        requestedModel: model,
+        normalizedModel,
+        resolvedModel: normalizeGeminiModelAlias(caseFolded.target),
+        source: 'configured',
+        match: 'case-folded-exact',
+        matchedRule: caseFolded,
+      };
+    }
+
+    const claudeNormalized = normalizedModel.toLowerCase().startsWith('claude-')
+      ? this.resolveUniqueEquivalentMapping(
+          customExactMapping,
+          normalizedModel,
+          (alias, requested) => normalizeClaudeModelId(alias) === normalizeClaudeModelId(requested),
+          'Claude-normalized',
+        )
+      : undefined;
+    if (claudeNormalized) {
+      return {
+        requestedModel: model,
+        normalizedModel,
+        resolvedModel: normalizeGeminiModelAlias(claudeNormalized.target),
+        source: 'configured',
+        match: 'claude-normalized-exact',
+        matchedRule: claudeNormalized,
+      };
+    }
+
+    wildcardMapping.sort(
+      (left, right) =>
+        right.specificity - left.specificity || left.configuredIndex - right.configuredIndex,
+    );
+    for (const wildcardRule of wildcardMapping) {
+      if (wildcardRule.pattern.test(normalizedModel)) {
+        return {
+          requestedModel: model,
+          normalizedModel,
+          resolvedModel: normalizeGeminiModelAlias(wildcardRule.target),
+          source: 'configured',
+          match: 'wildcard',
+          matchedRule: { alias: wildcardRule.alias, target: wildcardRule.target },
+        };
+      }
     }
 
     const anthropicFamilyKey = getAnthropicFamilyMappingKey(normalizedModel);
     const anthropicFamilyTarget = anthropicFamilyKey
       ? configuredMapping[anthropicFamilyKey]
       : undefined;
-    if (anthropicFamilyTarget) {
+    if (anthropicFamilyKey && anthropicFamilyTarget) {
       return {
         requestedModel: model,
         normalizedModel,
         resolvedModel: normalizeGeminiModelAlias(anthropicFamilyTarget),
         source: 'configured',
+        match: 'anthropic-family',
+        matchedRule: { alias: anthropicFamilyKey, target: anthropicFamilyTarget },
       };
     }
 
@@ -129,6 +214,7 @@ export class ModelRoutingService {
         normalizedModel,
         resolvedModel,
         source: resolvedModel === normalizedModel ? 'canonical' : 'built-in',
+        match: 'built-in',
       };
     }
 
@@ -139,6 +225,7 @@ export class ModelRoutingService {
         normalizedModel,
         resolvedModel: aliasedFallback,
         source: 'built-in',
+        match: 'built-in',
       };
     }
 
@@ -147,7 +234,26 @@ export class ModelRoutingService {
       normalizedModel,
       resolvedModel: normalizedModel,
       source: 'miss',
+      match: 'passthrough',
     };
+  }
+
+  private resolveUniqueEquivalentMapping(
+    mappings: ReadonlyArray<{ alias: string; target: string }>,
+    requestedModel: string,
+    matches: (alias: string, requestedModel: string) => boolean,
+    equivalence: string,
+  ): { alias: string; target: string } | undefined {
+    const candidates = mappings.filter((entry) => matches(entry.alias, requestedModel));
+    const targets = new Set(candidates.map((entry) => entry.target));
+    if (targets.size > 1) {
+      throw new Error(
+        `Ambiguous ${equivalence} model aliases for "${requestedModel}": ${candidates
+          .map((entry) => `"${entry.alias}"`)
+          .join(', ')}`,
+      );
+    }
+    return candidates[0];
   }
 
   /**

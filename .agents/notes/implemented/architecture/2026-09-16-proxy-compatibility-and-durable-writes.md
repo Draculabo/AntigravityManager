@@ -16,6 +16,17 @@ All OpenAI Chat Completions and Responses mappers use that normalizer in unary a
 
 Shared persistence owns the common durable write sequence: sibling temporary file, write, file sync, close, atomic replacement, then a parent-directory sync on POSIX. The helper removes temporary state while preserving the primary error. It is used by durable JSON records, the account index's synchronous transaction boundary, application configuration, and OpenCode configuration and account files. The account-index transaction decision in [Serialize account-index transactions](2026-09-09-account-index-transactions.md) is updated to use this durability boundary.
 
+The 2026-10-17 D03 retention investigation reproduced a stale on-disk snapshot when
+Windows rejected the final replacement with `EPERM`. The async writer now retries
+only that replacement operation, at most five attempts with 20/40/60/80 ms waits.
+The temporary file is already written, synchronized and closed; all attempts use the
+same source and destination. No content write, provider request or target deletion
+is repeated. Other error codes and POSIX failures keep their immediate-failure
+behavior. Exhaustion propagates the final error and cleans only the temporary file.
+The sync transaction writer is unchanged. The process holding the conflicting file
+handle was not identified; retrying this observed failure is bounded rather than
+assuming that every permission denial is transient.
+
 ## Alternatives considered
 
 - Use success-like fallback text for an omitted command. Rejected because an omitted command must not be represented as a completed tool action.
@@ -34,4 +45,5 @@ Persisted state incurs a file synchronization cost on writes. Any failure before
 
 - `src/tests/unit/shell-tool-call-compatibility.test.ts`, `gemini-finish-reason.test.ts`, `openai-tool-mapper.test.ts`, `openai-responses-response-mapper.test.ts`, `openai-responses-streaming-mapper.test.ts`, `claude-response-usage.test.ts`, and `proxy-service-responses-stream.test.ts` cover the shared aliases, unary and streaming transports, malformed-function terminal behavior, and Responses completion state.
 - `src/tests/unit/atomic-json-file.test.ts` injects filesystem operations to prove write → file sync → close → replace → POSIX directory sync, cleanup for write/sync/replace/directory-sync failures, and the Windows branch. It also performs real target replacement on the primary Windows filesystem.
+- `src/tests/unit/atomic-file-windows-replacement.test.ts` proves same-file bounded EPERM retry, exhaustion, immediate nonmatching failures and preservation of the old target. The D03 investigation (local artifact `D03-retention-replacement-implementation.md` in the 2026-10-11 review collection) preserves the actual EPERM failure and controlled filesystem results.
 - `src/tests/unit/account-index-store.test.ts`, `config-manager-alias-migration.test.ts`, `durable-record-store.test.ts`, and `opencode-sync.service.test.ts` cover the shared writer's owning modules, file permissions, and no temporary-file leftovers.

@@ -31,10 +31,17 @@ const fixture = vi.hoisted(() => ({
     stats: vi.fn(async () => ({ sessions: 0 })),
     listSessions: vi.fn(async () => []),
     getSession: vi.fn(async () => []),
-    deleteSession: vi.fn(async () => 2),
-    clear: vi.fn(async () => 3),
+    deleteSession: vi.fn(async () => ({ sessions: 2, records: 700 })),
+    clear: vi.fn(async () => ({ sessions: 3, records: 702 })),
     repair: vi.fn(async () => ({ repaired: true })),
-    endSession: vi.fn(async () => 1),
+    endSession: vi.fn(async () => ({ sessions: 1, records: 700 })),
+    listRecordPage: vi.fn(async () => ({
+      version: 1,
+      records: [],
+      complete: true,
+      nextCursor: null,
+      throughId: 0,
+    })),
   },
 }));
 vi.mock('@/modules/proxy-gateway/audit/traffic-audit.service', () => ({
@@ -126,13 +133,13 @@ const cases = [
     method: 'DELETE',
     url: '/internal/thinking/sessions/synthetic',
     spy: fixture.thoughts.deleteSession,
-    body: { affected: 2 },
+    body: { affected: 2, records: 700 },
   },
   {
     method: 'DELETE',
     url: '/internal/thinking/sessions',
     spy: fixture.thoughts.clear,
-    body: { affected: 3 },
+    body: { affected: 3, records: 702 },
   },
   {
     method: 'POST',
@@ -144,7 +151,7 @@ const cases = [
     method: 'POST',
     url: '/v1/thinking/end',
     spy: fixture.thoughts.endSession,
-    body: { ended: true, session_id: 'synthetic' },
+    body: { ended: true, session_id: 'synthetic', sessions: 1, records_retained: 700 },
   },
   {
     method: 'GET',
@@ -156,7 +163,13 @@ const cases = [
     method: 'DELETE',
     url: '/v1/thinking/sessions/synthetic',
     spy: fixture.thoughts.deleteSession,
-    body: { deleted: true, session_id: 'synthetic' },
+    body: { deleted: true, session_id: 'synthetic', sessions: 2, records_deleted: 700 },
+  },
+  {
+    method: 'GET',
+    url: '/v1/thinking/sessions/synthetic/records',
+    spy: fixture.thoughts.listRecordPage,
+    body: { version: 1, records: [], complete: true, nextCursor: null, throughId: 0 },
   },
 ] as const;
 
@@ -213,6 +226,42 @@ describe('observability HTTP contracts', () => {
 
 describe('management parameter validation', () => {
   const headers = { authorization: 'Bearer synthetic-key' };
+
+  it('coerces bounded reasoning record cursors and preserves the credential-scoped session', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/thinking/sessions/synthetic/records',
+      headers,
+      query: { after_id: '3', through_id: '700', limit: '8' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(fixture.thoughts.listRecordPage.mock.calls).toEqual([
+      [
+        {
+          sessionKey: expect.stringMatching(/^thought:client:v2:[a-f0-9]{64}$/u),
+          afterId: 3,
+          throughId: 700,
+          limit: 8,
+        },
+      ],
+    ]);
+  });
+  it.each([
+    'limit=0',
+    'limit=201',
+    'after_id=-1',
+    'after_id=1',
+    'after_id=8&through_id=7',
+    'through_id=not-an-id',
+  ])('rejects invalid reasoning record pagination %j before accessing storage', async (query) => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/v1/thinking/sessions/synthetic/records?${query}`,
+      headers,
+    });
+    expect(response.statusCode).toBe(400);
+    expect(fixture.thoughts.listRecordPage).not.toHaveBeenCalled();
+  });
 
   it('coerces audit filters, trims text and supplies pagination defaults', async () => {
     const response = await app.inject({
@@ -350,14 +399,14 @@ describe('management operation audit decorators', () => {
       url: '/internal/thinking/sessions/synthetic',
       spy: fixture.thoughts.deleteSession,
       audit: ['delete_thought_session', 2],
-      body: { affected: 2 },
+      body: { affected: 2, records: 700 },
     },
     {
       method: 'DELETE' as const,
       url: '/internal/thinking/sessions',
       spy: fixture.thoughts.clear,
       audit: ['clear_thought_sessions', 3],
-      body: { affected: 3 },
+      body: { affected: 3, records: 702 },
     },
     {
       method: 'POST' as const,
@@ -400,9 +449,9 @@ describe('management operation audit decorators', () => {
   );
 
   it('waits for the mutation to complete and retains a zero affected count', async () => {
-    let complete!: (value: number) => void;
+    let complete!: (value: { sessions: number; records: number }) => void;
     let started!: () => void;
-    const mutation = new Promise<number>((resolve) => {
+    const mutation = new Promise<{ sessions: number; records: number }>((resolve) => {
       complete = resolve;
     });
     const admitted = new Promise<void>((resolve) => {
@@ -419,12 +468,12 @@ describe('management operation audit decorators', () => {
     try {
       expect(fixture.audit.recordAdminOperation).not.toHaveBeenCalled();
     } finally {
-      complete(0);
+      complete({ sessions: 0, records: 0 });
     }
     const response = await responsePromise;
     expect({ status: response.statusCode, body: response.json() }).toEqual({
       status: 200,
-      body: { affected: 0 },
+      body: { affected: 0, records: 0 },
     });
     expect(fixture.audit.recordAdminOperation.mock.calls).toEqual([['delete_thought_session', 0]]);
   });

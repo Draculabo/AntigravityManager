@@ -17,6 +17,9 @@ export const accounts = sqliteTable('accounts', {
   statusReason: text('status_reason'),
   isActive: integer('is_active').notNull().default(0),
   proxyUrl: text('proxy_url'),
+  proxyPriority: integer('proxy_priority').notNull().default(50),
+  proxyEnabled: integer('proxy_enabled').notNull().default(1),
+  lifecycleGeneration: text('lifecycle_generation'),
 });
 
 export const settings = sqliteTable('settings', {

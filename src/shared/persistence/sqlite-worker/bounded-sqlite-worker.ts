@@ -10,6 +10,8 @@ export interface BoundedSqliteWorkerOptions {
   maxPendingBytes: number;
   maxPendingCommands: number;
   name: string;
+  /** Stable lifetime boundary supplied by a store that reconciles abandoned captures. */
+  ownerStartedAt?: number;
   onWriteFailure?: (error: unknown) => void;
   workerPath: string;
   workerFactory?: SqliteWorkerFactory;
@@ -18,6 +20,7 @@ export interface BoundedSqliteWorkerOptions {
 export type SqliteWorkerFactory = (filename: string, options: WorkerOptions) => Worker;
 
 interface PendingCommand {
+  drainWaiters: Set<() => void>;
   bytes: number;
   command: SqliteWorkerCommand;
   id: number;
@@ -92,12 +95,59 @@ export class BoundedSqliteWorker {
 
   public constructor(private readonly options: BoundedSqliteWorkerOptions) {}
 
+  /** Existing reservations drain unchanged; only later admission uses the new limits. */
+  public setQueueLimits(
+    limits: Pick<BoundedSqliteWorkerOptions, 'maxPendingBytes' | 'maxPendingCommands'>,
+  ): void {
+    if (
+      !Number.isSafeInteger(limits.maxPendingBytes) ||
+      limits.maxPendingBytes < 1 ||
+      !Number.isSafeInteger(limits.maxPendingCommands) ||
+      limits.maxPendingCommands < 1
+    ) {
+      throw new RangeError('SQLite queue limits must be positive safe integers');
+    }
+    this.options.maxPendingBytes = limits.maxPendingBytes;
+    this.options.maxPendingCommands = limits.maxPendingCommands;
+  }
+
   public getStats(): SqliteWorkerQueueStats {
     return {
       alive: this.alive,
       pendingBytes: this.pendingBytes,
       pendingCommands: this.pending.size,
     };
+  }
+
+  /** Wait for the finite current admission snapshot, without closing unrelated new work. */
+  public drainAdmitted(timeoutMs = 5000): Promise<void> {
+    const snapshot = [...this.pending.values()];
+    if (snapshot.length === 0) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      let remaining = snapshot.length;
+      const cleanup = () => {
+        clearTimeout(timeout);
+        for (const command of snapshot) {
+          command.drainWaiters.delete(settled);
+        }
+      };
+      const settled = () => {
+        remaining -= 1;
+        if (remaining === 0) {
+          cleanup();
+          resolve();
+        }
+      };
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error(`${this.options.name} admitted drain timed out`));
+      }, timeoutMs);
+      for (const command of snapshot) {
+        command.drainWaiters.add(settled);
+      }
+    });
   }
 
   public start(): void {
@@ -110,7 +160,10 @@ export class BoundedSqliteWorker {
 
     const worker = (this.options.workerFactory ?? createSqliteWorker)(this.options.workerPath, {
       name: this.options.name,
-      workerData: { databasePath: this.options.databasePath },
+      workerData: {
+        databasePath: this.options.databasePath,
+        ownerStartedAt: this.options.ownerStartedAt,
+      },
     });
     this.worker = worker;
     this.alive = true;
@@ -249,7 +302,15 @@ export class BoundedSqliteWorker {
     }
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { bytes, command, id, priority, reject, resolve });
+      this.pending.set(id, {
+        bytes,
+        command,
+        drainWaiters: new Set(),
+        id,
+        priority,
+        reject,
+        resolve,
+      });
       this.pendingBytes += bytes;
       this.queues[priority].push(id);
       this.pump(worker);
@@ -320,6 +381,10 @@ export class BoundedSqliteWorker {
       return;
     }
     this.pending.delete(id);
+    for (const waiter of pending.drainWaiters) {
+      waiter();
+    }
+    pending.drainWaiters.clear();
     this.pendingBytes = Math.max(0, this.pendingBytes - pending.bytes);
     if (this.activeId === id) {
       this.activeId = null;
@@ -338,6 +403,10 @@ export class BoundedSqliteWorker {
   private rejectPending(error: Error): void {
     for (const pending of this.pending.values()) {
       pending.reject(error);
+      for (const waiter of pending.drainWaiters) {
+        waiter();
+      }
+      pending.drainWaiters.clear();
     }
     this.pending.clear();
     this.queues.model.length = 0;

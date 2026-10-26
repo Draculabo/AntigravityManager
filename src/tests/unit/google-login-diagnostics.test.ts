@@ -14,7 +14,10 @@ import { OAuthClientRegistryService } from '@/modules/cloud-account/services/OAu
 import { HeadlessOAuthSessionService } from '@/modules/cloud-account/services/headless-oauth-session.service';
 import { DesktopOAuthLogin } from '@/modules/cloud-account/ipc/desktop-oauth-login';
 import { enrollGoogleAccount } from '@/modules/cloud-account/services/google-account-enrollment.service';
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import {
+  CloudAccountRepo,
+  CloudAccountEmailConflictError,
+} from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountRefreshService } from '@/modules/cloud-account/services/CloudAccountRefreshService';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
@@ -80,7 +83,11 @@ beforeEach(() => {
     return url.toString();
   });
   vi.spyOn(CloudAccountRepo, 'getAccountByEmail').mockResolvedValue(null);
-  vi.spyOn(CloudAccountRepo, 'addAccount').mockResolvedValue();
+  vi.spyOn(CloudAccountRepo, 'insertAccount').mockImplementation(async (account) => ({
+    ...account,
+    lifecycle_generation: 'b'.repeat(32),
+  }));
+  vi.spyOn(CloudAccountRepo, 'assertCurrentAccount').mockImplementation(() => undefined);
   vi.spyOn(CloudAccountRepo, 'updateQuota').mockResolvedValue();
   vi.spyOn(CloudAccountRefreshService, 'clearFailureState').mockResolvedValue();
   vi.spyOn(GoogleAPIService, 'fetchQuota').mockResolvedValue({ models: {} });
@@ -213,7 +220,7 @@ describe('Google login diagnostic preservation', () => {
     expect(diagnostic.reason).toBe('authorization-denied');
     expect(diagnostic.reporting).toEqual({ state: 'not-reported', reason: 'expected-outcome' });
     expect(report).not.toHaveBeenCalled();
-    expect(CloudAccountRepo.addAccount).not.toHaveBeenCalled();
+    expect(CloudAccountRepo.insertAccount).not.toHaveBeenCalled();
   });
   it('retains the duplicate-check stage without persisting or reporting the existing account', async () => {
     successfulProviderResponses();
@@ -237,7 +244,7 @@ describe('Google login diagnostic preservation', () => {
     expect(diagnostic.accountCommit).toBe('not-attempted');
     expect(diagnostic.reporting).toEqual({ state: 'not-reported', reason: 'expected-outcome' });
     expect(report).not.toHaveBeenCalled();
-    expect(CloudAccountRepo.addAccount).not.toHaveBeenCalled();
+    expect(CloudAccountRepo.insertAccount).not.toHaveBeenCalled();
     expect(prepareDesktopIdentityStorage).not.toHaveBeenCalled();
   });
   it('preserves user-info HTTP rejection as a distinct step', async () => {
@@ -258,9 +265,60 @@ describe('Google login diagnostic preservation', () => {
     expect(diagnostic.reason).toBe('http-rejected');
     expect(diagnostic.upstreamStatus).toBe(503);
     expect(diagnostic.accountCommit).toBe('not-attempted');
-    expect(CloudAccountRepo.addAccount).not.toHaveBeenCalled();
+    expect(CloudAccountRepo.insertAccount).not.toHaveBeenCalled();
     expect(report).toHaveBeenCalledOnce();
     expect(JSON.stringify(report.mock.calls)).not.toContain('private-sentinel');
+  });
+  it.each([false, true])(
+    'preserves a transactional duplicate through remote=%s login',
+    async (remote) => {
+      // Keep the management pipe on real Axios; only the external Google boundary is synthetic.
+      vi.spyOn(GoogleAPIService, 'exchangeCode').mockResolvedValue({
+        access_token: 'synthetic-private-access',
+        refresh_token: 'synthetic-private-refresh',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      });
+      vi.spyOn(GoogleAPIService, 'getUserInfo').mockResolvedValue({
+        id: 'synthetic-google-id',
+        email: view.email,
+        name: 'Synthetic',
+        picture: '',
+        verified_email: true,
+      });
+      vi.mocked(CloudAccountRepo.insertAccount).mockRejectedValueOnce(
+        new CloudAccountEmailConflictError(),
+      );
+      const { diagnostic, envelope } = await failLogin(undefined, remote);
+      expect(diagnostic).toMatchObject({
+        stage: 'account-persist',
+        reason: 'duplicate-account',
+        accountCommit: 'not-attempted',
+        reporting: { state: 'not-reported', reason: 'expected-outcome' },
+      });
+      expect(parseDesktopOAuthLoginErrorData(envelope.data)).toMatchObject({
+        loginCode: 'duplicate-account',
+      });
+      expect(report).not.toHaveBeenCalled();
+      expect(CloudAccountRepo.insertAccount).toHaveBeenCalledOnce();
+      expect(GoogleAPIService.fetchQuota).not.toHaveBeenCalled();
+      expect(CloudAccountRefreshService.clearFailureState).not.toHaveBeenCalled();
+      expect(JSON.stringify(envelope)).not.toContain('synthetic-private');
+    },
+  );
+  it('does not infer a duplicate from an arbitrary insertion error message', async () => {
+    successfulProviderResponses();
+    vi.mocked(CloudAccountRepo.insertAccount).mockRejectedValueOnce(
+      new Error('Cloud account email already exists'),
+    );
+    const { diagnostic } = await failLogin();
+    expect(diagnostic).toMatchObject({
+      stage: 'account-persist',
+      reason: 'storage-failed',
+      accountCommit: 'uncertain',
+    });
+    expect(report).toHaveBeenCalledOnce();
+    expect(GoogleAPIService.fetchQuota).not.toHaveBeenCalled();
   });
   it.each([
     ['config', 503],
@@ -388,7 +446,7 @@ describe('Google login diagnostic preservation', () => {
         reporting: { state: 'captured', eventId: 'a'.repeat(32) },
       });
       expect(report).toHaveBeenCalledOnce();
-      expect(CloudAccountRepo.addAccount).not.toHaveBeenCalled();
+      expect(CloudAccountRepo.insertAccount).not.toHaveBeenCalled();
       const details = getErrorDetailsText(envelope);
       const body = buildErrorBugReport(
         {
@@ -451,7 +509,7 @@ describe('Google login diagnostic preservation', () => {
     expect(diagnostic.reason).toBe('malformed-response');
     expect(diagnostic.upstreamStatus).toBe(200);
     expect(JSON.stringify(report.mock.calls)).not.toContain('private-sentinel');
-    expect(CloudAccountRepo.addAccount).not.toHaveBeenCalled();
+    expect(CloudAccountRepo.insertAccount).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -466,7 +524,7 @@ describe('Google login diagnostic preservation', () => {
       vi.mocked(prepareDesktopIdentityStorage).mockRejectedValueOnce(error);
     }
     if (stage === 'account-persist') {
-      vi.mocked(CloudAccountRepo.addAccount).mockRejectedValueOnce(error);
+      vi.mocked(CloudAccountRepo.insertAccount).mockRejectedValueOnce(error);
     }
     if (stage === 'account-finalize') {
       vi.mocked(CloudAccountRefreshService.clearFailureState).mockRejectedValueOnce(error);

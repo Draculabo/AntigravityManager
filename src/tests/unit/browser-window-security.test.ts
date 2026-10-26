@@ -3,14 +3,16 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 
 describe('BrowserWindow security settings', () => {
-  it('uses the same unsandboxed renderer model as Folo for Windows compatibility', () => {
+  it('uses an isolated sandboxed renderer with a narrow preload bridge', () => {
     const mainSource = readFileSync(path.join(process.cwd(), 'src/main.ts'), 'utf-8');
 
-    expect(mainSource).toContain('sandbox: false');
-    expect(mainSource).toContain('webviewTag: true');
+    expect(mainSource).toContain('sandbox: true');
+    expect(mainSource).toContain('webviewTag: false');
     expect(mainSource).toContain('webSecurity: !inDevelopment');
-    expect(mainSource).toContain('contextIsolation: false');
-    expect(mainSource).toContain('nodeIntegration: true');
+    expect(mainSource).toContain('contextIsolation: true');
+    expect(mainSource).toContain('nodeIntegration: false');
+    expect(mainSource).toContain("setWindowOpenHandler(() => ({ action: 'deny' }))");
+    expect(mainSource).toContain('Rejected START_ORPC_SERVER from an unknown renderer');
   });
 
   it('does not allow unsafe eval in the renderer content security policy', () => {

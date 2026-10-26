@@ -134,6 +134,14 @@ export function setAccountProxy(input: { accountId: string; proxyUrl: string | n
   return ipc.client.cloud.setAccountProxy(input);
 }
 
+export function setAccountRouting(input: {
+  accountId: string;
+  proxyPriority: number;
+  proxyEnabled: boolean;
+}) {
+  return ipc.client.cloud.setAccountRouting(input);
+}
+
 export function exportCloudAccounts(input: { stripTokens?: boolean }) {
   return ipc.client.cloud.exportCloudAccounts(input);
 }

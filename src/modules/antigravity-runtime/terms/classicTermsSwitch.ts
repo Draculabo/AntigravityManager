@@ -181,6 +181,14 @@ export async function prepareClassicTermsSwitch(
         }
       }
       await writeDocument(file, restored);
+      const readback = await readDocument(file);
+      if (
+        !readback ||
+        !isEqual(readback[USERNAME], restored[USERNAME]) ||
+        !isEqual(readback[TERMS_TYPE], restored[TERMS_TYPE])
+      ) {
+        throw new Error('Classic terms rollback could not be confirmed');
+      }
       applied = null;
     },
   };

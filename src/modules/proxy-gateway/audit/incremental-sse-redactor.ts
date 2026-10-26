@@ -16,6 +16,10 @@ export interface SseRedactionResult {
 }
 
 export interface IncrementalSseRedactorOptions {
+  /** Inspect untrusted input synchronously; do not retain or expose its sensitive fields. */
+  onRawParsedEvent?: (event: unknown) => void;
+  /** Original frame segments without concatenation; null signals the existing event cap. */
+  onRawFrame?: (frame: readonly string[] | null) => void;
   onParsedEvent?: (event: unknown) => void;
 }
 
@@ -26,6 +30,9 @@ export interface IncrementalSseRedactorOptions {
 export class IncrementalSseRedactor {
   private readonly decoder = new StringDecoder('utf8');
   private pending = '';
+  private pendingBytes = 0;
+  private discardedLineBytes = 0;
+  private pendingCR = false;
   private readonly eventLines: string[] = [];
   private eventBytes = 0;
   private eventStartOffset = 0;
@@ -43,7 +50,7 @@ export class IncrementalSseRedactor {
   }
 
   public finish(): { chunks: string[]; result: SseRedactionResult } {
-    const chunks = this.consumeText(this.decoder.end(), false);
+    const chunks = this.consumeText(this.decoder.end(), true);
     if (this.pending) {
       this.consumeLine(this.pending, '', chunks);
       this.pending = '';
@@ -63,31 +70,78 @@ export class IncrementalSseRedactor {
 
   private consumeText(text: string, final: boolean): string[] {
     const chunks: string[] = [];
-    this.pending += text;
+    if (this.pendingCR) {
+      text = '\r' + text;
+      this.pendingCR = false;
+    }
     let lineStart = 0;
-    for (let index = 0; index < this.pending.length; index += 1) {
-      const character = this.pending[index];
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index];
       if (character !== '\n' && character !== '\r') {
         continue;
       }
       let ending = character;
-      if (character === '\r' && this.pending[index + 1] === '\n') {
+      if (character === '\r' && index === text.length - 1 && !final) {
+        this.appendPending(text.slice(lineStart, index), chunks);
+        this.pendingCR = true;
+        return chunks;
+      }
+      if (character === '\r' && text[index + 1] === '\n') {
         ending = '\r\n';
         index += 1;
       }
       const lineEnd = index - ending.length + 1;
-      this.consumeLine(this.pending.slice(lineStart, lineEnd), ending, chunks);
+      this.appendPending(text.slice(lineStart, lineEnd), chunks);
+      this.consumeLine(this.pending, ending, chunks);
+      this.pending = '';
+      this.pendingBytes = 0;
       lineStart = index + 1;
     }
-    this.pending = this.pending.slice(lineStart);
-    if (final && this.pending) {
+    this.appendPending(text.slice(lineStart), chunks);
+    if (final && (this.pending || this.discardedLineBytes > 0)) {
       this.consumeLine(this.pending, '', chunks);
       this.pending = '';
+      this.pendingBytes = 0;
     }
     return chunks;
   }
 
+  private appendPending(text: string, output: string[]): void {
+    const bytes = Buffer.byteLength(text, 'utf8');
+    if (this.failedEvent) {
+      this.discardedLineBytes += bytes;
+      return;
+    }
+    if (this.eventBytes + this.pendingBytes + bytes > MAX_EVENT_BYTES) {
+      if (this.eventLines.length === 0) {
+        this.eventStartOffset = this.rawOffset;
+      }
+      this.discardedLineBytes = this.pendingBytes + bytes;
+      this.pending = '';
+      this.pendingBytes = 0;
+      this.omitOversizedEvent(output);
+      return;
+    }
+    this.pending += text;
+    this.pendingBytes += bytes;
+  }
+
+  private omitOversizedEvent(output: string[]): void {
+    this.markFailure('SSE event exceeds the incremental JSON event limit');
+    this.options.onRawFrame?.(null);
+    // Partial token/credential values cannot be safely redacted across arbitrary fragments.
+    output.push('data: {"audit":"omitted","reason":"sse_event_limit"}\n');
+    this.eventLines.length = 0;
+    this.eventBytes = 0;
+    this.failedEvent = true;
+  }
+
   private consumeLine(line: string, ending: string, output: string[]): void {
+    if (this.discardedLineBytes > 0) {
+      this.rawOffset += this.discardedLineBytes + Buffer.byteLength(ending, 'utf8');
+      this.discardedLineBytes = 0;
+      return;
+    }
     const lineBytes = Buffer.byteLength(line + ending, 'utf8');
     if (line === '') {
       this.flushEvent(ending, output);
@@ -95,7 +149,6 @@ export class IncrementalSseRedactor {
       return;
     }
     if (this.failedEvent) {
-      output.push(conservativeMask(line) + ending);
       this.rawOffset += lineBytes;
       return;
     }
@@ -105,13 +158,7 @@ export class IncrementalSseRedactor {
     this.eventLines.push(line + ending);
     this.eventBytes += lineBytes;
     if (this.eventBytes > MAX_EVENT_BYTES) {
-      this.markFailure('SSE event exceeds the incremental JSON event limit');
-      for (const framedLine of this.eventLines) {
-        output.push(conservativeMask(framedLine));
-      }
-      this.eventLines.length = 0;
-      this.eventBytes = 0;
-      this.failedEvent = true;
+      this.omitOversizedEvent(output);
     }
     this.rawOffset += lineBytes;
   }
@@ -125,11 +172,13 @@ export class IncrementalSseRedactor {
       return;
     }
     if (this.eventLines.length === 0) {
+      this.options.onRawFrame?.([blankEnding]);
       output.push(blankEnding);
       return;
     }
 
     const rendered = this.renderEvent();
+    this.options.onRawFrame?.([...this.eventLines, blankEnding]);
     output.push(rendered + blankEnding);
     this.eventLines.length = 0;
     this.eventBytes = 0;
@@ -162,6 +211,7 @@ export class IncrementalSseRedactor {
     }
     try {
       const parsed: unknown = JSON.parse(joined);
+      this.options.onRawParsedEvent?.(parsed);
       const sanitized = sanitizeAuditValue(parsed);
       if (isTerminalSseEvent(sanitized)) {
         this.terminalEventSeen = true;

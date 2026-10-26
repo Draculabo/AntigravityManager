@@ -11,11 +11,15 @@ The upstream's generic quota message therefore does not establish account exhaus
 
 ## Decision
 
-Strip complete `x-anthropic-billing-header: cc_version=...` lines at the existing system-instruction
+Strip complete `x-anthropic-billing-header:` lines at the existing system-instruction
 normalization boundary before the Gemini request is built. Protect fenced and inline code. Retain
 business instructions, user messages, tool definitions, tool results, thinking configuration,
 signatures and account selection. Use the existing mapper path shared by desktop and standalone
 runtimes; no client-specific gateway owner behavior is added.
+
+The metadata prefix defines the transport field; `cc_version` is not required. Desktop
+clients may supply only `cc_entrypoint` or other billing attributes. Requiring the version
+would retain those injected lines and make cleanup dependent on the client release.
 
 ## Alternatives considered
 
@@ -27,8 +31,10 @@ runtimes; no client-specific gateway owner behavior is added.
 ## Consequences
 
 The filter targets complete metadata lines in system text only. Mid-paragraph references,
-user/tool text and quoted code are preserved. Native Gemini entry points do not use this
-system normalization helper and are outside this fix's scope. A genuine provider quota error is
+user/tool text and quoted code are preserved. Native Gemini system instructions now use
+the same helper; delimiter-width, XML example and original-offset protection are owned
+by the [shared prompt-boundary decision](../architecture/2026-10-19-prompt-identity-boundaries.md).
+A genuine provider quota error is
 still returned through the existing retry and error policy.
 
 ## Verification
@@ -41,6 +47,10 @@ private acceptance output. These replays establish first-turn compatibility, not
 
 Focused tests compare the complete emitted inner request with a metadata-free baseline and
 cover adjacent instructions, session metadata, code examples, signed tool history and user text.
+The version-independent regression also covers entrypoint-only lines, case/whitespace,
+quoted examples and user/tool history. Its native controlled acceptance is recorded in
+[the protocol gap report](../../../../artifacts/protocol-gap-fix-2026-10-11/report.zh-CN.md);
+it does not repeat the historical live-provider comparison below.
 The stock Claude Code client completes the full HTML task on Windows and Linux with both CLI
 and Electron gateway owners. Each of the four tasks records three successful gateway requests;
 both desktop owners also pass the Traffic Monitor comparison. Full results and original failures

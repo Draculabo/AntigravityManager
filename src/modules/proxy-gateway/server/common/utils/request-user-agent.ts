@@ -78,6 +78,15 @@ export function buildHubUserAgent(version: string): string {
   return `antigravity/hub/${version} (aidev_client; os_type=${getPlatformTag()}; arch=${getArchTag()})`;
 }
 
+/**
+ * Cloud Code content routing recognizes the Hub identity, independently of the IDE version
+ * used by discovery and request envelopes. Keep this verified version/build pair together;
+ * changing it requires a live-provider probe (see docs/proxy-stream-tool-compatibility.md).
+ */
+export function buildContentRequestUserAgent(): string {
+  return `antigravity/hub/2.17.0 (aidev_client; os_type=${getPlatformTag()}; arch=${getArchTag()}; cl=986210228)`;
+}
+
 function compareSemverVersions(left: string, right: string): number {
   const leftParts = left.split('.').map((part) => Number.parseInt(part, 10));
   const rightParts = right.split('.').map((part) => Number.parseInt(part, 10));

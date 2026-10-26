@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { TrafficMonitorPage } from '@/modules/proxy-gateway/traffic-monitor/TrafficMonitorPage';
 
 export const TrafficSearchSchema = z.object({
+  sessionId: z.string().trim().min(1).max(512).optional().catch(undefined),
   accountId: z.string().max(256).optional().catch(undefined),
   page: z.coerce.number().int().nonnegative().catch(0),
   search: z.string().max(512).catch(''),
@@ -25,6 +26,7 @@ function TrafficRoute() {
   const navigate = Route.useNavigate();
   const onFiltersChange = useCallback(
     (filters: {
+      sessionId?: string;
       accountId?: string;
       page: number;
       search: string;
@@ -46,6 +48,7 @@ function TrafficRoute() {
       to?: number;
     }) => {
       if (
+        filters.sessionId === search.sessionId &&
         filters.accountId === search.accountId &&
         filters.page === search.page &&
         filters.search === search.search &&
@@ -63,6 +66,7 @@ function TrafficRoute() {
     },
     [
       navigate,
+      search.sessionId,
       search.accountId,
       search.page,
       search.search,
@@ -77,7 +81,8 @@ function TrafficRoute() {
   );
   return (
     <TrafficMonitorPage
-      key={`${search.page}:${search.tab}:${search.search}:${search.from}:${search.to}:${search.accountId}:${search.modelFamily}:${search.modality}:${search.statusMode}:${search.status}`}
+      key={`${search.page}:${search.tab}:${search.search}:${search.from}:${search.to}:${search.accountId}:${search.modelFamily}:${search.modality}:${search.statusMode}:${search.status}:${search.sessionId}`}
+      initialSessionId={search.sessionId}
       initialAccountId={search.accountId}
       initialPage={search.page}
       initialSearch={search.search}

@@ -1,10 +1,17 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type {
   AnthropicChatRequest,
   OpenAIChatRequest,
-  OpenAITool,
+  GeminiRequest,
 } from './interfaces/request-interfaces';
 import { extractApiKeyToken, type RequestHeaders } from '../guards/api-key-auth.util';
+import { resolveClientSessionHint, type SessionHintDiagnostics } from './client-session-hint';
+import {
+  openAISessionAnchor,
+  anthropicSessionAnchor,
+  geminiSessionAnchor,
+  type SessionInitialTaskIdentity,
+} from './protocol-session-anchor';
 
 export interface SignatureScopeContext {
   headers: RequestHeaders;
@@ -12,103 +19,51 @@ export interface SignatureScopeContext {
 }
 
 export interface SignatureSessionScope {
+  storeKey: string;
   cacheKey: string;
   affinityKey: string;
-}
-
-const SESSION_FIELDS = [
-  'session_id',
-  'sessionId',
-  'conversation_id',
-  'chat_id',
-  'thread_id',
-  'client_session_id',
-] as const;
-
-function identifier(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function bodyIdentifier(body: object, metadata?: object): string | undefined {
-  for (const source of [body, metadata]) {
-    if (!source || typeof source !== 'object') {
-      continue;
-    }
-    for (const field of SESSION_FIELDS) {
-      const value = identifier(Reflect.get(source, field));
-      if (value) {
-        return value;
-      }
-    }
-  }
-  // User IDs are stable client hints, never sufficient without a content anchor.
-  return metadata
-    ? (identifier(Reflect.get(metadata, 'user_id')) ?? identifier(Reflect.get(metadata, 'userId')))
-    : undefined;
-}
-
-function headerIdentifier(headers: RequestHeaders): string | undefined {
-  const specialized = Object.keys(headers)
-    .filter((name) => name !== 'x-session-id' && name.endsWith('-session-id'))
-    .sort();
-  for (const name of [
-    ...specialized,
-    'x-session-id',
-    'x-conversation-id',
-    'conversation-id',
-    'x-chat-id',
-    'chat-id',
-    'x-thread-id',
-    'thread-id',
-  ]) {
-    const value = identifier(headers[name]);
-    if (value) {
-      return value;
-    }
-  }
-  return undefined;
+  hint: SessionHintDiagnostics;
 }
 
 function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function queryIdentifier(url: string | undefined): string | undefined {
-  if (!url) {
-    return undefined;
-  }
-  let query: URLSearchParams;
-  try {
-    query = new URL(url, 'http://localhost').searchParams;
-  } catch {
-    return undefined;
-  }
-  for (const field of SESSION_FIELDS) {
-    const value = identifier(query.get(field));
-    if (value) {
-      return value;
-    }
-  }
-  return undefined;
+/** Canonical one-way caller identity shared by scoped caches and history ownership. */
+export function tenantIdentity(headers: RequestHeaders): string {
+  const credential = extractApiKeyToken(headers);
+  return digest(JSON.stringify(credential === null ? ['anonymous'] : ['credential', credential]));
+}
+
+function accountAffinity(tenant: string, id: string): string {
+  return `session:affinity:v1:${digest(JSON.stringify([tenant, id]))}`;
+}
+
+/** A restored lineage is an account hint, never proof of permission to read that lineage. */
+export function resolveLineageAccountAffinity(
+  lineageId: string,
+  headers: RequestHeaders = {},
+): string | undefined {
+  const hint = resolveClientSessionHint({}, undefined, { session_id: lineageId });
+  return hint.id ? accountAffinity(tenantIdentity(headers), hint.id) : undefined;
 }
 
 function scope(
-  protocol: 'openai' | 'anthropic',
+  protocol: 'openai' | 'anthropic' | 'gemini',
   anchor: string,
   sessionId: string | undefined,
   headers: RequestHeaders,
+  hint: SessionHintDiagnostics,
 ): SignatureSessionScope {
   // Retain only digests. Credentials and conversation contents never enter cache keys or logs.
-  const tenant = digest(extractApiKeyToken(headers) ?? 'anonymous');
-  const key = (content: string | null) =>
-    `${protocol}:scope:${digest(JSON.stringify([tenant, sessionId ?? null, content]))}`;
-  return { cacheKey: key(anchor), affinityKey: key(sessionId ? null : anchor) };
-}
-
-function openAIToolNames(tools: OpenAITool[] = []): string[] {
-  return tools.flatMap((tool) =>
-    tool.tools ? openAIToolNames(tool.tools) : [tool.function?.name ?? tool.name ?? ''],
-  );
+  const tenant = tenantIdentity(headers);
+  const storeKey = `session:store:v2:${digest(JSON.stringify([tenant, sessionId ?? null, anchor]))}`;
+  return {
+    storeKey,
+    cacheKey: `${protocol}:scope:v5:${digest(storeKey)}`,
+    affinityKey: sessionId ? accountAffinity(tenant, sessionId) : storeKey,
+    hint,
+  };
 }
 
 /** Stable across appended turns; a reused client ID cannot erase the conversation anchor. */
@@ -117,28 +72,31 @@ export function resolveOpenAISessionScope(
   headers: RequestHeaders = {},
   url?: string,
 ): SignatureSessionScope {
-  const firstUser = request.messages.find(
-    (message) =>
-      message.role === 'user' &&
-      (typeof message.content === 'string'
-        ? Boolean(message.content.trim())
-        : message.content?.some((part) => part.type !== 'text' || Boolean(part.text?.trim()))),
-  );
-  const system = request.messages
-    .filter((message) => message.role === 'system' || message.role === 'developer')
-    .map((message) => message.content);
-  const anchor = digest(
-    JSON.stringify([
-      firstUser?.content ?? (request.messages.length > 0 ? request.messages : randomUUID()),
-      system,
-      openAIToolNames(request.tools),
-    ]),
-  );
+  const anchor = openAISessionAnchor(request);
+  const hint = resolveClientSessionHint(headers, url, request, request.extra);
+  return scope('openai', anchor, hint.id, headers, hint.diagnostics);
+}
+
+/** The prepared routing root carries the winning hint across omitted-header continuations. */
+export function resolveResponsesSessionScope(
+  request: OpenAIChatRequest,
+  routingRoot: string,
+  headers: RequestHeaders = {},
+  url?: string,
+  identity?: SessionInitialTaskIdentity,
+): SignatureSessionScope {
+  const hint = resolveClientSessionHint(headers, url, request, request.extra);
+  const restored =
+    identity?.origin === 'client'
+      ? resolveClientSessionHint({}, undefined, { session_id: routingRoot })
+      : null;
+  const sessionId = identity ? restored?.id : hint.id;
   return scope(
     'openai',
-    anchor,
-    headerIdentifier(headers) ?? queryIdentifier(url) ?? bodyIdentifier(request, request.extra),
+    openAISessionAnchor(request, identity?.initialTaskFingerprint),
+    sessionId,
     headers,
+    restored?.id ? { source: 'restored-lineage', invalidCandidates: 0 } : hint.diagnostics,
   );
 }
 
@@ -148,30 +106,16 @@ export function resolveAnthropicSessionScope(
   headers: RequestHeaders = {},
   url?: string,
 ): SignatureSessionScope {
-  const firstUser = request.messages.find(
-    (message) =>
-      message.role === 'user' &&
-      (typeof message.content === 'string'
-        ? Boolean(message.content.trim())
-        : message.content.some(
-            (block) =>
-              block.type !== 'tool_result' && (block.type !== 'text' || Boolean(block.text.trim())),
-          )),
-  );
-  const content = firstUser?.content;
-  const anchor = digest(
-    JSON.stringify([
-      Array.isArray(content)
-        ? content.filter((block) => block.type !== 'tool_result')
-        : (content ?? (request.messages.length > 0 ? request.messages : randomUUID())),
-      request.system ?? null,
-      request.tools?.map((tool) => tool.name) ?? [],
-    ]),
-  );
-  return scope(
-    'anthropic',
-    anchor,
-    headerIdentifier(headers) ?? queryIdentifier(url) ?? bodyIdentifier(request, request.metadata),
-    headers,
-  );
+  const anchor = anthropicSessionAnchor(request);
+  const hint = resolveClientSessionHint(headers, url, request, request.metadata);
+  return scope('anthropic', anchor, hint.id, headers, hint.diagnostics);
+}
+
+export function resolveGeminiSessionScope(
+  request: GeminiRequest,
+  headers: RequestHeaders = {},
+  url?: string,
+): SignatureSessionScope {
+  const hint = resolveClientSessionHint(headers, url, request);
+  return scope('gemini', geminiSessionAnchor(request), hint.id, headers, hint.diagnostics);
 }

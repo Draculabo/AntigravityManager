@@ -54,6 +54,7 @@ const suites = {
 };
 
 const unitFiles = [
+  '../build/download-standalone-runtime.test.mjs',
   '../build/forge-package-bin-scan.test.mjs',
   '../build/publish-standalone-runtime.test.mjs',
   '../build/trace-standalone-runtime.test.mjs',

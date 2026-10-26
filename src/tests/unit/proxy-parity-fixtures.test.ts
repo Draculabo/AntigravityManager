@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
 
 import { OpenAIService as ProxyService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
+import type { OpenAIChatRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
 const mockAccountLeaseService = {
   getNextToken: vi.fn(),
@@ -32,8 +33,8 @@ class TestableProxyService extends ProxyService {
     return (this as any).convertOpenAIToClaude(request);
   }
 
-  public toOpenAI(response: any, model: string, clientToolNames?: ReadonlySet<string>): any {
-    return (this as any).convertClaudeToOpenAIResponse(response, model, clientToolNames);
+  public toOpenAI(response: any, model: string, clientTools?: OpenAIChatRequest['tools']): any {
+    return (this as any).convertClaudeToOpenAIResponse(response, model, clientTools);
   }
 
   public streamToOpenAI(upstreamStream: any, model: string): Observable<string> {
@@ -64,7 +65,7 @@ describe('Proxy Parity Fixtures', () => {
     expect(actual.messages[2].content[0]).toEqual(expected.messages[2].content[0]);
   });
 
-  it('keeps developer instructions in the system prompt and removes duplicates', () => {
+  it('keeps developer instructions, explicit repeats and their whitespace in source order', () => {
     const service = new TestableProxyService();
     const actual = service.toAnthropic({
       model: 'gpt-5-codex',
@@ -72,11 +73,14 @@ describe('Proxy Parity Fixtures', () => {
         { role: 'system', content: 'Shared policy.' },
         { role: 'developer', content: '  Shared   policy.  ' },
         { role: 'developer', content: 'Developer-only policy.' },
+        { role: 'developer', content: 'Shared policy.' },
         { role: 'user', content: 'Implement the requested change.' },
       ],
     });
 
-    expect(actual.system).toBe('Shared policy.\nDeveloper-only policy.');
+    expect(actual.system).toBe(
+      'Shared policy.\n  Shared   policy.  \nDeveloper-only policy.\nShared policy.',
+    );
     expect(actual.messages).toEqual([
       {
         role: 'user',
@@ -132,7 +136,7 @@ describe('Proxy Parity Fixtures', () => {
     expect(actual.usage).toEqual(expected.usage);
   });
 
-  it('returns the shell tool name declared by the OpenAI client', () => {
+  it('preserves the upstream shell tool name', () => {
     const service = new TestableProxyService();
 
     const actual = service.toOpenAI(
@@ -149,13 +153,12 @@ describe('Proxy Parity Fixtures', () => {
         usage: { input_tokens: 1, output_tokens: 1 },
       },
       'gpt-5-codex',
-      new Set(['bash']),
     );
 
-    expect(actual.choices[0].message.tool_calls[0].function.name).toBe('bash');
+    expect(actual.choices[0].message.tool_calls[0].function.name).toBe('shell');
   });
 
-  it('normalizes non-stream apply_patch arguments to repaired freeform input', () => {
+  it('normalizes declared custom apply_patch arguments to repaired freeform input', () => {
     const service = new TestableProxyService();
     const patch = [
       '*** Begin Patch',
@@ -189,6 +192,7 @@ describe('Proxy Parity Fixtures', () => {
         usage: { input_tokens: 1, output_tokens: 1 },
       },
       'gpt-5-codex',
+      [{ type: 'custom', name: 'apply_patch' }],
     );
 
     expect(actual.choices[0].message.tool_calls[0].function.arguments).toBe(

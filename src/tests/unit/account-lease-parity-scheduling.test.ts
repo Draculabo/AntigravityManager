@@ -236,6 +236,13 @@ describe('AccountLeaseService parity scheduling replay', () => {
     expect(await service.getNextToken({ excludeAccountIds: ['acc-1'] })).toBeNull();
   });
 
+  it('moves to a second eligible account after the preferred stored account disappears', async () => {
+    setServerConfig(createProxyConfig({ preferred_account_id: 'acc-1' }));
+    fixture.accounts.delete('acc-1');
+    const lease = await service.getNextToken({ model: 'gemini-2.5-flash' });
+    expect(lease?.id).toBe('acc-2');
+  });
+
   it('does not issue a cached lease after its persisted account is deleted', async () => {
     fixture.accounts.delete('acc-1');
     expect(await service.getNextToken({ targetAccountId: 'acc-1' })).toBeNull();

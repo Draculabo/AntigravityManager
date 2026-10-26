@@ -7,12 +7,14 @@ import {
   ThoughtRecordOpenSchema,
   parseThoughtResponse,
 } from './thought-owner.schema';
+import { ThoughtSessionListSchema, ThoughtStoreStatsSchema } from './thought-store.types';
+import { AuditRepairResultSchema } from '../audit/audit-owner.schema';
 import {
-  ThoughtSessionListSchema,
-  ThoughtRecordSummaryListSchema,
-  ThoughtStoreStatsSchema,
-} from './thought-store.types';
-import { AuditMutationResultSchema, AuditRepairResultSchema } from '../audit/audit-owner.schema';
+  ThoughtRecordPageSchema,
+  ThoughtMutationReceiptSchema,
+  ThoughtRecordPageInputSchema,
+  decodeThoughtRecordPage,
+} from './thought-management.schema';
 import {
   ContentChunkSchema,
   ContentClosedSchema,
@@ -35,13 +37,16 @@ export function createThoughtClient(
       run(async () => parseThoughtResponse(ThoughtSessionListSchema, await rpc.sessions(input))),
     records: (input) =>
       run(async () =>
-        parseThoughtResponse(ThoughtRecordSummaryListSchema, await rpc.records(input)),
+        decodeThoughtRecordPage(
+          parseThoughtResponse(ThoughtRecordPageSchema, await rpc.records(input)),
+          ThoughtRecordPageInputSchema.parse(input),
+        ),
       ),
     stats: () => run(async () => parseThoughtResponse(ThoughtStoreStatsSchema, await rpc.stats())),
     delete: (input) =>
-      run(async () => parseThoughtResponse(AuditMutationResultSchema, await rpc.delete(input))),
+      run(async () => parseThoughtResponse(ThoughtMutationReceiptSchema, await rpc.delete(input))),
     clear: () =>
-      run(async () => parseThoughtResponse(AuditMutationResultSchema, await rpc.clear())),
+      run(async () => parseThoughtResponse(ThoughtMutationReceiptSchema, await rpc.clear())),
     repair: () =>
       run(async () => parseThoughtResponse(AuditRepairResultSchema, await rpc.repair())),
     openRecord: (input) =>

@@ -10,6 +10,9 @@ import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/ope
 import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
 import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
+import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
+import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
+import { resolveGeminiSessionScope } from '@/modules/proxy-gateway/server/common/signature-session-scope';
 import type {
   AnthropicChatRequest,
   OpenAIChatRequest,
@@ -59,13 +62,15 @@ async function surface() {
       ],
     }),
   });
-  const gateway = createGateway(upstream, createLease([createAccount('acc-1')]));
+  const lease = createLease([createAccount('acc-1')]);
+  const gateway = createGateway(upstream, lease);
   @Module({
-    controllers: [OpenAIChatController, AnthropicController],
+    controllers: [OpenAIChatController, AnthropicController, GeminiController],
     providers: [
       ProxyGuard,
       { provide: OpenAIOperations, useValue: new OpenAIOperations(gateway.openAIService) },
       { provide: AnthropicService, useValue: gateway.anthropicService },
+      { provide: GeminiService, useValue: gateway.geminiService },
     ],
   })
   class SignatureHttpModule {}
@@ -77,10 +82,35 @@ async function surface() {
   );
   apps.push(app);
   await app.init();
-  return { app, upstream, signatureA };
+  return { app, upstream, signatureA, lease };
 }
 
 describe('HTTP signature scope admission', () => {
+  it('passes native Gemini credential, header and actual query hints to account selection', async () => {
+    const { app, lease } = await surface();
+    const payload = { contents: [{ role: 'user', parts: [{ text: 'synthetic task' }] }] };
+    const url = '/v1beta/models/gemini-pro-agent:generateContent?session_id=query';
+    const headers = { authorization: 'Bearer synthetic-tenant-a', 'x-client-session-id': 'header' };
+    expect((await app.inject({ method: 'POST', url, headers, payload })).statusCode).toBe(200);
+    expect(lease.getNextToken.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        sessionKey: resolveGeminiSessionScope(payload, headers, url).affinityKey,
+      }),
+    );
+    lease.getNextToken.mockClear();
+    const queryHeaders = { authorization: 'Bearer synthetic-tenant-a' };
+    expect(
+      (await app.inject({ method: 'POST', url, headers: queryHeaders, payload })).statusCode,
+    ).toBe(200);
+    expect(lease.getNextToken.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        sessionKey: resolveGeminiSessionScope(payload, queryHeaders, url).affinityKey,
+      }),
+    );
+    expect(resolveGeminiSessionScope(payload, headers, url).affinityKey).not.toBe(
+      resolveGeminiSessionScope(payload, queryHeaders, url).affinityKey,
+    );
+  });
   it.each(['openai', 'anthropic'] as const)(
     'passes header and query ownership to the real %s mapper',
     async (protocol) => {

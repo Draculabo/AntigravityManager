@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { getServerConfig } from '../../../../server/server-config';
-import { extractApiKeyToken, hasConfiguredApiKey, type RequestHeaders } from './api-key-auth.util';
+import { extractApiKeyToken, type RequestHeaders } from './api-key-auth.util';
+import { hasConfiguredApiKey } from '@/shared/security/api-key';
 
 @Injectable()
 export class AdminGuard implements CanActivate {

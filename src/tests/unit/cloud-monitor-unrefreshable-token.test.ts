@@ -1,3 +1,4 @@
+import type { CloudAccount } from '@/modules/cloud-account/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
@@ -33,6 +34,12 @@ describe('CloudMonitorService unrefreshable tokens', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-17T05:00:00Z'));
     vi.clearAllMocks();
+    vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async (id) => {
+      const latest: CloudAccount[] | undefined = await vi
+        .mocked(CloudAccountRepo.getAccounts)
+        .mock.results.at(-1)?.value;
+      return latest?.find((account) => account.id === id);
+    });
     CloudMonitorService.resetStateForTesting();
   });
 
@@ -63,6 +70,7 @@ describe('CloudMonitorService unrefreshable tokens', () => {
       'expired-account',
       'expired',
       'Access token expired and no refresh token is available',
+      expect.any(Function),
     );
   });
 
@@ -137,6 +145,7 @@ describe('CloudMonitorService unrefreshable tokens', () => {
       'blocked-account',
       'expired',
       CLOUD_ACCOUNT_REAUTH_REQUIRED_REASON,
+      expect.any(Function),
     );
   });
 });

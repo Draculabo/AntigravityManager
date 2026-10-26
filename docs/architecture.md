@@ -20,9 +20,16 @@ and do not supply credentials, provider bodies or arbitrary metadata to reportin
 
 The desktop public envelope preserves validated `loginCode`/`switchCode` and the safe diagnostic.
 Standalone management and RPC carry the coordinator's identity; consumers reject mismatched
-identities. Management response version is `2` and owner compatibility is `4`; the handshake envelope
-format and diagnostic schema remain `1`. An incompatible owner fails startup verification before
+identities. Management response version is `2` and owner compatibility is `6`; the handshake envelope
+format and diagnostic schema remain `1`. Compatibility `6` includes the required
+independent Thought Store disk setting and coordinated management contracts.
+An incompatible owner fails startup verification before
 account mutations, with no local owner fallback.
+
+Owner compatibility `6` also includes audit archive-usage status and the derived
+`capture_interrupted` read outcome. Audit Worker initialization carries the owning
+process start boundary so replacing a Worker does not terminate current captures.
+The audit database keeps its existing schema and stored outcome vocabulary.
 
 The renderer retains a text snapshot for details and explicit reporting. The CLI prints the
 same safe reference on failure. Account persistence certainty is independent of presentation:
@@ -36,6 +43,17 @@ NO_PROXY. The same abort signal covers the request and proxy handshake; the owne
 the agent after the buffered response or failure. Rejected responses contribute only closed
 connection evidence to diagnostics. There is no automatic direct fallback or added retry.
 
+## Atomic file replacement
+
+Shared asynchronous file persistence writes a sibling temporary file, synchronizes
+and closes it, then atomically replaces the target. On Windows, replacement `EPERM`
+is retried at most five times with 20/40/60/80 ms waits. Every retry uses the same
+completed temporary file and destination; content is not rewritten and the target is
+never deleted as a fallback. Other errors and POSIX replacement failures propagate
+immediately. Exhaustion preserves the final failure and the existing temporary-file
+cleanup contract. This bounded replacement recovery does not change synchronous
+account-index transactions or caller-owned fail-open persistence policy.
+
 ## Gateway Schema admission
 
 OpenAI Chat, effective Responses requests and Anthropic Messages prepare tool parameter schemas
@@ -47,6 +65,11 @@ configuration before publishing prewarm events or replacing socket request state
 its prepared schemas during generation. See the [Schema reference](./modules/proxy-gateway/schema-conversion.md)
 for supported references, bounds and error contracts.
 
+Protocol adapters own [streaming usage placement and tool generation compatibility](modules/proxy-gateway/stream-tool-compatibility.md).
+They preserve ordinary tool names and arguments; malformed generation retains valid output,
+adds an explicit assistant explanation and records an upstream audit diagnostic without
+turning the signal into a transport retry.
+
 Error reporting uses runtime-specific Electron and Node SDK adapters. The logger submits one
 isolated bounded Schema summary per preparation, subject to consent and an available DSN.
 Desktop preference effects are serialized and forwarded to the selected core through a typed
@@ -56,22 +79,202 @@ account selection, quota policy or persisted Responses formats.
 
 ## Thought signature ownership
 
-Provider thought signatures are opaque strings. Response adapters preserve their exact encoding
-through client output, scoped caches and continuation requests; they never decode Base64 as UTF-8.
-ASCII-compatible protobuf bytes are still binary data. Empty signatures are omitted, while
-provider-specific opaque values and the existing validation placeholder remain unchanged.
+Provider thought signatures are opaque strings. Scoped caches and Thought Store retain the
+received value. Generic signature readers never decode Base64 as UTF-8: ASCII-compatible
+protobuf bytes are still binary data. Google internal generation prepares a separate request
+copy after history restoration, wrapping only a recognized raw Claude signature once.
+Anthropic response adapters unwrap only the recognized Google wrapper for client output;
+their caches retain the upstream value. OpenAI non-streaming adapters that reuse that mapper
+receive the same conversion. Other OpenAI response adapters preserve the upstream value.
+Unknown encodings, malformed Base64, additional wrapper layers, surrounding whitespace and
+validation placeholders are unchanged. Known format detection uses canonical standard Base64,
+the Claude marker or known protobuf prefix, with at most two decode layers and a 1 MiB input
+recognition budget. It is a structural heuristic, not cryptographic validation.
+Empty signatures are omitted.
+Generation requests supplying both signature aliases must provide equal values or a recognized
+raw/wrapped equivalent pair. Native Gemini validates before selecting an account; direct
+generation and warmup transports validate before history ingestion, attempt auditing or HTTP.
+Conflicts return a typed 400 naming only the content/part position. Empty versus nonempty is
+a conflict. Equal placeholders retain their existing target-model behavior; this check does
+not establish their validity.
+Known signature formats are checked against the routed model family before account selection
+and again at the internal transport boundary. Recognized Claude material cannot enter a
+Gemini-family history; recognized Gemini material cannot enter a Claude-family history.
+The known placeholder is accepted only for Gemini targets. Unknown opaque values remain
+unchanged, but a recognized signature cannot be used when the target family is unknown.
+These structural checks are not cryptographic verification or proof of provider acceptance.
+Product-facing Google generation validates upstream aliases before response capture or
+mapping. Conflicts produce a safe typed 502 and cannot trigger endpoint failover, protocol
+fallback or account rotation. Streaming generation holds each complete SSE event until
+validation, including a final event without a blank delimiter. It reuses the bounded audit
+parser's original parsed object and frame segments without a second JSON parse, serialization
+or whole-frame concatenation. The existing event cap also bounds this validation; an oversized
+event fails the generation stream and closes its source. Audit observers retain their
+sanitized contract and ordinary audit capture retains its existing behavior. An upstream
+conflict discards the physical round's staged Thought capture; already forwarded
+events retain their transport semantics. Raw diagnostic forwarding and countTokens
+retain their existing contracts.
 Previously corrupted client histories or persisted records are not rewritten. The existing
 targeted invalid-signature recovery remains available where supported. See the
-[encoding decision](../.agents/notes/implemented/bug-fix/2026-10-13-opaque-thought-signatures.md).
+[encoding decision](../.agents/notes/implemented/bug-fix/2026-10-13-opaque-thought-signatures.md)
+and [known-format decision](../.agents/notes/implemented/bug-fix/2026-10-18-known-thought-signature-formats.md).
+
+New complete Thought Store captures use a physical operation ID, with a complete
+canonical business-history prefix as a bounded older-recovery candidate. Independent
+identical replies remain distinct. Streams publish complete recovery state only
+after successful upstream end; original completion controls durable tool-reference
+expiry. Schema 3 adds provenance/references while preserving schema-2 entities and
+the explicit schema-0/1 replacement policy. See
+[diagnostic retention](modules/proxy-gateway/diagnostic-retention.md#reasoning-history-management)
+for limits, legacy ownership and recovery.
+
+Thought client scopes share D03 hint and caller normalization. Explicit deletion
+coordinates the registered signature and Responses owners, including live socket
+transcripts, with per-owner completion receipts. The stores retain separate commit
+boundaries; unavailable owners and failed JSON replacement remain unconfirmed.
+Responses metadata has one lazy selected-process owner across gateway stop/start;
+Nest owns its current private-media facade rather than creating another JSON writer.
+Terminal diagnostic shutdown also closes and strictly flushes this metadata owner.
+
+Legacy Thought Store ingestion matches equivalent non-placeholder signatures before tool IDs and
+fingerprints. Only recognized Claude raw/wrapped forms share a separate comparison
+representation; stored values are not canonicalized. Different nonempty signatures prevent a merge in memory, SQLite and cold
+hydration, even when a tool ID is reused. Restoration with an explicit recognized signature
+requires an equivalent stored value; a missing match leaves that turn unchanged. Signature
+equality establishes association, not provider acceptance. Unsigned history retains its
+signature matching behavior. See the [matching decision](../.agents/notes/implemented/bug-fix/2026-10-18-signed-thought-history-matching.md).
+
+Thought Store applies the same registered model compatibility policy as SignatureStore
+to restoration and every record merge path, including SQLite and cold hydration.
+It derives compatibility from recorded model names and the routed request model.
+Broad legacy family labels cannot authorize a match. Known variants use their canonical
+model; unknown models require exact normalized names, and missing model provenance
+prevents automatic matching. The native `models/` resource prefix is normalized.
+Records remain available for inspection. This model association does not recognize or
+verify a signature's format. See the [model ownership decision](../.agents/notes/implemented/bug-fix/2026-10-18-thought-record-model-ownership.md).
+
+Unresolved tool-history signatures remain absent after scoped recovery. Native Gemini envelopes,
+Claude request mapping and Thought Store restoration do not generate validation placeholders.
+SignatureStore excludes the known placeholder from its session and tool indexes. Native
+function-call aliases are completed only from supplied values. Clients that relied on the
+former fallback should follow the [upgrade guide](upgrade-guides/next/preserve-tool-signatures.md).
+
+Claude request mapping limits fallback from a thinking block to its own message
+and leaves mapped tool results unsigned. Explicit tool-use signatures and scoped
+tool-cache recovery keep their precedence. Thought Store reasoning restoration
+preserves independent supplied function-call signatures in either alias, including
+short opaque values; it does not overwrite them with one record-level value.
+Thought Store retains exact per-part provenance and recovers an unsigned tool only
+from a unique name/argument-digest/call-ID match. Reasoning signatures do not supply
+missing tool signatures. See the
+[part-ownership decision](../.agents/notes/implemented/bug-fix/2026-10-18-thought-signature-part-ownership.md)
+and the [durable part-signature contract](../.agents/notes/implemented/bug-fix/2026-10-18-thought-part-signature-persistence.md).
 
 OpenAI Chat and Anthropic Messages derive an in-memory signature scope from the proxy
 credential digest, a client session hint and a conversation content anchor. Session hints
 come from session/conversation headers, query parameters, then body metadata. The anchor
-contains the initial user content, system instructions and declared tool names, so a shared
+contains the initial user content, leading system/developer instructions and full tool identity, so a shared
 user ID or reused session ID cannot replace conversation ownership. Appended turns retain
 the anchor; changed initial context produces a cache miss. Identical context and hints under
 the same credential produce the same scope; clients that need independent identical
 conversations must supply distinct session IDs.
+
+Chat, Messages and native Gemini use the same bounded client-hint resolver. In-scope product
+headers have a fixed priority, followed by sorted generic session headers, aliases,
+the request URL query, body and metadata. MCP/request/trace/correlation identifiers
+are excluded from generic session headers. Header names are case-insensitive; IDs
+retain case and punctuation, trim outer whitespace and accept at most 128 Unicode
+code points. Invalid or conflicting candidates fall through without truncation or
+character deletion. Scope results include only source/field/count diagnostics, not
+raw hint values. Existing metadata user-ID fallback remains a hint, never a tenant.
+
+The `scope:v5` namespace separates these in-memory protocol signature keys from earlier
+keys without fallback or deletion. Anonymous tenant identity is distinct from a
+credential whose literal value is `anonymous`; equivalent Bearer/API-key credentials
+retain equivalent identity. All initial contiguous system/developer messages
+participate in the Chat anchor; later additions do not. Empty user preambles remain
+ignorable. Equivalent text tasks and ordinary function declarations have a common
+`session:store:v2` identity across Chat, Responses, Messages and Gemini. An explicit stable hint
+produces a separate `session:affinity:v1` account key without the task anchor;
+otherwise affinity uses the store key. Signature keys retain protocol isolation
+until provenance rules explicitly permit reuse. Function names, descriptions and
+complete parameter schemas participate; developer roles remain distinct from
+system roles. Text part boundaries are preserved. Known mixed text/inline-image tasks
+share a logical anchor using normalized image MIME and a bounded fingerprint of the
+complete encoded payload. Part order stays significant. The initial task and current
+instruction/tool context have separate fingerprints, composed into the logical anchor.
+The new namespaces intentionally
+cold-miss older keys. Remote references, non-image media,
+explicit high/low detail, built-in tools and unknown extensions retain protocol-scoped
+structured anchors. Fingerprinting itself does not decode media or serialize full messages.
+Native Gemini passes affinity through unary/streaming text and image selection paths;
+binding still occurs at the existing successful-operation boundary.
+
+Responses HTTP and WebSocket upgrade contexts carry actual credentials, headers and URL.
+Preparation admits/normalizes inline media before fingerprinting; trusted execution reuses
+that admitted request. Initial identity records client/content origin and a fixed-size task
+digest, captured before historical media is reduced. Equivalent hint-free tasks use content
+identity without treating random response IDs as client hints. Owned continuation and restart
+restore the initial task digest and an explicit client root even when a later header is omitted.
+Current initial instructions and tool identity still participate independently, so meaningful
+context changes split the logical store. Public response IDs and signature provenance remain
+under their existing owners.
+
+Persisted Responses history checks the creating caller before read/delete/continuation or
+WebSocket durable cursor admission. The active file remains `openai-responses-sessions.json`.
+The current strict decoder rejects records without caller ownership and initial task identity;
+the first store access drops those records and atomically replaces the active file. Other
+historical filenames are not searched or imported. Missing ownership cannot be claimed through
+the public history API. Earlier cursors are unavailable even when their caller ownership is
+valid. No encryption is added.
+Transport-local WebSocket transcripts retain their connection owner and do not acquire new
+durable publication. See the [history security and upgrade contract](modules/proxy-gateway/security.md#responses-history-ownership),
+[client-hint decision](../.agents/notes/implemented/bug-fix/2026-10-17-client-session-hints.md)
+and [initial identity decision](../.agents/notes/implemented/bug-fix/2026-10-17-responses-initial-identity-metadata.md).
+
+Generated Chat/Responses/Messages/Gemini calls pass an explicit upstream identity
+derived from the selected account and tenant-isolated logical store. The internal
+`request.sessionId` is a SHA-256-derived signed 64-bit decimal string; it is stable
+for that account/store at recovery generation zero. The request ID has a stable
+store-derived conversation segment and a fresh timestamp/random trajectory for each
+actual content send, including endpoint failover and explicit-cache rejection.
+Responses composes the saved initial task identity with current context, so reducing
+historical media does not change the task's upstream identity. Explicit client hints retain
+their account-affinity semantics; content-origin requests use their logical store.
+The client owns final envelope decoration and audit/capture uses the actual attempt
+body. It clones only the envelope and inner request wrapper, preserving shared large
+content. Count-token, warmup and raw passthrough callers without explicit identity
+keep their existing transport contract.
+
+The Gemini client retains at most 500 account/store identity records for one hour of
+inactivity using a monotonic clock. An explicit input-token-limit HTTP 400 before a
+response stream is returned permits one additional content send, with a fresh scoped
+session identity and the complete prepared input. Its credential/model stay fixed;
+the lease must still be eligible, the request uncancelled, and the original client-call
+timeout budget unspent. A shared logical-call budget prevents another recovery through
+account, project, signature or aggregation fallbacks. Recovery dispatch itself disables
+endpoint/project fallback. A failed recovery terminates protocol fallbacks and retains
+the first failure as its cause when the final error has no existing cause. It does not
+trigger account penalties through the ordinary retry loop. Actual sends retain their
+existing audit/capture records. Recovery never begins after returning a provider stream.
+Concurrent failures of one identity share one replacement. Evicted/expired in-flight
+records cannot recreate recovery state; a new recovery incarnation avoids reuse of an
+old bumped session. Local history is neither compressed nor cleared. This cache stores
+identities only and is not persisted. Permanent cloud-account deletion also clears that
+account's recovery records in the running gateway, independently of lease cleanup success.
+Late invalidated frames cannot overwrite a newly added record, and ineligible captured
+leases cannot admit new recovery metadata. This does not clear conversation history.
+Targeted session/global Thoughts/Responses cleanup remains separate joint lifecycle work.
+See the [recovery decision](../.agents/notes/implemented/bug-fix/2026-10-17-bounded-upstream-session-recovery.md)
+for limits and the remaining joint lifecycle work.
+
+Anchor fingerprints traverse supported JSON-shaped values iteratively, framing
+types and lengths and sorting object keys. Message/media strings are fed to SHA-256
+in at most 32K UTF-16 code-unit writes, preserving surrogate units without creating
+a complete serialized copy. Array order remains significant; absent object fields
+are not invented. Cycles and non-JSON values fail before account selection. This
+stabilizes object-key order within a protocol; it does not by itself equate different
+protocol content shapes or tool schemas.
 
 Empty user preambles are ignored. Without meaningful user content, the complete available
 history becomes the anchor; an empty history receives a fresh scope and cannot recover a
@@ -251,6 +454,8 @@ for pass limits and partial-state behavior.
 Each `BoundedSqliteWorker` instance closes terminally: new reads/writes and lazy startup are rejected as soon as closing starts. Concurrent closes share one result. Accepted commands and the shutdown acknowledgement share the two-second default deadline; termination is awaited even after timeout. Timeout, acknowledgement and termination failures remain observable through the rejected close result.
 
 Audit and Thought Store services distinguish reusable `close()` from terminal `shutdown()`. Process shutdown rejects new reads, capture, repair and configuration work, stops maintenance and gives accepted body/SSE writes, hydration and repair up to two seconds to drain. Accepted repair may finish replacing its worker during drain; once drain finishes or times out, worker access and recreation are sealed. Both stores are attempted even when the gateway was never started or is already stopped, and failed closure propagates. Core shutdown drains standalone-core IPC capabilities before terminal diagnostics and retains the profile lease on failure. Desktop exit uses the same store teardown under its existing three-second forced-exit bound, which can interrupt cleanup.
+
+Audit payload lifecycle, physical disk reclamation, Thought Store compression failures and queue-pressure semantics are owned by the [diagnostic retention reference](modules/proxy-gateway/diagnostic-retention.md).
 
 The [ownership cutover audit](ownership-cutover-audit.md) is a historical snapshot and is not a
 current readiness report. Desktop bootstrap selects all migrated feature owners together; native

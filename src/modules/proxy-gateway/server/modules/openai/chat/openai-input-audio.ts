@@ -45,7 +45,7 @@ function invalid(message: string): never {
   throw new BadRequestException(`Invalid input_audio: ${message}`);
 }
 
-function isM4aContainer(bytes: Buffer): boolean {
+export function isM4aContainer(bytes: Buffer): boolean {
   if (bytes.length < 12 || bytes.subarray(4, 8).toString('latin1') !== 'ftyp') {
     return false;
   }

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 import { mergeOpenAIResponsesInputItems } from './openai-responses-session.store';
-import { parseResponsesInputItem } from './openai-responses-request';
+import { parseResponsesInputItem } from './responses-input-item';
+import { rememberResponsesToolCall } from './responses-tool-call-repair';
 
 export type OpenAIResponsesWebSocketEvent = Record<string, unknown> & {
   type: string;
@@ -29,7 +30,7 @@ export class OpenAIResponsesWebSocketProtocol {
     private readonly validateRequest?: (
       request: Record<string, unknown>,
       mode: 'prewarm' | 'generate',
-    ) => void,
+    ) => void | Promise<void>,
   ) {}
   private lastRequest: Record<string, unknown> | null = null;
   private lastResponseOutput: unknown[] = [];
@@ -37,7 +38,7 @@ export class OpenAIResponsesWebSocketProtocol {
   private lastResponsePendingToolCallIds = new Set<string>();
   private readonly toolCallItems = new Map<string, unknown>();
 
-  public accept(payload: unknown): OpenAIResponsesWebSocketAction {
+  public async accept(payload: unknown): Promise<OpenAIResponsesWebSocketAction> {
     const event = toRecord(payload);
     if (!event) {
       throw new Error('websocket request must be a JSON object');
@@ -45,14 +46,14 @@ export class OpenAIResponsesWebSocketProtocol {
 
     if (this.shouldHandlePrewarmLocally(event)) {
       return {
-        events: this.handlePrewarmLocally(event),
+        events: await this.handlePrewarmLocally(event),
         kind: 'local',
       };
     }
 
     return {
       kind: 'request',
-      request: this.normalizeRequest(event),
+      request: await this.normalizeRequest(event),
     };
   }
 
@@ -78,13 +79,26 @@ export class OpenAIResponsesWebSocketProtocol {
       if (!callId) {
         continue;
       }
-      this.toolCallItems.set(callId, item);
+      rememberResponsesToolCall(this.toolCallItems, item);
       this.lastResponsePendingToolCallIds.add(callId);
     }
   }
 
   public getPreviousResponseId(): string {
     return this.lastResponseId;
+  }
+
+  public hasHistory(): boolean {
+    return this.lastRequest !== null;
+  }
+
+  /** Release history even if a late operation or transport still references this closed context. */
+  public dispose(): void {
+    this.lastRequest = null;
+    this.lastResponseOutput = [];
+    this.lastResponseId = '';
+    this.lastResponsePendingToolCallIds.clear();
+    this.toolCallItems.clear();
   }
 
   private shouldHandlePrewarmLocally(payload: Record<string, unknown>): boolean {
@@ -95,7 +109,9 @@ export class OpenAIResponsesWebSocketProtocol {
     );
   }
 
-  private handlePrewarmLocally(payload: Record<string, unknown>): OpenAIResponsesWebSocketEvent[] {
+  private async handlePrewarmLocally(
+    payload: Record<string, unknown>,
+  ): Promise<OpenAIResponsesWebSocketEvent[]> {
     const responseId = `resp_prewarm_${randomUUID()}`;
     const createdAt = Math.floor(Date.now() / 1000);
     const model = getString(payload, 'model') ?? 'unknown';
@@ -139,7 +155,7 @@ export class OpenAIResponsesWebSocketProtocol {
     const normalized = { ...payload };
     delete normalized.type;
     delete normalized.generate;
-    this.validateRequest?.(normalized, 'prewarm');
+    await this.validateRequest?.(normalized, 'prewarm');
     this.lastRequest = normalized;
     this.lastResponseOutput = [];
     this.lastResponseId = responseId;
@@ -147,7 +163,9 @@ export class OpenAIResponsesWebSocketProtocol {
     return [created, completed];
   }
 
-  private normalizeRequest(payload: Record<string, unknown>): Record<string, unknown> {
+  private async normalizeRequest(
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
     const eventType = getString(payload, 'type') ?? '';
     if (eventType === 'response.create' && this.lastRequest === null) {
       const normalized = { ...payload };
@@ -158,7 +176,7 @@ export class OpenAIResponsesWebSocketProtocol {
       if (!getString(normalized, 'model')) {
         throw new Error('missing model in response.create request');
       }
-      this.validateRequest?.(normalized, 'generate');
+      await this.validateRequest?.(normalized, 'generate');
       this.lastRequest = normalized;
       return normalized;
     }
@@ -176,8 +194,9 @@ export class OpenAIResponsesWebSocketProtocol {
       delete replacement.generate;
       delete replacement.previous_response_id;
       replacement.stream = true;
-      this.validateRequest?.(replacement, 'generate');
+      await this.validateRequest?.(replacement, 'generate');
       this.lastRequest = replacement;
+      this.lastResponseOutput = [];
       return replacement;
     }
 
@@ -187,7 +206,7 @@ export class OpenAIResponsesWebSocketProtocol {
     const mergedInput = mergeOpenAIResponsesInputItems(
       [...previousInput, ...this.lastResponseOutput],
       newInput,
-      [...this.toolCallItems.values()],
+      this.toolCallItems,
     );
     const normalized: Record<string, unknown> = {
       ...payload,
@@ -204,7 +223,7 @@ export class OpenAIResponsesWebSocketProtocol {
       }
     }
 
-    this.validateRequest?.(normalized, 'generate');
+    await this.validateRequest?.(normalized, 'generate');
     for (const item of newInput) {
       const itemRecord = toRecord(item);
       const type = itemRecord ? getString(itemRecord, 'type') : null;
@@ -217,6 +236,9 @@ export class OpenAIResponsesWebSocketProtocol {
       }
     }
     this.lastRequest = normalized;
+    // Completion output has been merged or explicitly compacted out. Reusing it after a
+    // failed generation would reintroduce discarded text or duplicate ID-less items.
+    this.lastResponseOutput = [];
     return normalized;
   }
 }

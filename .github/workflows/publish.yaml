@@ -244,6 +244,15 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
+      - name: Write build source manifest
+        run: >
+          node scripts/release/build-source-manifest.mjs
+          --root .
+          --directory out/make
+          --output out/make/build-source-${{ matrix.platform }}-${{ matrix.arch }}.json
+          --platform ${{ matrix.platform }}
+          --arch ${{ matrix.arch }}
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -259,6 +268,7 @@ jobs:
             out/make/**/*.nupkg
             out/make/**/*.yml
             out/make/**/*.txt
+            out/make/build-source-*.json
             out/make/**/RELEASES
           if-no-files-found: error
           retention-days: 14
@@ -306,6 +316,9 @@ jobs:
 
       - name: Install verification dependencies
         run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
+
+      - name: Validate build source manifests
+        run: node scripts/release/build-source-manifest.mjs --root . --validate-directory release-assets
 
       - name: Test Windows update feed generation
         run: pnpm run test:acceptance installers feed

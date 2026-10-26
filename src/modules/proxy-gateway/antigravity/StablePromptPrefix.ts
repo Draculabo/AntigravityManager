@@ -1,12 +1,13 @@
 import { stripClaudeBillingMetadata } from './ClientBillingMetadata';
 
+/**
+ * Preserve user supplied system text byte-for-byte apart from the explicitly
+ * owned billing metadata lines. Dynamic dates, paths, UUIDs and session IDs are
+ * part of the request identity and must not be rewritten for cache-key reuse.
+ */
 export function sanitizeSystemInstructionForCache(text: string): string {
-  return stripClaudeBillingMetadata(text)
-    .replace(/^Current (?:date|time)(?:\s+is)?\s*:.*$/gim, '')
-    .replace(/^Today is\s*:.*$/gim, '')
-    .replace(/^Date:\s+\d{4}-\d{2}-\d{2}.*$/gim, '')
-    .replace(/\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\b/gi, '{uuid}')
-    .replace(/\b(?:req|sid|trace)_[a-f0-9]{6,32}\b/gi, '{id}')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  // Keep this compatibility helper semantically lossless. Dynamic facts and
+  // whitespace are part of the caller's prompt; cache behavior must not rewrite
+  // the request to make otherwise different prefixes look identical.
+  return stripClaudeBillingMetadata(text);
 }

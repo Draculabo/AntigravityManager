@@ -52,11 +52,10 @@ function createToken(overrides: Partial<AccountLeaseTokenData> = {}): AccountLea
 }
 
 describe('AccountLeaseFulfillmentPolicy', () => {
-  it('hydrates the selected token, binds the session, and returns a cloud account lease', async () => {
+  it('hydrates the selected token and returns an uncommitted cloud account lease', async () => {
     const hydrationPolicy = {
       hydrateSelectedToken: vi.fn().mockResolvedValue('resolved-project'),
     } as unknown as AccountLeaseHydrationPolicy;
-    const bindSession = vi.fn();
     const logger = {
       error: vi.fn(),
     };
@@ -64,8 +63,6 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       accountStore: createAccountStore(),
       isStillEligible: () => true,
       hydrationPolicy,
-      bindSession,
-      stickySessionTtlMs: 600_000,
       resolveFallbackProjectId: () => 'fallback-project',
       logger,
     });
@@ -74,7 +71,6 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       accountId: 'acc-1',
       tokenData: createToken(),
       nowSeconds: 100,
-      sessionKey: 'openai:user-1',
     });
 
     expect(hydrationPolicy.hydrateSelectedToken).toHaveBeenCalledWith({
@@ -85,7 +81,6 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       nowSeconds: 100,
       fallbackProjectId: 'fallback-project',
     });
-    expect(bindSession).toHaveBeenCalledWith('openai:user-1', 'acc-1', expect.any(Number));
     expect(lease).toEqual(
       expect.objectContaining({
         id: 'acc-1',
@@ -111,8 +106,6 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       accountStore: createAccountStore(),
       isStillEligible: () => true,
       hydrationPolicy,
-      bindSession: vi.fn(),
-      stickySessionTtlMs: 600_000,
       resolveFallbackProjectId: () => 'fallback-project',
       logger,
     });
@@ -139,8 +132,6 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       accountStore: createAccountStore(),
       isStillEligible: () => true,
       hydrationPolicy,
-      bindSession: vi.fn(),
-      stickySessionTtlMs: 600_000,
       resolveFallbackProjectId: () => 'fallback-project',
       logger: { error: vi.fn() },
     });

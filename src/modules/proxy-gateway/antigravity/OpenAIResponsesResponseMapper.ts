@@ -9,7 +9,6 @@ import {
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
 } from './GeminiFinishReason';
 import { toOpenAIResponsesUsage } from './OpenAIUsageMapper';
-import { adaptCommandArguments } from './CommandToolAdapter';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
 
 type ResponsesToolOutput =
@@ -27,15 +26,11 @@ function toResponsesToolOutputItem(toolCall: OpenAIToolCall): ResponsesToolOutpu
   };
   const callId = toolCall.call_id ?? toolCall.id;
   const namespaceFields = toolCall.namespace ? { namespace: toolCall.namespace } : {};
-  const adaptedArguments = adaptCommandArguments(
-    functionCall.name,
-    parseToolArguments(functionCall.arguments),
-  );
-  const argumentsString = JSON.stringify(adaptedArguments.arguments);
+  const argumentsString = functionCall.arguments;
   if (toolCall.custom_input !== undefined || isCustomToolCall(functionCall.name)) {
     const rawInput =
       toolCall.custom_input ??
-      extractCustomToolInput(functionCall.name, adaptedArguments.arguments);
+      extractCustomToolInput(functionCall.name, parseToolArguments(argumentsString));
     const input = isCustomToolCall(functionCall.name)
       ? optimizeApplyPatch(rawInput).input
       : rawInput;
@@ -96,11 +91,11 @@ export function toOpenAIResponsesResponse(
   const choice = response.choices[0];
   const output: Record<string, unknown>[] = [];
   const rawContent = choice?.message.content;
-  const content =
-    isMalformedFunctionCallFinishReason(choice?.finish_reason) &&
-    (typeof rawContent !== 'string' || rawContent.trim().length === 0)
-      ? MALFORMED_FUNCTION_CALL_RECOVERY_TEXT
-      : rawContent;
+  const content = isMalformedFunctionCallFinishReason(choice?.finish_reason)
+    ? [typeof rawContent === 'string' ? rawContent : '', MALFORMED_FUNCTION_CALL_RECOVERY_TEXT]
+        .filter(Boolean)
+        .join('\n\n')
+    : rawContent;
   const refusal = choice?.message.refusal;
   const reasoningContent = choice?.message.reasoning_content;
   // Upstream already said whether the answer ran out of output budget; a response

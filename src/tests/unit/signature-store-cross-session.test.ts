@@ -80,7 +80,7 @@ describe('SignatureStore cross-session tool-call isolation', () => {
     );
   });
 
-  it('keeps direct lookup when the same session updates the tool call', () => {
+  it('rejects conflicting opaque updates even within the same session and message count', () => {
     const toolCallId = 'call_same_session';
     const shorterSignature = 'short-signature'.repeat(2);
     const longerSignature = 'longer-signature'.repeat(4);
@@ -100,8 +100,8 @@ describe('SignatureStore cross-session tool-call isolation', () => {
       toolCallId,
     });
 
-    expect(SignatureStore.getForToolCall({ model, toolCallId, sessionKey: 'session-a' })).toBe(
-      longerSignature,
-    );
+    expect(
+      SignatureStore.getForToolCall({ model, toolCallId, sessionKey: 'session-a' }),
+    ).toBeNull();
   });
 });

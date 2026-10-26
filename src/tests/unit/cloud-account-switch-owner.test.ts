@@ -1,6 +1,7 @@
 import {
   account,
   credentialWrite,
+  ownerState,
   expectTerminalDiagnostic,
   startOwner,
 } from '../support/cloud-switch-owner-fixture';
@@ -9,7 +10,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { cloudRouter } from '@/modules/cloud-account/ipc/router';
 import { selectCloudAccountAdapter } from '@/modules/cloud-account/ipc/cloud-account-adapter';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
-import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import {
   CloudAccountRefreshBlockedError,
   CloudAccountRefreshService,
@@ -26,9 +26,80 @@ import * as runtimeLaunch from '@/modules/antigravity-runtime/launchContext';
 import * as classicHot from '@/modules/antigravity-runtime/classicHotSwitch';
 import * as clientLaunch from '@/modules/antigravity-runtime/launch';
 import { SwitchTraceSchema } from '@/shared/observability/switchDiagnostic';
+import { prepareClientAccountWrite } from '@/modules/antigravity-runtime/credentials/clientAccountWrite';
 import { processError } from '@/modules/antigravity-runtime/processErrors';
 
 describe('core-owned cloud account switching', () => {
+  it('presents active status only after successful atomic finalization', async () => {
+    vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue({
+      ...account,
+      status: 'expired',
+      status_reason: 'previous failure',
+    });
+    const onSuccess = vi.fn();
+    await switchCloudAccountCore(account.id, 'agy', { onSuccess });
+    expect(onSuccess).toHaveBeenCalledExactlyOnceWith({
+      ...account,
+      status: 'active',
+      status_reason: undefined,
+    });
+  });
+
+  it('reports finalization failure after client write without publishing success or retrying', async () => {
+    const failure = new Error('Synthetic switch finalization failure');
+    vi.mocked(CloudAccountRepo.finalizeSwitch).mockImplementationOnce(() => {
+      throw failure;
+    });
+    const cursor = accountOwnerEvents.read(undefined, 0);
+    const onSuccess = vi.fn();
+    await expect(switchCloudAccountCore(account.id, 'agy', { onSuccess })).rejects.toMatchObject({
+      diagnostic: { stage: 'account-finalize', rollback: 'not-attempted' },
+    });
+    expect(credentialWrite).toHaveBeenCalledOnce();
+    expect(CloudAccountRepo.finalizeSwitch).toHaveBeenCalledOnce();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(accountOwnerEvents.read(cursor.epoch, cursor.latest).events).toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Cloud account switch stopped before completion',
+      failure,
+    );
+  });
+
+  it.each(['prepare', 'write'] as const)(
+    'rejects account replacement during client %s without selecting it or publishing success',
+    async (stage) => {
+      const replacement = {
+        ...account,
+        email: 'replacement@example.com',
+        token: { ...account.token, access_token: 'replacement-access' },
+      };
+      const change = () => vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue(replacement);
+      if (stage === 'prepare') {
+        vi.mocked(prepareClientAccountWrite).mockImplementationOnce(async () => {
+          change();
+          return { storage: 'credential-store', write: credentialWrite };
+        });
+      } else {
+        credentialWrite.mockImplementationOnce(async () => {
+          change();
+        });
+      }
+      const cursor = accountOwnerEvents.read(undefined, 0);
+      await expect(switchCloudAccountCore(account.id, 'agy')).rejects.toMatchObject({
+        switchCode: expect.any(String),
+      });
+      expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
+      expect(CloudAccountRepo.finalizeSwitch).not.toHaveBeenCalled();
+      expect(CloudAccountRepo.updateLastUsed).not.toHaveBeenCalled();
+      expect(accountOwnerEvents.read(cursor.epoch, cursor.latest).events).toEqual([]);
+      if (stage === 'prepare') {
+        expect(credentialWrite).not.toHaveBeenCalled();
+      } else {
+        expect(credentialWrite).toHaveBeenCalledOnce();
+      }
+    },
+  );
+
   it.each(['desktop-embedded', 'standalone-core'] as const)(
     'returns success and commits active state once after a hot failure recovers (%s)',
     async (mode) => {
@@ -49,7 +120,16 @@ describe('core-owned cloud account switching', () => {
       expect(stop).toHaveBeenCalledOnce();
       expect(start).toHaveBeenCalledOnce();
       expect(credentialWrite).toHaveBeenCalledTimes(3);
-      expect(CloudAccountRepo.setActive).toHaveBeenCalledExactlyOnceWith(account.id);
+      expect(CloudAccountRepo.finalizeSwitch).toHaveBeenCalledExactlyOnceWith(
+        account.id,
+        undefined,
+        expect.any(Function),
+      );
+      expect(ownerState).toEqual({
+        activeId: account.id,
+        activeAgyId: account.id,
+        lastUsedId: account.id,
+      });
       const records = vi.mocked(logger.info).mock.calls;
       const trace = SwitchTraceSchema.parse(
         records.find((call) => call[0] === 'Switch trace v1')?.[1],
@@ -182,7 +262,11 @@ describe('core-owned cloud account switching', () => {
         },
       }),
     ).resolves.toBeUndefined();
-    expect(CloudAccountRepo.setActive).toHaveBeenCalledExactlyOnceWith(account.id);
+    expect(CloudAccountRepo.finalizeSwitch).toHaveBeenCalledExactlyOnceWith(
+      account.id,
+      'agy',
+      expect.any(Function),
+    );
     expect(accountOwnerEvents.read(cursor.epoch, cursor.latest).events).toEqual([
       {
         sequence: cursor.latest + 1,
@@ -201,11 +285,10 @@ describe('core-owned cloud account switching', () => {
     expect(status.metrics.cloud.switchSuccess).toBe(previousStatus.metrics.cloud.switchSuccess + 1);
     expect(status.provenance).toBe('account-owner-process');
     expect(status.guard).toEqual({ activeOwner: null });
-    expect(CloudAccountRepo.updateLastUsed).toHaveBeenCalledExactlyOnceWith(account.id);
-    expect(CloudAccountRepo.setActive).toHaveBeenCalledExactlyOnceWith(account.id);
-    expect(CloudAccountSettingsStore.setActiveForTarget).toHaveBeenCalledExactlyOnceWith(
-      'agy',
+    expect(CloudAccountRepo.finalizeSwitch).toHaveBeenCalledExactlyOnceWith(
       account.id,
+      'agy',
+      expect.any(Function),
     );
     expect(credentialWrite).toHaveBeenCalledExactlyOnceWith();
     expect(await client.accountViews()).toMatchObject([

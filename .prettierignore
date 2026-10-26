@@ -1,7 +1,9 @@
 # Add files here to ignore them from prettier formatting
 /dist
+/out
 /coverage
 /.vite
+/.codex-worktrees
 README.md
 CHANGELOG.md
 /src/routeTree.gen.ts

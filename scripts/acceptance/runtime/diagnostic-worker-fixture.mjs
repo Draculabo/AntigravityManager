@@ -12,16 +12,35 @@ const testDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-audit-native-')
 
 after(() => fs.rmSync(testDirectory, { recursive: true, force: true }));
 
-function openWorker(name, workerName = 'traffic-audit') {
-  const workerPath = path.resolve(__dirname, `../../../.vite/build/${workerName}.worker.js`);
+function openWorker(
+  name,
+  workerName = 'traffic-audit',
+  { workerPath: entry, ownerStartedAt } = {},
+) {
+  const workerPath =
+    entry ??
+    (workerName === 'traffic-audit' ? process.env.AGM_AUDIT_WORKER_ENTRY : undefined) ??
+    path.resolve(__dirname, `../../../.vite/build/${workerName}.worker.js`);
   assert.ok(
     fs.existsSync(workerPath),
     'Build the production traffic audit worker with pnpm run start first',
   );
   const databasePath = path.join(testDirectory, `${name}.db`);
-  const worker = new Worker(workerPath, { workerData: { databasePath } });
+  const worker = new Worker(workerPath, { workerData: { databasePath, ownerStartedAt } });
   let nextId = 0;
-  async function command(operation, payload, { onYield } = {}) {
+  const generations = { model: 0, auxiliary: 0, ipc: 0, system: 0 };
+  async function command(
+    operation,
+    payload,
+    { onYield, maxDiskBytes, capture: explicitCapture } = {},
+  ) {
+    const capture =
+      explicitCapture ??
+      (operation === 'insertParent'
+        ? { trafficClass: payload.trafficClass, generation: generations[payload.trafficClass] }
+        : operation === 'adminEvent'
+          ? { trafficClass: 'system', generation: generations.system }
+          : undefined);
     const id = ++nextId;
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -34,6 +53,16 @@ function openWorker(name, workerName = 'traffic-audit') {
         if (error) {
           reject(error);
         } else {
+          if (operation === 'clear' && workerName === 'traffic-audit') {
+            for (const scope of payload.trafficClass
+              ? [payload.trafficClass]
+              : Object.keys(generations)) {
+              generations[scope] = Math.max(
+                generations[scope],
+                payload.generations?.[scope] ?? generations[scope] + 1,
+              );
+            }
+          }
           resolve(result);
         }
       };
@@ -49,7 +78,7 @@ function openWorker(name, workerName = 'traffic-audit') {
             await onYield?.();
             setImmediate(() => {
               if (!settled) {
-                worker.postMessage({ id, operation, payload });
+                worker.postMessage({ id, operation, payload, maxDiskBytes, capture });
               }
             });
           } catch (error) {
@@ -62,7 +91,7 @@ function openWorker(name, workerName = 'traffic-audit') {
       worker.on('message', listener);
       worker.on('error', failed);
       worker.on('exit', exited);
-      worker.postMessage({ id, operation, payload });
+      worker.postMessage({ id, operation, payload, maxDiskBytes, capture });
     });
   }
   async function close() {
@@ -133,7 +162,7 @@ async function addBody(audit, requestId, payloadId, text) {
 }
 
 function retention(maxRows, maxDiskBytes = 2_000_000_000) {
-  return { bodyRetentionHours: 999, maxDiskBytes, maxRows, summaryRetentionDays: 999 };
+  return { maxDiskBytes, maxRows };
 }
 
 function completedParent(id, overrides = {}) {

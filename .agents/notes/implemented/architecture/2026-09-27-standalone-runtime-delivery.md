@@ -15,6 +15,10 @@ the existing npm lock and production install rather than a handwritten dependenc
 Rebuild Node-native dependencies in staging, independently of Electron rebuilds. Publish staging
 only after native load and entrypoint checks, retaining the previous generated tree until replacement.
 Use the existing tar dependency on Unix; Windows downloads the official bare Node executable.
+Official resource downloads use bounded retries for transient HTTP/transport failures and retain
+the existing per-attempt deadlines, byte limits and official checksum validation. A retry restarts
+the complete asset; checksum failures remain terminal. URL and attempt diagnostics distinguish
+checksum-list, executable/archive and license failures without changing release sources or pins.
 Use the pinned build-only `@vercel/nft@1.11.0` for dependency traversal after the production install
 and native rebuild. Trace the built core, CLI and workers, explicitly include the four target-native
 loaders/binaries and retain licenses. Reject unknown dependency warnings and restrict tracer reads
@@ -33,6 +37,9 @@ native binaries. Workers are mandatory before core owner startup, even when diag
 - Depending on Node on the user's PATH would make the installation incomplete and allow ABI drift.
 - Rebuilding the workspace dependency tree for Node would break the Electron native runtime.
 - Reimplementing dependency traversal would risk omitting dynamically loaded providers or workers.
+- Increasing download deadlines or retrying indefinitely would hide persistent endpoint failures
+  and retain CI jobs without a useful failure bound. Three attempts cover transient failures.
+- A mirror fallback would add another executable supply source; the official URLs remain fixed.
 - Running acceptance against production credentials or replacing the existing installation would
   add unrelated data risk. Test-only service remapping uses the real OS store under a unique name.
 
@@ -44,6 +51,16 @@ Local packaging can select an isolated output directory and suppress Sentry sour
 release defaults and embedded ownership remain unchanged.
 
 ## Verification
+
+On 2026-10-13, a reported Windows ARM64 Forge preparation failure contained only a bare
+`TimeoutError`. Loopback HTTP checks reproduced header and body timeouts in the original
+single-attempt download path. The three initial regressions failed before retries and passed
+afterward. All 17 download, runtime-publication and dependency-tracing tests then passed.
+A real download of the pinned Windows ARM64 Node executable passed the official SHA-256 check
+and PE ARM64 machine check; the official checksum list and license also downloaded successfully.
+The 81,301,320-byte executable and temporary directory were removed afterward. This establishes
+the download path on the available Windows x64 host, not complete native ARM64 packaging or
+the availability of the failing CI runner's endpoints.
 
 The worker resource regression rejects missing entries and directories in place of worker files.
 Installed-resource acceptance copies resources outside the repository, removes Node search overrides,

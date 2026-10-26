@@ -1,41 +1,77 @@
 import { randomUUID } from 'node:crypto';
+import { prepareGoogleGenerationContents } from '../../common/generation-history';
 import { isString } from 'lodash-es';
 import type { GeminiRequest } from '../../common/interfaces/request-interfaces';
 import type { GeminiInternalRequest } from '../../../antigravity/types';
 import { normalizeGeminiToolConfigAliases } from '../../../antigravity/GeminiToolConfigCompat';
-import { injectPlaceholderSignaturesForModel } from '../../../antigravity/ThoughtSignatureCompat';
+import { normalizeFunctionCallSignatureAliases } from '../../../antigravity/ThoughtSignatureCompat';
 import { requiresToolQuotaRoute } from '../../../antigravity/ToolQuotaRoute';
 import {
   formatGlobalSystemPrompt,
-  hasGlobalSystemPrompt,
   resolveGlobalSystemPrompt,
 } from '../../../antigravity/GlobalSystemPrompt';
 import { getServerConfig } from '@/server/server-config';
+import { normalizeSystemPrompt } from '../../../antigravity/SystemPromptNormalization';
+import { recordPromptTransformation } from '../../common/prompt-transformation-diagnostics';
 
 export function toInternalGeminiRequest(
   request: GeminiRequest,
-  model: string,
   includeGlobalSystemPrompt = true,
+  configuredGlobalPrompt?: string | null,
 ): GeminiInternalRequest['request'] {
   const systemInstructionParts = request.systemInstruction?.parts
-    .filter((part): part is { text: string } => isString(part.text))
-    .map((part) => ({ text: part.text }));
+    .flatMap((part, index) =>
+      !isString(part.text)
+        ? []
+        : [
+            {
+              ...part,
+              text:
+                part.thought === true ||
+                part.thoughtSignature !== undefined ||
+                part.thought_signature !== undefined
+                  ? part.text
+                  : normalizeSystemPrompt(part.text, (kind) =>
+                      recordPromptTransformation({
+                        kind,
+                        surface: 'system',
+                        message: null,
+                        part: index,
+                      }),
+                    ),
+            },
+          ],
+    )
+    .filter(
+      (part) =>
+        part.text !== '' ||
+        part.thought === true ||
+        part.thoughtSignature !== undefined ||
+        part.thought_signature !== undefined,
+    );
   const globalSystemPrompt = includeGlobalSystemPrompt
-    ? resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt)
+    ? configuredGlobalPrompt === undefined
+      ? resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt)
+      : configuredGlobalPrompt
     : null;
-  const shouldInjectGlobalSystemPrompt =
-    globalSystemPrompt && !hasGlobalSystemPrompt(systemInstructionParts ?? [], globalSystemPrompt);
+  if (globalSystemPrompt) {
+    recordPromptTransformation({
+      kind: 'global-system-prepended',
+      surface: 'system',
+      message: null,
+      part: 0,
+    });
+  }
 
   return {
-    contents: injectPlaceholderSignaturesForModel(request.contents, model),
     generationConfig: request.generationConfig,
     safetySettings: request.safetySettings,
     tools: request.tools,
     ...normalizeGeminiToolConfigAliases(request),
     systemInstruction:
-      request.systemInstruction || shouldInjectGlobalSystemPrompt
+      (systemInstructionParts?.length ?? 0) > 0 || globalSystemPrompt
         ? {
-            parts: shouldInjectGlobalSystemPrompt
+            parts: globalSystemPrompt
               ? [
                   { text: formatGlobalSystemPrompt(globalSystemPrompt) },
                   ...(systemInstructionParts ?? []),
@@ -43,6 +79,7 @@ export function toInternalGeminiRequest(
               : (systemInstructionParts ?? []),
           }
         : undefined,
+    contents: normalizeFunctionCallSignatureAliases(request.contents),
   };
 }
 
@@ -54,10 +91,12 @@ export function createGeminiRequestEnvelope(
   requestType: string,
   userAgent: string,
   requestId = `agent/${Date.now()}/${randomUUID().replaceAll('-', '').slice(0, 8)}`,
+  globalSystemPrompt?: string | null,
 ): GeminiInternalRequest {
   const project = projectId?.trim();
   const isImageRequest = requestType === 'image_gen' || model.toLowerCase().includes('-image');
-  const internalRequest = toInternalGeminiRequest(request, model, !isImageRequest);
+  const internalRequest = toInternalGeminiRequest(request, !isImageRequest, globalSystemPrompt);
+  internalRequest.contents = prepareGoogleGenerationContents(internalRequest.contents, model);
   const providerRequestType =
     requestType === 'image_gen'
       ? 'image_gen'

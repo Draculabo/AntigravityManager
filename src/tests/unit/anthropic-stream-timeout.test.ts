@@ -46,6 +46,60 @@ function createReadyFrame(text = 'ready'): Buffer {
 }
 
 describe('Anthropic stream timeout compatibility', () => {
+  it('passes disconnect cancellation to the upstream preflight and stops account rotation', async () => {
+    const stream = new PassThrough();
+    const upstream = createUpstream({ streamFrames: [] });
+    const controller = new AbortController();
+    upstream.streamGenerateInternal.mockImplementation(
+      async (_body, _token, _proxy, _headers, signal) => {
+        expect(signal).toBe(controller.signal);
+        signal?.addEventListener('abort', () => stream.destroy(new Error('synthetic disconnect')), {
+          once: true,
+        });
+        return stream;
+      },
+    );
+    const lease = createLease([createAccount('acc-1'), createAccount('acc-2')]);
+    const service = createGateway(upstream, lease).anthropicService;
+    const pending = service.handleAnthropicMessages(
+      {
+        model: 'claude-sonnet-4-5',
+        max_tokens: 32,
+        messages: [{ role: 'user', content: 'synthetic cancellation' }],
+        stream: true,
+      },
+      undefined,
+      controller.signal,
+    );
+    const rejected = expect(pending).rejects.toThrow(/cancelled/iu);
+    await vi.waitFor(() => expect(upstream.streamGenerateInternal).toHaveBeenCalledOnce());
+    controller.abort();
+    await rejected;
+    expect(stream.destroyed).toBe(true);
+    expect(upstream.streamGenerateInternal).toHaveBeenCalledOnce();
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
+  });
+
+  it('rejects an already cancelled Messages request before selecting an account', async () => {
+    const upstream = createUpstream({ streamFrames: [] });
+    const lease = createLease([createAccount('acc-1')]);
+    const service = createGateway(upstream, lease).anthropicService;
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      service.handleAnthropicMessages(
+        {
+          model: 'claude-sonnet-4-5',
+          max_tokens: 32,
+          messages: [{ role: 'user', content: 'synthetic cancellation' }],
+        },
+        undefined,
+        controller.signal,
+      ),
+    ).rejects.toThrow(/cancelled/iu);
+    expect(upstream.generateInternal).not.toHaveBeenCalled();
+    expect(upstream.streamGenerateInternal).not.toHaveBeenCalled();
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -84,7 +138,7 @@ describe('Anthropic stream timeout compatibility', () => {
       'access-acc-1',
       'access-acc-2',
     ]);
-    expect(lease.markModelSuccess.mock.calls.map(([accountId]) => accountId)).toEqual(['acc-2']);
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
     expect(delivered).not.toContain(': ping\n\n');
     expect(firstStream.destroyed).toBe(true);
     subscription.unsubscribe();
@@ -103,7 +157,7 @@ describe('Anthropic stream timeout compatibility', () => {
     const observable = await request;
 
     expect(upstream.streamGenerateInternal).toHaveBeenCalledTimes(1);
-    expect(lease.markModelSuccess.mock.calls.map(([accountId]) => accountId)).toEqual(['acc-1']);
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
     observable.subscribe().unsubscribe();
   });
 
@@ -129,7 +183,7 @@ describe('Anthropic stream timeout compatibility', () => {
       'access-acc-1',
       'access-acc-2',
     ]);
-    expect(lease.markModelSuccess.mock.calls.map(([accountId]) => accountId)).toEqual(['acc-2']);
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
     observable.subscribe().unsubscribe();
   });
 
@@ -181,7 +235,7 @@ describe('Anthropic stream timeout compatibility', () => {
     expect(idleTimerSpy.mock.calls[0]?.[3]).toBe(120_000);
   });
 
-  it('accepts clean upstream end after Anthropic content without a finish reason', async () => {
+  it('fails when Anthropic content ends without a finish reason', async () => {
     const upstreamStream = new PassThrough();
     const upstream = createUpstream({ streamFrames: [] });
     upstream.streamGenerateInternal.mockResolvedValue(upstreamStream);
@@ -199,11 +253,12 @@ describe('Anthropic stream timeout compatibility', () => {
     upstreamStream.end();
     await finished;
 
-    expect(chunks.some((chunk) => chunk.includes('message_stop'))).toBe(true);
-    expect(chunks.some((chunk) => chunk.includes('event: error'))).toBe(false);
+    expect(chunks.filter((chunk) => chunk.includes('event: error'))).toHaveLength(1);
+    expect(chunks.join('')).toContain('without a finish reason');
+    expect(chunks.some((chunk) => chunk.includes('message_stop'))).toBe(false);
   });
 
-  it('resets the consecutive ping counter whenever upstream data arrives', async () => {
+  it('resets the consecutive ping counter when upstream business progress arrives', async () => {
     vi.useFakeTimers();
     const hangingStream = new PassThrough();
     const upstream = createUpstream({ streamFrames: [] });
@@ -220,13 +275,41 @@ describe('Anthropic stream timeout compatibility', () => {
     });
 
     await vi.advanceTimersByTimeAsync(80_000);
-    hangingStream.write('data: {}\n\n');
+    writeReadyFrame(hangingStream);
     await vi.advanceTimersByTimeAsync(80_000);
     expect(completed).toBe(false);
 
     await vi.advanceTimersByTimeAsync(20_000);
     expect(completed).toBe(true);
     expect(hangingStream.destroyed).toBe(true);
+  });
+
+  it('does not let heartbeats or empty data extend the mapped-output deadline', async () => {
+    vi.useFakeTimers();
+    const source = new PassThrough();
+    const upstream = createUpstream({ streamFrames: [] });
+    upstream.streamGenerateInternal.mockResolvedValue(source);
+    const lease = createLease([createAccount('acc-1')]);
+    writeReadyFrame(source);
+    const observable = await createAnthropicStream(createGateway(upstream, lease).anthropicService);
+    const chunks: string[] = [];
+    const complete = vi.fn();
+    const subscription = observable.subscribe({ next: (chunk) => chunks.push(chunk), complete });
+    try {
+      await vi.advanceTimersByTimeAsync(80_000);
+      source.write('data: {"usageMetadata":{}}\n\n');
+      await vi.advanceTimersByTimeAsync(39_999);
+      expect(complete).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(chunks.filter((chunk) => chunk === ': ping\n\n')).toHaveLength(5);
+      expect(chunks.filter((chunk) => chunk.includes('event: error'))).toHaveLength(1);
+      expect(complete).toHaveBeenCalledOnce();
+      expect(source.destroyed).toBe(true);
+      expect(lease.markModelSuccess).not.toHaveBeenCalled();
+    } finally {
+      subscription.unsubscribe();
+      source.destroy();
+    }
   });
 
   it('does not let raw upstream heartbeats extend the 120-second mapped-output guard', async () => {
@@ -279,5 +362,59 @@ describe('Anthropic stream timeout compatibility', () => {
 
     expect(upstreamStream.destroyed).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('fails when the upstream closes before emitting end', async () => {
+    vi.useFakeTimers();
+    const upstreamStream = new PassThrough();
+    const upstream = createUpstream({ streamFrames: [] });
+    upstream.streamGenerateInternal.mockResolvedValue(upstreamStream);
+    const lease = createLease([createAccount('acc-1')]);
+    writeReadyFrame(upstreamStream);
+    const observable = await createAnthropicStream(createGateway(upstream, lease).anthropicService);
+    const chunks: string[] = [];
+    const failure = new Promise<void>((resolve, reject) => {
+      observable.subscribe({
+        error: reject,
+        complete: resolve,
+        next: (chunk) => chunks.push(chunk),
+      });
+    });
+
+    upstreamStream.emit('close');
+    await failure;
+
+    expect(chunks.join('')).toContain('closed before completion');
+    expect(chunks.filter((chunk) => chunk.startsWith('event: error'))).toHaveLength(1);
+    expect(chunks.some((chunk) => chunk.includes('message_stop'))).toBe(false);
+    expect(upstreamStream.destroyed).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('reports one upstream error and clears the stream timers', async () => {
+    vi.useFakeTimers();
+    const upstreamStream = new PassThrough();
+    const upstream = createUpstream({ streamFrames: [] });
+    upstream.streamGenerateInternal.mockResolvedValue(upstreamStream);
+    const lease = createLease([createAccount('acc-1')]);
+    writeReadyFrame(upstreamStream);
+    const observable = await createAnthropicStream(createGateway(upstream, lease).anthropicService);
+    const chunks: string[] = [];
+    const failure = new Promise<void>((resolve, reject) => {
+      observable.subscribe({
+        error: reject,
+        complete: resolve,
+        next: (chunk) => chunks.push(chunk),
+      });
+    });
+
+    upstreamStream.emit('error', new Error('synthetic upstream failure'));
+    await failure;
+
+    expect(chunks.join('')).toContain('synthetic upstream failure');
+    expect(chunks.filter((chunk) => chunk.startsWith('event: error'))).toHaveLength(1);
+    expect(chunks.join('')).not.toContain('message_stop');
+    expect(vi.getTimerCount()).toBe(0);
+    upstreamStream.emit('close');
   });
 });

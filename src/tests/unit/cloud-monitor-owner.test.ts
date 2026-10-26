@@ -24,6 +24,7 @@ vi.mock('@/modules/cloud-account/ipc/handler', () => ({}));
 vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
   CloudAccountRepo: {
     getAccounts: vi.fn(async () => []),
+    getAccount: vi.fn(),
     updateToken: vi.fn(),
     updateQuota: vi.fn(),
     setAccountStatus: vi.fn(),
@@ -84,6 +85,12 @@ beforeEach(async () => {
   vi.clearAllMocks();
   settings.clear();
   vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([]);
+  vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async (id) => {
+    const latest: CloudAccount[] | undefined = await vi
+      .mocked(CloudAccountRepo.getAccounts)
+      .mock.results.at(-1)?.value;
+    return latest?.find((account) => account.id === id);
+  });
   CloudMonitorService.resetStateForTesting();
   CloudMonitorService.configureEffects({ onQuotaUpdated: () => {} });
   AutoSwitchService.configureEffects({
@@ -175,11 +182,16 @@ it('remote force poll writes quota/status only through the core owner and schedu
   vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue(quota);
   const warmup = vi.spyOn(cloudAccountWeeklyWarmupRunner, 'run').mockResolvedValue();
   expect(await renderer.forcePollCloudMonitor()).toBeUndefined();
-  expect(CloudAccountRepo.updateQuota).toHaveBeenCalledExactlyOnceWith('current', quota);
+  expect(CloudAccountRepo.updateQuota).toHaveBeenCalledExactlyOnceWith(
+    'current',
+    quota,
+    expect.any(Function),
+  );
   expect(CloudAccountRepo.setAccountStatus).toHaveBeenCalledExactlyOnceWith(
     'current',
     'active',
     null,
+    expect.any(Function),
   );
   expect(warmup).toHaveBeenCalledExactlyOnceWith([
     expect.objectContaining({ id: 'current', quota }),

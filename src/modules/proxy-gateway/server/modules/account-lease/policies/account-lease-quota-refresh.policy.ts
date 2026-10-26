@@ -1,3 +1,8 @@
+import {
+  mergeQuotaWindows,
+  hasFreshQuotaWindows,
+  modelQuotaWindows,
+} from '@/modules/cloud-account/utils/quota-windows';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
@@ -14,6 +19,9 @@ import {
 import { RateLimitReason } from '../../../shared/services/rate-limit-tracker.service';
 import { updateDynamicForwardingRules } from '../../../../antigravity/ModelMapping';
 import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
+import { captureLeaseWriteGuard } from './account-lease-writeback';
+import { CloudAccountRefreshContextChangedError } from '@/modules/cloud-account/services/cloud-account-refresh-context';
+import { CloudAccountQuotaObservation } from '@/modules/cloud-account/services/cloud-account-quota-observation';
 
 interface AccountLeaseQuotaRefreshLogger {
   warn(message: string, error?: unknown): void;
@@ -42,7 +50,7 @@ interface ModelQuotaFamilyState {
   resetTimes: string[];
 }
 
-export type AccountLeaseQuotaRefreshOutcome = 'locked' | 'recovered' | 'unavailable';
+export type AccountLeaseQuotaRefreshOutcome = 'locked' | 'recovered' | 'unavailable' | 'stale';
 
 function buildModelQuotaFamilyStates(
   snapshot: AccountLeaseQuotaSnapshot,
@@ -59,7 +67,7 @@ function buildModelQuotaFamilyStates(
   }
 
   for (const [model, resetTime] of Object.entries(snapshot.modelResetTimes)) {
-    if (resetTime.trim() === '') {
+    if (!Number.isFinite(Date.parse(resetTime)) || snapshot.modelQuotas[model] > 0) {
       continue;
     }
 
@@ -108,11 +116,26 @@ function resolveQuotaFamily(
   return getQuotaModelFamilyId(candidate);
 }
 
-function findEarliestFamilyResetTime(state: ModelQuotaFamilyState): string | null {
+function findLatestDepletedFamilyResetTime(state: ModelQuotaFamilyState): string | null {
   if (state.resetTimes.length === 0) {
     return null;
   }
-  return [...state.resetTimes].sort()[0];
+  return [...state.resetTimes].sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+}
+
+function findDepletedQuotaResetTime(
+  snapshot: Pick<AccountLeaseQuotaSnapshot, 'modelQuotas' | 'modelResetTimes'>,
+): string | null {
+  if (Object.keys(snapshot.modelQuotas).length === 0) {
+    return findEarliestQuotaResetTime(snapshot.modelResetTimes);
+  }
+  return (
+    Object.entries(snapshot.modelQuotas)
+      .filter(([, percentage]) => percentage === 0)
+      .map(([model]) => snapshot.modelResetTimes[model])
+      .filter((value) => value && Number.isFinite(Date.parse(value)))
+      .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null
+  );
 }
 
 export class AccountLeaseQuotaRefreshPolicy {
@@ -147,9 +170,12 @@ export class AccountLeaseQuotaRefreshPolicy {
       if (!familyState || familyState.percentage > 0) {
         return false;
       }
-      resetTime = findEarliestFamilyResetTime(familyState);
+      resetTime = findLatestDepletedFamilyResetTime(familyState);
     } else {
-      resetTime = findEarliestQuotaResetTime(tokenData.model_reset_times);
+      resetTime = findDepletedQuotaResetTime({
+        modelQuotas: tokenData.model_quotas,
+        modelResetTimes: tokenData.model_reset_times,
+      });
     }
 
     if (!resetTime) {
@@ -163,21 +189,72 @@ export class AccountLeaseQuotaRefreshPolicy {
     accountId: string,
     reason: RateLimitReason,
     model?: string,
+    isCompletionCurrent?: () => boolean,
+    recovery?: { signal: AbortSignal; requireCurrentWindows: true; effort?: string },
   ): Promise<AccountLeaseQuotaRefreshOutcome> {
     const tokenData = this.options.getTokenCache().get(accountId);
     if (!tokenData) {
-      return 'unavailable';
+      return 'stale';
     }
+    const { access_token, refresh_token, oauth_client_key, upstream_proxy_url, email } = tokenData;
+    const previousQuota = tokenData.quota;
+    const observation = new CloudAccountQuotaObservation(accountId);
+    const isCurrent = () =>
+      observation.isCurrent() &&
+      !recovery?.signal.aborted &&
+      (!isCompletionCurrent || isCompletionCurrent()) &&
+      this.options.getTokenCache().get(accountId) === tokenData &&
+      !tokenData.oauth_health?.refresh_blocked &&
+      (tokenData.validation_blocked_until_ms ?? 0) <= Date.now() &&
+      tokenData.access_token === access_token &&
+      tokenData.refresh_token === refresh_token &&
+      tokenData.oauth_client_key === oauth_client_key &&
+      tokenData.upstream_proxy_url === upstream_proxy_url &&
+      tokenData.email === email;
 
     try {
-      const latestQuota = await this.options.upstream.fetchQuota(
-        tokenData.access_token,
-        tokenData.upstream_proxy_url,
-      );
+      const guard = captureLeaseWriteGuard(tokenData, isCurrent);
+      if (!isCurrent()) {
+        return 'stale';
+      }
+      this.options.accountStore.assertCurrentAccount?.(accountId, guard);
+      const observedQuota = recovery
+        ? await this.options.upstream.fetchQuota(
+            tokenData.access_token,
+            tokenData.upstream_proxy_url,
+            recovery.signal,
+          )
+        : await this.options.upstream.fetchQuota(
+            tokenData.access_token,
+            tokenData.upstream_proxy_url,
+          );
+      if (!isCurrent()) {
+        return 'stale';
+      }
+      this.options.accountStore.assertCurrentAccount?.(accountId, guard);
+      observation.accept();
+      if (
+        recovery &&
+        model &&
+        (!hasFreshQuotaWindows(previousQuota, observedQuota, model, Date.now(), recovery.effort) ||
+          modelQuotaWindows(observedQuota, model, recovery.effort).some(
+            (bucket) => !(Date.parse(bucket.reset_time) > Date.now()),
+          ))
+      ) {
+        this.options.logger.warn(
+          `Incomplete or expired quota recovery evidence for account ${accountId}`,
+        );
+        return 'unavailable';
+      }
+      const latestQuota = mergeQuotaWindows(previousQuota, observedQuota);
       const extractedState = buildAccountLeaseQuotaSnapshot(latestQuota);
 
-      await this.options.accountStore.updateQuota(accountId, latestQuota);
+      await this.options.accountStore.updateQuota(accountId, latestQuota, guard);
+      if (!isCurrent()) {
+        return 'stale';
+      }
 
+      this.options.accountStore.assertCurrentAccount?.(accountId, guard);
       const updatedTokenData: AccountLeaseTokenData = {
         ...tokenData,
         quota: latestQuota,
@@ -200,9 +277,21 @@ export class AccountLeaseQuotaRefreshPolicy {
           recoveredFamilies.has(getQuotaModelFamilyId(candidate)),
         ),
       );
+      for (const candidate of recoveredModels) {
+        if (!hasFreshQuotaWindows(previousQuota, observedQuota, candidate)) {
+          recoveredModels.delete(candidate);
+        }
+      }
       for (const oldModel of Object.keys(extractedState.modelForwardingRules)) {
         const forwardedFamily = resolveQuotaFamily(oldModel, extractedState, familyStates);
-        if (recoveredFamilies.has(forwardedFamily)) {
+        if (
+          recoveredFamilies.has(forwardedFamily) &&
+          hasFreshQuotaWindows(
+            previousQuota,
+            observedQuota,
+            extractedState.modelForwardingRules[oldModel],
+          )
+        ) {
           recoveredModels.add(oldModel);
         }
       }
@@ -212,13 +301,23 @@ export class AccountLeaseQuotaRefreshPolicy {
         ? resolveQuotaFamily(normalizedModel, extractedState, familyStates)
         : undefined;
       const requestedState = requestedFamily ? familyStates.get(requestedFamily) : undefined;
-      if (normalizedModel && requestedState && requestedState.percentage > 0) {
+      if (
+        normalizedModel &&
+        requestedState &&
+        requestedState.percentage > 0 &&
+        hasFreshQuotaWindows(previousQuota, observedQuota, requestedFamily ?? normalizedModel)
+      ) {
         recoveredModels.add(normalizedModel);
       }
 
       const isAccountRecovered =
         familyStates.size > 0 &&
-        Array.from(familyStates.values()).every((state) => state.percentage > 0);
+        Array.from(familyStates.values()).every((state) => state.percentage > 0) &&
+        Object.keys(tokenData.model_quotas).every(
+          (candidate) =>
+            extractedState.modelQuotas[candidate] > 0 &&
+            hasFreshQuotaWindows(previousQuota, observedQuota, candidate),
+        );
       if (recoveredModels.size > 0 || isAccountRecovered) {
         this.options.clearRecoveredQuotaLocks(
           accountId,
@@ -229,10 +328,13 @@ export class AccountLeaseQuotaRefreshPolicy {
 
       if (requestedState) {
         if (requestedState.percentage > 0) {
-          return 'recovered';
+          return normalizedModel &&
+            hasFreshQuotaWindows(previousQuota, observedQuota, requestedFamily ?? normalizedModel)
+            ? 'recovered'
+            : 'unavailable';
         }
 
-        const resetTime = findEarliestFamilyResetTime(requestedState);
+        const resetTime = findLatestDepletedFamilyResetTime(requestedState);
         if (!resetTime) {
           return 'unavailable';
         }
@@ -249,7 +351,7 @@ export class AccountLeaseQuotaRefreshPolicy {
         return 'recovered';
       }
 
-      const resetTime = findEarliestQuotaResetTime(extractedState.modelResetTimes);
+      const resetTime = findDepletedQuotaResetTime(extractedState);
       if (!resetTime) {
         return 'unavailable';
       }
@@ -258,7 +360,14 @@ export class AccountLeaseQuotaRefreshPolicy {
         : 'unavailable';
     } catch (error) {
       this.options.logger.warn(`Failed to refresh realtime quota for account ${accountId}`, error);
+      if (error instanceof CloudAccountRefreshContextChangedError || !isCurrent()) {
+        return 'stale';
+      }
+      // A transport failure is still a newer completed observation, not quota recovery.
+      observation.accept(error);
       return 'unavailable';
+    } finally {
+      observation.close();
     }
   }
 }

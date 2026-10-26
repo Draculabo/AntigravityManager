@@ -1,12 +1,27 @@
 import path from 'path';
 import fs from 'fs';
-import { AppConfig, DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { AppConfig, AppConfigSchema, DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { migrateLegacyModelAliases } from '@/modules/config/model-aliases';
 import { getAgentDir } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
 import { writeFileAtomic } from '@/shared/persistence/atomic-json-file';
+import { backupAuditWindowMigration } from './audit-window-migration';
+import { backupThoughtWindowMigration, migratedThoughtTurnLimit } from './thought-window-migration';
 
 const CONFIG_FILENAME = 'gui_config.json';
+
+export type ConfigLoadFailureCode = 'invalid-json' | 'unreadable';
+
+export class ConfigLoadError extends Error {
+  constructor(
+    readonly code: ConfigLoadFailureCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = 'ConfigLoadError';
+  }
+}
 
 export class ConfigManager {
   private static cachedConfig: AppConfig | null = null;
@@ -20,7 +35,7 @@ export class ConfigManager {
     return path.join(managerDataDir, CONFIG_FILENAME);
   }
 
-  static loadConfig(): AppConfig {
+  static loadConfig(strict = false): AppConfig {
     try {
       const configPath = this.getConfigPath();
       if (!fs.existsSync(configPath)) {
@@ -30,11 +45,15 @@ export class ConfigManager {
       }
 
       const content = fs.readFileSync(configPath, 'utf-8');
+      if (content.trim() === '') {
+        this.cachedConfig = DEFAULT_APP_CONFIG;
+        return DEFAULT_APP_CONFIG;
+      }
       const raw = JSON.parse(content);
 
       // Merge with default to ensure new fields are present
       // Zod parse helps validate
-      const merged: AppConfig = {
+      const merged = {
         ...DEFAULT_APP_CONFIG,
         ...raw,
         proxy: { ...DEFAULT_APP_CONFIG.proxy, ...(raw.proxy || {}) },
@@ -55,16 +74,54 @@ export class ConfigManager {
         };
       }
 
+      if (raw.proxy && raw.proxy.thinking_budget) {
+        merged.proxy.thinking_budget = {
+          ...DEFAULT_APP_CONFIG.proxy.thinking_budget,
+          ...raw.proxy.thinking_budget,
+        };
+      }
+
+      if (raw.proxy && raw.proxy.cowork_compaction) {
+        merged.proxy.cowork_compaction = {
+          ...DEFAULT_APP_CONFIG.proxy.cowork_compaction,
+          ...raw.proxy.cowork_compaction,
+        };
+      }
+
+      if (raw.proxy && raw.proxy.network) {
+        merged.proxy.network = {
+          ...DEFAULT_APP_CONFIG.proxy.network,
+          ...raw.proxy.network,
+        };
+      }
+
       // Handle Anthropic Mapping Map vs Object
       // In JSON it's object
 
       // The two legacy mapping objects become alias routes here, so everything downstream of a
       // load reads one list. The file itself is only rewritten on the next save.
       merged.proxy = migrateLegacyModelAliases(merged.proxy);
+      const migratedTurns = migratedThoughtTurnLimit(raw);
+      if (migratedTurns !== undefined) {
+        merged.proxy.thought_store = {
+          ...merged.proxy.thought_store,
+          max_turns_per_session: migratedTurns,
+        };
+        logger.warn(
+          'Thought Store cache limit below ten was raised to ten; the original configuration is backed up before saving.',
+        );
+      }
+      const validated = AppConfigSchema.parse(merged);
 
-      this.cachedConfig = merged;
-      return merged;
-    } catch {
+      this.cachedConfig = validated;
+      return validated;
+    } catch (cause) {
+      if (strict) {
+        if (cause instanceof SyntaxError) {
+          throw new ConfigLoadError('invalid-json', 'Configuration JSON is invalid.', { cause });
+        }
+        throw new ConfigLoadError('unreadable', 'Configuration could not be loaded.', { cause });
+      }
       logger.error('Config: Failed to load config');
       this.cachedConfig = DEFAULT_APP_CONFIG;
       return DEFAULT_APP_CONFIG;
@@ -103,24 +160,26 @@ export class ConfigManager {
 
   static async saveConfig(config: AppConfig): Promise<void> {
     const configPath = this.getConfigPath();
-    const migratedConfig: AppConfig = {
+    const migratedConfig: AppConfig = AppConfigSchema.parse({
       ...config,
       proxy: migrateLegacyModelAliases(config.proxy),
-    };
+    });
     const content = JSON.stringify(migratedConfig, null, 2);
 
     this.saveQueue = this.saveQueue
       .catch(() => undefined)
       .then(async () => {
+        await backupAuditWindowMigration(configPath);
+        await backupThoughtWindowMigration(configPath);
         await this.backupBeforeMigration(configPath);
 
         await writeFileAtomic(configPath, content);
         this.cachedConfig = migratedConfig;
         logger.info(`Config: Saved to ${configPath}`);
       })
-      .catch(() => {
+      .catch((cause) => {
         logger.error('Config: Failed to save config');
-        throw new Error('Configuration could not be saved.');
+        throw new Error('Configuration could not be saved.', { cause });
       });
 
     return this.saveQueue;

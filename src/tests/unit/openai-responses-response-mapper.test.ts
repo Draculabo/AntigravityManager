@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import { MISSING_COMMAND_FALLBACK } from '@/modules/proxy-gateway/antigravity/CommandToolAdapter';
 import { MALFORMED_FUNCTION_CALL_RECOVERY_TEXT } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { toOpenAIResponsesResponse } from '../../modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
 
@@ -281,7 +280,7 @@ describe('OpenAI Responses non-stream mapper', () => {
     ]);
   });
 
-  it('normalizes an incomplete shell tool call in a non-stream Responses response', () => {
+  it('preserves an incomplete shell tool call without injecting arguments', () => {
     const response = toOpenAIResponsesResponse({
       id: 'resp_missing_command',
       object: 'chat.completion',
@@ -327,7 +326,6 @@ describe('OpenAI Responses non-stream mapper', () => {
       throw new Error('Responses mapper did not serialize function-call arguments');
     }
     expect(JSON.parse(argumentsValue)).toEqual({
-      command: MISSING_COMMAND_FALLBACK,
       description: 'sensitive tool detail',
     });
   });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
@@ -52,8 +53,8 @@ describe('OpenAIResponsesStreamingMapper', () => {
       'response.created',
       'response.in_progress',
       'response.output_item.added',
-      'response.custom_tool_call_input.delta',
-      'response.custom_tool_call_input.done',
+      'response.function_call_arguments.delta',
+      'response.function_call_arguments.done',
       'response.output_item.done',
       'response.completed',
     ]);
@@ -61,68 +62,66 @@ describe('OpenAIResponsesStreamingMapper', () => {
       item: {
         call_id: 'call_shell_1',
         name: 'shell',
-        type: 'custom_tool_call',
+        type: 'function_call',
       },
       output_index: 0,
     });
-    expect(events[3]).toMatchObject({ delta: '{"command":"dir"}' });
+    expect(events[3]).toMatchObject({ delta: '{"cmd":"dir"}' });
     expect(events[6]).toMatchObject({
       response: {
         output: [
           {
-            input: '{"command":"dir"}',
+            arguments: '{"cmd":"dir"}',
             call_id: 'call_shell_1',
-            type: 'custom_tool_call',
+            type: 'function_call',
           },
         ],
       },
     });
   });
 
-  it('uses the shell tool name declared by the client', () => {
+  it('preserves the upstream shell tool name', () => {
     const mapper = new OpenAIResponsesStreamingMapper({
-      clientToolNames: new Set(['bash']),
       model: 'gemini-3-pro',
       responseId: 'resp_shell_name',
     });
-    const events = mapper
-      .processPart({
+    const events = [
+      ...mapper.processPart({
         functionCall: {
           args: { command: 'pwd' },
           id: 'call_shell_name',
           name: 'shell',
         },
-      })
-      .map(parseEvent);
+      }),
+    ].map(parseEvent);
 
     expect(events.at(-1)).toMatchObject({
       item: {
-        name: 'bash',
+        name: 'shell',
         type: 'function_call',
       },
       type: 'response.output_item.done',
     });
   });
 
-  it('normalizes PowerShell aliases and recovers a blank command in Responses streaming', () => {
+  it('preserves PowerShell spelling, blank commands and parameter aliases', () => {
     const mapper = new OpenAIResponsesStreamingMapper({
-      clientToolNames: new Set(['PowerShell']),
       model: 'gemini-3-pro',
       responseId: 'resp_powershell',
     });
-    const events = mapper
-      .processPart({
+    const events = [
+      ...mapper.processPart({
         functionCall: {
           args: { command: '   ', input: 'Get-Location' },
           id: 'call_powershell',
           name: 'powershell',
         },
-      })
-      .map(parseEvent);
+      }),
+    ].map(parseEvent);
     const completedTool = events.at(-1);
 
     expect(completedTool).toMatchObject({
-      item: { name: 'PowerShell', type: 'function_call' },
+      item: { name: 'powershell', type: 'function_call' },
       type: 'response.output_item.done',
     });
     expect(
@@ -130,18 +129,19 @@ describe('OpenAIResponsesStreamingMapper', () => {
         String(Reflect.get(Reflect.get(completedTool ?? {}, 'item') as object, 'arguments')),
       ),
     ).toEqual({
-      command: 'Get-Location',
+      command: '   ',
+      input: 'Get-Location',
     });
   });
 
   it('emits one recovery message and a completed terminal event for a malformed function call', () => {
     const mapper = createMapper();
-    const events = mapper.complete('MALFORMED_FUNCTION_CALL').map(parseEvent);
+    const events = [...mapper.complete('MALFORMED_FUNCTION_CALL')].map(parseEvent);
     const deltas = events.filter((event) => event.type === 'response.output_text.delta');
 
     expect(deltas).toHaveLength(1);
     expect(deltas[0]).toMatchObject({
-      delta: expect.stringMatching(/could not complete a tool call/i),
+      delta: expect.stringMatching(/tool call could not be generated/i),
     });
     expect(events.at(-1)).toMatchObject({
       response: {
@@ -150,7 +150,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
           expect.objectContaining({
             content: [
               expect.objectContaining({
-                text: expect.stringMatching(/could not complete a tool call/i),
+                text: expect.stringMatching(/tool call could not be generated/i),
               }),
             ],
             status: 'completed',
@@ -233,15 +233,15 @@ describe('OpenAIResponsesStreamingMapper', () => {
       '*** End Patch',
     ].join('\n');
 
-    const events = mapper
-      .processPart({
+    const events = [
+      ...mapper.processPart({
         functionCall: {
           args: { input: patch },
           id: 'call_patch_repair',
           name: 'apply_patch',
         },
-      })
-      .map(parseEvent);
+      }),
+    ].map(parseEvent);
 
     expect(events[1]).toMatchObject({
       delta: repairedPatch,
@@ -262,15 +262,15 @@ describe('OpenAIResponsesStreamingMapper', () => {
 
   it('emits a text diagnostic instead of an invalid apply_patch tool call', () => {
     const mapper = createMapper();
-    const events = mapper
-      .processPart({
+    const events = [
+      ...mapper.processPart({
         functionCall: {
           args: { input: 'this is not a patch' },
           id: 'call_patch_invalid',
           name: 'apply_patch',
         },
-      })
-      .map(parseEvent);
+      }),
+    ].map(parseEvent);
 
     expect(events.map((event) => event.type)).toEqual([
       'response.output_item.added',
@@ -490,11 +490,11 @@ describe('OpenAIResponsesStreamingMapper', () => {
 
   it('drops thought chunks that arrive after final-answer text has started', () => {
     const mapper = createMapper();
-    mapper.processPart({ text: 'Final answer' });
+    Array.from(mapper.processPart({ text: 'Final answer' }));
 
-    expect(mapper.processPart({ text: 'late thought', thought: true })).toEqual([]);
+    expect([...mapper.processPart({ text: 'late thought', thought: true })]).toEqual([]);
 
-    const completed = mapper.complete().map(parseEvent).at(-1);
+    const completed = [...mapper.complete()].map(parseEvent).at(-1);
     expect(completed).toMatchObject({
       response: {
         output: [
@@ -541,8 +541,14 @@ describe('OpenAIResponsesStreamingMapper', () => {
 
     const addedItems = events.filter((event) => event.type === 'response.output_item.added');
     expect(addedItems).toHaveLength(2);
-    expect(addedItems[0]).toMatchObject({ item: { call_id: 'call_resp_test_0' } });
-    expect(addedItems[1]).toMatchObject({ item: { call_id: 'call_resp_test_1' } });
+    const ids = addedItems.map(
+      (event) => z.object({ item: z.object({ call_id: z.string() }) }).parse(event).item.call_id,
+    );
+    expect(ids).toEqual([
+      expect.stringMatching(/^call_[a-f0-9]{32}$/),
+      expect.stringMatching(/^call_[a-f0-9]{32}$/),
+    ]);
+    expect(ids[0]).not.toBe(ids[1]);
   });
 
   it('preserves a function call marked as thought and stores its thought signature', () => {
@@ -550,20 +556,22 @@ describe('OpenAIResponsesStreamingMapper', () => {
     const encodedSignature = Buffer.from(
       '\x12\x26\x0a\x24' + '00000000-0000-4000-8000-000000000347',
     ).toString('base64');
-    const events = mapper.processPart({
-      functionCall: {
-        args: { command: 'pwd' },
-        id: 'call_thought_1',
-        name: 'shell',
-      },
-      thought: true,
-      thoughtSignature: encodedSignature,
-    });
+    const events = [
+      ...mapper.processPart({
+        functionCall: {
+          args: { command: 'pwd' },
+          id: 'call_thought_1',
+          name: 'shell',
+        },
+        thought: true,
+        thoughtSignature: encodedSignature,
+      }),
+    ];
 
     expect(events.map((event) => parseEvent(event).type)).toEqual([
       'response.output_item.added',
-      'response.custom_tool_call_input.delta',
-      'response.custom_tool_call_input.done',
+      'response.function_call_arguments.delta',
+      'response.function_call_arguments.done',
       'response.output_item.done',
     ]);
     expect(
@@ -587,7 +595,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
     const encodedSignature = Buffer.from('session a thought signature').toString('base64');
 
-    mapper.processPart({ thought: true, thoughtSignature: encodedSignature });
+    Array.from(mapper.processPart({ thought: true, thoughtSignature: encodedSignature }));
 
     expect(SignatureStore.get({ model: 'gemini-3-pro', sessionKey: 'openai:session-a' })).toBe(
       encodedSignature,
@@ -611,10 +619,12 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
 
     const encodedSignature = Buffer.from('physical model signature').toString('base64');
-    mapper.processPart({
-      thought: true,
-      thoughtSignature: encodedSignature,
-    });
+    Array.from(
+      mapper.processPart({
+        thought: true,
+        thoughtSignature: encodedSignature,
+      }),
+    );
 
     expect(
       SignatureStore.get({ model: 'gemini-3-flash', sessionKey: 'openai:physical-model' }),
@@ -632,10 +642,12 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
     const encodedSignature = Buffer.from('tool-specific signature').toString('base64');
 
-    mapper.processPart({
-      functionCall: { args: {}, id: 'call_shared', name: 'shell' },
-      thoughtSignature: encodedSignature,
-    });
+    Array.from(
+      mapper.processPart({
+        functionCall: { args: {}, id: 'call_shared', name: 'shell' },
+        thoughtSignature: encodedSignature,
+      }),
+    );
 
     expect(
       SignatureStore.getForToolCall({
@@ -694,7 +706,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
       total_tokens: 20,
     });
 
-    const completed = parseEvent(mapper.complete().at(-1) ?? '');
+    const completed = parseEvent([...mapper.complete()].at(-1) ?? '');
 
     expect(completed).toMatchObject({
       response: {

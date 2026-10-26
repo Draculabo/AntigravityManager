@@ -48,6 +48,9 @@ export class V1InternalPassthroughService {
       account.token.access_token,
       account.token.upstream_proxy_url,
     );
+    if (upstream.status >= 200 && upstream.status < 300) {
+      this.accountLeaseService.commitSession(account);
+    }
 
     return {
       accountEmail: account.email,

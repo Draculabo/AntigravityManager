@@ -81,6 +81,15 @@ export function getVisibleAccountQuota(
 ) {
   const originalGroups = quota?.quota_groups ?? [];
   const groups = visibleQuotaGroups(originalGroups, visibility);
+  const visibleFamilies = {
+    gemini: visibility.fiveHour.gemini || visibility.weekly.gemini,
+    claude: visibility.fiveHour.claude || visibility.weekly.claude,
+  };
+  // A visible family must still explain a hidden exhausted window, without re-enabling its rows.
+  const restrictionGroups = visibleQuotaGroups(originalGroups, {
+    fiveHour: visibleFamilies,
+    weekly: visibleFamilies,
+  });
   const originalModels = getVisibleQuotaModelsForPresentation(quota?.models ?? {}, modelVisibility);
   const models = pickBy(originalModels, (_info, model) => {
     const family = quotaFamily(model);
@@ -101,6 +110,7 @@ export function getVisibleAccountQuota(
     models,
     providerModels,
     groups,
+    restrictionGroups,
     weeklyItems,
     fiveHourHidden: hadFiveHourQuota && Object.keys(models).length === 0 && !hasFiveHourGroups,
     weeklyHidden: selectWeeklyQuotaItems(originalGroups).length > 0 && weeklyItems.length === 0,

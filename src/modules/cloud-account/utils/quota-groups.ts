@@ -7,6 +7,7 @@ import {
   getQuotaModelFamilyId,
   getQuotaModelFamilyIdByDisplayName,
 } from '@/modules/cloud-account/utils/quota-model-families';
+import { isWeeklyWindow } from './quota-windows';
 
 export type QuotaWindow = 'both' | '5h' | 'weekly';
 
@@ -110,7 +111,7 @@ export function applyQuotaLowerBound(
 }
 
 export function isWeeklyQuotaBucket(bucket: CloudQuotaBucket): boolean {
-  return `${bucket.window} ${bucket.bucket_id}`.toLowerCase().includes('week');
+  return isWeeklyWindow(bucket);
 }
 
 export function selectWeeklyQuotaItems(

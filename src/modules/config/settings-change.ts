@@ -38,6 +38,9 @@ export function splitSettingsChange(previous: SettingsConfig, next: SettingsConf
     (value, key) => !isEqual(value, Reflect.get(previous.proxy, key)),
   );
   const service = ServiceConfigUpdateSchema.parse({
+    ...(Object.hasOwn(changedProxy, 'traffic_audit')
+      ? { expectedAuditRevision: previous.auditRevision }
+      : {}),
     ...pickBy(runtime, (value, key) => !isEqual(value, Reflect.get(previousRuntime, key))),
     ...(Object.keys(changedProxy).length ? { proxy: changedProxy } : {}),
   });

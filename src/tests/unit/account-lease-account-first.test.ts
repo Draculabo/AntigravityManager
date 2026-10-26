@@ -59,6 +59,80 @@ function fixture(overrides: Partial<ProxyConfig> = {}, expiredFirst = false) {
 }
 
 describe('account-first leases through the running service', () => {
+  it('initializes the budget snapshot without refreshing expired tokens or discovering projects', async () => {
+    const { service, store, upstream } = fixture({}, true);
+    try {
+      expect(await service.getRetryAccountPoolSize('claude-sonnet')).toBe(2);
+      expect(await service.getRetryAccountPoolSize('claude-sonnet')).toBe(2);
+      expect(store.getAccounts).toHaveBeenCalledOnce();
+      expect(store.getAccount).not.toHaveBeenCalled();
+      expect(upstream.refreshAccessToken).not.toHaveBeenCalled();
+      expect(upstream.fetchProjectId).not.toHaveBeenCalled();
+      expect(upstream.fetchQuota).not.toHaveBeenCalled();
+      expect(store.updateToken).not.toHaveBeenCalled();
+    } finally {
+      await service.onModuleDestroy();
+    }
+  });
+
+  it('counts eligible retry accounts without leasing, hydrating or persisting', async () => {
+    const { service, store, upstream } = fixture({ account_selection_strategy: 'account-first' });
+    try {
+      await service.loadAccounts();
+      expect(await service.getRetryAccountPoolSize('claude-sonnet')).toBe(2);
+      expect(
+        service.getEligibleRetryAccountCount({ model: 'claude-sonnet', excludeAccountIds: [] }),
+      ).toBe(2);
+      expect(
+        service.getEligibleRetryAccountCount({ model: 'gemini-3-flash', excludeAccountIds: [] }),
+      ).toBe(1);
+      expect(
+        service.getEligibleRetryAccountCount({
+          model: 'gemini-3-flash',
+          excludeAccountIds: ['acc-2'],
+        }),
+      ).toBe(0);
+      expect(
+        service.getEligibleRetryAccountCount({ model: 'unknown-model', excludeAccountIds: [] }),
+      ).toBe(0);
+      service.markAsForbidden('acc-2');
+      expect(await service.getRetryAccountPoolSize('claude-sonnet')).toBe(2);
+      expect(
+        service.getEligibleRetryAccountCount({ model: 'claude-sonnet', excludeAccountIds: [] }),
+      ).toBe(1);
+      expect(store.getAccount).not.toHaveBeenCalled();
+      expect(store.updateToken).not.toHaveBeenCalled();
+      expect(store.updateQuota).not.toHaveBeenCalled();
+      expect(upstream.refreshAccessToken).not.toHaveBeenCalled();
+      expect(upstream.fetchProjectId).not.toHaveBeenCalled();
+      expect(upstream.fetchQuota).not.toHaveBeenCalled();
+    } finally {
+      await service.onModuleDestroy();
+    }
+  });
+
+  it('does not count validation-blocked or refresh-disabled accounts as retry alternatives', async () => {
+    const { service, accounts } = fixture();
+    accounts[0].health = { oauth: { refresh_blocked: true } };
+    accounts[1].health = {
+      validation: {
+        status: 'requires_action',
+        reason: 'VALIDATION_REQUIRED',
+        detected_at_ms: Date.now(),
+        next_probe_at_ms: Date.now() + 60_000,
+      },
+    };
+    try {
+      await service.loadAccounts();
+      expect(
+        service.getEligibleRetryAccountCount({ model: 'claude-sonnet', excludeAccountIds: [] }),
+      ).toBe(0);
+      expect(await service.getRetryAccountPoolSize('claude-sonnet')).toBe(0);
+    } finally {
+      await service.onModuleDestroy();
+    }
+  });
+
   it('hot-applies the strategy, keeps unrelated client credentials unchanged, and skips depleted models', async () => {
     const { service, store, accounts } = fixture({ quota_aware_scheduling_enabled: false });
     const snapshot = structuredClone(accounts);
@@ -81,9 +155,12 @@ describe('account-first leases through the running service', () => {
       }
       expect(consecutive).toEqual(['acc-1', 'acc-1', 'acc-1', 'acc-1']);
       expect((await service.getNextToken({ model: 'gemini-3-flash' }))?.id).toBe('acc-2');
-      expect(
-        (await service.getNextToken({ model: 'claude-sonnet', excludeAccountIds: ['acc-1'] }))?.id,
-      ).toBe('acc-2');
+      const successfulReplacement = await service.getNextToken({
+        model: 'claude-sonnet',
+        excludeAccountIds: ['acc-1'],
+      });
+      expect(successfulReplacement?.id).toBe('acc-2');
+      service.commitSession(successfulReplacement!);
       expect((await service.getNextToken({ model: 'claude-sonnet' }))?.id).toBe('acc-2');
       expect(accounts).toEqual(snapshot);
       expect(store.updateToken).not.toHaveBeenCalled();
@@ -96,7 +173,9 @@ describe('account-first leases through the running service', () => {
     const { service, upstream } = fixture({ account_selection_strategy: 'account-first' }, true);
     try {
       await service.loadAccounts();
-      expect((await service.getNextToken({ model: 'claude-sonnet' }))?.id).toBe('acc-2');
+      const replacement = await service.getNextToken({ model: 'claude-sonnet' });
+      expect(replacement?.id).toBe('acc-2');
+      service.commitSession(replacement!);
       expect((await service.getNextToken({ model: 'claude-sonnet' }))?.id).toBe('acc-2');
       expect(upstream.refreshAccessToken).toHaveBeenCalledOnce();
     } finally {

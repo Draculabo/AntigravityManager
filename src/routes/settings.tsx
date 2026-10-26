@@ -1,4 +1,5 @@
 import { UpstreamProxySettings } from '@/modules/config/components/UpstreamProxySettings';
+import { ThinkingBudgetSettings } from '@/modules/config/components/ThinkingBudgetSettings';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTheme } from '@/components/shared/theme-provider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1094,6 +1095,13 @@ function SettingsPage() {
             </Card>
             <UpstreamProxySettings
               proxy={proxyConfig}
+              available={serviceAvailable}
+              onSaved={async () => {
+                await retryService();
+              }}
+            />
+            <ThinkingBudgetSettings
+              config={proxyConfig.thinking_budget}
               available={serviceAvailable}
               onSaved={async () => {
                 await retryService();

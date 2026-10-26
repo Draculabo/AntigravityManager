@@ -1,9 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
+import { extractToolResultImages } from '@/modules/proxy-gateway/antigravity/MarkdownImageParts';
 import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 describe('ClaudeRequestMapper Markdown image compatibility', () => {
+  it('extracts a validated Markdown image from tool text without treating code examples as media', () => {
+    const data =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const extracted = extractToolResultImages(
+      `result ![screen](data:image/png;base64,${data})\n\`\`\`\n![example](data:image/png;base64,${data})\n\`\`\``,
+    );
+
+    expect(extracted.media).toEqual([{ inlineData: { mimeType: 'image/png', data } }]);
+    expect(extracted.text).toContain('[image extracted from tool result]');
+    expect(extracted.text).toContain('![example](data:image/png;base64,');
+  });
+
   it('emits tool functionResponse before its inline image without fabricating text', () => {
     const request: ClaudeRequest = {
       model: 'gemini-3-flash',

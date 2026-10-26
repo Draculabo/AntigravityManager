@@ -196,6 +196,32 @@ describe('clearValidationHealthAfterSuccessfulProbe', () => {
     );
   });
 
+  it('retains the reload failure and rejected rollback without changing replacement health', async () => {
+    const account = createAccount();
+    const original = new Error('reload failed');
+    const replacementHealth: CloudAccount['health'] = { oauth: { refresh_blocked: true } };
+    const guard = (current: CloudAccount | undefined) => {
+      if (current?.token.refresh_token !== 'refresh-token') {
+        throw new Error('context changed');
+      }
+    };
+    vi.mocked(CloudAccountRepo.updateHealth).mockImplementation(async (_id, health, check) => {
+      check?.(persistedAccount);
+      persistedAccount.health = health;
+    });
+    vi.mocked(reloadNestServerAccountLeaseCache).mockImplementation(async () => {
+      persistedAccount.token.refresh_token = 'replacement-grant';
+      persistedAccount.health = replacementHealth;
+      throw original;
+    });
+    await expect(clearValidationHealthAfterSuccessfulProbe(account, guard)).rejects.toMatchObject({
+      name: 'AggregateError',
+      cause: original,
+      errors: [original, expect.objectContaining({ message: 'context changed' })],
+    });
+    expect(persistedAccount.health).toEqual(replacementHealth);
+  });
+
   it('restores validation health when proxy cache reload fails', async () => {
     const account = createAccount();
     const originalHealth = account.health;

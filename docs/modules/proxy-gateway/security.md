@@ -10,6 +10,41 @@ OpenCode refresh grants remain inside the selected owner and its existing extern
 
 Audit file export keeps body contents and destination paths outside renderer responses. Only the trusted desktop chooser supplies a bounded absolute destination; private input is independently bounded to 3,000 encoded bytes. The selected owner enforces the existing 100 MiB body ceiling while streaming, uses a new sibling temporary file with restrictive POSIX permissions and preserves the prior destination on failure before replacement. Parent-directory synchronization errors after replacement indicate uncertain durability rather than rollback. Export failures expose fixed text without filesystem/provider diagnostics. The desktop retains its creating adapter throughout selection and does not use embedded persistence on remote failure.
 
+## Responses history ownership
+
+Responses continuation, read and delete require the creating caller's existing proxy
+credential identity. The store retains a versioned one-way digest, never the raw
+credential. Equivalent Bearer/API-key headers agree; credential rotation changes the
+identity. No encryption is added: conversation history remains plaintext under the
+profile's OS permissions. Open mode remains unauthenticated and does not establish
+distinct human identities; header-free callers share its anonymous scope.
+
+Admission precedes history materialization and retention renewal. Unknown, foreign,
+expired and missing HTTP cursors use the existing not-found envelope; WebSocket
+durable-history admission uses the same ownership check. Parent and child ownership
+must agree. Cancelled, failed and incomplete HTTP requests cannot publish completed
+history, and `store:false` still prevents durable publication. Transport-local
+WebSocket transcripts remain scoped to their connection and are not newly persisted.
+
+The active store reuses `openai-responses-sessions.json`, with the generic version-1 durable
+envelope and the Responses-owned `sha256-v1:` caller codec. The strict current decoder rejects
+records without the required owner and initial identity; the first store access atomically
+replaces those unsupported entries. Other historical filenames are not searched, imported or
+used as fallback. Unknown provenance is not guessed from an ID prefix.
+
+The current format requires strict version-1 initial identity metadata (client/content origin
+and a fixed-size task digest), plus a valid routing root for client-origin records. Earlier
+cursors are unavailable even when caller ownership is valid, because their initial task
+provenance was not retained. The human explicitly accepts restarting those conversations or
+replaying history already held by the client. Initial task identity is captured before media
+bounding and restored only after caller admission; it is not an authorization credential.
+Existing capacity, expiry and atomic fail-open behavior continue for the active store. The
+application does not create a migration backup; a downgrade that needs replaced history
+requires a copy made before the cutover.
+
+See the [upgrade guide](../../upgrade-guides/next/responses-history-ownership.md) for
+credential changes, plaintext backups, write failure and downgrade limitations.
+
 ## Proxy traffic and thought persistence
 
 Selected-owner audit management responses are validated and bounded below the ordinary control
@@ -25,8 +60,9 @@ UUID, expiry and sequential byte cursors. Each content owner permits four snapsh
 of retained body buffers. Each chunk is at most 64 KiB before base64 encoding; normal control
 limits remain unchanged. Completion, explicit close, expiry and owner drain release retention.
 Disconnect cleanup is best-effort and diagnosed without values; expiry bounds orphan retention.
-Thought detail intentionally returns plaintext thought, visible text and nullable signature to
-the requesting renderer. Their combined body has a 256 MiB operational transfer ceiling while
+Thought detail intentionally returns plaintext thought, visible text, nullable reasoning signature
+and per-part signature metadata to the requesting renderer. All four use the bounded content
+transfer, with metadata JSON occupying its own measured segment. Their combined body has a 256 MiB operational transfer ceiling while
 thought text retains its 64 MiB limit. cURL capabilities and commands stay in Electron main;
 only copied status reaches React. The 8 MiB replay-body limit remains separate from the 64 MiB
 quoted-command ceiling. Current gateway key inclusion remains opt-in; upstream credentials
@@ -66,7 +102,9 @@ its worker command back to the existing weighted queue. Statistics, list/detail 
 new audit writes can run before maintenance completes. A yielded command keeps its original
 ID, promise and queue-capacity reservation; only a final result or error settles it. Startup
 and configuration maintenance passes run serially. Configuration reports completion only
-after its own pass finishes, including physical disk reclamation.
+after its own pass finishes, including available physical disk reclamation. A busy WAL checkpoint
+stops further disk eviction and records the remaining pressure for a later pass. Unreclaimed free
+pages request a bounded background continuation instead of discarding additional bodies.
 
 Passes capture row-ID high-water marks and creation-time cutoffs, so concurrent arrivals do
 not extend the pass or become eviction candidates after a clear reuses SQLite row IDs.
@@ -80,6 +118,13 @@ guarantee. Concurrent writes can leave the measured size above budget until a la
 Shutdown retains the existing admission closure, drain deadline and observable termination
 failure semantics. Partial evictions survive a failure or forced termination; they are not
 rolled back or reported as completed maintenance.
+
+The dedicated `thinking-store.db` uses schema 2. Earlier Thought Store tables are reset
+inside one SQLite transaction on open, with no import, backup or format fallback.
+Failure rolls back the reset and closes the opening connection. Replacement refuses
+unowned database objects and unknown future schema versions. It does not unlink database
+or WAL/SHM files and does not touch adjacent account, audit or Responses stores.
+See [required actions and downgrade limits](../../upgrade-guides/next/replace-thought-store-history.md).
 
 Before an audit payload reaches SQLite, authorization and cookie headers, credential-bearing query
 parameters, and recursively matched JSON credential keys are replaced with `[REDACTED]`. Media

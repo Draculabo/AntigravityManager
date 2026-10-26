@@ -5,6 +5,7 @@ export const GatewayStatusSchema = z.strictObject({
   port: z.number().int().nonnegative(),
   base_url: z.string(),
   active_accounts: z.number().int().nonnegative(),
+  listen_address: z.string().max(128).optional(),
 });
 
 export const ContextCacheStatusSchema = z.strictObject({
@@ -28,6 +29,7 @@ export const GatewayStartResultSchema = z.discriminatedUnion('success', [
     success: z.literal(true),
     port: z.number().int().min(1024).max(65535),
     base_url: z.string().max(2048),
+    listen_address: z.string().max(128).optional(),
   }),
   z.strictObject({
     success: z.literal(false),

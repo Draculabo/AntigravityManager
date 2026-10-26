@@ -23,11 +23,13 @@ vi.mock('@/ipc/manager', () => ({
     client: {
       gateway: {
         auditList: mocks.read,
-        auditStats: async () => ({ rows: 1, databaseBytes: 1000, droppedCount: 0 }),
-        auditFilterOptions: async () => ({
-          accountIds: ['private-account-id'],
-          modelFamilies: [],
+        auditStats: async () => ({
+          rows: 1,
+          databaseBytes: 1000,
+          archives: { status: 'complete' as const, bytes: 0, files: 0 },
+          droppedCount: 0,
         }),
+        auditFilterOptions: async () => ({ accountIds: ['private-account-id'], modelFamilies: [] }),
       },
     },
   },

@@ -48,7 +48,7 @@ describe('RateLimitTrackerService parity replay', () => {
 
     expect(info).toMatchObject({
       reason: RateLimitReason.RateLimitExceeded,
-      retryAfterSec: 30,
+      retryAfterSec: 5,
       model: 'gemini-3.1-pro-high',
     });
     expect(tracker.isRateLimited('acc-resource', 'gemini-3.1-pro-high')).toBe(true);

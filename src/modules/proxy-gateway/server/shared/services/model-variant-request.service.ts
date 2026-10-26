@@ -8,6 +8,7 @@ import type {
   GeminiRequest,
   OpenAIChatRequest,
 } from '../../common/interfaces/request-interfaces';
+import { assertSupportedModelEffort } from '../../common/model-effort';
 
 function removeAuthoritativeGeminiThinkingControls(request: GeminiRequest): GeminiRequest {
   const generationConfig = request.generationConfig;
@@ -28,15 +29,41 @@ function removeAuthoritativeGeminiThinkingControls(request: GeminiRequest): Gemi
 }
 
 function removeAuthoritativeOpenAIThinkingControls(request: OpenAIChatRequest): OpenAIChatRequest {
-  if (!request.thinking) {
+  if (!request.thinking && !request.reasoning) {
     return request;
   }
 
-  const { budget_tokens: _budgetTokens, effort: _effort, ...thinking } = request.thinking;
+  const { budget_tokens: _budgetTokens, effort: _effort, ...thinking } = request.thinking ?? {};
+  const { effort: _reasoningEffort, ...reasoning } = request.reasoning ?? {};
   return {
     ...request,
-    thinking,
+    thinking: request.thinking ? thinking : undefined,
+    reasoning: request.reasoning
+      ? Object.keys(reasoning).length > 0
+        ? reasoning
+        : undefined
+      : undefined,
   };
+}
+
+function restoreOpenAIEffortAfterVariant(
+  request: OpenAIChatRequest,
+  source: OpenAIChatRequest,
+): OpenAIChatRequest {
+  if (source.reasoning?.effort !== undefined && request.reasoning?.effort === undefined) {
+    return {
+      ...request,
+      reasoning: {
+        ...request.reasoning,
+        effort: source.reasoning.effort,
+      },
+    };
+  }
+  return request;
+}
+
+export function resolveOpenAIRequestEffort(request: OpenAIChatRequest): string | undefined {
+  return request.reasoning_effort ?? request.reasoning?.effort ?? request.thinking?.effort;
 }
 
 function removeAuthoritativeAnthropicThinkingControls(
@@ -63,6 +90,7 @@ export function applyGeminiModelVariant(
   model: string,
   request: GeminiRequest,
 ): AppliedGeminiModelVariant {
+  assertSupportedModelEffort(request.generationConfig?.thinkingConfig?.thinkingLevel);
   const usesAuthoritativeBudget = usesAuthoritativeThinkingBudget(model);
   const sanitizedRequest = usesAuthoritativeBudget
     ? removeAuthoritativeGeminiThinkingControls(request)
@@ -102,6 +130,7 @@ export interface AppliedAnthropicModelVariant {
 export function applyAnthropicModelVariant(
   request: AnthropicChatRequest,
 ): AppliedAnthropicModelVariant {
+  assertSupportedModelEffort(request.output_config?.effort);
   const usesAuthoritativeBudget = usesAuthoritativeThinkingBudget(request.model);
   const sanitizedRequest = usesAuthoritativeBudget
     ? removeAuthoritativeAnthropicThinkingControls(request)
@@ -173,13 +202,19 @@ export interface AppliedOpenAIModelVariant {
 
 export function applyOpenAIModelVariant(request: OpenAIChatRequest): AppliedOpenAIModelVariant {
   const usesAuthoritativeBudget = usesAuthoritativeThinkingBudget(request.model);
+  const requestedEffort = resolveOpenAIRequestEffort(request);
+  assertSupportedModelEffort(requestedEffort);
+  const variantEffort =
+    request.reasoning_effort ??
+    request.reasoning?.effort ??
+    (usesAuthoritativeBudget ? undefined : request.thinking?.effort);
   const sanitizedRequest = usesAuthoritativeBudget
     ? removeAuthoritativeOpenAIThinkingControls(request)
     : request;
   const variant = resolveModelVariant({
     model: sanitizedRequest.model,
     budgetTokens: sanitizedRequest.thinking?.budget_tokens,
-    effort: sanitizedRequest.reasoning_effort ?? sanitizedRequest.thinking?.effort,
+    effort: variantEffort,
   });
   if (!variant) {
     return {
@@ -196,14 +231,29 @@ export function applyOpenAIModelVariant(request: OpenAIChatRequest): AppliedOpen
       thinking:
         variant.thinkingBudget === 0
           ? undefined
-          : {
-              type: 'enabled',
-              budget_tokens: variant.thinkingBudget,
-            },
+          : usesAuthoritativeBudget
+            ? {
+                type: 'enabled',
+                budget_tokens: variant.thinkingBudget,
+              }
+            : sanitizedRequest.thinking
+              ? {
+                  ...sanitizedRequest.thinking,
+                  budget_tokens: variant.thinkingBudget,
+                }
+              : undefined,
       tools: variant.supportsTools ? request.tools : undefined,
       tool_choice: variant.supportsTools ? request.tool_choice : undefined,
       ...(sanitizedRequest.reasoning_effort !== undefined
         ? { reasoning_effort: variant.tier }
+        : {}),
+      ...(request.reasoning?.effort !== undefined
+        ? {
+            reasoning: {
+              ...request.reasoning,
+              ...(request.reasoning_effort === undefined ? { effort: variant.tier } : {}),
+            },
+          }
         : {}),
     },
     variant,
@@ -220,21 +270,29 @@ export function rebindOpenAIModelVariant(
   }
 
   return {
-    request: {
-      ...applied.request,
-      model: variant.model,
-      max_tokens: variant.maxOutputTokens,
-      thinking:
-        variant.thinkingBudget === 0
-          ? undefined
-          : {
-              type: 'enabled',
-              budget_tokens: variant.thinkingBudget,
-            },
-      tools: variant.supportsTools ? applied.request.tools : undefined,
-      tool_choice: variant.supportsTools ? applied.request.tool_choice : undefined,
-      ...(applied.request.reasoning_effort !== undefined ? { reasoning_effort: variant.tier } : {}),
-    },
+    request: restoreOpenAIEffortAfterVariant(
+      {
+        ...applied.request,
+        model: variant.model,
+        max_tokens: variant.maxOutputTokens,
+        thinking:
+          variant.thinkingBudget === 0
+            ? undefined
+            : {
+                type: 'enabled',
+                budget_tokens: variant.thinkingBudget,
+              },
+        tools: variant.supportsTools ? applied.request.tools : undefined,
+        tool_choice: variant.supportsTools ? applied.request.tool_choice : undefined,
+        ...(applied.request.reasoning_effort !== undefined
+          ? { reasoning_effort: variant.tier }
+          : {}),
+        ...(applied.request.reasoning?.effort !== undefined
+          ? { reasoning: { ...applied.request.reasoning, effort: variant.tier } }
+          : {}),
+      },
+      applied.request,
+    ),
     variant,
   };
 }

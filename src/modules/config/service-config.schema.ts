@@ -3,7 +3,12 @@ import { AppConfigSchema, ProxyConfigSchema } from './types';
 import type { CloudAccountAlertPolicy } from '@/modules/cloud-account/services/cloud-account-alert-policy.schema';
 
 export const SERVICE_CONFIG_MAX_BYTES = 128 * 1024;
-export const ServiceConfigErrorCodeSchema = z.enum(['unavailable', 'invalid-input']);
+export const ServiceConfigErrorCodeSchema = z.enum(['unavailable', 'invalid-input', 'conflict']);
+export class AuditConfigConflictError extends Error {
+  constructor() {
+    super('Audit settings changed. Refresh before retrying.');
+  }
+}
 const ServiceConfigErrorDataSchema = z.strictObject({ configCode: ServiceConfigErrorCodeSchema });
 
 export function readServiceConfigErrorCode(error: unknown) {
@@ -47,7 +52,15 @@ export const ServiceProxySchema = ProxyConfigSchema.omit({ api_key: true, upstre
     experimental: ProxyConfigSchema.shape.experimental.removeDefault().strict(),
     traffic_audit: ProxyConfigSchema.shape.traffic_audit.removeDefault().strict(),
     thought_store: ProxyConfigSchema.shape.thought_store.removeDefault().strict(),
-    image_scheduler: z.strictObject({ per_account_concurrency: z.number().int().min(0).max(256) }),
+    image_scheduler: z.strictObject({
+      per_account_concurrency: z.number().int().min(0).max(256),
+      send_window_enabled: z.boolean(),
+      send_window_count: z.number().int().min(0).max(256),
+      send_window_memory_mib: z.number().int().min(1).max(512),
+      send_window_strip_remote_urls: z.boolean(),
+    }),
+    cowork_compaction: ProxyConfigSchema.shape.cowork_compaction.removeDefault().strict(),
+    thinking_budget: ProxyConfigSchema.shape.thinking_budget.removeDefault().strict(),
   })
   .strict();
 
@@ -68,6 +81,10 @@ export const ServiceRuntimeSchema = AppConfigSchema.pick({
   .strict();
 
 export const ServiceConfigSnapshotSchema = ServiceRuntimeSchema.extend({
+  auditRevision: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/u)
+    .optional(),
   proxy: ServiceProxySchema.extend({
     api_key_configured: z.boolean(),
     upstream_proxy_configured: z.boolean(),
@@ -75,8 +92,27 @@ export const ServiceConfigSnapshotSchema = ServiceRuntimeSchema.extend({
 });
 const bounded = (value: object) =>
   new TextEncoder().encode(JSON.stringify(value)).byteLength <= SERVICE_CONFIG_MAX_BYTES;
+
+const ServiceProxyUpdateSchema = ServiceProxySchema.partial().extend({
+  global_system_prompt: ServiceProxySchema.shape.global_system_prompt.partial().optional(),
+  upstream_proxy: ServiceProxySchema.shape.upstream_proxy.partial().optional(),
+  experimental: ServiceProxySchema.shape.experimental.partial().optional(),
+  traffic_audit: ServiceProxySchema.shape.traffic_audit.partial().optional(),
+  thought_store: ServiceProxySchema.shape.thought_store.partial().optional(),
+  image_scheduler: ServiceProxySchema.shape.image_scheduler.partial().optional(),
+  cowork_compaction: ServiceProxySchema.shape.cowork_compaction.partial().optional(),
+  thinking_budget: ServiceProxySchema.shape.thinking_budget.partial().optional(),
+  network: ProxyConfigSchema.shape.network.unwrap().partial().optional(),
+});
+
 export const ServiceConfigUpdateSchema = ServiceRuntimeSchema.partial()
-  .extend({ proxy: ServiceProxySchema.partial().optional() })
+  .extend({ proxy: ServiceProxyUpdateSchema.optional() })
+  .extend({
+    expectedAuditRevision: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .optional(),
+  })
   .strict()
   .refine(bounded);
 export const ServiceSecretNameSchema = z.enum(['api-key', 'upstream-proxy']);

@@ -20,11 +20,14 @@ import { createAuditFileRouter } from '@/modules/proxy-gateway/audit/audit-file-
 import { openCodeOwner } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.service';
 import { agentToolsOwner } from '@/modules/proxy-gateway/agent-tools/agent-tools.owner';
 import { createAgentToolsRouter } from '@/modules/proxy-gateway/agent-tools/agent-tools.router';
+import { createDshOwnerRouter } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.router';
+import { dshOwner } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.service';
 import { createOpenCodeOwnerRouter } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.router';
 export type { CoreRpcOperations, CoreRpcWorkLifecycle } from './operations';
 import { localAccountOwner } from '@/modules/account/services/local-account-owner.service';
 import { createLocalAccountRouter } from '@/modules/account/services/local-account.router';
 import { getCloudAccountSwitchStatus } from '@/modules/cloud-account/services/cloud-account-switch-status.service';
+import { deleteCloudAccount } from '@/modules/cloud-account/services/cloud-account-deletion.service';
 import { serviceConfigService } from '@/modules/config/service-config.service';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import {
@@ -72,6 +75,10 @@ import {
   DeleteCloudAccountInputSchema,
   SetCloudAccountProxyInputSchema,
 } from '@/modules/cloud-account/services/cloud-account-mutation.schema';
+import {
+  CloudAccountRoutingResultSchema,
+  SetCloudAccountRoutingInputSchema,
+} from '@/modules/cloud-account/services/cloud-account-routing.schema';
 import { refreshAccountQuotaCore } from '@/modules/cloud-account/services/cloud-account-quota-refresh.service';
 import { clearServiceDisabledManually } from '@/modules/cloud-account/services/CloudAccountHealthService';
 import { cloudAccountWeeklyWarmupRunner } from '@/modules/cloud-account/services/cloud-account-weekly-warmup-runner';
@@ -162,6 +169,7 @@ export function createCoreRpcOperations(
     auditFile: auditFileOwner,
     openCode: openCodeOwner,
     agentTools: agentToolsOwner,
+    dsh: dshOwner,
     localAccount: localAccountOwner,
     errorReporting: errorReportingService,
     serviceConfig: {
@@ -180,6 +188,7 @@ export function createCoreRpcOperations(
       auditFileOwner.closeAdmission();
       openCodeOwner.closeAdmission();
       agentToolsOwner.closeAdmission();
+      dshOwner.closeAdmission();
       localAccountOwner.closeAdmission();
       cloudAccountAlertPolicy.closeAdmission();
       localAccountImportCoordinator.closeAdmission();
@@ -192,13 +201,14 @@ export function createCoreRpcOperations(
       await auditFileOwner.drain();
       await openCodeOwner.drain();
       await agentToolsOwner.drain();
-      // Admitted tool writes can still need the serialized configuration queue for review routing.
-      serviceConfigService.closeAdmission();
-      await serviceConfigService.drain();
+      await dshOwner.drain();
       await localAccountOwner.drain();
       await Promise.allSettled(Array.from(inFlightAccountWork));
       await localAccountImportCoordinator.drain();
       await localAccountPostImportService.drain();
+      // Admitted account deletion/import and tool writes can still enqueue configuration work.
+      serviceConfigService.closeAdmission();
+      await serviceConfigService.drain();
     },
     accountAlertPolicy: {
       read: cloudAccountAlertPolicy.read,
@@ -293,10 +303,15 @@ export function createCoreRpcOperations(
       CloudAccountRepo.setAccountProxy(accountId, proxyUrl);
       return { success: true };
     },
-    accountDelete: async (accountId) => {
-      await CloudAccountRepo.removeAccount(accountId);
+    accountSetRouting: async (accountId, proxyPriority, proxyEnabled) => {
+      CloudAccountRepo.setAccountRouting(accountId, proxyPriority, proxyEnabled);
       return { success: true };
     },
+    accountDelete: (accountId) =>
+      runAccountMutation(async () => {
+        await deleteCloudAccount(accountId);
+        return { success: true };
+      }),
     oauthClientList: listOAuthClients,
     oauthClientActive: () => ({ client_key: getActiveOAuthClient() }),
     oauthClientSet: (clientKey) => {
@@ -326,6 +341,7 @@ export function createCoreRpcRouter(operations: CoreRpcOperations) {
     auditFile: createAuditFileRouter(operations.auditFile),
     openCode: createOpenCodeOwnerRouter(operations.openCode),
     agentTools: createAgentToolsRouter(operations.agentTools),
+    dsh: createDshOwnerRouter(operations.dsh ?? dshOwner),
     localAccount: createLocalAccountRouter(operations.localAccount),
     accountAlertPolicy: createAccountAlertPolicyRouter(operations.accountAlertPolicy),
     serviceConfig: createServiceConfigRouter(operations.serviceConfig),
@@ -477,6 +493,19 @@ export function createCoreRpcRouter(operations: CoreRpcOperations) {
       .input(SetCloudAccountProxyInputSchema)
       .output(CloudAccountMutationResultSchema)
       .handler(({ input }) => operations.accountSetProxy(input.accountId, input.proxyUrl)),
+    accountSetRouting: os
+      .input(SetCloudAccountRoutingInputSchema)
+      .output(CloudAccountRoutingResultSchema)
+      .handler(({ input }) => {
+        if (!operations.accountSetRouting) {
+          throw new Error('Cloud account routing settings are unavailable');
+        }
+        return operations.accountSetRouting(
+          input.accountId,
+          input.proxyPriority,
+          input.proxyEnabled,
+        );
+      }),
     accountDelete: os
       .input(DeleteCloudAccountInputSchema)
       .output(CloudAccountMutationResultSchema)

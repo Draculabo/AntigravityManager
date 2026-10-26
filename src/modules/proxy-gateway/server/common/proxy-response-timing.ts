@@ -79,15 +79,23 @@ export function buildProxyResponseTimingHeaders(request?: FastifyRequest): Recor
     return headers;
   }
   const timing = context.proxyTiming;
-  const milliseconds = (value: number | null): string => Math.max(0, value ?? 0).toFixed(3);
+  const measured: Record<string, string> = {};
+  for (const [name, value] of [
+    ['X-Timing-Clean-Ms', timing.cleanMs],
+    ['X-Timing-Norm-Ms', timing.normMs],
+    ['X-Timing-Thinking-Ms', timing.thinkingMs],
+    ['X-Timing-Ttft-Ms', timing.ttftMs],
+  ] as const) {
+    if (value !== null) {
+      measured[name] = Math.max(0, value).toFixed(3);
+    }
+  }
   return {
     ...headers,
     'X-Session-Id': context.clientSessionId,
     'X-Antigravity-Session-Id': context.clientSessionId,
-    'X-Timing-Clean-Ms': milliseconds(timing.cleanMs),
-    'X-Timing-Norm-Ms': milliseconds(timing.normMs),
-    'X-Timing-Thinking-Ms': milliseconds(timing.thinkingMs),
-    'X-Timing-Ttft-Ms': milliseconds(timing.ttftMs),
+    'X-Timing-Version': '2',
+    ...measured,
   };
 }
 

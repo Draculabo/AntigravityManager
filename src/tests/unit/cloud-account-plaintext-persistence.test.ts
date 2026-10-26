@@ -18,6 +18,10 @@ import {
   cloudAccountStoreAdapter,
   type AccountLeaseUpstream,
 } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+import {
+  CloudAccountRefreshWriteback,
+  captureTokenWriteGuard,
+} from '@/modules/cloud-account/services/cloud-account-refresh-writeback';
 import * as security from '@/shared/security/security';
 import {
   decryptParsedPayloadWithKey,
@@ -1043,6 +1047,115 @@ describe('plaintext cloud-account persistence', () => {
     );
   });
 
+  it('accepts an unchanged full-token guard across omitted optional fields', async () => {
+    const initial = account();
+    initial.token.project_id = undefined;
+    initial.token.session_id = undefined;
+    await CloudAccountRepo.addAccount(initial);
+    await CloudAccountRepo.updateToken(
+      initial.id,
+      { ...initial.token, project_id: 'discovered-project' },
+      captureTokenWriteGuard(initial),
+    );
+    expect((await CloudAccountRepo.getAccount(initial.id))?.token.project_id).toBe(
+      'discovered-project',
+    );
+  });
+  it.each(['project', 'session', 'expiry'] as const)(
+    'does not replace a newer %s field with a whole-token project/backfill write',
+    async (field) => {
+      const initial = account();
+      await CloudAccountRepo.addAccount(initial);
+      const guard = captureTokenWriteGuard(initial);
+      const replacement = structuredClone(initial.token);
+      if (field === 'project') {
+        replacement.project_id = 'new-project';
+      }
+      if (field === 'session') {
+        replacement.session_id = 'new-session';
+      }
+      if (field === 'expiry') {
+        replacement.expiry_timestamp++;
+      }
+      await CloudAccountRepo.updateToken(initial.id, replacement);
+      await expect(
+        CloudAccountRepo.updateToken(
+          initial.id,
+          { ...initial.token, oauth_client_key: 'backfill-client' },
+          guard,
+        ),
+      ).rejects.toMatchObject({ name: 'CloudAccountRefreshContextChangedError' });
+      expect((await CloudAccountRepo.getAccount(initial.id))?.token).toEqual(replacement);
+    },
+  );
+  it.each(['deleted', 'grant', 'access', 'proxy', 'created'] as const)(
+    'rejects every guarded refresh field write after account context is %s',
+    async (change) => {
+      const initial = account();
+      await CloudAccountRepo.addAccount(initial);
+      const writeback = new CloudAccountRefreshWriteback(initial);
+      if (change === 'deleted') {
+        await CloudAccountRepo.removeAccount(initial.id);
+      } else {
+        const replacement = structuredClone(initial);
+        if (change === 'grant') {
+          replacement.token.refresh_token = 'replacement-grant';
+        }
+        if (change === 'access') {
+          replacement.token.access_token = 'replacement-access';
+        }
+        if (change === 'proxy') {
+          replacement.proxy_url = 'http://127.0.0.1:18080';
+        }
+        if (change === 'created') {
+          replacement.created_at++;
+        }
+        await CloudAccountRepo.addAccount(replacement);
+      }
+      const before = await CloudAccountRepo.getAccount(initial.id);
+      await expect(
+        CloudAccountRepo.updateToken(initial.id, initial.token, writeback.guard),
+      ).rejects.toMatchObject({ name: 'CloudAccountRefreshContextChangedError' });
+      await expect(
+        CloudAccountRepo.updateQuota(initial.id, { models: {} }, writeback.guard),
+      ).rejects.toMatchObject({ name: 'CloudAccountRefreshContextChangedError' });
+      await expect(
+        CloudAccountRepo.updateHealth(initial.id, undefined, writeback.guard),
+      ).rejects.toMatchObject({ name: 'CloudAccountRefreshContextChangedError' });
+      await expect(
+        CloudAccountRepo.setAccountStatus(initial.id, 'active', null, writeback.guard),
+      ).rejects.toMatchObject({ name: 'CloudAccountRefreshContextChangedError' });
+      expect(() => CloudAccountRepo.updateLastUsed(initial.id, writeback.guard)).toThrow(
+        expect.objectContaining({ name: 'CloudAccountRefreshContextChangedError' }),
+      );
+      expect(await CloudAccountRepo.getAccount(initial.id)).toEqual(before);
+    },
+  );
+
+  it('advances its own token context and protects a later replacement inside the write transaction', async () => {
+    const initial = account();
+    await CloudAccountRepo.addAccount(initial);
+    const writeback = new CloudAccountRefreshWriteback(initial);
+    await writeback.updateToken({
+      ...initial.token,
+      access_token: 'next-access',
+      refresh_token: 'next-grant',
+    });
+    await CloudAccountRepo.updateQuota(
+      initial.id,
+      { models: { gemini: { percentage: 75, resetTime: '' } } },
+      writeback.guard,
+    );
+    const replacement = structuredClone(initial);
+    replacement.token.refresh_token = 'last-grant';
+    await CloudAccountRepo.addAccount(replacement);
+    await expect(
+      CloudAccountRepo.setAccountStatus(initial.id, 'expired', 'late failure', writeback.guard),
+    ).rejects.toMatchObject({ name: 'CloudAccountRefreshContextChangedError' });
+    expect((await CloudAccountRepo.getAccount(initial.id))?.token.refresh_token).toBe('last-grant');
+    expect((await CloudAccountRepo.getAccount(initial.id))?.status).toBe('active');
+  });
+
   it('reopens add, token update and batch import without a master key', async () => {
     vi.spyOn(security, 'initializeMasterKey').mockRejectedValue(
       new Error('Plaintext accounts must not load a master key'),
@@ -1175,6 +1288,82 @@ describe('plaintext cloud-account persistence', () => {
 });
 
 describe('cloud-account active references', () => {
+  it('commits all switch markers together without modifying credentials or unrelated targets', async () => {
+    const selected = { ...account(), status: 'expired' as const, status_reason: 'old failure' };
+    const other = { ...account(), id: 'account-two', is_active: true };
+    await CloudAccountRepo.addAccount(selected);
+    await CloudAccountRepo.addAccount(other);
+    CloudAccountSettingsStore.setActiveForTarget('classic', other.id);
+    CloudAccountSettingsStore.setActiveForTarget('agy', other.id);
+    const storedSelected = await CloudAccountRepo.getAccount(selected.id);
+
+    CloudAccountRepo.finalizeSwitch(selected.id, 'agy', captureTokenWriteGuard(selected));
+
+    expect(await CloudAccountRepo.getAccount(selected.id)).toEqual({
+      ...storedSelected,
+      is_active: true,
+      status: 'active',
+      status_reason: undefined,
+      last_used: expect.any(Number),
+    });
+    expect((await CloudAccountRepo.getAccount(selected.id))?.last_used).toBeGreaterThan(
+      selected.last_used,
+    );
+    expect((await CloudAccountRepo.getAccount(other.id))?.is_active).toBe(false);
+    expect(CloudAccountSettingsStore.getActiveAccountIdForTarget('agy')).toBe(selected.id);
+    expect(CloudAccountSettingsStore.getActiveAccountIdForTarget('classic')).toBe(other.id);
+  });
+
+  it.each(['deleted', 'replaced'] as const)(
+    'does not clear the active account or setting when switch finalization is %s',
+    async (change) => {
+      const selected = account();
+      const other = { ...account(), id: 'account-two', is_active: true };
+      await CloudAccountRepo.addAccount(selected);
+      await CloudAccountRepo.addAccount(other);
+      CloudAccountSettingsStore.setActiveForTarget('agy', other.id);
+      const guard = captureTokenWriteGuard(selected);
+      if (change === 'deleted') {
+        await CloudAccountRepo.removeAccount(selected.id);
+      } else {
+        await CloudAccountRepo.updateToken(selected.id, {
+          ...selected.token,
+          access_token: 'replacement',
+        });
+      }
+      const before = await CloudAccountRepo.getAccounts();
+      expect(() => CloudAccountRepo.finalizeSwitch(selected.id, 'agy', guard)).toThrow(
+        expect.objectContaining({ name: 'CloudAccountRefreshContextChangedError' }),
+      );
+      expect(await CloudAccountRepo.getAccounts()).toEqual(before);
+      expect(CloudAccountSettingsStore.getActiveAccountIdForTarget('agy')).toBe(other.id);
+    },
+  );
+
+  it('rolls back every switch marker when the final active-target setting fails', async () => {
+    const selected = { ...account(), status: 'expired' as const, status_reason: 'old failure' };
+    const other = { ...account(), id: 'account-two', is_active: true };
+    await CloudAccountRepo.addAccount(selected);
+    await CloudAccountRepo.addAccount(other);
+    CloudAccountSettingsStore.setActiveForTarget('agy', other.id);
+    const before = await CloudAccountRepo.getAccounts();
+    const database = new Database(path.join(state.directory, 'cloud_accounts.db'));
+    try {
+      database.exec(`
+        CREATE TRIGGER reject_switch_setting BEFORE INSERT ON settings
+        WHEN NEW.key = 'active_cloud_account.agy'
+        BEGIN SELECT RAISE(ABORT, 'fixture switch finalization failure'); END;
+      `);
+    } finally {
+      database.close();
+    }
+    expect(() =>
+      CloudAccountRepo.finalizeSwitch(selected.id, 'agy', captureTokenWriteGuard(selected)),
+    ).toThrow('fixture switch finalization failure');
+    expect(await CloudAccountRepo.getAccounts()).toEqual(before);
+    expect(CloudAccountSettingsStore.getActiveAccountIdForTarget('agy')).toBe(other.id);
+  });
+
   function snapshot() {
     const database = new Database(path.join(state.directory, 'cloud_accounts.db'), {
       readonly: true,

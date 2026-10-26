@@ -3,6 +3,7 @@ import { getAgentToolsAdapter } from './agent-tools-adapter';
 import { createAgentToolsRouter } from '../agent-tools/agent-tools.router';
 import type { AgentToolsOperations } from '../agent-tools/agent-tools.service';
 import { getAuditAdapter } from './audit-adapter';
+import { UsageRangeInputSchema, UsageRangeResultSchema } from '../audit/usage-range.schema';
 import { AuditIdInputSchema } from '../audit/audit-owner.schema';
 import { createOpenCodeOwnerRouter } from '../opencode-sync/opencode-owner.router';
 import type { OpenCodeOperations } from '../opencode-sync/opencode-owner.service';
@@ -22,6 +23,7 @@ import {
   TrafficAuditListInputSchema,
 } from '../audit/traffic-audit.types';
 import { getThoughtAdapter, readSelectedThoughtRecord } from './thought-adapter';
+import { ThoughtRecordPageInputSchema } from '../thought-store/thought-management.schema';
 import {
   ThoughtSessionsInputSchema,
   ThoughtSessionInputSchema,
@@ -30,6 +32,8 @@ import {
 } from '../thought-store/thought-owner.schema';
 import { copyAuditCurl } from '../traffic-monitor/copy-audit-curl';
 import { createPlaygroundRouter } from '../playground/playground.router';
+import { createDshOwnerRouter } from '../dsh-sync/dsh-owner.router';
+import { dshOwner } from '../dsh-sync/dsh-owner.service';
 export const gatewayAuditMiddleware = os.middleware(({ next, path }, input) =>
   ipcAuditRecorder.run(path, input, () => next({})),
 );
@@ -43,6 +47,7 @@ const selectedOpenCode: OpenCodeOperations = {
   revokeKey: () => getOpenCodeAdapter().revokeKey(),
 };
 const openCodeRouter = createOpenCodeOwnerRouter(selectedOpenCode);
+const dshRouter = createDshOwnerRouter(dshOwner);
 const selectedAgentTools: AgentToolsOperations = {
   status: (tool, baseUrl) => getAgentToolsAdapter().status(tool, baseUrl),
   configure: (input) => getAgentToolsAdapter().configure(input),
@@ -89,6 +94,7 @@ export const gatewayRouter = os.prefix('/gateway').router({
   restoreOpenCode: openCodeRouter.restore,
   clearOpenCode: openCodeRouter.clear,
   revokeOpenCodeKey: openCodeRouter.revokeKey,
+  dsh: dshRouter,
 
   modelAvailability: os
     .output(
@@ -119,6 +125,10 @@ export const gatewayRouter = os.prefix('/gateway').router({
   }),
 
   auditFilterOptions: os.handler(async () => getAuditAdapter().filterOptions()),
+  auditUsageRange: os
+    .input(UsageRangeInputSchema)
+    .output(UsageRangeResultSchema)
+    .handler(({ input }) => getAuditAdapter().usageRange(input)),
 
   auditDetail: os.input(AuditIdInputSchema).handler(async ({ input }) => {
     return getAuditAdapter().detail(input);
@@ -173,7 +183,7 @@ export const gatewayRouter = os.prefix('/gateway').router({
     return getThoughtAdapter().sessions(input);
   }),
 
-  thoughtRecords: os.input(ThoughtSessionInputSchema).handler(async ({ input }) => {
+  thoughtRecords: os.input(ThoughtRecordPageInputSchema).handler(async ({ input }) => {
     return getThoughtAdapter().records(input);
   }),
 

@@ -75,13 +75,17 @@ async function createSurface(...answers: unknown[]) {
   );
   apps.push(store);
   await store.init();
+  const operations = new OpenAIOperations(
+    { handleChatCompletions } as never,
+    undefined,
+    undefined,
+    responsesSessions,
+  );
   return {
-    chat: new OpenAIOperations(
-      { handleChatCompletions } as never,
-      undefined,
-      undefined,
-      responsesSessions,
-    ),
+    chat: {
+      responses: (...[body, reply]: Parameters<OpenAIOperations['responses']>) =>
+        operations.responses(body, reply, { headers, url: '/v1/responses' } as never),
+    },
     store,
     responsesSessions,
   };
@@ -238,7 +242,7 @@ describe('OpenAIResponsesStoreController', () => {
 
   it('retains framework handling for unexpected store failures', async () => {
     const { store, responsesSessions } = await createSurface();
-    vi.spyOn(responsesSessions, 'get').mockImplementationOnce(() => {
+    vi.spyOn(responsesSessions, 'getHistoryOwner').mockImplementationOnce(() => {
       throw new Error('Store failed');
     });
     const reply = await store.inject({ url: '/v1/responses/resp_kept', headers });

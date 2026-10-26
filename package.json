@@ -14,6 +14,7 @@
     "test:appimage-download": "node --test scripts/acceptance/installers/appimage-updater-download.test.mjs scripts/acceptance/installers/appimage-maker.test.mjs",
     "test:appimage-update": "node scripts/acceptance/installers/packaged-appimage-updater-native.mjs",
     "preview:release-notes": "node scripts/preview-release-notes.mjs",
+    "preview:error-notifications": "node scripts/preview-error-notifications.mjs",
     "prepare": "node scripts/git/install-hooks.mjs",
     "hooks:install": "node scripts/git/install-hooks.mjs",
     "hooks:pre-commit": "node scripts/git/run-lefthook.mjs run pre-commit",

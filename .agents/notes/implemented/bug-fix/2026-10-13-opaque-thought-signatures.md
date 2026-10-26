@@ -18,8 +18,13 @@ unchanged. Anthropic response/stream adapters, OpenAI Chat streaming and Respons
 that contract. Non-streaming OpenAI paths reuse the Anthropic response adapter. The old decoding
 implementation is removed without a compatibility export.
 
-No format inference, automatic Base64 re-encoding or signature validation is added. The provider
-owns the opaque value and its model-specific validation. Existing scoped ownership, model
+The generic helper adds no format inference, automatic Base64 re-encoding or signature
+validation. The provider owns the opaque value and its model-specific validation.
+The later [known-format decision](2026-10-18-known-thought-signature-formats.md) permits
+one directional conversion of recognized Claude raw/Google wrapper forms at protocol
+boundaries and a separate comparison representation. It retains this decision's
+opaque preservation requirement for all unknown and Gemini binary signatures, and
+the original received value in caches and storage. Existing scoped ownership, model
 provenance, placeholder handling and narrow invalid-signature recovery remain in force.
 
 ## Alternatives considered
@@ -34,8 +39,8 @@ provenance, placeholder handling and narrow invalid-signature recovery remain in
 
 ## Consequences
 
-New response signatures remain encoded through client output, scoped caches and subsequent
-requests. Clients must treat returned signatures as opaque. Restart clears the in-memory cache,
+New response signatures remain encoded; recognized Claude wrapper conversion follows the
+linked decision. Clients must treat returned signatures as opaque. Restart clears the in-memory cache,
 but does not repair a client-supplied poisoned history or a persisted record. Existing supported
 400 recovery can omit invalid signatures for its single targeted attempt; this change does not
 add that recovery to other protocols or guarantee recovery of every old session.

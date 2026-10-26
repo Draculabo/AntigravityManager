@@ -74,6 +74,7 @@ vi.mock('@/shared/persistence/sqlite-worker/bounded-sqlite-worker', async (impor
                   result = {
                     bodyStoredBytes: 0, databaseBytes: 0, incompleteBodies: 0,
                     oldestTimestamp: null, rows: 0,
+                    archives: { status: 'complete', bytes: 0, files: 0 },
                     droppedCount: [...drops.values()].reduce((sum, row) => sum + row.count, 0),
                     lastDropReason: [...drops.values()].at(-1)?.reason ?? null,
                   };
@@ -131,7 +132,7 @@ afterEach(async () => {
 });
 
 function recordDrop(trafficClass: TrafficClass = 'model') {
-  vi.spyOn(state.queues[0], 'tryWrite').mockReturnValueOnce(false);
+  const write = vi.spyOn(state.queues[0], 'tryWrite').mockReturnValueOnce(false);
   expect(
     service.startParent({
       method: 'POST',
@@ -142,6 +143,9 @@ function recordDrop(trafficClass: TrafficClass = 'model') {
       requestPayloadHandled: true,
     }),
   ).toBeNull();
+  // Clear may refuse the capture before queue admission; never leak this one-shot failure
+  // into the following admin event and accidentally create another drop.
+  write.mockRestore();
 }
 
 describe.each(['resetDropStats', 'clear'] as const)('%s drop baseline', (operation) => {

@@ -129,8 +129,28 @@ export class CloudAccountSettingsStore {
   }
 
   static setActiveForTarget(target: AntigravityAppTarget | undefined, id: string): void {
+    const { raw, orm } = getCloudDb();
+    try {
+      this.setActiveForTargetInTransaction(orm, target, id);
+    } finally {
+      raw.close();
+    }
+  }
+
+  static setActiveForTargetInTransaction(
+    transaction: DrizzleExecutor,
+    target: AntigravityAppTarget | undefined,
+    id: string,
+  ): void {
     const normalizedTarget = resolveAntigravityAppTarget(target);
-    this.setSetting(`${ACTIVE_ACCOUNT_SETTING_PREFIX}.${normalizedTarget}`, id);
+    transaction
+      .insert(settings)
+      .values({
+        key: `${ACTIVE_ACCOUNT_SETTING_PREFIX}.${normalizedTarget}`,
+        value: JSON.stringify(id),
+      })
+      .onConflictDoUpdate({ target: settings.key, set: { value: JSON.stringify(id) } })
+      .run();
   }
 
   static getActiveAccountIdForTarget(target: AntigravityAppTarget | undefined): string {

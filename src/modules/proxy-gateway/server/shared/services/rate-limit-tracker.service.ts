@@ -1,31 +1,35 @@
 import { Injectable } from '@nestjs/common';
-import { isEmpty, isNumber, isString } from 'lodash-es';
-import { z } from 'zod';
+import { isEmpty } from 'lodash-es';
 import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 import { normalizeGeminiModelAlias } from '@/modules/proxy-gateway/antigravity/ModelMapping';
-
-export enum RateLimitReason {
-  QuotaExhausted = 'quota_exhausted',
-  RateLimitExceeded = 'rate_limit_exceeded',
-  ModelCapacityExhausted = 'model_capacity_exhausted',
-  ServerError = 'server_error',
-  Unknown = 'unknown',
-}
-
-export interface RateLimitInfo {
-  resetTimeMs: number;
-  retryAfterSec: number;
-  reason: RateLimitReason;
-  model?: string;
-  preservesExplicitQuota: boolean;
-}
-
-export type RetryDelaySource = 'retry-after' | 'structured' | 'text';
-
-export interface ParsedRetryDelay {
-  delayMs: number;
-  source: RetryDelaySource;
-}
+import { AccountResourceBackoff } from './account-resource-backoff';
+import { RateLimitLocks } from './rate-limit-locks';
+import { hasQualifiedQuotaDeadline } from './qualified-quota-evidence';
+import { RateLimitReason, type RateLimitInfo } from './rate-limit-types';
+import {
+  classifyUpstreamRateLimit,
+  hasGenericResourceExhaustedSignal,
+  hasStrictQuotaExhaustedMarker,
+  parseRetryDelay,
+} from './rate-limit-evidence';
+export {
+  RateLimitReason,
+  type RateLimitInfo,
+  type RetryDelaySource,
+  type ParsedRetryDelay,
+} from './rate-limit-types';
+export {
+  classifyUpstreamRateLimit,
+  hasGenericResourceExhaustedSignal,
+  hasExplicitQuotaExhaustedSignal,
+  hasStrictQuotaExhaustedMarker,
+  parseRetryDelay,
+  parseRetryDelayMilliseconds,
+  parseAnthropicRetryDelayMilliseconds,
+  shouldGraceRetry,
+  STRUCTURED_GRACE_RETRY_BUFFER_MS,
+  TEXT_GRACE_RETRY_BUFFER_MS,
+} from './rate-limit-evidence';
 
 export interface PersistedModelRateLimit {
   accountId: string;
@@ -42,107 +46,8 @@ type FailureCountEntry = {
   lastFailureMs: number;
 };
 
-const GoogleErrorMetadataSchema = z.object({
-  quotaResetDelay: z.string().optional().catch(undefined),
-  retryDelay: z.string().optional().catch(undefined),
-});
-
-const GoogleErrorDetailSchema = z.object({
-  reason: z.string().optional().catch(undefined),
-  retryDelay: z.string().optional().catch(undefined),
-  metadata: GoogleErrorMetadataSchema.optional().catch(undefined),
-});
-
-const GoogleErrorEnvelopeSchema = z
-  .object({
-    status: z.string().optional(),
-    details: z.array(z.unknown()).optional(),
-    retry_after: z.number().optional(),
-  })
-  .passthrough();
-
-const GoogleErrorBodySchema = z
-  .object({
-    error: GoogleErrorEnvelopeSchema.optional(),
-  })
-  .passthrough();
-
-const ParsedGoogleErrorBodySchema = z.union([GoogleErrorBodySchema, z.array(z.unknown())]);
-
-type GoogleErrorDetail = z.infer<typeof GoogleErrorDetailSchema>;
-type GoogleErrorEnvelope = z.infer<typeof GoogleErrorEnvelopeSchema>;
-type ParsedGoogleErrorBody = z.infer<typeof ParsedGoogleErrorBodySchema>;
-
 const FAILURE_COUNT_EXPIRY_MS = 60 * 60 * 1000;
-const MAX_RETRY_DELAY_SEARCH_DEPTH = 8;
 const MAX_LOCKOUT_SECONDS = 300;
-const GRACE_RETRY_WINDOW_MS = 5000;
-export const STRUCTURED_GRACE_RETRY_BUFFER_MS = 200;
-export const TEXT_GRACE_RETRY_BUFFER_MS = 1000;
-const DURATION_UNIT_TO_MS = {
-  ms: 1,
-  s: 1000,
-  m: 60 * 1000,
-  h: 60 * 60 * 1000,
-} as const;
-const RETRY_HINT_KEYS = new Set(['retryafter', 'retrydelay', 'quotaresetdelay', 'backofflimit']);
-const QUOTA_RETRY_PATTERNS = [
-  /quota will reset after ([^.,;\]\n]+)/i,
-  /retry after ([^.,;\]\n]+)/i,
-  /quotaResetDelay["'=:\s]+([^\s,"}\]]+)/i,
-];
-
-type DurationUnit = keyof typeof DURATION_UNIT_TO_MS;
-
-function toLowerText(value: string | undefined): string {
-  return (value ?? '').toLowerCase();
-}
-
-function isDurationUnit(value: string): value is DurationUnit {
-  return value === 'ms' || value === 's' || value === 'm' || value === 'h';
-}
-
-function isUnknownRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-export function hasGenericResourceExhaustedSignal(body: string | undefined): boolean {
-  const lowerBody = toLowerText(body);
-  return (
-    lowerBody.includes('resource has been exhausted') || lowerBody.includes('resource_exhausted')
-  );
-}
-
-export function hasExplicitQuotaExhaustedSignal(body: string | undefined): boolean {
-  const lowerBody = toLowerText(body);
-  return (
-    lowerBody.includes('quota_exhausted') ||
-    lowerBody.includes('quota exceeded') ||
-    lowerBody.includes('quotaresetdelay') ||
-    lowerBody.includes('quota reset') ||
-    lowerBody.includes('quota limit') ||
-    lowerBody.includes('quota will reset') ||
-    lowerBody.includes('per day') ||
-    lowerBody.includes('daily quota')
-  );
-}
-
-function hasDurableQuotaExhaustedSignal(body: string | undefined): boolean {
-  const lowerBody = toLowerText(body);
-  return (
-    lowerBody.includes('quota exceeded') ||
-    lowerBody.includes('quotaresetdelay') ||
-    lowerBody.includes('quota reset') ||
-    lowerBody.includes('quota limit') ||
-    lowerBody.includes('quota will reset') ||
-    lowerBody.includes('per day') ||
-    lowerBody.includes('daily quota')
-  );
-}
-
-export function hasStrictQuotaExhaustedMarker(body: string | undefined): boolean {
-  return toLowerText(body).includes('quota_exhausted');
-}
 
 export function isGeminiImageModel(model: string | undefined): boolean {
   if (!model) {
@@ -168,264 +73,11 @@ export function isRecognizedGeminiImageModel(model: string | undefined): boolean
   return LONG_IMAGE_QUOTA_MODELS.has(normalized);
 }
 
-function parseDurationToMilliseconds(text: string): number | null {
-  const durationRegex = /([\d.]+)\s*(ms|s|m|h)/gi;
-  let totalMs = 0;
-  let matched = false;
-
-  for (const match of text.matchAll(durationRegex)) {
-    matched = true;
-    const value = Number(match[1]);
-    if (!Number.isFinite(value)) {
-      return null;
-    }
-
-    const unit = match[2]?.toLowerCase();
-    if (!unit || !isDurationUnit(unit)) {
-      return null;
-    }
-    totalMs += value * DURATION_UNIT_TO_MS[unit];
-  }
-
-  if (!matched) {
-    return null;
-  }
-
-  return Math.round(totalMs);
-}
-
-function parseDurationToSeconds(text: string): number | null {
-  const milliseconds = parseDurationToMilliseconds(text);
-  if (milliseconds === null || milliseconds <= 0) {
-    return null;
-  }
-  return Math.ceil(milliseconds / 1000);
-}
-
-function tryParseGoogleErrorBody(body: string | undefined): ParsedGoogleErrorBody | null {
-  const trimmed = (body ?? '').trim();
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-    return null;
-  }
-
-  try {
-    const rawBody: unknown = JSON.parse(trimmed);
-    const parsedBody = ParsedGoogleErrorBodySchema.safeParse(rawBody);
-    return parsedBody.success ? parsedBody.data : null;
-  } catch {
-    return null;
-  }
-}
-
-function getGoogleErrorEnvelope(
-  parsedBody: ParsedGoogleErrorBody | null,
-): GoogleErrorEnvelope | undefined {
-  return parsedBody && !Array.isArray(parsedBody) ? parsedBody.error : undefined;
-}
-
-function getGoogleErrorDetails(error: GoogleErrorEnvelope | undefined): GoogleErrorDetail[] {
-  return (error?.details ?? []).flatMap((detail) => {
-    const parsedDetail = GoogleErrorDetailSchema.safeParse(detail);
-    return parsedDetail.success ? [parsedDetail.data] : [];
-  });
-}
-
-function mapGoogleReasonToTrackerReason(reason: string): RateLimitReason | null {
-  const normalizedReason = reason.trim().toUpperCase();
-  if (normalizedReason === 'QUOTA_EXHAUSTED') {
-    return RateLimitReason.QuotaExhausted;
-  }
-  if (normalizedReason === 'RATE_LIMIT_EXCEEDED') {
-    return RateLimitReason.RateLimitExceeded;
-  }
-  if (normalizedReason === 'MODEL_CAPACITY_EXHAUSTED') {
-    return RateLimitReason.ModelCapacityExhausted;
-  }
-  return null;
-}
-
-function normalizeRetryHintKey(key: string): string {
-  return key.toLowerCase().replace(/[-_]/g, '');
-}
-
-function parseStructuredDurationObject(value: unknown): number | null {
-  if (!isUnknownRecord(value)) {
-    return null;
-  }
-
-  const seconds = Number(value.seconds ?? value.Seconds ?? 0);
-  const nanos = Number(value.nanos ?? value.Nanos ?? 0);
-
-  if ((!Number.isFinite(seconds) || seconds <= 0) && (!Number.isFinite(nanos) || nanos <= 0)) {
-    return null;
-  }
-
-  return Math.round(Math.max(0, seconds) * 1000 + Math.max(0, nanos) / 1_000_000);
-}
-
-function parseStructuredDurationValue(value: unknown): number | null {
-  if (isString(value)) {
-    return parseDurationToMilliseconds(value);
-  }
-
-  if (isNumber(value) && value > 0) {
-    return Math.round(value * 1000);
-  }
-
-  return parseStructuredDurationObject(value);
-}
-
-function extractStructuredDelayRecursive(value: unknown, depth: number): number | null {
-  if (depth > MAX_RETRY_DELAY_SEARCH_DEPTH) {
-    return null;
-  }
-
-  if (isString(value)) {
-    return null;
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const delay = extractStructuredDelayRecursive(item, depth + 1);
-      if (delay !== null) {
-        return delay;
-      }
-    }
-    return null;
-  }
-
-  if (!isUnknownRecord(value)) {
-    return null;
-  }
-
-  for (const [key, childValue] of Object.entries(value)) {
-    if (RETRY_HINT_KEYS.has(normalizeRetryHintKey(key))) {
-      const hintedDelay = parseStructuredDurationValue(childValue);
-      if (hintedDelay !== null) {
-        return hintedDelay;
-      }
-    }
-
-    const nestedDelay = extractStructuredDelayRecursive(childValue, depth + 1);
-    if (nestedDelay !== null) {
-      return nestedDelay;
-    }
-  }
-
-  return null;
-}
-
-function extractEmbeddedDurationRecursive(value: unknown, depth: number): number | null {
-  if (depth > MAX_RETRY_DELAY_SEARCH_DEPTH) {
-    return null;
-  }
-  if (isString(value)) {
-    return parseDurationToMilliseconds(value);
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const delay = extractEmbeddedDurationRecursive(item, depth + 1);
-      if (delay !== null) {
-        return delay;
-      }
-    }
-    return null;
-  }
-  if (!isUnknownRecord(value)) {
-    return null;
-  }
-  const durationObjectDelay = parseStructuredDurationObject(value);
-  if (durationObjectDelay !== null) {
-    return durationObjectDelay;
-  }
-  for (const childValue of Object.values(value)) {
-    const delay = extractEmbeddedDurationRecursive(childValue, depth + 1);
-    if (delay !== null) {
-      return delay;
-    }
-  }
-  return null;
-}
-
-function parseRetryAfterHeaderMilliseconds(retryAfter: string | undefined): number | null {
-  const rawValue = retryAfter?.trim() ?? '';
-  if (rawValue === '') {
-    return null;
-  }
-
-  const seconds = Number(rawValue);
-  if (Number.isFinite(seconds) && seconds > 0) {
-    return Math.round(seconds * 1000);
-  }
-
-  const deadline = Date.parse(rawValue);
-  if (!Number.isFinite(deadline)) {
-    return null;
-  }
-  return Math.max(0, deadline - Date.now());
-}
-
-export function parseRetryDelay(
-  errorText: string | undefined,
-  retryAfter?: string,
-): ParsedRetryDelay | null {
-  const headerDelay = parseRetryAfterHeaderMilliseconds(retryAfter);
-  if (headerDelay !== null && headerDelay > 0) {
-    return { delayMs: headerDelay, source: 'retry-after' };
-  }
-
-  if (!errorText) {
-    return null;
-  }
-
-  const parsedBody = tryParseGoogleErrorBody(errorText);
-  const structuredDelay = parsedBody ? extractStructuredDelayRecursive(parsedBody, 0) : null;
-  if (structuredDelay !== null) {
-    return { delayMs: structuredDelay, source: 'structured' };
-  }
-
-  for (const pattern of QUOTA_RETRY_PATTERNS) {
-    const match = errorText.match(pattern);
-    if (match?.[1]) {
-      const delay = parseDurationToMilliseconds(match[1]);
-      if (delay !== null) {
-        return { delayMs: delay, source: 'text' };
-      }
-    }
-  }
-
-  return null;
-}
-
-export function parseRetryDelayMilliseconds(errorText: string | undefined): number | null {
-  return parseRetryDelay(errorText)?.delayMs ?? null;
-}
-
-export function parseAnthropicRetryDelayMilliseconds(errorText: string | undefined): number | null {
-  if (!errorText) {
-    return null;
-  }
-  for (const pattern of QUOTA_RETRY_PATTERNS) {
-    const match = errorText.match(pattern);
-    if (match?.[1]) {
-      const delay = parseDurationToMilliseconds(match[1]);
-      if (delay !== null) {
-        return delay;
-      }
-    }
-  }
-  const parsedBody = tryParseGoogleErrorBody(errorText);
-  return parsedBody ? extractEmbeddedDurationRecursive(parsedBody, 0) : null;
-}
-
-export function shouldGraceRetry(delayMs: number): boolean {
-  return delayMs > 0 && delayMs <= GRACE_RETRY_WINDOW_MS;
-}
-
 @Injectable()
 export class RateLimitTrackerService {
-  private readonly lockoutByKey = new Map<string, RateLimitInfo>();
+  private readonly lockoutByKey = new RateLimitLocks();
   private readonly failureCounts = new Map<string, FailureCountEntry>();
+  private readonly resourceBackoff = new AccountResourceBackoff();
 
   private buildLockoutKey(accountId: string, model?: string): string {
     if (!isEmpty(model?.trim() ?? '')) {
@@ -461,6 +113,20 @@ export class RateLimitTrackerService {
     return this.getRemainingWaitSeconds(accountId, model) > 0;
   }
 
+  /** Quota evidence is never a candidate for speculative in-request waiting. */
+  hasActiveQuotaLock(accountId: string, model?: string): boolean {
+    const locks = [
+      this.lockoutByKey.get(accountId),
+      model ? this.lockoutByKey.get(this.buildLockoutKey(accountId, model)) : undefined,
+    ];
+    return locks.some(
+      (lock) =>
+        lock !== undefined &&
+        (lock.reason === RateLimitReason.QuotaExhausted || lock.preservesExplicitQuota) &&
+        lock.resetTimeMs > Date.now(),
+    );
+  }
+
   setLockoutUntilIso(
     accountId: string,
     resetTimeIso: string,
@@ -468,7 +134,7 @@ export class RateLimitTrackerService {
     model?: string,
   ): boolean {
     const timestamp = Date.parse(resetTimeIso);
-    if (!Number.isFinite(timestamp)) {
+    if (!Number.isFinite(timestamp) || timestamp <= Date.now()) {
       return false;
     }
     this.setLockoutUntil(
@@ -506,16 +172,7 @@ export class RateLimitTrackerService {
   }
 
   restorePersistedQuotaLimit(entry: PersistedModelRateLimit): boolean {
-    const now = Date.now();
-    if (
-      entry.status !== 429 ||
-      entry.reason !== 'quota_exhausted' ||
-      !entry.modelId.trim() ||
-      !hasStrictQuotaExhaustedMarker(entry.message) ||
-      entry.unavailableUntil <= now ||
-      entry.unavailableUntil - entry.detectedAt <= MAX_LOCKOUT_SECONDS * 1000 ||
-      (parseRetryDelayMilliseconds(entry.message) ?? 0) <= MAX_LOCKOUT_SECONDS * 1000
-    ) {
+    if (!hasQualifiedQuotaDeadline(entry)) {
       return false;
     }
 
@@ -535,6 +192,23 @@ export class RateLimitTrackerService {
 
   clearModel(accountId: string, model: string): boolean {
     return this.lockoutByKey.delete(this.buildLockoutKey(accountId, model));
+  }
+
+  clearAccount(accountId: string): void {
+    for (const [key, info] of this.lockoutByKey.entries()) {
+      if (
+        key === accountId ||
+        (info.model && key === this.buildLockoutKey(accountId, info.model))
+      ) {
+        this.lockoutByKey.delete(key);
+      }
+    }
+    for (const key of this.failureCounts.keys()) {
+      if (key === accountId || key.startsWith(`${accountId}:`)) {
+        this.failureCounts.delete(key);
+      }
+    }
+    this.resourceBackoff.markSuccess(accountId);
   }
 
   /**
@@ -568,11 +242,13 @@ export class RateLimitTrackerService {
   clearAll(): number {
     const size = this.lockoutByKey.size;
     this.lockoutByKey.clear();
+    this.resourceBackoff.clear();
     return size;
   }
 
   cleanupExpired(): number {
     const now = Date.now();
+    this.resourceBackoff.cleanupExpired(now);
     let deleted = 0;
     for (const [key, info] of this.lockoutByKey.entries()) {
       if (info.resetTimeMs <= now) {
@@ -584,11 +260,13 @@ export class RateLimitTrackerService {
   }
 
   markSuccess(accountId: string): void {
+    this.resourceBackoff.markSuccess(accountId);
     this.failureCounts.delete(accountId);
     this.lockoutByKey.delete(accountId);
   }
 
   markModelSuccess(accountId: string, model: string): void {
+    this.resourceBackoff.markSuccess(accountId);
     this.failureCounts.delete(this.buildLockoutKey(accountId, model));
     this.clearModel(accountId, model);
   }
@@ -606,7 +284,7 @@ export class RateLimitTrackerService {
       return null;
     }
 
-    const reason = this.detectRateLimitReason(status, params.body, params.retryAfter);
+    const reason = classifyUpstreamRateLimit(status, params.body, params.retryAfter);
     const rawRetryAfterSec = this.computeRetryAfterSeconds({
       reason,
       status,
@@ -650,14 +328,7 @@ export class RateLimitTrackerService {
   }
 
   private storeLockout(key: string, info: RateLimitInfo): RateLimitInfo {
-    const current = this.lockoutByKey.get(key);
-    // A transient failure must not shorten an explicit quota reset. A successful
-    // request or the reset deadline releases it through the existing clear paths.
-    if (current?.preservesExplicitQuota && current.resetTimeMs > info.resetTimeMs) {
-      return current;
-    }
-    this.lockoutByKey.set(key, info);
-    return info;
+    return this.lockoutByKey.store(key, info);
   }
 
   private isQualifiedExplicitQuota(params: {
@@ -694,69 +365,6 @@ export class RateLimitTrackerService {
     return this.trackFromUpstreamError(params);
   }
 
-  private detectRateLimitReason(
-    status: number,
-    body: string | undefined,
-    retryAfter?: string,
-  ): RateLimitReason {
-    const parsedBody = tryParseGoogleErrorBody(body);
-    const error = getGoogleErrorEnvelope(parsedBody);
-    const details = getGoogleErrorDetails(error);
-    for (const detail of details) {
-      if (!isString(detail.reason) || isEmpty(detail.reason.trim())) {
-        continue;
-      }
-      const mappedReason = mapGoogleReasonToTrackerReason(detail.reason);
-      if (mappedReason) {
-        return mappedReason;
-      }
-    }
-
-    const statusFromBody = error?.status?.trim().toUpperCase();
-    if (statusFromBody === 'UNAVAILABLE') {
-      const loweredBody = toLowerText(body);
-      if (loweredBody.includes('no capacity available') || loweredBody.includes('model capacity')) {
-        return RateLimitReason.ModelCapacityExhausted;
-      }
-    }
-
-    if (status !== 429) {
-      return RateLimitReason.ServerError;
-    }
-
-    const lowerBody = toLowerText(body);
-    if (
-      lowerBody.includes('model capacity exhausted') ||
-      lowerBody.includes('no capacity available')
-    ) {
-      return RateLimitReason.ModelCapacityExhausted;
-    }
-
-    const hasGenericResourceExhausted =
-      statusFromBody === 'RESOURCE_EXHAUSTED' || hasGenericResourceExhaustedSignal(body);
-    const hasBareQuotaExhausted = lowerBody.includes('quota_exhausted');
-    const hasDelayedBareQuotaExhausted =
-      hasBareQuotaExhausted && parseRetryDelay(body, retryAfter) !== null;
-    const hasDurableQuotaExhausted = hasDurableQuotaExhaustedSignal(body);
-    if (
-      lowerBody.includes('per minute') ||
-      lowerBody.includes('rate limit') ||
-      lowerBody.includes('rate_limit') ||
-      lowerBody.includes('too many requests') ||
-      (hasGenericResourceExhausted && !hasDurableQuotaExhausted && !hasDelayedBareQuotaExhausted)
-    ) {
-      return RateLimitReason.RateLimitExceeded;
-    }
-    if (hasDurableQuotaExhausted || hasDelayedBareQuotaExhausted) {
-      return RateLimitReason.QuotaExhausted;
-    }
-    if (hasBareQuotaExhausted || lowerBody.includes('quota')) {
-      return RateLimitReason.RateLimitExceeded;
-    }
-
-    return RateLimitReason.Unknown;
-  }
-
   private computeRetryAfterSeconds(params: {
     reason: RateLimitReason;
     status: number;
@@ -769,6 +377,14 @@ export class RateLimitTrackerService {
     const explicitRetry = parseRetryDelay(params.body, params.retryAfter);
     if (explicitRetry !== null) {
       return Math.max(2, Math.ceil(explicitRetry.delayMs / 1000));
+    }
+
+    if (
+      params.status === 429 &&
+      params.reason === RateLimitReason.RateLimitExceeded &&
+      hasGenericResourceExhaustedSignal(params.body)
+    ) {
+      return this.resourceBackoff.nextDelaySeconds(params.accountId, Date.now());
     }
 
     const failureCount =
@@ -803,68 +419,6 @@ export class RateLimitTrackerService {
     }
 
     return 60;
-  }
-
-  private parseRetryAfterSecondsFromBody(body: string | undefined): number | null {
-    if (!body) {
-      return null;
-    }
-    const deepParsedRetry = parseRetryDelayMilliseconds(body);
-    if (deepParsedRetry !== null) {
-      return Math.ceil(deepParsedRetry / 1000);
-    }
-
-    const parsedBody = tryParseGoogleErrorBody(body);
-    const error = getGoogleErrorEnvelope(parsedBody);
-    const details = getGoogleErrorDetails(error);
-    for (const detail of details) {
-      if (isString(detail.retryDelay) && !isEmpty(detail.retryDelay.trim())) {
-        const parsedDelay = parseDurationToSeconds(detail.retryDelay);
-        if (parsedDelay !== null) {
-          return parsedDelay;
-        }
-      }
-
-      if (isString(detail.metadata?.retryDelay) && !isEmpty(detail.metadata.retryDelay.trim())) {
-        const parsedDelay = parseDurationToSeconds(detail.metadata.retryDelay);
-        if (parsedDelay !== null) {
-          return parsedDelay;
-        }
-      }
-
-      if (
-        isString(detail.metadata?.quotaResetDelay) &&
-        !isEmpty(detail.metadata.quotaResetDelay.trim())
-      ) {
-        const parsedDelay = parseDurationToSeconds(detail.metadata.quotaResetDelay);
-        if (parsedDelay !== null) {
-          return parsedDelay;
-        }
-      }
-    }
-
-    const retryAfter = error?.retry_after;
-    if (isNumber(retryAfter) && retryAfter > 0) {
-      return Math.ceil(retryAfter);
-    }
-
-    const lowerBody = toLowerText(body);
-    const minSecMatch = lowerBody.match(/try again in\s+(\d+)m\s*(\d+)s/);
-    if (minSecMatch) {
-      return Number(minSecMatch[1]) * 60 + Number(minSecMatch[2]);
-    }
-
-    const secMatch = lowerBody.match(/(?:try again in|backoff for|wait)\s*(\d+)s/);
-    if (secMatch) {
-      return Number(secMatch[1]);
-    }
-
-    const resetMatch = lowerBody.match(/quota will reset in\s*(\d+)\s*second/);
-    if (resetMatch) {
-      return Number(resetMatch[1]);
-    }
-
-    return null;
   }
 
   private incrementFailureCount(key: string): number {

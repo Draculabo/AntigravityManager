@@ -13,47 +13,72 @@ import { recordProxyThinkingFill } from '@/modules/proxy-gateway/server/common/p
 import { getServerConfig } from '@/server/server-config';
 import { logger } from '@/shared/logging/logger';
 import { DiagnosticStoreShutdown } from '../diagnostics/store-shutdown';
+import { DiagnosticMaintenanceScheduler } from '../diagnostics/maintenance-scheduler';
 import { getProxyStateDir } from '@/shared/platform/paths';
 import { preserveCorruptSqliteDatabase } from '@/shared/persistence/database/preserve-corrupt-sqlite';
 import { BoundedSqliteWorker } from '@/shared/persistence/sqlite-worker/bounded-sqlite-worker';
 import type { DatabaseRepairResult } from '../audit/traffic-audit.service';
 import {
   ThoughtSessionListSchema,
-  ThoughtRecordSummaryListSchema,
   ThoughtStoreStatsSchema,
   type ThoughtRecord,
   type ThoughtRecordInput,
-  type ThoughtRecordSummary,
   type ThoughtSessionSummary,
   type ThoughtStoreStats,
 } from './thought-store.types';
+import { findExistingThoughtRecordIndex, isStrongerThoughtRecord } from './thought-store.matching';
 import {
-  findExistingThoughtRecordIndex,
-  hasThoughtTools,
-  isStrongerThoughtRecord,
-} from './thought-store.matching';
-import type { ThoughtStoreWorkerCommand } from './thought-store.worker-protocol';
+  ThoughtCleanupResultSchema,
+  type ThoughtStoreWorkerCommand,
+} from './thought-store.worker-protocol';
+import {
+  ThoughtSessionMemory,
+  mergeHydratedThoughtRecords,
+  type MemorySession,
+} from './thought-session-memory';
+import { ThoughtHydrationAdmissionError, ThoughtHydrationQueue } from './thought-hydration-queue';
+import { ThoughtHydrationRequests, thoughtHydrationCancelled } from './thought-hydration-requests';
+import {
+  extractThoughtRecord,
+  isMeaningfulThought,
+  restoreStoredThoughts,
+} from './thought-content';
+export { isPlaceholderThought, restoreStoredThoughts } from './thought-content';
+import { decodeThoughtPartSignatures, thoughtPartsBytes } from './thought-part-signatures';
+import { mergeThoughtRecordContent } from './thought-record-content';
+import { ThoughtRecordSchema } from './thought-owner.schema';
+import { assertThoughtReplyBudget, MAX_THOUGHT_READ_RECORDS } from './thought-read-budget';
+import { thoughtCausalHistory } from './thought-causal-history';
+import { mergeThoughtProvenance } from './thought-record-provenance';
+import { ThoughtReadBudgetError } from './thought-read-budget';
+import { expireThoughtToolSignatures } from './thought-tool-links';
+import { invalidateThoughtRecoveryPeers } from './thought-recovery-peers';
+import { ThoughtStreamCapture } from './thought-stream-capture';
+import {
+  decodeThoughtRecordPage,
+  ThoughtMutationReceiptSchema,
+  type ThoughtRecordPageInput,
+  type ThoughtMutationReceipt,
+} from './thought-management.schema';
+import {
+  thoughtCaptureLeases,
+  ThoughtCaptureLeases,
+  type ThoughtCaptureLease,
+} from './thought-capture-leases';
 
 const THOUGHT_STORE_FILENAME = 'thinking-store.db';
-const PLACEHOLDER_SIGNATURE = 'skip_thought_signature_validator';
-const MIN_REAL_SIGNATURE_LENGTH = 50;
-const MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
+const TOUCH_PERSIST_INTERVAL_MS = 5 * 60 * 1000;
+const HYDRATION_FAILURE_COOLDOWN_MS = 1000;
 const MAX_QUEUE_BYTES = 128 * 1024 * 1024;
 const MAX_QUEUE_COMMANDS = 256;
-export const HARD_MAX_THOUGHT_TURNS = 200;
+export const HARD_MAX_THOUGHT_TURNS = 10_000;
 export const HARD_MAX_THOUGHT_SESSION_BYTES = 64 * 1024 * 1024;
-
-interface MemorySession {
-  lastAccessed: number;
-  loaded: boolean;
-  records: ThoughtRecord[];
-}
 
 export function enforceThoughtSessionLimits(
   records: ThoughtRecord[],
   config: Pick<ThoughtStoreConfig, 'max_session_mib' | 'max_turns_per_session'>,
 ): void {
-  const maxTurns = Math.min(HARD_MAX_THOUGHT_TURNS, Math.max(1, config.max_turns_per_session));
+  const maxTurns = Math.min(HARD_MAX_THOUGHT_TURNS, Math.max(10, config.max_turns_per_session));
   const maxBytes = Math.min(
     HARD_MAX_THOUGHT_SESSION_BYTES,
     Math.max(1, config.max_session_mib) * 1024 * 1024,
@@ -61,13 +86,10 @@ export function enforceThoughtSessionLimits(
   while (records.length > maxTurns) {
     records.shift();
   }
-  let bytes = records.reduce(
-    (total, record) => total + Buffer.byteLength(record.thought, 'utf-8'),
-    0,
-  );
+  let bytes = records.reduce((total, record) => total + retainedThoughtBytes(record), 0);
   while (bytes > maxBytes && records.length > 0) {
     const removed = records.shift();
-    bytes -= removed ? Buffer.byteLength(removed.thought, 'utf-8') : 0;
+    bytes -= removed ? retainedThoughtBytes(removed) : 0;
   }
 }
 
@@ -79,17 +101,64 @@ function resolveThoughtSessionLimits(
       HARD_MAX_THOUGHT_SESSION_BYTES,
       Math.max(1, config.max_session_mib) * 1024 * 1024,
     ),
-    maxTurns: Math.min(HARD_MAX_THOUGHT_TURNS, Math.max(1, config.max_turns_per_session)),
+    maxTurns: Math.min(HARD_MAX_THOUGHT_TURNS, Math.max(10, config.max_turns_per_session)),
   };
 }
 
 export class ThoughtStoreService {
   private readonly terminal = new DiagnosticStoreShutdown();
   private worker: BoundedSqliteWorker | null = null;
-  private maintenanceTimer: NodeJS.Timeout | null = null;
-  private readonly sessions = new Map<string, MemorySession>();
-  private readonly hydration = new Map<string, Promise<ThoughtRecord[]>>();
+  private readonly maintenance = new DiagnosticMaintenanceScheduler(
+    async () => {
+      const config = this.getConfig();
+      const protectedSessionKeys = thoughtCaptureLeases.protectedKeys();
+      if (protectedSessionKeys === null) {
+        this.maintenanceBlockedReason = 'active_sessions';
+        return { moreWorkPending: false };
+      }
+      const reserveSlot = this.sessionCapacityRefused;
+      this.sessionCapacityRefused = false;
+      const result = ThoughtCleanupResultSchema.parse(
+        await this.request('cleanup', {
+          maxSessions: Math.max(0, config.max_sessions - (reserveSlot ? 1 : 0)),
+          retentionDays: config.retention_days,
+          maxDiskBytes: config.max_disk_mib * 1024 * 1024,
+          protectedSessionKeys,
+        }).catch((error: unknown) => {
+          this.sessionCapacityRefused ||= reserveSlot;
+          throw error;
+        }),
+      );
+      this.maintenanceBlockedReason = result.blockedReason;
+      for (const key of result.invalidatedSessions ?? []) {
+        this.invalidateSessionHydration(key);
+      }
+      return result;
+    },
+    (error) => logger.warn('Thought Store maintenance failed', error),
+  );
+  private readonly sessions = new ThoughtSessionMemory();
+  private readonly hydration = new ThoughtHydrationRequests();
+  private readonly hydrationLoads = new ThoughtHydrationQueue();
+  private hydrationGeneration = 0;
+  private readonly hydrationLeases = new ThoughtCaptureLeases();
+  private closePromise: Promise<void> | null = null;
   private writeFailures = 0;
+  private readFailures = 0;
+  private hydrationAdmissionFailures = 0;
+  private sessionCapacityRefused = false;
+  private maintenanceBlockedReason: ThoughtStoreStats['maintenanceBlockedReason'];
+  private lastWriteFailure: ThoughtStoreStats['lastWriteFailure'] = null;
+  private captureMutations: Promise<unknown> = Promise.resolve();
+  private readonly invalidationListeners = new Set<(sessionKey?: string) => void>();
+  private readonly captureAnchors = new WeakMap<ThoughtCaptureLease, string>();
+
+  public subscribeInvalidation(listener: (sessionKey?: string) => void): () => void {
+    this.invalidationListeners.add(listener);
+    return () => {
+      this.invalidationListeners.delete(listener);
+    };
+  }
   private repairInProgress: Promise<DatabaseRepairResult> | null = null;
 
   public isEnabled(): boolean {
@@ -97,12 +166,30 @@ export class ThoughtStoreService {
   }
 
   public getCurrentSessionKey(): string | null {
-    return getTrafficAuditRequestContext()?.thoughtSessionKey ?? null;
+    const lease = this.getCurrentCaptureLease();
+    return lease?.valid ? lease.sessionKey : null;
   }
 
-  public async prepareInternalRequest(body: GeminiInternalRequest, model: string): Promise<void> {
+  public getCurrentCaptureLease(): ThoughtCaptureLease | undefined {
+    const context = getTrafficAuditRequestContext();
+    if (!context) {
+      return undefined;
+    }
+    return (context.thoughtCaptureLease ??= thoughtCaptureLeases.acquire(
+      context.thoughtSessionKey,
+    ));
+  }
+
+  public async prepareInternalRequest(
+    body: GeminiInternalRequest,
+    model: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (signal?.aborted) {
+      throw thoughtHydrationCancelled();
+    }
     const sessionKey = this.getCurrentSessionKey();
-    if (!sessionKey || !this.isEnabled()) {
+    if (!sessionKey || !this.isEnabled() || !this.hydrationLoads.acceptsWork()) {
       return;
     }
     const contents = body.request.contents;
@@ -111,49 +198,157 @@ export class ThoughtStoreService {
     }
 
     const startedAt = performance.now();
+    const generation = this.hydrationGeneration;
+    const hydrationLease = this.hydrationLeases.acquire(sessionKey);
+    const captureLease = this.getCurrentCaptureLease();
+    if (captureLease) {
+      this.captureAnchors.set(captureLease, thoughtCausalHistory(contents).after);
+    }
     try {
-      await this.ensureHydrated(sessionKey);
-      this.ingestContents(sessionKey, contents, model, true);
-      this.restoreContents(sessionKey, contents, model);
+      let records = await this.hydration.run(
+        sessionKey,
+        (sharedSignal) => this.ensureHydrated(sessionKey, sharedSignal),
+        signal,
+      );
+      if (signal?.aborted) {
+        throw thoughtHydrationCancelled();
+      }
+      if (
+        generation !== this.hydrationGeneration ||
+        !hydrationLease.valid ||
+        !captureLease?.valid ||
+        !this.terminal.acceptsWork()
+      ) {
+        return;
+      }
+      const causal = thoughtCausalHistory(contents);
+      records = records.map((record) => expireThoughtToolSignatures(record));
+      const missing = [
+        ...new Set(
+          contents.flatMap((content, index) => {
+            if (content.role !== 'model' && content.role !== 'assistant') {
+              return [];
+            }
+            const probe = extractThoughtRecord(content, model, true);
+            if (!probe) {
+              return [];
+            }
+            probe.causalAnchor = causal.before[index];
+            return findExistingThoughtRecordIndex(probe, records, new Set(), 'restore') === null
+              ? [causal.before[index]]
+              : [];
+          }),
+        ),
+      ];
+      const memory = this.sessions.get(sessionKey);
+      if (
+        missing.length > 0 &&
+        memory?.loaded &&
+        performance.now() >= (memory.olderLookupRetryAt ?? 0)
+      ) {
+        try {
+          if (missing.length > 64) {
+            throw new ThoughtReadBudgetError();
+          }
+          const selected = await this.hydrationLoads.run(
+            async () =>
+              parseThoughtRecords(
+                await this.request('findCandidates', { sessionKey, model, anchors: missing }),
+              ),
+            signal,
+          );
+          records = mergeHydratedThoughtRecords(selected, records).map((record) =>
+            expireThoughtToolSignatures(record),
+          );
+        } catch (error) {
+          if (signal?.aborted) {
+            throw thoughtHydrationCancelled();
+          }
+          if (!hydrationLease.valid || !captureLease?.valid) {
+            return;
+          }
+          if (error instanceof ThoughtHydrationAdmissionError) {
+            this.hydrationAdmissionFailures += 1;
+          } else {
+            this.readFailures += 1;
+            memory.olderLookupRetryAt = performance.now() + HYDRATION_FAILURE_COOLDOWN_MS;
+          }
+          logger.warn(
+            'Thought Store older-history lookup failed; continuing without older restore',
+            error,
+          );
+        }
+      }
+      if (!hydrationLease.valid || !captureLease?.valid || signal?.aborted) {
+        return;
+      }
+      this.ingestContents(sessionKey, contents, model, true, records, causal.before);
+      this.restoreContents(sessionKey, contents, model, records, causal.before);
+    } catch (error) {
+      if (
+        generation !== this.hydrationGeneration ||
+        !hydrationLease.valid ||
+        !captureLease?.valid ||
+        !this.terminal.acceptsWork()
+      ) {
+        return;
+      }
+      throw error;
     } finally {
+      hydrationLease.release();
       recordProxyThinkingFill(startedAt);
     }
   }
 
-  public captureGeminiResponse(sessionKey: string | null, response: unknown, model: string): void {
-    if (!sessionKey || !this.isEnabled()) {
+  public captureGeminiResponse(
+    sessionKey: string | null,
+    response: unknown,
+    model: string,
+    lease = this.getCurrentCaptureLease(),
+  ): void {
+    if (!sessionKey || !this.isEnabled() || !lease?.valid || lease.sessionKey !== sessionKey) {
+      return;
+    }
+    if (!this.hydrationLoads.acceptsWork()) {
+      this.writeFailures += 1;
       return;
     }
     const contents = responseToContents(response);
     if (contents.length === 0) {
       return;
     }
-    this.ingestContents(sessionKey, contents, model);
-  }
-
-  public captureGeminiSse(sessionKey: string | null, raw: string, model: string): void {
-    if (!sessionKey || !this.isEnabled()) {
+    const operationId = randomUUID();
+    if (contents.length !== 1) {
       return;
     }
-    const responses: unknown[] = [];
-    for (const line of raw.split(/\r?\n/gu)) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) {
-        continue;
-      }
-      const data = trimmed.slice(5).trim();
-      if (!data || data === '[DONE]') {
-        continue;
-      }
-      try {
-        responses.push(JSON.parse(data));
-      } catch {
-        // Malformed SSE remains an audit concern; do not invent Thought records from it.
+    for (const [index, content] of contents.entries()) {
+      const record = extractThoughtRecord(content, model);
+      if (record) {
+        this.storeRecord(sessionKey, {
+          ...record,
+          operationId: `${operationId}/${index}`,
+          causalAnchor: this.captureAnchors.get(lease) ?? null,
+          completedAt: Date.now(),
+          captureState: 'complete',
+        });
       }
     }
-    for (const response of responses) {
-      this.captureGeminiResponse(sessionKey, response, model);
-    }
+  }
+
+  public beginStreamCapture(
+    sessionKey: string | null,
+    model: string,
+    lease = this.getCurrentCaptureLease(),
+  ): ThoughtStreamCapture {
+    return new ThoughtStreamCapture(
+      () =>
+        Boolean(sessionKey && lease?.valid && lease.sessionKey === sessionKey && this.isEnabled()),
+      (content) =>
+        this.captureGeminiResponse(sessionKey, { candidates: [{ content }] }, model, lease),
+      () => {
+        this.writeFailures += 1;
+      },
+    );
   }
 
   public async listSessions(
@@ -176,8 +371,8 @@ export class ThoughtStoreService {
     return parseThoughtRecords(await this.request('getSession', { sessionKey }));
   }
 
-  public async listRecords(sessionKey: string): Promise<ThoughtRecordSummary[]> {
-    return ThoughtRecordSummaryListSchema.parse(await this.request('listRecords', { sessionKey }));
+  public async listRecordPage(input: ThoughtRecordPageInput) {
+    return decodeThoughtRecordPage(await this.request('listRecordPage', input), input);
   }
 
   public async getRecord(sessionKey: string, id: number): Promise<ThoughtRecord | null> {
@@ -191,29 +386,74 @@ export class ThoughtStoreService {
     return result;
   }
 
-  public async endSession(sessionKey: string): Promise<number> {
-    const affected = Number(await this.request('end', { sessionKey }));
-    this.sessions.delete(sessionKey);
-    return affected;
+  public async endSession(sessionKey: string): Promise<ThoughtMutationReceipt> {
+    return this.mutateCaptureScope(sessionKey, async () => {
+      const affected = ThoughtMutationReceiptSchema.parse(
+        await this.request('end', {
+          sessionKey,
+          maxDiskBytes: this.getConfig().max_disk_mib * 1024 * 1024,
+        }),
+      );
+      this.sessions.delete(sessionKey);
+      return affected;
+    });
   }
 
-  public async deleteSession(sessionKey: string): Promise<number> {
-    const affected = Number(await this.request('deleteSession', { sessionKey }));
-    this.sessions.delete(sessionKey);
-    return affected;
+  public async deleteSession(sessionKey: string): Promise<ThoughtMutationReceipt> {
+    return this.mutateCaptureScope(sessionKey, async () => {
+      const affected = ThoughtMutationReceiptSchema.parse(
+        await this.request('deleteSession', { sessionKey }),
+      );
+      this.sessions.delete(sessionKey);
+      return { ...affected, ...(await invalidateThoughtRecoveryPeers(sessionKey)) };
+    });
   }
 
-  public async clear(): Promise<number> {
-    const affected = Number(await this.request('clear', null));
-    this.sessions.clear();
-    return affected;
+  public async clear(): Promise<ThoughtMutationReceipt> {
+    return this.mutateCaptureScope(undefined, async () => {
+      const affected = ThoughtMutationReceiptSchema.parse(await this.request('clear', null));
+      this.sessions.clear();
+      return { ...affected, ...(await invalidateThoughtRecoveryPeers()) };
+    });
+  }
+
+  private mutateCaptureScope<T>(
+    sessionKey: string | undefined,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    this.terminal.requireAdmission();
+    const release = thoughtCaptureLeases.block(sessionKey);
+    if (sessionKey === undefined) {
+      this.hydrationGeneration += 1;
+      this.hydration.cancelAll();
+      this.hydrationLeases.revoke();
+      this.sessions.clear();
+      for (const listener of this.invalidationListeners) {
+        listener();
+      }
+    } else {
+      this.invalidateSessionHydration(sessionKey);
+    }
+    const task = this.captureMutations
+      .catch(() => undefined)
+      .then(async () => {
+        await this.worker?.drainAdmitted();
+        return work();
+      })
+      .finally(release);
+    this.captureMutations = task;
+    return task;
   }
 
   public async stats(): Promise<ThoughtStoreStats> {
-    const persisted = ThoughtStoreStatsSchema.pick({ databaseBytes: true, sessions: true }).parse(
-      await this.request('stats', null),
-    );
+    const persisted = ThoughtStoreStatsSchema.pick({
+      databaseBytes: true,
+      sessions: true,
+      records: true,
+      recoverableToolLinks: true,
+    }).parse(await this.request('stats', null));
     const queue = this.ensureWorker().getStats();
+    const memory = this.sessions.snapshot();
     return ThoughtStoreStatsSchema.parse({
       ...persisted,
       memorySessions: this.sessions.size,
@@ -221,14 +461,38 @@ export class ThoughtStoreService {
       workerPendingBytes: queue.pendingBytes,
       workerPendingCommands: queue.pendingCommands,
       writeFailures: this.writeFailures,
+      readFailures: this.readFailures,
+      hydrationAdmissionFailures: this.hydrationAdmissionFailures,
+      memoryRecords: memory.records,
+      memoryBytes: memory.bytes,
+      maintenanceState: this.maintenance.state(),
+      maintenanceBlockedReason: this.maintenanceBlockedReason,
+      lastWriteFailure: this.lastWriteFailure,
     });
   }
 
   public async configure(config: ThoughtStoreConfig): Promise<void> {
-    await this.request('cleanup', {
-      maxSessions: config.max_sessions,
-      retentionDays: config.retention_days,
-    });
+    const protectedSessionKeys = thoughtCaptureLeases.protectedKeys();
+    const progress =
+      protectedSessionKeys === null
+        ? ThoughtCleanupResultSchema.parse({
+            removedSessions: 0,
+            moreWorkPending: false,
+            blockedReason: 'active_sessions',
+          })
+        : ThoughtCleanupResultSchema.parse(
+            await this.request('cleanup', {
+              maxSessions: config.max_sessions,
+              retentionDays: config.retention_days,
+              maxDiskBytes: config.max_disk_mib * 1024 * 1024,
+              protectedSessionKeys,
+            }),
+          );
+    this.maintenance.continueFrom(progress);
+    this.maintenanceBlockedReason = progress.blockedReason;
+    for (const key of progress.invalidatedSessions ?? []) {
+      this.invalidateSessionHydration(key);
+    }
     for (const [sessionKey, session] of this.sessions) {
       this.pruneMemorySession(sessionKey, session, config);
     }
@@ -240,6 +504,9 @@ export class ThoughtStoreService {
     if (this.repairInProgress) {
       return this.repairInProgress;
     }
+    if (!this.hydrationLoads.acceptsWork()) {
+      throw new Error('Thought Store is closing');
+    }
     const repair = this.performRepair().finally(() => {
       this.repairInProgress = null;
     });
@@ -248,40 +515,61 @@ export class ThoughtStoreService {
   }
 
   public shutdown(): Promise<void> {
-    if (this.maintenanceTimer) {
-      clearInterval(this.maintenanceTimer);
-      this.maintenanceTimer = null;
+    const unblock = thoughtCaptureLeases.block();
+    for (const listener of this.invalidationListeners) {
+      listener();
     }
-    return this.terminal.run(
-      async () => {
-        await this.repairInProgress;
-        await Promise.all([...this.hydration.values()]);
-      },
-      async () => {
-        const worker = this.worker;
-        this.worker = null;
-        try {
-          await worker?.close();
-        } finally {
-          this.sessions.clear();
-          this.hydration.clear();
-        }
-      },
-    );
+    this.maintenance.stop();
+    this.hydrationGeneration += 1;
+    this.hydration.cancelAll();
+    this.hydrationLoads.pause();
+    return this.terminal
+      .run(
+        async () => {
+          await this.repairInProgress;
+          await this.closePromise;
+          await this.hydration.waitForIdle();
+        },
+        async () => {
+          const worker = this.worker;
+          this.worker = null;
+          try {
+            await worker?.close();
+          } finally {
+            this.sessions.clear();
+            this.hydration.cancelAll();
+          }
+        },
+      )
+      .finally(unblock);
   }
 
-  public async close(): Promise<void> {
-    if (this.maintenanceTimer) {
-      clearInterval(this.maintenanceTimer);
-      this.maintenanceTimer = null;
+  public close(): Promise<void> {
+    this.closePromise ??= this.performClose().finally(() => {
+      this.closePromise = null;
+    });
+    return this.closePromise;
+  }
+
+  private async performClose(): Promise<void> {
+    const unblock = thoughtCaptureLeases.block();
+    for (const listener of this.invalidationListeners) {
+      listener();
     }
+    this.maintenance.stop();
+    this.hydrationGeneration += 1;
+    this.hydration.cancelAll();
+    this.hydrationLoads.pause();
     const worker = this.worker;
     this.worker = null;
-    if (worker) {
-      await worker.close();
+    try {
+      await worker?.close();
+    } finally {
+      this.sessions.clear();
+      this.hydration.cancelAll();
+      this.hydrationLoads.resume();
+      unblock();
     }
-    this.sessions.clear();
-    this.hydration.clear();
   }
 
   private ingestContents(
@@ -289,9 +577,22 @@ export class ThoughtStoreService {
     contents: GeminiContent[],
     model: string,
     historical = false,
+    candidateRecords?: readonly ThoughtRecord[],
+    causalAnchors?: readonly string[],
   ): void {
     const incoming = contents
-      .map((content) => extractThoughtRecord(content, model))
+      .map((content, index) => {
+        const record = extractThoughtRecord(content, model);
+        if (
+          record &&
+          historical &&
+          candidateRecords?.some((candidate) => candidate.causalAnchor === causalAnchors?.[index])
+        ) {
+          record.causalAnchor = causalAnchors?.[index];
+          record.captureState = 'history';
+        }
+        return record;
+      })
       .filter((record): record is ThoughtRecordInput => record !== null);
     if (!historical) {
       for (const record of incoming) {
@@ -307,7 +608,7 @@ export class ThoughtStoreService {
     if (!session) {
       return;
     }
-    const existing = [...session.records];
+    const existing = [...(candidateRecords ?? session.records)];
     const used = new Set<number>();
     const upgrades: Array<{ index: number; record: ThoughtRecordInput }> = [];
     const toAppend: ThoughtRecordInput[] = [];
@@ -333,7 +634,16 @@ export class ThoughtStoreService {
       const previous = existing[index];
       const currentIndex = session.records.findIndex((item) => item.id === previous.id);
       if (currentIndex >= 0) {
-        session.records[currentIndex] = toMemoryRecord(record, previous.id, now, maxBytes);
+        session.records[currentIndex] = toMemoryRecord(
+          {
+            ...record,
+            ...mergeThoughtRecordContent(record, previous),
+            ...mergeThoughtProvenance(record, previous),
+          },
+          previous.id,
+          previous.createdAt,
+          maxBytes,
+        );
       }
     }
     this.pruneMemorySession(sessionKey, session, config);
@@ -345,11 +655,12 @@ export class ThoughtStoreService {
       this.writeFailures += 1;
       return;
     }
-    const accepted = this.tryWrite('ingestHistory', {
+    const accepted = this.tryWriteSessionAccess(session, 'ingestHistory', {
       records: incoming.map((record) => ({
         ...record,
         createdAt: now,
-        maxSessionBytes: maxBytes,
+        maxSessionBytes: HARD_MAX_THOUGHT_SESSION_BYTES,
+        maxDiskBytes: config.max_disk_mib * 1024 * 1024,
         maxSessions: config.max_sessions,
         maxTurns,
         meaningful: isMeaningfulThought(record.thought),
@@ -357,19 +668,34 @@ export class ThoughtStoreService {
       })),
       sessionKey,
     });
+    this.pruneMemorySessions(config.max_sessions);
     if (!accepted) {
       this.writeFailures += 1;
     }
   }
 
-  private restoreContents(sessionKey: string, contents: GeminiContent[], model: string): void {
+  private restoreContents(
+    sessionKey: string,
+    contents: GeminiContent[],
+    model: string,
+    hydrated: ThoughtRecord[],
+    causalAnchors?: readonly string[],
+  ): void {
     const session = this.sessions.get(sessionKey);
-    if (!session || session.records.length === 0) {
+    const records = hydrated;
+    if (records.length === 0) {
       return;
     }
-    session.lastAccessed = Date.now();
-    this.touchSession(sessionKey);
-    restoreStoredThoughts(contents, session.records, model);
+    if (session) {
+      session.lastAccessed = Date.now();
+      this.touchSession(sessionKey);
+    }
+    restoreStoredThoughts(
+      contents,
+      records,
+      model,
+      records.some((record) => record.causalAnchor) ? causalAnchors : undefined,
+    );
   }
 
   private storeRecord(sessionKey: string, input: ThoughtRecordInput, persist = true): void {
@@ -377,25 +703,26 @@ export class ThoughtStoreService {
     const now = Date.now();
     const session = this.sessions.get(sessionKey) ?? {
       lastAccessed: now,
-      loaded: true,
+      persistedAccess: null,
+      loaded: false,
       records: [],
     };
     const { maxBytes, maxTurns } = resolveThoughtSessionLimits(config);
-    const incoming = toMemoryRecord(input, `memory-${randomUUID()}`, now, maxBytes);
-
-    const latest = session.records.at(-1);
-    if (latest && recordsIdentifySameTurn(latest, incoming)) {
-      const preserveThought =
-        !isMeaningfulThought(input.thought) && isMeaningfulThought(latest.thought);
-      session.records[session.records.length - 1] = {
-        ...latest,
-        ...incoming,
-        id: latest.id,
-        signature: incoming.signature ?? latest.signature,
-        thought: preserveThought ? latest.thought : incoming.thought,
-      };
+    const index = findExistingThoughtRecordIndex(input, session.records, new Set());
+    const latest = index === null ? undefined : session.records[index];
+    if (latest && index !== null) {
+      session.records[index] = toMemoryRecord(
+        {
+          ...input,
+          ...mergeThoughtRecordContent(input, latest),
+          ...mergeThoughtProvenance(input, latest),
+        },
+        latest.id,
+        latest.createdAt,
+        maxBytes,
+      );
     } else {
-      session.records.push(incoming);
+      session.records.push(toMemoryRecord(input, `memory-${randomUUID()}`, now, maxBytes));
     }
     session.lastAccessed = now;
     this.sessions.delete(sessionKey);
@@ -410,10 +737,11 @@ export class ThoughtStoreService {
       this.writeFailures += 1;
       return;
     }
-    const accepted = this.tryWrite('save', {
+    const accepted = this.tryWriteSessionAccess(session, 'save', {
       ...input,
       createdAt: now,
-      maxSessionBytes: maxBytes,
+      maxSessionBytes: HARD_MAX_THOUGHT_SESSION_BYTES,
+      maxDiskBytes: config.max_disk_mib * 1024 * 1024,
       maxSessions: config.max_sessions,
       maxTurns,
       meaningful: isMeaningfulThought(input.thought),
@@ -424,75 +752,155 @@ export class ThoughtStoreService {
     }
   }
 
-  private async ensureHydrated(sessionKey: string): Promise<ThoughtRecord[]> {
+  private invalidateSessionHydration(sessionKey: string): void {
+    this.hydrationLeases.revoke(sessionKey);
+    this.hydration.cancel(sessionKey);
+    this.sessions.delete(sessionKey);
+    for (const listener of this.invalidationListeners) {
+      listener(sessionKey);
+    }
+  }
+  private async ensureHydrated(sessionKey: string, signal: AbortSignal): Promise<ThoughtRecord[]> {
     const existing = this.sessions.get(sessionKey);
     if (existing?.loaded) {
       existing.lastAccessed = Date.now();
       return existing.records;
     }
-    const inFlight = this.hydration.get(sessionKey);
-    if (inFlight) {
-      return inFlight;
+    if (existing?.hydrationRetryAt !== undefined && performance.now() < existing.hydrationRetryAt) {
+      return existing.records;
     }
-
-    const load = this.request('load', { sessionKey })
-      .then((value) => {
-        const records = parseThoughtRecords(value);
-        if (!this.terminal.acceptsWork()) {
+    const { maxBytes, maxTurns } = resolveThoughtSessionLimits(this.getConfig());
+    const generation = this.hydrationGeneration;
+    const hydrationLease = this.hydrationLeases.acquire(sessionKey);
+    const load = this.hydrationLoads
+      .run(
+        async () =>
+          parseThoughtRecords(
+            await this.request('load', { sessionKey, maxSessionBytes: maxBytes, maxTurns }),
+          ),
+        signal,
+      )
+      .then((persisted) => {
+        const records = mergeHydratedThoughtRecords(
+          persisted,
+          this.sessions.get(sessionKey)?.records ?? [],
+        );
+        if (
+          signal.aborted ||
+          !this.terminal.acceptsWork() ||
+          generation !== this.hydrationGeneration ||
+          !hydrationLease.valid
+        ) {
           return records;
         }
-        const session = { lastAccessed: Date.now(), loaded: true, records };
+        const session = {
+          lastAccessed: Date.now(),
+          persistedAccess: this.sessions.get(sessionKey)?.persistedAccess ?? null,
+          loaded: true,
+          records,
+        };
         this.pruneMemorySession(sessionKey, session, this.getConfig());
         this.sessions.set(sessionKey, session);
         this.pruneMemorySessions(this.getConfig().max_sessions);
+        if (persisted.length > 0) {
+          this.touchSession(sessionKey);
+        }
         return records;
       })
       .catch((error) => {
-        this.writeFailures += 1;
-        logger.warn('Thought Store hydration failed; continuing without restore', error);
-        if (this.terminal.acceptsWork()) {
-          this.sessions.set(sessionKey, { lastAccessed: Date.now(), loaded: true, records: [] });
+        if (signal.aborted) {
+          throw thoughtHydrationCancelled();
         }
-        return [];
+        const captured = this.sessions.get(sessionKey);
+        if (error instanceof ThoughtHydrationAdmissionError && error.reason === 'closed') {
+          return captured?.records ?? [];
+        }
+        if (error instanceof ThoughtHydrationAdmissionError) {
+          this.hydrationAdmissionFailures += 1;
+        } else {
+          this.readFailures += 1;
+        }
+        logger.warn('Thought Store hydration failed; continuing without restore', error);
+        if (
+          this.terminal.acceptsWork() &&
+          generation === this.hydrationGeneration &&
+          hydrationLease.valid
+        ) {
+          this.sessions.set(sessionKey, {
+            lastAccessed: Date.now(),
+            persistedAccess: captured?.persistedAccess ?? null,
+            loaded: false,
+            ...(error instanceof ThoughtHydrationAdmissionError
+              ? {}
+              : { hydrationRetryAt: performance.now() + HYDRATION_FAILURE_COOLDOWN_MS }),
+            records: captured?.records ?? [],
+          });
+          this.pruneMemorySessions(this.getConfig().max_sessions);
+        }
+        return captured?.records ?? [];
       })
-      .finally(() => this.hydration.delete(sessionKey));
-    this.hydration.set(sessionKey, load);
+      .finally(() => hydrationLease.release());
     return load;
   }
 
   private touchSession(sessionKey: string): void {
+    const session = this.sessions.get(sessionKey);
+    if (
+      !session ||
+      (session.persistedAccess &&
+        performance.now() - session.persistedAccess.queuedAt < TOUCH_PERSIST_INTERVAL_MS)
+    ) {
+      return;
+    }
     if (this.repairInProgress) {
       this.writeFailures += 1;
       return;
     }
-    if (!this.tryWrite('touch', { sessionKey })) {
+    if (
+      !this.tryWriteSessionAccess(session, 'touch', {
+        sessionKey,
+        maxDiskBytes: this.getConfig().max_disk_mib * 1024 * 1024,
+      })
+    ) {
       this.writeFailures += 1;
     }
   }
 
+  /** Saves and hydration already refresh SQLite access; warm replay needs no extra write. */
+  private tryWriteSessionAccess<TOperation extends 'save' | 'ingestHistory' | 'touch'>(
+    session: MemorySession,
+    operation: TOperation,
+    payload: Extract<ThoughtStoreWorkerCommand, { operation: TOperation }>['payload'],
+  ): boolean {
+    const access = { queuedAt: performance.now() };
+    const accepted = this.ensureWorker().tryWrite(
+      { operation, payload },
+      {
+        onFailure: () => {
+          // An older failure must not invalidate a newer accepted access write.
+          if (session.persistedAccess === access) {
+            session.persistedAccess = null;
+          }
+        },
+      },
+    );
+    if (accepted) {
+      session.persistedAccess = access;
+    }
+    return accepted;
+  }
+
   private pruneMemorySession(
-    _sessionKey: string,
+    sessionKey: string,
     session: MemorySession,
     config: ThoughtStoreConfig,
   ): void {
     enforceThoughtSessionLimits(session.records, config);
+    this.sessions.refresh(sessionKey, session);
   }
 
   private pruneMemorySessions(maxSessions: number): void {
-    while (this.sessions.size > maxSessions) {
-      let oldestKey: string | null = null;
-      let oldestAt = Number.POSITIVE_INFINITY;
-      for (const [key, session] of this.sessions) {
-        if (session.lastAccessed < oldestAt) {
-          oldestAt = session.lastAccessed;
-          oldestKey = key;
-        }
-      }
-      if (!oldestKey) {
-        return;
-      }
-      this.sessions.delete(oldestKey);
-    }
+    this.sessions.prune(maxSessions);
   }
 
   private ensureWorker(): BoundedSqliteWorker {
@@ -509,34 +917,27 @@ export class ThoughtStoreService {
       name: 'thought-store-sqlite',
       onWriteFailure: (error) => {
         this.writeFailures += 1;
+        const message = error instanceof Error ? error.message : '';
+        const reason = message.startsWith('SQLite write rejected: ')
+          ? message.slice(23)
+          : message === 'Thought Store write rejected: session_capacity'
+            ? 'session_capacity'
+            : 'write_failed';
+        const safeReason = ThoughtStoreStatsSchema.shape.lastWriteFailure.safeParse(reason);
+        this.lastWriteFailure = safeReason.success ? safeReason.data : 'write_failed';
+        if (message === 'Thought Store write rejected: session_capacity') {
+          this.sessionCapacityRefused = true;
+        }
+        this.maintenance.continueFrom({ moreWorkPending: true });
         logger.warn('Thought Store worker write failed', error);
       },
       workerPath: path.join(__dirname, 'thought-store.worker.js'),
     });
     this.worker.start();
-    this.scheduleMaintenance();
-    return this.worker;
-  }
-
-  private scheduleMaintenance(): void {
-    if (this.maintenanceTimer || !this.terminal.acceptsWork()) {
-      return;
+    if (this.terminal.acceptsWork()) {
+      this.maintenance.start(false);
     }
-    this.maintenanceTimer = setInterval(() => {
-      const config = this.getConfig();
-      this.request('cleanup', {
-        maxSessions: config.max_sessions,
-        retentionDays: config.retention_days,
-      }).catch((error) => logger.warn('Thought Store maintenance failed', error));
-    }, MAINTENANCE_INTERVAL_MS);
-    this.maintenanceTimer.unref();
-  }
-
-  private tryWrite<TOperation extends ThoughtStoreWorkerCommand['operation']>(
-    operation: TOperation,
-    payload: Extract<ThoughtStoreWorkerCommand, { operation: TOperation }>['payload'],
-  ): boolean {
-    return this.ensureWorker().tryWrite({ operation, payload });
+    return this.worker;
   }
 
   private async request<
@@ -550,22 +951,35 @@ export class ThoughtStoreService {
     if (this.repairInProgress) {
       await this.repairInProgress;
     }
+    if (!this.hydrationLoads.acceptsWork()) {
+      throw new Error('Thought Store is closing');
+    }
     return this.ensureWorker().request<TResult>({ operation, payload });
   }
 
   private async performRepair(): Promise<DatabaseRepairResult> {
+    const unblock = thoughtCaptureLeases.block();
+    for (const listener of this.invalidationListeners) {
+      listener();
+    }
+    this.maintenance.stop();
+    this.hydrationGeneration += 1;
+    this.hydration.cancelAll();
+    this.hydrationLoads.pause();
     const worker = this.worker;
     this.worker = null;
-    if (worker) {
-      await worker.close();
+    try {
+      await worker?.close();
+      this.sessions.clear();
+      this.hydration.cancelAll();
+      const databasePath = path.join(getProxyStateDir(), THOUGHT_STORE_FILENAME);
+      const backupPath = preserveCorruptSqliteDatabase(databasePath);
+      await this.ensureWorker().request({ operation: 'stats', payload: null });
+      return { backupPath, repaired: true };
+    } finally {
+      this.hydrationLoads.resume();
+      unblock();
     }
-    this.sessions.clear();
-    this.hydration.clear();
-
-    const databasePath = path.join(getProxyStateDir(), THOUGHT_STORE_FILENAME);
-    const backupPath = preserveCorruptSqliteDatabase(databasePath);
-    await this.ensureWorker().request({ operation: 'stats', payload: null });
-    return { backupPath, repaired: true };
   }
 
   private getConfig(): ThoughtStoreConfig {
@@ -575,274 +989,13 @@ export class ThoughtStoreService {
 
 export const thoughtStoreService = new ThoughtStoreService();
 
-export function isPlaceholderThought(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) {
-    return true;
-  }
-  if (
-    normalized === '...' ||
-    normalized === '.' ||
-    normalized === '·' ||
-    normalized === '···' ||
-    normalized === '[undefined]' ||
-    normalized === 'applying tool decisions and generating response...'
-  ) {
-    return true;
-  }
-  return /^[.·…]+$/u.test(normalized);
-}
-
-function extractThoughtRecord(
-  content: GeminiContent,
-  model: string,
-  allowProbe = false,
-): ThoughtRecordInput | null {
-  if (!isAssistantRole(content)) {
-    return null;
-  }
-  const parts = getParts(content);
-  if (!parts) {
-    return null;
-  }
-  const thought: string[] = [];
-  const visible: string[] = [];
-  const toolIds: string[] = [];
-  const toolNames: string[] = [];
-  let signature: string | null = null;
-
-  for (const value of parts) {
-    if (!value || typeof value !== 'object') {
-      continue;
-    }
-    const part = value as Record<string, unknown>;
-    const text = typeof part.text === 'string' ? part.text : '';
-    if (part.thought === true) {
-      if (text) {
-        thought.push(text);
-      }
-    } else if (text) {
-      visible.push(text);
-    }
-    const partSignature = readSignature(part);
-    if (partSignature && (!signature || partSignature.length > signature.length)) {
-      signature = partSignature;
-    }
-    collectToolIdentity(part.functionCall, toolIds, toolNames);
-    collectToolIdentity(part.functionResponse, toolIds, toolNames);
-  }
-
-  const thoughtText = thought.join('');
-  if (!allowProbe && !thoughtText && !signature) {
-    return null;
-  }
-  if (allowProbe && !thoughtText && toolIds.length === 0 && visible.length === 0) {
-    return null;
-  }
-  const normalizedVisible = normalizeVisible(visible.join('\n'));
-  return {
-    fingerprint: fingerprint(normalizedVisible, toolIds, toolNames),
-    model: model || null,
-    signature,
-    sourceFamily: modelFamily(model),
-    thought: thoughtText,
-    toolIds: unique(toolIds),
-    toolNames: unique(toolNames),
-    visible: normalizedVisible,
-  };
-}
-
-function getParts(content: GeminiContent): Array<Record<string, unknown>> | null {
-  const parts = Reflect.get(content, 'parts');
-  return Array.isArray(parts) ? (parts as Array<Record<string, unknown>>) : null;
-}
-
-function isAssistantRole(content: GeminiContent): boolean {
-  const role = Reflect.get(content, 'role');
-  return role === 'model' || role === 'assistant';
-}
-
-function readSignature(part: Record<string, unknown>): string | null {
-  const value = part.thoughtSignature ?? part.thought_signature;
-  return typeof value === 'string' &&
-    value.length >= MIN_REAL_SIGNATURE_LENGTH &&
-    value !== PLACEHOLDER_SIGNATURE
-    ? value
-    : null;
-}
-
-function collectToolIdentity(value: unknown, ids: string[], names: string[]): void {
-  if (!value || typeof value !== 'object') {
-    return;
-  }
-  const id = Reflect.get(value, 'id');
-  const name = Reflect.get(value, 'name');
-  if (typeof id === 'string' && id) {
-    ids.push(id);
-  }
-  if (typeof name === 'string' && name) {
-    names.push(name);
-  }
-}
-
-interface RestorableTurn {
-  parts: Array<Record<string, unknown>>;
-  probe: ThoughtRecordInput;
-  complete: boolean;
-  matchedIndex: number | null;
-}
-
-/** Match newest turns first; only the final model turn may use a category-only fallback. */
-export function restoreStoredThoughts(
-  contents: GeminiContent[],
-  records: readonly ThoughtRecord[],
-  model: string,
-): number {
-  const available = records.filter((record) => modelsCompatible(record, model));
-  const turns: RestorableTurn[] = [];
-  for (const content of contents) {
-    const parts = getParts(content);
-    if (!parts || !isAssistantRole(content)) {
-      continue;
-    }
-    const probe = extractThoughtRecord(content, model, true);
-    if (probe) {
-      turns.push({
-        complete: !turnNeedsRestore(parts),
-        matchedIndex: null,
-        parts,
-        probe,
-      });
-    }
-  }
-
-  const used = new Set<number>();
-  const match = (turn: RestorableTurn, predicate: (record: ThoughtRecord) => boolean): void => {
-    for (let index = available.length - 1; index >= 0; index--) {
-      if (!used.has(index) && predicate(available[index])) {
-        turn.matchedIndex = index;
-        used.add(index);
-        return;
-      }
-    }
-  };
-
-  for (const turn of [...turns].reverse()) {
-    if (!turn.complete && turn.probe.toolIds.length > 0) {
-      match(turn, (record) => turn.probe.toolIds.some((toolId) => record.toolIds.includes(toolId)));
-    }
-  }
-  for (const turn of [...turns].reverse()) {
-    if (!turn.complete && turn.matchedIndex === null) {
-      match(
-        turn,
-        (record) =>
-          record.fingerprint === turn.probe.fingerprint &&
-          hasThoughtTools(record) === hasThoughtTools(turn.probe),
-      );
-    }
-  }
-  for (const turn of [...turns].reverse()) {
-    if (
-      turn.complete ||
-      turn.matchedIndex !== null ||
-      hasThoughtTools(turn.probe) ||
-      !turn.probe.visible
-    ) {
-      continue;
-    }
-    match(turn, (record) => {
-      if (hasThoughtTools(record) || !record.visible) {
-        return false;
-      }
-      return (
-        record.visible === turn.probe.visible ||
-        record.visible.startsWith(turn.probe.visible) ||
-        turn.probe.visible.startsWith(record.visible)
-      );
-    });
-  }
-  const lastTurn = turns.at(-1);
-  if (lastTurn && !lastTurn.complete && lastTurn.matchedIndex === null) {
-    match(lastTurn, (record) => hasThoughtTools(record) === hasThoughtTools(lastTurn.probe));
-  }
-
-  let restored = 0;
-  for (const turn of turns) {
-    if (turn.complete || turn.matchedIndex === null) {
-      continue;
-    }
-    const record = available[turn.matchedIndex];
-    if ((record.thought.trim() || record.signature) && restoreRecordIntoParts(turn.parts, record)) {
-      restored += 1;
-    }
-  }
-  return restored;
-}
-
-function turnNeedsRestore(parts: Array<Record<string, unknown>>): boolean {
-  const thought = parts
-    .filter((part) => part.thought === true && typeof part.text === 'string')
-    .map((part) => part.text as string)
-    .join('');
-  if (isPlaceholderThought(thought)) {
-    return true;
-  }
-  for (const part of parts) {
-    if (part.functionCall && !readSignature(part)) {
-      return true;
-    }
-  }
-  return !parts.some((part) => readSignature(part));
-}
-
-function restoreRecordIntoParts(
-  parts: Array<Record<string, unknown>>,
-  record: ThoughtRecord,
-): boolean {
-  const existingThought = parts
-    .filter((part) => part.thought === true && typeof part.text === 'string')
-    .map((part) => part.text as string)
-    .join('');
-  const hasUnvalidatedFunctionCall = parts.some(
-    (part) => part.functionCall && !readSignature(part),
-  );
-  const shouldReplace =
-    isPlaceholderThought(existingThought) ||
-    Buffer.byteLength(existingThought, 'utf8') < Buffer.byteLength(record.thought, 'utf8') ||
-    (Boolean(record.signature) && !parts.some((part) => readSignature(part))) ||
-    hasUnvalidatedFunctionCall;
-  if (!shouldReplace) {
-    return false;
-  }
-
-  for (let index = parts.length - 1; index >= 0; index--) {
-    if (parts[index].thought === true) {
-      parts.splice(index, 1);
-    }
-  }
-  const signature = record.signature ?? PLACEHOLDER_SIGNATURE;
-  const thoughtPart: Record<string, unknown> = {
-    text: isPlaceholderThought(record.thought) ? '...' : record.thought,
-    thought: true,
-    thoughtSignature: signature,
-  };
-  for (const part of parts) {
-    if (part.functionCall && (record.signature || !readSignature(part))) {
-      part.thoughtSignature = signature;
-    }
-  }
-  parts.unshift(thoughtPart);
-  return true;
-}
-
 function toMemoryRecord(
   input: ThoughtRecordInput,
   id: ThoughtRecord['id'],
   createdAt: number,
   maxBytes: number,
 ): ThoughtRecord {
-  const rawBytes = Buffer.byteLength(input.thought, 'utf8');
+  const rawBytes = retainedThoughtBytes(input);
   const oversized = rawBytes > maxBytes;
   return {
     ...input,
@@ -852,55 +1005,9 @@ function toMemoryRecord(
     oversizedBytes: oversized ? rawBytes : null,
     oversizedSha256: oversized ? sha256Hex(input.thought) : null,
     thought: oversized ? '' : input.thought,
+    signature: oversized ? null : input.signature,
+    partSignatures: oversized ? [] : input.partSignatures,
   };
-}
-
-function recordsIdentifySameTurn(left: ThoughtRecord, right: ThoughtRecord): boolean {
-  if (right.toolIds.length > 0) {
-    return right.toolIds.some((id) => left.toolIds.includes(id));
-  }
-  return left.toolIds.length === 0 && left.fingerprint === right.fingerprint;
-}
-
-function isMeaningfulThought(value: string): boolean {
-  return Boolean(value.trim()) && !isPlaceholderThought(value);
-}
-
-function modelsCompatible(record: ThoughtRecord, model: string): boolean {
-  const family = modelFamily(model);
-  return !record.sourceFamily || !family || record.sourceFamily === family;
-}
-
-function modelFamily(model: string): string | null {
-  const normalized = model.toLowerCase().replace(/^models\//u, '');
-  if (!normalized) {
-    return null;
-  }
-  if (normalized.includes('gemini-3')) {
-    return 'gemini-3';
-  }
-  if (normalized.includes('gemini-2')) {
-    return 'gemini-2';
-  }
-  if (normalized.includes('claude')) {
-    return 'claude';
-  }
-  return normalized.split(/[-:]/u).slice(0, 2).join('-');
-}
-
-function normalizeVisible(value: string): string {
-  return value.replace(/\s+/gu, ' ').trim().toLowerCase();
-}
-
-function fingerprint(visible: string, toolIds: string[], toolNames: string[]): string {
-  return createHash('sha256')
-    .update(JSON.stringify([visible, unique(toolIds), unique(toolNames)]), 'utf-8')
-    .digest('hex')
-    .slice(0, 16);
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)];
 }
 
 function sha256Hex(value: string): string {
@@ -925,23 +1032,44 @@ function responseToContents(response: unknown): GeminiContent[] {
 }
 
 function parseThoughtRecords(value: unknown): ThoughtRecord[] {
-  if (!Array.isArray(value)) {
+  if (!Array.isArray(value) || value.length > MAX_THOUGHT_READ_RECORDS) {
     throw new Error('Thought Store returned an invalid record list');
   }
-  return value.filter(isThoughtRecord);
+  const records = value.map((record) => {
+    if (!isThoughtRecord(record)) {
+      throw new Error('Thought Store returned an invalid record');
+    }
+    return record;
+  });
+  assertThoughtReplyBudget(records);
+  return records;
 }
 
 function isThoughtRecord(value: unknown): value is ThoughtRecord {
-  return Boolean(
-    value &&
-    typeof value === 'object' &&
-    (typeof Reflect.get(value, 'id') === 'number' ||
-      typeof Reflect.get(value, 'id') === 'string') &&
-    typeof Reflect.get(value, 'fingerprint') === 'string' &&
-    typeof Reflect.get(value, 'thought') === 'string' &&
-    Array.isArray(Reflect.get(value, 'toolIds')) &&
-    Array.isArray(Reflect.get(value, 'toolNames')) &&
-    typeof Reflect.get(value, 'visible') === 'string' &&
-    typeof Reflect.get(value, 'createdAt') === 'number',
+  const valid = ThoughtRecordSchema.safeParse(value).success;
+  if (valid && value && typeof value === 'object') {
+    decodeThoughtPartSignatures(
+      Reflect.get(value, 'partSignatures'),
+      Reflect.get(value, 'thought'),
+    );
+  }
+  return valid;
+}
+
+function retainedThoughtBytes(record: ThoughtRecordInput): number {
+  return (
+    Buffer.byteLength(record.thought, 'utf8') +
+    thoughtPartsBytes(record.partSignatures) +
+    Buffer.byteLength(record.signature ?? '', 'utf8') +
+    Buffer.byteLength(record.visible, 'utf8') +
+    Buffer.byteLength(record.fingerprint, 'utf8') +
+    Buffer.byteLength(record.model ?? '', 'utf8') +
+    Buffer.byteLength(record.sourceFamily ?? '', 'utf8') +
+    Buffer.byteLength(record.operationId ?? '', 'utf8') +
+    Buffer.byteLength(record.causalAnchor ?? '', 'utf8') +
+    Buffer.byteLength(record.captureState ?? '', 'utf8') +
+    record.toolIds.reduce((bytes, value) => bytes + Buffer.byteLength(value, 'utf8') + 16, 0) +
+    record.toolNames.reduce((bytes, value) => bytes + Buffer.byteLength(value, 'utf8') + 16, 0) +
+    256
   );
 }

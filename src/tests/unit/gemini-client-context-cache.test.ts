@@ -64,6 +64,7 @@ describe('GeminiClient explicit context cache', () => {
   });
 
   it('drops a rejected cache resource and retries the original request once', async () => {
+    vi.stubEnv('PROXY_INTERNAL_BASE_URLS', 'https://single-fixture.invalid/v1internal');
     vi.stubEnv('PROXY_CONTEXT_CACHE_MIN_CHARACTERS', '1');
     const post = vi.spyOn(axios, 'post');
     const missingCacheError = new axios.AxiosError(

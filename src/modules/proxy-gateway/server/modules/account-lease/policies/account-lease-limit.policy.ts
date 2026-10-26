@@ -1,20 +1,22 @@
-import { isEmpty, isString } from 'lodash-es';
 import {
-  hasExplicitQuotaExhaustedSignal,
-  hasGenericResourceExhaustedSignal,
-  parseRetryDelayMilliseconds,
   RateLimitReason,
   RateLimitTrackerService,
 } from '../../../shared/services/rate-limit-tracker.service';
+import {
+  classifyUpstreamRateLimit,
+  parseRetryDelay,
+} from '../../../shared/services/rate-limit-evidence';
 import { normalizeModelId } from '../interfaces/account-lease-token-types';
 import type { AccountLeaseQuotaRefreshOutcome } from './account-lease-quota-refresh.policy';
 
 export interface AccountLeaseUpstreamErrorParams {
+  isCurrent?: () => boolean;
   accountIdOrEmail: string;
   status?: number;
   retryAfter?: string;
   body?: string;
   model?: string;
+  effort?: string;
 }
 
 interface AccountLeaseLimitLogger {
@@ -30,6 +32,8 @@ interface AccountLeaseLimitPolicyOptions {
     accountId: string,
     reason: RateLimitReason,
     model?: string,
+    isCurrent?: () => boolean,
+    recovery?: { signal: AbortSignal; requireCurrentWindows: true; effort?: string },
   ) => Promise<AccountLeaseQuotaRefreshOutcome>;
   setPreciseLockoutFromCachedQuota: (
     accountId: string,
@@ -63,6 +67,11 @@ export class AccountLeaseLimitPolicy {
   clearAllRateLimits(): void {
     this.accountCooldowns.clear();
     this.rateLimitTracker.clearAll();
+  }
+
+  clearAccount(accountId: string): void {
+    this.accountCooldowns.delete(accountId);
+    this.rateLimitTracker.clearAccount(accountId);
   }
 
   clearRecoveredQuotaLocks(
@@ -104,14 +113,15 @@ export class AccountLeaseLimitPolicy {
   }
 
   async markFromUpstreamError(params: AccountLeaseUpstreamErrorParams): Promise<void> {
+    if (params.isCurrent && !params.isCurrent()) {
+      return;
+    }
     const accountId = this.resolveAccountId(params.accountIdOrEmail);
     const normalizedModel = normalizeModelId(params.model);
-    const hasExplicitRetryWindow =
-      Boolean(isString(params.retryAfter) && !isEmpty(params.retryAfter.trim())) ||
-      parseRetryDelayMilliseconds(params.body) !== null;
+    const hasExplicitRetryWindow = parseRetryDelay(params.body, params.retryAfter) !== null;
 
     if (!hasExplicitRetryWindow && (params.status ?? 0) === 429) {
-      const reason = this.detectRateLimitReasonFromBody(params.body);
+      const reason = classifyUpstreamRateLimit(params.status ?? 0, params.body, params.retryAfter);
       const shouldAttemptPreciseLockout =
         reason === RateLimitReason.QuotaExhausted || reason === RateLimitReason.Unknown;
 
@@ -124,7 +134,18 @@ export class AccountLeaseLimitPolicy {
         accountId,
         reason,
         normalizedModel,
+        ...(params.isCurrent ? [params.isCurrent] : []),
+        params.effort
+          ? {
+              signal: new AbortController().signal,
+              requireCurrentWindows: true,
+              effort: params.effort,
+            }
+          : undefined,
       );
+      if (params.isCurrent && !params.isCurrent()) {
+        return;
+      }
       if (refreshOutcome !== 'unavailable') {
         return;
       }
@@ -143,6 +164,9 @@ export class AccountLeaseLimitPolicy {
   }
 
   markImageRateLimitFast(params: AccountLeaseUpstreamErrorParams): boolean {
+    if (params.isCurrent && !params.isCurrent()) {
+      return false;
+    }
     const accountId = this.resolveAccountId(params.accountIdOrEmail);
     const normalizedModel = normalizeModelId(params.model);
     this.trackParsedError(params, accountId, normalizedModel, true);
@@ -150,25 +174,37 @@ export class AccountLeaseLimitPolicy {
     if ((params.status ?? 0) !== 429) {
       return false;
     }
-    const hasExplicitRetryWindow =
-      Boolean(isString(params.retryAfter) && !isEmpty(params.retryAfter.trim())) ||
-      parseRetryDelayMilliseconds(params.body) !== null;
+    const hasExplicitRetryWindow = parseRetryDelay(params.body, params.retryAfter) !== null;
     if (hasExplicitRetryWindow) {
       return false;
     }
-    const reason = this.detectRateLimitReasonFromBody(params.body);
+    const reason = classifyUpstreamRateLimit(params.status ?? 0, params.body, params.retryAfter);
     return reason === RateLimitReason.QuotaExhausted || reason === RateLimitReason.Unknown;
   }
 
   async reconcileImageRateLimit(params: AccountLeaseUpstreamErrorParams): Promise<void> {
+    if (params.isCurrent && !params.isCurrent()) {
+      return;
+    }
     const accountId = this.resolveAccountId(params.accountIdOrEmail);
     const normalizedModel = normalizeModelId(params.model);
-    const reason = this.detectRateLimitReasonFromBody(params.body);
+    const reason = classifyUpstreamRateLimit(params.status ?? 0, params.body, params.retryAfter);
     const refreshOutcome = await this.options.refreshRealtimeQuotaAndReconcileLimit(
       accountId,
       reason,
       normalizedModel,
+      ...(params.isCurrent ? [params.isCurrent] : []),
+      params.effort
+        ? {
+            signal: new AbortController().signal,
+            requireCurrentWindows: true,
+            effort: params.effort,
+          }
+        : undefined,
     );
+    if (params.isCurrent && !params.isCurrent()) {
+      return;
+    }
     if (refreshOutcome !== 'unavailable') {
       return;
     }
@@ -196,28 +232,9 @@ export class AccountLeaseLimitPolicy {
 
     if (logResult) {
       this.options.logger.warn(
-        `Recorded upstream limit for account ${accountId}: reason=${parsed.reason}, wait=${parsed.retryAfterSec}s, model=${parsed.model ?? 'n/a'}`,
+        `Recorded upstream limit for account ${accountId.includes('@') ? '[unresolved]' : accountId}: reason=${parsed.reason}, wait=${parsed.retryAfterSec}s, model=${parsed.model ?? 'n/a'}`,
       );
     }
-  }
-
-  private detectRateLimitReasonFromBody(body: string | undefined): RateLimitReason {
-    const lowerBody = (body ?? '').toLowerCase();
-    if (lowerBody.includes('model_capacity')) {
-      return RateLimitReason.ModelCapacityExhausted;
-    }
-    if (
-      lowerBody.includes('per minute') ||
-      lowerBody.includes('rate limit') ||
-      lowerBody.includes('rate_limit') ||
-      (hasGenericResourceExhaustedSignal(body) && !hasExplicitQuotaExhaustedSignal(body))
-    ) {
-      return RateLimitReason.RateLimitExceeded;
-    }
-    if (hasExplicitQuotaExhaustedSignal(body) || lowerBody.includes('quota')) {
-      return RateLimitReason.QuotaExhausted;
-    }
-    return RateLimitReason.Unknown;
   }
 
   private resolveAccountId(accountIdOrEmail: string): string {
@@ -234,7 +251,7 @@ export class AccountLeaseLimitPolicy {
 
     this.accountCooldowns.set(accountId, cooldownUntil);
     this.options.logger.warn(
-      `Applied ${reason} cooldown: source=${accountIdOrEmail}, accountId=${accountId}, until=${new Date(cooldownUntil).toISOString()}`,
+      `Applied ${reason} cooldown: accountId=${accountId.includes('@') ? '[unresolved]' : accountId}, until=${new Date(cooldownUntil).toISOString()}`,
     );
   }
 }

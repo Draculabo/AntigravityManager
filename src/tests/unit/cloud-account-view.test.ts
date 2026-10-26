@@ -4,6 +4,7 @@ import {
   CloudAccountViewSchema,
   projectCloudAccountView,
 } from '@/modules/cloud-account/services/cloud-account-view';
+import { observeSubscription } from '@/modules/cloud-account/utils/subscription-tier';
 
 describe('cloud account renderer view', () => {
   it('does not expose an untrusted persisted appeal URL', () => {
@@ -84,6 +85,7 @@ describe('cloud account renderer view', () => {
         is_forbidden: true,
         isForbidden: true,
         subscription_tier: 'pro',
+        subscription: observeSubscription({ paidTier: { id: 'g1-pro-tier' } }, 100),
         ai_credits: { credits: 12.5, expiryDate: 'tomorrow' },
         quota_groups: [
           {
@@ -94,6 +96,7 @@ describe('cloud account renderer view', () => {
                 bucket_id: 'weekly-model',
                 window: 'weekly',
                 remaining_fraction: 0.5,
+                observed_at: 200,
                 reset_time: 'tomorrow',
                 display_name: 'Model',
                 description: 'Model quota',
@@ -142,6 +145,13 @@ describe('cloud account renderer view', () => {
           gemini: { percentage: 50, resetTime: 'later', display_name: 'Gemini' },
         },
         subscription_tier: 'pro',
+        subscription_status: {
+          refresh_status: 'succeeded',
+          checked_at: 100,
+          observation_status: 'known',
+          source: 'paid-tier-id',
+          observed_at: 100,
+        },
         ai_credits: { credits: 12.5, expiryDate: 'tomorrow' },
         quota_groups: [
           {
@@ -152,6 +162,7 @@ describe('cloud account renderer view', () => {
                 bucket_id: 'weekly-model',
                 window: 'weekly',
                 remaining_fraction: 0.5,
+                observed_at: 200,
                 reset_time: 'tomorrow',
                 display_name: 'Model',
                 description: 'Model quota',
@@ -173,13 +184,30 @@ describe('cloud account renderer view', () => {
       status: 'rate_limited',
       status_reason: 'rate_limited',
       is_active: true,
+      is_active_classic: undefined,
       is_active_ide: true,
+      is_active_agy: undefined,
+      proxy_priority: 50,
+      proxy_enabled: true,
       proxy_configured: true,
     });
     const serialized = JSON.stringify(view);
     expect(serialized).not.toMatch(
       /secret-|access_token|refresh_token|id_token|device_profile|device_history|proxy_url|future_secret|verification_url|model_forwarding_rules|is_forbidden|isForbidden|supports_images|max_tokens/,
     );
+    expect(serialized).not.toMatch(/raw_value|g1-pro-tier/);
+    expect(
+      CloudAccountViewSchema.safeParse({
+        ...view,
+        quota: {
+          ...view.quota,
+          subscription_status: {
+            ...view.quota?.subscription_status,
+            raw_value: 'private-upstream-label',
+          },
+        },
+      }).success,
+    ).toBe(false);
     expect(CloudAccountViewSchema.safeParse({ ...view, token: account.token }).success).toBe(false);
     expect(
       CloudAccountViewSchema.safeParse({

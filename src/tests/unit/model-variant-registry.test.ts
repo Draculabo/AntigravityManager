@@ -26,6 +26,20 @@ describe('usesAuthoritativeThinkingBudget', () => {
 });
 
 describe('resolveModelVariant', () => {
+  it.each([
+    ['LOW', 'low'],
+    ['extra_low', 'low'],
+    ['min', 'low'],
+    ['minimal', 'low'],
+    ['lite', 'low'],
+    [' X_HIGH ', 'high'],
+    ['xhigh', 'high'],
+    ['max', 'high'],
+    ['extreme', 'high'],
+  ] as const)('normalizes effort alias %s to %s', (effort, tier) => {
+    expect(resolveModelVariant({ model: 'gemini-3.7-flash', effort })?.tier).toBe(tier);
+  });
+
   it('defaults the canonical Gemini 3.7 Flash model to the registered high tier', () => {
     expect(resolveModelVariant({ model: 'gemini-3.7-flash' })).toEqual({
       canonicalModel: 'gemini-3.7-flash',

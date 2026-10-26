@@ -1,4 +1,5 @@
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccountWriteGuard } from '../persistence/cloudHandler';
 import {
   CloudAccountHealthService,
   evictAccountFromActiveLeaseCache,
@@ -6,8 +7,11 @@ import {
 } from './CloudAccountHealthService';
 import { GoogleAPIService, OAuthTokenRefreshError, type TokenResponse } from './GoogleAPIService';
 import { logger } from '@/shared/logging/logger';
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { assertAccountOAuthRecoveryReady } from '@/modules/cloud-account/persistence/oauth-recovery-service';
+import {
+  captureRefreshContext,
+  CloudAccountRefreshContextChangedError,
+} from './cloud-account-refresh-context';
 
 export interface CloudAccountRefreshRequest {
   accountId: string;
@@ -16,6 +20,14 @@ export interface CloudAccountRefreshRequest {
   oauthClientKey?: string;
   health?: CloudAccount['health'];
   signal?: AbortSignal;
+  /** Same-process owner fence, also applied inside health mutations. */
+  assertCurrent?: () => void;
+}
+
+function withoutOAuthFailure(health: CloudAccount['health']): CloudAccount['health'] {
+  return health
+    ? { validation: health.validation, service_disabled: health.service_disabled }
+    : undefined;
 }
 
 /**
@@ -27,21 +39,30 @@ export class CloudAccountRefreshService {
   private static readonly operationLocks = new Map<string, Promise<void>>();
 
   static async refreshAccessToken(request: CloudAccountRefreshRequest): Promise<TokenResponse> {
-    return this.runAccountOperation(request.accountId, () =>
-      this.refreshAccessTokenLocked(request),
+    const snapshot = { ...request };
+    return this.runAccountOperation(snapshot.accountId, () =>
+      this.refreshAccessTokenLocked(snapshot),
     );
   }
 
-  static async clearFailureState(accountId: string): Promise<void> {
+  static async clearFailureState(accountId: string, guard?: CloudAccountWriteGuard): Promise<void> {
     await this.runAccountOperation(accountId, async () => {
+      if (guard) {
+        guard(await CloudAccountHealthService.getAccount(accountId));
+      }
       const health = await CloudAccountHealthService.getHealth(accountId);
       if (health?.oauth) {
-        await CloudAccountHealthService.mutateHealth(accountId, (currentHealth) =>
-          currentHealth?.validation ? { validation: currentHealth.validation } : undefined,
+        await CloudAccountHealthService.mutateHealth(
+          accountId,
+          withoutOAuthFailure,
+          guard ? { assertAccount: guard } : undefined,
         );
       }
 
       const { reloadNestServerAccountLeaseCache } = await import('@/server/main');
+      if (guard) {
+        guard(await CloudAccountHealthService.getAccount(accountId));
+      }
       await reloadNestServerAccountLeaseCache();
     });
   }
@@ -55,20 +76,31 @@ export class CloudAccountRefreshService {
     request: CloudAccountRefreshRequest,
   ): Promise<TokenResponse> {
     assertAccountOAuthRecoveryReady(request.accountId);
+    const assertOwner = () => {
+      request.signal?.throwIfAborted();
+      request.assertCurrent?.();
+    };
+    assertOwner();
     // request.health is only a transport hint. The persisted value is authoritative
     // because another caller may have changed the account while this request waited.
-    const effectiveHealth = await CloudAccountHealthService.getHealth(request.accountId);
-    if (effectiveHealth?.oauth?.refresh_blocked) {
-      throw new CloudAccountRefreshBlockedError(request.accountId);
-    }
-    const account = await CloudAccountRepo.getAccount(request.accountId);
+    const account = await CloudAccountHealthService.getAccount(request.accountId);
+    assertOwner();
     if (
       !account ||
       account.token.refresh_token !== request.refreshToken ||
       (account.token.oauth_client_key?.trim() || undefined) !==
         (request.oauthClientKey?.trim() || undefined)
     ) {
-      throw new Error('Account credentials changed before token refresh');
+      throw new CloudAccountRefreshContextChangedError(request.accountId);
+    }
+    const context = captureRefreshContext(account);
+    const assertContext = (current: CloudAccount | undefined, cause?: unknown) => {
+      assertOwner();
+      context.assertCurrent(current, cause);
+    };
+    const effectiveHealth = account.health;
+    if (effectiveHealth?.oauth?.refresh_blocked) {
+      throw new CloudAccountRefreshBlockedError(request.accountId);
     }
     const expectedToken = { ...account.token };
 
@@ -85,22 +117,36 @@ export class CloudAccountRefreshService {
             request.proxyUrl,
             request.oauthClientKey,
           );
+      assertOwner();
       if (effectiveHealth?.oauth) {
         try {
           const clearedHealth = await CloudAccountHealthService.mutateHealth(
             request.accountId,
-            (currentHealth) =>
-              currentHealth?.validation ? { validation: currentHealth.validation } : undefined,
-            { expectedToken },
+            withoutOAuthFailure,
+            { expectedToken, assertAccount: (current) => assertContext(current) },
           );
-          await syncAccountOAuthHealthToActiveLeaseCache(request.accountId, clearedHealth?.oauth);
+          assertOwner();
+          await syncAccountOAuthHealthToActiveLeaseCache(
+            request.accountId,
+            clearedHealth?.oauth,
+            context.leaseContext,
+          );
         } catch {
           // Do not discard credentials already rotated by the provider on a health update failure.
           logger.warn('Unable to clear OAuth failure state after successful refresh');
         }
       }
+      assertContext(await CloudAccountHealthService.getAccount(request.accountId));
       return refreshedToken;
     } catch (error) {
+      try {
+        assertOwner();
+      } catch (ownerError) {
+        if (ownerError !== error) {
+          throw new AggregateError([error, ownerError], 'OAuth refresh completion lost its owner');
+        }
+        throw ownerError;
+      }
       if (!(error instanceof OAuthTokenRefreshError) || error.code !== 'invalid_grant') {
         throw error;
       }
@@ -123,7 +169,7 @@ export class CloudAccountRefreshService {
               },
             };
           },
-          { expectedToken },
+          { expectedToken, assertAccount: (current) => assertContext(current, error) },
         );
       } catch (healthError) {
         if (
@@ -135,11 +181,20 @@ export class CloudAccountRefreshService {
         throw healthError;
       }
       if (!updatedHealth?.oauth?.refresh_blocked) {
-        await syncAccountOAuthHealthToActiveLeaseCache(request.accountId, updatedHealth?.oauth);
+        assertOwner();
+        await syncAccountOAuthHealthToActiveLeaseCache(
+          request.accountId,
+          updatedHealth?.oauth,
+          context.leaseContext,
+        );
+        assertContext(await CloudAccountHealthService.getAccount(request.accountId), error);
         throw error;
       }
 
-      await evictAccountFromActiveLeaseCache(request.accountId);
+      assertOwner();
+      await evictAccountFromActiveLeaseCache(request.accountId, context.leaseContext);
+      // Our own quarantine can cancel its request owner; preserve the confirmed revocation cause.
+      context.assertCurrent(await CloudAccountHealthService.getAccount(request.accountId), error);
       throw new CloudAccountRefreshBlockedError(request.accountId, { cause: error });
     }
   }

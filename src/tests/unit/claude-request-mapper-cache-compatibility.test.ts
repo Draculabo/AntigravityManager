@@ -30,7 +30,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     jsonSchemaMocks.normalizeObjectJsonSchema.mockClear();
   });
 
-  it('extracts embedded system messages into systemInstruction without mutating the request', () => {
+  it('keeps only the leading system messages in systemInstruction and preserves mid-conversation reminders in place', () => {
     const request = createRequest({
       system: 'Top-level system prompt.',
       messages: [
@@ -53,27 +53,20 @@ describe('ClaudeRequestMapper cache compatibility', () => {
         role: 'user',
         parts: [{ text: 'Help me fix the issue.' }],
       },
+      {
+        role: 'user',
+        parts: [{ text: '<system-reminder>\nEmbedded block prompt.\n</system-reminder>' }],
+      },
     ]);
     expect(body.request.systemInstruction?.parts).toHaveLength(1);
     expect(body.request.systemInstruction?.parts[0]?.text).toContain(
-      '<identity>\nYou are Antigravity',
-    );
-    expect(body.request.systemInstruction?.parts[0]?.text).toContain(
-      [
-        '<customizations>',
-        'Top-level system prompt.',
-        '',
-        'Embedded string prompt.',
-        '',
-        'Embedded block prompt.',
-        '</customizations>',
-      ].join('\n'),
+      ['Top-level system prompt.', 'Embedded string prompt.'].join('\n'),
     );
     expect(request.messages).toHaveLength(3);
     expect(request.messages[0]?.role).toBe('system');
   });
 
-  it('normalizes a standalone Claude Agent SDK identity before cache sanitization', () => {
+  it('normalizes a standalone Claude Agent SDK identity without injecting an Antigravity identity', () => {
     const body = transformClaudeRequestIn(
       createRequest({
         system: "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
@@ -89,7 +82,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     expect(systemInstruction).not.toContain(
       "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
     );
-    expect(systemInstruction).toContain('You are Antigravity');
+    expect(systemInstruction).not.toContain('You are Antigravity');
   });
 
   it('normalizes only the matching text block in a Claude system array', () => {
@@ -117,7 +110,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     );
   });
 
-  it('does not normalize mentions or whitespace-padded identity text', () => {
+  it('preserves quoted mentions while normalizing an attributed head with its padding', () => {
     const identity = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
     const mentioned = transformClaudeRequestIn(
       createRequest({ system: `Compatibility note: ${identity}` }),
@@ -133,7 +126,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     expect(mentioned.request.systemInstruction?.parts[0]?.text).toContain(
       `Compatibility note: ${identity}`,
     );
-    expect(padded.request.systemInstruction?.parts[0]?.text).toContain(identity);
+    expect(padded.request.systemInstruction?.parts[0]?.text).toBe('  You are an AI Agent.  ');
     expect(mentioned.request.systemInstruction?.parts[0]?.text).not.toContain(
       "You are Claude Code, Anthropic's official CLI for Claude.",
     );
@@ -142,7 +135,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     );
   });
 
-  it('does not normalize an identity extracted from an embedded system message', () => {
+  it('applies the same SDK mapping to an initial embedded system message', () => {
     const identity = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
     const body = transformClaudeRequestIn(
       createRequest({
@@ -156,10 +149,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     );
     const systemInstruction = body.request.systemInstruction?.parts[0]?.text;
 
-    expect(systemInstruction).toContain(identity);
-    expect(systemInstruction).not.toContain(
-      "You are Claude Code, Anthropic's official CLI for Claude.",
-    );
+    expect(systemInstruction).toBe("You are Claude Code, Anthropic's official CLI for Claude.");
   });
 
   it('preserves an explicit Codex identity without injecting Antigravity', () => {
@@ -178,7 +168,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     expect(systemInstruction).not.toContain('You are Antigravity');
   });
 
-  it('classifies Codex context blocks without rewriting their contents', () => {
+  it('preserves Codex context blocks in their original order and tags', () => {
     const body = transformClaudeRequestIn(
       createRequest({
         system: [
@@ -211,32 +201,26 @@ describe('ClaudeRequestMapper cache compatibility', () => {
 
     expect(systemInstruction).toBe(
       [
-        '<identity>',
         'You are Codex, an agentic coding assistant.',
-        '</identity>',
-        '<environment_permissions>',
-        'Network access is enabled.',
-        '</environment_permissions>',
-        '<app_context>',
-        'The user is running the desktop app.',
-        '</app_context>',
-        '<skills>',
-        '- tdd: Use red-green-refactor.',
-        '</skills>',
-        '<plugins>',
-        'Preserve plugin trigger rules.',
-        '</plugins>',
-        '<memory>',
-        '## Memory',
-        '- Keep the original requirements.',
-        '</memory>',
-        '<planning_mode>',
-        'Default mode is active.',
-        '</planning_mode>',
-        '<communication_style>',
         '# Working with the user',
         'Keep status updates concise.',
-        '</communication_style>',
+        '<permissions instructions>',
+        'Network access is enabled.',
+        '</permissions instructions>',
+        '<app-context>',
+        'The user is running the desktop app.',
+        '</app-context>',
+        '<skills_instructions>',
+        '- tdd: Use red-green-refactor.',
+        '</skills_instructions>',
+        '<plugins_instructions>',
+        'Preserve plugin trigger rules.',
+        '</plugins_instructions>',
+        '<collaboration_mode>',
+        'Default mode is active.',
+        '</collaboration_mode>',
+        '## Memory',
+        '- Keep the original requirements.',
       ].join('\n'),
     );
   });
@@ -364,7 +348,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     ).toEqual(['alpha_tool', 'zeta_tool']);
   });
 
-  it('stabilizes dynamic system metadata for cross-request prefix caching', () => {
+  it('preserves dynamic system metadata verbatim instead of normalizing it for cache equivalence', () => {
     const first = transformClaudeRequestIn(
       createRequest({
         system:
@@ -382,9 +366,11 @@ describe('ClaudeRequestMapper cache compatibility', () => {
       'test-agent',
     );
 
-    expect(first.request.systemInstruction).toEqual(second.request.systemInstruction);
+    expect(first.request.systemInstruction).not.toEqual(second.request.systemInstruction);
+    expect(first.request.systemInstruction?.parts[0]?.text).toContain('Current date: 2026-07-26');
+    expect(first.request.systemInstruction?.parts[0]?.text).toContain('Session req_a1b2c3d4');
     expect(first.request.systemInstruction?.parts[0]?.text).toContain(
-      '<customizations>\nSession {id}\nTrace {uuid}\n\nRules stay stable.\n</customizations>',
+      'Trace 123e4567-e89b-12d3-a456-426614174000',
     );
   });
 

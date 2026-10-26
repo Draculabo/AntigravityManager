@@ -263,8 +263,31 @@ function parseExplicitModelTier(model: string): ModelVariantTier | null {
 }
 
 function parseEffort(effort: string | undefined): ModelVariantTier | null {
-  if (effort === 'low' || effort === 'medium' || effort === 'high') {
-    return effort;
+  const normalized = effort?.trim().toLowerCase().replaceAll('_', '-');
+  if (!normalized) {
+    return null;
+  }
+  if (
+    normalized === 'low' ||
+    normalized === 'extra-low' ||
+    normalized === 'min' ||
+    normalized === 'minimal' ||
+    normalized === 'lite' ||
+    normalized === 'flash-lite'
+  ) {
+    return 'low';
+  }
+  if (normalized === 'medium') {
+    return 'medium';
+  }
+  if (
+    normalized === 'high' ||
+    normalized === 'x-high' ||
+    normalized === 'xhigh' ||
+    normalized === 'max' ||
+    normalized === 'extreme'
+  ) {
+    return 'high';
   }
 
   return null;

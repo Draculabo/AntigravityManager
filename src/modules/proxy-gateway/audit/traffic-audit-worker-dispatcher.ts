@@ -1,5 +1,8 @@
 import type { TrafficAuditRepository } from './traffic-audit.repository';
-import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
+import type {
+  TrafficAuditWorkerCommand,
+  AuditCaptureGeneration,
+} from './traffic-audit.worker-protocol';
 
 type Repository = Pick<TrafficAuditRepository, 'execute' | 'maintenance'>;
 type Reply = { id: number } & ({ yielded: true } | { result: unknown } | { error: string });
@@ -11,7 +14,12 @@ export function createTrafficAuditWorkerDispatcher(
 ) {
   let active: { id: number; steps: ReturnType<Repository['maintenance']> } | null = null;
   let closed = false;
-  return (id: number, command: TrafficAuditWorkerCommand): void => {
+  return (
+    id: number,
+    command: TrafficAuditWorkerCommand,
+    maxDiskBytes?: number,
+    capture?: AuditCaptureGeneration,
+  ): void => {
     try {
       if (closed) {
         throw new Error('Traffic audit worker is closed');
@@ -39,7 +47,14 @@ export function createTrafficAuditWorkerDispatcher(
           active = null;
         }
       }
-      reply({ id, result: repository.execute(command) });
+      reply({
+        id,
+        result: capture
+          ? repository.execute(command, maxDiskBytes, capture)
+          : maxDiskBytes === undefined
+            ? repository.execute(command)
+            : repository.execute(command, maxDiskBytes),
+      });
     } catch (error) {
       if (active?.id === id) {
         active = null;

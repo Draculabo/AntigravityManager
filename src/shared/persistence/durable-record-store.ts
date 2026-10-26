@@ -49,10 +49,28 @@ export class DurableRecordStore<TValue> {
   private hydrated = false;
   private persistScheduled = false;
   private writeQueue: Promise<void> = Promise.resolve();
+  private mutationGeneration = 0;
+  private persistedGeneration = 0;
+  private lastWriteFailure: { generation: number; error: unknown } | undefined;
 
   public constructor(private readonly options: DurableRecordStoreOptions<TValue>) {}
 
   public get(key: string, now: number = Date.now()): TValue | null {
+    const value = this.peek(key, now);
+    if (value === null) {
+      return null;
+    }
+    const record = this.records.get(key)!;
+    // Only an admitted read renews retention or changes eviction order.
+    record.updatedAt = now;
+    this.records.delete(key);
+    this.records.set(key, record);
+    this.schedulePersist();
+    return value;
+  }
+
+  /** Inspect admission metadata without renewing a live record's retention. */
+  public peek(key: string, now: number = Date.now()): TValue | null {
     this.hydrate();
     const record = this.records.get(key);
     if (!record) {
@@ -64,21 +82,16 @@ export class DurableRecordStore<TValue> {
       return null;
     }
 
-    // Re-insert so map order stays least-recently-written first for eviction.
-    record.updatedAt = now;
-    this.records.delete(key);
-    this.records.set(key, record);
-    this.schedulePersist();
     return record.value;
   }
 
-  public set(key: string, value: TValue, now: number = Date.now()): void {
+  public set(key: string, value: TValue, now: number = Date.now()): number | undefined {
     this.hydrate();
     this.evictExpired(now);
     this.records.delete(key);
     this.records.set(key, { key, updatedAt: now, value });
     this.evictOverflow();
-    this.schedulePersist();
+    return this.schedulePersist();
   }
 
   public delete(key: string): boolean {
@@ -117,6 +130,18 @@ export class DurableRecordStore<TValue> {
       awaited = this.writeQueue;
       await awaited;
     }
+  }
+
+  /** Resolves only when the requested mutation generation reached the file. */
+  public async flushStrict(generation: number = this.mutationGeneration): Promise<void> {
+    await this.flush();
+    if (!this.options.filePath || this.persistedGeneration >= generation) {
+      return;
+    }
+    throw (
+      this.lastWriteFailure?.error ??
+      new Error('Durable state was not persisted to its backing file')
+    );
   }
 
   private isExpired(record: DurableRecord<TValue>, now: number): boolean {
@@ -203,13 +228,14 @@ export class DurableRecordStore<TValue> {
     return { key, updatedAt, value };
   }
 
-  private schedulePersist(): void {
+  private schedulePersist(): number | undefined {
     const { filePath } = this.options;
     if (!filePath) {
-      return;
+      return undefined;
     }
+    const generation = (this.mutationGeneration += 1);
     if (this.persistScheduled) {
-      return;
+      return generation;
     }
 
     // One pending write at a time: it snapshots whatever the map holds when it
@@ -217,6 +243,7 @@ export class DurableRecordStore<TValue> {
     this.persistScheduled = true;
     this.writeQueue = this.writeQueue.then(async () => {
       this.persistScheduled = false;
+      const snapshotGeneration = this.mutationGeneration;
 
       const snapshot: DurableRecordFile<TValue> = {
         version: STORE_FORMAT_VERSION,
@@ -224,11 +251,15 @@ export class DurableRecordStore<TValue> {
       };
       try {
         await writeJsonFileAtomic(filePath, snapshot);
+        this.persistedGeneration = snapshotGeneration;
+        this.lastWriteFailure = undefined;
       } catch (error) {
         // Losing durable state must never fail an otherwise valid request.
+        this.lastWriteFailure = { generation: snapshotGeneration, error };
         logger.warn(`Failed to persist durable state to ${filePath}`, error);
       }
     });
+    return generation;
   }
 }
 

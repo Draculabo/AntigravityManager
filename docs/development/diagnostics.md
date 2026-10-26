@@ -17,8 +17,15 @@ Vite injects the diagnostic before the renderer entry only in that mode; product
 
 Performance recording and local update-feed helpers live in `scripts/` and have dedicated pnpm commands. Use them only when the task concerns those paths; some operations create local artifacts or require platform-specific binaries.
 
+Renderer development watching excludes root-level build outputs, hidden directories,
+and acceptance artifacts. Direct child directories containing a `.git` directory or file
+are excluded as nested checkouts. Source files retain hot module replacement.
+This watcher policy is independent of Git tracking and does not change `.gitignore`.
+
 The renderer development server binds to `127.0.0.1` so Electron can reach it even when IPv6 loopback is blocked. Forge supplies the actual port to the main process; its readiness probe bypasses proxy environment settings and times out each request after one second.
-Run `pnpm run test:acceptance development connection` to verify the Vite listener and Forge URL with an isolated Electron window. This check does not open account storage or launch the gateway.
+Run `pnpm run test:acceptance development connection` to verify the Vite listener, Forge URL,
+source hot module replacement and excluded output/cache/nested-checkout watching with an isolated
+Electron window. This check does not open account storage or launch the gateway.
 
 ## Diagnose a blank or stale development window
 

@@ -33,8 +33,8 @@ vi.mock('@/modules/cloud-account/hooks/useProviderGrouping', async () => {
 vi.mock('@/modules/cloud-account/hooks/useOpenAccountValidationLink', () => ({
   useOpenAccountValidationLink: () => ({}),
 }));
-vi.mock('@/modules/cloud-account/components/CloudAccountProxyEditor', () => ({
-  CloudAccountProxyEditor: () => null,
+vi.mock('@/modules/cloud-account/components/CloudAccountProxyDialog', () => ({
+  CloudAccountProxyDialog: () => null,
 }));
 afterEach(() => {
   cleanup();

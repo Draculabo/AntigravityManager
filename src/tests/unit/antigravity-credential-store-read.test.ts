@@ -117,6 +117,45 @@ describe('readAntigravityCredentialStoreToken', () => {
     });
   });
 
+  it('normalizes millisecond expiry values at the credential boundary', async () => {
+    mocks.getSecret.mockReturnValue(
+      Array.from(
+        Buffer.from(
+          JSON.stringify({
+            refresh_token: 'refresh-expiry',
+            expiry_timestamp: 1_700_000_000_000,
+          }),
+          'utf-8',
+        ),
+      ),
+    );
+    const { readAntigravityCredentialStoreToken } =
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await expect(readAntigravityCredentialStoreToken()).resolves.toMatchObject({
+      refreshToken: 'refresh-expiry',
+      expiryTimestamp: 1_700_000_000,
+    });
+  });
+
+  it('rejects invalid expiry values instead of replacing them with the current time', async () => {
+    mocks.getSecret.mockReturnValue(
+      Array.from(
+        Buffer.from(
+          JSON.stringify({
+            refresh_token: 'refresh-expiry',
+            expiry: 'not-a-date',
+          }),
+          'utf-8',
+        ),
+      ),
+    );
+    const { readAntigravityCredentialStoreToken } =
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    await expect(readAntigravityCredentialStoreToken()).rejects.toThrow(
+      'The Antigravity credential payload is malformed.',
+    );
+  });
+
   it('delegates macOS reads to the system-and-file lookup', async () => {
     setPlatform('darwin');
     mocks.readMacOSCredentialStore.mockReturnValue({ refreshToken: 'refresh-macos' });

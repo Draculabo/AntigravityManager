@@ -20,6 +20,8 @@ import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/mo
 import { OpenAIResponsesStoreController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-store.controller';
 import { ProxyModule } from '@/modules/proxy-gateway/server/proxy.module';
 import { ProxyService } from '@/modules/proxy-gateway/server/proxy.service';
+import { invalidateThoughtRecoveryPeers } from '@/modules/proxy-gateway/thought-store/thought-recovery-peers';
+import { responsesIdentityFixture } from './responses-identity.fixture';
 
 @Injectable()
 class FilesConsumer {
@@ -30,6 +32,35 @@ class FilesConsumer {
 class FilesConsumerModule {}
 
 describe('FilesModule exports', () => {
+  it('keeps the selected Responses metadata owner available between actual Nest lifetimes', async () => {
+    const first = await NestFactory.createApplicationContext(ProxyModule, { logger: false });
+    const selected = first.get(OpenAIResponsesSessionService);
+    try {
+      selected.save('owner-lifecycle-fixture', {
+        identity: responsesIdentityFixture,
+        thoughtSessionKey: 'owner-lifecycle-scope',
+        model: 'fixture',
+        inputItems: [],
+      });
+      await selected.flushStrict();
+    } finally {
+      await first.close();
+    }
+    const receipt = await invalidateThoughtRecoveryPeers('owner-lifecycle-scope');
+    expect(receipt.recovery.find((effect) => effect.owner === 'responses')).toEqual({
+      owner: 'responses',
+      state: 'complete',
+      removed: 1,
+      unknown: 0,
+    });
+    const second = await NestFactory.createApplicationContext(ProxyModule, { logger: false });
+    try {
+      expect(second.get(OpenAIResponsesSessionService)).toBe(selected);
+      expect(selected.get('owner-lifecycle-fixture')).toBeNull();
+    } finally {
+      await second.close();
+    }
+  });
   it('makes FilesService injectable by an importing module', async () => {
     const application = await NestFactory.createApplicationContext(FilesConsumerModule, {
       logger: false,

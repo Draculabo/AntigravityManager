@@ -14,7 +14,10 @@ export interface NormalizedThoughtSignatureModelContext {
 }
 
 function normalizeModelName(value: string): string {
-  return value.trim().toLowerCase();
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^models\//u, '');
 }
 
 export function normalizeThoughtSignatureModelContext(

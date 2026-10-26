@@ -114,8 +114,24 @@ function parseCredentialStorePayload(payload: string): CredentialStoreToken {
   let expiryTimestamp = token.expiry_timestamp;
   if (expiryTimestamp === undefined && token.expiry) {
     const parsedExpiry = Date.parse(token.expiry);
-    if (Number.isFinite(parsedExpiry)) {
-      expiryTimestamp = Math.floor(parsedExpiry / 1000);
+    if (!Number.isFinite(parsedExpiry)) {
+      throw new CredentialStoreReadError('malformed');
+    }
+    expiryTimestamp = Math.floor(parsedExpiry / 1000);
+  }
+  if (expiryTimestamp !== undefined) {
+    if (!Number.isFinite(expiryTimestamp) || expiryTimestamp <= 0) {
+      throw new CredentialStoreReadError('malformed');
+    }
+    if (expiryTimestamp > 10_000_000_000) {
+      expiryTimestamp = Math.trunc(expiryTimestamp / 1000);
+    }
+    if (
+      !Number.isSafeInteger(expiryTimestamp) ||
+      expiryTimestamp <= 0 ||
+      expiryTimestamp > 10_000_000_000
+    ) {
+      throw new CredentialStoreReadError('malformed');
     }
   }
 

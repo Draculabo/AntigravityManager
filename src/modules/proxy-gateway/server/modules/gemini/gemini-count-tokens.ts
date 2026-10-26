@@ -11,26 +11,40 @@ export class InvalidCountTokensRequestError extends Error {
   }
 }
 
+export interface ResolvedCountTokensRequest {
+  contents: GeminiContent[];
+  request: GeminiRequest;
+}
+
 /**
- * Reads the conversation out of a native `countTokens` body.
+ * Reads a native `countTokens` body.
  *
- * The public Gemini contract allows either bare `contents` or a `generateContentRequest`
- * wrapper. `null` means neither was present, which the controller reports as
- * `INVALID_ARGUMENT` rather than counting an empty conversation and answering 0.
+ * The public Gemini contract allows either a bare request or a `generateContentRequest`
+ * wrapper. The full inner request must survive resolution because system instructions, tool
+ * declarations and tool configuration all contribute to the local fallback estimate even though
+ * only `contents` can be sent to the upstream count endpoint.
  */
-export function resolveCountTokensContents(body: unknown): GeminiContent[] | null {
+export function resolveCountTokensRequest(body: unknown): ResolvedCountTokensRequest | null {
   if (!isObjectLike(body)) {
     return null;
   }
 
-  const direct = (body as GeminiRequest).contents;
+  const directRequest = body as GeminiRequest;
+  const direct = directRequest.contents;
   if (Array.isArray(direct)) {
-    return direct as GeminiContent[];
+    return {
+      contents: direct as GeminiContent[],
+      request: directRequest,
+    };
   }
 
   const wrapped = (body as { generateContentRequest?: unknown }).generateContentRequest;
   if (isObjectLike(wrapped) && Array.isArray((wrapped as GeminiRequest).contents)) {
-    return (wrapped as GeminiRequest).contents as GeminiContent[];
+    const wrappedRequest = wrapped as GeminiRequest;
+    return {
+      contents: wrappedRequest.contents as GeminiContent[],
+      request: wrappedRequest,
+    };
   }
 
   return null;

@@ -8,7 +8,7 @@ A gateway-wide system prompt needs a separate configuration field and a predicta
 
 ## Decision
 
-Add a backward-compatible, default-disabled `proxy.global_system_prompt` configuration with `enabled` and `content` fields. Resolve it per request from the already-hot `server-config` snapshot. For OpenAI and Anthropic mappings, render it as a dedicated system-instruction section after identity and before caller customizations. For native Gemini requests, prepend one trimmed text part followed by two newlines, unless an existing text part already contains the configured prompt.
+Use a backward-compatible, default-disabled `proxy.global_system_prompt` configuration with `enabled` and `content` fields. Resolve it through the already-hot `server-config` owner. Each OpenAI/Anthropic system mapper and native Gemini envelope prepends one dedicated global section before caller instructions. Preserve configured whitespace and all caller repetitions. Trim only to detect an entirely empty setting. Matching text, quotations or section tags in caller data do not establish gateway provenance and cannot suppress injection.
 
 The existing config save handler already synchronizes `server-config` without requiring a running gateway, so the new field uses that established hot-update boundary rather than creating a second in-memory store.
 
@@ -20,8 +20,9 @@ The existing config save handler already synchronizes `server-config` without re
 
 ## Consequences
 
-The feature is off by default, so existing requests and persisted configurations retain their behavior. Enabling it intentionally adds user-authored text to every OpenAI, Anthropic, and native Gemini generation request. The prompt is not logged, returned by diagnostics, or used for token-count requests. Native duplicate detection checks whether an existing text part contains the configured prompt; near-duplicate wording is intentionally not normalized.
+The feature is off by default. Enabling it adds configured text to supported system-instruction surfaces; existing image-path exclusions remain. Each mapping owns one insertion, without mutating the caller's original request. It does not recursively remap its own output or deduplicate caller data. Count endpoints send only contents upstream; existing local estimation can still observe the mapped system instruction. Generation services snapshot the resolved string/null before account selection and reuse it through account/project remapping. Later requests observe new settings. Direct mapping and count entry points continue resolving their current setting. This change adds no prompt logging or configuration store and does not claim snapshots of unrelated configuration fields.
 
 ## Verification
 
-Focused tests cover backward-compatible defaults, save-time synchronization before gateway startup, OpenAI/Anthropic placement and duplicate prevention, and native Gemini spacing and duplicate prevention. The final implementation report records type, formatting, contract, and live-provider checks separately.
+Focused tests cover backward-compatible defaults and save-time synchronization before gateway startup. The D12 follow-up checks OpenAI/Anthropic/native Gemini placement, repeated and quoted caller text, configured whitespace, deterministic insertion and unchanged inputs. The D12 evidence (local artifact `d12-generation-history-evidence.json` in the 2026-10-11 review collection) separates controlled checks from unverified provider/cache effects.
+The send-diagnostics follow-up (local artifact `d12-send-diagnostics-evidence.json` in the 2026-10-11 review collection) checks four-protocol unary/stream snapshots with configuration changes during account selection, including an initially disabled setting.

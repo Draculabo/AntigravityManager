@@ -222,6 +222,7 @@ describe.each(['desktop-embedded', 'standalone-core'] as const)(
       expect(accounts[0].status_reason).toBeUndefined();
       expect(CloudAccountRefreshService.clearFailureState).toHaveBeenCalledExactlyOnceWith(
         account.id,
+        expect.any(Function),
       );
     });
 

@@ -131,6 +131,8 @@ export interface FileStoreOptions {
   ttlMs?: number;
   /** Periodic sweep interval in milliseconds; `0` disables the timer. */
   sweepIntervalMs?: number;
+  /** Reject writes when the durable index cannot be committed. */
+  propagateIndexWriteErrors?: boolean;
 }
 
 export interface PutFileInput {

@@ -93,6 +93,11 @@ export function runNativeEntry(fixture, filename, message, preload = fixture.pre
       env: {
         ...process.env,
         AGM_DIAGNOSTIC_TEST_HOME: fixture.home,
+        APPDATA: path.join(fixture.home, 'AppData', 'Roaming'),
+        LOCALAPPDATA: path.join(fixture.home, 'AppData', 'Local'),
+        USERPROFILE: fixture.home,
+        XDG_CONFIG_HOME: path.join(fixture.home, '.config'),
+        XDG_DATA_HOME: path.join(fixture.home, '.local', 'share'),
         NODE_PATH: path.join(fixture.project, 'node_modules'),
       },
       encoding: 'utf8',

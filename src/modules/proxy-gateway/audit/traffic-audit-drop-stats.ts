@@ -48,7 +48,7 @@ export class TrafficAuditDropStats {
     this.pending.set(trafficClass, bucket);
   }
 
-  public flush(worker: BoundedSqliteWorker): void {
+  public flush(worker: BoundedSqliteWorker, maxDiskBytes?: number): void {
     for (const [trafficClass, bucket] of this.pending) {
       if (
         bucket.count <= 0 ||
@@ -73,6 +73,7 @@ export class TrafficAuditDropStats {
         accepted = worker.tryWrite(
           {
             operation: 'drop',
+            ...(maxDiskBytes === undefined ? {} : { maxDiskBytes }),
             payload: {
               count,
               droppedBytes,

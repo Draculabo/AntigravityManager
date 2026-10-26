@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Superseded by: [Shared prompt identity and protected-region boundaries](../architecture/2026-10-19-prompt-identity-boundaries.md)
+
 ## Problem
 
 Claude Agent SDK clients can send a stock identity sentence in the top-level system instruction. Forwarding that sentence unchanged makes the mapped request identify itself as the SDK agent instead of Claude Code, while broad text replacement risks mutating user-authored prompts, embedded system history and cache identity unexpectedly.

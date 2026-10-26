@@ -7,6 +7,8 @@
  * only the mapping it delegates to.
  */
 
+import { BadRequestException } from '@nestjs/common';
+import { recordPromptTransformation } from '../../../common/prompt-transformation-diagnostics';
 import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -17,17 +19,15 @@ import {
 import { optimizeApplyPatch } from '@/modules/proxy-gateway/antigravity/ApplyPatchPreflight';
 import { mapGeminiFinishReasonToOpenAI } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { normalizeObjectJsonSchema } from '@/modules/proxy-gateway/antigravity/JsonSchemaUtils';
+import { isGoogleSearchToolType } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
 import { SchemaConversionBatch } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
 import { toOpenAIUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
-import {
-  adaptCommandArguments,
-  selectClientCommandTool,
-} from '@/modules/proxy-gateway/antigravity/CommandToolAdapter';
-import { sanitizeSystemInstructionForCache } from '@/modules/proxy-gateway/antigravity/StablePromptPrefix';
+import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
 import {
   flattenOpenAITools,
   splitNamespaceToolName,
 } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
+import { hashSessionAnchor } from '@/modules/proxy-gateway/server/common/session-anchor-hash';
 import { ClaudeRequest, ClaudeResponse } from '@/modules/proxy-gateway/antigravity/types';
 import { resolveOpenAIImageUrl } from '../openai-image-url';
 import { parseOpenAIInputAudio } from './openai-input-audio';
@@ -38,6 +38,7 @@ import {
   OpenAIChatRequest,
   OpenAIChatResponse,
   OpenAIContentPart,
+  OpenAIToolCall,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
 export interface OpenAIConversionOptions {
@@ -45,8 +46,131 @@ export interface OpenAIConversionOptions {
   preparedSchemas?: Pick<ClaudeRequest, 'tools' | 'response_format'>;
 }
 
-const STALE_CODEX_MODEL_IDENTITY = 'You are Codex, an agent based on GPT-5.';
-const GENERIC_CODEX_IDENTITY = 'You are Codex, an agent.';
+export class InvalidOpenAIToolArgumentsError extends BadRequestException {
+  constructor(reason: 'invalid-json' | 'non-object') {
+    super(`Invalid function tool arguments: ${reason}`);
+    this.name = 'InvalidOpenAIToolArgumentsError';
+  }
+}
+
+export function isDeclaredOpenAICustomTool(
+  functionName: string,
+  clientTools: OpenAIChatRequest['tools'],
+): boolean {
+  return (
+    isCustomToolCall(functionName) &&
+    (flattenOpenAITools(clientTools) ?? []).some(
+      (tool) => tool.type === 'custom' && (tool.name ?? tool.function?.name) === functionName,
+    )
+  );
+}
+
+function resolveOpenAIChatToolIdentity(
+  toolCall: OpenAIToolCall,
+): { name: string; arguments: unknown } | null {
+  const name =
+    toolCall.function?.name ??
+    (toolCall.operation || toolCall.type === 'apply_patch_call' ? 'apply_patch' : null);
+  if (!name) {
+    return null;
+  }
+
+  return {
+    name,
+    arguments:
+      toolCall.custom_input === undefined
+        ? (toolCall.operation ?? parseOpenAIFunctionArguments(toolCall.function?.arguments ?? '{}'))
+        : toCustomToolArguments(name, toolCall.custom_input),
+  };
+}
+
+/**
+ * Give missing Chat tool IDs a stable identity and reject results that cannot be
+ * associated with exactly one preceding call before account selection.
+ */
+export function normalizeOpenAIChatToolCallIds(request: OpenAIChatRequest): OpenAIChatRequest {
+  const sourceMessages = request.messages ?? [];
+  const needsGeneratedId = sourceMessages.some(
+    (message) =>
+      message.role === 'assistant' &&
+      Array.isArray(message.tool_calls) &&
+      message.tool_calls.some((toolCall) => !(toolCall.call_id || toolCall.id)),
+  );
+  let anchor = needsGeneratedId ? hashSessionAnchor(['openai-chat-tool-identity:v1']) : '';
+  const pending = new Set<string>();
+  let changed = false;
+  const messages = sourceMessages.map((message, messageIndex) => {
+    let normalizedMessage = message;
+
+    if (message.role === 'assistant' && Array.isArray(message.tool_calls)) {
+      const messageAnchor = needsGeneratedId
+        ? hashSessionAnchor([anchor, 'assistant-message', message.content, message.name])
+        : '';
+      let messageChanged = false;
+      const toolCalls = message.tool_calls.map((toolCall, callIndex) => {
+        const identity = resolveOpenAIChatToolIdentity(toolCall);
+        if (!identity) {
+          return toolCall;
+        }
+
+        const suppliedId = toolCall.call_id || toolCall.id;
+        const id =
+          suppliedId ||
+          `call_${hashSessionAnchor([
+            messageAnchor,
+            'tool-call',
+            callIndex,
+            identity.name,
+            identity.arguments,
+          ]).slice(0, 32)}`;
+        if (pending.has(id)) {
+          throw new InvalidToolResultAssociationError(
+            `messages[${messageIndex}].tool_calls[${callIndex}]`,
+            'duplicate-pending-id',
+          );
+        }
+        pending.add(id);
+
+        if (suppliedId) {
+          return toolCall;
+        }
+        messageChanged = true;
+        return { ...toolCall, id };
+      });
+
+      if (messageChanged) {
+        normalizedMessage = { ...message, tool_calls: toolCalls };
+      }
+    } else if (message.role === 'tool') {
+      let toolCallId = message.tool_call_id;
+      if (!toolCallId) {
+        if (pending.size !== 1) {
+          throw new InvalidToolResultAssociationError(
+            `messages[${messageIndex}]`,
+            pending.size > 1 ? 'ambiguous-missing-id' : 'missing-pending-call',
+          );
+        }
+        toolCallId = [...pending][0];
+        normalizedMessage = { ...message, tool_call_id: toolCallId };
+        changed = true;
+      } else if (!pending.has(toolCallId)) {
+        throw new InvalidToolResultAssociationError(
+          `messages[${messageIndex}]`,
+          'missing-pending-call',
+        );
+      }
+      pending.delete(toolCallId);
+    }
+
+    changed ||= normalizedMessage !== message;
+    if (needsGeneratedId) {
+      anchor = hashSessionAnchor([anchor, 'message', normalizedMessage]);
+    }
+    return normalizedMessage;
+  });
+
+  return changed ? { ...request, messages } : request;
+}
 
 interface OpenAIPartsConversionOptions extends OpenAIConversionOptions {
   remoteImageFallback?: (url: string) => string;
@@ -59,29 +183,60 @@ export function convertOpenAIToClaude(
   signatureSessionKey?: string,
   options: OpenAIConversionOptions = {},
 ): ClaudeRequest {
+  request = normalizeOpenAIChatToolCallIds(request);
   const messages = request.messages || [];
   const systemPromptParts: string[] = [];
-  const seenSystemPromptKeys = new Set<string>();
   const anthropicMessages: ClaudeRequest['messages'] = [];
-  const addSystemPrompt = (text: string) => {
-    const trimmed = normalizeStaleCodexModelIdentity(text).trim();
-    const key = sanitizeSystemInstructionForCache(trimmed).split(/\s+/).join(' ');
-    if (key && !seenSystemPromptKeys.has(key)) {
-      seenSystemPromptKeys.add(key);
-      systemPromptParts.push(trimmed);
-    }
-  };
+  let initialSystemSection = true;
 
-  for (const msg of messages) {
+  for (const [messageIndex, msg] of messages.entries()) {
+    if (initialSystemSection) {
+      if (msg.role === 'system' || msg.role === 'developer') {
+        const systemText = extractOpenAITextContent(msg.content);
+        if (systemText !== '') {
+          systemPromptParts.push(systemText);
+          recordPromptTransformation({
+            kind: 'initial-system-promoted',
+            surface: 'messages',
+            message: messageIndex,
+            part: null,
+          });
+        }
+        continue;
+      }
+      initialSystemSection = false;
+    }
+
     if (msg.role === 'system' || msg.role === 'developer') {
       const systemText = extractOpenAITextContent(msg.content);
-      if (systemText) {
-        addSystemPrompt(systemText);
+      if (systemText !== '') {
+        recordPromptTransformation({
+          kind: 'late-system-reminder',
+          surface: 'messages',
+          message: messageIndex,
+          part: null,
+        });
+        anthropicMessages.push({
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: wrapSystemReminder(systemText),
+            },
+          ],
+        });
       }
       continue;
     }
 
     if (msg.role === 'tool') {
+      const toolCallId = msg.tool_call_id;
+      if (!toolCallId) {
+        throw new InvalidToolResultAssociationError(
+          `messages[${messageIndex}]`,
+          'missing-pending-call',
+        );
+      }
       const toolContent = convertOpenAIPartsToAnthropicContent(msg.content, {
         allowLocalVideoPaths: options.allowLocalVideoPaths,
         remoteImageFallback: () => '[image link]',
@@ -115,7 +270,7 @@ export function convertOpenAIToClaude(
         content: [
           {
             type: 'tool_result',
-            tool_use_id: msg.tool_call_id || msg.name || `tool-result-${uuidv4()}`,
+            tool_use_id: toolCallId,
             content: toolResultContent,
             is_error: false,
           },
@@ -159,12 +314,6 @@ export function convertOpenAIToClaude(
     });
   }
 
-  if (anthropicMessages.length === 0) {
-    anthropicMessages.push({ role: 'user', content: 'Continue' });
-  } else if (anthropicMessages[0]?.role === 'assistant') {
-    anthropicMessages.unshift({ role: 'user', content: 'Continue the task.' });
-  }
-
   const systemPrompt = systemPromptParts.length > 0 ? systemPromptParts.join('\n') : undefined;
 
   return {
@@ -200,8 +349,8 @@ export function convertOpenAIToClaude(
   };
 }
 
-function normalizeStaleCodexModelIdentity(text: string): string {
-  return text.replaceAll(STALE_CODEX_MODEL_IDENTITY, GENERIC_CODEX_IDENTITY);
+function wrapSystemReminder(text: string): string {
+  return `<system-reminder>\n${text}\n</system-reminder>`;
 }
 
 export function convertOpenAIPartsToAnthropicContent(
@@ -370,9 +519,12 @@ export function parseOpenAIFunctionArguments(argumentsString: string): Record<st
     if (isPlainObject(parsed)) {
       return parsed as Record<string, unknown>;
     }
-    return { value: parsed };
-  } catch {
-    return { raw: argumentsString };
+    throw new InvalidOpenAIToolArgumentsError('non-object');
+  } catch (error) {
+    if (error instanceof InvalidOpenAIToolArgumentsError) {
+      throw error;
+    }
+    throw new InvalidOpenAIToolArgumentsError('invalid-json');
   }
 }
 
@@ -402,12 +554,6 @@ export function convertOpenAIToolsToAnthropicTools(
   }
 
   const result: NonNullable<AnthropicChatRequest['tools']> = [];
-  const searchToolTypes = new Set([
-    'web_search_20250305',
-    'google_search',
-    'google_search_retrieval',
-    'builtin_web_search',
-  ]);
 
   for (const tool of flattenOpenAITools(tools) ?? []) {
     if (!tool) {
@@ -420,9 +566,7 @@ export function convertOpenAIToolsToAnthropicTools(
       : isString(tool.name)
         ? tool.name
         : '';
-    const normalizedFunctionName = functionName.toLowerCase();
-    const isSearchTool =
-      searchToolTypes.has(toolType) || searchToolTypes.has(normalizedFunctionName);
+    const isSearchTool = isGoogleSearchToolType(toolType);
 
     if (isSearchTool) {
       result.push({
@@ -440,7 +584,7 @@ export function convertOpenAIToolsToAnthropicTools(
       continue;
     }
 
-    const parameters = isCustomToolCall(functionName)
+    const parameters = isDeclaredOpenAICustomTool(functionName, [tool])
       ? {
           type: 'object',
           properties: {
@@ -511,7 +655,6 @@ export function normalizeToolCallArguments(input: unknown): string {
 export function convertClaudeToOpenAIResponse(
   claudeResponse: ClaudeResponse,
   model: string,
-  clientToolNames?: ReadonlySet<string>,
   clientTools?: OpenAIChatRequest['tools'],
 ): OpenAIChatResponse {
   const contentBlocks = Array.isArray(claudeResponse?.content) ? claudeResponse.content : [];
@@ -549,17 +692,13 @@ export function convertClaudeToOpenAIResponse(
     )
     .map((block, index: number) => {
       const splitName = splitNamespaceToolName(block.name || 'unknown_tool', clientTools);
-      const functionName = clientToolNames
-        ? selectClientCommandTool(splitName.name, clientToolNames)
-        : splitName.name;
-      const adaptedArguments = adaptCommandArguments(functionName, block.input);
-      const argumentsInput = isCustomToolCall(functionName)
+      const functionName = splitName.name;
+      const argumentsInput = isDeclaredOpenAICustomTool(block.name, clientTools)
         ? toCustomToolArguments(
             functionName,
-            optimizeApplyPatch(extractCustomToolInput(functionName, adaptedArguments.arguments))
-              .input,
+            optimizeApplyPatch(extractCustomToolInput(functionName, block.input)).input,
           )
-        : adaptedArguments.arguments;
+        : block.input;
       return {
         id: block.id || `tool-call-${index}`,
         type: 'function' as const,

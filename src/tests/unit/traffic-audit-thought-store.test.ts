@@ -6,6 +6,10 @@ import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('better-sqlite3', async () => {
+  const { createRequire } = await import('node:module');
+  return { default: createRequire(import.meta.url)('better-sqlite3') };
+});
 
 const auditServiceMocks = vi.hoisted(() => ({
   beginParentSse: vi.fn(),
@@ -17,6 +21,7 @@ const auditServiceMocks = vi.hoisted(() => ({
 
 vi.mock('@/modules/proxy-gateway/audit/traffic-audit.service', () => ({
   trafficAuditService: {
+    captureGeneration: () => 0,
     beginParentSse: auditServiceMocks.beginParentSse,
     completeAttempt: vi.fn(),
     completeParent: auditServiceMocks.completeParent,
@@ -543,6 +548,7 @@ describe('traffic audit and Thought Store boundaries', () => {
     } as unknown as FastifyRequest;
     const wrappedRequest = { ...request, raw } as FastifyRequest;
     const reply = {
+      raw: new EventEmitter(),
       getHeaders: () => ({ 'content-type': 'text/event-stream' }),
       statusCode: 200,
     } as unknown as FastifyReply;
@@ -591,6 +597,7 @@ describe('traffic audit and Thought Store boundaries', () => {
       url: '/v1/messages',
     } as unknown as FastifyRequest;
     const reply = {
+      raw: new EventEmitter(),
       getHeaders: () => ({ 'content-type': 'text/event-stream' }),
       statusCode: 200,
     } as unknown as FastifyReply;
@@ -631,6 +638,7 @@ describe('traffic audit and Thought Store boundaries', () => {
       url: '/v1/responses',
     } as unknown as FastifyRequest;
     const reply = {
+      raw: new EventEmitter(),
       getHeaders: () => ({ 'content-type': 'text/event-stream' }),
       statusCode: 200,
     } as unknown as FastifyReply;
@@ -651,14 +659,14 @@ describe('traffic audit and Thought Store boundaries', () => {
     expect(auditServiceMocks.writeSse).toHaveBeenCalledTimes(2);
   });
 
-  it('enforces the 200-turn Thought Store ceiling even when config is larger', () => {
+  it('enforces the 10,000-turn Thought Store ceiling even when config is larger', () => {
     const records = Array.from({ length: HARD_MAX_THOUGHT_TURNS + 1 }, (_, index) =>
       thoughtRecord(index, 'thought'),
     );
 
     enforceThoughtSessionLimits(records, {
       max_session_mib: 999,
-      max_turns_per_session: 999,
+      max_turns_per_session: HARD_MAX_THOUGHT_TURNS + 1,
     });
 
     expect(records).toHaveLength(HARD_MAX_THOUGHT_TURNS);
@@ -674,8 +682,20 @@ describe('traffic audit and Thought Store boundaries', () => {
       max_turns_per_session: 999,
     });
 
-    expect(records).toHaveLength(HARD_MAX_THOUGHT_SESSION_BYTES / (1024 * 1024));
-    expect(records[0]?.id).toBe('record-1');
+    // Part/signature metadata also consumes the session budget, so 64 one-MiB
+    // bodies cannot all fit. The complete retained records must remain bounded.
+    expect(records).toHaveLength(63);
+    expect(records[0]?.id).toBe('record-2');
+    expect(
+      records.reduce(
+        (total, record) =>
+          total +
+          Buffer.byteLength(record.thought) +
+          Buffer.byteLength(record.signature ?? '') +
+          Buffer.byteLength(JSON.stringify(record.partSignatures)),
+        0,
+      ),
+    ).toBeLessThanOrEqual(HARD_MAX_THOUGHT_SESSION_BYTES);
   });
 
   it('preserves a corrupt SQLite database and both sidecars before repair', async () => {
@@ -706,6 +726,15 @@ function thoughtRecord(index: number, thought: string): ThoughtRecord {
     oversizedBytes: null,
     oversizedSha256: null,
     signature: `signature-${index}`,
+    partSignatures: [
+      {
+        kind: 'thought',
+        position: 0,
+        start: 0,
+        end: thought.length,
+        signature: `signature-${index}`,
+      },
+    ],
     sourceFamily: 'gemini',
     thought,
     toolIds: [],

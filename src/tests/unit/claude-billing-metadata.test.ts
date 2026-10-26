@@ -18,6 +18,44 @@ const request: ClaudeRequest = {
 };
 
 describe('Claude Code billing metadata at the system boundary', () => {
+  it.each([
+    'x-anthropic-billing-header: cc_entrypoint=desktop;',
+    '  X-Anthropic-Billing-Header: cch=test; \r\n',
+  ])('removes standalone metadata without cc_version (%j)', (metadata) => {
+    expect(stripClaudeBillingMetadata(metadata)).toBe('');
+    const system = [{ type: 'text', text: 'Keep coding instructions.' }];
+    const expected = transformClaudeRequestIn({ ...request, system }, 'test-project');
+    const actual = transformClaudeRequestIn(
+      { ...request, system: [{ type: 'text', text: metadata }, ...system] },
+      'test-project',
+    );
+    expect(actual.request).toEqual(expected.request);
+  });
+
+  it('preserves entrypoint-only metadata in quoted examples and user/tool history', () => {
+    const metadata = 'x-anthropic-billing-header: cc_entrypoint=desktop;';
+    for (const text of [
+      `\`\`\`text\n${metadata}\n\`\`\``,
+      `~~~text\n${metadata}`,
+      `Example: \`${metadata}\``,
+      `> ${metadata}`,
+      `Explain ${metadata}`,
+    ]) {
+      expect(stripClaudeBillingMetadata(text)).toBe(text);
+    }
+    const messages: ClaudeRequest['messages'] = [
+      { role: 'user', content: metadata },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call', name: 'Write', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'call', content: metadata }] },
+    ];
+    const expected = transformClaudeRequestIn({ ...request, messages }, 'test-project');
+    const actual = transformClaudeRequestIn(
+      { ...request, messages, system: metadata },
+      'test-project',
+    );
+    expect(actual.request).toEqual(expected.request);
+  });
+
   it('makes the complete outgoing request equal to the same tools and thinking without metadata', () => {
     const system = [{ type: 'text', text: 'Keep all coding instructions and tool descriptions.' }];
     const expected = transformClaudeRequestIn({ ...request, system }, 'test-project');
@@ -49,10 +87,20 @@ describe('Claude Code billing metadata at the system boundary', () => {
       `\`\`\`text\n${billing}`,
       `Example: \`${billing}\``,
       `> ${billing}`,
+      `> Quoted example:\n> ${billing}\n> More quoted context.`,
       `Explain the x-anthropic-billing-header: cc_version=example field.`,
     ]) {
       expect(stripClaudeBillingMetadata(text)).toBe(text);
     }
+  });
+
+  it('still removes a complete metadata line outside protected quoting', () => {
+    expect(stripClaudeBillingMetadata(`> Quoted example.\n${billing}\nKeep this.`)).toBe(
+      '> Quoted example.\nKeep this.',
+    );
+    expect(stripClaudeBillingMetadata(`Before.\n\`\`\`text\n${billing}\n\`\`\`\nAfter.`)).toBe(
+      `Before.\n\`\`\`text\n${billing}\n\`\`\`\nAfter.`,
+    );
   });
 
   it('does not filter user messages or signed tool history', () => {

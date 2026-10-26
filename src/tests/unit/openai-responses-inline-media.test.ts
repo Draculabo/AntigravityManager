@@ -81,29 +81,30 @@ describe('Responses inline media boundaries', () => {
     );
   });
 
-  it('omits old media before validation while preserving current media and caller input', () => {
+  it('preserves historical media before validation and keeps caller input untouched', () => {
     const input = [
-      { type: 'message', role: 'user', content: imageParts(16) },
+      { type: 'message', role: 'user', content: imageParts(1) },
       { type: 'message', role: 'assistant', content: 'done' },
-      { type: 'message', role: 'user', content: imageParts(16) },
+      { type: 'message', role: 'user', content: imageParts(1) },
     ];
     const before = structuredClone(input);
     const bounded = omitMediaBeforeLatestUserTurn(input);
 
-    expect(JSON.stringify(bounded[0])).toContain('[historical image omitted]');
-    expect(JSON.stringify(bounded[0])).not.toContain('data:image/');
+    expect(JSON.stringify(bounded[0])).toContain('data:image/');
     expect(JSON.stringify(bounded[2])).toContain('data:image/');
     expect(() => validateResponsesInputImageLimits(bounded)).not.toThrow();
     expect(input).toEqual(before);
 
     const currentContent = (bounded[2] as { content: unknown[] }).content;
-    currentContent.push({ type: 'input_image', image_url: 'data:image/png;base64,AQ==' });
+    for (const part of imageParts(15)) {
+      currentContent.push(part);
+    }
     expect(() => validateResponsesInputImageLimits(bounded)).toThrow(
       'Too many input images: maximum is 16',
     );
   });
 
-  it('bounds every durable media shape without modifying the source', () => {
+  it('retains protocol media and tool arguments without modifying the source', () => {
     const input = [
       {
         type: 'function_call_output',
@@ -118,16 +119,7 @@ describe('Responses inline media boundaries', () => {
     const before = structuredClone(input);
     const bounded = boundResponsesInputItems(input);
 
-    expect(bounded).toEqual([
-      {
-        type: 'function_call_output',
-        output: [
-          { type: 'input_text', text: '[historical image omitted]' },
-          { type: 'input_text', text: '[historical audio omitted]' },
-          'retained',
-        ],
-      },
-    ]);
+    expect(bounded).toEqual(input);
     expect(input).toEqual(before);
   });
 });

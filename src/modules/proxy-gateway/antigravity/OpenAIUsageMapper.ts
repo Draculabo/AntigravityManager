@@ -1,4 +1,5 @@
 import type { Usage } from './types';
+import { getGeminiReasoningTokens } from './GeminiReasoningUsage';
 import type {
   GeminiUsageMetadata,
   OpenAIUsage,
@@ -43,8 +44,7 @@ export function toOpenAIUsage(usage: Usage | undefined): OpenAIUsage {
 export function toOpenAIUsageFromGeminiUsageMetadata(
   usage: GeminiUsageMetadata | undefined,
 ): OpenAIUsage {
-  const reasoningTokens =
-    usage?.total_thought_tokens ?? usage?.totalThoughtTokens ?? usage?.thoughtsTokenCount ?? 0;
+  const reasoningTokens = getGeminiReasoningTokens(usage);
   const toolUseTokens = usage?.total_tool_use_tokens ?? 0;
   /**
    * Gemini's legacy candidatesTokenCount already includes thought/tool-use

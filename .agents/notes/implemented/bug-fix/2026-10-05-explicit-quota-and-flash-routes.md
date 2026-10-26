@@ -27,6 +27,20 @@ capped. Use the longer active global/model wait, and never replace an active exp
 deadline with a shorter failure deadline. Existing success and expiry paths release locks.
 Retain the existing model-availability format and compact evidence, generalized to text models.
 
+Keep quota and temporary constraints independently: a quota deadline can have less than five
+minutes left when a new 300-second transient wait arrives. One merged deadline would lose the
+original quota qualification or extend its meaning past the real reset. Retain qualified durable
+quota evidence until its own deadline, comparing the original observation duration. Selection
+uses the longer active wait; a genuine success for the same model retains its existing authority
+to release that model's constraints. Other model successes cannot release them.
+
+Use one validated error-evidence classifier for tracker penalties and quota reconciliation.
+Structured reasons must not disagree with a separate text-only classifier. Weekly/credits
+exhaustion can trigger reconciliation without granting uncapped inferred waits. Invalid hints
+cannot suppress that check, and a past official reset cannot create a fresh two-second lock.
+The evidence/parser extraction preserves the tracker module's public exports and removes its
+unused parallel parser, keeping one policy for existing callers.
+
 Resolve each account's physical model when checking selection eligibility and pool wait times.
 Preserve requested-model and global locks as well. Do not block an entire model family:
 different physical routes keep independent deadlines.
@@ -96,3 +110,11 @@ it now requires an explicit error phrase, with 32 acceptance unit tests passing.
 Acceptance artifacts retain those initial failures and per-build evidence. Independent
 Linux workstation behavior, provider billing and successful Claude-model completion after
 quota recovery remain unverified.
+
+D01 R7/R10 controlled checks add classification, invalid hints, non-future reset timestamps,
+same/other-model success and overlapping hard/temporary constraints. The initial contract probe
+fails 12 of 19 cases; three additional overlap/persistence probes also fail before their fixes.
+The D01 recovery evidence (local artifact `d01-r7-r10-implementation.json` in the 2026-10-11 review collection)
+records final commands, results and the unchanged Git index. These checks use synthetic errors,
+in-memory persistence and a controlled clock. They do not repeat or extend the historical live
+acceptance above; D02 independent-window reconciliation and final real acceptance remain pending.

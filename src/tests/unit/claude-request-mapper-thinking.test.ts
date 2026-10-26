@@ -21,6 +21,56 @@ function createThinkingRequest(model: string): ClaudeRequest {
 }
 
 describe('ClaudeRequestMapper thinking support', () => {
+  it('keeps signed tool history when new thinking generation is disabled', () => {
+    const signature = 'provider-signature-'.repeat(8);
+    const body = transformClaudeRequestIn({
+      model: 'gemini-3-flash',
+      thinking: { type: 'disabled' },
+      messages: [
+        { role: 'user', content: 'Read the fixture.' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'Inspecting the fixture.', signature },
+            {
+              type: 'tool_use',
+              id: 'read-1',
+              name: 'read_fixture',
+              input: { path: 'fixture.txt' },
+              signature,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'read-1', content: 'fixture content' }],
+        },
+      ],
+    });
+    expect(body.request.generationConfig?.thinkingConfig).toBeUndefined();
+    expect(body.request.contents[1].parts).toEqual([
+      {
+        text: 'Inspecting the fixture.',
+        thought: true,
+        thoughtSignature: signature,
+        thought_signature: signature,
+      },
+      {
+        functionCall: { id: 'read-1', name: 'read_fixture', args: { path: 'fixture.txt' } },
+        thoughtSignature: signature,
+        thought_signature: signature,
+      },
+    ]);
+    expect(body.request.contents[2].parts).toEqual([
+      {
+        functionResponse: {
+          id: 'read-1',
+          name: 'read_fixture',
+          response: { result: 'fixture content' },
+        },
+      },
+    ]);
+  });
   it('preserves tool-call arguments instead of treating them as a JSON Schema', () => {
     const body = transformClaudeRequestIn({
       model: 'gemini-3-flash',

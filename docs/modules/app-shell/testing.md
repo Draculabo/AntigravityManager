@@ -12,6 +12,15 @@ size/missing flags, selected-owner failure, exact snapshot export, cancellation,
 `core-rpc.test.ts` also transports a near-limit synthetic core snapshot over the real private
 pipe/socket. These checks never use production logs or submit a GitHub issue.
 
+Run `pnpm run preview:error-notifications` for an interactive Electron demo of the production
+error notifications. It provides synthetic renderer/backend errors, redaction, missing stacks,
+success feedback and theme controls in an isolated profile. Report to GitHub uses the production
+preload, real runtime environment and clipboard, then opens only the fixed bug template; users
+review and submit reports themselves. Closing the demo window stops its local renderer server.
+The demo does not load account storage or start a gateway. Run
+`pnpm run test:performance error-notifications.spec.mts` for the same real preload path with
+external browser launch intercepted and synthetic clipboard/report assertions.
+
 Run `error-toast.test.ts`, `toaster-feedback.test.ts`, `account-load-bug-report.test.ts` and
 `cloud-account-load-error.test.ts` for notification diagnostics. They cover original/backend stack
 selection, redaction, snapshot retention, dismissal, explicit reporting, clipboard/browser failures

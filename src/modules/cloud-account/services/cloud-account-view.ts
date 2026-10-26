@@ -35,18 +35,38 @@ const CloudAccountViewQuotaSchema = z.strictObject({
     }),
   ),
   subscription_tier: z.string().optional(),
+  subscription_status: z
+    .strictObject({
+      refresh_status: z.enum(['succeeded', 'failed']),
+      checked_at: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      observation_status: z.enum(['known', 'unrecognized', 'missing']).optional(),
+      source: z
+        .enum([
+          'paid-tier-id',
+          'paid-tier-name',
+          'current-tier-id',
+          'current-tier-name',
+          'allowed-free-tier',
+          'none',
+        ])
+        .optional(),
+      observed_at: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+    })
+    .optional(),
   ai_credits: z.strictObject({ credits: z.number(), expiryDate: z.string() }).optional(),
   quota_groups: z
     .array(
       z.strictObject({
         display_name: z.string(),
         description: z.string().optional(),
+        model_ids: z.array(z.string().min(1).max(256)).max(256).optional(),
         buckets: z.array(
           z.strictObject({
             bucket_id: z.string(),
             window: z.string(),
             remaining_fraction: z.number(),
             reset_time: z.string(),
+            observed_at: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
             display_name: z.string().optional(),
             description: z.string().optional(),
           }),
@@ -69,6 +89,8 @@ export const CloudAccountViewSchema = CloudAccountSchema.pick({
   is_active_classic: true,
   is_active_ide: true,
   is_active_agy: true,
+  proxy_priority: true,
+  proxy_enabled: true,
 })
   .extend({
     quota: CloudAccountViewQuotaSchema.optional(),
@@ -150,6 +172,15 @@ export function projectCloudAccountView(account: CloudAccount): CloudAccountView
             ]),
           ),
           subscription_tier: account.quota.subscription_tier,
+          subscription_status: account.quota.subscription
+            ? {
+                refresh_status: account.quota.subscription.refresh_status,
+                checked_at: account.quota.subscription.checked_at,
+                observation_status: account.quota.subscription.observation?.status,
+                source: account.quota.subscription.observation?.source,
+                observed_at: account.quota.subscription.observation?.observed_at,
+              }
+            : undefined,
           ai_credits: account.quota.ai_credits
             ? {
                 credits: account.quota.ai_credits.credits,
@@ -159,11 +190,13 @@ export function projectCloudAccountView(account: CloudAccount): CloudAccountView
           quota_groups: account.quota.quota_groups?.map((group) => ({
             display_name: group.display_name,
             description: group.description,
+            model_ids: group.model_ids,
             buckets: group.buckets.map((bucket) => ({
               bucket_id: bucket.bucket_id,
               window: bucket.window,
               remaining_fraction: bucket.remaining_fraction,
               reset_time: bucket.reset_time,
+              observed_at: bucket.observed_at,
               display_name: bucket.display_name,
               description: bucket.description,
             })),
@@ -201,6 +234,8 @@ export function projectCloudAccountView(account: CloudAccount): CloudAccountView
     is_active_classic: account.is_active_classic,
     is_active_ide: account.is_active_ide,
     is_active_agy: account.is_active_agy,
+    proxy_priority: account.proxy_priority ?? 50,
+    proxy_enabled: account.proxy_enabled !== false,
     proxy_configured: Boolean(account.proxy_url),
   });
 }

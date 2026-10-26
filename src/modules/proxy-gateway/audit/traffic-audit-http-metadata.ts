@@ -1,14 +1,17 @@
 import type { FastifyRequest } from 'fastify';
 import { createHash, randomUUID } from 'node:crypto';
 import { auditJsonObject } from './audit-json-object';
+import { resolveClientSessionHint } from '../server/common/client-session-hint';
+import { tenantIdentity } from '../server/common/signature-session-scope';
+import type { RequestHeaders } from '../server/guards/api-key-auth.util';
 
 export function resolveThoughtSession(
-  request: FastifyRequest,
+  request: Pick<FastifyRequest, 'headers' | 'url' | 'body'>,
   fallbackClientId?: string,
 ): { clientId: string; key: string; stable: boolean } {
   const headers = request.headers;
   const stableId = resolveStableSessionId(request);
-  const clientId = sanitizeSessionId(stableId ?? fallbackClientId ?? `request-${randomUUID()}`);
+  const clientId = stableId ?? fallbackClientId ?? `request-${randomUUID()}`;
   return {
     clientId,
     key: createThoughtSessionKey(headers, clientId),
@@ -16,67 +19,24 @@ export function resolveThoughtSession(
   };
 }
 
-export function createThoughtSessionKey(
-  headers: Record<string, unknown>,
-  sessionId: string,
-): string {
-  const credential =
-    firstHeader(headers.authorization) ??
-    firstHeader(headers['x-api-key']) ??
-    firstHeader(headers['x-goog-api-key']) ??
-    'anonymous';
-  const tenantHash = createHash('sha256').update(credential, 'utf-8').digest('hex');
-  return `${tenantHash}:${sanitizeSessionId(sessionId)}`;
+export function createThoughtSessionKey(headers: RequestHeaders, sessionId: string): string {
+  return `thought:client:v2:${createHash('sha256')
+    .update(JSON.stringify([tenantIdentity(headers), sessionId.trim()]))
+    .digest('hex')}`;
 }
 
-export function resolveStableSessionId(request: FastifyRequest): string | null {
-  const query = auditJsonObject(request.query);
-  const headers = request.headers;
-  const body = request.body;
+export function resolveStableSessionId(
+  request: Pick<FastifyRequest, 'headers' | 'url' | 'body'>,
+): string | null {
+  const body = auditJsonObject(request.body);
   return (
-    readString(query, ['session_id', 'sessionId', 'conversation_id', 'conversationId']) ??
-    readString(headers, [
-      'x-session-id',
-      'session-id',
-      'x-conversation-id',
-      'conversation-id',
-      'openai-conversation-id',
-    ]) ??
-    readString(body, [
-      'session_id',
-      'sessionId',
-      'conversation_id',
-      'conversationId',
-      'previous_response_id',
-    ]) ??
-    readNestedMetadataString(body)
+    resolveClientSessionHint(
+      request.headers,
+      request.url,
+      body ?? undefined,
+      auditJsonObject(body?.metadata) ?? undefined,
+    ).id ?? null
   );
-}
-
-function readNestedMetadataString(value: unknown): string | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-  const metadata = Reflect.get(value, 'metadata');
-  return readString(metadata, ['session_id', 'sessionId', 'user_id', 'userId']);
-}
-
-function readString(value: unknown, keys: string[]): string | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-  for (const key of keys) {
-    const candidate = Reflect.get(value, key);
-    if (typeof candidate === 'string' && candidate.trim()) {
-      return candidate.trim();
-    }
-  }
-  return null;
-}
-
-function sanitizeSessionId(value: string): string {
-  const sanitized = value.replace(/[^A-Za-z0-9_.:-]/gu, '_').slice(0, 128);
-  return sanitized || `request-${randomUUID()}`;
 }
 
 export function inferProtocol(url: string): string {

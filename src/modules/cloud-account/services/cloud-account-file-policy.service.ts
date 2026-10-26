@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { isEqual } from 'lodash-es';
 import { prepareDesktopIdentityStorage } from '@/modules/identity-profile/public';
 import { z } from 'zod';
 import { CloudAccountRepo } from '../persistence/cloudHandler';
@@ -7,6 +8,8 @@ import { isOAuthReauthReason } from '../utils/account-status';
 import { CloudAccountRefreshService } from './CloudAccountRefreshService';
 import { localAccountPostImportService } from '../local-import/local-account-post-import.service';
 import { CloudAccountFileError } from './cloud-account-file.error';
+import { captureTokenWriteGuard } from './cloud-account-refresh-writeback';
+import { CloudAccountRefreshContextChangedError } from './cloud-account-refresh-context';
 import {
   CLOUD_ACCOUNT_IMPORT_MAX_ERRORS,
   type ImportStrategy,
@@ -98,7 +101,7 @@ export async function importCloudAccounts(
   }
 
   await prepareDesktopIdentityStorage();
-  const existingAccounts = await CloudAccountRepo.getAccounts();
+  const existingAccounts = structuredClone(await CloudAccountRepo.getAccounts());
   const existingByEmail = new Map(existingAccounts.map((a) => [a.email.toLowerCase(), a]));
 
   for (const importedAccount of validated.data.accounts) {
@@ -152,9 +155,16 @@ export async function importCloudAccounts(
               : (importedAccount.status_reason ?? existing.status_reason),
         };
 
-        await CloudAccountRepo.addAccount(updatedAccount);
+        await CloudAccountRepo.addAccount(updatedAccount, existingAccounts);
         if (replacesStoredRefreshGrant) {
-          await CloudAccountRefreshService.clearFailureState(existing.id);
+          const tokenGuard = captureTokenWriteGuard(updatedAccount);
+          const health = structuredClone(updatedAccount.health);
+          await CloudAccountRefreshService.clearFailureState(existing.id, (current) => {
+            tokenGuard(current);
+            if (!isEqual(current?.health, health)) {
+              throw new CloudAccountRefreshContextChangedError(existing.id);
+            }
+          });
         }
         result.updated++;
         importedIds.push(existing.id);
@@ -182,7 +192,7 @@ export async function importCloudAccounts(
           is_active: false,
         };
 
-        await CloudAccountRepo.addAccount(newAccount);
+        await CloudAccountRepo.addAccount(newAccount, existingAccounts);
         result.imported++;
         importedIds.push(newAccount.id);
       }

@@ -5,6 +5,7 @@ import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/c
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { logger } from '@/shared/logging/logger';
+import { captureTokenWriteGuard } from './cloud-account-refresh-writeback';
 import {
   OAuthClientDescriptorSchema,
   type OAuthClientDescriptor,
@@ -83,7 +84,7 @@ export async function backfillMissingOAuthClientKeyForLegacyAccounts(
   let skippedEnterpriseGuardCount = 0;
   let hasFailure = false;
 
-  for (const account of accounts) {
+  for (const account of structuredClone(accounts)) {
     if (account.provider !== 'google') {
       continue;
     }
@@ -106,10 +107,14 @@ export async function backfillMissingOAuthClientKeyForLegacyAccounts(
     }
 
     try {
-      await CloudAccountRepo.updateToken(account.id, {
-        ...account.token,
-        oauth_client_key: activeClientKey,
-      });
+      await CloudAccountRepo.updateToken(
+        account.id,
+        {
+          ...account.token,
+          oauth_client_key: activeClientKey,
+        },
+        captureTokenWriteGuard(account),
+      );
       updatedCount += 1;
     } catch (error) {
       hasFailure = true;

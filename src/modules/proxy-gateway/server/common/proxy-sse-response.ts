@@ -1,7 +1,10 @@
 import { HttpStatus } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { isFunction, isString } from 'lodash-es';
-import type { Observable } from 'rxjs';
+import { Subscriber, type Observable } from 'rxjs';
+import { logger } from '@/shared/logging/logger';
+import { FlowControlledSseStream } from './flow-controlled-sse-stream';
+import { SseOutputPump } from './sse-output-pump';
 
 import {
   captureHijackedHttpResponseChunk,
@@ -13,11 +16,17 @@ import {
   markProxyUpstreamFirstByte,
   setProxyResponseTimingHeaders,
 } from './proxy-response-timing';
+import { getObservableFlowControl } from './observable-flow-control';
+import { publicProxyErrorMessage } from './public-error-message';
+import { publicProxyRequestId } from './public-request-id';
 
 interface SseResponseOptions {
   includeTiming?: boolean;
   request?: FastifyRequest;
 }
+
+// Observable producers cannot be paused by this transport. Bound pending output and fail explicitly.
+const MAX_PENDING_SSE_BYTES = 16 * 1024 * 1024;
 
 interface HeaderState {
   written: boolean;
@@ -34,6 +43,7 @@ function writeHeadersOnce(
   }
   state.written = true;
   reply.raw.writeHead(HttpStatus.OK, {
+    ...(publicProxyRequestId(request) ? { 'X-Request-Id': publicProxyRequestId(request) } : {}),
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
@@ -70,37 +80,129 @@ export function writeProxySseResponse(
   }
 
   const headerState: HeaderState = { written: false };
+  let terminal = false;
+  let sourceError: unknown;
+  let hasSourceError = false;
   if (!includeTiming) {
     writeHeadersOnce(reply, request, false, headerState);
   }
 
-  const subscription = stream.subscribe({
+  const flow =
+    stream instanceof FlowControlledSseStream ? stream : getObservableFlowControl(stream);
+  const pump = flow
+    ? new SseOutputPump({
+        write: (text) => {
+          if (includeTiming) {
+            markProxyUpstreamFirstByte(getProxyResponseTimingContext(request)?.proxyTiming);
+          }
+          writeHeadersOnce(reply, request, includeTiming, headerState);
+          captureHijackedHttpResponseChunk(request, text);
+          // Copy small slices so Node's socket does not retain the whole parent event string.
+          return reply.raw.write(Buffer.from(text, 'utf8'));
+        },
+        pause: () => flow.pause(),
+        resume: () => {
+          if (!terminal) {
+            flow.resume();
+          }
+        },
+        finish: () => {
+          if (terminal) {
+            return;
+          }
+          terminal = true;
+          writeHeadersOnce(reply, request, includeTiming, headerState);
+          completeHijackedHttpResponse(
+            request,
+            reply,
+            hasSourceError ? { error: sourceError, partial: true } : {},
+          );
+          reply.raw.end();
+        },
+        fail: (error) => {
+          if (terminal) {
+            return;
+          }
+          terminal = true;
+          logger.warn(error.message);
+          completeHijackedHttpResponse(request, reply, { error, partial: true });
+          subscriber.unsubscribe();
+          reply.raw.destroy();
+        },
+      })
+    : null;
+  const subscriber = new Subscriber<unknown>({
     next: (chunk) => {
-      if (reply.raw.writableEnded) {
+      if (terminal || reply.raw.writableEnded || reply.raw.destroyed) {
+        return;
+      }
+      const text = isString(chunk) ? chunk : String(chunk ?? '');
+      if (pump) {
+        pump.enqueue(text);
+        return;
+      }
+      const incomingBytes = Buffer.byteLength(text, 'utf8');
+      if (reply.raw.writableLength + incomingBytes > MAX_PENDING_SSE_BYTES) {
+        terminal = true;
+        const error = new Error('SSE response backpressure limit exceeded');
+        logger.warn(error.message, {
+          pendingBytes: reply.raw.writableLength,
+          incomingBytes,
+          limitBytes: MAX_PENDING_SSE_BYTES,
+        });
+        completeHijackedHttpResponse(request, reply, { error, partial: true });
+        subscriber.unsubscribe();
+        // A full socket cannot reliably deliver another error frame; close without a success marker.
+        reply.raw.destroy();
         return;
       }
       if (includeTiming) {
         markProxyUpstreamFirstByte(getProxyResponseTimingContext(request)?.proxyTiming);
         writeHeadersOnce(reply, request, true, headerState);
       }
-      writeChunk(reply, request, isString(chunk) ? chunk : String(chunk ?? ''));
+      writeChunk(reply, request, text);
     },
-    error: (error) => {
-      if (reply.raw.writableEnded) {
+    error: (error: unknown) => {
+      if (terminal || reply.raw.writableEnded || reply.raw.destroyed) {
         return;
       }
       writeHeadersOnce(reply, request, includeTiming, headerState);
-      const message = error instanceof Error ? error.message : String(error);
-      writeChunk(
-        reply,
-        request,
-        `data: ${JSON.stringify({ error: { message, type: 'server_error' } })}\n\n`,
+      const message = publicProxyErrorMessage(
+        error instanceof Error ? error.message : String(error),
       );
+      const errorFrame = `data: ${JSON.stringify({ error: { message, type: 'server_error' } })}\n\n`;
+      if (pump) {
+        hasSourceError = true;
+        sourceError = error;
+        pump.enqueue(errorFrame);
+        pump.end();
+        return;
+      }
+      terminal = true;
+      if (
+        reply.raw.writableLength + Buffer.byteLength(errorFrame, 'utf8') >
+        MAX_PENDING_SSE_BYTES
+      ) {
+        logger.warn('SSE error response backpressure limit exceeded', {
+          pendingBytes: reply.raw.writableLength,
+          incomingBytes: Buffer.byteLength(errorFrame, 'utf8'),
+          limitBytes: MAX_PENDING_SSE_BYTES,
+        });
+        completeHijackedHttpResponse(request, reply, { error, partial: true });
+        reply.raw.destroy();
+        return;
+      }
+      writeChunk(reply, request, errorFrame);
       completeHijackedHttpResponse(request, reply, { error, partial: true });
       reply.raw.end();
     },
     complete: () => {
-      if (!reply.raw.writableEnded) {
+      if (pump) {
+        pump.end();
+        return;
+      }
+      if (!terminal && !reply.raw.writableEnded && !reply.raw.destroyed) {
+        terminal = true;
         writeHeadersOnce(reply, request, includeTiming, headerState);
         completeHijackedHttpResponse(request, reply);
         reply.raw.end();
@@ -108,10 +210,21 @@ export function writeProxySseResponse(
     },
   });
 
+  const onDrain = () => pump?.drain();
+  if (pump) {
+    reply.raw.on('drain', onDrain);
+  }
   reply.raw.on('close', () => {
-    if (!reply.raw.writableFinished) {
+    pump?.stop();
+    if (pump) {
+      reply.raw.removeListener('drain', onDrain);
+    }
+    if (!terminal && !reply.raw.writableFinished) {
+      terminal = true;
       completeHijackedHttpResponse(request, reply, { partial: true });
     }
-    subscription.unsubscribe();
+    subscriber.unsubscribe();
   });
+  // Install close handling and own the Subscriber before a synchronous source can emit.
+  stream.subscribe(subscriber);
 }

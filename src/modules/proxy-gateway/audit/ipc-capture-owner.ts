@@ -12,6 +12,7 @@ import { MAX_AUDIT_BODY_BYTES } from './audit-sanitizer';
 import { IpcCaptureMetadata } from './ipc-capture-metadata';
 import { AUDIT_BODY_CHUNK_BYTES } from './incremental-audit-serializer';
 import type { PreparedAuditPayloadWriter } from './prepared-audit-payload';
+import { thoughtCaptureLeases } from '../thought-store/thought-capture-leases';
 import {
   IpcCaptureCapabilitySchema,
   IpcCaptureBeginSchema,
@@ -64,6 +65,10 @@ export function createIpcCaptureOwner(source: Source = trafficAuditService) {
     });
   }
   function context(value: z.infer<typeof IpcCaptureBeginSchema>): TrafficAuditRequestContext {
+    const thoughtSessionKey = createThoughtSessionKey(
+      {},
+      value.sessionId ?? `request-${randomUUID()}`,
+    );
     const parent = isAuditManagementIpc(value.path)
       ? null
       : source.startParent({
@@ -79,7 +84,8 @@ export function createIpcCaptureOwner(source: Source = trafficAuditService) {
     return {
       parent,
       attemptSequence: 0,
-      thoughtSessionKey: createThoughtSessionKey({}, value.sessionId ?? `request-${randomUUID()}`),
+      thoughtSessionKey,
+      thoughtCaptureLease: thoughtCaptureLeases.acquire(thoughtSessionKey),
       thoughtSessionStable: Boolean(value.sessionId),
     };
   }
@@ -108,6 +114,7 @@ export function createIpcCaptureOwner(source: Source = trafficAuditService) {
     if (!entry.context) {
       return;
     }
+    entry.context.thoughtCaptureLease?.release();
     const closing = [...entry.payloads.values()]
       .filter((p) => !p.complete)
       .map((p) => p.writer.finish(null));

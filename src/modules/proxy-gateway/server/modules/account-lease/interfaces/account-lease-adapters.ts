@@ -6,23 +6,35 @@ import {
 } from '@/modules/cloud-account/services/GoogleAPIService';
 import { CloudAccountRefreshService } from '@/modules/cloud-account/services/CloudAccountRefreshService';
 import { CloudAccountHealthService } from '@/modules/cloud-account/services/CloudAccountHealthService';
+import type { CloudAccountWriteGuard } from '@/modules/cloud-account/persistence/cloudHandler';
 
 export const ACCOUNT_LEASE_ACCOUNT_STORE = Symbol('ACCOUNT_LEASE_ACCOUNT_STORE');
 export const ACCOUNT_LEASE_UPSTREAM = Symbol('ACCOUNT_LEASE_UPSTREAM');
 
 export interface AccountLeaseAccountStore {
+  assertCurrentAccount?(accountId: string, guard: CloudAccountWriteGuard): void;
   getAccounts(): Promise<CloudAccount[]>;
   getAccount(accountId: string): Promise<CloudAccount | undefined>;
-  updateToken(accountId: string, token: CloudAccount['token']): Promise<void>;
+  updateToken(
+    accountId: string,
+    token: CloudAccount['token'],
+    guard?: CloudAccountWriteGuard,
+  ): Promise<void>;
   compareAndUpdateToken(
     accountId: string,
     expected: CloudAccount['token'],
     token: CloudAccount['token'],
+    guard?: CloudAccountWriteGuard,
   ): Promise<boolean>;
-  updateQuota(accountId: string, quota: CloudQuotaData): Promise<void>;
+  updateQuota(
+    accountId: string,
+    quota: CloudQuotaData,
+    guard?: CloudAccountWriteGuard,
+  ): Promise<void>;
   mutateHealth(
     accountId: string,
     mutation: (health: CloudAccount['health']) => CloudAccount['health'],
+    guard?: CloudAccountWriteGuard,
   ): Promise<CloudAccount['health']>;
   setAccountStatus?(
     accountId: string,
@@ -32,15 +44,20 @@ export interface AccountLeaseAccountStore {
 }
 
 export interface AccountLeaseUpstream {
-  fetchQuota(accessToken: string, proxyUrl?: string): Promise<CloudQuotaData>;
+  fetchQuota(accessToken: string, proxyUrl?: string, signal?: AbortSignal): Promise<CloudQuotaData>;
   refreshAccessToken(
     accountId: string,
     refreshToken: string,
     proxyUrl?: string,
     oauthClientKey?: string,
     health?: CloudAccount['health'],
+    execution?: { signal: AbortSignal; assertCurrent: () => void },
   ): Promise<TokenResponse>;
-  fetchProjectId(accessToken: string, proxyUrl?: string): Promise<string | null>;
+  fetchProjectId(
+    accessToken: string,
+    proxyUrl?: string,
+    signal?: AbortSignal,
+  ): Promise<string | null>;
   normalizeRefreshedOAuthClientKey(
     currentToken: { oauth_client_key?: string; project_id?: string },
     refreshedClientKey?: string,
@@ -48,32 +65,46 @@ export interface AccountLeaseUpstream {
 }
 
 export const cloudAccountStoreAdapter: AccountLeaseAccountStore = {
+  assertCurrentAccount: (accountId, guard) =>
+    CloudAccountRepo.assertCurrentAccount(accountId, guard),
   getAccounts: () => CloudAccountRepo.getAccounts(),
   getAccount: (accountId) => CloudAccountRepo.getAccount(accountId),
-  updateToken: (accountId, token) => CloudAccountRepo.updateToken(accountId, token),
-  compareAndUpdateToken: (accountId, expected, token) =>
-    CloudAccountRepo.compareAndUpdateToken(accountId, expected, token),
-  updateQuota: (accountId, quota) => CloudAccountRepo.updateQuota(accountId, quota),
-  mutateHealth: (accountId, mutation) =>
-    CloudAccountHealthService.mutateHealth(accountId, mutation),
+  updateToken: (accountId, token, guard) => CloudAccountRepo.updateToken(accountId, token, guard),
+  compareAndUpdateToken: (accountId, expected, token, guard) =>
+    guard
+      ? CloudAccountRepo.compareAndUpdateToken(accountId, expected, token, guard)
+      : CloudAccountRepo.compareAndUpdateToken(accountId, expected, token),
+  updateQuota: (accountId, quota, guard) => CloudAccountRepo.updateQuota(accountId, quota, guard),
+  mutateHealth: (accountId, mutation, guard) =>
+    CloudAccountHealthService.mutateHealth(
+      accountId,
+      mutation,
+      guard ? { assertAccount: guard } : undefined,
+    ),
   setAccountStatus: (accountId, status, reason) =>
     CloudAccountRepo.setAccountStatus(accountId, status, reason),
 };
 
 export const googleAccountLeaseUpstreamAdapter: AccountLeaseUpstream = {
-  fetchQuota: (accessToken, proxyUrl) => GoogleAPIService.fetchQuota(accessToken, proxyUrl),
-  refreshAccessToken: (accountId, refreshToken, proxyUrl, oauthClientKey, health) =>
+  fetchQuota: (accessToken, proxyUrl, signal) =>
+    signal
+      ? GoogleAPIService.fetchQuota(accessToken, proxyUrl, signal)
+      : GoogleAPIService.fetchQuota(accessToken, proxyUrl),
+  refreshAccessToken: (accountId, refreshToken, proxyUrl, oauthClientKey, health, execution) =>
     CloudAccountRefreshService.refreshAccessToken({
       accountId,
       refreshToken,
       proxyUrl,
       oauthClientKey,
       health,
+      ...execution,
     }),
-  fetchProjectId: (accessToken, proxyUrl) =>
-    proxyUrl
-      ? GoogleAPIService.fetchProjectId(accessToken, proxyUrl)
-      : GoogleAPIService.fetchProjectId(accessToken),
+  fetchProjectId: (accessToken, proxyUrl, signal) =>
+    signal
+      ? GoogleAPIService.fetchProjectId(accessToken, proxyUrl, signal)
+      : proxyUrl
+        ? GoogleAPIService.fetchProjectId(accessToken, proxyUrl)
+        : GoogleAPIService.fetchProjectId(accessToken),
   normalizeRefreshedOAuthClientKey: (currentToken, refreshedClientKey) =>
     GoogleAPIService.normalizeRefreshedOAuthClientKey(currentToken, refreshedClientKey),
 };

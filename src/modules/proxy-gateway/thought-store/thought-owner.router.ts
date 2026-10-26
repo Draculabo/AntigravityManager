@@ -7,12 +7,13 @@ import {
   ThoughtRecordInputSchema,
   ThoughtRecordOpenSchema,
 } from './thought-owner.schema';
+import { ThoughtSessionListSchema, ThoughtStoreStatsSchema } from './thought-store.types';
+import { AuditRepairResultSchema } from '../audit/audit-owner.schema';
 import {
-  ThoughtSessionListSchema,
-  ThoughtRecordSummaryListSchema,
-  ThoughtStoreStatsSchema,
-} from './thought-store.types';
-import { AuditMutationResultSchema, AuditRepairResultSchema } from '../audit/audit-owner.schema';
+  ThoughtRecordPageInputSchema,
+  ThoughtRecordPageSchema,
+  ThoughtMutationReceiptSchema,
+} from './thought-management.schema';
 import {
   ContentReadInputSchema,
   ContentIdentitySchema,
@@ -36,15 +37,15 @@ export function createThoughtOwnerRouter(owner: ThoughtOperations) {
       .output(ThoughtSessionListSchema)
       .handler(({ input }) => owner.sessions(input)),
     records: procedure
-      .input(ThoughtSessionInputSchema)
-      .output(ThoughtRecordSummaryListSchema)
+      .input(ThoughtRecordPageInputSchema)
+      .output(ThoughtRecordPageSchema)
       .handler(({ input }) => owner.records(input)),
     stats: procedure.output(ThoughtStoreStatsSchema).handler(() => owner.stats()),
     delete: procedure
       .input(ThoughtSessionInputSchema)
-      .output(AuditMutationResultSchema)
+      .output(ThoughtMutationReceiptSchema)
       .handler(({ input }) => owner.delete(input)),
-    clear: procedure.output(AuditMutationResultSchema).handler(() => owner.clear()),
+    clear: procedure.output(ThoughtMutationReceiptSchema).handler(() => owner.clear()),
     repair: procedure.output(AuditRepairResultSchema).handler(() => owner.repair()),
     openRecord: procedure
       .input(ThoughtRecordInputSchema)

@@ -14,6 +14,15 @@ import { detectAgyCliExecutablePath } from '@/modules/antigravity-runtime/binary
 import * as electronMock from 'electron';
 import * as healthService from '@/modules/cloud-account/services/CloudAccountHealthService';
 import { CloudAccountHealthSchema, type CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccount } from '@/modules/cloud-account/types';
+
+function seedStoredRefreshAccounts(accounts: CloudAccount[]): void {
+  vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue(accounts);
+  vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async (id) => {
+    const account = accounts.find((candidate) => candidate.id === id);
+    return account ? structuredClone(account) : undefined;
+  });
+}
 
 // Mock dependencies
 vi.mock('@/modules/cloud-account/persistence/cloudHandler');
@@ -41,10 +50,12 @@ describe('CloudMonitorService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(true);
+    vi.mocked(CloudAccountRepo.getAccount).mockReset();
     vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async (id) => {
-      const accounts = await CloudAccountRepo.getAccounts();
-      return accounts?.find((entry) => entry.id === id);
+      const latest: CloudAccount[] | undefined = await vi
+        .mocked(CloudAccountRepo.getAccounts)
+        .mock.results.at(-1)?.value;
+      return latest?.find((account) => account.id === id);
     });
     vi.mocked(getAntigravityStoragePaths).mockReturnValue([process.cwd()]);
     vi.mocked(detectAgyCliExecutablePath).mockReturnValue(null);
@@ -219,7 +230,11 @@ describe('CloudMonitorService', () => {
 
     expect(CloudAccountRepo.getAccounts).toHaveBeenCalled();
     expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('valid_token', undefined);
-    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc1', expect.anything());
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith(
+      'acc1',
+      expect.anything(),
+      expect.any(Function),
+    );
     expect(CloudAccountRepo.updateLastUsed).not.toHaveBeenCalled();
     expect(AutoSwitchService.checkAndSwitchIfNeeded).toHaveBeenCalled();
   });
@@ -381,7 +396,11 @@ describe('CloudMonitorService', () => {
     await pollPromise;
 
     // Quota still refreshes; only the switch attempt is skipped.
-    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc1', expect.anything());
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith(
+      'acc1',
+      expect.anything(),
+      expect.any(Function),
+    );
     expect(AutoSwitchService.checkAndSwitchIfNeeded).not.toHaveBeenCalled();
   });
 
@@ -423,23 +442,32 @@ describe('CloudMonitorService', () => {
 
     // A failing switch must not reject the poll, which the caller reports as a total failure.
     await expect(pollPromise).resolves.toBeUndefined();
-    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc1', expect.anything());
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith(
+      'acc1',
+      expect.anything(),
+      expect.any(Function),
+    );
   });
 
   it('should refresh token if expired during poll', async () => {
-    const mockAccounts = [
+    const mockAccounts: CloudAccount[] = [
       {
         id: 'acc1',
+        provider: 'google',
+        created_at: 1,
+        last_used: 1,
         email: 'expired@example.com',
         token: {
           access_token: 'old_token',
           refresh_token: 'ref_token',
+          expires_in: 3600,
+          token_type: 'Bearer',
           expiry_timestamp: Math.floor(Date.now() / 1000) - 100, // Expired
         },
       },
     ];
 
-    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue(mockAccounts as never);
+    seedStoredRefreshAccounts(mockAccounts);
     vi.mocked(GoogleAPIService.refreshAccessToken).mockResolvedValue({
       access_token: 'new_token',
       refresh_token: 'new_ref_token',
@@ -467,24 +495,30 @@ describe('CloudMonitorService', () => {
         refresh_token: 'new_ref_token',
         id_token: 'new_id_token',
       }),
+      expect.any(Function),
     );
     expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('new_token', undefined);
   });
 
   it('should recover from 401 Unauthorized during quota fetch by refreshing token and retrying', async () => {
-    const mockAccounts = [
+    const mockAccounts: CloudAccount[] = [
       {
         id: 'acc-401',
+        provider: 'google',
+        created_at: 1,
+        last_used: 1,
         email: 'unauthorized@example.com',
         token: {
           access_token: 'stale_token',
           refresh_token: 'valid_refresh_token',
+          expires_in: 3600,
+          token_type: 'Bearer',
           expiry_timestamp: Math.floor(Date.now() / 1000) + 3600, // Token looks valid locally
         },
       },
     ];
 
-    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue(mockAccounts as never);
+    seedStoredRefreshAccounts(mockAccounts);
     vi.mocked(GoogleAPIService.fetchQuota)
       .mockRejectedValueOnce(new Error('UNAUTHORIZED'))
       .mockResolvedValueOnce({
@@ -514,6 +548,7 @@ describe('CloudMonitorService', () => {
       expect.objectContaining({
         access_token: 'refreshed_access_token',
       }),
+      expect.any(Function),
     );
     expect(GoogleAPIService.fetchQuota).toHaveBeenNthCalledWith(1, 'stale_token', undefined);
     expect(GoogleAPIService.fetchQuota).toHaveBeenNthCalledWith(
@@ -521,24 +556,38 @@ describe('CloudMonitorService', () => {
       'refreshed_access_token',
       undefined,
     );
-    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc-401', expect.anything());
-    expect(CloudAccountRepo.setAccountStatus).toHaveBeenCalledWith('acc-401', 'active', null);
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith(
+      'acc-401',
+      expect.anything(),
+      expect.any(Function),
+    );
+    expect(CloudAccountRepo.setAccountStatus).toHaveBeenCalledWith(
+      'acc-401',
+      'active',
+      null,
+      expect.any(Function),
+    );
   });
 
   it('should recover from 401 Unauthorized during AI credits fetch', async () => {
-    const mockAccounts = [
+    const mockAccounts: CloudAccount[] = [
       {
         id: 'credits-401',
+        provider: 'google',
+        created_at: 1,
+        last_used: 1,
         email: 'credits-unauthorized@example.com',
         token: {
           access_token: 'stale_token',
           refresh_token: 'valid_refresh_token',
+          expires_in: 3600,
+          token_type: 'Bearer',
           expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
         },
       },
     ];
 
-    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue(mockAccounts as never);
+    seedStoredRefreshAccounts(mockAccounts);
     vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue({ models: {} } as never);
     vi.mocked(GoogleAPIService.fetchAICredits)
       .mockRejectedValueOnce(new Error('UNAUTHORIZED'))
@@ -559,6 +608,7 @@ describe('CloudMonitorService', () => {
       'credits-401',
       expect.objectContaining({ access_token: 'stale_token' }),
       expect.objectContaining({ access_token: 'refreshed_access_token' }),
+      expect.any(Function),
     );
     expect(GoogleAPIService.fetchAICredits).toHaveBeenNthCalledWith(1, 'stale_token', undefined);
     expect(GoogleAPIService.fetchAICredits).toHaveBeenNthCalledWith(
@@ -571,6 +621,7 @@ describe('CloudMonitorService', () => {
       expect.objectContaining({
         ai_credits: { credits: 1234, expiryDate: '2026-09-01T00:00:00Z' },
       }),
+      expect.any(Function),
     );
   });
 
@@ -909,6 +960,7 @@ describe('AccountLeaseService project-id hydration', () => {
       expect.objectContaining({
         project_id: 'resolved-project',
       }),
+      expect.any(Function),
     );
     expect(selectedToken?.token.project_id).toBe('resolved-project');
   });
@@ -1001,6 +1053,7 @@ describe('AccountLeaseService project-id hydration', () => {
       expect.objectContaining({
         project_id: 'resolved-project-4',
       }),
+      expect.any(Function),
     );
     expect(selectedToken?.token.project_id).toBe('resolved-project-4');
   });

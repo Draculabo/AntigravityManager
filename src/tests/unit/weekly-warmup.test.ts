@@ -22,6 +22,7 @@ vi.mock('@/modules/cloud-account/persistence/cloudHandler');
 const RESET_TIME = '2026-09-01T00:00:00Z';
 const RESET_TIMESTAMP = Date.parse(RESET_TIME);
 const CONFIG: WeeklyWarmupConfig = { enabled: true, groups: ['claude', 'gemini'] };
+const storedAccounts = new Map<string, CloudAccount>();
 
 function makeAccount(
   id: string,
@@ -29,7 +30,7 @@ function makeAccount(
   bucketId: string,
   resetTime = RESET_TIME,
 ): CloudAccount {
-  return {
+  const value: CloudAccount = {
     id,
     provider: 'google',
     email: `${id}@example.com`,
@@ -61,6 +62,8 @@ function makeAccount(
     last_used: 1,
     status: 'active',
   };
+  storedAccounts.set(id, value);
+  return value;
 }
 
 describe('weekly warmup candidate selection', () => {
@@ -209,6 +212,18 @@ describe('WeeklyWarmupService.run', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    storedAccounts.clear();
+    vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async (id) => {
+      const value = storedAccounts.get(id);
+      return value ? structuredClone(value) : undefined;
+    });
+    vi.mocked(CloudAccountRepo.updateToken).mockImplementation(async (id, token, guard) => {
+      guard?.(storedAccounts.get(id));
+      const value = storedAccounts.get(id);
+      if (value) {
+        value.token = structuredClone(token);
+      }
+    });
     WeeklyWarmupService.resetStateForTesting();
     storedConfig = { ...CONFIG };
     storedHistory = { version: 1, entries: {} };
@@ -266,16 +281,19 @@ describe('WeeklyWarmupService.run', () => {
   });
 
   it('serializes overlapping runs and rechecks history before the queued run', async () => {
+    const entered = Promise.withResolvers<void>();
     let release: () => void = () => undefined;
     const warmup = vi.fn(
       () =>
         new Promise<void>((resolve) => {
           release = resolve;
+          entered.resolve();
         }),
     );
     const accounts = [makeAccount('a', 'Gemini', 'weekly')];
     const first = WeeklyWarmupService.run(accounts, { warmup }, { now: RESET_TIMESTAMP });
     const second = WeeklyWarmupService.run(accounts, { warmup }, { now: RESET_TIMESTAMP });
+    await entered.promise;
     expect(warmup).toHaveBeenCalledTimes(1);
     release();
     expect(await Promise.all([first, second])).toEqual([['a'], []]);
@@ -371,10 +389,14 @@ describe('WeeklyWarmupService.run', () => {
         expect(warmup).not.toHaveBeenCalled();
       } else {
         expect(warmed).toEqual([account.id]);
-        expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(account.id, {
-          ...account.token,
-          project_id: projectId,
-        });
+        expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
+          account.id,
+          {
+            ...account.token,
+            project_id: projectId,
+          },
+          expect.any(Function),
+        );
         expect(warmup).toHaveBeenCalledExactlyOnceWith({
           accessToken: account.token.access_token,
           model: 'gemini-3-flash',

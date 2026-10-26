@@ -30,26 +30,28 @@ describe('Gemini tool configuration compatibility', () => {
       undefined,
       'openai',
     ).request;
-    const mode =
+    const functionCallingConfig =
       tool_choice === undefined
-        ? 'VALIDATED'
-        : tool_choice === 'none'
-          ? 'NONE'
-          : tool_choice === 'auto'
-            ? 'AUTO'
-            : 'ANY';
+        ? {}
+        : {
+            functionCallingConfig: {
+              mode: tool_choice === 'none' ? 'NONE' : tool_choice === 'auto' ? 'AUTO' : 'ANY',
+              ...(typeof tool_choice === 'object' ? { allowedFunctionNames: ['read_file'] } : {}),
+            },
+          };
     expect(result.toolConfig).toEqual({
-      functionCallingConfig: {
-        mode,
-        ...(typeof tool_choice === 'object' ? { allowedFunctionNames: ['read_file'] } : {}),
-      },
+      ...functionCallingConfig,
       includeServerSideToolInvocations: true,
     });
     expect(result.tool_config).toEqual({
-      function_calling_config: {
-        mode,
-        ...(typeof tool_choice === 'object' ? { allowed_function_names: ['read_file'] } : {}),
-      },
+      ...(tool_choice === undefined
+        ? {}
+        : {
+            function_calling_config: {
+              mode: tool_choice === 'none' ? 'NONE' : tool_choice === 'auto' ? 'AUTO' : 'ANY',
+              ...(typeof tool_choice === 'object' ? { allowed_function_names: ['read_file'] } : {}),
+            },
+          }),
       include_server_side_tool_invocations: true,
     });
     expect(result.tools).toHaveLength(1);
@@ -64,10 +66,13 @@ describe('Gemini tool configuration compatibility', () => {
     const openai = transformClaudeRequestIn(request, '', 'test', undefined, 'openai').request;
     const anthropic = transformClaudeRequestIn(request, '', 'test', undefined, 'anthropic').request;
     expect(openai.tools).toBeDefined();
-    expect(openai.toolConfig).toBeUndefined();
-    expect(openai.tool_config).toBeUndefined();
+    expect(openai.toolConfig).toEqual({ includeServerSideToolInvocations: true });
+    expect(openai.tool_config).toEqual({ include_server_side_tool_invocations: true });
+    expect(normalizeGeminiToolConfigAliases(openai)).toEqual({
+      toolConfig: { includeServerSideToolInvocations: true },
+      tool_config: { include_server_side_tool_invocations: true },
+    });
     expect(anthropic.tool_config).toEqual({
-      function_calling_config: { mode: 'VALIDATED' },
       include_server_side_tool_invocations: true,
     });
   });

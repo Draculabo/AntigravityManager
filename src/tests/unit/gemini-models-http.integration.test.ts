@@ -18,6 +18,8 @@ const previous = getServerConfig() ?? DEFAULT_APP_CONFIG.proxy;
 const apps: NestFastifyApplication[] = [];
 const headers = { authorization: 'Bearer synthetic-model-key' };
 
+vi.setConfig({ testTimeout: 15_000 });
+
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
   setServerConfig(previous);
@@ -84,17 +86,32 @@ describe('Gemini model queries HTTP', () => {
       const reply = await app.inject({ url: `/v1beta/models/${model}`, headers });
       expect({ status: reply.statusCode, body: reply.json() }).toEqual({
         status: 200,
-        body: { name: 'models/gemini-2.5-flash', displayName: 'gemini-2.5-flash' },
+        body: {
+          name: 'models/gemini-2.5-flash',
+          displayName: 'gemini-2.5-flash',
+          description: '',
+          inputTokenLimit: 128000,
+          outputTokenLimit: 8192,
+          supportedGenerationMethods: ['generateContent', 'countTokens'],
+          temperature: 1,
+          topK: 64,
+          topP: 0.95,
+          version: '001',
+        },
       });
     },
   );
 
-  it('preserves HTTP 200 fallback metadata for an unknown model', async () => {
+  it('returns a typed 404 for an unknown model', async () => {
     const { app } = await createSurface();
     const reply = await app.inject({ url: '/v1beta/models/unknown-model', headers });
     expect({ status: reply.statusCode, body: reply.json() }).toEqual({
-      status: 200,
-      body: { name: 'models/unknown-model', displayName: 'unknown-model' },
+      status: 404,
+      body: {
+        statusCode: 404,
+        error: 'Not Found',
+        message: "Model 'models/unknown-model' was not found",
+      },
     });
   });
 

@@ -2,18 +2,40 @@ import type { IncomingMessage, Server } from 'node:http';
 import { SchemaInputError } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
 import type { Duplex } from 'node:stream';
 
-import { isObservable, type Observable, type Subscription } from 'rxjs';
+import { isObservable, Subscriber, type Observable } from 'rxjs';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
+import { FlowControlledSseStream } from '../../../common/flow-controlled-sse-stream';
+import { awaitRequestOperation } from '../../../common/request-cancellation';
+import { DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES } from '../../../proxy.constants';
+import { logger } from '@/shared/logging/logger';
+import { ResponsesWebSocketOutput } from './responses-websocket-output';
+import { IncrementalSseLines } from '../../../common/incremental-sse-lines';
+import { takeSerializedResponsesFrame } from './serialized-responses-frames';
+import type { SignatureScopeContext } from '../../../common/signature-session-scope';
 
 import {
   OpenAIResponsesWebSocketProtocol,
   type OpenAIResponsesWebSocketEvent,
 } from './openai-responses-websocket.protocol';
 
+import { publicProxyErrorMessage } from '../../../common/public-error-message';
+import { openAIHttpErrorFields } from '../../../common/public-http-error-fields';
+import { resolveUpstreamErrorHttpStatus } from '../../../common/upstream-error-http-status';
+import { HttpException } from '@nestjs/common';
+import { ResponsesThoughtContext } from './responses-thought-context';
+
 export interface OpenAIResponsesWebSocketServerDependencies {
-  validateRequest?: (request: Record<string, unknown>, mode: 'prewarm' | 'generate') => void;
+  validateRequest?: (
+    request: Record<string, unknown>,
+    mode: 'prewarm' | 'generate',
+    context?: SignatureScopeContext,
+  ) => void | Promise<void>;
   isAuthorized: (request: IncomingMessage) => boolean;
-  streamRequest: (request: Record<string, unknown>) => Promise<Observable<unknown>>;
+  streamRequest: (
+    request: Record<string, unknown>,
+    signal?: AbortSignal,
+    context?: SignatureScopeContext,
+  ) => Promise<Observable<unknown>>;
 }
 
 /**
@@ -24,7 +46,10 @@ export function attachOpenAIResponsesWebSocketServer(
   server: Server,
   dependencies: OpenAIResponsesWebSocketServerDependencies,
 ): () => void {
-  const webSocketServer = new WebSocketServer({ noServer: true });
+  const webSocketServer = new WebSocketServer({
+    noServer: true,
+    maxPayload: DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES,
+  });
   const handleUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer): void => {
     const pathname = resolvePathname(request.url);
     if (pathname !== '/v1/responses') {
@@ -41,8 +66,8 @@ export function attachOpenAIResponsesWebSocketServer(
     });
   };
 
-  webSocketServer.on('connection', (socket) => {
-    handleConnection(socket, dependencies);
+  webSocketServer.on('connection', (socket, request) => {
+    handleConnection(socket, dependencies, { headers: request.headers, url: request.url });
   });
   server.on('upgrade', handleUpgrade);
 
@@ -58,63 +83,169 @@ export function attachOpenAIResponsesWebSocketServer(
 function handleConnection(
   socket: WebSocket,
   dependencies: OpenAIResponsesWebSocketServerDependencies,
+  context: SignatureScopeContext,
 ): void {
-  const protocol = new OpenAIResponsesWebSocketProtocol(dependencies.validateRequest);
-  let activeSubscription: Subscription | null = null;
+  const validate = dependencies.validateRequest;
+  const protocol = new OpenAIResponsesWebSocketProtocol(
+    validate ? (request, mode) => validate(request, mode, context) : undefined,
+  );
+  const thoughtContext = new ResponsesThoughtContext(protocol);
+  let activeSubscription: Subscriber<unknown> | null = null;
+  let output: ResponsesWebSocketOutput | null = null;
+  const abort = new AbortController();
+  let queuedBytes = 0;
+  let queuedRequests = 0;
   let processing = Promise.resolve();
+  const failTransport = (error: Error): void => {
+    logger.warn(error.message);
+    abort.abort();
+    thoughtContext.dispose();
+    activeSubscription?.unsubscribe();
+    output?.stop();
+    socket.terminate();
+  };
 
   socket.on('message', (rawData) => {
+    if (abort.signal.aborted) {
+      return;
+    }
+    const bytes = rawDataBytes(rawData);
+    if (queuedRequests >= 16 || queuedBytes + bytes > 128 * 1024 * 1024) {
+      failTransport(new Error('Responses WebSocket request queue budget exceeded'));
+      return;
+    }
+    queuedBytes += bytes;
+    queuedRequests++;
     processing = processing
       .then(async () => {
-        const payload = parseClientPayload(rawData);
-        const action = protocol.accept(payload);
-        if (action.kind === 'local') {
-          for (const event of action.events) {
-            sendEvent(socket, event);
-          }
+        if (abort.signal.aborted) {
           return;
         }
+        const payload = parseClientPayload(rawData);
+        return thoughtContext.run(payload, context, async () => {
+          const action = await protocol.accept(payload);
+          if (!thoughtContext.mayRetain()) {
+            throw new Error('Responses history was invalidated');
+          }
+          if (action.kind === 'local') {
+            await sendEvents(socket, action.events, failTransport);
+            return;
+          }
 
-        const stream = await dependencies.streamRequest(action.request);
-        if (!isObservable(stream)) {
-          throw new Error('Responses WebSocket upstream did not return a stream');
-        }
-        const parseUpstreamChunk = createUpstreamEventParser();
-        try {
-          await new Promise<void>((resolve, reject) => {
-            activeSubscription = stream.subscribe({
-              next: (chunk) => {
-                for (const event of parseUpstreamChunk(chunk)) {
-                  sendEvent(socket, event);
-                  if (event.type === 'response.completed') {
-                    protocol.complete(event.response);
+          const pendingStream = dependencies.streamRequest(action.request, abort.signal, context);
+          void pendingStream.then(
+            (lateStream) => {
+              if (abort.signal.aborted && lateStream instanceof FlowControlledSseStream) {
+                lateStream.destroy();
+              }
+            },
+            () => {},
+          );
+          const stream = await awaitRequestOperation(pendingStream, abort.signal);
+          if (!isObservable(stream)) {
+            throw new Error('Responses WebSocket upstream did not return a stream');
+          }
+          const parseUpstreamChunk = createUpstreamEventParser();
+          output = new ResponsesWebSocketOutput(
+            socket,
+            stream instanceof FlowControlledSseStream ? stream : null,
+            failTransport,
+          );
+          const currentOutput = output;
+          let cancel: (() => void) | undefined;
+          try {
+            await new Promise<void>((resolve, reject) => {
+              cancel = (): void => resolve();
+              abort.signal.addEventListener('abort', cancel, { once: true });
+              const subscriber = new Subscriber<unknown>({
+                next: (chunk) => {
+                  try {
+                    const canonical = takeSerializedResponsesFrame(stream, chunk);
+                    if (canonical) {
+                      currentOutput.enqueueSerialized(canonical.json);
+                      if (
+                        !abort.signal.aborted &&
+                        thoughtContext.mayRetain() &&
+                        canonical.completedState
+                      ) {
+                        protocol.complete(canonical.completedState);
+                      }
+                      return;
+                    }
+                    for (const event of parseUpstreamChunk(chunk)) {
+                      currentOutput.enqueue(event);
+                      if (abort.signal.aborted) {
+                        break;
+                      }
+                      if (event.type === 'response.completed' && thoughtContext.mayRetain()) {
+                        protocol.complete(event.response);
+                      }
+                    }
+                  } catch {
+                    failTransport(
+                      new Error('Responses WebSocket upstream event exceeds decode budget'),
+                    );
                   }
-                }
-              },
-              error: reject,
-              complete: resolve,
+                },
+                error: reject,
+                complete: () => currentOutput.end(resolve),
+              });
+              activeSubscription = subscriber;
+              stream.subscribe(subscriber);
             });
-          });
-        } finally {
-          activeSubscription = null;
-        }
-      })
-      .catch((error: unknown) => {
-        sendEvent(socket, {
-          type: 'error',
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-            type: error instanceof SchemaInputError ? 'invalid_request_error' : 'server_error',
-            ...(error instanceof SchemaInputError ? { code: 'invalid_schema' } : {}),
-          },
+          } finally {
+            if (cancel) {
+              abort.signal.removeEventListener('abort', cancel);
+            }
+            activeSubscription?.unsubscribe();
+            activeSubscription = null;
+            currentOutput.stop();
+            output = null;
+          }
         });
+      })
+      .catch(async (error: unknown) => {
+        if (abort.signal.aborted) {
+          return;
+        }
+        await sendEvents(
+          socket,
+          [
+            {
+              type: 'error',
+              error: {
+                message: publicProxyErrorMessage(
+                  error instanceof Error ? error.message : String(error),
+                ),
+                ...openAIHttpErrorFields(
+                  error instanceof HttpException
+                    ? error.getStatus()
+                    : error instanceof SchemaInputError
+                      ? 400
+                      : (resolveUpstreamErrorHttpStatus(error) ?? 500),
+                  error,
+                ),
+                ...(error instanceof SchemaInputError ? { code: 'invalid_schema' } : {}),
+              },
+            },
+          ],
+          failTransport,
+        );
+      })
+      .finally(() => {
+        queuedBytes -= bytes;
+        queuedRequests--;
       });
   });
 
   socket.once('close', () => {
+    abort.abort();
+    thoughtContext.dispose();
+    output?.stop();
     activeSubscription?.unsubscribe();
     activeSubscription = null;
   });
+  socket.once('error', () => failTransport(new Error('Responses WebSocket socket failed')));
 }
 
 function parseClientPayload(rawData: RawData): unknown {
@@ -126,37 +257,40 @@ function parseClientPayload(rawData: RawData): unknown {
   }
 }
 
-function createUpstreamEventParser(): (chunk: unknown) => OpenAIResponsesWebSocketEvent[] {
-  let buffer = '';
-  return (chunk: unknown): OpenAIResponsesWebSocketEvent[] => {
+function createUpstreamEventParser(): (chunk: unknown) => Iterable<OpenAIResponsesWebSocketEvent> {
+  const lines = new IncrementalSseLines();
+  let dataLines: string[] = [];
+  let retainedBytes = 0;
+  return function* (chunk: unknown): Generator<OpenAIResponsesWebSocketEvent> {
     if (typeof chunk !== 'string') {
-      return isResponsesEvent(chunk) ? [chunk] : [];
+      if (isResponsesEvent(chunk)) {
+        yield chunk;
+      }
+      return;
     }
 
-    buffer += chunk;
-    const events: OpenAIResponsesWebSocketEvent[] = [];
-    while (true) {
-      const separator = /\r?\n\r?\n/.exec(buffer);
-      if (!separator || separator.index === undefined) {
-        break;
-      }
-      const block = buffer.slice(0, separator.index);
-      buffer = buffer.slice(separator.index + separator[0].length);
-      const event = parseUpstreamEventBlock(block);
-      if (event) {
-        events.push(event);
+    for (const rawLine of lines.push(chunk)) {
+      const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+      if (line === '') {
+        const data = dataLines.join('\n');
+        dataLines = [];
+        retainedBytes = 0;
+        const event = parseUpstreamEventData(data);
+        if (event) {
+          yield event;
+        }
+      } else if (line.startsWith('data:')) {
+        retainedBytes += line.length * 2 + 64;
+        if (retainedBytes > 128 * 1024 * 1024) {
+          throw new Error('Responses event decode budget exceeded');
+        }
+        dataLines.push(line.slice(5).trimStart());
       }
     }
-    return events;
   };
 }
 
-function parseUpstreamEventBlock(block: string): OpenAIResponsesWebSocketEvent | null {
-  const data = block
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith('data:'))
-    .map((line) => line.slice('data:'.length).trimStart())
-    .join('\n');
+function parseUpstreamEventData(data: string): OpenAIResponsesWebSocketEvent | null {
   if (!data || data === '[DONE]') {
     return null;
   }
@@ -171,10 +305,36 @@ function parseUpstreamEventBlock(block: string): OpenAIResponsesWebSocketEvent |
   return null;
 }
 
-function sendEvent(socket: WebSocket, event: OpenAIResponsesWebSocketEvent): void {
-  if (socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(event));
+function sendEvents(
+  socket: WebSocket,
+  events: OpenAIResponsesWebSocketEvent[],
+  fail: (error: Error) => void,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const output = new ResponsesWebSocketOutput(socket, null, (error) => {
+      fail(error);
+      resolve();
+    });
+    const close = (): void => {
+      output.stop();
+      resolve();
+    };
+    socket.once('close', close);
+    for (const event of events) {
+      output.enqueue(event);
+    }
+    output.end(() => {
+      socket.off('close', close);
+      resolve();
+    });
+  });
+}
+
+function rawDataBytes(rawData: RawData): number {
+  if (Array.isArray(rawData)) {
+    return rawData.reduce((bytes, part) => bytes + part.length, 0);
   }
+  return rawData instanceof ArrayBuffer ? rawData.byteLength : rawData.length;
 }
 
 function rawDataToString(rawData: RawData): string {

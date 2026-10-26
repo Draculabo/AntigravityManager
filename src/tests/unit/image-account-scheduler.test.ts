@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG, ProxyConfigSchema, type ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
 import {
@@ -14,10 +14,21 @@ function configureScheduler(perAccountConcurrency: number, requestTimeout = 1): 
   const proxy: ProxyConfig = {
     ...DEFAULT_APP_CONFIG.proxy,
     request_timeout: requestTimeout,
-    image_scheduler: { per_account_concurrency: perAccountConcurrency },
+    image_scheduler: {
+      ...DEFAULT_APP_CONFIG.proxy.image_scheduler,
+      per_account_concurrency: perAccountConcurrency,
+    },
   };
   setServerConfig(proxy);
 }
+
+const services: AccountLeaseService[] = [];
+
+afterEach(async () => {
+  for (const service of services.splice(0)) {
+    await service.onModuleDestroy();
+  }
+});
 
 async function createLeaseService(
   scheduler: ImageAccountSchedulerService,
@@ -25,6 +36,7 @@ async function createLeaseService(
 ): Promise<AccountLeaseService> {
   const { store } = accountLeaseStoreFixture(accountIds.map((id) => leaseAccount(id)));
   const service = new AccountLeaseService(store, undefined, undefined, undefined, scheduler, null);
+  services.push(service);
   await service.loadAccounts();
   return service;
 }
@@ -77,7 +89,13 @@ describe('ImageAccountSchedulerService', () => {
   it('defaults missing scheduler configuration to four permits per account', () => {
     const { image_scheduler: _scheduler, ...legacyConfig } = DEFAULT_APP_CONFIG.proxy;
     const parsed = ProxyConfigSchema.parse(legacyConfig);
-    expect(parsed.image_scheduler).toEqual({ per_account_concurrency: 4 });
+    expect(parsed.image_scheduler).toEqual({
+      per_account_concurrency: 4,
+      send_window_enabled: false,
+      send_window_count: 10,
+      send_window_memory_mib: 32,
+      send_window_strip_remote_urls: false,
+    });
   });
 
   it('accepts an explicit zero cap as a deliberate no-capacity configuration', () => {
@@ -159,7 +177,9 @@ describe('AccountLeaseService image scheduling', () => {
     initialLeases.forEach(({ permit }) => permit.release());
     const allLeases = await Promise.all(requests);
     expect(allLeases).toHaveLength(8);
-    allLeases.slice(initialLeases.length).forEach(({ permit }) => permit.release());
+    const laterLeases = allLeases.filter((lease) => !initialLeases.includes(lease));
+    expect(laterLeases).toHaveLength(2);
+    laterLeases.forEach(({ permit }) => permit.release());
     expect(scheduler.getAvailableSlots()).toBe(6);
   });
 

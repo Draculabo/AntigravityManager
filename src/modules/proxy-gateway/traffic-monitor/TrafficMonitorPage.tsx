@@ -2,9 +2,9 @@ import { TrafficMonitorHeader } from './components/TrafficMonitorHeader';
 import { TrafficSearchForm } from './components/TrafficSearchForm';
 import { TrafficRefreshControls } from './components/TrafficRefreshControls';
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { FeedbackState } from '@/components/ui/feedback-state';
@@ -24,6 +24,9 @@ import type { TrafficClass } from '@/modules/proxy-gateway/audit/traffic-classif
 import type { TrafficAuditListInput } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 
 import { TrafficTable } from './components/TrafficTable';
+import { TrafficClearControls } from './components/TrafficClearControls';
+import { TrafficSessionFilter } from './components/TrafficSessionFilter';
+import { AuditSessionExportAction } from './AuditSessionExportAction';
 import { TrafficDetailDialog } from './TrafficDetailDialog';
 import { dateBoundary, toLocalDate } from './traffic-date-range';
 
@@ -57,6 +60,7 @@ function AccountOption({
 }
 
 interface TrafficFilters {
+  sessionId?: string;
   accountId?: string;
   from?: number;
   modelFamily?: string;
@@ -70,6 +74,7 @@ interface TrafficFilters {
 }
 
 interface TrafficMonitorPageProps {
+  initialSessionId?: string;
   initialPage?: number;
   initialAccountId?: string;
   initialModelFamily?: string;
@@ -84,6 +89,7 @@ interface TrafficMonitorPageProps {
 }
 
 export function TrafficMonitorPage({
+  initialSessionId: sessionId,
   initialAccountId: accountId,
   initialModelFamily: modelFamily,
   initialModality: modality,
@@ -97,11 +103,9 @@ export function TrafficMonitorPage({
   onFiltersChange,
 }: TrafficMonitorPageProps) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
   const { data: cloudAccounts = [] } = useCloudAccounts();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [refreshControlsKey, setRefreshControlsKey] = useState(0);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [includeCredentials, setIncludeCredentials] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState('');
 
@@ -120,6 +124,7 @@ export function TrafficMonitorPage({
 
   const updateFilters = (next: Partial<TrafficFilters>) => {
     const filters = {
+      sessionId,
       accountId,
       from,
       modelFamily,
@@ -149,12 +154,14 @@ export function TrafficMonitorPage({
       modality,
       statusMode,
       status,
+      sessionId,
     ],
     queryFn: () =>
       ipc.client.gateway.auditList({
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
         search: search || undefined,
+        sessionId,
         accountId: tab === 'model' ? accountId : undefined,
         modelFamily: tab === 'model' ? modelFamily : undefined,
         modality: tab === 'model' ? modality : undefined,
@@ -172,17 +179,6 @@ export function TrafficMonitorPage({
     queryFn: () => ipc.client.gateway.auditFilterOptions(),
     refetchInterval: 30_000,
   });
-
-  const clearCurrent = async () => {
-    if (!confirmClear) {
-      setConfirmClear(true);
-      return;
-    }
-    await ipc.client.gateway.auditClear({ trafficClass: tab });
-    setConfirmClear(false);
-    updateFilters({ page: 0 });
-    await queryClient.invalidateQueries({ queryKey: ['gateway'] });
-  };
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -206,7 +202,6 @@ export function TrafficMonitorPage({
               onClick={() => {
                 updateFilters({ page: 0, tab: value });
                 setRefreshControlsKey((key) => key + 1);
-                setConfirmClear(false);
               }}
             >
               {label}
@@ -263,15 +258,18 @@ export function TrafficMonitorPage({
           page={page}
           selectedId={selectedId}
         />
-        <Button size="sm" variant={confirmClear ? 'destructive' : 'outline'} onClick={clearCurrent}>
-          <Trash2 className="h-4 w-4" />
-          {confirmClear ? t('traffic.confirm-clear') : t('traffic.clear-category')}
-        </Button>
+        <TrafficClearControls tab={tab} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b px-6 py-2 text-xs">
+        <TrafficSessionFilter
+          key={sessionId ?? ''}
+          sessionId={sessionId}
+          onApply={(value) => updateFilters({ page: 0, sessionId: value })}
+        />
         {tab === 'model' && (
           <>
+            <AuditSessionExportAction key={sessionId ?? ''} sessionId={sessionId} />
             <div className="text-muted-foreground flex items-center gap-1.5">
               <span>{t('traffic.account')}</span>
               <Select

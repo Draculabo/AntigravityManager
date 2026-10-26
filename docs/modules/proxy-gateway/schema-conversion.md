@@ -130,10 +130,27 @@ A signature-only fragment after visible text remains in the scoped signature sto
 adding an empty final client message. This preserves Claude Code's final answer while retaining
 the existing tool/signature history policy.
 
-The Anthropic request boundary preserves `tool_choice`. Object and string auto/none choices map
-to Gemini AUTO/NONE; required/any choices use ANY. Named Anthropic tools and OpenAI function
-choices include allowedFunctionNames. Omitting a choice retains VALIDATED. This does not enforce
-the client option disable_parallel_tool_use.
+OpenAI and Anthropic adapters preserve an explicit `tool_choice`. Object and string auto/none
+choices map to Gemini AUTO/NONE; required/any choices use ANY. Named choices must reference a
+function declared on the same request and include `allowedFunctionNames`. Unsupported choices,
+unknown names, forced calls without functions, and an explicit mixture of Google Search with
+function declarations fail as invalid client requests before account selection. If the client
+omits `tool_choice`, the mapped request omits `functionCallingConfig` and retains the independent
+server-side invocation flag. Native Gemini requests keep their existing default behavior. This
+does not enforce the Anthropic option `disable_parallel_tool_use`.
+
+Ordinary function tools remain functions even when their name matches a search or custom-tool
+name. Google Search is mapped only from its recognized explicit built-in type. The OpenAI
+freeform `apply_patch` schema and argument adapter apply only to a declaration with
+`type: custom`; ordinary functions named `apply_patch` retain their declared Schema and runtime
+arguments. Tool parameters are not guessed, length-truncated or coerced to match a converted
+Schema.
+
+Within tool parameter Schemas, nonempty `enum` and converted `const` values serialize to strings,
+and their Schema node type becomes `string`. A literal empty-string member is removed; whitespace
+only strings are preserved. An enum with no remaining values is removed. The declaration change
+does not coerce runtime arguments, so a client tool that requires a number may reject a string
+returned in accordance with the provider's string enum.
 
 Unary Gemini responses containing only thought parts without a finish reason do not complete
 an answer. The shared generation path uses its existing single stream-aggregation fallback

@@ -3,6 +3,39 @@ import { describe, expect, it } from 'vitest';
 import { extractAuditUsage, mergeAuditUsage } from '@/modules/proxy-gateway/audit/audit-usage';
 
 describe('traffic audit usage extraction', () => {
+  it('preserves mapped input totals without adding supplemental cache categories', () => {
+    // The gateway's Claude mapper uses input_tokens for the existing normalized total.
+    expect(
+      extractAuditUsage({
+        usage: {
+          input_tokens: 38,
+          output_tokens: 7,
+          cache_read_input_tokens: 20,
+          cache_creation_input_tokens: 12,
+        },
+      }),
+    ).toEqual({ inputTokens: 38, outputTokens: 7, cachedTokens: 20, reasoningTokens: undefined });
+    expect(
+      extractAuditUsage({
+        usage: { total_input_tokens: 100, input_tokens: 38, cache_read_input_tokens: 120 },
+      })?.inputTokens,
+    ).toBe(100);
+    expect(
+      extractAuditUsage({
+        usage: { input_tokens: 10, input_tokens_details: { cached_tokens: 20 } },
+      })?.inputTokens,
+    ).toBe(10);
+  });
+  it('does not treat invalid counters or cache-only input as a total', () => {
+    expect(
+      extractAuditUsage({
+        usage: { input_tokens: -1, output_tokens: 1.5, cached_tokens: Number.POSITIVE_INFINITY },
+      }),
+    ).toBeUndefined();
+    expect(
+      extractAuditUsage({ usage: { cache_read_input_tokens: 20 } })?.inputTokens,
+    ).toBeUndefined();
+  });
   it('keeps reported token totals separate from cached and reasoning details', () => {
     expect(
       extractAuditUsage({

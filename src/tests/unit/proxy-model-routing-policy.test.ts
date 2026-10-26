@@ -55,7 +55,7 @@ describe('ModelRoutingService', () => {
     expect(policy.resolveTargetModel('gemini-pro-agent')).toBe('gemini-pro-agent');
   });
 
-  it('applies configured wildcard mappings before default model routing', () => {
+  it('applies configured wildcard mappings after exact mappings and before defaults', () => {
     setServerConfig(
       createProxyConfig({
         custom_mapping: {
@@ -66,6 +66,156 @@ describe('ModelRoutingService', () => {
     const policy = new ModelRoutingService();
 
     expect(policy.resolveTargetModel('custom-fast')).toBe('gemini-3-flash');
+  });
+
+  it('normalizes path prefixes and known aliases in wildcard targets', () => {
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [
+          {
+            alias: 'path-target-*',
+            target: 'models/gemini-3.1-pro-preview',
+            enabled: true,
+          },
+          {
+            alias: 'alias-target-*',
+            target: 'gemini-3-flash-image',
+            enabled: true,
+          },
+        ],
+      }),
+    );
+    const policy = new ModelRoutingService();
+
+    expect(policy.resolveTargetModel('path-target-example')).toBe('gemini-3.1-pro-high');
+    expect(policy.resolveTargetModel('alias-target-example')).toBe('gemini-3.1-flash-image');
+  });
+
+  it('prefers an exact alias and then the most specific wildcard', () => {
+    setServerConfig(
+      createProxyConfig({
+        custom_mapping: {
+          'custom-*': 'gemini-3-flash',
+          'custom-fast': 'gemini-3.1-pro-low',
+          'custom-fast-*': 'gemini-3.1-pro-high',
+          '*': 'gemini-2.5-flash',
+        },
+      }),
+    );
+    const policy = new ModelRoutingService();
+
+    expect(policy.resolveTargetModel('custom-fast')).toBe('gemini-3.1-pro-low');
+    expect(policy.resolveTargetModel('custom-fast-preview')).toBe('gemini-3.1-pro-high');
+    expect(policy.resolveTargetModel('custom-other')).toBe('gemini-3-flash');
+  });
+
+  it('returns the concrete route match and stable wildcard tie-breaking', () => {
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [
+          { alias: 'tie-a-*', target: 'gemini-3.1-pro-low', enabled: true },
+          { alias: 'tie-b-*', target: 'gemini-3.1-pro-high', enabled: true },
+        ],
+      }),
+    );
+    const policy = new ModelRoutingService();
+
+    expect(policy.resolveModelRoute('tie-a-example')).toMatchObject({
+      match: 'wildcard',
+      resolvedModel: 'gemini-3.1-pro-low',
+      source: 'configured',
+    });
+    expect(policy.resolveModelRoute('tie-b-example')).toMatchObject({
+      match: 'wildcard',
+      resolvedModel: 'gemini-3.1-pro-high',
+      source: 'configured',
+    });
+  });
+
+  it('uses a unique case-folded alias but rejects conflicting targets', () => {
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [{ alias: 'Case-Model', target: 'gemini-3.1-pro-low', enabled: true }],
+      }),
+    );
+    const unique = new ModelRoutingService();
+
+    expect(unique.resolveModelRoute('case-model')).toMatchObject({
+      match: 'case-folded-exact',
+      resolvedModel: 'gemini-3.1-pro-low',
+    });
+
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [
+          { alias: 'Case-Model', target: 'gemini-3.1-pro-high', enabled: true },
+          { alias: 'case-model', target: 'gemini-3.1-pro-high', enabled: true },
+        ],
+      }),
+    );
+    const sameTarget = new ModelRoutingService();
+
+    expect(sameTarget.resolveModelRoute('CASE-MODEL').resolvedModel).toBe(
+      'gemini-3.1-pro-high',
+    );
+
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [
+          { alias: 'Case-Model', target: 'gemini-3.1-pro-low', enabled: true },
+          { alias: 'case-model', target: 'gemini-3.1-pro-high', enabled: true },
+        ],
+      }),
+    );
+    const conflicting = new ModelRoutingService();
+
+    expect(() => conflicting.resolveModelRoute('CASE-MODEL')).toThrow(
+      'Ambiguous case-insensitive model aliases for "CASE-MODEL"',
+    );
+    expect(conflicting.resolveModelRoute('Case-Model').resolvedModel).toBe('gemini-3.1-pro-low');
+    expect(conflicting.resolveModelRoute('case-model').resolvedModel).toBe('gemini-3.1-pro-high');
+  });
+
+  it('uses a unique Claude-normalized alias but rejects conflicting targets', () => {
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [
+          {
+            alias: 'claude-opus-4.6-custom',
+            target: 'gemini-3.1-pro-low',
+            enabled: true,
+          },
+        ],
+      }),
+    );
+    const unique = new ModelRoutingService();
+
+    expect(unique.resolveModelRoute('claude-opus-4-6-custom')).toMatchObject({
+      match: 'claude-normalized-exact',
+      resolvedModel: 'gemini-3.1-pro-low',
+    });
+
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [
+          {
+            alias: 'models/claude-opus-4.6-custom',
+            target: 'gemini-3.1-pro-low',
+            enabled: true,
+          },
+          {
+            alias: 'anthropic/claude-opus-4-6-custom',
+            target: 'gemini-3.1-pro-high',
+            enabled: true,
+          },
+        ],
+      }),
+    );
+    const conflicting = new ModelRoutingService();
+
+    expect(() => conflicting.resolveModelRoute('claude-opus-4-6-custom')).toThrow(
+      'Ambiguous Claude-normalized model aliases',
+    );
   });
 
   it('applies Anthropic family mappings to Claude requests', () => {
@@ -169,7 +319,30 @@ describe('ModelRoutingService.resolveModelRoute', () => {
     const resolution = policy.resolveModelRoute('custom-fast');
 
     expect(resolution).toMatchObject({
+      match: 'wildcard',
+      matchedRule: { alias: 'custom-*', target: 'gemini-3-flash' },
       resolvedModel: 'gemini-3-flash',
+      source: 'configured',
+    });
+  });
+
+  it('records the configured target while routing its normalized alias', () => {
+    setServerConfig(
+      createProxyConfig({
+        custom_mapping: {
+          'custom-*': 'models/gemini-3.1-pro-preview',
+        },
+      }),
+    );
+    const policy = new ModelRoutingService();
+
+    expect(policy.resolveModelRoute('custom-fast')).toMatchObject({
+      match: 'wildcard',
+      matchedRule: {
+        alias: 'custom-*',
+        target: 'models/gemini-3.1-pro-preview',
+      },
+      resolvedModel: 'gemini-3.1-pro-high',
       source: 'configured',
     });
   });
@@ -187,6 +360,8 @@ describe('ModelRoutingService.resolveModelRoute', () => {
     const resolution = policy.resolveModelRoute('claude-legacy-tag');
 
     expect(resolution).toMatchObject({
+      match: 'exact',
+      matchedRule: { alias: 'claude-legacy-tag', target: 'gemini-3.1-pro-high' },
       resolvedModel: 'gemini-3.1-pro-high',
       source: 'configured',
     });

@@ -87,7 +87,7 @@ describe('StreamingState', () => {
       expect(payload.message.usage).toMatchObject({ input_tokens: 8, output_tokens: 3 });
     });
 
-    it('emits a complete minimal Anthropic response when upstream produces no content', () => {
+    it('does not fabricate content or usage when finalizing without observed output', () => {
       const chunks = state.emitFinish();
       const output = chunks.join('');
       const events = output
@@ -95,29 +95,22 @@ describe('StreamingState', () => {
         .filter((line) => line.startsWith('event: '))
         .map((line) => line.slice('event: '.length));
 
-      expect(events).toEqual([
-        'message_start',
-        'content_block_start',
-        'content_block_stop',
-        'message_delta',
-        'message_stop',
-      ]);
-      expect(output).toContain('"model":"gemini-auto"');
+      expect(events).toEqual(['message_delta', 'message_stop']);
       expect(output).toContain('"usage":{"input_tokens":0,"output_tokens":0}');
-      expect(output).toContain('"content_block":{"type":"text","text":"."}');
+      expect(output).not.toContain('"content_block"');
       expect(output).not.toContain('"type":"text_delta"');
-      expect(output).toContain('"usage":{"input_tokens":1,"output_tokens":1}');
+      expect(output).not.toContain('"usage":{"input_tokens":1,"output_tokens":1}');
     });
 
-    it('uses end_turn and recovery usage for an empty MAX_TOKENS response', () => {
+    it('preserves truncation and observed usage without inventing an answer', () => {
       const output = state
         .emitFinish('MAX_TOKENS', { promptTokenCount: 50, candidatesTokenCount: 60 })
         .join('');
 
-      expect(output).toContain('"content_block":{"type":"text","text":"."}');
-      expect(output).toContain('"stop_reason":"end_turn"');
-      expect(output).toContain('"usage":{"input_tokens":1,"output_tokens":1}');
-      expect(output).not.toContain('"stop_reason":"max_tokens"');
+      expect(output).not.toContain('"content_block":{"type":"text","text":"."}');
+      expect(output).toContain('"stop_reason":"max_tokens"');
+      expect(output).toContain('"input_tokens":50');
+      expect(output).toContain('"output_tokens":60');
     });
 
     it('emits tool_use stop reason when functionCall appears in stream', () => {
@@ -200,7 +193,7 @@ describe('StreamingState', () => {
 
       expect(payload).not.toContain('"content_block":{"type":"thinking"');
       expect(payload).not.toContain('"thinking_delta"');
-      expect(payload).toContain('"content_block":{"type":"text","text":"."}');
+      expect(payload).not.toContain('"content_block":{"type":"text","text":"."}');
     });
 
     it('still opens a thinking block for an empty thought that carries a signature', () => {

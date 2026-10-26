@@ -4,6 +4,7 @@ import type { DeviceProfile, DeviceProfileVersion } from '@/modules/identity-pro
 import { logger } from '@/shared/logging/logger';
 import { accounts } from '@/shared/persistence/database/schema';
 import { getCloudDb } from './cloud-account-db';
+import { writeAccount, type CloudAccountWriteGuard } from './cloudHandler';
 import {
   areDeviceProfilesEqual,
   parseDeviceHistoryColumn,
@@ -13,10 +14,14 @@ import {
 } from './cloud-account-device-profile-codec';
 
 export class CloudAccountDeviceBindingStore {
-  static setDeviceBinding(id: string, profile: DeviceProfile, label: string): void {
-    const { raw, orm } = getCloudDb();
-    try {
-      const rows = orm
+  static setDeviceBinding(
+    id: string,
+    profile: DeviceProfile,
+    label: string,
+    guard: CloudAccountWriteGuard,
+  ): void {
+    writeAccount(id, guard, (transaction) => {
+      const rows = transaction
         .select({
           deviceProfileJson: accounts.deviceProfileJson,
           deviceHistoryJson: accounts.deviceHistoryJson,
@@ -40,10 +45,14 @@ export class CloudAccountDeviceBindingStore {
       const historyRaw = parseDeviceHistoryColumn(row.deviceHistoryJson) || [];
       const currentVersion = historyRaw.find((version) => version.isCurrent);
       const latestVersion = historyRaw.length > 0 ? historyRaw[historyRaw.length - 1] : undefined;
+      // History alone is not a committed binding; materialize its profile before reporting success.
       if (currentVersion && areDeviceProfilesEqual(currentVersion.profile, profile)) {
-        logger.info(
-          `Skipping duplicate device profile binding for account ${id} (history current match)`,
-        );
+        logger.info(`Reusing current device profile history for account ${id}`);
+        transaction
+          .update(accounts)
+          .set({ deviceProfileJson: serializeDeviceProfile(profile) })
+          .where(eq(accounts.id, id))
+          .run();
         return;
       }
       if (
@@ -51,9 +60,20 @@ export class CloudAccountDeviceBindingStore {
         latestVersion &&
         areDeviceProfilesEqual(latestVersion.profile, profile)
       ) {
-        logger.info(
-          `Skipping duplicate device profile binding for account ${id} (history latest match)`,
-        );
+        logger.info(`Reusing latest device profile history for account ${id}`);
+        transaction
+          .update(accounts)
+          .set({
+            deviceProfileJson: serializeDeviceProfile(profile),
+            deviceHistoryJson: serializeDeviceHistory(
+              historyRaw.map((version) => ({
+                ...version,
+                isCurrent: version.id === latestVersion.id,
+              })),
+            ),
+          })
+          .where(eq(accounts.id, id))
+          .run();
         return;
       }
 
@@ -70,7 +90,7 @@ export class CloudAccountDeviceBindingStore {
         isCurrent: true,
       });
 
-      orm
+      transaction
         .update(accounts)
         .set({
           deviceProfileJson: serializeDeviceProfile(profile),
@@ -78,9 +98,7 @@ export class CloudAccountDeviceBindingStore {
         })
         .where(eq(accounts.id, id))
         .run();
-    } finally {
-      raw.close();
-    }
+    });
   }
 
   static getDeviceBinding(id: string): {

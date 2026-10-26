@@ -32,14 +32,19 @@ export function ProxyServiceControl({ config, onConfigChange, onError }: ProxySe
       if (config.enabled) {
         await ipc.client.gateway.stop();
         onError(null);
-        await onConfigChange({ ...config, enabled: false });
+        await onConfigChange({ ...config, enabled: false, auto_start: false });
         return;
       }
 
       const result = await ipc.client.gateway.start({ port: config.port });
       if (result.success) {
         onError(null);
-        await onConfigChange({ ...config, port: result.port, enabled: true });
+        await onConfigChange({
+          ...config,
+          port: result.port,
+          enabled: true,
+          auto_start: true,
+        });
         return;
       }
 

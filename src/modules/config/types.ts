@@ -5,7 +5,19 @@ export const UpstreamProxyConfigSchema = z.object({
   url: z.string(),
 });
 
+export const GatewayNetworkConfigSchema = z.object({
+  lan_access: z.boolean().default(false),
+  ip_filter_mode: z
+    .enum(['off', 'allowlist', 'blocklist', 'allowlist-and-blocklist'])
+    .default('off'),
+  ip_allowlist: z.array(z.string().trim().min(1).max(128)).max(256).default([]),
+  ip_blocklist: z.array(z.string().trim().min(1).max(128)).max(256).default([]),
+  allowlist_takes_precedence: z.boolean().default(true),
+  trusted_proxy_cidrs: z.array(z.string().trim().min(1).max(128)).max(64).default([]),
+});
+
 export const ProxyExperimentalConfigSchema = z.object({
+  thinking_only_recovery: z.boolean().optional(),
   enable_cloud_code_meta: z.boolean().default(false),
   allow_local_video_paths: z.boolean().default(false),
   context_cache_enabled: z.boolean().default(true),
@@ -13,8 +25,31 @@ export const ProxyExperimentalConfigSchema = z.object({
 
 export const ImageSchedulerConfigSchema = z.object({
   per_account_concurrency: z.number().int().nonnegative().default(4),
+  send_window_enabled: z.boolean().default(false),
+  send_window_count: z.number().int().nonnegative().max(256).default(10),
+  send_window_memory_mib: z.number().int().positive().max(512).default(32),
+  send_window_strip_remote_urls: z.boolean().default(false),
 });
 
+export const CoworkCompactionConfigSchema = z.object({
+  auto_enabled: z.boolean().default(false),
+  manual_enabled: z.boolean().default(false),
+  auto_threshold: z.number().int().min(50_000).max(2_000_000).default(200_000),
+});
+
+export const ThinkingBudgetConfigSchema = z.object({
+  control_source: z.enum(['gateway', 'client']).default('gateway'),
+  flash_low: z.number().int().min(-1).max(131072).default(1000),
+  flash_medium: z.number().int().min(-1).max(131072).default(4000),
+  flash_high: z.number().int().min(-1).max(131072).default(-1),
+  flash_tiered: z.number().int().min(-1).max(131072).default(-1),
+  pro_low: z.number().int().min(-1).max(131072).default(1001),
+  pro_high: z.number().int().min(-1).max(131072).default(10001),
+  claude_budget: z.number().int().min(-1).max(131072).default(-1),
+  claude_low: z.number().int().min(-1).max(131072).default(-1),
+  claude_medium: z.number().int().min(-1).max(131072).default(-1),
+  claude_high: z.number().int().min(-1).max(131072).default(-1),
+});
 export const GlobalSystemPromptConfigSchema = z.object({
   enabled: z.boolean().default(false),
   content: z.string().default(''),
@@ -22,14 +57,8 @@ export const GlobalSystemPromptConfigSchema = z.object({
 
 export const TrafficAuditConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  max_disk_mib: z.number().int().min(128).max(16_384).default(256),
-  body_retention_hours: z
-    .number()
-    .int()
-    .min(1)
-    .max(24 * 365)
-    .default(24),
-  summary_retention_days: z.number().int().min(1).max(3650).default(30),
+  capture_successful_probes: z.boolean().default(false),
+  max_disk_mib: z.number().int().min(128).max(16_384).default(1024),
   max_rows: z.number().int().min(1_000).max(1_000_000).default(100_000),
   max_queue_records: z.number().int().min(32).max(4096).default(512),
   max_queue_mib: z.number().int().min(16).max(64).default(16),
@@ -39,8 +68,9 @@ export const ThoughtStoreConfigSchema = z.object({
   enabled: z.boolean().default(true),
   retention_days: z.number().int().min(1).max(3650).default(15),
   max_sessions: z.number().int().min(1).max(2000).default(2000),
-  max_turns_per_session: z.number().int().min(1).max(200).default(200),
+  max_turns_per_session: z.number().int().min(10).max(10_000).default(600),
   max_session_mib: z.number().int().min(1).max(64).default(64),
+  max_disk_mib: z.number().int().min(128).max(16_384).default(1024),
 });
 
 /**
@@ -87,9 +117,8 @@ export const ProxyConfigSchema = z.object({
   }),
   traffic_audit: TrafficAuditConfigSchema.default({
     enabled: true,
-    max_disk_mib: 256,
-    body_retention_hours: 24,
-    summary_retention_days: 30,
+    capture_successful_probes: false,
+    max_disk_mib: 1024,
     max_rows: 100_000,
     max_queue_records: 512,
     max_queue_mib: 16,
@@ -98,11 +127,42 @@ export const ProxyConfigSchema = z.object({
     enabled: true,
     retention_days: 15,
     max_sessions: 2000,
-    max_turns_per_session: 200,
+    max_turns_per_session: 600,
     max_session_mib: 64,
+    max_disk_mib: 1024,
   }),
   image_scheduler: ImageSchedulerConfigSchema.default({
     per_account_concurrency: 4,
+    send_window_enabled: false,
+    send_window_count: 10,
+    send_window_memory_mib: 32,
+    send_window_strip_remote_urls: false,
+  }),
+  cowork_compaction: CoworkCompactionConfigSchema.default({
+    auto_enabled: false,
+    manual_enabled: false,
+    auto_threshold: 200_000,
+  }),
+  thinking_budget: ThinkingBudgetConfigSchema.default({
+    control_source: 'gateway',
+    flash_low: 1000,
+    flash_medium: 4000,
+    flash_high: -1,
+    flash_tiered: -1,
+    pro_low: 1001,
+    pro_high: 10001,
+    claude_budget: -1,
+    claude_low: -1,
+    claude_medium: -1,
+    claude_high: -1,
+  }),
+  network: GatewayNetworkConfigSchema.default({
+    lan_access: false,
+    ip_filter_mode: 'off',
+    ip_allowlist: [],
+    ip_blocklist: [],
+    allowlist_takes_precedence: true,
+    trusted_proxy_cidrs: [],
   }),
   upstream_proxy: UpstreamProxyConfigSchema,
   experimental: ProxyExperimentalConfigSchema.default({
@@ -151,6 +211,10 @@ export type ProxyExperimentalConfig = z.infer<typeof ProxyExperimentalConfigSche
 export type GlobalSystemPromptConfig = z.infer<typeof GlobalSystemPromptConfigSchema>;
 export type TrafficAuditConfig = z.infer<typeof TrafficAuditConfigSchema>;
 export type ThoughtStoreConfig = z.infer<typeof ThoughtStoreConfigSchema>;
+export type ImageSchedulerConfig = z.infer<typeof ImageSchedulerConfigSchema>;
+export type CoworkCompactionConfig = z.infer<typeof CoworkCompactionConfigSchema>;
+export type ThinkingBudgetConfig = z.infer<typeof ThinkingBudgetConfigSchema>;
+export type GatewayNetworkConfig = z.infer<typeof GatewayNetworkConfigSchema>;
 export type ProxyConfig = z.infer<typeof ProxyConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
@@ -211,9 +275,8 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     },
     traffic_audit: {
       enabled: true,
-      max_disk_mib: 256,
-      body_retention_hours: 24,
-      summary_retention_days: 30,
+      capture_successful_probes: false,
+      max_disk_mib: 1024,
       max_rows: 100_000,
       max_queue_records: 512,
       max_queue_mib: 16,
@@ -222,11 +285,42 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
       enabled: true,
       retention_days: 15,
       max_sessions: 2000,
-      max_turns_per_session: 200,
+      max_turns_per_session: 600,
       max_session_mib: 64,
+      max_disk_mib: 1024,
     },
     image_scheduler: {
       per_account_concurrency: 4,
+      send_window_enabled: false,
+      send_window_count: 10,
+      send_window_memory_mib: 32,
+      send_window_strip_remote_urls: false,
+    },
+    cowork_compaction: {
+      auto_enabled: false,
+      manual_enabled: false,
+      auto_threshold: 200_000,
+    },
+    thinking_budget: {
+      control_source: 'gateway',
+      flash_low: 1000,
+      flash_medium: 4000,
+      flash_high: -1,
+      flash_tiered: -1,
+      pro_low: 1001,
+      pro_high: 10001,
+      claude_budget: -1,
+      claude_low: -1,
+      claude_medium: -1,
+      claude_high: -1,
+    },
+    network: {
+      lan_access: false,
+      ip_filter_mode: 'off',
+      ip_allowlist: [],
+      ip_blocklist: [],
+      allowlist_takes_precedence: true,
+      trusted_proxy_cidrs: [],
     },
     upstream_proxy: {
       enabled: false,

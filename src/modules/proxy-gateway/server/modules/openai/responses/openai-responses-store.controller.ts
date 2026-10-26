@@ -5,12 +5,15 @@ import {
   Inject,
   NotFoundException,
   Param,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 
 import { ProxyGuard } from '../../../guards/proxy.guard';
 import { buildResponseNotFoundError } from './openai-responses-request';
 import { OpenAIResponsesSessionService } from './openai-responses-session.service';
+import { getOwnedResponsesHistory, resolveResponsesHistoryOwner } from './responses-history-owner';
 
 /**
  * Read and delete access to stored Responses, over the same durable store the
@@ -29,13 +32,14 @@ export class OpenAIResponsesStoreController {
   ) {}
 
   @Get(':responseId')
-  public getResponse(@Param('responseId') responseId: string) {
-    return this.requireStoredResponse(responseId);
+  public async getResponse(@Param('responseId') responseId: string, @Req() req: FastifyRequest) {
+    const stored = this.requireStoredResponse(responseId, req);
+    return this.responsesSessions.restoreResponseMedia(stored);
   }
 
   @Delete(':responseId')
-  public deleteResponse(@Param('responseId') responseId: string) {
-    this.requireStoredResponse(responseId);
+  public async deleteResponse(@Param('responseId') responseId: string, @Req() req: FastifyRequest) {
+    this.requireStoredResponse(responseId, req);
     this.responsesSessions.delete(responseId);
     return {
       id: responseId,
@@ -44,8 +48,12 @@ export class OpenAIResponsesStoreController {
     };
   }
 
-  private requireStoredResponse(responseId: string) {
-    const stored = this.responsesSessions.get(responseId)?.response;
+  private requireStoredResponse(responseId: string, req: FastifyRequest): Record<string, unknown> {
+    const stored = getOwnedResponsesHistory(
+      this.responsesSessions,
+      responseId,
+      resolveResponsesHistoryOwner(req.headers),
+    )?.session.response;
     if (!stored) {
       throw new NotFoundException(buildResponseNotFoundError(responseId, 'id'));
     }

@@ -43,6 +43,7 @@ import type {
 import type { AuditCurlOperations } from '@/modules/proxy-gateway/traffic-monitor/audit-curl-owner.service';
 import type { OpenCodeOperations } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.service';
 import type { AgentToolsOperations } from '@/modules/proxy-gateway/agent-tools/agent-tools.service';
+import type { DshOperations } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.service';
 
 import type { AuditFileOperations } from '@/modules/proxy-gateway/audit/audit-file-owner.service';
 import type { ThoughtOperations } from '@/modules/proxy-gateway/thought-store/thought-owner.service';
@@ -73,6 +74,7 @@ export interface CoreRpcOperations {
   auditFile: AuditFileOperations;
   openCode: OpenCodeOperations;
   agentTools: AgentToolsOperations;
+  dsh?: DshOperations;
   localAccount: LocalAccountOperations;
   accountAlertPolicy: CloudAccountAlertPolicyOperations;
   serviceConfig: ServiceConfigOperations;
@@ -128,6 +130,11 @@ export interface CoreRpcOperations {
   accountSetProxy(
     accountId: string,
     proxyUrl: string | null,
+  ): Promise<z.infer<typeof CloudAccountMutationResultSchema>>;
+  accountSetRouting?(
+    accountId: string,
+    proxyPriority: number,
+    proxyEnabled: boolean,
   ): Promise<z.infer<typeof CloudAccountMutationResultSchema>>;
   accountDelete(accountId: string): Promise<z.infer<typeof CloudAccountMutationResultSchema>>;
   oauthClientList(): ReturnType<typeof listOAuthClients>;

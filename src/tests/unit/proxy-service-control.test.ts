@@ -32,6 +32,14 @@ const storedConfig = ProxyConfigSchema.parse({
   api_key: '',
   auto_start: false,
   anthropic_mapping: {},
+  network: {
+    lan_access: false,
+    ip_filter_mode: 'off',
+    ip_allowlist: [],
+    ip_blocklist: [],
+    allowlist_takes_precedence: true,
+    trusted_proxy_cidrs: [],
+  },
   upstream_proxy: { enabled: false, url: '' },
 });
 const { api_key, upstream_proxy, ...publicConfig } = storedConfig;
@@ -92,7 +100,11 @@ describe('ProxyServiceControl', () => {
 
     confirmStart();
     await waitFor(() =>
-      expect(mocks.save).toHaveBeenCalledExactlyOnceWith({ ...config, enabled: true }),
+      expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
+        ...config,
+        enabled: true,
+        auto_start: true,
+      }),
     );
     expect(mocks.start).toHaveBeenCalledExactlyOnceWith({ port: config.port });
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(null);
@@ -154,7 +166,12 @@ describe('ProxyServiceControl', () => {
 
     complete({ success: true, port: 8050 });
     await waitFor(() => expect(button.getAttribute('aria-busy')).toBe('false'));
-    expect(mocks.save).toHaveBeenCalledExactlyOnceWith({ ...config, port: 8050, enabled: true });
+    expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
+      ...config,
+      port: 8050,
+      enabled: true,
+      auto_start: true,
+    });
   });
 
   it('preserves address-in-use feedback and leaves the service disabled', async () => {
@@ -177,7 +194,7 @@ describe('ProxyServiceControl', () => {
       }),
     );
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith(description);
-    expect(mocks.save).toHaveBeenCalledExactlyOnceWith(config);
+    expect(mocks.save).toHaveBeenCalledExactlyOnceWith({ ...config, enabled: false });
   });
 
   it('reports a rejected start and allows an explicit retry without repeating the notice', async () => {
@@ -200,7 +217,11 @@ describe('ProxyServiceControl', () => {
 
     requestStart();
     await waitFor(() =>
-      expect(mocks.save).toHaveBeenCalledExactlyOnceWith({ ...config, enabled: true }),
+      expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
+        ...config,
+        enabled: true,
+        auto_start: true,
+      }),
     );
     expect(mocks.start).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -210,7 +231,12 @@ describe('ProxyServiceControl', () => {
     renderControl({ ...config, enabled: true });
     fireEvent.click(screen.getByRole('button', { name: en.proxy.service.stop }));
 
-    await waitFor(() => expect(mocks.save).toHaveBeenCalledExactlyOnceWith(config));
+    await waitFor(() =>
+      expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
+        ...config,
+        auto_start: false,
+      }),
+    );
     expect(mocks.stop).toHaveBeenCalledExactlyOnceWith();
     expect(mocks.start).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).toBeNull();

@@ -18,4 +18,5 @@ export const IPC_CHANNELS = {
   STOP_PERFORMANCE_RECORDING: 'stop-performance-recording',
   TRAFFIC_AUDIT_EVENT: 'traffic-audit-event',
   SAVE_TRAFFIC_AUDIT_BODY: 'save-traffic-audit-body',
+  SAVE_TRAFFIC_AUDIT_SESSION: 'save-traffic-audit-session',
 };

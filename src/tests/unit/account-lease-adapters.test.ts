@@ -51,6 +51,7 @@ describe('AccountLeaseService adapters', () => {
       expect.objectContaining({
         project_id: 'resolved-project',
       }),
+      expect.any(Function),
     );
   });
 });

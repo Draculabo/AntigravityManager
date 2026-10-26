@@ -12,6 +12,33 @@ import {
 } from '@/modules/proxy-gateway/server/common/proxy-response-timing';
 
 describe('proxy response timing headers', () => {
+  it('omits unmeasured stages while retaining measured zero and identity headers', () => {
+    const headers = runWithTrafficAuditRequestContext(
+      {
+        attemptSequence: 0,
+        parent: null,
+        clientSessionId: 'session',
+        thoughtSessionKey: 'key',
+        thoughtSessionStable: true,
+        proxyTiming: {
+          startedAt: 0,
+          cleanMs: null,
+          normMs: 0,
+          normalizationStartedAt: null,
+          thinkingMs: null,
+          ttftMs: null,
+          upstreamStartedAt: null,
+        },
+      },
+      () => buildProxyResponseTimingHeaders(),
+    );
+    expect(headers).toEqual({
+      'X-Session-Id': 'session',
+      'X-Antigravity-Session-Id': 'session',
+      'X-Timing-Version': '2',
+      'X-Timing-Norm-Ms': '0.000',
+    });
+  });
   it('returns no success timing headers outside a model request context', () => {
     expect(buildProxyResponseTimingHeaders()).toEqual({});
   });

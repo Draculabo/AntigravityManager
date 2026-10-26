@@ -1,45 +1,78 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import WebSocket from 'ws';
 import { of } from 'rxjs';
 
 import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.protocol';
 import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
+import { createResponsesWebSocketOperations } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.operations';
 import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
 import { SchemaInputError } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
+import { ToolConfigurationError } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
 
 describe('OpenAIResponsesWebSocketProtocol', () => {
-  it('retains admitted socket configuration after a rejected append', () => {
+  it('retains admitted socket configuration after a rejected append', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol((request) => {
       if (request.model === 'invalid') {
         throw new SchemaInputError('invalid-root');
       }
     });
-    protocol.accept({ type: 'response.create', model: 'valid', input: [] });
-    expect(() => protocol.accept({ type: 'response.append', model: 'invalid', input: [] })).toThrow(
-      SchemaInputError,
-    );
-    expect(protocol.accept({ type: 'response.append', input: [] })).toEqual({
+    await protocol.accept({ type: 'response.create', model: 'valid', input: [] });
+    await expect(
+      protocol.accept({ type: 'response.append', model: 'invalid', input: [] }),
+    ).rejects.toThrow(SchemaInputError);
+    expect(await protocol.accept({ type: 'response.append', input: [] })).toEqual({
       kind: 'request',
       request: { model: 'valid', input: [], stream: true },
     });
   });
-  it('does not commit a prewarm whose schema preflight fails', () => {
+  it('does not commit a prewarm whose schema preflight fails', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol((request) => {
       if (request.tools) {
         throw new SchemaInputError('invalid-root');
       }
     });
-    expect(() =>
+    await expect(
       protocol.accept({ type: 'response.create', generate: false, model: 'fixture', tools: [{}] }),
-    ).toThrow(SchemaInputError);
+    ).rejects.toThrow(SchemaInputError);
     expect(protocol.getPreviousResponseId()).toBe('');
-    expect(() => protocol.accept({ type: 'response.append', input: [] })).toThrow(
+    await expect(protocol.accept({ type: 'response.append', input: [] })).rejects.toThrow(
       'before response.create',
     );
     expect(
-      protocol.accept({ type: 'response.create', generate: false, model: 'fixture' }).kind,
+      (await protocol.accept({ type: 'response.create', generate: false, model: 'fixture' })).kind,
     ).toBe('local');
+  });
+
+  it('does not commit a prewarm with an unsatisfiable function choice', async () => {
+    const operations = createResponsesWebSocketOperations(
+      {
+        prepareResponsesRequest: vi.fn(async () => ({
+          request: {
+            model: 'fixture',
+            messages: [{ role: 'user', content: 'Call the function.' }],
+            tool_choice: 'required',
+            tools: [],
+          },
+        })) as never,
+      },
+      { handleChatCompletions: vi.fn() } as never,
+    );
+    const protocol = new OpenAIResponsesWebSocketProtocol(async (request, mode) => {
+      await operations.validateRequest?.(request, mode);
+    });
+
+    await expect(
+      protocol.accept({
+        type: 'response.create',
+        generate: false,
+        model: 'fixture',
+      }),
+    ).rejects.toThrow(ToolConfigurationError);
+    expect(protocol.getPreviousResponseId()).toBe('');
+    await expect(protocol.accept({ type: 'response.append', input: [] })).rejects.toThrow(
+      'before response.create',
+    );
   });
 
   it('sends a local Schema input error over WebSocket before response.created', async () => {
@@ -77,6 +110,7 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
           message: 'Invalid request schema: invalid-root',
           type: 'invalid_request_error',
           code: 'invalid_schema',
+          param: null,
         },
       });
       expect(called).toBe(false);
@@ -86,9 +120,53 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
-  it('handles the initial generate=false request locally and reuses it for the next append', () => {
+
+  it('sends a tool-choice error over WebSocket before response.created', async () => {
+    const server = createServer();
+    let called = false;
+    const detach = attachOpenAIResponsesWebSocketServer(server, {
+      isAuthorized: () => true,
+      validateRequest: () => {
+        throw new ToolConfigurationError('unknown-function-name');
+      },
+      streamRequest: async () => {
+        called = true;
+        return of();
+      },
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Expected TCP address');
+    }
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/v1/responses`);
+    try {
+      const event = await new Promise<unknown>((resolve, reject) => {
+        socket.once('error', reject);
+        socket.once('open', () =>
+          socket.send(JSON.stringify({ type: 'response.create', model: 'fixture', input: [] })),
+        );
+        socket.once('message', (data) => resolve(JSON.parse(data.toString())));
+      });
+      expect(event).toEqual({
+        type: 'error',
+        error: {
+          message: expect.stringContaining('not declared'),
+          type: 'invalid_request_error',
+          code: 'invalid_tool_choice',
+          param: 'tool_choice',
+        },
+      });
+      expect(called).toBe(false);
+    } finally {
+      socket.terminate();
+      detach();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+  it('handles the initial generate=false request locally and reuses it for the next append', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol();
-    const prewarm = protocol.accept({
+    const prewarm = await protocol.accept({
       type: 'response.create',
       generate: false,
       model: 'gpt-5-codex',
@@ -114,7 +192,7 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
       },
     });
 
-    const next = protocol.accept({
+    const next = await protocol.accept({
       type: 'response.append',
       input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Hello' }] }],
     });
@@ -128,10 +206,10 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
     });
   });
 
-  it('does not replace the transcript for an ignored empty-type assistant item', () => {
+  it('does not replace the transcript for an ignored empty-type assistant item', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol();
     const previousInput = [{ type: 'message', role: 'user', content: 'Keep this history.' }];
-    protocol.accept({
+    await protocol.accept({
       type: 'response.create',
       model: 'gpt-5-codex',
       instructions: 'Keep these instructions.',
@@ -144,7 +222,7 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
     ];
     const before = structuredClone(input);
 
-    const appended = protocol.accept({ type: 'response.append', input });
+    const appended = await protocol.accept({ type: 'response.append', input });
 
     expect(appended).toEqual({
       kind: 'request',
@@ -166,15 +244,15 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
     expect(input).toEqual(before);
   });
 
-  it('replaces the transcript for a role-bearing assistant message without type', () => {
+  it('replaces the transcript for a role-bearing assistant message without type', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol();
-    protocol.accept({
+    await protocol.accept({
       type: 'response.create',
       model: 'gpt-5-codex',
       input: [{ type: 'message', role: 'user', content: 'Old request' }],
     });
 
-    const replacement = protocol.accept({
+    const replacement = await protocol.accept({
       type: 'response.append',
       input: [{ role: 'assistant', content: 'Replacement transcript' }],
     });

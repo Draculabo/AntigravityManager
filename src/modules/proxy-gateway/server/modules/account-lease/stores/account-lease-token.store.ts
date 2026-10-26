@@ -1,6 +1,8 @@
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { isServiceDisabledReason } from '@/modules/cloud-account/utils/account-status';
+import { isEqual } from 'lodash-es';
 import type { AccountLeaseAccountStore } from '../interfaces/account-lease-adapters';
+import { leaseStoredContext } from '../policies/account-lease-writeback';
 import {
   buildAccountLeaseQuotaSnapshot,
   type AccountLeaseQuotaSnapshot,
@@ -23,7 +25,14 @@ interface AccountLeaseTokenCacheOptions {
 }
 
 export class AccountLeaseTokenCache {
+  private loadGeneration = Symbol();
+
   constructor(private readonly options: AccountLeaseTokenCacheOptions) {}
+
+  /** Even eviction from an empty cache invalidates snapshots already being read. */
+  invalidateLoads(): void {
+    this.loadGeneration = Symbol();
+  }
 
   async loadAccounts(): Promise<number> {
     try {
@@ -43,16 +52,14 @@ export class AccountLeaseTokenCache {
     }
   }
 
-  mapAccountToTokenData(account: CloudAccount): AccountLeaseTokenData | null {
-    if (!account.token || account.health?.oauth?.refresh_blocked === true) {
-      return null;
-    }
-
+  private mapAccountToTokenData(
+    account: CloudAccount,
+    extractedState: AccountLeaseQuotaSnapshot,
+  ): AccountLeaseTokenData {
     const quota = account.quota;
-    const extractedState = buildAccountLeaseQuotaSnapshot(quota);
-    this.options.applyQuotaSnapshot(extractedState);
 
     return {
+      stored_context: leaseStoredContext(account),
       account_id: account.id,
       email: account.email,
       access_token: account.token.access_token,
@@ -66,6 +73,8 @@ export class AccountLeaseTokenCache {
       session_id: account.token.session_id || this.generateSessionId(),
       upstream_proxy_url: account.token.upstream_proxy_url || account.proxy_url || undefined,
       device_profile: account.device_profile,
+      proxy_priority: account.proxy_priority ?? 50,
+      proxy_enabled: account.proxy_enabled !== false,
       validation_blocked_until_ms: account.health?.validation?.next_probe_at_ms,
       service_disabled:
         account.health?.service_disabled !== undefined ||
@@ -88,21 +97,57 @@ export class AccountLeaseTokenCache {
   }
 
   private async replaceAccounts(): Promise<number> {
-    const accounts = await this.options.accountStore.getAccounts();
-    let count = 0;
+    const generation = (this.loadGeneration = Symbol());
     const tokenCache = this.options.getTokenCache();
-
-    tokenCache.clear();
-
-    for (const account of accounts) {
-      const tokenData = this.mapAccountToTokenData(account);
-      if (tokenData) {
-        tokenCache.set(account.id, tokenData);
-        count++;
-      }
+    // Entry/scalar updates during the store read must not be overwritten by its older snapshot.
+    // Nested quota/health values have their existing immutable replacement owners.
+    const before = Array.from(tokenCache, ([id, entry]) => ({
+      id,
+      entry,
+      state: { ...entry },
+      storedAccount: entry.stored_context?.account,
+    }));
+    const accounts = await this.options.accountStore.getAccounts();
+    if (
+      generation !== this.loadGeneration ||
+      tokenCache !== this.options.getTokenCache() ||
+      tokenCache.size !== before.length ||
+      before.some(
+        ({ id, entry, state, storedAccount }) =>
+          tokenCache.get(id) !== entry ||
+          !isEqual(entry, state) ||
+          entry.stored_context?.account !== storedAccount,
+      )
+    ) {
+      throw new AccountLeaseLoadSupersededError();
     }
 
+    const prepared = accounts.flatMap((account) => {
+      if (account.health?.oauth?.refresh_blocked === true) {
+        return [];
+      }
+      const snapshot = buildAccountLeaseQuotaSnapshot(account.quota);
+      return [{ id: account.id, token: this.mapAccountToTokenData(account, snapshot), snapshot }];
+    });
+
+    for (const { snapshot } of prepared) {
+      this.options.applyQuotaSnapshot(snapshot);
+    }
+
+    tokenCache.clear();
+    for (const { id, token } of prepared) {
+      tokenCache.set(id, token);
+    }
+
+    const count = tokenCache.size;
     this.options.logger.log(`Account lease loaded ${count} cloud accounts into cache`);
     return count;
+  }
+}
+
+export class AccountLeaseLoadSupersededError extends Error {
+  constructor() {
+    super('Account cache changed while a stored snapshot was loading');
+    this.name = 'AccountLeaseLoadSupersededError';
   }
 }

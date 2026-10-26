@@ -1,9 +1,8 @@
-import { json } from '@codemirror/lang-json';
-import type { Extension } from '@codemirror/state';
-import { Decoration, EditorView } from '@codemirror/view';
+import { EditorView } from '@codemirror/view';
+import { auditBodyExtensions, utf8Prefix } from './audit-body-editor';
 import CodeMirror from '@uiw/react-codemirror';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CircleHelp, Clipboard, Download, Loader2, Search } from 'lucide-react';
+import { CircleHelp, Download, Loader2, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { useTheme } from '@/components/shared/theme-provider';
@@ -23,6 +22,9 @@ import type {
 } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 
 import { formatAuditBody } from './format-audit-body';
+import { AuditBodyCaptureStatus, formatAuditBytes } from './AuditBodyCaptureStatus';
+import { AuditBodyActions } from './AuditBodyActions';
+import { AuditBodySearchResults } from './AuditBodySearchResults';
 
 const PAGE_BYTES = 256 * 1024;
 const PREVIEW_BYTES = 20 * 1024;
@@ -44,89 +46,154 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
     theme === 'dark' ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const active = useRef(true);
+  const reading = useRef(false);
+  const readSequence = useRef(0);
+  const lastRead = useRef({ targetBytes: PREVIEW_BYTES, replaceWindow: false });
   const editor = useRef<EditorView | null>(null);
   const [content, setContent] = useState('');
   const [viewAll, setViewAll] = useState(false);
   const [cursor, setCursor] = useState<number | null>(0);
   const [complete, setComplete] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<'concise' | 'full'>(() =>
-    localStorage.getItem('traffic-body-view-mode') === 'concise' ? 'concise' : 'full',
-  );
+  const [loadError, setLoadError] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [missing, setMissing] = useState(false);
+  const [readSnapshot, setReadSnapshot] = useState({ source: body, value: body });
+  const [mode, setMode] = useState<'concise' | 'full'>(() => {
+    try {
+      return localStorage.getItem('traffic-body-view-mode') === 'concise' ? 'concise' : 'full';
+    } catch {
+      return 'full';
+    }
+  });
+  const [wrapLines, setWrapLines] = useState(true);
+  const [modeUnsaved, setModeUnsaved] = useState(false);
   const [query, setQuery] = useState('');
   const [searchResult, setSearchResult] = useState<TrafficAuditBodySearchResult | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const [jumping, setJumping] = useState(false);
+  const searchSequence = useRef(0);
+  const jumpSequence = useRef(0);
   const [rawWindow, setRawWindow] = useState(false);
   const [jumpSelection, setJumpSelection] = useState<{ from: number; to: number } | null>(null);
   const loadedBytes = useMemo(() => new TextEncoder().encode(content).byteLength, [content]);
-  const previewOnly = !viewAll && body !== null && body.storedBytes > PREVIEW_BYTES;
+  const currentBody =
+    body?.state === 'expired' || readSnapshot.source !== body ? body : readSnapshot.value;
+  const previewOnly = !viewAll && currentBody !== null && currentBody.storedBytes > PREVIEW_BYTES;
 
   useEffect(() => {
     active.current = true;
     return () => {
       active.current = false;
+      readSequence.current += 1;
+      reading.current = false;
     };
   }, []);
 
   const loadUntil = useCallback(
     async (targetBytes: number, replaceWindow = false) => {
-      if (!body || loading || complete || cursor === null) {
+      if (
+        !body ||
+        reading.current ||
+        complete ||
+        cursor === null ||
+        body.state === 'expired' ||
+        missing
+      ) {
         return;
       }
+      reading.current = true;
+      lastRead.current = { targetBytes, replaceWindow };
+      const sequence = ++readSequence.current;
       setLoading(true);
+      setLoadError(false);
+      setPaused(false);
+      let nextCursor: number | null = cursor;
+      let loaded = replaceWindow ? '' : content;
+      let received = false;
+      let done: boolean = complete;
       try {
-        let nextCursor: number | null = cursor;
-        let loaded = replaceWindow ? '' : content;
         let bytesInWindow = replaceWindow ? 0 : loadedBytes;
-        let done: boolean = complete;
         while (
           !done &&
           nextCursor !== null &&
           bytesInWindow < Math.min(targetBytes, MAX_VIEW_BYTES) &&
-          active.current
+          active.current &&
+          sequence === readSequence.current
         ) {
           const page = await ipc.client.gateway.auditBodyPage({
             bodyId: body.id,
             cursor: nextCursor,
             limitBytes: Math.min(PAGE_BYTES, targetBytes),
           });
-          if (!page) {
-            done = true;
-            break;
+          if (!active.current || sequence !== readSequence.current) {
+            return;
           }
+          if (!page || page.body.state === 'expired') {
+            setReadSnapshot({ source: body, value: page?.body ?? null });
+            setMissing(!page);
+            setContent('');
+            setCursor(null);
+            setComplete(true);
+            return;
+          }
+          setReadSnapshot({ source: body, value: page.body });
+          received = true;
           const segment = page.chunks.map((chunk) => chunk.data).join('');
           loaded += segment;
           bytesInWindow += new TextEncoder().encode(segment).byteLength;
           nextCursor = page.nextCursor;
           done = page.complete;
         }
-        if (active.current) {
+        if (active.current && sequence === readSequence.current) {
           setContent(loaded);
           setRawWindow(false);
           setCursor(nextCursor);
           setComplete(done);
         }
+      } catch {
+        if (active.current && sequence === readSequence.current) {
+          // Keep successful pages and their cursor; retry must not duplicate that prefix.
+          if (received) {
+            setContent(loaded);
+            setCursor(nextCursor);
+            setRawWindow(false);
+            lastRead.current.replaceWindow = false;
+          }
+          setLoadError(true);
+        }
       } finally {
-        if (active.current) {
+        if (active.current && sequence === readSequence.current) {
+          reading.current = false;
           setLoading(false);
         }
       }
     },
-    [body, complete, content, cursor, loadedBytes, loading],
+    [body, complete, content, cursor, loadedBytes, missing],
   );
 
   useEffect(() => {
-    if (body && body.state !== 'expired' && content.length === 0 && !loading && !complete) {
+    if (
+      body &&
+      body.state !== 'expired' &&
+      content.length === 0 &&
+      !loading &&
+      !complete &&
+      !loadError &&
+      !missing &&
+      !paused
+    ) {
       queueMicrotask(() => loadUntil(viewAll ? INITIAL_BYTES : PREVIEW_BYTES));
     }
-  }, [body, complete, content.length, loadUntil, loading, viewAll]);
+  }, [body, complete, content.length, loadUntil, loading, viewAll, loadError, missing, paused]);
 
   const displayContent = useMemo(() => {
     if (previewOnly && content) {
       return `${utf8Prefix(content, PREVIEW_BYTES)}…`;
     }
-    return rawWindow ? content : formatAuditBody(content, body?.kind ?? 'text', mode);
-  }, [body?.kind, content, mode, previewOnly, rawWindow]);
+    return rawWindow ? content : formatAuditBody(content, currentBody?.kind ?? 'text', mode);
+  }, [currentBody?.kind, content, mode, previewOnly, rawWindow]);
   useEffect(() => {
     if (!jumpSelection || !editor.current || editor.current.state.doc.length < jumpSelection.to) {
       return;
@@ -138,39 +205,13 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
     });
     setJumpSelection(null);
   }, [displayContent, jumpSelection]);
-  const extensions = useMemo(() => {
-    const result: Extension[] = [EditorView.lineWrapping];
-    if (body?.kind === 'json' && !previewOnly) {
-      result.push(json());
-    }
-    if (body?.parseErrorOffset !== null && body?.parseErrorOffset !== undefined) {
-      const offset = body.parseErrorOffset;
-      result.push(
-        EditorView.decorations.compute([], (state) => {
-          const position = Math.min(offset, state.doc.length);
-          return Decoration.set([
-            Decoration.line({ attributes: { class: 'cm-traffic-parse-error-line' } }).range(
-              state.doc.lineAt(position).from,
-            ),
-          ]);
-        }),
-        EditorView.baseTheme({
-          '.cm-traffic-parse-error-line': {
-            backgroundColor: 'color-mix(in srgb, var(--destructive) 12%, transparent)',
-            boxShadow: 'inset 3px 0 0 var(--destructive)',
-          },
-        }),
-      );
-    }
-    return result;
-  }, [body, previewOnly]);
+  const extensions = useMemo(
+    () => auditBodyExtensions(currentBody, previewOnly, wrapLines),
+    [currentBody, previewOnly, wrapLines],
+  );
 
-  if (!body) {
-    return (
-      <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-        {t('traffic.select-body')}
-      </div>
-    );
+  if (!body || missing || currentBody?.state === 'expired') {
+    return <AuditBodyCaptureStatus body={missing ? null : currentBody} />;
   }
 
   const loadMore = async () => {
@@ -178,44 +219,90 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
   };
 
   const jumpToMatch = async (match: TrafficAuditBodySearchResult['matches'][number]) => {
-    const page = await ipc.client.gateway.auditBodyPage({
-      bodyId: body.id,
-      cursor: match.sequence,
-      limitBytes: PAGE_BYTES,
-    });
-    if (!page || !active.current) {
-      return;
+    if (reading.current) {
+      return false;
     }
-    setMode('full');
-    setContent(page.chunks.map((chunk) => chunk.data).join(''));
-    setRawWindow(true);
-    setCursor(page.nextCursor);
-    setComplete(page.complete);
-    setJumpSelection({ from: match.chunkOffset, to: match.chunkOffset + match.length });
-  };
-
-  const copyLoaded = async () => {
-    await navigator.clipboard.writeText(displayContent);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1_200);
+    reading.current = true;
+    const sequence = jumpSequence.current + 1;
+    jumpSequence.current = sequence;
+    setJumping(true);
+    try {
+      const page = await ipc.client.gateway.auditBodyPage({
+        bodyId: body.id,
+        cursor: match.sequence,
+        limitBytes: PAGE_BYTES,
+      });
+      if (!page || !active.current || sequence !== jumpSequence.current) {
+        if (!page && active.current && sequence === jumpSequence.current) {
+          setMissing(true);
+          setContent('');
+        }
+        return false;
+      }
+      setReadSnapshot({ source: body, value: page.body });
+      if (page.body.state === 'expired') {
+        setContent('');
+        return false;
+      }
+      setMode('full');
+      setViewAll(true);
+      setPaused(false);
+      setLoadError(false);
+      setContent(page.chunks.map((chunk) => chunk.data).join(''));
+      setRawWindow(true);
+      setCursor(page.nextCursor);
+      setComplete(page.complete);
+      setJumpSelection({ from: match.chunkOffset, to: match.chunkOffset + match.length });
+      return true;
+    } catch {
+      if (active.current && sequence === jumpSequence.current) {
+        setSearchError(true);
+      }
+      return false;
+    } finally {
+      if (active.current && sequence === jumpSequence.current) {
+        reading.current = false;
+        setJumping(false);
+      }
+    }
   };
 
   const search = async () => {
+    const sequence = searchSequence.current + 1;
+    searchSequence.current = sequence;
     if (!query.trim()) {
       setSearchResult(null);
+      setSearchError(false);
+      setSearching(false);
       return;
     }
-    setSearchResult(
-      await ipc.client.gateway.auditBodySearch({
+    setSearching(true);
+    setSearchResult(null);
+    setSearchError(false);
+    try {
+      const result = await ipc.client.gateway.auditBodySearch({
         bodyId: body.id,
         limit: 100,
         query: query.trim(),
-      }),
-    );
+      });
+      if (active.current && sequence === searchSequence.current) {
+        setSearchResult(result);
+      }
+    } catch {
+      if (active.current && sequence === searchSequence.current) {
+        setSearchResult(null);
+        setSearchError(true);
+      }
+    } finally {
+      if (active.current && sequence === searchSequence.current) {
+        setSearching(false);
+      }
+    }
   };
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
+      <AuditBodyCaptureStatus body={currentBody} />
       <div className="bg-muted/30 flex flex-wrap items-center gap-2 border-b px-3 py-2">
         <div className="bg-muted flex rounded-md p-0.5">
           {(['concise', 'full'] as const).map((value) => (
@@ -225,13 +312,31 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
               className={`rounded px-2.5 py-1 text-xs font-medium ${mode === value ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}
               onClick={() => {
                 setMode(value);
-                localStorage.setItem('traffic-body-view-mode', value);
+                try {
+                  localStorage.setItem('traffic-body-view-mode', value);
+                  setModeUnsaved(false);
+                } catch {
+                  setModeUnsaved(true);
+                }
               }}
             >
               {value === 'concise' ? t('traffic.concise') : t('traffic.full')}
             </button>
           ))}
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          aria-pressed={wrapLines}
+          onClick={() => setWrapLines((value) => !value)}
+        >
+          {t('traffic.wrap-lines')}
+        </Button>
+        {modeUnsaved && (
+          <span role="status" className="text-muted-foreground text-xs">
+            {t('traffic.view-mode-unsaved')}
+          </span>
+        )}
         <TooltipProvider delayDuration={150}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -261,30 +366,61 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
                 void search();
               }
             }}
+            aria-busy={searching}
+            maxLength={512}
             className="h-8 pl-7 text-xs"
             placeholder={t('traffic.search-body')}
           />
+          {searching && (
+            <Loader2
+              className="text-muted-foreground absolute top-2 right-2 h-3.5 w-3.5 animate-spin"
+              aria-label={t('traffic.searching')}
+            />
+          )}
         </div>
-        <TooltipProvider delayDuration={150}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                aria-label={t('traffic.copy-loaded')}
-                onClick={() => void copyLoaded()}
-              >
-                {copied ? (
-                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                ) : (
-                  <Clipboard className="h-3.5 w-3.5" aria-hidden="true" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('traffic.copy-loaded')}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {searching && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              searchSequence.current += 1;
+              setSearching(false);
+            }}
+          >
+            {t('traffic.cancel-search')}
+          </Button>
+        )}
+        {searchError && (
+          <span role="alert" className="text-destructive text-xs">
+            {t('traffic.search-failed')}
+          </span>
+        )}
+        {jumping && (
+          <span className="text-muted-foreground text-xs" role="status">
+            {t('traffic.jumping')}
+          </span>
+        )}
+        <AuditBodyActions
+          body={currentBody ?? body}
+          content={displayContent}
+          disabled={loading || jumping || (body.storedBytes === 0 && body.kind !== 'empty')}
+        />
+        {currentBody?.state === 'writing' && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={loading || jumping}
+            onClick={() => {
+              setContent('');
+              setCursor(0);
+              setComplete(false);
+              setLoadError(false);
+              setPaused(false);
+            }}
+          >
+            {t('traffic.capture.refresh')}
+          </Button>
+        )}
         {previewOnly && (
           <Button
             size="sm"
@@ -309,46 +445,48 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
             {t(loadedBytes >= MAX_VIEW_BYTES ? 'traffic.load-next-window' : 'traffic.load-more')}
           </Button>
         )}
-        <TooltipProvider delayDuration={150}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                aria-label={t('traffic.save-full')}
-                onClick={() =>
-                  void window.electron.saveTrafficAuditBody(
-                    body.id,
-                    `traffic-${body.ownerKind}-${body.direction}-${body.id}.${body.kind === 'json' ? 'json' : 'txt'}`,
-                  )
-                }
-              >
-                <Download className="h-3.5 w-3.5" aria-hidden="true" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('traffic.save-full')}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
-      {searchResult && (
-        <div className="bg-muted/20 max-h-28 overflow-auto border-b px-3 py-2 text-xs">
-          <div className="text-muted-foreground mb-1">
-            {t('traffic.matches', { count: searchResult.matches.length })}
-            {searchResult.truncated ? ` (${t('traffic.first-100')})` : ''}
-          </div>
-          {searchResult.matches.slice(0, 20).map((match) => (
-            <button
-              key={`${match.offset}-${match.sequence}`}
-              type="button"
-              className="hover:bg-muted block w-full cursor-default truncate rounded px-1 py-0.5 text-left font-mono"
-              onClick={() => void jumpToMatch(match)}
-            >
-              @{match.offset}: {match.snippet}
-            </button>
-          ))}
+      {(loadError || paused) && (
+        <div
+          role={loadError ? 'alert' : 'status'}
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs"
+        >
+          <span className={loadError ? 'text-destructive' : 'text-muted-foreground'}>
+            {t(loadError ? 'traffic.capture.read-failed' : 'traffic.capture.paused')}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={loading}
+            onClick={() =>
+              void loadUntil(lastRead.current.targetBytes, lastRead.current.replaceWindow)
+            }
+          >
+            {t(paused ? 'traffic.capture.resume' : 'traffic.capture.retry')}
+          </Button>
         </div>
       )}
+      {loading && (
+        <div
+          role="status"
+          className="text-muted-foreground flex shrink-0 items-center gap-2 px-3 py-2 text-xs"
+        >
+          {t('traffic.capture.loading')}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              readSequence.current += 1;
+              reading.current = false;
+              setLoading(false);
+              setPaused(true);
+            }}
+          >
+            {t('traffic.capture.cancel')}
+          </Button>
+        </div>
+      )}
+      {searchResult && <AuditBodySearchResults result={searchResult} onJump={jumpToMatch} />}
       <div className="min-h-0 flex-1">
         <CodeMirror
           value={displayContent}
@@ -369,46 +507,19 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
         />
       </div>
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 border-t px-3 py-1.5 text-[11px]">
-        <span>{body.representation}</span>
-        <span>{body.state}</span>
         <span>
-          {formatBytes(previewOnly ? Math.min(loadedBytes, PREVIEW_BYTES) : loadedBytes)} /{' '}
-          {formatBytes(body.logicalBytes)}
+          {t('traffic.capture.loaded', {
+            size: formatAuditBytes(
+              previewOnly ? Math.min(loadedBytes, PREVIEW_BYTES) : loadedBytes,
+            ),
+          })}
         </span>
-        {body.parseErrorOffset !== null && (
+        {currentBody && currentBody.parseErrorOffset !== null && (
           <span className="text-destructive">
-            {t('traffic.parse-error', { offset: body.parseErrorOffset })}
+            {t('traffic.parse-error', { offset: currentBody.parseErrorOffset })}
           </span>
         )}
-        {body.partial && (
-          <span className="text-amber-600 dark:text-amber-400">{t('traffic.partial')}</span>
-        )}
-        {body.droppedReason && <span>{body.droppedReason}</span>}
       </div>
     </div>
   );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KiB`;
-  }
-  return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
-}
-
-function utf8Prefix(value: string, byteLimit: number): string {
-  let bytes = 0;
-  let prefix = '';
-  for (const character of value) {
-    const characterBytes = new TextEncoder().encode(character).byteLength;
-    if (bytes + characterBytes > byteLimit) {
-      break;
-    }
-    prefix += character;
-    bytes += characterBytes;
-  }
-  return prefix;
 }

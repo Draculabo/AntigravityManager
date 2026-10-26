@@ -150,13 +150,25 @@ export class ThoughtManagementController {
   public async delete(
     @Param('sessionKey', new ZodSchemaPipe(SessionKeySchema)) sessionKey: string,
   ) {
-    return { affected: await thoughtStoreService.deleteSession(sessionKey) };
+    const receipt = await thoughtStoreService.deleteSession(sessionKey);
+    return {
+      affected: receipt.sessions,
+      records: receipt.records,
+      recovery_complete: receipt.recoveryComplete,
+      recovery: receipt.recovery,
+    };
   }
 
   @Delete('sessions')
   @AuditAdminOperation('clear_thought_sessions', (result: { affected: number }) => result.affected)
   public async clear() {
-    return { affected: await thoughtStoreService.clear() };
+    const receipt = await thoughtStoreService.clear();
+    return {
+      affected: receipt.sessions,
+      records: receipt.records,
+      recovery_complete: receipt.recoveryComplete,
+      recovery: receipt.recovery,
+    };
   }
 
   @Post('repair')

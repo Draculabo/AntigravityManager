@@ -1,6 +1,28 @@
 import { getAuditFileAdapter } from './audit-file-adapter';
-import { SaveAuditBodyInputSchema } from '../audit/save-audit-body-input';
+import {
+  SaveAuditBodyInputSchema,
+  SaveAuditSessionInputSchema,
+} from '../audit/save-audit-body-input';
 import { AuditFileOwnerError } from '../audit/audit-file-owner.schema';
+
+export async function exportSelectedAuditSession(
+  sessionId: string,
+  suggestedName: string,
+  selectPath: (safeName: string) => Promise<string | null>,
+) {
+  try {
+    const [id, name] = SaveAuditSessionInputSchema.parse([sessionId, suggestedName]);
+    const owner = getAuditFileAdapter();
+    const safeName = name.replace(/[^a-z0-9._-]+/giu, '-').slice(0, 120);
+    const filePath = await selectPath(safeName || 'traffic-session.ndjson');
+    if (!filePath) {
+      return { status: 'cancelled' as const };
+    }
+    return await owner.exportSession({ sessionId: id, filePath });
+  } catch {
+    throw new AuditFileOwnerError();
+  }
+}
 
 /** Capture ownership before a file chooser can yield to an adapter reselection. */
 export async function exportSelectedAuditBody(

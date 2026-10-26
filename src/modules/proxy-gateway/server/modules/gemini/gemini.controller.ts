@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Inject,
   HttpException,
+  NotFoundException,
   Param,
   Post,
   Req,
@@ -32,11 +33,15 @@ import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-i
 import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
 import { AccountLeaseService } from '../account-lease/account-lease.service';
+import { resolveUpstreamErrorHttpStatus } from '../../common/upstream-error-http-status';
+import { publicProxyErrorMessage } from '../../common/public-error-message';
+import { publicGoogleErrorDetails } from '../../common/upstream-error-codec';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
 import {
   applyProxyRetryAfterHeader,
   createProxyRequestAbortScope,
 } from '../../common/base-proxy.controller';
+import { formatCountTokensReason } from '../../common/base-proxy.service';
 import { setProxyResponseTimingHeaders } from '../../common/proxy-response-timing';
 import { writeProxySseResponse } from '../../common/proxy-sse-response';
 
@@ -79,16 +84,10 @@ export class GeminiController {
     const matched = this.buildGeminiModelList().find((item) => item.name === targetName);
 
     if (matched) {
-      return {
-        name: matched.name,
-        displayName: matched.displayName,
-      };
+      return matched;
     }
 
-    return {
-      name: targetName,
-      displayName: targetName.replace(/^models\//, ''),
-    };
+    throw new NotFoundException(`Model '${targetName}' was not found`);
   }
 
   @Post('models/:modelAction')
@@ -140,7 +139,7 @@ export class GeminiController {
         res.status(error.httpStatus).send({
           error: {
             code: error.httpStatus,
-            message: error.message,
+            message: publicProxyErrorMessage(error.message),
             status: error.httpStatus === 404 ? 'NOT_FOUND' : 'INVALID_ARGUMENT',
           },
         });
@@ -152,15 +151,22 @@ export class GeminiController {
     const abortScope = createProxyRequestAbortScope(req, res);
     try {
       if (action === 'countTokens') {
-        const totalTokens = await this.proxyService.handleGeminiCountTokens(model, request);
-        res.status(HttpStatus.OK).send({ totalTokens });
+        const result = await this.proxyService.handleGeminiCountTokensWithSource(model, request);
+        res.header('X-AGM-Count-Tokens-Source', result.source);
+        if (result.reason) {
+          res.header('X-AGM-Count-Tokens-Reason', formatCountTokensReason(result.reason));
+        }
+        res.status(HttpStatus.OK).send({ totalTokens: result.totalTokens });
         return;
       }
 
       if (action === 'streamGenerateContent') {
-        const stream = await (abortScope.signal
-          ? this.proxyService.handleGeminiStreamGenerateContent(model, request, abortScope.signal)
-          : this.proxyService.handleGeminiStreamGenerateContent(model, request));
+        const stream = await this.proxyService.handleGeminiStreamGenerateContent(
+          model,
+          request,
+          abortScope.signal,
+          { headers: req?.headers ?? {}, url: req?.url },
+        );
         if (stream instanceof Observable) {
           writeProxySseResponse(res, stream, { includeTiming: true, request: req });
           return;
@@ -168,14 +174,14 @@ export class GeminiController {
       }
 
       if (action === 'generateContent') {
-        const result = await (abortScope.signal
-          ? this.proxyService.handleGeminiGenerateContent(
-              model,
-              request,
-              'generate-content',
-              abortScope.signal,
-            )
-          : this.proxyService.handleGeminiGenerateContent(model, request));
+        const result = await this.proxyService.handleGeminiGenerateContent(
+          model,
+          request,
+          'generate-content',
+          abortScope.signal,
+          'gemini',
+          { headers: req?.headers ?? {}, url: req?.url },
+        );
         setProxyResponseTimingHeaders(res, req);
         res.status(HttpStatus.OK).send(this.buildNormalizedGeminiGenerateResponse(result));
         return;
@@ -189,7 +195,7 @@ export class GeminiController {
       res.status(HttpStatus.BAD_REQUEST).send({
         error: {
           code: HttpStatus.BAD_REQUEST,
-          message: `Unsupported model action: ${action}`,
+          message: publicProxyErrorMessage(`Unsupported model action: ${action}`),
           status: 'INVALID_ARGUMENT',
         },
       });
@@ -198,7 +204,7 @@ export class GeminiController {
         res.status(HttpStatus.BAD_REQUEST).send({
           error: {
             code: HttpStatus.BAD_REQUEST,
-            message: error.message,
+            message: publicProxyErrorMessage(error.message),
             status: 'INVALID_ARGUMENT',
           },
         });
@@ -209,34 +215,23 @@ export class GeminiController {
       const status =
         error instanceof HttpException
           ? (error.getStatus() as HttpStatus)
-          : action === 'countTokens'
-            ? this.resolveCountTokensErrorHttpStatus(error)
-            : HttpStatus.INTERNAL_SERVER_ERROR;
+          : (resolveUpstreamErrorHttpStatus(error) ?? HttpStatus.INTERNAL_SERVER_ERROR);
       applyProxyRetryAfterHeader(res, error);
+      const details =
+        error instanceof UpstreamRequestError ? publicGoogleErrorDetails(error.details) : undefined;
       res.status(status).send({
         error: {
           code: status,
-          message,
-          status: this.resolveGeminiErrorStatus(status),
+          message: publicProxyErrorMessage(message),
+          status:
+            (error instanceof UpstreamRequestError ? error.upstreamStatus : undefined) ??
+            this.resolveGeminiErrorStatus(status),
+          ...(details ? { details } : {}),
         },
       });
     } finally {
       abortScope.dispose();
     }
-  }
-
-  private resolveCountTokensErrorHttpStatus(error: unknown): HttpStatus {
-    if (
-      error instanceof UpstreamRequestError &&
-      Number.isInteger(error.status) &&
-      error.status !== undefined &&
-      error.status >= 400 &&
-      error.status <= 599
-    ) {
-      return error.status as HttpStatus;
-    }
-
-    return HttpStatus.INTERNAL_SERVER_ERROR;
   }
 
   private resolveGeminiErrorStatus(status: HttpStatus): string {

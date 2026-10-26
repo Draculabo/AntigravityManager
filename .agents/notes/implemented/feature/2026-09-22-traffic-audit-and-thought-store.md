@@ -67,11 +67,12 @@ body batch commits in one transaction before yielding, avoiding a commit per sma
 
 Thought sessions are keyed by SHA-256 of the presented credential plus a sanitized stable client
 session ID. Missing stable IDs are request-local. Thought text and signatures use `RAW1` or `AGZ1`
-framing and remain plaintext. Each session is transactionally capped at 200 turns and 64 MiB of
-uncompressed thought, with oversized single records reduced to hash and metadata. The store retains
-up to 2,000 sessions for 15 days.
-Historical turns are matched against a snapshot of the full session in both the in-memory cache and
-the SQLite worker transaction. This avoids duplicate appends when clients resend complete history;
+framing and remain plaintext. L1 defaults to 600 turns (10–10,000 configurable), at most 64 MiB
+per session and 256 MiB globally; complete retained fields count toward those budgets. L1 eviction
+does not delete durable turns. L2 retains up to 2,000 sessions for 15 idle days under its own
+1,024 MiB DB/WAL/SHM write-admission budget. Oversized single records retain summary/digest form.
+Historical turns are matched against bounded recent candidates in memory and in the
+SQLite worker transaction. Targeted older-record restoration remains D16 follow-up. This avoids duplicate appends for identified recent history;
 a stronger thought can update its matching record. Restoration searches newer records first and
 reserves category fallback for the final model turn, preventing a recent thought from filling an
 unrelated older turn. Complete thought/signature pairs are not rewritten.

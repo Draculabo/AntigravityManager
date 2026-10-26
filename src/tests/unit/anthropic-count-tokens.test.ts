@@ -49,6 +49,7 @@ describe('Anthropic count_tokens', () => {
     );
 
     expect(reply.status).toHaveBeenCalledWith(200);
+    expect(reply.header).toHaveBeenCalledWith('X-AGM-Count-Tokens-Source', 'upstream');
     expect(reply.body).toEqual({ input_tokens: 2048 });
   });
 
@@ -75,11 +76,15 @@ describe('Anthropic count_tokens', () => {
     expect(sent.request.model).toMatch(/^models\//u);
     expect(JSON.stringify(sent.request.contents)).toContain('first');
     expect(JSON.stringify(sent.request.contents)).toContain('second');
+    expect(sent.request.contents).toEqual([
+      { role: 'user', parts: [{ text: 'first' }] },
+      { role: 'model', parts: [{ text: 'second' }] },
+    ]);
     expect(Object.keys(sent.request).sort()).toEqual(['contents', 'model']);
     expect(JSON.stringify(sent)).not.toContain('project-42');
   });
 
-  it('reports a missing count as a failure rather than a fabricated zero', async () => {
+  it('returns a bounded local estimate when the upstream omits the count', async () => {
     const upstream = createUpstream({ countTokens: {} });
     const lease = createLease([createAccount('acc-1')]);
     const controller = new AnthropicController(createGateway(upstream, lease).anthropicService);
@@ -87,8 +92,94 @@ describe('Anthropic count_tokens', () => {
 
     await controller.countTokens(countTokensBody('hello') as never, reply as never);
 
-    expect(reply.body).not.toEqual({ input_tokens: 0 });
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(reply.header).toHaveBeenCalledWith('X-AGM-Count-Tokens-Source', 'estimated');
+    expect(reply.body).toMatchObject({ input_tokens: expect.any(Number) });
+    expect((reply.body as { input_tokens: number }).input_tokens).toBeGreaterThan(0);
+  });
+
+  it('includes long system prompts, tools and tool history in fallback estimates', async () => {
+    vi.useFakeTimers();
+    try {
+      const upstream = createUpstream({ countTokens: {} });
+      const lease = createLease([createAccount('acc-1')]);
+      const controller = new AnthropicController(createGateway(upstream, lease).anthropicService);
+      const base = createReply();
+      const enriched = createReply();
+
+      const basePending = controller.countTokens(countTokensBody('hello') as never, base as never);
+      await vi.runAllTimersAsync();
+      await basePending;
+      const pending = controller.countTokens(
+        {
+          max_tokens: 32,
+          messages: [
+            { content: 'Use the search tool.', role: 'user' },
+            {
+              content: [
+                {
+                  id: 'call_search',
+                  input: { query: 'x'.repeat(2000) },
+                  name: 'search',
+                  type: 'tool_use',
+                },
+              ],
+              role: 'assistant',
+            },
+            {
+              content: [
+                {
+                  content: [{ text: 'x'.repeat(2000), type: 'text' }],
+                  tool_use_id: 'call_search',
+                  type: 'tool_result',
+                },
+              ],
+              role: 'user',
+            },
+          ],
+          model: 'claude-sonnet-4-5',
+          system: 'x'.repeat(2000),
+          tools: [
+            {
+              description: 'x'.repeat(2000),
+              input_schema: {
+                properties: { query: { description: 'x'.repeat(2000), type: 'string' } },
+                type: 'object',
+              },
+              name: 'search',
+            },
+          ],
+        } as never,
+        enriched as never,
+      );
+      await vi.runAllTimersAsync();
+      await pending;
+
+      expect((enriched.body as { input_tokens: number }).input_tokens).toBeGreaterThan(
+        (base.body as { input_tokens: number }).input_tokens,
+      );
+      expect(enriched.header).toHaveBeenCalledWith('X-AGM-Count-Tokens-Source', 'estimated');
+      expect(
+        Object.keys((upstream.countTokensCalls[1]?.body as { request: object }).request).sort(),
+      ).toEqual(['contents', 'model']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not turn an unavailable account into an estimated success', async () => {
+    const upstream = createUpstream({ countTokens: { totalTokens: 10 } });
+    const controller = new AnthropicController(
+      createGateway(upstream, createLease([])).anthropicService,
+    );
+    const reply = createReply();
+
+    await controller.countTokens(countTokensBody('hello') as never, reply as never);
+
+    expect(reply.status).toHaveBeenCalledWith(503);
     expect(reply.body).toMatchObject({ type: 'error' });
+    expect(reply.header).not.toHaveBeenCalledWith('X-AGM-Count-Tokens-Source', 'estimated');
+    expect(upstream.countTokensCalls).toHaveLength(0);
   });
 
   it('penalises the account when upstream rejects the count', async () => {

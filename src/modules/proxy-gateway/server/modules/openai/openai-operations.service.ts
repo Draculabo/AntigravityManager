@@ -1,9 +1,33 @@
+import { FlowControlledSseStream } from '../../common/flow-controlled-sse-stream';
+import { resolveClientSessionHint } from '../../common/client-session-hint';
+import { admitOpenAIInlineMedia } from '../../common/inline-media-admission';
+import {
+  findOpenAIInitialTask,
+  openAISessionAnchorParts,
+} from '../../common/protocol-session-anchor';
+import type { SignatureScopeContext } from '../../common/signature-session-scope';
 import { randomUUID } from 'node:crypto';
+import {
+  getOwnedResponsesHistory,
+  resolveResponsesMediaStore,
+  resolveResponsesHistoryOwner,
+} from './responses/responses-history-owner';
 
-import { BadRequestException, HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  GoneException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Optional,
+} from '@nestjs/common';
+import {
+  bindCurrentThoughtRecoveryScope,
+  getTrafficAuditRequestContext,
+} from '../../../audit/traffic-audit-context';
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { isEmpty, isString } from 'lodash-es';
-import { Observable } from 'rxjs';
+import { isEmpty, isString, isEqual } from 'lodash-es';
+import { Observable, Subscriber } from 'rxjs';
 import {
   OpenAIChatRequest,
   OpenAIChatResponse,
@@ -32,6 +56,7 @@ import {
 import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
 import {
   OpenAIResponsesSessionStore,
+  type OpenAIResponsesSessionStoreImpl,
   prepareOpenAIResponsesSessionInput,
   type OpenAIResponsesSession,
   type OpenAIResponsesSessionParent,
@@ -61,6 +86,11 @@ import { parseGenerationInputImages } from '@/modules/proxy-gateway/server/modul
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 import { BaseProxyController } from '@/modules/proxy-gateway/server/common/base-proxy.controller';
 import { setProxyResponseTimingHeaders } from '@/modules/proxy-gateway/server/common/proxy-response-timing';
+import {
+  getObservableFlowControl,
+  inheritObservableFlowControl,
+} from '../../common/observable-flow-control';
+import { resolveOutputTokenLimit } from '@/modules/proxy-gateway/server/common/output-token-limit';
 import { resolveOpenAIImageUrl } from './openai-image-url';
 import { OpenAIService, type OpenAIResponsesExecutionContext } from './openai.service';
 export type { ResponsesRequestBody } from './responses/openai-responses-request';
@@ -75,13 +105,17 @@ import {
 } from './responses/openai-responses-request';
 import {
   boundResponsesInputItems,
+  latestUserTurnForMediaValidation,
   omitMediaBeforeLatestUserTurn,
   validateResponsesInputImageLimits,
 } from './responses/openai-responses-inline-media';
+import { applyResponsesImageSendWindow } from './responses/openai-responses-media-window';
 
 export const IMAGE_QUOTA_REFRESH = Symbol('IMAGE_QUOTA_REFRESH');
 
 export type ImageQuotaRefresh = () => Promise<void>;
+
+const MAX_PENDING_RESPONSES_TERMINAL_EVENTS = 4;
 
 /** The audio the two audio endpoints accept: base64 content or a data URL, `file` or `audio`. */
 export interface AudioRequestBody {
@@ -344,7 +378,8 @@ export class OpenAIOperations extends BaseProxyController {
 
     const abortScope = this.createRequestAbortScope(req, res);
     try {
-      const prepared = this.prepareResponsesRequest(expanded);
+      const context = req ? { headers: req.headers, url: req.url } : undefined;
+      const prepared = await this.prepareResponsesRequest(expanded, context);
       if (!prepared) {
         res
           .status(HttpStatus.NOT_FOUND)
@@ -352,27 +387,26 @@ export class OpenAIOperations extends BaseProxyController {
         return;
       }
 
-      const result = await (abortScope.signal
-        ? this.proxyService.handleChatCompletions(
-            prepared.request,
-            'responses',
-            abortScope.signal,
-            this.toResponsesExecutionContext(prepared),
-          )
-        : this.proxyService.handleChatCompletions(
-            prepared.request,
-            'responses',
-            undefined,
-            this.toResponsesExecutionContext(prepared),
-          ));
+      const result = await this.proxyService.handleChatCompletions(
+        prepared.request,
+        'responses',
+        abortScope.signal,
+        this.toResponsesExecutionContext(prepared),
+        undefined,
+        context,
+      );
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, this.cacheResponsesStream(result, prepared), true);
+        this.writeSseResponse(
+          res,
+          this.cacheResponsesStream(result, prepared, abortScope.signal),
+          true,
+        );
         return;
       }
 
       const response = result as OpenAIChatResponse;
       const responsesResponse = toOpenAIResponsesResponse(response, prepared.responseId);
-      this.saveResponsesSession(responsesResponse, prepared);
+      await this.saveResponsesSession(responsesResponse, prepared, abortScope.signal);
       setProxyResponseTimingHeaders(res, req);
       res.status(HttpStatus.OK).send(responsesResponse);
     } catch (error) {
@@ -601,11 +635,14 @@ export class OpenAIOperations extends BaseProxyController {
   ) {
     const abortScope = this.createRequestAbortScope(req, res);
     try {
+      const maxTokens = resolveOutputTokenLimit(body);
       // Handles become inline content before the request is mapped: upstream
       // has no file plane, so a `file_id` left in place reaches nothing.
       const request = await expandFileReferences(body, 'openai-chat', this.files);
+      const normalizedRequest =
+        maxTokens === undefined ? request : { ...request, max_tokens: maxTokens };
       const result = await this.proxyService.handleChatCompletions(
-        request,
+        normalizedRequest,
         'chat-completions',
         abortScope.signal,
         undefined,
@@ -666,19 +703,26 @@ export class OpenAIOperations extends BaseProxyController {
     };
   }
 
-  public prepareResponsesRequest(body: ResponsesRequestBody): PreparedResponsesRequest | null {
+  public async prepareResponsesRequest(
+    body: ResponsesRequestBody,
+    context?: SignatureScopeContext,
+  ): Promise<PreparedResponsesRequest | null> {
+    const historyOwner = resolveResponsesHistoryOwner(context?.headers);
     const previousSession = body.previous_response_id
-      ? this.responsesSessions.getWithParent(body.previous_response_id)
+      ? getOwnedResponsesHistory(this.responsesSessions, body.previous_response_id, historyOwner)
       : null;
     if (body.previous_response_id && !previousSession) {
       return null;
     }
+    if (previousSession?.session.thoughtSessionKey) {
+      bindCurrentThoughtRecoveryScope(previousSession.session.thoughtSessionKey);
+    }
+    const captureLease = getTrafficAuditRequestContext()?.thoughtCaptureLease;
 
-    const currentInputItems = omitMediaBeforeLatestUserTurn(
-      normalizeResponsesInputItems(body.input),
-    );
+    const originalInputItems = normalizeResponsesInputItems(body.input);
+    const currentInputItems = omitMediaBeforeLatestUserTurn(originalInputItems);
     try {
-      validateResponsesInputImageLimits(currentInputItems);
+      validateResponsesInputImageLimits(latestUserTurnForMediaValidation(originalInputItems));
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : String(error));
     }
@@ -693,19 +737,66 @@ export class OpenAIOperations extends BaseProxyController {
     const tools = body.tools ?? previousSession?.session.tools;
     const responseId = `resp_${randomUUID()}`;
     const requestSessionId = body.previous_response_id ?? responseId;
-    const explicitSessionId = body.session_id?.trim();
+    const explicitSessionId = resolveClientSessionHint(
+      context?.headers ?? {},
+      context?.url,
+      body,
+      body.user === undefined ? body.metadata : { ...(body.metadata ?? {}), user_id: body.user },
+    ).id;
     const routingSessionId =
       explicitSessionId ||
       previousSession?.routingSessionId ||
       body.previous_response_id ||
       responseId;
-    const request = buildResponsesChatRequest({
-      ...body,
-      input: preparedInput.merged,
-      instructions,
-      model,
-      tools,
-    });
+    const mediaStore = resolveResponsesMediaStore(this.responsesSessions);
+    const restoredRequestInput = mediaStore
+      ? await mediaStore.restore(preparedInput.merged)
+      : preparedInput.merged;
+    if (
+      previousSession &&
+      body.previous_response_id &&
+      (captureLease?.valid === false ||
+        this.responsesSessions.getHistoryOwner(body.previous_response_id) !== historyOwner)
+    ) {
+      throw new GoneException('Responses history was invalidated. Start a new conversation.');
+    }
+    const requestInput = applyResponsesImageSendWindow(
+      restoredRequestInput,
+      getServerConfig()?.image_scheduler,
+      currentInputItems,
+    );
+    const request = admitOpenAIInlineMedia(
+      buildResponsesChatRequest({
+        ...body,
+        input: requestInput,
+        instructions,
+        model,
+        tools,
+      }),
+    );
+    let initialTaskFingerprint = previousSession?.session.identity.initialTaskFingerprint;
+    if (!initialTaskFingerprint) {
+      const initialRequest = buildResponsesChatRequest({
+        ...body,
+        input: originalInputItems,
+        instructions,
+        model,
+        tools,
+      });
+      const originalTask = findOpenAIInitialTask(initialRequest);
+      if (originalTask && !isEqual(originalTask, findOpenAIInitialTask(request))) {
+        // A full transcript may omit its first image before the generation request is built.
+        // Normalize only that task, with the normal media budget; retain no media in metadata.
+        const admittedTask = admitOpenAIInlineMedia({ ...initialRequest, messages: [originalTask] })
+          .messages[0];
+        initialRequest.messages = initialRequest.messages.map((message) =>
+          message === originalTask ? admittedTask : message,
+        );
+        initialTaskFingerprint = openAISessionAnchorParts(initialRequest).taskFingerprint;
+      } else {
+        initialTaskFingerprint = openAISessionAnchorParts(request).taskFingerprint;
+      }
+    }
 
     return {
       parent:
@@ -717,6 +808,14 @@ export class OpenAIOperations extends BaseProxyController {
       responseId,
       routingSessionId,
       session: {
+        identity: Object.freeze({
+          version: 1,
+          origin: explicitSessionId
+            ? 'client'
+            : (previousSession?.session.identity.origin ?? 'content'),
+          initialTaskFingerprint,
+        }),
+        historyOwner,
         inputItems: preparedInput.delta,
         instructions,
         model,
@@ -729,22 +828,121 @@ export class OpenAIOperations extends BaseProxyController {
   private cacheResponsesStream(
     stream: Observable<unknown>,
     prepared: PreparedResponsesRequest,
+    signal?: AbortSignal,
   ): Observable<unknown> {
-    return new Observable<unknown>((subscriber) => {
-      const subscription = stream.subscribe({
+    const subscribe = (subscriber: Subscriber<unknown>) => {
+      const flowControlled =
+        stream instanceof FlowControlledSseStream ? stream : getObservableFlowControl(stream);
+      let sourceSubscription: ReturnType<typeof stream.subscribe> | undefined;
+      let persistencePending = false;
+      let completionSeen = false;
+      let sourceCompleted = false;
+      let sourceFailed = false;
+      let sourceError: unknown;
+      const pendingEvents: unknown[] = [];
+
+      const finishAfterPersistence = () => {
+        if (persistencePending || subscriber.closed) {
+          return;
+        }
+        while (pendingEvents.length > 0 && !subscriber.closed) {
+          subscriber.next(pendingEvents.shift());
+        }
+        if (subscriber.closed) {
+          return;
+        }
+        if (sourceFailed) {
+          subscriber.error(sourceError);
+        } else if (sourceCompleted) {
+          subscriber.complete();
+        } else {
+          flowControlled?.resume();
+        }
+      };
+
+      sourceSubscription = stream.subscribe({
         next: (event) => {
-          this.saveResponsesSession(extractCompletedResponsesEvent(event), prepared);
+          if (subscriber.closed) {
+            return;
+          }
+          if (persistencePending) {
+            if (pendingEvents.length >= MAX_PENDING_RESPONSES_TERMINAL_EVENTS) {
+              subscriber.error(new Error('Responses stream exceeded its terminal event limit'));
+              return;
+            }
+            pendingEvents.push(event);
+            return;
+          }
+
+          const completedResponse = extractCompletedResponsesEvent(event);
+          if (completedResponse !== null) {
+            completionSeen = true;
+            persistencePending = true;
+            flowControlled?.pause();
+            void this.saveResponsesSession(completedResponse, prepared, signal).then(
+              () => {
+                persistencePending = false;
+                if (subscriber.closed) {
+                  return;
+                }
+                if (sourceFailed) {
+                  subscriber.error(sourceError);
+                  return;
+                }
+                subscriber.next(event);
+                finishAfterPersistence();
+              },
+              (error: unknown) => {
+                persistencePending = false;
+                subscriber.error(error);
+              },
+            );
+            return;
+          }
+
+          if (completionSeen && pendingEvents.length > 0) {
+            if (pendingEvents.length >= MAX_PENDING_RESPONSES_TERMINAL_EVENTS) {
+              subscriber.error(new Error('Responses stream exceeded its terminal event limit'));
+              return;
+            }
+            pendingEvents.push(event);
+            return;
+          }
           subscriber.next(event);
         },
-        error: (error: unknown) => subscriber.error(error),
-        complete: () => subscriber.complete(),
+        error: (error: unknown) => {
+          sourceFailed = true;
+          sourceError = error;
+          if (!persistencePending) {
+            subscriber.error(error);
+          }
+        },
+        complete: () => {
+          sourceCompleted = true;
+          finishAfterPersistence();
+        },
       });
 
-      return () => subscription.unsubscribe();
-    });
+      return () => {
+        sourceSubscription?.unsubscribe();
+        pendingEvents.length = 0;
+      };
+    };
+    const cachedStream =
+      stream instanceof FlowControlledSseStream
+        ? new FlowControlledSseStream(stream, subscribe)
+        : new Observable(subscribe);
+    return inheritObservableFlowControl(stream, cachedStream);
   }
 
-  private saveResponsesSession(response: unknown, prepared: PreparedResponsesRequest): void {
+  private async saveResponsesSession(
+    response: unknown,
+    prepared: PreparedResponsesRequest,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (signal?.aborted) {
+      return;
+    }
     const responseRecord = parseResponsesSessionResponse(response);
     if (!responseRecord || (responseRecord.status && responseRecord.status !== 'completed')) {
       return;
@@ -754,24 +952,57 @@ export class OpenAIOperations extends BaseProxyController {
     }
     const storedResponse = { ...responseRecord, id: prepared.responseId };
 
-    this.responsesSessions.saveDelta(prepared.responseId, {
-      inputDelta: prepared.session.inputItems,
-      instructions: prepared.session.instructions,
-      model: prepared.session.model,
-      parent: prepared.parent,
-      response: storedResponse,
-      responseOutput: storedResponse.output,
-      routingSessionId: prepared.routingSessionId,
-      store: prepared.session.store,
-      tools: prepared.session.tools,
-      toolCallItems: prepared.session.toolCallItems,
-    });
+    const mediaPersistence = this.responsesSessions as Partial<
+      Pick<OpenAIResponsesSessionStoreImpl, 'saveDeltaWithMedia'>
+    >;
+    try {
+      if (mediaPersistence.saveDeltaWithMedia) {
+        await mediaPersistence.saveDeltaWithMedia.call(mediaPersistence, prepared.responseId, {
+          identity: prepared.session.identity,
+          historyOwner: prepared.session.historyOwner,
+          inputDelta: prepared.session.inputItems,
+          instructions: prepared.session.instructions,
+          model: prepared.session.model,
+          parent: prepared.parent,
+          response: storedResponse,
+          responseOutput: storedResponse.output,
+          routingSessionId: prepared.routingSessionId,
+          store: prepared.session.store,
+          tools: prepared.session.tools,
+          toolCallItems: prepared.session.toolCallItems,
+        });
+        return;
+      }
+      this.responsesSessions.saveDelta(prepared.responseId, {
+        identity: prepared.session.identity,
+        historyOwner: prepared.session.historyOwner,
+        inputDelta: prepared.session.inputItems,
+        instructions: prepared.session.instructions,
+        model: prepared.session.model,
+        parent: prepared.parent,
+        response: storedResponse,
+        responseOutput: storedResponse.output,
+        routingSessionId: prepared.routingSessionId,
+        store: prepared.session.store,
+        tools: prepared.session.tools,
+        toolCallItems: prepared.session.toolCallItems,
+      });
+    } catch (error) {
+      const persistenceError = new Error('Failed to persist Responses session history', {
+        cause: error,
+      });
+      persistenceError.name = 'ResponsesSessionPersistenceError';
+      this.logger.error(persistenceError.message, error instanceof Error ? error.stack : undefined);
+      throw persistenceError;
+    }
   }
 
   private toResponsesExecutionContext(
     prepared: PreparedResponsesRequest,
   ): OpenAIResponsesExecutionContext {
     return {
+      identity: prepared.session.identity,
+      mediaAdmitted: true,
       requestSessionId: prepared.requestSessionId,
       responseId: prepared.responseId,
       routingSessionId: prepared.routingSessionId,

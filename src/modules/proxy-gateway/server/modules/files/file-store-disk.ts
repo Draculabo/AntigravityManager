@@ -55,7 +55,10 @@ const FileIndexDocumentSchema = z.object({
 export class FileStoreDisk {
   private pendingWrite: Promise<void> = Promise.resolve();
 
-  constructor(private readonly rootDirectory: string) {}
+  constructor(
+    private readonly rootDirectory: string,
+    private readonly propagateIndexWriteErrors = false,
+  ) {}
 
   /**
    * Creates the layout, clears temp staging left by a previous run, and returns
@@ -155,6 +158,9 @@ export class FileStoreDisk {
           } catch (error) {
             await rm(temporaryPath, { force: true }).catch(() => undefined);
             if (attempt === 1) {
+              if (this.propagateIndexWriteErrors) {
+                throw error;
+              }
               logger.warn(`Failed to persist the file store index in ${this.rootDirectory}`, error);
             }
           }

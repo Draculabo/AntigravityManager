@@ -16,6 +16,7 @@ const fixture = vi.hoisted(() => ({
   directory: '',
   apply: vi.fn(async () => {}),
   port: 0,
+  listenAddress: '',
   policy: new Map<string, unknown>(),
 }));
 vi.mock('@/modules/cloud-account/persistence/cloud-account-settings-store', () => ({
@@ -59,6 +60,7 @@ vi.mock('@/server/main', () => ({
     port: fixture.port,
     base_url: '',
     active_accounts: 0,
+    listen_address: fixture.listenAddress,
   }),
   bootstrapNestServer: vi.fn(),
   stopNestServer: vi.fn(),
@@ -74,6 +76,7 @@ beforeEach(async () => {
   vi.resetModules();
   fixture.apply.mockReset().mockResolvedValue(undefined);
   fixture.port = 0;
+  fixture.listenAddress = '';
   fixture.policy.clear();
   fixture.directory = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-service-config-'));
   endpoint =
@@ -194,6 +197,64 @@ describe('service configuration', () => {
       { alias: 'codex-auto-review', target: 'custom-model', enabled: false },
     ]);
   });
+  it('allows an unrelated save over historical ambiguous Claude aliases', async () => {
+    const config = await readDisk();
+    await fs.writeFile(
+      legacy(),
+      JSON.stringify({
+        ...config,
+        proxy: {
+          ...config.proxy,
+          anthropic_mapping: {},
+          custom_mapping: {},
+          model_aliases: [
+            { alias: 'claude-sonnet-4.5', target: 'gemini-3.7-flash', enabled: true },
+            { alias: 'anthropic/claude-sonnet-4-5', target: 'gemini-3.5-flash', enabled: true },
+          ],
+        },
+      }),
+    );
+    const { serviceConfigService } = await import('@/modules/config/service-config.service');
+
+    await expect(serviceConfigService.update({ proxy: { port: 8051 } })).resolves.toMatchObject({
+      snapshot: { proxy: { port: 8051 } },
+    });
+    expect((await readDisk()).proxy.model_aliases).toHaveLength(2);
+  });
+
+  it('rejects a model alias edit that introduces a Claude equivalence conflict', async () => {
+    const config = await readDisk();
+    await fs.writeFile(
+      legacy(),
+      JSON.stringify({
+        ...config,
+        proxy: {
+          ...config.proxy,
+          anthropic_mapping: {},
+          custom_mapping: {},
+          model_aliases: [
+            { alias: 'claude-sonnet-4.5', target: 'gemini-3.7-flash', enabled: true },
+            { alias: 'anthropic/claude-sonnet-4-5', target: 'gemini-3.5-flash', enabled: true },
+          ],
+        },
+      }),
+    );
+    const before = await fs.readFile(legacy(), 'utf8');
+    const { serviceConfigService } = await import('@/modules/config/service-config.service');
+
+    await expect(
+      serviceConfigService.update({
+        proxy: {
+          model_aliases: [
+            { alias: 'claude-sonnet-4.5', target: 'gemini-3.7-flash', enabled: true },
+            { alias: 'claude.sonnet.4-5', target: 'gemini-3.5-flash', enabled: true },
+          ],
+        },
+      }),
+    ).rejects.toThrow('Ambiguous Claude-normalized model aliases');
+    expect(await fs.readFile(legacy(), 'utf8')).toBe(before);
+    expect(fixture.apply).not.toHaveBeenCalled();
+  });
   it('reads legacy configuration through real RPC without secrets and applies patches only in the service', async () => {
     const { client } = await connected();
     const { serviceConfigService } = await import('@/modules/config/service-config.service');
@@ -279,6 +340,30 @@ describe('service configuration', () => {
     );
   });
 
+  it('marks a LAN toggle as restart-required while the gateway is running', async () => {
+    const { client } = await connected();
+    fixture.port = 8045;
+    fixture.listenAddress = '::';
+    await client.writeServiceSecret({ name: 'api-key', value: 'fixture-key-private' });
+    await client.updateServiceConfig({ proxy: { network: { lan_access: true } } });
+    const result = await client.updateServiceConfig({
+      proxy: { network: { lan_access: false } },
+    });
+    expect(result.state).toBe('restart-required');
+    expect((await readDisk()).proxy.network.lan_access).toBe(false);
+  });
+
+  it('does not clear the key while the running listener is still external', async () => {
+    const { client } = await connected();
+    fixture.port = 8045;
+    fixture.listenAddress = '0.0.0.0';
+    await client.writeServiceSecret({ name: 'api-key', value: 'fixture-key-private' });
+    await expect(client.writeServiceSecret({ name: 'api-key', value: null })).rejects.toThrow(
+      'Settings are unavailable right now',
+    );
+    expect((await readDisk()).proxy.api_key).toBe('fixture-key-private');
+  });
+
   it('rejects malformed and oversized inputs before persistence and keeps partial patches partial', async () => {
     const { client } = await connected();
     const previous = await fs.readFile(legacy(), 'utf8');
@@ -344,6 +429,88 @@ describe('service configuration', () => {
       client.updateServiceConfig({ proxy: { max_wait_seconds: 77 } }),
     ]);
     expect((await readDisk()).proxy).toMatchObject({ request_timeout: 111, max_wait_seconds: 77 });
+  });
+  it('rejects a stale audit revision inside the serialized owner without overwriting the winner', async () => {
+    const { client } = await connected();
+    const snapshot = await client.readServiceConfig();
+    expect(snapshot.auditRevision).toMatch(/^[a-f0-9]{64}$/u);
+    const outcomes = await Promise.allSettled([
+      client.updateServiceConfig({
+        expectedAuditRevision: snapshot.auditRevision,
+        proxy: { traffic_audit: { max_disk_mib: 2048 } },
+      }),
+      client.updateServiceConfig({
+        expectedAuditRevision: snapshot.auditRevision,
+        proxy: { traffic_audit: { max_rows: 120000 } },
+      }),
+    ]);
+    expect(outcomes.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const rejected = outcomes.find((result) => result.status === 'rejected');
+    expect(rejected?.status === 'rejected' ? rejected.reason : null).toMatchObject({
+      data: { configCode: 'conflict' },
+    });
+    const after = await client.readServiceConfig();
+    expect(after.auditRevision).not.toBe(snapshot.auditRevision);
+    await expect(
+      client.updateServiceConfig({ proxy: { traffic_audit: { enabled: false } } }),
+    ).rejects.toMatchObject({ data: { configCode: 'conflict' } });
+    expect(JSON.stringify(await readDisk())).not.toContain('expectedAuditRevision');
+    // An unrelated update does not invalidate the audit editor's revision.
+    await client.updateServiceConfig({ proxy: { request_timeout: 222 } });
+    expect((await client.readServiceConfig()).auditRevision).toBe(after.auditRevision);
+    expect(
+      (
+        await client.updateServiceConfig({
+          expectedAuditRevision: after.auditRevision,
+          proxy: { traffic_audit: { max_rows: 140000 } },
+        })
+      ).state,
+    ).toBe('applied');
+  });
+
+  it('does not apply or advance the audit revision after persistence fails, and permits a deliberate retry', async () => {
+    const { client } = await connected();
+    const { ConfigManager } = await import('@/modules/config/ipc/manager');
+    const before = await client.readServiceConfig();
+    const disk = await readDisk();
+    const save = vi
+      .spyOn(ConfigManager, 'saveConfig')
+      .mockRejectedValueOnce(new Error('synthetic disk refusal'));
+    fixture.apply.mockClear();
+    const patch = {
+      expectedAuditRevision: before.auditRevision,
+      proxy: { traffic_audit: { max_rows: 2000 } },
+    };
+    try {
+      await expect(client.updateServiceConfig(patch)).rejects.toThrow();
+      expect(fixture.apply).not.toHaveBeenCalled();
+      expect(await readDisk()).toEqual(disk);
+      expect((await client.readServiceConfig()).auditRevision).toBe(before.auditRevision);
+      expect((await client.updateServiceConfig(patch)).state).toBe('applied');
+      expect((await readDisk()).proxy.traffic_audit.max_rows).toBe(2000);
+    } finally {
+      save.mockRestore();
+    }
+  });
+
+  it('merges nested settings patches without dropping sibling fields', async () => {
+    const { client } = await connected();
+    await client.updateServiceConfig({
+      proxy: {
+        global_system_prompt: { enabled: true, content: 'keep this content' },
+        experimental: { allow_local_video_paths: true },
+      },
+    });
+
+    await client.updateServiceConfig({
+      proxy: { global_system_prompt: { enabled: false } },
+    });
+
+    expect((await readDisk()).proxy.global_system_prompt).toEqual({
+      enabled: false,
+      content: 'keep this content',
+    });
+    expect((await readDisk()).proxy.experimental.allow_local_video_paths).toBe(true);
   });
 
   it('keeps desktop preferences writable offline without owner fallback or legacy rewrites', async () => {

@@ -1,15 +1,27 @@
+import { mergeQuotaWindows } from '../utils/quota-windows';
 import { v4 as uuidv4 } from 'uuid';
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import { isEqual } from 'lodash-es';
+import {
+  CloudAccountRepo,
+  CloudAccountEmailConflictError,
+  type CloudAccountWriteGuard,
+} from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountRefreshService } from '@/modules/cloud-account/services/CloudAccountRefreshService';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { logger } from '@/shared/logging/logger';
 import { prepareDesktopIdentityStorage } from '@/modules/identity-profile/public';
 import { GoogleLoginOperation, GoogleLoginStepError } from './google-login-operation';
+import { captureTokenWriteGuard } from './cloud-account-refresh-writeback';
+import { CloudAccountRefreshContextChangedError } from './cloud-account-refresh-context';
+import { CloudAccountQuotaObservation } from './cloud-account-quota-observation';
 
 export class DuplicateGoogleAccountError extends GoogleLoginStepError {
-  constructor() {
-    super('duplicate-check', 'not-attempted', 'duplicate-account', undefined);
+  constructor(
+    stage: 'duplicate-check' | 'account-persist' = 'duplicate-check',
+    cause?: CloudAccountEmailConflictError,
+  ) {
+    super(stage, 'not-attempted', 'duplicate-account', cause);
     this.message = 'Google account already exists';
     this.name = 'DuplicateGoogleAccountError';
   }
@@ -64,36 +76,78 @@ export async function enrollGoogleAccount(
   }
   await operation.run('identity-preparation', prepareDesktopIdentityStorage, 'storage-failed');
   operation.accountCommit = 'uncertain';
-  await operation.run(
+  const storedAccount = await operation.run(
     'account-persist',
-    () => CloudAccountRepo.addAccount(account),
+    async () => {
+      try {
+        return await CloudAccountRepo.insertAccount(account);
+      } catch (error) {
+        if (error instanceof CloudAccountEmailConflictError) {
+          operation.accountCommit = 'not-attempted';
+          throw new DuplicateGoogleAccountError('account-persist', error);
+        }
+        throw error;
+      }
+    },
     'storage-failed',
   );
   operation.accountCommit = 'confirmed';
-  await operation.run(
-    'account-finalize',
-    () => CloudAccountRefreshService.clearFailureState(account.id),
-    'storage-failed',
-  );
-
+  const observation = new CloudAccountQuotaObservation(storedAccount.id);
   try {
-    const quota = await GoogleAPIService.fetchQuota(account.token.access_token);
-    try {
-      const aiCredits = await GoogleAPIService.fetchAICredits(
-        account.token.access_token,
-        undefined,
-      );
-      if (aiCredits) {
-        quota.ai_credits = aiCredits;
-      }
-    } catch {
-      logger.warn('Failed to fetch initial AI credits');
-    }
-    account.quota = quota;
-    await CloudAccountRepo.updateQuota(account.id, quota);
-  } catch {
-    logger.warn('Failed to fetch initial quota');
+    const tokenGuard = captureTokenWriteGuard(storedAccount);
+    const guard: CloudAccountWriteGuard = (current) => {
+      observation.assertCurrent();
+      tokenGuard(current);
+    };
+    const initialHealth = structuredClone(storedAccount.health);
+    const assertCurrent = () => CloudAccountRepo.assertCurrentAccount(storedAccount.id, guard);
+    await operation.run(
+      'account-finalize',
+      async () => {
+        await CloudAccountRefreshService.clearFailureState(storedAccount.id, (current) => {
+          guard(current);
+          if (!isEqual(current?.health, initialHealth)) {
+            throw new CloudAccountRefreshContextChangedError(storedAccount.id);
+          }
+        });
+        assertCurrent();
+        try {
+          const quota = await GoogleAPIService.fetchQuota(storedAccount.token.access_token);
+          assertCurrent();
+          observation.accept();
+          try {
+            const aiCredits = await GoogleAPIService.fetchAICredits(
+              storedAccount.token.access_token,
+              undefined,
+            );
+            assertCurrent();
+            if (aiCredits) {
+              quota.ai_credits = aiCredits;
+            }
+          } catch (error) {
+            if (error instanceof CloudAccountRefreshContextChangedError) {
+              throw error;
+            }
+            assertCurrent();
+            logger.warn('Failed to fetch initial AI credits');
+          }
+          const reconciled = mergeQuotaWindows(storedAccount.quota, quota);
+          await CloudAccountRepo.updateQuota(storedAccount.id, reconciled, guard);
+          assertCurrent();
+          storedAccount.quota = reconciled;
+        } catch (error) {
+          if (error instanceof CloudAccountRefreshContextChangedError) {
+            throw error;
+          }
+          assertCurrent();
+          observation.accept(error);
+          logger.warn('Failed to fetch initial quota');
+        }
+      },
+      'storage-failed',
+    );
+    return storedAccount;
+  } finally {
+    observation.close();
   }
-
-  return account;
 }

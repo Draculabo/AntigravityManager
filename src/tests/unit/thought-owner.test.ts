@@ -37,6 +37,9 @@ const record: ThoughtRecord = {
   thought: '🙂正文',
   visible: 'visible',
   signature: 'signature',
+  partSignatures: [
+    { kind: 'thought', position: 0, start: 0, end: '🙂正文'.length, signature: 'signature' },
+  ],
   toolIds: ['tool-id'],
   toolNames: ['tool-name'],
   oversized: false,
@@ -66,11 +69,17 @@ const summaries = [
 ];
 const source = {
   listSessions: vi.fn<ThoughtStoreService['listSessions']>(async () => sessions),
-  listRecords: vi.fn<ThoughtStoreService['listRecords']>(async () => summaries),
+  listRecordPage: vi.fn<ThoughtStoreService['listRecordPage']>(async () => ({
+    version: 1,
+    records: summaries,
+    complete: true,
+    nextCursor: null,
+    throughId: 1,
+  })),
   getRecord: vi.fn<ThoughtStoreService['getRecord']>(async () => record),
   stats: vi.fn(async () => stats),
-  deleteSession: vi.fn(async () => 1),
-  clear: vi.fn(async () => 1),
+  deleteSession: vi.fn(async () => ({ sessions: 1, records: 700 })),
+  clear: vi.fn(async () => ({ sessions: 1, records: 700 })),
   repair: vi.fn(async () => ({ repaired: true, backupPath: 'owner/backup.db' })),
 };
 const audit = { recordAdminOperation: vi.fn() };
@@ -131,6 +140,29 @@ async function remote() {
 }
 
 describe('selected Thought Store and cURL owners', () => {
+  it('rejects non-progressing or different-window page replies across the selected core endpoint', async () => {
+    const client = await remote();
+    source.listRecordPage.mockResolvedValueOnce({
+      version: 1,
+      records: summaries,
+      complete: false,
+      nextCursor: 1,
+      throughId: 3,
+    });
+    await expect(
+      client.thought.records({ sessionKey, afterId: 1, throughId: 3, limit: 1 }),
+    ).rejects.toThrow('AI reasoning history is unavailable');
+    source.listRecordPage.mockResolvedValueOnce({
+      version: 1,
+      records: [],
+      complete: true,
+      nextCursor: null,
+      throughId: 4,
+    });
+    await expect(
+      client.thought.records({ sessionKey, afterId: 1, throughId: 3, limit: 1 }),
+    ).rejects.toThrow('AI reasoning history is unavailable');
+  });
   it('routes summaries and maintenance through the private endpoint and records admin events in the owner', async () => {
     await remote();
     const embedded = vi.spyOn(thoughtOwner, 'stats');
@@ -138,10 +170,16 @@ describe('selected Thought Store and cURL owners', () => {
     expect(
       await selected.sessions({ limit: 50, offset: 0, search: 'session', model: 'gemini' }),
     ).toEqual(sessions);
-    expect(await selected.records({ sessionKey })).toEqual(summaries);
+    expect(await selected.records({ sessionKey })).toEqual({
+      version: 1,
+      records: summaries,
+      complete: true,
+      nextCursor: null,
+      throughId: 1,
+    });
     expect(await selected.stats()).toEqual(stats);
-    expect(await selected.delete({ sessionKey })).toEqual({ affected: 1 });
-    expect(await selected.clear()).toEqual({ affected: 1 });
+    expect(await selected.delete({ sessionKey })).toEqual({ sessions: 1, records: 700 });
+    expect(await selected.clear()).toEqual({ sessions: 1, records: 700 });
     expect(await selected.repair()).toEqual({ repaired: true, backupPath: 'owner/backup.db' });
     expect(audit.recordAdminOperation.mock.calls).toEqual([
       ['delete_thought_session', 1],
@@ -189,6 +227,33 @@ describe('selected Thought Store and cURL owners', () => {
     source.getRecord.mockResolvedValue(record);
   }, 30000);
 
+  it('transfers per-part signatures above the RPC metadata cap through bounded content chunks', async () => {
+    const large: ThoughtRecord = {
+      ...record,
+      partSignatures: [
+        {
+          kind: 'thought',
+          position: 0,
+          start: 0,
+          end: record.thought.length,
+          signature: 'opaque🙂'.repeat(160000),
+        },
+      ],
+    };
+    source.getRecord.mockResolvedValue(large);
+    const client = await remote();
+    const opened = await client.thought.openRecord({ sessionKey, id: 1 });
+    expect(opened?.metadata).not.toHaveProperty('partSignatures');
+    expect(opened?.partSignaturesBytes).toBeGreaterThan(900 * 1024);
+    if (opened) {
+      const { epoch, capabilityId, kind, resourceId } = opened.transfer;
+      await client.thought.closeContent({ epoch, capabilityId, kind, resourceId });
+    }
+    selectThoughtAdapter({ mode: 'standalone-core', client });
+    expect(await readSelectedThoughtRecord({ sessionKey, id: 1 })).toEqual(large);
+    source.getRecord.mockResolvedValue(record);
+  });
+
   it('preserves missing records and null versus empty signatures', async () => {
     await remote();
     source.getRecord.mockResolvedValueOnce(null);
@@ -200,6 +265,84 @@ describe('selected Thought Store and cURL owners', () => {
       visible: '',
       signature: '',
     });
+  });
+  it('revokes a deleted session content handle without revoking a longer neighboring session key', async () => {
+    const first = await owner.openRecord({ sessionKey, id: 1 });
+    const other = await owner.openRecord({ sessionKey: `${sessionKey}/child`, id: 1 });
+    if (!first || !other) {
+      throw new Error('Expected retained content fixtures');
+    }
+    await owner.delete({ sessionKey });
+    const read = (transfer: typeof first.transfer) =>
+      owner.readContent({
+        epoch: transfer.epoch,
+        capabilityId: transfer.capabilityId,
+        kind: transfer.kind,
+        resourceId: transfer.resourceId,
+        cursor: 0,
+      });
+    await expect(read(first.transfer)).rejects.toThrow('AI reasoning history is unavailable');
+    expect((await read(other.transfer)).complete).toBe(true);
+  });
+  it('keeps old content revoked even when a clear cannot confirm deletion', async () => {
+    const opened = await owner.openRecord({ sessionKey, id: 1 });
+    if (!opened) {
+      throw new Error('Expected retained content fixture');
+    }
+    source.clear.mockRejectedValueOnce(new Error('synthetic delete failure'));
+    await expect(owner.clear()).rejects.toThrow('AI reasoning history is unavailable');
+    await expect(
+      owner.readContent({
+        epoch: opened.transfer.epoch,
+        capabilityId: opened.transfer.capabilityId,
+        kind: opened.transfer.kind,
+        resourceId: opened.transfer.resourceId,
+        cursor: 0,
+      }),
+    ).rejects.toThrow('AI reasoning history is unavailable');
+  });
+
+  it('rejects an old record reply invalidated by the service while preserving a neighboring session', async () => {
+    let invalidate: ((key?: string) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const scoped = createThoughtOwner(
+      {
+        ...source,
+        subscribeInvalidation: (listener) => {
+          invalidate = listener;
+          return unsubscribe;
+        },
+      },
+      audit,
+    );
+    let started!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    source.getRecord.mockImplementationOnce(async () => {
+      started();
+      await gate;
+      return record;
+    });
+    try {
+      const opening = scoped.openRecord({ sessionKey, id: 1 });
+      const rejected = expect(opening).rejects.toThrow('AI reasoning history is unavailable');
+      await reading;
+      invalidate?.(sessionKey);
+      release?.();
+      await rejected;
+      const neighbor = await scoped.openRecord({ sessionKey: `${sessionKey}/child`, id: 1 });
+      expect(neighbor).not.toBeNull();
+      expect(await scoped.openRecord({ sessionKey, id: 1 })).not.toBeNull();
+    } finally {
+      release?.();
+      scoped.closeAdmission();
+      await scoped.drain();
+    }
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
   it('does not expose cURL capabilities or commands to the renderer and allows shell expansion above 8 MiB', async () => {

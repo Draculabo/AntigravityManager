@@ -1,5 +1,12 @@
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
-import type { CloudAccount, CloudAccountHealth } from '@/modules/cloud-account/types';
+import {
+  CloudAccountRepo,
+  type CloudAccountWriteGuard,
+} from '@/modules/cloud-account/persistence/cloudHandler';
+import type {
+  CloudAccount,
+  CloudAccountHealth,
+  CloudAccountOAuthLeaseContext,
+} from '@/modules/cloud-account/types';
 import { isServiceDisabledReason } from '@/modules/cloud-account/utils/account-status';
 
 type HealthMutation = (
@@ -7,6 +14,8 @@ type HealthMutation = (
 ) => CloudAccountHealth | undefined;
 
 interface HealthMutationOptions {
+  /** Synchronous ownership check against the final store read, before any write. */
+  assertAccount?: (account: CloudAccount | undefined) => void;
   afterCommit?: () => Promise<void>;
   rollbackOnAfterCommitFailure?: boolean;
   expectedToken?: CloudAccount['token'];
@@ -30,8 +39,12 @@ export class CloudAccountHealthService {
   >();
 
   static async getHealth(accountId: string): Promise<CloudAccountHealth | undefined> {
+    return (await this.getAccount(accountId))?.health;
+  }
+
+  static async getAccount(accountId: string): Promise<CloudAccount | undefined> {
     await this.mutationLocks.get(accountId)?.catch(() => undefined);
-    return (await CloudAccountRepo.getAccount(accountId))?.health;
+    return CloudAccountRepo.getAccount(accountId);
   }
 
   static async mutateHealth(
@@ -63,6 +76,7 @@ export class CloudAccountHealthService {
     options: HealthMutationOptions,
   ): Promise<CloudAccountHealth | undefined> {
     let account = await CloudAccountRepo.getAccount(accountId);
+    options.assertAccount?.(account);
     if (!account) {
       throw new Error(`Cannot update health for missing account ${accountId}`);
     }
@@ -88,12 +102,14 @@ export class CloudAccountHealthService {
             account.token,
             previousHealth,
             nextHealth,
+            ...(options.assertAccount ? [options.assertAccount] : []),
           )
         ) {
           saved = true;
           break;
         }
         const latest = await CloudAccountRepo.getAccount(accountId);
+        options.assertAccount?.(latest);
         if (!latest) {
           throw new Error('Account credentials changed during health update');
         }
@@ -104,7 +120,11 @@ export class CloudAccountHealthService {
       }
     } else {
       nextHealth = normalizeHealth(mutation(previousHealth));
-      await CloudAccountRepo.updateHealth(accountId, nextHealth);
+      await CloudAccountRepo.updateHealth(
+        accountId,
+        nextHealth,
+        ...(options.assertAccount ? [options.assertAccount] : []),
+      );
     }
 
     try {
@@ -112,9 +132,17 @@ export class CloudAccountHealthService {
     } catch (error) {
       if (options.rollbackOnAfterCommitFailure) {
         try {
-          await CloudAccountRepo.updateHealth(accountId, previousHealth);
+          await CloudAccountRepo.updateHealth(
+            accountId,
+            previousHealth,
+            ...(options.assertAccount ? [options.assertAccount] : []),
+          );
         } catch (rollbackError) {
-          throw new AggregateError([error, rollbackError], 'Health update and rollback failed');
+          throw new AggregateError(
+            [error, rollbackError],
+            'Account health update committed but rollback failed',
+            { cause: error },
+          );
         }
       }
       throw error;
@@ -124,9 +152,12 @@ export class CloudAccountHealthService {
   }
 }
 
-export async function evictAccountFromActiveLeaseCache(accountId: string): Promise<void> {
+export async function evictAccountFromActiveLeaseCache(
+  accountId: string,
+  context: CloudAccountOAuthLeaseContext,
+): Promise<void> {
   const { evictNestServerAccountLeaseAccount } = await import('@/server/main');
-  evictNestServerAccountLeaseAccount(accountId);
+  evictNestServerAccountLeaseAccount(accountId, context);
 }
 
 export async function quarantineAccountInActiveLeaseCache(accountId: string): Promise<void> {
@@ -195,9 +226,10 @@ export async function clearServiceDisabledManually(accountId: string): Promise<v
 export async function syncAccountOAuthHealthToActiveLeaseCache(
   accountId: string,
   oauthHealth: CloudAccountHealth['oauth'],
+  context: CloudAccountOAuthLeaseContext,
 ): Promise<void> {
   const { updateNestServerAccountLeaseOAuthHealth } = await import('@/server/main');
-  updateNestServerAccountLeaseOAuthHealth(accountId, oauthHealth);
+  updateNestServerAccountLeaseOAuthHealth(accountId, oauthHealth, context);
 }
 
 /**
@@ -206,6 +238,7 @@ export async function syncAccountOAuthHealthToActiveLeaseCache(
  */
 export async function clearValidationHealthAfterSuccessfulProbe(
   account: CloudAccount,
+  guard?: CloudAccountWriteGuard,
 ): Promise<void> {
   if (!account.health?.validation) {
     return;
@@ -227,8 +260,12 @@ export async function clearValidationHealthAfterSuccessfulProbe(
       return Object.keys(next).length > 0 ? next : undefined;
     },
     {
+      assertAccount: guard,
       afterCommit: async () => {
         const { reloadNestServerAccountLeaseCache } = await import('@/server/main');
+        if (guard) {
+          guard(await CloudAccountRepo.getAccount(account.id));
+        }
         await reloadNestServerAccountLeaseCache();
       },
       rollbackOnAfterCommitFailure: true,

@@ -7,6 +7,91 @@ import {
 } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 
 describe('toOpenAIUsage', () => {
+  const candidatesTokensDetails = [
+    { modality: 'THINKING', tokenCount: 4 },
+    { modality: 'reasoning', tokenCount: 3 },
+    { modality: 'TEXT', tokenCount: 5 },
+  ];
+
+  it('adds modality reasoning details without changing legacy totals', () => {
+    const usage = toOpenAIUsageFromGeminiUsageMetadata({
+      promptTokenCount: 20,
+      candidatesTokenCount: 12,
+      totalTokenCount: 32,
+      candidatesTokensDetails,
+    });
+    expect(usage).toEqual({
+      prompt_tokens: 20,
+      completion_tokens: 12,
+      total_tokens: 32,
+      prompt_tokens_details: undefined,
+      completion_tokens_details: { reasoning_tokens: 7 },
+    });
+    expect(toOpenAIResponsesUsage(usage)).toEqual({
+      input_tokens: 20,
+      output_tokens: 12,
+      total_tokens: 32,
+      input_tokens_details: undefined,
+      output_tokens_details: { reasoning_tokens: 7 },
+    });
+  });
+
+  it.each([
+    { total_thought_tokens: 2, totalThoughtTokens: 3, thoughtsTokenCount: 4 },
+    { totalThoughtTokens: 2, thoughtsTokenCount: 4 },
+    { thoughtsTokenCount: 2 },
+  ])('keeps explicit reasoning totals authoritative (%j)', (explicit) => {
+    expect(
+      toOpenAIUsageFromGeminiUsageMetadata({
+        ...explicit,
+        promptTokenCount: 20,
+        candidatesTokenCount: 12,
+        totalTokenCount: 32,
+        candidatesTokensDetails,
+      }),
+    ).toEqual({
+      prompt_tokens: 20,
+      completion_tokens: 12,
+      total_tokens: 32,
+      prompt_tokens_details: undefined,
+      completion_tokens_details: { reasoning_tokens: 2 },
+    });
+  });
+
+  it('does not replace an explicit zero with modality estimates', () => {
+    expect(
+      toOpenAIUsageFromGeminiUsageMetadata({
+        thoughtsTokenCount: 0,
+        candidatesTokenCount: 12,
+        candidatesTokensDetails,
+      }),
+    ).toEqual({
+      prompt_tokens: 0,
+      completion_tokens: 12,
+      total_tokens: 12,
+      prompt_tokens_details: undefined,
+      completion_tokens_details: undefined,
+    });
+  });
+
+  it('uses modality counts in the existing Interactions output accounting', () => {
+    expect(
+      toOpenAIUsageFromGeminiUsageMetadata({
+        total_input_tokens: 20,
+        total_output_tokens: 5,
+        total_tool_use_tokens: 2,
+        total_tokens: 34,
+        candidatesTokensDetails,
+      }),
+    ).toEqual({
+      prompt_tokens: 20,
+      completion_tokens: 14,
+      total_tokens: 34,
+      prompt_tokens_details: undefined,
+      completion_tokens_details: { reasoning_tokens: 7 },
+    });
+  });
+
   it('preserves totals while exposing cache and reasoning token details', () => {
     expect(
       toOpenAIUsage({

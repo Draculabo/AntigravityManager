@@ -5,6 +5,36 @@ const ru = {
     'switch-write-uncertain':
       'Аккаунт в Antigravity мог измениться. Проверьте аккаунт в Antigravity перед повторной попыткой.',
   },
+  'account-evidence': {
+    'subscription-unavailable':
+      'Не удалось обновить подписку; ранее подтверждённый уровень отсутствует.',
+    'observed-at': 'Последнее наблюдение: {{time}}',
+    'checked-at': 'Последняя проверка: {{time}}',
+    'unknown-time': 'Не записано',
+    'invalid-data': 'Некорректные данные квоты; обновите для проверки.',
+    'reset-unknown': 'Время сброса неизвестно.',
+    'exhausted-unknown-reset': 'Квота окна исчерпана; время сброса неизвестно.',
+    'recheck-required': 'Исчерпанное окно завершилось; обновите для подтверждения восстановления.',
+    'window-ended': 'Окно завершилось; остаток ещё не подтверждён.',
+    'weekly-exhausted':
+      'Недельное окно исчерпано; остаток другого окна не снимает это ограничение.',
+    'window-exhausted': 'Квота окна исчерпана.',
+    'group-restrictions': 'Ограничения групп квот',
+    'group-limited':
+      'Окно исчерпано. Самый поздний известный сброс: {{time}}; восстановление ещё нужно подтвердить.',
+    'subscription-failed':
+      'Обновление подписки не удалось или было неполным; показана предыдущая запись.',
+    'subscription-unrecognized':
+      'Уровень подписки не распознан; используется базовый уровень Free.',
+    'subscription-missing': 'Данные подписки не получены; используется базовый уровень Free.',
+    'subscription-observed': 'Данные подписки получены.',
+    'subscription-unknown': 'Источник подписки не записан.',
+    'source-paid': 'Источник: платная подписка',
+    'source-current': 'Источник: текущая подписка',
+    'source-free': 'Источник: явно указанный бесплатный уровень',
+    'source-unknown': 'Источник: неизвестен',
+    'small-positive': 'Остался небольшой положительный баланс; окно не исчерпано.',
+  },
   'agent-tools': {
     title: 'Подключение инструментов программирования',
     description: 'Выберите инструмент для использования моделей через Antigravity Manager.',
@@ -69,7 +99,6 @@ const ru = {
       'review-route-disabled':
         'Маршрут проверки Codex отключён. Включите его в настройках маршрутизации моделей.',
     },
-
     'address-help': 'Оставьте текущий адрес Manager, если сервис не работает на другом компьютере.',
     'invalid-address':
       'Укажите адрес Manager с http:// или https://, без данных входа и дополнительных параметров.',
@@ -120,7 +149,6 @@ const ru = {
     unknown: 'Неизвестно',
     notAvailable: 'Н/Д',
     openMenu: 'Открыть меню',
-
     'dismiss-notification': 'Закрыть уведомление',
     'reading-settings': 'Читаем ваши настройки…',
   },
@@ -431,15 +459,37 @@ const ru = {
       groups: 'Группы квот для прогрева',
       group: { claude: 'Группы квот Claude', gemini: 'Группы квот Gemini' },
     },
+    thinkingBudget: {
+      title: 'Бюджет размышлений',
+      description:
+        'Выберите, кто определяет объём размышлений модели, и бюджет для каждого уровня.',
+      controlSource: 'Источник управления',
+      controlSourceHint:
+        'Шлюз применяет указанные ниже бюджеты. Клиент передаёт бюджет или уровень усилий из запроса.',
+      gatewayHint:
+        'Бюджет -1 позволяет модели выбрать самостоятельно. 0 не является допустимым бюджетом шлюза; оставьте -1, чтобы сохранить адаптивные размышления.',
+      clientHint:
+        'Запрос сам определяет бюджет размышлений или уровень усилий. Указанные ниже бюджеты шлюза не применяются.',
+      adaptiveHint: '-1 — выбор модели',
+      invalid: 'Введите -1 или целое число от 0 до 131072.',
+      'configuration-invalid':
+        'Эти значения бюджета размышлений отклонены. Введите -1 или целое число от 0 до 131072.',
+      source: { gateway: 'Шлюз', client: 'Клиент' },
+      family: { flash: 'Gemini Flash', pro: 'Gemini Pro', claude: 'Claude' },
+      level: {
+        low: 'Низкий',
+        medium: 'Средний',
+        high: 'Высокий',
+        tiered: 'Уровневый',
+        default: 'По умолчанию',
+      },
+    },
     title: 'Настройки',
     description: 'Управление настройками приложения.',
     general: 'Общие',
     connection: 'Подключение',
     models: 'Модели',
-    appearance: {
-      title: 'Внешний вид',
-      description: 'Настройте внешний вид Antigravity Manager.',
-    },
+    appearance: { title: 'Внешний вид', description: 'Настройте внешний вид Antigravity Manager.' },
     darkMode: 'Темная тема',
     darkModeDescription: 'Включить темную тему для комфортной работы ночью.',
     language: {
@@ -453,10 +503,7 @@ const ru = {
       french: 'Французский',
       portuguese: 'Португальский (Бразилия)',
     },
-    about: {
-      title: 'О программе',
-      description: 'Информация о приложении.',
-    },
+    about: { title: 'О программе', description: 'Информация о приложении.' },
     cache: {
       title: 'Кэш Antigravity',
       description:
@@ -474,7 +521,6 @@ const ru = {
       clearedDescription: 'Из каталогов кэша Antigravity удалено {{size}} МБ.',
       failedTitle: 'Не удалось очистить кэш',
       notFoundTitle: 'Кэш Antigravity не найден',
-
       'paths-failed': 'Не удалось найти папки кэша',
       'paths-retry-description': 'Попробуйте ещё раз перед очисткой кэша.',
       'partial-title': 'Часть кэша не удалось очистить',
@@ -486,13 +532,8 @@ const ru = {
     license: 'Лицензия',
     openLogDir: 'Открыть',
     toast: {
-      saved: {
-        title: 'Настройки сохранены',
-        description: 'Конфигурация обновлена.',
-      },
-      saveFailed: {
-        title: 'Ошибка сохранения настроек',
-      },
+      saved: { title: 'Настройки сохранены', description: 'Конфигурация обновлена.' },
+      saveFailed: { title: 'Ошибка сохранения настроек' },
     },
     account: {
       'client-setup': 'Расположение и запуск клиентов',
@@ -702,30 +743,12 @@ const ru = {
     save: 'Сохранить настройки',
   },
   toast: {
-    backupSuccess: {
-      title: 'Успешно',
-      description: 'Бэкап аккаунта создан.',
-    },
-    backupError: {
-      title: 'Ошибка',
-      description: 'Не удалось создать бэкап: {{error}}',
-    },
-    switchSuccess: {
-      title: 'Успешно',
-      description: 'Аккаунт переключен.',
-    },
-    switchError: {
-      title: 'Ошибка',
-      description: 'Не удалось переключить аккаунт: {{error}}',
-    },
-    deleteSuccess: {
-      title: 'Успешно',
-      description: 'Бэкап удален.',
-    },
-    deleteError: {
-      title: 'Ошибка',
-      description: 'Не удалось удалить бэкап: {{error}}',
-    },
+    backupSuccess: { title: 'Успешно', description: 'Бэкап аккаунта создан.' },
+    backupError: { title: 'Ошибка', description: 'Не удалось создать бэкап: {{error}}' },
+    switchSuccess: { title: 'Успешно', description: 'Аккаунт переключен.' },
+    switchError: { title: 'Ошибка', description: 'Не удалось переключить аккаунт: {{error}}' },
+    deleteSuccess: { title: 'Успешно', description: 'Бэкап удален.' },
+    deleteError: { title: 'Ошибка', description: 'Не удалось удалить бэкап: {{error}}' },
   },
   cloud: {
     'total-accounts': 'Всего аккаунтов',
@@ -844,6 +867,13 @@ const ru = {
       resetUnknown: 'Неизвестно',
       detailedQuota: 'Подробная квота',
       quotaGroupUnknown: 'Группа квот',
+      cycleUsage: 'Использование в текущем цикле',
+      cycleUsageLoading: 'Загрузка сохранённого использования…',
+      cycleUsageQueryFailed: 'Не удалось получить использование для {{group}}',
+      cycleUsageTokens: '{{count}} токенов',
+      cycleUsageLocal: 'локальные сохранённые записи',
+      cycleUsageRequests: 'учтено: {{count}}',
+      cycleUsageIncomplete: 'неполных записей: {{ambiguous}}',
       gemini3Ready: 'Gemini 3 готов',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',
@@ -856,6 +886,9 @@ const ru = {
       'proxy-replace-placeholder': 'Введите новый адрес прокси',
       'proxy-remove': 'Удалить прокси',
       'proxy-save-failed': 'Не удалось сохранить прокси',
+      'proxy-routing-save-failed': 'Не удалось сохранить настройки маршрутизации прокси',
+      'proxy-priority': 'Приоритет прокси (1–100)',
+      'proxy-enabled': 'Использовать аккаунт для прокси-запросов',
       noProxy: 'Без прокси',
       aiCredits: 'AI Кредиты',
       aiCreditsValue: '{{amount}} кредитов',
@@ -895,7 +928,6 @@ const ru = {
       deleteVersionSuccess: 'Исторический профиль удален',
       openFolderSuccess: 'Хранилище профилей открыто',
       baseline: 'Исходные данные устройства',
-
       description:
         'Сохраните данные устройства для этого аккаунта, чтобы использовать их при переключении.',
       'load-failed': 'Не удалось прочитать данные устройства',
@@ -966,10 +998,7 @@ const ru = {
       quotaRefreshed: 'Квота обновлена',
       refreshFailed: 'Не удалось обновить квоту',
       pollFailed: 'Не удалось опросить квоты всех аккаунтов',
-      switched: {
-        title: 'Аккаунт переключен!',
-        description: 'Перезапуск Antigravity...',
-      },
+      switched: { title: 'Аккаунт переключен!', description: 'Перезапуск Antigravity...' },
       switchFailed: 'Не удалось переключить аккаунт',
       switchFailureCodes: {
         'account-not-found': 'Этот аккаунт больше недоступен.',
@@ -1099,12 +1128,9 @@ const ru = {
         'session-consumed':
           'Эти результаты уже использованы. Повторите поиск для импорта других аккаунтов.',
       },
-
       title: 'Импорт с этого компьютера',
-
       trigger: 'Импорт с этого компьютера',
     },
-
     feedback: {
       'loading-title': 'Читаем ваши аккаунты',
       'loading-description': 'Сведения об аккаунтах появятся здесь, когда будут готовы.',
@@ -1184,9 +1210,38 @@ const ru = {
       'global-system-prompt-character-count': '{{count}} символов',
       'global-system-prompt-long-warning':
         'Более 2 000 символов оставляют меньше места для истории диалога. Попробуйте сократить инструкции.',
+      compaction: {
+        title: 'Сжатие контекста Cowork',
+        description:
+          'Согласует обобщение и замену истории с клиентом Cowork; обычные сессии автоматически не обрезаются.',
+        auto: 'Включить автоматическую координацию',
+        'auto-desc':
+          'Только распознанные запросы Cowork выше порога получают локальный управляющий ответ.',
+        manual: 'Включить координацию /compact',
+        'manual-desc': 'Явная команда Cowork /compact запускает поток, которым управляет клиент.',
+        threshold: 'Автоматический порог (оценочные входные токены)',
+        'threshold-desc':
+          'По умолчанию 200 000; эффективный порог также учитывает фиксированные системные и инструментальные расходы.',
+      },
       local_access: 'Доступ из локальной сети:',
       select_ip: 'Выбрать IP',
       no_token_warning: '⚠️ API ключ не установлен. Доступ открыт всем!',
+      lan_access: 'Разрешить доступ из локальной сети',
+      lan_access_desc: 'Привязать прокси к локальной сети. Требуется API-ключ.',
+      ip_access_title: 'Правила доступа по IP',
+      ip_access_desc:
+        'Ограничивайте запросы моделей, WebSocket и открытого управления по адресу клиента.',
+      ip_filter_mode: 'Режим фильтра IP',
+      ip_filter_off: 'Выкл.',
+      ip_filter_allowlist: 'Только белый список',
+      ip_filter_blocklist: 'Черный список',
+      ip_filter_both: 'Белый и черный списки',
+      ip_allowlist: 'Разрешенные IP или CIDR',
+      ip_blocklist: 'Заблокированные IP или CIDR',
+      trusted_proxy_cidrs: 'CIDR доверенных прокси',
+      allowlist_precedence: 'Белый список имеет приоритет',
+      allowlist_precedence_desc:
+        'Адрес из белого списка может обойти совпавшее правило черного списка.',
       show_key: 'Показать',
       hide_key: 'Скрыть',
       cloud_code_meta: 'Совместимость с Cloud Code',
@@ -1259,17 +1314,16 @@ const ru = {
       'success-title': 'Конфигурация OpenCode обновлена',
       'error-title': 'Не удалось обновить OpenCode',
       'unknown-error': 'Неизвестная ошибка конфигурации OpenCode',
-
       'choose-model-hint': 'Выберите хотя бы одну модель, чтобы продолжить.',
       'config-retry-description': 'Попробуйте ещё раз. Сохранённые настройки не изменены.',
     },
-    examples: {
-      title: 'Примеры',
-      description: 'Примеры использования локального прокси.',
-    },
+    examples: { title: 'Примеры', description: 'Примеры использования локального прокси.' },
     persistence: {
       title: 'Request history and reasoning',
       description: 'Inspect bounded local records without slowing model traffic.',
+      'successful-probes': 'Записывать успешные проверки',
+      'successful-probes-description':
+        'Сохранять успешные проверки работоспособности и опросы списка моделей. При включённой истории ошибки и другие рабочие запросы по-прежнему записываются.',
       'audit-title': 'История запросов',
       'audit-description':
         'Сохраняет запросы, ответы и попытки обращения к сервису моделей на этом компьютере, скрывая конфиденциальные данные.',
@@ -1278,9 +1332,32 @@ const ru = {
       dropped:
         'Не удалось сохранить {{count}} записей ({{reason}}). Обработка запросов к модели продолжилась.',
       'disk-gib': 'Disk limit (GiB)',
-      'body-hours': 'Хранение полного содержимого (часы)',
-      'summary-days': 'Summary retention (days)',
+      'capacity-window':
+        'Полные запросы хранятся в пределах лимитов диска и количества. Сначала удаляются самые старые завершённые запросы; активные запросы защищены.',
       'max-rows': 'Maximum rows',
+      'queue-records': 'Лимит команд (32–4 096)',
+      'queue-mib': 'Лимит памяти очереди (16–64 МиБ)',
+      'version-unavailable':
+        'Владелец не предоставляет версию настроек аудита. Обновите данные или владельца перед редактированием.',
+      'save-saving': 'Сохранение и применение настроек…',
+      'save-applied': 'Настройки сохранены и применены.',
+      'save-restart-required':
+        'Настройки сохранены, но применены не полностью. Проверьте состояние службы перед перезапуском.',
+      'save-conflict':
+        'Настройки изменены в другом месте. Проверьте обновлённые значения перед повтором.',
+      'save-failed': 'Сохранение не подтверждено. Обновите и проверьте настройки перед повтором.',
+      'invalid-number': 'Введите конечное число не меньше {{min}}.',
+      maintenance: 'Обслуживание истории: {{state}}',
+      'maintenance-running': 'выполняется',
+      'maintenance-scheduled': 'запланировано',
+      'maintenance-idle': 'ожидание',
+      'maintenance-stopped': 'остановлено',
+      'maintenance-unknown': 'недоступно',
+      'reload-failed': 'Не удалось обновить настройки. Обновите страницу перед повтором.',
+      'budget-current':
+        'Настроено: {{disk}} МиБ / {{rows}} запросов. Очередь: {{commands}} команд / {{queue}} МиБ.',
+      'pressure-note':
+        'Снижение лимитов постепенно удаляет завершённые записи. Активные захваты и читатели могут задержать очистку; последняя причина потери не гарантирует текущее состояние записи.',
       'no-audit': 'No traffic records yet.',
       'audit-metadata': 'Сведения о запросах и обращениях к сервису моделей',
       'audit-body-missing': 'Полное содержимое запроса или ответа больше не хранится.',
@@ -1300,7 +1377,40 @@ const ru = {
       'thought-title': 'Reasoning history',
       'thought-description': 'Save reasoning so later turns can continue the conversation.',
       sessions: '{{count}} sessions',
-      'hard-limit': 'Каждый диалог сохраняет не более 200 ходов и 64 MiB содержимого.',
+      'hard-limit':
+        'Memory cache: {{turns}} turns / {{memory}} MiB per session. Durable history has its own {{disk}} MiB disk budget and retention.',
+      'thought-cache-turns': 'Cached turns per session (10–10,000)',
+      'thought-cache-mib': 'Session cache limit (1–64 MiB)',
+      'thought-disk-mib': 'Reasoning disk budget (128–16,384 MiB)',
+      'thought-stats-unavailable': 'Reasoning statistics are unavailable.',
+      'thought-count-unknown': 'Saved record count unavailable',
+      'thought-records': '{{count}} saved records',
+      'thought-memory': 'Memory: {{records}} records / {{bytes}}',
+      'thought-tool-links': 'Recoverable tool links: {{records}}',
+      'thought-recovery-partial':
+        'Thought records were processed, but some recovery-history cleanup is unconfirmed. Refresh and check before another operation.',
+      'no-thought-records': 'No saved reasoning records in this page.',
+      'thought-record-pages': 'Reasoning history pages',
+      'history-page-complete': 'Page {{page}} · end of this history window',
+      'history-page-more': 'Page {{page}} · more records available',
+      'record-unavailable': 'This record is no longer available. Refresh the session.',
+      'thought-delete-receipt': 'Deleted {{sessions}} sessions and {{records}} records.',
+      'thought-delete-scope':
+        'Delete all retained reasoning records in session {{session}}? Other sessions are unaffected.',
+      'thought-mutation-uncertain':
+        'The operation could not be confirmed. History was refreshed; check it before trying again.',
+      'cancel-action': 'Cancel',
+      'thought-failures':
+        'Failures: {{reads}} reads / {{admission}} cold admissions / {{writes}} writes',
+      'thought-write-failure':
+        'Last persistence failure: {{reason}}. Current memory does not guarantee recovery after restart.',
+      'thought-session-capacity': 'No durable session slot available',
+      'thought-maintenance-active-sessions': 'Maintenance deferred to protect active requests.',
+      'thought-maintenance-checkpoint-busy': 'Maintenance paused for a pinned SQLite reader.',
+      'thought-maintenance-no-progress':
+        'Disk reclamation made no progress; further pressure deletion paused.',
+      'thought-maintenance-oversized-record':
+        'An old record exceeds the bounded cleanup budget; manual diagnosis is required.',
       'retention-days': 'Retention (days)',
       'max-sessions': 'Maximum sessions',
       oversized: 'Содержимое превысило 64 MiB и сохранено не полностью.',
@@ -1309,6 +1419,9 @@ const ru = {
       'copy-signature': 'Copy signature',
       'no-thought': 'No reasoning history yet.',
       'clear-thought': 'Clear reasoning history',
+      'clear-failed': 'Не удалось очистить историю рассуждений.',
+      'delete-failed': 'Не удалось удалить этот сеанс.',
+      'load-failed': 'Не удалось загрузить сеансы рассуждений.',
       'repair-thought': 'Repair reasoning history',
       'confirm-clear': 'Confirm clear',
       'confirm-repair': 'Confirm repair',
@@ -1323,6 +1436,68 @@ const ru = {
     'fallback-attempt-recovered': 'Восстановлено на попытке {{index}} {{operation}}{{status}}',
     'reset-dropped': 'Сбросить',
     'reset-dropped-failed': 'Не удалось сбросить счётчик. Попробуйте ещё раз.',
+    'archive-storage-note':
+      'Резервные копии хранятся отдельно и не удаляются автоматически по лимиту аудита.',
+    'capture-interrupted-description':
+      'Предыдущий процесс приложения завершился до окончания захвата. Результат модели неизвестен; время окончания записи соответствует сверке состояния захвата.',
+    'live-storage': 'Текущий аудит: {{size}}',
+    'archive-storage': 'Резервные копии: {{size}} (файлов: {{count}})',
+    'archive-storage-unknown': 'Размер резервных копий неизвестен',
+    'storage-unavailable': 'Не удалось измерить хранилище аудита.',
+    'storage-loading': 'Измерение хранилища аудита…',
+    'save-full': 'Экспорт сохранённого содержимого',
+    'copy-loaded': 'Копировать видимое содержимое',
+    capture: {
+      refresh: 'Обновить захват',
+      missing: 'Нет сохранённого содержимого',
+      'missing-description': 'Для выбранного элемента нет метаданных захвата. Причина неизвестна.',
+      writing: 'Захват выполняется',
+      'writing-description':
+        'Сохранённое содержимое ещё может измениться. Экспорт доступен после завершения захвата.',
+      complete: 'Захват завершён',
+      empty: 'Сохранено пустое тело',
+      summary: 'Сохранено только описание двоичных данных',
+      'summary-description': 'Исходные двоичные данные не сохранены; доступно только их описание.',
+      partial: 'Сохранено частично',
+      'not-saved': 'Тело не сохранено',
+      expired: 'Содержимое удалено по прежней политике',
+      oversized: 'Превышен предел размера захвата. Доступна только сохранённая часть.',
+      'incomplete-description':
+        'Захват неполный. Отсутствующее содержимое нельзя восстановить из этой записи.',
+      sizes: 'Сохранено {{stored}} · Получено {{logical}}',
+      'hash-full': 'Хеш охватывает безопасное представление захваченных данных.',
+      'hash-prefix': 'Хеш охватывает только сохранённое начало.',
+      'hash-unavailable': 'Проверочный хеш недоступен.',
+      loaded: 'Загруженное содержимое: {{size}}',
+      'read-failed':
+        'Не удалось загрузить содержимое. Загруженные страницы сохранены; повторите попытку.',
+      retry: 'Повторить загрузку',
+      loading: 'Загрузка сохранённого содержимого…',
+      cancel: 'Приостановить',
+      paused: 'Загрузка приостановлена.',
+      resume: 'Продолжить загрузку',
+      'copy-failed': 'Не удалось скопировать видимое содержимое. Повторите попытку.',
+      'save-failed': 'Не удалось экспортировать сохранённое содержимое. Повторите попытку.',
+      copied: 'Видимое содержимое скопировано',
+      saved: 'Сохранённое содержимое экспортировано',
+      reasons: {
+        'disk-budget': 'Достигнут лимит диска для аудита.',
+        'disk-unknown': 'Не удалось измерить доступное место для аудита.',
+        'checkpoint-busy': 'Читающая транзакция SQLite помешала освобождению места.',
+        'reclaim-failed': 'Не удалось освободить место для аудита.',
+        'read-only': 'Хранилище аудита доступно только для чтения.',
+        'disk-full': 'На диске нет свободного места.',
+        'capture-disabled': 'Захват отключён до завершения тела.',
+        'worker-restart': 'Захват прерван перезапуском рабочего процесса аудита.',
+        retention:
+          'Содержимое удалено прежней политикой хранения по времени и не может быть восстановлено.',
+        'disk-pressure': 'Содержимое удалено прежней политикой освобождения диска.',
+        'write-failure': 'Часть блоков тела не удалось поставить в очередь или сохранить.',
+        'transfer-incomplete': 'Передача тела не завершена.',
+        'serialization-failure': 'Не удалось сериализовать тело для захвата.',
+        unknown: 'Захват остановлен без известной причины.',
+      },
+    },
     'detail-load-failed': 'Не удалось загрузить запрос. Повторите попытку.',
     'detail-not-found': 'Запись недоступна. Возможно, она была удалена.',
     fields: {
@@ -1340,6 +1515,7 @@ const ru = {
       query: 'Дополнительные параметры',
     },
     outcomes: {
+      capture_interrupted: 'Захват прерван',
       in_progress: 'Выполняется',
       completed: 'Завершено',
       client_cancelled: 'Отменено',
@@ -1370,7 +1546,6 @@ const ru = {
     'parse-error': 'Не удалось прочитать содержимое в позиции {{offset}}.',
     'thought-oversized':
       'Рассуждения превысили 64 MiB и сохранены не полностью. Номер для проверки: {{hash}}',
-
     'loading-description': 'Записи запросов появятся здесь, когда будут готовы.',
     'empty-description':
       'Здесь появляются запросы, отправленные через прокси. Можно также изменить фильтры.',
@@ -1379,6 +1554,52 @@ const ru = {
     'load-failed': 'Не удалось прочитать записи запросов',
     'load-failed-description': 'Попробуйте ещё раз. Это не означает, что записи удалены.',
     'refresh-failed': 'Не удалось обновить записи. Ранее загруженные данные остаются на экране.',
+    searching: 'Поиск…',
+    jumping: 'Открываем найденный фрагмент…',
+    'search-failed': 'Не удалось выполнить поиск. Повторите попытку.',
+    clearing: 'Очищаем…',
+    'clear-failed':
+      'Завершение очистки не подтверждено. Обновите список перед повторной попыткой; текущий захват мог остановиться.',
+    'resize-column': 'Изменить ширину столбца «{{column}}»',
+    'reset-columns': 'Сбросить ширину столбцов',
+    'columns-unsaved': 'Ширина столбцов изменена в этом окне, но сохранить её не удалось.',
+    'clear-scope':
+      'Удалить все записи категории «{{category}}», включая скрытые фильтрами? Хранилище мыслей и файлы диагностики не изменятся.',
+    'clear-complete': 'Удалено записей из категории «{{category}}»: {{count}}.',
+    'exact-session': 'Точный сохранённый ID сессии',
+    'apply-session': 'Применить сессию',
+    'reset-session': 'Сбросить сессию',
+    'recorded-usage': 'Сохранённые счётчики ответа',
+    'usage-source-unretained':
+      'Источник провайдера для этих счётчиков не сохранён. Это не отдельная подтверждённая запись провайдера; локальные оценки здесь не подмешиваются.',
+    'cache-rate': 'Кэшированный ввод / весь ввод',
+    'cache-rate-missing': 'Неизвестно — нет счётчика ввода или кэша',
+    'cache-rate-zero-input': 'Неприменимо — нулевой ввод',
+    'cache-rate-inconsistent': 'Несогласованные сохранённые счётчики',
+    'local-estimate': 'Локальная оценка',
+    'estimate-not-retained': 'Не сохранена в этой записи аудита',
+    'measured-stages': 'Сохранённые этапы времени шлюза',
+    'stage-overlap-note':
+      'Этапы могут перекрываться и не суммируются. Отсутствующие этапы и неоднозначные старые нули остаются неизвестными.',
+    'stage-clean': 'Подготовка запроса',
+    'stage-normalization': 'Нормализация',
+    'stage-thinking': 'Восстановление мыслей',
+    'stage-ttft': 'Последняя попытка до первого байта',
+    'wrap-lines': 'Перенос строк',
+    'view-mode-unsaved': 'Режим отображения изменён, но настройка не сохранена.',
+    'match-position': 'Совпадение {{current}} из {{count}}',
+    'previous-match': 'Предыдущее совпадение',
+    'next-match': 'Следующее совпадение',
+    'cancel-search': 'Отменить поиск',
+    'export-session': 'Экспорт сохранённой сессии',
+    'session-exporting': 'Экспорт сессии…',
+    'session-export-scope':
+      'Все сохранённые модельные запросы, попытки и тела сессии. До 2 000 завершённых запросов и 100 МиБ; частичные данные остаются частичными.',
+    'session-export-needs-scope':
+      'Выберите ключ сессии с областью. Старые записи без области можно экспортировать по телам.',
+    'session-export-saved': 'Экспорт сессии сохранён.',
+    'session-export-failed':
+      'Завершение экспорта не подтверждено. Проверьте файл назначения. Дождитесь завершения запросов, обновите и повторите; активные, изменённые, отсутствующие или слишком большие данные не экспортируются как полная сессия.',
   },
 };
 export default ru;

@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { MISSING_COMMAND_FALLBACK } from '@/modules/proxy-gateway/antigravity/CommandToolAdapter';
 import { OpenAIService as ProxyService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
+import { generateGeminiWithAggregationFallback } from '@/modules/proxy-gateway/server/common/aggregate-gemini-fallback';
+import type { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
 describe('OpenAI tool mapper compatibility', () => {
   it('maps a Responses apply_patch custom tool to the upstream freeform input schema', () => {
@@ -33,19 +34,36 @@ describe('OpenAI tool mapper compatibility', () => {
     ]);
   });
 
-  it('treats safety prompt feedback as a usable upstream response', () => {
-    const service = Object.create(ProxyService.prototype) as ProxyService;
-    const hasUsableResponse = Reflect.get(service, 'hasUsableGeminiCandidate').call(service, {
+  it('returns safety prompt feedback without starting an aggregation fallback', async () => {
+    const response: GeminiResponse = {
       candidates: [],
       promptFeedback: {
         blockReason: 'SAFETY',
       },
-    });
-
-    expect(hasUsableResponse).toBe(true);
+    };
+    const start = vi.fn();
+    const collect = vi.fn();
+    const onFallback = vi.fn();
+    await expect(
+      generateGeminiWithAggregationFallback({
+        request: {
+          model: 'gemini-3-flash',
+          request: { contents: [] },
+          requestId: 'controlled-safety-response',
+          userAgent: 'controlled-mapper-test/0.0.0',
+        },
+        generate: async () => response,
+        start,
+        collect,
+        onFallback,
+      }),
+    ).resolves.toEqual(response);
+    expect(start).not.toHaveBeenCalled();
+    expect(collect).not.toHaveBeenCalled();
+    expect(onFallback).not.toHaveBeenCalled();
   });
 
-  it('normalizes an incomplete PowerShell tool call in a non-stream Chat Completions response', () => {
+  it('preserves incomplete PowerShell arguments without inserting an executable command', () => {
     const service = Object.create(ProxyService.prototype) as ProxyService;
     const result = Reflect.get(service, 'convertClaudeToOpenAIResponse').call(
       service,
@@ -68,7 +86,6 @@ describe('OpenAI tool mapper compatibility', () => {
     const toolCall = result.choices[0].message.tool_calls?.[0];
     expect(toolCall?.function?.name).toBe('PowerShell');
     expect(JSON.parse(toolCall?.function?.arguments ?? '{}')).toEqual({
-      command: MISSING_COMMAND_FALLBACK,
       description: 'sensitive tool detail',
     });
   });

@@ -6,6 +6,7 @@ import { ManagementServer } from '@/core/management/server';
 import { CoreRpcClient } from '@/core/rpc/client';
 import { createCoreRpcOperations } from '@/core/rpc/router';
 import { selectCloudAccountAdapter } from '@/modules/cloud-account/ipc/cloud-account-adapter';
+import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 
 const credentialWrite = vi.hoisted(() => vi.fn(async () => undefined));
 
@@ -62,6 +63,12 @@ vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
     getAccount: vi.fn(async () => account),
     updateToken: vi.fn(async () => {}),
     compareAndUpdateToken: vi.fn(async () => true),
+    finalizeSwitch: vi.fn((id, _target, guard) => {
+      guard(account);
+      ownerState.lastUsedId = id;
+      ownerState.activeId = id;
+      ownerState.activeAgyId = id;
+    }),
     updateLastUsed: vi.fn((id: string) => {
       ownerState.lastUsedId = id;
     }),
@@ -160,6 +167,7 @@ vi.mock('@/modules/antigravity-runtime/terms/classicTermsSwitch', () => ({
   })),
 }));
 beforeEach(() => {
+  vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue(account);
   const profile = path.join(os.tmpdir(), 'agm-switch-owner-fixture');
   vi.spyOn(runtimeLaunch, 'prepareLaunchContext').mockResolvedValue({
     target: 'classic',

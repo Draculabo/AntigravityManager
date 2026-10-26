@@ -14,6 +14,7 @@ import {
   classifyCloudIdentityProfileError,
 } from './cloud-account-identity-profile.error';
 import type { CloudIdentityProfileErrorCode } from './cloud-account-identity-profile.schema';
+import { captureDeviceBindingWriteGuard } from './cloud-account-device-binding-guard';
 
 async function profileOperation<T>(
   operation: string,
@@ -24,8 +25,8 @@ async function profileOperation<T>(
     return await work();
   } catch (error) {
     const profileCode = classifyCloudIdentityProfileError(error, fallback);
-    logger.error('Cloud identity profile operation failed', { operation, profileCode });
-    throw new CloudIdentityProfileError(profileCode);
+    logger.error('Cloud identity profile operation failed', { operation, profileCode }, error);
+    throw new CloudIdentityProfileError(profileCode, { cause: error });
   }
 }
 
@@ -65,10 +66,11 @@ export function bindCloudIdentityProfile(
 ): Promise<DeviceProfile> {
   return profileOperation('bind', 'profile-write-failed', async () => {
     const account = await requireAccount(accountId);
+    const guard = captureDeviceBindingWriteGuard(account);
     const profile = mode === 'capture' ? readCurrentDeviceProfile() : generateDeviceProfile();
+    CloudAccountDeviceBindingStore.setDeviceBinding(account.id, profile, mode, guard);
     ensureGlobalOriginalFromCurrentStorage();
     saveGlobalOriginalProfile(profile);
-    CloudAccountDeviceBindingStore.setDeviceBinding(account.id, profile, mode);
     return profile;
   });
 }
@@ -79,9 +81,10 @@ export function bindCloudIdentityProfileWithPayload(
 ): Promise<DeviceProfile> {
   return profileOperation('bind-payload', 'profile-write-failed', async () => {
     const account = await requireAccount(accountId);
+    const guard = captureDeviceBindingWriteGuard(account);
+    CloudAccountDeviceBindingStore.setDeviceBinding(account.id, profile, 'generated', guard);
     ensureGlobalOriginalFromCurrentStorage();
     saveGlobalOriginalProfile(profile);
-    CloudAccountDeviceBindingStore.setDeviceBinding(account.id, profile, 'generated');
     return profile;
   });
 }

@@ -1,6 +1,37 @@
 import en from './en';
 const fr = {
   'workspace-profile': en['workspace-profile'],
+  'account-evidence': {
+    'subscription-unavailable':
+      'Actualisation de l’abonnement échouée ; aucun niveau précédemment confirmé n’est disponible.',
+    'observed-at': 'Dernière observation : {{time}}',
+    'checked-at': 'Dernière vérification : {{time}}',
+    'unknown-time': 'Non enregistré',
+    'invalid-data': 'Données de quota invalides ; actualisez pour vérifier.',
+    'reset-unknown': 'Date de réinitialisation inconnue.',
+    'exhausted-unknown-reset': 'Fenêtre épuisée ; date de réinitialisation inconnue.',
+    'recheck-required':
+      'La fenêtre épuisée est terminée ; actualisez pour confirmer la récupération.',
+    'window-ended': 'Fenêtre terminée ; le solde n’a pas été reconfirmé.',
+    'weekly-exhausted':
+      'Fenêtre hebdomadaire épuisée ; le solde d’une autre fenêtre ne lève pas cette restriction.',
+    'window-exhausted': 'Fenêtre de quota épuisée.',
+    'group-restrictions': 'Restrictions des groupes de quotas',
+    'group-limited':
+      'Fenêtre épuisée. Dernière réinitialisation connue : {{time}} ; la récupération reste à confirmer.',
+    'subscription-failed':
+      'Actualisation de l’abonnement échouée ou incomplète ; affichage de l’enregistrement précédent.',
+    'subscription-unrecognized':
+      'Niveau d’abonnement non reconnu ; niveau Free utilisé par défaut.',
+    'subscription-missing': 'Aucune identité d’abonnement reçue ; niveau Free utilisé par défaut.',
+    'subscription-observed': 'Identité d’abonnement observée.',
+    'subscription-unknown': 'Source de l’abonnement non enregistrée.',
+    'source-paid': 'Source : abonnement payant',
+    'source-current': 'Source : abonnement actuel',
+    'source-free': 'Source : niveau gratuit explicite',
+    'source-unknown': 'Source : inconnue',
+    'small-positive': 'Petit solde positif ; cette fenêtre n’est pas épuisée.',
+  },
   'operation-diagnostics': en['operation-diagnostics'],
   'agent-tools': {
     title: 'Connecter vos outils de programmation',
@@ -69,7 +100,6 @@ const fr = {
       'review-route-disabled':
         'La route de vérification Codex est désactivée. Activez-la dans le routage des modèles.',
     },
-
     'address-help':
       'Gardez l’adresse actuelle de Manager, sauf si le service fonctionne sur un autre ordinateur.',
     'invalid-address':
@@ -122,7 +152,6 @@ const fr = {
     unknown: 'Inconnu',
     notAvailable: 'N/A',
     openMenu: 'Ouvrir le menu',
-
     'dismiss-notification': 'Fermer la notification',
     'reading-settings': 'Lecture de vos paramètres…',
   },
@@ -431,6 +460,7 @@ const fr = {
     },
     'account-email': 'E-mail du compte',
     outcomes: {
+      capture_interrupted: 'Capture interrompue',
       in_progress: 'En cours',
       completed: 'Terminé',
       client_cancelled: 'Annulé',
@@ -459,7 +489,6 @@ const fr = {
     'parse-error': 'Impossible de lire ce contenu à la position {{offset}}.',
     'thought-oversized':
       'Le raisonnement dépasse 64 MiB et n’a pas été enregistré en entier. Référence : {{hash}}',
-
     'loading-description': 'Les requêtes apparaîtront ici dès qu’elles seront prêtes.',
     'empty-description':
       'Les requêtes envoyées via le proxy apparaissent ici. Vous pouvez aussi modifier les filtres.',
@@ -470,6 +499,22 @@ const fr = {
       'Réessayez. Cela ne signifie pas que vos enregistrements ont été supprimés.',
     'refresh-failed':
       'Impossible d’actualiser les enregistrements. Les données précédentes restent affichées.',
+    searching: 'Recherche…',
+    jumping: 'Ouverture de la section correspondante…',
+    'search-failed': 'Impossible de rechercher dans ce contenu. Réessayez.',
+    clearing: 'Nettoyage…',
+    'clear-failed':
+      'La fin de l’effacement n’est pas confirmée. Actualisez avant de réessayer ; la capture en cours a pu s’arrêter.',
+    'resize-column': 'Redimensionner la colonne {{column}}',
+    'reset-columns': 'Réinitialiser la largeur des colonnes',
+    'columns-unsaved':
+      'La largeur des colonnes a changé dans cette vue, mais n’a pas pu être enregistrée.',
+    'clear-scope':
+      'Effacer tous les enregistrements de {{category}}, y compris ceux masqués par les filtres ? Le stockage des pensées et les fichiers de diagnostic restent inchangés.',
+    'clear-complete': '{{count}} enregistrements effacés dans {{category}}.',
+    'exact-session': 'ID de session enregistré exact',
+    'apply-session': 'Filtrer la session',
+    'reset-session': 'Réinitialiser la session',
   },
   editionSelection: {
     title: 'Choisissez votre edition Antigravity',
@@ -527,6 +572,31 @@ const fr = {
       groups: 'Groupes de quotas à préchauffer',
       group: { claude: 'Groupes de quotas Claude', gemini: 'Groupes de quotas Gemini' },
     },
+    thinkingBudget: {
+      title: 'Budget de réflexion',
+      description:
+        'Choisissez qui décide de la durée de réflexion du modèle, et le budget de chaque niveau.',
+      controlSource: 'Source de contrôle',
+      controlSourceHint:
+        'La passerelle applique les budgets ci-dessous. Le client transmet le budget ou le niveau effort de la requête.',
+      gatewayHint:
+        'Un budget de -1 laisse le modèle décider. 0 n’est pas un budget de passerelle valide ; gardez -1 pour conserver la réflexion adaptative.',
+      clientHint:
+        'La requête décide de son propre budget de réflexion ou niveau effort. Les budgets de passerelle ci-dessous ne sont pas appliqués.',
+      adaptiveHint: '-1 laisse le modèle décider',
+      invalid: 'Saisissez -1 ou un entier de 0 à 131072.',
+      'configuration-invalid':
+        'Ces valeurs de budget de réflexion ont été refusées. Saisissez -1 ou un entier de 0 à 131072.',
+      source: { gateway: 'Passerelle', client: 'Client' },
+      family: { flash: 'Gemini Flash', pro: 'Gemini Pro', claude: 'Claude' },
+      level: {
+        low: 'Bas',
+        medium: 'Moyen',
+        high: 'Élevé',
+        tiered: 'Progressif',
+        default: 'Par défaut',
+      },
+    },
     title: 'Parametres',
     description: 'Gerez les preferences de l application.',
     general: 'General',
@@ -550,10 +620,7 @@ const fr = {
       portuguese: 'Portugais (Brésil)',
       japanese: 'Japonais',
     },
-    about: {
-      title: 'A propos',
-      description: 'Informations sur l application.',
-    },
+    about: { title: 'A propos', description: 'Informations sur l application.' },
     cache: {
       title: 'Cache Antigravity',
       description:
@@ -571,7 +638,6 @@ const fr = {
       clearedDescription: '{{size}} Mo ont été supprimés des dossiers de cache Antigravity.',
       failedTitle: 'Échec du nettoyage du cache',
       notFoundTitle: 'Aucun cache Antigravity trouvé',
-
       'paths-failed': 'Impossible de trouver les emplacements du cache',
       'paths-retry-description': 'Réessayez avant de vider le cache.',
       'partial-title': 'Une partie du cache n’a pas été supprimée',
@@ -587,9 +653,7 @@ const fr = {
         title: 'Parametres enregistres',
         description: 'Votre configuration a ete mise a jour.',
       },
-      saveFailed: {
-        title: 'Erreur lors de l enregistrement des parametres',
-      },
+      saveFailed: { title: 'Erreur lors de l enregistrement des parametres' },
     },
     account: {
       'client-setup': 'Emplacement et lancement des clients',
@@ -800,26 +864,14 @@ const fr = {
     save: 'Enregistrer les parametres',
   },
   toast: {
-    backupSuccess: {
-      title: 'Succes',
-      description: 'Sauvegarde du compte creee avec succes.',
-    },
+    backupSuccess: { title: 'Succes', description: 'Sauvegarde du compte creee avec succes.' },
     backupError: {
       title: 'Erreur',
       description: 'Echec de la creation de la sauvegarde : {{error}}',
     },
-    switchSuccess: {
-      title: 'Succes',
-      description: 'Compte bascule avec succes.',
-    },
-    switchError: {
-      title: 'Erreur',
-      description: 'Echec du basculement de compte : {{error}}',
-    },
-    deleteSuccess: {
-      title: 'Succes',
-      description: 'Sauvegarde du compte supprimee avec succes.',
-    },
+    switchSuccess: { title: 'Succes', description: 'Compte bascule avec succes.' },
+    switchError: { title: 'Erreur', description: 'Echec du basculement de compte : {{error}}' },
+    deleteSuccess: { title: 'Succes', description: 'Sauvegarde du compte supprimee avec succes.' },
     deleteError: {
       title: 'Erreur',
       description: 'Echec de la suppression de la sauvegarde : {{error}}',
@@ -882,12 +934,7 @@ const fr = {
     recommendation: {
       badge: 'Prochain recommandé',
       description: 'Sélectionné automatiquement à partir du dernier quota {{context}} récupéré.',
-      context: {
-        overall: 'global',
-        claude: 'Claude',
-        pro3: 'Gemini Pro',
-        flash: 'Gemini Flash',
-      },
+      context: { overall: 'global', claude: 'Claude', pro3: 'Gemini Pro', flash: 'Gemini Flash' },
     },
     authDialog: {
       'manual-sign-in': 'Saisir un code manuellement',
@@ -950,9 +997,7 @@ const fr = {
         'session-consumed':
           'Ces résultats ont déjà été utilisés. Relancez la recherche pour importer d’autres comptes.',
       },
-
       title: 'Importer depuis cet ordinateur',
-
       trigger: 'Importer depuis cet ordinateur',
     },
     card: {
@@ -1006,6 +1051,13 @@ const fr = {
       resetUnknown: 'Inconnue',
       detailedQuota: 'Quota detaille',
       quotaGroupUnknown: 'Groupe de quota',
+      cycleUsage: 'Utilisation du cycle actuel',
+      cycleUsageLoading: 'Chargement de l’utilisation conservee…',
+      cycleUsageQueryFailed: 'Echec de la requete d’utilisation pour {{group}}',
+      cycleUsageTokens: '{{count}} tokens',
+      cycleUsageLocal: 'enregistrements locaux conserves',
+      cycleUsageRequests: '{{count}} comptes',
+      cycleUsageIncomplete: '{{ambiguous}} enregistrements incomplets',
       gemini3Ready: 'Pret pour Gemini 3',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',
@@ -1018,6 +1070,9 @@ const fr = {
       'proxy-replace-placeholder': 'Saisir une nouvelle adresse proxy',
       'proxy-remove': 'Supprimer le proxy',
       'proxy-save-failed': "Impossible d'enregistrer le proxy",
+      'proxy-routing-save-failed': "Impossible d'enregistrer le routage du proxy",
+      'proxy-priority': 'Priorité du proxy (1–100)',
+      'proxy-enabled': 'Utiliser ce compte pour les requêtes proxy',
       noProxy: 'Aucun proxy',
       aiCredits: 'Credits IA',
       aiCreditsValue: '{{amount}} credits',
@@ -1057,7 +1112,6 @@ const fr = {
       deleteVersionSuccess: 'Identite historique supprimee',
       openFolderSuccess: 'Stockage d identite ouvert',
       baseline: 'Informations d’origine',
-
       description:
         'Enregistrez les informations de l’appareil pour ce compte afin de les utiliser lors du changement de compte.',
       'load-failed': 'Impossible de lire les informations de l’appareil',
@@ -1131,10 +1185,7 @@ const fr = {
       quotaRefreshed: 'Quota actualise',
       refreshFailed: 'Echec de l actualisation du quota',
       pollFailed: 'Echec de l interrogation du quota pour tous les comptes',
-      switched: {
-        title: 'Compte bascule !',
-        description: 'Redemarrage d Antigravity...',
-      },
+      switched: { title: 'Compte bascule !', description: 'Redemarrage d Antigravity...' },
       switchFailed: 'Echec du basculement de compte',
       switchFailureCodes: {
         'account-not-found': "Ce compte n'est plus disponible.",
@@ -1229,7 +1280,6 @@ const fr = {
       invalidJson: 'Format de fichier JSON invalide',
       readFileFailed: 'Echec de la lecture du fichier',
     },
-
     feedback: {
       'loading-title': 'Lecture de vos comptes',
       'loading-description':
@@ -1313,9 +1363,39 @@ const fr = {
       'global-system-prompt-character-count': '{{count}} caractères',
       'global-system-prompt-long-warning':
         'Plus de 2 000 caractères laissent moins de place à l’historique de conversation. Pensez à raccourcir ces consignes.',
+      compaction: {
+        title: 'Compression du contexte Cowork',
+        description:
+          'Coordonne le résumé et le remplacement de l’historique avec Cowork ; les sessions ordinaires ne sont jamais tronquées automatiquement.',
+        auto: 'Activer la coordination automatique',
+        'auto-desc':
+          'Seules les requêtes Cowork identifiées dépassant le seuil reçoivent la réponse de contrôle locale.',
+        manual: 'Activer la coordination /compact',
+        'manual-desc':
+          'Autorise une commande Cowork /compact explicite à démarrer le flux géré par le client.',
+        threshold: 'Seuil automatique (tokens d’entrée estimés)',
+        'threshold-desc':
+          '200 000 par défaut ; le seuil effectif inclut aussi les coûts fixes système et outils.',
+      },
       local_access: 'Acces reseau local :',
       select_ip: 'Selectionner une IP',
       no_token_warning: 'La cle API n est pas definie. L acces est ouvert a tout le monde !',
+      lan_access: 'Autoriser l acces au reseau local',
+      lan_access_desc: 'Lier le proxy au reseau local. Une cle API est requise.',
+      ip_access_title: 'Regles d acces IP',
+      ip_access_desc:
+        'Limitez les requetes de modele, WebSocket et administration publique par adresse client.',
+      ip_filter_mode: 'Mode de filtrage IP',
+      ip_filter_off: 'Desactive',
+      ip_filter_allowlist: 'Liste autorisee uniquement',
+      ip_filter_blocklist: 'Liste bloquee',
+      ip_filter_both: 'Liste autorisee et bloquee',
+      ip_allowlist: 'IP ou CIDR autorises',
+      ip_blocklist: 'IP ou CIDR bloques',
+      trusted_proxy_cidrs: 'CIDR des proxys de confiance',
+      allowlist_precedence: 'Priorite a la liste autorisee',
+      allowlist_precedence_desc:
+        'Une adresse autorisee peut contourner une regle de blocage correspondante.',
       show_key: 'Afficher',
       hide_key: 'Masquer',
     },
@@ -1385,7 +1465,6 @@ const fr = {
       'success-title': 'Configuration OpenCode mise à jour',
       'error-title': 'Échec de la mise à jour OpenCode',
       'unknown-error': 'Erreur de configuration OpenCode inconnue',
-
       'choose-model-hint': 'Choisissez au moins un modèle pour continuer.',
       'config-retry-description':
         'Réessayez. Votre configuration enregistrée n’a pas été modifiée.',
@@ -1395,6 +1474,9 @@ const fr = {
       description: 'Exemples de commandes pour appeler le proxy API local.',
     },
     persistence: {
+      'successful-probes': 'Enregistrer les sondes réussies',
+      'successful-probes-description':
+        'Enregistrer les vérifications de santé et les interrogations du catalogue de modèles réussies. Les erreurs et les autres requêtes métier restent enregistrées lorsque l’historique est activé.',
       title: 'Request history and reasoning',
       description: 'Inspect bounded local records without slowing model traffic.',
       'audit-title': 'Historique des requêtes',
@@ -1405,9 +1487,31 @@ const fr = {
       dropped:
         '{{count}} enregistrements n’ont pas pu être sauvegardés ({{reason}}). Les requêtes ont continué normalement.',
       'disk-gib': 'Disk limit (GiB)',
-      'body-hours': 'Conservation du contenu complet (heures)',
-      'summary-days': 'Summary retention (days)',
+      'capacity-window':
+        'Les requêtes complètes sont conservées dans les limites de stockage et de nombre. Les plus anciennes requêtes terminées sont supprimées en premier ; les requêtes actives sont protégées.',
       'max-rows': 'Maximum rows',
+      'queue-records': 'Pending command limit (32–4,096)',
+      'queue-mib': 'Pending command bytes (16–64 MiB)',
+      'version-unavailable': 'Refresh or upgrade the owner before editing audit settings.',
+      'save-saving': 'Saving and applying settings…',
+      'save-applied': 'Settings saved and applied.',
+      maintenance: 'Entretien de l’historique : {{state}}',
+      'maintenance-running': 'en cours',
+      'maintenance-scheduled': 'planifié',
+      'maintenance-idle': 'en attente',
+      'maintenance-stopped': 'arrêté',
+      'maintenance-unknown': 'indisponible',
+      'reload-failed':
+        'Impossible d’actualiser les paramètres. Actualisez cette page avant de réessayer.',
+      'save-restart-required':
+        'Saved, but runtime application is incomplete. Check service status.',
+      'save-conflict': 'Settings changed elsewhere. Review refreshed settings before retrying.',
+      'save-failed': 'Save completion unconfirmed. Refresh and review before retrying.',
+      'invalid-number': 'Enter a finite number of at least {{min}}.',
+      'budget-current':
+        'Configured: {{disk}} MiB / {{rows}} requests. Queue: {{commands}} commands / {{queue}} MiB.',
+      'pressure-note':
+        'Reclamation is gradual and active captures/readers can delay it. The latest drop does not guarantee current write status.',
       'no-audit': 'No traffic records yet.',
       'audit-metadata': 'Détails des requêtes et tentatives vers le service de modèles',
       'audit-body-missing':
@@ -1428,7 +1532,40 @@ const fr = {
       'thought-title': 'Reasoning history',
       'thought-description': 'Save reasoning so later turns can continue the conversation.',
       sessions: '{{count}} sessions',
-      'hard-limit': 'Chaque conversation conserve au maximum 200 échanges et 64 MiB de contenu.',
+      'hard-limit':
+        'Memory cache: {{turns}} turns / {{memory}} MiB per session. Durable history has its own {{disk}} MiB disk budget and retention.',
+      'thought-cache-turns': 'Cached turns per session (10–10,000)',
+      'thought-cache-mib': 'Session cache limit (1–64 MiB)',
+      'thought-disk-mib': 'Reasoning disk budget (128–16,384 MiB)',
+      'thought-stats-unavailable': 'Reasoning statistics are unavailable.',
+      'thought-count-unknown': 'Saved record count unavailable',
+      'thought-records': '{{count}} saved records',
+      'thought-memory': 'Memory: {{records}} records / {{bytes}}',
+      'thought-tool-links': 'Recoverable tool links: {{records}}',
+      'thought-recovery-partial':
+        'Thought records were processed, but some recovery-history cleanup is unconfirmed. Refresh and check before another operation.',
+      'no-thought-records': 'No saved reasoning records in this page.',
+      'thought-record-pages': 'Reasoning history pages',
+      'history-page-complete': 'Page {{page}} · end of this history window',
+      'history-page-more': 'Page {{page}} · more records available',
+      'record-unavailable': 'This record is no longer available. Refresh the session.',
+      'thought-delete-receipt': 'Deleted {{sessions}} sessions and {{records}} records.',
+      'thought-delete-scope':
+        'Delete all retained reasoning records in session {{session}}? Other sessions are unaffected.',
+      'thought-mutation-uncertain':
+        'The operation could not be confirmed. History was refreshed; check it before trying again.',
+      'cancel-action': 'Cancel',
+      'thought-failures':
+        'Failures: {{reads}} reads / {{admission}} cold admissions / {{writes}} writes',
+      'thought-write-failure':
+        'Last persistence failure: {{reason}}. Current memory does not guarantee recovery after restart.',
+      'thought-session-capacity': 'No durable session slot available',
+      'thought-maintenance-active-sessions': 'Maintenance deferred to protect active requests.',
+      'thought-maintenance-checkpoint-busy': 'Maintenance paused for a pinned SQLite reader.',
+      'thought-maintenance-no-progress':
+        'Disk reclamation made no progress; further pressure deletion paused.',
+      'thought-maintenance-oversized-record':
+        'An old record exceeds the bounded cleanup budget; manual diagnosis is required.',
       'retention-days': 'Retention (days)',
       'max-sessions': 'Maximum sessions',
       oversized: 'Le contenu dépasse 64 MiB et n’a pas été enregistré en entier.',
@@ -1437,6 +1574,9 @@ const fr = {
       'copy-signature': 'Copy signature',
       'no-thought': 'No reasoning history yet.',
       'clear-thought': 'Clear reasoning history',
+      'clear-failed': 'Impossible de supprimer l’historique de raisonnement.',
+      'delete-failed': 'Impossible de supprimer cette session.',
+      'load-failed': 'Impossible de charger les sessions de raisonnement.',
       'repair-thought': 'Repair reasoning history',
       'confirm-clear': 'Confirm clear',
       'confirm-repair': 'Confirm repair',

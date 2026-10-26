@@ -1,4 +1,6 @@
 import { isObservable } from 'rxjs';
+import { buildToolConfig } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
+import type { SignatureScopeContext } from '../../../common/signature-session-scope';
 import type { OpenAIOperations, PreparedResponsesRequest } from '../openai-operations.service';
 import type { OpenAIService } from '../openai.service';
 import {
@@ -15,24 +17,29 @@ export function createResponsesWebSocketOperations(
 ): Omit<OpenAIResponsesWebSocketServerDependencies, 'isAuthorized'> {
   const preparedRequests = new WeakMap<
     object,
-    { request: PreparedResponsesRequest; schemas: PreparedOpenAISchemas }
+    {
+      request: PreparedResponsesRequest;
+      schemas: PreparedOpenAISchemas;
+      context?: SignatureScopeContext;
+    }
   >();
   return {
-    validateRequest: (request, mode) => {
+    validateRequest: async (request, mode, context) => {
       const body = parseResponsesRequestBody(request);
       if (!body) {
         throw new Error('Invalid Responses WebSocket request');
       }
-      const prepared = operations.prepareResponsesRequest(body);
+      const prepared = await operations.prepareResponsesRequest(body, context);
       if (!prepared) {
         throw new Error('Unknown or expired previous_response_id');
       }
       const schemas = prepareOpenAIRequestSchemas(prepared.request, 'responses');
+      buildToolConfig(prepared.request.tool_choice, schemas.schemas.tools ?? []);
       if (mode === 'generate') {
-        preparedRequests.set(request, { request: prepared, schemas });
+        preparedRequests.set(request, { request: prepared, schemas, context });
       }
     },
-    streamRequest: async (request) => {
+    streamRequest: async (request, signal) => {
       const accepted = preparedRequests.get(request);
       if (!accepted) {
         throw new Error('Responses WebSocket request was not admitted');
@@ -42,13 +49,16 @@ export function createResponsesWebSocketOperations(
       const result = await service.handleChatCompletions(
         prepared.request,
         'responses',
-        undefined,
+        signal,
         {
+          identity: prepared.session.identity,
+          mediaAdmitted: true,
           requestSessionId: prepared.requestSessionId,
           responseId: prepared.responseId,
           routingSessionId: prepared.routingSessionId,
         },
         accepted.schemas,
+        accepted.context,
       );
       if (!isObservable(result)) {
         throw new Error('Responses WebSocket request did not produce a stream');

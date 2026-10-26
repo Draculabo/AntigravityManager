@@ -19,9 +19,17 @@ export const thinkingRecords = sqliteTable(
       .notNull()
       .references(() => thinkingSessions.sessionKey, { onDelete: 'cascade' }),
     fingerprint: text('fingerprint').notNull(),
+    operationId: text('operation_id'),
+    causalAnchor: text('causal_anchor'),
+    completedAt: integer('completed_at'),
+    captureState: text('capture_state', { enum: ['complete', 'partial', 'history', 'legacy'] })
+      .notNull()
+      .default('legacy'),
     thought: blob('thought', { mode: 'buffer' }),
     thoughtBytes: integer('thought_bytes').notNull().default(0),
     signature: text('signature'),
+    partSignatures: text('part_signatures').notNull(),
+    signatureBytes: integer('signature_bytes').notNull(),
     toolIds: text('tool_ids').notNull(),
     toolNames: text('tool_names').notNull(),
     primaryToolId: text('primary_tool_id'),
@@ -41,6 +49,8 @@ export const thinkingRecords = sqliteTable(
       .on(table.sessionKey, table.primaryToolId)
       .where(sql`${table.primaryToolId} is not null`),
     index('idx_thought_fingerprint').on(table.sessionKey, table.fingerprint),
+    index('idx_thought_operation').on(table.sessionKey, table.operationId),
+    index('idx_thought_causal').on(table.sessionKey, table.causalAnchor, table.model),
   ],
 );
 

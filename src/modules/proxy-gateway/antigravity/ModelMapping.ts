@@ -265,8 +265,9 @@ export function mapClaudeModelToGemini(input: string): string {
 }
 
 export function normalizeGeminiModelAlias(modelId: string): string {
-  const normalizedModelId = modelId.trim().toLowerCase();
-  return GEMINI_MODEL_ALIASES[normalizedModelId] ?? modelId;
+  const normalizedModelId = modelId.trim();
+  const prefixed = normalizedModelId.replace(/^models\//i, '');
+  return GEMINI_MODEL_ALIASES[prefixed.toLowerCase()] ?? normalizedModelId;
 }
 
 /**

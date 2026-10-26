@@ -1,3 +1,4 @@
+import type { CloudAccount } from '@/modules/cloud-account/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
@@ -19,6 +20,12 @@ describe('CloudMonitorService last-used semantics', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async (id) => {
+      const latest: CloudAccount[] | undefined = await vi
+        .mocked(CloudAccountRepo.getAccounts)
+        .mock.results.at(-1)?.value;
+      return latest?.find((account) => account.id === id);
+    });
     CloudMonitorService.resetStateForTesting();
     vi.mocked(CloudAccountSettingsStore.getSetting).mockImplementation(
       (_key: string, defaultValue: unknown) => defaultValue,
@@ -55,7 +62,11 @@ describe('CloudMonitorService last-used semantics', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await pollPromise;
 
-    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith('acc-1', expect.anything());
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith(
+      'acc-1',
+      expect.anything(),
+      expect.any(Function),
+    );
     expect(CloudAccountRepo.updateLastUsed).not.toHaveBeenCalled();
   });
 });

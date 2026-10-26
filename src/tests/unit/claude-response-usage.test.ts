@@ -2,8 +2,49 @@ import { describe, expect, it } from 'vitest';
 
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
 import { MALFORMED_FUNCTION_CALL_RECOVERY_TEXT } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
+import {
+  PartProcessor,
+  StreamingState,
+} from '@/modules/proxy-gateway/antigravity/ClaudeStreamingMapper';
 
 describe('ClaudeResponseMapper usage', () => {
+  it.each([undefined, 0, 2])(
+    'shares modality fallback and explicit precedence across unary/start/finish (%s)',
+    (thoughtsTokenCount) => {
+      const usageMetadata = {
+        promptTokenCount: 20,
+        candidatesTokenCount: 12,
+        thoughtsTokenCount,
+        candidatesTokensDetails: [
+          { modality: 'THINKING', tokenCount: 4 },
+          { modality: 'REASONING', tokenCount: 3 },
+          { modality: 'TEXT', tokenCount: 5 },
+        ],
+      };
+      const expected = {
+        input_tokens: 20,
+        output_tokens: 12,
+        cache_read_input_tokens: 0,
+        reasoning_tokens: thoughtsTokenCount ?? 7,
+      };
+      expect(transformResponse({ usageMetadata }).usage).toEqual({
+        ...expected,
+        cache_creation_input_tokens: 0,
+      });
+      const state = new StreamingState();
+      const start = state.emitMessageStart({ usageMetadata });
+      new PartProcessor(state).process({ text: 'ok' });
+      const finish = state.emitFinish('STOP', usageMetadata);
+      const startData = start.split('\n').find((line) => line.startsWith('data: '));
+      const finalData = finish
+        .find((chunk) => chunk.startsWith('event: message_delta'))
+        ?.split('\n')
+        .find((line) => line.startsWith('data: '));
+      expect(JSON.parse(startData?.slice(6) ?? '{}').message.usage).toEqual(expected);
+      expect(JSON.parse(finalData?.slice(6) ?? '{}').usage).toEqual(expected);
+    },
+  );
+
   it('returns one minimal text block when the upstream response has no content', () => {
     expect(transformResponse({}).content).toEqual([{ type: 'text', text: '.' }]);
   });

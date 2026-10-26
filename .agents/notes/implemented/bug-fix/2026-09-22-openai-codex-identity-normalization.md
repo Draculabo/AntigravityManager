@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Superseded by: [Shared prompt identity and protected-region boundaries](../architecture/2026-10-19-prompt-identity-boundaries.md)
+
 ## Problem
 
 OpenAI Codex clients can include the stale system identity `You are Codex, an agent based on GPT-5.` in top-level Responses instructions or ordinary system/developer messages. Forwarding that provider-specific identity to the Gemini upstream leaves an obsolete model claim in the stable prompt prefix that can conflict with the selected model.

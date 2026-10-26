@@ -5,9 +5,11 @@ Target version: next
 ## Affected users
 
 Users who start the core independently through the CLI or a service manager must upgrade that
-core with the desktop. Owner compatibility `4` carries closed process-ownership evidence and
-client credential-write certainty. Earlier compatibility versions, including `2` and `3`, cannot
-attach to a version `4` owner or desktop.
+core with the desktop. Owner compatibility `5` retains closed process-ownership evidence and
+client credential-write certainty, and adds audit archive statistics and interrupted-capture
+read outcomes. Earlier compatibility versions, including `2`, `3` and `4`, cannot
+attach to a version `5` owner or desktop. See the [audit upgrade guide](audit-storage-budget.md)
+for storage and recovery effects.
 
 Desktop-embedded users and users whose standalone core is launched by the desktop upgrade normally.
 For supported in-app updates, the desktop stops the core it launched before installing the update;

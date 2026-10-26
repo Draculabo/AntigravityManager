@@ -13,7 +13,10 @@ import {
 import { AuditFileExportInputSchema } from '@/modules/proxy-gateway/audit/audit-file-owner.schema';
 import { MAX_AUDIT_BODY_BYTES } from '@/modules/proxy-gateway/audit/audit-sanitizer';
 import { selectAuditFileAdapter } from '@/modules/proxy-gateway/ipc/audit-file-adapter';
-import { exportSelectedAuditBody } from '@/modules/proxy-gateway/ipc/audit-file-desktop';
+import {
+  exportSelectedAuditBody,
+  exportSelectedAuditSession,
+} from '@/modules/proxy-gateway/ipc/audit-file-desktop';
 
 let directory: string;
 let server: ManagementServer | undefined;
@@ -29,7 +32,7 @@ beforeEach(async () => {
     yield 'first\n';
     yield 'second\n';
   });
-  owner = createAuditFileOwner({ bodyContent: content });
+  owner = createAuditFileOwner({ bodyContent: content, sessionContent: content });
   selectAuditFileAdapter({ mode: 'desktop-embedded' });
 });
 afterEach(async () => {
@@ -68,6 +71,31 @@ async function remote() {
 }
 
 describe('selected audit file owner', () => {
+  it('exports a scoped session through the owner selected before the native chooser yields', async () => {
+    await remote();
+    const sessionId = `session:affinity:v1:${'a'.repeat(64)}`;
+    const filePath = join(directory, 'session.ndjson');
+    expect(
+      await exportSelectedAuditSession(sessionId, 'session.ndjson', async () => {
+        selectAuditFileAdapter({ mode: 'desktop-embedded' });
+        return filePath;
+      }),
+    ).toEqual({ status: 'saved' });
+    expect(content).toHaveBeenCalledExactlyOnceWith(sessionId);
+    expect(await readFile(filePath, 'utf8')).toBe('first\nsecond\n');
+  });
+  it('does not export a session after chooser cancellation or with an unscoped legacy key', async () => {
+    const chooser = vi.fn(async () => null);
+    const sessionId = `session:affinity:v1:${'a'.repeat(64)}`;
+    expect(await exportSelectedAuditSession(sessionId, 'session.ndjson', chooser)).toEqual({
+      status: 'cancelled',
+    });
+    await expect(
+      exportSelectedAuditSession('legacy-session', 'session.ndjson', chooser),
+    ).rejects.toThrow('Audit export is unavailable.');
+    expect(chooser).toHaveBeenCalledOnce();
+    expect(content).not.toHaveBeenCalled();
+  });
   it('writes an export above the RPC response cap in the remote owner and returns status only', async () => {
     await remote();
     const embedded = vi.spyOn(auditFileOwner, 'exportBody');

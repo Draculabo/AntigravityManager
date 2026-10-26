@@ -1,4 +1,7 @@
-import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import {
+  CloudAccountRepo,
+  type CloudAccountWriteGuard,
+} from '@/modules/cloud-account/persistence/cloudHandler';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
 import { GoogleAPIService, type TokenResponse } from './GoogleAPIService';
@@ -31,6 +34,7 @@ export function mergeRefreshedToken(
 export async function markAccountStatusFromError(
   account: CloudAccount,
   error: unknown,
+  guard?: CloudAccountWriteGuard,
 ): Promise<void> {
   if (isRetryableInvalidGrantRefreshError(error)) {
     return;
@@ -42,6 +46,7 @@ export async function markAccountStatusFromError(
       account.id,
       'expired',
       CLOUD_ACCOUNT_REAUTH_REQUIRED_REASON,
+      ...(guard ? [guard] : []),
     );
     return;
   }
@@ -53,11 +58,19 @@ export async function markAccountStatusFromError(
 
   account.status = classified.status;
   account.status_reason = classified.reason;
-  await CloudAccountRepo.setAccountStatus(account.id, classified.status, classified.reason);
+  await CloudAccountRepo.setAccountStatus(
+    account.id,
+    classified.status,
+    classified.reason,
+    ...(guard ? [guard] : []),
+  );
 }
 
-export async function clearAccountStatus(account: CloudAccount): Promise<void> {
+export async function clearAccountStatus(
+  account: CloudAccount,
+  guard?: CloudAccountWriteGuard,
+): Promise<void> {
   account.status = 'active';
   account.status_reason = undefined;
-  await CloudAccountRepo.setAccountStatus(account.id, 'active', null);
+  await CloudAccountRepo.setAccountStatus(account.id, 'active', null, ...(guard ? [guard] : []));
 }

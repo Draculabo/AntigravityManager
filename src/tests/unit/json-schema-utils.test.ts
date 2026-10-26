@@ -101,12 +101,13 @@ describe('cleanJsonSchema', () => {
 
   it.each([
     [{ const: 'element' }, { type: 'string', enum: ['element'] }],
-    [{ const: 5 }, { type: 'integer', enum: ['5'] }],
-    [{ const: 1.5 }, { type: 'number', enum: ['1.5'] }],
-    [{ const: true }, { type: 'boolean', enum: ['true'] }],
-    [{ const: ['a', 1] }, { type: 'array', items: { type: 'string' }, enum: ['["a",1]'] }],
-    [{ const: { kind: 'element' } }, { type: 'object', enum: ['{"kind":"element"}'] }],
-    [{ const: null }, { enum: ['null'] }],
+    [{ const: 5 }, { type: 'string', enum: ['5'] }],
+    [{ const: 1.5 }, { type: 'string', enum: ['1.5'] }],
+    [{ const: true }, { type: 'string', enum: ['true'] }],
+    [{ const: ['a', 1] }, { type: 'string', enum: ['["a",1]'] }],
+    [{ const: { kind: 'element' } }, { type: 'string', enum: ['{"kind":"element"}'] }],
+    [{ const: null }, { type: 'string', enum: ['null'] }],
+    [{ const: '' }, { type: 'string' }],
   ])('preserves const semantics as a Gemini-compatible enum', (schema, expected) => {
     cleanJsonSchema(schema);
 
@@ -188,7 +189,7 @@ describe('cleanJsonSchema', () => {
     ).toEqual({ type: 'array', items: { type: 'string' } });
   });
 
-  it('does not overwrite an explicit const type and does not duplicate an existing value', () => {
+  it('synchronizes a const enum to strings without duplicating an existing value', () => {
     const schema: JsonSchemaMap = {
       type: 'number',
       const: 5,
@@ -198,12 +199,12 @@ describe('cleanJsonSchema', () => {
     cleanJsonSchema(schema);
 
     expect(schema).toEqual({
-      type: 'number',
+      type: 'string',
       enum: ['5', '7'],
     });
   });
 
-  it('does not replace a malformed enum while preserving the inferred const type', () => {
+  it('drops a malformed enum while retaining the string type from const', () => {
     const schema: JsonSchemaMap = {
       const: 'element',
       enum: 'not-an-array',
@@ -216,7 +217,7 @@ describe('cleanJsonSchema', () => {
     });
   });
 
-  it('stringifies primitive enum members for Gemini string-backed enum types', () => {
+  it('stringifies enum members and synchronizes every schema type', () => {
     const stringSchema = { type: 'string', enum: [3, 6, 12] };
     const integerSchema = { type: 'integer', enum: [3, 6, 12] };
     const numberSchema = { type: 'number', enum: [0.5, 1.5] };
@@ -228,18 +229,20 @@ describe('cleanJsonSchema', () => {
     expect(stringSchema.enum).toEqual(['3', '6', '12']);
     expect(integerSchema.enum).toEqual(['3', '6', '12']);
     expect(numberSchema.enum).toEqual(['0.5', '1.5']);
+    expect(stringSchema.type).toBe('string');
+    expect(integerSchema.type).toBe('string');
+    expect(numberSchema.type).toBe('string');
   });
 
-  it('removes non-string enums from untyped schemas and preserves their values as hints', () => {
+  it('stringifies boolean enums on untyped schemas', () => {
     const untypedSchema: JsonSchemaMap = { enum: [true, false] };
 
     cleanJsonSchema(untypedSchema);
 
-    expect(untypedSchema.enum).toBeUndefined();
-    expect(untypedSchema.description).toContain('enum: true, false');
+    expect(untypedSchema).toEqual({ type: 'string', enum: ['true', 'false'] });
   });
 
-  it('removes malformed enums and does not coerce union-type enums', () => {
+  it('removes malformed enums and converts union-type enum declarations to strings', () => {
     const malformedSchema: JsonSchemaMap = { type: 'string', enum: 'pending' };
     const unionSchema: JsonSchemaMap = {
       type: ['string', 'null'],
@@ -250,20 +253,30 @@ describe('cleanJsonSchema', () => {
     cleanJsonSchema(unionSchema);
 
     expect(malformedSchema.enum).toBeUndefined();
-    expect(unionSchema.enum).toBeUndefined();
-    expect(unionSchema.description).toContain('enum: 3, 6, 12');
-    expect(unionSchema.type).toBe('string');
+    expect(unionSchema).toEqual({ type: 'string', enum: ['3', '6', '12'] });
   });
 
-  it('drops non-primitive enum members without emitting empty enums', () => {
+  it('stringifies null and object enum values and removes only literal empty strings', () => {
     const stringSchema: JsonSchemaMap = { type: 'string', enum: [null, 'only'] };
     const objectSchema: JsonSchemaMap = { enum: [{ a: 1 }] };
+    const mixedSchema: JsonSchemaMap = {
+      type: 'integer',
+      enum: ['', ' ', 2, null, { kind: 'x' }],
+    };
+    const emptySchema: JsonSchemaMap = { enum: [''] };
 
     cleanJsonSchema(stringSchema);
     cleanJsonSchema(objectSchema);
+    cleanJsonSchema(mixedSchema);
+    cleanJsonSchema(emptySchema);
 
-    expect(stringSchema.enum).toEqual(['only']);
-    expect(objectSchema.enum).toBeUndefined();
+    expect(stringSchema).toEqual({ type: 'string', enum: ['null', 'only'] });
+    expect(objectSchema).toEqual({ type: 'string', enum: ['{"a":1}'] });
+    expect(mixedSchema).toEqual({
+      type: 'string',
+      enum: [' ', '2', 'null', '{"kind":"x"}'],
+    });
+    expect(emptySchema).toEqual({});
   });
 
   it('combines enum and validation hints into one constraint suffix', () => {
@@ -274,7 +287,8 @@ describe('cleanJsonSchema', () => {
 
     cleanJsonSchema(schema);
 
-    expect(schema.description).toContain('enum: true, false');
+    expect(schema.enum).toEqual(['true', 'false']);
+    expect(schema.type).toBe('string');
     expect(schema.description).toContain('min: 1');
     expect((schema.description as string).match(/ \[Constraint: /g)).toHaveLength(1);
   });

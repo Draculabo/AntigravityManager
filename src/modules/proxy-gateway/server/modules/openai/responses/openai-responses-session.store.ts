@@ -1,11 +1,32 @@
-import { isEqual } from 'lodash-es';
+import { collectResponsesToolCallItems } from './responses-session-input';
+export {
+  mergeOpenAIResponsesInputItems,
+  prepareOpenAIResponsesSessionInput,
+  type PreparedOpenAIResponsesSessionInput,
+} from './responses-session-input';
 
 import { DurableRecordStore } from '@/shared/persistence/durable-record-store';
-import { resolveResponsesInputType } from './responses-input-type';
+import { getTrafficAuditRequestContext } from '../../../../audit/traffic-audit-context';
 import { boundResponsesInputItems } from './openai-responses-inline-media';
+import {
+  containsInlineResponsesMedia,
+  containsResponsesMediaReference,
+  hasInvalidResponsesMediaReference,
+  OpenAIResponsesMediaStore,
+  ResponsesMediaUnavailableError,
+} from './openai-responses-media-store';
+import { resolveClientSessionHint } from '../../../common/client-session-hint';
 import type { OpenAIChatRequest } from '../../../common/interfaces/request-interfaces';
+import { decodeResponsesHistoryOwner, type ResponsesHistoryOwner } from './responses-history-owner';
+import {
+  decodeResponsesInitialIdentity,
+  type ResponsesInitialIdentity,
+} from './responses-initial-identity';
 
 export interface OpenAIResponsesSession {
+  thoughtSessionKey?: string;
+  identity: ResponsesInitialIdentity;
+  historyOwner?: ResponsesHistoryOwner;
   inputItems: unknown[];
   instructions?: string;
   model: string;
@@ -20,6 +41,9 @@ export interface OpenAIResponsesSession {
 }
 
 interface OpenAIResponsesSessionNode {
+  readonly thoughtSessionKey?: string;
+  readonly identity: ResponsesInitialIdentity;
+  readonly historyOwner: ResponsesHistoryOwner;
   readonly parent: OpenAIResponsesSessionNode | null;
   readonly inputDelta: readonly unknown[];
   readonly responseOutput: readonly unknown[];
@@ -50,6 +74,9 @@ export interface OpenAIResponsesSessionWithParent {
 }
 
 export interface SaveOpenAIResponsesSessionDelta {
+  thoughtSessionKey?: string;
+  identity: ResponsesInitialIdentity;
+  historyOwner?: ResponsesHistoryOwner;
   inputDelta: unknown[];
   instructions?: string;
   model: string;
@@ -66,6 +93,7 @@ const sessionParentNodes = new WeakMap<object, OpenAIResponsesSessionNode>();
 
 /** What the Responses surface needs from the store, so a caller can be handed either. */
 export interface OpenAIResponsesSessionStoreLike {
+  getHistoryOwner(responseId: string): ResponsesHistoryOwner | null;
   clear(): void;
   delete(responseId: string): boolean;
   get(responseId: string): OpenAIResponsesSession | null;
@@ -78,6 +106,7 @@ export interface OpenAIResponsesSessionStoreOptions {
   /** Absolute path of the backing file. Omit to keep the store in memory only. */
   filePath?: string;
   maxSessions?: number;
+  mediaStore?: OpenAIResponsesMediaStore;
   ttlMs?: number;
 }
 
@@ -94,9 +123,15 @@ export const DEFAULT_OPENAI_RESPONSES_SESSION_TTL_MS = 60 * 60 * 1000;
  * one.
  */
 export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionStoreLike {
+  private readonly fileBacked: boolean;
+  private mediaStore?: OpenAIResponsesMediaStore;
   private readonly sessions: DurableRecordStore<StoredOpenAIResponsesSession>;
+  private readonly revokedNodes = new WeakSet<OpenAIResponsesSessionNode>();
+  private readonly issuedParents = new WeakSet<object>();
 
   public constructor(options: OpenAIResponsesSessionStoreOptions = {}) {
+    this.fileBacked = options.filePath !== undefined;
+    this.mediaStore = options.mediaStore;
     this.sessions = new DurableRecordStore<StoredOpenAIResponsesSession>({
       filePath: options.filePath,
       maxEntries: options.maxSessions ?? DEFAULT_OPENAI_RESPONSES_MAX_SESSIONS,
@@ -109,24 +144,152 @@ export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionSt
     return this.getWithParent(responseId)?.session ?? null;
   }
 
+  public getHistoryOwner(responseId: string): ResponsesHistoryOwner | null {
+    return this.sessions.peek(responseId)?.node.historyOwner ?? null;
+  }
+
   public getWithParent(responseId: string): OpenAIResponsesSessionWithParent | null {
+    if (getTrafficAuditRequestContext()?.thoughtCaptureLease?.valid === false) {
+      return null;
+    }
     const stored = this.sessions.get(responseId);
     if (!stored) {
       return null;
     }
 
+    const parent = createOpenAIResponsesSessionParent(stored.node);
+    this.issuedParents.add(parent);
     return {
-      parent: createOpenAIResponsesSessionParent(stored.node),
+      parent,
       routingSessionId: normalizeRoutingSessionId(stored.node.routingSessionId) ?? responseId,
       session: materializeOpenAIResponsesSession(stored),
     };
   }
 
+  public async restoreInputMedia(
+    responseId: string,
+  ): Promise<OpenAIResponsesSessionWithParent | null> {
+    const materialized = this.getWithParent(responseId);
+    if (!materialized) {
+      return null;
+    }
+    if (!this.mediaStore) {
+      if (containsResponsesMediaReference(materialized.session.inputItems)) {
+        throw new ResponsesMediaUnavailableError();
+      }
+      return materialized;
+    }
+    const inputItems = await this.mediaStore.restore(materialized.session.inputItems);
+    const source = sessionParentNodes.get(materialized.parent);
+    if (
+      !source ||
+      this.revokedNodes.has(source) ||
+      getTrafficAuditRequestContext()?.thoughtCaptureLease?.valid === false
+    ) {
+      throw new ResponsesMediaUnavailableError();
+    }
+    return {
+      ...materialized,
+      session: {
+        ...materialized.session,
+        inputItems,
+      },
+    };
+  }
+
+  public async storeInputMedia(items: unknown[]): Promise<unknown[]> {
+    if (this.mediaStore) {
+      return this.mediaStore.externalize(items);
+    }
+    if (this.fileBacked && containsInlineResponsesMedia(items)) {
+      throw new Error('Private Responses media storage is not configured');
+    }
+    return cloneResponsesItems(items);
+  }
+
+  public async storeResponseMedia(
+    response: Record<string, unknown> | undefined,
+  ): Promise<Record<string, unknown> | undefined> {
+    if (!response) {
+      return undefined;
+    }
+    const [stored] = await this.storeInputMedia([response]);
+    if (!isRecord(stored)) {
+      throw new Error('Stored Responses response is invalid');
+    }
+    return stored;
+  }
+
+  public async restoreResponseMedia(
+    response: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    if (!this.mediaStore) {
+      if (containsResponsesMediaReference(response)) {
+        throw new ResponsesMediaUnavailableError();
+      }
+      return structuredClone(response);
+    }
+    const [restored] = await this.mediaStore.restore([response]);
+    if (!isRecord(restored)) {
+      throw new ResponsesMediaUnavailableError();
+    }
+    return restored;
+  }
+
+  public getMediaStore(): OpenAIResponsesMediaStore | undefined {
+    return this.mediaStore;
+  }
+
+  public async saveDeltaWithMedia(
+    responseId: string,
+    delta: SaveOpenAIResponsesSessionDelta,
+  ): Promise<void> {
+    const captureLease = getTrafficAuditRequestContext()?.thoughtCaptureLease;
+    const mayCommit = () => captureLease?.valid !== false;
+    if (!mayCommit()) {
+      return;
+    }
+    if (!this.fileBacked || delta.store === false) {
+      this.saveDelta(responseId, delta);
+      return;
+    }
+    const [inputDelta, responseOutput, toolCallItems, response] = await Promise.all([
+      this.storeInputMedia(delta.inputDelta),
+      this.storeInputMedia(delta.responseOutput),
+      this.storeInputMedia(delta.toolCallItems ?? []),
+      this.storeResponseMedia(delta.response),
+    ]);
+    if (!mayCommit()) {
+      return;
+    }
+    const writeGeneration = this.saveDelta(responseId, {
+      ...delta,
+      inputDelta,
+      responseOutput,
+      response,
+      toolCallItems,
+    });
+    if (
+      writeGeneration !== undefined &&
+      containsResponsesMediaReference([inputDelta, responseOutput, toolCallItems, response])
+    ) {
+      await this.sessions.flushStrict(writeGeneration);
+    }
+  }
+
   public save(responseId: string, session: OpenAIResponsesSession): void {
+    const context = getTrafficAuditRequestContext();
+    if (context?.thoughtCaptureLease?.valid === false) {
+      return;
+    }
     const boundedInputItems = boundResponsesInputItems(session.inputItems);
     const boundedToolCallItems = boundResponsesInputItems(session.toolCallItems ?? []);
+    this.assertPersistableMedia([boundedInputItems, boundedToolCallItems, session.response]);
     this.sessions.set(responseId, {
       node: createOpenAIResponsesSessionNode({
+        thoughtSessionKey: context?.thoughtSessionKey ?? session.thoughtSessionKey,
+        identity: session.identity,
+        historyOwner: session.historyOwner ?? 'unknown',
         inputDelta: boundedInputItems,
         instructions: session.instructions,
         model: session.model,
@@ -144,16 +307,33 @@ export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionSt
     });
   }
 
-  public saveDelta(responseId: string, delta: SaveOpenAIResponsesSessionDelta): void {
+  public saveDelta(responseId: string, delta: SaveOpenAIResponsesSessionDelta): number | undefined {
+    const context = getTrafficAuditRequestContext();
+    if (context?.thoughtCaptureLease?.valid === false) {
+      return undefined;
+    }
     const parentNode = delta.parent ? sessionParentNodes.get(delta.parent) : undefined;
-    if (delta.parent && !parentNode) {
+    if (delta.parent && (!parentNode || !this.issuedParents.has(delta.parent))) {
       throw new Error('Invalid OpenAI Responses session parent');
+    }
+    if (parentNode && parentNode.historyOwner !== (delta.historyOwner ?? 'unknown')) {
+      throw new Error('OpenAI Responses session parent ownership mismatch');
+    }
+    for (let ancestor = parentNode; ancestor; ancestor = ancestor.parent ?? undefined) {
+      if (this.revokedNodes.has(ancestor)) {
+        throw new Error('Responses history parent was invalidated');
+      }
     }
     const inputDelta = boundResponsesInputItems(delta.inputDelta);
     const responseOutput = boundResponsesInputItems(delta.responseOutput);
     const toolCallItems = boundResponsesInputItems(delta.toolCallItems ?? []);
-    this.sessions.set(responseId, {
+    this.assertPersistableMedia([inputDelta, responseOutput, toolCallItems, delta.response]);
+    return this.sessions.set(responseId, {
       node: createOpenAIResponsesSessionNode({
+        thoughtSessionKey:
+          parentNode?.thoughtSessionKey ?? context?.thoughtSessionKey ?? delta.thoughtSessionKey,
+        identity: delta.identity,
+        historyOwner: delta.historyOwner ?? 'unknown',
         inputDelta,
         instructions: delta.instructions,
         model: delta.model,
@@ -177,13 +357,63 @@ export class OpenAIResponsesSessionStoreImpl implements OpenAIResponsesSessionSt
   }
 
   public clear(): void {
+    for (const record of this.sessions.entries()) {
+      this.revokedNodes.add(record.value.node);
+    }
     this.sessions.clear();
+  }
+
+  /** Exact captured client ownership; old unknown rows are never assigned by similarity. */
+  public async deleteThoughtSession(
+    sessionKey?: string,
+  ): Promise<{ removed: number; unknown: number }> {
+    let removed = 0;
+    let unknown = 0;
+    for (const record of this.sessions.entries()) {
+      if (sessionKey === undefined || record.value.node.thoughtSessionKey === sessionKey) {
+        this.revokedNodes.add(record.value.node);
+        if (this.sessions.delete(record.key)) {
+          removed += 1;
+        }
+      } else if (record.value.node.thoughtSessionKey === undefined) {
+        unknown += 1;
+      }
+    }
+    await this.sessions.flushStrict();
+    return { removed, unknown };
+  }
+
+  public onModuleDestroy(): void {
+    this.replaceMediaStore();
+  }
+
+  protected replaceMediaStore(mediaStore?: OpenAIResponsesMediaStore): void {
+    this.mediaStore?.dispose();
+    this.mediaStore = mediaStore;
   }
 
   /** Resolves once every pending write has reached the disk. */
   public flush(): Promise<void> {
     return this.sessions.flush();
   }
+
+  public flushStrict(): Promise<void> {
+    return this.sessions.flushStrict();
+  }
+
+  private assertPersistableMedia(values: unknown[]): void {
+    if (
+      !this.fileBacked ||
+      (!containsInlineResponsesMedia(values) && !hasInvalidResponsesMediaReference(values))
+    ) {
+      return;
+    }
+    throw new Error('Responses history must contain valid private media references before saving');
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -196,6 +426,11 @@ export const OpenAIResponsesSessionStore = new OpenAIResponsesSessionStoreImpl()
 
 function cloneOpenAIResponsesSession(session: OpenAIResponsesSession): OpenAIResponsesSession {
   return {
+    ...(session.thoughtSessionKey === undefined
+      ? {}
+      : { thoughtSessionKey: session.thoughtSessionKey }),
+    identity: Object.freeze({ ...session.identity }),
+    historyOwner: session.historyOwner ?? 'unknown',
     inputItems: cloneResponsesItems(session.inputItems),
     instructions: session.instructions,
     model: session.model,
@@ -220,6 +455,7 @@ function createOpenAIResponsesSessionNode(
 ): OpenAIResponsesSessionNode {
   return Object.freeze({
     ...node,
+    identity: Object.freeze({ ...node.identity }),
     inputDelta: Object.freeze(cloneResponsesItems(node.inputDelta)),
     responseOutput: Object.freeze(cloneResponsesItems(node.responseOutput)),
     tools: cloneResponsesTools(node.tools),
@@ -244,6 +480,9 @@ function materializeOpenAIResponsesSession(
   ]);
 
   return sanitizeOpenAIResponsesSession({
+    thoughtSessionKey: stored.node.thoughtSessionKey,
+    identity: stored.node.identity,
+    historyOwner: stored.node.historyOwner,
     inputItems,
     instructions: stored.node.instructions,
     model: stored.node.model,
@@ -266,34 +505,13 @@ function reviveStoredOpenAIResponsesSession(value: unknown): StoredOpenAIRespons
   }
 
   const storedNode = reviveOpenAIResponsesSessionNode(Reflect.get(value, 'node'));
-  if (storedNode) {
-    return {
-      node: storedNode,
-      response: reviveStoredResponse(Reflect.get(value, 'response')),
-      store: reviveStoredBoolean(Reflect.get(value, 'store')),
-    };
-  }
-
-  const inputItems = Reflect.get(value, 'inputItems');
-  const model = Reflect.get(value, 'model');
-  if (!Array.isArray(inputItems) || typeof model !== 'string' || !model) {
+  if (!storedNode) {
     return null;
   }
-  const legacy = sanitizeOpenAIResponsesSession(value as OpenAIResponsesSession);
-  const boundedToolCallItems = boundResponsesInputItems(legacy.toolCallItems ?? []);
   return {
-    node: createOpenAIResponsesSessionNode({
-      inputDelta: legacy.inputItems,
-      instructions: legacy.instructions,
-      model: legacy.model,
-      parent: null,
-      responseOutput: [],
-      routingSessionId: legacy.routingSessionId,
-      tools: legacy.tools,
-      toolCallItems: collectResponsesToolCallItems([...boundedToolCallItems, ...legacy.inputItems]),
-    }),
-    response: legacy.response,
-    store: legacy.store,
+    node: storedNode,
+    response: reviveStoredResponse(Reflect.get(value, 'response')),
+    store: reviveStoredBoolean(Reflect.get(value, 'store')),
   };
 }
 
@@ -307,16 +525,32 @@ function reviveOpenAIResponsesSessionNode(value: unknown): OpenAIResponsesSessio
     const inputDelta = Reflect.get(current, 'inputDelta');
     const responseOutput = Reflect.get(current, 'responseOutput');
     const model = Reflect.get(current, 'model');
+    const historyOwner = decodeResponsesHistoryOwner(Reflect.get(current, 'historyOwner'));
+    const thoughtSessionKey: unknown = Reflect.get(current, 'thoughtSessionKey');
+    const identity = decodeResponsesInitialIdentity(Reflect.get(current, 'identity'));
+    const routingSessionId = normalizeRoutingSessionId(Reflect.get(current, 'routingSessionId'));
     if (
       !Array.isArray(inputDelta) ||
       !Array.isArray(responseOutput) ||
       typeof model !== 'string' ||
-      !model
+      !model ||
+      historyOwner === null ||
+      (thoughtSessionKey !== undefined &&
+        (typeof thoughtSessionKey !== 'string' ||
+          !thoughtSessionKey ||
+          thoughtSessionKey.length > 512)) ||
+      identity === null ||
+      containsInlineResponsesMedia([inputDelta, responseOutput]) ||
+      hasInvalidResponsesMediaReference([inputDelta, responseOutput]) ||
+      (identity.origin === 'client' && routingSessionId === undefined)
     ) {
       return null;
     }
     const rawToolCallItems = Reflect.get(current, 'toolCallItems');
     serializedChain.push({
+      ...(typeof thoughtSessionKey === 'string' ? { thoughtSessionKey } : {}),
+      identity,
+      historyOwner,
       inputDelta: boundResponsesInputItems(inputDelta),
       instructions:
         typeof Reflect.get(current, 'instructions') === 'string'
@@ -324,15 +558,27 @@ function reviveOpenAIResponsesSessionNode(value: unknown): OpenAIResponsesSessio
           : undefined,
       model,
       responseOutput: boundResponsesInputItems(responseOutput),
-      routingSessionId: normalizeRoutingSessionId(Reflect.get(current, 'routingSessionId')),
+      routingSessionId,
       tools: Reflect.get(current, 'tools') as OpenAIChatRequest['tools'],
       toolCallItems: boundResponsesInputItems(
         Array.isArray(rawToolCallItems) ? rawToolCallItems : [],
       ),
     });
+    const lastNode = serializedChain[serializedChain.length - 1];
+    if (
+      lastNode &&
+      (containsInlineResponsesMedia(lastNode.toolCallItems) ||
+        hasInvalidResponsesMediaReference(lastNode.toolCallItems))
+    ) {
+      return null;
+    }
     current = Reflect.get(current, 'parent');
   }
 
+  const owner = serializedChain[0]?.historyOwner;
+  if (serializedChain.some((node) => node.historyOwner !== owner)) {
+    return null;
+  }
   let parent: OpenAIResponsesSessionNode | null = null;
   for (const serialized of serializedChain.reverse()) {
     parent = createOpenAIResponsesSessionNode({ ...serialized, parent });
@@ -374,296 +620,6 @@ function sanitizeOpenAIResponsesSession(session: OpenAIResponsesSession): OpenAI
   });
 }
 
-/**
- * Rebuilds a Responses transcript using the same continuation rules used by
- * Codex clients: compaction replaces stale history, orphan tool outputs recover
- * their calls from the session cache, and repeated durable items are removed.
- */
-export function mergeOpenAIResponsesInputItems(
-  history: unknown[],
-  newInput: unknown[],
-  cachedToolCalls: unknown[] = [],
-): unknown[] {
-  const filteredHistory = history.filter((item) => !isCodexTranscriptOnlyItem(item));
-  const filteredNewInput = newInput.filter((item) => !isCodexTranscriptOnlyItem(item));
-  const hasCompaction = filteredNewInput.some(isCompactionItem);
-  const merged = hasCompaction
-    ? filteredNewInput.filter((item) => !isCompactionItem(item))
-    : [...filteredHistory, ...filteredNewInput.filter((item) => !isCompactionItem(item))];
-
-  return dedupeFunctionCallsByCallId(
-    dedupeInputItemsById(repairToolCalls(merged, cachedToolCalls)),
-  );
-}
-
-export interface PreparedOpenAIResponsesSessionInput {
-  delta: unknown[];
-  merged: unknown[];
-  resetParent: boolean;
-}
-
-/** Derives the retained suffix while rebuilding the complete input needed by the provider. */
-export function prepareOpenAIResponsesSessionInput(
-  history: unknown[],
-  newInput: unknown[],
-  cachedToolCalls: unknown[] = [],
-  retainDelta = true,
-): PreparedOpenAIResponsesSessionInput {
-  const resetParent = newInput.some(isCompactionItem);
-  const exactReplay = history.length > 0 && startsWithItems(newInput, history);
-  const semanticPrefixReplay =
-    history.length > 0 &&
-    newInput.length >= history.length &&
-    history.every((item, index) => responsesItemsSemanticallyEqual(item, newInput[index]));
-  const replayedThrough =
-    resetParent || exactReplay || semanticPrefixReplay
-      ? -1
-      : findLastSharedItemId(history, newInput);
-  const semanticSuffixIndex =
-    history.length > 0 &&
-    !resetParent &&
-    !exactReplay &&
-    !semanticPrefixReplay &&
-    replayedThrough < 0
-      ? findLastSemanticItemIndex(newInput, history[history.length - 1])
-      : -1;
-  let useNewInputAsMerged = false;
-  let deltaSource: unknown[];
-  if (resetParent || history.length === 0) {
-    deltaSource = [...newInput];
-  } else if (exactReplay || semanticPrefixReplay) {
-    deltaSource = newInput.slice(history.length);
-  } else if (replayedThrough >= 0) {
-    deltaSource = newInput.slice(replayedThrough + 1);
-  } else if (semanticSuffixIndex >= 0) {
-    deltaSource = newInput.slice(semanticSuffixIndex + 1);
-  } else if (newInput.length >= history.length) {
-    deltaSource = newInput.length > 0 ? [newInput[newInput.length - 1]] : [];
-    useNewInputAsMerged = true;
-  } else {
-    deltaSource = [...newInput];
-  }
-  const delta = mergeOpenAIResponsesInputItems([], deltaSource, cachedToolCalls);
-  const merged =
-    resetParent || history.length === 0
-      ? [...delta]
-      : useNewInputAsMerged
-        ? mergeOpenAIResponsesInputItems([], newInput, cachedToolCalls)
-        : mergeOpenAIResponsesInputItems(history, delta, cachedToolCalls);
-
-  return { delta: retainDelta ? delta : [], merged, resetParent };
-}
-
-function startsWithItems(items: unknown[], prefix: unknown[]): boolean {
-  return prefix.every((item, index) => isEqual(items[index], item));
-}
-
-function findLastSharedItemId(history: unknown[], newInput: unknown[]): number {
-  const historyIds = new Set(history.map(resolveItemId).filter((id): id is string => Boolean(id)));
-  for (let index = newInput.length - 1; index >= 0; index -= 1) {
-    const id = resolveItemId(newInput[index]);
-    if (id && historyIds.has(id)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function findLastSemanticItemIndex(items: unknown[], expected: unknown): number {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    if (responsesItemsSemanticallyEqual(items[index], expected)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function responsesItemsSemanticallyEqual(left: unknown, right: unknown): boolean {
-  if (!isResponsesItemRecord(left) || !isResponsesItemRecord(right)) {
-    return isEqual(left, right);
-  }
-
-  return (
-    isEqual(Reflect.get(left, 'role'), Reflect.get(right, 'role')) &&
-    isEqual(Reflect.get(left, 'type'), Reflect.get(right, 'type')) &&
-    isEqual(resolveSemanticItemContent(left), resolveSemanticItemContent(right))
-  );
-}
-
-function resolveSemanticItemContent(item: Record<PropertyKey, unknown>): unknown {
-  return Object.prototype.hasOwnProperty.call(item, 'content')
-    ? Reflect.get(item, 'content')
-    : Reflect.get(item, 'text');
-}
-
-function isResponsesItemRecord(value: unknown): value is Record<PropertyKey, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function resolveItemId(item: unknown): string | undefined {
-  if (typeof item !== 'object' || item === null || Array.isArray(item)) {
-    return undefined;
-  }
-  const id = Reflect.get(item, 'id');
-  return typeof id === 'string' && id ? id : undefined;
-}
-
-function isCodexTranscriptOnlyItem(item: unknown): boolean {
-  const inputType = resolveResponsesInputType(item);
-  if (inputType === 'reasoning') {
-    return true;
-  }
-
-  if (inputType !== 'message' || getStringField(item, 'role') !== 'assistant') {
-    return false;
-  }
-
-  const phase = getStringField(item, 'phase');
-  const itemId = getStringField(item, 'id');
-  if (phase === 'commentary' || itemId?.startsWith('msg_thought_')) {
-    return true;
-  }
-
-  return getMessageText(item).trimStart().startsWith('**Thinking**');
-}
-
-function getMessageText(item: unknown): string {
-  if (typeof item !== 'object' || item === null || Array.isArray(item)) {
-    return '';
-  }
-  const content = Reflect.get(item, 'content');
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return '';
-  }
-
-  return content
-    .flatMap((part) => {
-      if (typeof part !== 'object' || part === null || Array.isArray(part)) {
-        return [];
-      }
-      const text = Reflect.get(part, 'text');
-      return typeof text === 'string' ? [text] : [];
-    })
-    .join('\n');
-}
-
-function repairToolCalls(items: unknown[], cachedToolCalls: unknown[]): unknown[] {
-  const presentCallIds = new Set(
-    items
-      .filter(isToolCallItem)
-      .map(getCallId)
-      .filter((callId): callId is string => Boolean(callId)),
-  );
-  const cacheByCallId = new Map<string, unknown>();
-  for (const item of cachedToolCalls) {
-    if (!isToolCallItem(item)) {
-      continue;
-    }
-    const callId = getCallId(item);
-    if (callId) {
-      cacheByCallId.set(callId, item);
-    }
-  }
-
-  const inserted = new Set<string>();
-  const repaired: unknown[] = [];
-  for (const item of items) {
-    if (isToolCallOutputItem(item)) {
-      const callId = getCallId(item);
-      if (callId && !presentCallIds.has(callId) && !inserted.has(callId)) {
-        const cachedCall = cacheByCallId.get(callId);
-        if (cachedCall) {
-          repaired.push(cachedCall);
-          inserted.add(callId);
-        }
-      }
-    }
-    repaired.push(item);
-  }
-  return repaired;
-}
-
-function dedupeInputItemsById(items: unknown[]): unknown[] {
-  const referencedCallIds = new Set(
-    items
-      .filter(isToolCallOutputItem)
-      .map(getCallId)
-      .filter((callId): callId is string => Boolean(callId)),
-  );
-  const keepByItemId = new Map<string, { index: number; referenced: boolean }>();
-
-  items.forEach((item, index) => {
-    const itemId = getStringField(item, 'id');
-    if (!itemId) {
-      return;
-    }
-    const callId = getCallId(item);
-    const referenced = Boolean(callId && referencedCallIds.has(callId));
-    const existing = keepByItemId.get(itemId);
-    if (!existing || referenced || !existing.referenced) {
-      keepByItemId.set(itemId, { index, referenced });
-    }
-  });
-
-  const keepIndexes = new Set([...keepByItemId.values()].map(({ index }) => index));
-  return items.filter((item, index) => {
-    const itemId = getStringField(item, 'id');
-    return !itemId || keepIndexes.has(index);
-  });
-}
-
-function dedupeFunctionCallsByCallId(items: unknown[]): unknown[] {
-  const seenCallIds = new Set<string>();
-  return items.filter((item) => {
-    if (!isToolCallItem(item)) {
-      return true;
-    }
-    const callId = getCallId(item);
-    if (!callId) {
-      return true;
-    }
-    if (seenCallIds.has(callId)) {
-      return false;
-    }
-    seenCallIds.add(callId);
-    return true;
-  });
-}
-
-function collectResponsesToolCallItems(items: unknown[]): unknown[] {
-  return dedupeFunctionCallsByCallId(items.filter(isToolCallItem));
-}
-
-function isCompactionItem(item: unknown): boolean {
-  const type = getStringField(item, 'type');
-  return type === 'compaction' || type === 'compaction_summary';
-}
-
-function isToolCallItem(item: unknown): boolean {
-  const type = getStringField(item, 'type');
-  return type === 'function_call' || type === 'custom_tool_call';
-}
-
-function isToolCallOutputItem(item: unknown): boolean {
-  const type = getStringField(item, 'type');
-  return type === 'function_call_output' || type === 'custom_tool_call_output';
-}
-
-function getCallId(item: unknown): string | null {
-  return getStringField(item, 'call_id') ?? getStringField(item, 'id');
-}
-
-function getStringField(item: unknown, field: string): string | null {
-  if (typeof item !== 'object' || item === null || Array.isArray(item)) {
-    return null;
-  }
-  const value = Reflect.get(item, field);
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
 function normalizeRoutingSessionId(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  return resolveClientSessionHint({}, undefined, { session_id: value }).id;
 }

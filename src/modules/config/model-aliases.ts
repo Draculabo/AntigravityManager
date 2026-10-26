@@ -128,3 +128,63 @@ export function getConfiguredModelMapping(
 
   return mapping;
 }
+
+function normalizeClaudeAliasForConflict(alias: string): string {
+  return alias
+    .trim()
+    .toLowerCase()
+    .replace(/^models\//, '')
+    .replace(/^anthropic\//, '')
+    .replaceAll('.', '-');
+}
+
+/**
+ * Rejects aliases that become indistinguishable when routing falls back from an exact lookup.
+ * Exact aliases remain case-sensitive, so differently-cased spellings are valid until a request
+ * misses them and reaches the case-folded stage. The save boundary only blocks Claude spellings
+ * whose punctuation and provider-prefix normalization would change the same canonical route.
+ */
+export function assertPredictableModelAliasEquivalence(
+  proxy: Pick<ProxyConfig, 'model_aliases' | 'custom_mapping' | 'anthropic_mapping'>,
+): void {
+  const mappings = Object.entries(getConfiguredModelMapping(proxy))
+    .filter(([alias, target]) => alias !== '' && target !== '')
+    .map(([alias, target]) => ({ alias, target }));
+  assertUniqueEquivalentTargets(
+    mappings.filter(({ alias }) => alias.toLowerCase().includes('claude-')),
+    (alias, requested) =>
+      normalizeClaudeAliasForConflict(alias) === normalizeClaudeAliasForConflict(requested),
+    'Claude-normalized',
+  );
+}
+
+function assertUniqueEquivalentTargets(
+  mappings: ReadonlyArray<{ alias: string; target: string }>,
+  matches: (alias: string, requested: string) => boolean,
+  equivalence: string,
+): void {
+  const groups = new Map<string, Array<{ alias: string; target: string }>>();
+  for (const mapping of mappings) {
+    const aliases = mappings.filter((candidate) => matches(candidate.alias, mapping.alias));
+    const targets = new Set(aliases.map((candidate) => candidate.target));
+    if (targets.size <= 1) {
+      continue;
+    }
+    groups.set(
+      aliases
+        .map((candidate) => candidate.alias)
+        .sort()
+        .join('\u0000'),
+      aliases,
+    );
+  }
+  const conflict = [...groups.values()][0];
+  if (!conflict) {
+    return;
+  }
+  throw new Error(
+    `Ambiguous ${equivalence} model aliases: ${conflict
+      .map(({ alias }) => `"${alias}"`)
+      .join(', ')}`,
+  );
+}

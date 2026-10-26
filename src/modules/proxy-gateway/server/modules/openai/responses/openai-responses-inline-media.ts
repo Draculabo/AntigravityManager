@@ -21,43 +21,22 @@ function cloneResponsesValue(value: unknown): unknown {
   );
 }
 
-function mediaPlaceholder(value: Record<string, unknown>): Record<string, string> | null {
-  if (value.type === 'input_image' || value.type === 'image_url') {
-    return { type: 'input_text', text: '[historical image omitted]' };
-  }
-  if (value.type === 'input_audio' || value.type === 'audio' || value.type === 'audio_url') {
-    return { type: 'input_text', text: '[historical audio omitted]' };
-  }
-  return null;
+function isMediaRecord(value: Record<string, unknown>): boolean {
+  return (
+    value.type === 'input_image' ||
+    value.type === 'image_url' ||
+    value.type === 'input_audio' ||
+    value.type === 'audio' ||
+    value.type === 'audio_url'
+  );
 }
 
-function boundHistoryValue(value: unknown): BoundedValue {
-  if (
-    typeof value === 'string' &&
-    (value.startsWith('data:image/') || value.startsWith('data:audio/'))
-  ) {
-    return OMIT_MEDIA_VALUE;
-  }
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => {
-      const bounded = boundHistoryValue(entry);
-      return bounded === OMIT_MEDIA_VALUE ? [] : [bounded];
-    });
-  }
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const placeholder = mediaPlaceholder(value);
-  if (placeholder) {
-    return placeholder;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value).flatMap(([key, entry]) => {
-      const bounded = boundHistoryValue(entry);
-      return bounded === OMIT_MEDIA_VALUE ? [] : [[key, bounded]];
-    }),
+function isToolRecord(value: Record<string, unknown>): boolean {
+  return (
+    value.type === 'function_call' ||
+    value.type === 'custom_tool_call' ||
+    value.type === 'function_call_output' ||
+    value.type === 'custom_tool_call_output'
   );
 }
 
@@ -68,23 +47,58 @@ function isUserMessage(value: unknown): boolean {
   return typeof value.type !== 'string' || value.type === 'message';
 }
 
+function boundHistoryValue(value: unknown, preserveMedia = false): BoundedValue {
+  if (
+    typeof value === 'string' &&
+    !preserveMedia &&
+    (value.startsWith('data:image/') || value.startsWith('data:audio/'))
+  ) {
+    return OMIT_MEDIA_VALUE;
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => {
+      const bounded = boundHistoryValue(entry, preserveMedia);
+      return bounded === OMIT_MEDIA_VALUE ? [] : [bounded];
+    });
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  if (isMediaRecord(value)) {
+    // Keep protocol media blocks intact. The request admission layer already
+    // applies the hard image limits; replacing these blocks here made a
+    // stored Responses continuation impossible to resume with its original
+    // media.
+    return cloneResponsesValue(value);
+  }
+
+  const preserveNestedMedia = preserveMedia || isToolRecord(value);
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, entry]) => {
+      const bounded = boundHistoryValue(entry, preserveNestedMedia);
+      return bounded === OMIT_MEDIA_VALUE ? [] : [[key, bounded]];
+    }),
+  );
+}
+
 /**
  * Returns a caller-independent request copy with inline media removed only from
  * turns preceding the latest user message. The current turn stays intact for
  * upstream conversion and limit validation.
  */
 export function omitMediaBeforeLatestUserTurn(items: unknown[]): unknown[] {
-  const cloned = items.map(cloneResponsesValue);
-  const currentTurnStart = cloned.findLastIndex(isUserMessage);
-  if (currentTurnStart < 0) {
-    return cloned;
-  }
+  // Historical media is part of the conversation contract by default. A
+  // caller may still apply an explicit bounded window later, but the gateway
+  // must not silently discard prior images merely because a new user turn was
+  // appended.
+  return items.map(cloneResponsesValue);
+}
 
-  for (let index = 0; index < currentTurnStart; index += 1) {
-    const bounded = boundHistoryValue(cloned[index]);
-    cloned[index] = bounded === OMIT_MEDIA_VALUE ? null : bounded;
-  }
-  return cloned;
+/** Returns the newest user turn for current-request hard media validation. */
+export function latestUserTurnForMediaValidation(items: unknown[]): unknown[] {
+  const index = items.findLastIndex(isUserMessage);
+  return index < 0 ? items : [items[index]];
 }
 
 /** Removes raw inline media from durable Responses history while retaining a small marker. */

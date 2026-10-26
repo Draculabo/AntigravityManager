@@ -1,5 +1,6 @@
 import type { PathResolutionOptions } from '@/shared/platform/paths';
 import { initializeStorageFile } from '../persistence/initialize-storage';
+import { publishProfileFileIfMissing } from '../persistence/publish-profile-file';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
@@ -582,14 +583,7 @@ export function loadGlobalOriginalProfile(): DeviceProfile | null {
 
 export function saveGlobalOriginalProfile(profile: DeviceProfile): void {
   const baselinePath = getGlobalBaselinePath();
-  const baselineDir = path.dirname(baselinePath);
-  if (!fs.existsSync(baselineDir)) {
-    fs.mkdirSync(baselineDir, { recursive: true });
-  }
-  if (fs.existsSync(baselinePath)) {
-    return;
-  }
-  fs.writeFileSync(baselinePath, JSON.stringify(profile, null, 2), 'utf-8');
+  publishProfileFileIfMissing(baselinePath, () => JSON.stringify(profile, null, 2));
 }
 
 export function readCurrentDeviceProfile(storagePath?: string): DeviceProfile {

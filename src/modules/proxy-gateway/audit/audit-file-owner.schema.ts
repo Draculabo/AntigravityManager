@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import path from 'node:path';
+import { AuditScopedSessionIdSchema } from './audit-session-export.schema';
 
 export const AuditFileExportInputSchema = z
   .strictObject({
@@ -9,6 +10,13 @@ export const AuditFileExportInputSchema = z
   .refine((value) => Buffer.byteLength(JSON.stringify(value), 'utf8') <= 3000);
 export const AuditFileExportResultSchema = z.strictObject({ status: z.literal('saved') });
 export type AuditFileExportInput = z.infer<typeof AuditFileExportInputSchema>;
+export const AuditSessionFileExportInputSchema = z
+  .strictObject({
+    sessionId: AuditScopedSessionIdSchema,
+    filePath: z.string().min(1).max(4096).refine(path.isAbsolute),
+  })
+  .refine((value) => Buffer.byteLength(JSON.stringify(value), 'utf8') <= 3000);
+export type AuditSessionFileExportInput = z.infer<typeof AuditSessionFileExportInputSchema>;
 
 export class AuditFileOwnerError extends Error {
   constructor() {

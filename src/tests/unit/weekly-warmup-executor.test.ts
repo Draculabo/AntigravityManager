@@ -34,5 +34,6 @@ describe('ProxyGatewayWeeklyWarmupExecutor', () => {
       'http://127.0.0.1:7890',
       undefined,
     );
+    expect(JSON.stringify(expected)).not.toContain('sessionId');
   });
 });

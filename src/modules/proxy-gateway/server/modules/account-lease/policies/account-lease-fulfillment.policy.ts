@@ -1,5 +1,8 @@
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import type { AccountLeaseHydrationPolicy } from './account-lease-hydration.policy';
+import type {
+  AccountLeaseHydrationPolicy,
+  AccountLeaseRefreshControl,
+} from './account-lease-hydration.policy';
 import { AccountLeaseRefreshRejectedError } from './account-lease-hydration.policy';
 import type { AccountLeaseTokenData } from '../interfaces/account-lease-token-types';
 import type { AccountLeaseAccountStore } from '../interfaces/account-lease-adapters';
@@ -12,8 +15,6 @@ interface AccountLeaseFulfillmentPolicyOptions {
   accountStore: AccountLeaseAccountStore;
   isStillEligible: (accountId: string, tokenData: AccountLeaseTokenData) => boolean;
   hydrationPolicy: AccountLeaseHydrationPolicy;
-  bindSession: (sessionKey: string | undefined, accountId: string, expiresAt: number) => void;
-  stickySessionTtlMs: number;
   resolveFallbackProjectId: () => string;
   logger: AccountLeaseFulfillmentLogger;
 }
@@ -22,14 +23,14 @@ interface FinalizeSelectedTokenRequest {
   accountId: string;
   tokenData: AccountLeaseTokenData;
   nowSeconds: number;
-  sessionKey?: string;
+  control?: AccountLeaseRefreshControl;
 }
 
 export class AccountLeaseFulfillmentPolicy {
   constructor(private readonly options: AccountLeaseFulfillmentPolicyOptions) {}
 
   async finalizeSelectedToken(request: FinalizeSelectedTokenRequest): Promise<CloudAccount | null> {
-    const { accountId, tokenData, nowSeconds, sessionKey } = request;
+    const { accountId, tokenData, nowSeconds } = request;
 
     try {
       const effectiveProjectId = await this.options.hydrationPolicy.hydrateSelectedToken({
@@ -37,13 +38,12 @@ export class AccountLeaseFulfillmentPolicy {
         tokenData,
         nowSeconds,
         fallbackProjectId: this.options.resolveFallbackProjectId(),
+        ...(request.control ? { control: request.control } : {}),
       });
       const persistedAccount = await this.options.accountStore.getAccount(accountId);
       if (!persistedAccount || !this.options.isStillEligible(accountId, tokenData)) {
         return null;
       }
-
-      this.options.bindSession(sessionKey, accountId, Date.now() + this.options.stickySessionTtlMs);
 
       const timestamp = Date.now();
       return {

@@ -13,6 +13,8 @@ import { OpenAIModelsController } from './openai-models.controller';
 import { OpenAIService } from './openai.service';
 import { OpenAIChatCompletionService } from './chat/openai-chat-completion.service';
 import { OpenAIResponsesSessionService } from './responses/openai-responses-session.service';
+import { responsesSessionOwner } from './responses/responses-session-owner';
+import { FilesService } from '../files/files.service';
 import { OpenAIResponsesStoreController } from './responses/openai-responses-store.controller';
 import { OpenAIResponsesController } from './responses/openai-responses.controller';
 
@@ -28,7 +30,11 @@ import { OpenAIResponsesController } from './responses/openai-responses.controll
   providers: [
     OpenAIOperations,
     OpenAIChatCompletionService,
-    OpenAIResponsesSessionService,
+    {
+      provide: OpenAIResponsesSessionService,
+      inject: [FilesService],
+      useFactory: (files: FilesService) => responsesSessionOwner.get(files),
+    },
     OpenAIService,
     ProxyGuard,
     {

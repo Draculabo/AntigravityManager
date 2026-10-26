@@ -3,12 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { executeSwitchFlow } from '@/modules/antigravity-runtime/switch/switchFlow';
+import { prepareClassicTermsSwitch } from '@/modules/antigravity-runtime/terms/classicTermsSwitch';
 import * as atomic from '@/shared/persistence/atomic-json-file';
 import { observeProcesses } from '@/modules/antigravity-runtime/processObserver';
 import { historyFile } from '@/modules/antigravity-runtime/terms/classicTermsStore';
 import { canonicalPath } from '@/modules/antigravity-runtime/launchContext';
 import type { LaunchContext } from '@/modules/antigravity-runtime/types';
-import { prepareClassicTermsSwitch } from '@/modules/antigravity-runtime/terms/classicTermsSwitch';
 
 const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
@@ -111,6 +111,40 @@ describe('Classic terms during account switching', () => {
     await record('b@example.test');
     expect(await terms!.confirmHotSwitch()).toBe(true);
   }, 15000);
+  it.each(['replaced', 'missing'] as const)(
+    'rejects an unconfirmed rollback when official state is %s after replacement',
+    async (change) => {
+      await record('a@example.test');
+      const terms = await prepareClassicTermsSwitch(context, 'b@example.test');
+      expect(terms).not.toBeNull();
+      await terms!.apply();
+      const write = atomic.writeFileAtomic;
+      vi.spyOn(atomic, 'writeFileAtomic').mockImplementationOnce(async (file, content, options) => {
+        await write(file, content, options);
+        if (change === 'missing') {
+          await fs.unlink(file);
+        } else {
+          await record('c@example.test');
+        }
+      });
+      await expect(terms!.rollback()).rejects.toThrow(
+        'Classic terms rollback could not be confirmed',
+      );
+      if (change === 'replaced') {
+        expect(await read()).toEqual({
+          [username]: 'c@example.test',
+          [tos]: 'false',
+          theme: 'dark',
+          unrelated: { enabled: true },
+        });
+      } else {
+        await expect(read()).rejects.toMatchObject({ code: 'ENOENT' });
+      }
+      await expect(terms!.rollback()).rejects.toThrow('Classic terms changed before rollback');
+      expect(mocks.start).not.toHaveBeenCalled();
+    },
+  );
+
   it('restores A after B has replaced the official last accepted account', async () => {
     await record('a@example.test');
     await switchTo('b@example.test');

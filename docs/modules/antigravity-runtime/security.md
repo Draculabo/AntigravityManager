@@ -173,6 +173,10 @@ uses a synchronized sibling temporary file and verifies readback. Links and over
 rejected. Unrelated settings are retained. History is saved before replacing a valid baseline;
 invalidation clears stale official fields before committing the new revision, so failed writes
 cannot silently import stale consent on retry. Prelaunch recovery restores only this invocation's
-consent fields and refuses to overwrite later acceptance. These are local filesystem checks,
+consent fields and refuses to overwrite later acceptance. It reads the official file back before
+confirming those restored fields. A missing file or changed consent fields fails recovery; unrelated
+settings are not used to infer consent recovery. Failed recovery preserves the original switch
+failure alongside the recovery failure, stops success publication and adds no automatic retry.
+This consent-only recovery does not restore credentials. These are local filesystem checks,
 not a lock enforced by the official client; independently started external writers can still race.
 No raw file contents, paths or identities enter the new diagnostic messages.

@@ -41,14 +41,27 @@ import {
   type TrafficAuditStats,
 } from './traffic-audit.types';
 import type { TrafficClass } from './traffic-classifier';
-import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
+import {
+  TrafficAuditMaintenanceResultSchema,
+  type TrafficAuditWorkerCommand,
+} from './traffic-audit.worker-protocol';
+import { DiagnosticMaintenanceScheduler } from '../diagnostics/maintenance-scheduler';
 import { createPreparedAuditPayloadWriter } from './prepared-audit-payload';
 import { extractAuditModel, serializeAuditError } from './audit-parent-metadata';
 import { TrafficAuditDropStats } from './traffic-audit-drop-stats';
+import { auditDiskRejection } from './traffic-audit-disk-budget';
+import { AuditCaptureGenerations } from './audit-capture-generations';
+import { auditBodyForExport } from './audit-body-export';
+import { auditSessionForExport } from './audit-session-export';
+import { AuditSessionSnapshotSchema } from './audit-session-export.schema';
+import {
+  UsageRangeInputSchema,
+  UsageRangeResultSchema,
+  type UsageRangeInput,
+} from './usage-range.schema';
 import type { IncrementalAuditPayloadKind } from './incremental-audit-serializer';
 
 const TRAFFIC_AUDIT_FILENAME = 'request-audit.db';
-const MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
 
 export interface AuditHandle {
   id: string;
@@ -78,11 +91,17 @@ export interface DatabaseRepairResult {
 }
 
 export class TrafficAuditService {
+  private readonly generations = new AuditCaptureGenerations();
   private readonly terminal = new DiagnosticStoreShutdown();
   private worker: BoundedSqliteWorker | null = null;
-  private queueConfigKey = '';
   private readonly dropStats = new TrafficAuditDropStats();
-  private maintenanceTimer: NodeJS.Timeout | null = null;
+  private readonly maintenance = new DiagnosticMaintenanceScheduler(
+    async () =>
+      TrafficAuditMaintenanceResultSchema.parse(
+        await this.request('maintenance', toRetentionConfig(this.getConfig())),
+      ),
+    (error) => logger.warn('Traffic audit maintenance failed', error),
+  );
   private repairInProgress: Promise<DatabaseRepairResult> | null = null;
   private readonly activePayloadWrites = new Set<Promise<void>>();
   private readonly eventListeners = new Set<(event: TrafficAuditEvent) => void>();
@@ -96,13 +115,30 @@ export class TrafficAuditService {
     return this.terminal.acceptsWork() && this.getConfig().enabled;
   }
 
+  public captureGeneration(trafficClass: TrafficClass): number {
+    return this.generations.current(trafficClass);
+  }
+
   public startParent(input: StartAuditParentInput): AuditHandle | null {
     if (!this.isEnabled()) {
       return null;
     }
+    if (
+      !this.generations.accepts(
+        input.trafficClass,
+        input.captureGeneration ?? this.generations.current(input.trafficClass),
+      )
+    ) {
+      this.recordDrop('audit_clear_in_progress', 0, input.trafficClass);
+      return null;
+    }
 
-    const startedAt = Date.now();
-    const handle = { id: randomUUID(), startedAt, trafficClass: input.trafficClass };
+    const startedAt = input.startedAt ?? Date.now();
+    const handle = this.generations.track({
+      id: randomUUID(),
+      startedAt,
+      trafficClass: input.trafficClass,
+    });
     const accepted = this.tryWrite(
       'insertParent',
       {
@@ -155,23 +191,42 @@ export class TrafficAuditService {
       direction,
       kind,
       async (command) =>
-        (await this.tryWriteAcknowledged(
+        this.generations.isCurrent(parent) &&
+        ((await this.tryWriteAcknowledged(
           command.operation,
           command.payload,
           parent.trafficClass,
-        )) ?? false,
+        )) ??
+          false),
     );
   }
 
   public completeParent(handle: AuditHandle | null, input: CompleteAuditParentInput): void {
-    if (!handle || !this.terminal.acceptsWork()) {
+    if (!handle || !this.terminal.acceptsWork() || !this.generations.isCurrent(handle)) {
       return;
     }
     const completedAt = Date.now();
+    // Establish body ownership before completion makes this request eligible for eviction.
+    if (!input.responsePayloadHandled) {
+      this.capturePayload({
+        direction: 'response',
+        ownerId: handle.id,
+        ownerKind: 'parent',
+        parentId: handle.id,
+        parseErrorOffset: input.parseErrorOffset,
+        partial: input.partial,
+        representation: input.responseRepresentation,
+        terminalStatus: input.outcome,
+        trafficClass: handle.trafficClass,
+        value: input.responseBody,
+      });
+    }
+
     const accepted = this.tryWrite(
       'completeParent',
       {
         cachedTokens: input.usage?.cachedTokens ?? null,
+        sessionId: input.sessionId,
         completedAt,
         durationMs: Math.max(0, completedAt - handle.startedAt),
         error:
@@ -200,20 +255,6 @@ export class TrafficAuditService {
         trafficClass: handle.trafficClass,
       });
     }
-    if (!input.responsePayloadHandled) {
-      this.capturePayload({
-        direction: 'response',
-        ownerId: handle.id,
-        ownerKind: 'parent',
-        parentId: handle.id,
-        parseErrorOffset: input.parseErrorOffset,
-        partial: input.partial,
-        representation: input.responseRepresentation,
-        terminalStatus: input.outcome,
-        trafficClass: handle.trafficClass,
-        value: input.responseBody,
-      });
-    }
   }
 
   public startAttempt(
@@ -221,17 +262,17 @@ export class TrafficAuditService {
     attemptIndex: number,
     input: StartUpstreamAttemptInput,
   ): UpstreamAttemptHandle | null {
-    if (!parent || !this.isEnabled()) {
+    if (!parent || !this.isEnabled() || !this.generations.isCurrent(parent)) {
       return null;
     }
     const startedAt = Date.now();
-    const handle = {
+    const handle = this.generations.track({
       attemptIndex,
       id: randomUUID(),
       parentId: parent.id,
       startedAt,
       trafficClass: parent.trafficClass,
-    };
+    });
     const accepted = this.tryWrite(
       'insertAttempt',
       {
@@ -272,10 +313,26 @@ export class TrafficAuditService {
     handle: UpstreamAttemptHandle | null,
     input: CompleteUpstreamAttemptInput,
   ): void {
-    if (!handle || !this.terminal.acceptsWork()) {
+    if (!handle || !this.terminal.acceptsWork() || !this.generations.isCurrent(handle)) {
       return;
     }
     const completedAt = Date.now();
+    // Establish body ownership before completion makes this request eligible for eviction.
+    if (!input.responsePayloadHandled) {
+      this.capturePayload({
+        direction: 'response',
+        ownerId: handle.id,
+        ownerKind: 'attempt',
+        parentId: handle.parentId,
+        parseErrorOffset: input.parseErrorOffset,
+        partial: input.partial,
+        representation: input.responseRepresentation,
+        terminalStatus: input.outcome,
+        trafficClass: handle.trafficClass,
+        value: input.responseBody,
+      });
+    }
+
     const accepted = this.tryWrite(
       'completeAttempt',
       {
@@ -300,24 +357,10 @@ export class TrafficAuditService {
         trafficClass: handle.trafficClass,
       });
     }
-    if (!input.responsePayloadHandled) {
-      this.capturePayload({
-        direction: 'response',
-        ownerId: handle.id,
-        ownerKind: 'attempt',
-        parentId: handle.parentId,
-        parseErrorOffset: input.parseErrorOffset,
-        partial: input.partial,
-        representation: input.responseRepresentation,
-        terminalStatus: input.outcome,
-        trafficClass: handle.trafficClass,
-        value: input.responseBody,
-      });
-    }
   }
 
   public beginParentSse(handle: AuditHandle | null): AuditSseBodyWriter | null {
-    return handle
+    return handle && this.generations.isCurrent(handle)
       ? this.beginSsePayload({
           ownerId: handle.id,
           ownerKind: 'parent',
@@ -328,7 +371,7 @@ export class TrafficAuditService {
   }
 
   public beginAttemptSse(handle: UpstreamAttemptHandle | null): AuditSseBodyWriter | null {
-    return handle
+    return handle && this.generations.isCurrent(handle)
       ? this.beginSsePayload({
           ownerId: handle.id,
           ownerKind: 'attempt',
@@ -348,6 +391,20 @@ export class TrafficAuditService {
     return TrafficAuditFilterOptionsSchema.parse(result);
   }
 
+  public async usageRange(input: UsageRangeInput) {
+    try {
+      return UsageRangeResultSchema.parse(
+        await this.request('usageRange', {
+          range: UsageRangeInputSchema.parse(input),
+          asOf: Date.now(),
+        }),
+      );
+    } catch (error) {
+      logger.warn('Retained usage query failed', error);
+      throw error;
+    }
+  }
+
   public async detail(id: string): Promise<TrafficAuditDetail | null> {
     const result = await this.request('detail', { id });
     if (result === null) {
@@ -361,21 +418,17 @@ export class TrafficAuditService {
     return result === null ? null : TrafficAuditBodyPageSchema.parse(result);
   }
 
-  public async *bodyContent(bodyId: string): AsyncGenerator<string> {
-    let cursor = 0;
-    while (true) {
-      const page = await this.bodyPage({ bodyId, cursor, limitBytes: 256 * 1024 });
-      if (!page) {
-        return;
-      }
-      for (const chunk of page.chunks) {
-        yield chunk.data;
-      }
-      if (page.complete || page.nextCursor === null) {
-        return;
-      }
-      cursor = page.nextCursor;
-    }
+  public bodyContent(bodyId: string): AsyncGenerator<string> {
+    return auditBodyForExport(bodyId, (input) => this.bodyPage(input));
+  }
+
+  public sessionContent(sessionId: string): AsyncGenerator<string> {
+    return auditSessionForExport(sessionId, {
+      snapshot: async (id) =>
+        AuditSessionSnapshotSchema.parse(await this.request('sessionSnapshot', { sessionId: id })),
+      detail: (id) => this.detail(id),
+      body: (id) => this.bodyContent(id),
+    });
   }
 
   public async bodySearch(
@@ -396,6 +449,7 @@ export class TrafficAuditService {
       droppedCount: persisted.droppedCount + this.dropStats.count,
       lastDropReason: this.dropStats.lastReason ?? persisted.lastDropReason,
       workerAlive: queue.alive,
+      maintenanceState: this.maintenance.state(),
       workerPendingBytes: queue.pendingBytes,
       workerPendingCommands: queue.pendingCommands,
     });
@@ -411,9 +465,17 @@ export class TrafficAuditService {
   }
 
   public async clear(trafficClass: TrafficClass | null = null): Promise<number> {
-    const affected = Number(
-      await this.dropStats.reset(trafficClass, () => this.request('clear', { trafficClass })),
-    );
+    const barrier = this.generations.beginClear(trafficClass);
+    let affected: number;
+    try {
+      affected = Number(
+        await this.dropStats.reset(trafficClass, () =>
+          this.request('clear', { trafficClass, generations: barrier.generations }),
+        ),
+      );
+    } finally {
+      barrier.finish();
+    }
     this.recordAdminEvent('clear_requests', affected, null);
     this.emit({
       id: trafficClass ?? 'all',
@@ -442,13 +504,14 @@ export class TrafficAuditService {
 
   public async configure(config: TrafficAuditConfig): Promise<void> {
     this.terminal.requireAdmission();
-    const nextKey = `${config.max_queue_records}:${config.max_queue_mib}`;
-    if (this.worker && nextKey !== this.queueConfigKey) {
-      const old = this.worker;
-      this.worker = null;
-      await old.close();
-    }
-    await this.request('configure', toRetentionConfig(config));
+    const result = TrafficAuditMaintenanceResultSchema.parse(
+      await this.request('configure', toRetentionConfig(config)),
+    );
+    this.worker?.setQueueLimits({
+      maxPendingBytes: config.max_queue_mib * 1024 * 1024,
+      maxPendingCommands: config.max_queue_records,
+    });
+    this.maintenance.continueFrom(result);
     this.recordAdminEvent('configure_traffic_audit', null, null);
   }
 
@@ -484,10 +547,7 @@ export class TrafficAuditService {
   }
 
   public shutdown(): Promise<void> {
-    if (this.maintenanceTimer) {
-      clearInterval(this.maintenanceTimer);
-      this.maintenanceTimer = null;
-    }
+    this.maintenance.stop();
     return this.terminal.run(
       async () => {
         await this.repairInProgress;
@@ -506,10 +566,7 @@ export class TrafficAuditService {
   }
 
   public async close(): Promise<void> {
-    if (this.maintenanceTimer) {
-      clearInterval(this.maintenanceTimer);
-      this.maintenanceTimer = null;
-    }
+    this.maintenance.stop();
     if (this.activePayloadWrites.size > 0) {
       await Promise.race([
         Promise.allSettled([...this.activePayloadWrites]),
@@ -535,6 +592,7 @@ export class TrafficAuditService {
     trafficClass: TrafficClass;
     value: unknown;
   }): void {
+    const generation = this.generations.current(input.trafficClass);
     const id = randomUUID();
     const kind = quickPayloadKind(input.value);
     const representation = input.representation ?? defaultRepresentation(kind);
@@ -557,7 +615,7 @@ export class TrafficAuditService {
       return;
     }
 
-    const task = this.writePayload(id, input).finally(() => {
+    const task = this.writePayload(id, input, generation).finally(() => {
       this.activePayloadWrites.delete(task);
     });
     this.activePayloadWrites.add(task);
@@ -569,10 +627,11 @@ export class TrafficAuditService {
     parentId: string;
     trafficClass: TrafficClass;
   }): AuditSseBodyWriter | null {
-    if (!this.terminal.acceptsWork()) {
+    if (!this.isEnabled()) {
       return null;
     }
     const id = randomUUID();
+    const generation = this.generations.current(input.trafficClass);
     if (
       !this.tryWrite(
         'beginPayload',
@@ -595,6 +654,7 @@ export class TrafficAuditService {
     const inFlight = new Set<Promise<boolean>>();
     const hash = createHash('sha256');
     let dropped = false;
+    let chunkFailureReason: string | null = null;
     let finished = false;
     let logicalBytes = 0;
     let sequence = 0;
@@ -611,16 +671,28 @@ export class TrafficAuditService {
         }
         finished = true;
         try {
+          if (!this.generations.accepts(input.trafficClass, generation)) {
+            return;
+          }
           const results = await Promise.all([...inFlight]);
+          if (!this.generations.accepts(input.trafficClass, generation)) {
+            return;
+          }
           dropped = dropped || results.some((accepted) => !accepted);
           if (dropped) {
-            this.recordDrop('sse_chunk_queue_or_write_failure', 0, input.trafficClass);
+            this.recordDrop(
+              chunkFailureReason ?? 'sse_chunk_queue_or_write_failure',
+              0,
+              input.trafficClass,
+            );
           }
           const finalized = await this.tryWriteAcknowledged(
             'finalizeSsePayload',
             {
               completedAt: Date.now(),
-              droppedReason: dropped ? 'sse_chunk_queue_or_write_failure' : null,
+              droppedReason: dropped
+                ? (chunkFailureReason ?? 'sse_chunk_queue_or_write_failure')
+                : null,
               errorSummary: finishInput.errorSummary ?? null,
               id,
               parseErrorOffset: finishInput.parseErrorOffset ?? null,
@@ -641,7 +713,11 @@ export class TrafficAuditService {
         }
       },
       write: (chunk) => {
-        if (finished || !this.terminal.acceptsWork()) {
+        if (
+          finished ||
+          !this.terminal.acceptsWork() ||
+          !this.generations.accepts(input.trafficClass, generation)
+        ) {
           return false;
         }
         const bytes = Buffer.from(chunk, 'utf8');
@@ -667,6 +743,9 @@ export class TrafficAuditService {
               sequence,
             },
             input.trafficClass,
+            (reason) => {
+              chunkFailureReason ??= reason;
+            },
           );
           if (!write) {
             dropped = true;
@@ -675,7 +754,10 @@ export class TrafficAuditService {
           sequence += 1;
           storedBytes += Buffer.byteLength(piece, 'utf8');
           inFlight.add(write);
-          void write.finally(() => inFlight.delete(write));
+          void write.then((accepted) => {
+            dropped ||= !accepted;
+            inFlight.delete(write);
+          });
         }
         return true;
       },
@@ -691,14 +773,19 @@ export class TrafficAuditService {
       trafficClass: TrafficClass;
       value: unknown;
     },
+    generation: number,
   ): Promise<void> {
     const inFlight = new Set<Promise<boolean>>();
     let dropped = false;
     let droppedBytes = 0;
+    let chunkFailureReason: string | null = null;
     try {
       const result = await serializeAuditPayloadIncrementally(
         input.value,
         async (data, sequence) => {
+          if (!this.generations.accepts(input.trafficClass, generation)) {
+            return false;
+          }
           if (dropped) {
             droppedBytes += Buffer.byteLength(data, 'utf-8');
             return false;
@@ -711,6 +798,9 @@ export class TrafficAuditService {
               return false;
             }
           }
+          if (!this.generations.accepts(input.trafficClass, generation)) {
+            return false;
+          }
           const write = this.tryWriteAcknowledged(
             'appendPayloadChunk',
             {
@@ -719,6 +809,9 @@ export class TrafficAuditService {
               sequence,
             },
             input.trafficClass,
+            (reason) => {
+              chunkFailureReason ??= reason;
+            },
           );
           if (!write) {
             dropped = true;
@@ -726,20 +819,32 @@ export class TrafficAuditService {
             return false;
           }
           inFlight.add(write);
-          void write.finally(() => inFlight.delete(write));
+          void write.then((accepted) => {
+            dropped ||= !accepted;
+            inFlight.delete(write);
+          });
           return true;
         },
       );
       const settled = await Promise.all([...inFlight]);
+      if (!this.generations.accepts(input.trafficClass, generation)) {
+        return;
+      }
       dropped = dropped || settled.some((accepted) => !accepted);
       if (dropped) {
-        this.recordDrop('body_chunk_queue_or_write_failure', droppedBytes, input.trafficClass);
+        this.recordDrop(
+          chunkFailureReason ?? 'body_chunk_queue_or_write_failure',
+          droppedBytes,
+          input.trafficClass,
+        );
       }
       this.tryWrite(
         'finalizePayload',
         {
           completedAt: Date.now(),
-          droppedReason: dropped ? 'body_chunk_queue_or_write_failure' : null,
+          droppedReason: dropped
+            ? (chunkFailureReason ?? 'body_chunk_queue_or_write_failure')
+            : null,
           errorSummary: input.parseErrorOffset === undefined ? null : 'SSE event parsing failed',
           id,
           logicalBytes: result.logicalBytes,
@@ -755,6 +860,9 @@ export class TrafficAuditService {
         input.trafficClass,
       );
     } catch (error) {
+      if (!this.generations.accepts(input.trafficClass, generation)) {
+        return;
+      }
       this.recordDrop('body_serialization_failure', 0, input.trafficClass);
       logger.warn('Traffic audit body serialization failed', error);
       this.tryWrite(
@@ -784,7 +892,16 @@ export class TrafficAuditService {
     operation: TOperation,
     payload: Extract<TrafficAuditWorkerCommand, { operation: TOperation }>['payload'],
     trafficClass: TrafficClass,
+    onFailure?: (reason: string) => void,
   ): Promise<boolean> | null {
+    if (
+      (operation === 'beginPayload' || operation === 'appendPayloadChunk') &&
+      !this.getConfig().enabled
+    ) {
+      this.recordDrop('capture_disabled', 0, trafficClass);
+      onFailure?.('capture_disabled');
+      return null;
+    }
     if (this.repairInProgress) {
       return null;
     }
@@ -793,14 +910,14 @@ export class TrafficAuditService {
       resolve = settle;
     });
     try {
-      const accepted = this.ensureWorker().tryWrite(
-        { operation, payload },
-        {
-          onFailure: () => resolve(false),
-          onSuccess: () => resolve(true),
-          priority: toWorkerPriority(trafficClass),
+      const accepted = this.ensureWorker().tryWrite(this.writeCommand(operation, payload), {
+        onFailure: (error) => {
+          onFailure?.(auditDiskRejection(error) ?? 'worker_write_failure');
+          resolve(false);
         },
-      );
+        onSuccess: () => resolve(true),
+        priority: toWorkerPriority(trafficClass),
+      });
       if (!accepted) {
         this.recordDrop('queue_capacity', 0, trafficClass);
         return null;
@@ -824,38 +941,23 @@ export class TrafficAuditService {
     const config = this.getConfig();
     const stateDir = getProxyStateDir();
     fs.mkdirSync(stateDir, { recursive: true });
-    this.queueConfigKey = `${config.max_queue_records}:${config.max_queue_mib}`;
     this.worker = new BoundedSqliteWorker({
       databasePath: path.join(stateDir, TRAFFIC_AUDIT_FILENAME),
       maxPendingBytes: config.max_queue_mib * 1024 * 1024,
       maxPendingCommands: config.max_queue_records,
       name: 'traffic-audit-sqlite',
+      ownerStartedAt: Math.floor(performance.timeOrigin),
       onWriteFailure: (error) => {
-        this.recordDrop('worker_write_failure');
+        this.recordDrop(auditDiskRejection(error) ?? 'worker_write_failure');
         logger.warn('Traffic audit worker write failed', error);
       },
       workerPath: path.join(__dirname, 'traffic-audit.worker.js'),
     });
     this.worker.start();
-    this.scheduleMaintenance();
     if (this.terminal.acceptsWork()) {
-      this.request('maintenance', toRetentionConfig(config)).catch((error) => {
-        logger.warn('Traffic audit startup maintenance failed', error);
-      });
+      this.maintenance.start();
     }
     return this.worker;
-  }
-
-  private scheduleMaintenance(): void {
-    if (this.maintenanceTimer || !this.terminal.acceptsWork()) {
-      return;
-    }
-    this.maintenanceTimer = setInterval(() => {
-      this.request('maintenance', toRetentionConfig(this.getConfig())).catch((error) => {
-        logger.warn('Traffic audit maintenance failed', error);
-      });
-    }, MAINTENANCE_INTERVAL_MS);
-    this.maintenanceTimer.unref();
   }
 
   private tryWrite<TOperation extends TrafficAuditWorkerCommand['operation']>(
@@ -863,6 +965,13 @@ export class TrafficAuditService {
     payload: Extract<TrafficAuditWorkerCommand, { operation: TOperation }>['payload'],
     trafficClass: TrafficClass = 'system',
   ): boolean {
+    if (
+      (operation === 'beginPayload' || operation === 'appendPayloadChunk') &&
+      !this.getConfig().enabled
+    ) {
+      this.recordDrop('capture_disabled', 0, trafficClass);
+      return false;
+    }
     if (this.repairInProgress) {
       this.recordDrop('database_repair', 0, trafficClass);
       return false;
@@ -870,10 +979,9 @@ export class TrafficAuditService {
     try {
       this.flushDropStats();
       if (
-        this.ensureWorker().tryWrite(
-          { operation, payload },
-          { priority: toWorkerPriority(trafficClass) },
-        )
+        this.ensureWorker().tryWrite(this.writeCommand(operation, payload, trafficClass), {
+          priority: toWorkerPriority(trafficClass),
+        })
       ) {
         return true;
       }
@@ -900,7 +1008,23 @@ export class TrafficAuditService {
     return this.ensureWorker().request<TResult>({ operation, payload });
   }
 
+  private writeCommand<TPayload>(
+    operation: TrafficAuditWorkerCommand['operation'],
+    payload: TPayload,
+    trafficClass?: TrafficClass,
+  ) {
+    return {
+      operation,
+      payload,
+      maxDiskBytes: this.getConfig().max_disk_mib * 1024 * 1024,
+      ...((operation === 'insertParent' || operation === 'adminEvent') && trafficClass
+        ? { capture: { trafficClass, generation: this.generations.current(trafficClass) } }
+        : {}),
+    };
+  }
+
   private async performRepair(): Promise<DatabaseRepairResult> {
+    this.maintenance.stop();
     const worker = this.worker;
     this.worker = null;
     if (worker) {
@@ -925,7 +1049,7 @@ export class TrafficAuditService {
     if (!this.worker) {
       return;
     }
-    this.dropStats.flush(this.worker);
+    this.dropStats.flush(this.worker, this.getConfig().max_disk_mib * 1024 * 1024);
   }
 
   private recordAdminEvent(operation: string, affectedCount: number | null, error: unknown): void {
@@ -966,10 +1090,8 @@ export const trafficAuditService = new TrafficAuditService();
 
 function toRetentionConfig(config: TrafficAuditConfig) {
   return {
-    bodyRetentionHours: config.body_retention_hours,
     maxDiskBytes: config.max_disk_mib * 1024 * 1024,
     maxRows: config.max_rows,
-    summaryRetentionDays: config.summary_retention_days,
   };
 }
 

@@ -355,6 +355,8 @@ export interface GeminiSnakeToolConfig {
 }
 
 export interface GeminiRequest {
+  /** Gateway-owned upstream conversation identity, distinct from client account affinity. */
+  sessionId?: string;
   contents: GeminiContent[];
   /** List of tool declarations */
   tools?: GeminiToolDeclaration[];
@@ -545,6 +547,10 @@ export interface UsageMetadata {
   total_tokens?: number;
   total_tool_use_tokens?: number;
   cachedTokens?: number;
+  candidatesTokensDetails?: Array<{
+    modality?: string;
+    tokenCount?: number;
+  }>;
 }
 
 export interface GroundingMetadata {

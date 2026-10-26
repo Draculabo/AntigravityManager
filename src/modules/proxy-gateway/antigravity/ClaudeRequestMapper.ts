@@ -1,24 +1,25 @@
 import { createHash } from 'node:crypto';
+import { prepareGoogleGenerationContents } from '../server/common/generation-history';
+import type { ImageSchedulerConfig } from '@/modules/config/types';
 import { v4 as uuidv4 } from 'uuid';
-import { isEmpty, isPlainObject, isString, sortBy } from 'lodash-es';
+import { isEmpty, isString, sortBy } from 'lodash-es';
 import { mapClaudeModelToGemini, normalizeGeminiModelAlias } from './ModelMapping';
 import { getMaxOutputTokens, getThinkingBudget } from './ModelSpecs';
 import { normalizeObjectJsonSchema } from './JsonSchemaUtils';
 import { SchemaConversionBatch, validateSchemaInput } from './schema/SchemaConversion';
 import { reportSchemaIssues } from './schema/SchemaPreparation';
 import { SignatureStore } from './SignatureStore';
-import {
-  isGeminiFlashModel,
-  modelKeepsThinkingWithoutSignature,
-  PLACEHOLDER_THOUGHT_SIGNATURE,
-} from './ThoughtSignatureCompat';
-import { sanitizeSystemInstructionForCache } from './StablePromptPrefix';
-import { buildOfficialSystemInstruction } from './OfficialSystemInstruction';
-import { hasGlobalSystemPrompt, resolveGlobalSystemPrompt } from './GlobalSystemPrompt';
-import { parseMarkdownImagesToGeminiParts } from './MarkdownImageParts';
+import { isGeminiFlashModel, modelKeepsThinkingWithoutSignature } from './ThoughtSignatureCompat';
+import { normalizeSystemPrompt } from './SystemPromptNormalization';
+import { recordPromptTransformation } from '../server/common/prompt-transformation-diagnostics';
+import { resolveGlobalSystemPrompt } from './GlobalSystemPrompt';
+import { extractToolResultImages, parseMarkdownImagesToGeminiParts } from './MarkdownImageParts';
+import { hasExplicitAssistantSignature } from './signed-assistant-history';
+import { ClaudeToolResultAssociation } from './ClaudeToolResultAssociation';
+import { applyGeminiMediaSendWindow } from './MediaSendWindowApply';
 import { enhanceGeminiSkillsPrompt } from './SkillPromptEnhancer';
 import { toSnakeToolConfig } from './GeminiToolConfigCompat';
-import { buildToolConfig } from './ToolChoiceCompat';
+import { buildToolConfig, isGoogleSearchToolType } from './ToolChoiceCompat';
 import {
   IMAGE_GENERATION_SAFETY_SETTINGS,
   resolveImageGenerationConfig,
@@ -38,6 +39,7 @@ import {
   FunctionDeclaration,
   SafetySetting,
   GeminiRequest,
+  ContentBlock,
 } from './types';
 import {
   buildUserAgent,
@@ -62,39 +64,23 @@ interface ResolvedRequestConfig {
   imageConfig: ImageConfig | null;
 }
 
-export type ClaudeRequestMapperMode = 'normal' | 'invalid-thought-signature-recovery';
-
 export interface ClaudeRequestMapperOptions {
+  /** Undefined resolves current configuration for direct mapper/count callers; null pins disabled. */
+  globalSystemPrompt?: string | null;
   schemasPrepared?: boolean;
   cacheSchemas?: boolean;
   imageRequest?: ImageGenerationConfigInput;
-  mode?: ClaudeRequestMapperMode;
   signatureTargetFamily?: string | null;
   signatureTargetFamilyModel?: string | null;
+  mediaWindow?: ImageSchedulerConfig;
+  purpose?: 'generation' | 'count';
 }
 
 type RequestType = 'agent' | 'web_search' | 'image_gen';
 
 const TOOL_SCHEMA_CACHE_LIMIT = 100;
 const TOOL_SCHEMA_CACHE_TTL_MS = 30 * 60 * 1000;
-let placeholderSignatureUsageCount = 0;
 
-const CLAUDE_AGENT_SDK_IDENTITY = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
-const CLAUDE_CODE_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
-/**
- * How often the proxy fell back to the placeholder instead of a real thought
- * signature, counted once per request that used it at least once (not once per
- * tool call). This is the metric that tells us whether SignatureStore misses
- * remain common on live traffic.
- */
-export function getPlaceholderSignatureUsageCount(): number {
-  return placeholderSignatureUsageCount;
-}
-
-/** Test-only: resets the module-level placeholder counter between assertions. */
-export function resetPlaceholderSignatureUsageCount(): void {
-  placeholderSignatureUsageCount = 0;
-}
 const SAFETY_SETTINGS: SafetySetting[] = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'OFF' },
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'OFF' },
@@ -129,17 +115,16 @@ export function transformClaudeRequestIn(
   const signatureSessionKey = isString(claudeReq.metadata?.signature_session_key)
     ? claudeReq.metadata.signature_session_key
     : undefined;
+  const toolConfig = buildToolConfig(claudeReq.tool_choice, claudeReq.tools ?? []);
   // Check for networking tools (server tool or built-in tool)
   const hasWebSearchTool = detectsNetworkingTool(claudeReq.tools);
-
-  // Map to store tool_use id -> name mapping
-  const toolIdToName = new Map<string, string>();
 
   // 1. System Instruction
   const systemInstruction = buildSystemInstruction(
     claudeReq.system,
     extraSystemMessages,
     claudeReq.tools,
+    options.globalSystemPrompt,
   );
 
   // Map model name
@@ -162,14 +147,11 @@ export function transformClaudeRequestIn(
     options.imageRequest,
     resolvedModel !== undefined,
   );
-  const mapperMode = options.mode ?? 'normal';
   const signatureTarget = {
     model: requestConfig.finalModel,
     family: options.signatureTargetFamily,
     familyModel: options.signatureTargetFamilyModel,
   };
-
-  const allowDummyThought = requestConfig.finalModel.startsWith('gemini-');
 
   // 4. Generation Config & Thinking
   const thinkingType = (claudeReq.thinking?.type ?? '').toLowerCase();
@@ -186,10 +168,10 @@ export function transformClaudeRequestIn(
   }
 
   if (isThinkingEnabled) {
-    const sessionSignature =
-      mapperMode === 'normal'
-        ? SignatureStore.get({ ...signatureTarget, sessionKey: signatureSessionKey })
-        : null;
+    const sessionSignature = SignatureStore.get({
+      ...signatureTarget,
+      sessionKey: signatureSessionKey,
+    });
     const hasFunctionCalls = messages.some((m) => {
       if (Array.isArray(m.content)) {
         return m.content.some((b) => b.type === 'tool_use');
@@ -217,17 +199,19 @@ export function transformClaudeRequestIn(
   }
 
   // 2. Contents (Messages)
-  const contents = buildContents(
+  const mappedContents = buildContents(
     messages,
-    toolIdToName,
     isThinkingEnabled,
-    allowDummyThought,
     requestConfig.finalModel,
     signatureSessionKey,
     options.signatureTargetFamily,
     options.signatureTargetFamilyModel,
-    mapperMode,
   );
+  const contents =
+    options.purpose === 'count'
+      ? mappedContents
+      : prepareGoogleGenerationContents(mappedContents, requestConfig.finalModel);
+  applyGeminiMediaSendWindow(contents, options.mediaWindow);
 
   // 3. Tools
   const tools = buildTools(claudeReq.tools, hasWebSearchTool, requestConfig.finalModel, options);
@@ -237,8 +221,6 @@ export function transformClaudeRequestIn(
     contents,
     safetySettings: [...SAFETY_SETTINGS],
   };
-
-  deepCleanUndefined(innerRequest);
 
   if (systemInstruction) {
     innerRequest.systemInstruction = systemInstruction;
@@ -250,11 +232,11 @@ export function transformClaudeRequestIn(
 
   if (tools) {
     innerRequest.tools = tools;
-    if (
-      source === 'anthropic' ||
-      tools.some((tool) => (tool.functionDeclarations?.length ?? 0) > 0)
-    ) {
-      innerRequest.toolConfig = buildToolConfig(claudeReq.tool_choice);
+    const hasFunctionDeclarations = tools.some(
+      (tool) => (tool.functionDeclarations?.length ?? 0) > 0,
+    );
+    if (source === 'anthropic' || hasFunctionDeclarations || claudeReq.tool_choice !== undefined) {
+      innerRequest.toolConfig = toolConfig;
       innerRequest.tool_config = toSnakeToolConfig(innerRequest.toolConfig);
     }
   }
@@ -262,6 +244,10 @@ export function transformClaudeRequestIn(
   // Inject googleSearch tool if needed (and not already done by buildTools)
   if (requestConfig.injectGoogleSearch && !hasWebSearchTool) {
     injectGoogleSearchTool(innerRequest, requestConfig.finalModel);
+  }
+  if (innerRequest.tools && innerRequest.toolConfig === undefined) {
+    innerRequest.toolConfig = toolConfig;
+    innerRequest.tool_config = toSnakeToolConfig(toolConfig);
   }
 
   // Inject imageConfig if present (for image generation models)
@@ -380,22 +366,49 @@ function extractEmbeddedSystemMessages(messages: Message[]): {
 } {
   const extraSystemMessages: string[] = [];
   const filteredMessages: Message[] = [];
+  let initialSystemSection = true;
 
-  for (const message of messages) {
-    if (message.role !== 'system') {
+  for (const [messageIndex, message] of messages.entries()) {
+    if (message.role !== 'system' && message.role !== 'developer') {
+      initialSystemSection = false;
       filteredMessages.push(message);
       continue;
     }
 
-    if (isString(message.content)) {
-      extraSystemMessages.push(message.content);
+    if (initialSystemSection) {
+      const systemBlocks: ContentBlock[] = isString(message.content)
+        ? [{ type: 'text', text: message.content }]
+        : message.content;
+      for (const block of systemBlocks) {
+        if (block.type === 'text' && block.text !== '') {
+          extraSystemMessages.push(block.text);
+        }
+      }
+      recordPromptTransformation({
+        kind: 'initial-system-promoted',
+        surface: 'messages',
+        message: messageIndex,
+        part: null,
+      });
       continue;
     }
-
-    for (const block of message.content) {
-      if (block.type === 'text') {
-        extraSystemMessages.push(block.text);
-      }
+    const text = isString(message.content)
+      ? message.content
+      : message.content
+          .filter((block) => block.type === 'text')
+          .map((block) => block.text)
+          .join('');
+    if (text !== '') {
+      recordPromptTransformation({
+        kind: 'late-system-reminder',
+        surface: 'messages',
+        message: messageIndex,
+        part: null,
+      });
+      filteredMessages.push({
+        role: 'user',
+        content: `<system-reminder>\n${text}\n</system-reminder>`,
+      });
     }
   }
 
@@ -553,41 +566,12 @@ function detectsNetworkingTool(tools?: (Tool | GeminiToolDeclaration)[]): boolea
   if (!tools) {
     return false;
   }
-  const keywords = [
-    'web_search',
-    'google_search',
-    'web_search_20250305',
-    'google_search_retrieval',
-    'builtin_web_search',
-  ];
 
   for (const tool of tools) {
-    // Claude Tool format
-    const toolName = (tool as { name?: unknown }).name;
-    if (isString(toolName) && keywords.includes(toolName)) {
-      return true;
-    }
     const toolType = (tool as { type?: unknown }).type;
-    if (isString(toolType) && keywords.includes(toolType)) {
+    if (isGoogleSearchToolType(toolType)) {
       return true;
     }
-
-    // OpenAI nested format (runtime check)
-    const openaiTool = tool as { function?: { name?: string } };
-    if (isString(openaiTool.function?.name) && keywords.includes(openaiTool.function.name)) {
-      return true;
-    }
-
-    // Gemini GeminiToolDeclaration format
-    if ('functionDeclarations' in tool && tool.functionDeclarations) {
-      for (const decl of tool.functionDeclarations) {
-        if (decl.name && keywords.includes(decl.name)) {
-          return true;
-        }
-      }
-    }
-
-    // Gemini search tools
     if ('googleSearch' in tool && tool.googleSearch) {
       return true;
     }
@@ -619,58 +603,71 @@ function injectGoogleSearchTool(body: { tools?: GeminiToolDeclaration[] }, mappe
 
 /**
  * Builds system instruction
- * Converts Claude system prompts to Gemini format with a default assistant identity directive.
+ * Preserves initial system block order while applying only system-owned normalization.
  */
-
-function normalizeClaudeClientIdentity(text: string): string {
-  return text === CLAUDE_AGENT_SDK_IDENTITY ? CLAUDE_CODE_IDENTITY : text;
-}
 
 function buildSystemInstruction(
   system: ClaudeRequest['system'],
   extraSystemMessages: string[],
   tools?: Tool[],
+  globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt),
 ): { parts: { text: string }[] } | null {
-  const assistantIdentityDirective =
-    'You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.\n' +
-    'You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.\n' +
-    '**Absolute paths only**\n' +
-    '**Proactiveness**';
   const instructions: string[] = [];
+  let part = 0;
+  const normalize = (text: string) => {
+    const index = part++;
+    return normalizeSystemPrompt(text, (kind) =>
+      recordPromptTransformation({ kind, surface: 'system', message: null, part: index }),
+    );
+  };
 
   if (system) {
     if (isString(system)) {
-      instructions.push(sanitizeSystemInstructionForCache(normalizeClaudeClientIdentity(system)));
+      const cleaned = normalize(system);
+      if (cleaned !== '') {
+        instructions.push(cleaned);
+      }
     } else if (Array.isArray(system)) {
       for (const block of system) {
         if (block.type === 'text') {
-          instructions.push(
-            sanitizeSystemInstructionForCache(normalizeClaudeClientIdentity(block.text)),
-          );
+          const cleaned = normalize(block.text);
+          if (cleaned !== '') {
+            instructions.push(cleaned);
+          }
         }
       }
     }
   }
 
   for (const extraText of extraSystemMessages) {
-    if (!isEmpty(extraText.trim())) {
-      instructions.push(sanitizeSystemInstructionForCache(extraText));
+    if (extraText !== '') {
+      const cleaned = normalize(extraText);
+      if (cleaned !== '') {
+        instructions.push(cleaned);
+      }
     }
   }
 
-  const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
-  const text = buildOfficialSystemInstruction(
-    instructions,
-    assistantIdentityDirective,
-    globalSystemPrompt &&
-      !hasGlobalSystemPrompt(
-        instructions.map((text) => ({ text })),
-        globalSystemPrompt,
-      )
-      ? globalSystemPrompt
-      : null,
-  );
-  return text ? { parts: [{ text: enhanceGeminiSkillsPrompt(text, tools) }] } : null;
+  if (globalSystemPrompt) {
+    recordPromptTransformation({
+      kind: 'global-system-prepended',
+      surface: 'system',
+      message: null,
+      part: 0,
+    });
+  }
+  const orderedInstructions = [
+    ...(globalSystemPrompt
+      ? [`<global_system_prompt>\n${globalSystemPrompt}\n</global_system_prompt>`]
+      : []),
+    ...instructions,
+  ];
+  if (orderedInstructions.length === 0) {
+    return null;
+  }
+
+  const text = orderedInstructions.join('\n');
+  return { parts: [{ text: enhanceGeminiSkillsPrompt(text, tools) }] };
 }
 
 /**
@@ -720,33 +717,39 @@ function hasValidSignatureForFunctionCalls(
  */
 function buildContents(
   messages: Message[],
-  toolIdToName: Map<string, string>,
   isThinkingEnabled: boolean,
-  allowDummyThought: boolean,
   mappedModel: string,
   signatureSessionKey?: string,
   signatureTargetFamily?: string | null,
   signatureTargetFamilyModel?: string | null,
-  mapperMode: ClaudeRequestMapperMode = 'normal',
 ): GeminiContent[] {
   const contents: GeminiContent[] = [];
-  let lastThoughtSignature: string | null = null;
-  let placeholderUsage: { model: string; toolCallId: string } | null = null;
+  const toolAssociation = new ClaudeToolResultAssociation();
+  let missingSignature: { model: string; toolCallId: string } | null = null;
 
   for (let i = 0; i < messages.length; i++) {
+    // A reasoning block can supply calls in its own message, never a later turn.
+    let lastThoughtSignature: string | null = null;
     const msg = messages[i];
     const role = msg.role === 'assistant' ? 'model' : msg.role;
     const parts: GeminiPart[] = [];
+    const deferredToolResponses: GeminiPart[] = [];
+    const deferredToolMedia: GeminiPart[] = [];
     const contentBlocks = Array.isArray(msg.content)
       ? msg.content
       : msg.content
         ? [{ type: 'text' as const, text: msg.content }]
         : [];
+    const preserveAssistantText = hasExplicitAssistantSignature(msg.role, contentBlocks);
 
-    for (const block of contentBlocks) {
+    for (const [blockIndex, block] of contentBlocks.entries()) {
+      const position = `messages[${i}].content[${blockIndex}]`;
       if (block.type === 'text') {
-        if (block.text && block.text !== '(no content)' && !isEmpty(block.text.trim())) {
-          parts.push(...parseMarkdownImagesToGeminiParts(block.text.trim()));
+        if (preserveAssistantText) {
+          // Signed history is replayed as supplied, including whitespace and literal Markdown.
+          parts.push({ text: block.text });
+        } else if (block.text && !isEmpty(block.text.trim())) {
+          parts.push(...parseMarkdownImagesToGeminiParts(block.text));
         }
       } else if (block.type === 'thinking') {
         const part: GeminiPart = { text: block.thinking, thought: true };
@@ -780,7 +783,7 @@ function buildContents(
         const part: GeminiPart = {
           functionCall: { name: block.name, args: block.input, id: block.id },
         };
-        toolIdToName.set(block.id, block.name);
+        toolAssociation.add(block, msg.role, position);
         const signatureTarget = {
           model: mappedModel,
           family: signatureTargetFamily,
@@ -788,14 +791,13 @@ function buildContents(
         };
         const finalSig =
           block.signature ||
-          (mapperMode === 'normal'
-            ? SignatureStore.getForToolCall({
-                ...signatureTarget,
-                toolCallId: block.id,
-                toolName: block.name,
-                sessionKey: signatureSessionKey,
-              }) || lastThoughtSignature
-            : lastThoughtSignature);
+          SignatureStore.getForToolCall({
+            ...signatureTarget,
+            toolCallId: block.id,
+            toolName: block.name,
+            sessionKey: signatureSessionKey,
+          }) ||
+          lastThoughtSignature;
         if (finalSig) {
           part.thoughtSignature = finalSig;
           part.thought_signature = finalSig;
@@ -803,24 +805,25 @@ function buildContents(
           !mappedModel.startsWith('projects/') &&
           (isThinkingEnabled || modelKeepsThinkingWithoutSignature(mappedModel))
         ) {
-          part.thoughtSignature = PLACEHOLDER_THOUGHT_SIGNATURE;
-          part.thought_signature = PLACEHOLDER_THOUGHT_SIGNATURE;
-          placeholderUsage ??= { model: mappedModel, toolCallId: block.id };
+          missingSignature ??= { model: mappedModel, toolCallId: block.id };
         }
         parts.push(part);
       } else if (block.type === 'tool_result') {
-        const funcName = toolIdToName.get(block.tool_use_id) || block.tool_use_id;
+        const funcName = toolAssociation.consume(block, msg.role, position);
         let mergedContent = '';
         const extraParts: GeminiPart[] = [];
         if (isString(block.content)) {
-          mergedContent = block.content;
+          const extracted = extractToolResultImages(block.content);
+          mergedContent = extracted.text;
+          extraParts.push(...extracted.media);
         } else if (Array.isArray(block.content)) {
-          mergedContent = block.content
-            .filter((content): content is { type: 'text'; text: string } => content.type === 'text')
-            .map((content) => content.text)
-            .join('\n');
+          const textParts: string[] = [];
           for (const content of block.content) {
-            if (
+            if (content.type === 'text') {
+              const extracted = extractToolResultImages(content.text);
+              textParts.push(extracted.text);
+              extraParts.push(...extracted.media);
+            } else if (
               (content.type === 'image' ||
                 content.type === 'document' ||
                 content.type === 'audio' ||
@@ -845,6 +848,7 @@ function buildContents(
               });
             }
           }
+          mergedContent = textParts.join('\n');
         }
         if (isEmpty(mergedContent.trim()) && extraParts.length === 0) {
           mergedContent = block.is_error
@@ -858,33 +862,26 @@ function buildContents(
             id: block.tool_use_id,
           },
         };
-        if (lastThoughtSignature) {
-          part.thoughtSignature = lastThoughtSignature;
-          part.thought_signature = lastThoughtSignature;
-        }
-        parts.push(part);
-        parts.push(...extraParts);
+        // Keep a tool round contiguous: all function responses are emitted
+        // first, followed by their media in source order. Interleaving
+        // response→image→response→image makes parallel calls ambiguous to
+        // providers that associate media with the immediately preceding
+        // response.
+        deferredToolResponses.push(part);
+        deferredToolMedia.push(...extraParts);
       } else if (block.type === 'redacted_thinking') {
         parts.push({ text: `[Redacted Thinking: ${block.data}]`, thought: true });
       }
     }
-    if (allowDummyThought && role === 'model' && isThinkingEnabled && i === messages.length - 1) {
-      const hasThought = parts.some((p) => p.thought === true);
-      if (!hasThought) parts.unshift({ text: 'Thinking...', thought: true });
-    }
+    parts.push(...deferredToolResponses, ...deferredToolMedia);
     if (parts.length > 0) {
       contents.push({ role, parts });
-    } else if (role === 'user') {
-      // Gemini requires user/model role rotation. Preserve an otherwise empty
-      // user turn after unsupported or blocked content is removed.
-      contents.push({ role, parts: [{ text: ' ' }] });
     }
   }
 
-  if (placeholderUsage) {
-    placeholderSignatureUsageCount++;
+  if (missingSignature) {
     logger.warn(
-      `[Signature-Placeholder] No real thought signature available, replaying '${PLACEHOLDER_THOUGHT_SIGNATURE}' for model=${placeholderUsage.model} toolCallId=${placeholderUsage.toolCallId}`,
+      `[ThoughtSig] No matching historical signature; leaving unsigned tool call for model=${missingSignature.model} toolCallId=${missingSignature.toolCallId}`,
     );
   }
 
@@ -972,13 +969,7 @@ function buildTools(
 }
 
 function isGoogleSearchTool(tool: Tool): boolean {
-  return (
-    tool.name === 'web_search' ||
-    tool.name === 'google_search' ||
-    tool.name === 'builtin_web_search' ||
-    tool.type === 'web_search_20250305' ||
-    tool.type === 'builtin_web_search'
-  );
+  return isGoogleSearchToolType(tool.type);
 }
 
 function computeToolSchemaCacheKey(tools: Tool[]): string | null {
@@ -1140,21 +1131,4 @@ function buildGenerationConfig(
   }
   config.stopSequences = ['<|user|>', '<|endoftext|>', '<|end_of_turn|>', '[DONE]', '\n\nHuman:'];
   return config;
-}
-
-/**
- * deep clean undefined values
- * recursively delete all properties with undefined values
- * @param obj
- */
-function deepCleanUndefined(obj: unknown): void {
-  if (Array.isArray(obj)) {
-    obj.forEach(deepCleanUndefined);
-  } else if (isPlainObject(obj)) {
-    const record = obj as Record<string, unknown>;
-    Object.keys(record).forEach((key) => {
-      if (record[key] === undefined) delete record[key];
-      else deepCleanUndefined(record[key]);
-    });
-  }
 }

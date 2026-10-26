@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { Readable } from 'node:stream';
 import { lastValueFrom, Observable, toArray } from 'rxjs';
 
-import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
+import {
+  decodeInternalSseData,
+  describeInternalSseError,
+  MAX_SSE_EVENT_BYTES,
+} from '@/modules/proxy-gateway/antigravity/internal-sse';
 import { AnthropicService as ProxyService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
 
 describe('decodeInternalSseData', () => {
@@ -82,6 +86,26 @@ describe('decodeInternalSseData', () => {
     expect(decodeInternalSseData('42')).toEqual({ kind: 'invalid' });
     expect(decodeInternalSseData('[1,2,3]')).toEqual({ kind: 'invalid' });
   });
+
+  it('classifies bare and wrapped upstream error envelopes separately from responses', () => {
+    expect(
+      decodeInternalSseData(JSON.stringify({ error: { code: 503, message: 'busy' } })),
+    ).toEqual({
+      kind: 'error',
+      error: { code: 503, message: 'busy', source: 'bare' },
+    });
+    expect(
+      decodeInternalSseData(
+        JSON.stringify({ response: { error: { status: 'UNAVAILABLE', message: 'busy' } } }),
+      ),
+    ).toEqual({
+      kind: 'error',
+      error: { status: 'UNAVAILABLE', message: 'busy', source: 'wrapped' },
+    });
+    expect(describeInternalSseError({ code: 'quota_exhausted' })).toBe(
+      'Upstream returned error code quota_exhausted.',
+    );
+  });
 });
 
 function parseEvent(serializedEvent: string): Record<string, unknown> {
@@ -109,6 +133,28 @@ function createAnthropicStream(
 }
 
 describe('ProxyService Anthropic streaming envelope handling', () => {
+  it.each([
+    ['incomplete UTF-8', Buffer.from([0xe2, 0x82])],
+    ['oversized unterminated line', Buffer.from(`data: ${'x'.repeat(MAX_SSE_EVENT_BYTES)}`)],
+  ])('reports %s as a stream error', async (_label, bytes) => {
+    const service = new ProxyService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const upstreamStream = Readable.from([bytes]);
+
+    const serializedEvents = await lastValueFrom(
+      createAnthropicStream(service, upstreamStream).pipe(toArray()),
+    );
+    const events = serializedEvents.map((event) => String(event));
+
+    expect(events.some((event) => event.includes('event: error'))).toBe(true);
+    expect(events.some((event) => event.includes('message_stop'))).toBe(false);
+  });
+
   it('unwraps a wrapped two-part chunk and does not drop the second part', async () => {
     const service = new ProxyService(
       {} as never,
@@ -143,7 +189,7 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
     });
   });
 
-  it('still routes undecodable payloads through the parse-error recovery', async () => {
+  it('terminates on the first undecodable payload without parse-error recovery', async () => {
     const service = new ProxyService(
       {} as never,
       {} as never,
@@ -160,16 +206,15 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
     );
     const events = serializedEvents.map((event) => parseEvent(String(event)));
 
-    // StreamingState only emits this once its consecutive-error counter passes
-    // its threshold, so seeing it proves handleParseError still runs for
-    // payloads the decoder classifies as invalid without throwing.
     const errorEvent = events.find((event) => event.type === 'error');
     expect(errorEvent).toMatchObject({
-      error: expect.objectContaining({ code: 'stream_decode_error' }),
+      error: { type: 'api_error', message: 'Upstream returned an invalid generation response.' },
     });
+    expect(events.filter((event) => event.type === 'error')).toHaveLength(1);
+    expect(events.some((event) => event.type === 'message_stop')).toBe(false);
   });
 
-  it('emits a message_delta for a wrapped finishReason-only chunk', async () => {
+  it('rejects a wrapped empty STOP without synthesizing a placeholder', async () => {
     const service = new ProxyService(
       {} as never,
       {} as never,
@@ -185,23 +230,44 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
       createAnthropicStream(service, upstreamStream).pipe(toArray()),
     );
     const events = serializedEvents.map((event) => parseEvent(String(event)));
-    expect(events.some((event) => event.type === 'message_delta')).toBe(true);
     expect(events).toEqual([
       expect.objectContaining({ type: 'message_start' }),
-      expect.objectContaining({
-        type: 'content_block_start',
-        content_block: { type: 'text', text: '.' },
-      }),
-      expect.objectContaining({ type: 'content_block_stop' }),
-      expect.objectContaining({
-        type: 'message_delta',
-        usage: { input_tokens: 1, output_tokens: 1 },
-      }),
-      expect.objectContaining({ type: 'message_stop' }),
+      {
+        type: 'error',
+        error: { type: 'api_error', message: 'Upstream returned no usable output.' },
+      },
     ]);
   });
 
-  it('recovers a zero-byte upstream stream with a complete Anthropic event sequence', async () => {
+  it('maps multiline data fields as one Anthropic event', async () => {
+    const service = new ProxyService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const upstreamStream = Readable.from([
+      Buffer.from('data: {"response":\n'),
+      Buffer.from(
+        'data: {"candidates":[{"content":{"parts":[{"text":"multiline answer"}]},"finishReason":"STOP"}]}}\n\n',
+      ),
+    ]);
+
+    const serializedEvents = await lastValueFrom(
+      createAnthropicStream(service, upstreamStream).pipe(toArray()),
+    );
+    const events = serializedEvents.map((event) => parseEvent(String(event)));
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'content_block_delta',
+        delta: { type: 'text_delta', text: 'multiline answer' },
+      }),
+    );
+  });
+
+  it('reports a zero-byte upstream stream as an Anthropic error event', async () => {
     const service = new ProxyService(
       {} as never,
       {} as never,
@@ -214,17 +280,13 @@ describe('ProxyService Anthropic streaming envelope handling', () => {
     );
     const events = serializedEvents.map((event) => parseEvent(String(event)));
 
-    expect(events.map((event) => event.type)).toEqual([
-      'message_start',
-      'content_block_start',
-      'content_block_stop',
-      'message_delta',
-      'message_stop',
-    ]);
+    expect(events.map((event) => event.type)).toEqual(['error']);
     expect(events[0]).toMatchObject({
-      message: expect.objectContaining({ model: 'gemini-auto' }),
+      error: {
+        message: 'Upstream response stream ended without a finish reason.',
+        type: 'api_error',
+      },
+      type: 'error',
     });
-    expect(events[1]).toMatchObject({ content_block: { type: 'text', text: '.' } });
-    expect(events[3]).toMatchObject({ usage: { input_tokens: 1, output_tokens: 1 } });
   });
 });

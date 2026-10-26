@@ -65,6 +65,10 @@ declare global {
         bodyId: string,
         suggestedName: string,
       ) => Promise<{ status: 'saved' | 'cancelled' }>;
+      saveTrafficAuditSession: (
+        sessionId: string,
+        suggestedName: string,
+      ) => Promise<{ status: 'saved' | 'cancelled' }>;
       startPerformanceRecording?: (label: string) => Promise<PerformanceRecordingStartResult>;
       stopPerformanceRecording?: (
         snapshot: RendererPerformanceSnapshot,

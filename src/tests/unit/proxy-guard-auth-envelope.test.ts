@@ -3,6 +3,7 @@ import { HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
+import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 
 const credentialMocks = vi.hoisted(() => ({
   matches: vi.fn(),
@@ -13,7 +14,10 @@ vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
 }));
 
 vi.mock('@/server/server-config', () => ({
-  getServerConfig: () => ({ api_key: 'configured-api-key' }),
+  getServerConfig: () => ({
+    ...DEFAULT_APP_CONFIG.proxy,
+    api_key: 'configured-api-key',
+  }),
 }));
 
 function createContext(url: string, headers: Record<string, string> = {}): ExecutionContext {

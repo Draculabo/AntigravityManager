@@ -33,6 +33,11 @@ export default defineConfig([
   eslintPluginPrettierRecommended,
   ...tseslint.configs.recommended,
   {
+    // Historical diagnostic preloads use Node's CommonJS loading contract.
+    files: ['artifacts/**/*.cjs'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     plugins: {
       'unused-imports': unusedImports,
     },

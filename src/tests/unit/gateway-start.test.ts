@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
-import { bootstrapNestServer, getNestServerStatus, stopNestServer } from '@/server/main';
+import {
+  bootstrapNestServer,
+  forgetDeletedNestServerAccount,
+  getNestServerStatus,
+  stopNestServer,
+} from '@/server/main';
+import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 
@@ -65,9 +73,79 @@ describe('gateway server startup', () => {
     vi.restoreAllMocks();
   });
 
+  it.each(['none', 'client', 'lease', 'both'] as const)(
+    'forgets deleted-account recovery and lease state even when cleanup fails: %s',
+    async (mode) => {
+      const clientFailure = new Error('synthetic client cleanup failure');
+      const leaseFailure = new Error('synthetic lease cleanup failure');
+      const client = {
+        forgetDeletedAccount: vi.fn(() => {
+          if (mode === 'client' || mode === 'both') {
+            throw clientFailure;
+          }
+        }),
+      };
+      const lease = {
+        getAccountCount: () => 0,
+        forgetDeletedAccount: vi.fn(() => {
+          if (mode === 'lease' || mode === 'both') {
+            throw leaseFailure;
+          }
+        }),
+      };
+      mockCreate.mockResolvedValue({
+        register: vi.fn().mockResolvedValue(undefined),
+        getHttpAdapter: vi.fn(() => ({ getInstance: () => ({ addHook: mockAddHook }) })),
+        enableCors: vi.fn(),
+        listen: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        get: vi.fn((token) =>
+          token === GeminiClient ? client : token === AccountLeaseService ? lease : {},
+        ),
+        getHttpServer: vi.fn(() => ({})),
+      });
+      vi.spyOn(trafficAuditService, 'close').mockResolvedValue();
+      vi.spyOn(thoughtStoreService, 'close').mockResolvedValue();
+      expect((await bootstrapNestServer(DEFAULT_APP_CONFIG.proxy)).success).toBe(true);
+      let failure: unknown;
+      try {
+        forgetDeletedNestServerAccount('synthetic-deleted-account');
+      } catch (error) {
+        failure = error;
+      }
+      expect(client.forgetDeletedAccount).toHaveBeenCalledExactlyOnceWith(
+        'synthetic-deleted-account',
+      );
+      expect(lease.forgetDeletedAccount).toHaveBeenCalledExactlyOnceWith(
+        'synthetic-deleted-account',
+      );
+      if (mode === 'both') {
+        expect(failure).toBeInstanceOf(AggregateError);
+        expect(failure).toMatchObject({
+          errors: [clientFailure, leaseFailure],
+          cause: clientFailure,
+        });
+      } else {
+        expect(failure).toBe(
+          mode === 'client' ? clientFailure : mode === 'lease' ? leaseFailure : undefined,
+        );
+      }
+    },
+  );
+
+  it('keeps stopped-gateway account deletion on the existing availability cleanup path', () => {
+    const clear = vi
+      .spyOn(proxyModelAvailabilityStore, 'clearAccountOrThrow')
+      .mockImplementation(() => {});
+    forgetDeletedNestServerAccount('synthetic-stopped-account');
+    expect(clear).toHaveBeenCalledExactlyOnceWith('synthetic-stopped-account');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('reports diagnostic close failure while still attempting both stores', async () => {
     mockCreate.mockResolvedValue({
       register: vi.fn().mockResolvedValue(undefined),
+      getHttpAdapter: vi.fn(() => ({ getInstance: () => ({ addHook: mockAddHook }) })),
       enableCors: vi.fn(),
       listen: vi.fn().mockResolvedValue(undefined),
       close: vi.fn().mockResolvedValue(undefined),
@@ -119,6 +197,7 @@ describe('gateway server startup', () => {
     );
     mockCreate.mockResolvedValue({
       register: vi.fn().mockResolvedValue(undefined),
+      getHttpAdapter: vi.fn(() => ({ getInstance: () => ({ addHook: mockAddHook }) })),
       enableCors: vi.fn(),
       listen,
       close,
@@ -155,6 +234,7 @@ describe('gateway server startup', () => {
     const enableCors = vi.fn();
     mockCreate.mockResolvedValue({
       register: vi.fn().mockResolvedValue(undefined),
+      getHttpAdapter: vi.fn(() => ({ getInstance: () => ({ addHook: mockAddHook }) })),
       enableCors,
       listen,
       close: vi.fn().mockResolvedValue(undefined),
@@ -173,6 +253,7 @@ describe('gateway server startup', () => {
       success: true,
       port: 8123,
       base_url: 'http://localhost:8123',
+      listen_address: '127.0.0.1',
     });
     expect(listen).toHaveBeenCalledWith(8123, '127.0.0.1');
     expect(enableCors).not.toHaveBeenCalled();
@@ -194,11 +275,12 @@ describe('gateway server startup', () => {
     });
   });
 
-  it('allows LAN binding only when an API key is configured', async () => {
+  it('allows explicit LAN binding when an API key is configured', async () => {
     const listen = vi.fn().mockResolvedValue(undefined);
     const enableCors = vi.fn();
     mockCreate.mockResolvedValue({
       register: vi.fn().mockResolvedValue(undefined),
+      getHttpAdapter: vi.fn(() => ({ getInstance: () => ({ addHook: mockAddHook }) })),
       enableCors,
       listen,
       close: vi.fn().mockResolvedValue(undefined),
@@ -213,10 +295,74 @@ describe('gateway server startup', () => {
         ...DEFAULT_APP_CONFIG.proxy,
         port: 8124,
         api_key: 'test-api-key',
+        network: { ...DEFAULT_APP_CONFIG.proxy.network, lan_access: true },
       }),
     ).resolves.toMatchObject({ success: true, port: 8124 });
 
-    expect(listen).toHaveBeenCalledWith(8124, '0.0.0.0');
+    expect(listen).toHaveBeenCalledWith({ port: 8124, host: '::', ipv6Only: false });
     expect(enableCors).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to IPv4 only when the platform has no IPv6 listener support', async () => {
+    const listen = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('IPv6 is unavailable'), { code: 'EAFNOSUPPORT' }),
+      )
+      .mockResolvedValueOnce(undefined);
+    mockCreate.mockResolvedValue({
+      register: vi.fn().mockResolvedValue(undefined),
+      getHttpAdapter: vi.fn(() => ({ getInstance: () => ({ addHook: mockAddHook }) })),
+      enableCors: vi.fn(),
+      listen,
+      close: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(() => ({
+        getAccountCount: () => 0,
+      })),
+      getHttpServer: vi.fn(() => ({})),
+    });
+
+    const result = await bootstrapNestServer({
+      ...DEFAULT_APP_CONFIG.proxy,
+      port: 8125,
+      api_key: 'test-api-key',
+      network: { ...DEFAULT_APP_CONFIG.proxy.network, lan_access: true },
+    });
+
+    expect(result).toMatchObject({ success: true, port: 8125, listen_address: '0.0.0.0' });
+    expect(listen).toHaveBeenNthCalledWith(1, { port: 8125, host: '::', ipv6Only: false });
+    expect(listen).toHaveBeenNthCalledWith(2, 8125, '0.0.0.0');
+  });
+
+  it('does not hide a LAN port conflict behind an IPv4 fallback', async () => {
+    const listen = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('port is in use'), { code: 'EADDRINUSE' }));
+    mockCreate.mockResolvedValue({
+      register: vi.fn().mockResolvedValue(undefined),
+      getHttpAdapter: vi.fn(() => ({ getInstance: () => ({ addHook: mockAddHook }) })),
+      enableCors: vi.fn(),
+      listen,
+      close: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(() => ({
+        getAccountCount: () => 0,
+      })),
+      getHttpServer: vi.fn(() => ({})),
+    });
+
+    const result = await bootstrapNestServer({
+      ...DEFAULT_APP_CONFIG.proxy,
+      port: 8126,
+      api_key: 'test-api-key',
+      network: { ...DEFAULT_APP_CONFIG.proxy.network, lan_access: true },
+    });
+
+    expect(result).toEqual({
+      success: false,
+      reason: 'address-in-use',
+      port: 8126,
+      message: 'Port 8126 is already in use',
+    });
+    expect(listen).toHaveBeenCalledTimes(1);
   });
 });

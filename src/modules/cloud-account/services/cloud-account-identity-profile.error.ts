@@ -6,8 +6,11 @@ import {
 } from './cloud-account-identity-profile.schema';
 
 export class CloudIdentityProfileError extends Error {
-  constructor(readonly profileCode: CloudIdentityProfileErrorCode) {
-    super('Cloud identity profile operation failed');
+  constructor(
+    readonly profileCode: CloudIdentityProfileErrorCode,
+    options?: ErrorOptions,
+  ) {
+    super('Cloud identity profile operation failed', options);
     this.name = 'CloudIdentityProfileError';
   }
 }

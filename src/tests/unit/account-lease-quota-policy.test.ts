@@ -43,7 +43,7 @@ describe('account lease quota policy', () => {
       },
     });
 
-    expect(snapshot.modelQuotas['gemini-3-pro']).toBe(50);
+    expect(snapshot.modelQuotas['gemini-3-pro']).toBe(50.8);
     expect(snapshot.modelLimits['gemini-3-pro']).toBe(8192);
     expect(snapshot.modelForwardingRules['gemini-old']).toBe('gemini-new');
   });

@@ -3,10 +3,7 @@ import { CloudAccountSchema } from '@/modules/cloud-account/types';
 import { logger } from '@/shared/logging/logger';
 import { accounts } from '@/shared/persistence/database/schema';
 import { getCloudDb } from './cloud-account-db';
-import {
-  serializeDeviceHistory,
-  serializeDeviceProfile,
-} from './cloud-account-device-profile-codec';
+import { assertImportPlanCurrent, cloudAccountRowValues } from './cloud-account-import-guard';
 
 /**
  * Persist one prepared import plan in a single SQLite transaction.
@@ -17,6 +14,7 @@ import {
  */
 export async function upsertCloudAccountsAtomically(
   accountsToPersist: CloudAccount[],
+  expectedAccounts?: CloudAccount[],
 ): Promise<void> {
   if (accountsToPersist.length === 0) {
     return;
@@ -24,29 +22,15 @@ export async function upsertCloudAccountsAtomically(
 
   const valuesToPersist = accountsToPersist.map((account) => {
     CloudAccountSchema.parse(account);
-    return {
-      id: account.id,
-      provider: account.provider,
-      email: account.email,
-      name: account.name ?? null,
-      avatarUrl: account.avatar_url ?? null,
-      tokenJson: JSON.stringify(account.token),
-      quotaJson: account.quota ? JSON.stringify(account.quota) : null,
-      healthJson: account.health ? JSON.stringify(account.health) : null,
-      deviceProfileJson: serializeDeviceProfile(account.device_profile),
-      deviceHistoryJson: serializeDeviceHistory(account.device_history),
-      createdAt: account.created_at,
-      lastUsed: account.last_used,
-      status: account.status ?? 'active',
-      statusReason: account.status_reason ?? null,
-      isActive: account.is_active ? 1 : 0,
-      proxyUrl: account.proxy_url ?? null,
-    };
+    return cloudAccountRowValues(account);
   });
 
   const { raw, orm } = getCloudDb();
   try {
     orm.transaction((transaction) => {
+      if (expectedAccounts) {
+        assertImportPlanCurrent(transaction, accountsToPersist, expectedAccounts);
+      }
       for (const values of valuesToPersist) {
         transaction
           .insert(accounts)

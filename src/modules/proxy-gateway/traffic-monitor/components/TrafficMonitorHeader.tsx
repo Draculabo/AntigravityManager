@@ -4,6 +4,7 @@ import { Activity, AlertTriangle, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ipc } from '@/ipc/manager';
 import { useAuditDropReset } from '../../components/useAuditDropReset';
+import { AuditStorageUsage } from '../AuditStorageUsage';
 
 export function TrafficMonitorHeader() {
   const { t } = useTranslation();
@@ -30,7 +31,11 @@ export function TrafficMonitorHeader() {
             {t('traffic.records', { count: stats.data?.rows ?? 0 })}
           </span>
           <span className="bg-card rounded-md border px-2.5 py-1.5 tabular-nums">
-            {t('traffic.on-disk', { size: formatBytes(stats.data?.databaseBytes ?? 0) })}
+            <AuditStorageUsage
+              stats={stats.data}
+              failed={stats.isError}
+              retry={() => void stats.refetch()}
+            />
           </span>
           {(stats.data?.droppedCount ?? 0) > 0 && (
             <Badge variant="destructive" className="gap-1.5 pr-1">
@@ -58,11 +63,4 @@ export function TrafficMonitorHeader() {
       </div>
     </header>
   );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KiB`;
-  }
-  return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }

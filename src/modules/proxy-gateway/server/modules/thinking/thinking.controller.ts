@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,7 @@ import type { FastifyRequest } from 'fastify';
 import { createThoughtSessionKey } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
+import { ThoughtRecordPageInputSchema } from '@/modules/proxy-gateway/thought-store/thought-management.schema';
 import { ProxyGuard } from '../../guards/proxy.guard';
 
 interface EndThoughtSessionBody {
@@ -37,8 +39,13 @@ export class ThinkingController {
       throw new BadRequestException('session_id is required');
     }
     const affected = await thoughtStoreService.endSession(this.toSessionKey(request, sessionId));
-    trafficAuditService.recordAdminOperation('end_thought_session', affected);
-    return { ended: affected > 0, session_id: sessionId };
+    trafficAuditService.recordAdminOperation('end_thought_session', affected.sessions);
+    return {
+      ended: affected.sessions > 0,
+      session_id: sessionId,
+      sessions: affected.sessions,
+      records_retained: affected.records,
+    };
   }
 
   @Get('sessions/:sessionId')
@@ -56,12 +63,37 @@ export class ThinkingController {
     @Req() request: FastifyRequest,
   ): Promise<Record<string, unknown>> {
     const affected = await thoughtStoreService.deleteSession(this.toSessionKey(request, sessionId));
-    trafficAuditService.recordAdminOperation('delete_thought_session', affected);
-    return { deleted: affected > 0, session_id: sessionId };
+    trafficAuditService.recordAdminOperation('delete_thought_session', affected.sessions);
+    return {
+      deleted: affected.sessions > 0,
+      session_id: sessionId,
+      sessions: affected.sessions,
+      records_deleted: affected.records,
+      recovery_complete: affected.recoveryComplete,
+      recovery: affected.recovery,
+    };
+  }
+
+  @Get('sessions/:sessionId/records')
+  public async recordPage(
+    @Param('sessionId') sessionId: string,
+    @Query() query: { after_id?: string; through_id?: string; limit?: string },
+    @Req() request: FastifyRequest,
+  ) {
+    const parsed = ThoughtRecordPageInputSchema.safeParse({
+      sessionKey: this.toSessionKey(request, sessionId),
+      afterId: query.after_id === undefined ? undefined : Number(query.after_id),
+      throughId: query.through_id === undefined ? undefined : Number(query.through_id),
+      limit: query.limit === undefined ? undefined : Number(query.limit),
+    });
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid reasoning history page');
+    }
+    return thoughtStoreService.listRecordPage(parsed.data);
   }
 
   private toSessionKey(request: FastifyRequest, sessionId: string): string {
-    return createThoughtSessionKey(request.headers as Record<string, unknown>, sessionId);
+    return createThoughtSessionKey(request.headers, sessionId);
   }
 }
 

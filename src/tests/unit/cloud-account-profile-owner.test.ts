@@ -39,7 +39,22 @@ vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
   CloudAccountRepo: {
     getAccount: vi.fn(async (id: string) =>
       id === accountId
-        ? { id, device_profile: owner.bound ?? undefined, device_history: owner.history }
+        ? {
+            id,
+            provider: 'google',
+            email: 'profile-owner@example.invalid',
+            created_at: 1,
+            last_used: 1,
+            token: {
+              access_token: 'synthetic-access',
+              refresh_token: 'synthetic-grant',
+              expires_in: 3600,
+              expiry_timestamp: 4102444800,
+              token_type: 'Bearer',
+            },
+            device_profile: owner.bound ?? undefined,
+            device_history: owner.history,
+          }
         : null,
     ),
   },

@@ -12,6 +12,7 @@ import {
 } from './traffic-audit.schema';
 import { reconstructAuditSseResponse } from './traffic-audit-sse-reconstruction';
 import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
+import { toAuditDiskAdmissionError } from './traffic-audit-disk-budget';
 
 const MAX_AUDIT_BODY_BYTES = 100 * 1024 * 1024;
 type TrafficAuditDatabase = BetterSQLite3Database<typeof trafficAuditSchema>;
@@ -49,15 +50,18 @@ interface PayloadDedupRow {
 
 export class TrafficAuditPayloads {
   private readonly appendPayloadChunkStatement: Database.Statement<
-    [string, number, Buffer, number]
+    [string, number, Buffer, number, string]
   >;
 
   public constructor(
     private readonly raw: Database.Database,
     private readonly orm: TrafficAuditDatabase,
+    private readonly admitReplacement: (bytes: number) => void,
   ) {
     this.appendPayloadChunkStatement = this.raw.prepare(
-      "INSERT INTO audit_payload_chunks(payload_id,seq,payload,byte_length,encoding) VALUES(?,?,?,?,'raw')",
+      'INSERT INTO audit_payload_chunks(payload_id,seq,payload,byte_length,encoding) ' +
+        "SELECT ?,?,?,?,'raw' WHERE EXISTS " +
+        "(SELECT 1 FROM audit_payloads WHERE id=? AND state='writing')",
     );
   }
 
@@ -70,11 +74,43 @@ export class TrafficAuditPayloads {
       payload.sequence,
       bytes,
       bytes.byteLength,
+      payload.payloadId,
     ).changes;
+  }
+
+  public markIncomplete(id: string, reason: string): void {
+    if (!this.isWriting(id)) {
+      return;
+    }
+    const stored = this.hashStoredPayload(id);
+    this.raw
+      .prepare(
+        "UPDATE audit_payloads SET state='incomplete',partial=1,dropped_reason=?,stored_bytes=?,chunk_count=(SELECT COUNT(*) FROM audit_payload_chunks WHERE payload_id=?),completed_at=?,logical_bytes=MAX(logical_bytes,?),sha256=?,sha256_scope=? WHERE id=? AND state='writing'",
+      )
+      .run(
+        reason,
+        stored.bytes,
+        id,
+        Date.now(),
+        stored.bytes,
+        stored.sha256,
+        stored.bytes > 0 ? 'stored_prefix' : 'unavailable',
+        id,
+      );
   }
 
   public beginPayload(payload: BeginPayload): number {
     return this.raw.transaction(() => {
+      const exists =
+        payload.ownerKind === 'parent'
+          ? payload.ownerId === payload.parentId &&
+            this.raw.prepare('SELECT 1 FROM request_logs WHERE id=?').get(payload.parentId)
+          : this.raw
+              .prepare('SELECT 1 FROM upstream_attempts WHERE id=? AND parent_id=?')
+              .get(payload.ownerId, payload.parentId);
+      if (!exists) {
+        return 0;
+      }
       this.orm
         .insert(auditPayloads)
         .values({
@@ -119,6 +155,9 @@ export class TrafficAuditPayloads {
 
   public finalizePayload(payload: FinalizePayload): string {
     return this.raw.transaction(() => {
+      if (!this.isWriting(payload.id)) {
+        return payload.id;
+      }
       const totals = this.raw
         .prepare<
           [string],
@@ -219,7 +258,11 @@ export class TrafficAuditPayloads {
   }
 
   public finalizeSsePayload(payload: FinalizeSsePayload): string {
+    if (!this.isWriting(payload.id)) {
+      return payload.id;
+    }
     let representation = 'redacted_raw_sse';
+    let droppedReason = payload.droppedReason;
     let parseErrorOffset = payload.parseErrorOffset;
     let errorSummary = payload.errorSummary;
     let logicalBytes = payload.sanitizedBytes;
@@ -241,9 +284,15 @@ export class TrafficAuditPayloads {
         this.replacePayloadChunksFromString(payload.id, output, MAX_AUDIT_BODY_BYTES);
         representation = 'reconstructed_sse';
       } catch (error) {
-        parseErrorOffset = 0;
+        const storageFailure = toAuditDiskAdmissionError(error);
+        if (storageFailure) {
+          droppedReason = storageFailure.reason;
+        } else {
+          parseErrorOffset = 0;
+        }
         errorSummary =
-          error instanceof Error ? error.message.slice(0, 512) : String(error).slice(0, 512);
+          storageFailure?.message ??
+          (error instanceof Error ? error.message.slice(0, 512) : String(error).slice(0, 512));
       }
     }
 
@@ -270,22 +319,34 @@ export class TrafficAuditPayloads {
       .run();
     return this.finalizePayload({
       completedAt: payload.completedAt,
-      droppedReason: payload.droppedReason,
+      droppedReason,
       errorSummary,
       id: payload.id,
       logicalBytes,
       oversized: oversized ? 1 : 0,
       parseErrorOffset,
-      partial: payload.partial || oversized ? 1 : 0,
+      partial: payload.partial || oversized || droppedReason ? 1 : 0,
       rawBytes: payload.rawBytes,
       sha256,
       sha256Scope,
-      state: payload.droppedReason ? 'incomplete' : 'complete',
+      state: droppedReason ? 'incomplete' : 'complete',
       terminalStatus: payload.terminalStatus,
     });
   }
 
+  private isWriting(id: string): boolean {
+    return Boolean(
+      this.raw
+        .prepare<
+          [string],
+          { writing: number }
+        >("SELECT 1 writing FROM audit_payloads WHERE id=? AND state='writing'")
+        .get(id),
+    );
+  }
+
   private replacePayloadChunksFromString(id: string, value: string, maxBytes: number): void {
+    this.admitReplacement(Math.min(Buffer.byteLength(value, 'utf8'), maxBytes));
     this.raw.transaction(() => {
       this.raw.prepare('DELETE FROM audit_payload_chunks WHERE payload_id=?').run(id);
       let bufferedBytes = 0;
@@ -298,7 +359,7 @@ export class TrafficAuditPayloads {
           return;
         }
         const chunk = Buffer.concat(parts, bufferedBytes);
-        this.appendPayloadChunkStatement.run(id, sequence, chunk, chunk.byteLength);
+        this.appendPayloadChunkStatement.run(id, sequence, chunk, chunk.byteLength, id);
         parts.length = 0;
         bufferedBytes = 0;
         storedBytes += chunk.byteLength;

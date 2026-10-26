@@ -5,6 +5,7 @@
  */
 
 import { isNumber, isPlainObject, isString } from 'lodash-es';
+import { normalizeGeminiCandidateTokenDetails } from '@/modules/proxy-gateway/antigravity/GeminiReasoningUsage';
 import type {
   GeminiResponsesGroundingMetadata,
   GeminiResponsesStreamPart,
@@ -122,6 +123,9 @@ export function toGeminiUsageMetadata(value: unknown): GeminiUsageMetadata | und
       ? usageMetadata.total_tool_use_tokens
       : undefined,
     cachedTokens: isNumber(usageMetadata.cachedTokens) ? usageMetadata.cachedTokens : undefined,
+    candidatesTokensDetails: normalizeGeminiCandidateTokenDetails(
+      usageMetadata.candidatesTokensDetails,
+    ),
   };
 }
 

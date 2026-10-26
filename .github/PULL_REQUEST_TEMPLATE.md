@@ -6,6 +6,14 @@
 
 <!-- Describe the resulting behavior. Add redacted screenshots or a recording for UI changes. -->
 
+## Owner and scope
+
+<!-- Name the owning module/domain, the user-visible behavior, and the related protocol or persistence boundary. -->
+
+## Evidence and sources
+
+<!-- List the source of the behavior (issue, protocol capture, upstream documentation, or reproduction) and any redacted fixtures used. -->
+
 ## Validation
 
 <!-- Name the tested revision/artifact, OS, runtime and relevant account/client variant. List commands or manual checks actually run, results and sanitized evidence links. Distinguish mocks, source tests, packaged/native checks and live-provider evidence. -->
@@ -25,3 +33,5 @@
 - [ ] The change is focused and excludes unrelated edits.
 - [ ] Relevant behavior and documentation have been checked for this change.
 - [ ] The diff and attachments contain no credentials, private data or generated application artifacts.
+- [ ] Any unverified platform, client, provider or live-environment path is listed above.
+- [ ] Recovery or rollback steps are documented when the change affects durable state, credentials, routing or packaging.

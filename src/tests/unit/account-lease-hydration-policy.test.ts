@@ -213,6 +213,7 @@ describe('AccountLeaseHydrationPolicy', () => {
         project_id: 'resolved-project',
       }),
       expect.any(Object),
+      expect.any(Function),
     );
   });
 
@@ -299,6 +300,7 @@ describe('AccountLeaseHydrationPolicy', () => {
       'acc-1',
       expect.objectContaining({ access_token: 'access-token-new', project_id: undefined }),
       expect.any(Object),
+      expect.any(Function),
     );
 
     releaseFirstPersistence?.();
@@ -313,6 +315,7 @@ describe('AccountLeaseHydrationPolicy', () => {
         project_id: 'resolved-project',
       }),
       expect.any(Object),
+      expect.any(Function),
     );
     await policy.drainBackgroundPersistence();
   });
@@ -363,6 +366,7 @@ describe('AccountLeaseHydrationPolicy', () => {
       'acc-2',
       expect.objectContaining({ project_id: 'project-2' }),
       expect.any(Object),
+      expect.any(Function),
     );
     releaseFirstPersistence?.();
     await policy.drainBackgroundPersistence();

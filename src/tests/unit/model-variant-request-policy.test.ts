@@ -6,6 +6,7 @@ import {
   rebindAnthropicModelVariant,
   rebindGeminiModelVariant,
   rebindOpenAIModelVariant,
+  resolveOpenAIRequestEffort,
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import type {
   AnthropicChatRequest,
@@ -14,6 +15,23 @@ import type {
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
 describe('applyGeminiModelVariant', () => {
+  it('rejects an unknown Gemini thinking level before sanitizing the request', () => {
+    const request = {
+      contents: [],
+      generationConfig: {
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingLevel: 'not-a-tier',
+        },
+      },
+    };
+
+    expect(() => applyGeminiModelVariant('gemini-3.7-flash', request)).toThrow(
+      'Unsupported model effort "not-a-tier"',
+    );
+    expect(request.generationConfig.thinkingConfig.thinkingLevel).toBe('not-a-tier');
+  });
+
   const request: GeminiRequest = {
     contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
   };
@@ -143,6 +161,20 @@ describe('applyGeminiModelVariant', () => {
 });
 
 describe('applyAnthropicModelVariant', () => {
+  it('rejects an unknown Anthropic output effort before sanitizing the request', () => {
+    const request = {
+      messages: [],
+      model: 'claude-sonnet-4-6',
+      output_config: { effort: 'not-a-tier' },
+      thinking: { budget_tokens: 1024, type: 'enabled' },
+    };
+
+    expect(() => applyAnthropicModelVariant(request)).toThrow(
+      'Unsupported model effort "not-a-tier"',
+    );
+    expect(request.thinking.budget_tokens).toBe(1024);
+  });
+
   it('applies Anthropic effort before forwarding a canonical Gemini request', () => {
     const request: AnthropicChatRequest = {
       model: 'gemini-3.1-pro',
@@ -323,6 +355,36 @@ describe('applyAnthropicModelVariant', () => {
 });
 
 describe('applyOpenAIModelVariant', () => {
+  it.each(['reasoning_effort', 'reasoning.effort', 'thinking.effort'] as const)(
+    'rejects an unknown OpenAI %s before sanitizing the request',
+    (source) => {
+      const originalThinking = {
+        budget_tokens: 1000,
+        type: 'enabled',
+      };
+      const controls =
+        source === 'reasoning_effort'
+          ? { reasoning_effort: 'not-a-tier' }
+          : source === 'reasoning.effort'
+            ? { reasoning: { effort: 'not-a-tier' } }
+            : { thinking: { effort: 'not-a-tier' } };
+      const request = {
+        messages: [],
+        model: 'gemini-3.8-flash',
+        thinking: originalThinking,
+        ...controls,
+      };
+
+      expect(() => applyOpenAIModelVariant(request)).toThrow(
+        'Unsupported model effort "not-a-tier"',
+      );
+      expect(originalThinking).toEqual({
+        budget_tokens: 1000,
+        type: 'enabled',
+      });
+    },
+  );
+
   it('uses the automatic Flash profile after selecting an advertised tiered route', () => {
     const applied = applyOpenAIModelVariant({
       model: 'gemini-3.7-flash',
@@ -391,6 +453,52 @@ describe('applyOpenAIModelVariant', () => {
       thinking: {
         budget_tokens: 4000,
       },
+    });
+  });
+
+  it('reads Responses reasoning.effort after the legacy effort field', () => {
+    expect(
+      resolveOpenAIRequestEffort({
+        model: 'gemini-3.5-flash',
+        messages: [],
+        reasoning_effort: 'high',
+        reasoning: { effort: 'low' },
+        thinking: { effort: 'medium' },
+      }),
+    ).toBe('high');
+    expect(
+      resolveOpenAIRequestEffort({
+        model: 'gemini-3.5-flash',
+        messages: [],
+        reasoning: { effort: 'low' },
+        thinking: { effort: 'medium' },
+      }),
+    ).toBe('low');
+    expect(
+      resolveOpenAIRequestEffort({
+        model: 'gemini-3.5-flash',
+        messages: [],
+        thinking: { effort: 'medium' },
+      }),
+    ).toBe('medium');
+  });
+
+  it('applies and rebinds a Responses reasoning.effort tier', () => {
+    const applied = applyOpenAIModelVariant({
+      model: 'gemini-3.7-flash',
+      messages: [],
+      reasoning: { effort: 'low', max_tokens: 2048 },
+    });
+
+    expect(applied.request).toMatchObject({
+      model: 'gemini-3.7-flash-low',
+      reasoning: { effort: 'low', max_tokens: 2048 },
+    });
+    expect(
+      rebindOpenAIModelVariant(applied, 'gemini-3.7-flash-high').request,
+    ).toMatchObject({
+      model: 'gemini-3.7-flash-high',
+      reasoning: { effort: 'high', max_tokens: 2048 },
     });
   });
 

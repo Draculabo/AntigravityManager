@@ -58,7 +58,7 @@ describe('Responses input compatibility', () => {
   });
 
   it.each([undefined, null, 4, false])(
-    'filters commentary with type %s without rewriting stored items',
+    'retains provider commentary with type %s without rewriting stored items',
     (type) => {
       const history = [
         { type, role: 'assistant', phase: 'commentary', content: 'Display only.' },
@@ -69,6 +69,7 @@ describe('Responses input compatibility', () => {
         { role: 'user', content: 'Continue.' },
       ]);
       expect(buildResponsesChatRequest({ input }).messages).toEqual([
+        { role: 'assistant', content: 'Display only.' },
         { role: 'assistant', content: 'The answer is 41.' },
         { role: 'user', content: 'Continue.' },
       ]);
@@ -142,6 +143,28 @@ describe('Responses input compatibility', () => {
     ).toEqual([{ role: 'user', content: 'Default role.' }]);
   });
 
+  it('preserves the location of mid-conversation system and developer messages', () => {
+    const messages = buildResponsesChatRequest({
+      instructions: 'Initial instruction.',
+      input: [
+        { type: 'message', role: 'user', content: 'Inspect.' },
+        { type: 'message', role: 'assistant', content: 'Inspection complete.' },
+        { type: 'message', role: 'system', content: 'Reminder S2.' },
+        { type: 'message', role: 'developer', content: 'Reminder D2.' },
+        { type: 'message', role: 'user', content: 'Continue.' },
+      ],
+    }).messages;
+
+    expect(messages.map((message) => message.role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'system',
+      'developer',
+      'user',
+    ]);
+  });
+
   it.each(['user', 'assistant', 'system'])(
     'ignores empty-type %s history without mutating the raw items',
     (role) => {
@@ -177,12 +200,12 @@ describe('Responses input compatibility', () => {
     },
   );
 
-  it('retains the empty-user fallback when every input item is ignored', () => {
+  it('leaves empty history for generation admission when every input item is ignored', () => {
     expect(
       buildResponsesChatRequest({
         input: [{ type: '', role: 'assistant', content: 'Ignored prefill.' }],
       }).messages,
-    ).toEqual([{ role: 'user', content: '' }]);
+    ).toEqual([]);
   });
 
   it('does not change object serialization for top-level input or tool output', () => {

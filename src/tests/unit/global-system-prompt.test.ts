@@ -6,13 +6,14 @@ import type { GeminiRequest } from '@/modules/proxy-gateway/server/common/interf
 import { setServerConfig } from '@/server/server-config';
 
 const GLOBAL_PROMPT = 'Always answer in Simplified Chinese.';
+const CONFIGURED_PROMPT = `  ${GLOBAL_PROMPT}  `;
 
 function enableGlobalSystemPrompt(): void {
   setServerConfig({
     ...DEFAULT_APP_CONFIG.proxy,
     global_system_prompt: {
       enabled: true,
-      content: `  ${GLOBAL_PROMPT}  `,
+      content: CONFIGURED_PROMPT,
     },
   });
 }
@@ -37,20 +38,11 @@ describe('global system prompt compatibility', () => {
     const instruction = body.request.systemInstruction?.parts[0]?.text ?? '';
 
     expect(instruction).toContain(
-      `<global_system_prompt>\n${GLOBAL_PROMPT}\n</global_system_prompt>`,
-    );
-    expect(instruction).toContain(
-      '<customizations>\nPreserve the caller policy.\n</customizations>',
-    );
-    expect(instruction.indexOf('<identity>')).toBeLessThan(
-      instruction.indexOf('<global_system_prompt>'),
-    );
-    expect(instruction.indexOf('<global_system_prompt>')).toBeLessThan(
-      instruction.indexOf('<customizations>'),
+      `<global_system_prompt>\n${CONFIGURED_PROMPT}\n</global_system_prompt>\nPreserve the caller policy.`,
     );
   });
 
-  it('does not duplicate a configured prompt already supplied by an OpenAI or Anthropic client', () => {
+  it('preserves a caller-supplied repeat independently of the configured prompt', () => {
     enableGlobalSystemPrompt();
 
     const body = transformClaudeRequestIn({
@@ -60,11 +52,12 @@ describe('global system prompt compatibility', () => {
     });
     const instruction = body.request.systemInstruction?.parts[0]?.text ?? '';
 
-    expect(countOccurrences(instruction, GLOBAL_PROMPT)).toBe(1);
+    expect(countOccurrences(instruction, GLOBAL_PROMPT)).toBe(2);
+    expect(instruction.startsWith('<global_system_prompt>')).toBe(true);
     expect(instruction).toContain('Preserve this caller instruction.');
   });
 
-  it('injects a separately spaced global part for native Gemini requests and avoids duplicates', () => {
+  it('injects one owned global part and retains native caller repetitions', () => {
     enableGlobalSystemPrompt();
     const request: GeminiRequest = {
       contents: [{ role: 'user', parts: [{ text: 'Hello.' }] }],
@@ -83,7 +76,7 @@ describe('global system prompt compatibility', () => {
     );
 
     expect(injected.request.systemInstruction?.parts).toEqual([
-      { text: `${GLOBAL_PROMPT}\n\n` },
+      { text: `<global_system_prompt>\n${CONFIGURED_PROMPT}\n</global_system_prompt>` },
       { text: 'Preserve this native caller instruction.' },
     ]);
 
@@ -102,6 +95,7 @@ describe('global system prompt compatibility', () => {
     );
 
     expect(existing.request.systemInstruction?.parts).toEqual([
+      { text: `<global_system_prompt>\n${CONFIGURED_PROMPT}\n</global_system_prompt>` },
       { text: `${GLOBAL_PROMPT}\nPreserve this native caller instruction.` },
     ]);
 
@@ -115,5 +109,27 @@ describe('global system prompt compatibility', () => {
     );
 
     expect(imageRequest.request.systemInstruction).toBeUndefined();
+  });
+
+  it('does not treat a quoted client substring as gateway-owned provenance', () => {
+    enableGlobalSystemPrompt();
+    const quoted = `Example only:\n\`\`\`text\n${GLOBAL_PROMPT}\n\`\`\``;
+    const request = {
+      model: 'gemini-3-flash',
+      system: quoted,
+      messages: [{ role: 'user', content: 'controlled' }],
+    };
+    const before = structuredClone(request);
+    const first = transformClaudeRequestIn(request);
+    const second = transformClaudeRequestIn(request);
+    expect(first.request.systemInstruction).toEqual({
+      parts: [
+        {
+          text: `<global_system_prompt>\n${CONFIGURED_PROMPT}\n</global_system_prompt>\n${quoted}`,
+        },
+      ],
+    });
+    expect(second.request.systemInstruction).toEqual(first.request.systemInstruction);
+    expect(request).toStrictEqual(before);
   });
 });

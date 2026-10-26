@@ -1,14 +1,17 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { getServerConfig } from '../../../../server/server-config';
-import { extractApiKeyToken, hasConfiguredApiKey, type RequestHeaders } from './api-key-auth.util';
+import { extractApiKeyToken, type RequestHeaders } from './api-key-auth.util';
+import { hasConfiguredApiKey } from '@/shared/security/api-key';
 import { openCodeCredentialService } from '../../opencode-sync/opencode-credentials';
 import { buildAuthErrorBody, resolveAuthErrorSurface } from '../common/auth-error-envelope';
+import { evaluateClientAddress } from '@/shared/network/client-address';
 
 @Injectable()
 export class ProxyGuard implements CanActivate {
@@ -20,6 +23,16 @@ export class ProxyGuard implements CanActivate {
       .getRequest<{ headers: RequestHeaders; ip: string; url?: string }>();
 
     const config = getServerConfig();
+    if (config) {
+      const decision = evaluateClientAddress(
+        request.ip,
+        request.headers,
+        config.network,
+      );
+      if (!decision.allowed) {
+        throw new ForbiddenException('Request source is not allowed');
+      }
+    }
 
     // 1. Check for API Key in config
     const apiKey = config?.api_key;

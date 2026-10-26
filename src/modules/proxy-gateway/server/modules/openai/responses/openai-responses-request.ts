@@ -10,10 +10,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
 import { z } from 'zod';
-import { resolveResponsesInputType } from './responses-input-type';
-import { qualifyNamespaceToolName } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
 import { ApplyPatchFailureCompactor } from '@/modules/proxy-gateway/antigravity/ApplyPatchFailureCompaction';
-import { toCustomToolArguments } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
 import {
   OpenAIChatRequest,
   OpenAIContentPart,
@@ -22,6 +19,14 @@ import {
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { parseOpenAIInputAudio } from '../chat/openai-input-audio';
 import { toResponsesOpenAIResponseFormat } from '../chat/openai-response-format';
+import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
+import { parseResponsesInputItem, type ResponsesInputItem } from './responses-input-item';
+import {
+  normalizeResponsesToolCallIds,
+  resolveResponsesToolName,
+  resolveToolArguments,
+} from './responses-tool-call-identity';
+import { resolveOutputTokenLimit } from '@/modules/proxy-gateway/server/common/output-token-limit';
 
 export interface ResponsesRequestBody {
   model?: string;
@@ -33,11 +38,16 @@ export interface ResponsesRequestBody {
   store?: boolean;
   tools?: OpenAIChatRequest['tools'];
   max_output_tokens?: number;
+  max_tokens?: number;
+  max_completion_tokens?: number;
+  maxCompletionTokens?: number;
+  maxTokens?: number;
   temperature?: number;
   top_p?: number;
   presence_penalty?: number;
   frequency_penalty?: number;
   seed?: number;
+  reasoning?: OpenAIChatRequest['reasoning'];
   tool_choice?: OpenAIChatRequest['tool_choice'];
   stream?: boolean;
   user?: string;
@@ -52,91 +62,6 @@ export interface OpenAIResponsesErrorBody {
     type: string;
   };
 }
-
-const ResponsesMessageItemSchema = z.object({
-  type: z.literal('message'),
-  role: z.preprocess((role) => (typeof role === 'string' ? role : 'user'), z.string()),
-  content: z.unknown().optional(),
-});
-
-const ResponsesFunctionCallItemSchema = z.object({
-  type: z.literal('function_call'),
-  call_id: z.string().optional(),
-  id: z.string().optional(),
-  name: z.string().optional(),
-  namespace: z.string().optional(),
-  arguments: z.unknown().optional(),
-});
-
-const ResponsesLocalShellCallItemSchema = z.object({
-  type: z.literal('local_shell_call'),
-  call_id: z.string().optional(),
-  id: z.string().optional(),
-  action: z
-    .object({
-      exec: z
-        .object({
-          command: z.string().optional(),
-        })
-        .optional(),
-    })
-    .optional(),
-});
-
-const ResponsesWebSearchCallItemSchema = z.object({
-  type: z.literal('web_search_call'),
-  call_id: z.string().optional(),
-  id: z.string().optional(),
-  action: z
-    .object({
-      query: z.string().optional(),
-    })
-    .optional(),
-});
-
-const ResponsesCustomToolCallItemSchema = z.object({
-  type: z.literal('custom_tool_call'),
-  call_id: z.string().optional(),
-  id: z.string().optional(),
-  name: z.string().optional(),
-  namespace: z.string().optional(),
-  input: z.string().optional(),
-  status: z.string().optional(),
-});
-
-const ResponsesToolOutputItemSchema = z.object({
-  type: z.enum(['function_call_output', 'custom_tool_call_output']),
-  call_id: z.string().optional(),
-  id: z.string().optional(),
-  output: z.unknown().optional(),
-});
-
-const ResponsesInputItemSchema = z.preprocess(
-  (value) => {
-    if (!isPlainObject(value)) {
-      return value;
-    }
-
-    if (resolveResponsesInputType(value) === 'message') {
-      return Object.assign({}, value, { type: 'message' });
-    }
-    return value;
-  },
-  z.discriminatedUnion('type', [
-    ResponsesMessageItemSchema,
-    ResponsesFunctionCallItemSchema,
-    ResponsesLocalShellCallItemSchema,
-    ResponsesWebSearchCallItemSchema,
-    ResponsesCustomToolCallItemSchema,
-    ResponsesToolOutputItemSchema,
-  ]),
-);
-
-export type ResponsesInputItem = z.infer<typeof ResponsesInputItemSchema>;
-type ResponsesToolCallItem = Exclude<
-  ResponsesInputItem,
-  z.infer<typeof ResponsesMessageItemSchema> | z.infer<typeof ResponsesToolOutputItemSchema>
->;
 
 const JsonRecordSchema = z.record(z.string(), z.unknown());
 const OpenAIToolSchema: z.ZodType<OpenAITool> = z.lazy(() =>
@@ -166,6 +91,10 @@ const ResponsesToolChoiceSchema = z.union([
       .optional(),
   }),
 ]);
+const ResponsesReasoningSchema = z.object({
+  effort: z.string().optional(),
+  max_tokens: z.number().optional(),
+});
 const ResponsesRequestBodySchema = z
   .object({
     model: z.string().optional(),
@@ -177,11 +106,16 @@ const ResponsesRequestBodySchema = z
     store: z.boolean().optional(),
     tools: z.array(OpenAIToolSchema).optional(),
     max_output_tokens: z.number().optional(),
+    max_tokens: z.number().optional(),
+    max_completion_tokens: z.number().optional(),
+    maxCompletionTokens: z.number().optional(),
+    maxTokens: z.number().optional(),
     temperature: z.number().optional(),
     top_p: z.number().optional(),
     presence_penalty: z.number().optional(),
     frequency_penalty: z.number().optional(),
     seed: z.number().optional(),
+    reasoning: ResponsesReasoningSchema.optional(),
     tool_choice: ResponsesToolChoiceSchema.optional(),
     stream: z.boolean().optional(),
     user: z.string().optional(),
@@ -240,11 +174,6 @@ function parseResponsesInputItems(input: unknown[]): ResponsesInputItem[] {
     const parsed = parseResponsesInputItem(item);
     return parsed ? [parsed] : [];
   });
-}
-
-export function parseResponsesInputItem(input: unknown): ResponsesInputItem | null {
-  const parsed = ResponsesInputItemSchema.safeParse(input);
-  return parsed.success ? parsed.data : null;
 }
 
 /** Validates a Responses request transported outside the typed HTTP controller. */
@@ -354,33 +283,12 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
   const callIdToToolName = new Map<string, string>();
   const incompleteCustomCallIds = new Set<string>();
   const applyPatchFailureCompactor = new ApplyPatchFailureCompactor();
-  const inputItems = Array.isArray(body.input) ? parseResponsesInputItems(body.input) : null;
+  const inputItems = Array.isArray(body.input)
+    ? parseResponsesInputItems(normalizeResponsesToolCallIds(body.input).items)
+    : null;
 
   if (inputItems) {
-    for (const item of inputItems) {
-      if (
-        item.type === 'function_call' ||
-        item.type === 'local_shell_call' ||
-        item.type === 'web_search_call' ||
-        item.type === 'custom_tool_call'
-      ) {
-        const callId = item.call_id ?? item.id ?? `call_${Date.now()}`;
-        if (item.type === 'custom_tool_call' && item.status?.toLowerCase() === 'incomplete') {
-          incompleteCustomCallIds.add(callId);
-          continue;
-        }
-
-        const toolName =
-          item.type === 'local_shell_call'
-            ? 'shell'
-            : item.type === 'web_search_call'
-              ? 'builtin_web_search'
-              : qualifyNamespaceToolName(item.namespace ?? '', item.name ?? 'unknown');
-        callIdToToolName.set(callId, toolName);
-      }
-    }
-
-    for (const item of inputItems) {
+    for (const [index, item] of inputItems.entries()) {
       if (item.type === 'message') {
         const content = normalizeResponsesMessageContent(item.content);
         messages.push({ role: item.role, content });
@@ -393,17 +301,23 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
         item.type === 'web_search_call' ||
         item.type === 'custom_tool_call'
       ) {
-        const callId = item.call_id ?? item.id ?? `call_${Date.now()}`;
-        if (incompleteCustomCallIds.has(callId)) {
+        const callId = item.call_id || item.id;
+        if (!callId) {
+          throw new InvalidToolResultAssociationError(`input[${index}]`, 'missing-pending-call');
+        }
+        if (callIdToToolName.has(callId) || incompleteCustomCallIds.has(callId)) {
+          throw new InvalidToolResultAssociationError(`input[${index}]`, 'duplicate-pending-id');
+        }
+        if (item.type === 'custom_tool_call' && item.status?.toLowerCase() === 'incomplete') {
+          incompleteCustomCallIds.add(callId);
           continue;
         }
 
-        const toolName = callIdToToolName.get(callId) ?? 'unknown';
+        // Resolve each call at its own position; a later reused ID cannot rename this round.
+        const toolName = resolveResponsesToolName(item);
+        callIdToToolName.set(callId, toolName);
         const customInput = item.type === 'custom_tool_call' ? (item.input ?? '') : undefined;
-        const args =
-          customInput === undefined
-            ? resolveToolArguments(item)
-            : toCustomToolArguments(toolName, customInput);
+        const args = resolveToolArguments(item);
         const toolCall: OpenAIToolCall = {
           id: callId,
           type: 'function',
@@ -426,13 +340,14 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
       if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {
         const callId = item.call_id ?? item.id ?? 'unknown';
         if (incompleteCustomCallIds.has(callId)) {
+          incompleteCustomCallIds.delete(callId);
           continue;
         }
-        if (item.type === 'custom_tool_call_output' && !callIdToToolName.has(callId)) {
-          continue;
+        const toolName = callIdToToolName.get(callId);
+        if (toolName === undefined) {
+          throw new InvalidToolResultAssociationError(`input[${index}]`, 'missing-pending-call');
         }
-
-        const toolName = callIdToToolName.get(callId) ?? 'unknown';
+        callIdToToolName.delete(callId);
         const normalizedOutput = normalizeResponsesToolOutput(item.output);
         const outputText =
           toolName === 'apply_patch'
@@ -459,26 +374,18 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
     });
   }
 
-  removeLeadingOrphanToolHistory(messages);
-  rewriteTerminalAssistantPrefill(messages);
-
-  if (messages.length === 0) {
-    messages.push({
-      role: 'user',
-      content: '',
-    });
-  }
-
+  const maxTokens = resolveOutputTokenLimit(body);
   return {
     model: body.model ?? 'gemini-3-flash',
     messages,
     tools: body.tools,
-    max_tokens: body.max_output_tokens,
+    max_tokens: maxTokens,
     temperature: body.temperature,
     top_p: body.top_p,
     presence_penalty: body.presence_penalty,
     frequency_penalty: body.frequency_penalty,
     seed: body.seed,
+    reasoning: body.reasoning,
     tool_choice: body.tool_choice,
     response_format: toResponsesOpenAIResponseFormat(body.text?.format),
     stream: body.stream,
@@ -622,84 +529,6 @@ function buildResponsesToolOutputContent(
     return text;
   }
   return text === '' ? mediaParts : [{ type: 'text', text }, ...mediaParts];
-}
-
-export function resolveToolArguments(item: ResponsesToolCallItem): Record<string, unknown> {
-  if (item.type === 'local_shell_call') {
-    const command = item.action?.exec?.command;
-    return {
-      command: command ? [command] : [],
-    };
-  }
-
-  if (item.type === 'web_search_call') {
-    return {
-      query: item.action?.query ?? '',
-    };
-  }
-
-  if (item.type === 'custom_tool_call') {
-    return {};
-  }
-
-  const raw = item.arguments;
-  if (isString(raw)) {
-    try {
-      const parsed = JSON.parse(raw);
-      const parsedRecord = JsonRecordSchema.safeParse(parsed);
-      if (parsedRecord.success) {
-        return parsedRecord.data;
-      }
-      return {
-        value: parsed,
-      };
-    } catch {
-      return {
-        raw,
-      };
-    }
-  }
-
-  const rawRecord = JsonRecordSchema.safeParse(raw);
-  if (rawRecord.success) {
-    return rawRecord.data;
-  }
-
-  return {};
-}
-
-function removeLeadingOrphanToolHistory(messages: OpenAIChatRequest['messages']): void {
-  let firstConversationIndex = 0;
-  while (messages[firstConversationIndex]?.role === 'system') {
-    firstConversationIndex += 1;
-  }
-
-  let orphanHistoryEnd = firstConversationIndex;
-  while (orphanHistoryEnd < messages.length) {
-    const message = messages[orphanHistoryEnd];
-    const isToolResult = message.role === 'tool' || message.role === 'function';
-    const isToolCall = message.role === 'assistant' && (message.tool_calls?.length ?? 0) > 0;
-    if (!isToolResult && !isToolCall) {
-      break;
-    }
-    orphanHistoryEnd += 1;
-  }
-
-  if (orphanHistoryEnd > firstConversationIndex) {
-    messages.splice(firstConversationIndex, orphanHistoryEnd - firstConversationIndex);
-  }
-}
-
-function rewriteTerminalAssistantPrefill(messages: OpenAIChatRequest['messages']): void {
-  const terminalMessage = messages.at(-1);
-  if (
-    terminalMessage?.role === 'assistant' &&
-    isString(terminalMessage.content) &&
-    terminalMessage.content.trim().length > 0 &&
-    (terminalMessage.tool_calls?.length ?? 0) === 0
-  ) {
-    terminalMessage.role = 'user';
-  }
 }
 
 export function normalizeResponsesOutput(output: unknown): string {

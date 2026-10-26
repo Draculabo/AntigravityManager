@@ -4,8 +4,8 @@ import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemi
 
 /**
  * `shouldFailoverToNextEndpoint` decides whether a failed call is worth retrying against the
- * next internal endpoint. 499 is Google's client-cancelled code and upstream emits it for its
- * own aborts, so treating it as terminal surfaces an upstream hiccup as a request failure.
+ * next internal endpoint. Quota and cancellation belong to the account/request lifecycle;
+ * endpoint failover is reserved for endpoint availability and transport failures.
  */
 function makeAxiosError(status: number): AxiosError {
   const error = new AxiosError('upstream said no');
@@ -25,17 +25,17 @@ function shouldFailover(status: number): boolean {
 }
 
 describe('internal endpoint failover', () => {
-  it('fails over on 499, the upstream client-cancelled code', () => {
-    expect(shouldFailover(499)).toBe(true);
+  it('keeps 499 with the account/request lifecycle', () => {
+    expect(shouldFailover(499)).toBe(false);
   });
 
-  it('still fails over on the transient statuses it already covered', () => {
+  it('fails over on endpoint availability and transient server failures', () => {
+    expect(shouldFailover(404)).toBe(true);
     expect(shouldFailover(408)).toBe(true);
-    expect(shouldFailover(429)).toBe(true);
     expect(shouldFailover(503)).toBe(true);
   });
 
-  it('does not repeat an explicit long quota failure at another endpoint', () => {
+  it('keeps every 429 quota result with the account/request lifecycle', () => {
     const client = Object.create(GeminiClient.prototype) as GeminiClient;
     const error = makeAxiosError(429);
     error.response!.data = {
@@ -45,7 +45,7 @@ describe('internal endpoint failover', () => {
     error.response!.data = {
       error: { status: 'RESOURCE_EXHAUSTED', details: [{ retryDelay: '520035s' }] },
     };
-    expect(Reflect.get(client, 'shouldFailoverToNextEndpoint').call(client, error)).toBe(true);
+    expect(Reflect.get(client, 'shouldFailoverToNextEndpoint').call(client, error)).toBe(false);
   });
 
   it('still fails fast on permanent auth rejections', () => {
@@ -55,6 +55,5 @@ describe('internal endpoint failover', () => {
 
   it('does not fail over on an ordinary client error', () => {
     expect(shouldFailover(400)).toBe(false);
-    expect(shouldFailover(404)).toBe(false);
   });
 });

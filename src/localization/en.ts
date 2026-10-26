@@ -91,6 +91,34 @@ const en = {
     'delete-confirm': 'Delete workspace “{{name}}”?',
     'no-results': 'No workspaces match “{{query}}”.',
   },
+  'account-evidence': {
+    'subscription-unavailable':
+      'Subscription refresh failed; no previously confirmed tier is available.',
+    'observed-at': 'Last observed: {{time}}',
+    'checked-at': 'Last checked: {{time}}',
+    'unknown-time': 'Not recorded',
+    'invalid-data': 'Quota data is invalid; refresh to verify.',
+    'reset-unknown': 'Reset time is unknown.',
+    'exhausted-unknown-reset': 'Window depleted; reset time is unknown.',
+    'recheck-required': 'Depleted window has ended; refresh is required to confirm recovery.',
+    'window-ended': 'Window ended; the balance has not been reconfirmed.',
+    'weekly-exhausted': 'Weekly window depleted; another window cannot release this restriction.',
+    'window-exhausted': 'Quota window depleted.',
+    'group-restrictions': 'Quota group restrictions',
+    'group-limited':
+      'Depleted window. Latest known reset: {{time}}; recovery still needs confirmation.',
+    'subscription-failed':
+      'Subscription refresh failed or was incomplete; showing the previous record.',
+    'subscription-unrecognized': 'Subscription tier was not recognized; using the Free baseline.',
+    'subscription-missing': 'No subscription identity was returned; using the Free baseline.',
+    'subscription-observed': 'Subscription identity was observed.',
+    'subscription-unknown': 'Subscription source was not recorded.',
+    'source-paid': 'Source: paid subscription',
+    'source-current': 'Source: current subscription',
+    'source-free': 'Source: explicit free tier',
+    'source-unknown': 'Source: unknown',
+    'small-positive': 'Small positive balance; this window is not depleted.',
+  },
   'operation-diagnostics': {
     'switch-written-unconfirmed':
       'The new account was written to Antigravity, but the switch could not be confirmed. Check the account shown in Antigravity before trying again.',
@@ -171,7 +199,6 @@ const en = {
       'review-route-disabled':
         'The Codex review route is disabled. Enable it in model routing before configuration.',
     },
-
     'address-help': 'Use the current Manager address unless the service runs on another computer.',
     'invalid-address':
       'Use a Manager address starting with http:// or https://, without sign-in details or extra parameters.',
@@ -222,7 +249,6 @@ const en = {
     unknown: 'Unknown',
     notAvailable: 'N/A',
     openMenu: 'Open menu',
-
     'dismiss-notification': 'Dismiss notification',
     'reading-settings': 'Reading your settings…',
   },
@@ -514,6 +540,15 @@ const en = {
     'dual-ttft-diff': '{{winner}} responded {{diff}}s earlier (TTFT)',
   },
   traffic: {
+    'archive-storage-note':
+      'Backups are kept separately and are not automatically removed by the audit capacity window.',
+    'capture-interrupted-description':
+      'The previous application process stopped before capture finished. The model result is unknown; the recorded end time is when capture was reconciled.',
+    'live-storage': 'Live audit: {{size}}',
+    'archive-storage': 'Backups: {{size}} ({{count}} files)',
+    'archive-storage-unknown': 'Backup size unknown',
+    'storage-unavailable': 'Could not measure audit storage.',
+    'storage-loading': 'Measuring audit storage…',
     'detail-load-failed': 'Could not load this request. Please try again.',
     'detail-not-found': 'This record is no longer available. It may have been cleared.',
     fields: {
@@ -531,6 +566,7 @@ const en = {
       query: 'Additional request options',
     },
     outcomes: {
+      capture_interrupted: 'Capture interrupted',
       in_progress: 'In progress',
       completed: 'Completed',
       client_cancelled: 'Cancelled',
@@ -614,6 +650,57 @@ const en = {
     request: 'request',
     response: 'response',
     'select-body': 'Select a request or response body.',
+    capture: {
+      refresh: 'Refresh capture',
+      missing: 'No saved body',
+      'missing-description':
+        'No capture metadata is available for this selection. The reason is unknown.',
+      writing: 'Capture in progress',
+      'writing-description':
+        'Saved content may still change. Export is available after capture finishes.',
+      complete: 'Capture complete',
+      empty: 'Empty body captured',
+      summary: 'Binary summary saved',
+      'summary-description':
+        'Only a summary was captured; the original binary content is not stored.',
+      partial: 'Partially saved',
+      'not-saved': 'Body not saved',
+      expired: 'Previously expired body',
+      oversized: 'The capture exceeded its size limit. Only the saved portion is available.',
+      'incomplete-description':
+        'The capture is incomplete. Missing content cannot be reconstructed from this record.',
+      sizes: 'Saved {{stored}} · Observed {{logical}}',
+      'hash-full': 'Hash covers the captured safe representation.',
+      'hash-prefix': 'Hash covers only the saved prefix.',
+      'hash-unavailable': 'No verification hash is available.',
+      loaded: 'Loaded content: {{size}}',
+      'read-failed': 'Could not load saved content. Any loaded pages are kept; try again.',
+      retry: 'Retry loading',
+      loading: 'Loading saved content…',
+      cancel: 'Pause loading',
+      paused: 'Loading paused.',
+      resume: 'Resume loading',
+      'copy-failed': 'Could not copy the visible content. Try again.',
+      'save-failed': 'Could not export the saved content. Try again.',
+      copied: 'Visible content copied',
+      saved: 'Saved content exported',
+      reasons: {
+        'disk-budget': 'The audit disk budget was reached.',
+        'disk-unknown': 'Available audit storage could not be measured.',
+        'checkpoint-busy': 'A SQLite reader prevented disk reclamation.',
+        'reclaim-failed': 'Audit storage could not be reclaimed.',
+        'read-only': 'Audit storage is read-only.',
+        'disk-full': 'The storage volume is full.',
+        'capture-disabled': 'Capture was disabled before this body finished.',
+        'worker-restart': 'Capture was interrupted by an audit worker restart.',
+        retention: 'An earlier age-retention policy removed this content. It cannot be restored.',
+        'disk-pressure': 'An earlier disk-pressure policy removed this content.',
+        'write-failure': 'Some body chunks could not be queued or saved.',
+        'transfer-incomplete': 'The body transfer did not finish.',
+        'serialization-failure': 'The body could not be serialized for capture.',
+        unknown: 'Capture stopped without a recognized reason.',
+      },
+    },
     concise: 'Concise',
     full: 'Full',
     'view-mode-help': 'About view modes',
@@ -622,11 +709,11 @@ const en = {
     'full-help':
       'Show all loaded details. If the content cannot be organized or is incomplete, both views may look the same.',
     'search-body': 'Search this body',
-    'copy-loaded': 'Copy loaded',
+    'copy-loaded': 'Copy visible view',
     'view-all-body': 'View all',
     'load-more': 'Load more',
     'load-next-window': 'Next section',
-    'save-full': 'Save full',
+    'save-full': 'Export saved content',
     matches: '{{count}} matches',
     'first-100': 'first 100',
     'parse-error': 'This content could not be read at position {{offset}}.',
@@ -635,6 +722,7 @@ const en = {
     'select-session': 'Select a session to view saved reasoning.',
     'no-sessions': 'No saved reasoning yet.',
     'delete-session': 'Delete session history',
+    'confirm-delete-session': 'Click again to delete this session',
     turns: '{{count}} turns',
     offset: 'Content position {{offset}}',
     'unknown-model': 'Unknown model',
@@ -650,7 +738,6 @@ const en = {
     protocol: 'API format',
     'repair-databases': 'Repair saved records',
     'open-monitor': 'Open Traffic Monitor',
-
     'loading-description': 'Your request records will appear here when they are ready.',
     'empty-description':
       'Requests sent through the proxy appear here. You can also adjust the filters.',
@@ -660,6 +747,52 @@ const en = {
     'load-failed-description':
       'Please try again. This does not mean your records have been deleted.',
     'refresh-failed': 'Could not refresh records. Previously loaded records are still shown.',
+    searching: 'Searching…',
+    jumping: 'Opening matching section…',
+    'search-failed': 'Could not search this body. Try again.',
+    clearing: 'Clearing…',
+    'clear-failed':
+      'Clear completion was not confirmed. Refresh before retrying; in-flight capture may have stopped.',
+    'resize-column': 'Resize {{column}} column',
+    'reset-columns': 'Reset table columns',
+    'columns-unsaved': 'Column widths changed for this view, but could not be saved.',
+    'clear-scope':
+      'Clear all {{category}} records, including those outside the current filters? Thought Store and diagnostic files are unaffected.',
+    'clear-complete': 'Cleared {{count}} records from {{category}}.',
+    'exact-session': 'Exact saved session ID',
+    'apply-session': 'Apply session',
+    'reset-session': 'Reset session',
+    'recorded-usage': 'Recorded response usage',
+    'usage-source-unretained':
+      'These saved counters do not retain provider provenance. They are not a separate provider-verified record; local estimates are not mixed into this display.',
+    'cache-rate': 'Cached input / total input',
+    'cache-rate-missing': 'Unknown — input or cache count missing',
+    'cache-rate-zero-input': 'Not applicable — zero input',
+    'cache-rate-inconsistent': 'Inconsistent recorded counts',
+    'local-estimate': 'Local estimate',
+    'estimate-not-retained': 'Not retained in this audit record',
+    'measured-stages': 'Recorded gateway timing stages',
+    'stage-overlap-note':
+      'Stages can overlap and are not added to form total duration. Missing stages and legacy zero values remain unknown.',
+    'stage-clean': 'Request preparation',
+    'stage-normalization': 'Normalization',
+    'stage-thinking': 'Thought restoration',
+    'stage-ttft': 'Latest upstream attempt to first byte',
+    'wrap-lines': 'Wrap lines',
+    'view-mode-unsaved': 'Display mode changed, but the preference could not be saved.',
+    'match-position': 'Match {{current}} of {{count}}',
+    'previous-match': 'Previous match',
+    'next-match': 'Next match',
+    'cancel-search': 'Cancel search',
+    'export-session': 'Export saved session',
+    'session-exporting': 'Exporting session…',
+    'session-export-scope':
+      'All saved model requests, attempts and bodies in this session. Up to 2,000 settled requests and 100 MiB; partial captures stay partial.',
+    'session-export-needs-scope':
+      'Select a scoped saved-session key. Older unscoped records can still be exported per body.',
+    'session-export-saved': 'Saved session export.',
+    'session-export-failed':
+      'Export completion could not be confirmed. Check the destination, wait for requests to settle, refresh and retry. Active, changed, missing or oversized data cannot be exported as a complete session.',
   },
   editionSelection: {
     title: 'Choose Your Antigravity Edition',
@@ -716,6 +849,30 @@ const en = {
       groups: 'Quota groups to warm up',
       group: { claude: 'Claude quota groups', gemini: 'Gemini quota groups' },
     },
+    thinkingBudget: {
+      title: 'Thinking budget',
+      description: 'Choose who decides how much a model thinks, and the budget each level uses.',
+      controlSource: 'Control source',
+      controlSourceHint:
+        'Gateway applies the budgets below. Client passes the budget or effort level from the request through.',
+      gatewayHint:
+        'A budget of -1 lets the upstream model choose. 0 is not a valid gateway budget; leave the field at -1 to keep adaptive thinking.',
+      clientHint:
+        'Requests decide their own thinking budget or effort level. The gateway budgets below are not applied.',
+      adaptiveHint: '-1 lets the model choose',
+      invalid: 'Enter -1 or a whole number from 0 to 131072.',
+      'configuration-invalid':
+        'These thinking budget values were rejected. Use -1 or a whole number from 0 to 131072.',
+      source: { gateway: 'Gateway', client: 'Client' },
+      family: { flash: 'Gemini Flash', pro: 'Gemini Pro', claude: 'Claude' },
+      level: {
+        low: 'Low',
+        medium: 'Medium',
+        high: 'High',
+        tiered: 'Tiered',
+        default: 'Default',
+      },
+    },
     title: 'Settings',
     description: 'Manage application preferences.',
     general: 'General',
@@ -739,10 +896,7 @@ const en = {
       portuguese: 'Portuguese (Brazil)',
       japanese: 'Japanese',
     },
-    about: {
-      title: 'About',
-      description: 'Application information.',
-    },
+    about: { title: 'About', description: 'Application information.' },
     cache: {
       title: 'Antigravity Cache',
       description:
@@ -760,7 +914,6 @@ const en = {
       clearedDescription: '{{size}} MB was removed from Antigravity cache directories.',
       failedTitle: 'Failed to clear cache',
       notFoundTitle: 'No Antigravity cache found',
-
       'paths-failed': 'Could not find the cache locations',
       'paths-retry-description': 'Please retry before clearing the cache.',
       'partial-title': 'Some cache could not be cleared',
@@ -772,13 +925,8 @@ const en = {
     license: 'License',
     openLogDir: 'Open',
     toast: {
-      saved: {
-        title: 'Settings saved',
-        description: 'Your configuration has been updated.',
-      },
-      saveFailed: {
-        title: 'Error saving settings',
-      },
+      saved: { title: 'Settings saved', description: 'Your configuration has been updated.' },
+      saveFailed: { title: 'Error saving settings' },
     },
     account: {
       'client-setup': 'Client locations and launch options',
@@ -987,30 +1135,12 @@ const en = {
     save: 'Save Settings',
   },
   toast: {
-    backupSuccess: {
-      title: 'Success',
-      description: 'Account backup created successfully.',
-    },
-    backupError: {
-      title: 'Error',
-      description: 'Failed to create backup: {{error}}',
-    },
-    switchSuccess: {
-      title: 'Success',
-      description: 'Switched account successfully.',
-    },
-    switchError: {
-      title: 'Error',
-      description: 'Failed to switch account: {{error}}',
-    },
-    deleteSuccess: {
-      title: 'Success',
-      description: 'Account backup deleted successfully.',
-    },
-    deleteError: {
-      title: 'Error',
-      description: 'Failed to delete backup: {{error}}',
-    },
+    backupSuccess: { title: 'Success', description: 'Account backup created successfully.' },
+    backupError: { title: 'Error', description: 'Failed to create backup: {{error}}' },
+    switchSuccess: { title: 'Success', description: 'Switched account successfully.' },
+    switchError: { title: 'Error', description: 'Failed to switch account: {{error}}' },
+    deleteSuccess: { title: 'Success', description: 'Account backup deleted successfully.' },
+    deleteError: { title: 'Error', description: 'Failed to delete backup: {{error}}' },
   },
   cloud: {
     'total-accounts': 'Total accounts',
@@ -1066,12 +1196,7 @@ const en = {
     recommendation: {
       badge: 'Recommended Next',
       description: 'Automatically selected from the latest fetched {{context}} quota.',
-      context: {
-        overall: 'overall',
-        claude: 'Claude',
-        pro3: 'Gemini Pro',
-        flash: 'Gemini Flash',
-      },
+      context: { overall: 'overall', claude: 'Claude', pro3: 'Gemini Pro', flash: 'Gemini Flash' },
     },
     authDialog: {
       'manual-sign-in': 'Enter a code manually',
@@ -1208,6 +1333,13 @@ const en = {
       resetUnknown: 'Unknown',
       detailedQuota: 'Detailed quota',
       quotaGroupUnknown: 'Quota group',
+      cycleUsage: 'Current cycle usage',
+      cycleUsageLoading: 'Loading retained usage…',
+      cycleUsageQueryFailed: 'Usage query failed for {{group}}',
+      cycleUsageTokens: '{{count}} tokens',
+      cycleUsageLocal: 'retained local records',
+      cycleUsageRequests: '{{count}} counted',
+      cycleUsageIncomplete: '{{ambiguous}} records incomplete',
       gemini3Ready: 'Gemini 3 Ready',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',
@@ -1220,6 +1352,9 @@ const en = {
       'proxy-replace-placeholder': 'Enter a new proxy address',
       'proxy-remove': 'Remove proxy',
       'proxy-save-failed': 'Could not save proxy',
+      'proxy-routing-save-failed': 'Could not save proxy routing settings',
+      'proxy-priority': 'Proxy priority (1–100)',
+      'proxy-enabled': 'Use this account for proxy requests',
       noProxy: 'No proxy',
       aiCredits: 'AI Credits',
       aiCreditsValue: '{{amount}} credits',
@@ -1258,7 +1393,6 @@ const en = {
       deleteVersionSuccess: 'Historical identity deleted',
       openFolderSuccess: 'Identity storage opened',
       baseline: 'Original device information',
-
       description: 'Save device information for this account to use when switching accounts.',
       'load-failed': 'Could not read device information',
       'retry-description': 'Please retry. Your saved device information has not been changed.',
@@ -1328,10 +1462,7 @@ const en = {
       quotaRefreshed: 'Quota refreshed',
       refreshFailed: 'Failed to refresh quota',
       pollFailed: 'Failed to poll quota for all accounts',
-      switched: {
-        title: 'Account switched!',
-        description: 'Restarting Antigravity...',
-      },
+      switched: { title: 'Account switched!', description: 'Restarting Antigravity...' },
       switchFailed: 'Failed to switch account',
       switchFailureCodes: {
         'account-not-found': 'This account is no longer available.',
@@ -1422,7 +1553,6 @@ const en = {
       invalidJson: 'Invalid JSON file format',
       readFileFailed: 'Failed to read file',
     },
-
     feedback: {
       'loading-title': 'Reading your accounts',
       'loading-description': 'Your account details will appear here when they are ready.',
@@ -1502,9 +1632,38 @@ const en = {
       'global-system-prompt-character-count': '{{count}} characters',
       'global-system-prompt-long-warning':
         'More than 2,000 characters leaves less room for conversation history. Consider shortening these instructions.',
+      compaction: {
+        title: 'Cowork context compaction',
+        description:
+          'Coordinate with the Cowork client to summarize and replace history. Ordinary sessions are never trimmed automatically.',
+        auto: 'Enable automatic compaction coordination',
+        'auto-desc':
+          'When enabled, only identified Cowork requests above the threshold receive the local control response.',
+        manual: 'Enable manual /compact coordination',
+        'manual-desc':
+          'Allow an explicit Cowork /compact command to start the same client-owned flow.',
+        threshold: 'Automatic threshold (estimated input tokens)',
+        'threshold-desc':
+          'Default 200,000. The effective threshold also includes fixed system and tool overhead.',
+      },
       local_access: 'Local network access:',
       select_ip: 'Select IP',
       no_token_warning: '⚠️ API key is not set. Access is open to everyone!',
+      lan_access: 'Allow local network access',
+      lan_access_desc: 'Bind the proxy to the local network. An API key is required.',
+      ip_access_title: 'IP access rules',
+      ip_access_desc:
+        'Restrict model, WebSocket, and public management requests by client address. Values are comma-separated IPs or CIDR ranges.',
+      ip_filter_mode: 'IP filter mode',
+      ip_filter_off: 'Off',
+      ip_filter_allowlist: 'Allowlist only',
+      ip_filter_blocklist: 'Blocklist',
+      ip_filter_both: 'Allowlist and blocklist',
+      ip_allowlist: 'Allowed IPs or CIDRs',
+      ip_blocklist: 'Blocked IPs or CIDRs',
+      trusted_proxy_cidrs: 'Trusted proxy CIDRs',
+      allowlist_precedence: 'Allowlist takes precedence',
+      allowlist_precedence_desc: 'An allowlisted address can bypass a matching blocklist entry.',
       show_key: 'Show',
       hide_key: 'Hide',
     },
@@ -1574,7 +1733,6 @@ const en = {
       'success-title': 'OpenCode configuration updated',
       'error-title': 'OpenCode update failed',
       'unknown-error': 'Unknown OpenCode configuration error',
-
       'choose-model-hint': 'Choose at least one model to continue.',
       'config-retry-description': 'Please retry. Your saved configuration has not been changed.',
     },
@@ -1585,6 +1743,9 @@ const en = {
     persistence: {
       title: 'Request history and reasoning',
       description: 'Keep requests and conversation history on this device to help diagnose issues.',
+      'successful-probes': 'Capture successful probes',
+      'successful-probes-description':
+        'Save successful health checks and model-directory polling. Failures and other business requests are still recorded when request history is enabled.',
       'audit-title': 'Request history',
       'audit-description':
         'Save requests, replies and attempts to reach the model service on this computer, with sensitive details hidden.',
@@ -1593,9 +1754,33 @@ const en = {
       dropped:
         '{{count}} records could not be saved ({{reason}}). Model requests continued normally.',
       'disk-gib': 'Disk limit (GiB)',
-      'body-hours': 'Full content retention (hours)',
-      'summary-days': 'Summary retention (days)',
-      'max-rows': 'Maximum rows',
+      'capacity-window':
+        'Keep complete requests until the disk or request limit is reached. Reclaim the oldest completed requests first; active requests are protected.',
+      'max-rows': 'Maximum requests',
+      'queue-records': 'Pending command limit (32–4,096)',
+      'queue-mib': 'Pending command bytes (16–64 MiB)',
+      'version-unavailable':
+        'This owner does not provide an audit-settings revision. Refresh or upgrade the owner before editing.',
+      'save-saving': 'Saving and applying persistence settings…',
+      'save-applied': 'Persistence settings saved and applied.',
+      'save-restart-required':
+        'Settings saved, but runtime application is incomplete. Check service status before restarting.',
+      'save-conflict':
+        'Audit settings changed elsewhere. Refreshed settings must be reviewed before retrying.',
+      'save-failed':
+        'Save completion could not be confirmed. Refresh and review settings before retrying.',
+      'invalid-number': 'Enter a finite number of at least {{min}}.',
+      'budget-current':
+        'Configured: {{disk}} MiB / {{rows}} request window. Queue: {{commands}} commands / {{queue}} MiB.',
+      maintenance: 'History maintenance: {{state}}',
+      'maintenance-running': 'running',
+      'maintenance-scheduled': 'scheduled',
+      'maintenance-idle': 'idle',
+      'maintenance-stopped': 'stopped',
+      'maintenance-unknown': 'unavailable',
+      'reload-failed': 'Settings could not be refreshed. Refresh this page before retrying.',
+      'pressure-note':
+        'Lower limits reclaim completed history gradually. Active captures or pinned readers can delay reclamation; the latest recorded drop is not a current write guarantee.',
       'no-audit': 'No traffic records yet.',
       'audit-metadata': 'Request details and model-service attempts',
       'audit-body-missing': 'The full request or reply content is no longer saved.',
@@ -1615,7 +1800,40 @@ const en = {
       'thought-title': 'Conversation reasoning history',
       'thought-description': 'Save reasoning so later turns can continue the conversation.',
       sessions: '{{count}} sessions',
-      'hard-limit': 'Each conversation can save up to 200 turns and 64 MiB of content.',
+      'hard-limit':
+        'Memory cache: {{turns}} turns / {{memory}} MiB per session. Durable history has its own {{disk}} MiB disk budget and retention.',
+      'thought-cache-turns': 'Cached turns per session (10–10,000)',
+      'thought-cache-mib': 'Session cache limit (1–64 MiB)',
+      'thought-disk-mib': 'Reasoning disk budget (128–16,384 MiB)',
+      'thought-stats-unavailable': 'Reasoning statistics are unavailable.',
+      'thought-count-unknown': 'Saved record count unavailable',
+      'thought-records': '{{count}} saved records',
+      'thought-memory': 'Memory: {{records}} records / {{bytes}}',
+      'thought-tool-links': 'Recoverable tool links: {{records}}',
+      'thought-recovery-partial':
+        'Thought records were processed, but some recovery-history cleanup is unconfirmed. Refresh and check before another operation.',
+      'no-thought-records': 'No saved reasoning records in this page.',
+      'thought-record-pages': 'Reasoning history pages',
+      'history-page-complete': 'Page {{page}} · end of this history window',
+      'history-page-more': 'Page {{page}} · more records available',
+      'record-unavailable': 'This record is no longer available. Refresh the session.',
+      'thought-delete-receipt': 'Deleted {{sessions}} sessions and {{records}} records.',
+      'thought-delete-scope':
+        'Delete all retained reasoning records in session {{session}}? Other sessions are unaffected.',
+      'thought-mutation-uncertain':
+        'The operation could not be confirmed. History was refreshed; check it before trying again.',
+      'cancel-action': 'Cancel',
+      'thought-failures':
+        'Failures: {{reads}} reads / {{admission}} cold admissions / {{writes}} writes',
+      'thought-write-failure':
+        'Last persistence failure: {{reason}}. Current memory does not guarantee recovery after restart.',
+      'thought-session-capacity': 'No durable session slot available',
+      'thought-maintenance-active-sessions': 'Maintenance deferred to protect active requests.',
+      'thought-maintenance-checkpoint-busy': 'Maintenance paused for a pinned SQLite reader.',
+      'thought-maintenance-no-progress':
+        'Disk reclamation made no progress; further pressure deletion paused.',
+      'thought-maintenance-oversized-record':
+        'An old record exceeds the bounded cleanup budget; manual diagnosis is required.',
       'retention-days': 'Retention (days)',
       'max-sessions': 'Maximum sessions',
       oversized: 'Content exceeded 64 MiB and was not saved in full.',
@@ -1624,6 +1842,9 @@ const en = {
       'copy-signature': 'Copy signature',
       'no-thought': 'No reasoning history yet.',
       'clear-thought': 'Clear reasoning history',
+      'clear-failed': 'Could not clear reasoning history.',
+      'delete-failed': 'Could not delete this session.',
+      'load-failed': 'Could not load reasoning sessions.',
       'repair-thought': 'Repair reasoning history',
       'confirm-clear': 'Confirm clear',
       'confirm-repair': 'Confirm repair',

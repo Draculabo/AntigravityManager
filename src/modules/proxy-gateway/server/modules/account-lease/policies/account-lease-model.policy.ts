@@ -1,4 +1,4 @@
-import { isNumber } from 'lodash-es';
+import { AccountModelCatalog, type AccountModelEvidence } from './account-model-catalog';
 import { getPublicModelIdForDisplayName } from '../../../../antigravity/ModelMapping';
 import {
   rebindModelVariant,
@@ -9,9 +9,13 @@ import {
   normalizeModelId,
 } from '../interfaces/account-lease-token-types';
 import {
-  type ProviderModelDetails,
-  toProviderModelDetails,
-} from '../model-details/provider-model-details';
+  assertSupportedBareModelEffort,
+  isBareModelFamilyAvailable,
+  parseBareModelEffort,
+  resolveBareFamilyModel,
+  resolveTieredFamilyModel,
+  type TieredModelSuffix,
+} from './account-bare-model-tier';
 
 interface AccountLeaseModelLogger {
   log(message: string): void;
@@ -20,25 +24,8 @@ interface AccountLeaseModelLogger {
 interface AccountLeaseModelPolicyOptions {
   getTokenCache: () => Map<string, AccountLeaseTokenData>;
   logger: AccountLeaseModelLogger;
+  isModelBlocked(accountId: string, model: string): boolean;
 }
-
-/**
- * Upstream quota metadata advertises preset ids (e.g. gemini-3.6-flash-low)
- * before the generation API accepts them, so a listed model can still fail
- * with NOT_FOUND. Variant families share a base id and differ only in the
- * trailing effort suffix; when one variant is rejected we reroute to a
- * sibling variant that is still advertised, preferring the self-routing
- * "tiered" preset over explicit effort levels.
- */
-const MODEL_VARIANT_SUFFIX_PATTERN = /^(?<base>.+)-(?<variant>tiered|extra-low|low|medium|high)$/;
-
-const MODEL_VARIANT_PRIORITY: Record<string, number> = {
-  tiered: 5,
-  high: 4,
-  medium: 3,
-  low: 2,
-  'extra-low': 1,
-};
 
 const GEMINI_PRO_FAMILY = new Set([
   'gemini-pro-agent',
@@ -61,139 +48,29 @@ const GEMINI_4_ARGON_FAMILY = new Set([
   'gemini-4-argon-low',
 ]);
 
-const TIERED_MODEL_SUFFIXES = ['extra-low', 'high', 'medium', 'low', 'tiered'] as const;
-const TIER_PREFERENCE = ['high', 'medium', 'low', 'extra-low'] as const;
-type TieredModelSuffix = (typeof TIER_PREFERENCE)[number];
 export type AccountModelAvailability = 'unknown' | 'available' | 'unavailable';
 
 export class AccountLeaseModelPolicy {
-  private readonly unrequestableModels = new Set<string>();
+  private readonly catalog: AccountModelCatalog;
 
-  constructor(private readonly options: AccountLeaseModelPolicyOptions) {}
-
-  markModelUnrequestable(modelId: string): void {
-    const normalized = normalizeModelId(modelId)?.toLowerCase();
-    if (!normalized || this.unrequestableModels.has(normalized)) {
-      return;
-    }
-    this.unrequestableModels.add(normalized);
-    this.options.logger.log(
-      `[Unrequestable-Model] upstream rejected ${normalized}; future requests will use a family sibling when available`,
-    );
-  }
-
-  isModelUnrequestable(modelId: string): boolean {
-    const normalized = normalizeModelId(modelId)?.toLowerCase();
-    return normalized ? this.unrequestableModels.has(normalized) : false;
-  }
-
-  resolveUnrequestableSibling(
-    modelId: string,
-    tokenData?: AccountLeaseTokenData,
-  ): string | undefined {
-    const normalized = normalizeModelId(modelId)?.toLowerCase();
-    if (!normalized || !this.unrequestableModels.has(normalized)) {
-      return undefined;
-    }
-
-    const match = MODEL_VARIANT_SUFFIX_PATTERN.exec(normalized);
-    const base = match?.groups?.base;
-    if (!base) {
-      return undefined;
-    }
-
-    // Restrict sibling candidates to the leased account's own models when
-    // token data is available, so one account is never rewritten to a variant
-    // that only a different account advertises.
-    const candidateModels = tokenData
-      ? this.getAvailableModelsFromToken(tokenData)
-      : this.getAllCollectedModels();
-
-    const siblings: Array<{ priority: number; modelId: string }> = [];
-    for (const collectedModel of candidateModels) {
-      const collectedNormalized = normalizeModelId(collectedModel)?.toLowerCase();
-      if (!collectedNormalized || this.unrequestableModels.has(collectedNormalized)) {
-        continue;
-      }
-      const collectedMatch = MODEL_VARIANT_SUFFIX_PATTERN.exec(collectedNormalized);
-      if (collectedMatch?.groups?.base !== base) {
-        continue;
-      }
-      siblings.push({
-        priority: MODEL_VARIANT_PRIORITY[collectedMatch.groups.variant] ?? 0,
-        modelId: collectedNormalized,
-      });
-    }
-
-    siblings.sort((a, b) => b.priority - a.priority);
-    return siblings[0]?.modelId;
+  constructor(private readonly options: AccountLeaseModelPolicyOptions) {
+    this.catalog = new AccountModelCatalog(options);
   }
 
   getAllCollectedModels(): Set<string> {
-    const allModels = new Set<string>();
-    for (const tokenData of this.options.getTokenCache().values()) {
-      const describedModels = new Set<string>();
-      for (const [modelId, modelInfo] of Object.entries(tokenData.quota?.models ?? {})) {
-        const normalizedModelId = normalizeModelId(modelId)?.toLowerCase();
-        if (!normalizedModelId) {
-          continue;
-        }
-        describedModels.add(normalizedModelId);
-        allModels.add(getPublicModelIdForDisplayName(modelInfo.display_name) ?? normalizedModelId);
-      }
-
-      for (const modelId of Object.keys(tokenData.model_quotas)) {
-        const normalizedModelId = normalizeModelId(modelId)?.toLowerCase();
-        if (normalizedModelId && !describedModels.has(normalizedModelId)) {
-          allModels.add(normalizedModelId);
-        }
-      }
-    }
-    return allModels;
+    return this.catalog.getAllCollectedModels();
   }
 
-  /**
-   * Return quota keys without projecting provider display names to public aliases.
-   * Raw model discovery must expose physical upstream IDs from every loaded account.
-   */
   getAllRawQuotaModels(): Set<string> {
-    const allModels = new Set<string>();
-    for (const tokenData of this.options.getTokenCache().values()) {
-      for (const modelId of Object.keys(tokenData.quota?.models ?? {})) {
-        const normalizedModelId = normalizeModelId(modelId)?.toLowerCase();
-        if (normalizedModelId) {
-          allModels.add(normalizedModelId);
-        }
-      }
-
-      for (const modelId of Object.keys(tokenData.model_quotas)) {
-        const normalizedModelId = normalizeModelId(modelId)?.toLowerCase();
-        if (normalizedModelId) {
-          allModels.add(normalizedModelId);
-        }
-      }
-    }
-    return allModels;
+    return this.catalog.getAllRawQuotaModels();
   }
 
-  getAvailableModelsFromToken(tokenData: AccountLeaseTokenData): Set<string> {
-    const availableModels = new Set<string>();
+  getAvailableModelsFromToken(token: AccountLeaseTokenData): Set<string> {
+    return this.catalog.getAvailableModelsFromToken(token);
+  }
 
-    for (const modelId of Object.keys(tokenData.model_quotas ?? {})) {
-      const normalized = normalizeModelId(modelId)?.toLowerCase();
-      if (normalized) {
-        availableModels.add(normalized);
-      }
-    }
-
-    for (const modelId of Object.keys(tokenData.quota?.models ?? {})) {
-      const normalized = normalizeModelId(modelId)?.toLowerCase();
-      if (normalized) {
-        availableModels.add(normalized);
-      }
-    }
-
-    return availableModels;
+  getPositiveModelEvidenceFromToken(token: AccountLeaseTokenData): AccountModelEvidence[] {
+    return this.catalog.getPositiveModelEvidenceFromToken(token);
   }
 
   buildDynamicModelCandidates(modelName: string): string[] | null {
@@ -265,15 +142,8 @@ export class AccountLeaseModelPolicy {
     return candidates;
   }
 
-  resolveDynamicModelForAccount(accountId: string, mappedModel: string): string {
+  resolveDynamicModelForAccount(accountId: string, mappedModel: string, effort?: string): string {
     const tokenData = this.options.getTokenCache().get(accountId);
-    const unrequestableSibling = this.resolveUnrequestableSibling(mappedModel, tokenData);
-    if (unrequestableSibling && this.isSafeRegisteredFallback(mappedModel, unrequestableSibling)) {
-      this.options.logger.log(
-        `[Unrequestable-Model-Rewrite] account=${accountId} ${mappedModel} -> ${unrequestableSibling}`,
-      );
-      return unrequestableSibling;
-    }
 
     if (!tokenData) {
       return mappedModel;
@@ -281,6 +151,7 @@ export class AccountLeaseModelPolicy {
 
     const availableModels = this.filterRequestableModels(
       this.getAvailableModelsFromToken(tokenData),
+      tokenData.account_id,
     );
     if (availableModels.size === 0) {
       return mappedModel;
@@ -291,10 +162,17 @@ export class AccountLeaseModelPolicy {
       normalizedMappedModel,
       availableModels,
     );
+    if (
+      effort !== undefined &&
+      isBareModelFamilyAvailable(normalizedMappedModel, availableModels)
+    ) {
+      assertSupportedBareModelEffort(effort);
+    }
     const resolvedModel = this.resolveAvailableModel(
       tokenData,
       normalizedMappedModel,
       safeAvailableModels,
+      effort,
     );
     if (!resolvedModel) {
       return mappedModel;
@@ -311,7 +189,11 @@ export class AccountLeaseModelPolicy {
     return resolvedModel;
   }
 
-  getModelAvailabilityForAccount(accountId: string, mappedModel: string): AccountModelAvailability {
+  getModelAvailabilityForAccount(
+    accountId: string,
+    mappedModel: string,
+    effort?: string,
+  ): AccountModelAvailability {
     const tokenData = this.options.getTokenCache().get(accountId);
     if (!tokenData) {
       return 'unknown';
@@ -319,14 +201,25 @@ export class AccountLeaseModelPolicy {
 
     const availableModels = this.filterRequestableModels(
       this.getAvailableModelsFromToken(tokenData),
+      tokenData.account_id,
     );
     if (availableModels.size === 0) {
-      return 'unknown';
+      return this.options.isModelBlocked(accountId, mappedModel) ||
+        this.getAvailableModelsFromToken(tokenData).size > 0
+        ? 'unavailable'
+        : 'unknown';
     }
 
     const normalizedMappedModel = normalizeModelId(mappedModel)?.toLowerCase();
     if (!normalizedMappedModel) {
       return 'unavailable';
+    }
+
+    if (
+      effort !== undefined &&
+      isBareModelFamilyAvailable(normalizedMappedModel, availableModels)
+    ) {
+      assertSupportedBareModelEffort(effort);
     }
 
     const safeAvailableModels = this.filterSafeRegisteredFallbacks(
@@ -337,6 +230,7 @@ export class AccountLeaseModelPolicy {
       tokenData,
       normalizedMappedModel,
       safeAvailableModels,
+      effort,
     );
     return resolvedModel && this.isSafeRegisteredFallback(normalizedMappedModel, resolvedModel)
       ? 'available'
@@ -346,6 +240,7 @@ export class AccountLeaseModelPolicy {
   getExactModelAvailabilityForAccount(
     accountId: string,
     mappedModel: string,
+    effort?: string,
   ): AccountModelAvailability {
     const tokenData = this.options.getTokenCache().get(accountId);
     if (!tokenData) {
@@ -354,9 +249,13 @@ export class AccountLeaseModelPolicy {
 
     const availableModels = this.filterRequestableModels(
       this.getAvailableModelsFromToken(tokenData),
+      tokenData.account_id,
     );
     if (availableModels.size === 0) {
-      return 'unknown';
+      return this.options.isModelBlocked(accountId, mappedModel) ||
+        this.getAvailableModelsFromToken(tokenData).size > 0
+        ? 'unavailable'
+        : 'unknown';
     }
 
     const normalizedMappedModel = normalizeModelId(mappedModel)?.toLowerCase();
@@ -364,7 +263,42 @@ export class AccountLeaseModelPolicy {
       return 'unavailable';
     }
 
-    return availableModels.has(normalizedMappedModel) ? 'available' : 'unavailable';
+    if (
+      effort !== undefined &&
+      isBareModelFamilyAvailable(normalizedMappedModel, availableModels)
+    ) {
+      assertSupportedBareModelEffort(effort);
+    }
+
+    if (availableModels.has(normalizedMappedModel)) {
+      return 'available';
+    }
+    if (effort === undefined) {
+      return 'unavailable';
+    }
+    return resolveBareFamilyModel(normalizedMappedModel, effort, availableModels, true)
+      ? 'available'
+      : 'unavailable';
+  }
+
+  resolveBareModelForAccount(accountId: string, modelName: string, effort?: string): string | null {
+    const tokenData = this.options.getTokenCache().get(accountId);
+    if (!tokenData) {
+      return null;
+    }
+
+    const availableModels = this.filterRequestableModels(
+      this.getAvailableModelsFromToken(tokenData),
+      tokenData.account_id,
+    );
+    if (availableModels.size === 0) {
+      return null;
+    }
+    return resolveBareFamilyModel(modelName, effort, availableModels);
+  }
+
+  parseBareModelEffort(effort: string | undefined): TieredModelSuffix | null {
+    return parseBareModelEffort(effort);
   }
 
   /**
@@ -372,17 +306,8 @@ export class AccountLeaseModelPolicy {
    * (forwarding rules, display presets, dynamic candidates, tiered family)
    * can land on a model the generation API refuses to serve.
    */
-  private filterRequestableModels(models: Set<string>): Set<string> {
-    if (this.unrequestableModels.size === 0) {
-      return models;
-    }
-    const filtered = new Set<string>();
-    for (const modelId of models) {
-      if (!this.unrequestableModels.has(modelId)) {
-        filtered.add(modelId);
-      }
-    }
-    return filtered;
+  private filterRequestableModels(models: Set<string>, accountId: string): Set<string> {
+    return new Set([...models].filter((model) => !this.options.isModelBlocked(accountId, model)));
   }
 
   /**
@@ -416,6 +341,7 @@ export class AccountLeaseModelPolicy {
     tokenData: AccountLeaseTokenData,
     normalizedMappedModel: string,
     availableModels: Set<string>,
+    effort?: string,
   ): string | null {
     const forwardedModel = this.resolveForwardedModelForAccount(
       tokenData,
@@ -435,6 +361,16 @@ export class AccountLeaseModelPolicy {
       return displayPresetModel;
     }
 
+    const bareFamilyModel = resolveBareFamilyModel(
+      normalizedMappedModel,
+      effort,
+      availableModels,
+      effort !== undefined,
+    );
+    if (bareFamilyModel) {
+      return bareFamilyModel;
+    }
+
     const candidates = this.buildDynamicModelCandidates(normalizedMappedModel);
     for (const candidate of candidates ?? []) {
       if (availableModels.has(candidate)) {
@@ -446,7 +382,7 @@ export class AccountLeaseModelPolicy {
       return normalizedMappedModel;
     }
 
-    const tieredFamilyModel = this.resolveTieredFamilyModel(normalizedMappedModel, availableModels);
+    const tieredFamilyModel = resolveTieredFamilyModel(normalizedMappedModel, availableModels);
     if (tieredFamilyModel) {
       return tieredFamilyModel;
     }
@@ -505,66 +441,6 @@ export class AccountLeaseModelPolicy {
     return null;
   }
 
-  private resolveTieredFamilyModel(
-    normalizedMappedModel: string,
-    availableModels: Set<string>,
-  ): string | null {
-    const requested = this.parseTieredModel(normalizedMappedModel);
-    if (!requested) {
-      return null;
-    }
-
-    const familyCandidates = [...availableModels]
-      .map((model) => ({ model, parsed: this.parseTieredModel(model) }))
-      .filter(
-        (
-          item,
-        ): item is {
-          model: string;
-          parsed: { base: string; tier: TieredModelSuffix };
-        } => item.parsed?.base === requested.base,
-      );
-    if (familyCandidates.length === 0) {
-      return null;
-    }
-
-    familyCandidates.sort(
-      (a, b) =>
-        this.getTierDistance(requested.tier, a.parsed.tier) -
-        this.getTierDistance(requested.tier, b.parsed.tier),
-    );
-
-    return familyCandidates[0]?.model ?? null;
-  }
-
-  private parseTieredModel(
-    normalizedModel: string,
-  ): { base: string; tier: TieredModelSuffix } | null {
-    for (const suffix of TIERED_MODEL_SUFFIXES) {
-      const marker = `-${suffix}`;
-      if (!normalizedModel.endsWith(marker)) {
-        continue;
-      }
-      return {
-        base: normalizedModel.slice(0, -marker.length),
-        tier: suffix === 'tiered' ? 'high' : suffix,
-      };
-    }
-    return null;
-  }
-
-  private getTierDistance(
-    requestedTier: TieredModelSuffix,
-    candidateTier: TieredModelSuffix,
-  ): number {
-    const requestedIndex = TIER_PREFERENCE.indexOf(requestedTier);
-    const candidateIndex = TIER_PREFERENCE.indexOf(candidateTier);
-    if (candidateIndex >= requestedIndex) {
-      return candidateIndex - requestedIndex;
-    }
-    return TIER_PREFERENCE.length + requestedIndex - candidateIndex;
-  }
-
   /**
    * Precedence: provider `ModelDetails` from the quota payload first, then the persisted
    * `model_limits` compatibility data. Static model specs remain the last resort and stay
@@ -574,48 +450,10 @@ export class AccountLeaseModelPolicy {
    * quota declared a cap fell through to compatibility data that may predate it.
    */
   getModelOutputLimitForAccount(accountId: string, modelName: string): number | undefined {
-    const tokenData = this.options.getTokenCache().get(accountId);
-    const normalizedModel = normalizeModelId(modelName);
-    if (!tokenData || !normalizedModel) {
-      return undefined;
-    }
-
-    const providerCap = this.getProviderModelDetails(tokenData, normalizedModel)?.maxOutputTokens;
-    if (providerCap !== undefined) {
-      return providerCap;
-    }
-
-    return tokenData.model_limits[normalizedModel];
-  }
-
-  private getProviderModelDetails(
-    tokenData: AccountLeaseTokenData,
-    normalizedModel: string,
-  ): ProviderModelDetails | undefined {
-    for (const [quotaModelName, modelInfo] of Object.entries(tokenData.quota?.models ?? {})) {
-      if (normalizeModelId(quotaModelName) === normalizedModel) {
-        return toProviderModelDetails(modelInfo);
-      }
-    }
-    return undefined;
+    return this.catalog.getModelOutputLimitForAccount(accountId, modelName);
   }
 
   getModelThinkingBudgetForAccount(accountId: string, modelName: string): number | undefined {
-    const tokenData = this.options.getTokenCache().get(accountId);
-    const normalizedModel = normalizeModelId(modelName);
-    if (!tokenData || !normalizedModel) {
-      return undefined;
-    }
-
-    for (const [quotaModelName, modelInfo] of Object.entries(tokenData.quota?.models ?? {})) {
-      if (normalizeModelId(quotaModelName) !== normalizedModel) {
-        continue;
-      }
-      const budget = modelInfo?.thinking_budget;
-      if (isNumber(budget) && Number.isFinite(budget) && budget >= 0) {
-        return Math.floor(budget);
-      }
-    }
-    return undefined;
+    return this.catalog.getModelThinkingBudgetForAccount(accountId, modelName);
   }
 }

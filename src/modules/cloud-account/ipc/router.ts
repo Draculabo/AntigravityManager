@@ -30,6 +30,10 @@ import {
   SetCloudAccountProxyInputSchema,
 } from '@/modules/cloud-account/services/cloud-account-mutation.schema';
 import {
+  CloudAccountRoutingResultSchema,
+  SetCloudAccountRoutingInputSchema,
+} from '@/modules/cloud-account/services/cloud-account-routing.schema';
+import {
   ActiveOAuthClientSchema,
   OAuthClientDescriptorSchema,
   SetActiveOAuthClientInputSchema,
@@ -226,6 +230,22 @@ export const cloudRouter = os.router({
     .output(z.void())
     .handler(async ({ input }) => {
       await getCloudAccountAdapter().setProxy(input.accountId, input.proxyUrl);
+    }),
+
+  setAccountRouting: os
+    .input(SetCloudAccountRoutingInputSchema)
+    .output(CloudAccountRoutingResultSchema)
+    .handler(async ({ input }) => {
+      const setRouting = getCloudAccountAdapter().setRouting;
+      if (!setRouting) {
+        throw new Error('Cloud account routing settings are unavailable');
+      }
+      await setRouting(
+        input.accountId,
+        input.proxyPriority,
+        input.proxyEnabled,
+      );
+      return { success: true };
     }),
 
   syncLocalAccount: os

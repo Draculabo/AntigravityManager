@@ -31,6 +31,7 @@ function createWorker(ignoreShutdown = false) {
     maxPendingBytes: 100_000,
     maxPendingCommands: 20,
     name: 'shutdown-test',
+    ownerStartedAt: 1234,
     workerFactory: factory,
     workerPath: 'test-only',
   });
@@ -45,6 +46,74 @@ function createWorker(ignoreShutdown = false) {
 }
 
 describe('SQLite worker terminal shutdown', () => {
+  it('drains only the accepted snapshot while later unrelated work remains admitted', async () => {
+    const { owner, factory } = createWorker();
+    const old = owner.request({ operation: 'old', payload: null });
+    expect(owner.tryWrite({ operation: 'old-write', payload: null }, { priority: 'model' })).toBe(
+      true,
+    );
+    const drained = owner.drainAdmitted();
+    const later = owner.request({ operation: 'later-hang', payload: 'hang' });
+    const rejected = expect(later).rejects.toThrow();
+    try {
+      await drained;
+      await old;
+      expect(owner.getStats().pendingCommands).toBe(1);
+      expect(factory).toHaveBeenCalledOnce();
+    } finally {
+      await expect(owner.close(30)).rejects.toThrow();
+      await rejected;
+    }
+  });
+  it('reports a bounded drain timeout without replacing or discarding the live owner', async () => {
+    const { owner, factory } = createWorker();
+    const pending = owner.request({ operation: 'old-hang', payload: 'hang' });
+    const rejected = expect(pending).rejects.toThrow();
+    try {
+      await expect(owner.drainAdmitted(20)).rejects.toThrow('admitted drain timed out');
+      expect(owner.getStats()).toMatchObject({ alive: true, pendingCommands: 1 });
+      expect(factory).toHaveBeenCalledOnce();
+    } finally {
+      await expect(owner.close(30)).rejects.toThrow();
+      await rejected;
+    }
+  });
+  it('changes admission limits on the live owner while preserving accepted work and reservations', async () => {
+    const { owner, factory } = createWorker();
+    try {
+      const read = owner.request({ operation: 'accepted-read', payload: null });
+      let done!: () => void;
+      const written = new Promise<void>((resolve) => {
+        done = resolve;
+      });
+      expect(
+        owner.tryWrite(
+          { operation: 'accepted-write', payload: null },
+          { priority: 'model', onSuccess: done },
+        ),
+      ).toBe(true);
+      expect(owner.getStats().pendingCommands).toBe(2);
+      owner.setQueueLimits({ maxPendingCommands: 1, maxPendingBytes: 100000 });
+      expect(owner.getStats().pendingCommands).toBe(2);
+      expect(owner.tryWrite({ operation: 'refused', payload: null }, { priority: 'model' })).toBe(
+        false,
+      );
+      await Promise.all([read, written]);
+      expect(await owner.request({ operation: 'after-drain', payload: null })).toBe('after-drain');
+      owner.setQueueLimits({ maxPendingCommands: 20, maxPendingBytes: 128 });
+      expect(
+        owner.tryWrite(
+          { operation: 'too-large', payload: 'x'.repeat(1000) },
+          { priority: 'model' },
+        ),
+      ).toBe(false);
+      owner.setQueueLimits({ maxPendingCommands: 20, maxPendingBytes: 100000 });
+      expect(await owner.request({ operation: 'after-raise', payload: null })).toBe('after-raise');
+      expect(factory).toHaveBeenCalledTimes(1);
+    } finally {
+      await owner.close();
+    }
+  });
   it('drains accepted commands, rejects new admission and terminates once', async () => {
     const { factory, nativeWorker, owner } = createWorker();
     const read = owner.request({ operation: 'read', payload: null });
@@ -75,6 +144,10 @@ describe('SQLite worker terminal shutdown', () => {
     expect(() => owner.start()).toThrow('shutdown-test closed');
     await owner.close();
     expect(factory).toHaveBeenCalledOnce();
+    expect(factory.mock.calls[0]?.[1].workerData).toEqual({
+      databasePath: 'unused-test-database',
+      ownerStartedAt: 1234,
+    });
     expect(terminate).toHaveBeenCalledOnce();
   });
 

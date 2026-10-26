@@ -39,6 +39,8 @@ export interface SwitchFlowOptions {
   processExitTimeoutMs: number;
   launchContext?: LaunchContext;
   performSwitch: (pathOptions?: PathResolutionOptions) => Promise<void>;
+  /** Optional owner fence; rejection stops later side effects but cannot undo completed writes. */
+  assertCurrent?: () => Promise<void>;
   afterSwitchSuccess?: () => Promise<void>;
   onFailure?: (reason: SwitchFailureReason) => void;
 }
@@ -141,11 +143,13 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
       let terms: ClassicTermsSwitch | null = null;
       let startAttempted = false;
       try {
+        await options.assertCurrent?.();
         if (isCliTarget) {
           logger.info('Skipping GUI process steps for agy CLI switch');
           stage = 'switch';
           options.onDiagnosticStage?.('target-write');
           await trace.phase('performSwitchMs', () => performSwitch());
+          await options.assertCurrent?.();
           if (applyFingerprint) {
             stage = 'apply';
             trace.phaseSync('applyProfileMs', () => {
@@ -167,6 +171,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
         if (useCredentialStore && options.accountEmail) {
           terms = await prepareClassicTermsSwitch(context, options.accountEmail);
         }
+        await options.assertCurrent?.();
         if (applyFingerprint) {
           if (!targetProfile && !(process.platform === 'darwin' && useCredentialStore)) {
             stage = 'missing_profile';
@@ -178,6 +183,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           }
         }
         const writeSwitchState = async (applyProfile = true) => {
+          await options.assertCurrent?.();
           if (
             applyProfile &&
             applyFingerprint &&
@@ -192,6 +198,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           stage = 'switch';
           options.onDiagnosticStage?.('target-write');
           await trace.phase('performSwitchMs', () => performSwitch(context.pathOptions));
+          await options.assertCurrent?.();
           if (
             applyProfile &&
             applyFingerprint &&
@@ -277,6 +284,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
               } catch {
                 logger.warn('IDE credential reassertion failed after the initial write');
               }
+              await options.assertCurrent?.();
               stage = 'hot_confirm';
               try {
                 hotConfirmed = await trace.phase(
@@ -321,7 +329,8 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
               ) {
                 throw error;
               }
-              throw processError('switched-hot-unconfirmed');
+              await options.assertCurrent?.();
+              throw processError('switched-hot-unconfirmed', error);
             }
           }
           if (!hotConfirmed) {
@@ -333,6 +342,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
         }
 
         if (!hotConfirmed) {
+          await options.assertCurrent?.();
           stage = 'close';
           options.onDiagnosticStage?.('process-close');
           await trace.phase('closeMs', async () => {
@@ -343,7 +353,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
                 error instanceof AppError &&
                 error.messageKey === 'process-runtime.exit-unconfirmed';
               if (hotSession) {
-                throw processError('switched-hot-unconfirmed');
+                throw processError('switched-hot-unconfirmed', error);
               }
               throw error;
             }
@@ -354,7 +364,9 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           }
 
           stage = 'switch';
+          await options.assertCurrent?.();
           await terms?.apply();
+          await options.assertCurrent?.();
           stage = 'start';
           startAttempted = true;
           options.onDiagnosticStage?.('process-start');
@@ -362,8 +374,8 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           await trace.phase('startMs', async () => {
             try {
               started = await startFromContext(context);
-            } catch {
-              throw processError('switched-startup-unconfirmed');
+            } catch (error) {
+              throw processError('switched-startup-unconfirmed', error);
             }
             if (
               ['win32', 'linux', 'darwin'].includes(process.platform) &&
@@ -374,6 +386,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
             }
           });
         }
+        await options.assertCurrent?.();
         if (afterSwitchSuccess) {
           stage = 'after_success';
           await trace.phase('afterSwitchSuccessMs', afterSwitchSuccess);

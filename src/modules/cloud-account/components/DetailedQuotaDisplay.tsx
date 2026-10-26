@@ -8,6 +8,8 @@ import {
   getQuotaStatus,
 } from '@/modules/cloud-account/utils/quota-display';
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
+import { QuotaBucketEvidence } from './QuotaBucketEvidence';
+import { useQuotaResetClock } from '../hooks/use-quota-reset-clock';
 
 /** Retains the detailed non-weekly buckets when the account view switches to 5h. */
 export function DetailedQuotaDisplay({ groups }: { groups: CloudQuotaGroup[] }) {
@@ -18,6 +20,9 @@ export function DetailedQuotaDisplay({ groups }: { groups: CloudQuotaGroup[] }) 
       buckets: group.buckets.filter((bucket) => !isWeeklyQuotaBucket(bucket)),
     }))
     .filter((group) => group.buckets.length > 0);
+  const now = useQuotaResetClock(
+    visibleGroups.flatMap((group) => group.buckets.map((bucket) => bucket.reset_time)),
+  );
   if (visibleGroups.length === 0) {
     return null;
   }
@@ -71,6 +76,7 @@ export function DetailedQuotaDisplay({ groups }: { groups: CloudQuotaGroup[] }) 
                       unknown: t('cloud.card.resetUnknown'),
                     })}
                   </div>
+                  <QuotaBucketEvidence bucket={bucket} now={now} />
                 </div>
               );
             })}

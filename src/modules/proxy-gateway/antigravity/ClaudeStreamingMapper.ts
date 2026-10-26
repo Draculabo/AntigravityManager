@@ -7,8 +7,16 @@ import {
   UsageMetadata,
 } from './types';
 import { SignatureStore } from './SignatureStore';
+import { ResponseToolCallIdentity } from './ResponseToolCallIdentity';
+import { hashSessionAnchor } from '../server/common/session-anchor-hash';
 import { readThoughtSignature } from './signature-utils';
+import { toClaudeClientThoughtSignature } from './thought-signature-format';
 import { toAnthropicMessageId } from './anthropic-message-id';
+import { getGeminiReasoningTokens } from './GeminiReasoningUsage';
+import {
+  isMalformedFunctionCallFinishReason,
+  MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
+} from './GeminiFinishReason';
 import { logger } from '@/shared/logging/logger';
 
 type BlockType = 'None' | 'Text' | 'Thinking' | 'Function';
@@ -106,6 +114,7 @@ export class StreamingState {
   public hasContent: boolean = false;
   private usedTool: boolean = false;
   private signatures: SignatureManagerImpl = new SignatureManagerImpl();
+  private upstreamThinkingSignature: string | null = null;
   public trailingSignature: string | null = null;
 
   // Web Search / Grounding buffers
@@ -123,6 +132,7 @@ export class StreamingState {
       familyModel?: string | null;
       sessionKey?: string;
       messageCount?: number;
+      toolCallIdentity?: ResponseToolCallIdentity;
     } = {},
   ) {}
 
@@ -146,11 +156,7 @@ export class StreamingState {
             usageMeta.cachedContentTokenCount ??
             usageMeta.cachedTokens ??
             0,
-          reasoning_tokens:
-            usageMeta.total_thought_tokens ??
-            usageMeta.totalThoughtTokens ??
-            usageMeta.thoughtsTokenCount ??
-            0,
+          reasoning_tokens: getGeminiReasoningTokens(usageMeta),
         }
       : (fallbackUsage ?? { input_tokens: 0, output_tokens: 0 });
 
@@ -191,7 +197,7 @@ export class StreamingState {
     return chunks;
   }
 
-  public endBlock(): string[] {
+  public endBlock(commitSignature = true): string[] {
     if (this.blockType === 'None') {
       return [];
     }
@@ -201,7 +207,12 @@ export class StreamingState {
     // Send stored signature when Thinking block ends
     if (this.blockType === 'Thinking' && this.signatures.hasPending()) {
       const sig = this.signatures.consume();
-      if (sig) {
+      const upstreamSignature = this.upstreamThinkingSignature;
+      this.upstreamThinkingSignature = null;
+      if (sig && commitSignature) {
+        if (upstreamSignature) {
+          this.persistSignature(upstreamSignature);
+        }
         // emit_delta "signature_delta"
         chunks.push(this.emitDelta({ type: 'signature_delta', signature: sig }));
       }
@@ -233,6 +244,22 @@ export class StreamingState {
 
     // Close last block
     chunks.push(...this.endBlock());
+
+    if (isMalformedFunctionCallFinishReason(finishReason) && !this.messageStopSent) {
+      if (!this.messageStartSent) {
+        chunks.push(this.emitMessageStart({ modelVersion: 'gemini-auto' }));
+      }
+      chunks.push(...this.startBlock('Text', { type: 'text', text: '' }));
+      chunks.push(
+        this.emitDelta({
+          type: 'text_delta',
+          text: MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
+        }),
+      );
+      this.markTextDeltaEmitted();
+      this.hasContent = true;
+      chunks.push(...this.endBlock());
+    }
 
     // Signature-only fragments are already persisted by PartProcessor. Appending a
     // carrier after visible text makes Claude Code select an empty final message.
@@ -301,50 +328,28 @@ export class StreamingState {
       this.hasContent = true;
     }
 
-    const recoveredEmptyResponse = !this.hasContent && !this.hasThinking;
-    if (recoveredEmptyResponse) {
-      if (!this.messageStartSent) {
-        chunks.push(
-          this.emitMessageStart(
-            { modelVersion: 'gemini-auto' },
-            { input_tokens: 0, output_tokens: 0 },
-          ),
-        );
-      }
-
-      chunks.push(...this.startBlock('Text', { type: 'text', text: '.' }));
-      chunks.push(...this.endBlock());
-      this.hasContent = true;
-    }
-
     // Determine stop reason
-    const stopReason = recoveredEmptyResponse
-      ? 'end_turn'
-      : this.usedTool
-        ? 'tool_use'
-        : finishReason === 'MAX_TOKENS'
-          ? 'max_tokens'
+    const stopReason = this.usedTool
+      ? 'tool_use'
+      : finishReason === 'MAX_TOKENS'
+        ? 'max_tokens'
+        : finishReason === 'SAFETY' || finishReason === 'RECITATION'
+          ? 'refusal'
           : 'end_turn';
 
-    const usage: Usage = recoveredEmptyResponse
-      ? { input_tokens: 1, output_tokens: 1 }
-      : usageMetadata
-        ? {
-            input_tokens: usageMetadata.total_input_tokens ?? usageMetadata.promptTokenCount ?? 0,
-            output_tokens:
-              usageMetadata.total_output_tokens ?? usageMetadata.candidatesTokenCount ?? 0,
-            cache_read_input_tokens:
-              usageMetadata.total_cached_tokens ??
-              usageMetadata.cachedContentTokenCount ??
-              usageMetadata.cachedTokens ??
-              0,
-            reasoning_tokens:
-              usageMetadata.total_thought_tokens ??
-              usageMetadata.totalThoughtTokens ??
-              usageMetadata.thoughtsTokenCount ??
-              0,
-          }
-        : { input_tokens: 0, output_tokens: 0 };
+    const usage: Usage = usageMetadata
+      ? {
+          input_tokens: usageMetadata.total_input_tokens ?? usageMetadata.promptTokenCount ?? 0,
+          output_tokens:
+            usageMetadata.total_output_tokens ?? usageMetadata.candidatesTokenCount ?? 0,
+          cache_read_input_tokens:
+            usageMetadata.total_cached_tokens ??
+            usageMetadata.cachedContentTokenCount ??
+            usageMetadata.cachedTokens ??
+            0,
+          reasoning_tokens: getGeminiReasoningTokens(usageMetadata),
+        }
+      : { input_tokens: 0, output_tokens: 0 };
 
     chunks.push(
       this.emit('message_delta', {
@@ -397,8 +402,11 @@ export class StreamingState {
     return this.blockType;
   }
 
-  public storeSignature(signature?: string) {
+  public storeSignature(signature?: string, upstreamSignature = signature) {
     this.signatures.store(signature);
+    if (upstreamSignature) {
+      this.upstreamThinkingSignature = upstreamSignature;
+    }
   }
 
   public persistSignature(signature: string, toolCallId?: string, toolName?: string): void {
@@ -426,7 +434,7 @@ export class StreamingState {
 
     // Safely close current block
     if (this.blockType !== 'None') {
-      chunks.push(...this.endBlock());
+      chunks.push(...this.endBlock(false));
     }
 
     // Emit error event if too many errors
@@ -472,13 +480,33 @@ export class StreamingState {
  * Part Processor
  */
 export class PartProcessor {
-  constructor(private state: StreamingState) {}
+  private toolCallPosition = 0;
+  private readonly toolCallIdentity: ResponseToolCallIdentity;
+
+  constructor(private state: StreamingState) {
+    this.toolCallIdentity =
+      state.signatureContext.toolCallIdentity ??
+      new ResponseToolCallIdentity(() =>
+        hashSessionAnchor([
+          state.signatureContext.model,
+          state.signatureContext.sessionKey,
+          state.signatureContext.messageCount,
+        ]),
+      );
+  }
 
   public process(part: GeminiPart): string[] {
     const chunks: string[] = [];
-    const signature = readThoughtSignature(part.thoughtSignature ?? part.thought_signature);
-    if (signature) {
-      this.state.persistSignature(signature);
+    const upstreamSignature = readThoughtSignature(part.thoughtSignature ?? part.thought_signature);
+    const signature = upstreamSignature
+      ? toClaudeClientThoughtSignature(upstreamSignature)
+      : undefined;
+    const belongsToThought =
+      !part.functionCall &&
+      (part.thought === true ||
+        (part.text === undefined && this.state.currentBlockType() === 'Thinking'));
+    if (upstreamSignature && !belongsToThought && !part.functionCall) {
+      this.state.persistSignature(upstreamSignature);
     }
 
     // 1. Handle FunctionCall
@@ -489,29 +517,23 @@ export class PartProcessor {
         const trailingSig = this.state.trailingSignature;
         this.state.trailingSignature = null;
 
-        chunks.push(
-          this.state.emit('content_block_start', {
-            type: 'content_block_start',
-            index: this.state.blockIndex,
-            content_block: { type: 'thinking', thinking: '' },
-          }),
-        );
+        chunks.push(...this.state.startBlock('Thinking', { type: 'thinking', thinking: '' }));
         chunks.push(this.state.emitDelta({ type: 'thinking_delta', thinking: '' }));
         chunks.push(this.state.emitDelta({ type: 'signature_delta', signature: trailingSig }));
         chunks.push(...this.state.endBlock());
         this.state.hasThinking = true;
       }
 
-      chunks.push(...this.processFunctionCall(part.functionCall, signature));
+      chunks.push(...this.processFunctionCall(part.functionCall, signature, upstreamSignature));
       return chunks;
     }
 
     // 2. Handle Text
-    if (part.text !== undefined) {
-      if (part.thought) {
-        chunks.push(...this.processThinking(part.text, signature));
+    if (part.text !== undefined || signature) {
+      if (belongsToThought) {
+        chunks.push(...this.processThinking(part.text ?? '', signature, upstreamSignature));
       } else {
-        chunks.push(...this.processText(part.text, signature));
+        chunks.push(...this.processText(part.text ?? '', signature));
       }
     }
 
@@ -527,7 +549,11 @@ export class PartProcessor {
     return chunks;
   }
 
-  private processThinking(text: string, signature?: string): string[] {
+  private processThinking(
+    text: string,
+    signature?: string,
+    upstreamSignature = signature,
+  ): string[] {
     const chunks: string[] = [];
 
     // Handle trailing signature
@@ -561,7 +587,7 @@ export class PartProcessor {
       chunks.push(this.state.emitDelta({ type: 'thinking_delta', thinking: text }));
     }
 
-    this.state.storeSignature(signature);
+    this.state.storeSignature(signature, upstreamSignature);
 
     return chunks;
   }
@@ -692,12 +718,21 @@ export class PartProcessor {
     return parseObject(quotedKeys);
   }
 
-  private processFunctionCall(fc: FunctionCall, signature?: string): string[] {
+  private processFunctionCall(
+    fc: FunctionCall,
+    signature?: string,
+    storedSignature = signature,
+  ): string[] {
     const chunks: string[] = [];
 
     this.state.markToolUsed();
 
-    const toolId = fc.id || `${fc.name}-${Math.random().toString(36).substr(2, 9)}`;
+    const toolId = this.toolCallIdentity.resolve(
+      fc.name,
+      fc.args ?? {},
+      this.toolCallPosition++,
+      fc.id,
+    );
 
     const toolUse: StreamToolUseContentBlock = {
       type: 'tool_use',
@@ -708,7 +743,9 @@ export class PartProcessor {
 
     if (signature) {
       toolUse.signature = signature;
-      this.state.persistSignature(signature, toolId, fc.name);
+    }
+    if (storedSignature) {
+      this.state.persistSignature(storedSignature, toolId, fc.name);
     }
 
     chunks.push(...this.state.startBlock('Function', toolUse));

@@ -352,7 +352,7 @@ export class IdeAccountImportAdapter {
         is_active: true,
       };
 
-      const accounts = await CloudAccountRepo.getAccounts();
+      const accounts = structuredClone(await CloudAccountRepo.getAccounts());
       const existingAccount = accounts.find((savedAccount) => savedAccount.email === account.email);
       if (existingAccount) {
         const existingProjectId = existingAccount.token.project_id?.trim();
@@ -381,7 +381,7 @@ export class IdeAccountImportAdapter {
       }
 
       await prepareDesktopIdentityStorage(target);
-      await CloudAccountRepo.addAccount(account);
+      await CloudAccountRepo.addAccount(account, accounts);
       return account;
     } catch (error) {
       logger.error('SyncLocal: Failed to sync account from IDE', error);

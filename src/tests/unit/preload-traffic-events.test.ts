@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   listeners: new Map<string, (event: unknown, payload: unknown) => void>(),
   off: vi.fn(),
+  invoke: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -11,7 +12,7 @@ vi.mock('electron', () => ({
       mocks.listeners.set(channel, handler);
     },
     off: mocks.off,
-    invoke: vi.fn(),
+    invoke: mocks.invoke,
     send: vi.fn(),
   },
   contextBridge: { exposeInMainWorld: vi.fn() },
@@ -21,6 +22,7 @@ beforeEach(async () => {
   vi.resetModules();
   mocks.listeners.clear();
   mocks.off.mockClear();
+  mocks.invoke.mockReset();
   vi.spyOn(window, 'addEventListener').mockImplementation(() => {});
   await import('@/preload');
 });
@@ -31,6 +33,18 @@ afterEach(() => {
 });
 
 describe('preload traffic event delivery', () => {
+  it('passes session export only through the dedicated desktop chooser channel', async () => {
+    const sessionId = `session:affinity:v1:${'a'.repeat(64)}`;
+    mocks.invoke.mockResolvedValue({ status: 'cancelled' });
+    expect(await window.electron.saveTrafficAuditSession(sessionId, 'session.ndjson')).toEqual({
+      status: 'cancelled',
+    });
+    expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith(
+      'save-traffic-audit-session',
+      sessionId,
+      'session.ndjson',
+    );
+  });
   it('validates and delivers ordered events after dynamic compilation becomes unavailable', () => {
     const callback = vi.fn();
     const unsubscribe = window.electron.onTrafficAuditEvent(callback);

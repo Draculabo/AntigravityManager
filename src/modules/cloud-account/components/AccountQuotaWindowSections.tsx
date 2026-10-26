@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 
 import { WeeklyQuotaDisplay } from '@/modules/cloud-account/components/WeeklyQuotaDisplay';
 import type { QuotaWindow, WeeklyQuotaItem } from '@/modules/cloud-account/utils/quota-groups';
+import type { CloudQuotaGroup } from '../types';
+import { QuotaGroupRestrictions } from './QuotaGroupRestrictions';
 
 interface AccountQuotaWindowSectionsProps {
   quotaWindow: QuotaWindow;
@@ -11,6 +13,7 @@ interface AccountQuotaWindowSectionsProps {
   fiveHourHidden?: boolean;
   weeklyHidden?: boolean;
   variant?: 'card' | 'compact';
+  restrictionGroups?: CloudQuotaGroup[];
 }
 
 export function AccountQuotaWindowSections({
@@ -21,9 +24,11 @@ export function AccountQuotaWindowSections({
   fiveHourHidden = false,
   weeklyHidden = false,
   variant = 'card',
+  restrictionGroups,
 }: AccountQuotaWindowSectionsProps) {
   return (
     <>
+      {restrictionGroups ? <QuotaGroupRestrictions groups={restrictionGroups} /> : null}
       {quotaWindow !== 'weekly' && !fiveHourHidden ? fiveHourContent : null}
       {quotaWindow !== '5h' && !weeklyHidden ? (
         <WeeklyQuotaDisplay

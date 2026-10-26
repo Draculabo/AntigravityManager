@@ -71,6 +71,7 @@ const CENSUS: readonly CensusEntry[] = [
     ['POST', '/internal/thinking/repair'],
     ['POST', '/v1/thinking/end'],
     ['GET', '/v1/thinking/sessions/:sessionId'],
+    ['GET', '/v1/thinking/sessions/:sessionId/records'],
     ['DELETE', '/v1/thinking/sessions/:sessionId'],
   ].map(([method, routePath]) => ({
     method,
@@ -149,6 +150,8 @@ const CENSUS: readonly CensusEntry[] = [
   { method: 'POST', routePath: '/v1/complete', testFile: 'anthropic-complete.controller.test.ts' },
 
   // Anthropic Messages protocol (src/modules/proxy-gateway/server/modules/anthropic/anthropic.controller.ts)
+  { method: 'GET', routePath: '/v1/models/claude', testFile: 'anthropic-models.test.ts' },
+  { method: 'GET', routePath: '/v1/models/claude/:model', testFile: 'anthropic-models.test.ts' },
   {
     method: 'POST',
     routePath: '/v1/messages/count_tokens',

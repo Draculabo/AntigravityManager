@@ -40,12 +40,16 @@ export async function readSelectedThoughtRecord(input: ThoughtRecordInput) {
     const bytes = await readDiagnosticContent(owner, record.transfer);
     const decoder = new TextDecoder('utf-8', { fatal: true });
     const signatureOffset = record.thoughtBytes + record.visibleBytes;
+    const partsOffset = signatureOffset + (record.signatureBytes ?? 0);
     return ThoughtRecordSchema.parse({
       ...record.metadata,
       thought: decoder.decode(bytes.subarray(0, record.thoughtBytes)),
       visible: decoder.decode(bytes.subarray(record.thoughtBytes, signatureOffset)),
       signature:
-        record.signatureBytes === null ? null : decoder.decode(bytes.subarray(signatureOffset)),
+        record.signatureBytes === null
+          ? null
+          : decoder.decode(bytes.subarray(signatureOffset, partsOffset)),
+      partSignatures: JSON.parse(decoder.decode(bytes.subarray(partsOffset))),
     });
   } catch {
     throw new ThoughtOwnerError();

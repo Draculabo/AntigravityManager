@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createReadStream } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { Readable, Transform } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import { x as extractTar } from 'tar';
+import { downloadStandaloneAsset, fetchStandaloneText } from './download-standalone-runtime.mjs';
 import { publishStandaloneRuntime, RuntimeRecoveryError } from './publish-standalone-runtime.mjs';
 import { materializeRuntime } from './trace-standalone-runtime.mjs';
 
@@ -69,25 +68,11 @@ async function run(executable, args, cwd, env = process.env) {
 }
 
 async function download(relative, destinationFile, expectedHash) {
-  const response = await fetch(`https://nodejs.org/dist/v${nodeVersion}/${relative}`, {
-    signal: AbortSignal.timeout(120_000),
-  });
-  assert(response.ok && response.body, `Node download failed: ${response.status}`);
-  const digest = createHash('sha256');
-  let bytes = 0;
-  const verifier = new Transform({
-    transform(chunk, _encoding, callback) {
-      bytes += chunk.length;
-      if (bytes > 150 * 1024 * 1024) {
-        callback(new Error('Node download exceeds capacity'));
-        return;
-      }
-      digest.update(chunk);
-      callback(null, chunk);
-    },
-  });
-  await pipeline(Readable.fromWeb(response.body), verifier, createWriteStream(destinationFile));
-  assert.equal(digest.digest('hex'), expectedHash, 'Official Node checksum mismatch');
+  await downloadStandaloneAsset(
+    `https://nodejs.org/dist/v${nodeVersion}/${relative}`,
+    destinationFile,
+    expectedHash,
+  );
 }
 
 async function hash(file) {
@@ -101,12 +86,10 @@ async function hash(file) {
 try {
   console.log(`Preparing standalone Node ${nodeVersion} for ${platform}-${arch}`);
   await mkdir(nodeDirectory, { recursive: true });
-  const checksumsResponse = await fetch(`https://nodejs.org/dist/v${nodeVersion}/SHASUMS256.txt`, {
-    signal: AbortSignal.timeout(30_000),
-  });
-  assert(checksumsResponse.ok);
-  const checksums = await checksumsResponse.text();
-  assert(checksums.length < 100_000);
+  const checksums = await fetchStandaloneText(
+    `https://nodejs.org/dist/v${nodeVersion}/SHASUMS256.txt`,
+    { maxBytes: 100_000 },
+  );
   const asset =
     platform === 'win32'
       ? `win-${arch}/node.exe`
@@ -118,12 +101,10 @@ try {
   assert(checksum && /^[a-f0-9]{64}$/.test(checksum), 'Official Node asset missing');
   if (platform === 'win32') {
     await download(asset, nodeExecutable, checksum);
-    const licenseResponse = await fetch(
+    const license = await fetchStandaloneText(
       `https://raw.githubusercontent.com/nodejs/node/v${nodeVersion}/LICENSE`,
-      { signal: AbortSignal.timeout(30_000) },
+      { maxBytes: 500_000 },
     );
-    assert(licenseResponse.ok);
-    const license = await licenseResponse.text();
     assert(license.length > 1000 && license.length < 500_000);
     await writeFile(path.join(nodeDirectory, 'LICENSE'), license);
   } else {

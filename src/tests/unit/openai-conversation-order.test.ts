@@ -5,6 +5,86 @@ import { convertOpenAIToClaude } from '@/modules/proxy-gateway/server/modules/op
 import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
 
 describe('OpenAI conversation order compatibility', () => {
+  it('preserves leading system/developer order and wraps only later reminders in place', () => {
+    const claudeRequest = convertOpenAIToClaude({
+      model: 'gemini-3-flash',
+      messages: [
+        { role: 'system', content: 'Rule S1.' },
+        { role: 'developer', content: 'Rule D1.' },
+        { role: 'user', content: 'Inspect the code.' },
+        { role: 'assistant', content: 'The inspection is complete.' },
+        { role: 'system', content: 'Rule S2.' },
+        { role: 'developer', content: 'Rule D2.' },
+        { role: 'user', content: 'Continue.' },
+      ],
+    });
+
+    expect(claudeRequest.system).toBe('Rule S1.\nRule D1.');
+    expect(claudeRequest.messages).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'Inspect the code.' }],
+      },
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'The inspection is complete.' }],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '<system-reminder>\nRule S2.\n</system-reminder>' }],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '<system-reminder>\nRule D2.\n</system-reminder>' }],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'Continue.' }],
+      },
+    ]);
+
+    const upstream = transformClaudeRequestIn(
+      claudeRequest,
+      'project',
+      'agent',
+      undefined,
+      'openai',
+    );
+    expect(upstream.request.systemInstruction?.parts[0]?.text).toBe('Rule S1.\nRule D1.');
+    expect(upstream.request.contents.map((message) => message.parts[0]?.text)).toEqual([
+      'Inspect the code.',
+      'The inspection is complete.',
+      '<system-reminder>\nRule S2.\n</system-reminder>',
+      '<system-reminder>\nRule D2.\n</system-reminder>',
+      'Continue.',
+    ]);
+  });
+
+  it('does not merge distinct instructions after removing billing metadata', () => {
+    const billingLine = 'x-anthropic-billing-header: cc_version=2.0; cc_entrypoint=cli;';
+    const claudeRequest = convertOpenAIToClaude({
+      model: 'gemini-3-flash',
+      messages: [
+        { role: 'system', content: `Current date: 2026-10-19\n\nRule A.` },
+        { role: 'system', content: `${billingLine}\nCurrent date: 2026-10-20\n\nRule A.` },
+        { role: 'user', content: 'Continue.' },
+      ],
+    });
+    const upstream = transformClaudeRequestIn(
+      claudeRequest,
+      'project',
+      'agent',
+      undefined,
+      'openai',
+    );
+    const instruction = upstream.request.systemInstruction?.parts[0]?.text ?? '';
+
+    expect(instruction).toContain('Current date: 2026-10-19');
+    expect(instruction).toContain('Current date: 2026-10-20');
+    expect(instruction.split('Rule A.').length - 1).toBe(2);
+    expect(instruction).not.toContain(billingLine);
+  });
+
   it('prepends a user turn when history starts with an assistant tool call', () => {
     const claudeRequest = convertOpenAIToClaude({
       model: 'gemini-3-flash',

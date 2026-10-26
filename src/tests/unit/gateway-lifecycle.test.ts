@@ -24,6 +24,7 @@ describe('GatewayLifecycleService', () => {
           success: true,
           port: config.port,
           base_url: `http://localhost:${config.port}`,
+          listen_address: '127.0.0.1',
         };
       },
     });
@@ -35,8 +36,8 @@ describe('GatewayLifecycleService', () => {
     finishFirstStart?.();
 
     expect(await Promise.all([first, second, stopped])).toEqual([
-      { success: true, port: 8045, base_url: 'http://localhost:8045' },
-      { success: true, port: 8046, base_url: 'http://localhost:8046' },
+      { success: true, port: 8045, base_url: 'http://localhost:8045', listen_address: '127.0.0.1' },
+      { success: true, port: 8046, base_url: 'http://localhost:8046', listen_address: '127.0.0.1' },
       true,
     ]);
     expect(events).toEqual(['stop', 'start:8045', 'stop', 'start:8046', 'stop']);

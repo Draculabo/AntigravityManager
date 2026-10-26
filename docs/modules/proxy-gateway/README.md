@@ -28,3 +28,9 @@ that module; cross-cutting runtime and security contracts remain in the root-lev
 
 For change-to-evidence selection, use the central [testing strategy](../../testing.md). For client
 settings recovery and sensitive local files, use [security and data boundaries](../../security.md).
+
+## Streaming and diagnostics
+
+- [Stream and tool compatibility](stream-tool-compatibility.md)
+- [Inline media and thought history](inline-media-and-thought-history.md)
+- [Diagnostic retention and queue pressure](diagnostic-retention.md)

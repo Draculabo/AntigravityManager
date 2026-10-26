@@ -1,4 +1,32 @@
 const vi = {
+  'account-evidence': {
+    'subscription-unavailable':
+      'Làm mới gói đăng ký thất bại; chưa có cấp đăng ký nào được xác nhận trước đó.',
+    'observed-at': 'Quan sát gần nhất: {{time}}',
+    'checked-at': 'Kiểm tra gần nhất: {{time}}',
+    'unknown-time': 'Chưa ghi nhận',
+    'invalid-data': 'Dữ liệu hạn mức không hợp lệ; hãy làm mới để kiểm tra.',
+    'reset-unknown': 'Chưa rõ thời gian đặt lại.',
+    'exhausted-unknown-reset': 'Hạn mức cửa sổ đã hết; chưa rõ thời gian đặt lại.',
+    'recheck-required': 'Cửa sổ đã hết hạn mức và kết thúc; cần làm mới để xác nhận khôi phục.',
+    'window-ended': 'Cửa sổ đã kết thúc; số dư chưa được xác nhận lại.',
+    'weekly-exhausted': 'Hạn mức tuần đã hết; số dư của cửa sổ khác không gỡ bỏ giới hạn này.',
+    'window-exhausted': 'Hạn mức cửa sổ đã hết.',
+    'group-restrictions': 'Giới hạn theo nhóm hạn mức',
+    'group-limited':
+      'Cửa sổ đã hết hạn mức. Lần đặt lại muộn nhất đã biết: {{time}}; vẫn cần xác nhận khôi phục.',
+    'subscription-failed':
+      'Làm mới gói đăng ký thất bại hoặc thiếu thông tin; đang hiển thị bản ghi trước.',
+    'subscription-unrecognized': 'Không nhận diện được cấp đăng ký; đang dùng mức cơ sở Free.',
+    'subscription-missing': 'Không nhận được thông tin đăng ký; đang dùng mức cơ sở Free.',
+    'subscription-observed': 'Đã ghi nhận thông tin đăng ký.',
+    'subscription-unknown': 'Chưa ghi nhận nguồn đăng ký.',
+    'source-paid': 'Nguồn: gói đăng ký trả phí',
+    'source-current': 'Nguồn: gói đăng ký hiện tại',
+    'source-free': 'Nguồn: cấp miễn phí được xác định rõ',
+    'source-unknown': 'Nguồn: chưa rõ',
+    'small-positive': 'Vẫn còn một ít số dư dương; cửa sổ này chưa hết hạn mức.',
+  },
   'agent-tools': {
     title: 'Kết nối công cụ lập trình',
     description: 'Chọn công cụ để dùng mô hình qua Antigravity Manager.',
@@ -60,7 +88,6 @@ const vi = {
       'key-missing': 'Hãy tạo khóa kết nối ở trang proxy trước.',
       'review-route-disabled': 'Tuyến kiểm tra Codex bị tắt. Hãy bật trong ánh xạ mô hình.',
     },
-
     'address-help': 'Giữ địa chỉ Manager hiện tại, trừ khi dịch vụ chạy trên máy tính khác.',
     'invalid-address':
       'Dùng địa chỉ Manager bắt đầu bằng http:// hoặc https://, không chứa thông tin đăng nhập hay tham số bổ sung.',
@@ -110,7 +137,6 @@ const vi = {
     unknown: 'Không rõ',
     notAvailable: 'Không có',
     openMenu: 'Mở menu',
-
     'dismiss-notification': 'Đóng thông báo',
     'reading-settings': 'Đang đọc cài đặt của bạn…',
   },
@@ -418,6 +444,30 @@ const vi = {
       groups: 'Nhóm hạn mức cần làm nóng',
       group: { claude: 'Nhóm hạn mức Claude', gemini: 'Nhóm hạn mức Gemini' },
     },
+    thinkingBudget: {
+      title: 'Ngân sách suy nghĩ',
+      description: 'Chọn ai quyết định mức độ suy nghĩ của mô hình và ngân sách cho từng cấp độ.',
+      controlSource: 'Nguồn điều khiển',
+      controlSourceHint:
+        'Gateway áp dụng các ngân sách bên dưới. Client chuyển tiếp ngân sách hoặc cấp độ effort từ yêu cầu.',
+      gatewayHint:
+        'Ngân sách -1 để mô hình upstream tự quyết định. 0 không phải ngân sách gateway hợp lệ; hãy giữ -1 để tiếp tục suy nghĩ thích ứng.',
+      clientHint:
+        'Yêu cầu tự quyết định ngân sách suy nghĩ hoặc cấp độ effort. Các ngân sách gateway bên dưới không được áp dụng.',
+      adaptiveHint: '-1 để mô hình quyết định',
+      invalid: 'Nhập -1 hoặc số nguyên từ 0 đến 131072.',
+      'configuration-invalid':
+        'Các giá trị ngân sách suy nghĩ này bị từ chối. Hãy nhập -1 hoặc số nguyên từ 0 đến 131072.',
+      source: { gateway: 'Gateway', client: 'Client' },
+      family: { flash: 'Gemini Flash', pro: 'Gemini Pro', claude: 'Claude' },
+      level: {
+        low: 'Thấp',
+        medium: 'Trung bình',
+        high: 'Cao',
+        tiered: 'Phân tầng',
+        default: 'Mặc định',
+      },
+    },
     title: 'Cài đặt',
     description: 'Quản lý tùy chọn ứng dụng.',
     general: 'Chung',
@@ -440,10 +490,7 @@ const vi = {
       french: 'Tiếng Pháp',
       portuguese: 'Tiếng Bồ Đào Nha (Brazil)',
     },
-    about: {
-      title: 'Thông tin',
-      description: 'Thông tin ứng dụng.',
-    },
+    about: { title: 'Thông tin', description: 'Thông tin ứng dụng.' },
     cache: {
       title: 'Bộ nhớ đệm Antigravity',
       description:
@@ -461,7 +508,6 @@ const vi = {
       clearedDescription: 'Đã xóa {{size}} MB khỏi các thư mục bộ nhớ đệm Antigravity.',
       failedTitle: 'Không thể xóa bộ nhớ đệm',
       notFoundTitle: 'Không tìm thấy bộ nhớ đệm Antigravity',
-
       'paths-failed': 'Không thể tìm vị trí bộ nhớ đệm',
       'paths-retry-description': 'Vui lòng thử lại trước khi xóa bộ nhớ đệm.',
       'partial-title': 'Không thể xóa một phần bộ nhớ đệm',
@@ -473,13 +519,8 @@ const vi = {
     license: 'Giấy phép',
     openLogDir: 'Mở',
     toast: {
-      saved: {
-        title: 'Đã lưu cài đặt',
-        description: 'Cấu hình của bạn đã được cập nhật.',
-      },
-      saveFailed: {
-        title: 'Không thể lưu cài đặt',
-      },
+      saved: { title: 'Đã lưu cài đặt', description: 'Cấu hình của bạn đã được cập nhật.' },
+      saveFailed: { title: 'Không thể lưu cài đặt' },
     },
     account: {
       'client-setup': 'Vị trí và cách khởi chạy ứng dụng',
@@ -686,30 +727,12 @@ const vi = {
     save: 'Lưu cài đặt',
   },
   toast: {
-    backupSuccess: {
-      title: 'Thành công',
-      description: 'Đã tạo bản sao lưu tài khoản.',
-    },
-    backupError: {
-      title: 'Lỗi',
-      description: 'Không thể tạo bản sao lưu: {{error}}',
-    },
-    switchSuccess: {
-      title: 'Thành công',
-      description: 'Chuyển tài khoản thành công.',
-    },
-    switchError: {
-      title: 'Lỗi',
-      description: 'Không thể chuyển tài khoản: {{error}}',
-    },
-    deleteSuccess: {
-      title: 'Thành công',
-      description: 'Đã xóa bản sao lưu tài khoản.',
-    },
-    deleteError: {
-      title: 'Lỗi',
-      description: 'Không thể xóa bản sao lưu: {{error}}',
-    },
+    backupSuccess: { title: 'Thành công', description: 'Đã tạo bản sao lưu tài khoản.' },
+    backupError: { title: 'Lỗi', description: 'Không thể tạo bản sao lưu: {{error}}' },
+    switchSuccess: { title: 'Thành công', description: 'Chuyển tài khoản thành công.' },
+    switchError: { title: 'Lỗi', description: 'Không thể chuyển tài khoản: {{error}}' },
+    deleteSuccess: { title: 'Thành công', description: 'Đã xóa bản sao lưu tài khoản.' },
+    deleteError: { title: 'Lỗi', description: 'Không thể xóa bản sao lưu: {{error}}' },
   },
   cloud: {
     'total-accounts': 'Tổng số tài khoản',
@@ -828,6 +851,13 @@ const vi = {
       resetUnknown: 'Không rõ',
       detailedQuota: 'Quota chi tiết',
       quotaGroupUnknown: 'Nhóm quota',
+      cycleUsage: 'Mức dùng trong chu kỳ hiện tại',
+      cycleUsageLoading: 'Đang tải mức dùng đã lưu…',
+      cycleUsageQueryFailed: 'Truy vấn mức dùng cho {{group}} thất bại',
+      cycleUsageTokens: '{{count}} token',
+      cycleUsageLocal: 'bản ghi cục bộ đã lưu',
+      cycleUsageRequests: 'đã tính {{count}}',
+      cycleUsageIncomplete: '{{ambiguous}} bản ghi chưa đầy đủ',
       gemini3Ready: 'Sẵn sàng cho Gemini 3',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',
@@ -840,6 +870,9 @@ const vi = {
       'proxy-replace-placeholder': 'Nhập địa chỉ proxy mới',
       'proxy-remove': 'Xóa proxy',
       'proxy-save-failed': 'Không thể lưu proxy',
+      'proxy-routing-save-failed': 'Không thể lưu cài đặt định tuyến proxy',
+      'proxy-priority': 'Độ ưu tiên proxy (1–100)',
+      'proxy-enabled': 'Cho phép tài khoản xử lý yêu cầu proxy',
       noProxy: 'Không dùng proxy',
       aiCredits: 'AI Credits',
       aiCreditsValue: '{{amount}} credits',
@@ -879,7 +912,6 @@ const vi = {
       deleteVersionSuccess: 'Đã xóa bản lịch sử',
       openFolderSuccess: 'Đã mở thư mục lưu hồ sơ',
       baseline: 'Thông tin thiết bị ban đầu',
-
       description: 'Lưu thông tin thiết bị cho tài khoản này để sử dụng khi chuyển tài khoản.',
       'load-failed': 'Không thể đọc thông tin thiết bị',
       'retry-description': 'Vui lòng thử lại. Thông tin thiết bị đã lưu chưa bị thay đổi.',
@@ -937,10 +969,7 @@ const vi = {
       quotaRefreshed: 'Đã làm mới quota',
       refreshFailed: 'Không thể làm mới quota',
       pollFailed: 'Không thể polling quota của tất cả tài khoản',
-      switched: {
-        title: 'Đã chuyển tài khoản!',
-        description: 'Đang khởi động lại Antigravity...',
-      },
+      switched: { title: 'Đã chuyển tài khoản!', description: 'Đang khởi động lại Antigravity...' },
       switchFailed: 'Không thể chuyển tài khoản',
       switchFailureCodes: {
         'account-not-found': 'Tài khoản này không còn tồn tại.',
@@ -1067,12 +1096,9 @@ const vi = {
         'session-consumed':
           'Kết quả quét này đã được sử dụng. Hãy quét lại để nhập thêm tài khoản.',
       },
-
       title: 'Nhập tài khoản từ máy này',
-
       trigger: 'Nhập tài khoản từ máy này',
     },
-
     feedback: {
       'loading-title': 'Đang đọc tài khoản',
       'loading-description': 'Thông tin tài khoản sẽ xuất hiện ở đây khi sẵn sàng.',
@@ -1149,9 +1175,39 @@ const vi = {
       'global-system-prompt-character-count': '{{count}} ký tự',
       'global-system-prompt-long-warning':
         'Hướng dẫn dài hơn 2.000 ký tự sẽ để lại ít chỗ hơn cho lịch sử hội thoại. Hãy cân nhắc rút gọn.',
+      compaction: {
+        title: 'Nén ngữ cảnh Cowork',
+        description:
+          'Phối hợp tóm tắt và thay thế lịch sử với ứng dụng Cowork; phiên thông thường không bị cắt tự động.',
+        auto: 'Bật phối hợp nén tự động',
+        'auto-desc':
+          'Chỉ các yêu cầu Cowork được nhận diện và vượt ngưỡng mới nhận phản hồi điều khiển cục bộ.',
+        manual: 'Bật phối hợp /compact thủ công',
+        'manual-desc':
+          'Cho phép lệnh Cowork /compact rõ ràng bắt đầu luồng do ứng dụng điều khiển.',
+        threshold: 'Ngưỡng tự động (token đầu vào ước tính)',
+        'threshold-desc':
+          'Mặc định 200.000; ngưỡng hiệu dụng cũng tính chi phí cố định của hệ thống và công cụ.',
+      },
       local_access: 'Truy cập trong mạng nội bộ:',
       select_ip: 'Chọn IP',
       no_token_warning: 'API key chưa được đặt. Bất kỳ ai trong mạng đều có thể truy cập!',
+      lan_access: 'Cho phép truy cập mạng nội bộ',
+      lan_access_desc: 'Mở proxy trên mạng nội bộ. Cần có API key.',
+      ip_access_title: 'Quy tắc truy cập IP',
+      ip_access_desc:
+        'Giới hạn yêu cầu mô hình, WebSocket và quản trị công khai theo địa chỉ máy khách.',
+      ip_filter_mode: 'Chế độ lọc IP',
+      ip_filter_off: 'Tắt',
+      ip_filter_allowlist: 'Chỉ danh sách cho phép',
+      ip_filter_blocklist: 'Danh sách chặn',
+      ip_filter_both: 'Danh sách cho phép và chặn',
+      ip_allowlist: 'IP hoặc CIDR được phép',
+      ip_blocklist: 'IP hoặc CIDR bị chặn',
+      trusted_proxy_cidrs: 'CIDR proxy tin cậy',
+      allowlist_precedence: 'Ưu tiên danh sách cho phép',
+      allowlist_precedence_desc:
+        'Địa chỉ trong danh sách cho phép có thể vượt qua mục bị chặn tương ứng.',
       show_key: 'Hiện',
       hide_key: 'Ẩn',
       cloud_code_meta: 'Tương thích Cloud Code',
@@ -1224,17 +1280,16 @@ const vi = {
       'success-title': 'Đã cập nhật cấu hình OpenCode',
       'error-title': 'Cập nhật OpenCode thất bại',
       'unknown-error': 'Lỗi cấu hình OpenCode không xác định',
-
       'choose-model-hint': 'Chọn ít nhất một mô hình để tiếp tục.',
       'config-retry-description': 'Vui lòng thử lại. Cấu hình đã lưu chưa bị thay đổi.',
     },
-    examples: {
-      title: 'Ví dụ sử dụng',
-      description: 'Ví dụ lệnh để gọi local API proxy.',
-    },
+    examples: { title: 'Ví dụ sử dụng', description: 'Ví dụ lệnh để gọi local API proxy.' },
     persistence: {
       title: 'Request history and reasoning',
       description: 'Inspect bounded local records without slowing model traffic.',
+      'successful-probes': 'Capture successful probes',
+      'successful-probes-description':
+        'Save successful health checks and model-directory polling. Failures and other business requests are still recorded when request history is enabled.',
       'audit-title': 'Lịch sử yêu cầu',
       'audit-description':
         'Lưu yêu cầu, phản hồi và các lần gửi tới dịch vụ mô hình trên máy tính này, đồng thời ẩn thông tin nhạy cảm.',
@@ -1243,9 +1298,30 @@ const vi = {
       dropped:
         'Không thể lưu {{count}} bản ghi ({{reason}}). Các yêu cầu mô hình vẫn tiếp tục bình thường.',
       'disk-gib': 'Disk limit (GiB)',
-      'body-hours': 'Thời gian giữ nội dung đầy đủ (giờ)',
-      'summary-days': 'Summary retention (days)',
+      'capacity-window':
+        'Giữ toàn bộ yêu cầu trong giới hạn dung lượng và số lượng. Xóa các yêu cầu đã hoàn tất cũ nhất trước; yêu cầu đang chạy được bảo vệ.',
       'max-rows': 'Maximum rows',
+      'queue-records': 'Pending command limit (32–4,096)',
+      'queue-mib': 'Pending command bytes (16–64 MiB)',
+      'version-unavailable': 'Refresh or upgrade the owner before editing audit settings.',
+      'save-saving': 'Saving and applying settings…',
+      'save-applied': 'Settings saved and applied.',
+      maintenance: 'History maintenance: {{state}}',
+      'maintenance-running': 'running',
+      'maintenance-scheduled': 'scheduled',
+      'maintenance-idle': 'idle',
+      'maintenance-stopped': 'stopped',
+      'maintenance-unknown': 'unavailable',
+      'reload-failed': 'Settings could not be refreshed. Refresh this page before retrying.',
+      'save-restart-required':
+        'Saved, but runtime application is incomplete. Check service status.',
+      'save-conflict': 'Settings changed elsewhere. Review refreshed settings before retrying.',
+      'save-failed': 'Save completion unconfirmed. Refresh and review before retrying.',
+      'invalid-number': 'Enter a finite number of at least {{min}}.',
+      'budget-current':
+        'Configured: {{disk}} MiB / {{rows}} requests. Queue: {{commands}} commands / {{queue}} MiB.',
+      'pressure-note':
+        'Reclamation is gradual and active captures/readers can delay it. The latest drop does not guarantee current write status.',
       'no-audit': 'No traffic records yet.',
       'audit-metadata': 'Chi tiết yêu cầu và các lần gọi dịch vụ mô hình',
       'audit-body-missing': 'Nội dung đầy đủ của yêu cầu hoặc phản hồi không còn được lưu.',
@@ -1264,7 +1340,40 @@ const vi = {
       'thought-title': 'Reasoning history',
       'thought-description': 'Save reasoning so later turns can continue the conversation.',
       sessions: '{{count}} sessions',
-      'hard-limit': 'Mỗi cuộc hội thoại lưu tối đa 200 lượt và 64 MiB nội dung.',
+      'hard-limit':
+        'Memory cache: {{turns}} turns / {{memory}} MiB per session. Durable history has its own {{disk}} MiB disk budget and retention.',
+      'thought-cache-turns': 'Cached turns per session (10–10,000)',
+      'thought-cache-mib': 'Session cache limit (1–64 MiB)',
+      'thought-disk-mib': 'Reasoning disk budget (128–16,384 MiB)',
+      'thought-stats-unavailable': 'Reasoning statistics are unavailable.',
+      'thought-count-unknown': 'Saved record count unavailable',
+      'thought-records': '{{count}} saved records',
+      'thought-memory': 'Memory: {{records}} records / {{bytes}}',
+      'thought-tool-links': 'Recoverable tool links: {{records}}',
+      'thought-recovery-partial':
+        'Thought records were processed, but some recovery-history cleanup is unconfirmed. Refresh and check before another operation.',
+      'no-thought-records': 'No saved reasoning records in this page.',
+      'thought-record-pages': 'Reasoning history pages',
+      'history-page-complete': 'Page {{page}} · end of this history window',
+      'history-page-more': 'Page {{page}} · more records available',
+      'record-unavailable': 'This record is no longer available. Refresh the session.',
+      'thought-delete-receipt': 'Deleted {{sessions}} sessions and {{records}} records.',
+      'thought-delete-scope':
+        'Delete all retained reasoning records in session {{session}}? Other sessions are unaffected.',
+      'thought-mutation-uncertain':
+        'The operation could not be confirmed. History was refreshed; check it before trying again.',
+      'cancel-action': 'Cancel',
+      'thought-failures':
+        'Failures: {{reads}} reads / {{admission}} cold admissions / {{writes}} writes',
+      'thought-write-failure':
+        'Last persistence failure: {{reason}}. Current memory does not guarantee recovery after restart.',
+      'thought-session-capacity': 'No durable session slot available',
+      'thought-maintenance-active-sessions': 'Maintenance deferred to protect active requests.',
+      'thought-maintenance-checkpoint-busy': 'Maintenance paused for a pinned SQLite reader.',
+      'thought-maintenance-no-progress':
+        'Disk reclamation made no progress; further pressure deletion paused.',
+      'thought-maintenance-oversized-record':
+        'An old record exceeds the bounded cleanup budget; manual diagnosis is required.',
       'retention-days': 'Retention (days)',
       'max-sessions': 'Maximum sessions',
       oversized: 'Nội dung vượt quá 64 MiB nên không được lưu đầy đủ.',
@@ -1273,6 +1382,9 @@ const vi = {
       'copy-signature': 'Copy signature',
       'no-thought': 'No reasoning history yet.',
       'clear-thought': 'Clear reasoning history',
+      'clear-failed': 'Không thể xóa lịch sử suy luận.',
+      'delete-failed': 'Không thể xóa phiên này.',
+      'load-failed': 'Không thể tải các phiên suy luận.',
       'repair-thought': 'Repair reasoning history',
       'confirm-clear': 'Confirm clear',
       'confirm-repair': 'Confirm repair',
@@ -1286,6 +1398,68 @@ const vi = {
     'fallback-attempt-recovered': 'Đã khôi phục ở lần thử {{index}} {{operation}}{{status}}',
     'reset-dropped': 'Đặt lại',
     'reset-dropped-failed': 'Không thể đặt lại bộ đếm. Vui lòng thử lại.',
+    'archive-storage-note':
+      'Backups are kept separately and are not automatically removed by the audit capacity window.',
+    'capture-interrupted-description':
+      'The previous application process stopped before capture finished. The model result is unknown; the recorded end time is when capture was reconciled.',
+    'live-storage': 'Live audit: {{size}}',
+    'archive-storage': 'Backups: {{size}} ({{count}} files)',
+    'archive-storage-unknown': 'Backup size unknown',
+    'storage-unavailable': 'Could not measure audit storage.',
+    'storage-loading': 'Measuring audit storage…',
+    'save-full': 'Export saved content',
+    'copy-loaded': 'Copy visible view',
+    capture: {
+      refresh: 'Refresh capture',
+      missing: 'No saved body',
+      'missing-description':
+        'No capture metadata is available for this selection. The reason is unknown.',
+      writing: 'Capture in progress',
+      'writing-description':
+        'Saved content may still change. Export is available after capture finishes.',
+      complete: 'Capture complete',
+      empty: 'Empty body captured',
+      summary: 'Binary summary saved',
+      'summary-description':
+        'Only a summary was captured; the original binary content is not stored.',
+      partial: 'Partially saved',
+      'not-saved': 'Body not saved',
+      expired: 'Previously expired body',
+      oversized: 'The capture exceeded its size limit. Only the saved portion is available.',
+      'incomplete-description':
+        'The capture is incomplete. Missing content cannot be reconstructed from this record.',
+      sizes: 'Saved {{stored}} · Observed {{logical}}',
+      'hash-full': 'Hash covers the captured safe representation.',
+      'hash-prefix': 'Hash covers only the saved prefix.',
+      'hash-unavailable': 'No verification hash is available.',
+      loaded: 'Loaded content: {{size}}',
+      'read-failed': 'Could not load saved content. Any loaded pages are kept; try again.',
+      retry: 'Retry loading',
+      loading: 'Loading saved content…',
+      cancel: 'Pause loading',
+      paused: 'Loading paused.',
+      resume: 'Resume loading',
+      'copy-failed': 'Could not copy the visible content. Try again.',
+      'save-failed': 'Could not export the saved content. Try again.',
+      copied: 'Visible content copied',
+      saved: 'Saved content exported',
+      reasons: {
+        'disk-budget': 'The audit disk budget was reached.',
+        'disk-unknown': 'Available audit storage could not be measured.',
+        'checkpoint-busy': 'A SQLite reader prevented disk reclamation.',
+        'reclaim-failed': 'Audit storage could not be reclaimed.',
+        'read-only': 'Audit storage is read-only.',
+        'disk-full': 'The storage volume is full.',
+        'capture-disabled': 'Capture was disabled before this body finished.',
+        'worker-restart': 'Capture was interrupted by an audit worker restart.',
+        retention: 'An earlier age-retention policy removed this content. It cannot be restored.',
+        'disk-pressure': 'An earlier disk-pressure policy removed this content.',
+        'write-failure': 'Some body chunks could not be queued or saved.',
+        'transfer-incomplete': 'The body transfer did not finish.',
+        'serialization-failure': 'The body could not be serialized for capture.',
+        unknown: 'Capture stopped without a recognized reason.',
+      },
+    },
     'detail-load-failed': 'Không tải được yêu cầu này. Vui lòng thử lại.',
     'detail-not-found': 'Bản ghi này không còn khả dụng. Có thể đã bị xóa.',
     fields: {
@@ -1303,6 +1477,7 @@ const vi = {
       query: 'Tùy chọn yêu cầu bổ sung',
     },
     outcomes: {
+      capture_interrupted: 'Capture interrupted',
       in_progress: 'Đang xử lý',
       completed: 'Đã hoàn tất',
       client_cancelled: 'Đã hủy',
@@ -1334,7 +1509,6 @@ const vi = {
     'parse-error': 'Không thể đọc nội dung tại vị trí {{offset}}.',
     'thought-oversized':
       'Nội dung suy luận vượt quá 64 MiB nên không được lưu đầy đủ. Mã tham chiếu: {{hash}}',
-
     'loading-description': 'Bản ghi yêu cầu sẽ xuất hiện ở đây khi sẵn sàng.',
     'empty-description':
       'Các yêu cầu gửi qua proxy xuất hiện ở đây. Bạn cũng có thể điều chỉnh bộ lọc.',
@@ -1343,6 +1517,52 @@ const vi = {
     'load-failed': 'Không thể đọc bản ghi yêu cầu',
     'load-failed-description': 'Vui lòng thử lại. Điều này không có nghĩa là bản ghi đã bị xóa.',
     'refresh-failed': 'Không thể làm mới bản ghi. Dữ liệu đã tải trước đó vẫn được hiển thị.',
+    searching: 'Đang tìm kiếm…',
+    jumping: 'Đang mở vị trí khớp…',
+    'search-failed': 'Không thể tìm kiếm nội dung này. Hãy thử lại.',
+    clearing: 'Đang xóa…',
+    'clear-failed':
+      'Chưa xác nhận hoàn tất việc xóa. Hãy làm mới trước khi thử lại; quá trình ghi đang chạy có thể đã dừng.',
+    'resize-column': 'Điều chỉnh chiều rộng cột {{column}}',
+    'reset-columns': 'Đặt lại chiều rộng cột',
+    'columns-unsaved': 'Đã đổi chiều rộng cột trong chế độ xem này nhưng không thể lưu.',
+    'clear-scope':
+      'Xóa mọi bản ghi {{category}}, kể cả ngoài bộ lọc hiện tại? Kho suy nghĩ và tệp chẩn đoán không bị ảnh hưởng.',
+    'clear-complete': 'Đã xóa {{count}} bản ghi trong {{category}}.',
+    'exact-session': 'ID phiên đã lưu chính xác',
+    'apply-session': 'Áp dụng phiên',
+    'reset-session': 'Đặt lại phiên',
+    'recorded-usage': 'Recorded response usage',
+    'usage-source-unretained':
+      'Provider provenance is not retained for these counters. Local estimates are not mixed into this display.',
+    'cache-rate': 'Cached input / total input',
+    'cache-rate-missing': 'Unknown — input or cache count missing',
+    'cache-rate-zero-input': 'Not applicable — zero input',
+    'cache-rate-inconsistent': 'Inconsistent recorded counts',
+    'local-estimate': 'Local estimate',
+    'estimate-not-retained': 'Not retained in this audit record',
+    'measured-stages': 'Recorded gateway timing stages',
+    'stage-overlap-note':
+      'Stages can overlap; do not add them. Missing stages and legacy zeros remain unknown.',
+    'stage-clean': 'Request preparation',
+    'stage-normalization': 'Normalization',
+    'stage-thinking': 'Thought restoration',
+    'stage-ttft': 'Latest upstream attempt to first byte',
+    'wrap-lines': 'Wrap lines',
+    'view-mode-unsaved': 'Display mode changed, but could not be saved.',
+    'match-position': 'Match {{current}} of {{count}}',
+    'previous-match': 'Previous match',
+    'next-match': 'Next match',
+    'cancel-search': 'Cancel search',
+    'export-session': 'Export saved session',
+    'session-exporting': 'Exporting session…',
+    'session-export-scope':
+      'All saved model requests, attempts and bodies. Up to 2,000 settled requests and 100 MiB; partial captures stay partial.',
+    'session-export-needs-scope':
+      'Select a scoped saved-session key. Older records can be exported per body.',
+    'session-export-saved': 'Saved session export.',
+    'session-export-failed':
+      'Export completion could not be confirmed. Check the destination file. Wait for requests to settle, refresh and retry; active, changed, missing or oversized data is refused.',
   },
 };
 export default vi;

@@ -84,6 +84,8 @@ describe('schema admission before account execution', () => {
           error: {
             type: 'invalid_request_error',
             message: 'Invalid request schema: unsupported-reference',
+            code: 'invalid_request_schema',
+            param: null,
           },
         });
       } else {

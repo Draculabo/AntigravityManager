@@ -1,7 +1,11 @@
 import { isEmpty, isNumber, isString } from 'lodash-es';
 import type { CloudQuotaData } from '@/modules/cloud-account/types';
 
-const THIRD_PARTY_QUOTA_GROUP_PATTERN = /claude|gpt|3p/i;
+import {
+  modelQuotaWindows,
+  isExhaustedQuotaWindow,
+  latestExhaustedWindowReset,
+} from '@/modules/cloud-account/utils/quota-windows';
 
 export interface AccountLeaseQuotaSnapshot {
   modelQuotas: Record<string, number>;
@@ -16,49 +20,6 @@ function normalizeModelId(modelId: string | null | undefined): string | undefine
   }
   const normalized = modelId.replace(/^models\//i, '').trim();
   return normalized !== '' ? normalized : undefined;
-}
-
-function isThirdPartyModel(modelName: string): boolean {
-  const normalizedModelName = modelName.toLowerCase();
-  return normalizedModelName.includes('claude') || normalizedModelName.includes('gpt');
-}
-
-function extractThirdPartyQuotaFloor(
-  quota: CloudQuotaData | undefined,
-): { percentage: number; resetTime: string } | null {
-  let lowest: { percentage: number; resetTime: string } | null = null;
-
-  for (const group of quota?.quota_groups ?? []) {
-    const groupText = [group.display_name, group.description].filter(Boolean).join(' ');
-    const groupMatches = THIRD_PARTY_QUOTA_GROUP_PATTERN.test(groupText);
-
-    for (const bucket of group.buckets) {
-      const bucketText = [bucket.bucket_id, bucket.window, bucket.display_name, bucket.description]
-        .filter(Boolean)
-        .join(' ');
-      if (!groupMatches && !THIRD_PARTY_QUOTA_GROUP_PATTERN.test(bucketText)) {
-        continue;
-      }
-
-      const percentage = Math.floor(bucket.remaining_fraction * 100);
-      if (!Number.isFinite(percentage)) {
-        continue;
-      }
-
-      if (
-        !lowest ||
-        percentage < lowest.percentage ||
-        (percentage === lowest.percentage && bucket.reset_time < lowest.resetTime)
-      ) {
-        lowest = {
-          percentage,
-          resetTime: bucket.reset_time,
-        };
-      }
-    }
-  }
-
-  return lowest;
 }
 
 export function buildAccountLeaseQuotaSnapshot(
@@ -76,7 +37,7 @@ export function buildAccountLeaseQuotaSnapshot(
     }
 
     if (Number.isFinite(modelInfo.percentage)) {
-      modelQuotas[normalizedModel] = Math.floor(modelInfo.percentage);
+      modelQuotas[normalizedModel] = modelInfo.percentage;
     }
 
     const limitCandidate = modelInfo.max_output_tokens ?? modelInfo.max_tokens;
@@ -89,18 +50,23 @@ export function buildAccountLeaseQuotaSnapshot(
     }
   }
 
-  const thirdPartyQuotaFloor = extractThirdPartyQuotaFloor(quota);
-  if (thirdPartyQuotaFloor) {
-    for (const modelName of Object.keys(modelQuotas)) {
-      if (!isThirdPartyModel(modelName)) {
-        continue;
+  for (const model of Object.keys(modelQuotas)) {
+    for (const window of modelQuotaWindows(quota, model)) {
+      const percentage = isExhaustedQuotaWindow(window) ? 0 : window.remaining_fraction * 100;
+      if (percentage < modelQuotas[model]) {
+        modelQuotas[model] = percentage;
+        modelResetTimes[model] = window.reset_time;
       }
-
-      if (thirdPartyQuotaFloor.percentage < modelQuotas[modelName]) {
-        modelQuotas[modelName] = thirdPartyQuotaFloor.percentage;
-        if (!isEmpty(thirdPartyQuotaFloor.resetTime)) {
-          modelResetTimes[modelName] = thirdPartyQuotaFloor.resetTime;
-        }
+    }
+    const reset = latestExhaustedWindowReset(quota, model);
+    if (reset && modelQuotas[model] === 0) {
+      const current = modelResetTimes[model];
+      if (
+        !current ||
+        !Number.isFinite(Date.parse(current)) ||
+        Date.parse(reset) > Date.parse(current)
+      ) {
+        modelResetTimes[model] = reset;
       }
     }
   }
@@ -123,9 +89,11 @@ export function buildAccountLeaseQuotaSnapshot(
 }
 
 export function findEarliestQuotaResetTime(modelResetTimes: Record<string, string>): string | null {
-  const validTimes = Object.values(modelResetTimes).filter((value) => !isEmpty(value.trim()));
+  const validTimes = Object.values(modelResetTimes).filter((value) =>
+    Number.isFinite(Date.parse(value)),
+  );
   if (validTimes.length === 0) {
     return null;
   }
-  return [...validTimes].sort()[0];
+  return [...validTimes].sort((a, b) => Date.parse(a) - Date.parse(b))[0];
 }

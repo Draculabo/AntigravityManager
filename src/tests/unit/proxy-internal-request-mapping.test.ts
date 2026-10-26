@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toInternalGeminiRequest } from '@/modules/proxy-gateway/server/modules/gemini/gemini-request-envelope';
+import { createGeminiRequestEnvelope } from '@/modules/proxy-gateway/server/modules/gemini/gemini-request-envelope';
 import type { GeminiRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
@@ -8,7 +8,7 @@ function toInternalRequest(
   request: GeminiRequest,
   model = 'gemini-3-flash',
 ): GeminiInternalRequest['request'] {
-  return toInternalGeminiRequest(request, model);
+  return createGeminiRequestEnvelope(model, request, undefined, 'generate', 'test').request;
 }
 
 describe('toInternalGeminiRequest', () => {
@@ -84,7 +84,7 @@ describe('toInternalGeminiRequest', () => {
   });
 
   it.each(['gemini-3.5-flash-high', 'gemini-3.6-flash', 'gemini-3.7-flash'])(
-    'injects both sentinel signature fields into unsigned %s function calls',
+    'leaves unsigned %s function calls unsigned',
     (model) => {
       const contents = [
         {
@@ -95,11 +95,11 @@ describe('toInternalGeminiRequest', () => {
 
       const internal = toInternalRequest({ contents } as GeminiRequest, model);
 
+      expect(internal.contents).toStrictEqual(contents);
       expect(internal.contents).not.toBe(contents);
+      expect(internal.contents[0]?.parts[0]).not.toBe(contents[0].parts[0]);
       expect(internal.contents[0]?.parts[0]).toEqual({
         functionCall: { name: 'get_weather', args: {}, id: 'call_weather' },
-        thoughtSignature: 'skip_thought_signature_validator',
-        thought_signature: 'skip_thought_signature_validator',
       });
     },
   );

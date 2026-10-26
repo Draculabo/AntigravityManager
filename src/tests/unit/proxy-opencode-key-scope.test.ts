@@ -3,6 +3,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminGuard } from '@/modules/proxy-gateway/server/guards/admin.guard';
 import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
+import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 
 const credentialMocks = vi.hoisted(() => ({
   matches: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
 
 vi.mock('@/server/server-config', () => ({
   getServerConfig: () => ({
+    ...DEFAULT_APP_CONFIG.proxy,
     api_key: 'global-admin-key',
   }),
 }));

@@ -41,6 +41,7 @@ describe('cloud account weekly warmup runner', () => {
     vi.spyOn(WeeklyWarmupService, 'isEnabled').mockReturnValue(true);
     vi.spyOn(WeeklyWarmupService, 'run').mockResolvedValue(['warmup-account']);
     vi.spyOn(CloudAccountRepo, 'updateQuota').mockResolvedValue();
+    vi.spyOn(CloudAccountRepo, 'getAccount').mockImplementation(async () => account());
   });
 
   afterEach(async () => {
@@ -58,11 +59,16 @@ describe('cloud account weekly warmup runner', () => {
     await runner.run([stored]);
 
     expect(WeeklyWarmupService.run).toHaveBeenCalledWith([stored], executor);
-    expect(stored.quota).toEqual({
+    const expectedQuota = {
       models: { gemini: { percentage: 80, resetTime: 'soon' } },
       ai_credits: { credits: 3, expiryDate: 'later' },
-    });
-    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith(stored.id, stored.quota);
+    };
+    expect(CloudAccountRepo.updateQuota).toHaveBeenCalledWith(
+      stored.id,
+      expectedQuota,
+      expect.any(Function),
+    );
+    expect(stored.quota).toEqual(account().quota);
   });
 
   it('does not run when the saved warmup configuration is disabled', async () => {

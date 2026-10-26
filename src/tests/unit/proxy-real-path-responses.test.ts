@@ -650,9 +650,12 @@ describe('real request path, Responses input compatibility', () => {
       });
       expect(JSON.stringify(upstream.calls[1]?.body.request.tools)).toContain('lookup');
       expect(OpenAIResponsesSessionStore.get(transientResponseId)).toBeNull();
+      const initialSessionKey = z
+        .object({ sessionKey: z.string().min(1) })
+        .parse(lease.getNextToken.mock.calls[0]?.[0]).sessionKey;
       expect(lease.getNextToken).toHaveBeenNthCalledWith(
         2,
-        expect.objectContaining({ sessionKey: `openai:${rootResponseId}` }),
+        expect.objectContaining({ sessionKey: initialSessionKey }),
       );
     },
   );

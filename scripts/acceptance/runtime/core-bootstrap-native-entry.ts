@@ -7,7 +7,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { parse } from 'jsonc-parser';
 import { DEFAULT_APP_CONFIG } from '../../../src/modules/config/types';
-import { getAgentDir } from '../../../src/shared/platform/paths';
+import { getAgentDir, getProxyStateDir, getAntigravityDbPaths } from '../../../src/shared/platform/paths';
+import { z } from 'zod';
 import { bootstrapDesktopOwner } from '../../../src/modules/app-shell/services/desktop-owner-bootstrap';
 import { standaloneCoreConnection } from '../../../src/modules/app-shell/services/standalone-core-connection';
 import { selectDesktopOwners } from '../../../src/modules/app-shell/services/desktop-owner-selection';
@@ -88,6 +89,12 @@ async function verifyPackagedCli(entry: string, home: string): Promise<void> {
 async function check(): Promise<void> {
   const home = process.env.AGM_DIAGNOSTIC_TEST_HOME;
   assert(home);
+  for (const target of ['classic', 'ide'] as const) {
+    for (const candidate of getAntigravityDbPaths(target)) {
+      const relative = path.relative(home, candidate);
+      assert(!relative.startsWith('..') && !path.isAbsolute(relative), 'Client database discovery escaped the isolated home');
+    }
+  }
   assert.equal(
     getManagementEndpoint(),
     getManagementEndpoint(process.platform, home),
@@ -109,6 +116,23 @@ async function check(): Promise<void> {
       },
     }),
   );
+  const responsesPath = path.join(getProxyStateDir(), 'openai-responses-sessions.json');
+  await fs.mkdir(path.dirname(responsesPath), { recursive: true });
+  await fs.writeFile(responsesPath, JSON.stringify({ version: 1, entries: ['A', 'B'].map((key) => ({
+    key: `native-owner-${key}`, updatedAt: Date.now(), value: { node: {
+      identity: { version: 1, origin: 'content', initialTaskFingerprint: 'f'.repeat(64) },
+      thoughtSessionKey: `native-owner-scope-${key}`, historyOwner: 'unknown', parent: null,
+      inputDelta: [{ role: 'user', content: key }], responseOutput: [], toolCallItems: [], model: 'fixture',
+    } },
+  })) }));
+  const retainedResponseKeys = async () => z.object({ entries: z.array(z.object({ key: z.string() })) })
+    .parse(JSON.parse(await fs.readFile(responsesPath, 'utf8'))).entries.map((entry) => entry.key);
+  const assertRecoveryDeletion = (receipt: Awaited<ReturnType<CoreRpcClient['thought']['delete']>>, removed: number) => {
+    assert.deepEqual(receipt, { sessions: 0, records: 0, recoveryComplete: true, recovery: [
+      { owner: 'signature-cache', state: 'complete', removed: 0, unknown: 0 },
+      { owner: 'responses', state: 'complete', removed, unknown: 0 },
+    ] });
+  };
   const children: ChildProcess[] = [];
   const connection = {
     ...standaloneCoreConnection(),
@@ -178,9 +202,13 @@ async function check(): Promise<void> {
     await client.openCode.status('http://127.0.0.1:8045');
     assert.equal((await client.gatewayStatus()).running, false);
     await client.thought.stats();
+    assertRecoveryDeletion(await client.thought.delete({ sessionKey: 'native-owner-scope-A' }), 1);
+    assert.deepEqual(await retainedResponseKeys(), ['native-owner-B']);
+    process.stdout.write('Selected-owner deletion before first gateway start passed.\n');
     if (process.env.AGM_DIAGNOSTIC_TEST_LARGE_THOUGHT === '1') {
-      const records = await client.thought.records({ sessionKey: LARGE_THOUGHT_SESSION });
-      assert.equal(records.length, 1);
+      const page = await client.thought.records({ sessionKey: LARGE_THOUGHT_SESSION });
+      assert.equal(page.records.length, 1);
+      assert.equal(page.complete, true);
       const expected = createHash('sha256');
       let remaining = LARGE_THOUGHT_BYTES;
       const block = Buffer.alloc(64 * 1024, 'T');
@@ -193,7 +221,7 @@ async function check(): Promise<void> {
       for (let repeat = 0; repeat < 3; repeat += 1) {
         const opened = await client.thought.openRecord({
           sessionKey: LARGE_THOUGHT_SESSION,
-          id: records[0].id,
+          id: page.records[0].id,
         });
         assert(opened);
         assert.equal(opened.thoughtBytes, LARGE_THOUGHT_BYTES);
@@ -266,6 +294,9 @@ async function check(): Promise<void> {
     await verifyInstalledWebSocket(address.port, apiKey);
     await client.stopGateway();
     assert.equal((await client.gatewayStatus()).running, false);
+    assertRecoveryDeletion(await client.thought.delete({ sessionKey: 'native-owner-scope-B' }), 1);
+    assert.deepEqual(await retainedResponseKeys(), []);
+    process.stdout.write('Stopped-gateway selected-owner deletion and JSON readback passed.\n');
     process.stdout.write('Remote gateway start, authenticated boundary and stop passed.\n');
     await ipcAuditRecorder.run(['native', 'bootstrap'], { message: 'isolated input' }, () =>
       client.contextCacheStatus(),
@@ -284,6 +315,10 @@ async function check(): Promise<void> {
     await exiting;
     assert.equal(await connection.probeProfileOwner(), null);
     const reopened = await bootstrapDesktopOwner(dependencies);
+    const reopenedHandshake = await connection.management.handshake();
+    const reopenedClient = new CoreRpcClient(getManagementEndpoint(), undefined, reopenedHandshake.epoch);
+    assertRecoveryDeletion(await reopenedClient.thought.delete({ sessionKey: 'native-owner-scope-A' }), 0);
+    assert.deepEqual(await retainedResponseKeys(), []);
     const rows = await getAuditAdapter().list({ limit: 50, offset: 0, trafficClass: 'ipc' });
     assert(rows.items.some((item) => item.url === '/ipc/native/bootstrap'));
     const reopenedExit = once(children[1], 'exit');

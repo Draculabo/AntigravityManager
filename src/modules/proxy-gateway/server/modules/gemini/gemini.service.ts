@@ -1,6 +1,29 @@
+import type { CloudAccount } from '@/modules/cloud-account/types';
+import { assertGeminiGenerationHistory } from '../../common/generation-history';
+import { throwIfRequestAborted } from '../../common/request-cancellation';
+import { upstreamGenerationFailure } from '../../common/upstream-generation-failure';
+import { resolveUpstreamErrorHttpStatus } from '../../common/upstream-error-http-status';
+import { publicGoogleErrorDetails } from '../../common/upstream-error-codec';
+import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
+import { IncrementalSseLines } from '../../common/incremental-sse-lines';
+import { FlowControlledSseStream } from '../../common/flow-controlled-sse-stream';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
+import {
+  decodeInternalSseData,
+  describeInternalSseError,
+  IncrementalSseDataParser,
+} from '@/modules/proxy-gateway/antigravity/internal-sse';
 import { GeminiToolConfigAliasesSchema } from '../../../antigravity/GeminiToolConfigCompat';
-import { createGeminiRequestEnvelope } from './gemini-request-envelope';
+import { createGeminiRequestEnvelope, toInternalGeminiRequest } from './gemini-request-envelope';
+import { resolveGlobalSystemPrompt } from '@/modules/proxy-gateway/antigravity/GlobalSystemPrompt';
+import { applyGeminiMediaSendWindow } from '@/modules/proxy-gateway/antigravity/MediaSendWindowApply';
+import { getServerConfig } from '@/server/server-config';
+import { assertGeminiThoughtSignatureAliases } from './gemini-thought-signature-validation';
+import { normalizeGeminiToolCallIds } from './gemini-tool-call-identity';
+import { assertGeminiThoughtSignatureModel } from './gemini-thought-signature-model';
+import { InvalidThoughtSignatureModelError } from '../../common/invalid-thought-signature-model.exception';
+import { UpstreamThoughtSignatureConflictError } from '../../common/upstream-thought-signature-validation';
 import { isEmpty, isNumber } from 'lodash-es';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
@@ -12,7 +35,10 @@ import {
   GeminiResponse,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { resolveRequestUserAgent } from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
-import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import {
+  BaseProxyService,
+  type CountTokensResult,
+} from '@/modules/proxy-gateway/server/common/base-proxy.service';
 import {
   markProxyCleanComplete,
   markProxyNormalizationStarted,
@@ -25,15 +51,25 @@ import {
   type ImageSchedulerPermit,
 } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
 import { isGeminiImageModel } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
-import { captureCurrentAuditUsage } from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import {
+  captureCurrentAuditUsage,
+  captureCurrentAuditSession,
+} from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import {
+  resolveGeminiSessionScope,
+  type SignatureScopeContext,
+} from '../../common/signature-session-scope';
 import {
   applyGeminiModelVariant,
   rebindGeminiModelVariant,
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import {
   InvalidCountTokensRequestError,
-  resolveCountTokensContents,
+  resolveCountTokensRequest,
 } from '@/modules/proxy-gateway/server/modules/gemini/gemini-count-tokens';
+import { registerObservableFlowControl } from '../../common/observable-flow-control';
+import { publicProxyErrorMessage } from '../../common/public-error-message';
+import { GenerationOutputState } from '../../../antigravity/GenerationOutputState';
 
 @Injectable()
 export class GeminiService extends BaseProxyService {
@@ -64,8 +100,16 @@ export class GeminiService extends BaseProxyService {
    * as a real number, and a client budgeting a context window against it would overflow silently.
    */
   async handleGeminiCountTokens(model: string, request: GeminiRequest): Promise<number> {
-    const contents = resolveCountTokensContents(request);
-    if (!contents) {
+    const result = await this.handleGeminiCountTokensWithSource(model, request);
+    return result.totalTokens;
+  }
+
+  async handleGeminiCountTokensWithSource(
+    model: string,
+    request: GeminiRequest,
+  ): Promise<CountTokensResult> {
+    const resolved = resolveCountTokensRequest(request);
+    if (!resolved) {
       throw new InvalidCountTokensRequestError(
         'countTokens requires contents, either directly or inside generateContentRequest',
       );
@@ -73,12 +117,27 @@ export class GeminiService extends BaseProxyService {
 
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
-    const appliedVariantRequest = applyGeminiModelVariant(routeResolution.resolvedModel, request);
+    const appliedVariantRequest = applyGeminiModelVariant(
+      routeResolution.resolvedModel,
+      resolved.request,
+    );
     this.logger.log(
       `Gemini countTokens request received: model=${normalizedModel}, mappedModel=${appliedVariantRequest.model}, routeSource=${routeResolution.source}`,
     );
 
-    return this.countTokensWithLease(appliedVariantRequest.model, contents, 'Gemini-countTokens');
+    const estimateRequest = toInternalGeminiRequest(appliedVariantRequest.request, true);
+
+    return this.countTokensWithLeaseDetailed(
+      appliedVariantRequest.model,
+      resolved.contents,
+      'Gemini-countTokens',
+      {
+        requestId: '',
+        request: estimateRequest,
+        model: appliedVariantRequest.model,
+        userAgent: await resolveRequestUserAgent(),
+      },
+    );
   }
 
   async handleGeminiGenerateContent(
@@ -87,7 +146,15 @@ export class GeminiService extends BaseProxyService {
     requestType: 'generate-content' | 'image_gen' = 'generate-content',
     signal?: AbortSignal,
     imageRetryPenaltyMode: ImageRetryPenaltyMode = 'gemini',
+    requestContext?: SignatureScopeContext,
   ): Promise<GeminiResponse> {
+    throwIfRequestAborted(signal);
+    const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
+    assertGeminiThoughtSignatureAliases(request.contents);
+    request = normalizeGeminiToolCallIds(request);
+    const recoveryBudget = { attempted: false };
+    const scope = resolveGeminiSessionScope(request, requestContext?.headers, requestContext?.url);
+    captureCurrentAuditSession(scope);
     request = this.parseToolConfig(request);
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
@@ -96,6 +163,9 @@ export class GeminiService extends BaseProxyService {
       routeResolution.resolvedModel,
     );
     const targetModel = appliedVariantRequest.model;
+    const effort = request.generationConfig?.thinkingConfig?.thinkingLevel;
+    assertGeminiThoughtSignatureModel(request.contents, targetModel);
+    assertGeminiGenerationHistory(request.contents);
     const isImageRequest = requestType === 'image_gen' || isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
@@ -104,18 +174,31 @@ export class GeminiService extends BaseProxyService {
     markProxyCleanComplete();
 
     let lastError: unknown = null;
-    const maxRetries = 3;
-    const retryState = this.createTokenRetryState();
+    const retryState = this.createTokenRetryState(effort);
+    const maxRetries = await this.getMaxRetryAttempts(
+      retryState,
+      targetModel,
+      isImageRequest,
+      signal,
+      effort,
+    );
 
     for (let i = 0; i < maxRetries; i++) {
-      await this.waitBeforeRetry(i, maxRetries, 'Gemini', retryState.graceRetryToken !== null);
+      await this.waitBeforeRetry(
+        i,
+        maxRetries,
+        'Gemini',
+        retryState.graceRetryToken !== null,
+        isImageRequest,
+      );
 
       const token = await this.selectRetryToken(
         retryState,
         targetModel,
-        undefined,
+        scope.affinityKey,
         isImageRequest,
         signal,
+        effort,
       );
       if (!token) {
         if (lastError !== null) {
@@ -127,6 +210,7 @@ export class GeminiService extends BaseProxyService {
       const effectiveTargetModel = this.accountLeaseService.resolveDynamicModelForAccount(
         token.id,
         targetModel,
+        effort,
       );
       const effectiveVariantRequest = rebindGeminiModelVariant(
         appliedVariantRequest,
@@ -143,6 +227,7 @@ export class GeminiService extends BaseProxyService {
           token.token.project_id ?? '',
           requestType,
           requestUserAgent,
+          globalSystemPrompt,
         );
         this.applyInternalGenerationConstraints(
           internalBody,
@@ -159,12 +244,19 @@ export class GeminiService extends BaseProxyService {
           token.token.upstream_proxy_url,
           accountTelemetryHeaders,
           signal,
+          this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
         );
 
-        this.markUpstreamSuccessForResponse(token.id, accountTargetModel, response);
+        this.commitUpstreamSession(token, signal);
+        this.markUpstreamSuccessForResponse(token, accountTargetModel, response);
         this.releaseImagePermit(retryState);
         return this.normalizeGeminiGenerateResponse(response);
       } catch (err) {
+        if (err instanceof UpstreamProxyConfigurationError) {
+          this.releaseImagePermit(retryState);
+          throw err;
+        }
+        this.rethrowTerminalGenerationFailure(err, retryState);
         if (
           err instanceof Error &&
           !this.retryPolicy.isFatalCircuitBreakError(err) &&
@@ -182,6 +274,7 @@ export class GeminiService extends BaseProxyService {
               '',
               requestType,
               requestUserAgent,
+              globalSystemPrompt,
             );
             this.applyInternalGenerationConstraints(
               fallbackBody,
@@ -200,11 +293,18 @@ export class GeminiService extends BaseProxyService {
               token.token.upstream_proxy_url,
               accountTelemetryHeaders,
               signal,
+              this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
             );
-            this.markUpstreamSuccessForResponse(token.id, accountTargetModel, response);
+            this.commitUpstreamSession(token, signal);
+            this.markUpstreamSuccessForResponse(token, accountTargetModel, response);
             this.releaseImagePermit(retryState);
             return this.normalizeGeminiGenerateResponse(response);
           } catch (fallbackErr) {
+            if (fallbackErr instanceof UpstreamProxyConfigurationError) {
+              this.releaseImagePermit(retryState);
+              throw fallbackErr;
+            }
+            this.rethrowTerminalGenerationFailure(fallbackErr, retryState);
             lastError = fallbackErr;
           }
         } else {
@@ -213,7 +313,8 @@ export class GeminiService extends BaseProxyService {
 
         this.recordRetryFailure(retryState, lastError);
         if (retryState.abortRetry) {
-          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          this.releaseImagePermit(retryState);
+          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
           break;
         }
         if (isImageRequest) {
@@ -238,14 +339,14 @@ export class GeminiService extends BaseProxyService {
           lastError,
         );
         if (penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
         }
-        if (await this.prepareCurrentGraceRetry(retryState, token, lastError, 'Gemini')) {
+        if (await this.prepareCurrentGraceRetry(retryState, token, lastError, 'Gemini', signal)) {
           i -= 1;
           continue;
         }
         if (!penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
         }
       }
     }
@@ -261,7 +362,15 @@ export class GeminiService extends BaseProxyService {
     model: string,
     request: GeminiRequest,
     signal?: AbortSignal,
+    requestContext?: SignatureScopeContext,
   ): Promise<Observable<string>> {
+    throwIfRequestAborted(signal);
+    const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
+    assertGeminiThoughtSignatureAliases(request.contents);
+    request = normalizeGeminiToolCallIds(request);
+    const recoveryBudget = { attempted: false };
+    const scope = resolveGeminiSessionScope(request, requestContext?.headers, requestContext?.url);
+    captureCurrentAuditSession(scope);
     request = this.parseToolConfig(request);
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
@@ -270,6 +379,9 @@ export class GeminiService extends BaseProxyService {
       routeResolution.resolvedModel,
     );
     const targetModel = appliedVariantRequest.model;
+    const effort = request.generationConfig?.thinkingConfig?.thinkingLevel;
+    assertGeminiThoughtSignatureModel(request.contents, targetModel);
+    assertGeminiGenerationHistory(request.contents);
     const isImageRequest = isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
@@ -278,8 +390,14 @@ export class GeminiService extends BaseProxyService {
     markProxyCleanComplete();
 
     let lastError: unknown = null;
-    const maxRetries = 3;
-    const retryState = this.createTokenRetryState();
+    const retryState = this.createTokenRetryState(effort);
+    const maxRetries = await this.getMaxRetryAttempts(
+      retryState,
+      targetModel,
+      isImageRequest,
+      signal,
+      effort,
+    );
 
     for (let i = 0; i < maxRetries; i++) {
       await this.waitBeforeRetry(
@@ -287,14 +405,16 @@ export class GeminiService extends BaseProxyService {
         maxRetries,
         'Gemini stream',
         retryState.graceRetryToken !== null,
+        isImageRequest,
       );
 
       const token = await this.selectRetryToken(
         retryState,
         targetModel,
-        undefined,
+        scope.affinityKey,
         isImageRequest,
         signal,
+        effort,
       );
       if (!token) {
         if (lastError !== null) {
@@ -306,6 +426,7 @@ export class GeminiService extends BaseProxyService {
       const effectiveTargetModel = this.accountLeaseService.resolveDynamicModelForAccount(
         token.id,
         targetModel,
+        effort,
       );
       const effectiveVariantRequest = rebindGeminiModelVariant(
         appliedVariantRequest,
@@ -322,6 +443,7 @@ export class GeminiService extends BaseProxyService {
           token.token.project_id ?? '',
           'generate-content',
           requestUserAgent,
+          globalSystemPrompt,
         );
         this.applyInternalGenerationConstraints(
           internalBody,
@@ -332,20 +454,27 @@ export class GeminiService extends BaseProxyService {
         );
 
         const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
-        const stream = await this.geminiClient.streamGenerateInternal(
+        const stream = await this.streamGenerateInternalWithRecovery(
           internalBody,
           token.token.access_token,
           token.token.upstream_proxy_url,
           accountTelemetryHeaders,
           signal,
+          this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
         );
+        this.commitUpstreamSession(token, signal);
         return this.passthroughSseStream(
           stream,
-          token.id,
+          token,
           accountTargetModel,
           this.takeImagePermit(retryState),
         );
       } catch (err) {
+        if (err instanceof UpstreamProxyConfigurationError) {
+          this.releaseImagePermit(retryState);
+          throw err;
+        }
+        this.rethrowTerminalGenerationFailure(err, retryState);
         if (
           err instanceof Error &&
           !this.retryPolicy.isFatalCircuitBreakError(err) &&
@@ -363,6 +492,7 @@ export class GeminiService extends BaseProxyService {
               '',
               'generate-content',
               requestUserAgent,
+              globalSystemPrompt,
             );
             this.applyInternalGenerationConstraints(
               fallbackBody,
@@ -375,20 +505,27 @@ export class GeminiService extends BaseProxyService {
               token,
               extraHeaders,
             );
-            const stream = await this.geminiClient.streamGenerateInternal(
+            const stream = await this.streamGenerateInternalWithRecovery(
               fallbackBody,
               token.token.access_token,
               token.token.upstream_proxy_url,
               accountTelemetryHeaders,
               signal,
+              this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
             );
+            this.commitUpstreamSession(token, signal);
             return this.passthroughSseStream(
               stream,
-              token.id,
+              token,
               accountTargetModel,
               this.takeImagePermit(retryState),
             );
           } catch (fallbackErr) {
+            if (fallbackErr instanceof UpstreamProxyConfigurationError) {
+              this.releaseImagePermit(retryState);
+              throw fallbackErr;
+            }
+            this.rethrowTerminalGenerationFailure(fallbackErr, retryState);
             lastError = fallbackErr;
           }
         } else {
@@ -397,7 +534,8 @@ export class GeminiService extends BaseProxyService {
 
         this.recordRetryFailure(retryState, lastError);
         if (retryState.abortRetry) {
-          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          this.releaseImagePermit(retryState);
+          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
           break;
         }
         if (isImageRequest) {
@@ -421,14 +559,16 @@ export class GeminiService extends BaseProxyService {
           lastError,
         );
         if (penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
         }
-        if (await this.prepareCurrentGraceRetry(retryState, token, lastError, 'Gemini stream')) {
+        if (
+          await this.prepareCurrentGraceRetry(retryState, token, lastError, 'Gemini stream', signal)
+        ) {
           i -= 1;
           continue;
         }
         if (!penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
         }
       }
     }
@@ -442,57 +582,81 @@ export class GeminiService extends BaseProxyService {
 
   private passthroughSseStream(
     upstreamStream: NodeJS.ReadableStream,
-    accountId?: string,
+    successLease?: CloudAccount,
     model?: string,
     imagePermit?: ImageSchedulerPermit | null,
   ): Observable<string> {
     const observesImageSuccess = isGeminiImageModel(model);
-    if (accountId && model && !observesImageSuccess) {
-      this.markUpstreamSuccess(accountId, model);
-    }
-    return new Observable<string>((subscriber) => {
-      const decoder = new TextDecoder();
+    const observable = new FlowControlledSseStream(upstreamStream, (subscriber) => {
+      const decoder = new TextDecoder('utf-8', { fatal: true });
+      const eventParser = new IncrementalSseDataParser();
       let receivedData = false;
-      let observationBuffer = '';
+      const lineReader = new IncrementalSseLines();
       let sawImageData = false;
       let streamFailed = false;
       let sawFinishReason = false;
-      let sawCandidateOutput = false;
+      const outputState = new GenerationOutputState();
       let terminated = false;
-      const fail = (message: string): void => {
+      let imagePermitReleased = false;
+      const releaseImagePermit = (): void => {
+        if (imagePermitReleased) {
+          return;
+        }
+        imagePermitReleased = true;
+        imagePermit?.release();
+      };
+      const fail = (message: string, cause?: Error): void => {
         if (terminated) {
           return;
         }
         terminated = true;
         streamFailed = true;
         idleTimer.clear();
-        imagePermit?.release();
+        releaseImagePermit();
+        const code = cause ? (resolveUpstreamErrorHttpStatus(cause) ?? 502) : 502;
+        const details =
+          cause instanceof UpstreamRequestError
+            ? publicGoogleErrorDetails(cause.details)
+            : undefined;
         subscriber.next(
-          `data: ${JSON.stringify({ error: { code: 502, message, status: 'UPSTREAM_STREAM_ERROR' } })}\n\n`,
+          `data: ${JSON.stringify({ error: { code, message: publicProxyErrorMessage(message), status: (cause instanceof UpstreamRequestError ? cause.upstreamStatus : undefined) ?? 'UPSTREAM_STREAM_ERROR', ...(details ? { details } : {}) } })}\n\n`,
         );
         subscriber.complete();
       };
-      const inspectLine = (line: string): void => {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data: ')) {
-          return;
-        }
-        const data = trimmed.slice(6);
+      const inspectData = (data: string): { valid: boolean; error?: string; cause?: Error } => {
+        let hasValidResponse = false;
         if (observesImageSuccess) {
           const observation = this.inspectImageSseData(data);
           sawImageData ||= observation.hasImageData;
           streamFailed ||= observation.failed;
         }
         try {
-          const parsed: unknown = JSON.parse(data);
-          if (parsed && typeof parsed === 'object' && 'response' in parsed) {
-            const response = parsed.response;
-            if (
-              response &&
-              typeof response === 'object' &&
-              'candidates' in response &&
-              Array.isArray(response.candidates)
-            ) {
+          const decoded = decodeInternalSseData(data);
+          if (decoded.kind === 'error') {
+            return {
+              valid: false,
+              error: describeInternalSseError(decoded.error),
+              cause: upstreamGenerationFailure(decoded.error),
+            };
+          }
+          if (decoded.kind === 'invalid') {
+            return { valid: false, error: 'Invalid upstream SSE event.' };
+          }
+          if (decoded.kind === 'response') {
+            const response = decoded.response;
+            outputState.observe(response);
+            if (response.promptFeedback?.blockReason) {
+              sawFinishReason = true;
+              hasValidResponse = true;
+            }
+            if (outputState.terminal) {
+              const failure = outputState.failure();
+              if (failure) {
+                return { valid: false, error: failure.message };
+              }
+            }
+            if (Array.isArray(response.candidates)) {
+              hasValidResponse = true;
               sawFinishReason ||= response.candidates.some(
                 (candidate: unknown) =>
                   candidate !== null &&
@@ -500,24 +664,36 @@ export class GeminiService extends BaseProxyService {
                   'finishReason' in candidate &&
                   typeof candidate.finishReason === 'string',
               );
-              sawCandidateOutput ||= response.candidates.some((candidate: unknown) => {
-                if (!candidate || typeof candidate !== 'object' || !('content' in candidate)) {
-                  return false;
-                }
-                const content = candidate.content;
-                return Boolean(
-                  content &&
-                  typeof content === 'object' &&
-                  'parts' in content &&
-                  Array.isArray(content.parts) &&
-                  content.parts.length > 0,
-                );
-              });
             }
           }
         } catch {
-          // The upstream payload remains available to the client unchanged.
+          return { valid: false, error: 'Invalid upstream SSE event.' };
         }
+        return { valid: hasValidResponse };
+      };
+      // Do not expose a fragment until its complete data event has passed error inspection.
+      const emitData = (data: string): void => {
+        subscriber.next(`data: ${data.replaceAll('\n', '\ndata: ')}\n\n`);
+      };
+      const forwardLine = (line: string, emitEmptyLine = true): boolean => {
+        const data = eventParser.pushLine(line);
+        if (data === null) {
+          const field = line.replace(/\r$/u, '');
+          if (!line.startsWith('data:') && (field.length > 0 || emitEmptyLine)) {
+            subscriber.next(`${field}\n`);
+          }
+          return true;
+        }
+        const inspection = inspectData(data);
+        if (inspection.error) {
+          fail(inspection.error, inspection.cause);
+          return false;
+        }
+        if (inspection.valid) {
+          idleTimer.reset();
+        }
+        emitData(data);
+        return true;
       };
       const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Gemini-SSE', () => {
         fail('Upstream response stream timed out.');
@@ -530,15 +706,23 @@ export class GeminiService extends BaseProxyService {
           return;
         }
         receivedData = true;
-        idleTimer.reset();
-        const decodedChunk = decoder.decode(chunk, { stream: true });
-        observationBuffer += decodedChunk;
-        const lines = observationBuffer.split('\n');
-        observationBuffer = lines.pop() ?? '';
-        for (const line of lines) {
-          inspectLine(line);
+        let decodedChunk: string;
+        try {
+          decodedChunk = decoder.decode(chunk, { stream: true });
+        } catch {
+          fail('Upstream response stream contained invalid UTF-8.');
+          return;
         }
-        subscriber.next(decodedChunk);
+        try {
+          for (const line of lineReader.push(decodedChunk)) {
+            if (!forwardLine(line)) {
+              return;
+            }
+          }
+        } catch (error) {
+          fail(error instanceof Error ? error.message : 'Invalid upstream SSE event.');
+          return;
+        }
       });
 
       upstreamStream.on('end', () => {
@@ -546,31 +730,72 @@ export class GeminiService extends BaseProxyService {
           return;
         }
         idleTimer.clear();
-        imagePermit?.release();
-        observationBuffer += decoder.decode();
-        for (const line of observationBuffer.split('\n')) {
-          inspectLine(line);
+        releaseImagePermit();
+        let tailChunk: string;
+        try {
+          tailChunk = decoder.decode();
+        } catch {
+          fail('Upstream response stream contained invalid UTF-8.');
+          return;
+        }
+        try {
+          for (const line of lineReader.push(tailChunk + '\n')) {
+            // The newline used to flush an EOF tail is parser input, not upstream output.
+            if (!forwardLine(line, false)) {
+              return;
+            }
+          }
+          const tail = eventParser.finish();
+          if (tail !== null) {
+            const inspection = inspectData(tail);
+            if (inspection.error) {
+              fail(inspection.error);
+              return;
+            }
+            if (inspection.valid) {
+              idleTimer.reset();
+            }
+            emitData(tail);
+          }
+        } catch (error) {
+          fail(error instanceof Error ? error.message : 'Invalid upstream SSE event.');
+          return;
         }
         if (!receivedData) {
           subscriber.error(new Error('Empty response stream'));
           return;
         }
-        if ((!sawFinishReason && !sawCandidateOutput) || streamFailed) {
+        if (!sawFinishReason || streamFailed) {
           fail('Upstream stream ended without output or a finish reason.');
           return;
         }
-        if (observesImageSuccess && accountId && model && sawImageData && !streamFailed) {
-          this.markUpstreamSuccess(accountId, model);
+        if (
+          successLease &&
+          model &&
+          !streamFailed &&
+          sawFinishReason &&
+          (!observesImageSuccess || sawImageData)
+        ) {
+          this.markUpstreamSuccess(successLease, model);
         }
         terminated = true;
         subscriber.complete();
       });
 
       upstreamStream.on('error', (err: unknown) => {
+        if (terminated) {
+          return;
+        }
         idleTimer.clear();
         streamFailed = true;
-        imagePermit?.release();
-        const cleanError = err instanceof Error ? new Error(err.message) : new Error(String(err));
+        releaseImagePermit();
+        const cleanError =
+          err instanceof UpstreamThoughtSignatureConflictError ||
+          err instanceof InvalidThoughtSignatureModelError
+            ? err
+            : err instanceof Error
+              ? new Error(err.message)
+              : new Error(String(err));
         if (receivedData) {
           fail('Upstream response stream failed.');
         } else {
@@ -578,11 +803,29 @@ export class GeminiService extends BaseProxyService {
         }
       });
 
+      upstreamStream.on('close', () => {
+        if (terminated) {
+          return;
+        }
+        idleTimer.clear();
+        if (receivedData) {
+          fail('Upstream response stream closed before completion.');
+        } else {
+          terminated = true;
+          releaseImagePermit();
+          subscriber.error(new Error('Upstream response stream closed before completion.'));
+        }
+      });
+
       return () => {
-        imagePermit?.release();
+        terminated = true;
+        releaseImagePermit();
+        lineReader.clear();
+        eventParser.clear();
         idleTimer.dispose();
       };
     });
+    return registerObservableFlowControl(observable, observable);
   }
 
   private normalizeGeminiModel(model: string): string {
@@ -595,7 +838,9 @@ export class GeminiService extends BaseProxyService {
     projectId: string | undefined,
     requestType: string,
     requestUserAgent: string,
+    globalSystemPrompt: string | null,
   ): GeminiInternalRequest {
+    applyGeminiMediaSendWindow(request.contents, getServerConfig()?.image_scheduler);
     return createGeminiRequestEnvelope(
       model,
       request,
@@ -603,6 +848,7 @@ export class GeminiService extends BaseProxyService {
       requestType,
       requestUserAgent,
       this.createOfficialRequestId(),
+      globalSystemPrompt,
     );
   }
 

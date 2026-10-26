@@ -1,9 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { injectPlaceholderSignaturesForModel } from '@/modules/proxy-gateway/antigravity/ThoughtSignatureCompat';
+import { normalizeFunctionCallSignatureAliases } from '@/modules/proxy-gateway/antigravity/ThoughtSignatureCompat';
 import type { GeminiContent } from '@/modules/proxy-gateway/antigravity/types';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 
 describe('native Gemini signature fallback contract', () => {
+  it('leaves unsigned native Flash history unsigned', () => {
+    const contents: GeminiContent[] = [
+      { role: 'model', parts: [{ functionCall: { name: 'lookup', args: {} } }] },
+    ];
+    expect(normalizeFunctionCallSignatureAliases(contents)).toBe(contents);
+  });
+
+  it('preserves an explicitly supplied placeholder without changing its aliases', () => {
+    const contents: GeminiContent[] = [
+      {
+        role: 'model',
+        parts: [
+          {
+            functionCall: { name: 'lookup', args: {} },
+            thoughtSignature: 'skip_thought_signature_validator',
+            thought_signature: 'skip_thought_signature_validator',
+          },
+        ],
+      },
+    ];
+    expect(normalizeFunctionCallSignatureAliases(contents)).toBe(contents);
+  });
+
   it('does not inject a Claude fallback for a resource-style project model', () => {
     const result = transformClaudeRequestIn({
       model: 'projects/fixture/locations/global/publishers/google/models/gemini-3-flash',
@@ -31,7 +54,7 @@ describe('native Gemini signature fallback contract', () => {
           parts: [{ functionCall: { name: 'lookup', args: {} }, [key]: 'provider-signature' }],
         },
       ];
-      expect(injectPlaceholderSignaturesForModel(contents, 'gemini-3.7-flash-high')).toEqual([
+      expect(normalizeFunctionCallSignatureAliases(contents)).toEqual([
         {
           role: 'model',
           parts: [
@@ -54,7 +77,7 @@ describe('native Gemini signature fallback contract', () => {
     const contents: GeminiContent[] = [
       { role: 'model', parts: [{ functionCall: { name: 'lookup', args: {} } }] },
     ];
-    expect(injectPlaceholderSignaturesForModel(contents, 'gemini-pro-agent')).toEqual(contents);
+    expect(normalizeFunctionCallSignatureAliases(contents)).toBe(contents);
   });
 
   it('preserves supplied empty and conflicting aliases instead of replacing them with a sentinel', () => {
@@ -71,7 +94,7 @@ describe('native Gemini signature fallback contract', () => {
         ],
       },
     ];
-    expect(injectPlaceholderSignaturesForModel(contents, 'gemini-3-flash')).toEqual([
+    expect(normalizeFunctionCallSignatureAliases(contents)).toEqual([
       {
         role: 'model',
         parts: [

@@ -31,6 +31,15 @@ async function seed(): Promise<void> {
         model: 'gemini-pro',
         sourceFamily: 'gemini-pro',
         signature: LARGE_THOUGHT_SIGNATURE,
+        partSignatures: [
+          {
+            kind: 'thought',
+            position: 0,
+            start: 0,
+            end: LARGE_THOUGHT_BYTES,
+            signature: LARGE_THOUGHT_SIGNATURE,
+          },
+        ],
         thought: 'T'.repeat(LARGE_THOUGHT_BYTES),
         toolIds: [],
         toolNames: [],

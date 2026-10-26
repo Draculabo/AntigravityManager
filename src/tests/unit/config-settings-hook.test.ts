@@ -127,6 +127,53 @@ describe('service settings in the renderer', () => {
     expect(api.saveDesktop).not.toHaveBeenCalled();
   });
 
+  it('does not roll back an earlier service save when a later desktop save fails', async () => {
+    const { result, client } = mount();
+    await waitFor(() => expect(result.current.serviceAvailable).toBe(true));
+    const base = {
+      ...result.current.config!,
+      theme: 'light',
+      language: 'en',
+      proxy: {
+        ...result.current.config!.proxy,
+        enabled: true,
+      },
+    };
+    api.updateService.mockImplementation(async (patch: ServiceConfigUpdate) => {
+      const snapshot = {
+        ...serviceConfigPlaceholder(),
+        proxy: { ...serviceConfigPlaceholder().proxy, ...patch.proxy },
+      };
+      return { state: 'applied' as const, snapshot };
+    });
+    api.saveDesktop.mockRejectedValue(new Error('Desktop preferences unavailable'));
+
+    let save!: Promise<void>;
+    act(() => {
+      save = result.current.saveConfig({
+        ...base,
+        theme: 'dark',
+        proxy: { ...base.proxy, request_timeout: 211 },
+      });
+    });
+    await act(async () => {
+      await expect(save).rejects.toThrow('Desktop preferences unavailable');
+    });
+
+    expect(api.updateService).toHaveBeenCalledExactlyOnceWith({
+      proxy: { enabled: true, request_timeout: 211 },
+    });
+    expect(client.getQueryData(['serviceConfig'])).toMatchObject({
+      proxy: { request_timeout: 211 },
+    });
+    expect(api.toast).toHaveBeenLastCalledWith({
+      error: expect.objectContaining({ message: 'Desktop preferences unavailable' }),
+      title: 'settings.toast.saveFailed.title',
+      description: 'settings.service-unavailable',
+      variant: 'destructive',
+    });
+  });
+
   it('shows translated guidance instead of a backend error when saving fails', async () => {
     const error = new Error('Internal service RPC failed');
     api.updateService.mockRejectedValue(error);

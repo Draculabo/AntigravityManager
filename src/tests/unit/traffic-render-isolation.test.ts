@@ -16,7 +16,12 @@ vi.mock('@/ipc/manager', () => ({
     client: {
       gateway: {
         auditList: async () => ({ items: [], total: 100 }),
-        auditStats: async () => ({ rows: 100, databaseBytes: 1000, droppedCount: 0 }),
+        auditStats: async () => ({
+          rows: 100,
+          databaseBytes: 1000,
+          archives: { status: 'complete' as const, bytes: 0, files: 0 },
+          droppedCount: 0,
+        }),
         auditFilterOptions: async () => ({ accountIds: [], modelFamilies: [] }),
       },
     },
@@ -76,6 +81,7 @@ it('isolates search, statistics and queued events while preserving submit and ta
     client.setQueryData(['gateway', 'audit-stats'], {
       rows: 101,
       databaseBytes: 1000,
+      archives: { status: 'complete' as const, bytes: 0, files: 0 },
       droppedCount: 0,
     }),
   );

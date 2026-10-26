@@ -1,4 +1,31 @@
 const tr = {
+  'account-evidence': {
+    'subscription-unavailable': 'Abonelik yenilenemedi; önceden doğrulanmış bir düzey yok.',
+    'observed-at': 'Son gözlem: {{time}}',
+    'checked-at': 'Son kontrol: {{time}}',
+    'unknown-time': 'Kaydedilmedi',
+    'invalid-data': 'Kota verileri geçersiz; doğrulamak için yenileyin.',
+    'reset-unknown': 'Sıfırlama zamanı bilinmiyor.',
+    'exhausted-unknown-reset': 'Dönem kotası tükendi; sıfırlama zamanı bilinmiyor.',
+    'recheck-required': 'Kotası tükenen dönem sona erdi; düzelmeyi doğrulamak için yenileyin.',
+    'window-ended': 'Dönem sona erdi; bakiye henüz yeniden doğrulanmadı.',
+    'weekly-exhausted':
+      'Haftalık dönem kotası tükendi; başka bir dönemin bakiyesi bu kısıtlamayı kaldırmaz.',
+    'window-exhausted': 'Dönem kotası tükendi.',
+    'group-restrictions': 'Kota grubu kısıtlamaları',
+    'group-limited':
+      'Dönem kotası tükendi. Bilinen en geç sıfırlama: {{time}}; düzelmenin doğrulanması gerekiyor.',
+    'subscription-failed': 'Abonelik yenilemesi başarısız veya eksik; önceki kayıt gösteriliyor.',
+    'subscription-unrecognized': 'Abonelik düzeyi tanınmadı; Free temel düzeyi kullanılıyor.',
+    'subscription-missing': 'Abonelik bilgisi dönmedi; Free temel düzeyi kullanılıyor.',
+    'subscription-observed': 'Abonelik bilgisi gözlemlendi.',
+    'subscription-unknown': 'Abonelik kaynağı kaydedilmedi.',
+    'source-paid': 'Kaynak: ücretli abonelik',
+    'source-current': 'Kaynak: geçerli abonelik',
+    'source-free': 'Kaynak: açıkça belirtilen ücretsiz düzey',
+    'source-unknown': 'Kaynak: bilinmiyor',
+    'small-positive': 'Az miktarda pozitif bakiye var; bu dönem tükenmedi.',
+  },
   'agent-tools': {
     title: 'Kodlama araçlarınızı bağlayın',
     description: 'Modellerinizi Antigravity Manager üzerinden kullanmak için bir araç seçin.',
@@ -61,7 +88,6 @@ const tr = {
       'key-missing': 'Önce proxy sayfasında bağlantı anahtarı oluşturun.',
       'review-route-disabled': 'Codex inceleme yolu kapalı. Model yönlendirmesinde etkinleştirin.',
     },
-
     'address-help': 'Hizmet başka bir bilgisayarda çalışmıyorsa mevcut Manager adresini kullanın.',
     'invalid-address':
       'http:// veya https:// ile başlayan, oturum bilgisi ve ek parametre içermeyen bir Manager adresi kullanın.',
@@ -111,7 +137,6 @@ const tr = {
     unknown: 'Bilinmeyen',
     notAvailable: 'Yok',
     openMenu: 'Menüyü aç',
-
     'dismiss-notification': 'Bildirimi kapat',
     'reading-settings': 'Ayarlarınız okunuyor…',
   },
@@ -418,6 +443,31 @@ const tr = {
       groups: 'Isıtılacak kota grupları',
       group: { claude: 'Claude kota grupları', gemini: 'Gemini kota grupları' },
     },
+    thinkingBudget: {
+      title: 'Düşünme bütçesi',
+      description:
+        'Modelin ne kadar düşüneceğine kimin karar verdiğini ve her düzeyin bütçesini seçin.',
+      controlSource: 'Denetim kaynağı',
+      controlSourceHint:
+        'Gateway aşağıdaki bütçeleri uygular. İstemci istekteki bütçeyi veya effort düzeyini aktarır.',
+      gatewayHint:
+        'Bütçe -1, üst modelin kendisinin seçmesine izin verir. 0 geçerli bir gateway bütçesi değildir; uyarlanabilir düşünmeyi sürdürmek için -1 değerini koruyun.',
+      clientHint:
+        'İstek kendi düşünme bütçesini veya effort düzeyini belirler. Aşağıdaki gateway bütçeleri uygulanmaz.',
+      adaptiveHint: '-1 modelin seçmesine izin verir',
+      invalid: '-1 veya 0 ile 131072 arasında bir tam sayı girin.',
+      'configuration-invalid':
+        'Bu düşünme bütçesi değerleri reddedildi. -1 veya 0 ile 131072 arasında bir tam sayı girin.',
+      source: { gateway: 'Gateway', client: 'İstemci' },
+      family: { flash: 'Gemini Flash', pro: 'Gemini Pro', claude: 'Claude' },
+      level: {
+        low: 'Düşük',
+        medium: 'Orta',
+        high: 'Yüksek',
+        tiered: 'Kademeli',
+        default: 'Varsayılan',
+      },
+    },
     title: 'Ayarlar',
     description: 'Uygulama tercihlerini yönetin.',
     general: 'Genel',
@@ -440,10 +490,7 @@ const tr = {
       french: 'Fransızca',
       portuguese: 'Portekizce (Brezilya)',
     },
-    about: {
-      title: 'Hakkında',
-      description: 'Uygulama bilgileri.',
-    },
+    about: { title: 'Hakkında', description: 'Uygulama bilgileri.' },
     cache: {
       title: 'Antigravity Önbelleği',
       description:
@@ -461,7 +508,6 @@ const tr = {
       clearedDescription: 'Antigravity önbellek klasörlerinden {{size}} MB silindi.',
       failedTitle: 'Önbellek temizlenemedi',
       notFoundTitle: 'Antigravity önbelleği bulunamadı',
-
       'paths-failed': 'Önbellek konumları bulunamadı',
       'paths-retry-description': 'Önbelleği temizlemeden önce tekrar deneyin.',
       'partial-title': 'Önbelleğin bir kısmı temizlenemedi',
@@ -473,13 +519,8 @@ const tr = {
     license: 'Lisans',
     openLogDir: 'Aç',
     toast: {
-      saved: {
-        title: 'Ayarlar kaydedildi',
-        description: 'Yapılandırmanız güncellendi.',
-      },
-      saveFailed: {
-        title: 'Ayarlar kaydedilirken hata oluştu',
-      },
+      saved: { title: 'Ayarlar kaydedildi', description: 'Yapılandırmanız güncellendi.' },
+      saveFailed: { title: 'Ayarlar kaydedilirken hata oluştu' },
     },
     account: {
       'client-setup': 'İstemci konumu ve başlatma ayarları',
@@ -687,30 +728,12 @@ const tr = {
     save: 'Ayarları Kaydet',
   },
   toast: {
-    backupSuccess: {
-      title: 'Başarılı',
-      description: 'Hesap yedeği başarıyla oluşturuldu.',
-    },
-    backupError: {
-      title: 'Hata',
-      description: 'Yedek oluşturulamadı: {{error}}',
-    },
-    switchSuccess: {
-      title: 'Başarılı',
-      description: 'Hesap başarıyla değiştirildi.',
-    },
-    switchError: {
-      title: 'Hata',
-      description: 'Hesap değiştirilemedi: {{error}}',
-    },
-    deleteSuccess: {
-      title: 'Başarılı',
-      description: 'Hesap yedeği başarıyla silindi.',
-    },
-    deleteError: {
-      title: 'Hata',
-      description: 'Yedek silinemedi: {{error}}',
-    },
+    backupSuccess: { title: 'Başarılı', description: 'Hesap yedeği başarıyla oluşturuldu.' },
+    backupError: { title: 'Hata', description: 'Yedek oluşturulamadı: {{error}}' },
+    switchSuccess: { title: 'Başarılı', description: 'Hesap başarıyla değiştirildi.' },
+    switchError: { title: 'Hata', description: 'Hesap değiştirilemedi: {{error}}' },
+    deleteSuccess: { title: 'Başarılı', description: 'Hesap yedeği başarıyla silindi.' },
+    deleteError: { title: 'Hata', description: 'Yedek silinemedi: {{error}}' },
   },
   cloud: {
     'total-accounts': 'Toplam hesap',
@@ -828,6 +851,13 @@ const tr = {
       resetUnknown: 'Bilinmeyen',
       detailedQuota: 'Ayrıntılı kota',
       quotaGroupUnknown: 'Kota grubu',
+      cycleUsage: 'Mevcut döngü kullanımı',
+      cycleUsageLoading: 'Saklanan kullanım yükleniyor…',
+      cycleUsageQueryFailed: '{{group}} için kullanım sorgusu başarısız',
+      cycleUsageTokens: '{{count}} token',
+      cycleUsageLocal: 'saklanan yerel kayıtlar',
+      cycleUsageRequests: '{{count}} sayıldı',
+      cycleUsageIncomplete: '{{ambiguous}} eksik kayıt',
       gemini3Ready: 'Gemini 3 Hazır',
       groupGoogleGemini: 'Google Gemini',
       groupAnthropicClaude: 'Anthropic Claude',
@@ -840,6 +870,9 @@ const tr = {
       'proxy-replace-placeholder': 'Yeni proxy adresi girin',
       'proxy-remove': "Proxy'yi kaldır",
       'proxy-save-failed': 'Proxy kaydedilemedi',
+      'proxy-routing-save-failed': 'Proxy yönlendirme ayarları kaydedilemedi',
+      'proxy-priority': 'Proxy önceliği (1–100)',
+      'proxy-enabled': 'Bu hesabı proxy istekleri için kullan',
       noProxy: 'Proxy yok',
       aiCredits: 'Yapay Zeka Kredileri',
       aiCreditsValue: '{{amount}} kredi',
@@ -878,7 +911,6 @@ const tr = {
       deleteVersionSuccess: 'Geçmiş kimlik silindi',
       openFolderSuccess: 'Kimlik depolama klasörü açıldı',
       baseline: 'İlk cihaz bilgileri',
-
       description: 'Hesap değiştirirken kullanmak için bu hesabın cihaz bilgilerini kaydedin.',
       'load-failed': 'Cihaz bilgileri okunamadı',
       'retry-description': 'Tekrar deneyin. Kaydedilmiş cihaz bilgileri değiştirilmedi.',
@@ -1069,12 +1101,9 @@ const tr = {
         'session-consumed':
           'Bu tarama sonuçları zaten kullanıldı. Daha fazla hesap aktarmak için tekrar tarayın.',
       },
-
       title: 'Bu bilgisayardan hesap aktar',
-
       trigger: 'Bu bilgisayardan hesap aktar',
     },
-
     feedback: {
       'loading-title': 'Hesaplarınız okunuyor',
       'loading-description': 'Hesap bilgileriniz hazır olduğunda burada görünecek.',
@@ -1153,9 +1182,37 @@ const tr = {
       'global-system-prompt-character-count': '{{count}} karakter',
       'global-system-prompt-long-warning':
         '2.000 karakterden uzun talimatlar sohbet geçmişi için daha az yer bırakır. Talimatları kısaltmayı düşünün.',
+      compaction: {
+        title: 'Cowork bağlam sıkıştırma',
+        description:
+          'Geçmişi özetleme ve değiştirme işlemini Cowork istemcisiyle koordine eder; normal oturumlar otomatik olarak kırpılmaz.',
+        auto: 'Otomatik sıkıştırma koordinasyonunu etkinleştir',
+        'auto-desc': 'Yalnızca tanınan ve eşiği aşan Cowork istekleri yerel kontrol yanıtı alır.',
+        manual: 'Manuel /compact koordinasyonunu etkinleştir',
+        'manual-desc':
+          'Açık bir Cowork /compact komutunun istemci kontrollü akışı başlatmasına izin verir.',
+        threshold: 'Otomatik eşik (tahmini giriş tokenları)',
+        'threshold-desc':
+          'Varsayılan 200.000; etkin eşik sabit sistem ve araç maliyetlerini de içerir.',
+      },
       local_access: 'Yerel ağ erişimi:',
       select_ip: 'IP Seç',
       no_token_warning: '⚠️ API anahtarı ayarlanmadı. Erişim herkese açık!',
+      lan_access: 'Yerel ağ erişimine izin ver',
+      lan_access_desc: 'Proxy yerel ağa bağlanır. API anahtarı gerekir.',
+      ip_access_title: 'IP erişim kuralları',
+      ip_access_desc:
+        'Model, WebSocket ve herkese açık yönetim isteklerini istemci adresine göre sınırlayın.',
+      ip_filter_mode: 'IP filtre modu',
+      ip_filter_off: 'Kapalı',
+      ip_filter_allowlist: 'Yalnızca izin listesi',
+      ip_filter_blocklist: 'Engel listesi',
+      ip_filter_both: 'İzin ve engel listesi',
+      ip_allowlist: 'İzin verilen IP veya CIDR',
+      ip_blocklist: 'Engellenen IP veya CIDR',
+      trusted_proxy_cidrs: 'Güvenilen proxy CIDR değerleri',
+      allowlist_precedence: 'İzin listesi öncelikli',
+      allowlist_precedence_desc: 'İzin listesindeki bir adres, eşleşen engel kuralını aşabilir.',
       show_key: 'Göster',
       hide_key: 'Gizle',
       cloud_code_meta: 'Cloud Code uyumluluğu',
@@ -1228,7 +1285,6 @@ const tr = {
       'success-title': 'OpenCode yapılandırması güncellendi',
       'error-title': 'OpenCode güncellemesi başarısız',
       'unknown-error': 'Bilinmeyen OpenCode yapılandırma hatası',
-
       'choose-model-hint': 'Devam etmek için en az bir model seçin.',
       'config-retry-description': 'Tekrar deneyin. Kaydedilmiş ayarlarınız değiştirilmedi.',
     },
@@ -1239,6 +1295,9 @@ const tr = {
     persistence: {
       title: 'Request history and reasoning',
       description: 'Inspect bounded local records without slowing model traffic.',
+      'successful-probes': 'Capture successful probes',
+      'successful-probes-description':
+        'Save successful health checks and model-directory polling. Failures and other business requests are still recorded when request history is enabled.',
       'audit-title': 'İstek geçmişi',
       'audit-description':
         'İstekleri, yanıtları ve model hizmetine erişim denemelerini bu bilgisayarda hassas bilgileri gizleyerek kaydeder.',
@@ -1247,9 +1306,30 @@ const tr = {
       dropped:
         '{{count}} kayıt kaydedilemedi ({{reason}}). Model istekleri normal şekilde devam etti.',
       'disk-gib': 'Disk limit (GiB)',
-      'body-hours': 'Tam içeriğin saklanma süresi (saat)',
-      'summary-days': 'Summary retention (days)',
+      'capacity-window':
+        'Tam istekler, disk veya istek sınırına ulaşılana kadar saklanır. Önce en eski tamamlanmış istekler silinir; etkin istekler korunur.',
       'max-rows': 'Maximum rows',
+      'queue-records': 'Pending command limit (32–4,096)',
+      'queue-mib': 'Pending command bytes (16–64 MiB)',
+      'version-unavailable': 'Refresh or upgrade the owner before editing audit settings.',
+      'save-saving': 'Saving and applying settings…',
+      'save-applied': 'Settings saved and applied.',
+      maintenance: 'History maintenance: {{state}}',
+      'maintenance-running': 'running',
+      'maintenance-scheduled': 'scheduled',
+      'maintenance-idle': 'idle',
+      'maintenance-stopped': 'stopped',
+      'maintenance-unknown': 'unavailable',
+      'reload-failed': 'Settings could not be refreshed. Refresh this page before retrying.',
+      'save-restart-required':
+        'Saved, but runtime application is incomplete. Check service status.',
+      'save-conflict': 'Settings changed elsewhere. Review refreshed settings before retrying.',
+      'save-failed': 'Save completion unconfirmed. Refresh and review before retrying.',
+      'invalid-number': 'Enter a finite number of at least {{min}}.',
+      'budget-current':
+        'Configured: {{disk}} MiB / {{rows}} requests. Queue: {{commands}} commands / {{queue}} MiB.',
+      'pressure-note':
+        'Reclamation is gradual and active captures/readers can delay it. The latest drop does not guarantee current write status.',
       'no-audit': 'No traffic records yet.',
       'audit-metadata': 'İstek ayrıntıları ve model hizmeti denemeleri',
       'audit-body-missing': 'İsteğin veya yanıtın tam içeriği artık saklanmıyor.',
@@ -1269,7 +1349,40 @@ const tr = {
       'thought-title': 'Reasoning history',
       'thought-description': 'Save reasoning so later turns can continue the conversation.',
       sessions: '{{count}} sessions',
-      'hard-limit': 'Her sohbet en fazla 200 tur ve 64 MiB içerik kaydedebilir.',
+      'hard-limit':
+        'Memory cache: {{turns}} turns / {{memory}} MiB per session. Durable history has its own {{disk}} MiB disk budget and retention.',
+      'thought-cache-turns': 'Cached turns per session (10–10,000)',
+      'thought-cache-mib': 'Session cache limit (1–64 MiB)',
+      'thought-disk-mib': 'Reasoning disk budget (128–16,384 MiB)',
+      'thought-stats-unavailable': 'Reasoning statistics are unavailable.',
+      'thought-count-unknown': 'Saved record count unavailable',
+      'thought-records': '{{count}} saved records',
+      'thought-memory': 'Memory: {{records}} records / {{bytes}}',
+      'thought-tool-links': 'Recoverable tool links: {{records}}',
+      'thought-recovery-partial':
+        'Thought records were processed, but some recovery-history cleanup is unconfirmed. Refresh and check before another operation.',
+      'no-thought-records': 'No saved reasoning records in this page.',
+      'thought-record-pages': 'Reasoning history pages',
+      'history-page-complete': 'Page {{page}} · end of this history window',
+      'history-page-more': 'Page {{page}} · more records available',
+      'record-unavailable': 'This record is no longer available. Refresh the session.',
+      'thought-delete-receipt': 'Deleted {{sessions}} sessions and {{records}} records.',
+      'thought-delete-scope':
+        'Delete all retained reasoning records in session {{session}}? Other sessions are unaffected.',
+      'thought-mutation-uncertain':
+        'The operation could not be confirmed. History was refreshed; check it before trying again.',
+      'cancel-action': 'Cancel',
+      'thought-failures':
+        'Failures: {{reads}} reads / {{admission}} cold admissions / {{writes}} writes',
+      'thought-write-failure':
+        'Last persistence failure: {{reason}}. Current memory does not guarantee recovery after restart.',
+      'thought-session-capacity': 'No durable session slot available',
+      'thought-maintenance-active-sessions': 'Maintenance deferred to protect active requests.',
+      'thought-maintenance-checkpoint-busy': 'Maintenance paused for a pinned SQLite reader.',
+      'thought-maintenance-no-progress':
+        'Disk reclamation made no progress; further pressure deletion paused.',
+      'thought-maintenance-oversized-record':
+        'An old record exceeds the bounded cleanup budget; manual diagnosis is required.',
       'retention-days': 'Retention (days)',
       'max-sessions': 'Maximum sessions',
       oversized: 'İçerik 64 MiB sınırını aştığı için tam kaydedilmedi.',
@@ -1278,6 +1391,9 @@ const tr = {
       'copy-signature': 'Copy signature',
       'no-thought': 'No reasoning history yet.',
       'clear-thought': 'Clear reasoning history',
+      'clear-failed': 'Akıl yürütme geçmişi temizlenemedi.',
+      'delete-failed': 'Bu oturum silinemedi.',
+      'load-failed': 'Akıl yürütme oturumları yüklenemedi.',
       'repair-thought': 'Repair reasoning history',
       'confirm-clear': 'Confirm clear',
       'confirm-repair': 'Confirm repair',
@@ -1291,6 +1407,68 @@ const tr = {
     'fallback-attempt-recovered': 'Deneme {{index}} {{operation}}üzerinde kurtarıldı{{status}}',
     'reset-dropped': 'Sıfırla',
     'reset-dropped-failed': 'Sayaç sıfırlanamadı. Lütfen tekrar deneyin.',
+    'archive-storage-note':
+      'Backups are kept separately and are not automatically removed by the audit capacity window.',
+    'capture-interrupted-description':
+      'The previous application process stopped before capture finished. The model result is unknown; the recorded end time is when capture was reconciled.',
+    'live-storage': 'Live audit: {{size}}',
+    'archive-storage': 'Backups: {{size}} ({{count}} files)',
+    'archive-storage-unknown': 'Backup size unknown',
+    'storage-unavailable': 'Could not measure audit storage.',
+    'storage-loading': 'Measuring audit storage…',
+    'save-full': 'Export saved content',
+    'copy-loaded': 'Copy visible view',
+    capture: {
+      refresh: 'Refresh capture',
+      missing: 'No saved body',
+      'missing-description':
+        'No capture metadata is available for this selection. The reason is unknown.',
+      writing: 'Capture in progress',
+      'writing-description':
+        'Saved content may still change. Export is available after capture finishes.',
+      complete: 'Capture complete',
+      empty: 'Empty body captured',
+      summary: 'Binary summary saved',
+      'summary-description':
+        'Only a summary was captured; the original binary content is not stored.',
+      partial: 'Partially saved',
+      'not-saved': 'Body not saved',
+      expired: 'Previously expired body',
+      oversized: 'The capture exceeded its size limit. Only the saved portion is available.',
+      'incomplete-description':
+        'The capture is incomplete. Missing content cannot be reconstructed from this record.',
+      sizes: 'Saved {{stored}} · Observed {{logical}}',
+      'hash-full': 'Hash covers the captured safe representation.',
+      'hash-prefix': 'Hash covers only the saved prefix.',
+      'hash-unavailable': 'No verification hash is available.',
+      loaded: 'Loaded content: {{size}}',
+      'read-failed': 'Could not load saved content. Any loaded pages are kept; try again.',
+      retry: 'Retry loading',
+      loading: 'Loading saved content…',
+      cancel: 'Pause loading',
+      paused: 'Loading paused.',
+      resume: 'Resume loading',
+      'copy-failed': 'Could not copy the visible content. Try again.',
+      'save-failed': 'Could not export the saved content. Try again.',
+      copied: 'Visible content copied',
+      saved: 'Saved content exported',
+      reasons: {
+        'disk-budget': 'The audit disk budget was reached.',
+        'disk-unknown': 'Available audit storage could not be measured.',
+        'checkpoint-busy': 'A SQLite reader prevented disk reclamation.',
+        'reclaim-failed': 'Audit storage could not be reclaimed.',
+        'read-only': 'Audit storage is read-only.',
+        'disk-full': 'The storage volume is full.',
+        'capture-disabled': 'Capture was disabled before this body finished.',
+        'worker-restart': 'Capture was interrupted by an audit worker restart.',
+        retention: 'An earlier age-retention policy removed this content. It cannot be restored.',
+        'disk-pressure': 'An earlier disk-pressure policy removed this content.',
+        'write-failure': 'Some body chunks could not be queued or saved.',
+        'transfer-incomplete': 'The body transfer did not finish.',
+        'serialization-failure': 'The body could not be serialized for capture.',
+        unknown: 'Capture stopped without a recognized reason.',
+      },
+    },
     'detail-load-failed': 'Bu istek yüklenemedi. Tekrar deneyin.',
     'detail-not-found': 'Bu kayıt artık mevcut değil. Temizlenmiş olabilir.',
     fields: {
@@ -1308,6 +1486,7 @@ const tr = {
       query: 'Ek istek seçenekleri',
     },
     outcomes: {
+      capture_interrupted: 'Capture interrupted',
       in_progress: 'İşleniyor',
       completed: 'Tamamlandı',
       client_cancelled: 'İptal edildi',
@@ -1338,7 +1517,6 @@ const tr = {
     'parse-error': 'İçerik {{offset}} konumunda okunamadı.',
     'thought-oversized':
       'Düşünme içeriği 64 MiB sınırını aştığı için tam kaydedilmedi. Referans: {{hash}}',
-
     'loading-description': 'İstek kayıtlarınız hazır olduğunda burada görünecek.',
     'empty-description':
       'Proxy üzerinden gönderilen istekler burada görünür. Filtreleri de değiştirebilirsiniz.',
@@ -1348,6 +1526,52 @@ const tr = {
     'load-failed-description':
       'Lütfen tekrar deneyin. Bu, kayıtlarınızın silindiği anlamına gelmez.',
     'refresh-failed': 'Kayıtlar yenilenemedi. Önceden yüklenen kayıtlar gösterilmeye devam ediyor.',
+    searching: 'Aranıyor…',
+    jumping: 'Eşleşen bölüm açılıyor…',
+    'search-failed': 'Bu içerikte arama yapılamadı. Tekrar deneyin.',
+    clearing: 'Temizleniyor…',
+    'clear-failed':
+      'Temizleme işleminin tamamlandığı doğrulanamadı. Yeniden denemeden önce yenileyin; devam eden kayıt durdurulmuş olabilir.',
+    'resize-column': '{{column}} sütununu yeniden boyutlandır',
+    'reset-columns': 'Sütun genişliklerini sıfırla',
+    'columns-unsaved': 'Sütun genişlikleri bu görünümde değişti ancak kaydedilemedi.',
+    'clear-scope':
+      'Geçerli filtrelerin dışındakiler dahil tüm {{category}} kayıtları temizlensin mi? Düşünce deposu ve tanılama dosyaları etkilenmez.',
+    'clear-complete': '{{category}} kategorisinden {{count}} kayıt temizlendi.',
+    'exact-session': 'Tam kayıtlı oturum kimliği',
+    'apply-session': 'Oturumu uygula',
+    'reset-session': 'Oturumu sıfırla',
+    'recorded-usage': 'Recorded response usage',
+    'usage-source-unretained':
+      'Provider provenance is not retained for these counters. Local estimates are not mixed into this display.',
+    'cache-rate': 'Cached input / total input',
+    'cache-rate-missing': 'Unknown — input or cache count missing',
+    'cache-rate-zero-input': 'Not applicable — zero input',
+    'cache-rate-inconsistent': 'Inconsistent recorded counts',
+    'local-estimate': 'Local estimate',
+    'estimate-not-retained': 'Not retained in this audit record',
+    'measured-stages': 'Recorded gateway timing stages',
+    'stage-overlap-note':
+      'Stages can overlap; do not add them. Missing stages and legacy zeros remain unknown.',
+    'stage-clean': 'Request preparation',
+    'stage-normalization': 'Normalization',
+    'stage-thinking': 'Thought restoration',
+    'stage-ttft': 'Latest upstream attempt to first byte',
+    'wrap-lines': 'Wrap lines',
+    'view-mode-unsaved': 'Display mode changed, but could not be saved.',
+    'match-position': 'Match {{current}} of {{count}}',
+    'previous-match': 'Previous match',
+    'next-match': 'Next match',
+    'cancel-search': 'Cancel search',
+    'export-session': 'Export saved session',
+    'session-exporting': 'Exporting session…',
+    'session-export-scope':
+      'All saved model requests, attempts and bodies. Up to 2,000 settled requests and 100 MiB; partial captures stay partial.',
+    'session-export-needs-scope':
+      'Select a scoped saved-session key. Older records can be exported per body.',
+    'session-export-saved': 'Saved session export.',
+    'session-export-failed':
+      'Export completion could not be confirmed. Check the destination file. Wait for requests to settle, refresh and retry; active, changed, missing or oversized data is refused.',
   },
 };
 export default tr;

@@ -68,7 +68,11 @@ describe('real request path, OpenAI chat surface', () => {
     });
     expect(upstream.calls).toHaveLength(1);
     expect(upstream.calls[0]?.accessToken).toBe('access-acc-1');
-    expect(upstream.calls[0]?.body.request.systemInstruction).toMatchObject({ role: 'user' });
+    expect(upstream.calls[0]?.body.request.systemInstruction).toBeUndefined();
+    expect(upstream.calls[0]?.body.request.contents[0]).toMatchObject({
+      role: 'user',
+      parts: [{ text: 'What is the weather?' }],
+    });
   });
 
   it('carries the client request through the mapper into the upstream body', async () => {
@@ -130,6 +134,61 @@ describe('real request path, OpenAI chat surface', () => {
     );
   });
 
+  it('passes a bare-model effort into account selection and physical resolution', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+    const lease = createLease([createAccount('acc-1')]);
+    const { openAIService } = createGateway(upstream, lease);
+
+    await openAIService.handleChatCompletions({
+      messages: [{ content: 'Use a small effort.', role: 'user' }],
+      model: 'gemini-3.8-flash',
+      reasoning_effort: 'low',
+      stream: false,
+    });
+
+    expect(lease.getNextToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        effort: 'low',
+        model: 'gemini-3.8-flash',
+      }),
+    );
+    expect(lease.resolveDynamicModelForAccount).toHaveBeenCalledWith(
+      'acc-1',
+      'gemini-3.8-flash',
+      'low',
+    );
+  });
+
+  it('rejects an unknown effort before account selection or an upstream request', async () => {
+    const upstream = createUpstream({ generate: geminiTextResponse('unreachable') });
+    const lease = createLease([createAccount('acc-1')]);
+    const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
+    const reply = createReply();
+
+    await controller.chatCompletions(
+      {
+        messages: [{ content: 'Reject this effort.', role: 'user' }],
+        model: 'gemini-3.8-flash',
+        reasoning: { effort: 'not-a-tier' },
+        stream: false,
+      } as never,
+      reply as never,
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(400);
+    expect(reply.body).toEqual({
+      error: {
+        message: expect.stringContaining('Unsupported model effort "not-a-tier"'),
+        type: 'invalid_request_error',
+        code: 'invalid_model_effort',
+        param: null,
+      },
+    });
+    expect(lease.getNextToken).not.toHaveBeenCalled();
+    expect(lease.resolveDynamicModelForAccount).not.toHaveBeenCalled();
+    expect(upstream.calls).toEqual([]);
+  });
+
   it('replaces raw OpenAI thinking controls for a direct Gemini agent identity', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('ok') });
     const lease = createLease([createAccount('acc-1')]);
@@ -170,7 +229,11 @@ describe('real request path, OpenAI chat surface', () => {
       stream: false,
     } as never);
 
-    expect(lease.resolveDynamicModelForAccount).toHaveBeenCalledWith('acc-1', 'gemini-3-pro-image');
+    expect(lease.resolveDynamicModelForAccount).toHaveBeenCalledWith(
+      'acc-1',
+      'gemini-3-pro-image',
+      undefined,
+    );
     expect(upstream.calls[0]?.body.model).toBe('gemini-3.1-pro-image');
     expect(upstream.calls[0]?.body.request.generationConfig?.imageConfig).toEqual({
       aspectRatio: '16:9',
@@ -349,7 +412,8 @@ describe('real request path, OpenAI chat surface', () => {
       },
     });
     const lease = createLease([createAccount('acc-1')]);
-    const { anthropicService, geminiService } = createGateway(upstream, lease);
+    const { geminiService } = createGateway(upstream, lease);
+    const { anthropicService } = createGateway(upstream, createLease([createAccount('acc-1')]));
     const waitBeforeRetry = vi
       .spyOn(ProxyRetryService.prototype, 'waitBeforeRetry')
       .mockResolvedValue(undefined);

@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export interface WriteFileAtomicOptions {
   /** Optional POSIX permission bits for newly created files. */
@@ -60,6 +61,32 @@ async function syncParentDirectory(
   }
 }
 
+/** Retry only a known Windows replacement failure, after the temporary file is closed. */
+async function replaceTemporaryFile(
+  dependencies: AtomicFileWriterDependencies,
+  temporaryPath: string,
+  filePath: string,
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await dependencies.rename(temporaryPath, filePath);
+      return;
+    } catch (error) {
+      if (
+        dependencies.platform !== 'win32' ||
+        !(error instanceof Error) ||
+        !('code' in error) ||
+        error.code !== 'EPERM' ||
+        attempt >= 4
+      ) {
+        throw error;
+      }
+      // Same source/target, no re-write or target deletion; total requested wait is 200 ms.
+      await delay(20 * (attempt + 1));
+    }
+  }
+}
+
 /**
  * Builds an atomic writer with explicit filesystem seams for durable-state tests.
  * Production callers should use `writeFileAtomic` instead.
@@ -85,7 +112,7 @@ export function createAtomicFileWriter(
         await temporaryHandle.close();
         temporaryHandle = null;
 
-        await dependencies.rename(temporaryPath, filePath);
+        await replaceTemporaryFile(dependencies, temporaryPath, filePath);
         if (dependencies.platform !== 'win32') {
           await syncParentDirectory(dependencies, directory);
         }

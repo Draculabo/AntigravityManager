@@ -7,8 +7,6 @@ import { accountOwnerEvents } from './account-owner-events.service';
 import { isEmpty, isString } from 'lodash-es';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountDeviceBindingStore } from '@/modules/cloud-account/persistence/cloud-account-device-binding-store';
-import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
-import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { logger } from '@/shared/logging/logger';
 import {
@@ -20,7 +18,11 @@ import {
 import { runWithSwitchGuard } from '@/modules/antigravity-runtime/switch/switchGuard';
 import { executeSwitchFlow } from '@/modules/antigravity-runtime/switch/switchFlow';
 import type { SwitchFailureReason } from '@/modules/antigravity-runtime/switch/switchMetrics';
-import { ENTERPRISE_OAUTH_CLIENT_KEY } from './cloud-account-oauth-settings.service';
+import {
+  CloudAccountSwitchContext,
+  ensureCloudSwitchProjectReady,
+} from './cloud-account-switch-context';
+import { CloudAccountRefreshContextChangedError } from './cloud-account-refresh-context';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { extractErrorMessage } from '@/modules/cloud-account/utils/account-status';
 import { withTimingTrace } from '@/shared/observability/timingTrace';
@@ -31,7 +33,6 @@ import {
   isRetryableInvalidGrantRefreshError,
 } from './CloudAccountRefreshService';
 import {
-  clearAccountStatus,
   markAccountStatusFromError,
   mergeRefreshedToken,
 } from './cloud-account-refresh-state.service';
@@ -45,6 +46,7 @@ import {
 import { classifyOperationCause } from './operation-cause';
 import { CredentialReadbackError } from '@/shared/auth/credentialReadbackError';
 import { AppError } from '@/shared/errors/appError';
+import { captureDeviceBindingWriteGuard } from './cloud-account-device-binding-guard';
 
 type SwitchStage =
   | 'account-lookup'
@@ -137,21 +139,6 @@ function diagnosticReasonFor(
   return observed;
 }
 
-function isEnterpriseClient(clientKey?: string): boolean {
-  if (!clientKey) {
-    return false;
-  }
-  return clientKey.trim().toLowerCase() === ENTERPRISE_OAUTH_CLIENT_KEY;
-}
-
-function normalizeProjectId(projectId?: string): string | null {
-  if (!isString(projectId)) {
-    return null;
-  }
-  const normalized = projectId.trim();
-  return normalized === '' ? null : normalized;
-}
-
 export function formatSwitchRefreshError(error: unknown): string {
   if (isRetryableInvalidGrantRefreshError(error)) {
     return 'Token refresh was rejected after confirmation. Retry later before reauthorizing the account.';
@@ -187,43 +174,6 @@ export function formatSwitchRefreshError(error: unknown): string {
   return `Token refresh failed: ${reason}`;
 }
 
-async function ensureEnterpriseProjectReady(account: CloudAccount): Promise<void> {
-  if (!isEnterpriseClient(account.token.oauth_client_key)) {
-    return;
-  }
-
-  if (normalizeProjectId(account.token.project_id)) {
-    return;
-  }
-
-  logger.warn(
-    `[OAuth] Account ${account.email} is using enterprise OAuth client but missing project_id. Resolving before switch...`,
-  );
-
-  try {
-    const resolvedProjectId = await GoogleAPIService.fetchProjectId(
-      account.token.access_token,
-      account.proxy_url,
-    );
-    const normalizedProjectId = normalizeProjectId(resolvedProjectId ?? undefined);
-    if (normalizedProjectId) {
-      account.token.project_id = normalizedProjectId;
-      await CloudAccountRepo.updateToken(account.id, account.token);
-      logger.info(`[OAuth] Successfully resolved and saved project_id for ${account.email}`);
-    } else {
-      logger.warn(
-        `[OAuth] Project ID is unavailable for ${account.email}; continuing switch without blocking.`,
-      );
-    }
-  } catch (error) {
-    logger.warn(
-      `[OAuth] Failed to auto-resolve project ID for ${account.email} during switch: ${extractErrorMessage(
-        error,
-      )}. Continuing switch without blocking.`,
-    );
-  }
-}
-
 export async function switchCloudAccountCore(
   accountId: string,
   appTarget?: AntigravityAppTarget,
@@ -251,6 +201,7 @@ export async function switchCloudAccountCore(
               throw new CloudAccountSwitchError('account-not-found');
             }
 
+            const context = new CloudAccountSwitchContext(account);
             logger.info(`Switching to cloud account: ${account.email} (${account.id})`);
             setStage('launch-preflight');
             const launchContext =
@@ -264,6 +215,7 @@ export async function switchCloudAccountCore(
                 appTarget: appTarget || 'classic',
               },
               async (trace) => {
+                await context.assertCurrent();
                 setStage('identity-profile');
                 trace.phaseSync('deviceProfileSetupMs', () => {
                   if (appTarget !== 'agy') {
@@ -271,14 +223,17 @@ export async function switchCloudAccountCore(
                   }
 
                   if (!account.device_profile) {
+                    const guard = captureDeviceBindingWriteGuard(account);
                     const generated = generateDeviceProfile();
                     CloudAccountDeviceBindingStore.setDeviceBinding(
                       account.id,
                       generated,
                       'auto_generated',
+                      guard,
                     );
                     saveGlobalOriginalProfile(generated);
                     account.device_profile = generated;
+                    context.acceptOwnProfile();
                   }
                 });
 
@@ -302,21 +257,15 @@ export async function switchCloudAccountCore(
                     );
 
                     const updatedToken = mergeRefreshedToken(account.token, refreshedToken, now);
-                    if (
-                      !(await CloudAccountRepo.compareAndUpdateToken(
-                        account.id,
-                        account.token,
-                        updatedToken,
-                      ))
-                    ) {
-                      throw new Error('Account token changed during switch refresh');
-                    }
-
-                    account.token = updatedToken;
+                    await context.updateToken(updatedToken);
                     logger.info(`Token refreshed for ${account.email}`);
                   } catch (error) {
                     logger.warn('Failed to refresh token before IDE injection', error);
-                    await markAccountStatusFromError(account, error);
+                    if (error instanceof CloudAccountRefreshContextChangedError) {
+                      throw error;
+                    }
+                    await context.assertCurrent(error);
+                    await markAccountStatusFromError(account, error, context.guardFor(error));
                     if (error instanceof CloudAccountRefreshBlockedError) {
                       throw new CloudAccountSwitchError('reauth-required');
                     }
@@ -330,7 +279,7 @@ export async function switchCloudAccountCore(
 
                 setStage('enterprise-project');
                 await trace.phase('enterpriseProjectReadyMs', async () => {
-                  await ensureEnterpriseProjectReady(account);
+                  await ensureCloudSwitchProjectReady(account, context);
                 });
               },
             );
@@ -348,6 +297,7 @@ export async function switchCloudAccountCore(
               appTarget,
               launchContext?.pathOptions,
             );
+            await context.assertCurrent();
             storage = preparedWrite.storage;
             setStage('switch-execution');
             await executeSwitchFlow({
@@ -362,6 +312,7 @@ export async function switchCloudAccountCore(
               useCredentialStore: preparedWrite.storage === 'credential-store',
               processExitTimeoutMs: process.platform === 'darwin' ? 20000 : 10000,
               launchContext,
+              assertCurrent: context.assertCurrent,
               onFailure: (reason) => {
                 failureCode = publicFailureCode(reason);
                 failureReason = reason;
@@ -370,7 +321,9 @@ export async function switchCloudAccountCore(
               onSwitchTrace: (trace) => operation.setSwitchTrace(trace),
               performSwitch: async () => {
                 try {
+                  await context.assertCurrent();
                   await preparedWrite.write();
+                  await context.assertCurrent();
                   writeFailure = undefined;
                 } catch (error) {
                   writeFailure = error;
@@ -379,10 +332,10 @@ export async function switchCloudAccountCore(
               },
               afterSwitchSuccess: async () => {
                 setStage('account-state-update');
-                CloudAccountRepo.updateLastUsed(account.id);
-                CloudAccountRepo.setActive(account.id);
-                CloudAccountSettingsStore.setActiveForTarget(appTarget, account.id);
-                await clearAccountStatus(account);
+                CloudAccountRepo.finalizeSwitch(account.id, appTarget, context.guard);
+                await context.assertCurrent();
+                account.status = 'active';
+                account.status_reason = undefined;
 
                 logger.info(`Successfully switched to cloud account: ${account.email}`);
                 accountOwnerEvents.publish({
@@ -400,12 +353,13 @@ export async function switchCloudAccountCore(
             });
             operation.completeSwitch();
           } catch (error) {
+            logger.warn('Cloud account switch stopped before completion', error);
             const kind = error instanceof CloudAccountSwitchError ? error.switchCode : failureCode;
             const primaryError =
               kind === 'target-write-failed' && writeFailure && !(error instanceof AggregateError)
                 ? writeFailure
                 : error;
-            const classified = classifyOperationCause(primaryError);
+            const classified = classifyOperationCause(error);
             const diagnosticStage = diagnosticStageFor(stage, failureReason, primaryError);
             const reason = diagnosticReasonFor(
               kind,

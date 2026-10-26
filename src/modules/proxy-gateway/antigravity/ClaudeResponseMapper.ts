@@ -1,4 +1,5 @@
-import { v4 as uuidv4 } from 'uuid';
+import { ResponseToolCallIdentity } from './ResponseToolCallIdentity';
+import { hashSessionAnchor } from '../server/common/session-anchor-hash';
 import {
   ClaudeResponse,
   GeminiResponse,
@@ -8,7 +9,9 @@ import {
   GroundingMetadata,
 } from './types';
 import { readThoughtSignature } from './signature-utils';
+import { toClaudeClientThoughtSignature } from './thought-signature-format';
 import { toAnthropicMessageId } from './anthropic-message-id';
+import { getGeminiReasoningTokens } from './GeminiReasoningUsage';
 import { SignatureStore } from './SignatureStore';
 import {
   isMalformedFunctionCallFinishReason,
@@ -18,6 +21,7 @@ import type { ThoughtSignatureModelContext } from './thought-signature-model';
 import { logger } from '@/shared/logging/logger';
 
 export interface ClaudeResponseMapperOptions extends Partial<ThoughtSignatureModelContext> {
+  toolCallIdentity?: ResponseToolCallIdentity;
   registeredToolNames?: readonly string[];
   signatureSessionKey?: string;
   signatureMessageCount?: number;
@@ -34,8 +38,20 @@ class NonStreamingProcessor {
   private thinkingSignature: string | null = null;
   private trailingSignature: string | null = null;
   private hasToolCall: boolean = false;
+  private toolCallPosition = 0;
+  private toolCallIdentity: ResponseToolCallIdentity;
 
-  constructor(private readonly options: ClaudeResponseMapperOptions = {}) {}
+  constructor(private readonly options: ClaudeResponseMapperOptions = {}) {
+    this.toolCallIdentity =
+      options.toolCallIdentity ??
+      new ResponseToolCallIdentity(() =>
+        hashSessionAnchor([
+          options.model,
+          options.signatureSessionKey,
+          options.signatureMessageCount,
+        ]),
+      );
+  }
 
   public process(geminiResponse: GeminiResponse): ClaudeResponse {
     const candidate = geminiResponse.candidates?.[0];
@@ -70,7 +86,9 @@ class NonStreamingProcessor {
   }
 
   private processPart(part: GeminiPart) {
-    const signature = readThoughtSignature(part.thoughtSignature ?? part.thought_signature) || null;
+    const upstreamSignature =
+      readThoughtSignature(part.thoughtSignature ?? part.thought_signature) || null;
+    const signature = upstreamSignature ? toClaudeClientThoughtSignature(upstreamSignature) : null;
 
     // 1. Handle FunctionCall
     if (part.functionCall) {
@@ -90,10 +108,15 @@ class NonStreamingProcessor {
       this.hasToolCall = true;
 
       const fc = part.functionCall;
-      const toolId = fc.id || `${fc.name}-${uuidv4()}`;
+      const toolId = this.toolCallIdentity.resolve(
+        fc.name,
+        fc.args ?? {},
+        this.toolCallPosition++,
+        fc.id,
+      );
 
-      if (signature) {
-        this.storeSignature(signature, toolId, fc.name);
+      if (upstreamSignature) {
+        this.storeSignature(upstreamSignature, toolId, fc.name);
       }
 
       const toolUse: ContentBlock = {
@@ -108,8 +131,8 @@ class NonStreamingProcessor {
       return;
     }
 
-    if (signature) {
-      this.storeSignature(signature);
+    if (upstreamSignature) {
+      this.storeSignature(upstreamSignature);
     }
 
     // 2. Handle Text / Thinking
@@ -297,7 +320,7 @@ class NonStreamingProcessor {
     logger.warn(`[Claude-Response] Recovered leaked tool call for ${registeredToolName}`);
     return {
       type: 'tool_use',
-      id: `${registeredToolName}-${uuidv4()}`,
+      id: this.toolCallIdentity.resolve(registeredToolName, input, this.toolCallPosition++),
       name: registeredToolName,
       input,
     };
@@ -325,7 +348,7 @@ class NonStreamingProcessor {
       : undefined;
 
     let stopReason = 'end_turn';
-    if (!isMalformedFunctionCall && this.hasToolCall) {
+    if (this.hasToolCall) {
       stopReason = 'tool_use';
     } else if (finishReason === 'MAX_TOKENS') {
       stopReason = 'max_tokens';
@@ -348,18 +371,17 @@ class NonStreamingProcessor {
         geminiResponse.usageMetadata?.cachedContentTokenCount ??
         geminiResponse.usageMetadata?.cachedTokens ??
         0,
-      reasoning_tokens:
-        geminiResponse.usageMetadata?.total_thought_tokens ??
-        geminiResponse.usageMetadata?.totalThoughtTokens ??
-        geminiResponse.usageMetadata?.thoughtsTokenCount ??
-        0,
+      reasoning_tokens: getGeminiReasoningTokens(geminiResponse.usageMetadata),
     };
 
-    const hasVisibleText = this.contentBlocks.some(
-      (contentBlock) => contentBlock.type === 'text' && contentBlock.text.trim().length > 0,
-    );
-    if (isMalformedFunctionCall && !hasVisibleText) {
-      this.contentBlocks.push({ type: 'text', text: MALFORMED_FUNCTION_CALL_RECOVERY_TEXT });
+    if (isMalformedFunctionCall) {
+      const hasVisibleText = this.contentBlocks.some(
+        (block) => block.type === 'text' && block.text,
+      );
+      this.contentBlocks.push({
+        type: 'text',
+        text: `${hasVisibleText ? '\n\n' : ''}${MALFORMED_FUNCTION_CALL_RECOVERY_TEXT}`,
+      });
     } else if (this.contentBlocks.length === 0) {
       this.contentBlocks.push({ type: 'text', text: '.' });
     }

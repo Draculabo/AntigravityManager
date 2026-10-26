@@ -4,6 +4,7 @@ import { TrafficClassSchema, type TrafficClass } from './traffic-classifier';
 
 export const AuditOutcomeSchema = z.enum([
   'in_progress',
+  'capture_interrupted',
   'completed',
   'client_cancelled',
   'client_disconnected',
@@ -24,6 +25,8 @@ export interface AuditPayloadFields {
 }
 
 export interface StartAuditParentInput {
+  captureGeneration?: number;
+  startedAt?: number;
   clientIp?: string;
   headers?: Record<string, unknown>;
   method: string;
@@ -40,6 +43,7 @@ export interface StartAuditParentInput {
 }
 
 export interface CompleteAuditParentInput {
+  sessionId?: string;
   error?: unknown;
   /** Already redacted by the owned audit serializer across the private process boundary. */
   errorSummary?: string | null;
@@ -92,6 +96,7 @@ export const TrafficAuditListInputSchema = z.object({
   offset: z.number().int().nonnegative().default(0),
   protocol: z.string().trim().optional(),
   requestId: z.string().trim().optional(),
+  sessionId: z.string().trim().min(1).max(512).optional(),
   status: z.number().int().min(0).max(599).optional(),
   statusMode: z
     .enum(['all', '1xx', '2xx', '3xx', '4xx', '5xx', 'exact', 'unfinished', 'no-status'])
@@ -309,6 +314,14 @@ export const TrafficAuditEventSchema = z.object({
 export type TrafficAuditEvent = z.infer<typeof TrafficAuditEventSchema>;
 
 export const TrafficAuditStatsSchema = z.object({
+  archives: z.discriminatedUnion('status', [
+    z.object({
+      status: z.literal('complete'),
+      bytes: z.number().int().nonnegative(),
+      files: z.number().int().nonnegative(),
+    }),
+    z.object({ status: z.literal('unknown') }),
+  ]),
   bodyStoredBytes: z.number().int().nonnegative(),
   databaseBytes: z.number().int().nonnegative(),
   droppedCount: z.number().int().nonnegative(),
@@ -319,6 +332,7 @@ export const TrafficAuditStatsSchema = z.object({
   workerAlive: z.boolean(),
   workerPendingBytes: z.number().int().nonnegative(),
   workerPendingCommands: z.number().int().nonnegative(),
+  maintenanceState: z.enum(['running', 'scheduled', 'idle', 'stopped']).optional(),
 });
 
 export type TrafficAuditStats = z.infer<typeof TrafficAuditStatsSchema>;

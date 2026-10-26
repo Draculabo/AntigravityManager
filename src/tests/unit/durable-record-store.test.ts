@@ -18,6 +18,7 @@ describe('DurableRecordStore', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     // Windows keeps a handle for a moment after the last write resolves.
     fs.rmSync(directory, { force: true, maxRetries: 5, recursive: true, retryDelay: 20 });
   });
@@ -225,6 +226,19 @@ describe('DurableRecordStore', () => {
     expect(rename).toHaveBeenCalledTimes(1);
     expect(persisted.entries).toHaveLength(25);
     rename.mockRestore();
+  });
+
+  it('reports write failure to callers that require durable publication', async () => {
+    const rename = vi.spyOn(fs.promises, 'rename').mockRejectedValue(new Error('disk unavailable'));
+    const store = createStore();
+    const generation = store.set('media-session', { note: 'private media reference' });
+
+    await expect(store.flushStrict(generation)).rejects.toThrow('disk unavailable');
+    await expect(store.flush()).resolves.toBeUndefined();
+
+    rename.mockRestore();
+    const recoveredGeneration = store.set('next', { note: 'recovered write' });
+    await expect(store.flushStrict(recoveredGeneration)).resolves.toBeUndefined();
   });
 
   it('keeps no file at all when no path is configured', async () => {

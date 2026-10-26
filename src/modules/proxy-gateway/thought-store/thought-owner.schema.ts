@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { ContentDescriptorSchema } from '../diagnostics/content-capability.schema';
+import { ThoughtPartSignaturesSchema } from './thought-part-signatures.schema';
+import { ThoughtProvenanceSchema } from './thought-record-provenance';
 
 export const ThoughtSessionsInputSchema = z.strictObject({
   limit: z.number().int().min(1).max(200).default(100),
@@ -12,6 +14,7 @@ export const ThoughtRecordInputSchema = ThoughtSessionInputSchema.extend({
   id: z.number().int().positive(),
 });
 export const ThoughtRecordSchema = z.strictObject({
+  ...ThoughtProvenanceSchema.shape,
   createdAt: z.number().int(),
   fingerprint: z.string(),
   id: z.union([z.number().int().positive(), z.string().min(1).max(128)]),
@@ -20,6 +23,7 @@ export const ThoughtRecordSchema = z.strictObject({
   oversizedBytes: z.number().int().nonnegative().nullable(),
   oversizedSha256: z.string().nullable(),
   signature: z.string().nullable(),
+  partSignatures: ThoughtPartSignaturesSchema,
   sourceFamily: z.string().nullable(),
   thought: z.string(),
   toolIds: z.array(z.string()),
@@ -30,6 +34,7 @@ export const ThoughtRecordMetadataSchema = ThoughtRecordSchema.omit({
   thought: true,
   visible: true,
   signature: true,
+  partSignatures: true,
 });
 export const ThoughtRecordOpenSchema = z
   .strictObject({
@@ -42,10 +47,14 @@ export const ThoughtRecordOpenSchema = z
       .max(64 * 1024 * 1024),
     visibleBytes: z.number().int().nonnegative(),
     signatureBytes: z.number().int().nonnegative().nullable(),
+    partSignaturesBytes: z.number().int().positive(),
   })
   .refine(
     (value) =>
-      value.thoughtBytes + value.visibleBytes + (value.signatureBytes ?? 0) ===
+      value.thoughtBytes +
+        value.visibleBytes +
+        (value.signatureBytes ?? 0) +
+        value.partSignaturesBytes ===
       value.transfer.totalBytes,
   );
 export type ThoughtRecordInput = z.infer<typeof ThoughtRecordInputSchema>;

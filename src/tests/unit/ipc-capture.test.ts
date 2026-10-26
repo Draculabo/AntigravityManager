@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createIpcCaptureOwner } from '@/modules/proxy-gateway/audit/ipc-capture-owner';
 import { createRemoteIpcAuditRecorder } from '@/modules/proxy-gateway/audit/remote-ipc-audit-recorder';
 import { createPreparedAuditPayloadWriter } from '@/modules/proxy-gateway/audit/prepared-audit-payload';
-import { getTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import {
+  getTrafficAuditRequestContext,
+  createThoughtSessionKey,
+} from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { getRemoteIpcCapture } from '@/modules/proxy-gateway/audit/ipc-capture-transport-context';
 import type { TrafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import type { TrafficAuditWorkerCommand } from '@/modules/proxy-gateway/audit/traffic-audit.worker-protocol';
@@ -130,7 +133,7 @@ describe('remote IPC capture', () => {
           await owner.run(cap, async () => {
             const context = getTrafficAuditRequestContext();
             expect(context?.parent?.id).toBe('parent');
-            expect(context?.thoughtSessionKey).toMatch(/:stable$/u);
+            expect(context?.thoughtSessionKey).toBe(createThoughtSessionKey({}, 'stable'));
             if (context) {
               context.attemptSequence += 1;
             }

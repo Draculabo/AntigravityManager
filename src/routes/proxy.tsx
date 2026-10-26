@@ -4,7 +4,7 @@
  */
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ipc } from '@/ipc/manager';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OpenCodeSyncCard } from '@/modules/proxy-gateway/components/OpenCodeSyncCard';
 import { AgentToolSyncCard } from '@/modules/proxy-gateway/components/AgentToolSyncCard';
 import { GlobalSystemPromptCard } from '@/modules/proxy-gateway/components/GlobalSystemPromptCard';
+import { CoworkCompactionCard } from '@/modules/proxy-gateway/components/CoworkCompactionCard';
 import { AuditAndThoughtStoreCard } from '@/modules/proxy-gateway/components/AuditAndThoughtStoreCard';
 import { ProxyServiceControl } from '@/modules/proxy-gateway/components/ProxyServiceControl';
 import { ProxyAccountStrategy } from '@/modules/proxy-gateway/components/ProxyAccountStrategy';
@@ -108,6 +109,7 @@ function resolveAnthropicMappingValue(
 }
 
 function ProxyPage() {
+  const queryClient = useQueryClient();
   const { t } = useTranslation();
   const { toast } = useToast();
   const { config, isLoading, saveConfig, serviceAvailable, serviceLoading, retryService } =
@@ -145,6 +147,19 @@ function ProxyPage() {
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [keyBusy, setKeyBusy] = useState(false);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
+  const [networkDrafts, setNetworkDrafts] = useState({
+    allowlist: '',
+    blocklist: '',
+    trustedProxyCidrs: '',
+  });
+
+  const syncNetworkDrafts = (nextProxyConfig: ProxyConfig) => {
+    setNetworkDrafts({
+      allowlist: nextProxyConfig.network.ip_allowlist.join(', '),
+      blocklist: nextProxyConfig.network.ip_blocklist.join(', '),
+      trustedProxyCidrs: nextProxyConfig.network.trusted_proxy_cidrs.join(', '),
+    });
+  };
 
   // Sync config.proxy to local state when loaded, and check actual server status
   useEffect(() => {
@@ -159,14 +174,17 @@ function ProxyPage() {
           if (config.proxy.enabled !== actualEnabled) {
             const syncedConfig = { ...config.proxy, enabled: actualEnabled };
             setProxyConfig(syncedConfig);
+            syncNetworkDrafts(syncedConfig);
             // Also save the corrected state
             await saveConfig({ ...config, proxy: syncedConfig });
           } else {
             setProxyConfig(config.proxy);
+            syncNetworkDrafts(config.proxy);
           }
         } catch {
           // If status check fails, just use config value
           setProxyConfig(config.proxy);
+          syncNetworkDrafts(config.proxy);
         }
       };
       syncServerStatus();
@@ -203,6 +221,23 @@ function ProxyPage() {
     if (config) {
       await saveConfig({ ...config, proxy: newProxyConfig });
     }
+  };
+
+  const updateNetworkList = async (
+    field: 'ip_allowlist' | 'ip_blocklist' | 'trusted_proxy_cidrs',
+    draftField: 'allowlist' | 'blocklist' | 'trustedProxyCidrs',
+  ) => {
+    if (!proxyConfig) {
+      return;
+    }
+    const values = networkDrafts[draftField]
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    await updateProxyConfig({
+      ...proxyConfig,
+      network: { ...proxyConfig.network, [field]: values },
+    });
   };
 
   const updateGatewayPort = (value: string) => {
@@ -371,7 +406,9 @@ print(response.choices[0].message.content)`;
             <div className="flex items-center gap-2">
               <div className="font-semibold">{t('proxy.config.local_access')}</div>
               <code className="bg-muted rounded px-1.5 py-0.5 font-mono select-all">
-                http://{selectedIp || 'localhost'}:{proxyConfig.port}/v1
+                http://
+                {proxyConfig.network.lan_access ? selectedIp || 'localhost' : '127.0.0.1'}:
+                {proxyConfig.port}/v1
               </code>
               {/* IP Selector Dropdown */}
               {localIps && localIps.length > 1 && (
@@ -389,7 +426,7 @@ print(response.choices[0].message.content)`;
                 </Select>
               )}
             </div>
-            {!proxyConfig.api_key_configured && (
+            {proxyConfig.network.lan_access && !proxyConfig.api_key_configured && (
               <div className="text-warning flex items-center gap-2 text-xs font-medium">
                 {t('proxy.config.no_token_warning')}
               </div>
@@ -576,6 +613,139 @@ print(response.choices[0].message.content)`;
             />
           </div>
 
+          <div className="flex items-center justify-between gap-4 border-t pt-4">
+            <div className="space-y-1">
+              <Label htmlFor="proxy-lan-access">{t('proxy.config.lan_access')}</Label>
+              <p className="text-muted-foreground text-xs">{t('proxy.config.lan_access_desc')}</p>
+            </div>
+            <Switch
+              id="proxy-lan-access"
+              checked={proxyConfig.network.lan_access}
+              onCheckedChange={(checked) =>
+                updateProxyConfig({
+                  ...proxyConfig,
+                  network: { ...proxyConfig.network, lan_access: checked },
+                })
+              }
+            />
+          </div>
+
+          <details className="group border-t pt-4">
+            <summary className="focus-visible:ring-ring cursor-default rounded-sm text-sm font-medium focus-visible:ring-2 focus-visible:outline-none">
+              {t('proxy.config.ip_access_title', 'IP access rules')}
+            </summary>
+            <p className="text-muted-foreground mt-1 text-xs">
+              {t(
+                'proxy.config.ip_access_desc',
+                'Restrict model, WebSocket, and public management requests by client address. Values are comma-separated IPs or CIDR ranges.',
+              )}
+            </p>
+            <div className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="proxy-ip-filter-mode">
+                  {t('proxy.config.ip_filter_mode', 'IP filter mode')}
+                </Label>
+                <Select
+                  value={proxyConfig.network.ip_filter_mode}
+                  onValueChange={(ip_filter_mode: ProxyConfig['network']['ip_filter_mode']) =>
+                    updateProxyConfig({
+                      ...proxyConfig,
+                      network: { ...proxyConfig.network, ip_filter_mode },
+                    })
+                  }
+                >
+                  <SelectTrigger id="proxy-ip-filter-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="off">{t('proxy.config.ip_filter_off', 'Off')}</SelectItem>
+                    <SelectItem value="allowlist">
+                      {t('proxy.config.ip_filter_allowlist', 'Allowlist only')}
+                    </SelectItem>
+                    <SelectItem value="blocklist">
+                      {t('proxy.config.ip_filter_blocklist', 'Blocklist')}
+                    </SelectItem>
+                    <SelectItem value="allowlist-and-blocklist">
+                      {t('proxy.config.ip_filter_both', 'Allowlist and blocklist')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="proxy-ip-allowlist">
+                  {t('proxy.config.ip_allowlist', 'Allowed IPs or CIDRs')}
+                </Label>
+                <Input
+                  id="proxy-ip-allowlist"
+                  value={networkDrafts.allowlist}
+                  placeholder="192.168.1.0/24, 2001:db8::/32"
+                  onChange={(event) =>
+                    setNetworkDrafts((current) => ({ ...current, allowlist: event.target.value }))
+                  }
+                  onBlur={() => void updateNetworkList('ip_allowlist', 'allowlist')}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="proxy-ip-blocklist">
+                  {t('proxy.config.ip_blocklist', 'Blocked IPs or CIDRs')}
+                </Label>
+                <Input
+                  id="proxy-ip-blocklist"
+                  value={networkDrafts.blocklist}
+                  placeholder="192.168.1.100, 2001:db8:bad::/48"
+                  onChange={(event) =>
+                    setNetworkDrafts((current) => ({ ...current, blocklist: event.target.value }))
+                  }
+                  onBlur={() => void updateNetworkList('ip_blocklist', 'blocklist')}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="proxy-trusted-proxy-cidrs">
+                  {t('proxy.config.trusted_proxy_cidrs', 'Trusted proxy CIDRs')}
+                </Label>
+                <Input
+                  id="proxy-trusted-proxy-cidrs"
+                  value={networkDrafts.trustedProxyCidrs}
+                  placeholder="10.0.0.0/8, 2001:db8:100::/48"
+                  onChange={(event) =>
+                    setNetworkDrafts((current) => ({
+                      ...current,
+                      trustedProxyCidrs: event.target.value,
+                    }))
+                  }
+                  onBlur={() => void updateNetworkList('trusted_proxy_cidrs', 'trustedProxyCidrs')}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="proxy-allowlist-precedence">
+                    {t('proxy.config.allowlist_precedence', 'Allowlist takes precedence')}
+                  </Label>
+                  <p className="text-muted-foreground text-xs">
+                    {t(
+                      'proxy.config.allowlist_precedence_desc',
+                      'An allowlisted address can bypass a matching blocklist entry.',
+                    )}
+                  </p>
+                </div>
+                <Switch
+                  id="proxy-allowlist-precedence"
+                  checked={proxyConfig.network.allowlist_takes_precedence}
+                  onCheckedChange={(allowlist_takes_precedence) =>
+                    updateProxyConfig({
+                      ...proxyConfig,
+                      network: { ...proxyConfig.network, allowlist_takes_precedence },
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </details>
+
           <details className="group border-t pt-4">
             <summary className="focus-visible:ring-ring cursor-default rounded-sm text-sm font-medium focus-visible:ring-2 focus-visible:outline-none">
               {t('proxy.advanced-options')}
@@ -599,6 +769,12 @@ print(response.choices[0].message.content)`;
                 config={proxyConfig.global_system_prompt}
                 onChange={(global_system_prompt) =>
                   updateProxyConfig({ ...proxyConfig, global_system_prompt })
+                }
+              />
+              <CoworkCompactionCard
+                config={proxyConfig.cowork_compaction}
+                onChange={(cowork_compaction) =>
+                  updateProxyConfig({ ...proxyConfig, cowork_compaction })
                 }
               />
 
@@ -794,7 +970,22 @@ print(response.choices[0].message.content)`;
         <TabsContent value="records" forceMount className="data-[state=inactive]:hidden">
           <AuditAndThoughtStoreCard
             config={proxyConfig}
-            onChange={(patch) => updateProxyConfig({ ...proxyConfig, ...patch })}
+            revisionAvailable={Boolean(config?.auditRevision)}
+            onReload={async () => {
+              const [service] = await retryService();
+              if (service.isError) {
+                throw service.error;
+              }
+            }}
+            onChange={async (patch) => {
+              const result = await ipc.client.config.service.update({
+                ...(patch.traffic_audit ? { expectedAuditRevision: config?.auditRevision } : {}),
+                proxy: patch,
+              });
+              queryClient.setQueryData(['serviceConfig'], result.snapshot);
+              setProxyConfig(result.snapshot.proxy);
+              return result.state;
+            }}
           />
         </TabsContent>
 

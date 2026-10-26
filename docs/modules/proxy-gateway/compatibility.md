@@ -16,29 +16,317 @@ HTTP 403 responses containing `SERVICE_DISABLED` or a disabled-API message are c
 as upstream errors in audit presentation; ordinary credential failures remain authentication
 failures. This classification does not change retry or account-selection policy.
 
+## Model routes, variants and capability evidence
+
+Model requests resolve user rules in this order: runtime deprecation forwarding,
+exact configured alias, a unique case-folded alias, a unique Claude-normalized
+alias, the most specific wildcard, the existing Anthropic family setting, built-in
+or canonical mapping, then passthrough. Exact aliases remain case-sensitive and
+win before equivalent lookups. Wildcards rank by the number of non-wildcard
+characters and use configuration order for ties. Equivalent aliases that point to
+different targets fail explicitly instead of selecting one by iteration order.
+
+Name normalization trims surrounding whitespace before removing a leading
+`models/` path segment. Claude comparison additionally removes a leading
+`anthropic/` segment, folds case and replaces dots with hyphens. Unknown names
+still pass through with their capability unknown. A configured physical target is
+not fed back through its public alias.
+
+A bare tiered family resolves only against physical candidates advertised by the
+selected account. With no effort it prefers `tiered`, then `medium`, the lowest
+candidate above `low`, `low`, and finally the family's advertised fallback.
+Explicit effort is normalized for surrounding whitespace, case and underscores:
+`extra-low`, `min`, `minimal` and `lite` select the lowest tier;
+`x-high`, `xhigh`, `max` and `extreme` select `high`. An unknown effort returns
+HTTP 400 before account selection. Explicit physical tier IDs are not changed by
+request effort.
+
+Capability failures are scoped to an account and known model family for 900
+seconds. A failure on account A does not block account B, and a denial for one
+family does not block another model on A. The record is enforced even when an
+account's catalog is missing, survives an ordinary account-cache reload, and is
+cleared only by matching generation success or expiry. A catalog or quota refresh
+is not positive generation evidence.
+
+Status codes alone do not establish incapability. The gateway records only
+structured model reasons or explicit text naming the current physical model.
+Project, endpoint, authentication, validation, security-policy, tool and schema
+failures remain with their existing owners. Ambiguous 404 and all 403 credential
+or account-validation responses do not create a capability denial.
+
 ## Account Scheduling and Stream Completion
+
+Ordinary generation and token-count operations stop rotating after two distinct
+accounts have returned HTTP 429 without a parsed retry hint or explicit durable
+quota signal. The first account counts toward this budget. Image scheduling uses
+its existing independent policy. Hint-bearing and hard-quota failures do not
+consume this transient budget; the existing outer attempt limit still applies.
+
+When another ordinary candidate is selected after HTTP 429 in the first round,
+the shared retry owner waits 50 ms before returning it to the protocol operation.
+Other failures retain jittered backoff. Round exclusions are separate from the
+request-wide attempted-account history. When no untried candidate remains, a
+later round can reuse currently eligible accounts within the original ceiling.
+The owner observes the shortest current transient cooldown without clearing
+locks: each wait is capped at 30 seconds for a single-account pool and 12 seconds
+for a larger pool. A remaining lock after that wait ends selection. Forbidden,
+validation-blocked, OAuth-disabled and hard-quota accounts do not qualify for
+this waiting; account-first also excludes depleted model quotas.
+
+Ordinary same-account HTTP 429 grace is available once per account and consumes
+no normal attempt slot, including Anthropic generation and both token-count
+surfaces. Multi-account first rounds rotate; later rounds allow a parsed actual
+wait of at most five seconds. Single-account pools allow a parsed actual wait of
+at most 30 seconds or, without a hint, `min(3 seconds * normal attempts used, 10
+seconds)`. The actual wait includes the existing source buffer. Explicit hard
+quota never qualifies for grace. Longer hints use capped normal waiting; existing
+shared locks take precedence over shorter computed backoff. Model variants follow
+the ordinary policy without changing their request configuration.
+
+Retry waits support cancellation and cannot cross the request's remaining
+configured time. That deadline starts with retry-state creation and is not renewed
+by grace or round changes. Cached grace tokens are checked against current
+eligibility immediately before reuse. Retry selections suppress both cache-first
+waiting and the selector's short-pool fallback wait, preventing stacked waits.
+The initial selection retains its existing behavior; credential hydration and
+initial selection waits can still add latency. This is a retry-wait deadline,
+not a replacement for transport or hydration timeouts.
+
+OpenAI stream establishment rejected with ordinary HTTP 429 enters this shared
+rotation policy rather than issuing a non-stream request on the same account.
+Other existing establishment fallbacks remain. All-rate-limit failures retain
+429 semantics; mixed failures retain the last non-rate-limit diagnostic.
+
+Ordinary operations snapshot their potential model-capable account pool before
+entering the loop. Pools of zero or one account have three normal attempt slots;
+larger pools have `pool size * 2`, bounded to 4–12 slots. The snapshot excludes
+validation-blocked accounts and accounts whose OAuth refresh is disabled. It
+includes temporarily cooled or quota-depleted potential accounts, so those
+temporary states do not redefine the ceiling; each selection still enforces
+current eligibility and locks. The snapshot loads the local account cache when
+empty, without hydrating credentials or discovering projects. Image operations
+retain their existing three-slot ceiling.
+
+The ceiling is an upper bound, not a guaranteed send count. The two-account
+generic 429 stop, current locks, cancellation and retry-wait deadline can end an
+operation earlier. Grace remains separate from normal sends and cannot renew the
+ceiling. Image scheduling, permits and grace keep their existing independent
+behavior. Session and account-first affinity commit after upstream success; see
+[account leases](account-leases.md#successful-account-affinity) for commit points,
+concurrent failure protection and lifecycle limits.
 
 Eligible accounts are selected with bounded model-quota weights when `proxy.quota_aware_scheduling_enabled` is true (the default). Each account's resolved upstream model selects its quota snapshot. A reported quota percentage below 25 or an unknown value has weight 1, 25–74 has weight 2, and 75 or above has weight 3. Existing model-capability, health, cooldown, and session-affinity rules still run before weighted round robin. The quota snapshot is only a preference: it never makes an ineligible account eligible and does not reserve capacity. Setting the switch to false restores equal-weight selection.
 
-Synthetic OpenAI Chat and Responses streams created from a completed non-stream response preserve reasoning before visible text. Chat emits `delta.reasoning_content`; Responses emits reasoning summary events. A clean upstream EOF after meaningful output is a valid termination even when the provider omits `finishReason`; Chat infers `stop` and sends `[DONE]`, and Responses emits `response.completed`. A real upstream error, idle timeout, or clean EOF without output remains a failure. Chat does not send `[DONE]` for that failure; Responses emits `response.failed` and does not persist an incomplete response as completed history. Once any response event has been sent, the gateway does not replay the request against another account because that could duplicate visible output or tool calls.
+Synthetic OpenAI Chat and Responses streams created from a completed non-stream response preserve reasoning before visible text. Chat emits `delta.reasoning_content`; Responses emits reasoning summary events. For a live upstream stream, EOF without a finish reason is a failure even after meaningful output. Chat does not fabricate `stop` or `[DONE]`; Responses emits `response.failed` and does not persist an incomplete response as completed history. An upstream error or idle timeout also fails. Once any response event has been sent, the gateway does not replay the request against another account because that could duplicate visible output or tool calls.
 
-Anthropic streaming idle timeout emits an Anthropic `error` event instead of `message_stop` and `[DONE]`. Clean EOF retains the established normal finish and empty-response compatibility behavior even without a finish reason. An upstream transport error retains the established preflight retry behavior before mapped output and remains a stream error after output.
+Anthropic streaming idle timeout or EOF without a finish reason emits an Anthropic `error` event instead of `message_stop` and `[DONE]`. An upstream transport error retains the established preflight retry behavior before mapped output and remains a stream error after output.
 
-Native Gemini streaming accepts clean EOF after a candidate output frame even without a finish reason. Timeout, transport failure, or an EOF with no candidate output produces an SSE `error` payload. An entirely empty stream still raises its existing empty-stream error.
+Native Gemini streaming requires an upstream finish reason. Timeout, transport failure, or EOF without a finish reason produces an SSE `error` payload, including after partial candidate output. An entirely empty stream still raises its existing empty-stream error. See [streaming liveness and backpressure](stream-tool-compatibility.md#streaming-liveness-and-backpressure) for heartbeat and pause behavior.
+
+Gemini `generateContent`, `streamGenerateContent` before SSE delivery, and `countTokens`
+preserve a typed upstream HTTP error status in the 400–599 range. Their JSON error
+contains that numeric code and the existing Gemini status mapping. An unusable provider
+HTTP error status produces 502; message text cannot override the status. Transport
+failures without an HTTP response follow the classification below.
+Local validation and account-admission exceptions retain their own HTTP
+status and the existing account-pool `Retry-After` behavior. Unclassified local
+exceptions remain HTTP 500.
+
+## Upstream transport failures
+
+Before response delivery, all four protocol boundaries preserve valid upstream
+HTTP statuses and local validation/admission exceptions first. Without a provider
+HTTP response, recognized timeout errors produce 504; connection, DNS/network
+and interrupted-transfer failures produce 502. Known transport codes take
+precedence over message text. `ECONNABORTED` from Axios is a timeout;
+`ERR_CANCELED`, `ABORT_ERR` and `AbortError` retain cancellation identity.
+
+The client carries only a classified transport category in its typed upstream
+error. Native clean errors retain their string code and abort name without
+retaining request/configuration graphs. Legacy errors with no known code use
+message fallback, including `timed out`, deadline and body-read reset wording.
+Unclassified errors retain the owning protocol's existing fallback. Local
+cancellation keeps its existing 500
+projection and cannot become 504 merely because its message mentions timeout;
+an actual upstream HTTP 499 is preserved. This does not introduce a new local
+499 contract or alter account/endpoint retry budgets. Anthropic alone retains
+its existing typed upstream 403 to public 503 compatibility mapping.
+
+## Public HTTP error messages
+
+Generation HTTP errors in OpenAI Chat/Responses, Anthropic Messages and Gemini
+use the shared diagnostic text redaction rules for authorization values, named
+credentials, URL credentials/query secrets, email addresses and local user names.
+The complete redacted message is limited to 2048 UTF-8 bytes, including its
+truncation marker, without splitting a Unicode code point. Empty messages become
+`Request failed.`. Validation and unresolved-file messages use the same projection;
+file error codes and parameter paths retain their existing meaning.
+
+Status resolution uses the original error before text projection. Top-level
+envelopes, Retry-After and the Anthropic upstream-403 exception remain unchanged.
+The original Error is not mutated or serialized wholesale into the response.
+OpenAI/Anthropic endpoint logs redact their message and complete stack separately;
+the public message limit does not truncate diagnostic stack frames.
+
+Generation SSE error messages use the same policy; see
+[stream error projection](stream-tool-compatibility.md#public-stream-error-messages).
+Responses WebSocket errors share message projection and HTTP-style classification.
+Public text also removes embedded stack frames and recognized absolute local paths.
+Auxiliary APIs and diagnostic captures retain their owning boundaries. The gateway
+does not copy arbitrary provider payloads or tool arguments into error envelopes.
+
+## HTTP error classification and local fields
+
+OpenAI compatibility errors classify public 4xx responses as
+`invalid_request_error`, except 429 as `rate_limit_error`; public 5xx responses
+use `server_error`. This is the gateway's fallback classification, not a copy of
+arbitrary Google error types. Actual HTTP status continues to take precedence
+over free-form error wording.
+
+Anthropic HTTP types follow the
+[official error table](https://platform.claude.com/docs/en/api/errors):
+
+| Public HTTP status | Anthropic error type                                          |
+| ------------------ | ------------------------------------------------------------- |
+| 401 / 402 / 403    | `authentication_error` / `billing_error` / `permission_error` |
+| 404 / 409 / 413    | `not_found_error` / `conflict_error` / `request_too_large`    |
+| 429 / 504 / 529    | `rate_limit_error` / `timeout_error` / `overloaded_error`     |
+| Other 4xx / 5xx    | `invalid_request_error` / `api_error`                         |
+
+Type selection occurs after the existing Anthropic upstream-403 to public-503
+projection. Such an error remains HTTP 503 / `api_error`, while a local HTTP 403
+uses `permission_error`.
+
+Known local OpenAI validation failures add gateway-owned machine fields:
+
+| Failure                   | `error.code`                      | `error.param` |
+| ------------------------- | --------------------------------- | ------------- |
+| Schema validation         | `invalid_request_schema`          | `null`        |
+| Tool history association  | `invalid_tool_history`            | `null`        |
+| Tool choice configuration | `invalid_tool_choice`             | `tool_choice` |
+| Conflicting output limits | `conflicting_output_token_limits` | `null`        |
+| Unsupported model effort  | `invalid_model_effort`            | `null`        |
+
+`null` means the gateway has no single precise public parameter path; it does
+not parse one from the message. A validated Google status enum supplies OpenAI's
+provider error code with `param: null`; an unknown status string stays private.
+Other errors keep code/param absent. Existing file-reference and Responses history
+errors retain their own specific code/param contracts.
+
+Gemini preserves the validated provider status and exposes at most eight public
+`google.rpc.ErrorInfo` identities from recognized Cloud Code domains. Only a bounded
+uppercase reason and the domain are projected; metadata, help links and unknown
+detail types remain private. Bare/wrapped provenance and a 32 KiB UTF-8 diagnostic
+message limit with a truncation flag remain available on the internal typed cause.
+Generation error replies and SSE headers reuse a safe existing Fastify request ID
+as `X-Request-Id`; Anthropic HTTP errors also include `request_id`. Arbitrary request
+headers do not define a new public identity.
+
+## System prompt normalization
+
+Claude system blocks, initial OpenAI system/developer blocks, Responses instructions
+and native Gemini system parts share one system-text normalizer. Only initial
+contiguous system/developer messages enter the initial instruction; later reminders
+remain at their original conversation position. User-supplied repetitions and
+dynamic dates, paths, UUIDs and request/session identifiers remain significant.
+
+Exact standalone Claude Agent SDK identity maps to Claude Code. Other recognized
+English attributed identity heads can become `You are an AI Agent.` only when
+they contain an identity opening, an agent/assistant/AI noun and an adjacent
+attribution verb. Recognition covers at most the first four sentences and 8192
+UTF-16 code units of each system block; version decimal points do not count as
+sentence endings. Comma continuations and surrounding whitespace remain intact.
+Ordinary business roles, quoted identities and later mentions are preserved.
+
+Only complete `x-anthropic-billing-header:` lines are removed from unprotected
+system text. Matching retains original line offsets. Markdown code fences honor
+their delimiter width/character, including unclosed fences; inline code,
+blockquotes, XML comments and explicit quote/example/code/pre regions remain
+unchanged. No global trim, blank-line collapse or placeholder/ID replacement runs
+after cleanup. Ordinary user/tool input and signed/thought history are excluded.
+Literal `[undefined]` remains data, and mapper cleanup does not mutate argument
+objects by recursively deleting optional properties.
+
+An enabled global prompt is prepended as one dedicated section by its owning
+mapper. Configured whitespace and caller repetitions remain intact, including
+quoted matches and matching section tags. Caller text cannot suppress configured
+injection by substring equality. Existing image-path exclusions remain.
+Generation services snapshot this resolved setting before asynchronous account selection.
+The same value, including disabled/null, reaches account/project fallbacks and stream
+establishment; a subsequent logical request observes saved changes. Direct mapper and
+count callers retain their explicit current-configuration behavior. Native envelopes keep
+static configuration before dynamic contents in deterministic construction order.
+
+These rules describe local request transformation. They do not establish a live
+provider rate-limit, WAF or cache improvement.
+See [complete context observation](inline-media-and-thought-history.md#complete-context-observation)
+for bounded transformation metadata and exact physical-send byte/estimate diagnostics.
+
+## Generation history admission
+
+Chat, Responses, Messages and native Gemini generation reject histories with no
+effective business input, an unanchored assistant start or missing tool results
+before account selection. Initial system/developer instructions alone are not
+business input. Media and actual tool exchanges remain eligible; call/result
+identity is checked by the existing association owner. Cancellation and native
+signature/model validation retain their precedence.
+
+Supported anchored assistant prefill keeps its role and exact text. Only a
+non-image Gemini target receives one `ok go on` user tail in a temporary outbound
+copy. Claude and other targets keep their tail. Repeated preparation is
+idempotent; signed/thought turns retain whitespace companion parts. The gateway
+does not insert dummy thinking, `Continue` for empty history or a fabricated
+initial user task. Count-token requests bypass generation admission and the
+generation-tail adapter, and still send only contents upstream.
+
+An Anthropic upstream 400 narrowly classified as a thought-signature rejection
+propagates without replay, scope-wide cache invalidation, account penalty or
+rotation. Proven wire encoding and exact scoped missing-signature lookup remain.
+The gateway does not convert thinking to visible text, guess tool outcomes or
+append regeneration directives to repair that rejection. See the
+[client upgrade instructions](../../upgrade-guides/next/retain-tool-call-history.md).
 
 ## Explicit Quota Resets and Flash Routes
+
+An HTTP 429 classified as a transient rate limit, with generic `RESOURCE_EXHAUSTED`
+content and no parsed retry hint, uses account-wide cooldown escalation of 5, 15,
+then 30 seconds. Subsequent failures remain at 30 seconds. The history expires one
+hour after the last qualifying failure and resets after an upstream model success
+or an explicit tracker reset. Expiring an individual cooldown does not reset the
+history. The actual lock stays scoped to the affected model; another model can
+remain available even though its next qualifying failure shares the account's step.
+
+Explicit retry hints take precedence and do not advance this staircase. Other
+rate-limit, capacity, server and durable quota classifications retain their own
+policies. A success resets this account-wide history without clearing another
+model's lock. The shared tracker serves ordinary and image-account penalty paths;
+this escalation does not change request attempt budgets, grace retry eligibility,
+image permits or the existing stream commit point.
 
 An HTTP 429 with an explicit `QUOTA_EXHAUSTED` marker and a reset hint longer than five
 minutes retains that deadline for the account and actual upstream model. An exhausted model's exact
 quota reset timestamp also retains its full duration. Generic `RESOURCE_EXHAUSTED` responses,
 capacity errors and inferred retry backoff keep the five-minute transient cooldown cap.
-A later transient error cannot shorten an active explicit quota deadline. Quota refresh does
-not clear these explicit long locks before their deadline; a successful request for the model
-does. Other model locks remain independent.
+A later transient error cannot replace active explicit quota evidence. The tracker keeps
+the quota deadline and the current temporary wait separately, using the longer active wait
+for selection. When the quota deadline expires, a longer temporary wait can remain without
+claiming that hard quota is still exhausted. Quota refresh does not clear explicit long locks
+before their deadline; a successful request for the same model releases both constraints.
+Success resets account-wide resource history and the corresponding temporary failure history,
+while other model locks and explicit forbidden cooldowns remain independent.
+
+Account quota reconciliation and tracker penalties use one error-evidence classifier.
+Recognized structured reasons take precedence over incidental text. Explicit weekly quota
+and exhausted/insufficient credits can request quota reconciliation; they do not by themselves
+qualify an inferred wait for an uncapped deadline. Only a parsed positive retry hint suppresses
+that reconciliation. An invalid `Retry-After` header falls through to valid body hints or normal
+quota reconciliation. Expired official reset timestamps do not create new cooldowns.
 
 The existing model-availability record stores compact quota evidence so its 500-character
 message bound cannot remove the reset marker. Account reload and process restart restore
-qualified text and image quota deadlines from this record. No durable format changes are
+qualified text and image quota deadlines from this record, including their final five minutes.
+Later temporary limit observations retain that original qualifying record; qualification uses
+its original observation time rather than the remaining duration. No durable format changes are
 required. Before selecting an account, both its requested model and resolved upstream route
 are checked for cooldowns. Public presets cannot bypass the physical model's quota lock.
 When the pool is exhausted, the existing unavailable-account response returns HTTP 503 with
@@ -60,11 +348,121 @@ Claude request mapping normalizes the exact top-level Claude Agent SDK identity 
 
 The normalized Claude Code text remains a client customization rather than an official-provider identity marker. The mapper therefore retains the Antigravity fallback identity alongside it, preserving the existing cache and provider-routing contract.
 
+## Tool Result Association
+
+Claude-to-Gemini conversion tracks pending tool calls in history order. A tool result
+consumes exactly one preceding call with its ID. Distinct IDs preserve parallel calls
+with the same name and out-of-order results. Once consumed, an ID may be reused in a
+later round without changing earlier responses. Final pending calls remain valid.
+
+An orphan or repeated result, a duplicate pending ID, or a tool block on the wrong
+message role returns HTTP 400 with a position-only `invalid_request_error`. The gateway
+does not invent a function name from an unmatched ID. Anthropic Messages rejects before
+account selection; count-tokens rejects during conversion before leasing. OpenAI Chat
+validates before account selection, and its mapper repeats the guard for direct conversion
+callers. Responses preprocessing resolves each call's name at
+its own history position, so a later reused ID cannot rename earlier calls or results.
+A later incomplete custom call no longer suppresses an earlier completed round sharing
+the ID. A complete leading call/result exchange is retained even without an earlier user
+message. Function and custom outputs with no pending call fail rather than being dropped.
+Responses session merging retains completed ID reuse and rejects duplicate pending calls
+instead of deleting one. Result-only continuations repair calls against the complete parent
+history; the retained child delta does not duplicate a call already owned by that parent.
+Cached-call recovery considers only preceding history. It restores one unique cached
+candidate; conflicting candidates fail with a position-only error instead of choosing by
+array order or socket completion order. The socket retains a collision marker, and durable
+cache arrays retain at most two distinct witnesses per call ID. Complete history remains
+authoritative when present. Exact item-ID replays keep their first position; conflicting
+item-ID payloads fail. Semantic replay comparison includes tool parameters and outputs,
+and a repeated anonymous tool result alone is not a replay anchor.
+
+Responses fills missing tool-call IDs from a stable digest of complete preceding history,
+normalized name and canonical arguments. Identical parallel calls still receive distinct
+IDs because each call advances that digest. Supplied IDs remain unchanged. The generated
+value is retained in the input delta before historical media is sanitized, so file restart
+and result-only continuation keep the same association. A result without an ID is accepted
+only when exactly one preceding call remains pending; otherwise it fails explicitly.
+Fully identified histories bypass this hashing. The existing optional `call_id` field
+and durable record format are retained; this does not reconstruct evidence removed by
+compaction.
+
+OpenAI Chat and native Gemini also generate IDs only for calls that arrive without one.
+The digest includes preceding history, the normalized tool name, canonical arguments and
+the call's position, so identical parallel calls stay distinct and a complete replay stays
+stable. Supplied IDs remain unchanged, and the caller's request object is not mutated.
+A result without an ID binds only when exactly one preceding call is pending; orphan,
+duplicate-pending or ambiguous histories return HTTP 400 without guessing from the tool
+name. OpenAI Chat checks this before account selection. Native Gemini checks both unary
+and streaming generation before account selection. Fully identified histories do not hash
+message or media content. Neither adapter retries, penalizes an account or dispatches an
+upstream request for an invalid association.
+See the [upgrade instructions](../../upgrade-guides/next/retain-tool-call-history.md).
+
+Gemini-to-Claude, Gemini-to-Chat, and Gemini-to-Responses response adapters also preserve
+upstream call IDs and deterministically fill missing ones. The ID includes a lazy digest of
+the complete effective prompt history, model and tool declarations, followed by the call's
+response position, name and canonical arguments. Stream flags and generated response IDs
+do not participate in that digest.
+Unary and streaming mappings use the same request-scoped identity, including synthetic
+streams after unary generation. Identical parallel calls remain distinct; changing request
+history or call data changes the ID. The request is hashed only when the first missing ID
+needs generation, so complete upstream IDs avoid hashing message and media content. The
+request copy is not rewritten. Adapters used directly without a service-provided request
+scope use their available model/session or response context and therefore cannot provide
+the service path's complete-history guarantee.
+
 ## Missing Thought Signatures on Tool Calls
 
-Claude request mapping injects the compatibility sentinel for an unsigned tool call when thinking is enabled **or** the mapped model keeps unsigned thinking history (Gemini Flash or pro-agent). Resource-style `projects/` models are excluded from this fallback. Available real signatures and existing cache precedence remain authoritative.
+Anthropic assistant messages with an explicit nonempty thinking or tool-use signature
+preserve their text blocks exactly during request mapping. Whitespace-only blocks, the
+literal `(no content)` and inline-image Markdown remain text; signed text does not undergo
+trimming, placeholder removal or Markdown-to-image restoration. Media admission applies
+the same distinction before mapping. Explicit image/document/audio/video blocks still pass
+through media validation, and unsigned message normalization retains its existing behavior.
+Signature presence is a preservation rule, not proof that the provider accepts that signature.
 
-Native Gemini request mapping completes the camel-case and snake-case signature aliases without mutating caller history. An existing alias supplies the missing alias. Only a model name containing both `gemini` and `flash`, case-insensitively, receives the sentinel when neither alias exists. Native pro-agent requests do not inherit the Claude-only allowance. This route does not add a new session-signature cache. Streaming and non-streaming requests share the envelope conversion.
+Thought Store recovery requires unique evidence inside the compatible model/session scope.
+Explicit signatures take priority over unsigned history; unsigned matches use a unique
+fingerprint or tool-ID candidate. Consumed candidates do not make an ambiguous ID unique.
+Exact visible text is eligible only for a unique text record; prefixes and final-turn
+category guesses are not recovery evidence. Multiple unsigned history turns claiming one
+record remain unchanged. Hot capture, historical ingestion and SQLite save preserve
+ambiguous records separately instead of overwriting the latest signed turn.
+
+Thought Store schema 3 retains schema 2's per-part format: each thinking part's exact text range and signature,
+and each function call's name, canonical argument digest, optional ID and signature.
+Restoration requires a unique matching source and destination call; identical parallel
+calls without distinct IDs remain unsigned. Independent signatures, including short
+opaque values, are never ranked by length or copied from reasoning onto tools.
+Empty reasoning parts and trailing whitespace retain their separate ranges. Supplied
+meaningful signed text is not expanded by a cache hit. Hot capture, worker persistence,
+history ingestion and cold hydration share this contract. Signature metadata consumes
+the existing session, queue, memory and content-transfer budgets.
+
+Schema 0/1 Thought Store tables are replaced transactionally on first open, without
+import, automatic backup or old-format fallback, as explicitly approved. Unknown future
+versions and databases containing unowned tables/views/triggers are refused. See the
+[replacement and downgrade guide](../../upgrade-guides/next/replace-thought-store-history.md).
+
+The in-memory tool-signature index also separates compatible physical-model families.
+Different opaque values or different tool names captured under the same scoped call ID
+invalidate automatic recovery until scope clearing, expiry or eviction. Signature length
+and message count do not prove that values are fragments of one response. Recognized
+raw/wrapped equivalents retain the first received bytes. A conflicting session/message
+slot is a miss; generic lookup does not fall back from an ambiguous latest slot to an
+older signature. Session/message slots are isolated by compatible model family, and
+rewind only clears future slots for that model scope. Explicit request-local values remain
+authoritative.
+
+The Anthropic streaming mapper attaches signature-only parts to an already open thought
+block, emits one correctly closed carrier and commits that block's latest complete value
+when the block closes. It does not choose opaque values by length. A parse failure closes
+the current thought block without committing its pending signature. Whole-response
+commit and cleanup after transport failure remain governed by D11.
+
+Missing tool-call signatures remain absent after exact scoped recovery. Claude request mapping does not invent a compatibility sentinel. Native Gemini mapping only completes the camel-case and snake-case aliases from a value the caller actually supplied, and does not generate a sentinel for Flash or pro-agent routes. SignatureStore does not retain `skip_thought_signature_validator` as recovery material. If the provider requires a genuine signature and scoped recovery misses, the request follows the normal failure path.
+
+Native Gemini generation rejects conflicting signature aliases before account selection. The service checks recognized Claude and Gemini signature formats against the routed target model; known cross-family values, explicit placeholders on Claude targets, and recognized signatures for an unregistered target fail before account selection or history preparation. The internal client repeats the check with the model actually sent upstream, including direct generation and warmup entry points. An explicit placeholder remains pass-through input for Gemini targets but is not treated as a real signature. Unknown opaque values are retained without inferring their family. These structural checks do not establish provider acceptance.
 
 Every in-memory thought signature produced by a real upstream response carries its normalized physical model and, when the model registry can establish one, its canonical family. A supplied family hint is trusted only when its associated physical model is the model actually sent upstream; mapper rewrites such as the web-search fallback discard a stale pre-mapper family and resolve from the final physical model. Cache reads require the target effective model: known families may reuse signatures only inside the same canonical family, while unregistered models require an exact normalized physical-model match. Entries without provenance are cache misses. OpenAI-compatible responses record the effective upstream model rather than the client-visible response model.
 
@@ -72,7 +470,7 @@ The Anthropic compatibility owner handles one narrowly classified upstream HTTP 
 
 Recovery clears only the current session signature scope (or only the legacy unsessioned scope), clones the original account-specific Claude request, converts non-empty historical thinking blocks to text, removes empty and redacted thinking blocks, retains explicit tool-use signatures, and appends the fixed recovery prompt only to a final user message. A broken trailing tool-result loop receives the required assistant/user closure pair; an interrupted tool call receives the assistant closure immediately after the tool-use turn. Already closed loops receive no synthetic turns.
 
-The repaired request is mapped through the normal mapper pipeline in recovery mode, which performs no signature-cache reads but retains sentinel behavior. It is retried immediately once with the same account, token and effective physical model, without delay, penalty or account rotation. A second classified signature 400 is propagated without a third attempt. Streaming recovery applies only while establishing the upstream stream; once a stream has been returned and response events can be emitted, later stream errors are never replayed.
+The repaired request is mapped through the normal mapper pipeline in recovery mode, which performs no signature-cache reads and does not generate a sentinel. It is retried immediately once with the same account, token and effective physical model, without delay, penalty or account rotation. A second classified signature 400 is propagated without a third attempt. Streaming recovery applies only while establishing the upstream stream; once a stream has been returned and response events can be emitted, later stream errors are never replayed.
 
 ## Anthropic Empty Response Recovery
 
@@ -115,7 +513,7 @@ Role-bearing messages with a missing or non-string `type` use the message path. 
 
 Function and custom-tool outputs unwrap an enclosing `content` field, accept an array or one typed object, keep text and supported image/audio media together, and retain the prior JSON-string fallback only when no supported part was recognized. The apply-patch retry-loop compactor runs on the extracted text without discarding media. Downstream mapping emits Gemini `functionResponse` first and then media `inlineData`; a pure-media result keeps an empty function result instead of fabricating success text.
 
-Raw history and input parsing share their type resolver. Native `reasoning` output items, assistant `phase: commentary`, `msg_thought_` IDs, and the reserved thinking prefix identify transcript-only items. Filtering precedes compaction, merging, call repair and deduplication. The existing leading-orphan cleanup, terminal assistant-prefill rewrite, and empty-user fallback remain in place.
+Raw history and input parsing share their type resolver. Native `reasoning` output items, assistant `phase: commentary`, `msg_thought_` IDs, and the reserved thinking prefix identify transcript-only items. Filtering precedes compaction, merging, call repair and deduplication. Leading tool exchanges follow the [association rules](#tool-result-association). Input conversion preserves terminal assistant roles and leaves an empty history empty; [generation admission](#generation-history-admission) owns prefill and invalid histories.
 
 For a full-replay request, media before the latest user turn is replaced with `[historical image omitted]` or `[historical audio omitted]` before validation. The latest turn and every following tool exchange stay intact for the live upstream request. Inline data-image payloads on that live slice are limited to 16 images, 20 MiB decoded per image, and 32 MiB decoded in total; invalid data URLs fail before account selection, while remote URLs are not counted by this inline-byte guard.
 
@@ -143,15 +541,15 @@ across OpenAI Chat/Responses, Anthropic Messages and Gemini generate/stream entr
 without a stable identifier receive a per-request key and never restore another request's thought.
 
 Historical model turns are ingested against the entire stored session, not only its last record.
-Repeated client history does not append duplicate turns; a stronger version of an existing turn can
-replace its stored thought. Restoration scans stored records newest first, matches tool-call IDs or
-content fingerprints before any fallback, and permits category fallback only for the final model
-turn. A turn that already carries complete thought text and a signature is left unchanged. Text
-and tool-call turns do not cross-match.
+Repeated client history does not append duplicate unambiguously matched turns; stronger
+reasoning or additional owned signatures can enrich a matching record. Restoration uses
+the unique model/session and part-ownership evidence described above, with no final-turn
+category fallback. Complete signed text is left unchanged, and text/tool turns do not cross-match.
 
 Successful OpenAI Chat, Responses and Completions requests and native Gemini generate requests
-include `X-Session-Id`, `X-Antigravity-Session-Id`, and the four timing headers
-`X-Timing-Clean-Ms`, `X-Timing-Norm-Ms`, `X-Timing-Thinking-Ms` and `X-Timing-Ttft-Ms`. The
+include `X-Session-Id`, `X-Antigravity-Session-Id` and `X-Timing-Version: 2`. Measured
+stages use `X-Timing-Clean-Ms`, `X-Timing-Norm-Ms`, `X-Timing-Thinking-Ms` and
+`X-Timing-Ttft-Ms`; unmeasured stages are absent, while measured zero is retained. The
 session headers identify the client-visible routing session, not the hashed Thought Store key.
 Streaming responses emit these headers when the first output is ready so TTFT is measured from
 the upstream start to its first response byte. Timing is diagnostic and does not gate the model
