@@ -15,16 +15,51 @@ failure transport and that close failure stops credential writes.
 
 ## Native process queries
 
+### Windows source-build acceptance evidence
+
+On 2026-10-27, the current main/preload/worker and renderer source build passed the Electron
+account owner matrix: Classic and IDE each completed cloud A-B-A and local-snapshot A-B-A.
+The runner invokes the renderer's real MessagePort/IPC transport and verifies stored token
+ownership, live Google identity and official-client authentication. This establishes the desktop
+transport and account lifecycle, not a card-button interaction test or installer acceptance.
+The run used Node 24.22.0 and Electron 37.10.3, with the prepared upstream proxy configuration.
+Both matrices restored the exact shared Windows credential; Electron login startup settings were
+also restored and compared with their baseline.
+
+The official IDE retained an existing real test conversation across normal close/relaunch and
+cloud A-B-A. The check opened the same history-entry identifier and verified its exact persisted
+reply before and after each transition. The owner stopped and the shared credential was restored.
+A separate attempt to create a new test reply failed before history verification because the
+official service rejected the request with an unsupported-location precondition. Existing-history
+retention therefore passes. A fresh CLI/Core build on 2026-10-28, after correcting proxy environment
+forwarding to the detached Core, passed one new Gemini 3.8 Flash High reply through the configured
+proxy. The observer attributed Cloud Code CONNECT requests to the language server, official logs
+contained no unsupported-location precondition, and configuration, credentials and process cleanup
+were verified. This does not establish provider eligibility for every account or exit address.
+Interruption during generation remains unverified. These checks do not establish recovery of
+unsaved content after forced termination.
+
+Source desktop acceptance must use the Forge main/preload build configuration. A generic Vite
+web build can replace main-process runtime environment access and select a different credential
+destination. Retain artifact hashes and compare an isolated source copy with the current source
+before attributing a failed acceptance run to production behavior.
+
 ### Window close and official history
 
 After changing Windows client shutdown, run `node scripts/acceptance/accounts/test-windows-graceful-close.integration.mjs`
 on Windows. It runs production stop logic against temporary WinForms windows and verifies that
-normal close flushes an in-memory buffer for visible and hidden windows, while a cancelled close
-leaves the process alive. Native Windows uses PID-scoped `WM_CLOSE` requests for unowned
+normal close flushes an in-memory buffer for visible and hidden windows, while ordinary stop
+leaves a cancelled close alive. It then invokes the switch-only policy against that refusing
+window and confirms forced exit without claiming the unsaved buffer was flushed.
+Native Windows uses PID-scoped `WM_CLOSE` requests for unowned
 top-level windows; owned save/confirmation dialogs remain under the client's control.
 The focused `runtime-stop.test.ts` cases also cover slow initial native Windows observations
 and forbid posting close after the operation deadline. Startup slow-observation and late-result
 cases belong to `runtime-launch.test.ts`; neither operation extends its overall deadline.
+Windows runtime confirmation (including WSL) allows fifteen seconds for two cold observations
+and stable process identity; native Linux/macOS retain six seconds. The launch fixture's WSL
+process stays alive beyond the complete verification budget so natural exit cannot impersonate
+forced cleanup. Deadline failures still dispatch only one launch.
 The fixture uses a scoped observer and does not prove official IDE conversation persistence.
 For official IDE evidence, prepare the isolated Windows account-switch profile, build the
 acceptance helpers, and run `node scripts/acceptance/accounts/test-official-ide-history.integration.mjs`.
@@ -172,6 +207,31 @@ does not establish a working account conversation. The Windows file-service chec
 remove their independent copies. They do not change the installed CLI or account state.
 
 ## IDE hot-switch lifecycle checks
+
+### Discovery and switch-only Windows forced cleanup
+
+The focused `antigravity-process-identity`, `runtime-observer`, `runtime-context` and
+`windows-client-executable` unit suites cover engine role arguments, captured-path bypasses,
+same-installation stale-path recovery, competing installations and Windows discovery layouts.
+`windows-switch-close` covers normal acceptance, refused prompts, windowless processes,
+reparented children, reused identities, failed or expired probes, conflicts, denied force and WSL identity.
+It also covers transient descendant metadata before normal close and after reparenting, and
+rejects persistent unreadability without treating a captured process as exited.
+An updater appearing below the client during normal close aborts before any forced termination.
+The observer suite includes PID 0 and creation-time parsing from a complete WSL CIM snapshot.
+`runtime-preflight` runs the production preflight and observer together. It covers a partial
+Windows process snapshot that becomes readable after the status-query deadline, the shared
+five-second updater/client budget, and persistent unreadability remaining a failure.
+`runtime-stop` retains ordinary stop's refusal policy; `runtime-switch` selects the forced policy.
+
+`node scripts/test-antigravity-launch.integration.mjs` uses isolated temporary binaries and the
+production observer/stop functions. Windows checks ordinary windowless refusal followed by
+switch-only forced cleanup, verifies all nine fixture processes are gone, and checks there is
+exactly one launch per cycle. Its optional WSL mode uses the Windows CIM bridge. No installed
+client, shared credential or provider request is involved. This check proves process cleanup,
+not saving unsaved buffers or an official-client account change. Forced cleanup can discard work.
+
+### Existing supervised IDE coverage
 
 For real cloud and local account A-B-A checks through the CLI and Electron owners, follow the [account switching acceptance tutorial](account-switch-acceptance.md). It distinguishes official login confirmation from credential-only evidence and records the Linux restart-only limitation.
 

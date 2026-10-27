@@ -169,7 +169,9 @@ describe('switch launch safety', () => {
     expect(mocks.apply).toHaveBeenCalledTimes(1);
     expect(request.performSwitch).toHaveBeenCalledExactlyOnceWith(switchContext.pathOptions);
     expect(mocks.stopServices).not.toHaveBeenCalled();
-    expect(mocks.stop).toHaveBeenCalledExactlyOnceWith(switchContext, 10000);
+    expect(mocks.stop).toHaveBeenCalledExactlyOnceWith(switchContext, 10000, {
+      forceAfterTimeout: true,
+    });
     expect(mocks.start).toHaveBeenCalledExactlyOnceWith(switchContext);
   });
 

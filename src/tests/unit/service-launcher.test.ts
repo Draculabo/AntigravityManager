@@ -21,6 +21,28 @@ function clock() {
 }
 
 describe('ServiceLauncher', () => {
+  it('preserves proxy routing variables without resolving their precedence', () => {
+    const proxyEnvironment = {
+      HTTP_PROXY: 'http://127.0.0.1:17891',
+      HTTPS_PROXY: 'http://127.0.0.1:17892',
+      ALL_PROXY: 'socks5://127.0.0.1:17893',
+      NO_PROXY: 'localhost,127.0.0.1,::1',
+      http_proxy: 'http://127.0.0.1:17894',
+      https_proxy: 'http://127.0.0.1:17895',
+      all_proxy: 'socks5://127.0.0.1:17896',
+      no_proxy: '',
+    };
+
+    expect(
+      coreEnvironment({
+        ...proxyEnvironment,
+        API_TOKEN: 'fixture-secret',
+        NODE_OPTIONS: '--require=fixture.cjs',
+        NODE_PATH: '/fixture',
+      }),
+    ).toEqual(proxyEnvironment);
+  });
+
   it('preserves the Linux desktop session while excluding arbitrary secrets and Node injection', () => {
     expect(
       coreEnvironment({

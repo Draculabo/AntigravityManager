@@ -9,7 +9,7 @@ export type ProcessOperation = z.infer<typeof ProcessOperationSchema>;
 export interface RuntimeProcess {
   readonly pid: number;
   readonly executablePath: string;
-  /** Native identity metadata; the WSL Windows bridge does not provide it. */
+  /** Snapshot identity metadata; unavailable metadata cannot authorize forced termination. */
   readonly startTime?: bigint;
   readonly args: readonly string[];
   readonly cwd?: string;

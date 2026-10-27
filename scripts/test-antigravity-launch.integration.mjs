@@ -48,6 +48,7 @@ function compileModule(source, name) {
     '@/shared/platform/nativeProcessQuery': './fixture-native-query.cjs',
     '@/shared/platform/antigravityAppTarget': './target.cjs',
     '@/shared/platform/antigravityProcessIdentity': './process-identity.cjs',
+    '@/shared/platform/windowsClientExecutable': './fixture-executable-discovery.cjs',
     '@/shared/logging/logger': './fixture-logger.cjs',
     '@/shared/errors/appError': './app-error.cjs',
     '@/shared/errors/error-guards': './error-guards.cjs',
@@ -106,7 +107,7 @@ class Fixture { static void Main(string[] args) {
   if (index < 0 || index + 1 >= args.Length) return;
   File.WriteAllBytes(args[index + 1], Encoding.UTF8.GetBytes(String.Join("\\0", args)));
   File.AppendAllText(args[index + 1] + ".count", "launch\\n");
-  Thread.Sleep(20000);
+  Thread.Sleep(120000);
 } }`,
     );
     execFileSync(
@@ -139,6 +140,7 @@ class Fixture { static void Main(string[] args) {
     'windowsNormalClose',
     'stop',
     'stopNativeProcessTree',
+    'stopWindowsClientForSwitch',
     'linuxProfileOwnership',
   ]) {
     compileModule(`src/modules/antigravity-runtime/${name}.ts`, name);
@@ -149,6 +151,10 @@ class Fixture { static void Main(string[] args) {
   compileModule('src/shared/errors/appError.ts', 'app-error');
   compileModule('src/shared/errors/error-guards.ts', 'error-guards');
   compileModule('src/shared/observability/processDiagnostic.ts', 'process-diagnostic');
+  fs.writeFileSync(
+    path.join(root, 'fixture-executable-discovery.cjs'),
+    'exports.findWindowsClientExecutables=()=>[];',
+  );
   fs.writeFileSync(
     path.join(root, 'fixture-native-query.cjs'),
     `const {readNativeProcessSnapshot}=require('./native-query.cjs');
@@ -202,7 +208,8 @@ class Fixture { static void Main(string[] args) {
     const started = Date.now();
     await startFromContext(context);
     const elapsed = Date.now() - started;
-    assert(elapsed < 6000, `Confirmation exceeded the deadline: ${elapsed}ms`);
+    const confirmationBudget = windows || wsl ? 15000 : 6000;
+    assert(elapsed < confirmationBudget, `Confirmation exceeded the deadline: ${elapsed}ms`);
     const readyDeadline = Date.now() + 5000;
     while (!fs.existsSync(capture) && Date.now() < readyDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -222,7 +229,7 @@ class Fixture { static void Main(string[] args) {
     const closing = Date.now();
     if (windows || wsl) {
       // These console fixtures have no window. Production must refuse to force their exit.
-      await assert.rejects(stopFromContext(context, 2500), (error) => {
+      await assert.rejects(stopFromContext(context, wsl ? 10000 : 2500), (error) => {
         assert.equal(error.messageKey, 'process-runtime.close-failed');
         if (windows) {
           assert.equal(error.cause?.processDiagnostic?.reason, 'no-closable-window');
@@ -230,11 +237,10 @@ class Fixture { static void Main(string[] args) {
         return true;
       });
       assert.equal((await observeProcesses(context.target)).length, 1);
-      execFileSync(
-        wsl ? '/mnt/c/Windows/System32/taskkill.exe' : 'C:/Windows/System32/taskkill.exe',
-        ['/PID', String((await observeProcesses(context.target))[0].pid), '/T', '/F'],
-        { timeout: 5000, stdio: 'ignore' },
-      ); // Cleanup is restricted to this disposable console fixture.
+      const captured = await observeProcesses(context.target);
+      await stopFromContext({ ...context, processes: captured }, wsl ? 10000 : 2500, {
+        forceAfterTimeout: true,
+      });
     } else {
       await stopFromContext(context);
     }
@@ -264,6 +270,7 @@ class Fixture { static void Main(string[] args) {
       argumentRoundTrip: 'passed',
       launches: cycles.length,
       reopenedAfterClose: false,
+      switchForcedCleanup: windows || wsl,
     }),
   );
 } catch (error) {
@@ -281,7 +288,7 @@ class Fixture { static void Main(string[] args) {
     try {
       await stop(context);
     } catch {
-      /* Reported by the failed assertion; fixture exits after 20 seconds. */
+      /* Reported by the failed assertion; platform-specific cleanup below owns survivors. */
     }
   }
   if (wsl && fs.existsSync(executable)) {

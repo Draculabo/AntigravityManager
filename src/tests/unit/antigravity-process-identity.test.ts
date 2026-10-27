@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isTargetAntigravityProcessCandidate } from '@/shared/platform/paths';
+import { isAntigravityHelperProcess } from '@/shared/platform/antigravityProcessIdentity';
 
 describe('Windows installer process identity', () => {
   it.each([
@@ -46,6 +47,7 @@ describe('client executable identity', () => {
     ['antigravity', 'classic'],
     ['Antigravity IDE.exe', 'ide'],
     ['antigravity-ide', 'ide'],
+    ['antigravity_ide.exe', 'ide'],
   ] as const)('recognizes the exact %s binary', (name, target) => {
     const executablePath = `C:\\Apps\\${name}`;
     expect(
@@ -55,5 +57,35 @@ describe('client executable identity', () => {
         { ignoreExecutableConfiguration: true },
       ),
     ).toBe(true);
+  });
+});
+
+describe('engine role identity', () => {
+  it.each(['--standalone', '--subclient_type', '--override_ide_name'])(
+    '%s is never a main process',
+    (flag) => {
+      for (const args of [[flag, 'ide'], [`${flag}=ide`]]) {
+        expect(isAntigravityHelperProcess('Antigravity.exe', args)).toBe(true);
+        expect(
+          isTargetAntigravityProcessCandidate(
+            {
+              name: 'Antigravity.exe',
+              executablePath: 'C:\\Apps\\Antigravity.exe',
+              commandLine: `C:\\Apps\\Antigravity.exe ${args.join(' ')}`,
+            },
+            'classic',
+            { ignoreExecutableConfiguration: true },
+          ),
+        ).toBe(false);
+      }
+    },
+  );
+  it('does not interpret flag text inside ordinary argument values as a role', () => {
+    expect(
+      isAntigravityHelperProcess('Antigravity.exe', [
+        '--folder=C:\\work\\--standalone',
+        'my--subclient_type.txt',
+      ]),
+    ).toBe(false);
   });
 });

@@ -18,6 +18,8 @@ does not generate interleaved translations of its diagnostic fields.
 
 ## Decision
 
+The [switch-only forced cleanup decision](2026-10-27-account-switch-client-discovery.md) amends the account-switch close policy. Exact-name recognition, installation/profile isolation and diagnostic privacy below remain active; ordinary stops still respect normal-close refusal.
+
 Identify discovered clients by exact executable basename or their application bundle, with
 explicit configured/captured paths still supporting renamed clients. Product text in an unrelated
 directory or later argument does not identify a client. Standard binaries from competing actual

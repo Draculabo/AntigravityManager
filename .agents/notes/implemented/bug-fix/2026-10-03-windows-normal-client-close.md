@@ -8,6 +8,8 @@ Status: implemented
 
 ## Decision
 
+Account switching now follows the explicit [switch-only forced cleanup policy](2026-10-27-account-switch-client-discovery.md). The normal-close rules below continue to apply to ordinary stop; their previous account-switch scope is amended by that decision.
+
 The runtime invokes local `taskkill /PID` without `/F`, `/T` or remote-host arguments for verified main process IDs, using the existing bounded process execution interface. Windows and WSL control of Windows applications share this policy. Exit observation and directory/installation checks remain authoritative. No forced termination follows a refused close or timeout. The normal restart flow writes account data only after confirmed exit. A hot-switch fallback retains its existing partial-completion semantics because credential writes may precede fallback.
 
 ## Alternatives considered

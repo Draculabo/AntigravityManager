@@ -3,6 +3,7 @@ import {
   observeProcesses,
   parseProcessArguments,
 } from '@/modules/antigravity-runtime/processObserver';
+import { readWslWindowsProcesses } from '@/modules/antigravity-runtime/windowsInterop';
 const mocks = vi.hoisted(() => ({
   execFile: vi.fn(),
   native: vi.fn(),
@@ -44,6 +45,66 @@ afterEach(() => {
   Object.defineProperty(process, 'platform', { value: platform, configurable: true });
 });
 describe('bounded process observation', () => {
+  it('accepts the system idle row in complete WSL snapshots and preserves creation identity', async () => {
+    mocks.execFile.mockImplementation((_file, _args, _options, callback) =>
+      callback(
+        null,
+        JSON.stringify([
+          {
+            ProcessId: 0,
+            Name: 'System Idle Process',
+            ExecutablePath: null,
+            CommandLine: null,
+            StartTime: null,
+          },
+          {
+            ProcessId: 42,
+            ParentProcessId: 1,
+            Name: main.name,
+            ExecutablePath: main.exe,
+            CommandLine: main.exe,
+            StartTime: '638971234567890123',
+          },
+        ]),
+      ),
+    );
+    expect(
+      await readWslWindowsProcesses(main.exe, new AbortController().signal, 1000, true),
+    ).toEqual([
+      {
+        pid: 42,
+        ppid: 1,
+        name: main.name,
+        executablePath: main.exe,
+        commandLine: main.exe,
+        startTime: 638971234567890123n,
+      },
+    ]);
+    expect(mocks.execFile.mock.calls[0][1].at(-1)).not.toContain('-Filter $filter');
+  });
+  it.each(['--standalone', '--subclient_type=ide', '--override_ide_name'])(
+    'does not let a captured path admit an orphan engine (%s)',
+    async (flag) => {
+      mocks.configured.mockReturnValue(main.exe);
+      mocks.native.mockResolvedValue([{ ...main, cmd: [main.exe, flag] }]);
+      expect(await observeProcesses('classic', 1000, main.exe)).toEqual([]);
+    },
+  );
+  it.each([
+    '--folder=C:\\work\\--standalone',
+    '--title=release --standalone',
+    '--title=release --type=utility',
+  ])('keeps role-like text in an ordinary argument value (%s)', async (value) => {
+    mocks.native.mockResolvedValue([{ ...main, cmd: [main.exe, value] }]);
+    expect(await observeProcesses('classic', 1000, main.exe)).toEqual([
+      {
+        pid: 42,
+        executablePath: main.exe,
+        args: [value],
+        startTime: 1n,
+      },
+    ]);
+  });
   it('keeps genuine competing installations visible to preflight conflict checks', async () => {
     const rival = {
       ...main,
