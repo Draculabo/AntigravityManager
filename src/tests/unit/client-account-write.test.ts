@@ -26,6 +26,18 @@ vi.mock('@/shared/platform/paths', () => ({
 }));
 vi.mock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
   getAntigravityVersion: vi.fn(async () => ({ shortVersion: '2.18.1', bundleVersion: '2.18.1' })),
+  compareVersion: (left: string, right: string) => {
+    const toParts = (version: string) => version.split('.').map(Number);
+    const leftParts = toParts(left);
+    const rightParts = toParts(right);
+    for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+      const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+      if (difference !== 0) {
+        return difference;
+      }
+    }
+    return 0;
+  },
   isCredentialStoreVersion: (version: { shortVersion: string }) =>
     Number(version.shortVersion.split('.')[0]) >= 2,
 }));
@@ -115,8 +127,8 @@ beforeEach(() => {
   vi.spyOn(fs, 'chmodSync').mockImplementation(() => undefined);
   vi.mocked(getAntigravityDbPaths).mockReturnValue(['/fixture/state.vscdb']);
   vi.mocked(getAntigravityVersion).mockResolvedValue({
-    shortVersion: '2.18.1',
-    bundleVersion: '2.18.1',
+    shortVersion: '2.5.5',
+    bundleVersion: '2.5.5',
   });
 });
 afterEach(() => {
@@ -151,6 +163,10 @@ describe('client account destination', () => {
   });
 
   it('confirms complete native credentials and rejects a stale readback', async () => {
+    vi.mocked(getAntigravityVersion).mockResolvedValue({
+      shortVersion: '2.18.1',
+      bundleVersion: '2.18.1',
+    });
     const prepared = await prepareClientAccountWrite(credentials, 'classic');
     vi.mocked(readAntigravityCredentialStoreToken).mockResolvedValue({
       accessToken: 'access',
@@ -171,10 +187,41 @@ describe('client account destination', () => {
     });
     await expect(prepared.write()).rejects.toThrow('could not be confirmed');
   });
+  it('writes Windows IDE 2.6 credentials to the shared store without the Classic file mirror', async () => {
+    vi.mocked(getAntigravityVersion).mockResolvedValue({
+      shortVersion: '2.6.0',
+      bundleVersion: '2.6.0',
+    });
+    vi.mocked(readAntigravityCredentialStoreToken).mockResolvedValue({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiryTimestamp: 1800000000,
+      idToken: 'id-token',
+      projectId: 'project-a',
+    });
+
+    const prepared = await prepareClientAccountWrite(credentials, 'ide');
+    expect(prepared.storage).toBe('credential-store');
+    await prepared.write();
+
+    expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledExactlyOnceWith(
+      credentials.token,
+      {},
+    );
+    expect(state.opens).not.toHaveBeenCalled();
+  });
   it('routes IDE, CLI and Classic versions without old-format or engine guesses', async () => {
     expect(await resolveClientAccountStorage('ide')).toBe('sqlite');
+    vi.mocked(getAntigravityVersion).mockResolvedValue({
+      shortVersion: '2.6.0',
+      bundleVersion: '2.6.0',
+    });
+    expect(await resolveClientAccountStorage('ide')).toBe('credential-store');
     expect(await resolveClientAccountStorage('agy')).toBe('cli-session');
-    expect(getAntigravityVersion).not.toHaveBeenCalled();
+    vi.mocked(getAntigravityVersion).mockResolvedValue({
+      shortVersion: '2.18.1',
+      bundleVersion: '2.18.1',
+    });
     expect(await resolveClientAccountStorage('classic')).toBe('credential-store');
     vi.mocked(getAntigravityVersion).mockResolvedValue({
       shortVersion: '1.107.0',

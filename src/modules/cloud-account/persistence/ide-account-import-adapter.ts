@@ -17,6 +17,7 @@ import * as drizzleSchema from '@/shared/persistence/database/schema';
 import { ItemTableValueRowSchema } from '@/shared/persistence/database/types';
 import { parseRow } from '@/shared/persistence/database/sqlite';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
+import { readClientAccountToken, resolveClientAccountStorage } from '@/modules/antigravity-runtime';
 import { CloudAccountRepo } from './cloudHandler';
 import { resolveImportedTokenLifetime } from './ide-token-lifetime';
 import { prepareDesktopIdentityStorage } from '@/modules/identity-profile/public';
@@ -217,7 +218,8 @@ export class IdeAccountImportAdapter {
 
     return (
       normalizedMessage.includes('no cloud account found in ide') ||
-      normalizedMessage.includes('no oauth token found in ide state')
+      normalizedMessage.includes('no oauth token found in ide state') ||
+      normalizedMessage.includes('no oauth token found in ide credential store')
     );
   }
 
@@ -227,16 +229,15 @@ export class IdeAccountImportAdapter {
       throw new Error(AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE);
     }
 
-    const dbPaths = getAntigravityDbPaths(appTarget);
-    logger.info(`SyncLocal: Checking database paths: ${JSON.stringify(dbPaths)}`);
-
+    const usesCredentialStore = (await resolveClientAccountStorage(target)) === 'credential-store';
+    const dbPaths = usesCredentialStore ? [] : getAntigravityDbPaths(appTarget);
     const existingDbPaths = dbPaths.filter((candidatePath) => {
       const pathExists = fs.existsSync(candidatePath);
       logger.info(`SyncLocal: Checking path: ${candidatePath}, exists: ${pathExists}`);
       return pathExists;
     });
 
-    if (existingDbPaths.length === 0) {
+    if (!usesCredentialStore && existingDbPaths.length === 0) {
       const message = `Antigravity database not found. Please ensure Antigravity IDE is installed. Checked paths: ${dbPaths.join(', ')}`;
       logger.error(message);
       throw new Error(message);
@@ -247,20 +248,35 @@ export class IdeAccountImportAdapter {
       let tokenInfo: IdeTokenInfo | null = null;
       let lastTokenReadError: unknown;
 
-      for (const candidatePath of existingDbPaths) {
-        try {
-          tokenInfo = this.readTokenInfoFromPath(candidatePath);
-          dbPath = candidatePath;
-          break;
-        } catch (error) {
-          lastTokenReadError = error;
-          if (this.isMissingIdeTokenError(error)) {
-            logger.warn(
-              `SyncLocal: No cloud token found at ${candidatePath}, trying next database path`,
-            );
-            continue;
+      if (usesCredentialStore) {
+        const storedToken = await readClientAccountToken(target);
+        if (!storedToken) {
+          throw new Error('No OAuth token found in IDE credential store');
+        }
+        tokenInfo = {
+          accessToken: storedToken.accessToken ?? '',
+          refreshToken: storedToken.refreshToken,
+          expiryTimestamp: storedToken.expiryTimestamp,
+          idToken: storedToken.idToken,
+          projectId: storedToken.projectId,
+        };
+        logger.info('SyncLocal: Using Antigravity IDE credential store');
+      } else {
+        for (const candidatePath of existingDbPaths) {
+          try {
+            tokenInfo = this.readTokenInfoFromPath(candidatePath);
+            dbPath = candidatePath;
+            break;
+          } catch (error) {
+            lastTokenReadError = error;
+            if (this.isMissingIdeTokenError(error)) {
+              logger.warn(
+                `SyncLocal: No cloud token found at ${candidatePath}, trying next database path`,
+              );
+              continue;
+            }
+            throw error;
           }
-          throw error;
         }
       }
 
@@ -268,7 +284,9 @@ export class IdeAccountImportAdapter {
         throw lastTokenReadError;
       }
 
-      logger.info(`SyncLocal: Using Antigravity database at: ${dbPath}`);
+      if (dbPath) {
+        logger.info(`SyncLocal: Using Antigravity database at: ${dbPath}`);
+      }
       const effectiveTokenInfo = { ...tokenInfo };
       let refreshedExpiresIn: number | undefined;
       let hasRefreshedAccessToken = false;
