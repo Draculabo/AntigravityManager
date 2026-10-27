@@ -1,81 +1,97 @@
 const modelSpecs = {
   models: {
     'gemini-3.7-flash-high': {
+      context_window: 1000000,
       max_output_tokens: 65536,
       thinking_budget: 10000,
       is_thinking: true,
     },
     'gemini-3.7-flash-medium': {
+      context_window: 1000000,
       max_output_tokens: 65536,
       thinking_budget: 4000,
       is_thinking: true,
     },
     'gemini-3.7-flash-low': {
+      context_window: 1000000,
       max_output_tokens: 65536,
       thinking_budget: 1000,
       is_thinking: true,
     },
     'gemini-3.5-flash-high': {
+      context_window: 1048576,
       max_output_tokens: 65536,
       thinking_budget: 10000,
       is_thinking: true,
     },
     'gemini-3.5-flash-medium': {
+      context_window: 1048576,
       max_output_tokens: 65536,
       thinking_budget: 4000,
       is_thinking: true,
     },
     'gemini-3.5-flash-low': {
+      context_window: 1048576,
       max_output_tokens: 65536,
       thinking_budget: 1000,
       is_thinking: true,
     },
     'gemini-3.5-flash-extra-low': {
+      context_window: 1048576,
       max_output_tokens: 65536,
       thinking_budget: 1000,
       is_thinking: true,
     },
     'gemini-3-flash': {
+      context_window: 1048576,
       max_output_tokens: 65536,
       thinking_budget: 32768,
       is_thinking: true,
     },
     'gemini-3.1-pro-low': {
+      context_window: 1048576,
       max_output_tokens: 65536,
       thinking_budget: 32768,
       is_thinking: true,
     },
     'gemini-3.1-pro-high': {
+      context_window: 1048576,
       max_output_tokens: 65536,
       thinking_budget: 49152,
       is_thinking: true,
     },
     'gemini-pro-agent': {
+      context_window: 1048576,
       max_output_tokens: 65535,
       thinking_budget: 10001,
       is_thinking: true,
     },
     'gemini-3-flash-agent': {
+      context_window: 1048576,
       max_output_tokens: 65536,
       thinking_budget: 10000,
       is_thinking: true,
     },
     'gemini-3-pro-image': {
+      context_window: 1048576,
       max_output_tokens: 65536,
       thinking_budget: 24576,
       is_thinking: true,
     },
     'claude-sonnet-4-6-thinking': {
+      context_window: 200000,
       max_output_tokens: 64000,
       thinking_budget: 32768,
       is_thinking: true,
     },
     'claude-opus-4-6-thinking': {
+      context_window: 200000,
       max_output_tokens: 64000,
       thinking_budget: 32768,
       is_thinking: true,
     },
     'gpt-oss-120b-medium': {
+      context_window: 131072,
       max_output_tokens: 32768,
       thinking_budget: 0,
       is_thinking: false,

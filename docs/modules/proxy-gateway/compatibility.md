@@ -78,6 +78,21 @@ An OpenAI Chat Completions content block shaped as `{"type":"video_url","video_u
 
 Local path and `file://` reads occur only while `proxy.experimental.allow_local_video_paths` is enabled. The setting defaults to false, persists in the normal application configuration and is observed by a running gateway without restart. Disabled mode performs no filesystem probe or read: explicit local path forms are dropped from an ordinary message and become `[video]` inside a tool result, while ambiguous non-URL strings retain the raw-Base64 fallback. If dropping the local source would otherwise erase a user turn, the Gemini request preserves that turn with one whitespace text part so user/model role rotation remains valid. Data URLs, HTTP(S) URLs and raw Base64 do not depend on this setting.
 
+## OpenAI Model Listing Metadata
+
+`GET /v1/models` and `GET /v1/models/{id}` publish the standard OpenAI identity fields and add
+the request budget an OpenAI-compatible client needs to size a conversation:
+
+- `context_length` is the model's input window. `src/modules/proxy-gateway/antigravity/model-specs.ts`
+  owns the registered value; an id the catalog does not contain falls back to its family width
+  (Gemini 1,048,576, Claude 200,000) and then to 128,000.
+- `max_completion_tokens` is the output cap the gateway enforces for the model, read from the
+  same catalog and defaulting to 65,535.
+
+A user alias advertises the limits of the model it routes to rather than the alias name, so a
+client budget derived from the listing matches the upstream call. Both routes use one entry
+builder, so `GET /v1/models/{id}` returns exactly the object the list published.
+
 ## Responses Requests and Durable History
 
 Role-bearing messages with a missing or non-string `type` use the message path. Explicit empty-string and unknown string types are ignored as whole input items. Non-string roles default to `user`. String roles are retained through input parsing; the shared downstream conversion treats `system` and `developer` as instructions, keeps `assistant` and tool semantics, and degrades every other string role to `user` instead of forwarding an unknown Gemini role. Array content and a single typed object collect every string `text`, including empty strings, join them with newlines, and then append validated image or supported audio blocks. Both `input_image` and `image_url` accept a URL string or a validated URL object. URLs must be non-empty strings, `detail` must be `auto`, `low` or `high`, and other JSON extensions are retained. Supporting the object form for `input_image` is an intentional compatibility extension beyond upstream. Malformed image blocks are ignored rather than forwarded unchecked. `audio_url` accepts a URL object with optional `mime_type`, `mimeType`, or `format`: data URLs become Gemini `inlineData`, HTTP(S) URLs become `fileData`, and an unreadable tool-result source becomes the protocol-compatible `[audio]` text fallback. An untyped JSON object contributes no text; the enclosing message remains available to the existing cleanup rules. Top-level input objects and primitive content retain their existing conversion behavior.
