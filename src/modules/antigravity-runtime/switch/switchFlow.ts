@@ -295,7 +295,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           options.onDiagnosticStage?.('process-close');
           await trace.phase('closeMs', async () => {
             try {
-              await stopFromContext(context, processExitTimeoutMs);
+              await stopFromContext(context, processExitTimeoutMs, { forceAfterTimeout: true });
             } catch (error) {
               exitUnconfirmed =
                 error instanceof AppError &&

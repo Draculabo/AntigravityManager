@@ -76,6 +76,7 @@ const nativeClose = loadProductionModule('src/modules/antigravity-runtime/window
     'src/shared/observability/processDiagnostic.ts',
   ),
 });
+const nativeQuery = loadProductionModule('src/shared/platform/nativeProcessQuery.ts');
 let child;
 let exited;
 const context = { target: 'ide', executablePath: exe, processes: [] };
@@ -84,7 +85,15 @@ const dependencies = {
   '@/shared/platform/paths': { isWsl: () => false },
   './processObserver': {
     getProcessProbeTimeout: () => 1000,
-    observeProcesses: async () => (exited ? [] : [{ pid: child.pid }]),
+    observeProcesses: async (_target, timeout) =>
+      (await nativeQuery.readNativeProcessSnapshot(timeout))
+        .filter((row) => row.pid === child.pid && row.exe === exe)
+        .map((row) => ({
+          pid: row.pid,
+          executablePath: row.exe,
+          args: [],
+          startTime: row.startTime,
+        })),
   },
   './launchContext': { assertContextProcesses: () => {} },
   './processErrors': processErrors,
@@ -92,7 +101,16 @@ const dependencies = {
   './runtimePlatform': { usesWindowsRuntime: () => true },
   './stopNativeProcessTree': { stopNativeProcessTree: () => assert.fail('Unexpected Linux path') },
   './windowsNormalClose': nativeClose,
+  '@/shared/platform/nativeProcessQuery': nativeQuery,
+  '@/shared/platform/antigravityProcessIdentity': loadProductionModule(
+    'src/shared/platform/antigravityProcessIdentity.ts',
+  ),
+  './windowsInterop': { readWslWindowsProcesses: () => assert.fail('Unexpected WSL path') },
 };
+dependencies['./stopWindowsClientForSwitch'] = loadProductionModule(
+  'src/modules/antigravity-runtime/stopWindowsClientForSwitch.ts',
+  dependencies,
+);
 const exported = {};
 new Function('require', 'exports', compiled)(
   (name) => dependencies[name] ?? nativeRequire(name),
@@ -143,12 +161,21 @@ try {
         false,
         'Owned confirmation must not be dismissed',
       );
-      child.kill(); // Only this disposable fixture is terminated during cleanup.
+      const captured = await dependencies['./processObserver'].observeProcesses('ide', 3000);
+      assert.equal(captured.length, 1, 'Force requires a freshly captured fixture identity');
+      await exported.stopFromContext({ ...context, processes: captured }, 2500, {
+        forceAfterTimeout: true,
+      });
       const cleanupDeadline = Date.now() + 5000;
       while (!exited && Date.now() < cleanupDeadline) {
         await delay(50);
       }
-      assert(exited, 'Fixture cleanup must finish within its deadline');
+      assert(exited, 'Switch must force the refused fixture to exit');
+      assert.equal(
+        fs.existsSync(marker + '.saved'),
+        false,
+        'Forced close cannot claim a saved buffer',
+      );
     }
     console.log(JSON.stringify({ mode, hidden, result: 'passed' }));
   }

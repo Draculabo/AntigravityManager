@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   nativeStop: vi.fn(),
   existsSync: vi.fn(),
   closeWindow: vi.fn(),
+  switchStop: vi.fn(),
+}));
+vi.mock('@/modules/antigravity-runtime/stopWindowsClientForSwitch', () => ({
+  stopWindowsClientForSwitch: mocks.switchStop,
 }));
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>();
@@ -68,6 +72,15 @@ it('never forces termination when a Windows client refuses normal close', async 
   await result;
   expect(mocks.execFile).toHaveBeenCalledTimes(1);
   expect(mocks.execFile.mock.calls[0][1]).not.toContain('/F');
+});
+
+it('uses the switch-only forced close policy only when explicitly requested', async () => {
+  mocks.observe.mockResolvedValue([main]);
+  mocks.switchStop.mockResolvedValue(undefined);
+  await stopFromContext(windowsContext, 500, { forceAfterTimeout: true });
+  expect(mocks.switchStop).toHaveBeenCalledExactlyOnceWith(windowsContext, [main], 500);
+  expect(mocks.closeWindow).not.toHaveBeenCalled();
+  expect(mocks.execFile).not.toHaveBeenCalled();
 });
 
 it('reports an unconfirmed exit when the last Windows observation consumes the close deadline', async () => {

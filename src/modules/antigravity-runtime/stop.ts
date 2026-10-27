@@ -12,12 +12,14 @@ import { processError } from './processErrors';
 import { usesWindowsRuntime } from './runtimePlatform';
 import { stopNativeProcessTree } from './stopNativeProcessTree';
 import { requestWindowsProcessClose } from './windowsNormalClose';
+import { stopWindowsClientForSwitch } from './stopWindowsClientForSwitch';
 
 const runFile = promisify(execFile);
 
 export async function stopFromContext(
   context: LaunchContext,
   timeout = usesWindowsRuntime(context.target, context.executablePath) ? 10000 : 6000,
+  options: { forceAfterTimeout?: boolean } = {},
 ): Promise<void> {
   const deadline = Date.now() + timeout;
   let processes = await observeProcesses(
@@ -33,6 +35,10 @@ export async function stopFromContext(
   }
   if (Date.now() >= deadline) {
     throw processError('exit-unconfirmed');
+  }
+  if (options.forceAfterTimeout && usesWindowsRuntime(context.target, context.executablePath)) {
+    await stopWindowsClientForSwitch(context, processes, Math.max(1, deadline - Date.now()));
+    return;
   }
   if (process.platform === 'linux' && !usesWindowsRuntime(context.target, context.executablePath)) {
     await stopNativeProcessTree(processes, deadline);

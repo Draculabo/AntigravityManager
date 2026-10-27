@@ -287,6 +287,8 @@ describe('Path Utilities', () => {
       'globalStorage',
       'storage.json',
     );
+    vi.spyOn(fs, 'statSync').mockReturnValue({ isFile: () => true } as fs.Stats);
+    vi.spyOn(fs.realpathSync, 'native').mockImplementation((candidate) => String(candidate));
 
     vi.spyOn(fs, 'existsSync').mockImplementation((candidatePath) => {
       const normalizedPath = String(candidatePath);

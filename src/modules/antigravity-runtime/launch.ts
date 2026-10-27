@@ -93,7 +93,10 @@ export async function startFromContext(context: LaunchContext): Promise<void> {
   } catch {
     throw processError('launch-failed');
   }
-  const deadline = Date.now() + 6000;
+  // Cold Windows/WSL snapshots can each consume several seconds. Leave room for
+  // two observations without relaxing stable identity or dispatching another launch.
+  const deadline =
+    Date.now() + (usesWindowsRuntime(context.target, context.executablePath) ? 15000 : 6000);
   let candidates = new Map<number, { startTime: RuntimeProcess['startTime']; since: number }>();
   while (Date.now() < deadline) {
     try {

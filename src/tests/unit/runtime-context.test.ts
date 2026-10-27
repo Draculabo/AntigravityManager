@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   args: vi.fn(),
   observe: vi.fn(),
   updateGuard: vi.fn(),
+  windowsCandidates: vi.fn(() => [] as string[]),
+}));
+vi.mock('@/shared/platform/windowsClientExecutable', () => ({
+  findWindowsClientExecutables: mocks.windowsCandidates,
 }));
 vi.mock('@/shared/platform/paths', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/platform/paths')>()),
@@ -47,6 +51,7 @@ afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.configured.mockReturnValue(null);
+  mocks.windowsCandidates.mockReturnValue([]);
   mocks.discovered.mockReturnValue(executable);
   mocks.args.mockReturnValue([]);
   mocks.observe.mockResolvedValue([]);
@@ -111,6 +116,36 @@ describe('immutable launch context', () => {
       messageKey: 'process-runtime.missing-executable',
     });
     expect(mocks.discovered).not.toHaveBeenCalled();
+  });
+
+  it('recovers a missing configured binary from the same running installation', () => {
+    mocks.configured.mockReturnValue(path.join(root, 'old-name.exe'));
+    const context = resolveLaunchContext('classic', [
+      { pid: 42, executablePath: executable, args: ['--user-data-dir', userData] },
+    ]);
+    expect({
+      executablePath: context.executablePath,
+      userDataDir: context.pathOptions.userDataDir,
+    }).toEqual({ executablePath: executable, userDataDir: userData });
+    expect(mocks.discovered).not.toHaveBeenCalled();
+  });
+
+  it('does not recover a stale configuration from a different installation', () => {
+    mocks.configured.mockReturnValue(path.join(root, 'old-install', 'app.exe'));
+    expect(() =>
+      resolveLaunchContext('classic', [{ pid: 42, executablePath: executable, args: [] }]),
+    ).toThrow('missing-executable');
+  });
+
+  it('does not select the first of competing discovered Windows installations', () => {
+    const platform = process.platform;
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+    try {
+      mocks.windowsCandidates.mockReturnValue([executable, otherExecutable]);
+      expect(() => resolveLaunchContext('classic', [])).toThrow('target-conflict');
+    } finally {
+      Object.defineProperty(process, 'platform', { configurable: true, value: platform });
+    }
   });
 
   it('fails when configured and observed installations disagree', () => {

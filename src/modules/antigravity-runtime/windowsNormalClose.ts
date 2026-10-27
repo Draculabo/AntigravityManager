@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { KoffiFunc } from 'koffi';
-import koffi from 'koffi';
+import type koffi from 'koffi';
 import { AntigravityProcessError, processError } from './processErrors';
 import { ProcessDiagnosticSchema } from '@/shared/observability/processDiagnostic';
 
@@ -13,7 +13,11 @@ export async function requestWindowsProcessClose(pid: number): Promise<void> {
   let user: ReturnType<typeof koffi.load> | undefined;
   let kernel: ReturnType<typeof koffi.load> | undefined;
   let callback: bigint | undefined;
+  let native: typeof koffi | undefined;
   try {
+    // Windows interop on WSL must not load a Windows-only native window adapter.
+    const { default: koffi } = await import('koffi');
+    native = koffi;
     user = koffi.load(path.win32.join(root, 'System32', 'User32.dll'));
     kernel = koffi.load(path.win32.join(root, 'System32', 'Kernel32.dll'));
     const getLastError = kernel.func('uint32_t __stdcall GetLastError()') as KoffiFunc<
@@ -76,7 +80,7 @@ export async function requestWindowsProcessClose(pid: number): Promise<void> {
     throw processError('native-call-failed', error);
   } finally {
     if (callback !== undefined) {
-      koffi.unregister(callback);
+      native?.unregister(callback);
     }
     kernel?.unload();
     user?.unload();

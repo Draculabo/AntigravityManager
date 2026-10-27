@@ -14,6 +14,8 @@ import type { GuiTarget, LaunchContext, RuntimeProcess } from './types';
 import { usesWindowsRuntime } from './runtimePlatform';
 import { ownsLinuxProfile } from './linuxProfileOwnership';
 import { assertNoWindowsUpdate } from './windowsUpdate';
+import { logger } from '@/shared/logging/logger';
+import { findWindowsClientExecutables } from '@/shared/platform/windowsClientExecutable';
 
 function filesystemPath(value: string): string {
   return isWsl() ? toWslPath(value) : value;
@@ -98,11 +100,29 @@ export function resolveLaunchContext(
   processes: readonly RuntimeProcess[],
 ): LaunchContext {
   const configured = getConfiguredAntigravityExecutablePath(target, false);
-  const executablePath = filesystemPath(
+  if (!configured && !processes.length && process.platform === 'win32') {
+    if (findWindowsClientExecutables(target).length > 1) {
+      throw processError('target-conflict');
+    }
+  }
+  let executablePath = filesystemPath(
     configured ||
       processes[0]?.executablePath ||
       getAntigravityExecutablePath(target, { ignoreRunningProcessCache: true }),
   );
+  if (configured && !fs.existsSync(filesystemPath(configured))) {
+    const observed = processes[0]?.executablePath;
+    // Recover a renamed binary only within the configured installation, never another install.
+    if (
+      !observed ||
+      canonicalPath(path.dirname(filesystemPath(configured))) !==
+        canonicalPath(path.dirname(filesystemPath(observed)))
+    ) {
+      throw processError('missing-executable');
+    }
+    executablePath = filesystemPath(observed);
+    logger.warn('Configured client executable is missing; using the observed installation');
+  }
   if (!executablePath) {
     throw processError('missing-executable');
   }
@@ -183,6 +203,17 @@ export function resolveLaunchContext(
 }
 
 export async function prepareLaunchContext(target: GuiTarget): Promise<LaunchContext> {
+  if (process.platform === 'win32') {
+    // Switching needs a fresh readable snapshot, including transiently exiting processes.
+    // Share a bounded preflight budget instead of reusing the short status-query deadline.
+    const deadline = Date.now() + 5000;
+    await assertNoWindowsUpdate(target, 5000);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw processError('probe-failed');
+    }
+    return resolveLaunchContext(target, await observeProcesses(target, remaining));
+  }
   await assertNoWindowsUpdate(target);
   return resolveLaunchContext(target, await observeProcesses(target));
 }

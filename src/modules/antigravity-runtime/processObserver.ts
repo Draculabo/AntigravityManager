@@ -13,6 +13,7 @@ import { logger } from '@/shared/logging/logger';
 import {
   getAntigravityExecutableTarget,
   isAntigravityWindowsInstaller,
+  isAntigravityHelperProcess,
 } from '@/shared/platform/antigravityProcessIdentity';
 import { readWslWindowsProcesses } from './windowsInterop';
 
@@ -83,19 +84,19 @@ function matchesTarget(
   target: GuiTarget,
   name: string,
   executablePath: string,
-  commandLine: string,
+  args: readonly string[],
   windows: boolean,
   capturedExecutablePath?: string,
 ): boolean {
   // Only the main app can confirm startup; helpers and this manager cannot do so.
   if (
-    /--type(?:=|\s)/i.test(commandLine) ||
-    /crashpad|helper|manager/i.test(name) ||
+    isAntigravityHelperProcess(name, args) ||
+    /manager/i.test(name) ||
     (windows && isAntigravityWindowsInstaller(name))
   ) {
     return false;
   }
-  const candidate = { name, executablePath, commandLine };
+  const candidate = { name, executablePath, commandLine: args.join(' '), args };
   const options = { isWsl: isWsl() && windows };
   return (
     isTargetAntigravityProcessCandidate(candidate, target, {
@@ -123,18 +124,19 @@ async function scan(
     const configured = executablePath ?? getConfiguredAntigravityExecutablePath(target, false);
     const rows = await readWslWindowsProcesses(configured ?? undefined, signal, timeout);
     return rows.flatMap((row) => {
-      if (
-        !row.executablePath ||
-        !row.commandLine ||
-        !matchesTarget(target, row.name, row.executablePath, row.commandLine, true, executablePath)
-      ) {
+      if (!row.executablePath || !row.commandLine) {
+        return [];
+      }
+      const args = parseProcessArguments(row.commandLine);
+      if (!matchesTarget(target, row.name, row.executablePath, args, true, executablePath)) {
         return [];
       }
       return [
         {
           pid: row.pid,
           executablePath: toWslPath(row.executablePath),
-          args: parseProcessArguments(row.commandLine).slice(1),
+          args: args.slice(1),
+          ...(row.startTime !== undefined ? { startTime: row.startTime } : {}),
         },
       ];
     });
@@ -148,11 +150,8 @@ async function scan(
     if (
       row.pid === process.pid ||
       (windows && isAntigravityWindowsInstaller(row.name)) ||
-      /crashpad|helper|manager/i.test(row.name) ||
-      row.cmd.some((arg) => /^--type(?:=|$)/i.test(arg)) ||
-      // Windows IDE language services reuse the app executable without an Electron --type.
-      (process.platform === 'win32' &&
-        row.cmd.some((arg) => /^--(?:clientProcessId|node-ipc|useNodeIpc)(?:=|$)/i.test(arg)))
+      /manager/i.test(row.name) ||
+      isAntigravityHelperProcess(row.name, row.cmd)
     ) {
       continue;
     }
@@ -170,7 +169,7 @@ async function scan(
       }
       continue;
     }
-    if (matchesTarget(target, row.name, row.exe, row.cmd.join(' '), windows, configured)) {
+    if (matchesTarget(target, row.name, row.exe, row.cmd, windows, configured)) {
       results.push({
         pid: row.pid,
         executablePath: row.exe,
