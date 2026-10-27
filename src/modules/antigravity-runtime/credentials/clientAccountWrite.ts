@@ -3,7 +3,11 @@ import path from 'node:path';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { getAntigravityDbPaths, type PathResolutionOptions } from '@/shared/platform/paths';
-import { getAntigravityVersion, isCredentialStoreVersion } from '../utils/antigravityVersion';
+import {
+  compareVersion,
+  getAntigravityVersion,
+  isCredentialStoreVersion,
+} from '../utils/antigravityVersion';
 import { logger } from '@/shared/logging/logger';
 import { prepareClientAccountCredentials, type ClientAccountCredentials } from './clientAccount';
 import { createClientSqliteWriter, validateClientSqliteDestination } from './clientSqlite';
@@ -33,6 +37,14 @@ export async function resolveClientAccountStorage(
     return process.platform === 'darwin' ? 'credential-store' : 'cli-session';
   }
   if (target === 'ide') {
+    if (process.platform === 'win32') {
+      try {
+        const version = await getAntigravityVersion(target, pathOptions?.executablePath);
+        return compareVersion(version.shortVersion, '2.6.0') >= 0 ? 'credential-store' : 'sqlite';
+      } catch {
+        // Older IDE installs and unknown versions retain their established SQLite destination.
+      }
+    }
     return 'sqlite';
   }
   try {
@@ -77,9 +89,10 @@ export async function prepareClientAccountWrite(
     return {
       storage,
       write: async () => {
-        await writeAntigravityCredentialStoreToken(credentials.token, {
-          syncClassicOAuthFile: true,
-        });
+        await writeAntigravityCredentialStoreToken(
+          credentials.token,
+          target === 'classic' ? { syncClassicOAuthFile: true } : {},
+        );
         const written = await readAntigravityCredentialStoreToken();
         if (
           !written ||
