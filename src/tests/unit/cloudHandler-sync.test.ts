@@ -6,6 +6,7 @@ import {
   AGY_SYNC_FROM_IDE_UNSUPPORTED_MESSAGE,
   IdeAccountImportAdapter,
 } from '@/modules/cloud-account/persistence/ide-account-import-adapter';
+import { readClientAccountToken, resolveClientAccountStorage } from '@/modules/antigravity-runtime';
 import type { UserInfo } from '@/modules/cloud-account/services/GoogleAPIService';
 import { toSyncLocalAccountORPCError } from '@/modules/cloud-account/services/ide-account-sync-error';
 vi.mock('@/modules/cloud-account/local-import/local-account-post-import.service', () => ({
@@ -116,6 +117,22 @@ vi.mock('@/modules/antigravity-runtime/credentials/antigravityCredentialStore', 
   writeAntigravityCredentialStoreToken: vi.fn(),
 }));
 
+vi.mock('@/modules/antigravity-runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/modules/antigravity-runtime')>();
+  return {
+    ...actual,
+    readClientAccountToken: vi.fn(async () => null),
+    resolveClientAccountStorage: vi.fn(async () => 'sqlite'),
+    prepareClientAccountWrite: async (
+      ...args: Parameters<typeof actual.prepareClientAccountWrite>
+    ) => {
+      const clientAccountWrite =
+        await import('@/modules/antigravity-runtime/credentials/clientAccountWrite');
+      return clientAccountWrite.prepareClientAccountWrite(...args);
+    },
+  };
+});
+
 describe('IdeAccountImportAdapter.syncFromIde', () => {
   it('does not persist imported credentials if identity storage preparation fails', async () => {
     const { ensureIdentityProfileStorage } = await import('@/modules/identity-profile/ipc/handler');
@@ -152,6 +169,8 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveClientAccountStorage).mockResolvedValue('sqlite');
+    vi.mocked(readClientAccountToken).mockResolvedValue(null);
     mockData = {};
     mockDataByDbPath = {};
     activeMockDbPath = 'mock-db';
@@ -240,6 +259,31 @@ describe('IdeAccountImportAdapter.syncFromIde', () => {
     await IdeAccountImportAdapter.syncFromIde('ide');
 
     expect(getAntigravityDbPathsCalls).toEqual(['ide']);
+  });
+
+  it('syncs the current Windows IDE account from the credential store', async () => {
+    vi.mocked(resolveClientAccountStorage).mockResolvedValue('credential-store');
+    vi.mocked(readClientAccountToken).mockResolvedValue({
+      accessToken: 'keyring-access',
+      refreshToken: 'keyring-refresh',
+      expiryTimestamp: 1700000000,
+      idToken: 'keyring-id-token',
+      projectId: 'keyring-project',
+    });
+    const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
+    vi.mocked(GoogleAPIService.getUserInfo).mockResolvedValue(
+      createMockUserInfo('keyring@example.com', 'Keyring User'),
+    );
+    vi.spyOn(CloudAccountRepo, 'getAccounts').mockResolvedValue([]);
+    vi.spyOn(CloudAccountRepo, 'addAccount').mockResolvedValue();
+
+    const account = await IdeAccountImportAdapter.syncFromIde('ide');
+
+    expect(readClientAccountToken).toHaveBeenCalledExactlyOnceWith('ide');
+    expect(getAntigravityDbPathsCalls).toEqual([]);
+    expect(GoogleAPIService.getUserInfo).toHaveBeenCalledExactlyOnceWith('keyring-access');
+    expect(account?.email).toBe('keyring@example.com');
+    expect(account?.token.project_id).toBe('keyring-project');
   });
 
   it('should reject agy CLI sync before reading IDE SQLite paths', async () => {
@@ -1257,6 +1301,7 @@ describe('cloud oauth client key backfill', () => {
     }));
     vi.doMock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 
+    vi.mocked(resolveClientAccountStorage).mockResolvedValue('credential-store');
     const { cloudAccountListService } =
       await import('@/modules/cloud-account/services/cloud-account-list.service');
     const listedAccounts = await cloudAccountListService.listViews();
@@ -1378,6 +1423,7 @@ describe('cloud oauth client key backfill', () => {
     }));
     vi.doMock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 
+    vi.mocked(resolveClientAccountStorage).mockResolvedValue('credential-store');
     const { cloudAccountListService } =
       await import('@/modules/cloud-account/services/cloud-account-list.service');
     const listedAccounts = await cloudAccountListService.listViews();

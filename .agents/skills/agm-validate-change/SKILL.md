@@ -27,6 +27,7 @@ Validate the behavior a diff can affect without reflexively running the full rep
 - Add packaging, native keyring, updater or live-provider evidence only when the diff can affect that environment-dependent path.
 - Use the full local rehearsal only when the change is repository-wide, CI is being diagnosed, or the user explicitly requests it.
 - When a PR base, head or merge base changes after validation, recalculate the changed paths and rerun only evidence affected by the new diff. Retain earlier evidence only for unchanged behavior and inputs.
+- After a review fix, map the new diff and affected consumers to the evidence matrix. Identify which earlier results remain applicable and rerun invalidated checks, including the original regression check when its behavior or inputs changed. Use the review skill's stable finding IDs when linking evidence to a fix; semantic review itself does not select or rerun checks.
 
 Do not use a passing mock-only test as proof of native Electron, keyring, installer or live-provider behavior. Do not repeat an already passing command unless later edits invalidated its evidence.
 
@@ -48,5 +49,11 @@ Report:
 - commands actually run and their results;
 - environment-dependent or broader checks not run;
 - residual risk that the executed evidence does not cover.
+
+For PR descriptions, include the tested revision/artifact and environment with each result. Follow
+the contribution guide's [risk and recovery assessment](../../../CONTRIBUTING.md#risk-and-recovery):
+separate side effects, executed restoration and untested procedures. Keep platform, account/client
+variants and mock/native/live evidence limits explicit; preparation and a code revert alone do not
+establish restored persistent state.
 
 Use [agm-code-review](../agm-code-review/SKILL.md) to review the final semantic diff after validation. Do not repeat already-passing checks during that review.

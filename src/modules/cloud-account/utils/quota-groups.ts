@@ -1,4 +1,8 @@
 import type { CloudQuotaBucket, CloudQuotaGroup } from '@/modules/cloud-account/types';
+import {
+  getQuotaModelFamilyId,
+  getQuotaModelFamilyIdByDisplayName,
+} from '@/modules/cloud-account/utils/quota-model-families';
 
 export type QuotaWindow = 'both' | '5h' | 'weekly';
 
@@ -28,6 +32,16 @@ function normalizeQuotaMatchTokens(matchTokens?: readonly string[]): string[] | 
   return matchTokens?.map(normalizeQuotaMatchToken).filter((token) => token.length > 0);
 }
 
+/**
+ * Returns the model family a group limits when Google names the group after one registered family,
+ * such as "Gemini 4 Argon". Provider-wide groups such as "Gemini Models" return undefined.
+ */
+export function getDedicatedQuotaGroupFamilyId(
+  group: Pick<CloudQuotaGroup, 'display_name'>,
+): string | undefined {
+  return getQuotaModelFamilyIdByDisplayName(group.display_name);
+}
+
 function bucketMatchesTokens(
   group: CloudQuotaGroup,
   bucket: CloudQuotaBucket,
@@ -35,6 +49,12 @@ function bucketMatchesTokens(
 ): boolean {
   if (normalizedTokens === undefined) {
     return true;
+  }
+
+  // A dedicated group's metadata also names its provider, so provider tokens must not match it.
+  const dedicatedFamilyId = getDedicatedQuotaGroupFamilyId(group);
+  if (dedicatedFamilyId !== undefined) {
+    return normalizedTokens.some((token) => getQuotaModelFamilyId(token) === dedicatedFamilyId);
   }
 
   return (

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   applyQuotaLowerBound,
   collectQuotaGroupBucketPercentages,
+  getDedicatedQuotaGroupFamilyId,
   getMinimumQuotaPercentage,
   isWeeklyQuotaBucket,
   selectWeeklyQuotaItems,
@@ -105,6 +106,71 @@ describe('quota group score primitives', () => {
 
   it('does not infer an unrelated provider when no token matches', () => {
     expect(collectQuotaGroupBucketPercentages(groups, ['vendor-experimental-v9'])).toEqual([]);
+  });
+
+  it('limits a group named after one model family to that family', () => {
+    // Shape of the Google AI Pro quota summary returned to the Antigravity hub client.
+    const proGroups: CloudQuotaGroup[] = [
+      {
+        display_name: 'Gemini Models',
+        description: 'Models within this group: Gemini Flash, Gemini Pro',
+        buckets: [
+          {
+            bucket_id: 'gemini-weekly',
+            window: 'weekly',
+            remaining_fraction: 0.59,
+            reset_time: '2026-10-30T06:50:31Z',
+            display_name: 'Weekly Limit Remaining',
+          },
+        ],
+      },
+      {
+        display_name: 'Gemini 4 Argon',
+        description:
+          'For paid Pro plans, Argon quota is separate. Higher Argon quota (included as part of the larger Gemini quota bucket) is available on Ultra plans.',
+        buckets: [
+          {
+            bucket_id: 'gemini-argon-wtu-weekly',
+            window: 'weekly',
+            remaining_fraction: 0,
+            reset_time: '2026-10-30T06:50:31Z',
+            display_name: 'Gemini 4 Argon Weekly Limit',
+          },
+        ],
+      },
+    ];
+
+    expect({
+      argonFamily: getDedicatedQuotaGroupFamilyId(proGroups[1]),
+      providerGroupFamily: getDedicatedQuotaGroupFamilyId(proGroups[0]),
+      flashCohort: collectQuotaGroupBucketPercentages(proGroups, [
+        'gemini-3.8-flash-high',
+        'gemini',
+      ]),
+      argonCohort: collectQuotaGroupBucketPercentages(proGroups, ['models/gemini-4-argon-high']),
+      providerContext: selectWeeklyQuotaItems(proGroups, ['gemini']).map((item) => item.groupName),
+      unfiltered: selectWeeklyQuotaItems(proGroups).map(
+        ({ groupName, bucketLabel, percentage }) => ({
+          groupName,
+          bucketLabel,
+          percentage,
+        }),
+      ),
+    }).toEqual({
+      argonFamily: 'gemini-4-argon',
+      providerGroupFamily: undefined,
+      flashCohort: [59],
+      argonCohort: [0],
+      providerContext: ['Gemini'],
+      unfiltered: [
+        { groupName: 'Gemini', bucketLabel: 'Weekly Limit Remaining', percentage: 59 },
+        {
+          groupName: 'Gemini 4 Argon',
+          bucketLabel: 'Gemini 4 Argon Weekly Limit',
+          percentage: 0,
+        },
+      ],
+    });
   });
 
   it('combines nullable model and group scores without treating a real zero as missing', () => {

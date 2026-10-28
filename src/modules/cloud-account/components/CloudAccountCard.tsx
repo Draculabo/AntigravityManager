@@ -35,6 +35,7 @@ import {
   Terminal,
   TriangleAlert,
   ExternalLink,
+  ChevronDown,
 } from 'lucide-react';
 import { formatAccountLastUsed } from '@/modules/cloud-account/utils/format-last-used';
 import { Badge } from '@/components/ui/badge';
@@ -59,6 +60,7 @@ import { CloudAccountProxyDialog } from '@/modules/cloud-account/components/Clou
 import { getCloudAccountBlockedStatusLabel } from '@/modules/cloud-account/utils/accountValidationStatus';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { AccountTierBadge } from '@/modules/cloud-account/components/AccountTierBadge';
+import { CloudAccountClientStatus } from './CloudAccountClientStatus';
 import {
   DEFAULT_QUOTA_GROUP_VISIBILITY,
   getVisibleAccountQuota,
@@ -67,7 +69,10 @@ import {
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 import { DetailedQuotaDisplay } from '@/modules/cloud-account/components/DetailedQuotaDisplay';
 import { AccountQuotaWindowSections } from '@/modules/cloud-account/components/AccountQuotaWindowSections';
-import { CompactModelQuotaDisplay } from '@/modules/cloud-account/components/CompactModelQuotaDisplay';
+import {
+  CompactModelQuotaDisplay,
+  type CompactModelQuotaItem,
+} from '@/modules/cloud-account/components/CompactModelQuotaDisplay';
 import { ManualRecommendationBadge } from '@/modules/cloud-account/components/ManualRecommendationBadge';
 import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/manual-account-recommendation';
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
@@ -75,7 +80,9 @@ import { isWeeklyQuotaBucket } from '@/modules/cloud-account/utils/quota-groups'
 import { useOpenAccountValidationLink } from '@/modules/cloud-account/hooks/useOpenAccountValidationLink';
 import {
   isGeminiWeeklyQuotaItem,
+  isClaudeOrGptWeeklyQuotaItem,
   isGeminiQuotaGroup,
+  isClaudeOrGptQuotaGroup,
 } from '@/modules/cloud-account/utils/minimal-mode-preference';
 
 type ModelQuotaEntry = [string, CloudQuotaModelInfo];
@@ -164,6 +171,18 @@ function getAvailabilityModelCandidates(modelName: string): Set<string> {
     candidates.add('gemini-3.5-flash-extra-low');
     candidates.add('gemini-3.5-flash-low');
     candidates.add('gemini-3-flash-agent');
+  }
+
+  if (normalized === 'gemini-4-argon') {
+    candidates.add('gemini-4-argon-low');
+    candidates.add('gemini-4-argon-medium');
+    candidates.add('gemini-4-argon-high');
+  }
+
+  if (normalized === 'gemini-3.8-flash') {
+    candidates.add('gemini-3.8-flash-low');
+    candidates.add('gemini-3.8-flash-medium');
+    candidates.add('gemini-3.8-flash-high');
   }
 
   if (normalized === 'gemini-3.7-flash') {
@@ -292,11 +311,6 @@ export function CloudAccountCard({
   } = useProviderGrouping();
   const [menuOpen, setMenuOpen] = useState(false);
   const modelAvailability = useAccountModelAvailability(account.id);
-  const isActiveAnywhere = !!(
-    account.is_active_classic ||
-    account.is_active_ide ||
-    account.is_active_agy
-  );
 
   const getQuotaTextColorClass = (percentage: number) => {
     const quotaStatus = getQuotaStatus(percentage);
@@ -564,6 +578,8 @@ export function CloudAccountCard({
 
   return (
     <Card
+      role="article"
+      aria-label={account.email}
       className={`group bg-card hover:border-primary/30 border-border relative flex h-full flex-col overflow-hidden rounded-lg border shadow-none ${isSelected ? 'ring-primary border-primary/50 ring-2' : ''}`}
     >
       <CardHeader className="relative flex flex-row items-center gap-3 space-y-0 border-b p-4">
@@ -582,14 +598,14 @@ export function CloudAccountCard({
           <img
             src={account.avatar_url}
             alt={account.name || ''}
-            className="bg-muted h-10 w-10 rounded-full border"
+            className="bg-muted h-10 w-10 shrink-0 rounded-full border"
           />
         ) : (
-          <div className="bg-muted text-muted-foreground flex h-10 w-10 items-center justify-center rounded-full border font-bold">
+          <div className="bg-muted text-muted-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full border font-bold">
             {account.name?.[0]?.toUpperCase() || 'A'}
           </div>
         )}
-        <div className="flex-1 overflow-hidden">
+        <div className="min-w-0 flex-1">
           <CardTitle className="truncate text-base font-semibold">
             {account.name || t('cloud.card.unknown')}
           </CardTitle>
@@ -597,37 +613,7 @@ export function CloudAccountCard({
             {account.email}
           </CardDescription>
 
-          {(account.is_active_classic || account.is_active_ide || account.is_active_agy) && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {account.is_active_classic && (
-                <span className="flex items-center gap-1 rounded border border-green-500/20 bg-green-500/10 px-1.5 py-0.5 text-[9px] font-bold text-green-600 dark:text-green-400">
-                  <span className="relative flex h-1 w-1">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex h-1 w-1 rounded-full bg-green-500"></span>
-                  </span>
-                  {t('cloud.card.appLabel', 'Antigravity App')}
-                </span>
-              )}
-              {account.is_active_ide && (
-                <span className="border-success-border bg-success-soft text-success flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] font-bold">
-                  <span className="relative flex h-1 w-1">
-                    <span className="bg-success absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"></span>
-                    <span className="bg-success relative inline-flex h-1 w-1 rounded-full"></span>
-                  </span>
-                  {t('cloud.card.ideLabel', 'Antigravity IDE')}
-                </span>
-              )}
-              {account.is_active_agy && (
-                <span className="flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
-                  <span className="relative flex h-1 w-1">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex h-1 w-1 rounded-full bg-emerald-500"></span>
-                  </span>
-                  {t('cloud.card.agyLabel', 'Antigravity CLI')}
-                </span>
-              )}
-            </div>
-          )}
+          <CloudAccountClientStatus account={account} />
 
           {shouldShowAiCredits && aiCredits && (
             <div className="text-muted-foreground mt-1 flex items-center gap-1 text-[10px] font-medium">
@@ -747,26 +733,17 @@ export function CloudAccountCard({
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={isActiveAnywhere ? 'ghost' : 'secondary'}
+                  variant="secondary"
                   size="sm"
-                  className={cn(
-                    'h-7 cursor-pointer px-2.5 text-[11px] font-semibold transition-all duration-200',
-                    isActiveAnywhere
-                      ? 'bg-green-500/10 text-green-600 hover:bg-green-500/15 dark:text-green-500'
-                      : '',
-                  )}
+                  className="h-7 cursor-pointer gap-1.5 px-2.5 text-[11px] font-semibold"
                 >
                   {isSwitching ? (
-                    <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
-                  ) : isActiveAnywhere ? (
-                    <span className="relative mr-1.5 flex h-1.5 w-1.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500"></span>
-                    </span>
+                    <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Power className="mr-1 h-3 w-3" />
+                    <Power className="h-3 w-3" aria-hidden="true" />
                   )}
-                  {isActiveAnywhere ? t('cloud.card.active') : t('cloud.card.use')}
+                  {t('cloud.card.use')}
+                  <ChevronDown className="h-3 w-3" aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -849,7 +826,11 @@ export function CloudAccountCard({
           <AccountQuotaWindowSections
             quotaWindow={quotaWindow}
             weeklyItems={
-              isMinimalMode ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem) : weeklyQuotaItems
+              isMinimalMode
+                ? weeklyQuotaItems.filter(
+                    (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
+                  )
+                : weeklyQuotaItems
             }
             fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
             weeklyHidden={isMinimalMode ? false : weeklyHidden}
@@ -858,8 +839,15 @@ export function CloudAccountCard({
               isMinimalMode ? (
                 <>
                   {overallQuotaBar}
-                  <DetailedQuotaDisplay groups={detailedGroups.filter(isGeminiQuotaGroup)} />
-                  {!overallQuotaBar && detailedGroups.filter(isGeminiQuotaGroup).length === 0
+                  <DetailedQuotaDisplay
+                    groups={detailedGroups.filter(
+                      (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+                    )}
+                  />
+                  {!overallQuotaBar &&
+                  detailedGroups.filter(
+                    (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+                  ).length === 0
                     ? emptyQuotaState
                     : null}
                 </>
@@ -1065,31 +1053,64 @@ export function CompactCloudAccountCard({
   const validationLink = useOpenAccountValidationLink();
   const { config } = useAppConfig();
   const [menuOpen, setMenuOpen] = useState(false);
-  const isActiveAnywhere = !!(
-    account.is_active_classic ||
-    account.is_active_ide ||
-    account.is_active_agy
-  );
 
   const {
     models: mergedModelQuotas,
+    groups: detailedGroups,
     weeklyItems: weeklyQuotaItems,
     fiveHourHidden,
     weeklyHidden,
   } = getVisibleAccountQuota(account.quota, config?.model_visibility ?? {}, quotaGroupVisibility);
 
-  const compactQuotaItems = Object.entries(mergedModelQuotas)
+  const modelQuotaItems = Object.entries(mergedModelQuotas)
     .filter(
       ([modelName]) =>
         !isMinimalMode ||
-        (modelName.includes('gemini') && !GEMINI_LEGACY_MODEL_PATTERN.test(modelName)),
+        (modelName.includes('gemini') && !GEMINI_LEGACY_MODEL_PATTERN.test(modelName)) ||
+        /claude|gpt/i.test(modelName),
     )
     .sort((a, b) => b[1].percentage - a[1].percentage)
     .map(([modelName, info]) => ({
       id: modelName,
       label: formatModelDisplayName(modelName),
       percentage: info.percentage,
+      resetTime: info.resetTime,
     }));
+
+  const hasClaudeModel = modelQuotaItems.some((item) => /claude/i.test(item.id));
+  const hasGeminiModel = modelQuotaItems.some((item) => item.id.includes('gemini'));
+
+  const nonWeeklyGroupItems: CompactModelQuotaItem[] = detailedGroups
+    .filter(
+      (group) => !isMinimalMode || isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+    )
+    .flatMap((group) => {
+      const isClaudeGroup = isClaudeOrGptQuotaGroup(group);
+      const isGeminiGroup = isGeminiQuotaGroup(group);
+      if (isClaudeGroup && hasClaudeModel) {
+        return [];
+      }
+      if (isGeminiGroup && hasGeminiModel) {
+        return [];
+      }
+      const nonWeeklyBuckets = group.buckets.filter((bucket) => !isWeeklyQuotaBucket(bucket));
+      return nonWeeklyBuckets.map((bucket) => {
+        const groupName = group.display_name.replace(/\s+models?$/i, '').trim();
+        const label =
+          nonWeeklyBuckets.length > 1 && bucket.display_name
+            ? `${groupName} · ${bucket.display_name}`
+            : groupName || bucket.display_name || t('cloud.card.quotaGroupUnknown');
+        return {
+          id: `${group.display_name}:${bucket.bucket_id}:${bucket.window}`,
+          label,
+          percentage: Math.round(bucket.remaining_fraction * 100),
+          resetTime: bucket.reset_time,
+        };
+      });
+    })
+    .sort((a, b) => b.percentage - a.percentage);
+
+  const compactQuotaItems = [...modelQuotaItems, ...nonWeeklyGroupItems];
 
   const aiCredits = account.quota?.ai_credits;
   const shouldShowAiCredits =
@@ -1098,7 +1119,11 @@ export function CompactCloudAccountCard({
   const validationBlockedStatusLabel = getCloudAccountBlockedStatusLabel(account, t);
 
   return (
-    <div className="group bg-card hover:border-primary/40 flex items-center gap-3 rounded-lg border px-3 py-2 transition-all duration-200">
+    <div
+      role="article"
+      aria-label={account.email}
+      className="group bg-card hover:border-primary/40 flex items-center gap-3 rounded-lg border px-3 py-2 transition-all duration-200"
+    >
       {account.avatar_url ? (
         <img
           src={account.avatar_url}
@@ -1112,8 +1137,8 @@ export function CompactCloudAccountCard({
       )}
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="min-w-0 truncate text-sm font-semibold">
             {account.name || t('cloud.card.unknown')}
           </span>
           <Badge
@@ -1136,23 +1161,12 @@ export function CompactCloudAccountCard({
           ) : null}
         </div>
 
+        <div className="text-muted-foreground truncate text-xs" title={account.email}>
+          {account.email}
+        </div>
+        <CloudAccountClientStatus account={account} />
+
         <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
-          <span className="truncate">{account.email}</span>
-          {account.is_active_classic && (
-            <span className="rounded border border-green-500/20 bg-green-500/10 px-1 text-[9px] font-bold text-green-600 dark:text-green-400">
-              App
-            </span>
-          )}
-          {account.is_active_ide && (
-            <span className="border-success-border bg-success-soft text-success rounded border px-1 text-[9px] font-bold">
-              IDE
-            </span>
-          )}
-          {account.is_active_agy && (
-            <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
-              CLI
-            </span>
-          )}
           {validationBlockedStatusLabel && (
             <span className="text-destructive shrink-0 font-medium">
               {validationBlockedStatusLabel}
@@ -1191,7 +1205,11 @@ export function CompactCloudAccountCard({
         <AccountQuotaWindowSections
           quotaWindow={quotaWindow}
           weeklyItems={
-            isMinimalMode ? weeklyQuotaItems.filter(isGeminiWeeklyQuotaItem) : weeklyQuotaItems
+            isMinimalMode
+              ? weeklyQuotaItems.filter(
+                  (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
+                )
+              : weeklyQuotaItems
           }
           fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
           weeklyHidden={isMinimalMode ? false : weeklyHidden}
@@ -1210,26 +1228,17 @@ export function CompactCloudAccountCard({
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button
-                variant={isActiveAnywhere ? 'ghost' : 'secondary'}
+                variant="secondary"
                 size="sm"
-                className={cn(
-                  'h-7 cursor-pointer px-2.5 text-[11px] font-semibold transition-all duration-200',
-                  isActiveAnywhere
-                    ? 'bg-green-500/10 text-green-600 hover:bg-green-500/15 dark:text-green-500'
-                    : '',
-                )}
+                className="h-7 cursor-pointer gap-1.5 px-2.5 text-[11px] font-semibold"
               >
                 {isSwitching ? (
-                  <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
-                ) : isActiveAnywhere ? (
-                  <span className="relative mr-1.5 flex h-1.5 w-1.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500"></span>
-                  </span>
+                  <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Power className="mr-1 h-3 w-3" />
+                  <Power className="h-3 w-3" aria-hidden="true" />
                 )}
-                {isActiveAnywhere ? t('cloud.card.active') : t('cloud.card.use')}
+                {t('cloud.card.use')}
+                <ChevronDown className="h-3 w-3" aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent

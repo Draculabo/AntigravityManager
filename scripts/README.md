@@ -25,6 +25,7 @@ owns the change-to-evidence matrix; this guide identifies existing tools and the
 | `acceptance/fixtures/`    | Fixed media inputs; runtime-specific fixture constants stay with their runtime suite.          |
 | `development/`            | Development-server connection regression checks.                                               |
 | `release/`                | Release-note generation, source metadata and controlled publication tests.                     |
+| `review-eval/`            | Manually prepared historical source audits, evaluator rubrics and adjudicated reports.         |
 
 Existing governance, performance and release utilities remain at the root. pnpm commands are defined
 in [package.json](../package.json); use their names rather than relying on a script's filesystem path.
@@ -77,6 +78,12 @@ the registry description and their owning procedure; the executable inventory av
 the command list here. Acceptance scripts remain owned by the dispatcher below.
 
 ## Unified acceptance entry
+
+Historical reviewer evaluation uses `pnpm run review:eval prepare` and `pnpm run review:eval score`.
+Follow the [evaluation procedure](../docs/testing/review-evaluation.md) for local-history prerequisites,
+source isolation, human adjudication and evidence limits. Preparation writes a new directory outside
+the repository; scoring is read-only. Neither command invokes a model or a provider.
+`pnpm run test:review-eval` exercises the harness and historical probes and is manually selected.
 
 `pnpm run test:acceptance --help` lists the available suites. Choose a suite and check, followed by
 the existing check arguments; the dispatcher forwards them unchanged and starts only that check.
@@ -145,6 +152,18 @@ window from the still-running local acceptance gateway, writes separate `report.
 files and summarizes the refreshed reports. The original reports are preserved.
 
 ## Record acceptance evidence
+
+The focused native launch fixture, `node scripts/test-antigravity-launch.integration.mjs`,
+verifies process discovery and startup using a unique temporary installation. On Windows it
+checks ordinary windowless close refusal and account-switch forced tree cleanup in three cycles.
+`--wsl-interop` selects its Windows fixture through the existing WSL bridge. It never writes
+credentials or starts an installed client; cleanup is restricted to its temporary fixture.
+See [runtime evidence limits](../docs/modules/antigravity-runtime/testing.md#discovery-and-switch-only-windows-forced-cleanup).
+
+`node scripts/acceptance/accounts/test-windows-graceful-close.integration.mjs` runs disposable
+WinForms windows on Windows. It checks visible/hidden normal-close buffer flushing, ordinary
+stop refusal and switch-only forced exit after a cancelled close. It never starts an installed
+client or writes credentials; forced exit does not establish that unsaved data was saved.
 
 Record the command, revision and tested artifact/runtime, platform, selected scenario, expected observable
 and actual result. Include cleanup/restoration results and a sanitized report path when the runner emits one.

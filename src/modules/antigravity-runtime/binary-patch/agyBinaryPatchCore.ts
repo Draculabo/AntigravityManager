@@ -1,3 +1,5 @@
+import { findX86GoEligibilityMatches } from './agyX86EligibilityPatch';
+
 export type AgyBinaryArchitecture = 'arm64' | 'x86_64';
 export type AgyBinaryFormat = 'elf' | 'mach-o' | 'mach-o-universal' | 'pe';
 export type AgyBinaryPatchStatus = 'already-patched' | 'patched';
@@ -47,10 +49,6 @@ const MACH_FAT_MAGIC = 0xcafebabe;
 const MACH_FAT_64_MAGIC = 0xcafebabf;
 const MAX_FAT_ARCHITECTURES = 16;
 
-const X86_COMPARE_PREFIX = Buffer.from([0x41, 0x80, 0x3c, 0x24, 0x00]);
-const X86_CONDITIONAL_BRANCH_PREFIX = Buffer.from([0x0f, 0x85]);
-const X86_LEA_PREFIX = Buffer.from([0x48, 0x8d, 0x05]);
-const X86_MOV_PREFIX = Buffer.from([0xbb, 0x18]);
 const X86_NOP_BRANCH = Buffer.alloc(6, 0x90);
 
 export class AgyBinaryPatchError extends Error {
@@ -251,35 +249,10 @@ function parseExecutable(buffer: Buffer): ParsedExecutable {
   return parsed;
 }
 
-function bytesEqual(buffer: Buffer, offset: number, expected: Buffer): boolean {
-  return buffer.subarray(offset, offset + expected.length).equals(expected);
-}
-
 function findX86Matches(buffer: Buffer, slice: ExecutableSlice): PatternMatch[] {
-  const matches: PatternMatch[] = [];
-  const start = slice.offset;
-  const end = slice.offset + slice.size;
-  const patternSize = 20;
-
-  for (let offset = start; offset + patternSize <= end; offset += 1) {
-    if (
-      !bytesEqual(buffer, offset, X86_COMPARE_PREFIX) ||
-      !bytesEqual(buffer, offset + 11, X86_LEA_PREFIX) ||
-      !bytesEqual(buffer, offset + 18, X86_MOV_PREFIX)
-    ) {
-      continue;
-    }
-
-    if (bytesEqual(buffer, offset + 5, X86_CONDITIONAL_BRANCH_PREFIX)) {
-      matches.push({ offset: offset + 5, state: 'patched' });
-      continue;
-    }
-    if (bytesEqual(buffer, offset + 5, X86_NOP_BRANCH)) {
-      matches.push({ offset: offset + 5, state: 'already-patched' });
-    }
-  }
-
-  return matches;
+  return findX86GoEligibilityMatches(buffer.subarray(slice.offset, slice.offset + slice.size)).map(
+    (match) => ({ ...match, offset: slice.offset + match.offset }),
+  );
 }
 
 function findArm64Matches(buffer: Buffer, slice: ExecutableSlice): PatternMatch[] {

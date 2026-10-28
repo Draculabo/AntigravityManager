@@ -566,6 +566,7 @@ const vi = {
     checkQuota: 'Kiểm tra quota ngay',
     polling: 'Đã kích hoạt polling',
     globalQuota: 'Quota tổng',
+    weeklyQuota: 'Quota tuần',
     layout: {
       auto: 'Tự động',
       twoCol: '2 cột',
@@ -616,6 +617,12 @@ const vi = {
       verify: 'Xác thực và thêm',
     },
     card: {
+      'client-app': 'App',
+      'client-ide': 'IDE',
+      'client-cli': 'CLI',
+      'client-usage': 'Trạng thái sử dụng của ứng dụng',
+      'client-in-use': 'Đang được {{client}} sử dụng',
+      'not-in-use': 'Chưa sử dụng',
       active: 'Đang hoạt động',
       use: 'Sử dụng',
       rateLimited: 'Bị giới hạn tốc độ',

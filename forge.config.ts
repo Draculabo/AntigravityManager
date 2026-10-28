@@ -168,15 +168,15 @@ const config: ForgeConfig = {
         throw new Error('Package through the owning pnpm script');
       }
       const isJs = pnpmCli.endsWith('.js') || pnpmCli.endsWith('.cjs') || pnpmCli.endsWith('.mjs');
-      const cmd = isJs ? process.execPath : pnpmCli;
+      const file = isJs ? process.execPath : pnpmCli;
       const args = isJs
         ? [pnpmCli, 'run', 'prepare:standalone', platform, arch]
         : ['run', 'prepare:standalone', platform, arch];
-      await promisify(execFile)(cmd, args, {
+      await promisify(execFile)(file, args, {
         cwd: process.cwd(),
         windowsHide: true,
         timeout: 900_000,
-        maxBuffer: 16_384,
+        maxBuffer: 16 * 1024 * 1024,
       });
       _config.packagerConfig ??= {};
       _config.packagerConfig.extraResource = [

@@ -46,7 +46,30 @@ describe('OpenAI retrieve model', () => {
 
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.body).toEqual(listed);
-    expect(reply.body).toMatchObject({ id: 'gemini-3-flash', object: 'model' });
+    expect(reply.body).toMatchObject({
+      id: 'gemini-3-flash',
+      object: 'model',
+      context_length: 1_048_576,
+      max_completion_tokens: 65_536,
+    });
+  });
+
+  it('publishes the routed target limits for a user alias', () => {
+    setServerConfig({
+      ...DEFAULT_APP_CONFIG.proxy,
+      model_aliases: [{ alias: 'my-fast', target: 'claude-sonnet-4-6', enabled: true }],
+    });
+    const controller = createController(['gemini-3-flash']);
+
+    const reply = createReply();
+    controller.retrieveModel('my-fast', reply as never);
+
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(reply.body).toMatchObject({
+      id: 'my-fast',
+      context_length: 200_000,
+      max_completion_tokens: 64_000,
+    });
   });
 
   it('answers a model it does not serve with model_not_found, not the framework 404', () => {

@@ -708,6 +708,7 @@ const zhCn = {
     checkQuota: '立即检查配额',
     polling: '已触发轮询',
     globalQuota: '全局配额',
+    weeklyQuota: '每周配额',
     layout: {
       auto: '自动',
       twoCol: '2 列',
@@ -826,6 +827,12 @@ const zhCn = {
       },
     },
     card: {
+      'client-app': 'App',
+      'client-ide': 'IDE',
+      'client-cli': 'CLI',
+      'client-usage': '客户端使用状态',
+      'client-in-use': '{{client}} 使用中',
+      'not-in-use': '未使用',
       active: '活跃',
       use: '使用',
       rateLimited: '受限',

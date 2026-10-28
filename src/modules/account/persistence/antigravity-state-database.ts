@@ -147,6 +147,69 @@ function readCurrentAccountInfoFromDbPath(
     const { orm } = connection;
     const contextPrefix = `${target ?? 'default'}.itemTable`;
 
+    // Query for unified OAuth token (modern Antigravity storage)
+    const unifiedOauthValue = readItemValue(
+      orm,
+      'antigravityUnifiedStateSync.oauthToken',
+      `${contextPrefix}.antigravityUnifiedStateSync.oauthToken`,
+    );
+    if (unifiedOauthValue) {
+      try {
+        const tokenDetails =
+          ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(unifiedOauthValue);
+        if (tokenDetails?.idToken) {
+          try {
+            const payload: unknown = JSON.parse(
+              Buffer.from(tokenDetails.idToken.split('.')[1], 'base64url').toString('utf8'),
+            );
+            if (
+              payload &&
+              typeof payload === 'object' &&
+              'email' in payload &&
+              typeof payload.email === 'string' &&
+              payload.email.trim()
+            ) {
+              const email = payload.email.trim();
+              const name =
+                'name' in payload && typeof payload.name === 'string' ? payload.name : '';
+              logger.info(`Account info from unified OAuth token: email=${email}`);
+              return { email, name, isAuthenticated: true };
+            }
+          } catch {
+            // Ignore idToken parse errors and check userStatus / legacy keys
+          }
+        }
+      } catch (error) {
+        logger.warn(`Failed to parse unified OAuth token from ${dbPath}`, error);
+      }
+    }
+
+    // Query for unified user status (contains email when idToken is not in the unified oauth entry)
+    const unifiedUserValue = readItemValue(
+      orm,
+      'antigravityUnifiedStateSync.userStatus',
+      `${contextPrefix}.antigravityUnifiedStateSync.userStatus`,
+    );
+    if (unifiedUserValue) {
+      try {
+        const decoded = ProtobufUtils.decodeUnifiedStateEntry(unifiedUserValue);
+        if (decoded.sentinelKey === 'userStatusSentinelKey') {
+          for (const field of [3, 7]) {
+            const emailBytes = ProtobufUtils.getField(decoded.payload, field);
+            if (emailBytes) {
+              const email = new TextDecoder().decode(emailBytes).trim();
+              if (email) {
+                logger.info(`Account info from unified user status: email=${email}`);
+                return { email, name: '', isAuthenticated: true };
+              }
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn(`Failed to parse unified user status from ${dbPath}`, error);
+      }
+    }
+
     // Query for auth status
     const authValue = readItemValue(
       orm,

@@ -15,6 +15,8 @@ These establish concrete mechanisms without attributing either one to the report
 
 ## Decision
 
+The [switch-only forced cleanup decision](2026-10-27-account-switch-client-discovery.md) now permits account switching to force a captured tree after normal close fails. Hidden-window delivery and ordinary-stop refusal below remain active; historical acceptance describes the earlier switch policy.
+
 The native Windows runtime uses the existing Koffi dependency to enumerate top-level windows
 and post `WM_CLOSE` to unowned windows belonging to each freshly verified process ID. Hidden
 windows participate. Window ownership is checked immediately before posting; owned dialogs are

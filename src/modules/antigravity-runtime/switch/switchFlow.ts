@@ -21,8 +21,11 @@ import {
 } from '@/modules/antigravity-runtime/switch/switchMetrics';
 import { prepareClassicTermsSwitch, type ClassicTermsSwitch } from '../terms/classicTermsSwitch';
 import { withTimingTrace } from '@/shared/observability/timingTrace';
+import type { SwitchTrace } from '@/shared/observability/switchDiagnostic';
+import { executeClassicSwitch } from './classicSwitch';
 
 export interface SwitchFlowOptions {
+  onSwitchTrace?(trace: SwitchTrace): void;
   onDiagnosticStage?(
     stage: 'identity-preparation' | 'target-write' | 'process-close' | 'process-start',
   ): void;
@@ -213,6 +216,44 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           }
         };
 
+        if ((appTarget ?? context.target) === 'classic') {
+          const classicTerms = terms;
+          terms = null;
+          await executeClassicSwitch({
+            context,
+            useCredentialStore,
+            timeoutMs: processExitTimeoutMs,
+            terms: classicTerms,
+            write: writeSwitchState,
+            finalize: afterSwitchSuccess || (async () => {}),
+            onStage: (next) => options.onDiagnosticStage?.(next),
+            onLaunch: () => {
+              startAttempted = true;
+            },
+            onPhase: (next) => {
+              stage =
+                next === 'client-close' || next === 'service-stop' || next === 'restart-ownership'
+                  ? 'close'
+                  : next === 'client-start' || next === 'service-replacement'
+                    ? 'start'
+                    : next === 'account-finalize'
+                      ? 'after_success'
+                      : 'switch';
+            },
+            onTrace: (report) => {
+              switchMode = report.outcome;
+              exitUnconfirmed = report.steps.some(
+                (step) =>
+                  step.stage === 'client-close' &&
+                  step.errors?.some((error) => error.process?.reason === 'exit-unconfirmed'),
+              );
+              options.onSwitchTrace?.(report);
+            },
+          });
+          recordSwitchSuccess(scope);
+          return;
+        }
+
         stage = 'preflight';
         let hotConfirmed = false;
         let macOSCredentialsApplied = false;
@@ -295,7 +336,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           options.onDiagnosticStage?.('process-close');
           await trace.phase('closeMs', async () => {
             try {
-              await stopFromContext(context, processExitTimeoutMs);
+              await stopFromContext(context, processExitTimeoutMs, { forceAfterTimeout: true });
             } catch (error) {
               exitUnconfirmed =
                 error instanceof AppError &&

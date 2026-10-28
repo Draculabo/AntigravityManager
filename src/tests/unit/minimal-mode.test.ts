@@ -3,7 +3,9 @@ import {
   readMinimalModePreference,
   saveMinimalModePreference,
   isGeminiWeeklyQuotaItem,
+  isClaudeOrGptWeeklyQuotaItem,
   isGeminiQuotaGroup,
+  isClaudeOrGptQuotaGroup,
 } from '@/modules/cloud-account/utils/minimal-mode-preference';
 import type { WeeklyQuotaItem } from '@/modules/cloud-account/utils/quota-groups';
 
@@ -78,6 +80,44 @@ describe('isGeminiWeeklyQuotaItem', () => {
   });
 });
 
+describe('isClaudeOrGptWeeklyQuotaItem', () => {
+  it('correctly matches Claude and GPT weekly items', () => {
+    const claudeItem: WeeklyQuotaItem = {
+      id: 'claude-1',
+      groupName: 'Claude and GPT',
+      bucketLabel: 'Weekly Limit Remaining',
+      percentage: 100,
+      resetTime: '2099-01-01T00:00:00Z',
+      bucket: {
+        bucket_id: 'claude_weekly',
+        window: 'WEEKLY',
+        display_name: 'Weekly Limit Remaining',
+        remaining_fraction: 1.0,
+        reset_time: '2099-01-01T00:00:00Z',
+      },
+    };
+    expect(isClaudeOrGptWeeklyQuotaItem(claudeItem)).toBe(true);
+  });
+
+  it('correctly filters out Gemini weekly items', () => {
+    const geminiItem: WeeklyQuotaItem = {
+      id: 'gemini-1',
+      groupName: 'Gemini',
+      bucketLabel: 'Weekly Limit Remaining',
+      percentage: 55,
+      resetTime: '2099-01-01T00:00:00Z',
+      bucket: {
+        bucket_id: 'gemini_weekly',
+        window: 'WEEKLY',
+        display_name: 'Weekly Limit Remaining',
+        remaining_fraction: 0.55,
+        reset_time: '2099-01-01T00:00:00Z',
+      },
+    };
+    expect(isClaudeOrGptWeeklyQuotaItem(geminiItem)).toBe(false);
+  });
+});
+
 describe('isGeminiQuotaGroup', () => {
   it('correctly matches Gemini Models quota group', () => {
     const geminiGroup = {
@@ -111,5 +151,23 @@ describe('isGeminiQuotaGroup', () => {
       ],
     };
     expect(isGeminiQuotaGroup(claudeGroup)).toBe(false);
+    expect(isClaudeOrGptQuotaGroup(claudeGroup)).toBe(true);
+  });
+
+  it('correctly filters out Gemini quota group for isClaudeOrGptQuotaGroup', () => {
+    const geminiGroup = {
+      display_name: 'Google Gemini',
+      description: 'Models within this group: Gemini Flash, Gemini Pro',
+      buckets: [
+        {
+          bucket_id: 'five-hour',
+          window: '5h',
+          display_name: 'Five Hour Limit Remaining',
+          remaining_fraction: 1.0,
+          reset_time: '2099-01-01T04:59:00Z',
+        },
+      ],
+    };
+    expect(isClaudeOrGptQuotaGroup(geminiGroup)).toBe(false);
   });
 });

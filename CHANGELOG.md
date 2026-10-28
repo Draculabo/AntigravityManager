@@ -2,6 +2,143 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.27.0
+
+**Release Date:** 2026-10-26
+**Since v0.26.0:** 7 commits · 4 merged PRs · 3 verified contributors
+
+> This release includes updates in Desktop & User Experience, Accounts & Core, Tooling & Maintenance.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — add support for unified state sync account info and active acco… ([#372](https://github.com/Draculabo/AntigravityManager/pull/372))
+- **Fix** — fetch the Gemini 4 Argon quota group ([#369](https://github.com/Draculabo/AntigravityManager/pull/369))
+- **Fix** — upgrade vite to 7 so vitest starts ([#370](https://github.com/Draculabo/AntigravityManager/pull/370))
+- **Fix** — repair AGY eligibility patch targeting ([79f6214](https://github.com/Draculabo/AntigravityManager/commit/79f62146e0777359fe7f55284b95c4961ac1c2f1))
+- **Fix** — separate client usage from account actions ([6317b78](https://github.com/Draculabo/AntigravityManager/commit/6317b78df70c6604669188be15d98411ab00c2cf))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.26.0 ([#368](https://github.com/Draculabo/AntigravityManager/pull/368))
+- **Fix** — repair AGY eligibility patch targeting ([79f6214](https://github.com/Draculabo/AntigravityManager/commit/79f62146e0777359fe7f55284b95c4961ac1c2f1))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Fix** — fetch the Gemini 4 Argon quota group ([#369](https://github.com/Draculabo/AntigravityManager/pull/369))
+- **Feature** — add support for unified state sync account info and active acco… ([#372](https://github.com/Draculabo/AntigravityManager/pull/372))
+- **Fix** — separate client usage from account actions ([6317b78](https://github.com/Draculabo/AntigravityManager/commit/6317b78df70c6604669188be15d98411ab00c2cf))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Fix** — upgrade vite to 7 so vitest starts ([#370](https://github.com/Draculabo/AntigravityManager/pull/370))
+- **Maintenance** — add risk-aware review workflow ([7ef7706](https://github.com/Draculabo/AntigravityManager/commit/7ef7706732329c69fb530a75c2d5f2baf374a084))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@aglinxinyuan · @Draculabo · @FisherMS
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.26.0 by @Draculabo ([#368](https://github.com/Draculabo/AntigravityManager/pull/368))
+- fix(cloud-account): fetch the Gemini 4 Argon quota group by @aglinxinyuan ([#369](https://github.com/Draculabo/AntigravityManager/pull/369))
+- fix(build): upgrade vite to 7 so vitest starts by @aglinxinyuan ([#370](https://github.com/Draculabo/AntigravityManager/pull/370))
+- feat: add support for unified state sync account info and active acco… by @FisherMS ([#372](https://github.com/Draculabo/AntigravityManager/pull/372))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.26.0...v0.27.0
+
+# 🚀 Antigravity Manager Release v0.26.0
+
+**Release Date:** 2026-10-23
+**Since v0.25.2:** 15 commits · 6 merged PRs · 3 verified contributors
+
+> This release includes updates in Tooling & Maintenance, Desktop & User Experience, Documentation, Accounts & Core.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — add evidence-backed agent lessons ([dbd2b25](https://github.com/Draculabo/AntigravityManager/commit/dbd2b25cbdade228fd2915778b832ef46e29a247))
+- **Feature** — add weekly quota summary and support Claude/GPT items in minima… ([#364](https://github.com/Draculabo/AntigravityManager/pull/364))
+- **Fix** — improve client detection and switch failure diagnostics ([d472eaa](https://github.com/Draculabo/AntigravityManager/commit/d472eaadfb96d5bc80d4a3bae03909ddda0cf81a))
+- **Fix** — group Gemini 4 Argon and 3.8 Flash quota families ([#367](https://github.com/Draculabo/AntigravityManager/pull/367))
+- **Fix** — apply AppImage maker patch with pnpm ([420ea77](https://github.com/Draculabo/AntigravityManager/commit/420ea77192d2f39bdc9c6aa2b9370bfc25e78e10))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Maintenance** — unify agent checks and document lifecycle ([78910c9](https://github.com/Draculabo/AntigravityManager/commit/78910c924ee09108a2168285f65598a2ef82811e))
+- **Feature** — add evidence-backed agent lessons ([dbd2b25](https://github.com/Draculabo/AntigravityManager/commit/dbd2b25cbdade228fd2915778b832ef46e29a247))
+- **Change** — Further optimize the display effect of the minimal mode. ([#357](https://github.com/Draculabo/AntigravityManager/pull/357))
+- **Build** — migrate to pnpm and Node 24 ([ccec07e](https://github.com/Draculabo/AntigravityManager/commit/ccec07e1e283190a408c5f5c7bee92eaa38277ea))
+- **Fix** — improve client detection and switch failure diagnostics ([d472eaa](https://github.com/Draculabo/AntigravityManager/commit/d472eaadfb96d5bc80d4a3bae03909ddda0cf81a))
+- **Feature** — add weekly quota summary and support Claude/GPT items in minima… ([#364](https://github.com/Draculabo/AntigravityManager/pull/364))
+- **Change** — Dev/d1021 2 ([#365](https://github.com/Draculabo/AntigravityManager/pull/365))
+- **Fix** — apply AppImage maker patch with pnpm ([420ea77](https://github.com/Draculabo/AntigravityManager/commit/420ea77192d2f39bdc9c6aa2b9370bfc25e78e10))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.25.2 ([#353](https://github.com/Draculabo/AntigravityManager/pull/353))
+
+---
+
+## 📚 Documentation
+
+- **Documentation** — organize guides by module ownership ([2f029a3](https://github.com/Draculabo/AntigravityManager/commit/2f029a32433a4e94ee9b8573d5c0dbf60b566b9a))
+- **Documentation** — refresh bilingual READMEs and application screenshots ([c97c8a8](https://github.com/Draculabo/AntigravityManager/commit/c97c8a8f3573b47726ed889763d68fd2a9f1241a))
+- **Documentation** — clarify contribution workflow and onboarding ([3db10bf](https://github.com/Draculabo/AntigravityManager/commit/3db10bf80b4a955c7fa89711d59c91f958b330e2))
+- **Documentation** — split development security and testing guides by owner ([f3225fa](https://github.com/Draculabo/AntigravityManager/commit/f3225fa88ac29b8e212b73979df255a25745db1e))
+- **Documentation** — add Swiftproxy sponsor ([#362](https://github.com/Draculabo/AntigravityManager/pull/362))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Fix** — group Gemini 4 Argon and 3.8 Flash quota families ([#367](https://github.com/Draculabo/AntigravityManager/pull/367))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@FisherMS · @Draculabo · @timacek
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.25.2 by @Draculabo ([#353](https://github.com/Draculabo/AntigravityManager/pull/353))
+- Further optimize the display effect of the minimal mode. by @FisherMS ([#357](https://github.com/Draculabo/AntigravityManager/pull/357))
+- docs: add Swiftproxy sponsor by @Draculabo ([#362](https://github.com/Draculabo/AntigravityManager/pull/362))
+- feat: add weekly quota summary and support Claude/GPT items in minima… by @FisherMS ([#364](https://github.com/Draculabo/AntigravityManager/pull/364))
+- Dev/d1021 2 by @FisherMS ([#365](https://github.com/Draculabo/AntigravityManager/pull/365))
+- fix(cloud-account): group Gemini 4 Argon and 3.8 Flash quota families by @timacek ([#367](https://github.com/Draculabo/AntigravityManager/pull/367))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.25.2...v0.26.0
+
 # 🚀 Antigravity Manager Release v0.25.2
 
 **Release Date:** 2026-10-15

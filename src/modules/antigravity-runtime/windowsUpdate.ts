@@ -5,13 +5,13 @@ import type { GuiTarget } from './types';
 import type { ProcessInfo } from '@draculabo/sysinfo-process-enhanced';
 
 /** A normal client close can start its updater; do not reopen files being replaced. */
-export async function assertNoWindowsUpdate(target: GuiTarget): Promise<void> {
+export async function assertNoWindowsUpdate(target: GuiTarget, timeout = 1000): Promise<void> {
   if (process.platform !== 'win32') {
     return;
   }
   let processes: ProcessInfo[];
   try {
-    processes = await readNativeProcessSnapshot(1000);
+    processes = await readNativeProcessSnapshot(timeout);
   } catch {
     throw processError('probe-failed');
   }

@@ -663,6 +663,7 @@ const fr = {
     checkQuota: 'Verifier le quota maintenant',
     polling: 'Interrogation declenchee',
     globalQuota: 'Quota global',
+    weeklyQuota: 'Quota hebdomadaire',
     layout: {
       auto: 'Auto',
       twoCol: '2 colonnes',
@@ -776,6 +777,12 @@ const fr = {
       trigger: 'Importer depuis cet ordinateur',
     },
     card: {
+      'client-app': 'App',
+      'client-ide': 'IDE',
+      'client-cli': 'CLI',
+      'client-usage': 'Utilisation par les clients',
+      'client-in-use': 'Utilisé par {{client}}',
+      'not-in-use': 'Non utilisé',
       active: 'Actif',
       use: 'Utiliser',
       rateLimited: 'Limite par le debit',

@@ -576,6 +576,7 @@ const ru = {
     checkQuota: 'Проверить квоту',
     polling: 'Опрос запущен',
     globalQuota: 'Глобальная квота',
+    weeklyQuota: 'Недельная квота',
     layout: {
       auto: 'Авто',
       twoCol: '2 колонки',
@@ -625,6 +626,12 @@ const ru = {
       verify: 'Проверить и добавить',
     },
     card: {
+      'client-app': 'App',
+      'client-ide': 'IDE',
+      'client-cli': 'CLI',
+      'client-usage': 'Использование клиентами',
+      'client-in-use': 'Используется в {{client}}',
+      'not-in-use': 'Не используется',
       active: 'Активен',
       use: 'Использовать',
       rateLimited: 'Лимит исчерпан',

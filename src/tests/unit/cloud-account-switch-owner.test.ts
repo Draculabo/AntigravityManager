@@ -24,6 +24,9 @@ import {
 import { logger } from '@/shared/logging/logger';
 import * as runtimeStop from '@/modules/antigravity-runtime/stop';
 import * as runtimeLaunch from '@/modules/antigravity-runtime/launchContext';
+import * as classicHot from '@/modules/antigravity-runtime/classicHotSwitch';
+import * as clientLaunch from '@/modules/antigravity-runtime/launch';
+import { SwitchTraceSchema } from '@/shared/observability/switchDiagnostic';
 import { processError } from '@/modules/antigravity-runtime/processErrors';
 import {
   CloudSwitchDiagnosticSchema,
@@ -165,7 +168,12 @@ let server: ManagementServer | null = null;
 let directory: string | null = null;
 
 vi.mock('@/modules/antigravity-runtime/terms/classicTermsSwitch', () => ({
-  prepareClassicTermsSwitch: vi.fn(async () => null),
+  prepareClassicTermsSwitch: vi.fn(async () => ({
+    captureForHotSwitch: async () => {},
+    confirmHotSwitch: async () => true,
+    apply: async () => {},
+    rollback: async () => {},
+  })),
 }));
 beforeEach(() => {
   const profile = path.join(os.tmpdir(), 'agm-switch-owner-fixture');
@@ -213,6 +221,40 @@ async function startOwner(): Promise<CoreRpcClient> {
 }
 
 describe('core-owned cloud account switching', () => {
+  it.each(['desktop-embedded', 'standalone-core'] as const)(
+    'returns success and commits active state once after a hot failure recovers (%s)',
+    async (mode) => {
+      if (mode === 'standalone-core') {
+        selectCloudAccountAdapter({ mode, client: await startOwner() });
+      }
+      vi.spyOn(classicHot, 'prepareClassicHotSwitch').mockResolvedValue({
+        stopServices: async () => {},
+        confirmReplacement: async () => {
+          throw processError('probe-failed');
+        },
+      });
+      const stop = vi.spyOn(runtimeStop, 'stopFromContext').mockResolvedValue(undefined);
+      const start = vi.spyOn(clientLaunch, 'startFromContext').mockResolvedValue(undefined);
+      await expect(
+        createRouterClient(cloudRouter).switchCloudAccount({ accountId: account.id }),
+      ).resolves.toBeUndefined();
+      expect(stop).toHaveBeenCalledOnce();
+      expect(start).toHaveBeenCalledOnce();
+      expect(credentialWrite).toHaveBeenCalledTimes(3);
+      expect(CloudAccountRepo.setActive).toHaveBeenCalledExactlyOnceWith(account.id);
+      const records = vi.mocked(logger.info).mock.calls;
+      const trace = SwitchTraceSchema.parse(
+        records.find((call) => call[0] === 'Switch trace v1')?.[1],
+      );
+      const diagnostic = records.find((call) => call[0] === 'Operation diagnostic v1')?.[1];
+      expect(trace.outcome).toBe('recovered-by-restart');
+      expect(diagnostic).toMatchObject({
+        diagnosticId: trace.diagnosticId,
+        reporting: { state: 'not-reported', reason: 'disabled' },
+      });
+      expect(records.filter((call) => call[0] === 'Operation diagnostic v1')).toHaveLength(1);
+    },
+  );
   it.each(['desktop-embedded', 'standalone-core'] as const)(
     'reports client discovery failure before preparing target credentials (%s)',
     async (mode) => {

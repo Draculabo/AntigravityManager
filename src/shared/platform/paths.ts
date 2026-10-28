@@ -7,7 +7,9 @@ import { readNativeProcessSnapshot } from './nativeProcessQuery';
 import {
   getAntigravityExecutableTarget,
   isAntigravityWindowsInstaller,
+  isAntigravityHelperProcess,
 } from './antigravityProcessIdentity';
+import { findWindowsClientExecutables } from './windowsClientExecutable';
 import { z } from 'zod';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
@@ -175,35 +177,12 @@ export function areExecutablePathsEquivalent(
   return leftNormalized === rightNormalized;
 }
 
-const ANTIGRAVITY_HELPER_PROCESS_NAME_PATTERNS = [
-  'helper',
-  'plugin',
-  'renderer',
-  'gpu',
-  'crashpad',
-  'utility',
-  'audio',
-  'sandbox',
-  'language_server',
-];
-
-function isAntigravityHelperProcess(processName: string, commandLine: string): boolean {
-  const normalizedProcessName = processName.toLowerCase();
-  const normalizedCommandLine = commandLine.toLowerCase();
-
-  if (normalizedCommandLine.includes('--type=') || normalizedCommandLine.includes('crashpad')) {
-    return true;
-  }
-
-  return ANTIGRAVITY_HELPER_PROCESS_NAME_PATTERNS.some((pattern) =>
-    normalizedProcessName.includes(pattern),
-  );
-}
-
 export interface AntigravityProcessCandidate {
   name: string;
   commandLine: string;
   executablePath?: string;
+  /** Complete native argv, including the executable; avoids lossy command-line reconstruction. */
+  args?: readonly string[];
 }
 
 export function isTargetAntigravityProcessCandidate(
@@ -229,7 +208,8 @@ export function isTargetAntigravityProcessCandidate(
   const strictConfiguredIdePath = options?.ignoreExecutableConfiguration
     ? null
     : getConfiguredAntigravityExecutablePath('ide', true, options);
-  const commandExecutablePath = parseCommandLineArguments(processItem.commandLine)[0] || '';
+  const args = processItem.args ?? parseCommandLineArguments(processItem.commandLine);
+  const commandExecutablePath = args[0] || '';
   const processExecutablePath = processItem.executablePath ?? '';
   const executableTarget = getAntigravityExecutableTarget(
     processExecutablePath || commandExecutablePath || processItem.name,
@@ -244,7 +224,7 @@ export function isTargetAntigravityProcessCandidate(
     areExecutablePathsEquivalent(configuredIdePath, processExecutablePath, options);
   const isIde = executableTarget === 'ide' || matchesIdePath;
 
-  if (isAntigravityHelperProcess(nameLower, cmdLower)) {
+  if (isAntigravityHelperProcess(nameLower, args)) {
     return false;
   }
 
@@ -283,6 +263,14 @@ export function isConfiguredTargetExecutableProcessCandidate(
   const normalizedTarget = resolveAntigravityAppTarget(target);
   const executablePath = processItem.executablePath || '';
   if (!executablePath) {
+    return false;
+  }
+  if (
+    isAntigravityHelperProcess(
+      processItem.name,
+      processItem.args ?? parseCommandLineArguments(processItem.commandLine),
+    )
+  ) {
     return false;
   }
 
@@ -914,24 +902,7 @@ export function getAntigravityExecutablePath(
     case 'darwin':
       return `/Applications/${executableName}.app/Contents/MacOS/${executableName}`;
     case 'win32': {
-      const localAppData = process.env.LOCALAPPDATA || '';
-      const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
-      const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-
-      const possiblePaths = [
-        path.win32.join(localAppData, 'Programs', executableName, `${executableName}.exe`),
-        path.win32.join(programFiles, executableName, `${executableName}.exe`),
-        path.win32.join(programFilesX86, executableName, `${executableName}.exe`),
-      ];
-
-      for (const possiblePath of possiblePaths) {
-        if (fs.existsSync(possiblePath)) {
-          return possiblePath;
-        }
-      }
-
-      // No known path found; return empty string (caller must handle missing binary)
-      return '';
+      return findWindowsClientExecutables(resolvedTarget === 'ide' ? 'ide' : 'classic')[0] || '';
     }
     case 'linux': {
       const possibleLinuxPaths =

@@ -34,7 +34,7 @@ named `password` or `access_token`; modified data cannot establish an original p
 
 ## Correlated operation reports
 
-Google-login and cloud-switch public diagnostics are strict closed variants limited to 2 KiB
+Google-login, cloud-switch and local-snapshot-switch public diagnostics are strict closed variants limited to 2 KiB
 of UTF-8 JSON. They contain a random operation UUID, stage/category, observed allowlisted native
 or upstream codes, optional HTTP status and an SDK reporting receipt. Rejected Google HTTP
 responses can also retain the native Node route (HTTPS CONNECT/forward proxy/origin/unknown), literal destination
@@ -53,7 +53,7 @@ distinct. Raw causes stay in the owner. Paths, process IDs, command lines and na
 are excluded from this projection. The public category can remain `process-close-failed` while
 the process observation and cause list identify an access-denied native result.
 
-The logger serializes only fully validated terminal diagnostics without generic token-key masking,
+The logger serializes fully validated terminal diagnostics and switch traces without generic token-key masking,
 so safe readback booleans and repeated cause evidence retain their exact types. Other log arguments
 still use generic sanitization, which masks secrets and replaces actual ancestor cycles while
 preserving repeated sanitized sibling values.
@@ -67,10 +67,15 @@ not capture it again. A lost private response can still produce a distinct coord
 transport report for an uncertain remote outcome.
 
 Each capture uses a temporary SDK scope and a synthetic classified exception. The operation
-projection replaces the normalized event with allowlisted content: up to twelve safe step
-observations, at most four allowlisted repository source coordinates, closed OS/runtime metadata,
-release/environment and non-identifying trace IDs. Diagnostic contexts remain below 16 KiB;
-overflow drops observations while preserving the primary failure. User data, request data,
+projection replaces the normalized event with allowlisted content: up to twelve safe login
+observations or sixty-four switch observations, at most four allowlisted repository source coordinates,
+closed OS/runtime metadata, release/environment and non-identifying trace IDs. Classic attempts can
+also retain a strict switch trace with at most thirty-two events and 48 KiB of UTF-8 JSON. It includes
+logical function owners, ordered stages, elapsed times, continuation, observed effects, up to eight
+closed causes and eight allowlisted source coordinates per failure. Supplemental truncation is
+explicit; original exception prose and absolute caller paths are never retained in the trace.
+Diagnostic contexts remain below 64 KiB; overflow drops supplemental context and observations while
+preserving the primary failure and switch trace. User data, request data,
 surrounding log prose, automatic breadcrumbs, arbitrary extras and absolute paths are excluded.
 The empty geo override prevents IP-derived user geography. Safe repository coordinates are
 optional when the runtime stack lacks a recognized source suffix; no synthetic caller stack is
@@ -81,3 +86,10 @@ The SDK capture does not wait for HTTP or flush. Event receipt is established se
 a read-only Sentry query; no Sentry read token is shipped or exposed through IPC. Existing
 account storage, native credential effects, retries and owner lifecycle remain authoritative.
 Diagnostics add no durable queue, account scan, automatic OAuth replay or switch retry.
+
+Classic hot-attempt recovery has one operation identity and one final report. Successful recovery
+returns switch success and produces a consent-controlled warning tagged `recovered-by-restart`;
+terminal failure retains both attempts as one error. The compact public recovery summary identifies
+the initiating hot stage and any failed restart stage. Local owner/RPC/IPC forwarding preserves the
+finalized diagnostic instead of capturing it again. Logging or reporting failure cannot change a
+confirmed successful result. See [the runtime contract](../modules/antigravity-runtime/classic-switch.md).

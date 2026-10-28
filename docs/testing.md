@@ -31,6 +31,10 @@ is not a pass; explain the gap rather than suppressing it or narrowing away a kn
 
 ## Evidence principles
 
+Changes to reviewer instructions, prompts, tools or models use the manually selected
+[historical review evaluation](testing/review-evaluation.md). Its corpus probes and synthetic
+report tests establish harness behavior; only independently executed reviews measure a reviewer.
+
 Before selecting a repository runner, use [the script guide](../scripts/README.md) and [script instructions](../scripts/AGENTS.md) to identify its existing entry, prerequisites and effects. [Test reliability](test-reliability.md) owns resource isolation, asynchronous completion and intermittent-failure diagnosis. [Failure ownership](error-handling.md) defines which state and recovery outcomes failure-path checks must establish.
 
 - A passing command is evidence only for paths it executes.

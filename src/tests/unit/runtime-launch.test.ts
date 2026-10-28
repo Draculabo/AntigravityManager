@@ -210,6 +210,44 @@ describe('direct launch', () => {
     expect(mocks.observe).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    { platform: 'win32', executablePath: 'C:\\Apps\\Antigravity.exe', wsl: false },
+    { platform: 'linux', executablePath: '/mnt/c/Apps/Antigravity.exe', wsl: true },
+  ])('confirms Windows runtime identity across two cold snapshots (%j)', async (runtime) => {
+    Object.defineProperty(process, 'platform', { value: runtime.platform, configurable: true });
+    mocks.wsl.mockReturnValue(runtime.wsl);
+    mocks.observe.mockImplementation(async (_target, timeout: number) => {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(timeout, 4000)));
+      if (timeout < 4000) {
+        throw processError('probe-failed');
+      }
+      return [{ ...mainProcess, executablePath: runtime.executablePath, startTime: 1n }];
+    });
+    const pending = startFromContext({ ...context, executablePath: runtime.executablePath }).then(
+      () => ({ ok: true }),
+      (error: unknown) => ({ ok: false, error }),
+    );
+    await vi.advanceTimersByTimeAsync(8500);
+    expect(await pending).toEqual({ ok: true });
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    expect(mocks.observe).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps Windows runtime startup bounded without dispatching a second launch', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    mocks.observe.mockImplementation(async (_target, timeout: number) => {
+      await new Promise((resolve) => setTimeout(resolve, timeout));
+      throw processError('probe-failed');
+    });
+    const result = expect(
+      startFromContext({ ...context, executablePath: 'C:\\Apps\\Antigravity.exe' }),
+    ).rejects.toMatchObject({ messageKey: 'process-runtime.startup-unconfirmed' });
+    await vi.advanceTimersByTimeAsync(15000);
+    await result;
+    expect(mocks.observe.mock.calls.map((call) => call[1])).toEqual([15000]);
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+  });
+
   it('does not accept a stable observation delivered after the startup deadline', async () => {
     mocks.observe.mockResolvedValueOnce([{ ...mainProcess, startTime: 1n }]);
     mocks.observe.mockImplementationOnce(async () => {

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
-import { backupAccount } from '@/modules/account/persistence/antigravity-state-database';
+import {
+  backupAccount,
+  getCurrentAccountInfo,
+} from '@/modules/account/persistence/antigravity-state-database';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
 
 const values = vi.hoisted(() => new Map<string, string>());
@@ -118,6 +121,107 @@ describe('account snapshot capture', () => {
       expiryTimestamp: 1900000000,
       idToken: 'cli-id',
       isGcpTos: false,
+    });
+  });
+
+  describe('getCurrentAccountInfo', () => {
+    it('prioritizes unified OAuth idToken email over stale legacy antigravityAuthStatus', () => {
+      const idToken = `header.${Buffer.from(
+        JSON.stringify({ email: 'unified@example.com', name: 'Unified User' }),
+      ).toString('base64url')}.signature`;
+      const oauth = ProtobufUtils.createUnifiedOAuthToken(
+        'access',
+        'refresh',
+        1900000000,
+        false,
+        idToken,
+      );
+      values.set('antigravityUnifiedStateSync.oauthToken', oauth);
+      values.set(
+        'antigravityAuthStatus',
+        JSON.stringify({ email: 'stale-legacy@example.com', name: 'Stale' }),
+      );
+
+      const info = getCurrentAccountInfo('ide');
+
+      expect(info).toEqual({
+        email: 'unified@example.com',
+        name: 'Unified User',
+        isAuthenticated: true,
+      });
+    });
+
+    it('reads unified userStatus email when idToken is absent, overriding stale legacy keys', () => {
+      const user = ProtobufUtils.createUnifiedStateEntry(
+        'userStatusSentinelKey',
+        ProtobufUtils.createMinimalUserStatusPayload('userstatus@example.com'),
+      );
+      values.set('antigravityUnifiedStateSync.userStatus', user);
+      values.set(
+        'antigravityAuthStatus',
+        JSON.stringify({ email: 'stale-legacy@example.com', name: 'Stale' }),
+      );
+
+      const info = getCurrentAccountInfo('ide');
+
+      expect(info).toEqual({
+        email: 'userstatus@example.com',
+        name: '',
+        isAuthenticated: true,
+      });
+    });
+
+    it.each([undefined, '', ' \t '])(
+      'reads field 7 when userStatus field 3 is absent or blank (%j)',
+      (field3) => {
+        const payload = new Uint8Array([
+          ...(field3 === undefined ? [] : ProtobufUtils.encodeStringField(3, field3)),
+          ...ProtobufUtils.encodeStringField(7, 'field7@example.invalid'),
+        ]);
+        values.set(
+          'antigravityUnifiedStateSync.userStatus',
+          ProtobufUtils.createUnifiedStateEntry('userStatusSentinelKey', payload),
+        );
+        values.set(
+          'antigravityAuthStatus',
+          JSON.stringify({ email: 'stale@example.invalid', name: 'Stale' }),
+        );
+
+        expect(getCurrentAccountInfo('ide')).toEqual({
+          email: 'field7@example.invalid',
+          name: '',
+          isAuthenticated: true,
+        });
+      },
+    );
+
+    it('falls back to legacy account info when unified userStatus is corrupt', () => {
+      values.set('antigravityUnifiedStateSync.userStatus', 'not-protobuf');
+      values.set(
+        'antigravityAuthStatus',
+        JSON.stringify({ email: 'legacy@example.invalid', name: 'Legacy' }),
+      );
+
+      expect(getCurrentAccountInfo('ide')).toEqual({
+        email: 'legacy@example.invalid',
+        name: 'Legacy',
+        isAuthenticated: true,
+      });
+    });
+
+    it('falls back to legacy antigravityAuthStatus when unified keys are absent', () => {
+      values.set(
+        'antigravityAuthStatus',
+        JSON.stringify({ email: 'legacy@example.com', name: 'Legacy User' }),
+      );
+
+      const info = getCurrentAccountInfo('ide');
+
+      expect(info).toEqual({
+        email: 'legacy@example.com',
+        name: 'Legacy User',
+        isAuthenticated: true,
+      });
     });
   });
 });

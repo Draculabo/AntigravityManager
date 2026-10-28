@@ -15,6 +15,8 @@ interface CloudAccountListSummaryProps {
   rateLimitedAccounts: number;
   overallQuotaPercentage: number | null;
   effectiveQuotaStatus: QuotaStatus;
+  overallWeeklyQuotaPercentage?: number | null;
+  effectiveWeeklyQuotaStatus?: QuotaStatus;
   isMinimalMode?: boolean;
 }
 
@@ -24,6 +26,8 @@ export function CloudAccountListSummary({
   rateLimitedAccounts,
   overallQuotaPercentage,
   effectiveQuotaStatus,
+  overallWeeklyQuotaPercentage = null,
+  effectiveWeeklyQuotaStatus = 'low',
   isMinimalMode = false,
 }: CloudAccountListSummaryProps) {
   const { t } = useTranslation();
@@ -43,7 +47,7 @@ export function CloudAccountListSummary({
           </div>
         </div>
 
-        <dl className="divide-border grid shrink-0 grid-cols-2 divide-y overflow-hidden rounded-lg border shadow-sm sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+        <dl className="divide-border grid shrink-0 grid-cols-2 divide-y overflow-hidden rounded-lg border shadow-sm sm:grid-cols-5 sm:divide-x sm:divide-y-0">
           <div className="bg-info-soft px-3 py-1.5 text-center sm:px-4 sm:py-2">
             <dt className="text-muted-foreground text-xs whitespace-nowrap">
               {t('cloud.total-accounts')}
@@ -80,6 +84,20 @@ export function CloudAccountListSummary({
               }`}
             >
               {overallQuotaPercentage !== null ? `${overallQuotaPercentage}%` : '-'}
+            </dd>
+          </div>
+          <div className="bg-card col-span-2 px-3 py-1.5 text-center sm:col-span-1 sm:px-4 sm:py-2">
+            <dt className="text-muted-foreground text-xs whitespace-nowrap">
+              {t('cloud.weeklyQuota', 'Weekly Quota')}
+            </dt>
+            <dd
+              className={`text-sm font-semibold tabular-nums sm:text-base ${
+                overallWeeklyQuotaPercentage !== null
+                  ? GLOBAL_QUOTA_TEXT_COLOR_CLASS_BY_STATUS[effectiveWeeklyQuotaStatus]
+                  : 'text-muted-foreground'
+              }`}
+            >
+              {overallWeeklyQuotaPercentage !== null ? `${overallWeeklyQuotaPercentage}%` : '-'}
             </dd>
           </div>
         </dl>

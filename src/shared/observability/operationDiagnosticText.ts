@@ -47,6 +47,15 @@ export function formatOperationDiagnostic(diagnostic: OperationDiagnostic): stri
   if (diagnostic.causesTruncated) {
     lines.push('Additional causes omitted');
   }
+  if (diagnostic.switchRecovery) {
+    lines.push(
+      `Switch recovery: ${diagnostic.switchRecovery.outcome}`,
+      `Hot failure stage: ${diagnostic.switchRecovery.hotFailureStage}`,
+    );
+    if (diagnostic.switchRecovery.recoveryFailureStage) {
+      lines.push(`Recovery failure stage: ${diagnostic.switchRecovery.recoveryFailureStage}`);
+    }
+  }
   switch (diagnostic.reporting.state) {
     case 'captured':
       lines.push(

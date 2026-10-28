@@ -15,6 +15,10 @@ import { accountRouter, databaseRouter } from '@/modules/account/ipc/router';
 import { LocalAccountInputSchema } from '@/modules/account/services/local-account.schema';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
 import { readAccountBackupFile } from '@/modules/account/persistence/account-backup-file';
+import { readFinalizedOperationDiagnostic } from '@/shared/observability/operationDiagnostic';
+import { projectOwnerOperationError } from '@/ipc/owner-operation-error';
+import { getErrorDetailsText } from '@/shared/utils/errorMessages';
+import { logger } from '@/shared/logging/logger';
 const writeAccount = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock('@/shared/security/security', async () => {
   const { encryptWithKey, decryptParsedPayloadWithKey, parseEncryptedPayload } =
@@ -152,6 +156,26 @@ async function remote() {
 }
 
 describe('selected local account owner', () => {
+  it('retains the single switch diagnostic through owner, private RPC and desktop projection', async () => {
+    const saved = await owner.addAccountSnapshot();
+    const client = await remote();
+    const duplicateReport = vi.spyOn(logger, 'error');
+    writeAccount.mockRejectedValueOnce(new Error('Bearer private-local-secret /private/backup.db'));
+    const failure = await client.localAccounts
+      .switchAccount(saved.id)
+      .catch((error: unknown) => error);
+    const diagnostic = readFinalizedOperationDiagnostic(failure);
+    expect(diagnostic).toMatchObject({
+      operation: 'local-account-switch',
+      reporting: { state: 'not-reported', reason: 'disabled' },
+    });
+    const projected = projectOwnerOperationError(failure, '["account","switchAccount"]');
+    expect(readFinalizedOperationDiagnostic(projected)).toEqual(diagnostic);
+    expect(getErrorDetailsText(projected)).toContain(`Diagnostic ID: ${diagnostic?.diagnosticId}`);
+    expect(JSON.stringify(projected)).not.toMatch(/private-local-secret|backup.db/);
+    expect(duplicateReport).not.toHaveBeenCalled();
+    duplicateReport.mockRestore();
+  });
   it('preserves snapshot parity while keeping credential files and paths inside the owner', async () => {
     const saved = await owner.addAccountSnapshot();
     const embedded = await owner.listAccounts();
