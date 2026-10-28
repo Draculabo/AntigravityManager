@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { selectChecks } from './checks.mjs';
+import { CI_LANES, selectChecks } from './checks.mjs';
 import { runChecks } from './run.mjs';
 
 const runner = fileURLToPath(new URL('./run.mjs', import.meta.url));
@@ -30,7 +30,7 @@ async function fixture(t, checks, failingScript) {
 
 test('local static checks reuse CI checks and the complete selection contains each check once', () => {
   const all = selectChecks('all');
-  const ci = ['tests', 'lint', 'format'].flatMap(selectChecks);
+  const ci = Object.keys(CI_LANES).flatMap(selectChecks);
   assert.deepEqual(
     new Set(all.map((check) => check.script)),
     new Set(ci.map((check) => check.script)),

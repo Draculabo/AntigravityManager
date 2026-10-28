@@ -56,6 +56,11 @@ including governance, installed Git hook integration, type checking, the complet
 suite and acceptance harness unit tests. Local Git hooks run only their documented baseline;
 they do not establish a passing unit suite or CI result.
 The test, lint and formatting jobs select lanes from the [shared check inventory](../scripts/README.md#quality-checks).
+
+PRs enter through [GitHub automation](development/github-automation.md), which also runs builds,
+dependency review and the `CI required` gate. Only allowlisted Markdown-only PRs reduce application
+coverage; detection failures retain full checks. Lane invocations remain unconditional and skipped
+checks are reported distinctly from passed checks.
 `pnpm run check:quality` rejects missing lane invocations, suppressed failures and platform loss;
 `pnpm run test:quality` checks these denials through synthetic workflows and the real runner.
 Vitest caps workers at four to bound concurrent module loading across development and CI hosts;

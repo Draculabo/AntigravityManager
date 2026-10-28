@@ -1,4 +1,9 @@
 export const CI_LANES = {
+  build: {
+    workflow: '.github/workflows/build-check.yml',
+    job: 'build',
+    platforms: ['ubuntu-latest', 'windows-latest'],
+  },
   tests: {
     workflow: '.github/workflows/testing.yaml',
     job: 'tests-unit',
@@ -14,6 +19,26 @@ export const CI_LANES = {
 
 // Shared checks run in each CI lane so another lane can detect missing workflow wiring.
 export const CHECKS = [
+  {
+    script: 'check:automation',
+    lane: 'tests',
+    groups: ['governance'],
+    description: 'Verify trusted triage, PR maintenance and complete merge-gate wiring.',
+  },
+  {
+    script: 'test:automation',
+    lane: 'tests',
+    groups: ['governance'],
+    description:
+      'Exercise issue boundaries, SDK requests, retries and automation workflow regressions without network calls.',
+  },
+  { script: 'build:core', lane: 'build', description: 'Compile the standalone core and workers.' },
+  { script: 'build:cli', lane: 'build', description: 'Compile the standalone CLI.' },
+  {
+    script: 'package',
+    lane: 'build',
+    description: 'Build the unsigned Electron app without publishing or running installers.',
+  },
   {
     script: 'check:agent-contracts',
     lane: 'tests',

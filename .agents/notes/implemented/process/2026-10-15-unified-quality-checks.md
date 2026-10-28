@@ -12,6 +12,11 @@ Keep check commands, arguments, purpose descriptions, local groups and CI assign
 
 Run quality contracts in every CI lane and for affected staged governance paths. They validate npm aggregate wiring, registered command existence, purpose descriptions, actual required job invocations, unconditional failure propagation and declared platforms. Running the contract in other lanes lets a surviving job detect missing test wiring. Workflow scheduling and branch protection remain external requirements.
 
+The [GitHub automation decision](2026-10-28-github-automation.md) adds a build lane and a conservative
+docs/full PR profile. Lane commands remain unconditional; only positively identified Markdown-only
+PRs omit application tests/builds, with explicit skip reporting. Local runs and unknown scope retain
+complete checks.
+
 Classify every npm verification entry point as a CI leaf, an aggregate or an explained additional command. The inventory lists aliases, nested harnesses and manually selected checks without adding them to automatic execution. New verification commands cannot silently remain undiscoverable. Native, graphical and live scenarios retain explicit selection and their existing authorization requirements.
 
 Lint JavaScript and TypeScript index blobs before commit using the current worktree ESLint configuration. Respect its ignore rules, exclude staged deletions and inspect renamed code at its destination. Apply no fixes, stashes or staging. Configuration and governance checks still observe the worktree; their results do not attest to a different committed configuration.
