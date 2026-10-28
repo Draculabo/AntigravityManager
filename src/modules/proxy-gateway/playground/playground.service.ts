@@ -115,6 +115,21 @@ export class PlaygroundService {
       const thinkingContent = message?.reasoning_content || message?.thinking || undefined;
       const usage = json.usage;
 
+      const completionTokens = usage?.completion_tokens;
+      let generationTokensPerSec: number | undefined;
+      let e2eTokensPerSec: number | undefined;
+
+      const effectiveDurationMs = Math.max(1, durationMs);
+      if (typeof completionTokens === 'number' && completionTokens > 0) {
+        e2eTokensPerSec = Math.round((completionTokens / (effectiveDurationMs / 1000)) * 10) / 10;
+        if (typeof ttftMs === 'number' && effectiveDurationMs > ttftMs) {
+          const genDurationSec = (effectiveDurationMs - ttftMs) / 1000;
+          if (genDurationSec > 0) {
+            generationTokensPerSec = Math.round((completionTokens / genDurationSec) * 10) / 10;
+          }
+        }
+      }
+
       return {
         success: true,
         content,
@@ -124,8 +139,10 @@ export class PlaygroundService {
         model: json.model || input.model,
         durationMs,
         ttftMs,
+        generationTokensPerSec,
+        e2eTokensPerSec,
         promptTokens: usage?.prompt_tokens,
-        completionTokens: usage?.completion_tokens,
+        completionTokens,
         totalTokens: usage?.total_tokens,
         status: 200,
       };

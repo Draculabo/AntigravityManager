@@ -8,6 +8,7 @@ import {
   Copy,
   Terminal,
   User,
+  Zap,
   ChevronDown,
   ChevronRight,
   AlertCircle,
@@ -110,6 +111,16 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
               >
                 <Coins size={13} />
                 <span>{result.totalTokens} tok</span>
+              </div>
+            )}
+
+            {result.generationTokensPerSec !== undefined && (
+              <div
+                className="flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400"
+                title={`${t('playground.gen-speed')} (${t('playground.e2e-speed')}: ${result.e2eTokensPerSec ?? '-'} tok/s)`}
+              >
+                <Zap size={13} />
+                <span>{result.generationTokensPerSec} tok/s</span>
               </div>
             )}
           </div>

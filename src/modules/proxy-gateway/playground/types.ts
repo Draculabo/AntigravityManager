@@ -37,3 +37,23 @@ export const DEFAULT_PLAYGROUND_MODELS = [
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', family: 'claude' },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', family: 'claude' },
 ] as const;
+
+export type BenchmarkItemStatus = 'idle' | 'running' | 'success' | 'error' | 'skipped';
+
+export interface BenchmarkModelRow {
+  modelId: string;
+  modelName: string;
+  quotaPercentage?: number;
+  status: BenchmarkItemStatus;
+  durationMs?: number;
+  ttftMs?: number;
+  generationTokensPerSec?: number;
+  e2eTokensPerSec?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  httpStatus?: number;
+  content?: string;
+  thinkingContent?: string;
+  error?: string;
+}

@@ -30,6 +30,8 @@ export const PlaygroundExecuteResultSchema = z.strictObject({
   model: z.string(),
   durationMs: z.number().nonnegative(),
   ttftMs: z.number().nonnegative().optional(),
+  generationTokensPerSec: z.number().nonnegative().optional(),
+  e2eTokensPerSec: z.number().nonnegative().optional(),
   promptTokens: z.number().int().nonnegative().optional(),
   completionTokens: z.number().int().nonnegative().optional(),
   totalTokens: z.number().int().nonnegative().optional(),

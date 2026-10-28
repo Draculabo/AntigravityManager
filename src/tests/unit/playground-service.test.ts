@@ -115,6 +115,49 @@ describe('PlaygroundService', () => {
     expect(result.promptTokens).toBe(10);
     expect(result.completionTokens).toBe(15);
     expect(result.totalTokens).toBe(25);
+    expect(typeof result.e2eTokensPerSec).toBe('number');
+  });
+
+  it('calculates generation and e2e tokens per second accurately', async () => {
+    vi.spyOn(mainServer, 'getNestServerStatus').mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 1,
+    });
+
+    let mockNow = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => {
+      mockNow += 500; // 500ms total duration
+      return mockNow;
+    });
+
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      headers: new Headers({
+        'content-type': 'application/json',
+        'x-timing-ttft-ms': '200', // 200ms TTFT -> 300ms generation duration
+      }),
+      json: async () => ({
+        model: 'gemini-3-flash',
+        choices: [{ message: { content: 'Test response' } }],
+        usage: { completion_tokens: 30 },
+      }),
+    };
+
+    globalThis.fetch = vi.fn(async () => mockResponse as any);
+
+    const result = await service.execute({
+      model: 'gemini-3-flash',
+      prompt: 'Hello',
+    });
+
+    expect(result.success).toBe(true);
+    // 30 tokens in 500ms = 60 tok/s E2E
+    expect(result.e2eTokensPerSec).toBe(60);
+    // 30 tokens in (500 - 200)ms = 100 tok/s Gen
+    expect(result.generationTokensPerSec).toBe(100);
   });
 
   it('handles upstream 429 rate limit error gracefully', async () => {

@@ -14,13 +14,20 @@ Introduce an in-app **Model Playground** accessible via the `/playground` route 
    - The user selects a target account (or "Auto Pool"), a model, and enters a prompt (with quick preset buttons: Hello, Reasoning, Identity, Code).
    - Collapsible advanced parameters allow configuring an optional system prompt, temperature, and max output tokens.
    - The execution is handled via a dedicated typed IPC route `ipc.client.gateway.playground.execute`, which invokes the running gateway's OpenAI-compatible completions endpoint.
-   - The response card displays status, latency, time-to-first-token (TTFT), token usage, the exact account that served the completion, thinking/thought process disclosure (for reasoning models), and copy buttons (response text and reproducible cURL).
+   - The response card displays status, latency, time-to-first-token (TTFT), generation tokens/sec, E2E tokens/sec, token usage, the exact account that served the completion, thinking/thought process disclosure (for reasoning models), and copy buttons (response text and reproducible cURL).
 
 2. **Multi-Account Comparison Mode**:
    - The user can select multiple accounts (or "Select All") and run a single prompt across all of them in parallel.
    - Displays side-by-side comparative cards showing response content, HTTP status, latency and token metrics, making it easy to identify rate-limited accounts vs healthy ones.
 
-3. **Gateway Targeted Account Routing**:
+3. **Account Model Benchmark Mode**:
+   - The user selects a target account and chooses which advertised/catalog models to probe.
+   - Sequentially sends probe requests across all checked models with randomized jitter delays (e.g. 500ms–1200ms) to prevent provider rate-limit spikes and burst throttling.
+   - Live progress indicator and stop control to safely halt an in-flight batch.
+   - Metrics table rendering status, TTFT, pure generation speed (tokens/sec = `completion_tokens / (total_duration - TTFT)`), E2E throughput (tokens/sec = `completion_tokens / total_duration`), total latency, and token breakdown.
+   - Summary cards displaying total tested/passed/failed, average TTFT, average generation speed, fastest model by throughput, and fastest model by TTFT, with one-click export of the results as a Markdown table.
+
+4. **Gateway Targeted Account Routing**:
    - Support `x-antigravity-account-id` (and `x-account-id`) in `AccountLeaseService.getNextToken({ targetAccountId })` and `ProxyRetryService.selectRetryToken`.
    - The proxy gateway directly leases and hydrates the targeted account (by account ID or case-insensitive email), verifying model capability and validation status without falling back to other accounts.
    - Proxy response headers emit `x-antigravity-account-id` and `x-antigravity-account-email` for diagnostic transparency.
@@ -40,7 +47,7 @@ Introduce an in-app **Model Playground** accessible via the `/playground` route 
 ## Verification
 
 - `src/tests/unit/account-lease-target-account.test.ts`: 5 tests covering targeted account leasing by ID, email matching, nonexistent accounts, model mismatch, and validation blocking.
-- `src/tests/unit/playground-service.test.ts`: 4 tests covering 503 gateway offline handling, successful execution metrics & header parsing, 429 rate limit errors, and concurrent multi-account comparison.
+- `src/tests/unit/playground-service.test.ts`: 5 tests covering 503 gateway offline handling, successful execution metrics & header parsing, precise generation/E2E tokens/sec calculation, 429 rate limit errors, and concurrent multi-account comparison.
 - `pnpm run type-check`: clean pass with zero errors.
 - `pnpm exec eslint`: clean pass with zero errors.
 - `pnpm exec prettier`: formatted.
