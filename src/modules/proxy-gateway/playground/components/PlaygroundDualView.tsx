@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Sliders,
   Sparkles,
+  StopCircle,
   Timer,
   User,
   Zap,
@@ -78,8 +79,16 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
   const [resultB, setResultB] = useState<PlaygroundExecuteResult | null>(null);
   const [isLoadingA, setIsLoadingA] = useState<boolean>(false);
   const [isLoadingB, setIsLoadingB] = useState<boolean>(false);
+  const isCancelledRef = useRef<boolean>(false);
 
   const isRunning = isLoadingA || isLoadingB;
+
+  const handleStop = () => {
+    isCancelledRef.current = true;
+    setIsLoadingA(false);
+    setIsLoadingB(false);
+    toast({ title: t('playground.dual-stopped') });
+  };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -102,6 +111,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
       return;
     }
 
+    isCancelledRef.current = false;
     setIsLoadingA(true);
     setIsLoadingB(true);
     setResultA(null);
@@ -118,17 +128,21 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
         reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
       })
       .then((res) => {
-        setResultA(res);
+        if (!isCancelledRef.current) {
+          setResultA(res);
+        }
       })
       .catch((err) => {
-        setResultA({
-          success: false,
-          content: '',
-          model: modelAId,
-          durationMs: 0,
-          status: 500,
-          error: err instanceof Error ? err.message : String(err),
-        });
+        if (!isCancelledRef.current) {
+          setResultA({
+            success: false,
+            content: '',
+            model: modelAId,
+            durationMs: 0,
+            status: 500,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       })
       .finally(() => {
         setIsLoadingA(false);
@@ -145,17 +159,21 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
         reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
       })
       .then((res) => {
-        setResultB(res);
+        if (!isCancelledRef.current) {
+          setResultB(res);
+        }
       })
       .catch((err) => {
-        setResultB({
-          success: false,
-          content: '',
-          model: modelBId,
-          durationMs: 0,
-          status: 500,
-          error: err instanceof Error ? err.message : String(err),
-        });
+        if (!isCancelledRef.current) {
+          setResultB({
+            success: false,
+            content: '',
+            model: modelBId,
+            durationMs: 0,
+            status: 500,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       })
       .finally(() => {
         setIsLoadingB(false);
@@ -370,17 +388,32 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
               {t('playground.clear')}
             </Button>
 
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              onClick={handleRun}
-              disabled={isRunning || !prompt.trim()}
-              className="h-8 gap-1.5 text-xs font-medium"
-            >
-              {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-              {isRunning ? t('playground.running-dual') : t('playground.run-dual')}
-            </Button>
+            <div className="flex items-center gap-2">
+              {isRunning && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleStop}
+                  className="h-8 gap-1.5 text-xs font-medium"
+                >
+                  <StopCircle size={14} />
+                  <span>{t('playground.stop')}</span>
+                </Button>
+              )}
+
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                onClick={handleRun}
+                disabled={isRunning || !prompt.trim()}
+                className="h-8 gap-1.5 text-xs font-medium"
+              >
+                {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                {isRunning ? t('playground.running-dual') : t('playground.run-dual')}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -445,7 +478,17 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                         <SelectItem key={acc.id} value={acc.id}>
                           <div className="flex items-center gap-2">
                             <User size={12} className="text-muted-foreground shrink-0" />
-                            <span className="truncate">{acc.name || acc.email}</span>
+                            <span className="font-medium">{acc.name || acc.email}</span>
+                            {acc.email && (
+                              <span className="text-muted-foreground text-[10px]">
+                                ({acc.email})
+                              </span>
+                            )}
+                            {acc.status_reason === 'rate_limited' && (
+                              <Badge variant="destructive" className="h-4 px-1 text-[9px]">
+                                {t('playground.rate-limited')}
+                              </Badge>
+                            )}
                           </div>
                         </SelectItem>
                       ))}
@@ -537,7 +580,17 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                         <SelectItem key={acc.id} value={acc.id}>
                           <div className="flex items-center gap-2">
                             <User size={12} className="text-muted-foreground shrink-0" />
-                            <span className="truncate">{acc.name || acc.email}</span>
+                            <span className="font-medium">{acc.name || acc.email}</span>
+                            {acc.email && (
+                              <span className="text-muted-foreground text-[10px]">
+                                ({acc.email})
+                              </span>
+                            )}
+                            {acc.status_reason === 'rate_limited' && (
+                              <Badge variant="destructive" className="h-4 px-1 text-[9px]">
+                                {t('playground.rate-limited')}
+                              </Badge>
+                            )}
                           </div>
                         </SelectItem>
                       ))}

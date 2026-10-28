@@ -214,7 +214,7 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
 
         let e2eTokensPerSec = result.e2eTokensPerSec;
         if (
-          e2eTokensPerSec === undefined &&
+          (e2eTokensPerSec === undefined || e2eTokensPerSec > 1000) &&
           typeof completionTokens === 'number' &&
           completionTokens > 0 &&
           durationMs > 0
@@ -223,16 +223,17 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
         }
 
         let generationTokensPerSec = result.generationTokensPerSec;
-        if (
-          generationTokensPerSec === undefined &&
-          typeof completionTokens === 'number' &&
-          completionTokens > 0
-        ) {
-          if (typeof ttftMs === 'number' && durationMs > ttftMs && durationMs - ttftMs >= 50) {
-            generationTokensPerSec =
-              Math.round((completionTokens / ((durationMs - ttftMs) / 1000)) * 10) / 10;
-          } else if (e2eTokensPerSec !== undefined) {
-            generationTokensPerSec = e2eTokensPerSec;
+        const genDurationMs =
+          typeof ttftMs === 'number' && durationMs > ttftMs ? durationMs - ttftMs : null;
+
+        if (generationTokensPerSec === undefined || generationTokensPerSec > 1000) {
+          if (typeof completionTokens === 'number' && completionTokens > 0) {
+            if (genDurationMs !== null && genDurationMs >= 500) {
+              generationTokensPerSec =
+                Math.round((completionTokens / (genDurationMs / 1000)) * 10) / 10;
+            } else if (e2eTokensPerSec !== undefined) {
+              generationTokensPerSec = e2eTokensPerSec;
+            }
           }
         }
 

@@ -128,7 +128,7 @@ describe('PlaygroundService', () => {
 
     let mockNow = 1000;
     vi.spyOn(performance, 'now').mockImplementation(() => {
-      mockNow += 500; // 500ms total duration
+      mockNow += 1000; // 1000ms total duration
       return mockNow;
     });
 
@@ -137,7 +137,7 @@ describe('PlaygroundService', () => {
       status: 200,
       headers: new Headers({
         'content-type': 'application/json',
-        'x-timing-ttft-ms': '200', // 200ms TTFT -> 300ms generation duration
+        'x-timing-ttft-ms': '200', // 200ms TTFT -> 800ms generation duration
       }),
       json: async () => ({
         model: 'gemini-3-flash',
@@ -154,10 +154,10 @@ describe('PlaygroundService', () => {
     });
 
     expect(result.success).toBe(true);
-    // 30 tokens in 500ms = 60 tok/s E2E
-    expect(result.e2eTokensPerSec).toBe(60);
-    // 30 tokens in (500 - 200)ms = 100 tok/s Gen
-    expect(result.generationTokensPerSec).toBe(100);
+    // 30 tokens in 1000ms = 30 tok/s E2E
+    expect(result.e2eTokensPerSec).toBe(30);
+    // 30 tokens in (1000 - 200)ms = 37.5 tok/s Gen
+    expect(result.generationTokensPerSec).toBe(37.5);
   });
 
   it('forwards reasoning effort and disable thinking flags to gateway body', async () => {
