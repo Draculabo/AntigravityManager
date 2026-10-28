@@ -42,6 +42,47 @@ function createLeaseService(scheduler: ImageAccountSchedulerService): AccountLea
 }
 
 describe('ImageAccountSchedulerService', () => {
+  it('pins image leases to the target and waits for its capacity instead of using another account', async () => {
+    configureScheduler(1, 1);
+    const scheduler = new ImageAccountSchedulerService();
+    const service = createLeaseService(scheduler);
+    seedTokens(service, ['a', 'b']);
+    const first = await service.getNextImageToken({ targetAccountId: 'b' });
+    expect(first.token.id).toBe('b');
+    const controller = new AbortController();
+    const queued = service.getNextImageToken({ targetAccountId: 'b', signal: controller.signal });
+    const rejection = expect(queued).rejects.toBeInstanceOf(ImageQueueAbortedError);
+    controller.abort();
+    await rejection;
+    expect(scheduler.getInUseFor('a')).toBe(0);
+    first.permit.release();
+    expect(scheduler.getInUseFor('b')).toBe(0);
+    const held = await service.getNextImageToken({ targetAccountId: 'b' });
+    let notifyWaiting!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      notifyWaiting = resolve;
+    });
+    const waitForChange = scheduler.waitForChange.bind(scheduler);
+    const spy = vi.spyOn(scheduler, 'waitForChange').mockImplementation((...args) => {
+      notifyWaiting();
+      return waitForChange(...args);
+    });
+    const next = service.getNextImageToken({ targetAccountId: 'b' });
+    try {
+      await waiting;
+      held.permit.release();
+      const selected = await next;
+      expect(selected.token.id).toBe('b');
+      selected.permit.release();
+    } finally {
+      held.permit.release();
+      spy.mockRestore();
+    }
+    await expect(service.getNextImageToken({ targetAccountId: 'missing' })).rejects.toBeInstanceOf(
+      ImageAccountUnavailableError,
+    );
+  });
+
   beforeEach(() => {
     configureScheduler(2);
   });

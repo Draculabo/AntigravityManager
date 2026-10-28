@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
@@ -79,12 +79,20 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
   const [resultB, setResultB] = useState<PlaygroundExecuteResult | null>(null);
   const [isLoadingA, setIsLoadingA] = useState<boolean>(false);
   const [isLoadingB, setIsLoadingB] = useState<boolean>(false);
-  const isCancelledRef = useRef<boolean>(false);
+  const activeRun = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      activeRun.current?.abort();
+      activeRun.current = null;
+    },
+    [],
+  );
 
   const isRunning = isLoadingA || isLoadingB;
 
   const handleStop = () => {
-    isCancelledRef.current = true;
+    activeRun.current?.abort();
+    activeRun.current = null;
     setIsLoadingA(false);
     setIsLoadingB(false);
     toast({ title: t('playground.dual-stopped') });
@@ -111,29 +119,34 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
       return;
     }
 
-    isCancelledRef.current = false;
+    activeRun.current?.abort();
+    const run = new AbortController();
+    activeRun.current = run;
     setIsLoadingA(true);
     setIsLoadingB(true);
     setResultA(null);
     setResultB(null);
 
     const taskA = ipc.client.gateway.playground
-      .execute({
-        accountId: accountAId === 'auto' ? undefined : accountAId,
-        model: modelAId,
-        prompt,
-        systemPrompt: systemPrompt.trim() || undefined,
-        temperature,
-        maxTokens,
-        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
-      })
+      .execute(
+        {
+          accountId: accountAId === 'auto' ? undefined : accountAId,
+          model: modelAId,
+          prompt,
+          systemPrompt: systemPrompt.trim() || undefined,
+          temperature,
+          maxTokens,
+          reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
+        },
+        { signal: run.signal },
+      )
       .then((res) => {
-        if (!isCancelledRef.current) {
+        if (activeRun.current === run && !run.signal.aborted) {
           setResultA(res);
         }
       })
       .catch((err) => {
-        if (!isCancelledRef.current) {
+        if (activeRun.current === run && !run.signal.aborted) {
           setResultA({
             success: false,
             content: '',
@@ -145,26 +158,31 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
         }
       })
       .finally(() => {
-        setIsLoadingA(false);
+        if (activeRun.current === run && !run.signal.aborted) {
+          setIsLoadingA(false);
+        }
       });
 
     const taskB = ipc.client.gateway.playground
-      .execute({
-        accountId: accountBId === 'auto' ? undefined : accountBId,
-        model: modelBId,
-        prompt,
-        systemPrompt: systemPrompt.trim() || undefined,
-        temperature,
-        maxTokens,
-        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
-      })
+      .execute(
+        {
+          accountId: accountBId === 'auto' ? undefined : accountBId,
+          model: modelBId,
+          prompt,
+          systemPrompt: systemPrompt.trim() || undefined,
+          temperature,
+          maxTokens,
+          reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
+        },
+        { signal: run.signal },
+      )
       .then((res) => {
-        if (!isCancelledRef.current) {
+        if (activeRun.current === run && !run.signal.aborted) {
           setResultB(res);
         }
       })
       .catch((err) => {
-        if (!isCancelledRef.current) {
+        if (activeRun.current === run && !run.signal.aborted) {
           setResultB({
             success: false,
             content: '',
@@ -176,7 +194,9 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
         }
       })
       .finally(() => {
-        setIsLoadingB(false);
+        if (activeRun.current === run && !run.signal.aborted) {
+          setIsLoadingB(false);
+        }
       });
 
     try {

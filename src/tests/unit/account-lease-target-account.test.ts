@@ -83,6 +83,61 @@ function fixture() {
 }
 
 describe('AccountLeaseService targetAccountId', () => {
+  it('honors model-specific upstream lockouts for targeted leases', async () => {
+    const { service } = fixture();
+    await service.loadAccounts();
+    await service.markFromUpstreamError({
+      accountIdOrEmail: 'acc-beta',
+      status: 429,
+      retryAfter: '60',
+      model: 'gemini-3-flash',
+    });
+    expect(
+      await service.getNextToken({ targetAccountId: 'acc-beta', model: 'gemini-3-flash' }),
+    ).toBeNull();
+    expect(
+      (await service.getNextToken({ targetAccountId: 'acc-alpha', model: 'gemini-3-flash' }))?.id,
+    ).toBe('acc-alpha');
+  });
+  it('does not lease an excluded target, including an email target', async () => {
+    const { service } = fixture();
+    await service.loadAccounts();
+    expect(
+      await service.getNextToken({
+        targetAccountId: 'BETA@EXAMPLE.COM',
+        excludeAccountIds: ['acc-beta'],
+        model: 'gemini-3-flash',
+      }),
+    ).toBeNull();
+  });
+
+  it.each(['markAsForbidden', 'markAsRateLimited'] as const)(
+    'does not bypass %s for the targeted account',
+    async (mark) => {
+      const { service } = fixture();
+      await service.loadAccounts();
+      service[mark]('acc-beta');
+      expect(
+        await service.getNextToken({
+          targetAccountId: 'acc-beta',
+          model: 'gemini-3-flash',
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it('does not lease a target with depleted model quota', async () => {
+    const { service, accounts } = fixture();
+    accounts[1].quota!.models['gemini-3-flash'].percentage = 0;
+    await service.loadAccounts();
+    expect(
+      await service.getNextToken({
+        targetAccountId: 'acc-beta',
+        model: 'gemini-3-flash',
+      }),
+    ).toBeNull();
+  });
+
   it('leases the exact targeted account by account ID', async () => {
     const { service } = fixture();
     await service.loadAccounts();

@@ -22,8 +22,27 @@ Requests can bypass automatic pool scheduling and pin a specific account using t
 matches the target by account ID or case-insensitive email, hydrates that account's token
 directly, and verifies model compatibility and validation status. If the target account is
 unavailable, depleted or blocked, the request fails without falling back to other pool accounts.
+Targeted leases retain exclusion, account cooldown and model rate-limit checks. Image leases
+pin the same target while waiting for its scheduler capacity; another account is never substituted.
 Responses emit `x-antigravity-account-id` and `x-antigravity-account-email` headers reflecting
 the serving account.
+
+## Playground execution
+
+The Playground uses the gateway's non-streaming Chat Completions endpoint. Invalid completion
+payloads are reported as failures rather than successful empty responses. Requests use the configured
+gateway request timeout and accept cancellation through the typed IPC call. Stopping Dual Models
+or Benchmark, or leaving either tab, cancels its pending calls and prevents stale results from
+changing a later run. Benchmark also cancels its jitter timer and dispatches no further probes.
+Cancellation cannot recover quota already consumed by an upstream request.
+
+Starting the gateway from Playground uses the same first-use account-risk acknowledgement as
+API Proxy. A returned start failure remains a failure, including an occupied port.
+
+Copy cURL preserves the submitted model, prompt, system prompt, temperature, token limit and
+reasoning settings and pins the serving account when known. It emits a POSIX-shell command with
+an API-key placeholder, never the configured credential. Benchmark Markdown exports describe the
+account captured at run start even if the selector changes after completion.
 
 ## Related references
 

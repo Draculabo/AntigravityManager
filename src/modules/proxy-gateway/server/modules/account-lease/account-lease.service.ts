@@ -385,6 +385,17 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`Target account ${targetAccountId} not found in token cache`);
           return null;
         }
+        const [accountId, tokenData] = targetEntry;
+        const accountModel = this.modelPolicy.resolveDynamicModelForAccount(accountId, model ?? '');
+        const quota = tokenData.model_quotas?.[normalizeModelId(accountModel) ?? accountModel];
+        if (
+          excludedAccountIds.has(accountId) ||
+          (this.accountCooldowns.get(accountId) ?? 0) > now ||
+          this.getAccountRouteWait(accountId, model) > 0 ||
+          (typeof quota === 'number' && Number.isFinite(quota) && quota <= 0)
+        ) {
+          return null;
+        }
         if (
           targetEntry[1].validation_blocked_until_ms !== undefined &&
           now < targetEntry[1].validation_blocked_until_ms
@@ -496,6 +507,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         const token = this.getNextToken({
           sessionKey: options.sessionKey,
           model: options.model,
+          targetAccountId: options.targetAccountId,
           excludeAccountIds: [...(options.excludeAccountIds ?? []), ...busyAccountIds],
         });
         const selected = await this.waitForImageSelection(token, remainingMs, options.signal);

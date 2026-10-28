@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Columns2, FlaskConical, Gauge, Layers, Play, Power } from 'lucide-react';
@@ -17,11 +17,17 @@ import { PlaygroundCompareView } from './components/PlaygroundCompareView';
 import { PlaygroundAccountBenchmark } from './components/PlaygroundAccountBenchmark';
 import { PlaygroundDualView } from './components/PlaygroundDualView';
 import type { PlaygroundExecuteResult, PlaygroundReasoningEffort } from './playground.schema';
+import {
+  ProxyRiskConfirmation,
+  useProxyRiskConfirmation,
+} from '../components/ProxyRiskConfirmation';
 
 export const PlaygroundPage: React.FC = () => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const risk = useProxyRiskConfirmation();
+  const startButton = useRef<HTMLButtonElement>(null);
 
   const { data: cloudAccounts = [] } = useCloudAccounts();
   const { config } = useAppConfig();
@@ -55,7 +61,15 @@ export const PlaygroundPage: React.FC = () => {
   const startGatewayMutation = useMutation({
     mutationFn: async () => {
       const port = config?.proxy?.port || 8045;
-      return ipc.client.gateway.start({ port });
+      const result = await ipc.client.gateway.start({ port });
+      if (!result.success) {
+        throw new Error(
+          result.reason === 'address-in-use'
+            ? t('proxy.service.port_in_use_description', { port: result.port })
+            : result.message,
+        );
+      }
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gatewayStatus'] });
@@ -179,10 +193,17 @@ export const PlaygroundPage: React.FC = () => {
               </div>
             </div>
             <Button
+              ref={startButton}
               size="sm"
               variant="outline"
               disabled={startGatewayMutation.isPending}
-              onClick={() => startGatewayMutation.mutate()}
+              onClick={() => {
+                if (!risk.acknowledged) {
+                  risk.setOpen(true);
+                  return;
+                }
+                startGatewayMutation.mutate();
+              }}
               className="h-8 shrink-0 gap-1.5 border-amber-500/40 text-xs text-amber-800 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/40"
             >
               <Power size={13} />
@@ -193,6 +214,17 @@ export const PlaygroundPage: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      <ProxyRiskConfirmation
+        open={risk.open}
+        onOpenChange={risk.setOpen}
+        pending={startGatewayMutation.isPending}
+        returnFocus={() => startButton.current?.focus()}
+        onConfirm={() => {
+          risk.acknowledge();
+          startGatewayMutation.mutate();
+        }}
+      />
 
       {/* Tabs */}
       <Tabs

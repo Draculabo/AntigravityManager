@@ -27,6 +27,7 @@ export const PlaygroundExecuteInputSchema = z.strictObject({
 export type PlaygroundExecuteInput = z.infer<typeof PlaygroundExecuteInputSchema>;
 
 export const PlaygroundExecuteResultSchema = z.strictObject({
+  request: PlaygroundExecuteInputSchema.optional(),
   success: z.boolean(),
   content: z.string(),
   thinkingContent: z.string().optional(),

@@ -87,6 +87,7 @@ import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gem
 import { validateOpenAIInputAudio } from './chat/openai-input-audio';
 import { validateOpenAIResponseFormat } from './chat/openai-response-format';
 import { getServerConfig } from '@/server/server-config';
+import { readTargetAccountHeader } from './chat/target-account-header';
 
 export type OpenAIOutputProtocol = 'chat-completions' | 'responses';
 
@@ -145,12 +146,7 @@ export class OpenAIService extends BaseProxyService {
       : scope.cacheKey;
     const clientToolNames = extractOpenAIToolNames(routedRequest.tools);
 
-    const targetAccountId =
-      (typeof requestContext?.headers?.['x-antigravity-account-id'] === 'string'
-        ? requestContext.headers['x-antigravity-account-id'].trim()
-        : typeof requestContext?.headers?.['x-account-id'] === 'string'
-          ? requestContext.headers['x-account-id'].trim()
-          : undefined) || undefined;
+    const targetAccountId = readTargetAccountHeader(requestContext?.headers);
     const routingModel = routedRequest.model.toLowerCase().includes('-image')
       ? cleanImageModelName(routedRequest.model)
       : routedRequest.model;

@@ -1,32 +1,11 @@
-import React, { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  AlertCircle,
-  Check,
-  CheckCircle2,
-  CheckSquare,
-  Clock,
-  Copy,
-  Cpu,
-  Eye,
-  Gauge,
-  Loader2,
-  Play,
-  RotateCcw,
-  Sparkles,
-  Square,
-  StopCircle,
-  Timer,
-  User,
-  Zap,
-} from 'lucide-react';
+import { Play, StopCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -34,1013 +13,376 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { useToast } from '@/components/ui/use-toast';
 import { ipc } from '@/ipc/manager';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
-import { isImageProxyExampleModel } from '@/modules/proxy-gateway/components/proxy-example-models';
+import { isImageProxyExampleModel } from '../../components/proxy-example-models';
+import {
+  PlaygroundReasoningEffortSchema,
+  type PlaygroundReasoningEffort,
+} from '../playground.schema';
 import type { BenchmarkModelRow } from '../types';
-import type { PlaygroundReasoningEffort } from '../playground.schema';
+import { BenchmarkResults } from './benchmark/BenchmarkResults';
 
 interface PlaygroundAccountBenchmarkProps {
   accounts: CloudAccountView[];
   availableModels?: Array<{ id: string; name: string }>;
 }
 
-const DEFAULT_BENCHMARK_PROMPT =
+const DEFAULT_PROMPT =
   'Write a 2-line rhyming slogan about coding and state 1 key advantage of AI.';
 
-export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProps> = ({
+/** An abortable pause owns its timer and listener, including navigation during jitter. */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal.addEventListener('abort', finish, { once: true });
+    if (signal.aborted) {
+      finish();
+    }
+  });
+}
+
+export function PlaygroundAccountBenchmark({
   accounts,
   availableModels = [],
-}) => {
+}: PlaygroundAccountBenchmarkProps) {
   const { t } = useTranslation();
-  const { toast } = useToast();
-
-  const [selectedAccountId, setSelectedAccountId] = useState<string>(() => accounts[0]?.id ?? '');
-  const [prompt, setPrompt] = useState<string>(DEFAULT_BENCHMARK_PROMPT);
-  const [minDelayMs, setMinDelayMs] = useState<number>(500);
-  const [maxDelayMs, setMaxDelayMs] = useState<number>(1200);
-  const [reasoningEffort, setReasoningEffort] = useState<PlaygroundReasoningEffort>('default');
-
-  const selectedAccount = useMemo(
-    () => accounts.find((a) => a.id === selectedAccountId) ?? accounts[0],
-    [accounts, selectedAccountId],
+  const [accountId, setAccountId] = useState('');
+  const account = accounts.find((entry) => entry.id === accountId) ?? accounts[0];
+  const models = useMemo(() => {
+    const quotaModels = Object.entries(account?.quota?.models ?? {}).map(([id, info]) => ({
+      id: id.replace(/^models\//i, '').trim(),
+      name: info.display_name?.trim() || id,
+      quotaPercentage: info.percentage,
+    }));
+    return (
+      quotaModels.length
+        ? quotaModels
+        : availableModels.map((model) => ({ ...model, quotaPercentage: undefined }))
+    ).filter((model) => !isImageProxyExampleModel(model.id));
+  }, [account, availableModels]);
+  // Default selection is derived so late quota hydration also includes newly advertised models.
+  const [selection, setSelection] = useState<{ accountId: string; ids: string[] } | null>(null);
+  const checkedIds =
+    selection?.accountId === account?.id ? selection.ids : models.map((model) => model.id);
+  const select = (ids: string[]) => {
+    if (account) {
+      setSelection({ accountId: account.id, ids });
+    }
+  };
+  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
+  const [minDelay, setMinDelay] = useState(500);
+  const [maxDelay, setMaxDelay] = useState(1200);
+  const [reasoning, setReasoning] = useState<PlaygroundReasoningEffort>('default');
+  const [rows, setRows] = useState<BenchmarkModelRow[]>([]);
+  const [reportAccount, setReportAccount] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [progress, setProgress] = useState('');
+  const activeRun = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      activeRun.current?.abort();
+      activeRun.current = null;
+    },
+    [],
   );
 
-  // Extract models available for this specific account
-  const accountModels = useMemo(() => {
-    if (!selectedAccount) {
-      return [];
-    }
-
-    const quotaModels = Object.entries(selectedAccount.quota?.models ?? {})
-      .filter(([id]) => !isImageProxyExampleModel(id))
-      .map(([rawId, info]) => {
-        const id = rawId.replace(/^models\//i, '').trim();
-        return {
-          id,
-          name: info.display_name?.trim() || id,
-          quotaPercentage: info.percentage,
-        };
-      });
-
-    if (quotaModels.length > 0) {
-      return quotaModels;
-    }
-
-    // Fall back to general models if account has no quota models populated yet
-    return availableModels
-      .filter((m) => !isImageProxyExampleModel(m.id))
-      .map((m) => ({
-        id: m.id,
-        name: m.name || m.id,
-        quotaPercentage: undefined,
-      }));
-  }, [selectedAccount, availableModels]);
-
-  // Selected model IDs to benchmark
-  const [checkedModelIds, setCheckedModelIds] = useState<string[]>([]);
-  const [initializedForAccount, setInitializedForAccount] = useState<string>('');
-
-  // Auto-check all models when account changes
-  if (selectedAccount && selectedAccount.id !== initializedForAccount) {
-    setCheckedModelIds(accountModels.map((m) => m.id));
-    setInitializedForAccount(selectedAccount.id);
-  }
-
-  // Benchmark rows state
-  const [rows, setRows] = useState<BenchmarkModelRow[]>([]);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [currentProgress, setCurrentProgress] = useState<string>('');
-  const stopRequestedRef = useRef<boolean>(false);
-
-  // Inspect dialog state
-  const [inspectedRow, setInspectedRow] = useState<BenchmarkModelRow | null>(null);
-  const [copiedReport, setCopiedReport] = useState<boolean>(false);
-
-  const toggleModelCheck = (id: string) => {
-    setCheckedModelIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+  const stop = () => {
+    activeRun.current?.abort();
+    activeRun.current = null;
+    setRows((previous) =>
+      previous.map((row) =>
+        row.status === 'running' || row.status === 'idle' ? { ...row, status: 'skipped' } : row,
+      ),
     );
+    setIsRunning(false);
+    setProgress('');
   };
 
-  const selectAllModels = () => {
-    setCheckedModelIds(accountModels.map((m) => m.id));
-  };
-
-  const clearAllModels = () => {
-    setCheckedModelIds([]);
-  };
-
-  const handleStop = () => {
-    stopRequestedRef.current = true;
-    setCurrentProgress(t('playground.stopping'));
-  };
-
-  const handleRun = async () => {
-    if (!selectedAccount || checkedModelIds.length === 0 || !prompt.trim()) {
+  const run = async () => {
+    if (!account || !prompt.trim() || !checkedIds.length || activeRun.current) {
       return;
     }
-
-    stopRequestedRef.current = false;
-    setIsRunning(true);
-
-    const initialRows: BenchmarkModelRow[] = accountModels
-      .filter((m) => checkedModelIds.includes(m.id))
-      .map((m) => ({
-        modelId: m.id,
-        modelName: m.name,
-        quotaPercentage: m.quotaPercentage,
+    const controller = new AbortController();
+    activeRun.current = controller;
+    const current = () => activeRun.current === controller && !controller.signal.aborted;
+    const initialRows: BenchmarkModelRow[] = models
+      .filter((model) => checkedIds.includes(model.id))
+      .map((model) => ({
+        modelId: model.id,
+        modelName: model.name,
+        quotaPercentage: model.quotaPercentage,
         status: 'idle',
       }));
-
+    setReportAccount(account.name || account.email);
     setRows(initialRows);
-
-    for (let i = 0; i < initialRows.length; i++) {
-      if (stopRequestedRef.current) {
-        setRows((prev) =>
-          prev.map((r, idx) => (idx >= i && r.status === 'idle' ? { ...r, status: 'skipped' } : r)),
-        );
-        break;
-      }
-
-      const targetModel = initialRows[i];
-
-      // Mark running
-      setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, status: 'running' } : r)));
-      setCurrentProgress(
-        t('playground.testing-progress', {
-          current: i + 1,
-          total: initialRows.length,
-          model: targetModel.modelName,
-        }),
-      );
-
-      // Random delay before request (after first item)
-      if (i > 0 && maxDelayMs >= minDelayMs && maxDelayMs > 0) {
-        const jitter = Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1)) + minDelayMs;
-        await new Promise((resolve) => setTimeout(resolve, jitter));
-      }
-
-      if (stopRequestedRef.current) {
-        setRows((prev) =>
-          prev.map((r, idx) =>
-            idx >= i && r.status === 'running' ? { ...r, status: 'skipped' } : r,
-          ),
-        );
-        break;
-      }
-
-      try {
-        const result = await ipc.client.gateway.playground.execute({
-          accountId: selectedAccount.id,
-          model: targetModel.modelId,
-          prompt,
-          temperature: 0.5,
-          maxTokens: 1024,
-          reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
-        });
-
-        const durationMs = result.durationMs;
-        const ttftMs = result.ttftMs;
-        const completionTokens = result.completionTokens;
-
-        let e2eTokensPerSec = result.e2eTokensPerSec;
-        if (
-          (e2eTokensPerSec === undefined || e2eTokensPerSec > 1000) &&
-          typeof completionTokens === 'number' &&
-          completionTokens > 0 &&
-          durationMs > 0
-        ) {
-          e2eTokensPerSec = Math.round((completionTokens / (durationMs / 1000)) * 10) / 10;
+    setIsRunning(true);
+    try {
+      for (let index = 0; index < initialRows.length && current(); index++) {
+        const row = initialRows[index];
+        if (index > 0) {
+          const lower = Math.max(0, minDelay);
+          const upper = Math.max(lower, maxDelay);
+          await pause(lower + Math.floor(Math.random() * (upper - lower + 1)), controller.signal);
         }
-
-        let generationTokensPerSec = result.generationTokensPerSec;
-        const genDurationMs =
-          typeof ttftMs === 'number' && durationMs > ttftMs ? durationMs - ttftMs : null;
-
-        if (generationTokensPerSec === undefined || generationTokensPerSec > 1000) {
-          if (typeof completionTokens === 'number' && completionTokens > 0) {
-            if (genDurationMs !== null && genDurationMs >= 500) {
-              generationTokensPerSec =
-                Math.round((completionTokens / (genDurationMs / 1000)) * 10) / 10;
-            } else if (e2eTokensPerSec !== undefined) {
-              generationTokensPerSec = e2eTokensPerSec;
-            }
+        if (!current()) {
+          break;
+        }
+        setProgress(
+          t('playground.testing-progress', {
+            current: index + 1,
+            total: initialRows.length,
+            model: row.modelName,
+          }),
+        );
+        setRows((previous) =>
+          previous.map((entry, i) => (i === index ? { ...entry, status: 'running' } : entry)),
+        );
+        try {
+          const result = await ipc.client.gateway.playground.execute(
+            {
+              accountId: account.id,
+              model: row.modelId,
+              prompt,
+              temperature: 0.5,
+              maxTokens: 1024,
+              reasoningEffort: reasoning,
+            },
+            { signal: controller.signal },
+          );
+          if (!current()) {
+            break;
           }
+          setRows((previous) =>
+            previous.map((entry, i) =>
+              i === index
+                ? {
+                    ...entry,
+                    status: result.success ? 'success' : 'error',
+                    durationMs: result.durationMs,
+                    ttftMs: result.ttftMs,
+                    generationTokensPerSec: result.generationTokensPerSec,
+                    e2eTokensPerSec: result.e2eTokensPerSec,
+                    promptTokens: result.promptTokens,
+                    completionTokens: result.completionTokens,
+                    totalTokens: result.totalTokens,
+                    httpStatus: result.status,
+                    content: result.content,
+                    thinkingContent: result.thinkingContent,
+                    error: result.error,
+                  }
+                : entry,
+            ),
+          );
+        } catch (error) {
+          if (!current()) {
+            break;
+          }
+          setRows((previous) =>
+            previous.map((entry, i) =>
+              i === index
+                ? {
+                    ...entry,
+                    status: 'error',
+                    httpStatus: 500,
+                    error: error instanceof Error ? error.message : String(error),
+                  }
+                : entry,
+            ),
+          );
         }
-
-        setRows((prev) =>
-          prev.map((r, idx) =>
-            idx === i
-              ? {
-                  ...r,
-                  status: result.success ? 'success' : 'error',
-                  durationMs,
-                  ttftMs,
-                  generationTokensPerSec,
-                  e2eTokensPerSec,
-                  promptTokens: result.promptTokens,
-                  completionTokens: result.completionTokens,
-                  totalTokens: result.totalTokens,
-                  httpStatus: result.status,
-                  content: result.content,
-                  thinkingContent: result.thinkingContent,
-                  error: result.error,
-                }
-              : r,
-          ),
-        );
-      } catch (err: unknown) {
-        setRows((prev) =>
-          prev.map((r, idx) =>
-            idx === i
-              ? {
-                  ...r,
-                  status: 'error',
-                  error: err instanceof Error ? err.message : String(err),
-                  httpStatus: 500,
-                }
-              : r,
-          ),
-        );
+      }
+    } finally {
+      if (current()) {
+        activeRun.current = null;
+        setIsRunning(false);
+        setProgress('');
       }
     }
-
-    setIsRunning(false);
-    setCurrentProgress('');
-  };
-
-  // Summary statistics
-  const completedRows = rows.filter((r) => r.status === 'success' || r.status === 'error');
-  const successRows = rows.filter((r) => r.status === 'success');
-  const failedRows = rows.filter((r) => r.status === 'error');
-
-  const avgTtft = useMemo(() => {
-    const valid = successRows.filter((r) => typeof r.ttftMs === 'number');
-    if (valid.length === 0) {
-      return null;
-    }
-    return Math.round(valid.reduce((sum, r) => sum + (r.ttftMs ?? 0), 0) / valid.length);
-  }, [successRows]);
-
-  const avgGenSpeed = useMemo(() => {
-    const valid = successRows.filter((r) => typeof r.generationTokensPerSec === 'number');
-    if (valid.length === 0) {
-      return null;
-    }
-    return (
-      Math.round(
-        (valid.reduce((sum, r) => sum + (r.generationTokensPerSec ?? 0), 0) / valid.length) * 10,
-      ) / 10
-    );
-  }, [successRows]);
-
-  const avgE2eSpeed = useMemo(() => {
-    const valid = successRows.filter((r) => typeof r.e2eTokensPerSec === 'number');
-    if (valid.length === 0) {
-      return null;
-    }
-    return (
-      Math.round(
-        (valid.reduce((sum, r) => sum + (r.e2eTokensPerSec ?? 0), 0) / valid.length) * 10,
-      ) / 10
-    );
-  }, [successRows]);
-
-  const fastestGenModel = useMemo(() => {
-    const sorted = [...successRows]
-      .filter((r) => typeof r.generationTokensPerSec === 'number')
-      .sort((a, b) => (b.generationTokensPerSec ?? 0) - (a.generationTokensPerSec ?? 0));
-    return sorted[0];
-  }, [successRows]);
-
-  const fastestTtftModel = useMemo(() => {
-    const sorted = [...successRows]
-      .filter((r) => typeof r.ttftMs === 'number' && (r.ttftMs ?? 0) > 0)
-      .sort((a, b) => (a.ttftMs ?? 0) - (b.ttftMs ?? 0));
-    return sorted[0];
-  }, [successRows]);
-
-  const formatTtftSeconds = (ttftMs?: number): string => {
-    if (typeof ttftMs !== 'number' || ttftMs <= 0) {
-      return '-';
-    }
-    return `${(ttftMs / 1000).toFixed(1)} ${t('playground.seconds-short')}`;
-  };
-
-  const handleCopyMarkdownReport = async () => {
-    if (completedRows.length === 0) {
-      return;
-    }
-
-    const lines: string[] = [
-      `### Benchmark Results for ${selectedAccount?.name || selectedAccount?.email || 'Account'}`,
-      `**Tested Models:** ${completedRows.length} | **Passed:** ${successRows.length} | **Failed:** ${failedRows.length}`,
-      '',
-      '| Model | Status | TTFT (s) | Gen Speed (tok/s) | E2E Speed (tok/s) | Tokens (In/Out) |',
-      '|---|---|---|---|---|---|',
-    ];
-
-    for (const r of completedRows) {
-      const statusText = r.status === 'success' ? '200 OK' : `Error (${r.httpStatus ?? 'fail'})`;
-      const ttft = r.ttftMs !== undefined ? `${(r.ttftMs / 1000).toFixed(1)} s` : '-';
-      const genSpeed = r.generationTokensPerSec !== undefined ? `${r.generationTokensPerSec}` : '-';
-      const e2eSpeed = r.e2eTokensPerSec !== undefined ? `${r.e2eTokensPerSec}` : '-';
-      const tokens = `${r.promptTokens ?? 0} / ${r.completionTokens ?? 0}`;
-      lines.push(
-        `| ${r.modelName} | ${statusText} | ${ttft} | ${genSpeed} | ${e2eSpeed} | ${tokens} |`,
-      );
-    }
-
-    await navigator.clipboard.writeText(lines.join('\n'));
-    setCopiedReport(true);
-    toast({ title: t('playground.report-copied') });
-    setTimeout(() => setCopiedReport(false), 2000);
   };
 
   return (
-    <TooltipProvider delayDuration={150}>
-      <div className="space-y-6">
-        {/* Account & Prompt Settings Card */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">
-              {t('playground.benchmark-settings-title')}
-            </CardTitle>
-            <CardDescription className="text-xs">
-              {t('playground.benchmark-settings-desc')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="benchmark-account" className="text-xs font-medium">
-                  {t('playground.target-account')}
-                </Label>
-                <Select
-                  value={selectedAccountId}
-                  onValueChange={setSelectedAccountId}
-                  disabled={isRunning}
-                >
-                  <SelectTrigger id="benchmark-account" className="h-9 text-xs">
-                    <SelectValue placeholder={t('playground.select-account')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((acc) => (
-                      <SelectItem key={acc.id} value={acc.id}>
-                        <div className="flex items-center gap-2">
-                          <User size={13} className="text-muted-foreground shrink-0" />
-                          <span className="font-medium">{acc.name || acc.email}</span>
-                          {acc.email && acc.name && (
-                            <span className="text-muted-foreground text-[11px]">({acc.email})</span>
-                          )}
-                          {acc.status_reason === 'rate_limited' && (
-                            <Badge variant="destructive" className="h-4 px-1 text-[10px]">
-                              {t('playground.rate-limited')}
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="benchmark-min-delay" className="text-xs font-medium">
-                    {t('playground.min-delay')} (ms)
-                  </Label>
-                  <Input
-                    id="benchmark-min-delay"
-                    type="number"
-                    step="100"
-                    min="0"
-                    max="5000"
-                    value={minDelayMs}
-                    onChange={(e) => setMinDelayMs(Number.parseInt(e.target.value, 10) || 0)}
-                    disabled={isRunning}
-                    className="h-9 text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="benchmark-max-delay" className="text-xs font-medium">
-                    {t('playground.max-delay')} (ms)
-                  </Label>
-                  <Input
-                    id="benchmark-max-delay"
-                    type="number"
-                    step="100"
-                    min="0"
-                    max="10000"
-                    value={maxDelayMs}
-                    onChange={(e) => setMaxDelayMs(Number.parseInt(e.target.value, 10) || 0)}
-                    disabled={isRunning}
-                    className="h-9 text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="benchmark-reasoning" className="text-xs font-medium">
-                  {t('playground.reasoning-level')}
-                </Label>
-                <Select
-                  value={reasoningEffort}
-                  onValueChange={(val) => setReasoningEffort(val as PlaygroundReasoningEffort)}
-                  disabled={isRunning}
-                >
-                  <SelectTrigger id="benchmark-reasoning" className="h-9 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">{t('playground.reasoning-default')}</SelectItem>
-                    <SelectItem value="off">{t('playground.reasoning-off')}</SelectItem>
-                    <SelectItem value="low">{t('playground.reasoning-low')}</SelectItem>
-                    <SelectItem value="medium">{t('playground.reasoning-medium')}</SelectItem>
-                    <SelectItem value="high">{t('playground.reasoning-high')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">{t('playground.benchmark-settings-title')}</CardTitle>
+          <CardDescription>{t('playground.benchmark-settings-desc')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="benchmark-prompt" className="text-xs font-medium">
-                  {t('playground.benchmark-prompt')}
-                </Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setPrompt(DEFAULT_BENCHMARK_PROMPT)}
-                  className="text-muted-foreground hover:text-foreground h-6 px-1.5 text-[11px]"
-                >
-                  <RotateCcw size={11} className="mr-1" />
-                  {t('playground.reset-prompt')}
-                </Button>
-              </div>
-              <textarea
-                id="benchmark-prompt"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+              <Label htmlFor="benchmark-account">{t('playground.target-account')}</Label>
+              <Select
+                value={account?.id ?? ''}
+                onValueChange={(id) => {
+                  setAccountId(id);
+                  setSelection(null);
+                }}
                 disabled={isRunning}
-                rows={2}
-                className="border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full resize-y rounded-md border px-3 py-1.5 text-xs focus-visible:ring-1 focus-visible:outline-none"
-              />
+              >
+                <SelectTrigger id="benchmark-account">
+                  <SelectValue placeholder={t('playground.select-account')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((entry) => (
+                    <SelectItem key={entry.id} value={entry.id}>
+                      {entry.name || entry.email}
+                      {entry.name ? ` (${entry.email})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-
-            {/* Model Selection Checklist */}
-            <div className="space-y-2 border-t pt-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium">
-                  {t('playground.models-to-test', { count: accountModels.length })}
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={selectAllModels}
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                {
+                  id: 'benchmark-min-delay',
+                  label: 'min-delay',
+                  value: minDelay,
+                  set: setMinDelay,
+                },
+                {
+                  id: 'benchmark-max-delay',
+                  label: 'max-delay',
+                  value: maxDelay,
+                  set: setMaxDelay,
+                },
+              ].map((field) => (
+                <div key={field.id} className="space-y-1.5">
+                  <Label htmlFor={field.id}>{t(`playground.${field.label}`)} (ms)</Label>
+                  <Input
+                    id={field.id}
+                    type="number"
+                    min={0}
+                    max={10000}
+                    step={100}
                     disabled={isRunning}
-                    className="h-6 px-2 text-[11px]"
-                  >
-                    <CheckSquare size={12} className="mr-1" />
-                    {t('playground.select-all')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={clearAllModels}
-                    disabled={isRunning}
-                    className="h-6 px-2 text-[11px]"
-                  >
-                    <Square size={12} className="mr-1" />
-                    {t('playground.clear-all')}
-                  </Button>
+                    value={field.value}
+                    onChange={(event) =>
+                      field.set(Math.min(10000, Math.max(0, Number(event.target.value) || 0)))
+                    }
+                  />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                {accountModels.map((m) => {
-                  const isChecked = checkedModelIds.includes(m.id);
-                  return (
-                    <div
-                      key={m.id}
-                      onClick={() => !isRunning && toggleModelCheck(m.id)}
-                      className={`flex items-center justify-between rounded-md border p-2 text-xs transition-colors ${
-                        isChecked
-                          ? 'border-primary/50 bg-primary/5 dark:bg-primary/10'
-                          : 'border-input opacity-60'
-                      } ${isRunning ? 'cursor-not-allowed' : 'hover:bg-muted/40 cursor-pointer'}`}
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Checkbox checked={isChecked} disabled={isRunning} className="shrink-0" />
-                        <span className="truncate font-medium" title={m.name}>
-                          {m.name}
-                        </span>
-                      </div>
-                      {m.quotaPercentage !== undefined && (
-                        <Badge variant="outline" className="ml-1 shrink-0 text-[10px]">
-                          {m.quotaPercentage}%
-                        </Badge>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              ))}
             </div>
-
-            {/* Actions & Live Progress */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-              <div className="flex items-center gap-2 text-xs">
-                {isRunning && (
-                  <div className="text-primary flex items-center gap-2 font-medium">
-                    <Loader2 size={14} className="animate-spin" />
-                    <span>{currentProgress}</span>
-                  </div>
-                )}
-                {!isRunning && (
-                  <span className="text-muted-foreground">
-                    {t('playground.selected-models-count', { count: checkedModelIds.length })}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {isRunning ? (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleStop}
-                    className="h-8 gap-1.5 text-xs"
-                  >
-                    <StopCircle size={14} />
-                    {t('playground.stop-benchmark')}
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    onClick={handleRun}
-                    disabled={checkedModelIds.length === 0 || !prompt.trim()}
-                    className="h-8 gap-1.5 text-xs font-medium"
-                  >
-                    <Play size={14} />
-                    {t('playground.run-benchmark')}
-                  </Button>
-                )}
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="benchmark-reasoning">{t('playground.reasoning-level')}</Label>
+              <Select
+                value={reasoning}
+                disabled={isRunning}
+                onValueChange={(value) => {
+                  const parsed = PlaygroundReasoningEffortSchema.safeParse(value);
+                  if (parsed.success) {
+                    setReasoning(parsed.data);
+                  }
+                }}
+              >
+                <SelectTrigger id="benchmark-reasoning">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PlaygroundReasoningEffortSchema.options.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {t(`playground.reasoning-${value}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Summary KPI Cards */}
-        {completedRows.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <Card className="border p-3 shadow-xs">
-              <div className="text-muted-foreground flex items-center gap-1 text-[11px] font-medium">
-                <CheckCircle2 size={12} className="text-emerald-500" />
-                <span>{t('playground.passed-failed')}</span>
-              </div>
-              <div className="text-foreground mt-1 text-lg font-bold">
-                <span className="text-emerald-600 dark:text-emerald-400">{successRows.length}</span>
-                <span className="text-muted-foreground mx-1 text-xs font-normal">/</span>
-                <span
-                  className={failedRows.length > 0 ? 'text-destructive' : 'text-muted-foreground'}
-                >
-                  {failedRows.length}
-                </span>
-              </div>
-            </Card>
-
-            <Card className="border p-3 shadow-xs">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="text-muted-foreground flex cursor-help items-center gap-1 text-[11px] font-medium">
-                    <Timer size={12} className="text-blue-500" />
-                    <span className="decoration-muted-foreground/40 underline decoration-dotted underline-offset-2">
-                      {t('playground.avg-ttft')}
-                    </span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div className="font-semibold">TTFT (Time-to-First-Token)</div>
-                  <div>{t('playground.tooltip-ttft')}</div>
-                </TooltipContent>
-              </Tooltip>
-              <div className="text-foreground mt-1 text-lg font-bold">
-                {avgTtft !== null ? formatTtftSeconds(avgTtft) : '-'}
-              </div>
-            </Card>
-
-            <Card className="border p-3 shadow-xs">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="text-muted-foreground flex cursor-help items-center gap-1 text-[11px] font-medium">
-                    <Zap size={12} className="text-amber-500" />
-                    <span className="decoration-muted-foreground/40 underline decoration-dotted underline-offset-2">
-                      {t('playground.avg-gen-speed')}
-                    </span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div className="font-semibold">{t('playground.gen-speed')}</div>
-                  <div>{t('playground.tooltip-gen-speed')}</div>
-                </TooltipContent>
-              </Tooltip>
-              <div className="mt-1 text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                {avgGenSpeed !== null ? `${avgGenSpeed} tok/s` : '-'}
-              </div>
-            </Card>
-
-            <Card className="border p-3 shadow-xs">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="text-muted-foreground flex cursor-help items-center gap-1 text-[11px] font-medium">
-                    <Gauge size={12} className="text-purple-500" />
-                    <span className="decoration-muted-foreground/40 underline decoration-dotted underline-offset-2">
-                      {t('playground.avg-e2e-speed')}
-                    </span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div className="font-semibold">E2E (End-to-End)</div>
-                  <div>{t('playground.tooltip-e2e-speed')}</div>
-                </TooltipContent>
-              </Tooltip>
-              <div className="text-foreground mt-1 text-lg font-bold">
-                {avgE2eSpeed !== null ? `${avgE2eSpeed} tok/s` : '-'}
-              </div>
-            </Card>
-
-            <Card className="col-span-1 border p-3 shadow-xs sm:col-span-1 lg:col-span-1">
-              <div className="text-muted-foreground flex items-center gap-1 truncate text-[11px] font-medium">
-                <Sparkles size={12} className="text-amber-500" />
-                <span>{t('playground.fastest-gen')}</span>
-              </div>
-              <div
-                className="mt-1 truncate text-xs font-semibold"
-                title={fastestGenModel?.modelName}
-              >
-                {fastestGenModel ? `${fastestGenModel.generationTokensPerSec} tok/s` : '-'}
-              </div>
-              <div className="text-muted-foreground truncate text-[10px]">
-                {fastestGenModel?.modelName ?? ''}
-              </div>
-            </Card>
-
-            <Card className="col-span-1 border p-3 shadow-xs sm:col-span-1 lg:col-span-1">
-              <div className="text-muted-foreground flex items-center gap-1 truncate text-[11px] font-medium">
-                <Clock size={12} className="text-blue-500" />
-                <span>{t('playground.fastest-ttft')}</span>
-              </div>
-              <div
-                className="mt-1 truncate text-xs font-semibold"
-                title={fastestTtftModel?.modelName}
-              >
-                {fastestTtftModel?.ttftMs !== undefined
-                  ? formatTtftSeconds(fastestTtftModel.ttftMs)
-                  : '-'}
-              </div>
-              <div className="text-muted-foreground truncate text-[10px]">
-                {fastestTtftModel?.modelName ?? ''}
-              </div>
-            </Card>
           </div>
-        )}
-
-        {/* Benchmark Results Table */}
-        {rows.length > 0 && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
-                <CardTitle className="text-sm font-semibold">
-                  {t('playground.benchmark-results-title')}
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  {t('playground.benchmark-results-desc')}
-                </CardDescription>
-              </div>
-
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="benchmark-prompt">{t('playground.benchmark-prompt')}</Label>
               <Button
-                type="button"
-                variant="outline"
                 size="sm"
-                onClick={handleCopyMarkdownReport}
-                disabled={completedRows.length === 0}
-                className="h-8 gap-1.5 text-xs"
+                variant="ghost"
+                disabled={isRunning}
+                onClick={() => setPrompt(DEFAULT_PROMPT)}
               >
-                {copiedReport ? <Check size={13} /> : <Copy size={13} />}
-                {copiedReport ? t('proxy.copied') : t('playground.copy-markdown')}
+                {t('playground.reset-prompt')}
               </Button>
-            </CardHeader>
-
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-xs">
-                  <thead>
-                    <tr className="bg-muted/40 text-muted-foreground border-y text-[10px] font-medium tracking-wider uppercase">
-                      <th className="px-3 py-2.5">{t('playground.model')}</th>
-
-                      <th className="px-3 py-2.5">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="decoration-muted-foreground/40 cursor-help underline decoration-dotted underline-offset-2">
-                              {t('playground.quota-left')}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>{t('playground.tooltip-quota')}</TooltipContent>
-                        </Tooltip>
-                      </th>
-
-                      <th className="px-3 py-2.5">{t('playground.status')}</th>
-
-                      <th className="px-3 py-2.5">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="decoration-muted-foreground/40 cursor-help underline decoration-dotted underline-offset-2">
-                              TTFT ({t('playground.seconds-short')})
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <div className="font-semibold">TTFT (Time-to-First-Token)</div>
-                            <div>{t('playground.tooltip-ttft')}</div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </th>
-
-                      <th className="px-3 py-2.5">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="decoration-muted-foreground/40 cursor-help underline decoration-dotted underline-offset-2">
-                              {t('playground.gen-speed')}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <div className="font-semibold">{t('playground.gen-speed')}</div>
-                            <div>{t('playground.tooltip-gen-speed')}</div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </th>
-
-                      <th className="px-3 py-2.5">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="decoration-muted-foreground/40 cursor-help underline decoration-dotted underline-offset-2">
-                              {t('playground.e2e-speed')}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <div className="font-semibold">E2E (End-to-End)</div>
-                            <div>{t('playground.tooltip-e2e-speed')}</div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </th>
-
-                      <th className="px-3 py-2.5">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="decoration-muted-foreground/40 cursor-help underline decoration-dotted underline-offset-2">
-                              {t('playground.tokens-total')}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>{t('playground.tooltip-tokens')}</TooltipContent>
-                        </Tooltip>
-                      </th>
-
-                      <th className="px-3 py-2.5 text-right">{t('playground.view')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-border divide-y">
-                    {rows.map((row) => {
-                      const isSuccess = row.status === 'success';
-                      const isRunningRow = row.status === 'running';
-                      const isError = row.status === 'error';
-                      const isSkipped = row.status === 'skipped';
-
-                      return (
-                        <tr
-                          key={row.modelId}
-                          className={`hover:bg-muted/30 transition-colors ${
-                            isRunningRow ? 'bg-primary/5 dark:bg-primary/10' : ''
-                          }`}
-                        >
-                          <td className="px-3 py-2.5 font-medium">
-                            <div className="flex items-center gap-2">
-                              <Cpu size={13} className="text-muted-foreground shrink-0" />
-                              <span className="max-w-[180px] truncate" title={row.modelId}>
-                                {row.modelName}
-                              </span>
-                            </div>
-                          </td>
-
-                          <td className="px-3 py-2.5">
-                            {row.quotaPercentage !== undefined ? (
-                              <Badge variant="outline" className="text-[10px]">
-                                {row.quotaPercentage}%
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </td>
-
-                          <td className="px-3 py-2.5">
-                            {isRunningRow && (
-                              <Badge
-                                variant="outline"
-                                className="text-primary border-primary/40 animate-pulse gap-1 text-[10px]"
-                              >
-                                <Loader2 size={10} className="animate-spin" />
-                                <span>{t('playground.running')}</span>
-                              </Badge>
-                            )}
-                            {isSuccess && (
-                              <Badge
-                                variant="default"
-                                className="bg-emerald-600 text-[10px] font-medium hover:bg-emerald-600"
-                              >
-                                200 OK
-                              </Badge>
-                            )}
-                            {isError && (
-                              <Badge variant="destructive" className="text-[10px] font-medium">
-                                {row.httpStatus ? `HTTP ${row.httpStatus}` : 'Error'}
-                              </Badge>
-                            )}
-                            {isSkipped && (
-                              <Badge
-                                variant="outline"
-                                className="text-muted-foreground text-[10px]"
-                              >
-                                {t('playground.skipped')}
-                              </Badge>
-                            )}
-                            {row.status === 'idle' && (
-                              <Badge
-                                variant="outline"
-                                className="text-muted-foreground text-[10px]"
-                              >
-                                {t('playground.pending')}
-                              </Badge>
-                            )}
-                          </td>
-
-                          <td className="px-3 py-2.5 font-mono">
-                            {row.ttftMs !== undefined ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="decoration-muted-foreground/40 cursor-help underline decoration-dotted underline-offset-2">
-                                    {formatTtftSeconds(row.ttftMs)}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>{row.ttftMs} ms</TooltipContent>
-                              </Tooltip>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-
-                          <td className="px-3 py-2.5 font-mono font-semibold">
-                            {row.generationTokensPerSec !== undefined ? (
-                              <span
-                                className={
-                                  row.generationTokensPerSec >= 50
-                                    ? 'text-emerald-600 dark:text-emerald-400'
-                                    : row.generationTokensPerSec >= 25
-                                      ? 'text-blue-600 dark:text-blue-400'
-                                      : 'text-muted-foreground'
-                                }
-                              >
-                                {row.generationTokensPerSec} tok/s
-                              </span>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-
-                          <td className="px-3 py-2.5 font-mono">
-                            {row.e2eTokensPerSec !== undefined ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="decoration-muted-foreground/40 cursor-help underline decoration-dotted underline-offset-2">
-                                    {row.e2eTokensPerSec} tok/s
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {t('playground.total-latency')}: {row.durationMs ?? '-'}ms
-                                </TooltipContent>
-                              </Tooltip>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-
-                          <td className="text-muted-foreground px-3 py-2.5 font-mono">
-                            {row.totalTokens !== undefined ? (
-                              <span
-                                title={`Prompt: ${row.promptTokens ?? 0}, Completion: ${row.completionTokens ?? 0}`}
-                              >
-                                {row.promptTokens ?? 0} / {row.completionTokens ?? 0}
-                              </span>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-
-                          <td className="px-3 py-2.5 text-right">
-                            {(row.content || row.error) && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setInspectedRow(row)}
-                                className="h-7 w-7 p-0"
-                                title={t('playground.view-response')}
-                              >
-                                <Eye size={13} />
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Response Inspection Dialog */}
-        <Dialog
-          open={inspectedRow !== null}
-          onOpenChange={(open) => !open && setInspectedRow(null)}
-        >
-          <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
-                <Cpu size={15} />
-                <span>{inspectedRow?.modelName}</span>
-                <Badge
-                  variant={inspectedRow?.status === 'success' ? 'default' : 'destructive'}
-                  className="ml-1 text-[10px] font-normal"
-                >
-                  {inspectedRow?.status === 'success'
-                    ? '200 OK'
-                    : `Error ${inspectedRow?.httpStatus}`}
-                </Badge>
-              </DialogTitle>
-              <DialogDescription className="text-xs">
-                {inspectedRow && (
-                  <span>
-                    Latency: {inspectedRow.durationMs}ms | TTFT:{' '}
-                    {formatTtftSeconds(inspectedRow.ttftMs)} | Gen:{' '}
-                    {inspectedRow.generationTokensPerSec ?? '-'} tok/s | Tokens:{' '}
-                    {inspectedRow.completionTokens ?? '-'}
-                  </span>
-                )}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="flex-1 space-y-3 overflow-y-auto py-2 text-xs">
-              {inspectedRow?.error && (
-                <div className="bg-destructive/10 border-destructive/20 text-destructive flex items-start gap-2 rounded-md border p-3">
-                  <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                  <div className="break-words whitespace-pre-wrap">{inspectedRow.error}</div>
-                </div>
-              )}
-
-              {inspectedRow?.thinkingContent && (
-                <div className="bg-muted/40 text-muted-foreground rounded-md border p-3 font-mono text-[11px] break-words whitespace-pre-wrap">
-                  <div className="mb-1 font-semibold text-amber-700 dark:text-amber-400">
-                    Thinking Process:
-                  </div>
-                  {inspectedRow.thinkingContent}
-                </div>
-              )}
-
-              {inspectedRow?.content && (
-                <div className="bg-background rounded-md border p-3 text-sm leading-relaxed break-words whitespace-pre-wrap">
-                  {inspectedRow.content}
-                </div>
-              )}
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </TooltipProvider>
+            <textarea
+              id="benchmark-prompt"
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              disabled={isRunning}
+              rows={2}
+              className="border-input bg-background focus-visible:ring-ring w-full rounded-md border p-2 text-sm focus-visible:ring-2"
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm">
+              {t('playground.models-to-test', { count: models.length })}
+            </span>
+            <div>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={isRunning}
+                onClick={() => select(models.map((model) => model.id))}
+              >
+                {t('playground.select-all')}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={isRunning} onClick={() => select([])}>
+                {t('playground.clear-all')}
+              </Button>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {models.map((model) => (
+              <label
+                key={model.id}
+                className="flex cursor-pointer items-center gap-2 rounded-md border p-3 text-xs"
+              >
+                <Checkbox
+                  aria-label={model.name}
+                  checked={checkedIds.includes(model.id)}
+                  disabled={isRunning}
+                  onCheckedChange={(checked) =>
+                    select(
+                      checked
+                        ? [...checkedIds, model.id]
+                        : checkedIds.filter((id) => id !== model.id),
+                    )
+                  }
+                />
+                <span className="min-w-0 flex-1 truncate" title={model.name}>
+                  {model.name}
+                </span>
+                {model.quotaPercentage !== undefined && <span>{model.quotaPercentage}%</span>}
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+            <span role="status" className="text-muted-foreground text-xs">
+              {isRunning
+                ? progress
+                : t('playground.selected-models-count', { count: checkedIds.length })}
+            </span>
+            {isRunning ? (
+              <Button variant="destructive" onClick={stop}>
+                <StopCircle size={14} />
+                {t('playground.stop-benchmark')}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => void run()}
+                disabled={!account || !checkedIds.length || !prompt.trim()}
+              >
+                <Play size={14} />
+                {t('playground.run-benchmark')}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      <BenchmarkResults rows={rows} accountName={reportAccount} />
+    </div>
   );
-};
+}

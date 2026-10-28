@@ -12,15 +12,15 @@ export function createPlaygroundRouter(service: PlaygroundService = playgroundSe
     execute: os
       .input(PlaygroundExecuteInputSchema)
       .output(PlaygroundExecuteResultSchema)
-      .handler(async ({ input }) => {
-        return service.execute(input);
+      .handler(async ({ input, signal }) => {
+        return service.execute(input, signal);
       }),
 
     compare: os
       .input(PlaygroundCompareInputSchema)
       .output(PlaygroundCompareResultSchema)
-      .handler(async ({ input }) => {
-        return service.compare(input);
+      .handler(async ({ input, signal }) => {
+        return service.compare(input, signal);
       }),
   });
 }

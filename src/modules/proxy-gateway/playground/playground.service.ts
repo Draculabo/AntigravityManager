@@ -2,6 +2,7 @@ import axios from 'axios';
 import { z } from 'zod';
 import { getServerConfig } from '@/server/server-config';
 import { getNestServerStatus } from '@/server/main';
+import { buildPlaygroundRequest } from './playground-request';
 import type {
   PlaygroundCompareInput,
   PlaygroundCompareResult,
@@ -9,26 +10,33 @@ import type {
   PlaygroundExecuteResult,
 } from './playground.schema';
 
-const GatewayMessageSchema = z.object({
-  role: z.string().optional(),
-  content: z.string().nullable().optional(),
-  reasoning_content: z.string().optional(),
-  thinking: z.string().optional(),
-});
+const GatewayMessageSchema = z
+  .object({
+    role: z.string().optional(),
+    content: z.string().nullable().optional(),
+    reasoning_content: z.string().optional(),
+    thinking: z.string().optional(),
+  })
+  .refine(
+    (message) =>
+      message.content !== undefined ||
+      message.reasoning_content !== undefined ||
+      message.thinking !== undefined,
+  );
 
 const GatewayChoiceSchema = z.object({
-  message: GatewayMessageSchema.optional(),
+  message: GatewayMessageSchema,
 });
 
 const GatewayUsageSchema = z.object({
-  prompt_tokens: z.number().int().optional(),
-  completion_tokens: z.number().int().optional(),
-  total_tokens: z.number().int().optional(),
+  prompt_tokens: z.number().int().nonnegative().optional(),
+  completion_tokens: z.number().int().nonnegative().optional(),
+  total_tokens: z.number().int().nonnegative().optional(),
 });
 
 const GatewayCompletionPayloadSchema = z.object({
   model: z.string().optional(),
-  choices: z.array(GatewayChoiceSchema).optional(),
+  choices: z.array(GatewayChoiceSchema).min(1),
   usage: GatewayUsageSchema.optional(),
 });
 
@@ -41,7 +49,18 @@ const GatewayErrorPayloadSchema = z.object({
 });
 
 export class PlaygroundService {
-  async execute(input: PlaygroundExecuteInput): Promise<PlaygroundExecuteResult> {
+  async execute(
+    input: PlaygroundExecuteInput,
+    signal?: AbortSignal,
+  ): Promise<PlaygroundExecuteResult> {
+    return { ...(await this.executeRequest(input, signal)), request: input };
+  }
+
+  private async executeRequest(
+    input: PlaygroundExecuteInput,
+    signal?: AbortSignal,
+  ): Promise<PlaygroundExecuteResult> {
+    signal?.throwIfAborted();
     const status = await getNestServerStatus();
     if (!status.running) {
       return {
@@ -68,34 +87,15 @@ export class PlaygroundService {
       headers['x-antigravity-account-id'] = targetAccount;
     }
 
-    const messages: Array<{ role: string; content: string }> = [];
-    if (input.systemPrompt?.trim()) {
-      messages.push({ role: 'system', content: input.systemPrompt.trim() });
-    }
-    messages.push({ role: 'user', content: input.prompt });
-
-    const body: Record<string, unknown> = {
-      model: input.model,
-      messages,
-      stream: false,
-    };
-    if (typeof input.temperature === 'number') {
-      body.temperature = input.temperature;
-    }
-    if (typeof input.maxTokens === 'number') {
-      body.max_tokens = input.maxTokens;
-    }
-    if (input.reasoningEffort === 'off') {
-      body.thinking = { type: 'disabled', budget_tokens: 0 };
-    } else if (input.reasoningEffort && input.reasoningEffort !== 'default') {
-      body.reasoning_effort = input.reasoningEffort;
-      body.thinking = { type: 'enabled', effort: input.reasoningEffort };
-    }
+    const body = buildPlaygroundRequest(input);
 
     const startTime = performance.now();
     try {
       const response = await axios.post(`${status.base_url}/v1/chat/completions`, body, {
         headers,
+        timeout: Math.max(1, config?.request_timeout ?? 120) * 1000,
+        signal,
+        proxy: false,
         validateStatus: () => true,
       });
 
@@ -120,7 +120,9 @@ export class PlaygroundService {
       const attributedAccountEmail = getHeader('x-antigravity-account-email') || undefined;
 
       const ttftHeader = getHeader('x-timing-ttft-ms');
-      const ttftMs = ttftHeader ? Math.round(Number.parseFloat(ttftHeader)) : undefined;
+      const parsedTtft = ttftHeader ? Number.parseFloat(ttftHeader) : NaN;
+      const ttftMs =
+        Number.isFinite(parsedTtft) && parsedTtft >= 0 ? Math.round(parsedTtft) : undefined;
 
       if (response.status < 200 || response.status >= 300) {
         let errorMsg = `HTTP ${response.status} ${response.statusText || 'Error'}`;
@@ -143,7 +145,19 @@ export class PlaygroundService {
       }
 
       const parsedJson = GatewayCompletionPayloadSchema.safeParse(response.data);
-      const json = parsedJson.success ? parsedJson.data : {};
+      if (!parsedJson.success) {
+        return {
+          success: false,
+          content: '',
+          model: input.model,
+          durationMs,
+          status: 502,
+          attributedAccountId,
+          attributedAccountEmail,
+          error: 'Invalid completion response from API Proxy.',
+        };
+      }
+      const json = parsedJson.data;
       const message = json.choices?.[0]?.message;
       const content = message?.content ?? '';
       const thinkingContent = message?.reasoning_content || message?.thinking || undefined;
@@ -197,12 +211,19 @@ export class PlaygroundService {
     }
   }
 
-  async compare(input: PlaygroundCompareInput): Promise<PlaygroundCompareResult> {
-    const promises = input.accountIds.map((accountId) =>
-      this.execute({
-        ...input,
-        accountId: accountId.trim() || undefined,
-      }),
+  async compare(
+    input: PlaygroundCompareInput,
+    signal?: AbortSignal,
+  ): Promise<PlaygroundCompareResult> {
+    const { accountIds, ...parameters } = input;
+    const promises = accountIds.map((accountId) =>
+      this.execute(
+        {
+          ...parameters,
+          accountId: accountId.trim() || undefined,
+        },
+        signal,
+      ),
     );
     const results = await Promise.all(promises);
     return { results };

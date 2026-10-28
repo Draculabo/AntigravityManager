@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { PlaygroundExecuteResult } from '../playground.schema';
+import { buildPlaygroundCurl } from '../playground-request';
 
 interface PlaygroundResponseCardProps {
   result: PlaygroundExecuteResult;
@@ -29,7 +30,6 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
   result,
   selectedAccountEmail,
   baseUrl,
-  apiKey,
 }) => {
   const { t } = useTranslation();
   const [copiedResponse, setCopiedResponse] = useState(false);
@@ -68,15 +68,10 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
   };
 
   const onCopyCurl = async () => {
-    const key = apiKey || 'YOUR_API_KEY';
-    const accountHeader = result.attributedAccountId
-      ? ` \\\n  -H "x-antigravity-account-id: ${result.attributedAccountId}"`
-      : '';
-    const curlCommand = `curl ${baseUrl}/v1/chat/completions \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer ${key}"${accountHeader} \\
-  -d '{"model":"${result.model}","messages":[{"role":"user","content":"${result.content ? 'Hello' : 'Hello'}"}]}'`;
-
+    if (!result.request) {
+      return;
+    }
+    const curlCommand = buildPlaygroundCurl(result.request, baseUrl, result.attributedAccountId);
     await navigator.clipboard.writeText(curlCommand);
     setCopiedCurl(true);
     setTimeout(() => setCopiedCurl(false), 2000);
@@ -200,6 +195,7 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
               variant="ghost"
               size="sm"
               onClick={onCopyCurl}
+              disabled={!result.request}
               className="text-muted-foreground hover:text-foreground h-8 gap-1.5 text-xs"
             >
               {copiedCurl ? <Check size={13} /> : <Terminal size={13} />}

@@ -3,8 +3,91 @@ import axios from 'axios';
 import { PlaygroundService } from '@/modules/proxy-gateway/playground/playground.service';
 import * as mainServer from '@/server/main';
 import * as serverConfig from '@/server/server-config';
+import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { createPlaygroundRouter } from '@/modules/proxy-gateway/playground/playground.router';
+import { createRouterClient } from '@orpc/server';
 
 describe('PlaygroundService', () => {
+  it('propagates cancellation and the configured deadline through the router to HTTP', async () => {
+    vi.spyOn(mainServer, 'getNestServerStatus').mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 1,
+    });
+    vi.spyOn(serverConfig, 'getServerConfig').mockReturnValue({
+      ...DEFAULT_APP_CONFIG.proxy,
+      request_timeout: 37,
+    });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let forwardedSignal: AbortSignal | undefined;
+    const post = vi.spyOn(axios, 'post').mockImplementation((_url, _body, config) => {
+      forwardedSignal = config?.signal as AbortSignal;
+      markStarted();
+      return new Promise((_resolve, reject) => {
+        forwardedSignal?.addEventListener('abort', () => reject(new axios.CanceledError()), {
+          once: true,
+        });
+      });
+    });
+    const controller = new AbortController();
+    const client = createRouterClient(createPlaygroundRouter(new PlaygroundService()));
+    const execution = client.execute(
+      { model: 'gemini-3-flash', prompt: 'Hi' },
+      { signal: controller.signal },
+    );
+    await started;
+    expect(post.mock.calls[0][2]).toMatchObject({ timeout: 37000, proxy: false });
+    controller.abort();
+    await execution.catch(() => undefined);
+    expect(forwardedSignal?.aborted).toBe(true);
+  });
+
+  it('returns validated comparison results through the public router', async () => {
+    vi.spyOn(mainServer, 'getNestServerStatus').mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 1,
+    });
+    vi.spyOn(axios, 'post').mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: { choices: [{ message: { content: 'Hello' } }] },
+    });
+    const client = createRouterClient(createPlaygroundRouter(new PlaygroundService()));
+    const response = await client.compare({
+      model: 'gemini-3-flash',
+      prompt: 'Hi',
+      accountIds: ['a', 'b'],
+    });
+    expect(response.results.map((entry) => entry.request?.accountId)).toEqual(['a', 'b']);
+    expect(response.results.every((entry) => entry.success)).toBe(true);
+  });
+
+  it.each([{}, { choices: [] }, { choices: [{ message: { content: 42 } }] }, '<html>Error</html>'])(
+    'rejects malformed successful gateway payloads: %j',
+    async (data) => {
+      vi.spyOn(mainServer, 'getNestServerStatus').mockResolvedValue({
+        running: true,
+        port: 8045,
+        base_url: 'http://localhost:8045',
+        active_accounts: 1,
+      });
+      vi.spyOn(axios, 'post').mockResolvedValue({ status: 200, headers: {}, data });
+      const result = await new PlaygroundService().execute({
+        model: 'gemini-3-flash',
+        prompt: 'Hi',
+      });
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(502);
+      expect(result.error).toBe('Invalid completion response from API Proxy.');
+    },
+  );
+
   let service: PlaygroundService;
 
   beforeEach(() => {

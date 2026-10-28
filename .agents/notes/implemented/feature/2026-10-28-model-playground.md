@@ -39,6 +39,16 @@ Introduce an in-app **Model Playground** accessible via the `/playground` route 
 
 ## Consequences
 
+- Targeting overrides account choice, not account eligibility: exclusions, cooldowns, model limits
+  and depleted quota remain enforced. Image scheduling waits for the pinned account's capacity.
+- Dual and benchmark runs own an AbortController. Stop and unmount abort the IPC/HTTP call; each
+  completion also checks run identity so a cancelled response cannot replace a later result.
+  Provider work already accepted may still consume quota; cancellation does not promise rollback.
+- Execution and cURL export share the request builder. Results retain the submitted parameters,
+  not current form values, and exports use a credential placeholder.
+- Gateway startup reuses the existing risk-confirmation UI. Domain start failures do not produce
+  a success notification. Invalid completion payloads produce a 502 result.
+
 - The sidebar gains a `Playground` navigation item across all supported languages (en, ru, zh-CN, fr, tr, vi).
 - Any client (or cURL) can target a specific account using `-H "x-antigravity-account-id: <account-id-or-email>"`.
 - Requests executed through the playground naturally record in the gateway's Traffic Monitor and Thought Store.
