@@ -62,10 +62,7 @@ export class TrafficAuditRetention {
           .prepare<
             [string],
             { id: string }
-          >(
-            'SELECT p.id FROM audit_payloads p JOIN request_logs r ON r.id=p.request_id ' +
-              'WHERE r.traffic_class=? AND p.stored_bytes>0 ORDER BY p.created_at ASC LIMIT 5',
-          )
+          >('SELECT p.id FROM audit_payloads p JOIN request_logs r ON r.id=p.request_id ' + 'WHERE r.traffic_class=? AND p.stored_bytes>0 ORDER BY p.created_at ASC LIMIT 5')
           .all(trafficClass);
         if (bodies.length === 0) {
           break;

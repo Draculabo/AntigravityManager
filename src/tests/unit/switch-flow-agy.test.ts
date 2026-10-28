@@ -114,6 +114,7 @@ describe('executeSwitchFlow for agy CLI', () => {
     expect(closeAntigravity).toHaveBeenCalledWith(
       expect.objectContaining({ target: 'classic' }),
       10000,
+      expect.objectContaining({ forceAfterTimeout: true }),
     );
     expect(startAntigravity).not.toHaveBeenCalled();
     expect(afterSwitchSuccess).not.toHaveBeenCalled();
