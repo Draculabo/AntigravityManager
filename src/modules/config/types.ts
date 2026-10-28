@@ -21,7 +21,7 @@ export const GlobalSystemPromptConfigSchema = z.object({
 
 export const TrafficAuditConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  max_disk_mib: z.number().int().min(128).max(16_384).default(1024),
+  max_disk_mib: z.number().int().min(128).max(16_384).default(256),
   body_retention_hours: z
     .number()
     .int()
@@ -86,7 +86,7 @@ export const ProxyConfigSchema = z.object({
   }),
   traffic_audit: TrafficAuditConfigSchema.default({
     enabled: true,
-    max_disk_mib: 1024,
+    max_disk_mib: 256,
     body_retention_hours: 24,
     summary_retention_days: 30,
     max_rows: 100_000,
@@ -209,7 +209,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     },
     traffic_audit: {
       enabled: true,
-      max_disk_mib: 1024,
+      max_disk_mib: 256,
       body_retention_hours: 24,
       summary_retention_days: 30,
       max_rows: 100_000,

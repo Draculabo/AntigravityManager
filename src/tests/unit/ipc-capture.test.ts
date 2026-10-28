@@ -170,23 +170,27 @@ describe('remote IPC capture', () => {
     owner.closeAdmission();
     await owner.drain();
   });
-  it.each(['gateway/auditList', 'gateway/thoughtRecord', 'config/read', 'gateway/syncOpenCode'])(
-    'preserves exclusion %s',
-    async (path) => {
-      const { owner, source } = fixture();
-      const begin = await owner.begin({ ...metadata, path });
-      expect(begin.captured).toBe(false);
-      await owner.run(begin.capability, async () => {
-        expect(getTrafficAuditRequestContext()?.parent).toBeNull();
-        expect(getTrafficAuditRequestContext()?.thoughtSessionStable).toBe(true);
-      });
-      await owner.finish({ capability: begin.capability, outcome: 'completed', error: null });
-      expect(source.startParent).not.toHaveBeenCalled();
-      expect(source.beginPreparedParentPayload).not.toHaveBeenCalled();
-      owner.closeAdmission();
-      await owner.drain();
-    },
-  );
+  it.each([
+    'gateway/auditList',
+    'gateway/thoughtRecord',
+    'config/read',
+    'gateway/syncOpenCode',
+    'proc/getOperation',
+    'gateway/status',
+  ])('preserves exclusion %s', async (path) => {
+    const { owner, source } = fixture();
+    const begin = await owner.begin({ ...metadata, path });
+    expect(begin.captured).toBe(false);
+    await owner.run(begin.capability, async () => {
+      expect(getTrafficAuditRequestContext()?.parent).toBeNull();
+      expect(getTrafficAuditRequestContext()?.thoughtSessionStable).toBe(true);
+    });
+    await owner.finish({ capability: begin.capability, outcome: 'completed', error: null });
+    expect(source.startParent).not.toHaveBeenCalled();
+    expect(source.beginPreparedParentPayload).not.toHaveBeenCalled();
+    owner.closeAdmission();
+    await owner.drain();
+  });
   it('rejects reordered, invalid UTF-8, noncanonical and wrong-owner chunks', async () => {
     const { owner } = fixture();
     const begin = await owner.begin(metadata);

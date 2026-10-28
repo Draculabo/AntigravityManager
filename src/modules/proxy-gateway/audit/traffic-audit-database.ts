@@ -128,6 +128,7 @@ export function initializeTrafficAuditSchema(database: Database.Database): void 
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_attempt_parent_order ON upstream_attempts(parent_id,attempt_index);' +
       'CREATE INDEX IF NOT EXISTS idx_payload_request_created ON audit_payloads(request_id,created_at);' +
       'CREATE INDEX IF NOT EXISTS idx_payload_retention ON audit_payloads(state,created_at);' +
+      'CREATE INDEX IF NOT EXISTS idx_payload_stored_bytes ON audit_payloads(stored_bytes,created_at);' +
       "INSERT INTO schema_meta(key,value) VALUES('schema_version','4') " +
       "ON CONFLICT(key) DO UPDATE SET value='4';" +
       "INSERT INTO schema_meta(key,value) VALUES('layout','classified-chunked-payload-v4') " +

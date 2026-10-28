@@ -84,6 +84,8 @@ describe('IPC audit recording and drain', () => {
     ['gateway', 'thoughtRecord'],
     ['config', 'read'],
     ['gateway', 'syncOpenCode'],
+    ['proc', 'getOperation'],
+    ['gateway', 'status'],
   ])('preserves the audit-management exclusion for %j', async (...path) => {
     const { source, recorder } = fixture();
     await recorder.run(path, null, async () => {
