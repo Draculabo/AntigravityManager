@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   stop: vi.fn(),
   share: vi.fn(),
   account: vi.fn(),
+  observe: vi.fn(),
+  extensions: vi.fn(),
 }));
 
 vi.mock('@/modules/antigravity-runtime/launchContext', () => ({
@@ -22,8 +24,8 @@ vi.mock('@/modules/antigravity-runtime/launchContext', () => ({
 }));
 vi.mock('@/modules/antigravity-runtime', async () => ({
   canonicalPath: (value: string) => path.resolve(value).toLowerCase(),
-  getProcessUserDataDir: vi.fn(),
-  observeProcesses: vi.fn(),
+  getProcessUserDataDir: (process: { args: string[] }) => process.args[0] ?? null,
+  observeProcesses: state.observe,
   buildAntigravityCredentialPayload: () => '{}',
   prepareClientAccountWrite: state.prepareWrite,
   prepareLaunchContext: state.prepare,
@@ -32,7 +34,7 @@ vi.mock('@/modules/antigravity-runtime', async () => ({
   startFromContext: state.start,
   stopFromContext: state.stop,
 }));
-vi.mock('@/shared/platform/paths', () => ({ getAntigravityExtensionsDir: () => '/extensions' }));
+vi.mock('@/shared/platform/paths', () => ({ getAntigravityExtensionsDir: state.extensions }));
 vi.mock('@/modules/workspace/persistence/workspace-profile-repo', () => ({
   WorkspaceProfileRepo: {},
 }));
@@ -73,6 +75,8 @@ describe('workspace lifecycle ownership', () => {
     state.write.mockResolvedValue(undefined);
     state.start.mockResolvedValue({ pid: 100 });
     state.account.mockResolvedValue({ email: 'a@example.invalid', token: {} });
+    state.share.mockReturnValue({ complete: true, failedSteps: [] });
+    state.extensions.mockReturnValue('/extensions');
     vi.spyOn(fs, 'symlinkSync').mockImplementation(() => {
       throw new Error('fixture link disabled');
     });
@@ -132,7 +136,10 @@ describe('workspace lifecycle ownership', () => {
     finishWrite();
     await expect(Promise.all([first, second])).resolves.toEqual([{ pid: 100 }, { pid: 100 }]);
     expect(state.write).toHaveBeenCalledTimes(1);
-    expect(state.start).toHaveBeenCalledExactlyOnceWith(context);
+    expect(state.start).toHaveBeenCalledExactlyOnceWith({
+      ...context,
+      extensionsDir: '/extensions',
+    });
     expect(state.prepareWrite).toHaveBeenCalledExactlyOnceWith(
       { email: 'a@example.invalid', name: 'a@example.invalid', token: {} },
       'ide',
@@ -146,6 +153,119 @@ describe('workspace lifecycle ownership', () => {
     await expect(service(profile).stop(profile.id)).rejects.toThrow('observation unavailable');
     expect(state.stop).not.toHaveBeenCalled();
     release = reserveSwitch('ide');
+  });
+
+  it('stops, saves and restarts a changed binding under one operation lease', async () => {
+    const events: string[] = [];
+    state.prepare.mockResolvedValueOnce({ ...context, processes: [{ pid: 42 }] });
+    state.stop.mockImplementationOnce(async () => {
+      events.push('stop');
+    });
+    state.write.mockImplementationOnce(async () => {
+      events.push('write');
+    });
+    state.start.mockImplementationOnce(async () => {
+      events.push('start');
+      return { pid: 100 };
+    });
+    const updated = { ...profile, accountId: 'account-b' };
+    const persist = vi.fn(async () => {
+      expect(() => reserveSwitch('ide')).toThrow();
+      events.push('persist');
+      return updated;
+    });
+    await expect(
+      service(profile).applyUpdate(profile.id, { id: profile.id, accountId: 'account-b' }, persist),
+    ).resolves.toEqual(updated);
+    expect(events).toEqual(['stop', 'persist', 'write', 'start']);
+    expect(state.account).toHaveBeenCalledWith('account-b');
+  });
+
+  it('does not save a new binding when stopping the old instance fails', async () => {
+    state.prepare.mockResolvedValueOnce({ ...context, processes: [{ pid: 42 }] });
+    state.stop.mockRejectedValueOnce(new Error('exit unconfirmed'));
+    const persist = vi.fn();
+    await expect(
+      service(profile).applyUpdate(profile.id, { id: profile.id, accountId: 'account-b' }, persist),
+    ).rejects.toThrow('exit unconfirmed');
+    expect(persist).not.toHaveBeenCalled();
+    expect(state.write).not.toHaveBeenCalled();
+  });
+
+  it('saves name-only edits without observing or restarting the IDE', async () => {
+    const updated = { ...profile, name: 'Renamed' };
+    await expect(
+      service(profile).applyUpdate(
+        profile.id,
+        { id: profile.id, name: 'Renamed' },
+        async () => updated,
+      ),
+    ).resolves.toEqual(updated);
+    expect(state.prepare).not.toHaveBeenCalled();
+    expect(state.stop).not.toHaveBeenCalled();
+    expect(state.start).not.toHaveBeenCalled();
+  });
+
+  it('reports saved metadata separately from an uncertain restart without replaying it', async () => {
+    state.prepare.mockResolvedValueOnce({ ...context, processes: [{ pid: 42 }] });
+    const failure = new Error('startup unconfirmed');
+    state.start.mockRejectedValueOnce(failure);
+    const updated = { ...profile, accountId: 'account-b' };
+    const persist = vi.fn(async () => updated);
+    await expect(
+      service(profile).applyUpdate(profile.id, { id: profile.id, accountId: 'account-b' }, persist),
+    ).rejects.toMatchObject({ code: 'RESTART_UNCONFIRMED', cause: failure });
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(state.start).toHaveBeenCalledTimes(1);
+    expect(state.stop).toHaveBeenCalledWith(expect.anything(), undefined, {
+      forceAfterTimeout: true,
+    });
+  });
+
+  it('shares host settings and launches extensions from the captured native runtime', async () => {
+    const nativeContext = {
+      ...context,
+      executablePath: '/opt/ide/antigravity-ide',
+      pathOptions: {
+        userDataDir: profile.userDataDir,
+        executablePath: '/opt/ide/antigravity-ide',
+        isWsl: false,
+      },
+    };
+    state.prepare.mockResolvedValueOnce(nativeContext);
+    state.extensions.mockReturnValueOnce('/home/developer/.antigravity/extensions');
+
+    await service(profile).launch(profile.id);
+
+    expect(state.share).toHaveBeenCalledWith({
+      profileUserDataDir: profile.userDataDir,
+      isolatedHome: path.join(profile.userDataDir, 'home'),
+      pathOptions: {
+        isWsl: false,
+        executablePath: '/opt/ide/antigravity-ide',
+        ignoreRunningProcessCache: true,
+      },
+    });
+    expect(state.extensions).toHaveBeenCalledWith(nativeContext.pathOptions);
+    expect(state.start).toHaveBeenCalledWith({
+      ...nativeContext,
+      extensionsDir: '/home/developer/.antigravity/extensions',
+    });
+  });
+
+  it('uses one process snapshot for every profile and reports unknown observation', async () => {
+    const peer = { ...profile, id: 'peer', userDataDir: path.join(root, 'peer') };
+    state.observe.mockResolvedValueOnce([{ pid: 42, args: [peer.userDataDir] }]);
+    await expect(service(profile).getStatuses([profile, peer])).resolves.toEqual([
+      { running: false },
+      { running: true, pid: 42 },
+    ]);
+    expect(state.observe).toHaveBeenCalledTimes(1);
+    state.observe.mockRejectedValueOnce(new Error('probe unavailable'));
+    await expect(service(profile).getStatuses([profile, peer])).resolves.toEqual([
+      { running: false, unknown: true },
+      { running: false, unknown: true },
+    ]);
   });
 
   it('does not recreate a profile removed before launch acquired ownership', async () => {

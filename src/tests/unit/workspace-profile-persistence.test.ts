@@ -9,6 +9,23 @@ import { WorkspaceProfileRepo } from '@/modules/workspace/persistence/workspace-
 import { WorkspaceProfileNotFoundError, WorkspaceValidationError } from '@/modules/workspace/types';
 import { getProfilesBaseDir } from '@/shared/platform/paths';
 
+const fixturePaths = vi.hoisted(() => ({ root: '' }));
+
+// Keep filesystem effects in this fixture while retaining production profile-ID validation.
+vi.mock('@/shared/platform/paths', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/shared/platform/paths')>();
+  return {
+    ...actual,
+    getProfilesBaseDir: () => path.join(fixturePaths.root, 'profiles'),
+    getProfileUserDataDir: (profileId: string) =>
+      path.join(
+        fixturePaths.root,
+        'profiles',
+        path.basename(actual.getProfileUserDataDir(profileId, { isWsl: false })),
+      ),
+  };
+});
+
 // Un-mock better-sqlite3 for genuine SQLite persistence
 vi.mock('better-sqlite3', async () => {
   const { createRequire } = await import('node:module');
@@ -22,6 +39,7 @@ describe('Workspace Profile Persistence (R1) - Genuine Repository Tests', () => 
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-repo-test-'));
+    fixturePaths.root = tempDir;
     testDbPath = path.join(tempDir, 'cloud_accounts.db');
     baseProfilesDir = getProfilesBaseDir();
 

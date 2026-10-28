@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useState } from 'react';
 import {
   Play,
@@ -51,6 +52,7 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
   isStopping = false,
   toast: customToast,
 }) => {
+  const { t } = useTranslation();
   const { toast: defaultToast } = useToast();
   const toast = customToast ?? defaultToast;
   const [copied, setCopied] = useState(false);
@@ -62,15 +64,20 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
     try {
       await navigator.clipboard.writeText(workspace.projectPath);
       setCopied(true);
-      toast({ title: 'Path Copied', description: 'Project folder path copied to clipboard.' });
+      toast({
+        title: t('workspace-profile.path-copied'),
+        description: t('workspace-profile.project-folder-path-copied-to-clipboard'),
+      });
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast({ title: 'Failed to copy', variant: 'destructive' });
+      toast({ title: t('workspace-profile.failed-to-copy'), variant: 'destructive' });
     }
   };
 
   const formatLastLaunched = (timestamp?: number | null) => {
-    if (!timestamp) return 'Never launched';
+    if (!timestamp) {
+      return t('workspace-profile.never-launched');
+    }
     const date = new Date(timestamp);
     return date.toLocaleDateString(undefined, {
       month: 'short',
@@ -96,30 +103,41 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
             </Tooltip>
           </TooltipProvider>
           <div className="text-muted-foreground mt-1 flex items-center gap-1.5 text-[11px]">
-            <span>Last active: {formatLastLaunched(workspace.lastLaunchedAt)}</span>
+            <span>
+              {t('workspace-profile.last-active', {
+                time: formatLastLaunched(workspace.lastLaunchedAt),
+              })}
+            </span>
           </div>
         </div>
 
         {/* Live Status Badge */}
         <div className="shrink-0" data-testid={`workspace-status-${workspace.id}`}>
-          {isRunning ? (
+          {workspace.status.unknown ? (
+            <span className="text-muted-foreground text-xs" role="status">
+              {t('workspace-profile.status-unavailable')}
+            </span>
+          ) : isRunning ? (
             <span
               className="border-success-border bg-success-soft text-success inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold"
-              title={`Process running with PID: ${workspace.status.pid}`}
+              title={t('workspace-profile.running-pid', { pid: workspace.status.pid })}
             >
               <span className="relative flex h-2 w-2" aria-hidden="true">
                 <span className="bg-success absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 motion-reduce:animate-none" />
                 <span className="bg-success relative inline-flex h-2 w-2 rounded-full" />
               </span>
-              <span>Running {workspace.status.pid ? `(PID: ${workspace.status.pid})` : ''}</span>
+              <span>
+                {t('workspace-profile.running')}
+                {workspace.status.pid ? ` (PID: ${workspace.status.pid})` : ''}
+              </span>
             </span>
           ) : (
             <span
               className="border-border bg-muted/60 text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium"
-              title="Workspace process is stopped"
+              title={t('workspace-profile.workspace-process-is-stopped')}
             >
               <span className="bg-muted-foreground/40 h-2 w-2 rounded-full" aria-hidden="true" />
-              <span>Idle</span>
+              <span>{t('workspace-profile.idle')}</span>
             </span>
           )}
         </div>
@@ -130,7 +148,7 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
         {/* Bound Google Account Display */}
         <div className="bg-muted/20 rounded-lg border p-2.5" data-testid="bound-account-section">
           <div className="text-muted-foreground mb-1 text-[10px] font-semibold tracking-wider uppercase">
-            Bound Google Account
+            {t('workspace-profile.bound-google-account')}
           </div>
           <div className="flex items-center justify-between gap-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -157,13 +175,17 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
             </div>
 
             {account ? (
-              <AccountTierBadge account={account} unknownLabel="Standard" className="shrink-0" />
+              <AccountTierBadge
+                account={account}
+                unknownLabel={t('workspace-profile.standard')}
+                className="shrink-0"
+              />
             ) : (
               <Badge
                 variant="outline"
                 className="border-warning-border bg-warning-soft text-warning shrink-0 text-[10px]"
               >
-                Unbound
+                {t('workspace-profile.unbound')}
               </Badge>
             )}
           </div>
@@ -172,7 +194,7 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
         {/* Project Folder Display */}
         <div className="space-y-1">
           <div className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-            Project Folder
+            {t('workspace-profile.project-folder')}
           </div>
           <div className="bg-muted/10 flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-xs">
             <TooltipProvider>
@@ -194,8 +216,8 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
               size="icon"
               className="text-muted-foreground hover:text-foreground h-6 w-6 shrink-0"
               onClick={handleCopyPath}
-              aria-label="Copy project folder path"
-              title="Copy path"
+              aria-label={t('workspace-profile.copy-project-folder-path')}
+              title={t('workspace-profile.copy-path')}
             >
               {copied ? (
                 <Check className="text-success h-3.5 w-3.5" />
@@ -213,12 +235,14 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
               <div className="text-muted-foreground/80 flex cursor-help items-center gap-1.5 text-[11px]">
                 <Shield className="text-muted-foreground/70 h-3.5 w-3.5" />
                 <span className="truncate">
-                  Isolated profile data: <span className="font-mono">{workspace.userDataDir}</span>
+                  {t('workspace-profile.isolated-profile-data')}
+                  <span className="font-mono">{workspace.userDataDir}</span>
                 </span>
               </div>
             </TooltipTrigger>
             <TooltipContent side="top" className="max-w-md font-mono text-xs break-all">
-              User Data Dir: {workspace.userDataDir}
+              {t('workspace-profile.user-data-dir')}
+              {workspace.userDataDir}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -233,10 +257,10 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
               variant="outline"
               className="border-success-border bg-success-soft text-success hover:bg-success-soft/80 h-8 gap-1.5 text-xs font-semibold"
               onClick={() => onLaunch(workspace.id)}
-              disabled={isLaunching}
+              disabled
             >
               <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
-              Focus IDE
+              {t('workspace-profile.already-running')}
             </Button>
           ) : (
             <Button
@@ -246,7 +270,7 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
               disabled={isLaunching}
             >
               <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
-              Launch IDE
+              {t('workspace-profile.launch-ide')}
             </Button>
           )}
 
@@ -259,7 +283,7 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
               disabled={isStopping}
             >
               <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
-              Stop
+              {t('workspace-profile.stop')}
             </Button>
           )}
         </div>
@@ -273,17 +297,17 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
               className="text-muted-foreground hover:text-foreground h-8 w-8"
             >
               <MoreVertical className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only">More actions</span>
+              <span className="sr-only">{t('workspace-profile.more-actions')}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuItem onClick={() => onEdit(workspace)} className="cursor-pointer">
               <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
-              Edit Profile
+              {t('workspace-profile.edit-profile')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleCopyPath} className="cursor-pointer">
               <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
-              Copy Path
+              {t('workspace-profile.copy-path-label')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -291,7 +315,7 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
               className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
             >
               <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
-              Delete Workspace
+              {t('workspace-profile.delete-workspace')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

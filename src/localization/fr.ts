@@ -1,5 +1,6 @@
 import en from './en';
 const fr = {
+  'workspace-profile': en['workspace-profile'],
   'operation-diagnostics': en['operation-diagnostics'],
   'agent-tools': {
     title: 'Connecter vos outils de programmation',

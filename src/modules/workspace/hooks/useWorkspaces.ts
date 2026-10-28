@@ -81,9 +81,9 @@ export function useUpdateWorkspace(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: updateWorkspace,
-    onSuccess: (updated) => {
+    onSettled: (_updated, _error, input) => {
       queryClient.invalidateQueries({ queryKey: WORKSPACE_QUERY_KEYS.all });
-      queryClient.invalidateQueries({ queryKey: WORKSPACE_QUERY_KEYS.detail(updated.id) });
+      queryClient.invalidateQueries({ queryKey: WORKSPACE_QUERY_KEYS.detail(input.id) });
     },
   });
 }

@@ -800,11 +800,11 @@ describe('Empirical Challenger 2: Defensive Execution, Concurrency & Error Resil
       expect(winExt).toContain('extensions');
 
       const linuxUser = getAntigravityHostUserDir({ platform: 'linux', isWsl: false });
-      expect(linuxUser).toBe(path.posix.join(os.homedir(), '.config', 'Antigravity', 'User'));
+      expect(linuxUser).toBe(path.posix.join(os.homedir(), '.config', 'Antigravity IDE', 'User'));
 
       const darwinUser = getAntigravityHostUserDir({ platform: 'darwin', isWsl: false });
       expect(darwinUser).toBe(
-        path.posix.join(os.homedir(), 'Library', 'Application Support', 'Antigravity', 'User'),
+        path.posix.join(os.homedir(), 'Library', 'Application Support', 'Antigravity IDE', 'User'),
       );
     });
   });

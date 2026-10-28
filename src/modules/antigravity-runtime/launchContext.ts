@@ -76,7 +76,6 @@ export function extractProcessUserDataDir(proc: RuntimeProcess): string | null {
 function primaryProcesses(
   target: GuiTarget,
   processes: readonly RuntimeProcess[],
-  pathOptions: { isWsl: boolean },
   selectedDirectory?: string,
 ): RuntimeProcess[] {
   if (target !== 'ide') {
@@ -93,7 +92,7 @@ function primaryProcesses(
     }
     return (
       (selectedDirectory !== undefined && first === canonicalPath(selectedDirectory)) ||
-      !isManagedWorkspaceUserDataDir(first, pathOptions)
+      !isManagedWorkspaceUserDataDir(first)
     );
   });
 }
@@ -103,12 +102,7 @@ export function filterContextProcesses(
   processes: readonly RuntimeProcess[],
 ): RuntimeProcess[] {
   if (context.processScope === 'primary') {
-    return primaryProcesses(
-      context.target,
-      processes,
-      { isWsl: context.pathOptions.isWsl ?? false },
-      context.pathOptions.userDataDir,
-    );
+    return primaryProcesses(context.target, processes, context.pathOptions.userDataDir);
   }
   const targetUserDataDir = context.pathOptions.userDataDir || context.defaultUserDataDir;
   const targetCanonical = canonicalPath(targetUserDataDir);
@@ -147,12 +141,7 @@ export function resolveLaunchContext(
   const configuredDirs = userDataDirs(configuredArgs, process.cwd());
   const candidates =
     options?.userDataDir === undefined
-      ? primaryProcesses(
-          target,
-          processes,
-          { isWsl: isWsl() && usesWindowsRuntime(target) },
-          configuredDirs[0],
-        )
+      ? primaryProcesses(target, processes, configuredDirs[0])
       : processes;
   const configured = getConfiguredAntigravityExecutablePath(target, false);
   if (!configured && !candidates.length && process.platform === 'win32') {

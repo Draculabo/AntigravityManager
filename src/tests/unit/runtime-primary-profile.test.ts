@@ -5,20 +5,35 @@ import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getProfilesBaseDir, isManagedWorkspaceUserDataDir } from '@/shared/platform/paths';
 import {
   assertContextProcesses,
+  filterContextProcesses,
   resolveLaunchContext,
 } from '@/modules/antigravity-runtime/launchContext';
 import type { RuntimeProcess } from '@/modules/antigravity-runtime/types';
 
-const mocks = vi.hoisted(() => ({ executable: '', primary: '', configuredArgs: [] as string[] }));
-vi.mock('@/shared/platform/paths', async (original) => ({
-  ...(await original<typeof import('@/shared/platform/paths')>()),
-  getConfiguredAntigravityExecutablePath: () => mocks.executable,
-  getAntigravityExecutablePath: () => mocks.executable,
-  getConfiguredAntigravityArgs: () => mocks.configuredArgs,
-  getPortableUserDataDir: () => null,
-  getAppDataDir: () => mocks.primary,
-  isWsl: () => false,
+const mocks = vi.hoisted(() => ({
+  executable: '',
+  primary: '',
+  configuredArgs: [] as string[],
+  managerNamespace: false,
 }));
+vi.mock('@/shared/platform/paths', async (original) => {
+  const actual = await original<typeof import('@/shared/platform/paths')>();
+  return {
+    ...actual,
+    getConfiguredAntigravityExecutablePath: () => mocks.executable,
+    getAntigravityExecutablePath: () => mocks.executable,
+    getConfiguredAntigravityArgs: () => mocks.configuredArgs,
+    getPortableUserDataDir: () => null,
+    getAppDataDir: () => mocks.primary,
+    // Real path helpers close over isWsl, so the mocked export alone cannot isolate host paths.
+    getProfilesBaseDir: () => actual.getProfilesBaseDir({ isWsl: false }),
+    isManagedWorkspaceUserDataDir: (directory: string, options?: { isWsl?: boolean }) =>
+      mocks.managerNamespace
+        ? options?.isWsl !== false
+        : actual.isManagedWorkspaceUserDataDir(directory, { isWsl: false }),
+    isWsl: () => false,
+  };
+});
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-primary-profile-'));
 mocks.executable = path.join(root, 'Antigravity IDE.exe');
@@ -41,6 +56,7 @@ beforeEach(() => {
   vi.stubEnv('HOME', root);
   vi.stubEnv('USERPROFILE', root);
   mocks.configuredArgs = [];
+  mocks.managerNamespace = false;
   managed = path.join(getProfilesBaseDir(), 'workspace-a');
   for (const directory of [mocks.primary, custom, managed, path.dirname(foreignExecutable)]) {
     fs.mkdirSync(directory, { recursive: true });
@@ -128,4 +144,22 @@ it('recognizes only descendants of the managed profile root', () => {
     isManagedWorkspaceUserDataDir(`${getProfilesBaseDir()}-other/workspace-a`),
     isManagedWorkspaceUserDataDir(path.join(getProfilesBaseDir(), '..', 'outside')),
   ]).toEqual([true, false, false, false]);
+});
+
+it('does not substitute client runtime paths for the Manager profile namespace', () => {
+  mocks.managerNamespace = true;
+  expect(
+    filterContextProcesses(
+      {
+        target: 'ide',
+        processScope: 'primary',
+        executablePath: mocks.executable,
+        args: [],
+        defaultUserDataDir: mocks.primary,
+        pathOptions: { userDataDir: mocks.primary, isWsl: false },
+        processes: [],
+      },
+      [processAt(21, managed)],
+    ),
+  ).toEqual([]);
 });

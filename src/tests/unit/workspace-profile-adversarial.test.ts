@@ -1,3 +1,5 @@
+import type { WorkspaceProfile } from '@/modules/workspace/types';
+import type { UpdateWorkspaceProfileInput } from '@/modules/workspace/types';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +10,23 @@ import { WorkspaceProfileRepo } from '@/modules/workspace/persistence/workspace-
 import { WorkspaceValidationError, WorkspaceDirectoryError } from '@/modules/workspace/types';
 import { getProfileUserDataDir } from '@/shared/platform/paths';
 import { createWorkspaceProfileService } from '@/modules/workspace/services/workspace-profile.service';
+
+const fixturePaths = vi.hoisted(() => ({ root: '' }));
+
+// Keep filesystem effects in this fixture while retaining production profile-ID validation.
+vi.mock('@/shared/platform/paths', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/shared/platform/paths')>();
+  return {
+    ...actual,
+    getProfilesBaseDir: () => path.join(fixturePaths.root, 'profiles'),
+    getProfileUserDataDir: (profileId: string) =>
+      path.join(
+        fixturePaths.root,
+        'profiles',
+        path.basename(actual.getProfileUserDataDir(profileId, { isWsl: false })),
+      ),
+  };
+});
 
 vi.mock('better-sqlite3', async () => {
   const { createRequire } = await import('node:module');
@@ -23,10 +42,11 @@ describe('Adversarial Empirical Stress Testing: M1 Persistence Layer', () => {
   beforeEach(() => {
     originalHome = process.env.HOME;
     testHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-challenger-m1-'));
+    fixturePaths.root = testHomeDir;
     process.env.HOME = testHomeDir;
 
     testDbPath = path.join(testHomeDir, '.antigravity-agent', 'cloud_accounts.db');
-    testProfilesDir = path.join(testHomeDir, '.config', 'AntigravityManager', 'profiles');
+    testProfilesDir = path.join(testHomeDir, 'profiles');
 
     fs.mkdirSync(path.dirname(testDbPath), { recursive: true });
     fs.mkdirSync(testProfilesDir, { recursive: true });
@@ -207,6 +227,13 @@ describe('Adversarial Empirical Stress Testing: M1 Persistence Layer', () => {
         lifecycleDelegate: {
           launch: vi.fn(),
           stop: vi.fn(),
+          getStatuses: async (profiles: WorkspaceProfile[]) =>
+            profiles.map(() => ({ running: false })),
+          applyUpdate: async (
+            _id: string,
+            _input: UpdateWorkspaceProfileInput,
+            persist: () => Promise<WorkspaceProfile>,
+          ) => persist(),
           getStatus: vi.fn(),
           withStoppedProfile: async (_id, _options, action) => action(),
         },

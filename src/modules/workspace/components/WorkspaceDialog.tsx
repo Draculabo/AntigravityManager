@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useState } from 'react';
 import { FolderOpen, Loader2, Shield, AlertCircle } from 'lucide-react';
 import {
@@ -49,6 +50,7 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
   isSubmitting = false,
   onSelectDirectory = selectWorkspaceDirectory,
 }) => {
+  const { t } = useTranslation();
   const activeProfile = workspace ?? initialData ?? null;
   const isEdit = Boolean(activeProfile);
 
@@ -85,7 +87,9 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
         setProjectPath(selected);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to select directory');
+      setError(
+        err instanceof Error ? err.message : t('workspace-profile.failed-to-select-directory'),
+      );
     } finally {
       setIsBrowsing(false);
     }
@@ -97,19 +101,19 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
     const trimmedPath = projectPath.trim();
 
     if (!trimmedName) {
-      setError('Workspace profile name is required.');
+      setError(t('workspace-profile.workspace-profile-name-is-required'));
       return;
     }
     if (trimmedName.length > 100) {
-      setError('Workspace profile name cannot exceed 100 characters.');
+      setError(t('workspace-profile.workspace-profile-name-cannot-exceed-100-characters'));
       return;
     }
     if (!accountId) {
-      setError('A bound Google account must be selected.');
+      setError(t('workspace-profile.a-bound-google-account-must-be-selected'));
       return;
     }
     if (!trimmedPath) {
-      setError('Project directory path is required.');
+      setError(t('workspace-profile.project-directory-path-is-required'));
       return;
     }
 
@@ -130,7 +134,11 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
       }
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save workspace profile');
+      setError(
+        err instanceof Error
+          ? err.message
+          : t('workspace-profile.failed-to-save-workspace-profile'),
+      );
     }
   };
 
@@ -138,17 +146,29 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Workspace Profile' : 'Create New Workspace'}</DialogTitle>
+          <DialogTitle>
+            {isEdit
+              ? t('workspace-profile.edit-workspace-profile')
+              : t('workspace-profile.create-new-workspace')}
+          </DialogTitle>
           <DialogDescription>
             {isEdit
-              ? 'Update the workspace profile details, bound Google account, or project folder.'
-              : 'Configure an isolated Antigravity IDE workspace session with its own Google account and project folder.'}
+              ? t('workspace-profile.edit-description')
+              : t('workspace-profile.create-description')}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} noValidate className="space-y-4 py-2">
+          {activeProfile?.status.running && (
+            <p className="text-muted-foreground text-sm" role="status">
+              {t('workspace-profile.restart-warning')}
+            </p>
+          )}
           {error && (
-            <div className="border-destructive/20 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border p-3 text-xs">
+            <div
+              role="alert"
+              className="border-destructive/20 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border p-3 text-xs"
+            >
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -156,12 +176,12 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
 
           {/* Profile Name Field */}
           <div className="space-y-1.5">
-            <Label htmlFor="ws-name">Profile Name</Label>
+            <Label htmlFor="ws-name">{t('workspace-profile.profile-name')}</Label>
             <Input
               id="ws-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Acme Client Portal, Personal Research"
+              placeholder={t('workspace-profile.e-g-acme-client-portal-personal-research')}
               maxLength={100}
               required
             />
@@ -169,16 +189,15 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
 
           {/* Bound Google Account Dropdown */}
           <div className="space-y-1.5">
-            <Label htmlFor="ws-account">Bound Google Account</Label>
+            <Label htmlFor="ws-account">{t('workspace-profile.bound-google-account')}</Label>
             {accounts.length === 0 ? (
               <div className="border-warning-border bg-warning-soft/30 text-warning rounded-lg border p-3 text-xs">
-                No Google accounts found in Antigravity Manager. Please add an account on the
-                Accounts page before creating a workspace.
+                {t('workspace-profile.no-accounts')}
               </div>
             ) : (
               <Select value={accountId} onValueChange={setAccountId}>
                 <SelectTrigger id="ws-account" className="h-11 w-full">
-                  <SelectValue placeholder="Select Google Account" />
+                  <SelectValue placeholder={t('workspace-profile.select-google-account')} />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   {accounts.map((acc) => (
@@ -208,13 +227,13 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
 
           {/* Project Directory with Folder Browse Button */}
           <div className="space-y-1.5">
-            <Label htmlFor="ws-path">Project Directory</Label>
+            <Label htmlFor="ws-path">{t('workspace-profile.project-directory')}</Label>
             <div className="flex gap-2">
               <Input
                 id="ws-path"
                 value={projectPath}
                 onChange={(e) => setProjectPath(e.target.value)}
-                placeholder="/path/to/project/folder"
+                placeholder={t('workspace-profile.path-to-project-folder')}
                 className="flex-1 font-mono text-xs"
                 required
               />
@@ -224,8 +243,8 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
                 size="icon"
                 onClick={handleBrowseFolder}
                 disabled={isBrowsing}
-                aria-label="Browse for project folder"
-                title="Browse folder"
+                aria-label={t('workspace-profile.browse-for-project-folder')}
+                title={t('workspace-profile.browse-folder')}
               >
                 {isBrowsing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -241,20 +260,19 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
             <div className="text-muted-foreground flex items-center justify-between font-medium">
               <span className="flex items-center gap-1.5">
                 <Shield className="text-primary h-3.5 w-3.5" />
-                Isolated User Data Directory
+                {t('workspace-profile.isolated-user-data-directory')}
               </span>
               <Badge variant="secondary" className="px-1.5 py-0 text-[9px]">
-                Auto-Managed
+                {t('workspace-profile.auto-managed')}
               </Badge>
             </div>
             <p className="text-foreground/80 bg-background/80 border-border/50 rounded border px-2.5 py-1.5 font-mono text-[11px] break-all">
               {isEdit && activeProfile
                 ? activeProfile.userDataDir
-                : '~/.config/AntigravityManager/profiles/<auto-generated-id>'}
+                : t('workspace-profile.created-automatically-when-saved')}
             </p>
             <p className="text-muted-foreground text-[11px]">
-              A dedicated profile directory housing isolated OAuth credentials (`state.vscdb`) and
-              session tokens.
+              {t('workspace-profile.login-data-description')}
             </p>
           </div>
 
@@ -265,11 +283,13 @@ export const WorkspaceDialog: React.FC<WorkspaceDialogProps> = ({
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
             >
-              Cancel
+              {t('workspace-profile.cancel')}
             </Button>
             <Button type="submit" disabled={isSubmitting || accounts.length === 0}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isEdit ? 'Save Changes' : 'Create Workspace'}
+              {isEdit
+                ? t('workspace-profile.save-changes')
+                : t('workspace-profile.create-workspace')}
             </Button>
           </DialogFooter>
         </form>

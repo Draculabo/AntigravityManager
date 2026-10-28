@@ -1,3 +1,5 @@
+import type { WorkspaceProfile } from '@/modules/workspace/types';
+import type { UpdateWorkspaceProfileInput } from '@/modules/workspace/types';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -140,6 +142,12 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
     );
 
     lifecycleDelegate = {
+      getStatuses: async (profiles: WorkspaceProfile[]) => profiles.map(() => ({ running: false })),
+      applyUpdate: async (
+        _id: string,
+        _input: UpdateWorkspaceProfileInput,
+        persist: () => Promise<WorkspaceProfile>,
+      ) => persist(),
       getStatus: async () => ({ running: false }),
       launch: async () => ({ pid: 9999 }),
       stop: async () => {},
@@ -476,8 +484,14 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
   // Challenge 5: Lifecycle Fault Tolerance & Filesystem Cleanup Edge Cases
   // =========================================================================
   describe('Challenge 5: Lifecycle Fault Tolerance & Filesystem Cleanup Edge Cases', () => {
-    it('gracefully degrades to status.running = false when lifecycle delegate throws', async () => {
+    it('reports unknown observation and protects deletion when the lifecycle delegate throws', async () => {
       const faultDelegate = {
+        getStatuses: vi.fn().mockRejectedValue(new Error('Process probe kernel error')),
+        applyUpdate: async (
+          _id: string,
+          _input: UpdateWorkspaceProfileInput,
+          persist: () => Promise<WorkspaceProfile>,
+        ) => persist(),
         getStatus: vi.fn().mockRejectedValue(new Error('Process probe kernel error')),
         launch: vi.fn().mockRejectedValue(new Error('Spawn failed')),
         stop: vi.fn().mockRejectedValue(new Error('Kill failed')),
@@ -501,10 +515,10 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
       // list and get must not fail despite delegate error
       const views = await faultClient.list();
       expect(views).toHaveLength(1);
-      expect(views[0].status.running).toBe(false);
+      expect(views[0].status).toEqual({ running: false, unknown: true });
 
       const view = await faultClient.get({ id: created.id });
-      expect(view?.status.running).toBe(false);
+      expect(view?.status).toEqual({ running: false, unknown: true });
       await expect(faultClient.delete({ id: created.id, force: true })).rejects.toMatchObject({
         code: 'INTERNAL_SERVER_ERROR',
         message: 'Process probe kernel error',
@@ -523,6 +537,13 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
         profileRepo: WorkspaceProfileRepo,
         cloudAccountRepo,
         lifecycleDelegate: {
+          getStatuses: async (profiles: WorkspaceProfile[]) =>
+            profiles.map(() => ({ running: false })),
+          applyUpdate: async (
+            _id: string,
+            _input: UpdateWorkspaceProfileInput,
+            persist: () => Promise<WorkspaceProfile>,
+          ) => persist(),
           getStatus: vi.fn().mockImplementation(async () => ({ running: isRunning, pid: 9999 })),
           launch: vi.fn().mockResolvedValue({ pid: 9999 }),
           stop: stopSpy,

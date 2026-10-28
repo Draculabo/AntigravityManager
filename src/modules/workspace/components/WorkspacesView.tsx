@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useState, useMemo } from 'react';
 import { Plus, RefreshCw, Briefcase, Search, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   onRefetch,
   accounts: customAccounts,
 }) => {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const queryWorkspaces = useWorkspaces({ enabled: customWorkspaces === undefined });
   const queryAccounts = useCloudAccounts(false);
@@ -82,14 +84,17 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     try {
       const res = await launchMutation.mutateAsync(id);
       toast({
-        title: 'Workspace Launched',
-        description: `Antigravity IDE running (PID: ${res.pid}).`,
+        title: t('workspace-profile.workspace-launched'),
+        description: t('workspace-profile.launched-description', { pid: res.pid }),
         variant: 'success',
       });
     } catch (err) {
       toast({
-        title: 'Launch Failed',
-        description: err instanceof Error ? err.message : 'Could not launch workspace instance',
+        title: t('workspace-profile.launch-failed'),
+        description:
+          err instanceof Error
+            ? err.message
+            : t('workspace-profile.could-not-launch-workspace-instance'),
         variant: 'destructive',
       });
     }
@@ -99,14 +104,17 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     try {
       await stopMutation.mutateAsync(id);
       toast({
-        title: 'Workspace Stopped',
-        description: 'IDE process terminated cleanly.',
+        title: t('workspace-profile.workspace-stopped'),
+        description: t('workspace-profile.ide-process-terminated-cleanly'),
         variant: 'default',
       });
     } catch (err) {
       toast({
-        title: 'Stop Failed',
-        description: err instanceof Error ? err.message : 'Could not terminate workspace process',
+        title: t('workspace-profile.stop-failed'),
+        description:
+          err instanceof Error
+            ? err.message
+            : t('workspace-profile.could-not-terminate-workspace-process'),
         variant: 'destructive',
       });
     }
@@ -127,23 +135,25 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   ) => {
     if ('id' in data) {
       await updateMutation.mutateAsync(data);
-      toast({ title: 'Workspace Updated', variant: 'success' });
+      toast({ title: t('workspace-profile.workspace-updated'), variant: 'success' });
     } else {
       await createMutation.mutateAsync(data);
-      toast({ title: 'Workspace Created', variant: 'success' });
+      toast({ title: t('workspace-profile.workspace-created'), variant: 'success' });
     }
   };
 
   const handleDeleteConfirm = async (id: string, cleanUserDataDir: boolean) => {
     try {
       await deleteMutation.mutateAsync({ id, cleanUserDataDir });
-      toast({ title: 'Workspace Deleted', variant: 'default' });
+      toast({ title: t('workspace-profile.workspace-deleted'), variant: 'default' });
     } catch (err) {
       toast({
-        title: 'Deletion Failed',
-        description: err instanceof Error ? err.message : 'Failed to delete workspace',
+        title: t('workspace-profile.deletion-failed'),
+        description:
+          err instanceof Error ? err.message : t('workspace-profile.failed-to-delete-workspace'),
         variant: 'destructive',
       });
+      throw err;
     }
   };
 
@@ -152,11 +162,10 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-2xl font-bold tracking-tight">Workspaces</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Manage concurrent, isolated Antigravity IDE sessions across distinct Google accounts and
-            projects.
-          </p>
+          <h1 className="text-foreground text-2xl font-bold tracking-tight">
+            {t('workspace-profile.workspaces')}
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm">{t('workspace-profile.intro')}</p>
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -165,14 +174,14 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
             size="icon"
             onClick={() => refetch()}
             disabled={isLoading}
-            aria-label="Refresh workspaces"
-            title="Refresh"
+            aria-label={t('workspace-profile.refresh-workspaces')}
+            title={t('workspace-profile.refresh')}
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
           <Button onClick={handleOpenCreate} className="gap-1.5">
             <Plus className="h-4 w-4" aria-hidden="true" />
-            New Workspace
+            {t('workspace-profile.new-workspace')}
           </Button>
         </div>
       </div>
@@ -184,7 +193,8 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search workspaces by name, path, account..."
+            placeholder={t('workspace-profile.search-workspaces-by-name-path-account')}
+            aria-label={t('workspace-profile.search-workspaces-by-name-path-account')}
             className="pl-9 text-xs"
           />
         </div>
@@ -194,19 +204,21 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
       {isLoading && workspaces.length === 0 && (
         <div className="text-muted-foreground flex h-64 flex-col items-center justify-center gap-3">
           <Loader2 className="text-primary h-8 w-8 animate-spin" />
-          <span className="text-sm">Loading workspace profiles...</span>
+          <span className="text-sm">{t('workspace-profile.loading-workspace-profiles')}</span>
         </div>
       )}
 
       {/* Error State */}
       {isError && (
         <div className="border-destructive/20 bg-destructive/10 rounded-xl border p-6 text-center">
-          <div className="text-destructive text-base font-semibold">Failed to load workspaces</div>
+          <div className="text-destructive text-base font-semibold">
+            {t('workspace-profile.failed-to-load-workspaces')}
+          </div>
           <p className="text-muted-foreground mt-1 text-xs">
-            {error instanceof Error ? error.message : 'Unknown error occurred'}
+            {error instanceof Error ? error.message : t('workspace-profile.unknown-error-occurred')}
           </p>
           <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-4">
-            Retry
+            {t('workspace-profile.retry')}
           </Button>
         </div>
       )}
@@ -221,15 +233,14 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
             <Briefcase className="h-7 w-7" aria-hidden="true" />
           </div>
           <h2 className="text-foreground mt-4 text-lg font-semibold">
-            No workspaces configured yet
+            {t('workspace-profile.no-workspaces-configured-yet')}
           </h2>
           <p className="text-muted-foreground mt-2 max-w-md text-sm">
-            Create an isolated workspace profile to launch a concurrent Antigravity IDE instance
-            with its own dedicated Google credentials and project folder.
+            {t('workspace-profile.empty-description')}
           </p>
           <Button onClick={handleOpenCreate} className="mt-6 gap-2">
             <Plus className="h-4 w-4" aria-hidden="true" />
-            Create Your First Workspace
+            {t('workspace-profile.create-your-first-workspace')}
           </Button>
         </div>
       )}
@@ -240,7 +251,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           className="text-muted-foreground rounded-xl border border-dashed p-8 text-center"
           data-testid="search-mismatch-state"
         >
-          <p className="text-sm">No workspaces match &ldquo;{searchQuery}&rdquo;.</p>
+          <p className="text-sm">{t('workspace-profile.no-results', { query: searchQuery })}</p>
         </div>
       )}
 
@@ -277,6 +288,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
 
       {/* Delete Confirmation Dialog */}
       <DeleteWorkspaceDialog
+        key={deletingWorkspace?.id ?? 'closed'}
         open={Boolean(deletingWorkspace)}
         onOpenChange={(open) => !open && setDeletingWorkspace(null)}
         workspace={deletingWorkspace}

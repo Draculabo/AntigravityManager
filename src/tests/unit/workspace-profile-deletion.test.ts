@@ -1,3 +1,4 @@
+import type { UpdateWorkspaceProfileInput } from '@/modules/workspace/types';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -52,6 +53,12 @@ describe('workspace profile deletion recovery', () => {
     lifecycle = {
       launch: vi.fn(),
       stop: vi.fn(),
+      getStatuses: async (profiles: WorkspaceProfile[]) => profiles.map(() => ({ running: false })),
+      applyUpdate: async (
+        _id: string,
+        _input: UpdateWorkspaceProfileInput,
+        persist: () => Promise<WorkspaceProfile>,
+      ) => persist(),
       getStatus: vi.fn(),
       withStoppedProfile: vi.fn(
         async (_id: string, _options: { force: boolean }, action: () => Promise<void>) => action(),

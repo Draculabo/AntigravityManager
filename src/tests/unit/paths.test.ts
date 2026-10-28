@@ -51,6 +51,17 @@ vi.mock('@/shared/platform/nativeProcessQuery', () => ({
 
 const originalPlatform = process.platform;
 
+it('recognizes canonicalized mounted Windows profile paths in WSL', async () => {
+  const { getProfilesBaseDir, isManagedWorkspaceUserDataDir } =
+    await import('@/shared/platform/paths');
+  const options = { platform: 'linux', isWsl: true } as const;
+  const directory = path.posix.join(getProfilesBaseDir(options), 'profile-a');
+  expect(isManagedWorkspaceUserDataDir(directory.toLowerCase(), options)).toBe(true);
+  expect(
+    isManagedWorkspaceUserDataDir(`${getProfilesBaseDir(options)}-other/profile-a`, options),
+  ).toBe(false);
+});
+
 it('keeps native Linux executable paths case-sensitive', async () => {
   const { areExecutablePathsEquivalent } = await import('@/shared/platform/paths');
   expect([

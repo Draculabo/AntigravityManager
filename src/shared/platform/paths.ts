@@ -470,7 +470,8 @@ function getRunningAntigravityProcesses(
       return (
         !userDataDir ||
         (configuredUserDataDir &&
-          normalizeExecutablePath(userDataDir) === normalizeExecutablePath(configuredUserDataDir)) ||
+          normalizeExecutablePath(userDataDir) ===
+            normalizeExecutablePath(configuredUserDataDir)) ||
         !isManagedWorkspaceUserDataDir(userDataDir)
       );
     });
@@ -669,15 +670,12 @@ export function getAntigravityExtensionsDir(options?: PathResolutionOptions): st
 }
 
 /**
- * Resolves the host Antigravity User configuration directory.
- * E.g., ~/.config/Antigravity/User on Linux,
- * ~/Library/Application Support/Antigravity/User on macOS,
- * %APPDATA%\Antigravity\User on Windows.
+ * Resolves the host IDE User configuration directory for the selected runtime.
  */
 export function getAntigravityHostUserDir(options?: PathResolutionOptions): string {
-  const classicAppData = getAppDataDir('classic', options);
+  const ideAppData = getAppDataDir('ide', options);
   const pathApi = getCurrentPlatformPathApi(options);
-  return pathApi.join(classicAppData, 'User');
+  return pathApi.join(ideAppData, 'User');
 }
 
 export function getAgentDir(options?: PathResolutionOptions): string {
@@ -718,8 +716,12 @@ export function isManagedWorkspaceUserDataDir(
   options?: PathResolutionOptions,
 ): boolean {
   const pathApi = getCurrentPlatformPathApi(options);
-  const baseDir = normalizeExecutablePath(pathApi.resolve(getProfilesBaseDir(options)), options);
-  const targetDir = normalizeExecutablePath(pathApi.resolve(userDataDir), options);
+  const base = normalizeExecutablePath(pathApi.resolve(getProfilesBaseDir(options)), options);
+  const target = normalizeExecutablePath(pathApi.resolve(userDataDir), options);
+  // Runtime capture canonicalizes mounted Windows paths to lowercase even under Linux Node.
+  const mountedWindows = resolveIsWsl(options) && /^\/mnt\/[a-z]\//i.test(base);
+  const baseDir = mountedWindows ? base.toLowerCase() : base;
+  const targetDir = mountedWindows ? target.toLowerCase() : target;
   const relative = pathApi.relative(baseDir, targetDir);
   return (
     relative !== '' &&

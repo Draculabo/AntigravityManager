@@ -82,18 +82,17 @@ export function createWorkspaceProfileService(deps: WorkspaceProfileServiceDepen
       }
 
       const views: WorkspaceProfileView[] = [];
-      for (const profile of profiles) {
+      const statuses = deps.lifecycleDelegate
+        ? await deps.lifecycleDelegate.getStatuses(profiles).catch((error: unknown) => {
+            logger.warn('Workspace status snapshot unavailable', error);
+            return profiles.map(() => ({ running: false, unknown: true }));
+          })
+        : profiles.map(() => ({ running: false, unknown: true }));
+      for (const [index, profile] of profiles.entries()) {
         const boundAccount = accountMap.get(profile.accountId);
         const accountView = boundAccount ? projectCloudAccountView(boundAccount) : undefined;
 
-        let status: WorkspaceProfileStatus = { running: false };
-        if (deps.lifecycleDelegate) {
-          try {
-            status = await deps.lifecycleDelegate.getStatus(profile);
-          } catch (error) {
-            logger.warn(`Failed to read process status for profile ${profile.id}`, error);
-          }
-        }
+        const status = statuses[index] ?? { running: false, unknown: true };
 
         views.push({
           ...profile,
@@ -117,7 +116,7 @@ export function createWorkspaceProfileService(deps: WorkspaceProfileServiceDepen
       const boundAccount = await deps.cloudAccountRepo.getAccount(profile.accountId);
       const accountView = boundAccount ? projectCloudAccountView(boundAccount) : undefined;
 
-      let status: WorkspaceProfileStatus = { running: false };
+      let status: WorkspaceProfileStatus = { running: false, unknown: true };
       if (deps.lifecycleDelegate) {
         try {
           status = await deps.lifecycleDelegate.getStatus(profile);
@@ -184,7 +183,12 @@ export function createWorkspaceProfileService(deps: WorkspaceProfileServiceDepen
         );
       }
 
-      return deps.profileRepo.updateProfile(validatedInput);
+      if (!deps.lifecycleDelegate) {
+        throw new WorkspaceValidationError('Workspace process ownership is unavailable');
+      }
+      return deps.lifecycleDelegate.applyUpdate(validatedInput.id, validatedInput, () =>
+        deps.profileRepo.updateProfile(validatedInput),
+      );
     },
 
     /**
@@ -344,8 +348,12 @@ export function createWorkspaceProfileService(deps: WorkspaceProfileServiceDepen
      * Synchronizes and self-heals conversations, skills, and extensions across all workspace profiles.
      */
     async syncAll(): Promise<SyncWorkspaceProfilesResult> {
+      if (!deps.lifecycleDelegate) {
+        throw new WorkspaceValidationError('Workspace process ownership is unavailable');
+      }
       return await reconcileAllWorkspaceProfiles({
         profileRepo: deps.profileRepo,
+        withStoppedProfile: deps.lifecycleDelegate.withStoppedProfile,
       });
     },
   };

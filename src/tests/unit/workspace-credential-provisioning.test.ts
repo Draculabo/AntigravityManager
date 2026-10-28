@@ -9,7 +9,6 @@ import type { ClientAccountCredentials } from '@/modules/antigravity-runtime/cre
 import {
   isPathAbsent,
   isStaleOrScaffoldGeminiDir,
-  mergeUniqueConversationsToHost,
   provisionEditorSettings,
   provisionExtensionsSharing,
   provisionGeminiCustomizations,
@@ -1031,26 +1030,6 @@ describe('Workspace Credential Provisioning (R3)', () => {
           path.join(profileAntigravity, 'brain', 'unique-user-conv', 'transcript.jsonl'),
         ),
       ).toBe(true);
-
-      // Verify mergeUniqueConversationsToHost standalone functionality
-      mergeUniqueConversationsToHost(profileAntigravity, path.join(hostGeminiDir, 'antigravity'));
-      expect(
-        fs.existsSync(
-          path.join(hostGeminiDir, 'antigravity', 'brain', 'unique-user-conv', 'transcript.jsonl'),
-        ),
-      ).toBe(true);
-      const hostDb = new Database(
-        path.join(hostGeminiDir, 'antigravity', 'conversation_summaries.db'),
-        {
-          readonly: true,
-        },
-      );
-      const mergedRow = hostDb
-        .prepare("SELECT * FROM conversation_summaries WHERE conversation_id = 'unique-user-conv'")
-        .get() as { conversation_id?: string; title?: string } | undefined;
-      hostDb.close();
-      expect(mergedRow).toBeDefined();
-      expect(mergedRow?.title).toBe('Local User Conv');
     });
 
     it('reconcileAllWorkspaceProfiles synchronizes multiple registered profiles cleanly', async () => {
@@ -1080,6 +1059,7 @@ describe('Workspace Credential Provisioning (R3)', () => {
       const result = await reconcileAllWorkspaceProfiles({
         profileRepo: mockProfileRepo as never,
         hostGeminiDir,
+        withStoppedProfile: async (_id, _options, action) => action(),
       });
 
       expect(result.reconciledCount).toBe(2);

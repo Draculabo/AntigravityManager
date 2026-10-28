@@ -44,6 +44,18 @@ repository's runtime versions. Workspace tests use the existing portable Vitest 
 
 ## Consequences
 
+Customization reconciliation preserves existing config content and renames recognized scaffolding
+to a unique sibling backup before linking. Recovery failures retain that backup and report a partial
+result. Batch synchronization uses the stopped-profile lease; running instances remain untouched
+and pending. The Manager profile namespace is independent of the official client's runtime platform,
+while settings and extension sources follow the captured runtime. No existing profile rows move.
+
+Runtime-affecting binding edits use a full stop/save/start operation under one profile lease.
+Name-only edits do not restart. Shutdown failure prevents persistence; later failures expose saved
+metadata and an error rather than restoring against an uncertain process. Lists share one process
+snapshot and represent unknown observation explicitly. These are lifecycle contracts rather than
+additional credential authorities or an alternative hot-switch implementation.
+
 Workspace account credentials and process ownership are profile-scoped; customization sharing
 remains intentional and does not provide OS-user security isolation. Classic keeps its existing
 single hot attempt, full restart fallback and closed diagnostic timeline. Workspace launch does
@@ -82,3 +94,66 @@ peer-preserving hot-service and forced-close checks, operation locks, deletion a
 recovery diagnostics. The native client-account integration script verifies real SQLite isolation,
 backups, transaction failure and unchanged namespaced Windows credentials under Electron. This
 does not substitute for packaging or live-provider generation acceptance.
+
+The workspace maintenance regressions additionally exercise nonempty configuration preservation,
+link failure restoration, retained backups after failed restoration, stopped-state batch sharing,
+running binding replacement, saved metadata after uncertain restart, shared status observation,
+and mounted Windows path casing under a native WSL client. Component checks exercise localized
+unknown status and a failed deletion that keeps its recovery message visible. Synthetic browser
+previews cover English and Chinese desktop layouts, a narrow Chinese layout and the restart warning;
+they do not exercise packaged IPC.
+
+Visible WSL checks with official Linux IDE 2.5.5 confirmed concurrent fresh A/B sign-in and primary
+discovery excluding managed peers. One run also confirmed running account replacement with the peer
+unchanged. Full repeated acceptance remains incomplete: folder-trust prompts blocked renderer
+inspection in earlier runs, and the final run reported `exit-unconfirmed` during shutdown. A separate
+scoped recovery with a longer shutdown budget confirmed the remaining owned process exited and
+removed its test directory. The failed run remains failed; it does not establish reliable repeated
+restart acceptance, Windows 2.6 behavior for this maintenance change, or concurrent AI generation.
+
+Follow-up WSL measurements retained the existing six-second native shutdown deadline. Four A/B
+rounds shortly after startup and four rounds after ten seconds of initialization passed all sixteen
+stops (495–2943 milliseconds), preserving the selected peer and confirming fixture cleanup. Native
+snapshot samples completed in 7–22 milliseconds; these samples do not prove the earlier
+`exit-unconfirmed` cause. A later full-chain run confirmed initial A/B sign-in and managed-peer
+exclusion but failed rebound authentication. Isolated official auth logs recorded `loginError`
+and a network socket disconnect before the secure TLS connection was established. Both failed
+full-chain runs remain failed, despite successful shutdown and cleanup. No timeout, credential
+format, proxy configuration or process ownership rule was changed to obtain these observations.
+
+Static inspection of official Linux IDE 2.5.5 located main-process token renewal through
+`google-auth-library` 10.3.0 and `gaxios` 7.1.2. That transport resolves request or proxy environment
+settings independently of Chromium's command-line proxy. Credential-free endpoint checks succeeded
+both directly and through the configured HTTP proxy. A controlled child-environment proxy run still
+failed official OAuth with the pre-TLS disconnect signature. A temporary forwarding relay confirmed
+that the official process inherited the proxy and made OAuth CONNECT requests through it; initial
+A/B login succeeded, while a separate primary-process assertion failed in that run. These results
+do not justify automatic proxy-environment derivation in production or identify the network hop
+closing the failed TLS connection. No such production routing change was made.
+
+The subsequent relay-assisted visible WSL run passed the complete A/B sequence using the unchanged
+production bundle: initial fresh login, correct per-profile credentials, duplicate-launch preservation,
+primary exclusion, running A-to-B rebinding, restoration to A, A stop/restart while B remained signed
+in, and provider-populated identity after final exit. It recorded 48 OAuth CONNECT requests and
+confirmed proxy inheritance. All owned processes, profile directories and the relay were cleaned up;
+pre-existing token-file hashes were unchanged. This is one successful run with an isolated diagnostic
+proxy environment, not proof that intermittent TLS failures or the earlier one-off primary-selection
+assertion are resolved. It does not establish unchanged-environment repeated acceptance or Windows,
+macOS, packaged Manager or concurrent AI generation behavior.
+
+The primary-selection investigation subsequently reproduced a Linux forked child being returned as
+an independent client: its native snapshot retained the IDE executable but lacked an explicit data
+directory or recognized role arguments. The same snapshot linked it to the live B profile, with a
+later creation time. Native discovery now applies the existing same-executable ancestry filtering
+to Linux as well as Windows. Explicit data-directory candidates, independent roots, younger-parent
+conflicts and different installations remain visible. The owning observer regression fails before
+the fix; focused observer, primary, startup and scoped shutdown checks pass after it. The change
+does not alter credentials, proxy routing or shutdown deadlines. Intermittent TLS is excluded from
+the current acceptance blocker at the maintainer's request; its suspected VPN cause remains unproven.
+
+The credential-free official-client reproduction failed in consecutive runs before this correction,
+including a captured child-to-B ancestry chain. After correction it completed six A/B start/stop
+rounds and 144 primary-discovery checks with no selected managed peer, preserving B while stopping A.
+All owned processes exited and profile directories were removed. Focused Windows and WSL runtime
+selections passed 105 and 142 tests respectively. This establishes the observed Linux discovery
+regression independently of OAuth; it does not repeat live-account authentication on this final bundle.

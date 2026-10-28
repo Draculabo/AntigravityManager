@@ -94,6 +94,7 @@ export const SyncWorkspaceProfilesResultSchema = z.object({
       id: z.string(),
       name: z.string(),
       reconciled: z.boolean(),
+      reason: z.enum(['running', 'unavailable', 'sharing-failed']).optional(),
     }),
   ),
 });
@@ -103,6 +104,7 @@ export type SyncWorkspaceProfilesResult = z.infer<typeof SyncWorkspaceProfilesRe
 export const WorkspaceProfileStatusSchema = z.object({
   running: z.boolean(),
   pid: z.number().int().positive().optional(),
+  unknown: z.boolean().optional(),
 });
 export type WorkspaceProfileStatus = z.infer<typeof WorkspaceProfileStatusSchema>;
 
@@ -118,6 +120,12 @@ export interface WorkspaceLifecycleDelegate {
   launch(profileId: string): Promise<{ pid: number }>;
   stop(profileId: string): Promise<void>;
   getStatus(profile: WorkspaceProfile): Promise<WorkspaceProfileStatus>;
+  getStatuses(profiles: WorkspaceProfile[]): Promise<WorkspaceProfileStatus[]>;
+  applyUpdate(
+    profileId: string,
+    input: UpdateWorkspaceProfileInput,
+    persist: () => Promise<WorkspaceProfile>,
+  ): Promise<WorkspaceProfile>;
   /** Hold profile operation ownership until stopped-state mutation completes. */
   withStoppedProfile(
     profileId: string,
@@ -167,6 +175,17 @@ export class WorkspaceValidationError extends WorkspaceError {
   constructor(message: string) {
     super(message, 'BAD_REQUEST');
     this.name = 'WorkspaceValidationError';
+  }
+}
+
+export class WorkspaceRestartError extends WorkspaceError {
+  constructor(cause: unknown) {
+    super(
+      'Workspace settings were saved, but the IDE restart could not be confirmed. Check the workspace status before retrying.',
+      'RESTART_UNCONFIRMED',
+      cause,
+    );
+    this.name = 'WorkspaceRestartError';
   }
 }
 

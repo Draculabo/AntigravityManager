@@ -224,7 +224,7 @@ async function scan(
       });
     }
   }
-  if (process.platform !== 'win32') {
+  if (process.platform !== 'win32' && process.platform !== 'linux') {
     return results;
   }
   const byPid = new Map(rows.map((row) => [row.pid, row]));
@@ -243,11 +243,12 @@ async function scan(
       }
       seen.add(parent.pid);
       const ancestor = candidates.get(parent.pid);
-      // Walk through Electron utility hosts too; workers need not expose known role arguments.
+      // Forking Linux children can retain the client executable before exec replaces it.
+      // Follow the same snapshot's ancestry, including utility hosts without known role arguments.
       if (
         ancestor &&
         areExecutablePathsEquivalent(ancestor.executablePath, candidate.executablePath, {
-          platform: 'win32',
+          platform: process.platform,
         })
       ) {
         return false;

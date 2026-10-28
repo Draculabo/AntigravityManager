@@ -1,3 +1,4 @@
+import type { UpdateWorkspaceProfileInput } from '@/modules/workspace/types';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,6 +18,7 @@ import {
   ActiveWorkspaceDeletionError,
   WorkspaceValidationError,
   WorkspaceDirectoryError,
+  WorkspaceRestartError,
   type WorkspaceProfile,
 } from '@/modules/workspace/types';
 import type { CloudAccount } from '@/modules/cloud-account/types';
@@ -31,7 +33,23 @@ vi.mock('better-sqlite3', async () => {
 
 const dialogMocks = vi.hoisted(() => ({
   showOpenDialog: vi.fn(),
+  root: '',
 }));
+
+// Keep filesystem effects in this fixture while retaining production profile-ID validation.
+vi.mock('@/shared/platform/paths', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/shared/platform/paths')>();
+  return {
+    ...actual,
+    getProfilesBaseDir: () => path.join(dialogMocks.root, 'profiles'),
+    getProfileUserDataDir: (profileId: string) =>
+      path.join(
+        dialogMocks.root,
+        'profiles',
+        path.basename(actual.getProfileUserDataDir(profileId, { isWsl: false })),
+      ),
+  };
+});
 
 vi.mock('electron', () => ({
   dialog: {
@@ -71,6 +89,7 @@ describe('Workspace Profile Router IPC (R1) - Genuine Integration', () => {
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-router-test-'));
+    dialogMocks.root = tempDir;
     testDbPath = path.join(tempDir, 'cloud_accounts.db');
     WorkspaceProfileRepo.setDatabasePath(testDbPath);
 
@@ -105,6 +124,13 @@ describe('Workspace Profile Router IPC (R1) - Genuine Integration', () => {
 
     isRunning = false;
     lifecycleDelegate = {
+      getStatuses: async (profiles: WorkspaceProfile[]) =>
+        profiles.map(() => ({ running: isRunning })),
+      applyUpdate: async (
+        _id: string,
+        _input: UpdateWorkspaceProfileInput,
+        persist: () => Promise<WorkspaceProfile>,
+      ) => persist(),
       getStatus: vi.fn(async (_profile: WorkspaceProfile) => ({
         running: isRunning,
         pid: isRunning ? 54321 : undefined,
@@ -776,6 +802,15 @@ describe('Workspace Profile Router IPC (R1) - Genuine Integration', () => {
   // 9. Error Mapping: toWorkspaceORPCError
   // =========================================================================
   describe('toWorkspaceORPCError Translation Matrix', () => {
+    it('reports saved settings without exposing the underlying restart cause', () => {
+      const error = new WorkspaceRestartError(new Error('private runtime detail'));
+      const translated = toWorkspaceORPCError(error);
+      expect(translated.code).toBe('INTERNAL_SERVER_ERROR');
+      expect(translated.data).toEqual({ code: 'RESTART_UNCONFIRMED' });
+      expect(translated.message).toBe(error.message);
+      expect(JSON.stringify(translated.toJSON())).not.toContain('private runtime detail');
+    });
+
     it('maps domain errors to corresponding oRPC status codes', () => {
       const errNotFound = toWorkspaceORPCError(new WorkspaceNotFoundError('ws-1'));
       expect(errNotFound.code).toBe('NOT_FOUND');

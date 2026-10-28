@@ -19,6 +19,7 @@ import {
   ActiveWorkspaceDeletionError,
   WorkspaceValidationError,
   WorkspaceDirectoryError,
+  WorkspaceRestartError,
 } from '../types';
 import { WorkspaceProfileService } from '../services/workspace-profile.service';
 
@@ -52,6 +53,12 @@ export function toWorkspaceORPCError(error: unknown) {
     return new ORPCError('INTERNAL_SERVER_ERROR', {
       message: error.message,
       data: { code: error.code, dirPath: error.dirPath },
+    });
+  }
+  if (error instanceof WorkspaceRestartError) {
+    return new ORPCError('INTERNAL_SERVER_ERROR', {
+      message: error.message,
+      data: { code: error.code },
     });
   }
   return new ORPCError('INTERNAL_SERVER_ERROR', {

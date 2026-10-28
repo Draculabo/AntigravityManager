@@ -324,6 +324,47 @@ describe('bounded process observation', () => {
       { pid: 71, executablePath: exe, args: ['--user-data-dir=C:\\Other'], startTime: 1n },
     ]);
   });
+  it('does not admit Linux forked helpers as primary clients when role arguments are absent', async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    const exe = '/opt/ide/antigravity-ide';
+    const root = {
+      ...main,
+      name: 'antigravity-ide',
+      exe,
+      cmd: [exe, '--user-data-dir=/profiles/B'],
+    };
+    mocks.native.mockResolvedValue([
+      { ...root, pid: 43, parentPid: 42, startTime: 2n, cmd: ['/bin/sh', '-c', 'fixture'] },
+      root,
+    ]);
+    expect(await observeProcesses('ide', 1000, exe)).toEqual([
+      { pid: 42, executablePath: exe, args: ['--user-data-dir=/profiles/B'], startTime: 1n },
+    ]);
+  });
+
+  it('preserves Linux explicit instances, unrelated roots and younger-parent conflicts', async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    const exe = '/opt/ide/antigravity-ide';
+    const root = { ...main, name: 'antigravity-ide', exe, cmd: [exe] };
+    mocks.native.mockResolvedValue([
+      root,
+      { ...root, pid: 70, parentPid: 1 },
+      { ...root, pid: 71, parentPid: 42, cmd: [exe, '--user-data-dir=/profiles/other'] },
+      { ...root, pid: 72, parentPid: 73 },
+      { ...root, pid: 73, parentPid: 1, startTime: 2n },
+      {
+        ...root,
+        pid: 74,
+        parentPid: 42,
+        exe: '/other/antigravity-ide',
+        cmd: ['/other/antigravity-ide'],
+      },
+    ]);
+    expect((await observeProcesses('ide', 1000, exe)).map((row) => row.pid)).toEqual([
+      42, 70, 71, 72, 73, 74,
+    ]);
+  });
+
   it('fails explicitly when the visible app metadata is unreadable', async () => {
     vi.useFakeTimers();
     mocks.native.mockResolvedValue([{ ...main, exe: undefined, cmd: [] }]);
