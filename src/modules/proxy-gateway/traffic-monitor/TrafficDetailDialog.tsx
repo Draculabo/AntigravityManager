@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ipc } from '@/ipc/manager';
 import type { TrafficAuditBodyDescriptor } from '@/modules/proxy-gateway/audit/traffic-audit.types';
+import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
 
 import { formatTrafficTime } from './format-traffic-time';
 
@@ -50,10 +51,16 @@ function TrafficDetailDialogContent({
     queryKey: ['gateway', 'traffic-detail', id],
     queryFn: () => ipc.client.gateway.auditDetail({ id: id! }),
   });
+  const { data: cloudAccounts } = useCloudAccounts();
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [selectedBodyId, setSelectedBodyId] = useState<string | null>(null);
 
   const requestDetail = detail.data?.recordKind === 'request' ? detail.data : null;
+  const accountEmail =
+    Array.isArray(cloudAccounts) && requestDetail?.request.attributedAccountId
+      ? (cloudAccounts.find((account) => account.id === requestDetail.request.attributedAccountId)
+          ?.email ?? null)
+      : null;
   const effectiveAttemptId = selectedAttemptId ?? requestDetail?.attempts.at(-1)?.id ?? null;
   const preferredBody =
     requestDetail?.bodies.find(
@@ -168,7 +175,7 @@ function TrafficDetailDialogContent({
               ))}
             </dl>
             <div className="hidden min-h-0 flex-1 grid-cols-[minmax(260px,0.8fr)_minmax(240px,0.7fr)_minmax(420px,1.5fr)] xl:grid">
-              <MetadataPane detail={requestDetail} />
+              <MetadataPane detail={requestDetail} accountEmail={accountEmail} />
               <AttemptPane
                 attempts={requestDetail.attempts}
                 parentId={requestDetail.request.id}
@@ -204,7 +211,7 @@ function TrafficDetailDialogContent({
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="metadata" className="min-h-0 flex-1 overflow-auto">
-                <MetadataPane detail={requestDetail} borderless />
+                <MetadataPane detail={requestDetail} accountEmail={accountEmail} borderless />
               </TabsContent>
               <TabsContent value="attempts" className="min-h-0 flex-1 overflow-auto">
                 <AttemptPane
@@ -238,9 +245,11 @@ type RequestDetail = Extract<
 
 function MetadataPane({
   detail,
+  accountEmail = null,
   borderless = false,
 }: {
   detail: RequestDetail;
+  accountEmail?: string | null;
   borderless?: boolean;
 }) {
   const { t } = useTranslation();
@@ -258,6 +267,7 @@ function MetadataPane({
           { label: t('traffic.fields.requested-model'), value: request.model },
           { label: t('traffic.fields.mapped-model'), value: request.mappedModel },
           { label: t('traffic.account'), value: request.attributedAccountId },
+          { label: t('traffic.account-email'), value: accountEmail },
           { label: t('traffic.physical-model'), value: request.physicalModel },
           { label: t('traffic.model-family'), value: request.physicalModelFamily },
           {
