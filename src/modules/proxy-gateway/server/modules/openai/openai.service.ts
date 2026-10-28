@@ -145,6 +145,12 @@ export class OpenAIService extends BaseProxyService {
       : scope.cacheKey;
     const clientToolNames = extractOpenAIToolNames(routedRequest.tools);
 
+    const targetAccountId =
+      (typeof requestContext?.headers?.['x-antigravity-account-id'] === 'string'
+        ? requestContext.headers['x-antigravity-account-id'].trim()
+        : typeof requestContext?.headers?.['x-account-id'] === 'string'
+          ? requestContext.headers['x-account-id'].trim()
+          : undefined) || undefined;
     const routingModel = routedRequest.model.toLowerCase().includes('-image')
       ? cleanImageModelName(routedRequest.model)
       : routedRequest.model;
@@ -156,7 +162,9 @@ export class OpenAIService extends BaseProxyService {
     const isImageRequest = isGeminiImageModel(routingModel) || isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
-      `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}`,
+      `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}${
+        targetAccountId ? `, targetAccount=${targetAccountId}` : ''
+      }`,
     );
     markProxyCleanComplete();
 
@@ -180,8 +188,14 @@ export class OpenAIService extends BaseProxyService {
         routingSessionKey,
         isImageRequest,
         signal,
+        targetAccountId,
       );
       if (!token) {
+        if (targetAccountId) {
+          throw new Error(
+            `Target account '${targetAccountId}' is unavailable or does not support model '${targetModel}'`,
+          );
+        }
         if (lastError !== null) {
           throw this.resolveTerminalRetryError(retryState, lastError);
         }
@@ -458,6 +472,12 @@ export class OpenAIService extends BaseProxyService {
         }
         if (!penaltyRecordedBeforeGrace) {
           await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+        }
+        if (targetAccountId) {
+          throw this.resolveTerminalRetryError(
+            retryState,
+            lastError || new Error(`Request failed for target account '${targetAccountId}'`),
+          );
         }
       }
     }

@@ -15,6 +15,16 @@ A deferred write failure is logged without invalidating the lease that already s
 gateway shutdown drains queued writes. An abrupt process exit can lose the latest deferred update.
 Account mutations outside this lease path keep their existing awaited persistence behavior.
 
+## Targeted account leases
+
+Requests can bypass automatic pool scheduling and pin a specific account using the
+`x-antigravity-account-id` or `x-account-id` request header. When supplied, `AccountLeaseService`
+matches the target by account ID or case-insensitive email, hydrates that account's token
+directly, and verifies model compatibility and validation status. If the target account is
+unavailable, depleted or blocked, the request fails without falling back to other pool accounts.
+Responses emit `x-antigravity-account-id` and `x-antigravity-account-email` headers reflecting
+the serving account.
+
 ## Related references
 
 - [Proxy compatibility](compatibility.md) describes account scheduling and stream completion.

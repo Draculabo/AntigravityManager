@@ -1,3 +1,5 @@
+import en from './en';
+
 const tr = {
   'agent-tools': {
     title: 'Kodlama araçlarınızı bağlayın',
@@ -202,9 +204,12 @@ const tr = {
     'collapse-sidebar': 'Kenar çubuğunu daralt',
     'expand-sidebar': 'Kenar çubuğunu genişlet',
     accounts: 'Hesaplar',
+    playground: 'Playground',
     proxy: 'API Proxy',
     settings: 'Ayarlar',
+    traffic: 'Trafik',
   },
+  playground: en.playground,
   editionSelection: {
     title: 'Antigravity Sürümünüzü Seçin',
     description:

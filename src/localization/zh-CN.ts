@@ -1,3 +1,5 @@
+import en from './en';
+
 const zhCn = {
   'operation-diagnostics': {
     'check-account-list': '账号可能已经保存，请先刷新账号列表，再决定是否重新登录。',
@@ -223,9 +225,15 @@ const zhCn = {
     'collapse-sidebar': '收起侧栏',
     'expand-sidebar': '展开侧栏',
     accounts: '账号',
+    playground: '演练场',
     proxy: 'API 反代',
     settings: '设置',
     traffic: '流量',
+  },
+  playground: {
+    ...en.playground,
+    title: '模型演练场 (Playground)',
+    description: '多账号交互式测试模型响应、延迟与思考过程。',
   },
   traffic: {
     'detail-load-failed': '暂时无法读取这条请求，请重试。',

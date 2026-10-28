@@ -230,10 +230,12 @@ const fr = {
     'collapse-sidebar': 'Réduire la barre latérale',
     'expand-sidebar': 'Développer la barre latérale',
     accounts: 'Comptes',
+    playground: 'Playground',
     proxy: 'Proxy API',
     settings: 'Parametres',
     traffic: 'Trafic',
   },
+  playground: en.playground,
   traffic: {
     ...en.traffic,
     'detail-load-failed': 'Impossible de charger cette requête. Réessayez.',

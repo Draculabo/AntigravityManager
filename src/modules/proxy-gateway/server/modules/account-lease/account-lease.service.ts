@@ -47,10 +47,11 @@ import {
 } from './image-account-scheduler.service';
 import { getServerConfig } from '@/server/server-config';
 
-interface GetNextTokenOptions {
+export interface GetNextTokenOptions {
   sessionKey?: string;
   excludeAccountIds?: string[];
   model?: string;
+  targetAccountId?: string;
 }
 
 export interface GetNextImageTokenOptions extends GetNextTokenOptions {
@@ -373,6 +374,38 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       const excludedAccountIds = new Set(options?.excludeAccountIds ?? []);
 
       this.rateLimitTracker.cleanupExpired();
+
+      const targetAccountId = options?.targetAccountId?.trim();
+      if (targetAccountId) {
+        const normalizedTarget = targetAccountId.toLowerCase();
+        const targetEntry = Array.from(this.tokens.entries()).find(
+          ([id, data]) => id === targetAccountId || data.email?.toLowerCase() === normalizedTarget,
+        );
+        if (!targetEntry) {
+          this.logger.warn(`Target account ${targetAccountId} not found in token cache`);
+          return null;
+        }
+        if (
+          targetEntry[1].validation_blocked_until_ms !== undefined &&
+          now < targetEntry[1].validation_blocked_until_ms
+        ) {
+          this.logger.warn(`Target account ${targetAccountId} is validation blocked`);
+          return null;
+        }
+        const capable = this.selectModelCapableAccounts([targetEntry], model);
+        if (capable.length === 0) {
+          this.logger.warn(
+            `Target account ${targetAccountId} does not advertise requested model: ${model ?? 'unknown'}`,
+          );
+          return null;
+        }
+        return await this.finalizeSelectedToken(
+          targetEntry[0],
+          targetEntry[1],
+          nowSeconds,
+          sessionKey,
+        );
+      }
 
       const fullAccountPool = Array.from(this.tokens.entries()).filter(
         ([, tokenData]) =>

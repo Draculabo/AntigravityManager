@@ -1,0 +1,57 @@
+import { z } from 'zod';
+
+export const PlaygroundPromptPresetSchema = z.strictObject({
+  id: z.string().min(1).max(64),
+  title: z.string().min(1).max(128),
+  description: z.string().max(256),
+  prompt: z.string().min(1).max(32768),
+  systemPrompt: z.string().max(8192).optional(),
+});
+
+export type PlaygroundPromptPreset = z.infer<typeof PlaygroundPromptPresetSchema>;
+
+export const PlaygroundExecuteInputSchema = z.strictObject({
+  accountId: z.string().max(256).optional(),
+  model: z.string().min(1).max(256),
+  prompt: z.string().min(1).max(32768),
+  systemPrompt: z.string().max(8192).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().min(1).max(65536).optional(),
+});
+
+export type PlaygroundExecuteInput = z.infer<typeof PlaygroundExecuteInputSchema>;
+
+export const PlaygroundExecuteResultSchema = z.strictObject({
+  success: z.boolean(),
+  content: z.string(),
+  thinkingContent: z.string().optional(),
+  attributedAccountId: z.string().optional(),
+  attributedAccountEmail: z.string().optional(),
+  model: z.string(),
+  durationMs: z.number().nonnegative(),
+  ttftMs: z.number().nonnegative().optional(),
+  promptTokens: z.number().int().nonnegative().optional(),
+  completionTokens: z.number().int().nonnegative().optional(),
+  totalTokens: z.number().int().nonnegative().optional(),
+  status: z.number().int().min(100).max(599),
+  error: z.string().optional(),
+});
+
+export type PlaygroundExecuteResult = z.infer<typeof PlaygroundExecuteResultSchema>;
+
+export const PlaygroundCompareInputSchema = z.strictObject({
+  accountIds: z.array(z.string().max(256)).min(1).max(10),
+  model: z.string().min(1).max(256),
+  prompt: z.string().min(1).max(32768),
+  systemPrompt: z.string().max(8192).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().min(1).max(65536).optional(),
+});
+
+export type PlaygroundCompareInput = z.infer<typeof PlaygroundCompareInputSchema>;
+
+export const PlaygroundCompareResultSchema = z.strictObject({
+  results: z.array(PlaygroundExecuteResultSchema),
+});
+
+export type PlaygroundCompareResult = z.infer<typeof PlaygroundCompareResultSchema>;

@@ -1,3 +1,5 @@
+import en from './en';
+
 const vi = {
   'agent-tools': {
     title: 'Kết nối công cụ lập trình',
@@ -201,9 +203,12 @@ const vi = {
     'collapse-sidebar': 'Thu gọn thanh bên',
     'expand-sidebar': 'Mở rộng thanh bên',
     accounts: 'Tài khoản',
+    playground: 'Playground',
     proxy: 'API Proxy',
     settings: 'Cài đặt',
+    traffic: 'Lưu lượng',
   },
+  playground: en.playground,
   editionSelection: {
     title: 'Chọn phiên bản Antigravity',
     description:
