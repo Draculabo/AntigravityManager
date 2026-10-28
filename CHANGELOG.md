@@ -2,6 +2,69 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.28.0
+
+**Release Date:** 2026-10-28
+**Since v0.27.0:** 5 commits · 3 merged PRs · 3 verified contributors
+
+> This release includes updates in Desktop & User Experience, Security & Reliability, Proxy Gateway & Models, Accounts & Core.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — publish model context window and output limit in /v1/models ([#378](https://github.com/Draculabo/AntigravityManager/pull/378))
+- **Feature** — add Classic hot switching with restart recovery ([f22d430](https://github.com/Draculabo/AntigravityManager/commit/f22d43061e7f771ae4ff1cde74c896125a724bfe))
+- **Fix** — switch Windows IDE 2.6 accounts through credential store ([#376](https://github.com/Draculabo/AntigravityManager/pull/376))
+- **Fix** — harden client switching and preserve proxy routing ([b423d97](https://github.com/Draculabo/AntigravityManager/commit/b423d97c066411b1dacd23bbf28dea5dd9c4030f))
+- **Maintenance** — update package metadata to v0.27.0 ([#373](https://github.com/Draculabo/AntigravityManager/pull/373))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.27.0 ([#373](https://github.com/Draculabo/AntigravityManager/pull/373))
+
+---
+
+## 🔒 Security & Reliability
+
+- **Fix** — switch Windows IDE 2.6 accounts through credential store ([#376](https://github.com/Draculabo/AntigravityManager/pull/376))
+
+---
+
+## 🌐 Proxy Gateway & Models
+
+- **Feature** — publish model context window and output limit in /v1/models ([#378](https://github.com/Draculabo/AntigravityManager/pull/378))
+- **Fix** — harden client switching and preserve proxy routing ([b423d97](https://github.com/Draculabo/AntigravityManager/commit/b423d97c066411b1dacd23bbf28dea5dd9c4030f))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Feature** — add Classic hot switching with restart recovery ([f22d430](https://github.com/Draculabo/AntigravityManager/commit/f22d43061e7f771ae4ff1cde74c896125a724bfe))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo · @limonhassan606 · @Realmagnum
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.27.0 by @Draculabo ([#373](https://github.com/Draculabo/AntigravityManager/pull/373))
+- fix: switch Windows IDE 2.6 accounts through credential store by @limonhassan606 ([#376](https://github.com/Draculabo/AntigravityManager/pull/376))
+- feat(proxy-gateway): publish model context window and output limit in /v1/models by @Realmagnum ([#378](https://github.com/Draculabo/AntigravityManager/pull/378))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.27.0...v0.28.0
+
 # 🚀 Antigravity Manager Release v0.27.0
 
 **Release Date:** 2026-10-26
