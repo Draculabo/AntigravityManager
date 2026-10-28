@@ -15,6 +15,8 @@ import {
 import { formatOperationDiagnostic } from '../../../src/shared/observability/operationDiagnosticText';
 import { setErrorReportingEnabled } from '../../../src/shared/observability/errorReporting';
 import { logger } from '../../../src/shared/logging/logger';
+import { SwitchTraceRecorder } from '../../../src/modules/antigravity-runtime/switch/switchTrace';
+import type { SwitchTrace } from '../../../src/shared/observability/switchDiagnostic';
 
 interface AcceptanceSdk {
   setUser(value: { email: string; geo: { city: string } }): void;
@@ -40,7 +42,10 @@ export async function verifyOperationReporting(
   let eventsReceived = 0;
   let privacyPassed = true;
   let remoteAccepted = false;
-  const received = new Map<string, { eventId: string; report: OperationReport }>();
+  const received = new Map<
+    string,
+    { eventId: string; report: OperationReport; level: 'error' | 'warning' }
+  >();
   const receiver = createServer((request, response) => {
     const buffers: Buffer[] = [];
     let bytes = 0;
@@ -69,6 +74,7 @@ export async function verifyOperationReporting(
           const event = z
             .object({
               event_id: z.string().regex(/^[a-f0-9]{32}$/),
+              level: z.enum(['error', 'warning']),
               release: z.literal(process.env.SENTRY_RELEASE),
               tags: z.object({
                 diagnostic_id: z.uuid(),
@@ -86,6 +92,7 @@ export async function verifyOperationReporting(
           received.set(event.tags.diagnostic_id, {
             eventId: event.event_id,
             report: event.contexts.operation_diagnostic,
+            level: event.level,
           });
           const raw: unknown = JSON.parse(lines[index + 1]);
           privacyPassed =
@@ -196,6 +203,55 @@ export async function verifyOperationReporting(
       terminals.push(diagnostic);
       logger.error('Controlled forwarded diagnostic', { diagnostic });
     }
+    const switchCases: { diagnostic: OperationDiagnostic; trace: SwitchTrace }[] = [];
+    for (const recovered of [true, false]) {
+      const operation = new OperationContext('cloud-account-switch');
+      await operation.run(async () => {
+        const recorder = new SwitchTraceRecorder();
+        recorder.effects.credentials = 'confirmed';
+        await recorder
+          .phase(
+            'service-replacement',
+            'hot',
+            async () => {
+              throw processError('switched-hot-unconfirmed');
+            },
+            'restart',
+          )
+          .catch(() => {});
+        await recorder.phase('restart-ownership', 'restart', async () => {});
+        if (recovered) {
+          for (const stage of [
+            'client-close',
+            'restart-write',
+            'terms-restore',
+            'client-start',
+            'account-finalize',
+          ] as const) {
+            await recorder.phase(stage, 'restart', async () => {});
+          }
+        } else {
+          await recorder
+            .phase('client-close', 'restart', async () => {
+              throw processError('exit-unconfirmed');
+            })
+            .catch(() => {});
+        }
+        const trace = recorder.finish(recovered ? 'recovered-by-restart' : 'failed');
+        operation.setSwitchTrace(trace);
+        if (recovered) {
+          operation.completeSwitch();
+        }
+        const diagnostic = operation.finish({
+          stage: 'process-close',
+          reason: 'process-close-failed',
+          target: 'classic',
+        });
+        terminals.push(diagnostic);
+        switchCases.push({ diagnostic, trace });
+        logger.error('Controlled forwarded diagnostic', { diagnostic });
+      });
+    }
     const flushed = await sdk.flush(15_000);
     const evidencePassed = terminals.every((diagnostic) => {
       const { reporting, ...failure } = diagnostic;
@@ -211,6 +267,14 @@ export async function verifyOperationReporting(
         (!diagnostic.process || details.includes(`Process failure: ${diagnostic.process.reason}`))
       );
     });
+    const switchEvidencePassed = switchCases.every(({ diagnostic, trace }) => {
+      const event = received.get(diagnostic.diagnosticId);
+      return (
+        event !== undefined &&
+        isDeepStrictEqual(event.report.switchTrace, trace) &&
+        event.level === (trace.outcome === 'recovered-by-restart' ? 'warning' : 'error')
+      );
+    });
     setErrorReportingEnabled(false);
     const disabled = new OperationContext('google-login').finish({
       stage: 'token-exchange',
@@ -224,11 +288,15 @@ export async function verifyOperationReporting(
       eventsReceived,
       privacyPassed,
       evidencePassed,
-      processCases: terminals.slice(1).map((diagnostic) => ({
-        diagnosticId: diagnostic.diagnosticId,
-        process: diagnostic.process,
-        reporting: diagnostic.reporting,
-      })),
+      switchEvidencePassed,
+      processCases: terminals
+        .slice(1)
+        .filter((diagnostic) => !diagnostic.switchRecovery)
+        .map((diagnostic) => ({
+          diagnosticId: diagnostic.diagnosticId,
+          process: diagnostic.process,
+          reporting: diagnostic.reporting,
+        })),
       remoteAccepted,
       flushed,
       diagnosticId: terminal.diagnosticId,
@@ -242,6 +310,7 @@ export async function verifyOperationReporting(
       eventsReceived !== terminals.length ||
       !privacyPassed ||
       !evidencePassed ||
+      !switchEvidencePassed ||
       disabled.reporting.state !== 'not-reported' ||
       disabled.reporting.reason !== 'disabled' ||
       (live && !remoteAccepted) ||

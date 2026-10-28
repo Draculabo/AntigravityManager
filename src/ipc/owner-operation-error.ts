@@ -1,7 +1,7 @@
 import { ORPCError } from '@orpc/server';
 import { z } from 'zod';
 import { ServiceConfigErrorCodeSchema } from '@/modules/config/service-config.schema';
-import { LocalAccountErrorCodeSchema } from '@/modules/account/services/local-account.schema';
+import { LocalAccountFailureDataSchema } from '@/modules/account/services/local-account.schema';
 import { OpenCodeOwnerErrorCodeSchema } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.schema';
 
 type OwnerScope =
@@ -13,7 +13,7 @@ type OwnerScope =
   | 'audit-curl';
 const pathSchema = z.array(z.string());
 const configError = z.strictObject({ configCode: ServiceConfigErrorCodeSchema });
-const localError = z.strictObject({ accountCode: LocalAccountErrorCodeSchema });
+const localError = LocalAccountFailureDataSchema;
 const openCodeError = z.strictObject({ openCodeCode: OpenCodeOwnerErrorCodeSchema });
 type OwnerCategory =
   | z.infer<typeof configError>
@@ -148,6 +148,9 @@ export function projectOwnerOperationError(
         : parsed.success
           ? parsed.data.accountCode
           : 'account-operation-failed',
+      ...(!invalid && parsed.success && parsed.data.diagnostic
+        ? { diagnostic: parsed.data.diagnostic }
+        : {}),
     };
   } else if (scope === 'audit') {
     category = { auditCode: invalid ? 'invalid-input' : 'operation-failed' };

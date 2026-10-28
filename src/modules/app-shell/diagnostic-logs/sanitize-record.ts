@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { parseCloudOperationDiagnostic } from '@/modules/cloud-account/diagnostics';
-import { OperationStepRecordSchema } from '@/shared/observability/operationDiagnostic';
+import {
+  OperationStepRecordSchema,
+  OperationDiagnosticSchema,
+} from '@/shared/observability/operationDiagnostic';
+import { SwitchTraceSchema } from '@/shared/observability/switchDiagnostic';
 
 const ErrorCodeSchema = z.enum([
   'ECONNREFUSED',
@@ -47,6 +51,17 @@ const SAFE_MESSAGES = new Set([
 
 /** Unknown prose, nested values and continuations are discarded, not regex-redacted. */
 export function sanitizeLogRecord(message: string): { text: string; removed: boolean } {
+  const switchMarker = 'Switch trace v1 ';
+  if (message.startsWith(switchMarker)) {
+    try {
+      const trace = SwitchTraceSchema.safeParse(JSON.parse(message.slice(switchMarker.length)));
+      if (trace.success) {
+        return { text: `${switchMarker}${JSON.stringify(trace.data)}`, removed: false };
+      }
+    } catch {
+      /* Only closed switch evidence is exportable. */
+    }
+  }
   const stepMarker = 'Operation step v1 ';
   if (message.startsWith(stepMarker)) {
     try {
@@ -66,6 +81,10 @@ export function sanitizeLogRecord(message: string): { text: string; removed: boo
       const diagnostic = parseCloudOperationDiagnostic(parsed);
       if (diagnostic) {
         return { text: `${marker}${JSON.stringify(diagnostic)}`, removed: false };
+      }
+      const local = OperationDiagnosticSchema.safeParse(parsed);
+      if (local.success && local.data.operation === 'local-account-switch') {
+        return { text: `${marker}${JSON.stringify(local.data)}`, removed: false };
       }
     } catch {
       // A marker alone cannot authorize arbitrary prose, fields or nested data.

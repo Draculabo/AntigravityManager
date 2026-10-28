@@ -208,6 +208,76 @@ remove their independent copies. They do not change the installed CLI or account
 
 ## IDE hot-switch lifecycle checks
 
+### Classic hot-switch recovery
+
+`classic-hot-switch` tests installation-owned descendants, actual retirement, new identities,
+reused PIDs, unsupported platforms, stale ancestry, denied termination and independent restart
+ownership. `classic-switch-recovery` injects failures at preparation, consent capture, initial
+write/readback, retirement, reassertion, replacement and consent confirmation through the production
+coordinator. It verifies one restart, post-exit reconciliation, one final account update, uncertain
+startup without another dispatch, and retention of both failures when recovery fails.
+
+`classic-terms-switch` includes a negative case where the official writer still records the previous
+account after service replacement. The live client must synchronize its own record; the Manager
+does not rewrite that file during hot switching. `switch-trace-diagnostics`, local/cloud owner,
+correlated diagnostic and sanitized-log tests cover the complete attempt timeline, recovered warning,
+local owner/RPC/IPC preservation, privacy and reporting failure isolation.
+
+These synthetic checks do not establish official account acceptance. The running-client mode of
+the [account acceptance runner](account-switch-acceptance.md) records whether the captured main
+process identity survived each switch. Combine this with the trace outcome, official identity,
+genuine consent and provider-task evidence; a preserved main or new service PID alone is insufficient.
+
+On Windows Classic 2.23.0, the initial native run retained the previous account's consent slot on
+both cloud and local B switches, despite fresh services and target credential readback. Its two
+B results were partial, and original credentials and the owner were restored. That negative result
+owns the consent-confirmation recovery regression; it is not a successful hot-account acceptance.
+
+After the fix, the Windows Classic 2.23.0 CLI/Core owner passed cloud A-B-A and local-snapshot
+A-B-A: all six transitions confirmed official identity and durable consent. On Classic 2.27.0,
+after manual completion of the updated official consent dialog for each account, the Electron
+37.10.3 source build also passed all six transitions through real IPC. The same-account local
+transition retained the captured main; cross-account transitions used full restart. The desktop
+run restored the exact Windows credential, login startup settings and desktop preferences.
+
+A separate Classic 2.27.0 CLI/Core provider run confirmed official identity and four fresh AI
+replies: initial A, same-account A with the main preserved, B after restart and A after restart.
+Each unique reply marker was absent before submission and present in the actual response.
+The client and owner stopped, and the original Windows credential was restored exactly.
+This provider run preceded the final recovery-ownership timeout and diagnostic-only refinements;
+focused regression checks and the final desktop run cover those refinements.
+
+The real Sentry SDK passed nine localhost-receiver fixtures in each of standalone Node and
+embedded Electron, including complete recovered and terminal switch traces after normalization.
+These checks establish local SDK projection and privacy, not remote Sentry delivery. Final process
+sampling checks isolated client/service/desktop/Core cleanup. Installer acceptance and native
+Linux/macOS hot switching remain unverified; unsupported hot layouts retain the restart route.
+
+On 2026-10-28, the real Windows x64 Forge package passed native standalone runtime acceptance,
+including SQLite, synthetic OS-credential CRUD, Core lifecycle and crash recovery. The packaged
+runtime hashes match the independently tested preparation output. Real packaged Electron passed
+embedded/standalone startup, settings navigation and reopen, CLI lifecycle, external-owner retention
+and desktop/Core crash recovery. Packaged operation diagnostics passed through embedded desktop,
+standalone Core and CLI. Login settings and production master-key identities were preserved.
+
+The configured WiX maker produced a 188.73-MiB MSI after the identical package was copied to a
+shorter owned path; WiX 3 rejected a 264-character source path in the initial output directory.
+Administrative extraction preserved the existing 0.26.0 product registration and matched the
+versioned executable, ASAR, Core, CLI and runtime-manifest hashes. This does not establish registered
+installation, repair, upgrade or uninstall; those checks require a host without an existing product
+in the same family. Direct execution of the extracted versioned payload passed embedded desktop,
+standalone Core and CLI diagnostic acceptance with unchanged production keys and restored login
+settings. The same versioned MSI payload passed all six Classic cloud and local-snapshot A-B-A
+transitions with confirmed official identity. The same-account local hot switch retained the main;
+cross-account transitions restarted it. The shared client credential, login settings and isolated
+desktop preferences were restored and compared with their baselines.
+
+This package does not pass the complete size gate: its ASAR is 121.50 MiB against the 120-MiB
+budget. The standalone runtime is 117.63 MiB against 120 MiB. The ASAR includes an existing
+September `dist/assets` tree and `dist/tsconfig.tsbuildinfo`; together they account for more than
+the 1.50-MiB excess. A clean-input package needs separate verification before claiming that this
+failure is resolved. The budget is unchanged, and Squirrel/NSIS installers are not selected here.
+
 ### Discovery and switch-only Windows forced cleanup
 
 The focused `antigravity-process-identity`, `runtime-observer`, `runtime-context` and

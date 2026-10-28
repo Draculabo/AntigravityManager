@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { LocalAccountOperations } from './local-account-owner.service';
 import {
   LocalAccountError,
-  LocalAccountErrorCodeSchema,
+  LocalAccountFailureDataSchema,
   LocalAccountInfoSchema,
   LocalAccountListSchema,
   LocalAccountViewSchema,
@@ -22,18 +22,22 @@ async function operation<T>(work: () => Promise<T>): Promise<T> {
     return await work();
   } catch (error) {
     const remote =
-      error instanceof ORPCError
-        ? z.strictObject({ accountCode: LocalAccountErrorCodeSchema }).safeParse(error.data)
-        : null;
+      error instanceof ORPCError ? LocalAccountFailureDataSchema.safeParse(error.data) : null;
     const accountCode =
       error instanceof LocalAccountError
         ? error.code
         : remote?.success
           ? remote.data.accountCode
           : 'unavailable';
+    const diagnostic =
+      error instanceof LocalAccountError
+        ? error.diagnostic
+        : remote?.success
+          ? remote.data.diagnostic
+          : undefined;
     throw new ORPCError('SERVICE_UNAVAILABLE', {
       message: 'Unable to complete this account action right now. Please try again.',
-      data: { accountCode },
+      data: { accountCode, ...(diagnostic ? { diagnostic } : {}) },
     });
   }
 }

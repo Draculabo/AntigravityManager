@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ProcessDiagnosticSchema } from './processDiagnostic';
+import { SwitchTraceSchema, SwitchStageSchema } from './switchDiagnostic';
 
 export const ReportingReceiptSchema = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('captured'), eventId: z.string().regex(/^[a-f0-9]{32}$/) }),
@@ -126,7 +127,7 @@ export type CauseClassification = z.infer<typeof CauseClassificationSchema>;
 export const OperationFailureSchema = z.strictObject({
   schemaVersion: z.literal(1),
   diagnosticId: z.uuid(),
-  operation: z.enum(['google-login', 'cloud-account-switch']),
+  operation: z.enum(['google-login', 'cloud-account-switch', 'local-account-switch']),
   stage: OperationStageSchema,
   ...CauseClassificationSchema.shape,
   accountCommit: z.enum(['not-attempted', 'confirmed', 'uncertain']).optional(),
@@ -144,6 +145,13 @@ export const OperationFailureSchema = z.strictObject({
     .optional(),
   causes: z.array(CauseClassificationSchema).max(4).optional(),
   causesTruncated: z.boolean().optional(),
+  switchRecovery: z
+    .strictObject({
+      outcome: z.enum(['recovered-by-restart', 'failed']),
+      hotFailureStage: SwitchStageSchema,
+      recoveryFailureStage: SwitchStageSchema.optional(),
+    })
+    .optional(),
 });
 export type OperationFailure = z.infer<typeof OperationFailureSchema>;
 export const OperationDiagnosticSchema = OperationFailureSchema.extend({
@@ -165,8 +173,9 @@ export const OperationStepRecordSchema = OperationObservationSchema.extend({
 });
 export const OperationReportSchema = z.strictObject({
   failure: OperationFailureSchema,
-  steps: z.array(OperationObservationSchema).max(12),
+  steps: z.array(OperationObservationSchema).max(64),
   stepsTruncated: z.boolean(),
+  switchTrace: SwitchTraceSchema.optional(),
   sourceLocations: z
     .array(
       z.strictObject({
