@@ -53,7 +53,6 @@ export class PlaygroundService {
       body.max_tokens = input.maxTokens;
     }
     if (input.reasoningEffort === 'off') {
-      body.reasoning_effort = 'none';
       body.thinking = { type: 'disabled', budget_tokens: 0 };
     } else if (input.reasoningEffort && input.reasoningEffort !== 'default') {
       body.reasoning_effort = input.reasoningEffort;

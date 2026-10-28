@@ -187,7 +187,7 @@ describe('PlaygroundService', () => {
       prompt: 'Test',
       reasoningEffort: 'off',
     });
-    expect(sentBody.reasoning_effort).toBe('none');
+    expect(sentBody.reasoning_effort).toBeUndefined();
     expect(sentBody.thinking).toEqual({ type: 'disabled', budget_tokens: 0 });
 
     // Test reasoningEffort: 'high'
