@@ -3,8 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClientAccountCredentials } from '@/modules/antigravity-runtime/credentials/clientAccount';
-import type { WorkspaceProfile, WorkspaceProfileStatus } from '@/modules/workspace/types';
+import type { WorkspaceProfile } from '@/modules/workspace/types';
 import type { RuntimeProcess } from '@/modules/antigravity-runtime/types';
+import { createWorkspaceLifecycleService } from '@/modules/workspace/services/workspace-lifecycle.service';
+import { filterContextProcesses } from '@/modules/antigravity-runtime/launchContext';
 
 const state = vi.hoisted(() => ({
   writeAgyCliToken: vi.fn(),
@@ -15,6 +17,16 @@ const state = vi.hoisted(() => ({
   discoveredExecutable: vi.fn(),
   configuredArgs: vi.fn(),
   killedPids: [] as number[],
+  observeProcesses: vi.fn(),
+}));
+
+vi.mock('@/modules/antigravity-runtime/processObserver', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/modules/antigravity-runtime/processObserver')>()),
+  observeProcesses: state.observeProcesses,
+}));
+vi.mock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
+  getAntigravityVersion: vi.fn(async () => ({ shortVersion: '2.18.1', bundleVersion: '2.18.1' })),
+  isCredentialStoreVersion: () => true,
 }));
 
 vi.mock('@/modules/antigravity-runtime/credentials/agyCliTokenStore', () => ({
@@ -201,7 +213,7 @@ describe('Workspace Profile Non-Regression & Multi-Instance Coexistence (R5)', (
   // --- Tier 4: Real-World Scenarios ---
 
   describe('Tier 4: Real-World Multi-Instance Scenarios', () => {
-    it('manages live running status for multiple concurrent workspace profiles independently', () => {
+    it('reports observed status for concurrent workspace profiles independently', async () => {
       const profile1: WorkspaceProfile = {
         id: 'p1-uuid',
         name: 'Workspace Alpha',
@@ -234,23 +246,16 @@ describe('Workspace Profile Non-Regression & Multi-Instance Coexistence (R5)', (
         },
       ];
 
-      // Process grouping logic mapping canonical userDataDir to PID
-      const resolveProfileStatus = (profile: WorkspaceProfile): WorkspaceProfileStatus => {
-        const canonicalDir = canonicalPath(profile.userDataDir);
-        const match = activeProcesses.find((p) =>
-          p.args.some((a) => a.includes(canonicalDir) || a === canonicalDir),
-        );
-        return match ? { running: true, pid: match.pid } : { running: false };
-      };
-
-      const status1 = resolveProfileStatus(profile1);
-      const status2 = resolveProfileStatus(profile2);
+      state.observeProcesses.mockResolvedValue(activeProcesses);
+      const lifecycle = createWorkspaceLifecycleService();
+      const status1 = await lifecycle.getStatus(profile1);
+      const status2 = await lifecycle.getStatus(profile2);
 
       expect(status1).toEqual({ running: true, pid: 101 });
       expect(status2).toEqual({ running: true, pid: 202 });
     });
 
-    it('terminates targeted workspace profile process tree without disrupting peer workspace instances', () => {
+    it('selects target profile roots without selecting peer roots or unowned helpers', () => {
       const p1Processes: RuntimeProcess[] = [
         { pid: 101, executablePath: executable, args: [`--user-data-dir=${profileDir1}`] },
         { pid: 102, executablePath: executable, args: ['--type=renderer'] }, // child of 101
@@ -261,54 +266,34 @@ describe('Workspace Profile Non-Regression & Multi-Instance Coexistence (R5)', (
         { pid: 203, executablePath: executable, args: ['--type=renderer'] }, // child of 202
       ];
 
-      // Simulated targeted stop function targeting only profile 1
-      const stopTargetedProfile = (targetUserDataDir: string, allProcesses: RuntimeProcess[]) => {
-        const canonicalTarget = canonicalPath(targetUserDataDir);
-        // Find roots belonging to target dir
-        const targetRoots = allProcesses.filter((p) =>
-          p.args.some((a) => a.includes(canonicalTarget)),
-        );
-        for (const root of targetRoots) {
-          state.killedPids.push(root.pid);
-        }
-      };
-
       const allActive = [...p1Processes, ...p2Processes];
-      stopTargetedProfile(profileDir1, allActive);
-
-      // Verify that PID 101 was killed, and PID 202 was spared
-      expect(state.killedPids).toContain(101);
-      expect(state.killedPids).not.toContain(202);
-      expect(state.killedPids).not.toContain(203);
+      const context = resolveLaunchContext('ide', allActive, { userDataDir: profileDir1 });
+      expect(filterContextProcesses(context, allActive)).toEqual([p1Processes[0]]);
     });
 
-    it('launch idempotency: launching an already-running workspace profile detects running status without spawning duplicate', () => {
+    it('returns an already-running profile through the production launch coordinator', async () => {
       const existingProcess: RuntimeProcess = {
         pid: 303,
         executablePath: executable,
         args: [`--user-data-dir=${profileDir1}`],
       };
 
-      // Mock launcher checking existing processes
-      const launchOrFocus = (
-        profileDir: string,
-        observed: RuntimeProcess[],
-        spawnFn: () => number,
-      ): { pid: number; isExisting: boolean } => {
-        const canonicalTarget = canonicalPath(profileDir);
-        const running = observed.find((p) => p.args.some((a) => a.includes(canonicalTarget)));
-        if (running) {
-          return { pid: running.pid, isExisting: true };
-        }
-        return { pid: spawnFn(), isExisting: false };
+      state.observeProcesses.mockResolvedValue([existingProcess]);
+      const profile: WorkspaceProfile = {
+        id: 'profile-a',
+        name: 'Workspace',
+        accountId: 'account-a',
+        projectPath: root,
+        userDataDir: profileDir1,
+        createdAt: 1,
       };
-
-      const spawnMock = vi.fn(() => 999);
-      const result = launchOrFocus(profileDir1, [existingProcess], spawnMock);
-
-      expect(result.pid).toBe(303);
-      expect(result.isExisting).toBe(true);
-      expect(spawnMock).not.toHaveBeenCalled();
+      const getAccount = vi.fn();
+      const lifecycle = createWorkspaceLifecycleService({
+        profileRepo: { getProfile: vi.fn(async () => profile) },
+        cloudAccountRepo: { getAccount, getAccounts: vi.fn() },
+      });
+      await expect(lifecycle.launch(profile.id)).resolves.toEqual({ pid: 303 });
+      expect(getAccount).not.toHaveBeenCalled();
     });
   });
 });

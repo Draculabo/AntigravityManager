@@ -459,7 +459,21 @@ function getRunningAntigravityProcesses(
     runningProcessCache.target === resolvedTarget &&
     now - runningProcessCache.checkedAt < PROCESS_SCAN_CACHE_MS
   ) {
-    return runningProcessCache.processes;
+    const configuredUserDataDir = extractUserDataDirectoryFromArgs(
+      getConfiguredAntigravityArgs(resolvedTarget),
+    );
+    return runningProcessCache.processes.filter((processItem) => {
+      if (resolvedTarget !== 'ide') {
+        return true;
+      }
+      const userDataDir = extractUserDataDirectoryFromArgs(processItem.args);
+      return (
+        !userDataDir ||
+        (configuredUserDataDir &&
+          normalizeExecutablePath(userDataDir) === normalizeExecutablePath(configuredUserDataDir)) ||
+        !isManagedWorkspaceUserDataDir(userDataDir)
+      );
+    });
   }
 
   return [];
@@ -696,6 +710,24 @@ export function getCloudAccountsDbPath(options?: PathResolutionOptions): string 
 export function getProfilesBaseDir(options?: PathResolutionOptions): string {
   const pathApi = getCurrentPlatformPathApi(options);
   return pathApi.join(getAppDataDir(undefined, options), '..', 'AntigravityManager', 'profiles');
+}
+
+/** Managed workspace directories are never implicit destinations for primary IDE operations. */
+export function isManagedWorkspaceUserDataDir(
+  userDataDir: string,
+  options?: PathResolutionOptions,
+): boolean {
+  const pathApi = getCurrentPlatformPathApi(options);
+  const baseDir = normalizeExecutablePath(pathApi.resolve(getProfilesBaseDir(options)), options);
+  const targetDir = normalizeExecutablePath(pathApi.resolve(userDataDir), options);
+  const relative = pathApi.relative(baseDir, targetDir);
+  return (
+    relative !== '' &&
+    relative !== '..' &&
+    !relative.startsWith('../') &&
+    !relative.startsWith('..\\') &&
+    !pathApi.isAbsolute(relative)
+  );
 }
 
 /**

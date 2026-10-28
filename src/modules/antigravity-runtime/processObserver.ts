@@ -258,27 +258,12 @@ async function scan(
   });
 }
 
-let processObserverOverride:
-  | ((target: GuiTarget, timeout?: number, executablePath?: string) => Promise<RuntimeProcess[]>)
-  | null = null;
-
-export function setProcessObserverOverride(
-  fn:
-    | ((target: GuiTarget, timeout?: number, executablePath?: string) => Promise<RuntimeProcess[]>)
-    | null,
-): void {
-  processObserverOverride = fn;
-}
-
 /** Bounds observation; expired native results are ignored and interop children are cancelled. */
 export async function observeProcesses(
   target: GuiTarget,
   timeout = getProcessProbeTimeout(target),
   executablePath?: string,
 ): Promise<RuntimeProcess[]> {
-  if (processObserverOverride) {
-    return processObserverOverride(target, timeout, executablePath);
-  }
   const controller = new AbortController();
   const deadline = Date.now() + timeout;
   let timer: ReturnType<typeof setTimeout> | undefined;

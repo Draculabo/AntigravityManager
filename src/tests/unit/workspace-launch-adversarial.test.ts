@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimeProcess } from '@/modules/antigravity-runtime/types';
 import {
   assertContextProcesses,
@@ -71,6 +71,11 @@ vi.mock('@/modules/antigravity-runtime/linuxProfileOwnership', () => ({
 }));
 
 describe('Milestone M2 Adversarial Empirical Stress Testing', () => {
+  const originalPlatform = process.platform;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+  });
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-launch-adv-'));
   const originalHome = process.env.HOME;
   const executable = path.join(root, 'bin', 'antigravity');
@@ -521,8 +526,15 @@ describe('Milestone M2 Adversarial Empirical Stress Testing', () => {
   // =========================================================================
 
   describe('Adversarial 5: Platform Differences & Case Sensitivity', () => {
-    it('preserves case sensitivity on Linux native filesystem', () => {
-      // On Linux, profile_case and PROFILE_CASE are two separate directories
+    it('preserves case-sensitive Linux profile identities independently of the host filesystem', () => {
+      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+      const nativeRealpath = fs.realpathSync.native;
+      vi.spyOn(fs.realpathSync, 'native').mockImplementation((value) => {
+        if (value === profileCaseLower || value === profileCaseUpper) {
+          return value;
+        }
+        return nativeRealpath(value);
+      });
       expect(profileCaseLower).not.toBe(profileCaseUpper);
       expect(canonicalPath(profileCaseLower)).not.toBe(canonicalPath(profileCaseUpper));
 

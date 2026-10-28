@@ -118,6 +118,12 @@ export interface WorkspaceLifecycleDelegate {
   launch(profileId: string): Promise<{ pid: number }>;
   stop(profileId: string): Promise<void>;
   getStatus(profile: WorkspaceProfile): Promise<WorkspaceProfileStatus>;
+  /** Hold profile operation ownership until stopped-state mutation completes. */
+  withStoppedProfile(
+    profileId: string,
+    options: { force: boolean },
+    action: () => Promise<void>,
+  ): Promise<void>;
 }
 
 /** Domain Error Classes */
@@ -166,8 +172,12 @@ export class WorkspaceValidationError extends WorkspaceError {
 
 export class WorkspaceDirectoryError extends WorkspaceError {
   readonly dirPath: string;
-  constructor(dirPath: string, cause?: unknown) {
-    super(`Failed to create workspace directory: ${dirPath}`, 'DIRECTORY_CREATION_FAILED', cause);
+  constructor(dirPath: string, cause?: unknown, operation: 'create' | 'remove' = 'create') {
+    super(
+      `Failed to ${operation} workspace directory: ${dirPath}`,
+      operation === 'remove' ? 'DIRECTORY_REMOVAL_FAILED' : 'DIRECTORY_CREATION_FAILED',
+      cause,
+    );
     this.name = 'WorkspaceDirectoryError';
     this.dirPath = dirPath;
   }

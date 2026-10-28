@@ -4,19 +4,8 @@ import type koffi from 'koffi';
 import { AntigravityProcessError, processError } from './processErrors';
 import { ProcessDiagnosticSchema } from '@/shared/observability/processDiagnostic';
 
-let requestWindowsProcessCloseOverride: ((pid: number) => Promise<void>) | null = null;
-
-export function setRequestWindowsProcessCloseOverride(
-  fn: ((pid: number) => Promise<void>) | null,
-): void {
-  requestWindowsProcessCloseOverride = fn;
-}
-
 /** Queue normal close for this process's unowned top-level windows, including hidden ones. */
 export async function requestWindowsProcessClose(pid: number): Promise<void> {
-  if (requestWindowsProcessCloseOverride) {
-    return requestWindowsProcessCloseOverride(pid);
-  }
   const root = process.env.SystemRoot;
   if (!root || !path.win32.isAbsolute(root)) {
     throw processError('system-directory-unavailable');

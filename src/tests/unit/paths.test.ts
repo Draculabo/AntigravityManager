@@ -121,6 +121,49 @@ describe('Path Utilities', () => {
     restoreEnvValue('ProgramFiles(x86)', originalProgramFilesX86);
   });
 
+  it('excludes managed workspace profiles from implicit IDE cache discovery', async () => {
+    vi.resetModules();
+    setPlatform('win32');
+    process.env.APPDATA = 'C:\\Users\\Alice\\AppData\\Roaming';
+    const paths = await import('../../shared/platform/paths');
+    const managedDir = path.win32.join(paths.getProfilesBaseDir(), 'workspace-a');
+    const primaryDir = 'D:\\Primary IDE';
+    const managedExecutable = 'D:\\Workspace IDE\\Antigravity IDE.exe';
+    const primaryExecutable = 'D:\\Primary IDE install\\Antigravity IDE.exe';
+    const primaryDatabase = path.win32.join(primaryDir, 'User', 'globalStorage', 'state.vscdb');
+    vi.spyOn(fs, 'existsSync').mockImplementation((candidate) =>
+      [managedDir, primaryDir, managedExecutable, primaryExecutable, primaryDatabase].includes(
+        String(candidate),
+      ),
+    );
+    findProcessMock.mockResolvedValue([
+      {
+        pid: 201,
+        ppid: 1,
+        name: 'Antigravity IDE.exe',
+        bin: managedExecutable,
+        cmd: `"${managedExecutable}" --user-data-dir "${managedDir}"`,
+      },
+      {
+        pid: 202,
+        ppid: 1,
+        name: 'Antigravity IDE.exe',
+        bin: primaryExecutable,
+        cmd: `"${primaryExecutable}" --user-data-dir "${primaryDir}"`,
+      },
+    ]);
+    await paths.refreshAntigravityProcessCache('ide');
+    expect({
+      executable: paths.getAntigravityExecutablePath('ide'),
+      arguments: paths.getAntigravityArgsFromRunningProcess('ide'),
+      database: paths.getAntigravityDbPaths('ide')[0],
+    }).toEqual({
+      executable: primaryExecutable,
+      arguments: [[primaryExecutable, '--user-data-dir', primaryDir]],
+      database: primaryDatabase,
+    });
+  });
+
   it('should get correct AppData directory', async () => {
     const paths = await import('../../shared/platform/paths');
     const appData = paths.getAppDataDir();

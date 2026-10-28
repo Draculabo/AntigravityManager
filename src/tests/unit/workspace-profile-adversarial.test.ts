@@ -9,6 +9,11 @@ import { WorkspaceValidationError, WorkspaceDirectoryError } from '@/modules/wor
 import { getProfileUserDataDir } from '@/shared/platform/paths';
 import { createWorkspaceProfileService } from '@/modules/workspace/services/workspace-profile.service';
 
+vi.mock('better-sqlite3', async () => {
+  const { createRequire } = await import('node:module');
+  return { default: createRequire(import.meta.url)('better-sqlite3') };
+});
+
 describe('Adversarial Empirical Stress Testing: M1 Persistence Layer', () => {
   let originalHome: string | undefined;
   let testHomeDir: string;
@@ -199,6 +204,12 @@ describe('Adversarial Empirical Stress Testing: M1 Persistence Layer', () => {
           getAccounts: async () => [],
           getAccount: async () => null,
         },
+        lifecycleDelegate: {
+          launch: vi.fn(),
+          stop: vi.fn(),
+          getStatus: vi.fn(),
+          withStoppedProfile: async (_id, _options, action) => action(),
+        },
       });
 
       // Deleting a profile pointing outside the profiles directory must fail and protect files
@@ -209,6 +220,7 @@ describe('Adversarial Empirical Stress Testing: M1 Persistence Layer', () => {
       // Sensitive directory remains intact!
       expect(fs.existsSync(sensitiveDir)).toBe(true);
       expect(fs.existsSync(path.join(sensitiveDir, 'passwords.txt'))).toBe(true);
+      expect(mockRepo.deleteProfile).not.toHaveBeenCalled();
     });
   });
 

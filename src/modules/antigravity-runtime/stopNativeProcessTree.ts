@@ -4,24 +4,11 @@ import { readNativeProcessSnapshot } from '@/shared/platform/nativeProcessQuery'
 import { processError } from './processErrors';
 import type { RuntimeProcess } from './types';
 
-let stopNativeProcessTreeOverride:
-  | ((roots: readonly RuntimeProcess[], deadline: number) => Promise<void>)
-  | null = null;
-
-export function setStopNativeProcessTreeOverride(
-  fn: ((roots: readonly RuntimeProcess[], deadline: number) => Promise<void>) | null,
-): void {
-  stopNativeProcessTreeOverride = fn;
-}
-
 /** Capture descendants before shutdown reparents them; never select helpers by name. */
 export async function stopNativeProcessTree(
   roots: readonly RuntimeProcess[],
   deadline: number,
 ): Promise<void> {
-  if (stopNativeProcessTreeOverride) {
-    return stopNativeProcessTreeOverride(roots, deadline);
-  }
   const tracked = new Map<number, ProcessInfo>();
   const read = async () => {
     try {

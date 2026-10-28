@@ -25,6 +25,8 @@ export interface LaunchContextOptions {
 /** Captured before closing the app; reused by injection, profile writes and launch. */
 export interface LaunchContext {
   readonly target: GuiTarget;
+  /** Primary discovery excludes managed peers but retains unrelated installation conflicts. */
+  readonly processScope?: 'primary' | 'profile';
   readonly executablePath: string;
   readonly args: readonly string[];
   readonly defaultUserDataDir: string;

@@ -187,7 +187,7 @@ describe('client account destination', () => {
     });
     await expect(prepared.write()).rejects.toThrow('could not be confirmed');
   });
-  it('writes Windows IDE 2.6 credentials to the shared store without the Classic file mirror', async () => {
+  it('writes Windows IDE 2.6 credentials only to the selected profile database', async () => {
     vi.mocked(getAntigravityVersion).mockResolvedValue({
       shortVersion: '2.6.0',
       bundleVersion: '2.6.0',
@@ -200,15 +200,18 @@ describe('client account destination', () => {
       projectId: 'project-a',
     });
 
-    const prepared = await prepareClientAccountWrite(credentials, 'ide');
-    expect(prepared.storage).toBe('credential-store');
+    const pathOptions = {
+      userDataDir: '/fixture/isolated-ide',
+      executablePath: '/fixture/ide.exe',
+    };
+    const prepared = await prepareClientAccountWrite(credentials, 'ide', pathOptions);
+    expect(prepared.storage).toBe('sqlite');
     await prepared.write();
 
-    expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledExactlyOnceWith(
-      credentials.token,
-      {},
-    );
-    expect(state.opens).not.toHaveBeenCalled();
+    expect(writeAntigravityCredentialStoreToken).not.toHaveBeenCalled();
+    expect(readAntigravityCredentialStoreToken).not.toHaveBeenCalled();
+    expect(getAntigravityDbPaths).toHaveBeenCalledWith('ide', pathOptions);
+    expect(state.opens).toHaveBeenCalledWith('/fixture/state.vscdb');
   });
   it('routes IDE, CLI and Classic versions without old-format or engine guesses', async () => {
     expect(await resolveClientAccountStorage('ide')).toBe('sqlite');
@@ -216,7 +219,7 @@ describe('client account destination', () => {
       shortVersion: '2.6.0',
       bundleVersion: '2.6.0',
     });
-    expect(await resolveClientAccountStorage('ide')).toBe('credential-store');
+    expect(await resolveClientAccountStorage('ide')).toBe('sqlite');
     expect(await resolveClientAccountStorage('agy')).toBe('cli-session');
     vi.mocked(getAntigravityVersion).mockResolvedValue({
       shortVersion: '2.18.1',

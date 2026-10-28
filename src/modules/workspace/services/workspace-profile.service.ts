@@ -17,7 +17,6 @@ import {
   WorkspaceNotFoundError,
   AccountNotFoundError,
   WorkspaceValidationError,
-  ActiveWorkspaceDeletionError,
   WorkspaceDirectoryError,
   type WorkspaceLifecycleDelegate,
   type SyncWorkspaceProfilesResult,
@@ -201,67 +200,51 @@ export function createWorkspaceProfileService(deps: WorkspaceProfileServiceDepen
         throw new WorkspaceNotFoundError(id);
       }
 
-      // Verify whether the workspace is currently running before deleting
-      if (deps.lifecycleDelegate) {
-        let isRunning = false;
-        try {
-          const status = await deps.lifecycleDelegate.getStatus(profile);
-          isRunning = status.running;
-        } catch (error) {
-          logger.warn(`Failed to read process status before deletion for ${id}`, error);
-        }
+      const lifecycle = deps.lifecycleDelegate;
+      if (!lifecycle) {
+        throw new WorkspaceValidationError('Workspace process ownership is unavailable');
+      }
 
-        if (isRunning) {
-          if (!options?.force) {
-            throw new ActiveWorkspaceDeletionError(id);
-          }
+      await lifecycle.withStoppedProfile(id, { force: options?.force ?? false }, async () => {
+        // The lifecycle lease prevents launch while filesystem cleanup and metadata deletion run.
+        // A partial cleanup keeps the profile record available for diagnosis and retry.
+        if (options?.cleanUserDataDir ?? true) {
+          const baseProfilesDir = path.resolve(getProfilesBaseDir());
+          const targetDir = path.resolve(profile.userDataDir);
+          const contained = (base: string, target: string) => {
+            const relative = path.relative(base, target);
+            return (
+              relative !== '' &&
+              relative !== '..' &&
+              !relative.startsWith(`..${path.sep}`) &&
+              !path.isAbsolute(relative)
+            );
+          };
           try {
-            logger.info(`Stopping running workspace before forced deletion: ${id}`);
-            await deps.lifecycleDelegate.stop(id);
+            if (!contained(baseProfilesDir, targetDir)) {
+              throw new Error('Workspace cleanup target is outside its managed profile directory');
+            }
+            if (fs.lstatSync(targetDir, { throwIfNoEntry: false })) {
+              const resolvedBase = fs.realpathSync(baseProfilesDir);
+              const resolvedTarget = fs.realpathSync(targetDir);
+              if (!contained(resolvedBase, resolvedTarget)) {
+                throw new Error(
+                  'Workspace cleanup target resolves outside its managed profile directory',
+                );
+              }
+              fs.rmSync(targetDir, {
+                recursive: true,
+                force: true,
+                maxRetries: 3,
+                retryDelay: 100,
+              });
+            }
           } catch (error) {
-            logger.warn(`Failed to stop running workspace before deletion: ${id}`, error);
+            throw new WorkspaceDirectoryError(profile.userDataDir, error, 'remove');
           }
         }
-      }
-
-      // Delete database record
-      await deps.profileRepo.deleteProfile(id);
-
-      // Clean up userDataDir on disk if requested (default true)
-      const shouldClean = options?.cleanUserDataDir ?? true;
-      if (shouldClean && profile.userDataDir && fs.existsSync(profile.userDataDir)) {
-        const baseProfilesDir = path.resolve(getProfilesBaseDir());
-        const targetDir = path.resolve(profile.userDataDir);
-        const relative = path.relative(baseProfilesDir, targetDir);
-
-        // Strictly verify that targetDir is inside baseProfilesDir and does NOT equal baseProfilesDir
-        const isContained =
-          relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
-
-        if (!isContained) {
-          logger.error(
-            `Refusing to delete unsafe workspace profile user data directory outside base profiles dir: ${profile.userDataDir}`,
-          );
-          throw new WorkspaceDirectoryError(
-            profile.userDataDir,
-            new Error(
-              `Unsafe directory deletion: path "${profile.userDataDir}" is not contained in "${baseProfilesDir}"`,
-            ),
-          );
-        }
-
-        try {
-          fs.rmSync(targetDir, {
-            recursive: true,
-            force: true,
-            maxRetries: 3,
-            retryDelay: 100,
-          });
-          logger.info(`Purged workspace profile user data directory: ${targetDir}`);
-        } catch (error) {
-          logger.warn(`Failed to purge workspace profile directory ${targetDir}`, error);
-        }
-      }
+        await deps.profileRepo.deleteProfile(id);
+      });
     },
 
     /**

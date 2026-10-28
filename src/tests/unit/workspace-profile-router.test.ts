@@ -116,6 +116,17 @@ describe('Workspace Profile Router IPC (R1) - Genuine Integration', () => {
       stop: vi.fn(async (_id: string) => {
         isRunning = false;
       }),
+      withStoppedProfile: vi.fn(
+        async (id: string, options: { force: boolean }, action: () => Promise<void>) => {
+          if (isRunning && !options.force) {
+            throw new ActiveWorkspaceDeletionError(id);
+          }
+          if (isRunning) {
+            await lifecycleDelegate.stop(id);
+          }
+          await action();
+        },
+      ),
     };
 
     const service = createWorkspaceProfileService({

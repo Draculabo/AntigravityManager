@@ -16,7 +16,13 @@ import {
   getAntigravityHostUserDir,
   getAppDataDir,
 } from '@/shared/platform/paths';
-import { prepareLaunchContext } from '@/modules/antigravity-runtime';
+import { resolveLaunchContext } from '@/modules/antigravity-runtime';
+import * as paths from '@/shared/platform/paths';
+
+vi.mock('better-sqlite3', async () => {
+  const { createRequire } = await import('node:module');
+  return { default: createRequire(import.meta.url)('better-sqlite3') };
+});
 
 describe('Empirical Challenger 2: Defensive Execution, Concurrency & Error Resilience (R4)', () => {
   let tempRoot: string;
@@ -767,7 +773,12 @@ describe('Empirical Challenger 2: Defensive Execution, Concurrency & Error Resil
     });
 
     it('4.4: prepareLaunchContext with classic target does NOT inject extensionsDir or isolated home by default', async () => {
-      const context = await prepareLaunchContext('classic');
+      const executable = path.join(tempRoot, 'antigravity');
+      fs.writeFileSync(executable, 'fixture');
+      fs.chmodSync(executable, 0o755);
+      vi.spyOn(paths, 'getConfiguredAntigravityExecutablePath').mockReturnValue(executable);
+      vi.spyOn(paths, 'getConfiguredAntigravityArgs').mockReturnValue([]);
+      const context = resolveLaunchContext('classic', []);
 
       // Verify classic mode args do not have --user-data-dir pointing to isolated profiles
       const profileArgs = context.args.filter((a) => a.includes('profiles'));

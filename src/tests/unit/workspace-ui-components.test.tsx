@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { WorkspaceProfileView } from '@/modules/workspace/types';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
@@ -41,38 +41,24 @@ vi.mock('@/modules/workspace/actions/workspace', () => ({
   selectWorkspaceDirectory: (...args: unknown[]) => state.mockSelectWorkspaceDirectory(...args),
 }));
 
-const mockHooksImpl = () => ({
-  useWorkspaces: () => {
-    const res = state.mockUseWorkspaces();
-    console.log('MOCK USEWORKSPACES CALLED:', res);
-    return res;
-  },
+vi.mock('@/modules/workspace/hooks/useWorkspaces', () => ({
+  useWorkspaces: () => state.mockUseWorkspaces(),
   useCreateWorkspace: () => state.mockUseCreateWorkspace(),
   useUpdateWorkspace: () => state.mockUseUpdateWorkspace(),
   useDeleteWorkspace: () => state.mockUseDeleteWorkspace(),
   useLaunchWorkspace: () => state.mockUseLaunchWorkspace(),
   useStopWorkspace: () => state.mockUseStopWorkspace(),
   selectWorkspaceDirectory: (...args: unknown[]) => state.mockSelectWorkspaceDirectory(...args),
-});
-
-vi.mock('@/modules/workspace/hooks/useWorkspaces', mockHooksImpl);
-vi.mock(
-  '/home/prem/Projects/antigravitymanager/AntigravityManager/src/modules/workspace/hooks/useWorkspaces.ts',
-  mockHooksImpl,
-);
-vi.mock(
-  '/home/prem/Projects/antigravitymanager/AntigravityManager/src/modules/workspace/hooks/useWorkspaces',
-  mockHooksImpl,
-);
+}));
 
 vi.mock('@/modules/cloud-account/hooks/useCloudAccounts', () => ({
   useCloudAccounts: () => state.mockUseCloudAccounts(),
 }));
 
-let WorkspaceCard: typeof import('@/modules/workspace/components/WorkspaceCard').WorkspaceCard;
-let WorkspaceDialog: typeof import('@/modules/workspace/components/WorkspaceDialog').WorkspaceDialog;
-let DeleteWorkspaceDialog: typeof import('@/modules/workspace/components/DeleteWorkspaceDialog').DeleteWorkspaceDialog;
-let WorkspacesView: typeof import('@/modules/workspace/components/WorkspacesView').WorkspacesView;
+import { WorkspaceCard } from '@/modules/workspace/components/WorkspaceCard';
+import { WorkspaceDialog } from '@/modules/workspace/components/WorkspaceDialog';
+import { DeleteWorkspaceDialog } from '@/modules/workspace/components/DeleteWorkspaceDialog';
+import { WorkspacesView } from '@/modules/workspace/components/WorkspacesView';
 
 const sampleAccount: CloudAccountView = {
   id: 'acc-1111-2222',
@@ -140,15 +126,6 @@ function createWrapper(options?: {
 }
 
 describe('Workspace UI Components', () => {
-  beforeAll(async () => {
-    WorkspaceCard = (await import('@/modules/workspace/components/WorkspaceCard')).WorkspaceCard;
-    WorkspaceDialog = (await import('@/modules/workspace/components/WorkspaceDialog'))
-      .WorkspaceDialog;
-    DeleteWorkspaceDialog = (await import('@/modules/workspace/components/DeleteWorkspaceDialog'))
-      .DeleteWorkspaceDialog;
-    WorkspacesView = (await import('@/modules/workspace/components/WorkspacesView')).WorkspacesView;
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     state.mockUseWorkspaces.mockReturnValue({

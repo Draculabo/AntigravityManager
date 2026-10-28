@@ -23,7 +23,7 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-const mockIpcImpl = () => ({
+vi.mock('@/ipc/manager', () => ({
   ipc: {
     client: {
       workspace: {
@@ -31,14 +31,7 @@ const mockIpcImpl = () => ({
       },
     },
   },
-});
-
-vi.mock('@/ipc/manager', mockIpcImpl);
-vi.mock(
-  '/home/prem/Projects/antigravitymanager/AntigravityManager/src/ipc/manager.ts',
-  mockIpcImpl,
-);
-vi.mock('/home/prem/Projects/antigravitymanager/AntigravityManager/src/ipc/manager', mockIpcImpl);
+}));
 
 vi.mock('@/modules/config/hooks/useAppConfig', () => ({
   useAppConfig: () => ({
@@ -72,20 +65,10 @@ vi.mock('@/modules/cloud-account/components/CloudAccountProxyDialog', () => ({
   CloudAccountProxyDialog: () => null,
 }));
 
-const mockActionsImpl = () => ({
+vi.mock('@/modules/workspace/actions/workspace', () => ({
   launchWorkspaceForAccount: (...args: unknown[]) =>
     mockState.launchWorkspaceForAccountMock(...args),
-});
-
-vi.mock('@/modules/workspace/actions/workspace', mockActionsImpl);
-vi.mock(
-  '/home/prem/Projects/antigravitymanager/AntigravityManager/src/modules/workspace/actions/workspace.ts',
-  mockActionsImpl,
-);
-vi.mock(
-  '/home/prem/Projects/antigravitymanager/AntigravityManager/src/modules/workspace/actions/workspace',
-  mockActionsImpl,
-);
+}));
 
 import {
   CloudAccountCard,

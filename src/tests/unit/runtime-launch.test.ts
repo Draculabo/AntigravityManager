@@ -10,7 +10,7 @@ import {
   reserveSwitch,
   runProcessOperation,
 } from '@/modules/antigravity-runtime/operation';
-import type { LaunchContext } from '@/modules/antigravity-runtime/types';
+import type { LaunchContext, RuntimeProcess } from '@/modules/antigravity-runtime/types';
 import { processError } from '@/modules/antigravity-runtime/processErrors';
 
 const mocks = vi.hoisted(() => ({
@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   assert: vi.fn(),
   wsl: vi.fn(() => false),
 }));
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
   default: { spawn: mocks.spawn, exec: mocks.exec },
   spawn: mocks.spawn,
   exec: mocks.exec,
@@ -29,6 +29,8 @@ vi.mock('child_process', () => ({
 vi.mock('@/modules/antigravity-runtime/launchContext', () => ({
   prepareLaunchContext: mocks.prepare,
   assertContextProcesses: mocks.assert,
+  filterContextProcesses: (_context: LaunchContext, processes: readonly RuntimeProcess[]) =>
+    processes,
 }));
 vi.mock('@/modules/antigravity-runtime/processObserver', () => ({
   observeProcesses: mocks.observe,

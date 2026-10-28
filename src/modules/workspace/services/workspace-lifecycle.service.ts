@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { logger } from '@/shared/logging/logger';
 import {
-  buildAntigravityCredentialPayload,
   canonicalPath,
   getProcessUserDataDir,
   observeProcesses,
@@ -18,6 +17,7 @@ import { WorkspaceProfileRepo } from '../persistence/workspace-profile-repo';
 import { defaultCloudAccountRepo } from './workspace-profile.service';
 import {
   WorkspaceNotFoundError,
+  ActiveWorkspaceDeletionError,
   WorkspaceValidationError,
   type WorkspaceLifecycleDelegate,
   type WorkspaceProfile,
@@ -27,7 +27,7 @@ import { getAntigravityExtensionsDir } from '@/shared/platform/paths';
 import { provisionWorkspaceProfileSharing } from './workspace-provisioning';
 
 export interface WorkspaceLifecycleServiceDependencies {
-  profileRepo?: typeof WorkspaceProfileRepo;
+  profileRepo?: Pick<typeof WorkspaceProfileRepo, 'getProfile'>;
   cloudAccountRepo?: typeof defaultCloudAccountRepo;
 }
 
@@ -86,116 +86,93 @@ export function createWorkspaceLifecycleService(
         throw new WorkspaceNotFoundError(profileId);
       }
 
-      // Check if already running (idempotent launch)
-      const currentStatus = await this.getStatus(profile);
-      if (currentStatus.running && currentStatus.pid) {
-        logger.info(
-          `Workspace profile ${profile.name} (${profileId}) is already running (PID: ${currentStatus.pid})`,
-        );
-        return { pid: currentStatus.pid };
-      }
-
-      // Fetch bound Google account
-      const account = await getCloudAccountRepo().getAccount(profile.accountId);
-      if (!account) {
-        throw new WorkspaceValidationError(
-          `Bound Google account "${profile.accountId}" not found in account pool`,
-        );
-      }
-
-      // 1. Prepare profile environment & inject SQLite credentials
-      const storageDir = path.join(profile.userDataDir, 'User', 'globalStorage');
-      fs.mkdirSync(storageDir, { recursive: true });
-
-      const credentials: ClientAccountCredentials = {
-        email: account.email,
-        name: account.name || account.email,
-        token: account.token,
-      };
-
-      const preparedWrite = await prepareClientAccountWrite(credentials, 'ide', {
-        userDataDir: profile.userDataDir,
-      });
-      await preparedWrite.write();
-
-      // 2. Provision frontend state in app_storage.json
-      const appStoragePath = path.join(profile.userDataDir, 'app_storage.json');
-      let appStorage: Record<string, string> = {};
-      try {
-        if (fs.existsSync(appStoragePath)) {
-          appStorage = JSON.parse(fs.readFileSync(appStoragePath, 'utf8'));
-        }
-      } catch {
-        appStorage = {};
-      }
-      appStorage['ide-install-wizard-shown'] = 'true';
-      appStorage['jetski.onboarding.lastLoginUsername'] = account.email;
-      appStorage['jetski.onboarding.lastLoginIsGcpTos'] = account.token?.is_gcp_tos
-        ? 'true'
-        : 'false';
-      fs.writeFileSync(appStoragePath, JSON.stringify(appStorage, null, 2), 'utf8');
-
-      // 3. Provision isolated home & language_server OAuth credentials
-      const isolatedHome = path.join(profile.userDataDir, 'home');
-      const geminiDir = path.join(isolatedHome, '.gemini');
-      fs.mkdirSync(geminiDir, { recursive: true });
-
-      // Link developer shell configuration from host user home if present
-      const hostHome = os.homedir();
-      for (const dotfile of ['.gitconfig', '.ssh', '.bashrc', '.zshrc', '.profile']) {
-        const src = path.join(hostHome, dotfile);
-        const dest = path.join(isolatedHome, dotfile);
-        if (fs.existsSync(src) && !fs.existsSync(dest)) {
-          try {
-            fs.symlinkSync(src, dest);
-          } catch {
-            // Ignore symlink failure across filesystems or permission boundaries
-          }
-        }
-      }
-
-      // Write standalone OAuth token read by the IDE language server
-      const oauthPayload = buildAntigravityCredentialPayload(account.token);
-      fs.writeFileSync(path.join(geminiDir, 'jetski-standalone-oauth-token'), oauthPayload, {
-        mode: 0o600,
-      });
-
-      logger.info(
-        `Provisioned credentials into workspace profile ${profileId} (${profile.userDataDir})`,
-      );
-
-      // 4. Provision workspace profile sharing: extensions, editor settings, agent skills, and recent history
-      provisionWorkspaceProfileSharing({
-        profileUserDataDir: profile.userDataDir,
-        isolatedHome,
-      });
-
-      // 5. Prepare launch context targeting profile userDataDir, projectPath, and isolated environment
-      const context = await prepareLaunchContext('ide', {
-        userDataDir: profile.userDataDir,
-        projectPath: profile.projectPath,
-        extensionsDir: getAntigravityExtensionsDir(),
-        env: {
-          HOME: isolatedHome,
-          ...(process.platform === 'win32' ? { USERPROFILE: isolatedHome } : {}),
-          DBUS_SESSION_BUS_ADDRESS: 'disabled:',
-        },
-      });
-
-      // 3. Dispatch launch inside scoped process operation lock
-      const result = await runProcessOperation(
+      return runProcessOperation(
         'ide',
         'starting',
         async () => {
-          return await startFromContext(context);
+          const currentProfile = await getProfileRepo().getProfile(profileId);
+          if (!currentProfile) {
+            throw new WorkspaceNotFoundError(profileId);
+          }
+          if (canonicalPath(currentProfile.userDataDir) !== canonicalPath(profile.userDataDir)) {
+            throw new WorkspaceValidationError('Workspace directory changed before launch');
+          }
+          const accountId = currentProfile.accountId;
+          const isolatedHome = path.join(profile.userDataDir, 'home');
+          const context = await prepareLaunchContext('ide', {
+            userDataDir: profile.userDataDir,
+            projectPath: currentProfile.projectPath,
+            extensionsDir: getAntigravityExtensionsDir(),
+            env: {
+              HOME: isolatedHome,
+              ...(process.platform === 'win32' ? { USERPROFILE: isolatedHome } : {}),
+              DBUS_SESSION_BUS_ADDRESS: 'disabled:',
+            },
+          });
+          if (context.processes.length) {
+            return { pid: context.processes[0].pid };
+          }
+
+          // Fetch bound Google account
+          const account = await getCloudAccountRepo().getAccount(accountId);
+          if (!account) {
+            throw new WorkspaceValidationError(
+              `Bound Google account "${accountId}" not found in account pool`,
+            );
+          }
+
+          // 1. Prepare profile environment & inject SQLite credentials
+          const storageDir = path.join(profile.userDataDir, 'User', 'globalStorage');
+          fs.mkdirSync(storageDir, { recursive: true });
+
+          const credentials: ClientAccountCredentials = {
+            email: account.email,
+            name: account.name || account.email,
+            token: account.token,
+          };
+
+          const preparedWrite = await prepareClientAccountWrite(
+            credentials,
+            'ide',
+            context.pathOptions,
+          );
+          await preparedWrite.write();
+
+          fs.mkdirSync(isolatedHome, { recursive: true });
+
+          // Link developer shell configuration from host user home if present
+          const hostHome = os.homedir();
+          for (const dotfile of ['.gitconfig', '.ssh', '.bashrc', '.zshrc', '.profile']) {
+            const src = path.join(hostHome, dotfile);
+            const dest = path.join(isolatedHome, dotfile);
+            if (fs.existsSync(src) && !fs.existsSync(dest)) {
+              try {
+                fs.symlinkSync(src, dest);
+              } catch {
+                // Ignore symlink failure across filesystems or permission boundaries
+              }
+            }
+          }
+
+          logger.info(
+            `Provisioned credentials into workspace profile ${profileId} (${profile.userDataDir})`,
+          );
+
+          // 4. Provision workspace profile sharing: extensions, editor settings, agent skills, and recent history
+          provisionWorkspaceProfileSharing({
+            profileUserDataDir: profile.userDataDir,
+            isolatedHome,
+          });
+
+          const result = await startFromContext(context);
+
+          logger.info(
+            `Launched workspace profile ${profile.name} (${profileId}) with PID ${result.pid}`,
+          );
+          return { pid: result.pid };
         },
         { userDataDir: profile.userDataDir },
       );
-
-      logger.info(
-        `Launched workspace profile ${profile.name} (${profileId}) with PID ${result.pid}`,
-      );
-      return { pid: result.pid };
     },
 
     async stop(profileId: string): Promise<void> {
@@ -204,25 +181,41 @@ export function createWorkspaceLifecycleService(
         throw new WorkspaceNotFoundError(profileId);
       }
 
-      const currentStatus = await this.getStatus(profile);
-      if (!currentStatus.running) {
-        return;
-      }
-
-      const context = await prepareLaunchContext('ide', {
-        userDataDir: profile.userDataDir,
-      });
-
       await runProcessOperation(
         'ide',
         'stopping',
         async () => {
+          const context = await prepareLaunchContext('ide', {
+            userDataDir: profile.userDataDir,
+          });
           await stopFromContext(context);
         },
         { userDataDir: profile.userDataDir },
       );
 
       logger.info(`Stopped workspace profile ${profile.name} (${profileId})`);
+    },
+
+    async withStoppedProfile(profileId, options, action): Promise<void> {
+      const profile = await getProfileRepo().getProfile(profileId);
+      if (!profile) {
+        throw new WorkspaceNotFoundError(profileId);
+      }
+      await runProcessOperation(
+        'ide',
+        'stopping',
+        async () => {
+          const context = await prepareLaunchContext('ide', { userDataDir: profile.userDataDir });
+          if (context.processes.length) {
+            if (!options.force) {
+              throw new ActiveWorkspaceDeletionError(profileId);
+            }
+            await stopFromContext(context);
+          }
+          await action();
+        },
+        { userDataDir: profile.userDataDir },
+      );
     },
   };
 }

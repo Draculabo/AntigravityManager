@@ -3,33 +3,24 @@ import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRouterClient, ORPCError, os as orpcOs, type RouterClient } from '@orpc/server';
-import { z } from 'zod';
+import { createRouterClient, ORPCError, type RouterClient } from '@orpc/server';
 import { dialog } from 'electron';
 
 import { WorkspaceProfileRepo } from '@/modules/workspace/persistence/workspace-profile-repo';
 import {
-  WorkspaceProfileSchema,
-  WorkspaceProfileViewSchema,
-  CreateWorkspaceProfileInputSchema,
-  UpdateWorkspaceProfileInputSchema,
-  DeleteWorkspaceProfileInputSchema,
-  GetWorkspaceProfileInputSchema,
-  SelectDirectoryInputSchema,
-  LaunchWorkspaceInputSchema,
-  LaunchWorkspaceResultSchema,
-  StopWorkspaceInputSchema,
   WorkspaceNotFoundError,
   AccountNotFoundError,
   ActiveWorkspaceDeletionError,
   WorkspaceValidationError,
   WorkspaceDirectoryError,
-  type CreateWorkspaceProfileInput,
-  type UpdateWorkspaceProfileInput,
-  type WorkspaceProfile,
-  type WorkspaceProfileView,
-  type WorkspaceProfileStatus,
+  type WorkspaceLifecycleDelegate,
 } from '@/modules/workspace/types';
+import type { CloudAccount } from '@/modules/cloud-account/types';
+import { createWorkspaceProfileService as createTestWorkspaceProfileService } from '@/modules/workspace/services/workspace-profile.service';
+import {
+  createWorkspaceRouter as createTestWorkspaceRouter,
+  toWorkspaceORPCError,
+} from '@/modules/workspace/ipc/router';
 
 // Un-mock better-sqlite3 for genuine SQLite persistence
 vi.mock('better-sqlite3', async () => {
@@ -48,6 +39,10 @@ vi.mock('electron', () => ({
   },
 }));
 
+vi.mock('@/shared/logging/logger', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+}));
+
 vi.mock('@/shared/platform/paths', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/platform/paths')>();
   return {
@@ -59,332 +54,27 @@ vi.mock('@/shared/platform/paths', async (importOriginal) => {
   };
 });
 
-/**
- * Exact implementation of toWorkspaceORPCError from src/modules/workspace/ipc/router.ts
- */
-function toWorkspaceORPCError(error: unknown) {
-  if (error instanceof ORPCError) {
-    return error;
-  }
-  if (error instanceof WorkspaceNotFoundError) {
-    return new ORPCError('NOT_FOUND', {
-      message: error.message,
-      data: { code: error.code, id: error.id },
-    });
-  }
-  if (
-    error instanceof AccountNotFoundError ||
-    error instanceof ActiveWorkspaceDeletionError ||
-    error instanceof WorkspaceValidationError
-  ) {
-    return new ORPCError('BAD_REQUEST', {
-      message: error.message,
-      data: { code: error.code },
-    });
-  }
-  if (error instanceof WorkspaceDirectoryError) {
-    return new ORPCError('INTERNAL_SERVER_ERROR', {
-      message: error.message,
-      data: { code: error.code, dirPath: error.dirPath },
-    });
-  }
-  return new ORPCError('INTERNAL_SERVER_ERROR', {
-    message: error instanceof Error ? error.message : 'Workspace operation failed',
-  });
-}
-
-/**
- * Clean isolated WorkspaceProfileService logic implementing the exact methods
- * from src/modules/workspace/services/workspace-profile.service.ts
- */
-function createTestWorkspaceProfileService(deps: {
-  profileRepo: typeof WorkspaceProfileRepo;
-  cloudAccountRepo: {
-    getAccount(id: string): Promise<any>;
-    getAccounts(): Promise<any[]>;
-  };
-  lifecycleDelegate?: {
-    getStatus(profile: WorkspaceProfile): Promise<WorkspaceProfileStatus>;
-    launch(id: string): Promise<{ pid: number }>;
-    stop(id: string): Promise<void>;
-  };
-}) {
-  return {
-    async listViews(): Promise<WorkspaceProfileView[]> {
-      const [profiles, accounts] = await Promise.all([
-        deps.profileRepo.listProfiles(),
-        deps.cloudAccountRepo.getAccounts(),
-      ]);
-
-      const accountMap = new Map<string, any>();
-      for (const account of accounts) {
-        accountMap.set(account.id, account);
-      }
-
-      const views: WorkspaceProfileView[] = [];
-      for (const profile of profiles) {
-        const boundAccount = accountMap.get(profile.accountId);
-        let status: WorkspaceProfileStatus = { running: false };
-        if (deps.lifecycleDelegate) {
-          try {
-            status = await deps.lifecycleDelegate.getStatus(profile);
-          } catch {
-            status = { running: false };
-          }
-        }
-        views.push({
-          ...profile,
-          status,
-          account: boundAccount
-            ? {
-                id: boundAccount.id,
-                provider: boundAccount.provider,
-                email: boundAccount.email,
-                created_at: boundAccount.created_at,
-                last_used: boundAccount.last_used,
-                proxy_configured: false,
-              }
-            : undefined,
-        });
-      }
-      return views;
-    },
-
-    async getView(id: string): Promise<WorkspaceProfileView | null> {
-      const profile = await deps.profileRepo.getProfile(id);
-      if (!profile) {
-        return null;
-      }
-      const boundAccount = await deps.cloudAccountRepo.getAccount(profile.accountId);
-      let status: WorkspaceProfileStatus = { running: false };
-      if (deps.lifecycleDelegate) {
-        try {
-          status = await deps.lifecycleDelegate.getStatus(profile);
-        } catch {
-          status = { running: false };
-        }
-      }
-      return {
-        ...profile,
-        status,
-        account: boundAccount
-          ? {
-              id: boundAccount.id,
-              provider: boundAccount.provider,
-              email: boundAccount.email,
-              created_at: boundAccount.created_at,
-              last_used: boundAccount.last_used,
-              proxy_configured: false,
-            }
-          : undefined,
-      };
-    },
-
-    async create(input: CreateWorkspaceProfileInput): Promise<WorkspaceProfile> {
-      const validatedInput = CreateWorkspaceProfileInputSchema.parse(input);
-      const account = await deps.cloudAccountRepo.getAccount(validatedInput.accountId);
-      if (!account) {
-        throw new WorkspaceValidationError(
-          `Bound Google Account "${validatedInput.accountId}" does not exist in the account pool`,
-        );
-      }
-      if (!path.isAbsolute(validatedInput.projectPath)) {
-        throw new WorkspaceValidationError(
-          `Project path must be an absolute path: "${validatedInput.projectPath}"`,
-        );
-      }
-      return deps.profileRepo.createProfile(validatedInput);
-    },
-
-    async update(input: UpdateWorkspaceProfileInput): Promise<WorkspaceProfile> {
-      const validatedInput = UpdateWorkspaceProfileInputSchema.parse(input);
-      if (validatedInput.accountId !== undefined) {
-        const account = await deps.cloudAccountRepo.getAccount(validatedInput.accountId);
-        if (!account) {
-          throw new WorkspaceValidationError(
-            `Target Google Account "${validatedInput.accountId}" does not exist`,
-          );
-        }
-      }
-      if (
-        validatedInput.projectPath !== undefined &&
-        !path.isAbsolute(validatedInput.projectPath)
-      ) {
-        throw new WorkspaceValidationError(
-          `Project path must be an absolute path: "${validatedInput.projectPath}"`,
-        );
-      }
-      return deps.profileRepo.updateProfile(validatedInput);
-    },
-
-    async delete(id: string, options?: { cleanUserDataDir?: boolean }): Promise<void> {
-      const profile = await deps.profileRepo.getProfile(id);
-      if (!profile) {
-        throw new WorkspaceNotFoundError(id);
-      }
-      if (deps.lifecycleDelegate) {
-        try {
-          const status = await deps.lifecycleDelegate.getStatus(profile);
-          if (status.running) {
-            await deps.lifecycleDelegate.stop(id);
-          }
-        } catch {
-          // ignore status / stop error during delete
-        }
-      }
-      await deps.profileRepo.deleteProfile(id);
-      const shouldClean = options?.cleanUserDataDir ?? true;
-      if (shouldClean && profile.userDataDir && fs.existsSync(profile.userDataDir)) {
-        try {
-          fs.rmSync(profile.userDataDir, {
-            recursive: true,
-            force: true,
-            maxRetries: 3,
-            retryDelay: 100,
-          });
-        } catch {
-          // ignore directory deletion error
-        }
-      }
-    },
-
-    async launch(id: string): Promise<{ pid: number }> {
-      const profile = await deps.profileRepo.getProfile(id);
-      if (!profile) {
-        throw new WorkspaceNotFoundError(id);
-      }
-      let pid = 0;
-      if (deps.lifecycleDelegate) {
-        const result = await deps.lifecycleDelegate.launch(id);
-        pid = result.pid;
-      }
-      await deps.profileRepo.updateLastLaunched(id);
-      return { pid };
-    },
-
-    async stop(id: string): Promise<void> {
-      const profile = await deps.profileRepo.getProfile(id);
-      if (!profile) {
-        throw new WorkspaceNotFoundError(id);
-      }
-      if (deps.lifecycleDelegate) {
-        await deps.lifecycleDelegate.stop(id);
-      }
-    },
-  };
-}
-
-/**
- * Constructs an oRPC router using the EXACT endpoint declarations, schemas,
- * and error handling of src/modules/workspace/ipc/router.ts
- */
-function createTestWorkspaceRouter(service: ReturnType<typeof createTestWorkspaceProfileService>) {
-  return orpcOs.router({
-    list: orpcOs.output(z.array(WorkspaceProfileViewSchema)).handler(async () => {
-      try {
-        return await service.listViews();
-      } catch (error) {
-        throw toWorkspaceORPCError(error);
-      }
-    }),
-
-    get: orpcOs
-      .input(GetWorkspaceProfileInputSchema)
-      .output(WorkspaceProfileViewSchema.nullable())
-      .handler(async ({ input }) => {
-        try {
-          return await service.getView(input.id);
-        } catch (error) {
-          throw toWorkspaceORPCError(error);
-        }
-      }),
-
-    create: orpcOs
-      .input(CreateWorkspaceProfileInputSchema)
-      .output(WorkspaceProfileSchema)
-      .handler(async ({ input }) => {
-        try {
-          return await service.create(input);
-        } catch (error) {
-          throw toWorkspaceORPCError(error);
-        }
-      }),
-
-    update: orpcOs
-      .input(UpdateWorkspaceProfileInputSchema)
-      .output(WorkspaceProfileSchema)
-      .handler(async ({ input }) => {
-        try {
-          return await service.update(input);
-        } catch (error) {
-          throw toWorkspaceORPCError(error);
-        }
-      }),
-
-    delete: orpcOs
-      .input(DeleteWorkspaceProfileInputSchema)
-      .output(z.void())
-      .handler(async ({ input }) => {
-        try {
-          await service.delete(input.id, { cleanUserDataDir: input.cleanUserDataDir });
-        } catch (error) {
-          throw toWorkspaceORPCError(error);
-        }
-      }),
-
-    launch: orpcOs
-      .input(LaunchWorkspaceInputSchema)
-      .output(LaunchWorkspaceResultSchema)
-      .handler(async ({ input }) => {
-        try {
-          return await service.launch(input.id);
-        } catch (error) {
-          throw toWorkspaceORPCError(error);
-        }
-      }),
-
-    stop: orpcOs
-      .input(StopWorkspaceInputSchema)
-      .output(z.void())
-      .handler(async ({ input }) => {
-        try {
-          await service.stop(input.id);
-        } catch (error) {
-          throw toWorkspaceORPCError(error);
-        }
-      }),
-
-    selectDirectory: orpcOs
-      .input(SelectDirectoryInputSchema.optional())
-      .output(z.string().nullable())
-      .handler(async ({ input }) => {
-        try {
-          const result = await dialog.showOpenDialog({
-            title: 'Select Workspace Project Folder',
-            defaultPath: input?.defaultPath,
-            properties: ['openDirectory', 'createDirectory'],
-          });
-          return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
-        } catch (error) {
-          throw toWorkspaceORPCError(error);
-        }
-      }),
-  });
-}
-
 describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
   let db: Database.Database;
   let dbPath: string;
   let profilesDir: string;
   let service: ReturnType<typeof createTestWorkspaceProfileService>;
   let client: RouterClient<ReturnType<typeof createTestWorkspaceRouter>>;
+  let lifecycleDelegate: WorkspaceLifecycleDelegate;
 
-  const validAccount = {
+  const validAccount: CloudAccount = {
     id: 'account-google-valid',
     provider: 'google',
     email: 'user@example.com',
     created_at: 1700000000,
     last_used: 1700000000,
+    token: {
+      access_token: 'fixture-access',
+      refresh_token: 'fixture-refresh',
+      expires_in: 3600,
+      expiry_timestamp: 1900000000,
+      token_type: 'Bearer',
+    },
   };
 
   const cloudAccountRepo = {
@@ -404,9 +94,10 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
     process.env.HOME = mocks.testDirectory;
 
     dbPath = path.join(mocks.testDirectory, '.antigravity-agent', 'cloud_accounts.db');
-    profilesDir = path.join(mocks.testDirectory, '.config', 'AntigravityManager', 'profiles');
+    profilesDir = path.join(mocks.testDirectory, 'profiles');
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     fs.mkdirSync(profilesDir, { recursive: true });
+    WorkspaceProfileRepo.setDatabasePath(dbPath);
 
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
@@ -448,9 +139,16 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
       validAccount.last_used,
     );
 
+    lifecycleDelegate = {
+      getStatus: async () => ({ running: false }),
+      launch: async () => ({ pid: 9999 }),
+      stop: async () => {},
+      withStoppedProfile: async (_id, _options, action) => action(),
+    };
     service = createTestWorkspaceProfileService({
       profileRepo: WorkspaceProfileRepo,
       cloudAccountRepo,
+      lifecycleDelegate,
     });
     const router = createTestWorkspaceRouter(service);
     client = createRouterClient(router);
@@ -462,6 +160,7 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
   });
 
   afterEach(() => {
+    WorkspaceProfileRepo.setDatabasePath(null);
     try {
       db.close();
     } catch {
@@ -724,6 +423,8 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
       }
     });
 
+    // Each bounded cycle opens native SQLite connections and creates/removes real directories.
+    // The watchdog covers the complete workload when other native suites share the host.
     it('executes 30 rapid sequential create -> read -> update -> delete cycles without leaks', async () => {
       for (let i = 0; i < 30; i++) {
         const created = await client.create({
@@ -749,7 +450,7 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
 
       const remaining = await client.list();
       expect(remaining).toHaveLength(0);
-    });
+    }, 15000);
 
     it('allows concurrent reads while mutations are updating SQLite database', async () => {
       const target = await client.create({
@@ -780,6 +481,7 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
         getStatus: vi.fn().mockRejectedValue(new Error('Process probe kernel error')),
         launch: vi.fn().mockRejectedValue(new Error('Spawn failed')),
         stop: vi.fn().mockRejectedValue(new Error('Kill failed')),
+        withStoppedProfile: vi.fn().mockRejectedValue(new Error('Process probe kernel error')),
       };
 
       const faultService = createTestWorkspaceProfileService({
@@ -803,6 +505,12 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
 
       const view = await faultClient.get({ id: created.id });
       expect(view?.status.running).toBe(false);
+      await expect(faultClient.delete({ id: created.id, force: true })).rejects.toMatchObject({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Process probe kernel error',
+      });
+      expect(await WorkspaceProfileRepo.getProfile(created.id)).not.toBeNull();
+      expect(fs.existsSync(created.userDataDir)).toBe(true);
     });
 
     it('stops running process before deletion when delegate reports running: true', async () => {
@@ -818,6 +526,15 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
           getStatus: vi.fn().mockImplementation(async () => ({ running: isRunning, pid: 9999 })),
           launch: vi.fn().mockResolvedValue({ pid: 9999 }),
           stop: stopSpy,
+          withStoppedProfile: async (id, options, action) => {
+            if (isRunning && !options.force) {
+              throw new ActiveWorkspaceDeletionError(id);
+            }
+            if (isRunning) {
+              await stopSpy(id);
+            }
+            await action();
+          },
         },
       });
       const activeRouter = createTestWorkspaceRouter(activeService);
@@ -829,7 +546,7 @@ describe('Adversarial Empirical Stress Testing: Challenger M1-2', () => {
         projectPath: '/workspaces/active',
       });
 
-      await activeClient.delete({ id: created.id });
+      await activeClient.delete({ id: created.id, force: true });
       expect(stopSpy).toHaveBeenCalledWith(created.id);
       expect(await activeClient.get({ id: created.id })).toBeNull();
       expect(fs.existsSync(created.userDataDir)).toBe(false);

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { EventEmitter } from 'node:events';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GuiTarget, LaunchContext, RuntimeProcess } from '@/modules/antigravity-runtime/types';
 import {
@@ -11,12 +12,9 @@ import {
 import {
   getProcessUserDataDir,
   groupProcessesByUserDataDir,
-  setProcessObserverOverride,
 } from '@/modules/antigravity-runtime/processObserver';
 import { startFromContext } from '@/modules/antigravity-runtime/launch';
 import { stopFromContext } from '@/modules/antigravity-runtime/stop';
-import { setStopNativeProcessTreeOverride } from '@/modules/antigravity-runtime/stopNativeProcessTree';
-import { setRequestWindowsProcessCloseOverride } from '@/modules/antigravity-runtime/windowsNormalClose';
 
 const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
@@ -29,6 +27,17 @@ const mocks = vi.hoisted(() => ({
   discoveredExecutable: vi.fn(),
   configuredArgs: vi.fn<() => string[]>(() => []),
   updateGuard: vi.fn(),
+}));
+
+vi.mock('node:child_process', () => ({
+  spawn: mocks.spawn,
+  execFile: mocks.execFile,
+  default: { spawn: mocks.spawn, execFile: mocks.execFile },
+}));
+vi.mock('child_process', () => ({
+  spawn: mocks.spawn,
+  execFile: mocks.execFile,
+  default: { spawn: mocks.spawn, execFile: mocks.execFile },
 }));
 
 vi.mock('@/modules/antigravity-runtime/processObserver', async (importOriginal) => {
@@ -193,15 +202,21 @@ describe('Adversarial Stress Testing: Process Observation, Concurrency & Targete
     mocks.observeProcesses.mockResolvedValue([]);
 
     killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
-    setProcessObserverOverride((...args) => mocks.observeProcesses(...args));
-    setStopNativeProcessTreeOverride((...args) => mocks.stopNativeProcessTree(...args));
-    setRequestWindowsProcessCloseOverride((...args) => mocks.requestWindowsProcessClose(...args));
+    mocks.spawn.mockImplementation((file: string) => {
+      const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+      queueMicrotask(() => {
+        if (file === 'open' || fs.existsSync(file)) {
+          child.emit('spawn');
+        } else {
+          child.emit('error', new Error('fixture executable is missing'));
+        }
+      });
+      return child;
+    });
+    mocks.execFile.mockImplementation((_file, _args, _options, callback) => callback(null));
   });
 
   afterEach(() => {
-    setRequestWindowsProcessCloseOverride(null);
-    setStopNativeProcessTreeOverride(null);
-    setProcessObserverOverride(null);
     killSpy.mockRestore();
     vi.useRealTimers();
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });

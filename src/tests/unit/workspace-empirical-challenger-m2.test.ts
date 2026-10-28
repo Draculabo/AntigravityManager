@@ -1,17 +1,22 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from 'vitest';
 import type { GuiTarget, LaunchContext, RuntimeProcess } from '@/modules/antigravity-runtime/types';
 import { canonicalPath } from '@/modules/antigravity-runtime/launchContext';
-import {
-  groupProcessesByUserDataDir,
-  setProcessObserverOverride,
-} from '@/modules/antigravity-runtime/processObserver';
+import { groupProcessesByUserDataDir } from '@/modules/antigravity-runtime/processObserver';
 import { getAppDataDir } from '@/shared/platform/paths';
 import { stopFromContext } from '@/modules/antigravity-runtime/stop';
-import { setStopNativeProcessTreeOverride } from '@/modules/antigravity-runtime/stopNativeProcessTree';
-import { setRequestWindowsProcessCloseOverride } from '@/modules/antigravity-runtime/windowsNormalClose';
 
 const mocks = vi.hoisted(() => ({
   observeProcesses: vi.fn(),
@@ -55,7 +60,7 @@ describe('Challenger M2-2 Empirical Stress Test Suite', () => {
   const profileDirC = path.join(root, 'profile-c');
   const fallbackDir = path.join(root, 'default-app-data');
   const originalPlatform = process.platform;
-  let killSpy: any;
+  let killSpy: MockInstance<typeof process.kill>;
 
   function createTestContext(
     opts: {
@@ -107,16 +112,10 @@ describe('Challenger M2-2 Empirical Stress Test Suite', () => {
     mocks.stopNativeProcessTree.mockResolvedValue(undefined);
     mocks.requestWindowsProcessClose.mockResolvedValue(undefined);
     mocks.observeProcesses.mockResolvedValue([]);
-    killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
-    setProcessObserverOverride((...args) => mocks.observeProcesses(...args));
-    setStopNativeProcessTreeOverride((...args) => mocks.stopNativeProcessTree(...args));
-    setRequestWindowsProcessCloseOverride((...args) => mocks.requestWindowsProcessClose(...args));
+    killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
   });
 
   afterEach(() => {
-    setRequestWindowsProcessCloseOverride(null);
-    setStopNativeProcessTreeOverride(null);
-    setProcessObserverOverride(null);
     killSpy.mockRestore();
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
   });
