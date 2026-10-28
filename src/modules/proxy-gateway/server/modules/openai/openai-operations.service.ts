@@ -42,6 +42,10 @@ import {
   MODEL_LIST_CREATED_AT,
   MODEL_LIST_OWNER,
 } from '@/modules/proxy-gateway/antigravity/ModelMapping';
+import {
+  getContextWindow,
+  getMaxOutputTokens,
+} from '@/modules/proxy-gateway/antigravity/ModelSpecs';
 import { getServerConfig } from '@/server/server-config';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
@@ -147,8 +151,9 @@ export class OpenAIOperations extends BaseProxyController {
 
   listModels(res: FastifyReply) {
     try {
+      const modelMapping = getConfiguredModelMapping(getServerConfig());
       const data = this.listOpenAICompatibleModelIds().map((id) =>
-        this.toOpenAIModelObjectEntry(id),
+        this.toOpenAIModelObjectEntry(id, modelMapping),
       );
 
       res.status(HttpStatus.OK).send({
@@ -186,12 +191,20 @@ export class OpenAIOperations extends BaseProxyController {
   }
 
   /** Exactly the entry `GET /v1/models` puts in its `data` array. */
-  private toOpenAIModelObjectEntry(id: string): Record<string, unknown> {
+  private toOpenAIModelObjectEntry(
+    id: string,
+    modelMapping: Record<string, string>,
+  ): Record<string, unknown> {
+    // An alias routes to another id at request time, so it inherits that target's limits;
+    // publishing the alias's own unknown id would under-state the model a client will reach.
+    const limitModel = modelMapping[id] ?? id;
     return {
       id,
       object: 'model',
       created: MODEL_LIST_CREATED_AT,
       owned_by: MODEL_LIST_OWNER,
+      context_length: getContextWindow(limitModel),
+      max_completion_tokens: getMaxOutputTokens(limitModel),
     };
   }
 
@@ -219,7 +232,9 @@ export class OpenAIOperations extends BaseProxyController {
         return;
       }
 
-      res.status(HttpStatus.OK).send(this.toOpenAIModelObjectEntry(model));
+      res
+        .status(HttpStatus.OK)
+        .send(this.toOpenAIModelObjectEntry(model, getConfiguredModelMapping(getServerConfig())));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to retrieve model';
       this.logger.error(message, error instanceof Error ? error.stack : undefined);
