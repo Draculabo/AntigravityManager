@@ -360,6 +360,18 @@ const en = {
     'tooltip-quota': 'Remaining model quota on account',
     'tooltip-tokens': 'Input tokens (Prompt) / Output tokens (Completion)',
     'total-latency': 'Total latency',
+    'tab-dual': 'Dual Models',
+    'dual-title': 'Dual Model Comparison',
+    'dual-desc':
+      'Send the same prompt to two different models or accounts simultaneously and compare outputs side-by-side.',
+    'model-a': 'Model A',
+    'model-b': 'Model B',
+    'run-dual': 'Run Dual Comparison',
+    'running-dual': 'Running both models...',
+    'dual-awaiting': 'Configure Model A and Model B, then click Run to compare.',
+    'comparison-summary': 'Comparison Summary',
+    'dual-speed-diff': '{{winner}} was {{diff}} tok/s faster in generation',
+    'dual-ttft-diff': '{{winner}} responded {{diff}}s earlier (TTFT)',
   },
   traffic: {
     'detail-load-failed': 'Could not load this request. Please try again.',

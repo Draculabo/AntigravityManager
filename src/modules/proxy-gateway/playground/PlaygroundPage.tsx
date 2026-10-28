@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, FlaskConical, Gauge, Layers, Play, Power } from 'lucide-react';
+import { AlertTriangle, Columns2, FlaskConical, Gauge, Layers, Play, Power } from 'lucide-react';
 import { ipc } from '@/ipc/manager';
 import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
@@ -15,6 +15,7 @@ import { PlaygroundControls } from './components/PlaygroundControls';
 import { PlaygroundResponseCard } from './components/PlaygroundResponseCard';
 import { PlaygroundCompareView } from './components/PlaygroundCompareView';
 import { PlaygroundAccountBenchmark } from './components/PlaygroundAccountBenchmark';
+import { PlaygroundDualView } from './components/PlaygroundDualView';
 import type { PlaygroundExecuteResult, PlaygroundReasoningEffort } from './playground.schema';
 
 export const PlaygroundPage: React.FC = () => {
@@ -33,7 +34,7 @@ export const PlaygroundPage: React.FC = () => {
 
   const availableModels = useMemo(() => buildProxyExampleModels(cloudAccounts), [cloudAccounts]);
 
-  const [activeTab, setActiveTab] = useState<'single' | 'compare' | 'benchmark'>('single');
+  const [activeTab, setActiveTab] = useState<'single' | 'compare' | 'benchmark' | 'dual'>('single');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('auto');
   const [selectedModel, setSelectedModel] = useState<string>('gemini-3.8-flash-high');
   const [prompt, setPrompt] = useState<string>(
@@ -196,9 +197,9 @@ export const PlaygroundPage: React.FC = () => {
       {/* Tabs */}
       <Tabs
         value={activeTab}
-        onValueChange={(v) => setActiveTab(v as 'single' | 'compare' | 'benchmark')}
+        onValueChange={(v) => setActiveTab(v as 'single' | 'compare' | 'benchmark' | 'dual')}
       >
-        <TabsList className="grid w-full max-w-md grid-cols-3">
+        <TabsList className="grid w-full max-w-xl grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="single" className="gap-1.5 text-xs">
             <Play size={13} />
             <span>{t('playground.tab-single')}</span>
@@ -210,6 +211,10 @@ export const PlaygroundPage: React.FC = () => {
           <TabsTrigger value="benchmark" className="gap-1.5 text-xs">
             <Gauge size={13} />
             <span>{t('playground.tab-benchmark')}</span>
+          </TabsTrigger>
+          <TabsTrigger value="dual" className="gap-1.5 text-xs">
+            <Columns2 size={13} />
+            <span>{t('playground.tab-dual')}</span>
           </TabsTrigger>
         </TabsList>
 
@@ -290,6 +295,15 @@ export const PlaygroundPage: React.FC = () => {
         {/* Account Models Benchmark */}
         <TabsContent value="benchmark" className="space-y-6 pt-2">
           <PlaygroundAccountBenchmark accounts={cloudAccounts} availableModels={availableModels} />
+        </TabsContent>
+
+        {/* Dual Model Comparison */}
+        <TabsContent value="dual" className="space-y-6 pt-2">
+          <PlaygroundDualView
+            accounts={cloudAccounts}
+            availableModels={availableModels}
+            baseUrl={baseUrl}
+          />
         </TabsContent>
       </Tabs>
     </div>
