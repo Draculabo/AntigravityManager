@@ -160,6 +160,46 @@ describe('PlaygroundService', () => {
     expect(result.generationTokensPerSec).toBe(100);
   });
 
+  it('forwards reasoning effort and disable thinking flags to gateway body', async () => {
+    vi.spyOn(mainServer, 'getNestServerStatus').mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 1,
+    });
+
+    let sentBody: any = null;
+    globalThis.fetch = vi.fn(async (_url: any, init?: any) => {
+      sentBody = JSON.parse(init?.body ?? '{}');
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({
+          choices: [{ message: { content: 'No reasoning' } }],
+        }),
+      } as any;
+    });
+
+    // Test reasoningEffort: 'off'
+    await service.execute({
+      model: 'gemini-3.7-flash',
+      prompt: 'Test',
+      reasoningEffort: 'off',
+    });
+    expect(sentBody.reasoning_effort).toBe('none');
+    expect(sentBody.thinking).toEqual({ type: 'disabled', budget_tokens: 0 });
+
+    // Test reasoningEffort: 'high'
+    await service.execute({
+      model: 'gemini-3.7-flash',
+      prompt: 'Test',
+      reasoningEffort: 'high',
+    });
+    expect(sentBody.reasoning_effort).toBe('high');
+    expect(sentBody.thinking).toEqual({ type: 'enabled', effort: 'high' });
+  });
+
   it('handles upstream 429 rate limit error gracefully', async () => {
     vi.spyOn(mainServer, 'getNestServerStatus').mockResolvedValue({
       running: true,

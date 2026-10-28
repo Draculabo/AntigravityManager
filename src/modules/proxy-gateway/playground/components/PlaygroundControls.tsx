@@ -24,6 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import { PLAYGROUND_PRESETS, DEFAULT_PLAYGROUND_MODELS, type PromptPreset } from '../types';
+import type { PlaygroundReasoningEffort } from '../playground.schema';
 
 interface PlaygroundControlsProps {
   accounts: CloudAccountView[];
@@ -39,6 +40,8 @@ interface PlaygroundControlsProps {
   onChangeTemperature: (temp: number) => void;
   maxTokens: number;
   onChangeMaxTokens: (tokens: number) => void;
+  reasoningEffort: PlaygroundReasoningEffort;
+  onChangeReasoningEffort: (effort: PlaygroundReasoningEffort) => void;
   isLoading: boolean;
   onRun: () => void;
   onStop?: () => void;
@@ -59,6 +62,8 @@ export const PlaygroundControls: React.FC<PlaygroundControlsProps> = ({
   onChangeTemperature,
   maxTokens,
   onChangeMaxTokens,
+  reasoningEffort,
+  onChangeReasoningEffort,
   isLoading,
   onRun,
   onStop,
@@ -204,7 +209,7 @@ export const PlaygroundControls: React.FC<PlaygroundControlsProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1">
                 <Label htmlFor="playground-temperature" className="text-xs">
                   {t('playground.temperature')} ({temperature})
@@ -235,6 +240,27 @@ export const PlaygroundControls: React.FC<PlaygroundControlsProps> = ({
                   onChange={(e) => onChangeMaxTokens(Number.parseInt(e.target.value, 10) || 2048)}
                   className="h-8 text-xs"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="playground-reasoning" className="text-xs">
+                  {t('playground.reasoning-level')}
+                </Label>
+                <Select
+                  value={reasoningEffort}
+                  onValueChange={(val) => onChangeReasoningEffort(val as PlaygroundReasoningEffort)}
+                >
+                  <SelectTrigger id="playground-reasoning" className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">{t('playground.reasoning-default')}</SelectItem>
+                    <SelectItem value="off">{t('playground.reasoning-off')}</SelectItem>
+                    <SelectItem value="low">{t('playground.reasoning-low')}</SelectItem>
+                    <SelectItem value="medium">{t('playground.reasoning-medium')}</SelectItem>
+                    <SelectItem value="high">{t('playground.reasoning-high')}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>

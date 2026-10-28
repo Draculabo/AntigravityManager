@@ -10,6 +10,10 @@ export const PlaygroundPromptPresetSchema = z.strictObject({
 
 export type PlaygroundPromptPreset = z.infer<typeof PlaygroundPromptPresetSchema>;
 
+export const PlaygroundReasoningEffortSchema = z.enum(['default', 'off', 'low', 'medium', 'high']);
+
+export type PlaygroundReasoningEffort = z.infer<typeof PlaygroundReasoningEffortSchema>;
+
 export const PlaygroundExecuteInputSchema = z.strictObject({
   accountId: z.string().max(256).optional(),
   model: z.string().min(1).max(256),
@@ -17,6 +21,7 @@ export const PlaygroundExecuteInputSchema = z.strictObject({
   systemPrompt: z.string().max(8192).optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(1).max(65536).optional(),
+  reasoningEffort: PlaygroundReasoningEffortSchema.optional(),
 });
 
 export type PlaygroundExecuteInput = z.infer<typeof PlaygroundExecuteInputSchema>;
@@ -48,6 +53,7 @@ export const PlaygroundCompareInputSchema = z.strictObject({
   systemPrompt: z.string().max(8192).optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(1).max(65536).optional(),
+  reasoningEffort: PlaygroundReasoningEffortSchema.optional(),
 });
 
 export type PlaygroundCompareInput = z.infer<typeof PlaygroundCompareInputSchema>;

@@ -15,7 +15,7 @@ import { PlaygroundControls } from './components/PlaygroundControls';
 import { PlaygroundResponseCard } from './components/PlaygroundResponseCard';
 import { PlaygroundCompareView } from './components/PlaygroundCompareView';
 import { PlaygroundAccountBenchmark } from './components/PlaygroundAccountBenchmark';
-import type { PlaygroundExecuteResult } from './playground.schema';
+import type { PlaygroundExecuteResult, PlaygroundReasoningEffort } from './playground.schema';
 
 export const PlaygroundPage: React.FC = () => {
   const { t } = useTranslation();
@@ -42,6 +42,7 @@ export const PlaygroundPage: React.FC = () => {
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.7);
   const [maxTokens, setMaxTokens] = useState<number>(2048);
+  const [reasoningEffort, setReasoningEffort] = useState<PlaygroundReasoningEffort>('default');
 
   const [singleResult, setSingleResult] = useState<PlaygroundExecuteResult | null>(null);
   const [compareResults, setCompareResults] = useState<PlaygroundExecuteResult[]>([]);
@@ -81,6 +82,7 @@ export const PlaygroundPage: React.FC = () => {
         systemPrompt: systemPrompt.trim() || undefined,
         temperature,
         maxTokens,
+        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
       });
       setSingleResult(res);
       if (!res.success) {
@@ -114,6 +116,7 @@ export const PlaygroundPage: React.FC = () => {
         systemPrompt: systemPrompt.trim() || undefined,
         temperature,
         maxTokens,
+        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
       });
       setCompareResults(res.results);
     } catch (error) {
@@ -236,6 +239,8 @@ export const PlaygroundPage: React.FC = () => {
                 onChangeTemperature={setTemperature}
                 maxTokens={maxTokens}
                 onChangeMaxTokens={setMaxTokens}
+                reasoningEffort={reasoningEffort}
+                onChangeReasoningEffort={setReasoningEffort}
                 isLoading={isRunning}
                 onRun={handleRunSingle}
                 availableModels={availableModels}
