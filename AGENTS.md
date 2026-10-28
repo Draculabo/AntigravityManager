@@ -65,6 +65,7 @@ See [src/modules/AGENTS.md](src/modules/AGENTS.md), [src/modules/proxy-gateway/A
 Route the task before editing:
 
 - Do not automatically invoke OpenSpec prompts or skills for project work; use this workflow unless the user explicitly requests OpenSpec.
+- For frontend UI/UX design, implementation, refinement or review, automatically use [Impeccable](.agents/skills/impeccable/SKILL.md), even when the user does not name it. Follow its setup and request-specific playbook; use [PRODUCT.md](PRODUCT.md) for confirmed product context and design-reference preferences. Backend-only work does not trigger this workflow.
 - Read-only investigation ends with findings and evidence; do not create implementation files.
 - Bug fixes begin by reproducing or isolating the reported behavior and defining the observable regression check.
 - When work follows a regression, repeated CI failure, reopened issue, rollback or failed live acceptance, use [Agent lessons](.agents/lessons.md) to assess whether the confirmed gap warrants a reusable prevention candidate.
