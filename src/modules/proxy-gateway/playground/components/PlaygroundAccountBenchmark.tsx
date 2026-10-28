@@ -204,16 +204,44 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
           maxTokens: 1024,
         });
 
+        const durationMs = result.durationMs;
+        const ttftMs = result.ttftMs;
+        const completionTokens = result.completionTokens;
+
+        let e2eTokensPerSec = result.e2eTokensPerSec;
+        if (
+          e2eTokensPerSec === undefined &&
+          typeof completionTokens === 'number' &&
+          completionTokens > 0 &&
+          durationMs > 0
+        ) {
+          e2eTokensPerSec = Math.round((completionTokens / (durationMs / 1000)) * 10) / 10;
+        }
+
+        let generationTokensPerSec = result.generationTokensPerSec;
+        if (
+          generationTokensPerSec === undefined &&
+          typeof completionTokens === 'number' &&
+          completionTokens > 0
+        ) {
+          if (typeof ttftMs === 'number' && durationMs > ttftMs && durationMs - ttftMs >= 50) {
+            generationTokensPerSec =
+              Math.round((completionTokens / ((durationMs - ttftMs) / 1000)) * 10) / 10;
+          } else if (e2eTokensPerSec !== undefined) {
+            generationTokensPerSec = e2eTokensPerSec;
+          }
+        }
+
         setRows((prev) =>
           prev.map((r, idx) =>
             idx === i
               ? {
                   ...r,
                   status: result.success ? 'success' : 'error',
-                  durationMs: result.durationMs,
-                  ttftMs: result.ttftMs,
-                  generationTokensPerSec: result.generationTokensPerSec,
-                  e2eTokensPerSec: result.e2eTokensPerSec,
+                  durationMs,
+                  ttftMs,
+                  generationTokensPerSec,
+                  e2eTokensPerSec,
                   promptTokens: result.promptTokens,
                   completionTokens: result.completionTokens,
                   totalTokens: result.totalTokens,
@@ -296,6 +324,13 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
     return sorted[0];
   }, [successRows]);
 
+  const formatTtftSeconds = (ttftMs?: number): string => {
+    if (typeof ttftMs !== 'number' || ttftMs <= 0) {
+      return '-';
+    }
+    return `${(ttftMs / 1000).toFixed(1)} ${t('playground.seconds-short')}`;
+  };
+
   const handleCopyMarkdownReport = async () => {
     if (completedRows.length === 0) {
       return;
@@ -305,13 +340,13 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
       `### Benchmark Results for ${selectedAccount?.name || selectedAccount?.email || 'Account'}`,
       `**Tested Models:** ${completedRows.length} | **Passed:** ${successRows.length} | **Failed:** ${failedRows.length}`,
       '',
-      '| Model | Status | TTFT (ms) | Gen Speed (tok/s) | E2E Speed (tok/s) | Total Latency (ms) | Tokens (In/Out) |',
+      '| Model | Status | TTFT (s) | Gen Speed (tok/s) | E2E Speed (tok/s) | Total Latency (ms) | Tokens (In/Out) |',
       '|---|---|---|---|---|---|---|',
     ];
 
     for (const r of completedRows) {
       const statusText = r.status === 'success' ? '200 OK' : `Error (${r.httpStatus ?? 'fail'})`;
-      const ttft = r.ttftMs !== undefined ? `${r.ttftMs} ms` : '-';
+      const ttft = r.ttftMs !== undefined ? `${(r.ttftMs / 1000).toFixed(1)} s` : '-';
       const genSpeed = r.generationTokensPerSec !== undefined ? `${r.generationTokensPerSec}` : '-';
       const e2eSpeed = r.e2eTokensPerSec !== undefined ? `${r.e2eTokensPerSec}` : '-';
       const duration = r.durationMs !== undefined ? `${r.durationMs} ms` : '-';
@@ -570,7 +605,7 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
               <span>{t('playground.avg-ttft')}</span>
             </div>
             <div className="text-foreground mt-1 text-lg font-bold">
-              {avgTtft !== null ? `${avgTtft} ms` : '-'}
+              {avgTtft !== null ? formatTtftSeconds(avgTtft) : '-'}
             </div>
           </Card>
 
@@ -616,7 +651,9 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
               className="mt-1 truncate text-xs font-semibold"
               title={fastestTtftModel?.modelName}
             >
-              {fastestTtftModel ? `${fastestTtftModel.ttftMs} ms` : '-'}
+              {fastestTtftModel?.ttftMs !== undefined
+                ? formatTtftSeconds(fastestTtftModel.ttftMs)
+                : '-'}
             </div>
             <div className="text-muted-foreground truncate text-[10px]">
               {fastestTtftModel?.modelName ?? ''}
@@ -658,8 +695,10 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
                   <tr className="bg-muted/40 text-muted-foreground border-y text-[10px] font-medium tracking-wider uppercase">
                     <th className="px-3 py-2.5">{t('playground.model')}</th>
                     <th className="px-3 py-2.5">{t('playground.quota-left')}</th>
-                    <th className="px-3 py-2.5">{t('traffic.table.status')}</th>
-                    <th className="px-3 py-2.5">{t('playground.ttft')}</th>
+                    <th className="px-3 py-2.5">{t('playground.status')}</th>
+                    <th className="px-3 py-2.5">
+                      {t('playground.ttft')} ({t('playground.seconds-short')})
+                    </th>
                     <th className="px-3 py-2.5">{t('playground.gen-speed')}</th>
                     <th className="px-3 py-2.5">{t('playground.e2e-speed')}</th>
                     <th className="px-3 py-2.5">{t('playground.latency')}</th>
@@ -735,9 +774,7 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
                           )}
                         </td>
 
-                        <td className="px-3 py-2.5 font-mono">
-                          {row.ttftMs !== undefined ? `${row.ttftMs}ms` : '-'}
-                        </td>
+                        <td className="px-3 py-2.5 font-mono">{formatTtftSeconds(row.ttftMs)}</td>
 
                         <td className="px-3 py-2.5 font-mono font-semibold">
                           {row.generationTokensPerSec !== undefined ? (
@@ -820,7 +857,8 @@ export const PlaygroundAccountBenchmark: React.FC<PlaygroundAccountBenchmarkProp
             <DialogDescription className="text-xs">
               {inspectedRow && (
                 <span>
-                  Latency: {inspectedRow.durationMs}ms | TTFT: {inspectedRow.ttftMs ?? '-'}ms | Gen:{' '}
+                  Latency: {inspectedRow.durationMs}ms | TTFT:{' '}
+                  {formatTtftSeconds(inspectedRow.ttftMs)} | Gen:{' '}
                   {inspectedRow.generationTokensPerSec ?? '-'} tok/s | Tokens:{' '}
                   {inspectedRow.completionTokens ?? '-'}
                 </span>

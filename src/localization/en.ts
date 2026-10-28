@@ -342,6 +342,8 @@ const en = {
     'report-copied': 'Report copied to clipboard',
     'gen-speed': 'Gen Speed',
     'e2e-speed': 'E2E Speed',
+    'seconds-short': 's',
+    status: 'Status',
     pending: 'Pending',
     skipped: 'Skipped',
     view: 'View',

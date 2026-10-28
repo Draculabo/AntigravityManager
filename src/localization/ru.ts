@@ -301,6 +301,8 @@ const ru = {
     'report-copied': 'Отчет скопирован в буфер обмена',
     'gen-speed': 'Скор. ген.',
     'e2e-speed': 'E2E скор.',
+    'seconds-short': 'с',
+    status: 'Статус',
     pending: 'Ожидание',
     skipped: 'Пропущено',
     view: 'Просмотр',

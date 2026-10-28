@@ -42,6 +42,22 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
     result.attributedAccountId ||
     t('playground.auto-pool');
 
+  const completionTokens = result.completionTokens;
+  const durationMs = result.durationMs;
+  const ttftMs = result.ttftMs;
+  const effectiveE2eSpeed =
+    result.e2eTokensPerSec ??
+    (typeof completionTokens === 'number' && completionTokens > 0 && durationMs > 0
+      ? Math.round((completionTokens / (durationMs / 1000)) * 10) / 10
+      : undefined);
+  const effectiveGenSpeed =
+    result.generationTokensPerSec ??
+    (typeof completionTokens === 'number' && completionTokens > 0
+      ? typeof ttftMs === 'number' && durationMs > ttftMs && durationMs - ttftMs >= 50
+        ? Math.round((completionTokens / ((durationMs - ttftMs) / 1000)) * 10) / 10
+        : effectiveE2eSpeed
+      : undefined);
+
   const onCopyResponse = async () => {
     if (!result.content) {
       return;
@@ -99,7 +115,8 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
               <span>{result.durationMs}ms</span>
               {result.ttftMs !== undefined && (
                 <span className="text-muted-foreground text-[10px]">
-                  ({t('playground.ttft')}: {result.ttftMs}ms)
+                  ({t('playground.ttft')}: {(result.ttftMs / 1000).toFixed(1)}{' '}
+                  {t('playground.seconds-short')})
                 </span>
               )}
             </div>
@@ -114,13 +131,13 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
               </div>
             )}
 
-            {result.generationTokensPerSec !== undefined && (
+            {effectiveGenSpeed !== undefined && (
               <div
                 className="flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400"
-                title={`${t('playground.gen-speed')} (${t('playground.e2e-speed')}: ${result.e2eTokensPerSec ?? '-'} tok/s)`}
+                title={`${t('playground.gen-speed')} (${t('playground.e2e-speed')}: ${effectiveE2eSpeed ?? '-'} tok/s)`}
               >
                 <Zap size={13} />
-                <span>{result.generationTokensPerSec} tok/s</span>
+                <span>{effectiveGenSpeed} tok/s</span>
               </div>
             )}
           </div>
