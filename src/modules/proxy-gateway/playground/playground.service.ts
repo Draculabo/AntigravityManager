@@ -1,3 +1,5 @@
+import axios from 'axios';
+import { z } from 'zod';
 import { getServerConfig } from '@/server/server-config';
 import { getNestServerStatus } from '@/server/main';
 import type {
@@ -6,6 +8,37 @@ import type {
   PlaygroundExecuteInput,
   PlaygroundExecuteResult,
 } from './playground.schema';
+
+const GatewayMessageSchema = z.object({
+  role: z.string().optional(),
+  content: z.string().nullable().optional(),
+  reasoning_content: z.string().optional(),
+  thinking: z.string().optional(),
+});
+
+const GatewayChoiceSchema = z.object({
+  message: GatewayMessageSchema.optional(),
+});
+
+const GatewayUsageSchema = z.object({
+  prompt_tokens: z.number().int().optional(),
+  completion_tokens: z.number().int().optional(),
+  total_tokens: z.number().int().optional(),
+});
+
+const GatewayCompletionPayloadSchema = z.object({
+  model: z.string().optional(),
+  choices: z.array(GatewayChoiceSchema).optional(),
+  usage: GatewayUsageSchema.optional(),
+});
+
+const GatewayErrorPayloadSchema = z.object({
+  error: z
+    .object({
+      message: z.string().optional(),
+    })
+    .optional(),
+});
 
 export class PlaygroundService {
   async execute(input: PlaygroundExecuteInput): Promise<PlaygroundExecuteResult> {
@@ -61,30 +94,39 @@ export class PlaygroundService {
 
     const startTime = performance.now();
     try {
-      const response = await fetch(`${status.base_url}/v1/chat/completions`, {
-        method: 'POST',
+      const response = await axios.post(`${status.base_url}/v1/chat/completions`, body, {
         headers,
-        body: JSON.stringify(body),
+        validateStatus: () => true,
       });
 
       const durationMs = Math.round(performance.now() - startTime);
-      const attributedAccountId =
-        response.headers.get('x-antigravity-account-id') || targetAccount || undefined;
-      const attributedAccountEmail =
-        response.headers.get('x-antigravity-account-email') || undefined;
+      const headersMap = response.headers;
+      const getHeader = (name: string): string | undefined => {
+        if (!headersMap) {
+          return undefined;
+        }
+        if (typeof (headersMap as { get?: (n: string) => unknown }).get === 'function') {
+          const val = (headersMap as { get: (n: string) => unknown }).get(name);
+          return typeof val === 'string' ? val : undefined;
+        }
+        const val =
+          (headersMap as Record<string, unknown>)[name] ??
+          (headersMap as Record<string, unknown>)[name.toLowerCase()];
+        return typeof val === 'string' ? val : undefined;
+      };
 
-      const ttftHeader = response.headers.get('x-timing-ttft-ms');
+      const attributedAccountId =
+        getHeader('x-antigravity-account-id') || targetAccount || undefined;
+      const attributedAccountEmail = getHeader('x-antigravity-account-email') || undefined;
+
+      const ttftHeader = getHeader('x-timing-ttft-ms');
       const ttftMs = ttftHeader ? Math.round(Number.parseFloat(ttftHeader)) : undefined;
 
-      if (!response.ok) {
-        let errorMsg = `HTTP ${response.status} ${response.statusText}`;
-        try {
-          const errJson = (await response.json()) as { error?: { message?: string } };
-          if (errJson?.error?.message) {
-            errorMsg = errJson.error.message;
-          }
-        } catch {
-          // ignore parsing error
+      if (response.status < 200 || response.status >= 300) {
+        let errorMsg = `HTTP ${response.status} ${response.statusText || 'Error'}`;
+        const errorParsed = GatewayErrorPayloadSchema.safeParse(response.data);
+        if (errorParsed.success && errorParsed.data.error?.message) {
+          errorMsg = errorParsed.data.error.message;
         }
 
         return {
@@ -100,22 +142,8 @@ export class PlaygroundService {
         };
       }
 
-      const json = (await response.json()) as {
-        model?: string;
-        choices?: Array<{
-          message?: {
-            content?: string;
-            reasoning_content?: string;
-            thinking?: string;
-          };
-        }>;
-        usage?: {
-          prompt_tokens?: number;
-          completion_tokens?: number;
-          total_tokens?: number;
-        };
-      };
-
+      const parsedJson = GatewayCompletionPayloadSchema.safeParse(response.data);
+      const json = parsedJson.success ? parsedJson.data : {};
       const message = json.choices?.[0]?.message;
       const content = message?.content ?? '';
       const thinkingContent = message?.reasoning_content || message?.thinking || undefined;
@@ -128,11 +156,15 @@ export class PlaygroundService {
       const effectiveDurationMs = Math.max(1, durationMs);
       if (typeof completionTokens === 'number' && completionTokens > 0) {
         e2eTokensPerSec = Math.round((completionTokens / (effectiveDurationMs / 1000)) * 10) / 10;
-        if (typeof ttftMs === 'number' && effectiveDurationMs > ttftMs) {
-          const genDurationSec = (effectiveDurationMs - ttftMs) / 1000;
-          if (genDurationSec > 0) {
-            generationTokensPerSec = Math.round((completionTokens / genDurationSec) * 10) / 10;
-          }
+        const genDurationMs =
+          typeof ttftMs === 'number' && effectiveDurationMs > ttftMs
+            ? effectiveDurationMs - ttftMs
+            : null;
+        if (genDurationMs !== null && genDurationMs >= 500) {
+          generationTokensPerSec =
+            Math.round((completionTokens / (genDurationMs / 1000)) * 10) / 10;
+        } else {
+          generationTokensPerSec = e2eTokensPerSec;
         }
       }
 

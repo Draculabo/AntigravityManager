@@ -1,18 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import axios from 'axios';
 import { PlaygroundService } from '@/modules/proxy-gateway/playground/playground.service';
 import * as mainServer from '@/server/main';
 import * as serverConfig from '@/server/server-config';
 
 describe('PlaygroundService', () => {
   let service: PlaygroundService;
-  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     service = new PlaygroundService();
   });
 
   afterEach(() => {
-    globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
   });
 
@@ -46,45 +45,43 @@ describe('PlaygroundService', () => {
       api_key: 'test-secret-key',
     } as any);
 
-    const mockResponse = {
-      ok: true,
-      status: 200,
-      headers: new Headers({
-        'content-type': 'application/json',
-        'x-antigravity-account-id': 'acc-1',
-        'x-antigravity-account-email': 'user1@example.com',
-        'x-timing-ttft-ms': '125.400',
-      }),
-      json: async () => ({
-        id: 'chatcmpl-test',
-        model: 'gemini-3-flash',
-        choices: [
-          {
-            index: 0,
-            message: {
-              role: 'assistant',
-              content: 'Hello from model!',
-              reasoning_content: 'Let me think about this...',
-            },
-          },
-        ],
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: 15,
-          total_tokens: 25,
-        },
-      }),
-    };
-
     let capturedUrl = '';
     let capturedHeaders: Record<string, string> = {};
     let capturedBody: any = null;
 
-    globalThis.fetch = vi.fn(async (url: any, init?: any) => {
+    vi.spyOn(axios, 'post').mockImplementation(async (url: any, body: any, config: any) => {
       capturedUrl = String(url);
-      capturedHeaders = init?.headers ?? {};
-      capturedBody = JSON.parse(init?.body ?? '{}');
-      return mockResponse as any;
+      capturedHeaders = (config?.headers as Record<string, string>) ?? {};
+      capturedBody = body;
+      return {
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          'content-type': 'application/json',
+          'x-antigravity-account-id': 'acc-1',
+          'x-antigravity-account-email': 'user1@example.com',
+          'x-timing-ttft-ms': '125.400',
+        },
+        data: {
+          id: 'chatcmpl-test',
+          model: 'gemini-3-flash',
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'Hello from model!',
+                reasoning_content: 'Let me think about this...',
+              },
+            },
+          ],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 15,
+            total_tokens: 25,
+          },
+        },
+      } as any;
     });
 
     const result = await service.execute({
@@ -132,21 +129,19 @@ describe('PlaygroundService', () => {
       return mockNow;
     });
 
-    const mockResponse = {
-      ok: true,
+    vi.spyOn(axios, 'post').mockResolvedValue({
       status: 200,
-      headers: new Headers({
+      statusText: 'OK',
+      headers: {
         'content-type': 'application/json',
         'x-timing-ttft-ms': '200', // 200ms TTFT -> 800ms generation duration
-      }),
-      json: async () => ({
+      },
+      data: {
         model: 'gemini-3-flash',
         choices: [{ message: { content: 'Test response' } }],
         usage: { completion_tokens: 30 },
-      }),
-    };
-
-    globalThis.fetch = vi.fn(async () => mockResponse as any);
+      },
+    } as any);
 
     const result = await service.execute({
       model: 'gemini-3-flash',
@@ -169,15 +164,15 @@ describe('PlaygroundService', () => {
     });
 
     let sentBody: any = null;
-    globalThis.fetch = vi.fn(async (_url: any, init?: any) => {
-      sentBody = JSON.parse(init?.body ?? '{}');
+    vi.spyOn(axios, 'post').mockImplementation(async (_url: any, body: any) => {
+      sentBody = body;
       return {
-        ok: true,
         status: 200,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => ({
+        statusText: 'OK',
+        headers: { 'content-type': 'application/json' },
+        data: {
           choices: [{ message: { content: 'No reasoning' } }],
-        }),
+        },
       } as any;
     });
 
@@ -208,22 +203,19 @@ describe('PlaygroundService', () => {
       active_accounts: 1,
     });
 
-    const mockResponse = {
-      ok: false,
+    vi.spyOn(axios, 'post').mockResolvedValue({
       status: 429,
       statusText: 'Too Many Requests',
-      headers: new Headers({
+      headers: {
         'content-type': 'application/json',
         'x-antigravity-account-id': 'acc-limited',
-      }),
-      json: async () => ({
+      },
+      data: {
         error: {
           message: 'Quota exceeded for model gemini-3-flash. Try again later.',
         },
-      }),
-    };
-
-    globalThis.fetch = vi.fn(async () => mockResponse as any);
+      },
+    } as any);
 
     const result = await service.execute({
       accountId: 'acc-limited',
@@ -245,29 +237,28 @@ describe('PlaygroundService', () => {
       active_accounts: 2,
     });
 
-    globalThis.fetch = vi.fn(async (url: any, init?: any) => {
-      const headers = init?.headers ?? {};
+    vi.spyOn(axios, 'post').mockImplementation(async (_url: any, _body: any, config: any) => {
+      const headers = (config?.headers as Record<string, string>) ?? {};
       const targetAcc = headers['x-antigravity-account-id'];
       if (targetAcc === 'acc-fail') {
         return {
-          ok: false,
           status: 429,
           statusText: 'Too Many Requests',
-          headers: new Headers({ 'x-antigravity-account-id': 'acc-fail' }),
-          json: async () => ({ error: { message: 'Quota exhausted' } }),
+          headers: { 'x-antigravity-account-id': 'acc-fail' },
+          data: { error: { message: 'Quota exhausted' } },
         } as any;
       }
       return {
-        ok: true,
         status: 200,
-        headers: new Headers({
+        statusText: 'OK',
+        headers: {
           'x-antigravity-account-id': targetAcc,
           'x-antigravity-account-email': `${targetAcc}@example.com`,
-        }),
-        json: async () => ({
+        },
+        data: {
           model: 'gemini-3-flash',
           choices: [{ message: { content: `Response for ${targetAcc}` } }],
-        }),
+        },
       } as any;
     });
 
