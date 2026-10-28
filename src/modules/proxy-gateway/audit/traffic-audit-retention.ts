@@ -10,6 +10,7 @@ import {
   requestLogs,
   trafficAuditSchema,
 } from './traffic-audit.schema';
+import type { TrafficClass } from './traffic-classifier';
 import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
 
 type TrafficAuditDatabase = BetterSQLite3Database<typeof trafficAuditSchema>;
@@ -40,46 +41,54 @@ export class TrafficAuditRetention {
     this.evictRowsBeyondLimit(config.maxRows);
     this.reclaimDiskSpace();
 
+    const TRAFFIC_CLASSES: TrafficClass[] = ['system', 'ipc', 'auxiliary', 'model'];
+
     while (sqliteFilesBytes(this.databasePath) > config.maxDiskBytes) {
       const removedAdmin = this.raw
         .prepare(
           'DELETE FROM audit_admin_events WHERE id IN (' +
-            'SELECT id FROM audit_admin_events ORDER BY timestamp ASC LIMIT 1)',
+            'SELECT id FROM audit_admin_events ORDER BY timestamp ASC LIMIT 500)',
         )
         .run().changes;
-      if (removedAdmin > 0) {
-        this.reclaimDiskSpace();
-        continue;
+      if (removedAdmin === 0) {
+        break;
       }
-      const bodies = this.raw
-        .prepare<
-          [],
-          { id: string }
-        >('SELECT p.id FROM audit_payloads p JOIN request_logs r ON r.id=p.request_id ' + "WHERE p.stored_bytes>0 ORDER BY CASE r.traffic_class WHEN 'system' THEN 0 " + "WHEN 'ipc' THEN 1 WHEN 'auxiliary' THEN 2 ELSE 3 END,p.created_at ASC LIMIT 1")
-        .all();
-      if (bodies.length > 0) {
+      this.reclaimDiskSpace();
+    }
+
+    for (const trafficClass of TRAFFIC_CLASSES) {
+      while (sqliteFilesBytes(this.databasePath) > config.maxDiskBytes) {
+        const bodies = this.raw
+          .prepare<
+            [string],
+            { id: string }
+          >(
+            'SELECT p.id FROM audit_payloads p JOIN request_logs r ON r.id=p.request_id ' +
+              'WHERE r.traffic_class=? AND p.stored_bytes>0 ORDER BY p.created_at ASC LIMIT 5',
+          )
+          .all(trafficClass);
+        if (bodies.length === 0) {
+          break;
+        }
         for (const row of bodies) {
           this.expirePayload(row.id, 'disk_pressure');
         }
-      } else {
-        const rows = this.raw
-          .prepare<
-            [],
-            { id: string }
-          >("SELECT id FROM request_logs ORDER BY CASE traffic_class WHEN 'system' THEN 0 " + "WHEN 'ipc' THEN 1 WHEN 'auxiliary' THEN 2 ELSE 3 END,timestamp ASC LIMIT 1")
-          .all();
-        if (rows.length > 0) {
-          this.raw.transaction((items: Array<{ id: string }>) => {
-            const remove = this.raw.prepare('DELETE FROM request_logs WHERE id=?');
-            for (const row of items) {
-              remove.run(row.id);
-            }
-          })(rows);
-        } else {
+        this.reclaimDiskSpace();
+      }
+    }
+
+    const removeLogs = this.raw.prepare(
+      'DELETE FROM request_logs WHERE id IN (' +
+        'SELECT id FROM request_logs WHERE traffic_class=? ORDER BY timestamp ASC LIMIT ?)',
+    );
+    for (const trafficClass of TRAFFIC_CLASSES) {
+      while (sqliteFilesBytes(this.databasePath) > config.maxDiskBytes) {
+        const changes = removeLogs.run(trafficClass, 500).changes;
+        if (changes === 0) {
           break;
         }
+        this.reclaimDiskSpace();
       }
-      this.reclaimDiskSpace();
     }
     return { databaseBytes: sqliteFilesBytes(this.databasePath) };
   }

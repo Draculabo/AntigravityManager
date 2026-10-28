@@ -170,9 +170,14 @@ describe('remote IPC capture', () => {
     owner.closeAdmission();
     await owner.drain();
   });
-  it.each(['gateway/auditList', 'gateway/thoughtRecord', 'config/read', 'gateway/syncOpenCode'])(
-    'preserves exclusion %s',
-    async (path) => {
+  it.each([
+    'gateway/auditList',
+    'gateway/thoughtRecord',
+    'config/read',
+    'gateway/syncOpenCode',
+    'proc/getOperation',
+    'gateway/status',
+  ])('preserves exclusion %s', async (path) => {
       const { owner, source } = fixture();
       const begin = await owner.begin({ ...metadata, path });
       expect(begin.captured).toBe(false);
