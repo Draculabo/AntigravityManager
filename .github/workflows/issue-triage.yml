@@ -1,0 +1,120 @@
+name: AI issue triage
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue-number:
+        description: Issue number to analyze
+        type: string
+        required: true
+      dry-run:
+        description: Analyze without applying labels or comments (still consumes API tokens)
+        type: boolean
+        default: true
+      force:
+        description: Reanalyze content that already has a successful result
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-triage-${{ github.repository }}-${{ github.event.issue.number || inputs.issue-number }}
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    if: >-
+      github.repository == 'Draculabo/AntigravityManager' &&
+      vars.AI_TRIAGE_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'issues' && github.event.issue.user.type != 'Bot') ||
+       (github.event_name == 'issue_comment' && !github.event.issue.pull_request &&
+        github.event.comment.user.type != 'Bot' && github.event.comment.body == '/bot triage'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      result: ${{ steps.infer.outputs.result }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: '.nvmrc'
+      - name: Install analysis dependencies without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Prepare bounded input from GitHub
+        id: prepare
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          FORCE_TRIAGE: ${{ inputs.force || false }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const fs = require('node:fs/promises');
+            const moduleUrl = pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/github/triage-context.mjs'));
+            const { prepareTriage } = await import(moduleUrl.href);
+            const input = await prepareTriage(github, context, process.env.FORCE_TRIAGE === 'true');
+            if (!input) {
+              core.notice('Issue is excluded, closed, a PR, or already processed.');
+              return;
+            }
+            await fs.writeFile(path.join(process.env.RUNNER_TEMP, 'issue-triage-input.json'), JSON.stringify(input));
+            core.setOutput('ready', 'true');
+      - name: Classify and compare with the official OpenAI SDK
+        id: infer
+        if: steps.prepare.outputs.ready == 'true'
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_BASE_URL: ${{ vars.AI_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3' }}
+        run: node scripts/github/triage-infer.mjs "$RUNNER_TEMP/issue-triage-input.json" "$RUNNER_TEMP/issue-triage-result.json"
+  apply:
+    needs: analyze
+    if: needs.analyze.outputs.result != '' && !(github.event_name == 'workflow_dispatch' && inputs.dry-run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: '.nvmrc'
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Apply validated labels and update the bot comment
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          TRIAGE_RESULT: ${{ needs.analyze.outputs.result }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const moduleUrl = pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/github/triage-publish.mjs'));
+            const { publishTriage } = await import(moduleUrl.href);
+            const result = JSON.parse(process.env.TRIAGE_RESULT);
+            const expected = Number(context.payload.issue?.number ?? context.payload.inputs?.['issue-number']);
+            if (result.issueNumber !== expected) {
+              throw new Error('Triage result targets a different issue.');
+            }
+            core.notice(await publishTriage(github, context.repo, result));

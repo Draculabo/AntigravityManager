@@ -25,6 +25,7 @@ owns the change-to-evidence matrix; this guide identifies existing tools and the
 | `acceptance/fixtures/`    | Fixed media inputs; runtime-specific fixture constants stay with their runtime suite.          |
 | `development/`            | Development-server connection regression checks.                                               |
 | `release/`                | Release-note generation, source metadata and controlled publication tests.                     |
+| `github/`                 | Issue policy, official-SDK inference, validated write-back and workflow contracts.             |
 | `review-eval/`            | Manually prepared historical source audits, evaluator rubrics and adjudicated reports.         |
 
 Existing governance, performance and release utilities remain at the root. pnpm commands are defined
@@ -76,6 +77,15 @@ pass. CI keeps test, lint and formatting lanes in separate jobs. Registry checks
 GitHub scheduling, package installation, native integrations or live providers. New checks update
 the registry description and their owning procedure; the executable inventory avoids duplicating
 the command list here. Acceptance scripts remain owned by the dispatcher below.
+
+[GitHub automation](../docs/development/github-automation.md) owns the reusable build lane,
+conservative docs/full PR selection, complete merge gate and optional issue triage. The runner
+defaults to full checks outside positively identified documentation-only PRs. `test:automation`
+uses synthetic SDK responses and GitHub fixtures; `check:automation` validates actual workflow
+permissions and gate wiring. Neither command calls a provider or mutates GitHub. Inference is
+invoked only by the opt-in workflow; it consumes API tokens, writes temporary result files and
+uses the documented external-data policy. Local Git hooks are installed normally after dependency
+installation; CI-only dependency setup skips lifecycle scripts in credentialed triage jobs.
 
 ## Unified acceptance entry
 

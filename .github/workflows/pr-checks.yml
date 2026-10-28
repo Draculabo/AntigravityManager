@@ -1,0 +1,61 @@
+name: Pull request checks
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/testing.yaml
+  lint:
+    uses: ./.github/workflows/lint.yaml
+  format:
+    uses: ./.github/workflows/format.yaml
+  build:
+    uses: ./.github/workflows/build-check.yml
+  react:
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: write
+    uses: ./.github/workflows/react-doctor.yml
+  dependencies:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/dependency-review-action@907a6e9569212033966bc0b69d32473b046dd66b
+        with:
+          fail-on-severity: high
+          license-check: false
+          comment-summary-in-pr: never
+  required:
+    name: CI required
+    needs: [tests, lint, format, build, react, dependencies]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        with:
+          script: |
+            const results = JSON.parse(process.env.RESULTS);
+            const expected = ['tests', 'lint', 'format', 'build', 'react', 'dependencies'];
+            await core.summary.addHeading('Pull request checks').addTable([
+              [{ data: 'Check', header: true }, { data: 'Result', header: true }],
+              ...expected.map(name => [name, results[name]?.result ?? 'missing'])
+            ]).write();
+            if (expected.some(name => results[name]?.result !== 'success')) {
+              core.setFailed('Every required check must succeed; missing, cancelled and skipped jobs fail the gate.');
+            }
