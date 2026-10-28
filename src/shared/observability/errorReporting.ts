@@ -59,8 +59,11 @@ export function reportOperationFailure(operation: OperationReport): ReportingRec
   }
   try {
     const eventId = runtime.report({
-      level: 'error',
-      message: 'Operation failed',
+      level: operation.switchTrace?.outcome === 'recovered-by-restart' ? 'warn' : 'error',
+      message:
+        operation.switchTrace?.outcome === 'recovered-by-restart'
+          ? 'Operation recovered by restart'
+          : 'Operation failed',
       logs: [],
       operation,
     });

@@ -126,16 +126,24 @@ export function classifyOperationCause(error: unknown): {
   sourceLocations?: OperationReport['sourceLocations'];
 } {
   const seen = new Set<unknown>();
+  const active = new Set<unknown>();
   const causes: CauseClassification[] = [];
-  let current = error;
   let causesTruncated = false;
   const sourceLocations: NonNullable<OperationReport['sourceLocations']> = [];
-  while (current !== undefined) {
-    if (seen.has(current) || causes.length === 4) {
+  function visit(current: unknown): void {
+    if (current === undefined) {
+      return;
+    }
+    if (seen.has(current)) {
+      causesTruncated ||= active.has(current);
+      return;
+    }
+    if (causes.length === 4) {
       causesTruncated = true;
-      break;
+      return;
     }
     seen.add(current);
+    active.add(current);
     if (current instanceof Error && typeof current.stack === 'string') {
       // Retain only verified repository suffixes and numeric coordinates, never caller paths or prose.
       const frames = current.stack
@@ -158,8 +166,18 @@ export function classifyOperationCause(error: unknown): {
     }
     causes.push(classifyOne(current));
     const fields = ErrorFieldsSchema.safeParse(current);
-    current = fields.success ? fields.data.cause : undefined;
+    visit(fields.success ? fields.data.cause : undefined);
+    if (current instanceof AggregateError) {
+      for (const child of current.errors.slice(0, 4)) {
+        visit(child);
+      }
+      if (current.errors.length > 4) {
+        causesTruncated = true;
+      }
+    }
+    active.delete(current);
   }
+  visit(error);
   const primary = causes.find((value) => value.process?.windowsErrorCode !== undefined) ??
     causes.find((value) => value.reason !== 'unknown' && value.reason !== 'network-failed') ??
     causes.find((value) => value.reason !== 'unknown') ??

@@ -359,6 +359,7 @@ export async function switchCloudAccountCore(
                 failureReason = reason;
               },
               onDiagnosticStage: (next) => operation.observe(next, 'started'),
+              onSwitchTrace: (trace) => operation.setSwitchTrace(trace),
               performSwitch: async () => {
                 try {
                   await preparedWrite.write();
@@ -389,10 +390,13 @@ export async function switchCloudAccountCore(
                 }
               },
             });
+            operation.completeSwitch();
           } catch (error) {
             const kind = error instanceof CloudAccountSwitchError ? error.switchCode : failureCode;
             const primaryError =
-              kind === 'target-write-failed' && writeFailure ? writeFailure : error;
+              kind === 'target-write-failed' && writeFailure && !(error instanceof AggregateError)
+                ? writeFailure
+                : error;
             const classified = classifyOperationCause(primaryError);
             const diagnosticStage = diagnosticStageFor(stage, failureReason, primaryError);
             const reason = diagnosticReasonFor(

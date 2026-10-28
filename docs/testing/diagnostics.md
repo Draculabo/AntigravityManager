@@ -21,6 +21,11 @@ ASAR diagnostic executable, with profile path resolution redirected before loadi
 This harness contains no account/credential owner and does not verify a full product installer,
 native keyring or live Google authorization.
 
+Both SDK adapters also receive recovered and terminal Classic switch fixtures. The local receiver
+compares the entire validated attempt trace, initiating and recovery failures, diagnostic identity,
+and warning/error level after real SDK normalization and transport. A recovered fixture must emit
+one warning and preserve its successful restart; it must not become an additional terminal failure.
+
 The SDK receiver also compares complete process-close failures for denied posting followed by
 failed re-observation, failed enumeration, missing application windows, exit timeout, native-call
 failure and missing system-directory configuration. Both SDK adapters must retain classified

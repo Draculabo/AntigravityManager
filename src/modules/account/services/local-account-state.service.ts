@@ -33,6 +33,7 @@ import {
   getAccountOrThrow,
 } from './local-account-index.service';
 import { withTimingTrace } from '@/shared/observability/timingTrace';
+import { OperationContext } from '@/shared/observability/operationContext';
 
 const SWITCH_EXIT_TIMEOUT_MS = 10000;
 
@@ -177,9 +178,34 @@ export async function switchAccount(
   accountId: string,
   appTarget?: AntigravityAppTarget,
 ): Promise<void> {
+  const operation = new OperationContext('local-account-switch');
+  await operation.run(async () => {
+    try {
+      await switchLocalAccount(accountId, appTarget, operation);
+      operation.completeSwitch();
+    } catch (error) {
+      const diagnostic = operation.finish({
+        stage: operation.lastStage || 'account-load',
+        reason: 'unknown',
+        target: appTarget ?? 'classic',
+      });
+      throw Object.assign(
+        error instanceof Error ? error : new Error('Local account switch failed', { cause: error }),
+        { diagnostic },
+      );
+    }
+  });
+}
+
+async function switchLocalAccount(
+  accountId: string,
+  appTarget: AntigravityAppTarget | undefined,
+  operation: OperationContext,
+): Promise<void> {
   await runWithSwitchGuard(
     'local-account-switch',
     async () => {
+      operation.observe('account-load', 'started');
       const sanitizedAccountId = sanitizeAccountId(accountId);
       logger.info(`Switching to account: ${sanitizedAccountId}`);
       const accounts = await readAccountsIndex();
@@ -200,6 +226,8 @@ export async function switchAccount(
         throw new Error('Account backup identity does not match the selected account');
       }
       const credentials = credentialsFromAccountBackup(backup);
+      operation.observe('account-load', 'succeeded');
+      operation.observe('client-selection', 'started');
 
       const launchContext =
         appTarget === 'agy'
@@ -212,6 +240,8 @@ export async function switchAccount(
                   prepareLaunchContext(appTarget === 'ide' ? 'ide' : 'classic'),
                 ),
             );
+      operation.observe('client-selection', 'succeeded');
+      operation.observe('target-write', 'started');
       const preparedWrite = await prepareClientAccountWrite(
         credentials,
         appTarget,
@@ -236,8 +266,11 @@ export async function switchAccount(
         applyFingerprint: isIdentityProfileApplyEnabled(),
         useCredentialStore: preparedWrite.storage === 'credential-store',
         processExitTimeoutMs: SWITCH_EXIT_TIMEOUT_MS,
+        onSwitchTrace: (trace) => operation.setSwitchTrace(trace),
+        onDiagnosticStage: (stage) => operation.observe(stage, 'started'),
         performSwitch: preparedWrite.write,
         afterSwitchSuccess: async () => {
+          operation.observe('account-finalize', 'started');
           const completedAt = new Date().toISOString();
           await mutateAccountsIndex((latestAccounts) => {
             const latestAccount = latestAccounts[accountId];
@@ -268,6 +301,7 @@ export async function switchAccount(
             latestAccount.deviceProfile = account.deviceProfile;
             latestAccount.deviceHistory = account.deviceHistory;
           });
+          operation.observe('account-finalize', 'succeeded');
         },
       });
     },

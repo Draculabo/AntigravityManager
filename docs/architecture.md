@@ -12,7 +12,7 @@ service or general filesystem API is exposed. See [the privacy and export policy
 
 ## Correlated account-operation diagnostics
 
-Google login and cloud-account switching create a UUID in the trusted coordinator before
+Google login, cloud-account switching and local-snapshot switching create a UUID in the trusted coordinator before
 dispatch. The selected owner records stages, classifies terminal failures and finalizes a
 reporting receipt once. Feature services own the login/switch variants; shared observability
 owns invocation-local correlation and SDK dispatch. Async log scopes end with their invocation
@@ -128,6 +128,11 @@ The existing list polling, detail refresh, category filtering and manual refresh
 in effect; these UI states are not copied into a global store.
 
 ## Classic terms retention
+
+Classic cloud and local switches share one runtime coordinator with a native Windows hot attempt
+and one full-restart recovery. Account owners finalize state and reporting once; closed attempt
+evidence survives successful recovery. See [Classic switching](modules/antigravity-runtime/classic-switch.md)
+for selection, consent readiness, failure boundaries and diagnostic ownership.
 
 The antigravity-runtime module owns Windows Classic terms retention. Cloud accounts and local
 snapshots pass the target email into the shared switch flow. For credential-store Classic

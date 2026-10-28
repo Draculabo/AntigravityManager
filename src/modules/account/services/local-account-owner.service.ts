@@ -4,6 +4,7 @@ import { getCurrentAccountInfo } from './current-account.service';
 import { logger } from '@/shared/logging/logger';
 import { isErrorWithCode } from '@/shared/errors/error-guards';
 import { AppError } from '@/shared/errors/appError';
+import { readFinalizedOperationDiagnostic } from '@/shared/observability/operationDiagnostic';
 import {
   LocalAccountError,
   LocalAccountInfoSchema,
@@ -37,20 +38,23 @@ export function createLocalAccountOwner(policy: LocalAccountPolicy) {
         if (error instanceof LocalAccountError) {
           throw error;
         }
-        // Keep diagnostic categories without logging provider responses or credentials.
-        logger.error('Local account action failed', {
-          accountCode: code,
-          errorKind: error instanceof Error ? error.name : 'unknown',
-          errorCode:
-            isErrorWithCode(error) && /^[A-Z_0-9-]{1,64}$/.test(error.code)
-              ? error.code
-              : undefined,
-          processReason:
-            error instanceof AppError && error.code === 'ANTIGRAVITY_PROCESS_FAILED'
-              ? error.messageKey
-              : undefined,
-        });
-        throw new LocalAccountError(code);
+        const diagnostic = readFinalizedOperationDiagnostic(error);
+        // The switch coordinator has already finalized its diagnostic, including disabled reporting.
+        if (!diagnostic) {
+          logger.error('Local account action failed', {
+            accountCode: code,
+            errorKind: error instanceof Error ? error.name : 'unknown',
+            errorCode:
+              isErrorWithCode(error) && /^[A-Z_0-9-]{1,64}$/.test(error.code)
+                ? error.code
+                : undefined,
+            processReason:
+              error instanceof AppError && error.code === 'ANTIGRAVITY_PROCESS_FAILED'
+                ? error.messageKey
+                : undefined,
+          });
+        }
+        throw new LocalAccountError(code, diagnostic ?? undefined);
       },
     );
     if (write) {

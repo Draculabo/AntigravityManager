@@ -23,6 +23,8 @@ import {
 } from './classicTermsStore';
 
 export interface ClassicTermsSwitch {
+  captureForHotSwitch(): Promise<void>;
+  confirmHotSwitch(): Promise<boolean>;
   apply(): Promise<void>;
   rollback(): Promise<void>;
 }
@@ -88,6 +90,32 @@ export async function prepareClassicTermsSwitch(
     history.entries = history.entries.slice(-256);
   }
   return {
+    async confirmHotSwitch() {
+      const deadline = Date.now() + 5000;
+      do {
+        const official = acceptedTerms(await readDocument(file));
+        if (canLearn && official && digest(official.email) === digest(email)) {
+          return true;
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(100, Math.max(0, deadline - Date.now()))),
+        );
+      } while (Date.now() < deadline);
+      return false;
+    },
+    async captureForHotSwitch() {
+      const currentExecutable = await fs.stat(context.executablePath);
+      if (
+        currentExecutable.size !== executable.size ||
+        currentExecutable.mtimeMs !== executable.mtimeMs
+      ) {
+        throw new Error('Classic installation changed before terms capture');
+      }
+      if (canLearn) {
+        remember(captured);
+        await writeDocument(cache, history);
+      }
+    },
     async apply() {
       const currentExecutable = await fs.stat(context.executablePath);
       if (

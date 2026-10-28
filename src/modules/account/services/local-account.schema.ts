@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import type { Account } from '../types';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
+import {
+  OperationDiagnosticSchema,
+  type OperationDiagnostic,
+} from '@/shared/observability/operationDiagnostic';
 
 const short = z.string().max(256);
 export const LocalAccountIdSchema = short.min(1);
@@ -69,8 +73,17 @@ export const LocalAccountErrorCodeSchema = z.enum([
   'account-operation-failed',
 ]);
 export type LocalAccountErrorCode = z.infer<typeof LocalAccountErrorCodeSchema>;
+export const LocalAccountFailureDataSchema = z.strictObject({
+  accountCode: LocalAccountErrorCodeSchema,
+  diagnostic: OperationDiagnosticSchema.refine(
+    (value) => value.operation === 'local-account-switch',
+  ).optional(),
+});
 export class LocalAccountError extends Error {
-  constructor(readonly code: LocalAccountErrorCode) {
+  constructor(
+    readonly code: LocalAccountErrorCode,
+    readonly diagnostic?: OperationDiagnostic,
+  ) {
     super('Unable to complete this account action right now. Please try again.');
   }
 }

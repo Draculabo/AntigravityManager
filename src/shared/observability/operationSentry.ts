@@ -35,6 +35,9 @@ export function attachOperationScope(scope: OperationScope, report: OperationRep
   scope.setTag('operation', failure.operation);
   scope.setTag('stage', failure.stage);
   scope.setTag('reason', failure.reason);
+  if (report.switchTrace) {
+    scope.setTag('switch_outcome', report.switchTrace.outcome);
+  }
   // A string preserves the bounded structure through the SDK's default normalization depth.
   scope.setContext('operation_diagnostic', { serialized: JSON.stringify(report) });
   scope.setFingerprint([
@@ -45,7 +48,10 @@ export function attachOperationScope(scope: OperationScope, report: OperationRep
     failure.upstreamCode ?? failure.nativeCode ?? 'none',
   ]);
   const exception = new Error(`${failure.operation}: ${failure.stage}: ${failure.reason}`);
-  exception.name = 'OperationFailure';
+  exception.name =
+    report.switchTrace?.outcome === 'recovered-by-restart'
+      ? 'OperationRecovered'
+      : 'OperationFailure';
   // Source errors and their causes never enter SDK integrations or normalization.
   exception.stack = undefined;
   return exception;
@@ -57,7 +63,7 @@ export function projectOperationSentryEvent(event: ErrorEvent): ErrorEvent | nul
     return event;
   }
   const context = z
-    .strictObject({ serialized: z.string().max(16 * 1024) })
+    .strictObject({ serialized: z.string().max(64 * 1024) })
     .safeParse(event.contexts?.operation_diagnostic);
   if (!context.success) {
     return null;
@@ -89,7 +95,7 @@ export function projectOperationSentryEvent(event: ErrorEvent): ErrorEvent | nul
     ...(['production', 'development', 'test', 'staging'].includes(event.environment ?? '')
       ? { environment: event.environment }
       : {}),
-    level: 'error',
+    level: report.switchTrace?.outcome === 'recovered-by-restart' ? 'warning' : 'error',
     user: { geo: {} },
     tags: {
       operation_diagnostic_schema: '1',
@@ -97,6 +103,7 @@ export function projectOperationSentryEvent(event: ErrorEvent): ErrorEvent | nul
       operation: failure.operation,
       stage: failure.stage,
       reason: failure.reason,
+      ...(report.switchTrace ? { switch_outcome: report.switchTrace.outcome } : {}),
       ...(runtime === 'desktop-embedded' || runtime === 'standalone-core'
         ? { runtime, operation_runtime: runtime }
         : {}),
@@ -110,7 +117,10 @@ export function projectOperationSentryEvent(event: ErrorEvent): ErrorEvent | nul
     exception: {
       values: [
         {
-          type: 'OperationFailure',
+          type:
+            report.switchTrace?.outcome === 'recovered-by-restart'
+              ? 'OperationRecovered'
+              : 'OperationFailure',
           value: `${failure.operation}: ${failure.stage}: ${failure.reason}`,
           ...(report.sourceLocations?.length
             ? {
@@ -130,9 +140,16 @@ export function projectOperationSentryEvent(event: ErrorEvent): ErrorEvent | nul
       failure.upstreamCode ?? failure.nativeCode ?? 'none',
     ],
   };
-  // The fixed projection is normally below 4 KiB; omit step context if it exceeds the budget.
-  if (new TextEncoder().encode(JSON.stringify(projected.contexts)).length > 16 * 1024) {
-    projected.contexts = { operation_diagnostic: { failure, steps: [], stepsTruncated: true } };
+  // Switch traces have a separate 48 KiB budget; preserve their failed attempts and final result.
+  if (new TextEncoder().encode(JSON.stringify(projected.contexts)).length > 64 * 1024) {
+    projected.contexts = {
+      operation_diagnostic: {
+        failure,
+        steps: [],
+        stepsTruncated: true,
+        ...(report.switchTrace ? { switchTrace: report.switchTrace } : {}),
+      },
+    };
   }
   return projected;
 }

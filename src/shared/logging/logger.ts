@@ -12,6 +12,7 @@ import {
   type OperationReport,
 } from '@/shared/observability/operationDiagnostic';
 import { currentOperationIdentity } from '@/shared/observability/operationScope';
+import { SwitchTraceSchema } from '@/shared/observability/switchDiagnostic';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
@@ -47,6 +48,10 @@ function safeStringify(obj: unknown): string {
     const diagnostic = OperationDiagnosticSchema.safeParse(obj);
     if (diagnostic.success) {
       return JSON.stringify(diagnostic.data);
+    }
+    const trace = SwitchTraceSchema.safeParse(obj);
+    if (trace.success) {
+      return JSON.stringify(trace.data);
     }
     return safeStringifyPacket(obj);
   } catch {
@@ -171,7 +176,8 @@ class Logger {
     const formattedArgs = this.formatArgs(
       operation &&
         !message.startsWith('Operation diagnostic ') &&
-        !message.startsWith('Operation step ')
+        !message.startsWith('Operation step ') &&
+        !message.startsWith('Switch trace ')
         ? [...args, operation]
         : args,
     );

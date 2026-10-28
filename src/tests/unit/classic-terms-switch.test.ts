@@ -8,6 +8,7 @@ import { observeProcesses } from '@/modules/antigravity-runtime/processObserver'
 import { historyFile } from '@/modules/antigravity-runtime/terms/classicTermsStore';
 import { canonicalPath } from '@/modules/antigravity-runtime/launchContext';
 import type { LaunchContext } from '@/modules/antigravity-runtime/types';
+import { prepareClassicTermsSwitch } from '@/modules/antigravity-runtime/terms/classicTermsSwitch';
 
 const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
@@ -100,6 +101,16 @@ async function switchTo(email: string) {
   });
 }
 describe('Classic terms during account switching', () => {
+  it('requires the official writer to confirm the hot target without replacing a live consent file', async () => {
+    await record('a@example.test');
+    const terms = await prepareClassicTermsSwitch(context, 'b@example.test');
+    const before = await read();
+    await terms!.captureForHotSwitch();
+    expect(await terms!.confirmHotSwitch()).toBe(false);
+    expect(await read()).toEqual(before);
+    await record('b@example.test');
+    expect(await terms!.confirmHotSwitch()).toBe(true);
+  }, 15000);
   it('restores A after B has replaced the official last accepted account', async () => {
     await record('a@example.test');
     await switchTo('b@example.test');

@@ -23,7 +23,7 @@ This procedure checks real account switching through both Manager CLI and Electr
 3. Add `--local-snapshots` for cloud and local A-B-A switching. Add `--probe-cli` to require a real provider response from the official Antigravity CLI.
 4. For Electron, provide `--electron-bin` and optionally `--electron-app`. The runner invokes the renderer's real preload MessagePort transport.
 5. Repeat each owner on Windows and Linux. `--target classic|ide|agy` isolates failures without rerunning unrelated clients.
-6. Add `--keep-client-running` to exercise desktop switches and snapshots without the runner closing the client first. The production switch may restart the selected client; this option does not assert seamless in-process switching.
+6. Add `--keep-client-running` to exercise desktop switches and snapshots without the runner closing the client first. The report records `clientWasRunning` and `mainProcessPreserved` using the main process PID, creation time and executable identity. The production switch may restart the selected client; this option does not assert seamless in-process switching. Correlate these observations with `Switch trace v1` outcomes and official identity/consent results.
 7. Only after explicit authorization to accept the official first-run terms, add `--complete-client-setup` when an isolated profile requires setup. The runner leaves interaction-data collection unchecked. It opens the official Settings account panel when the main screen does not display the account.
 
 ## Interpret results
