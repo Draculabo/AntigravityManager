@@ -47,6 +47,8 @@ fs.writeFileSync(otherExecutable, 'fixture');
 fs.chmodSync(executable, 0o755);
 fs.chmodSync(otherExecutable, 0o755);
 fs.mkdirSync(userData);
+const realUserData = fs.realpathSync.native(userData);
+const canonicalUserData = process.platform === 'win32' ? realUserData.toLowerCase() : realUserData;
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 beforeEach(() => {
   vi.clearAllMocks();
@@ -80,17 +82,17 @@ describe('immutable launch context', () => {
     ]);
     expect(context.args).toEqual([`--user-data-dir=${userData}`]);
     expect(getAntigravityDbPaths('classic', context.pathOptions)).toEqual([
-      path.join(userData, 'User', 'globalStorage', 'state.vscdb'),
-      path.join(userData, 'User', 'state.vscdb'),
-      path.join(userData, 'state.vscdb'),
+      path.join(canonicalUserData, 'User', 'globalStorage', 'state.vscdb'),
+      path.join(canonicalUserData, 'User', 'state.vscdb'),
+      path.join(canonicalUserData, 'state.vscdb'),
     ]);
     expect(getAntigravityStoragePaths('classic', context.pathOptions)).toEqual([
-      path.join(userData, 'User', 'globalStorage', 'storage.json'),
-      path.join(userData, 'User', 'storage.json'),
-      path.join(userData, 'storage.json'),
+      path.join(canonicalUserData, 'User', 'globalStorage', 'storage.json'),
+      path.join(canonicalUserData, 'User', 'storage.json'),
+      path.join(canonicalUserData, 'storage.json'),
     ]);
     mocks.args.mockReturnValue(['--user-data-dir', path.join(root, 'changed')]);
-    expect(context.pathOptions.userDataDir).toBe(userData);
+    expect(context.pathOptions.userDataDir).toBe(canonicalUserData);
     expect(Object.isFrozen(context.args)).toBe(true);
     expect(Object.isFrozen(context.pathOptions)).toBe(true);
   });
@@ -126,7 +128,7 @@ describe('immutable launch context', () => {
     expect({
       executablePath: context.executablePath,
       userDataDir: context.pathOptions.userDataDir,
-    }).toEqual({ executablePath: executable, userDataDir: userData });
+    }).toEqual({ executablePath: executable, userDataDir: canonicalUserData });
     expect(mocks.discovered).not.toHaveBeenCalled();
   });
 
