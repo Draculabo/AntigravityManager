@@ -351,7 +351,7 @@ function CloudAccountListContent() {
     : undefined;
 
   return (
-    <div className="space-y-5 pb-20">
+    <div data-slot="cloud-account-list" className="flex flex-col gap-6 pb-20">
       <CloudAccountListSummary
         totalAccounts={totalAccounts}
         activeAccounts={activeAccounts}

@@ -131,15 +131,17 @@ export function UpstreamProxySettings({ proxy, available, onSaved }: UpstreamPro
               {t('settings.proxy.url-invalid')}
             </p>
           )}
-          <Button disabled={!available || busy} onClick={() => void reveal()}>
-            {t('proxy.config.show_key')}
-          </Button>
-          <Button
-            disabled={!available || busy || draft === null || invalidDraft}
-            onClick={() => void save({ name: 'upstream-proxy', value: draft?.trim() || null })}
-          >
-            {t('settings.service-save')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button disabled={!available || busy} onClick={() => void reveal()}>
+              {t('proxy.config.show_key')}
+            </Button>
+            <Button
+              disabled={!available || busy || draft === null || invalidDraft}
+              onClick={() => void save({ name: 'upstream-proxy', value: draft?.trim() || null })}
+            >
+              {t('settings.service-save')}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

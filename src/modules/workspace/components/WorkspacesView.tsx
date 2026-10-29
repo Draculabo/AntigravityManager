@@ -162,7 +162,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-2xl font-bold tracking-tight">
+          <h1 className="text-foreground text-page-title text-balance">
             {t('workspace-profile.workspaces')}
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">{t('workspace-profile.intro')}</p>

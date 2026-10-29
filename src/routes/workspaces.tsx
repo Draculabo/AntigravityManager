@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 
 function WorkspacesRoute() {
   return (
-    <div className="container mx-auto p-6">
+    <div className="container">
       <WorkspacesView />
     </div>
   );
@@ -35,7 +35,7 @@ function WorkspacesErrorBoundary({ error, reset }: { error: unknown; reset: () =
   }, [error, t, toast]);
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container">
       <div className="rounded-lg border border-dashed p-8 text-center">
         <div className="text-lg font-semibold">{t('error.generic', 'An error occurred')}</div>
         <div className="text-muted-foreground mt-2 text-sm">

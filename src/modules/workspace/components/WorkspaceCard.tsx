@@ -95,9 +95,7 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <CardTitle className="text-foreground truncate text-base font-semibold tracking-tight">
-                  {workspace.name}
-                </CardTitle>
+                <CardTitle className="text-foreground truncate">{workspace.name}</CardTitle>
               </TooltipTrigger>
               <TooltipContent>{workspace.name}</TooltipContent>
             </Tooltip>

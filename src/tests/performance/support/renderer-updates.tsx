@@ -188,7 +188,7 @@ const accountRoute = createRoute({
   getParentRoute: () => workspaceRoute,
   path: '/',
   component: () => (
-    <div className="container mx-auto p-6">
+    <div className="container">
       <CloudAccountList />
     </div>
   ),

@@ -31,7 +31,9 @@ export function WeeklyQuotaDisplay({
 
   if (items.length === 0) {
     return (
-      <div className="text-muted-foreground bg-muted/30 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-2 text-xs">
+      <div
+        className={`text-muted-foreground bg-muted/30 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md py-2 text-xs ${variant === 'card' ? 'px-3 leading-5' : 'px-2'}`}
+      >
         <div className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4 opacity-50" />
           <span>{t('cloud.quota-window.no-weekly-quota')}</span>

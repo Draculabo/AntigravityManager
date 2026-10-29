@@ -341,13 +341,13 @@ function SettingsPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-4xl space-y-5 p-6">
+    <div className="container space-y-5">
       <div className="flex items-start gap-3">
         <div className="bg-warning-soft text-warning border-warning-border flex size-11 shrink-0 items-center justify-center rounded-xl border">
           <Settings className="size-5" aria-hidden="true" />
         </div>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
+          <h1 className="text-page-title text-balance">{t('settings.title')}</h1>
           <p className="text-muted-foreground mt-1 text-sm">{t('settings.description')}</p>
         </div>
       </div>

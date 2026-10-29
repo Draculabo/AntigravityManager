@@ -353,14 +353,14 @@ print(response.choices[0].message.content)`;
   }
 
   return (
-    <div className="container mx-auto max-w-6xl space-y-5 p-6">
+    <div className="container space-y-5">
       <div>
         <div className="flex items-start gap-3">
           <div className="bg-success-soft text-success border-success-border flex size-11 shrink-0 items-center justify-center rounded-xl border">
             <Network className="size-5" aria-hidden="true" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{t('proxy.title')}</h1>
+            <h1 className="text-page-title text-balance">{t('proxy.title')}</h1>
             <p className="text-muted-foreground mt-1 text-sm">{t('proxy.description')}</p>
           </div>
         </div>
@@ -688,7 +688,7 @@ print(response.choices[0].message.content)`;
                 <div className="bg-muted/20 flex flex-col rounded-lg border p-4">
                   <div className="mb-2 flex items-center gap-2">
                     <div className="bg-muted-foreground h-2 w-2 rounded-full"></div>
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    <h3 className="text-base leading-6 font-semibold tracking-[-0.01em] text-gray-900 dark:text-gray-100">
                       Claude Sonnet 4.6 (Thinking)
                     </h3>
                   </div>
@@ -725,7 +725,7 @@ print(response.choices[0].message.content)`;
                 <div className="bg-muted/20 flex flex-col rounded-lg border p-4">
                   <div className="mb-2 flex items-center gap-2">
                     <div className="bg-muted-foreground h-2 w-2 rounded-full"></div>
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    <h3 className="text-base leading-6 font-semibold tracking-[-0.01em] text-gray-900 dark:text-gray-100">
                       Claude Opus 4.6 (Thinking)
                     </h3>
                   </div>
@@ -783,7 +783,7 @@ print(response.choices[0].message.content)`;
               <h2 className="text-lg font-semibold">{t('agent-tools.title')}</h2>
               <p className="text-muted-foreground text-sm">{t('agent-tools.description')}</p>
             </div>
-            <div className="grid items-start gap-4 xl:grid-cols-3">
+            <div data-slot="agent-tool-grid" className="grid items-stretch gap-4 xl:grid-cols-3">
               <AgentToolSyncCard tool="claude" baseUrl={baseUrl} models={exampleModels} />
               <AgentToolSyncCard tool="codex" baseUrl={baseUrl} models={exampleModels} />
               <OpenCodeSyncCard baseUrl={baseUrl} models={exampleModels} />

@@ -55,7 +55,7 @@ export function CloudAccountGrid({
   const { t } = useTranslation();
 
   return (
-    <div className={GRID_LAYOUT_CLASSES[gridLayout]}>
+    <div data-slot="cloud-account-grid" className={GRID_LAYOUT_CLASSES[gridLayout]}>
       {accounts.map((account) =>
         gridLayout === 'compact' ? (
           <CompactCloudAccountCard

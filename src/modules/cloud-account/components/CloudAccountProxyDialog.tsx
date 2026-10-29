@@ -24,8 +24,8 @@ export function CloudAccountProxyDialog({
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          size="icon"
-          className={`h-7 w-7 ${configured ? 'text-primary' : ''}`}
+          size="icon-xs"
+          className={`hover:bg-muted border-transparent bg-transparent hover:border-transparent ${configured ? 'text-primary' : ''}`}
           aria-label={t('cloud.card.network-proxy')}
           title={t('cloud.card.network-proxy')}
         >

@@ -46,7 +46,10 @@ export function AuditAndThoughtStoreCard({ config, onChange }: AuditAndThoughtSt
         <section className="space-y-3" aria-labelledby="traffic-audit-heading">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 id="traffic-audit-heading" className="font-medium">
+              <h3
+                id="traffic-audit-heading"
+                className="text-base leading-6 font-semibold tracking-[-0.01em]"
+              >
                 {t('proxy.persistence.audit-title')}
               </h3>
               <p className="text-muted-foreground text-xs">
@@ -149,7 +152,10 @@ export function AuditAndThoughtStoreCard({ config, onChange }: AuditAndThoughtSt
         <section className="space-y-3 border-t pt-5" aria-labelledby="thought-store-heading">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 id="thought-store-heading" className="font-medium">
+              <h3
+                id="thought-store-heading"
+                className="text-base leading-6 font-semibold tracking-[-0.01em]"
+              >
                 {t('proxy.persistence.thought-title')}
               </h3>
               <p className="text-muted-foreground text-xs">

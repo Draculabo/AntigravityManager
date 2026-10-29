@@ -103,7 +103,7 @@ function createWrapper() {
   );
 }
 
-describe('CloudAccountCard - Launch Isolated IDE Action', () => {
+describe('CloudAccountCard environment menu and isolated IDE actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockState.launchWorkspaceForAccountMock.mockResolvedValue({ pid: 12345 });
@@ -114,6 +114,45 @@ describe('CloudAccountCard - Launch Isolated IDE Action', () => {
     document.body.innerHTML = '';
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
+
+  it.each([
+    ['standard', CloudAccountCard],
+    ['compact', CompactCloudAccountCard],
+  ] as const)(
+    'opens the %s environment menu on click and keeps it open after pointer exit',
+    async (_, Component) => {
+      render(
+        createElement(Component, {
+          account: mockAccount,
+          onRefresh: vi.fn(),
+          onDelete: vi.fn(),
+          onSwitch: vi.fn(),
+          onManageIdentity: vi.fn(),
+        }),
+        { wrapper: createWrapper() },
+      );
+
+      const trigger = screen.getByRole('button', { name: /cloud\.card\.use/i });
+      fireEvent.mouseOver(trigger);
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.click(trigger);
+      const menu = await screen.findByRole('menu');
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+      fireEvent.mouseOut(trigger, { relatedTarget: document.body });
+      expect(menu).toBeVisible();
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+      fireEvent.keyDown(menu, { key: 'Escape' });
+      await waitFor(() => {
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+        expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      });
+    },
+  );
 
   it('renders Launch Isolated IDE button on standard card and dispatches workspace launch', async () => {
     const onLaunchMock = vi.fn().mockResolvedValue(undefined);

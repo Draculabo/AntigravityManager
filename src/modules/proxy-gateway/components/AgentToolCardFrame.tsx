@@ -20,8 +20,11 @@ interface Props {
 export function AgentToolCardFrame(props: Props) {
   const { t } = useTranslation();
   return (
-    <Card className="flex h-full flex-col overflow-hidden shadow-none">
-      <CardHeader className="bg-info-soft/40 mb-4 border-b p-4">
+    <Card
+      data-slot="agent-tool-card"
+      className="row-span-4 grid h-full grid-rows-subgrid gap-y-0 overflow-hidden shadow-none"
+    >
+      <CardHeader className="bg-info-soft/40 border-b p-4">
         <CardTitle className="flex items-center gap-2">
           <span className="bg-info-soft text-info border-info-border flex size-8 items-center justify-center rounded-md border">
             <Terminal className="size-4" aria-hidden="true" />
@@ -36,7 +39,7 @@ export function AgentToolCardFrame(props: Props) {
               : t('agent-tools.not-installed')}
         </p>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-4 p-4 pt-0">
+      <CardContent className="row-span-3 row-start-2 grid grid-rows-subgrid gap-y-4 p-4">
         {props.failed ? (
           <div className="border-destructive/40 rounded-lg border p-3 text-sm" role="alert">
             <p>{t('agent-tools.read-error')}</p>
@@ -77,7 +80,7 @@ export function AgentToolCardFrame(props: Props) {
             {props.loading || props.failed ? '—' : (props.model ?? t('agent-tools.choose-model'))}
           </p>
         </div>
-        <div className="mt-auto space-y-3">{props.children}</div>
+        <div className="space-y-3 self-start">{props.children}</div>
       </CardContent>
     </Card>
   );
