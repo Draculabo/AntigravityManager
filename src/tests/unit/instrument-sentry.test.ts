@@ -25,7 +25,13 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('electron', () => ({
-  app: { getPath: () => '/test', getVersion: () => '0.23.0', on: vi.fn() },
+  app: {
+    getPath: () => '/test',
+    getVersion: () => '0.23.0',
+    setName: vi.fn(),
+    setPath: vi.fn(),
+    on: vi.fn(),
+  },
 }));
 vi.mock('@/shared/logging/logger', () => ({
   logger: {

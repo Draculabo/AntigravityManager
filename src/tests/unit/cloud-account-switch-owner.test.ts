@@ -234,7 +234,7 @@ describe('core-owned cloud account switching', () => {
         },
       });
       const stop = vi.spyOn(runtimeStop, 'stopFromContext').mockResolvedValue(undefined);
-      const start = vi.spyOn(clientLaunch, 'startFromContext').mockResolvedValue(undefined);
+      const start = vi.spyOn(clientLaunch, 'startFromContext').mockResolvedValue({ pid: 300 });
       await expect(
         createRouterClient(cloudRouter).switchCloudAccount({ accountId: account.id }),
       ).resolves.toBeUndefined();

@@ -6,37 +6,26 @@ import {
   getConfiguredAntigravityArgs,
   getConfiguredAntigravityExecutablePath,
   getPortableUserDataDir,
+  isManagedWorkspaceUserDataDir,
   isWsl,
 } from '@/shared/platform/paths';
-import { observeProcesses, toWindowsPath, toWslPath } from './processObserver';
+import { observeProcesses } from '@/modules/antigravity-runtime/processObserver';
 import { processError } from './processErrors';
-import type { GuiTarget, LaunchContext, RuntimeProcess } from './types';
+import type { GuiTarget, LaunchContext, LaunchContextOptions, RuntimeProcess } from './types';
 import { usesWindowsRuntime } from './runtimePlatform';
 import { ownsLinuxProfile } from './linuxProfileOwnership';
 import { assertNoWindowsUpdate } from './windowsUpdate';
+import {
+  canonicalPath,
+  filesystemPath,
+  toWindowsPath,
+  toWslPath,
+  userDataDirs,
+} from './runtimePaths';
 import { logger } from '@/shared/logging/logger';
 import { findWindowsClientExecutables } from '@/shared/platform/windowsClientExecutable';
 
-function filesystemPath(value: string): string {
-  return isWsl() ? toWslPath(value) : value;
-}
-
-export function canonicalPath(value: string): string {
-  const normalized = filesystemPath(value);
-  let resolved: string;
-  try {
-    resolved = fs.realpathSync.native(normalized);
-  } catch {
-    const parent = path.dirname(normalized);
-    resolved =
-      parent === normalized
-        ? path.resolve(normalized)
-        : path.join(canonicalPath(parent), path.basename(normalized));
-  }
-  return process.platform === 'win32' || (isWsl() && /^\/mnt\/[a-z]\//i.test(resolved))
-    ? resolved.toLowerCase()
-    : resolved;
-}
+export { canonicalPath, filesystemPath, toWindowsPath, toWslPath, userDataDirs };
 
 export function sameInstallation(left: string, right: string): boolean {
   const canonicalLeft = canonicalPath(left);
@@ -68,50 +57,105 @@ export function sameInstallation(left: string, right: string): boolean {
   return false;
 }
 
-function userDataDirs(args: readonly string[], cwd?: string): string[] {
-  const dirs: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    let value: string | undefined;
-    if (arg === '--user-data-dir') {
-      value = args[++i];
-    } else if (arg.startsWith('--user-data-dir=')) {
-      value = arg.slice('--user-data-dir='.length);
-    } else {
-      continue;
+export function extractProcessUserDataDir(proc: RuntimeProcess): string | null {
+  try {
+    const dirs = userDataDirs(proc.args, proc.cwd);
+    if (!dirs.length) {
+      return null;
     }
-    if (!value || value.startsWith('--')) {
+    const first = dirs[0];
+    if (dirs.some((d) => canonicalPath(d) !== canonicalPath(first))) {
+      return null;
+    }
+    return first;
+  } catch {
+    return null;
+  }
+}
+
+function primaryProcesses(
+  target: GuiTarget,
+  processes: readonly RuntimeProcess[],
+  selectedDirectory?: string,
+): RuntimeProcess[] {
+  if (target !== 'ide') {
+    return [...processes];
+  }
+  return processes.filter((proc) => {
+    const dirs = userDataDirs(proc.args, proc.cwd);
+    if (!dirs.length) {
+      return true;
+    }
+    const first = canonicalPath(dirs[0]);
+    if (dirs.some((dir) => canonicalPath(dir) !== first)) {
       throw processError('directory-conflict');
     }
-    value = filesystemPath(value);
-    if (!path.isAbsolute(value)) {
-      if (!cwd) {
-        throw processError('directory-conflict');
-      }
-      value = path.resolve(cwd, value);
-    }
-    dirs.push(value);
+    return (
+      (selectedDirectory !== undefined && first === canonicalPath(selectedDirectory)) ||
+      !isManagedWorkspaceUserDataDir(first)
+    );
+  });
+}
+
+export function filterContextProcesses(
+  context: LaunchContext,
+  processes: readonly RuntimeProcess[],
+): RuntimeProcess[] {
+  if (context.processScope === 'primary') {
+    return primaryProcesses(context.target, processes, context.pathOptions.userDataDir);
   }
-  return dirs;
+  const targetUserDataDir = context.pathOptions.userDataDir || context.defaultUserDataDir;
+  const targetCanonical = canonicalPath(targetUserDataDir);
+  return processes.filter((proc) => {
+    try {
+      let dirs: string[] = [];
+      try {
+        dirs = userDataDirs(proc.args, proc.cwd);
+      } catch {
+        return false;
+      }
+      if (dirs.length) {
+        return dirs.some((d) => canonicalPath(d) === targetCanonical);
+      }
+      if (
+        proc.args.some((arg) => arg === '--user-data-dir' || arg.startsWith('--user-data-dir='))
+      ) {
+        return false;
+      }
+      if (process.platform === 'linux' && ownsLinuxProfile(proc.pid, targetUserDataDir)) {
+        return true;
+      }
+      return canonicalPath(context.defaultUserDataDir) === targetCanonical;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export function resolveLaunchContext(
   target: GuiTarget,
   processes: readonly RuntimeProcess[],
+  options?: LaunchContextOptions,
 ): LaunchContext {
+  const configuredArgs = getConfiguredAntigravityArgs(target);
+  const configuredDirs = userDataDirs(configuredArgs, process.cwd());
+  const candidates =
+    options?.userDataDir === undefined
+      ? primaryProcesses(target, processes, configuredDirs[0])
+      : processes;
   const configured = getConfiguredAntigravityExecutablePath(target, false);
-  if (!configured && !processes.length && process.platform === 'win32') {
+  if (!configured && !candidates.length && process.platform === 'win32') {
     if (findWindowsClientExecutables(target).length > 1) {
       throw processError('target-conflict');
     }
   }
   let executablePath = filesystemPath(
     configured ||
-      processes[0]?.executablePath ||
+      candidates[0]?.executablePath ||
       getAntigravityExecutablePath(target, { ignoreRunningProcessCache: true }),
   );
   if (configured && !fs.existsSync(filesystemPath(configured))) {
-    const observed = processes[0]?.executablePath;
+    const observed = candidates[0]?.executablePath;
     // Recover a renamed binary only within the configured installation, never another install.
     if (
       !observed ||
@@ -139,36 +183,99 @@ export function resolveLaunchContext(
   } catch {
     throw processError('missing-executable');
   }
-  if (processes.some((item) => !sameInstallation(executablePath, item.executablePath))) {
-    throw processError('target-conflict');
-  }
 
-  const configuredArgs = getConfiguredAntigravityArgs(target);
-  const configuredDirs = userDataDirs(configuredArgs, process.cwd());
-  const observedDirs = processes.flatMap((item) => userDataDirs(item.args, item.cwd));
-  if (observedDirs.some((dir) => !fs.existsSync(dir) || !fs.statSync(dir).isDirectory())) {
-    throw processError('directory-conflict');
-  }
   const portable = getPortableUserDataDir(target, {
-    executablePath: processes[0]?.executablePath || executablePath,
+    executablePath: candidates[0]?.executablePath || executablePath,
     ignoreRunningProcessCache: true,
     ...pathOptions,
   });
   const defaultDir =
     portable && fs.existsSync(portable) ? portable : getAppDataDir(target, pathOptions);
-  const effectiveDir = configuredDirs[0] || observedDirs[0] || defaultDir;
-  const observedEffectiveDirs = processes.map(
-    (item) =>
-      userDataDirs(item.args, item.cwd)[0] ||
-      (ownsLinuxProfile(item.pid, effectiveDir) ? effectiveDir : defaultDir),
-  );
+
+  let effectiveDir: string;
+  let relevantProcesses: readonly RuntimeProcess[];
+  let explicit: string | undefined;
+
+  if (options?.userDataDir !== undefined) {
+    explicit = options.userDataDir.trim();
+    if (!explicit || explicit.startsWith('--')) {
+      throw processError('directory-conflict');
+    }
+    const normalizedExplicit = filesystemPath(explicit);
+    if (!path.isAbsolute(normalizedExplicit)) {
+      throw processError('directory-conflict');
+    }
+    effectiveDir = canonicalPath(normalizedExplicit);
+    relevantProcesses = candidates.filter((proc) => {
+      try {
+        let dirs: string[] = [];
+        try {
+          dirs = userDataDirs(proc.args, proc.cwd);
+        } catch {
+          return false;
+        }
+        if (dirs.length) {
+          return dirs.some((d) => canonicalPath(d) === effectiveDir);
+        }
+        if (
+          proc.args.some((arg) => arg === '--user-data-dir' || arg.startsWith('--user-data-dir='))
+        ) {
+          return false;
+        }
+        if (process.platform === 'linux' && ownsLinuxProfile(proc.pid, effectiveDir)) {
+          return true;
+        }
+        return canonicalPath(defaultDir) === effectiveDir;
+      } catch {
+        return false;
+      }
+    });
+  } else {
+    const observedDirsAll = candidates.flatMap((item) => {
+      try {
+        return userDataDirs(item.args, item.cwd);
+      } catch {
+        return [];
+      }
+    });
+    effectiveDir = configuredDirs[0] || observedDirsAll[0] || defaultDir;
+    relevantProcesses = candidates;
+  }
+
+  if (relevantProcesses.some((item) => !sameInstallation(executablePath, item.executablePath))) {
+    throw processError('target-conflict');
+  }
+
+  const observedDirs = relevantProcesses.flatMap((item) => {
+    try {
+      return userDataDirs(item.args, item.cwd);
+    } catch {
+      return [];
+    }
+  });
+  if (observedDirs.some((dir) => !fs.existsSync(dir) || !fs.statSync(dir).isDirectory())) {
+    throw processError('directory-conflict');
+  }
+
+  const canonicalEffectiveDir = canonicalPath(effectiveDir);
+  const observedEffectiveDirs = relevantProcesses.map((item) => {
+    const raw = extractProcessUserDataDir(item);
+    if (raw) {
+      return raw;
+    }
+    return ownsLinuxProfile(item.pid, effectiveDir) ? effectiveDir : defaultDir;
+  });
+
   if (
-    [...configuredDirs, ...observedDirs, ...observedEffectiveDirs].some(
-      (dir) => canonicalPath(dir) !== canonicalPath(effectiveDir),
-    )
+    [
+      ...(options?.userDataDir === undefined ? configuredDirs : []),
+      ...observedDirs,
+      ...observedEffectiveDirs,
+    ].some((dir) => canonicalPath(dir) !== canonicalEffectiveDir)
   ) {
     throw processError('directory-conflict');
   }
+
   // Normalize only the necessary directory option. Never replay files, URIs or helper arguments.
   const args: string[] = [];
   for (let i = 0; i < configuredArgs.length; i++) {
@@ -178,31 +285,58 @@ export function resolveLaunchContext(
       args.push(configuredArgs[i]);
     }
   }
-  if (configuredDirs.length || observedDirs.length) {
+  if (options?.userDataDir !== undefined || configuredDirs.length || observedDirs.length) {
     if (isWsl() && windows && !/^\/mnt\/[a-z]\//i.test(effectiveDir)) {
       throw processError('directory-conflict');
     }
+    const argDir =
+      explicit !== undefined
+        ? isWsl() && windows
+          ? toWindowsPath(effectiveDir)
+          : filesystemPath(explicit)
+        : isWsl() && windows
+          ? toWindowsPath(effectiveDir)
+          : effectiveDir;
     // Standalone Electron clients require Chromium's single-argument switch form.
-    args.push(`--user-data-dir=${isWsl() && windows ? toWindowsPath(effectiveDir) : effectiveDir}`);
+    args.push(`--user-data-dir=${argDir}`);
   }
+  if (options?.extensionsDir) {
+    const extensionsDir = filesystemPath(options.extensionsDir);
+    const argExtensionsDir = isWsl() && windows ? toWindowsPath(extensionsDir) : extensionsDir;
+    args.push(`--extensions-dir=${argExtensionsDir}`);
+  }
+  if (options?.projectPath) {
+    const projectPath = filesystemPath(options.projectPath);
+    args.push(isWsl() && windows ? toWindowsPath(projectPath) : projectPath);
+  }
+
   return Object.freeze({
     target,
+    processScope: options?.userDataDir === undefined ? 'primary' : 'profile',
     executablePath,
     args: Object.freeze(args),
     defaultUserDataDir: defaultDir,
     pathOptions: Object.freeze({
-      userDataDir: effectiveDir,
+      userDataDir: canonicalEffectiveDir,
       executablePath,
       ignoreRunningProcessCache: true,
       ...pathOptions,
     }),
     processes: Object.freeze(
-      processes.map((item) => Object.freeze({ ...item, args: Object.freeze([...item.args]) })),
+      relevantProcesses.map((item) =>
+        Object.freeze({ ...item, args: Object.freeze([...item.args]) }),
+      ),
     ),
+    projectPath: options?.projectPath ? filesystemPath(options.projectPath) : undefined,
+    env: options?.env ? Object.freeze({ ...options.env }) : undefined,
+    extensionsDir: options?.extensionsDir ? filesystemPath(options.extensionsDir) : undefined,
   });
 }
 
-export async function prepareLaunchContext(target: GuiTarget): Promise<LaunchContext> {
+export async function prepareLaunchContext(
+  target: GuiTarget,
+  options?: LaunchContextOptions,
+): Promise<LaunchContext> {
   if (process.platform === 'win32') {
     // Switching needs a fresh readable snapshot, including transiently exiting processes.
     // Share a bounded preflight budget instead of reusing the short status-query deadline.
@@ -212,35 +346,39 @@ export async function prepareLaunchContext(target: GuiTarget): Promise<LaunchCon
     if (remaining <= 0) {
       throw processError('probe-failed');
     }
-    return resolveLaunchContext(target, await observeProcesses(target, remaining));
+    return resolveLaunchContext(target, await observeProcesses(target, remaining), options);
   }
   await assertNoWindowsUpdate(target);
-  return resolveLaunchContext(target, await observeProcesses(target));
+  return resolveLaunchContext(target, await observeProcesses(target), options);
 }
 
 export function assertContextProcesses(
   context: LaunchContext,
   processes: readonly RuntimeProcess[],
 ): void {
-  if (processes.some((item) => !sameInstallation(context.executablePath, item.executablePath))) {
+  const relevantProcesses = filterContextProcesses(context, processes);
+
+  if (
+    relevantProcesses.some((item) => !sameInstallation(context.executablePath, item.executablePath))
+  ) {
     throw processError('target-conflict');
   }
   const defaultDir = context.defaultUserDataDir;
-  const dirs = processes.flatMap((item) => {
-    const observed = userDataDirs(item.args, item.cwd);
+  const targetDir = context.pathOptions.userDataDir || defaultDir;
+  const canonicalTarget = canonicalPath(targetDir);
+
+  const dirs = relevantProcesses.flatMap((item) => {
+    let observed: string[] = [];
+    try {
+      observed = userDataDirs(item.args, item.cwd);
+    } catch {
+      observed = [];
+    }
     return observed.length
       ? observed
-      : [
-          ownsLinuxProfile(item.pid, context.pathOptions.userDataDir || defaultDir)
-            ? context.pathOptions.userDataDir || defaultDir
-            : defaultDir,
-        ];
+      : [ownsLinuxProfile(item.pid, targetDir) ? targetDir : defaultDir];
   });
-  if (
-    dirs.some(
-      (dir) => canonicalPath(dir) !== canonicalPath(context.pathOptions.userDataDir || defaultDir),
-    )
-  ) {
+  if (dirs.some((dir) => canonicalPath(dir) !== canonicalTarget)) {
     throw processError('directory-conflict');
   }
 }

@@ -1,5 +1,6 @@
 import en from './en';
 const fr = {
+  'workspace-profile': en['workspace-profile'],
   'operation-diagnostics': en['operation-diagnostics'],
   'agent-tools': {
     title: 'Connecter vos outils de programmation',
@@ -230,6 +231,7 @@ const fr = {
     'collapse-sidebar': 'Réduire la barre latérale',
     'expand-sidebar': 'Développer la barre latérale',
     accounts: 'Comptes',
+    workspaces: 'Espaces de travail',
     proxy: 'Proxy API',
     settings: 'Parametres',
     traffic: 'Trafic',
@@ -314,6 +316,10 @@ const fr = {
     lastUsed: 'Derniere utilisation {{time}}',
     switchToAntigravity: 'Basculer vers Antigravity',
     switchToIde: 'Basculer vers Antigravity IDE',
+    launchIsolatedIde: 'Lancer un IDE isolé',
+    launchIsolatedIdeSuccess: 'IDE isolé lancé',
+    launchIsolatedIdeSuccessDesc: "Instance d'IDE isolée lancée pour {{name}}",
+    launchIsolatedIdeError: 'Échec du lancement',
   },
   home: {
     title: 'Comptes',

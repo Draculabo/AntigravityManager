@@ -26,6 +26,7 @@ import {
   Trash,
   RefreshCw,
   Box,
+  Boxes,
   Power,
   Fingerprint,
   Eye,
@@ -39,6 +40,9 @@ import {
 import { formatAccountLastUsed } from '@/modules/cloud-account/utils/format-last-used';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
+import { useToast } from '@/components/ui/use-toast';
+import { getLocalizedErrorMessage } from '@/shared/utils/errorMessages';
+import { launchWorkspaceForAccount } from '@/modules/workspace/actions/workspace';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
 import { useProviderGrouping } from '@/modules/cloud-account/hooks/useProviderGrouping';
 import { ProviderGroup } from '@/modules/cloud-account/components/ProviderGroup';
@@ -49,7 +53,7 @@ import {
   formatResetTimeTitle,
   getQuotaStatus,
 } from '@/modules/cloud-account/utils/quota-display';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAccountModelAvailability } from '../hooks/useAccountModelAvailability';
 import { ipc } from '@/ipc/manager';
 import { CloudAccountProxyDialog } from '@/modules/cloud-account/components/CloudAccountProxyDialog';
@@ -230,6 +234,9 @@ interface CloudAccountCardProps {
   onDelete: (id: string) => void;
   onSwitch: (id: string, appTarget?: AntigravityAppTarget) => void;
   onManageIdentity: (id: string) => void;
+  onLaunchIsolatedIde?: (id: string) => Promise<void> | void;
+  launchWorkspaceAction?: (accountId: string) => Promise<{ pid: number }>;
+  toast?: ReturnType<typeof useToast>['toast'];
   isSelected?: boolean;
   onToggleSelection?: (id: string, selected: boolean) => void;
   isRefreshing?: boolean;
@@ -247,6 +254,9 @@ export function CloudAccountCard({
   onDelete,
   onSwitch,
   onManageIdentity,
+  onLaunchIsolatedIde,
+  launchWorkspaceAction,
+  toast: customToast,
   isSelected = false,
   onToggleSelection,
   isRefreshing,
@@ -255,6 +265,42 @@ export function CloudAccountCard({
   recommendationContext,
 }: CloudAccountCardProps) {
   const { t, i18n } = useTranslation();
+  const { toast: defaultToast } = useToast();
+  const toast = customToast ?? defaultToast;
+  const isLaunchingRef = useRef(false);
+  const [isLaunchingWorkspace, setIsLaunchingWorkspace] = useState(false);
+
+  const handleLaunchIsolatedIde = async () => {
+    if (isLaunchingRef.current || isLaunchingWorkspace || isDeleting || isSwitching) return;
+    isLaunchingRef.current = true;
+    setIsLaunchingWorkspace(true);
+    try {
+      if (onLaunchIsolatedIde) {
+        await onLaunchIsolatedIde(account.id);
+      } else {
+        await (launchWorkspaceAction ?? launchWorkspaceForAccount)(account.id);
+      }
+      toast({
+        title: t('account.launchIsolatedIdeSuccess', 'Isolated IDE Launched'),
+        description: t(
+          'account.launchIsolatedIdeSuccessDesc',
+          'Launched isolated IDE instance for {{name}}',
+          { name: account.name || account.email || 'Workspace' },
+        ),
+      });
+    } catch (error) {
+      toast({
+        error,
+        title: t('account.launchIsolatedIdeError', 'Launch Failed'),
+        description: getLocalizedErrorMessage(error, t),
+        variant: 'destructive',
+      });
+    } finally {
+      isLaunchingRef.current = false;
+      setIsLaunchingWorkspace(false);
+    }
+  };
+
   const validationLink = useOpenAccountValidationLink();
   const { config, saveConfig } = useAppConfig();
   const {
@@ -753,6 +799,24 @@ export function CloudAccountCard({
                     </Badge>
                   )}
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleLaunchIsolatedIde}
+                  disabled={isLaunchingWorkspace || isDeleting || isSwitching}
+                  className="flex cursor-pointer items-center justify-between py-2 text-xs"
+                >
+                  <span className="flex items-center gap-2">
+                    {isLaunchingWorkspace ? (
+                      <RefreshCw
+                        className="text-primary h-3.5 w-3.5 animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Boxes className="text-primary h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    <span>{t('account.launchIsolatedIde', 'Launch Isolated IDE')}</span>
+                  </span>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -863,6 +927,30 @@ export function CloudAccountCard({
                 </TooltipContent>
               </Tooltip>
 
+              {/* Launch Isolated IDE Button */}
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="hover:bg-accent border-border/50 h-7 w-7 cursor-pointer rounded-md"
+                    onClick={handleLaunchIsolatedIde}
+                    aria-label={t('account.launchIsolatedIde', 'Launch Isolated IDE')}
+                    disabled={isLaunchingWorkspace || isDeleting || isSwitching}
+                    aria-busy={isLaunchingWorkspace}
+                  >
+                    {isLaunchingWorkspace ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Boxes className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="text-xs">
+                  {t('account.launchIsolatedIde', 'Launch Isolated IDE')}
+                </TooltipContent>
+              </Tooltip>
+
               {/* Delete Button */}
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
@@ -898,6 +986,9 @@ interface CompactCloudAccountCardProps {
   onDelete: (id: string) => void;
   onSwitch: (id: string, appTarget?: AntigravityAppTarget) => void;
   onManageIdentity: (id: string) => void;
+  onLaunchIsolatedIde?: (id: string) => Promise<void> | void;
+  launchWorkspaceAction?: (accountId: string) => Promise<{ pid: number }>;
+  toast?: ReturnType<typeof useToast>['toast'];
   isRefreshing?: boolean;
   isDeleting?: boolean;
   isSwitching?: boolean;
@@ -914,12 +1005,51 @@ export function CompactCloudAccountCard({
   onDelete,
   onSwitch,
   onManageIdentity,
+  onLaunchIsolatedIde,
+  launchWorkspaceAction,
+  toast: customToast,
   isRefreshing,
   isDeleting,
   isSwitching,
   recommendationContext,
 }: CompactCloudAccountCardProps) {
   const { t } = useTranslation();
+  const { toast: defaultToast } = useToast();
+  const toast = customToast ?? defaultToast;
+  const isLaunchingRef = useRef(false);
+  const [isLaunchingWorkspace, setIsLaunchingWorkspace] = useState(false);
+
+  const handleLaunchIsolatedIde = async () => {
+    if (isLaunchingRef.current || isLaunchingWorkspace || isDeleting || isSwitching) return;
+    isLaunchingRef.current = true;
+    setIsLaunchingWorkspace(true);
+    try {
+      if (onLaunchIsolatedIde) {
+        await onLaunchIsolatedIde(account.id);
+      } else {
+        await (launchWorkspaceAction ?? launchWorkspaceForAccount)(account.id);
+      }
+      toast({
+        title: t('account.launchIsolatedIdeSuccess', 'Isolated IDE Launched'),
+        description: t(
+          'account.launchIsolatedIdeSuccessDesc',
+          'Launched isolated IDE instance for {{name}}',
+          { name: account.name || account.email || 'Workspace' },
+        ),
+      });
+    } catch (error) {
+      toast({
+        error,
+        title: t('account.launchIsolatedIdeError', 'Launch Failed'),
+        description: getLocalizedErrorMessage(error, t),
+        variant: 'destructive',
+      });
+    } finally {
+      isLaunchingRef.current = false;
+      setIsLaunchingWorkspace(false);
+    }
+  };
+
   const validationLink = useOpenAccountValidationLink();
   const { config } = useAppConfig();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1164,6 +1294,24 @@ export function CompactCloudAccountCard({
                   </Badge>
                 )}
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleLaunchIsolatedIde}
+                disabled={isLaunchingWorkspace || isDeleting || isSwitching}
+                className="flex cursor-pointer items-center justify-between py-2 text-xs"
+              >
+                <span className="flex items-center gap-2">
+                  {isLaunchingWorkspace ? (
+                    <RefreshCw
+                      className="text-primary h-3.5 w-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <Boxes className="text-primary h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  <span>{t('account.launchIsolatedIde', 'Launch Isolated IDE')}</span>
+                </span>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -1180,6 +1328,18 @@ export function CompactCloudAccountCard({
             <DropdownMenuItem onClick={() => onRefresh(account.id)} disabled={isRefreshing}>
               <RefreshCw className="mr-2 h-4 w-4" />
               {t('cloud.card.refresh')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleLaunchIsolatedIde}
+              disabled={isLaunchingWorkspace || isDeleting || isSwitching}
+            >
+              {isLaunchingWorkspace ? (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Boxes className="mr-2 h-4 w-4" aria-hidden="true" />
+              )}
+              {t('account.launchIsolatedIde', 'Launch Isolated IDE')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onManageIdentity(account.id)}>

@@ -16,7 +16,7 @@ export default defineConfig({
     maxWorkers: 4,
     globals: true,
     environment: 'happy-dom',
-    include: ['src/tests/unit/**/*.test.ts'],
+    include: ['src/tests/unit/**/*.test.{ts,tsx}'],
     setupFiles: ['./src/tests/support/no-app-launch.setup.ts'],
   },
 });

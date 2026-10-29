@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { stopFromContext } from '@/modules/antigravity-runtime/stop';
 import { switchContext } from '../support/runtime-switch-fixture';
 import { processError } from '@/modules/antigravity-runtime/processErrors';
+import type { LaunchContext, RuntimeProcess } from '@/modules/antigravity-runtime/types';
 
 const mocks = vi.hoisted(() => ({
   observe: vi.fn(),
@@ -42,6 +43,8 @@ vi.mock('@/modules/antigravity-runtime/processObserver', () => ({
 }));
 vi.mock('@/modules/antigravity-runtime/launchContext', () => ({
   assertContextProcesses: mocks.assert,
+  filterContextProcesses: (_context: LaunchContext, processes: readonly RuntimeProcess[]) =>
+    processes,
 }));
 vi.mock('@/shared/logging/logger', () => ({ logger: { warn: vi.fn() } }));
 const windowsContext = { ...switchContext, executablePath: '/mnt/c/Apps/Antigravity.exe' };

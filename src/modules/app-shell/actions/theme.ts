@@ -1,4 +1,4 @@
-import { parseThemeMode, ThemeMode } from '@/modules/app-shell/types/theme-mode';
+import { parseThemeMode, type ThemeMode } from '@/modules/app-shell/types/theme-mode';
 import { ipc } from '@/ipc/manager';
 import { LOCAL_STORAGE_KEYS } from '@/shared/constants';
 

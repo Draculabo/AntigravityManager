@@ -1,5 +1,5 @@
 import { differenceInHours, differenceInMinutes, isBefore } from 'date-fns';
-import { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccount } from '@/modules/cloud-account/types';
 import { aggregateVisibleQuotaModelFamilies } from '@/modules/cloud-account/utils/quota-model-families';
 import {
   applyQuotaLowerBound,

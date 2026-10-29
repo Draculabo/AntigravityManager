@@ -46,6 +46,7 @@ function compileModule(source, name) {
   for (const [original, replacement] of Object.entries({
     '@/shared/platform/paths': './fixture-paths.cjs',
     '@/shared/platform/nativeProcessQuery': './fixture-native-query.cjs',
+    '@/modules/antigravity-runtime/processObserver': './processObserver.cjs',
     '@/shared/platform/antigravityAppTarget': './target.cjs',
     '@/shared/platform/antigravityProcessIdentity': './process-identity.cjs',
     '@/shared/platform/windowsClientExecutable': './fixture-executable-discovery.cjs',
@@ -136,6 +137,7 @@ class Fixture { static void Main(string[] args) {
     'windowsInterop',
     'processErrors',
     'runtimePlatform',
+    'runtimePaths',
     'windowsUpdate',
     'windowsNormalClose',
     'stop',

@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { readNativeProcessSnapshot } from '@/shared/platform/nativeProcessQuery';
 import { logger } from '@/shared/logging/logger';
 import { isAntigravityWindowsInstaller } from '@/shared/platform/antigravityProcessIdentity';
-import { assertContextProcesses } from './launchContext';
+import { assertContextProcesses, filterContextProcesses } from './launchContext';
 import { getProcessProbeTimeout, observeProcesses, toWslPath } from './processObserver';
 import { processError } from './processErrors';
 import type { LaunchContext, RuntimeProcess } from './types';
@@ -81,11 +81,12 @@ export async function stopWindowsClientForSwitch(
     if (remaining <= 0) {
       throw processError('exit-unconfirmed');
     }
-    const observed = await observeProcesses(context.target, remaining, context.executablePath);
+    const rawObserved = await observeProcesses(context.target, remaining, context.executablePath);
     if (Date.now() >= deadline) {
       throw processError('exit-unconfirmed');
     }
-    assertContextProcesses(context, observed);
+    assertContextProcesses(context, rawObserved);
+    const observed = filterContextProcesses(context, rawObserved);
     if (observed.some((row) => !context.processes.some((captured) => sameProcess(captured, row)))) {
       throw processError('exit-unconfirmed');
     }

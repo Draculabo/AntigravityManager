@@ -83,7 +83,9 @@ Module._load = function (request, ...args) {
   }
   if (request === '@/shared/platform/paths') {
     return {
-      getAntigravityDbPaths: () => [primary],
+      getAntigravityDbPaths: (_target, options) => [
+        path.join(options?.userDataDir ?? root, 'User', 'globalStorage', 'state.vscdb'),
+      ],
       getAntigravityExecutablePath: () => undefined,
     };
   }
@@ -252,6 +254,34 @@ try {
         assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
       }
       const hostCredential = await readAntigravityCredentialStoreToken();
+      const profileA = path.join(root, 'profile-a');
+      const profileB = path.join(root, 'profile-b');
+      for (const [profile, selected] of [
+        [profileA, a],
+        [profileB, b],
+      ]) {
+        const writer = await prepareClientAccountWrite(selected, 'ide', { userDataDir: profile });
+        assert.equal(writer.storage, 'sqlite');
+        await writer.write();
+      }
+      const profileAToken = () => {
+        const db = new Database(path.join(profileA, 'User/globalStorage/state.vscdb'), {
+          readonly: true,
+        });
+        try {
+          return ProtobufUtils.extractOAuthTokenDetailsFromUnifiedStateEntry(
+            db
+              .prepare('SELECT value FROM ItemTable WHERE key = ?')
+              .get('antigravityUnifiedStateSync.oauthToken').value,
+          );
+        } finally {
+          db.close();
+        }
+      };
+      assert.equal(profileAToken().refreshToken, a.token.refresh_token);
+      await (await prepareClientAccountWrite(a, 'ide', { userDataDir: profileB })).write();
+      assert.equal(profileAToken().refreshToken, a.token.refresh_token);
+      assert.deepEqual(await readAntigravityCredentialStoreToken(), hostCredential);
       for (const selected of [b, a]) {
         agyCliPayload = null;
         googleOAuthInput = null;
@@ -295,6 +325,7 @@ try {
             ? [
                 'native Windows exact-target A-B-A, independent enumeration and nondestructive reads',
                 'Agy CLI writes preserve the host credential target',
+                'IDE profile writes preserve peer SQLite and host credentials',
               ]
             : []),
         ],

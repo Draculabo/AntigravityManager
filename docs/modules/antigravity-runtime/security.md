@@ -37,7 +37,7 @@ of the Manager's success notification. See the
 
 ## Target isolation
 
-Classic credential-store switches update the host system credential and, on Linux, the required Classic cache. Windows IDE versions before 2.6.0 use the selected SQLite profile; IDE 2.6.0 and later use the shared `gemini:antigravity` system credential because that version family authenticates from the OS credential store. An IDE 2.6+ switch therefore changes the credential seen by other Antigravity clients that use the same system target. When version detection fails, IDE switching retains the existing SQLite behavior. Explicit Agy switches update the current operating-system environment's local CLI session and generic Google OAuth files without writing the host system credential or sessions in WSL distributions. The local CLI session is written and read back before the switch can succeed.
+Classic credential-store switches update the host system credential and, on Linux, the required Classic cache. IDE switches, including Windows IDE 2.6, write the selected profile's SQLite UnifiedStateSync OAuth state. The standalone `gemini:antigravity` system target does not identify an IDE profile and is not written by IDE switching. Workspace launch uses the same prepared writer with its captured executable and data directory; it does not create a standalone OAuth file or manufacture accepted-terms records. Explicit Agy switches update the current operating-system environment's local CLI session and generic Google OAuth files without writing the host system credential or sessions in WSL distributions. The local CLI session is written and read back before the switch can succeed.
 
 ## Windows Classic credential storage
 

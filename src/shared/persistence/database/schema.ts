@@ -28,3 +28,16 @@ export const itemTable = sqliteTable('ItemTable', {
   key: text('key').primaryKey(),
   value: text('value'),
 });
+
+export const workspaceProfiles = sqliteTable('workspace_profiles', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  accountId: text('account_id').notNull(),
+  projectPath: text('project_path').notNull(),
+  userDataDir: text('user_data_dir').notNull(),
+  createdAt: integer('created_at').notNull(),
+  lastLaunchedAt: integer('last_launched_at'),
+});
+
+export type WorkspaceProfileSelect = typeof workspaceProfiles.$inferSelect;
+export type WorkspaceProfileInsert = typeof workspaceProfiles.$inferInsert;

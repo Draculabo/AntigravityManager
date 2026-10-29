@@ -174,8 +174,16 @@ describe('cloud account active actions', () => {
       );
       fireEvent.keyDown(card('app').getByRole('button', { name: 'Use' }), { key: 'ArrowDown' });
       expect(
-        screen.getAllByRole('menuitem').map((item) => item.getAttribute('data-disabled')),
-      ).toEqual(['', '', '']);
+        screen.getAllByRole('menuitem').map((item) => ({
+          label: item.textContent,
+          disabled: item.getAttribute('data-disabled'),
+        })),
+      ).toEqual([
+        { label: 'Switch to AntigravityActive', disabled: '' },
+        { label: 'Switch to Antigravity IDE', disabled: '' },
+        { label: 'Switch to Antigravity CLI', disabled: '' },
+        { label: 'Launch Isolated IDE', disabled: '' },
+      ]);
     },
   );
 });
