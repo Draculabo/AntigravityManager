@@ -85,7 +85,9 @@ describe('IPC audit recording and drain', () => {
     ['config', 'read'],
     ['gateway', 'syncOpenCode'],
     ['proc', 'getOperation'],
+    ['proc', 'isProcessRunning'],
     ['gateway', 'status'],
+    ['gateway', 'modelAvailability'],
   ])('preserves the audit-management exclusion for %j', async (...path) => {
     const { source, recorder } = fixture();
     await recorder.run(path, null, async () => {
@@ -104,6 +106,34 @@ describe('IPC audit recording and drain', () => {
       ],
     ]);
   });
+
+  it.each(['startAntigravity', 'closeAntigravity'])(
+    'records process mutation %s and its failure',
+    async (operation) => {
+      const { source, recorder } = fixture();
+      const failure = new Error('process operation failed');
+      await expect(
+        recorder.run(['proc', operation], { target: 'classic' }, async () => {
+          throw failure;
+        }),
+      ).rejects.toBe(failure);
+      expect(source.startParent).toHaveBeenCalledWith({
+        method: 'IPC',
+        operation: `proc/${operation}`,
+        protocol: 'ipc',
+        requestBody: { target: 'classic' },
+        sessionId: undefined,
+        trafficClass: 'ipc',
+        url: `/ipc/proc/${operation}`,
+      });
+      expect(source.completeParent.mock.calls).toEqual([
+        [
+          { id: 'parent-1', startedAt: 5, trafficClass: 'ipc' },
+          { error: failure, outcome: 'internal_error', status: 500 },
+        ],
+      ]);
+    },
+  );
 
   it('preserves handler errors while finishing their parent records', async () => {
     const { source, recorder } = fixture();

@@ -38,6 +38,42 @@ overflow, worker failure and shutdown-drain timeout are reported as counters but
 provider response. Read-only audit/Thought management calls are not recursively audited. Clear,
 delete, repair and setting changes produce metadata-only admin events.
 
+Audit retention defaults to 24 hours for bodies, 30 days for summaries, 100,000 rows and
+256 MiB on disk. Disk pressure removes admin events, then bodies in system, IPC, auxiliary
+and model order, then summaries in the same traffic-class order. Body candidates use an
+ordered partial index and a timestamp/ID cursor, with at most 32 candidates per page.
+Each body batch targets the measured disk excess using stored-body bytes. Accumulated deletions
+are reclaimed before adding a body that would reach the target: chunk and index pages can free
+more space than their content size. Physical bytes are remeasured after every batch. A single
+large body can exceed the required reclamation; the remaining candidates stay eligible for
+later maintenance. Expired bodies retain metadata and a `disk_pressure` reason. Code rollback
+does not restore evicted content.
+
+Existing schema-v4 databases receive the partial index in place without rebuilding records.
+The previous stored-byte index is removed. Process-status polling (`proc/getOperation` and
+`proc/isProcessRunning`) and gateway status/model-availability polling bypass IPC audit;
+process start and close operations retain ordinary audit records, including failures.
+
+Maintenance is cooperative: each deletion batch or bounded incremental-vacuum step yields
+its worker command back to the existing weighted queue. Statistics, list/detail reads and
+new audit writes can run before maintenance completes. A yielded command keeps its original
+ID, promise and queue-capacity reservation; only a final result or error settles it. Startup
+and configuration maintenance passes run serially. Configuration reports completion only
+after its own pass finishes, including physical disk reclamation.
+
+Passes capture row-ID high-water marks and creation-time cutoffs, so concurrent arrivals do
+not extend the pass or become eviction candidates after a clear reuses SQLite row IDs.
+Row-limit work recounts candidates after interleaved mutations, so user deletions do not
+cause additional eviction against a stale total. A read during maintenance can observe
+committed partial eviction; no transaction or active SQLite iterator crosses a yield.
+Vacuum work is capped at 128 pages per step, and body
+deletion yields after at most 32 bodies or a 20 ms soft work budget. Individual SQLite
+statements, checkpoints and filesystem calls can exceed that budget; it is not a latency
+guarantee. Concurrent writes can leave the measured size above budget until a later pass.
+Shutdown retains the existing admission closure, drain deadline and observable termination
+failure semantics. Partial evictions survive a failure or forced termination; they are not
+rolled back or reported as completed maintenance.
+
 Before an audit payload reaches SQLite, authorization and cookie headers, credential-bearing query
 parameters, and recursively matched JSON credential keys are replaced with `[REDACTED]`. Media
 bodies retain metadata and a SHA-256 digest, not bytes. Free-form prompt, code and tool output is

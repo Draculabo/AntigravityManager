@@ -21,6 +21,10 @@ import {
 import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
 
 type TrafficAuditDatabase = BetterSQLite3Database<typeof trafficAuditSchema>;
+type MaintenanceCommand = Extract<
+  TrafficAuditWorkerCommand,
+  { operation: 'maintenance' | 'configure' }
+>;
 export class TrafficAuditRepository {
   private readonly raw: Database.Database;
   private readonly orm: TrafficAuditDatabase;
@@ -47,7 +51,11 @@ export class TrafficAuditRepository {
       .run(Date.now());
   }
 
-  public execute(command: TrafficAuditWorkerCommand): unknown {
+  public maintenance(config: MaintenanceCommand['payload']) {
+    return this.retention.maintenance(config);
+  }
+
+  public execute(command: Exclude<TrafficAuditWorkerCommand, MaintenanceCommand>): unknown {
     switch (command.operation) {
       case 'insertParent':
         return this.insertParent(command.payload);
@@ -136,10 +144,6 @@ export class TrafficAuditRepository {
       }
       case 'stats':
         return this.retention.stats();
-      case 'maintenance':
-        return this.retention.maintenance(command.payload);
-      case 'configure':
-        return this.retention.maintenance(command.payload);
       case 'shutdown':
         this.raw.pragma('wal_checkpoint(TRUNCATE)');
         this.raw.close();
