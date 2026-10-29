@@ -20,6 +20,10 @@ export default defineConfig([
   includeIgnoreFile(gitIgnorePath),
   includeIgnoreFile(prettierIgnorePath),
   {
+    // Preserve vendored skill scripts, including the minified screenshot bundle.
+    ignores: ['.github/skills/impeccable/scripts/*.js'],
+  },
+  {
     files: ['**/*.{js,mjs,cjs,ts,jsx,tsx}'],
   },
   { languageOptions: { globals: { ...globals.browser, ...globals.node } } },
