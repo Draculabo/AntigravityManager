@@ -386,6 +386,7 @@ const en = {
     'date-from': 'From',
     'date-to': 'To',
     account: 'Account',
+    'account-email': 'Account Email',
     'all-accounts': 'All accounts',
     'model-family': 'Model family',
     'all-model-families': 'All model families',

@@ -4,11 +4,16 @@ import { performance } from 'node:perf_hooks';
 import { Argument, Command } from 'commander';
 import spawn from 'cross-spawn';
 import { ADDITIONAL_CHECKS, selectChecks, SELECTIONS } from './checks.mjs';
+import { profileChecks, resolveProfile } from './profile.mjs';
 
 /** Execute sequentially so a failed prerequisite prevents dependent checks from starting. */
 export function runChecks(checks, cwd = process.cwd()) {
   const results = [];
   for (const check of checks) {
+    if (check.skip) {
+      results.push({ script: check.script, status: 'skipped', reason: 'Documentation-only PR.' });
+      continue;
+    }
     const args = ['run', check.script, ...check.args];
     console.log(`\n[quality] pnpm ${args.join(' ')}`);
     const started = performance.now();
@@ -56,9 +61,11 @@ const program = new Command()
       }
       return;
     }
-    const results = runChecks(checks);
+    const { profile, reason } = resolveProfile();
+    console.log(`[quality] Profile: ${profile}. ${reason}`);
+    const results = runChecks(profileChecks(checks, profile));
     console.log(`\n[quality] Results:\n${JSON.stringify(results, null, 2)}`);
-    if (results.some((result) => result.status !== 'passed')) {
+    if (results.some((result) => !['passed', 'skipped'].includes(result.status))) {
       process.exitCode = 1;
     }
   });

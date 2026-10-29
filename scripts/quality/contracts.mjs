@@ -8,7 +8,7 @@ import { ADDITIONAL_CHECKS, CHECKS, CI_LANES } from './checks.mjs';
 const PackageSchema = z.object({ scripts: z.record(z.string(), z.string()) });
 const CheckSchema = z.object({
   script: z.string().min(1),
-  lane: z.enum(['tests', 'lint', 'format', 'shared']),
+  lane: z.enum(['tests', 'lint', 'format', 'build', 'shared']),
   groups: z.array(z.enum(['governance', 'static'])).optional(),
   args: z.array(z.string()).optional(),
   description: z.string().trim().min(1),

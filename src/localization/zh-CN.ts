@@ -355,6 +355,7 @@ const zhCn = {
     'date-from': '开始',
     'date-to': '结束',
     account: '反代账号',
+    'account-email': '反代账号邮箱',
     'all-accounts': '全部账号',
     'model-family': '模型系列',
     'all-model-families': '全部模型系列',
