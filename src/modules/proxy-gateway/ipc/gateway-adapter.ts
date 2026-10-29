@@ -7,6 +7,7 @@ import type {
 } from '@/core/rpc/schema';
 import type { z } from 'zod';
 import { getContextCacheStatus, getGatewayStatus, startGateway, stopGateway } from './handlers';
+import { playgroundService, type PlaygroundOperations } from '../playground/playground.service';
 
 type GatewayStatus = z.infer<typeof GatewayStatusSchema>;
 type ContextCacheStatus = z.infer<typeof ContextCacheStatusSchema>;
@@ -14,6 +15,7 @@ type GatewayStartResult = z.infer<typeof GatewayStartResultSchema>;
 type GatewayStopResult = z.infer<typeof GatewayStopResultSchema>;
 
 export interface GatewayAdapter {
+  playground: PlaygroundOperations;
   status(): Promise<GatewayStatus>;
   contextCacheStats(): Promise<ContextCacheStatus>;
   start(port: number): Promise<GatewayStartResult>;
@@ -22,7 +24,7 @@ export interface GatewayAdapter {
 
 type StandaloneCoreGatewayOperations = Pick<
   CoreRpcClient,
-  'gatewayStatus' | 'contextCacheStatus' | 'startGateway' | 'stopGateway'
+  'gatewayStatus' | 'contextCacheStatus' | 'startGateway' | 'stopGateway' | 'playground'
 >;
 
 export type GatewaySelection =
@@ -31,6 +33,7 @@ export type GatewaySelection =
 
 function createDesktopEmbeddedAdapter(): GatewayAdapter {
   return {
+    playground: playgroundService,
     status: getGatewayStatus,
     contextCacheStats: async () => getContextCacheStatus(),
     start: startGateway,
@@ -46,6 +49,7 @@ function createDesktopEmbeddedAdapter(): GatewayAdapter {
 
 function createStandaloneCoreAdapter(client: StandaloneCoreGatewayOperations): GatewayAdapter {
   return {
+    playground: client.playground,
     status: () => client.gatewayStatus(),
     contextCacheStats: () => client.contextCacheStatus(),
     start: (port) => client.startGateway(port),

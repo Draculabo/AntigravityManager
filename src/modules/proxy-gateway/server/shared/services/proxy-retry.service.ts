@@ -38,12 +38,14 @@ export interface ProxyRetryAccountLeaseService {
     sessionKey?: string;
     excludeAccountIds?: string[];
     model?: string;
+    targetAccountId?: string;
   }): Promise<CloudAccount | null>;
   getNextImageToken?(options?: {
     sessionKey?: string;
     excludeAccountIds?: string[];
     model?: string;
     signal?: AbortSignal;
+    targetAccountId?: string;
   }): Promise<{ token: CloudAccount; permit: ImageSchedulerPermit }>;
   recordParityError(): void;
   markAsForbidden(accountIdOrEmail: string): void;
@@ -131,6 +133,7 @@ export class ProxyRetryService {
     sessionKey?: string,
     imageRequest = false,
     signal?: AbortSignal,
+    targetAccountId?: string,
   ): Promise<CloudAccount | null> {
     retryState.model = model;
     const graceRetryToken = retryState.graceRetryToken;
@@ -150,6 +153,7 @@ export class ProxyRetryService {
           excludeAccountIds: Array.from(retryState.attemptedAccountIds),
           model,
           signal,
+          targetAccountId,
         });
       } catch (error) {
         if (
@@ -174,6 +178,7 @@ export class ProxyRetryService {
       sessionKey,
       excludeAccountIds: Array.from(retryState.attemptedAccountIds),
       model,
+      targetAccountId,
     });
     if (!token) {
       this.refreshPoolRetryAfter(retryState);

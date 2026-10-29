@@ -23,6 +23,12 @@ import {
 } from '@/modules/proxy-gateway/ipc/gateway-adapter';
 import { gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
 import { gatewayLifecycleService } from '@/modules/proxy-gateway/services/gateway-lifecycle.service';
+import { playgroundService } from '@/modules/proxy-gateway/playground/playground.service';
+import type {
+  PlaygroundCompareInput,
+  PlaygroundExecuteInput,
+  PlaygroundExecuteResult,
+} from '@/modules/proxy-gateway/playground/playground.schema';
 
 vi.mock('@/modules/proxy-gateway/traffic-monitor/copy-audit-curl', () => ({
   copyAuditCurl: vi.fn(),
@@ -97,6 +103,35 @@ describe('Electron gateway read adapter', () => {
       },
     };
     const operations: CoreRpcOperations = {
+      playground: {
+        execute: vi.fn(
+          async (input: PlaygroundExecuteInput): Promise<PlaygroundExecuteResult> => ({
+            request: input,
+            success: true,
+            content: 'Core response',
+            model: input.model,
+            attributedAccountId: input.accountId,
+            durationMs: 6000,
+            status: 200,
+          }),
+        ),
+        compare: vi.fn(async (input: PlaygroundCompareInput) => ({
+          results: input.accountIds.map((accountId) => ({
+            request: {
+              accountId,
+              model: input.model,
+              prompt: input.prompt,
+              systemPrompt: input.systemPrompt,
+            },
+            attributedAccountId: accountId,
+            success: true,
+            content: 'Core response',
+            model: input.model,
+            durationMs: 6000,
+            status: 200,
+          })),
+        })),
+      },
       diagnosticLogs: vi.fn(),
       errorReporting: { setEnabled: vi.fn() },
       auditFile: auditFileOwner,
@@ -227,6 +262,42 @@ describe('Electron gateway read adapter', () => {
     expect(operations.contextCacheStatus).toHaveBeenCalledTimes(1);
     expect(operations.gatewayStart).toHaveBeenCalledWith(8046);
     expect(operations.gatewayStop).toHaveBeenCalledTimes(1);
+    const embedded = vi.spyOn(playgroundService, 'execute');
+    const input = { model: 'gemini-3-flash', accountId: 'core-account', prompt: '你'.repeat(6000) };
+    expect(await rendererGateway.playground.execute(input)).toEqual({
+      request: input,
+      success: true,
+      content: 'Core response',
+      model: input.model,
+      attributedAccountId: input.accountId,
+      durationMs: 6000,
+      status: 200,
+    });
+    const accountIds = Array.from({ length: 12 }, (_, index) => 'core-' + index);
+    const comparison = {
+      model: input.model,
+      prompt: '你'.repeat(32768),
+      systemPrompt: '你'.repeat(8192),
+      accountIds,
+    };
+    const compared = await rendererGateway.playground.compare(comparison);
+    expect(compared).toEqual({
+      results: accountIds.map((accountId) => ({
+        request: {
+          accountId,
+          model: comparison.model,
+          prompt: comparison.prompt,
+          systemPrompt: comparison.systemPrompt,
+        },
+        attributedAccountId: accountId,
+        success: true,
+        content: 'Core response',
+        model: comparison.model,
+        durationMs: 6000,
+        status: 200,
+      })),
+    });
+    expect(embedded).not.toHaveBeenCalled();
   }, 15_000);
 
   it.each([new ServiceNotRunningError(), new CoreRpcTransportError('Malformed core RPC response')])(
@@ -235,6 +306,14 @@ describe('Electron gateway read adapter', () => {
       selectGatewayAdapter({
         mode: 'standalone-core',
         client: {
+          playground: {
+            execute: vi.fn(async () => {
+              throw error;
+            }),
+            compare: vi.fn(async () => {
+              throw error;
+            }),
+          },
           gatewayStatus: vi.fn(async () => {
             throw error;
           }),
@@ -255,6 +334,19 @@ describe('Electron gateway read adapter', () => {
       await expect(rendererGateway.contextCacheStats()).rejects.toThrow(error.message);
       await expect(rendererGateway.start({ port: 8046 })).rejects.toThrow(error.message);
       await expect(rendererGateway.stop()).rejects.toThrow(error.message);
+      await expect(
+        rendererGateway.playground.execute({
+          model: 'gemini-3-flash',
+          prompt: 'Hi',
+        }),
+      ).rejects.toThrow(error.message);
+      await expect(
+        rendererGateway.playground.compare({
+          model: 'gemini-3-flash',
+          prompt: 'Hi',
+          accountIds: ['core-account'],
+        }),
+      ).rejects.toThrow(error.message);
     },
   );
 });

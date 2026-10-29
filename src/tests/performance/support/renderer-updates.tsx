@@ -13,6 +13,7 @@ import {
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Route as ProxyRoute } from '@/routes/proxy';
 import { Route as SettingsRoute } from '@/routes/settings';
+import { PlaygroundPage } from '@/modules/proxy-gateway/playground/PlaygroundPage';
 import { ThemeProvider } from '@/components/shared/theme-provider';
 import { AppToaster } from '@/modules/app-shell/components/AppToaster';
 import { toast } from '@/components/ui/use-toast';
@@ -201,6 +202,11 @@ const workspaceRouter = createRouter({
   routeTree: workspaceRoute.addChildren([
     accountRoute,
     trafficRoute,
+    createRoute({
+      getParentRoute: () => workspaceRoute,
+      path: '/playground',
+      component: PlaygroundPage,
+    }),
     createRoute({
       getParentRoute: () => workspaceRoute,
       path: '/proxy',

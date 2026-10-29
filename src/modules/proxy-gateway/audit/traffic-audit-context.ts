@@ -43,6 +43,7 @@ export { createThoughtSessionKey } from './traffic-audit-http-metadata';
 export interface TrafficAuditRequestContext {
   attemptSequence: number;
   currentAccountId?: string | null;
+  currentAccountEmail?: string | null;
   parent: AuditHandle | null;
   responseUsage?: AuditUsage;
   upstreamUsage?: AuditUsage;
@@ -147,7 +148,12 @@ export function getTrafficAuditRequestContext(): TrafficAuditRequestContext | un
 
 export function getProxyResponseTimingContext(
   request?: FastifyRequest,
-): Pick<TrafficAuditRequestContext, 'clientSessionId' | 'proxyTiming'> | undefined {
+):
+  | Pick<
+      TrafficAuditRequestContext,
+      'clientSessionId' | 'proxyTiming' | 'currentAccountId' | 'currentAccountEmail'
+    >
+  | undefined {
   if (request) {
     return requestStates.get(requestStateKey(request)) ?? requestContextStorage.getStore();
   }
@@ -175,12 +181,20 @@ export function startCurrentUpstreamAttempt(
   });
 }
 
-export function setCurrentAuditAccountId(accountId: string | null): void {
+export function setCurrentAuditAccountId(
+  accountId: string | null,
+  accountEmail?: string | null,
+): void {
   const context = getTrafficAuditRequestContext();
   if (context) {
     context.currentAccountId = accountId;
+    if (accountEmail !== undefined) {
+      context.currentAccountEmail = accountEmail;
+    }
   }
 }
+
+export const setCurrentAuditAccount = setCurrentAuditAccountId;
 
 /** Capture upstream usage that may be intentionally omitted from a client-compatible response. */
 export function captureCurrentAuditUsage(value: unknown): void {

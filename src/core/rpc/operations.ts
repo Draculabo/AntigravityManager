@@ -50,6 +50,7 @@ import type { AuditOperations } from '@/modules/proxy-gateway/audit/audit-owner.
 import { ErrorReportingOperations } from '@/modules/config/error-reporting.service';
 
 export interface CoreRpcOperations {
+  playground: import('@/modules/proxy-gateway/playground/playground.service').PlaygroundOperations;
   diagnosticLogs: import('@/modules/app-shell/diagnostic-logs/core-router').CoreLogReader;
   errorReporting: ErrorReportingOperations;
   ipcCapture: Pick<

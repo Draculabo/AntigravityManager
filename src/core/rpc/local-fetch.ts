@@ -1,4 +1,8 @@
 import axios, { isAxiosError } from 'axios';
+import {
+  PLAYGROUND_RPC_MAX_REQUEST_BYTES,
+  PLAYGROUND_RPC_MAX_RESPONSE_BYTES,
+} from '@/modules/proxy-gateway/playground/playground.schema';
 import { CORE_OWNER_EPOCH_HEADER } from '@/core/management/handshake';
 import { getRemoteIpcCapture } from '@/modules/proxy-gateway/audit/ipc-capture-transport-context';
 import {
@@ -51,6 +55,10 @@ async function readBoundedRequestBody(request: Request): Promise<Buffer> {
   const pathname = new URL(request.url).pathname;
   let maxBytes = MAX_REQUEST_BYTES;
   switch (pathname) {
+    case '/rpc/playground/execute':
+    case '/rpc/playground/compare':
+      maxBytes = PLAYGROUND_RPC_MAX_REQUEST_BYTES;
+      break;
     case '/rpc/ipcCapture/append':
     case '/rpc/ipcCapture/appendMetadata':
       maxBytes = IPC_CAPTURE_CHUNK_REQUEST_BYTES;
@@ -124,7 +132,10 @@ export function createLocalRpcFetch(
         data: body.length > 0 ? body : undefined,
         signal: request.signal,
         timeout: timeoutMs,
-        maxContentLength: MAX_RESPONSE_BYTES,
+        maxContentLength:
+          url.pathname === '/rpc/playground/execute' || url.pathname === '/rpc/playground/compare'
+            ? PLAYGROUND_RPC_MAX_RESPONSE_BYTES
+            : MAX_RESPONSE_BYTES,
         maxRedirects: 0,
         proxy: false,
         responseType: 'arraybuffer',

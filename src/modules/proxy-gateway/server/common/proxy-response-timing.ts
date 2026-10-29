@@ -57,12 +57,22 @@ export function markProxyUpstreamFirstByte(
 
 export function buildProxyResponseTimingHeaders(request?: FastifyRequest): Record<string, string> {
   const context = getProxyResponseTimingContext(request);
+  const headers: Record<string, string> = {};
+
+  if (context?.currentAccountId) {
+    headers['x-antigravity-account-id'] = context.currentAccountId;
+  }
+  if (context?.currentAccountEmail) {
+    headers['x-antigravity-account-email'] = context.currentAccountEmail;
+  }
+
   if (!context?.proxyTiming || !context.clientSessionId) {
-    return {};
+    return headers;
   }
   const timing = context.proxyTiming;
   const milliseconds = (value: number | null): string => Math.max(0, value ?? 0).toFixed(3);
   return {
+    ...headers,
     'X-Session-Id': context.clientSessionId,
     'X-Antigravity-Session-Id': context.clientSessionId,
     'X-Timing-Clean-Ms': milliseconds(timing.cleanMs),

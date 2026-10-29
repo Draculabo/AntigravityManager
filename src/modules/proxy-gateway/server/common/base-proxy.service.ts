@@ -139,6 +139,7 @@ export abstract class BaseProxyService {
     sessionKey?: string,
     imageRequest = false,
     signal?: AbortSignal,
+    targetAccountId?: string,
   ): Promise<CloudAccount | null> {
     const account = await this.retryPolicy.selectRetryToken(
       retryState,
@@ -146,8 +147,9 @@ export abstract class BaseProxyService {
       sessionKey,
       imageRequest,
       signal,
+      targetAccountId,
     );
-    setCurrentAuditAccountId(account?.id ?? null);
+    setCurrentAuditAccountId(account?.id ?? null, account?.email ?? null);
     return account;
   }
 

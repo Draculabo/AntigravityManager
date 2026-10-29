@@ -1,4 +1,6 @@
 import type { CoreRpcOperations, CoreRpcWorkLifecycle } from './operations';
+import { createPlaygroundRouter } from '@/modules/proxy-gateway/playground/playground.router';
+import { playgroundService } from '@/modules/proxy-gateway/playground/playground.service';
 import { createDiagnosticLogCoreRouter } from '@/modules/app-shell/diagnostic-logs/core-router';
 import { readDiagnosticLogs } from '@/modules/app-shell/diagnostic-logs/read-logs';
 import {
@@ -145,6 +147,12 @@ export function createCoreRpcOperations(
 
   return {
     diagnosticLogs: (until) => readDiagnosticLogs('core', until),
+    playground: {
+      execute: (input, signal) =>
+        runAccountMutation(() => playgroundService.execute(input, signal)),
+      compare: (input, signal) =>
+        runAccountMutation(() => playgroundService.compare(input, signal)),
+    },
     ipcCapture: ipcCaptureOwner,
     audit: auditOwner,
     thought: thoughtOwner,
@@ -294,6 +302,7 @@ export function createCoreRpcOperations(
 
 export function createCoreRpcRouter(operations: CoreRpcOperations) {
   return os.router({
+    playground: createPlaygroundRouter(operations.playground),
     diagnosticLogs: createDiagnosticLogCoreRouter(operations.diagnosticLogs),
     errorReporting: createErrorReportingRouter(operations.errorReporting),
     ipcCapture: createIpcCaptureRouter(operations.ipcCapture),
