@@ -2,11 +2,13 @@ import { Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/shared/ui/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/manual-account-recommendation';
 
 interface ManualRecommendationBadgeProps {
   context: ManualRecommendationContext;
+  className?: string;
 }
 
 const CONTEXT_I18N_KEYS: Record<ManualRecommendationContext, string> = {
@@ -16,7 +18,7 @@ const CONTEXT_I18N_KEYS: Record<ManualRecommendationContext, string> = {
   flash: 'cloud.recommendation.context.flash',
 };
 
-export function ManualRecommendationBadge({ context }: ManualRecommendationBadgeProps) {
+export function ManualRecommendationBadge({ context, className }: ManualRecommendationBadgeProps) {
   const { t } = useTranslation();
   const contextLabel = t(CONTEXT_I18N_KEYS[context]);
 
@@ -26,7 +28,10 @@ export function ManualRecommendationBadge({ context }: ManualRecommendationBadge
         <TooltipTrigger asChild>
           <Badge
             variant="secondary"
-            className="border-primary/20 bg-primary/10 text-primary gap-1 px-1.5 py-0.5 text-[9px] font-semibold"
+            className={cn(
+              'border-primary/20 bg-primary/10 text-primary gap-1 px-1.5 py-0.5 text-[9px] font-semibold',
+              className,
+            )}
           >
             <Sparkles className="h-3 w-3" />
             {t('cloud.recommendation.badge')}

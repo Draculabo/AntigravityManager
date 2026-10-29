@@ -76,11 +76,11 @@ See the [first-use instructions](README.md#first-use),
 The existing product name is Antigravity Manager. The repository contains the
 existing [logo](docs/assets/logo.png).
 
-For frontend UI and UX design, prioritize [Ant Design (antd)](https://ant.design/),
-[daisyUI](https://daisyui.com/) and [Uiverse](https://uiverse.io/) as design
-references. Adapt selected visual and interaction patterns to Manager's workflows
-and maintain a coherent interface using the existing Radix and Tailwind stack.
-Specific themes, palettes and component treatments remain surface-level decisions.
+The desktop interface uses the Signal Blue design system: cool neutral surfaces,
+blue primary actions, readable typography and consistent spacing, radii and
+control proportions. Implement visual and interaction patterns for Manager's
+workflows using the existing Radix and Tailwind stack. [DESIGN.md](DESIGN.md) and
+[its extensions](.impeccable/design.json) own the implemented visual contract.
 
 ## Evidence on Hand
 

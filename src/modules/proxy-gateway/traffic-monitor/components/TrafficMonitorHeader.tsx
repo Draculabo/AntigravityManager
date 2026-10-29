@@ -19,7 +19,7 @@ export function TrafficMonitorHeader() {
             <div className="bg-info-soft text-info border-info-border flex size-10 shrink-0 items-center justify-center rounded-xl border">
               <Activity className="size-5" aria-hidden="true" />
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight">{t('traffic.title')}</h1>
+            <h1 className="text-page-title text-balance">{t('traffic.title')}</h1>
           </div>
           <p className="text-muted-foreground mt-1 text-sm">{t('traffic.description')}</p>
         </div>

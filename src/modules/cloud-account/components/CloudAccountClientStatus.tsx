@@ -1,13 +1,15 @@
 import { AppWindow, Monitor, Terminal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/shared/ui/utils';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 
 interface CloudAccountClientStatusProps {
   account: Pick<CloudAccountView, 'is_active_classic' | 'is_active_ide' | 'is_active_agy'>;
+  className?: string;
 }
 
 /** Client usage is independent of the account's position in the visible list. */
-export function CloudAccountClientStatus({ account }: CloudAccountClientStatusProps) {
+export function CloudAccountClientStatus({ account, className }: CloudAccountClientStatusProps) {
   const { t } = useTranslation();
   const clients = [
     { active: account.is_active_classic, label: t('cloud.card.client-app'), Icon: AppWindow },
@@ -19,7 +21,7 @@ export function CloudAccountClientStatus({ account }: CloudAccountClientStatusPr
     <div
       role="group"
       aria-label={t('cloud.card.client-usage')}
-      className="mt-1.5 flex flex-wrap items-center gap-1.5"
+      className={cn('mt-1.5 flex flex-wrap items-center gap-1.5', className)}
     >
       {clients.length === 0 ? (
         <span className="text-muted-foreground text-[11px] leading-5">

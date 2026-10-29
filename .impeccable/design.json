@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-29T08:37:34.594Z",
+  "title": "Design System: Antigravity Manager",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "tonalRamp": [
+          "oklch(15% 0.08543 263.1402)",
+          "oklch(27% 0.15378 263.1402)",
+          "oklch(39% 0.19934 263.1402)",
+          "oklch(51% 0.19934 263.1402)",
+          "oklch(63% 0.19934 263.1402)",
+          "oklch(75% 0.19934 263.1402)",
+          "oklch(87% 0.10366 263.1402)",
+          "oklch(95% 0.03987 263.1402)"
+        ]
+      },
+      "dark-primary": {
+        "role": "primary",
+        "displayName": "Signal Blue · dark",
+        "tonalRamp": [
+          "oklch(15% 0.04780 262.6745)",
+          "oklch(27% 0.08604 262.6745)",
+          "oklch(39% 0.11153 262.6745)",
+          "oklch(51% 0.11153 262.6745)",
+          "oklch(63% 0.11153 262.6745)",
+          "oklch(75% 0.11153 262.6745)",
+          "oklch(87% 0.05800 262.6745)",
+          "oklch(95% 0.02231 262.6745)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Cool canvas",
+        "tonalRamp": [
+          "oklch(15% 0.00318 260.7315)",
+          "oklch(27% 0.00572 260.7315)",
+          "oklch(39% 0.00741 260.7315)",
+          "oklch(51% 0.00741 260.7315)",
+          "oklch(63% 0.00741 260.7315)",
+          "oklch(75% 0.00741 260.7315)",
+          "oklch(87% 0.00385 260.7315)",
+          "oklch(95% 0.00148 260.7315)"
+        ]
+      },
+      "dark-background": {
+        "role": "neutral",
+        "displayName": "Cool canvas · dark",
+        "tonalRamp": [
+          "oklch(15% 0.01053 259.2629)",
+          "oklch(27% 0.01895 259.2629)",
+          "oklch(39% 0.02457 259.2629)",
+          "oklch(51% 0.02457 259.2629)",
+          "oklch(63% 0.02457 259.2629)",
+          "oklch(75% 0.02457 259.2629)",
+          "oklch(87% 0.01278 259.2629)",
+          "oklch(95% 0.00491 259.2629)"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Content surface",
+        "tonalRamp": [
+          "oklch(15% 0.00000 89.8756)",
+          "oklch(27% 0.00000 89.8756)",
+          "oklch(39% 0.00000 89.8756)",
+          "oklch(51% 0.00000 89.8756)",
+          "oklch(63% 0.00000 89.8756)",
+          "oklch(75% 0.00000 89.8756)",
+          "oklch(87% 0.00000 89.8756)",
+          "oklch(95% 0.00000 89.8756)"
+        ]
+      },
+      "dark-card": {
+        "role": "neutral",
+        "displayName": "Content surface · dark",
+        "tonalRamp": [
+          "oklch(15% 0.01369 258.3079)",
+          "oklch(27% 0.02464 258.3079)",
+          "oklch(39% 0.03195 258.3079)",
+          "oklch(51% 0.03195 258.3079)",
+          "oklch(63% 0.03195 258.3079)",
+          "oklch(75% 0.03195 258.3079)",
+          "oklch(87% 0.01661 258.3079)",
+          "oklch(95% 0.00639 258.3079)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Page heading",
+        "purpose": "Account, traffic and settings page titles."
+      },
+      "data": {
+        "displayName": "Measured data",
+        "purpose": "Quota, token counts, code and addresses."
+      }
+    },
+    "shadows": [
+      {
+        "name": "overlay",
+        "value": "var(--shadow-lg)",
+        "purpose": "Menus and floating overlays; cards remain flat."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "150ms ease-out",
+        "purpose": "Background, border and foreground changes; disabled with reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-shell",
+        "value": "760px"
+      },
+      {
+        "name": "account-columns",
+        "value": "1200px"
+      },
+      {
+        "name": "tool-columns",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action, 36px.",
+      "html": "<button class=\"ds-primary\">Save changes</button>",
+      "css": ".ds-primary{background:var(--primary,#245bd7);color:var(--primary-foreground,#fff);font:500 14px/22px var(--font-sans,Geist,sans-serif);height:36px;padding:0 16px;border:0;border-radius:8px;transition:filter 150ms ease-out}.ds-primary:hover{filter:brightness(.94)}.ds-primary:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Supporting action.",
+      "html": "<button class=\"ds-secondary\">Use account</button>",
+      "css": ".ds-secondary{height:36px;padding:0 12px;border:0;border-radius:8px;background:var(--secondary,#edf1f7);color:var(--foreground,#202b3d);font:500 14px/22px sans-serif}.ds-secondary:hover{background:var(--accent,#e4edff)}.ds-secondary:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+    },
+    {
+      "name": "Outline button",
+      "kind": "button",
+      "description": "Bordered supporting action.",
+      "html": "<button class=\"ds-outline\">Import</button>",
+      "css": ".ds-outline{height:36px;padding:0 12px;border:1px solid var(--border,#dce3ee);border-radius:8px;background:var(--card,#fff);color:var(--foreground,#202b3d);font:500 14px/22px sans-serif}.ds-outline:hover{background:var(--muted,#edf1f7);border-color:var(--input,#8798b0)}.ds-outline:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+    },
+    {
+      "name": "Text field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Readable field with themed border and focus.",
+      "html": "<input class=\"ds-input\" aria-label=\"Proxy address\" placeholder=\"http://127.0.0.1:7890\" />",
+      "css": ".ds-input{height:36px;padding:4px 12px;border:1px solid var(--input,#8798b0);border-radius:6px;background:var(--background,#f2f5fa);color:var(--foreground,#202b3d);font:14px/22px sans-serif}.ds-input::placeholder{color:var(--muted-foreground,#58677c)}.ds-input:hover{border-color:var(--ring,#245bd7)}.ds-input:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+    },
+    {
+      "name": "Active navigation",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Sidebar selection.",
+      "html": "<nav><a class=\"ds-nav\" href=\"#accounts\" aria-current=\"page\">Accounts</a></nav>",
+      "css": ".ds-nav{display:flex;align-items:center;height:40px;padding:0 12px;border-radius:6px;background:var(--sidebar-accent,#dae6fb);color:var(--sidebar-accent-foreground,#234f9d);font:600 14px/22px sans-serif;text-decoration:none}.ds-nav:hover{filter:brightness(.98)}.ds-nav:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+    },
+    {
+      "name": "Status label",
+      "kind": "chip",
+      "description": "Status with text and color.",
+      "html": "<span class=\"ds-status\">Available</span>",
+      "css": ".ds-status{display:inline-flex;padding:0 8px;min-height:24px;align-items:center;border:1px solid var(--success-border,#d9e9df);border-radius:4px;background:var(--success-soft,#f0f7f3);color:var(--success,#25704f);font:500 12px/20px sans-serif}"
+    },
+    {
+      "name": "Account card",
+      "kind": "card",
+      "refersTo": "account-card",
+      "description": "Flat account surface and padded model row.",
+      "html": "<article class=\"ds-card\"><h3>Personal</h3><p>preview@example.com</p><div class=\"ds-quota\"><span>Gemini 3 Pro</span><span>94%</span></div></article>",
+      "css": ".ds-card{padding:20px;border:1px solid var(--border,#dce3ee);border-radius:8px;background:var(--card,#fff);color:var(--foreground,#202b3d);font:14px/22px sans-serif}.ds-card h3{margin:0;font-size:16px;line-height:24px;font-weight:600}.ds-card p{margin:0 0 16px;color:var(--muted-foreground,#58677c);font-size:12px;line-height:20px}.ds-quota{display:flex;justify-content:space-between;gap:16px;padding:8px 12px;border-radius:6px}.ds-quota:hover{background:var(--muted,#edf1f7)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Signal Blue workspace",
+    "overview": "Signal Blue combines cool neutral surfaces, clear blue actions and restrained status colors with consistent typography, spacing and control proportions. The interface supports frequent desktop work through stable density, readable metadata and predictable interactions.",
+    "keyCharacteristics": [
+      "Signal Blue in light and dark themes.",
+      "Geist with explicit CJK fallbacks and Geist Mono for measured data.",
+      "A 4px spacing base and 28 / 36 / 40px controls.",
+      "Flat content surfaces and scoped feature layouts."
+    ],
+    "rules": [],
+    "dos": [
+      "Do use semantic color tokens for surfaces, text and status.",
+      "Do retain 12px horizontal padding inside model hover rows.",
+      "Do keep page-specific dimensions inside their owning component.",
+      "Do keep variants in shared components and express feature layout, spacing and responsive behavior with local Tailwind utilities.",
+      "Do open the account Use menu by click or keyboard, and close it with Escape or an outside click."
+    ],
+    "donts": [
+      "Don't reintroduce hover opening for the account Use menu.",
+      "Don't apply account icon widths to other page headers.",
+      "Don't infer business parts from sibling position or globally style components through slot or ARIA-role selectors.",
+      "Don't collapse input errors or adjacent actions into an unspaced inline row.",
+      "Don't let optional tool details move sibling primary actions out of alignment."
+    ]
+  }
+}

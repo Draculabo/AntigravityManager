@@ -5,6 +5,17 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
+  --font-weight-bold: 600;
+  --text-xs: 12px;
+  --text-xs--line-height: 20px;
+  --text-sm: 14px;
+  --text-sm--line-height: 22px;
+  --text-base: 16px;
+  --text-base--line-height: 24px;
+  --text-page-title: 30px;
+  --text-page-title--line-height: 38px;
+  --text-page-title--letter-spacing: -0.025em;
+  --text-page-title--font-weight: 600;
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
@@ -33,8 +44,8 @@
   --color-card-foreground: hsl(var(--card-foreground));
 
   --font-sans:
-    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI',
-    'Microsoft YaHei', sans-serif;
+    'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', 'Microsoft YaHei UI', 'Noto Sans CJK SC', sans-serif;
   --font-mono: Geist Mono, monospace;
   --font-tomorrow: Tomorrow, sans-serif;
 
@@ -65,23 +76,36 @@
 
 @utility container {
   margin-inline: auto;
-  padding-inline: 2rem;
-  @media (width >= --theme(--breakpoint-sm)) {
-    max-width: none;
+  max-width: 1480px;
+  padding: 32px;
+  @media (max-width: 1199px) {
+    padding: 24px;
   }
-  @media (width >= 1400px) {
-    max-width: 1400px;
+  @media (max-width: 760px) {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --text-page-title: 24px;
+    --text-page-title--line-height: 32px;
   }
 }
 
 @layer base {
   @font-face {
     font-family: 'Geist';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
 
     src: url('../assets/fonts/geist/geist.ttf') format('truetype');
   }
   @font-face {
     font-family: 'Geist Mono';
+    font-style: normal;
+    font-weight: 100 900;
     font-display: swap;
 
     src: url('../assets/fonts/geist-mono/geist-mono.ttf') format('truetype');
@@ -123,50 +147,50 @@
 @layer base {
   :root {
     color-scheme: light;
-    --background: oklch(97% 0 0);
-    --foreground: oklch(22% 0 0);
-    --card: oklch(100% 0 0);
-    --card-foreground: oklch(22% 0 0);
-    --popover: oklch(100% 0 0);
-    --popover-foreground: oklch(22% 0 0);
-    --primary: oklch(15.906% 0 0);
-    --primary-foreground: oklch(100% 0 0);
-    --secondary: oklch(94% 0 0);
-    --secondary-foreground: oklch(26% 0 0);
-    --muted: oklch(96% 0 0);
-    --muted-foreground: oklch(49% 0 0);
-    --accent: oklch(92% 0 0);
-    --accent-foreground: oklch(22% 0 0);
-    --destructive: oklch(48% 0.14 28.47);
-    --destructive-foreground: oklch(100% 0 0);
-    --border: oklch(88% 0 0);
-    --input: oklch(65% 0 0);
-    --ring: oklch(50% 0 0);
-    --info: oklch(40% 0.08 240);
-    --info-soft: oklch(96% 0.025 240);
-    --info-border: oklch(87% 0.04 240);
-    --success: oklch(40% 0.08 164.14);
-    --success-soft: oklch(96% 0.03 164.14);
-    --success-border: oklch(87% 0.04 164.14);
-    --warning: oklch(43% 0.08 79.94);
-    --warning-soft: oklch(97% 0.04 90);
-    --warning-border: oklch(87% 0.05 90);
-    --chart-1: oklch(55% 0.09 205.9);
-    --chart-2: oklch(55% 0.1 164.14);
-    --chart-3: oklch(50% 0 0);
-    --chart-4: oklch(65% 0.11 79.94);
-    --chart-5: oklch(58% 0.12 28.47);
-    --sidebar: oklch(98.5% 0 0);
-    --sidebar-foreground: oklch(22% 0 0);
-    --sidebar-primary: var(--primary);
-    --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: var(--info-soft);
-    --sidebar-accent-foreground: var(--info);
-    --sidebar-border: var(--border);
-    --sidebar-ring: var(--ring);
+    --background: oklch(96.9299% 0.00741 260.7315);
+    --foreground: oklch(28.7535% 0.036597 260.0472);
+    --card: oklch(100% 0 89.8756);
+    --card-foreground: oklch(28.7535% 0.036597 260.0472);
+    --popover: oklch(100% 0 89.8756);
+    --popover-foreground: oklch(28.7535% 0.036597 260.0472);
+    --primary: oklch(51.3725% 0.199339 263.1402);
+    --primary-foreground: oklch(100% 0 89.8756);
+    --secondary: oklch(95.6831% 0.009121 258.3358);
+    --secondary-foreground: oklch(28.7535% 0.036597 260.0472);
+    --muted: oklch(95.6831% 0.009121 258.3358);
+    --muted-foreground: oklch(50.9256% 0.038197 256.8202);
+    --accent: oklch(94.4691% 0.026177 264.442);
+    --accent-foreground: oklch(45.747% 0.147588 261.4793);
+    --destructive: oklch(54.3492% 0.153122 23.7102);
+    --destructive-foreground: oklch(100% 0 89.8756);
+    --border: oklch(91.3742% 0.016776 259.4189);
+    --input: oklch(67.4534% 0.040602 256.9964);
+    --ring: oklch(51.3725% 0.199339 263.1402);
+    --info: oklch(47.5119% 0.148436 260.0075);
+    --info-soft: oklch(96.597% 0.013186 262.3794);
+    --info-border: oklch(91.631% 0.028506 261.4759);
+    --success: oklch(48.9606% 0.091189 160.8783);
+    --success-soft: oklch(96.9757% 0.009083 161.3534);
+    --success-border: oklch(91.9268% 0.021647 158.5659);
+    --warning: oklch(51.4012% 0.101827 71.5883);
+    --warning-soft: oklch(97.3502% 0.013888 88.6825);
+    --warning-border: oklch(91.1355% 0.033695 88.0643);
+    --chart-1: oklch(47.5119% 0.148436 260.0075);
+    --chart-2: oklch(48.9606% 0.091189 160.8783);
+    --chart-3: oklch(50.9256% 0.038197 256.8202);
+    --chart-4: oklch(51.4012% 0.101827 71.5883);
+    --chart-5: oklch(54.3492% 0.153122 23.7102);
+    --sidebar: oklch(95.2913% 0.012537 255.506);
+    --sidebar-foreground: oklch(28.7535% 0.036597 260.0472);
+    --sidebar-primary: oklch(51.3725% 0.199339 263.1402);
+    --sidebar-primary-foreground: oklch(100% 0 89.8756);
+    --sidebar-accent: oklch(92.2288% 0.0314 261.7431);
+    --sidebar-accent-foreground: oklch(44.2176% 0.136297 260.8528);
+    --sidebar-border: oklch(91.3742% 0.016776 259.4189);
+    --sidebar-ring: oklch(51.3725% 0.199339 263.1402);
     --font-sans:
-      system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI',
-      'Microsoft YaHei', sans-serif;
+      'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC',
+      'Microsoft YaHei', 'Microsoft YaHei UI', 'Noto Sans CJK SC', sans-serif;
     --font-serif: Georgia, serif;
     --font-mono: Geist Mono, monospace;
     --radius: 0.5rem;
@@ -190,50 +214,50 @@
 
   .dark {
     color-scheme: dark;
-    --background: oklch(16% 0 0);
-    --foreground: oklch(92% 0 0);
-    --card: oklch(21% 0 0);
-    --card-foreground: oklch(92% 0 0);
-    --popover: oklch(24% 0 0);
-    --popover-foreground: oklch(92% 0 0);
-    --primary: oklch(92% 0 0);
-    --primary-foreground: oklch(18% 0 0);
-    --secondary: oklch(28% 0 0);
-    --secondary-foreground: oklch(92% 0 0);
-    --muted: oklch(25% 0 0);
-    --muted-foreground: oklch(72% 0 0);
-    --accent: oklch(31% 0 0);
-    --accent-foreground: oklch(92% 0 0);
-    --destructive: oklch(78.66% 0.12 28.47);
-    --destructive-foreground: oklch(18% 0.025 28.47);
-    --border: oklch(33% 0 0);
-    --input: oklch(52% 0 0);
-    --ring: oklch(72% 0 0);
-    --info: oklch(79.54% 0.08 240);
-    --info-soft: oklch(25% 0.03 240);
-    --info-border: oklch(40% 0.04 240);
-    --success: oklch(82% 0.09 164.14);
-    --success-soft: oklch(25% 0.03 164.14);
-    --success-border: oklch(40% 0.04 164.14);
-    --warning: oklch(83% 0.09 79.94);
-    --warning-soft: oklch(25% 0.035 90);
-    --warning-border: oklch(40% 0.05 90);
-    --chart-1: var(--info);
-    --chart-2: var(--success);
-    --chart-3: oklch(72% 0 0);
-    --chart-4: var(--warning);
-    --chart-5: var(--destructive);
-    --sidebar: oklch(19% 0 0);
-    --sidebar-foreground: oklch(92% 0 0);
-    --sidebar-primary: var(--primary);
-    --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: var(--info-soft);
-    --sidebar-accent-foreground: var(--info);
-    --sidebar-border: var(--border);
-    --sidebar-ring: var(--ring);
+    --background: oklch(20.3238% 0.02457 259.2629);
+    --foreground: oklch(93.8289% 0.017881 261.3372);
+    --card: oklch(25.4075% 0.031947 258.3079);
+    --card-foreground: oklch(93.8289% 0.017881 261.3372);
+    --popover: oklch(30.7952% 0.045869 260.0458);
+    --popover-foreground: oklch(93.8289% 0.017881 261.3372);
+    --primary: oklch(77.9664% 0.111532 262.6745);
+    --primary-foreground: oklch(27.2776% 0.072503 259.7573);
+    --secondary: oklch(31.2032% 0.043557 260.6425);
+    --secondary-foreground: oklch(93.8289% 0.017881 261.3372);
+    --muted: oklch(31.2032% 0.043557 260.6425);
+    --muted-foreground: oklch(75.908% 0.03888 258.3723);
+    --accent: oklch(37.552% 0.07169 260.0096);
+    --accent-foreground: oklch(86.9248% 0.063697 265.4573);
+    --destructive: oklch(80.8917% 0.108399 20.3978);
+    --destructive-foreground: oklch(28.4601% 0.080337 17.2477);
+    --border: oklch(37.9744% 0.046242 258.3122);
+    --input: oklch(61.2318% 0.052727 259.0542);
+    --ring: oklch(77.9664% 0.111532 262.6745);
+    --info: oklch(81.0097% 0.094905 263.2634);
+    --info-soft: oklch(29.2034% 0.050788 259.0413);
+    --info-border: oklch(42.0524% 0.067843 257.4798);
+    --success: oklch(79.6644% 0.089885 161.0449);
+    --success-soft: oklch(29.0274% 0.027571 176.7505);
+    --success-border: oklch(41.6709% 0.043836 166.7698);
+    --warning: oklch(81.5898% 0.089169 82.9719);
+    --warning-soft: oklch(30.3532% 0.01716 82.2701);
+    --warning-border: oklch(43.7442% 0.041834 83.3605);
+    --chart-1: oklch(81.0097% 0.094905 263.2634);
+    --chart-2: oklch(79.6644% 0.089885 161.0449);
+    --chart-3: oklch(75.908% 0.03888 258.3723);
+    --chart-4: oklch(81.5898% 0.089169 82.9719);
+    --chart-5: oklch(80.8917% 0.108399 20.3978);
+    --sidebar: oklch(23.3842% 0.034336 259.5492);
+    --sidebar-foreground: oklch(93.8289% 0.017881 261.3372);
+    --sidebar-primary: oklch(77.9664% 0.111532 262.6745);
+    --sidebar-primary-foreground: oklch(27.2776% 0.072503 259.7573);
+    --sidebar-accent: oklch(34.9577% 0.072776 259.963);
+    --sidebar-accent-foreground: oklch(86.3157% 0.06683 265.3642);
+    --sidebar-border: oklch(37.9744% 0.046242 258.3122);
+    --sidebar-ring: oklch(77.9664% 0.111532 262.6745);
     --font-sans:
-      system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI',
-      'Microsoft YaHei', sans-serif;
+      'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC',
+      'Microsoft YaHei', 'Microsoft YaHei UI', 'Noto Sans CJK SC', sans-serif;
     --font-serif: Georgia, serif;
     --font-mono: Geist Mono, monospace;
     --radius: 0.5rem;
@@ -271,8 +295,21 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans text-sm antialiased;
   }
+  * {
+    scrollbar-color: var(--input) var(--background);
+    scrollbar-width: thin;
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+}
+
+@utility font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 @theme inline {

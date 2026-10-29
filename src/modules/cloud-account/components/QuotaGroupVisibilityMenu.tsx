@@ -21,7 +21,7 @@ export function QuotaGroupVisibilityMenu({ value, onChange }: QuotaGroupVisibili
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="xs">
           <Eye className="mr-1 h-4 w-4" />
           {t('cloud.quota-display.title')}
         </Button>

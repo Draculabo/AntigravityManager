@@ -17,9 +17,10 @@ export function CloudAccountSelectAllButton({
   return (
     <Button
       variant="ghost"
+      size="xs"
       onClick={() => toggleVisible(visibleAccountIds)}
       title={t('cloud.batch.selectAll')}
-      className="cursor-pointer"
+      className="cursor-pointer gap-2 has-[>svg]:px-3"
     >
       <CheckSquare
         className={`mr-2 h-4 w-4 ${allVisibleSelected ? 'text-primary fill-primary/20' : ''}`}
