@@ -206,6 +206,7 @@ const ru = {
     'expand-sidebar': 'Развернуть боковую панель',
     accounts: 'Аккаунты',
     playground: 'Playground',
+    workspaces: 'Рабочие области',
     proxy: 'API Прокси',
     settings: 'Настройки',
     traffic: 'Трафик',
@@ -354,6 +355,10 @@ const ru = {
     lastUsed: 'Последнее использование {{time}}',
     switchToAntigravity: 'Переключиться на Antigravity',
     switchToIde: 'Переключиться на Antigravity IDE',
+    launchIsolatedIde: 'Запустить изолированную IDE',
+    launchIsolatedIdeSuccess: 'Изолированная IDE запущена',
+    launchIsolatedIdeSuccessDesc: 'Запущен изолированный экземпляр IDE для {{name}}',
+    launchIsolatedIdeError: 'Ошибка запуска',
   },
   home: {
     title: 'Аккаунты',

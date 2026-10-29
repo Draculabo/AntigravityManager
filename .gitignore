@@ -128,3 +128,4 @@ bun.lock
 .code-review-graph/
 
 /artifacts/
+.agents/teamwork/

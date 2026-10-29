@@ -5,9 +5,12 @@ import { promisify } from 'node:util';
 import { logger } from '@/shared/logging/logger';
 import { hasErrorCode } from '@/shared/errors/error-guards';
 
-import { getProcessProbeTimeout, observeProcesses } from './processObserver';
-import { assertContextProcesses } from './launchContext';
-import type { LaunchContext } from './types';
+import {
+  getProcessProbeTimeout,
+  observeProcesses,
+} from '@/modules/antigravity-runtime/processObserver';
+import { assertContextProcesses, filterContextProcesses } from './launchContext';
+import type { LaunchContext, RuntimeProcess } from './types';
 import { processError } from './processErrors';
 import { usesWindowsRuntime } from './runtimePlatform';
 import { stopNativeProcessTree } from './stopNativeProcessTree';
@@ -16,19 +19,30 @@ import { stopWindowsClientForSwitch } from './stopWindowsClientForSwitch';
 
 const runFile = promisify(execFile);
 
+function filterTargetProcesses(
+  context: LaunchContext,
+  processes: readonly RuntimeProcess[],
+): RuntimeProcess[] {
+  if (typeof filterContextProcesses === 'function') {
+    return filterContextProcesses(context, processes);
+  }
+  return [...processes];
+}
+
 export async function stopFromContext(
   context: LaunchContext,
   timeout = usesWindowsRuntime(context.target, context.executablePath) ? 10000 : 6000,
   options: { forceAfterTimeout?: boolean } = {},
 ): Promise<void> {
   const deadline = Date.now() + timeout;
-  let processes = await observeProcesses(
+  let rawProcesses = await observeProcesses(
     context.target,
     process.platform === 'win32'
       ? timeout
       : Math.min(getProcessProbeTimeout(context.target, context.executablePath), timeout),
     context.executablePath,
   );
+  let processes = filterTargetProcesses(context, rawProcesses);
   assertContextProcesses(context, processes);
   if (!processes.length) {
     return;
@@ -46,7 +60,8 @@ export async function stopFromContext(
     if (remaining <= 0) {
       throw processError('exit-unconfirmed');
     }
-    const survivors = await observeProcesses(context.target, remaining, context.executablePath);
+    const rawSurvivors = await observeProcesses(context.target, remaining, context.executablePath);
+    const survivors = filterTargetProcesses(context, rawSurvivors);
     assertContextProcesses(context, survivors);
     if (survivors.length) {
       throw processError('exit-unconfirmed');
@@ -54,40 +69,46 @@ export async function stopFromContext(
     return;
   }
   if (process.platform === 'darwin') {
-    const bundle = /^(.*?\.app)(?:\/|$)/i.exec(context.executablePath)?.[1];
-    if (bundle) {
-      await new Promise<void>((resolve) => {
-        execFile(
-          'osascript',
-          ['-e', `tell application ${JSON.stringify(bundle)} to quit`],
-          {
-            timeout: Math.max(1, Math.min(3000, deadline - Date.now())),
-            killSignal: 'SIGKILL',
-          },
-          () => resolve(),
-        );
-      });
-      const graceDeadline = Math.min(deadline, Date.now() + 2000);
-      do {
-        processes = await observeProcesses(
-          context.target,
-          Math.max(
-            1,
-            Math.min(
-              getProcessProbeTimeout(context.target, context.executablePath),
-              deadline - Date.now(),
-            ),
-          ),
-          context.executablePath,
-        );
-        assertContextProcesses(context, processes);
-        if (!processes.length) {
-          return;
+    for (const item of processes) {
+      try {
+        process.kill(item.pid, 'SIGTERM');
+      } catch (error) {
+        if (!hasErrorCode(error, 'ESRCH')) {
+          throw processError('close-failed', error);
         }
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.min(100, Math.max(0, graceDeadline - Date.now()))),
-        );
-      } while (Date.now() < graceDeadline);
+      }
+    }
+    const graceDeadline = Math.min(deadline, Date.now() + 2000);
+    do {
+      const rawCurrent = await observeProcesses(
+        context.target,
+        Math.max(
+          1,
+          Math.min(
+            getProcessProbeTimeout(context.target, context.executablePath),
+            deadline - Date.now(),
+          ),
+        ),
+        context.executablePath,
+      );
+      processes = filterTargetProcesses(context, rawCurrent);
+      assertContextProcesses(context, processes);
+      if (!processes.length) {
+        return;
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(100, Math.max(0, graceDeadline - Date.now()))),
+      );
+    } while (Date.now() < graceDeadline);
+
+    for (const item of processes) {
+      try {
+        process.kill(item.pid, 'SIGKILL');
+      } catch (error) {
+        if (!hasErrorCode(error, 'ESRCH')) {
+          throw processError('close-failed', error);
+        }
+      }
     }
   }
   for (const item of processes) {
@@ -127,12 +148,13 @@ export async function stopFromContext(
           // Failed verification must not replace the earlier native close evidence.
           throw processError('probe-failed', error);
         }
-        assertContextProcesses(context, observed);
-        if (observed.some((row) => row.pid === item.pid)) {
+        const observedTarget = filterTargetProcesses(context, observed);
+        assertContextProcesses(context, observedTarget);
+        if (observedTarget.some((row) => row.pid === item.pid)) {
           throw processError('close-failed', error);
         }
       }
-    } else {
+    } else if (process.platform !== 'darwin') {
       try {
         process.kill(item.pid, 'SIGKILL');
       } catch (error) {
@@ -144,9 +166,9 @@ export async function stopFromContext(
   }
   while (Date.now() < deadline) {
     const remaining = deadline - Date.now();
-    let remainingProcesses;
+    let rawRemaining;
     try {
-      remainingProcesses = await observeProcesses(
+      rawRemaining = await observeProcesses(
         context.target,
         process.platform !== 'win32' && usesWindowsRuntime(context.target, context.executablePath)
           ? Math.min(getProcessProbeTimeout(context.target, context.executablePath), remaining)
@@ -160,6 +182,7 @@ export async function stopFromContext(
       }
       throw error;
     }
+    const remainingProcesses = filterTargetProcesses(context, rawRemaining);
     assertContextProcesses(context, remainingProcesses);
     if (!remainingProcesses.length) {
       return;

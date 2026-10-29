@@ -13,7 +13,8 @@ vi.mock('@/shared/platform/nativeProcessQuery', () => ({ readNativeProcessSnapsh
 vi.mock('@/modules/antigravity-runtime/processObserver', () => ({
   observeProcesses: mocks.observe,
 }));
-vi.mock('@/modules/antigravity-runtime/launchContext', () => ({
+vi.mock('@/modules/antigravity-runtime/launchContext', async (original) => ({
+  ...(await original<typeof import('@/modules/antigravity-runtime/launchContext')>()),
   assertContextProcesses: mocks.assert,
 }));
 vi.mock('@/modules/antigravity-runtime/runtimePlatform', () => ({
@@ -100,6 +101,41 @@ describe('IDE language service hot switching', () => {
     expect(current).toEqual([root, host, terminal, typescript, unrelated]);
     current.push(...newServices);
     expect(await session!.confirmReplacement()).toBe(true);
+  });
+
+  it('keeps another profile and its services alive through capture and replacement confirmation', async () => {
+    const peer = row(300, 1, root.exe!, 20n);
+    const peerService = row(310, 300, service.exe!, 30n);
+    current.push(peer, peerService);
+    const observed = [
+      ...context.processes,
+      {
+        pid: peer.pid,
+        executablePath: peer.exe!,
+        startTime: peer.startTime,
+        args: ['--user-data-dir=C:\\peer-profile'],
+      },
+    ];
+    mocks.observe.mockResolvedValue(observed);
+    const session = await prepareIdeHotSwitch(context);
+    expect(await session!.stopServices()).toBe(true);
+    current.push(...newServices);
+    expect(await session!.confirmReplacement()).toBe(true);
+    expect(vi.mocked(process.kill).mock.calls).toEqual([
+      [120, 'SIGKILL'],
+      [121, 'SIGKILL'],
+    ]);
+    expect(current).toEqual([
+      root,
+      host,
+      terminal,
+      typescript,
+      unrelated,
+      peer,
+      peerService,
+      ...newServices,
+    ]);
+    expect(mocks.assert).toHaveBeenCalledWith(context, observed);
   });
 
   it('reports a service that cannot be terminated without killing the main window', async () => {

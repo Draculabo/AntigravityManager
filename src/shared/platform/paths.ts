@@ -14,7 +14,10 @@ import { z } from 'zod';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
-type PathApi = Pick<typeof path, 'dirname' | 'join' | 'normalize' | 'resolve'>;
+type PathApi = Pick<
+  typeof path,
+  'dirname' | 'join' | 'normalize' | 'resolve' | 'basename' | 'relative' | 'isAbsolute'
+>;
 
 const AntigravityManagerConfigSchema = z.object({
   antigravity_executable: z.string().nullable().optional(),
@@ -456,7 +459,22 @@ function getRunningAntigravityProcesses(
     runningProcessCache.target === resolvedTarget &&
     now - runningProcessCache.checkedAt < PROCESS_SCAN_CACHE_MS
   ) {
-    return runningProcessCache.processes;
+    const configuredUserDataDir = extractUserDataDirectoryFromArgs(
+      getConfiguredAntigravityArgs(resolvedTarget),
+    );
+    return runningProcessCache.processes.filter((processItem) => {
+      if (resolvedTarget !== 'ide') {
+        return true;
+      }
+      const userDataDir = extractUserDataDirectoryFromArgs(processItem.args);
+      return (
+        !userDataDir ||
+        (configuredUserDataDir &&
+          normalizeExecutablePath(userDataDir) ===
+            normalizeExecutablePath(configuredUserDataDir)) ||
+        !isManagedWorkspaceUserDataDir(userDataDir)
+      );
+    });
   }
 
   return [];
@@ -629,6 +647,37 @@ export function getAppDataDir(
   }
 }
 
+/**
+ * Resolves the host Antigravity extensions directory.
+ * E.g., ~/.antigravity/extensions on Linux and macOS,
+ * %USERPROFILE%\.antigravity\extensions on Windows,
+ * /mnt/c/Users/${winUser}/.antigravity/extensions on WSL.
+ */
+export function getAntigravityExtensionsDir(options?: PathResolutionOptions): string {
+  const home = os.homedir();
+  if (resolveIsWsl(options)) {
+    const winUser = getWindowsUser();
+    return `/mnt/c/Users/${winUser}/.antigravity/extensions`;
+  }
+
+  const currentPlatform = getCurrentPlatform(options);
+  if (currentPlatform === 'win32') {
+    const userProfile = process.env.USERPROFILE || home;
+    return path.win32.join(userProfile, '.antigravity', 'extensions');
+  }
+
+  return path.posix.join(home, '.antigravity', 'extensions');
+}
+
+/**
+ * Resolves the host IDE User configuration directory for the selected runtime.
+ */
+export function getAntigravityHostUserDir(options?: PathResolutionOptions): string {
+  const ideAppData = getAppDataDir('ide', options);
+  const pathApi = getCurrentPlatformPathApi(options);
+  return pathApi.join(ideAppData, 'User');
+}
+
 export function getAgentDir(options?: PathResolutionOptions): string {
   return getCurrentPlatformPathApi(options).join(os.homedir(), '.antigravity-agent');
 }
@@ -648,6 +697,64 @@ export function getProxyStateDir(options?: PathResolutionOptions): string {
 
 export function getCloudAccountsDbPath(options?: PathResolutionOptions): string {
   return getCurrentPlatformPathApi(options).join(getAgentDir(options), 'cloud_accounts.db');
+}
+
+/**
+ * Resolves the base directory where isolated workspace profiles are stored.
+ * E.g., ~/.config/AntigravityManager/profiles on Linux,
+ * %APPDATA%\AntigravityManager\profiles on Windows,
+ * ~/Library/Application Support/AntigravityManager/profiles on macOS.
+ */
+export function getProfilesBaseDir(options?: PathResolutionOptions): string {
+  const pathApi = getCurrentPlatformPathApi(options);
+  return pathApi.join(getAppDataDir(undefined, options), '..', 'AntigravityManager', 'profiles');
+}
+
+/** Managed workspace directories are never implicit destinations for primary IDE operations. */
+export function isManagedWorkspaceUserDataDir(
+  userDataDir: string,
+  options?: PathResolutionOptions,
+): boolean {
+  const pathApi = getCurrentPlatformPathApi(options);
+  const base = normalizeExecutablePath(pathApi.resolve(getProfilesBaseDir(options)), options);
+  const target = normalizeExecutablePath(pathApi.resolve(userDataDir), options);
+  // Runtime capture canonicalizes mounted Windows paths to lowercase even under Linux Node.
+  const mountedWindows = resolveIsWsl(options) && /^\/mnt\/[a-z]\//i.test(base);
+  const baseDir = mountedWindows ? base.toLowerCase() : base;
+  const targetDir = mountedWindows ? target.toLowerCase() : target;
+  const relative = pathApi.relative(baseDir, targetDir);
+  return (
+    relative !== '' &&
+    relative !== '..' &&
+    !relative.startsWith('../') &&
+    !relative.startsWith('..\\') &&
+    !pathApi.isAbsolute(relative)
+  );
+}
+
+/**
+ * Resolves the dedicated user data directory for a specific workspace profile.
+ * E.g., ~/.config/AntigravityManager/profiles/<profileId> on Linux.
+ * Strictly enforces that profileId is a safe identifier and never escapes the profiles base directory.
+ */
+export function getProfileUserDataDir(profileId: string, options?: PathResolutionOptions): string {
+  const safeId = typeof profileId === 'string' ? profileId.trim() : '';
+  if (!safeId || safeId === '.' || safeId === '..' || !/^[a-zA-Z0-9_-]+$/.test(safeId)) {
+    throw new Error(
+      `Invalid workspace profile ID: "${profileId}". Profile ID must only contain alphanumeric characters, dashes, and underscores.`,
+    );
+  }
+
+  const pathApi = getCurrentPlatformPathApi(options);
+  const baseDir = pathApi.resolve(getProfilesBaseDir(options));
+  const resolved = pathApi.resolve(baseDir, safeId);
+  const relative = pathApi.relative(baseDir, resolved);
+
+  if (relative === '' || relative.startsWith('..') || pathApi.isAbsolute(relative)) {
+    throw new Error(`Invalid workspace profile ID: "${profileId}" escapes profiles directory.`);
+  }
+
+  return resolved;
 }
 
 export function getAntigravityDbPaths(

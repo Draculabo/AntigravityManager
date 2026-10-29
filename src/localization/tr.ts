@@ -203,6 +203,7 @@ const tr = {
     'expand-sidebar': 'Kenar çubuğunu genişlet',
     accounts: 'Hesaplar',
     playground: 'Playground',
+    workspaces: 'Çalışma Alanları',
     proxy: 'API Proxy',
     settings: 'Ayarlar',
     traffic: 'Trafik',
@@ -348,6 +349,10 @@ const tr = {
     lastUsed: 'Son kullanım: {{time}}',
     switchToAntigravity: "Antigravity'ye Geç",
     switchToIde: "Antigravity IDE'ye Geç",
+    launchIsolatedIde: 'Yalıtılmış IDE Başlat',
+    launchIsolatedIdeSuccess: 'Yalıtılmış IDE Başlatıldı',
+    launchIsolatedIdeSuccessDesc: '{{name}} için yalıtılmış IDE örneği başlatıldı',
+    launchIsolatedIdeError: 'Başlatma Başarısız Oldu',
   },
   home: {
     title: 'Hesaplar',

@@ -400,6 +400,9 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 if (isDev) {
   app.setName('Antigravity Manager Dev');
+  if (!process.env.AGM_DIAGNOSTIC_DIRECTORY) {
+    app.setPath('userData', path.join(app.getPath('appData'), 'Antigravity Manager Dev'));
+  }
 }
 
 if (process.platform === 'win32') {
