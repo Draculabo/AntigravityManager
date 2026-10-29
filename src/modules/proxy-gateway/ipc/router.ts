@@ -193,5 +193,8 @@ export const gatewayRouter = os.prefix('/gateway').router({
     return getThoughtAdapter().repair();
   }),
 
-  playground: createPlaygroundRouter(),
+  playground: createPlaygroundRouter({
+    execute: (input, signal) => getGatewayAdapter().playground.execute(input, signal),
+    compare: (input, signal) => getGatewayAdapter().playground.compare(input, signal),
+  }),
 });

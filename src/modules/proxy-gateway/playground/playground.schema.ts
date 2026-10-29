@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+// Bounds the complete encoded request, including UTF-8 text, account selectors and RPC metadata.
+export const PLAYGROUND_RPC_MAX_REQUEST_BYTES = 256 * 1024;
+// Comparison envelopes repeat the submitted prompt for each account's cURL export.
+export const PLAYGROUND_RPC_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+
 export const PlaygroundPromptPresetSchema = z.strictObject({
   id: z.string().min(1).max(64),
   title: z.string().min(1).max(128),
@@ -48,7 +53,7 @@ export const PlaygroundExecuteResultSchema = z.strictObject({
 export type PlaygroundExecuteResult = z.infer<typeof PlaygroundExecuteResultSchema>;
 
 export const PlaygroundCompareInputSchema = z.strictObject({
-  accountIds: z.array(z.string().max(256)).min(1).max(10),
+  accountIds: z.array(z.string().max(256)).min(1),
   model: z.string().min(1).max(256),
   prompt: z.string().min(1).max(32768),
   systemPrompt: z.string().max(8192).optional(),

@@ -1,4 +1,5 @@
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { playgroundFixture } from './playground-fixture';
 import { DesktopPreferencesSchema } from '@/modules/config/service-config.schema';
 import { serviceConfigPlaceholder } from '@/modules/config/settings-change';
 import { DEFAULT_CLOUD_ACCOUNT_ALERT_POLICY } from '@/modules/cloud-account/services/cloud-account-alert-policy.schema';
@@ -15,6 +16,7 @@ import type { DeviceProfilesSnapshot } from '@/modules/identity-profile/types';
 import type { LocalAccountImportPreview } from '@/modules/cloud-account/local-import/actions';
 
 const fixtureTime = Date.now();
+const playgroundChecks = new URLSearchParams(window.location.search).has('playground');
 const dialogChecks = new URLSearchParams(window.location.search).has('dialogs');
 let profileReads = 0;
 let configReads = 0;
@@ -37,16 +39,19 @@ const deviceSnapshot: DeviceProfilesSnapshot = {
     isCurrent: i === 0,
   })),
 };
-export const accounts: CloudAccountView[] = Array.from({ length: 100 }, (_, index) => ({
-  id: `synthetic-${index}`,
-  provider: 'google',
-  email: `synthetic-${index}@example.com`,
-  name: `Synthetic ${index}`,
-  created_at: Math.floor(fixtureTime / 1000) - (100 - index) * 60,
-  last_used: Math.floor(fixtureTime / 1000) - (100 - index) * 60,
-  proxy_configured: false,
-  quota: { models: { 'gemini-3-pro': { percentage: 80, resetTime: '2099-01-01T00:00:00Z' } } },
-}));
+export const accounts: CloudAccountView[] = Array.from(
+  { length: playgroundChecks ? 12 : 100 },
+  (_, index) => ({
+    id: `synthetic-${index}`,
+    provider: 'google',
+    email: `synthetic-${index}@example.com`,
+    name: `Synthetic ${index}`,
+    created_at: Math.floor(fixtureTime / 1000) - (100 - index) * 60,
+    last_used: Math.floor(fixtureTime / 1000) - (100 - index) * 60,
+    proxy_configured: false,
+    quota: { models: { 'gemini-3-pro': { percentage: 80, resetTime: '2099-01-01T00:00:00Z' } } },
+  }),
+);
 export const trafficItems: TrafficAuditSummary[] = Array.from({ length: 50 }, (_, index) => ({
   id: `synthetic-request-${index}`,
   recordKind: 'request',
@@ -277,7 +282,13 @@ export const ipc = {
       listOAuthClients: async () => [],
     },
     gateway: {
-      status: async () => ({ running: false }),
+      status: async () => ({
+        running: playgroundChecks,
+        port: 8045,
+        base_url: 'http://127.0.0.1:8045',
+        active_accounts: 12,
+      }),
+      playground: playgroundFixture,
       agentTools: {
         status: async ({ tool }: { tool: AgentTool }) => ({
           tool,

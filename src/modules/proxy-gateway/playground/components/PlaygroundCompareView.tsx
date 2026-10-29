@@ -45,9 +45,7 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
   availableModels = DEFAULT_PLAYGROUND_MODELS,
 }) => {
   const { t } = useTranslation();
-  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
-    accounts.filter((a) => a.status !== 'expired').map((a) => a.id),
-  );
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const toggleAccount = (id: string) => {
     setSelectedIds((prev) =>
@@ -102,9 +100,8 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
             const isSelected = selectedIds.includes(acc.id);
             const quota = acc.quota?.models?.[selectedModel]?.percentage;
             return (
-              <div
+              <label
                 key={acc.id}
-                onClick={() => toggleAccount(acc.id)}
                 className={`flex cursor-pointer items-center justify-between rounded-md border p-2.5 text-xs transition-colors ${
                   isSelected
                     ? 'border-primary/50 bg-primary/5 dark:bg-primary/10'
@@ -115,6 +112,7 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => toggleAccount(acc.id)}
+                    aria-label={acc.name || acc.email}
                     className="shrink-0"
                   />
                   <div className="truncate">
@@ -130,7 +128,7 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
                     {quota}%
                   </Badge>
                 )}
-              </div>
+              </label>
             );
           })}
         </div>

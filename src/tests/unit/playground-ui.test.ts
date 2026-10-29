@@ -33,6 +33,7 @@ import { PlaygroundDualView } from '@/modules/proxy-gateway/playground/component
 import { PlaygroundAccountBenchmark } from '@/modules/proxy-gateway/playground/components/PlaygroundAccountBenchmark';
 import { PlaygroundPage } from '@/modules/proxy-gateway/playground/PlaygroundPage';
 import { PlaygroundResponseCard } from '@/modules/proxy-gateway/playground/components/PlaygroundResponseCard';
+import { PlaygroundCompareView } from '@/modules/proxy-gateway/playground/components/PlaygroundCompareView';
 
 const i18n = createInstance();
 const account: CloudAccountView = {
@@ -79,6 +80,72 @@ afterEach(() => {
 });
 
 describe('Playground lifecycle', () => {
+  it('starts unselected and compares all selected accounts beyond ten', () => {
+    const accounts = Array.from({ length: 12 }, (_, index) => ({
+      ...account,
+      id: 'account-' + index,
+      email: 'account-' + index + '@example.com',
+    }));
+    const compare = vi.fn();
+    mount(
+      createElement(PlaygroundCompareView, {
+        accounts,
+        selectedModel: 'gemini-3-flash',
+        onSelectModel: vi.fn(),
+        prompt: 'Hi',
+        onChangePrompt: vi.fn(),
+        isLoading: false,
+        onRunCompare: compare,
+        compareResults: [],
+        baseUrl: 'http://localhost:8045',
+      }),
+    );
+    expect(screen.queryAllByRole('checkbox', { checked: true })).toHaveLength(0);
+    expect(
+      screen
+        .getByRole('button', { name: en.playground['run-comparison'] })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: en.playground['select-all'] }));
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(12);
+    fireEvent.click(screen.getByRole('button', { name: en.playground['run-comparison'] }));
+    expect(compare).toHaveBeenLastCalledWith(accounts.map((entry) => entry.id));
+    fireEvent.click(screen.getByRole('checkbox', { name: accounts[10].email }));
+    fireEvent.click(screen.getByRole('button', { name: en.playground['run-comparison'] }));
+    expect(compare).toHaveBeenLastCalledWith(
+      accounts.filter((_, index) => index !== 10).map((entry) => entry.id),
+    );
+    fireEvent.click(screen.getByRole('button', { name: en.playground['clear-all'] }));
+    expect(screen.getAllByRole('checkbox', { checked: false })).toHaveLength(12);
+    expect(
+      screen
+        .getByRole('button', { name: en.playground['run-comparison'] })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
+  it('toggles each comparison account once through its checkbox or label', () => {
+    mount(
+      createElement(PlaygroundCompareView, {
+        accounts: [account],
+        selectedModel: 'gemini-3-flash',
+        onSelectModel: vi.fn(),
+        prompt: 'Hi',
+        onChangePrompt: vi.fn(),
+        isLoading: false,
+        onRunCompare: vi.fn(),
+        compareResults: [],
+        baseUrl: 'http://localhost:8045',
+      }),
+    );
+    const checkbox = screen.getByRole('checkbox');
+    expect(checkbox.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(checkbox);
+    expect(checkbox.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByText(account.email));
+    expect(checkbox.getAttribute('aria-checked')).toBe('false');
+  });
+
   it('cancels an outstanding benchmark jitter timer on unmount', async () => {
     mocks.execute.mockResolvedValue(result('first'));
     const view = mount(createElement(PlaygroundAccountBenchmark, { accounts: [account] }));

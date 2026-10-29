@@ -39,6 +39,15 @@ Introduce an in-app **Model Playground** accessible via the `/playground` route 
 
 ## Consequences
 
+Playground operations follow the gateway's selected runtime owner rather than reading Electron's
+embedded NestJS state in every mode. Standalone execution uses private core RPC, with schemas
+at both process boundaries and cancellation forwarded to the owner HTTP request. The core retains
+its API key and configured request timeout, rejects new work during shutdown and drains admitted
+generation before releasing ownership. Reusing the existing adapter and core admission/drain
+mechanism avoids a second gateway-selection policy. An unavailable core remains an error; there
+is no embedded fallback. Request limits are scoped to the two Playground RPC routes so long
+UTF-8 prompts do not widen unrelated management methods.
+
 - Targeting overrides account choice, not account eligibility: exclusions, cooldowns, model limits
   and depleted quota remain enforced. Image scheduling waits for the pinned account's capacity.
 - Dual and benchmark runs own an AbortController. Stop and unmount abort the IPC/HTTP call; each
@@ -56,8 +65,13 @@ Introduce an in-app **Model Playground** accessible via the `/playground` route 
 
 ## Verification
 
-- `src/tests/unit/account-lease-target-account.test.ts`: 5 tests covering targeted account leasing by ID, email matching, nonexistent accounts, model mismatch, and validation blocking.
-- `src/tests/unit/playground-service.test.ts`: 5 tests covering 503 gateway offline handling, successful execution metrics & header parsing, precise generation/E2E tokens/sec calculation, 429 rate limit errors, and concurrent multi-account comparison.
+- `src/tests/unit/account-lease-target-account.test.ts`: targeted account eligibility, email matching and validation blocking.
+- `src/tests/unit/playground-service.test.ts`: offline handling, response validation, metric calculation, cancellation, 429 errors and comparison.
+- `src/tests/unit/gateway-adapter.test.ts`: selected-owner execution, long UTF-8 comparisons and no embedded fallback.
+- `src/tests/unit/core-rpc.test.ts`: private transport cancellation and byte-limit rejection.
+- `src/tests/unit/playground-owner-lifecycle.test.ts`: shutdown admission and draining.
+- `src/tests/unit/playground-ui.test.ts`: comparison selection and request lifecycle behavior.
+- `src/tests/performance/playground-workspace.spec.mts`: isolated Electron coverage of initial model selection, empty initial account selection, select-all beyond ten accounts, partial failures, cancellation, retry and desktop themes with synthetic IPC data.
 - `pnpm run type-check`: clean pass with zero errors.
 - `pnpm exec eslint`: clean pass with zero errors.
 - `pnpm exec prettier`: formatted.

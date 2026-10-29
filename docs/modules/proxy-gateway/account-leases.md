@@ -29,12 +29,28 @@ the serving account.
 
 ## Playground execution
 
-The Playground uses the gateway's non-streaming Chat Completions endpoint. Invalid completion
-payloads are reported as failures rather than successful empty responses. Requests use the configured
-gateway request timeout and accept cancellation through the typed IPC call. Stopping Dual Models
+The Playground uses the gateway's non-streaming Chat Completions endpoint. Execution follows the
+selected gateway owner: embedded mode runs locally, while standalone mode delegates through
+private core RPC. The core reads its own gateway state and API key; credentials do not cross the
+control transport. Remote transport failures never fall back to the embedded gateway.
+Playground RPC accepts up to 256 KiB of encoded request data and 16 MiB of response data, including
+UTF-8 prompt text, per-account request snapshots and RPC envelopes; other RPC methods retain their
+existing limits. Oversized responses fail explicitly. Generation uses the owner's configured
+request timeout rather than the short status-read timeout. Core shutdown closes admission and drains
+already admitted Playground requests before releasing the profile.
+
+Invalid completion payloads are reported as failures rather than successful empty responses.
+Requests accept cancellation through the typed IPC call. Stopping Dual Models
 or Benchmark, or leaving either tab, cancels its pending calls and prevents stale results from
 changing a later run. Benchmark also cancels its jitter timer and dispatches no further probes.
 Cancellation cannot recover quota already consumed by an upstream request.
+
+Multi-account comparison starts with no selected accounts. Users can select individual accounts
+or all listed accounts; there is no account-count cap in the UI or IPC schema. The count displays
+the current selection, and execution remains disabled until at least one account is selected.
+Selected accounts execute concurrently; request and response byte limits and the owner's
+generation timeout still apply.
+The initial model is taken from the displayed model catalog rather than a separate hardcoded ID.
 
 Starting the gateway from Playground uses the same first-use account-risk acknowledgement as
 API Proxy. A returned start failure remains a failure, including an occupied port.

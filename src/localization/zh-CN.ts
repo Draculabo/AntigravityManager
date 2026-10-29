@@ -232,6 +232,9 @@ const zhCn = {
   },
   playground: {
     ...en.playground,
+    'select-all': '全选',
+    'clear-all': '清空选择',
+    'selected-count': '已选择 {{count}} 个账号',
     title: '模型演练场 (Playground)',
     description: '多账号交互式测试模型响应、延迟与思考过程。',
     'tab-single': '单个测试',

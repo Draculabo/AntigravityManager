@@ -231,3 +231,4 @@ export class PlaygroundService {
 }
 
 export const playgroundService = new PlaygroundService();
+export type PlaygroundOperations = Pick<PlaygroundService, 'execute' | 'compare'>;

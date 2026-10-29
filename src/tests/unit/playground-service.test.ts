@@ -46,27 +46,32 @@ describe('PlaygroundService', () => {
     expect(forwardedSignal?.aborted).toBe(true);
   });
 
-  it('returns validated comparison results through the public router', async () => {
-    vi.spyOn(mainServer, 'getNestServerStatus').mockResolvedValue({
-      running: true,
-      port: 8045,
-      base_url: 'http://localhost:8045',
-      active_accounts: 1,
-    });
-    vi.spyOn(axios, 'post').mockResolvedValue({
-      status: 200,
-      headers: {},
-      data: { choices: [{ message: { content: 'Hello' } }] },
-    });
-    const client = createRouterClient(createPlaygroundRouter(new PlaygroundService()));
-    const response = await client.compare({
-      model: 'gemini-3-flash',
-      prompt: 'Hi',
-      accountIds: ['a', 'b'],
-    });
-    expect(response.results.map((entry) => entry.request?.accountId)).toEqual(['a', 'b']);
-    expect(response.results.every((entry) => entry.success)).toBe(true);
-  });
+  it.each([2, 12])(
+    'returns validated comparison results for %i accounts through the public router',
+    async (count) => {
+      vi.spyOn(mainServer, 'getNestServerStatus').mockResolvedValue({
+        running: true,
+        port: 8045,
+        base_url: 'http://localhost:8045',
+        active_accounts: 1,
+      });
+      vi.spyOn(axios, 'post').mockResolvedValue({
+        status: 200,
+        headers: {},
+        data: { choices: [{ message: { content: 'Hello' } }] },
+      });
+      const client = createRouterClient(createPlaygroundRouter(new PlaygroundService()));
+      const response = await client.compare({
+        model: 'gemini-3-flash',
+        prompt: 'Hi',
+        accountIds: Array.from({ length: count }, (_, index) => 'account-' + index),
+      });
+      expect(response.results.map((entry) => entry.request?.accountId)).toEqual(
+        Array.from({ length: count }, (_, index) => 'account-' + index),
+      );
+      expect(response.results.every((entry) => entry.success)).toBe(true);
+    },
+  );
 
   it.each([{}, { choices: [] }, { choices: [{ message: { content: 42 } }] }, '<html>Error</html>'])(
     'rejects malformed successful gateway payloads: %j',

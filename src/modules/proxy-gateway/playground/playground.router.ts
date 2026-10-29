@@ -5,9 +5,9 @@ import {
   PlaygroundExecuteInputSchema,
   PlaygroundExecuteResultSchema,
 } from './playground.schema';
-import { playgroundService, type PlaygroundService } from './playground.service';
+import { playgroundService, type PlaygroundOperations } from './playground.service';
 
-export function createPlaygroundRouter(service: PlaygroundService = playgroundService) {
+export function createPlaygroundRouter(service: PlaygroundOperations = playgroundService) {
   return os.router({
     execute: os
       .input(PlaygroundExecuteInputSchema)

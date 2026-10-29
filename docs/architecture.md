@@ -153,6 +153,12 @@ not imply credential rollback. See [the storage and privacy rules](modules/antig
 
 ## Runtime topology
 
+Playground execution follows the selected gateway adapter. In standalone-core mode, the desktop
+forwards typed execution and comparison inputs over private RPC; the core owns gateway status,
+API-key access, HTTP generation and shutdown draining. Cancellation propagates across both
+transports. A remote failure does not select embedded execution. See
+[Playground execution](modules/proxy-gateway/account-leases.md#playground-execution).
+
 ```plaintext
 Renderer (React, TanStack Router and Query)
     |
