@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import '@testing-library/jest-dom/vitest';
 import { render } from '@testing-library/react';
 import { test, expect } from 'vitest';
 import ToggleTheme from '@/components/shared/toggle-theme';

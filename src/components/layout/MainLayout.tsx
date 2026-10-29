@@ -11,6 +11,7 @@ import {
   ChevronRight,
   RefreshCw,
   Activity,
+  Boxes,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,11 @@ export const MainLayout: React.FC = () => {
       to: '/',
       icon: LayoutDashboard,
       label: t('nav.accounts'),
+    },
+    {
+      to: '/workspaces',
+      icon: Boxes,
+      label: t('nav.workspaces', 'Workspaces'),
     },
     {
       to: '/proxy',

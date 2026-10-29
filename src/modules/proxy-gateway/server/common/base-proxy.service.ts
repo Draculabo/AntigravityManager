@@ -14,7 +14,7 @@ import {
   type ImageRetryPenaltyMode,
   type ProxyUpstreamFailureClassification,
 } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
-import { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccount } from '@/modules/cloud-account/types';
 import {
   GenerationConstraintsService,
   type RegisteredGenerationConstraints,

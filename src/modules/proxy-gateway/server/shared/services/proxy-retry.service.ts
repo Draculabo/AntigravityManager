@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { isString } from 'lodash-es';
-import { CloudAccount } from '@/modules/cloud-account/types';
+import type { CloudAccount } from '@/modules/cloud-account/types';
 import { calculateRetryDelay, sleep } from '../../../antigravity/retry-utils';
 import {
   hasExplicitQuotaExhaustedSignal,

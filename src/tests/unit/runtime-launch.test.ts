@@ -10,7 +10,7 @@ import {
   reserveSwitch,
   runProcessOperation,
 } from '@/modules/antigravity-runtime/operation';
-import type { LaunchContext } from '@/modules/antigravity-runtime/types';
+import type { LaunchContext, RuntimeProcess } from '@/modules/antigravity-runtime/types';
 import { processError } from '@/modules/antigravity-runtime/processErrors';
 
 const mocks = vi.hoisted(() => ({
@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   assert: vi.fn(),
   wsl: vi.fn(() => false),
 }));
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
   default: { spawn: mocks.spawn, exec: mocks.exec },
   spawn: mocks.spawn,
   exec: mocks.exec,
@@ -29,6 +29,8 @@ vi.mock('child_process', () => ({
 vi.mock('@/modules/antigravity-runtime/launchContext', () => ({
   prepareLaunchContext: mocks.prepare,
   assertContextProcesses: mocks.assert,
+  filterContextProcesses: (_context: LaunchContext, processes: readonly RuntimeProcess[]) =>
+    processes,
 }));
 vi.mock('@/modules/antigravity-runtime/processObserver', () => ({
   observeProcesses: mocks.observe,
@@ -67,7 +69,7 @@ afterEach(() => {
   Object.defineProperty(process, 'platform', { value: platform, configurable: true });
 });
 
-async function settleStartup(request: Promise<void>) {
+async function settleStartup(request: Promise<unknown>) {
   await vi.advanceTimersByTimeAsync(1000);
   await request;
 }
@@ -202,7 +204,7 @@ describe('direct launch', () => {
       return [{ ...mainProcess, startTime: 1n }];
     });
     const startup = startFromContext(context);
-    const result = expect(startup).resolves.toBeUndefined();
+    const result = expect(startup).resolves.toEqual({ pid: 81234 });
     void result.catch(() => undefined);
     await vi.advanceTimersByTimeAsync(6000);
     await result;
@@ -311,7 +313,7 @@ describe('direct launch', () => {
     await settleStartup(startFromContext(mac));
     expect(mocks.spawn).toHaveBeenCalledExactlyOnceWith(
       'open',
-      ['/Custom/Antigravity IDE.app', '--args', ...mac.args],
+      ['-n', '/Custom/Antigravity IDE.app', '--args', ...mac.args],
       expect.objectContaining({ stdio: 'ignore' }),
     );
   });

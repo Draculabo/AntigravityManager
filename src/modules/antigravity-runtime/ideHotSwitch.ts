@@ -2,7 +2,7 @@ import path from 'node:path';
 import type { ProcessInfo } from '@draculabo/sysinfo-process-enhanced';
 import { hasErrorCode } from '@/shared/errors/error-guards';
 import { readNativeProcessSnapshot } from '@/shared/platform/nativeProcessQuery';
-import { assertContextProcesses } from './launchContext';
+import { assertContextProcesses, filterContextProcesses } from './launchContext';
 import { observeProcesses } from './processObserver';
 import { processError } from './processErrors';
 import { usesWindowsRuntime } from './runtimePlatform';
@@ -71,8 +71,9 @@ export async function prepareIdeHotSwitch(
   ) {
     return null;
   }
-  const mains = await observeProcesses('ide', 1000, context.executablePath);
-  assertContextProcesses(context, mains);
+  const observedMains = await observeProcesses('ide', 1000, context.executablePath);
+  assertContextProcesses(context, observedMains);
+  const mains = filterContextProcesses(context, observedMains);
   if (
     mains.length !== context.processes.length ||
     mains.some(
@@ -136,8 +137,9 @@ export async function prepareIdeHotSwitch(
     );
   };
   const assertMainsUnchanged = async (timeout: number) => {
-    const mains = await observeProcesses('ide', timeout, context.executablePath);
-    assertContextProcesses(context, mains);
+    const observed = await observeProcesses('ide', timeout, context.executablePath);
+    assertContextProcesses(context, observed);
+    const mains = filterContextProcesses(context, observed);
     if (
       mains.length !== roots.length ||
       mains.some(

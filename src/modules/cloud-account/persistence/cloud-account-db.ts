@@ -88,6 +88,34 @@ function ensureDatabaseInitialized(dbPath: string): void {
         value TEXT NOT NULL
       );
     `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS workspace_profiles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        project_path TEXT NOT NULL,
+        user_data_dir TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_launched_at INTEGER
+      );
+    `);
+
+    const wpTableInfoRaw = db.pragma('table_info(workspace_profiles)') as unknown[];
+    const wpTableInfo = parseRows(
+      TableInfoRowSchema,
+      wpTableInfoRaw,
+      'cloud.workspace_profiles.tableInfo',
+    );
+    const hasLastLaunchedAt = wpTableInfo.some((col) => col.name === 'last_launched_at');
+    if (!hasLastLaunchedAt && wpTableInfo.length > 0) {
+      db.exec('ALTER TABLE workspace_profiles ADD COLUMN last_launched_at INTEGER');
+    }
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_workspace_profiles_account_id ON workspace_profiles(account_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_profiles_created_at ON workspace_profiles(created_at);
+    `);
   } catch (error) {
     logger.error('Failed to initialize cloud database schema', error);
     throw error;
@@ -98,11 +126,11 @@ function ensureDatabaseInitialized(dbPath: string): void {
   }
 }
 
-export function getCloudDb(): {
+export function getCloudDb(customDbPath?: string): {
   raw: Database.Database;
   orm: BetterSQLite3Database<typeof drizzleSchema>;
 } {
-  const dbPath = getCloudAccountsDbPath();
+  const dbPath = customDbPath ?? getCloudAccountsDbPath();
   ensureDatabaseInitialized(dbPath);
   return openDrizzleConnection(
     dbPath,

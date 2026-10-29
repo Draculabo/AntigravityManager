@@ -72,3 +72,15 @@ export const TableInfoRowSchema = z.object({
 });
 
 export type TableInfoRow = z.infer<typeof TableInfoRowSchema>;
+
+export const WorkspaceProfileRowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  account_id: z.string(),
+  project_path: z.string(),
+  user_data_dir: z.string(),
+  created_at: z.number(),
+  last_launched_at: z.number().nullable().optional(),
+});
+
+export type WorkspaceProfileRow = z.infer<typeof WorkspaceProfileRowSchema>;

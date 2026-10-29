@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   bridge: vi.fn(),
 }));
 vi.mock('@/shared/platform/nativeProcessQuery', () => ({ readNativeProcessSnapshot: mocks.read }));
-vi.mock('@/modules/antigravity-runtime/launchContext', () => ({
+vi.mock('@/modules/antigravity-runtime/launchContext', async (original) => ({
+  ...(await original<typeof import('@/modules/antigravity-runtime/launchContext')>()),
   assertContextProcesses: mocks.assert,
 }));
 vi.mock('@/modules/antigravity-runtime/processObserver', () => ({
@@ -75,6 +76,32 @@ it('forces a verified windowless client without waiting for a window', async () 
   mocks.close.mockRejectedValue(processError('no-closable-window'));
   await stopWindowsClientForSwitch(context, [root], 500);
   expect(commands).toEqual([['/F', '/T', '/PID', '421']]);
+});
+
+it('confirms only the captured profile exits while another workspace stays alive', async () => {
+  const peer = { ...main, pid: 431, startTime: 30n };
+  rows = [main, child, peer];
+  mocks.close.mockRejectedValue(processError('no-closable-window'));
+  mocks.observe.mockImplementation(async () =>
+    rows
+      .filter((row) => row.exe === main.exe)
+      .map((row) => ({
+        pid: row.pid,
+        executablePath: row.exe,
+        startTime: row.startTime,
+        args: row.pid === peer.pid ? ['--user-data-dir=C:\\workspace-peer'] : [],
+      })),
+  );
+  mocks.exec.mockImplementation((_file, args: string[], _options, callback) => {
+    commands.push(args);
+    rows = [peer];
+    callback(null);
+  });
+  await stopWindowsClientForSwitch(context, [root], 500);
+  expect({ commands, survivors: rows }).toEqual({
+    commands: [['/F', '/T', '/PID', '421']],
+    survivors: [peer],
+  });
 });
 
 it('does not force an accepting client whose complete tree exits normally', async () => {

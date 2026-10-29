@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Toast, ToastActionElement, ToastProps } from '@/components/ui/toast';
+import { Toast, type ToastActionElement, type ToastProps } from '@/components/ui/toast';
 import { getErrorDetailsText } from '@/shared/utils/errorMessages';
 import { redactDiagnosticText } from '@/shared/observability/sentryPrivacy';
 

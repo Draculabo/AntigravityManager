@@ -37,9 +37,11 @@ const CREDENTIAL_STORE_READ_ERROR_MESSAGES: Record<CredentialStoreReadErrorCode,
 };
 
 export class CredentialStoreReadError extends Error {
-  constructor(readonly code: CredentialStoreReadErrorCode) {
+  readonly code: CredentialStoreReadErrorCode;
+  constructor(code: CredentialStoreReadErrorCode) {
     super(CREDENTIAL_STORE_READ_ERROR_MESSAGES[code]);
     this.name = 'CredentialStoreReadError';
+    this.code = code;
   }
 }
 

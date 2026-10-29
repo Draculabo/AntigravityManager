@@ -12,6 +12,7 @@ import { configRouter } from '@/modules/config/ipc/router';
 import { gatewayAuditMiddleware, gatewayRouter } from '@/modules/proxy-gateway/ipc/router';
 import { antigravityRuntimeRouter } from '@/modules/antigravity-runtime/ipc/router';
 import { appShellRouter } from '@/modules/app-shell/ipc/router';
+import { workspaceRouter } from '@/modules/workspace/ipc/router';
 
 import { ORPCError, os } from '@orpc/server';
 import { isString } from 'lodash-es';
@@ -200,4 +201,5 @@ export const router = os
     cloud: cloudRouter,
     config: configRouter,
     gateway: gatewayRouter,
+    workspace: workspaceRouter,
   });

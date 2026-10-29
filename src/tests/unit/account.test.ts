@@ -280,6 +280,7 @@ describe('Account Handler', () => {
     startMock.mockImplementationOnce(async () => {
       firstStartEntered();
       await firstStartBlocker;
+      return { pid: 1234 };
     });
 
     const firstSwitch = switchAccount(account.id);
@@ -329,6 +330,7 @@ describe('Account Handler', () => {
     vi.mocked(startAntigravity).mockImplementationOnce(async () => {
       startEntered();
       await startBlocker;
+      return { pid: 1234 };
     });
 
     const switchPromise = switchAccount(account.id);
@@ -368,6 +370,7 @@ describe('Account Handler', () => {
     vi.mocked(startAntigravity).mockImplementationOnce(async () => {
       startEntered();
       await startBlocker;
+      return { pid: 1234 };
     });
 
     const switchPromise = switchAccount(account.id);
