@@ -266,6 +266,20 @@ const fr = {
       identity: 'Identité',
       code: 'TypeScript',
     },
+    'preset-prompts': {
+      hello: 'Dis bonjour, indique le nom de ton modèle et résume ton rôle en une courte phrase.',
+      reasoning:
+        'Il y a 3 pommes sur une table. Tu en prends 2. Combien de pommes as-tu ? Raisonne étape par étape.',
+      identity:
+        'Quels sont ta version exacte, ta date limite de connaissances et ton fournisseur ?',
+      code: 'Écris une fonction debounce en TypeScript avec des génériques et clearTimeout.',
+    },
+    'default-prompt':
+      'Dis bonjour, indique le nom exact de ton modèle et raconte une courte blague.',
+    'dual-default-prompt':
+      'Explique la différence entre le verrouillage optimiste et pessimiste avec une analogie concise de la vie quotidienne.',
+    'benchmark-default-prompt':
+      'Écris un slogan de deux lignes rimées sur la programmation et cite un avantage majeur de l’IA.',
     'advanced-settings': 'Paramètres avancés',
     'system-prompt': 'Prompt système',
     'system-prompt-placeholder':
@@ -286,6 +300,7 @@ const fr = {
     latency: 'Latence',
     ttft: 'TTFT',
     'tokens-total': 'Tokens',
+    'http-error': 'Erreur {{status}}',
     'compare-title': 'Comparer les comptes',
     'compare-desc':
       'Envoyez le même prompt à plusieurs comptes en parallèle pour comparer latence et réponses.',
@@ -324,6 +339,11 @@ const fr = {
       'Aperçu des performances affichant latence, vitesse de génération, débit E2E et TTFT.',
     'copy-markdown': 'Copier le rapport Markdown',
     'report-copied': 'Rapport copié dans le presse-papier',
+    'report-title': 'Résultats des tests pour {{account}}',
+    'report-tested': 'Modèles testés',
+    'report-passed': 'Réussis',
+    'report-failed': 'Échoués',
+    'report-tokens': 'Tokens (entrée/sortie)',
     'gen-speed': 'Vitesse gén.',
     'e2e-speed': 'Vitesse E2E',
     'seconds-short': 's',
@@ -353,6 +373,7 @@ const fr = {
     'model-b': 'Modèle B',
     'run-dual': 'Comparer les deux modèles',
     'running-dual': 'Requête en cours...',
+    'dual-stopped': 'Comparaison des deux modèles arrêtée.',
     'dual-awaiting': 'Configurez le modèle A et le modèle B, puis cliquez sur Comparer.',
     'comparison-summary': 'Résumé de la comparaison',
     'dual-speed-diff': '{{winner}} était {{diff}} tok/s plus rapide en génération',

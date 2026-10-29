@@ -1,7 +1,7 @@
 export interface PromptPreset {
   id: string;
   titleKey: string;
-  prompt: string;
+  promptKey: string;
   systemPrompt?: string;
 }
 
@@ -9,23 +9,22 @@ export const PLAYGROUND_PRESETS: PromptPreset[] = [
   {
     id: 'hello',
     titleKey: 'playground.presets.hello',
-    prompt: 'Say hello, state your model name, and summarize your purpose in one short sentence.',
+    promptKey: 'playground.preset-prompts.hello',
   },
   {
     id: 'reasoning',
     titleKey: 'playground.presets.reasoning',
-    prompt:
-      'There are 3 apples on a table. You take away 2. How many apples do you have? Think step by step.',
+    promptKey: 'playground.preset-prompts.reasoning',
   },
   {
     id: 'identity',
     titleKey: 'playground.presets.identity',
-    prompt: 'What is your exact model version, knowledge cutoff date, and provider?',
+    promptKey: 'playground.preset-prompts.identity',
   },
   {
     id: 'code',
     titleKey: 'playground.presets.code',
-    prompt: 'Write a TypeScript debounce function with proper generics and clearTimeout.',
+    promptKey: 'playground.preset-prompts.code',
   },
 ];
 

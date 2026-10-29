@@ -36,16 +36,27 @@ test('Playground selection, cancellation and retry work in an isolated desktop w
     page.on('pageerror', (error) => errors.push(error.message));
     await page.getByRole('link', { name: '演练场', exact: true }).click({ timeout: 60_000 });
     await expect(page.getByRole('heading', { name: '模型演练场 (Playground)' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toContainText(
+    await expect(page.getByRole('combobox', { name: '模型', exact: true })).toContainText(
       'gemini-3-pro',
     );
+    await expect(page.getByLabel('提示词', { exact: true })).toHaveValue(
+      '请打个招呼，说明你的确切模型名称，再讲一个简短的笑话。',
+    );
+    await page.getByRole('button', { name: '打招呼', exact: true }).click();
+    await expect(page.getByLabel('提示词', { exact: true })).toHaveValue(
+      '请打个招呼，说明你的模型名称，并用一句简短的话概括你的用途。',
+    );
+    await page.getByRole('button', { name: '高级参数', exact: true }).click();
+    await expect(page.getByLabel('系统提示词', { exact: true })).toHaveAttribute(
+      'placeholder',
+      '可选的系统指令，例如：你是一位乐于助人的助手。',
+    );
+    await page.screenshot({ path: testInfo.outputPath('single-zh.png'), animations: 'disabled' });
     await page.getByRole('tab', { name: '多账号对比', exact: true }).click();
     const panel = page.getByRole('tabpanel');
     await expect(panel.getByRole('checkbox', { checked: true })).toHaveCount(0);
     await expect(panel.getByText('已选择 0 个账号', { exact: true })).toBeVisible();
-    await expect(
-      panel.getByRole('button', { name: 'Run on Selected Accounts', exact: true }),
-    ).toBeDisabled();
+    await expect(panel.getByRole('button', { name: '测试所选账号', exact: true })).toBeDisabled();
     const first = panel.getByRole('checkbox', { name: 'Synthetic 0', exact: true });
     const extra = panel.getByRole('checkbox', { name: 'Synthetic 10', exact: true });
     await expect(extra).toBeEnabled();
@@ -66,11 +77,11 @@ test('Playground selection, cancellation and retry work in an isolated desktop w
     await expect(panel.getByRole('checkbox', { checked: true })).toHaveCount(0);
     await panel.getByRole('button', { name: '全选', exact: true }).click();
     await page.evaluate(() => window.__playgroundFixture.setFailedAccount('synthetic-2'));
-    await panel.getByRole('button', { name: 'Run on Selected Accounts', exact: true }).click();
+    await panel.getByRole('button', { name: '测试所选账号', exact: true }).click();
     await expect(panel.getByText('Synthetic account rate limit', { exact: true })).toBeVisible();
     await expect(panel.getByText(/^Synthetic answer:/)).toHaveCount(11);
     await page.evaluate(() => window.__playgroundFixture.setFailedAccount(null));
-    await panel.getByRole('button', { name: 'Run on Selected Accounts', exact: true }).click();
+    await panel.getByRole('button', { name: '测试所选账号', exact: true }).click();
     await expect(panel.getByText('Synthetic account rate limit', { exact: true })).toHaveCount(0);
     await expect(panel.getByText(/^Synthetic answer:/)).toHaveCount(12);
     await page.getByRole('heading', { name: '模型演练场 (Playground)' }).scrollIntoViewIfNeeded();
@@ -102,9 +113,10 @@ test('Playground selection, cancellation and retry work in an isolated desktop w
     await page.evaluate(() => window.__playgroundFixture.setDeferred(true));
     await page.getByRole('button', { name: '对比两款模型', exact: true }).click();
     await expect.poll(() => page.evaluate(() => window.__playgroundFixture.pendingCount)).toBe(2);
-    await page.getByRole('button', { name: 'Stop', exact: true }).click();
+    await page.getByRole('button', { name: '停止', exact: true }).click();
+    await expect(page.getByText('已停止双模型对比。', { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.__playgroundFixture.cancelledCount)).toBe(2);
-    await page.getByLabel('Prompt', { exact: true }).fill('Current run');
+    await page.getByLabel('提示词', { exact: true }).fill('Current run');
     await page.getByRole('button', { name: '对比两款模型', exact: true }).click();
     await expect.poll(() => page.evaluate(() => window.__playgroundFixture.pendingCount)).toBe(2);
     await page.evaluate(() => window.__playgroundFixture.finish());
@@ -113,6 +125,15 @@ test('Playground selection, cancellation and retry work in an isolated desktop w
     await expect.poll(() => page.evaluate(() => window.__playgroundFixture.pendingCount)).toBe(2);
     await page.getByRole('tab', { name: '多账号对比', exact: true }).click();
     await expect.poll(() => page.evaluate(() => window.__playgroundFixture.cancelledCount)).toBe(4);
+    await page.getByRole('tab', { name: '账号模型评测', exact: true }).click();
+    await expect(page.getByLabel('评测提示词', { exact: true })).toHaveValue(
+      '请写两行关于编程的押韵标语，并说明人工智能的一个主要优势。',
+    );
+    await expect(page.getByRole('button', { name: '开始评测', exact: true })).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath('benchmark-zh.png'),
+      animations: 'disabled',
+    });
     expect(errors).toEqual([]);
   } finally {
     await app?.close();

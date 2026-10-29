@@ -5,6 +5,8 @@ import { I18nextProvider } from 'react-i18next';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '@/localization/en';
+import zhCN from '@/localization/zh-CN';
+import { buildBenchmarkReport } from '@/modules/proxy-gateway/playground/components/benchmark/benchmark-export';
 import type { PlaygroundExecuteResult } from '@/modules/proxy-gateway/playground/playground.schema';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 
@@ -68,11 +70,16 @@ function mount(element: ReturnType<typeof createElement>) {
   return render(createElement(I18nextProvider, { i18n }, element));
 }
 beforeAll(async () => {
-  await i18n.init({ lng: 'en', resources: { en: { translation: en } } });
+  await i18n.init({
+    lng: 'en',
+    fallbackLng: 'en',
+    resources: { en: { translation: en }, 'zh-CN': { translation: zhCN } },
+  });
 });
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetAllMocks();
   localStorage.clear();
+  await i18n.changeLanguage('en');
 });
 afterEach(() => {
   cleanup();
@@ -80,6 +87,70 @@ afterEach(() => {
 });
 
 describe('Playground lifecycle', () => {
+  it.each(['en', 'zh-CN'])(
+    'uses %s for default and preset prompts without overwriting edits',
+    async (language) => {
+      await i18n.changeLanguage(language);
+      const copy = language === 'zh-CN' ? zhCN.playground : en.playground;
+      mount(
+        createElement(PlaygroundDualView, {
+          accounts: [account],
+          baseUrl: 'http://localhost:8045',
+        }),
+      );
+      const prompt = screen.getByRole('textbox', { name: copy.prompt });
+      expect(prompt.getAttribute('value') ?? prompt.textContent).toBe(copy['dual-default-prompt']);
+      fireEvent.click(screen.getByRole('button', { name: copy.presets.reasoning }));
+      expect(prompt.textContent).toBe(copy['preset-prompts'].reasoning);
+      fireEvent.change(prompt, { target: { value: 'My custom prompt' } });
+      await act(async () => {
+        await i18n.changeLanguage(language === 'zh-CN' ? 'en' : 'zh-CN');
+      });
+      expect(prompt.textContent).toBe('My custom prompt');
+    },
+  );
+
+  it('restores the Chinese benchmark prompt and builds a localized report with raw model names', async () => {
+    await i18n.changeLanguage('zh-CN');
+    mount(createElement(PlaygroundAccountBenchmark, { accounts: [account] }));
+    const prompt = screen.getByRole('textbox', { name: '评测提示词' });
+    expect(prompt.textContent).toBe(zhCN.playground['benchmark-default-prompt']);
+    fireEvent.change(prompt, { target: { value: 'Custom probe' } });
+    fireEvent.click(screen.getByRole('button', { name: '恢复默认提示词' }));
+    expect(prompt.textContent).toBe(zhCN.playground['benchmark-default-prompt']);
+    expect(
+      buildBenchmarkReport(
+        [
+          {
+            modelId: 'model-a',
+            modelName: 'Model | A',
+            status: 'success',
+            httpStatus: 200,
+            ttftMs: 250,
+            generationTokensPerSec: 40,
+            e2eTokensPerSec: 30,
+            promptTokens: 10,
+            completionTokens: 20,
+          },
+          { modelId: 'model-b', modelName: 'Model B', status: 'error', httpStatus: 429 },
+          { modelId: 'model-c', modelName: 'Model C', status: 'skipped' },
+        ],
+        'Test | Account & Co',
+        i18n.t,
+      ),
+    ).toBe(
+      [
+        '### Test \\| Account & Co 的模型评测结果',
+        '**已测模型:** 2 | **成功:** 1 | **失败:** 1',
+        '',
+        '| 模型 | 状态 | 首字耗时 (秒) | 生成速度 (tok/s) | 端到端速度 (tok/s) | Token 数（输入 / 输出） |',
+        '|---|---|---|---|---|---|',
+        '| Model \\| A | HTTP 200 | 0.3 | 40 | 30 | 10 / 20 |',
+        '| Model B | HTTP 429 | - | - | - | 0 / 0 |',
+      ].join('\n'),
+    );
+  });
+
   it('starts unselected and compares all selected accounts beyond ten', () => {
     const accounts = Array.from({ length: 12 }, (_, index) => ({
       ...account,

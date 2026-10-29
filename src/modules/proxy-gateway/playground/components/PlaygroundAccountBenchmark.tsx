@@ -28,9 +28,6 @@ interface PlaygroundAccountBenchmarkProps {
   availableModels?: Array<{ id: string; name: string }>;
 }
 
-const DEFAULT_PROMPT =
-  'Write a 2-line rhyming slogan about coding and state 1 key advantage of AI.';
-
 /** An abortable pause owns its timer and listener, including navigation during jitter. */
 function pause(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -75,7 +72,7 @@ export function PlaygroundAccountBenchmark({
       setSelection({ accountId: account.id, ids });
     }
   };
-  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
+  const [prompt, setPrompt] = useState(() => t('playground.benchmark-default-prompt'));
   const [minDelay, setMinDelay] = useState(500);
   const [maxDelay, setMaxDelay] = useState(1200);
   const [reasoning, setReasoning] = useState<PlaygroundReasoningEffort>('default');
@@ -302,7 +299,7 @@ export function PlaygroundAccountBenchmark({
                 size="sm"
                 variant="ghost"
                 disabled={isRunning}
-                onClick={() => setPrompt(DEFAULT_PROMPT)}
+                onClick={() => setPrompt(t('playground.benchmark-default-prompt'))}
               >
                 {t('playground.reset-prompt')}
               </Button>

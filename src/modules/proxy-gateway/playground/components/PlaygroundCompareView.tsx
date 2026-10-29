@@ -62,7 +62,7 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
   };
 
   const applyPreset = (preset: PromptPreset) => {
-    onChangePrompt(preset.prompt);
+    onChangePrompt(t(preset.promptKey));
   };
 
   return (

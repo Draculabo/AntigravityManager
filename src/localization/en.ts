@@ -282,6 +282,18 @@ const en = {
       identity: 'Identity',
       code: 'TypeScript',
     },
+    'preset-prompts': {
+      hello: 'Say hello, state your model name, and summarize your purpose in one short sentence.',
+      reasoning:
+        'There are 3 apples on a table. You take away 2. How many apples do you have? Think step by step.',
+      identity: 'What is your exact model version, knowledge cutoff date, and provider?',
+      code: 'Write a TypeScript debounce function with proper generics and clearTimeout.',
+    },
+    'default-prompt': 'Say hello, state your exact model name, and tell me a short joke.',
+    'dual-default-prompt':
+      'Explain the difference between optimistic locking and pessimistic locking with a concise real-world analogy.',
+    'benchmark-default-prompt':
+      'Write a 2-line rhyming slogan about coding and state 1 key advantage of AI.',
     'advanced-settings': 'Advanced Parameters',
     'system-prompt': 'System Prompt',
     'system-prompt-placeholder':
@@ -302,6 +314,7 @@ const en = {
     latency: 'Latency',
     ttft: 'TTFT',
     'tokens-total': 'Tokens',
+    'http-error': 'Error {{status}}',
     'compare-title': 'Compare Accounts',
     'compare-desc':
       'Send the same prompt to multiple accounts in parallel to compare latency and output.',
@@ -340,6 +353,11 @@ const en = {
       'Performance breakdown showing latency, generation speed, E2E throughput, and TTFT.',
     'copy-markdown': 'Copy Markdown Report',
     'report-copied': 'Report copied to clipboard',
+    'report-title': 'Benchmark Results for {{account}}',
+    'report-tested': 'Tested Models',
+    'report-passed': 'Passed',
+    'report-failed': 'Failed',
+    'report-tokens': 'Tokens (In/Out)',
     'gen-speed': 'Gen Speed',
     'e2e-speed': 'E2E Speed',
     'seconds-short': 's',
@@ -368,6 +386,7 @@ const en = {
     'model-b': 'Model B',
     'run-dual': 'Run Dual Comparison',
     'running-dual': 'Running both models...',
+    'dual-stopped': 'Dual comparison stopped.',
     'dual-awaiting': 'Configure Model A and Model B, then click Run to compare.',
     'comparison-summary': 'Comparison Summary',
     'dual-speed-diff': '{{winner}} was {{diff}} tok/s faster in generation',

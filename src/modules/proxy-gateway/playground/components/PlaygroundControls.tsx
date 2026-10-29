@@ -82,7 +82,7 @@ export const PlaygroundControls: React.FC<PlaygroundControlsProps> = ({
   };
 
   const applyPreset = (preset: PromptPreset) => {
-    onChangePrompt(preset.prompt);
+    onChangePrompt(t(preset.promptKey));
     if (preset.systemPrompt !== undefined) {
       onChangeSystemPrompt(preset.systemPrompt);
     }

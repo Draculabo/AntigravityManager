@@ -51,9 +51,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
   const { toast } = useToast();
 
   // Shared Prompt & Parameters
-  const [prompt, setPrompt] = useState<string>(
-    'Explain the difference between optimistic locking and pessimistic locking with a concise real-world analogy.',
-  );
+  const [prompt, setPrompt] = useState<string>(() => t('playground.dual-default-prompt'));
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.7);
   const [maxTokens, setMaxTokens] = useState<number>(2048);
@@ -108,7 +106,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
   };
 
   const applyPreset = (preset: PromptPreset) => {
-    setPrompt(preset.prompt);
+    setPrompt(t(preset.promptKey));
     if (preset.systemPrompt !== undefined) {
       setSystemPrompt(preset.systemPrompt);
     }

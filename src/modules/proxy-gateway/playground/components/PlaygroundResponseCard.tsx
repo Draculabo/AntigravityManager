@@ -86,7 +86,7 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
               variant={result.success ? 'default' : 'destructive'}
               className="px-2 py-0.5 text-xs font-medium"
             >
-              {result.success ? '200 OK' : `Error ${result.status}`}
+              {result.success ? '200 OK' : t('playground.http-error', { status: result.status })}
             </Badge>
 
             <div className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">

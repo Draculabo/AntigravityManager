@@ -43,9 +43,7 @@ export const PlaygroundPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'single' | 'compare' | 'benchmark' | 'dual'>('single');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('auto');
   const [selectedModel, setSelectedModel] = useState<string>(() => availableModels[0]?.id ?? '');
-  const [prompt, setPrompt] = useState<string>(
-    'Say hello, state your exact model name, and tell me a short joke.',
-  );
+  const [prompt, setPrompt] = useState<string>(() => t('playground.default-prompt'));
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.7);
   const [maxTokens, setMaxTokens] = useState<number>(2048);

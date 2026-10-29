@@ -95,7 +95,7 @@ export function BenchmarkResults({
             disabled={!successful.length && !failed.length}
             onClick={async () => {
               try {
-                await navigator.clipboard.writeText(buildBenchmarkReport(rows, accountName));
+                await navigator.clipboard.writeText(buildBenchmarkReport(rows, accountName, t));
                 setCopyError(false);
               } catch {
                 setCopyError(true);
