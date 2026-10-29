@@ -3,6 +3,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { z } from 'zod';
 
 import { TrafficAuditRepository } from './traffic-audit.repository';
+import { createTrafficAuditWorkerDispatcher } from './traffic-audit-worker-dispatcher';
 import {
   TrafficAuditWorkerCommandSchema,
   TrafficAuditWorkerMessageSchema,
@@ -15,6 +16,7 @@ if (!port) {
 }
 
 const repository = new TrafficAuditRepository(WorkerDataSchema.parse(workerData).databasePath);
+const dispatch = createTrafficAuditWorkerDispatcher(repository, (reply) => port.postMessage(reply));
 
 port.on('message', (value: unknown) => {
   const envelope = TrafficAuditWorkerMessageSchema.safeParse(value);
@@ -26,7 +28,7 @@ port.on('message', (value: unknown) => {
       operation: envelope.data.operation,
       payload: envelope.data.payload,
     });
-    port.postMessage({ id: envelope.data.id, result: repository.execute(command) });
+    dispatch(envelope.data.id, command);
   } catch (error) {
     port.postMessage({
       error: error instanceof Error ? error.message : String(error),

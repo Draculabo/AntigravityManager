@@ -1,8 +1,9 @@
 export function isAuditManagementIpc(path: string): boolean {
   return (
-    path.startsWith('proc/') ||
-    path.startsWith('gateway/status') ||
-    path.startsWith('gateway/modelAvailability') ||
+    path === 'proc/getOperation' ||
+    path === 'proc/isProcessRunning' ||
+    path === 'gateway/status' ||
+    path === 'gateway/modelAvailability' ||
     path.startsWith('gateway/audit') ||
     path.startsWith('gateway/thought') ||
     path.startsWith('config/') ||

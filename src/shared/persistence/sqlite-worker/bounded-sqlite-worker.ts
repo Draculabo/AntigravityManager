@@ -30,6 +30,8 @@ interface WorkerReply {
   error?: string;
   id: number;
   result?: unknown;
+  /** Requeue the same command without completing its promise or releasing admission usage. */
+  yielded?: true;
 }
 
 export interface SqliteWorkerQueueStats {
@@ -294,6 +296,12 @@ export class BoundedSqliteWorker {
   private handleReply(reply: WorkerReply): void {
     const pending = this.pending.get(reply.id);
     if (!pending) {
+      return;
+    }
+    if (reply.yielded && !reply.error && this.activeId === reply.id) {
+      this.activeId = null;
+      this.queues[pending.priority].push(reply.id);
+      this.pump();
       return;
     }
     this.settlePending(reply.id);

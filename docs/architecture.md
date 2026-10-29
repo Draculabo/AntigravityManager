@@ -241,6 +241,13 @@ cURL construction retains its 8 MiB replay-body limit, explicit current-key opt-
 
 The core build emits `traffic-audit.worker.js` and `thought-store.worker.js` alongside `main.cjs`, matching the Node services' worker paths. Their SQLite binary must match the standalone Node runtime; the desktop's Electron native binary is a separate runtime artifact. See [worker verification](testing/native-runtime.md#audit-and-thought-workers) for the limited native smoke coverage.
 
+The SQLite transport supports cooperative command yields. A yield returns the command to its
+existing priority queue while preserving its pending promise, ID and capacity reservation. Audit
+retention owns its continuation in the worker and serializes maintenance/configuration passes;
+ordinary reads and writes can run between committed slices. Only the final result/error completes
+the original operation. See [gateway retention](modules/proxy-gateway/security.md#proxy-traffic-and-thought-persistence)
+for pass limits and partial-state behavior.
+
 Each `BoundedSqliteWorker` instance closes terminally: new reads/writes and lazy startup are rejected as soon as closing starts. Concurrent closes share one result. Accepted commands and the shutdown acknowledgement share the two-second default deadline; termination is awaited even after timeout. Timeout, acknowledgement and termination failures remain observable through the rejected close result.
 
 Audit and Thought Store services distinguish reusable `close()` from terminal `shutdown()`. Process shutdown rejects new reads, capture, repair and configuration work, stops maintenance and gives accepted body/SSE writes, hydration and repair up to two seconds to drain. Accepted repair may finish replacing its worker during drain; once drain finishes or times out, worker access and recreation are sealed. Both stores are attempted even when the gateway was never started or is already stopped, and failed closure propagates. Core shutdown drains standalone-core IPC capabilities before terminal diagnostics and retains the profile lease on failure. Desktop exit uses the same store teardown under its existing three-second forced-exit bound, which can interrupt cleanup.

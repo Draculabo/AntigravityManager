@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   blob,
   index,
@@ -108,6 +109,9 @@ export const auditPayloads = sqliteTable(
   (table) => [
     index('idx_payload_request_created').on(table.requestId, table.createdAt),
     index('idx_payload_retention').on(table.state, table.createdAt),
+    index('idx_payload_disk_eviction')
+      .on(table.createdAt, table.id)
+      .where(sql`${table.storedBytes}>0`),
   ],
 );
 

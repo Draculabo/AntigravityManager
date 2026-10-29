@@ -21,29 +21,56 @@ function openWorker(name, workerName = 'traffic-audit') {
   const databasePath = path.join(testDirectory, `${name}.db`);
   const worker = new Worker(workerPath, { workerData: { databasePath } });
   let nextId = 0;
-  async function command(operation, payload) {
+  async function command(operation, payload, { onYield } = {}) {
     const id = ++nextId;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`${operation} timed out`)), 15_000);
-      const listener = (reply) => {
+      let settled = false;
+      const finish = (error, result) => {
+        settled = true;
+        clearTimeout(timer);
+        worker.off('message', listener);
+        worker.off('error', failed);
+        worker.off('exit', exited);
+        if (error) {
+          reject(error);
+        } else {
+          resolve(result);
+        }
+      };
+      const failed = (error) => finish(error);
+      const exited = (code) => finish(new Error(`Worker exited during ${operation}: ${code}`));
+      const timer = setTimeout(() => finish(new Error(`${operation} timed out`)), 15_000);
+      const listener = async (reply) => {
         if (reply.id !== id) {
           return;
         }
-        clearTimeout(timer);
-        worker.off('message', listener);
-        if (reply.error) {
-          reject(new Error(reply.error));
-        } else {
-          resolve(reply.result);
+        if (reply.yielded) {
+          try {
+            await onYield?.();
+            setImmediate(() => {
+              if (!settled) {
+                worker.postMessage({ id, operation, payload });
+              }
+            });
+          } catch (error) {
+            finish(error);
+          }
+          return;
         }
+        finish(reply.error ? new Error(reply.error) : null, reply.result);
       };
       worker.on('message', listener);
+      worker.on('error', failed);
+      worker.on('exit', exited);
       worker.postMessage({ id, operation, payload });
     });
   }
   async function close() {
-    await command('shutdown', null);
-    await worker.terminate();
+    try {
+      await command('shutdown', null);
+    } finally {
+      await worker.terminate();
+    }
   }
   return { close, command, databasePath };
 }

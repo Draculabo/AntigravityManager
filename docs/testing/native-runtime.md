@@ -17,6 +17,24 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 This checks real worker messages, database reopen, body paging, retention and physical disk
 reclamation. It supplements, but does not replace, live gateway/provider acceptance.
 
+For a retention-only change, run `scripts/acceptance/runtime/audit-retention-native.test.mjs`
+with the same Electron command after rebuilding the audit worker. Its disposable databases
+cover class priority, physical reclamation, preservation of newer bodies when one body meets
+the budget, reclamation of fragmented small bodies before large bodies, cursor progress across
+tied timestamps and candidate pages, and in-place index
+creation when reopening an existing schema-v4 database. Controlled yield barriers also
+verify that reads and new writes complete before the final maintenance reply and that
+concurrent clear/row-ID reuse does not remove new records. Row-limit tests also verify that
+user deletions between batches reduce the remaining eviction target. It does not establish a
+maintenance latency bound under production load.
+
+`sqlite-worker-cooperative.test.ts` exercises the real weighted scheduler with a synthetic
+thread protocol: reads precede maintenance completion, yielded work retains its capacity
+reservation, final errors propagate, and terminal close drains or times out without restarting
+the worker. `traffic-audit-worker-dispatcher.test.ts` covers serialized configuration passes,
+failed-pass release and interruption on direct shutdown. These complement the production
+SQLite worker checks; synthetic thread results alone do not establish disk reclamation.
+
 After `pnpm run build:core`, check the standalone core's built audit and Thought Store workers:
 
 ```powershell
