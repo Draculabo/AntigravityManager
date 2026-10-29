@@ -56,6 +56,17 @@ checks exercise pending-action guards, local import cancellation and partial cac
 
 ## Renderer update profiling
 
+Run `pnpm run test:performance playground-workspace.spec.mts` for Playground interaction checks
+in an isolated Electron window. It loads production components with twelve synthetic accounts
+and a controlled IPC fixture. Coverage includes the initial model selection, empty initial account
+selection, select-all and comparison of more than ten accounts, checkbox and keyboard
+selection, partial comparison failure and retry, light/dark and 900-pixel captures,
+stopping and restarting dual requests, and
+cancellation when leaving the tab. The fixture uses its own profile under the test output
+directory and closes its Electron process and preview server. It does not use real credentials,
+provider requests, persistence or the production preload. Selected-owner execution is covered
+separately by the gateway adapter and core RPC integration tests.
+
 Run `pnpm run test:performance renderer-updates.spec.mts` to measure account-page and
 Traffic Monitor updates in isolated Electron windows. The fixture renders production
 components with React Compiler and React Profiler, using 100 synthetic accounts and 50

@@ -1,4 +1,5 @@
 import { RPCHandler } from '@orpc/server/fastify';
+import { PLAYGROUND_RPC_MAX_REQUEST_BYTES } from '@/modules/proxy-gateway/playground/playground.schema';
 import {
   IPC_CAPTURE_CHUNK_REQUEST_BYTES,
   IPC_CAPTURE_HEADER,
@@ -51,6 +52,8 @@ export function registerCoreRpcRoutes(
     return reply.code(404).send({ error: 'RPC procedure not found' });
   };
   // Configuration/model tables use scoped limits. Other procedures keep the 4 KiB limit.
+  server.all('/rpc/playground/execute', { bodyLimit: PLAYGROUND_RPC_MAX_REQUEST_BYTES }, dispatch);
+  server.all('/rpc/playground/compare', { bodyLimit: PLAYGROUND_RPC_MAX_REQUEST_BYTES }, dispatch);
   server.all('/rpc/serviceConfig/update', { bodyLimit: SERVICE_CONFIG_MAX_BYTES + 4096 }, dispatch);
   server.all('/rpc/openCode/sync', { bodyLimit: OPEN_CODE_SYNC_MAX_BYTES + 4096 }, dispatch);
   server.all('/rpc/ipcCapture/append', { bodyLimit: IPC_CAPTURE_CHUNK_REQUEST_BYTES }, dispatch);

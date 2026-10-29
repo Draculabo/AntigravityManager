@@ -21,6 +21,7 @@ import { ManagementServer } from '@/core/management/server';
 import { ManagementClient, ServiceNotRunningError } from '@/core/management/client';
 import { CoreRpcClient } from '@/core/rpc/client';
 import { CoreRpcTransportError, createLocalRpcFetch } from '@/core/rpc/local-fetch';
+import { PLAYGROUND_RPC_MAX_REQUEST_BYTES } from '@/modules/proxy-gateway/playground/playground.schema';
 import { createCoreRpcOperations, type CoreRpcOperations } from '@/core/rpc/router';
 import { CoreService, type CoreStatus, type CoreDependencies } from '@/core/core-service';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
@@ -89,6 +90,7 @@ const deviceProfile = {
 
 function operations(): CoreRpcOperations {
   return {
+    playground: { execute: vi.fn(), compare: vi.fn() },
     diagnosticLogs: vi.fn(),
     errorReporting: { setEnabled: vi.fn() },
     ipcCapture: ipcCaptureOwner,
@@ -222,6 +224,69 @@ it('transports only a core-sanitized log snapshot over the private pipe within i
 });
 
 describe('core application RPC', () => {
+  it('cancels a Playground execution across the private owner transport', async () => {
+    const socketPath = await endpoint();
+    const rpc = operations();
+    const controller = new AbortController();
+    let markStarted!: () => void;
+    let markAborted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const aborted = new Promise<void>((resolve) => {
+      markAborted = resolve;
+    });
+    rpc.playground.execute = async (input, signal) => {
+      markStarted();
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          markAborted();
+          resolve();
+        };
+        signal?.addEventListener('abort', finish, { once: true });
+        if (signal?.aborted) {
+          finish();
+        }
+      });
+      return {
+        success: false,
+        content: '',
+        model: input.model,
+        durationMs: 0,
+        status: 500,
+        error: 'Cancelled',
+      };
+    };
+    const server = new ManagementServer({
+      endpoint: socketPath,
+      getStatus: () => ({
+        state: 'running',
+        pid: process.pid,
+        gateway: { running: true, port: 8045 },
+      }),
+      shutdown: async () => {},
+      onShutdownError: vi.fn(),
+      rpc,
+    });
+    closeables.push(server);
+    await server.start();
+    const client = new CoreRpcClient(socketPath);
+    const pending = client.playground.execute(
+      { model: 'gemini-3-flash', prompt: 'Hi' },
+      controller.signal,
+    );
+    const handled = pending.catch((error: unknown) => error);
+    try {
+      await started;
+      controller.abort();
+      await expect(handled).resolves.toBeInstanceOf(Error);
+      await aborted;
+    } finally {
+      controller.abort();
+      await handled;
+    }
+  }, 10_000);
+
   it('configures and restores tools from CLI and the desktop adapter over real private RPC', async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-tool-rpc-'));
     directories.push(home);
@@ -615,6 +680,16 @@ describe('core application RPC', () => {
 
   it('classifies a missing service and rejects oversized local responses', async () => {
     const absent = await endpoint();
+    for (const method of ['execute', 'compare']) {
+      await expect(
+        createLocalRpcFetch(absent)(
+          new Request('http://localhost/rpc/playground/' + method, {
+            method: 'POST',
+            body: 'x'.repeat(PLAYGROUND_RPC_MAX_REQUEST_BYTES + 1),
+          }),
+        ),
+      ).rejects.toThrow('Core RPC request is too large');
+    }
     await expect(
       createLocalRpcFetch(absent)(
         new Request('http://localhost/rpc/ping', { method: 'POST', body: 'x'.repeat(5000) }),

@@ -29,6 +29,7 @@ import {
   ThoughtRecordSchema,
 } from '../thought-store/thought-owner.schema';
 import { copyAuditCurl } from '../traffic-monitor/copy-audit-curl';
+import { createPlaygroundRouter } from '../playground/playground.router';
 export const gatewayAuditMiddleware = os.middleware(({ next, path }, input) =>
   ipcAuditRecorder.run(path, input, () => next({})),
 );
@@ -190,5 +191,10 @@ export const gatewayRouter = os.prefix('/gateway').router({
 
   thoughtRepair: os.handler(async () => {
     return getThoughtAdapter().repair();
+  }),
+
+  playground: createPlaygroundRouter({
+    execute: (input, signal) => getGatewayAdapter().playground.execute(input, signal),
+    compare: (input, signal) => getGatewayAdapter().playground.compare(input, signal),
   }),
 });

@@ -1,4 +1,8 @@
 import type { AuditFileOperations } from '@/modules/proxy-gateway/audit/audit-file-owner.service';
+import {
+  PlaygroundExecuteResultSchema,
+  PlaygroundCompareResultSchema,
+} from '@/modules/proxy-gateway/playground/playground.schema';
 import { LogSourceSchema } from '@/modules/app-shell/diagnostic-logs/schema';
 import type { IpcCaptureOperations } from '@/modules/proxy-gateway/audit/ipc-capture-owner';
 import {
@@ -93,6 +97,7 @@ import type { OpenCodeOperations } from '@/modules/proxy-gateway/opencode-sync/o
 import type { LocalAccountOperations } from '@/modules/account/services/local-account-owner.service';
 
 export class CoreRpcClient {
+  readonly playground: import('@/modules/proxy-gateway/playground/playground.service').PlaygroundOperations;
   async diagnosticLogs(until: number) {
     return LogSourceSchema.parse(await this.rpc.diagnosticLogs({ until }));
   }
@@ -151,6 +156,15 @@ export class CoreRpcClient {
       );
     this.rpc = connect(timeoutMs);
     this.accountMutationRpc = connect(timeoutMs ?? CORE_ACCOUNT_MUTATION_TIMEOUT_MS);
+    // The gateway owner applies its configured generation timeout; the read RPC's
+    // five-second timeout would otherwise abort normal model completions.
+    const playground = connect(timeoutMs ?? 0).playground;
+    this.playground = {
+      execute: async (input, signal) =>
+        PlaygroundExecuteResultSchema.parse(await playground.execute(input, { signal })),
+      compare: async (input, signal) =>
+        PlaygroundCompareResultSchema.parse(await playground.compare(input, { signal })),
+    };
     this.ipcCapture = {
       prepare: async () => IpcCaptureCapabilitySchema.parse(await this.rpc.ipcCapture.prepare()),
       appendMetadata: async (input) =>

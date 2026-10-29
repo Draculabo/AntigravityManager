@@ -1,30 +1,12 @@
-import { Loader2, ShieldAlert } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { ProxyRiskConfirmation, useProxyRiskConfirmation } from './ProxyRiskConfirmation';
 import { useToast } from '@/components/ui/use-toast';
 import { ipc } from '@/ipc/manager';
 import type { ServiceConfigSnapshot } from '@/modules/config/service-config.schema';
 type ProxyConfig = ServiceConfigSnapshot['proxy'];
-
-const RISK_ACKNOWLEDGEMENT_KEY = 'proxy-risk-acknowledged:v1';
-
-function readRiskAcknowledgement(): boolean {
-  try {
-    return localStorage.getItem(RISK_ACKNOWLEDGEMENT_KEY) === 'acknowledged';
-  } catch {
-    // An unavailable preference store must still show the warning.
-    return false;
-  }
-}
 
 interface ProxyServiceControlProps {
   config: ProxyConfig;
@@ -35,8 +17,7 @@ interface ProxyServiceControlProps {
 export function ProxyServiceControl({ config, onConfigChange, onError }: ProxyServiceControlProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const [acknowledged, setAcknowledged] = useState(readRiskAcknowledgement);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const risk = useProxyRiskConfirmation();
   const [pending, setPending] = useState(false);
   const operationPending = useRef(false);
   const toggleButton = useRef<HTMLButtonElement>(null);
@@ -87,8 +68,8 @@ export function ProxyServiceControl({ config, onConfigChange, onError }: ProxySe
   };
 
   const requestToggle = () => {
-    if (!config.enabled && !acknowledged) {
-      setConfirmOpen(true);
+    if (!config.enabled && !risk.acknowledged) {
+      risk.setOpen(true);
       return;
     }
     void toggleService();
@@ -98,14 +79,7 @@ export function ProxyServiceControl({ config, onConfigChange, onError }: ProxySe
     if (operationPending.current) {
       return;
     }
-    try {
-      localStorage.setItem(RISK_ACKNOWLEDGEMENT_KEY, 'acknowledged');
-    } catch {
-      // Keep this explicit acknowledgement in memory if persistence is unavailable.
-      console.warn('Proxy risk acknowledgement could not be persisted');
-    }
-    setAcknowledged(true);
-    setConfirmOpen(false);
+    risk.acknowledge();
     void toggleService();
   };
 
@@ -121,35 +95,13 @@ export function ProxyServiceControl({ config, onConfigChange, onError }: ProxySe
         {pending && <Loader2 className="animate-spin" aria-hidden="true" />}
         {config.enabled ? t('proxy.service.stop') : t('proxy.service.start')}
       </Button>
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            toggleButton.current?.focus();
-          }}
-        >
-          <DialogHeader className="space-y-3">
-            <DialogTitle className="flex items-center gap-2">
-              <ShieldAlert className="size-5 shrink-0 text-amber-600" aria-hidden="true" />
-              {t('proxy.risk-confirmation.title')}
-            </DialogTitle>
-            <DialogDescription className="text-left leading-relaxed whitespace-pre-line">
-              {t('proxy.risk-confirmation.description')}
-            </DialogDescription>
-          </DialogHeader>
-          <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-            {t('proxy.risk-confirmation.account-advice')}
-          </p>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" autoFocus onClick={() => setConfirmOpen(false)}>
-              {t('proxy.risk-confirmation.cancel')}
-            </Button>
-            <Button onClick={confirmStart} disabled={pending}>
-              {t('proxy.risk-confirmation.confirm')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProxyRiskConfirmation
+        open={risk.open}
+        onOpenChange={risk.setOpen}
+        onConfirm={confirmStart}
+        pending={pending}
+        returnFocus={() => toggleButton.current?.focus()}
+      />
     </>
   );
 }

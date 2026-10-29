@@ -11,6 +11,7 @@ import {
   ChevronRight,
   RefreshCw,
   Activity,
+  FlaskConical,
   Boxes,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -52,6 +53,11 @@ export const MainLayout: React.FC = () => {
       to: '/proxy',
       icon: Network,
       label: t('nav.proxy'),
+    },
+    {
+      to: '/playground',
+      icon: FlaskConical,
+      label: t('nav.playground'),
     },
     {
       to: '/traffic',
