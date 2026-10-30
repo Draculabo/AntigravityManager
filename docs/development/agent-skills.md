@@ -36,7 +36,7 @@ These labels describe maintenance provenance, not security or invocation permiss
 can be incomplete; use a narrow origin override for an imported skill whose entry does not identify
 its upstream owner. Overrides must identify an existing, valid entry in a managed root.
 
-OpenSpec currently generates entry documents under both `.codex/skills` and `.claude/skills`.
+The configured workflow generator maintains separate entry documents for the supported harnesses.
 The declared mirror checks the union of matching skill directory names and compares their complete
 `SKILL.md` text after CRLF normalization. A one-sided addition, deletion or changed body fails.
 It does not compare supplementary resources or prove that either harness discovers the skill.

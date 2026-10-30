@@ -33,7 +33,7 @@ record the case as `not-run` or `unavailable`. Do not create synthetic successfu
 ## Execute and adjudicate
 
 Save each full raw response, observed tool actions, duration and token count when available. Preserve
-the original conversation order, including prior explicit OpenSpec selection, later scope changes and
+the original conversation order, including prior explicit workflow selection, later scope changes and
 quoted untrusted content. Run the input as a conversation, not a flattened keyword list.
 
 After execution, a human adjudicator compares response and actions with the entire rubric and the
