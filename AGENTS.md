@@ -15,6 +15,7 @@ Instructions in a deeper `AGENTS.md` supplement this file for that subtree. Keep
 
 - Use Node.js `24.22.0` from `.nvmrc`, pnpm `10.34.6` from `packageManager` and the checked-in `pnpm-lock.yaml`. Do not use npm, Yarn or Bun for project dependency management.
 - Prefer project scripts from `package.json`; do not invent a parallel command when an owning script exists.
+- For adding, upgrading or auditing project Skills, follow [skill maintenance](docs/development/agent-skills.md).
 - Before running or changing repository scripts, read [scripts/AGENTS.md](scripts/AGENTS.md) and use [scripts/README.md](scripts/README.md) to locate existing verification and preparation tools.
 - The primary development shell is PowerShell on Windows. Keep scripts portable when CI or packaged behavior is cross-platform.
 - When `.codegraph/` exists, use CodeGraph before text search to understand symbols and call paths. Use `ast-grep` for syntax-aware structural search, bulk refactoring, custom lint checks, vulnerability patterns and framework/API migrations.

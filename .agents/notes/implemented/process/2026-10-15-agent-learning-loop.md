@@ -22,6 +22,12 @@ This event-driven feedback covers later CI failures, user reports, reopened issu
 without a scheduled learning job or external action. The Agent contract checker requires the
 register, its root instruction route and complete fields for active candidates.
 
+Candidates also record `Since` and `Applies while`, so their owner can reassess relevance when the
+underlying mechanism changes. The checker validates a real ISO calendar date and a nonempty
+condition; human review decides whether the condition still holds. Remove a candidate after its
+prevention is owned elsewhere or its mechanism disappears. Age alone is not a retirement reason,
+and no separate lesson archive is introduced. The existing promotion threshold remains in force.
+
 ## Alternatives considered
 
 - Keep lessons only in task summaries: this does not provide a consistent place to compare repeat incidents or check for an existing owner.

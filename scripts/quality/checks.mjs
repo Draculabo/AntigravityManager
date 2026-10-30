@@ -43,7 +43,8 @@ export const CHECKS = [
     script: 'check:agent-contracts',
     lane: 'tests',
     groups: ['governance'],
-    description: 'Validate agent instructions, decision records and their local references.',
+    description:
+      'Validate agent instructions, skill entries and mirrors, decision records and local references.',
   },
   {
     script: 'check:quality',

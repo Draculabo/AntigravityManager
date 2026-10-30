@@ -1,3 +1,8 @@
+---
+name: lodash-es-runtime-guards
+description: Runtime guard refactoring guidance for lodash-es predicates, import style and verification. Use when explicitly refactoring runtime type or empty-string guards.
+---
+
 # lodash-es-runtime-guards
 
 Replace runtime `typeof` checks and ad-hoc empty-string checks with `lodash-es` predicates.
@@ -69,6 +74,5 @@ rg -n "\btypeof\b" src
 5. Run verification:
 
 ```bash
-npm run type-check
+pnpm run type-check
 ```
-

@@ -27,6 +27,8 @@ owns the change-to-evidence matrix; this guide identifies existing tools and the
 | `release/`                | Release-note generation, source metadata and controlled publication tests.                     |
 | `github/`                 | Issue policy, official-SDK inference, validated write-back and workflow contracts.             |
 | `review-eval/`            | Manually prepared historical source audits, evaluator rubrics and adjudicated reports.         |
+| `agent-skills/`           | Read-only skill inventory, provenance policy and entry mirror contracts.                       |
+| `agent-routing/`          | Manually evaluated workflow-selection cases and their structural contracts.                    |
 
 Existing governance, performance and release utilities remain at the root. pnpm commands are defined
 in [package.json](../package.json); use their names rather than relying on a script's filesystem path.
@@ -46,6 +48,11 @@ configuration. It leaves the index and unstaged edits intact. Governance changes
 shared CI wiring. These checks do not establish a passing application test suite.
 
 ## Quality checks
+
+`pnpm run skills:inventory` reports managed skill entries, provenance and advisories without
+modification. `check:agent-contracts` includes the skill and route-fixture contracts and their
+negative tests. See [skill maintenance](../docs/development/agent-skills.md) for update ownership
+and [routing evaluation](../docs/testing/agent-routing.md) for independent model evidence.
 
 `pnpm run check:agent-contracts` also validates upgrade guide structure and explicit Agent Note
 replacement/archive metadata. Its fixtures cover missing recovery instructions, invalid versions,

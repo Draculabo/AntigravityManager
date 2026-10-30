@@ -50,6 +50,8 @@ Use one entry per distinct gap, with a lowercase hyphenated slug and every field
 - **Prevention:** A concrete test, script or review question that can catch recurrence.
 - **Occurrences:** Number of independent incidents and links or dates identifying them.
 - **Owner:** The canonical document, skill, test suite or script owner.
+- **Since:** YYYY-MM-DD, the date of the confirmed incident or applicable mechanism.
+- **Applies while:** The concrete mechanism or condition that keeps this candidate relevant.
 ```
 
 Keep evidence sanitized. Do not include credentials, private account data, authorization headers or raw private logs. An unconfirmed cause is not eligible for promotion.
@@ -70,6 +72,18 @@ Promotion means:
 4. Remove the candidate after its owner and prevention evidence are in place. If it is rejected as duplicate, unsupported or not actionable, remove it and record any decision that maintainers need in the task or Agent Note.
 
 Do not add a scheduled learning job. Candidates are reviewed as part of the triggering task and promoted through normal code review.
+
+## Applicability and retirement
+
+Reassess `Applies while` when a task touches its mechanism. Retire a candidate when the mechanism
+is removed or its prevention is established in the owning test, script or review rule; link that
+evidence in the task record. Keep durable rationale in the existing owning Agent Note when needed.
+Age alone does not retire a valid candidate. An uncertain cause stays in the task record rather
+than becoming a permanent instruction.
+
+The contract checker validates required fields, real ISO calendar dates and Markdown references.
+It does not determine whether a natural-language condition still holds. Promotion thresholds and
+the prohibition on scheduled learning remain unchanged; retirement creates no separate archive.
 
 ## Active candidates
 
