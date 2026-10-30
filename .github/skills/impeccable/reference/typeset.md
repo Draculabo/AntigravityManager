@@ -58,7 +58,7 @@ Do not make type decorative at the expense of comprehension, or introduce a seco
 
 ## Line breaks
 
-After Matthew Butterick's *Practical Typography*, paraphrased; where his numbers differ from these, these stand.
+After Matthew Butterick's _Practical Typography_, paraphrased; where his numbers differ from these, these stand.
 
 - Set `text-wrap: balance` on headings and short centered blocks, and `text-wrap: pretty` on body copy. Both are progressive: a browser that ignores them keeps its default wrap.
 - `pretty` pulls a word down beside a lone last word. It does not fill the last line, and a two-word tail is fine.
@@ -84,7 +84,15 @@ When the hierarchy holds, hand off to `/impeccable polish`.
 Every variant declares a coarse `scale` parameter and authors its type ramp against `var(--p-scale, 1)`.
 
 ```json
-{"id":"scale","kind":"range","min":0.85,"max":1.3,"step":0.05,"default":1,"label":"Scale"}
+{
+  "id": "scale",
+  "kind": "range",
+  "min": 0.85,
+  "max": 1.3,
+  "step": 0.05,
+  "default": 1,
+  "label": "Scale"
+}
 ```
 
 Add at most one pairing or weight parameter when it represents a real system choice. Follow [live.md](live.md)'s parameter contract.

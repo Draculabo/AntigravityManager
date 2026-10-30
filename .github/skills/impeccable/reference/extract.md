@@ -60,6 +60,7 @@ Update design system documentation:
 - Update any Storybook or component catalog
 
 **Avoid**:
+
 - Extract one-off, context-specific implementations without generalization
 - Create components so generic they are useless
 - Extract without considering existing design system conventions

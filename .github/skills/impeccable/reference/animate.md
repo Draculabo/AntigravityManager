@@ -51,11 +51,11 @@ Sibling stagger is appropriate when a list appears as a list. Cap the total dela
 
 Timing should express distance and consequence:
 
-| Duration | Typical use |
-|---|---|
-| 100–150 ms | immediate feedback |
-| 150–300 ms | routine state change |
-| 300–500 ms | layout, overlay, or view transition |
+| Duration   | Typical use                            |
+| ---------- | -------------------------------------- |
+| 100–150 ms | immediate feedback                     |
+| 150–300 ms | routine state change                   |
+| 300–500 ms | layout, overlay, or view transition    |
 | 500–800 ms | a deliberately authored focal entrance |
 
 Exit faster than entrance. Use natural deceleration such as `cubic-bezier(0.16, 1, 0.3, 1)` for confident arrivals; do not use bounce or elastic curves by reflex. Long feedback feels like latency.

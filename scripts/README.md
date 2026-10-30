@@ -89,6 +89,12 @@ installation; CI-only dependency setup skips lifecycle scripts in credentialed t
 
 ## Unified acceptance entry
 
+Release artifact verification uses `pnpm run test:acceptance release artifacts --source <directory>`.
+It reads merged build outputs and optionally GitHub artifact inventory pages, without GitHub writes
+or installer execution. The [release workflow procedure](../docs/development/build-and-package.md#release-workflow-verification)
+owns prerequisites, inventory capture, dry-run behavior and evidence limits. Its synthetic negative
+fixtures run through the existing `unit` selection.
+
 Historical reviewer evaluation uses `pnpm run review:eval prepare` and `pnpm run review:eval score`.
 Follow the [evaluation procedure](../docs/testing/review-evaluation.md) for local-history prerequisites,
 source isolation, human adjudication and evidence limits. Preparation writes a new directory outside

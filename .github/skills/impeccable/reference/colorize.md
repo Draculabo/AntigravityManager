@@ -54,11 +54,11 @@ Decoration without a relationship to hierarchy, state, content, or the visual wo
 
 Verify computed foreground/background pairs:
 
-| Content | WCAG AA minimum |
-|---|---|
-| body text | 4.5:1 |
-| large text | 3:1 |
-| controls, icons, focus indicators | 3:1 |
+| Content                           | WCAG AA minimum |
+| --------------------------------- | --------------- |
+| body text                         | 4.5:1           |
+| large text                        | 3:1             |
+| controls, icons, focus indicators | 3:1             |
 
 Do not rely on eyesight alone. Check interactive states, overlays, text on images, disabled content, and both themes. Simulate common vision deficiencies. Information conveyed by color also needs text, shape, iconography, or position.
 
@@ -80,7 +80,15 @@ When the palette earns its place, hand off to `/impeccable polish` for the final
 When invoked from live mode, every variant declares a `color-amount` parameter. Author CSS against `var(--p-color-amount, 0.5)` so the user can move from neutral to the variant's full color strategy without regeneration.
 
 ```json
-{"id":"color-amount","kind":"range","min":0,"max":1,"step":0.05,"default":0.5,"label":"Color amount"}
+{
+  "id": "color-amount",
+  "kind": "range",
+  "min": 0,
+  "max": 1,
+  "step": 0.05,
+  "default": 0.5,
+  "label": "Color amount"
+}
 ```
 
 Add at most two variant-specific parameters, such as palette, temperature, or tint behavior. Follow [live.md](live.md)'s parameter contract.

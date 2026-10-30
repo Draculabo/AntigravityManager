@@ -30,15 +30,19 @@ Ambitious effects rarely work on the first try, so verify them in the browser ra
 The right kind of technical ambition depends entirely on what you're working with. Before choosing a technique, ask: **what would make a user of THIS specific interface say "wow, that's nice"?**
 
 ### For visual/marketing surfaces
+
 Pages, hero sections, landing pages, portfolios: the "wow" is often sensory: a scroll-driven reveal, a shader background, a cinematic page transition, generative art that responds to the cursor.
 
 ### For functional UI
+
 Tables, forms, dialogs, navigation: the "wow" is in how it FEELS: a dialog that morphs from the button that triggered it via View Transitions, a data table that renders 100k rows at 60fps via virtual scrolling, a form with streaming validation that feels instant, drag-and-drop with spring physics.
 
 ### For performance-critical UI
+
 The "wow" is invisible but felt: a search that filters 50k items without a flicker, a complex form that never blocks the main thread, an image editor that processes in near-real-time. The interface just never hesitates.
 
 ### For data-heavy interfaces
+
 Charts and dashboards: the "wow" is in fluidity: GPU-accelerated rendering via Canvas/WebGL for massive datasets, animated transitions between data states, force-directed graph layouts that settle naturally.
 
 **The common thread**: something about the implementation goes beyond what users expect from a web interface. The technique serves the experience, not the other way around.
@@ -48,34 +52,41 @@ Charts and dashboards: the "wow" is in fluidity: GPU-accelerated rendering via C
 Organized by what you're trying to achieve, not by technology name.
 
 ### Make transitions feel cinematic
+
 - **View Transitions API** (same-document: all browsers; cross-document: no Firefox): shared element morphing between states. A list item expanding into a detail page. A button morphing into a dialog. This is the closest thing to native FLIP animations.
 - **`@starting-style`** (all browsers): animate elements from `display: none` to visible with CSS only, including entry keyframes
 - **Spring physics**: natural motion with mass, tension, and damping instead of cubic-bezier. Libraries: motion (formerly Framer Motion), GSAP, or roll your own spring solver.
 
 ### Tie animation to scroll position
+
 - **Scroll-driven animations** (`animation-timeline: scroll()`): CSS-only, no JS. Parallax, progress bars, reveal sequences all driven by scroll position. (Chrome/Edge/Safari; Firefox: flag only; always provide a static fallback)
 
 ### Render beyond CSS
+
 - **WebGL** (all browsers): shader effects, post-processing, particle systems. Libraries: Three.js, OGL (lightweight), regl. Use for effects CSS can't express.
 - **WebGPU** (Chrome/Edge; Safari 26+; Firefox on Windows/macOS; flag only on Firefox Linux/Android): next-gen GPU compute, more powerful than WebGL. Always fall back to WebGL2.
 - **Canvas 2D / OffscreenCanvas**: custom rendering, pixel manipulation, or moving heavy rendering off the main thread entirely via Web Workers + OffscreenCanvas.
 - **SVG filter chains**: displacement maps, turbulence, morphology for organic distortion effects. CSS-animatable.
 
 ### Make data feel alive
+
 - **Virtual scrolling**: render only visible rows for tables/lists with tens of thousands of items. No library required for simple cases; TanStack Virtual for complex ones.
 - **GPU-accelerated charts**: Canvas or WebGL-rendered data visualization for datasets too large for SVG/DOM. Libraries: deck.gl, regl-based custom renderers.
 - **Animated data transitions**: morph between chart states rather than replacing. D3's `transition()` or View Transitions for DOM-based charts.
 
 ### Animate complex properties
+
 - **`@property`** (all browsers): register custom CSS properties with types, enabling animation of gradients, colors, and complex values that CSS can't normally interpolate.
 - **Web Animations API** (all browsers): JavaScript-driven animations with the performance of CSS. Composable, cancellable, reversible. The foundation for complex choreography.
 
 ### Push performance boundaries
+
 - **Web Workers**: move computation off the main thread. Heavy data processing, image manipulation, search indexing: anything that would cause jank.
 - **OffscreenCanvas**: render in a Worker thread. The main thread stays free while complex visuals render in the background.
 - **WASM**: near-native performance for computation-heavy features. Image processing, physics simulations, codecs.
 
 ### Interact with the device
+
 - **Web Audio API**: spatial audio, audio-reactive visualizations, sonic feedback. Requires user gesture to start.
 - **Device APIs**: orientation, ambient light, geolocation. Use sparingly and always with user permission.
 
@@ -89,13 +100,18 @@ Every technique must degrade gracefully. The experience without the enhancement 
 
 ```css
 @supports (animation-timeline: scroll()) {
-  .hero { animation-timeline: scroll(); }
+  .hero {
+    animation-timeline: scroll();
+  }
 }
 ```
 
 ```javascript
-if ('gpu' in navigator) { /* WebGPU */ }
-else if (canvas.getContext('webgl2')) { /* WebGL2 fallback */ }
+if ('gpu' in navigator) {
+  /* WebGPU */
+} else if (canvas.getContext('webgl2')) {
+  /* WebGL2 fallback */
+}
 /* CSS-only fallback must still look good */
 ```
 
@@ -111,6 +127,7 @@ else if (canvas.getContext('webgl2')) { /* WebGL2 fallback */ }
 The gap between "cool" and "extraordinary" is in the last 20% of refinement: the easing curve on a spring animation, the timing offset in a staggered reveal, the subtle secondary motion that makes a transition feel physical. Don't ship the first version that works; ship the version that feels inevitable.
 
 **NEVER**:
+
 - Ship effects that cause jank on mid-range devices
 - Use bleeding-edge APIs without a functional fallback
 - Add sound without explicit user opt-in
