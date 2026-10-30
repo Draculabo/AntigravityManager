@@ -1,4 +1,10 @@
 const ru = {
+  'operation-diagnostics': {
+    'switch-written-unconfirmed':
+      'Новый аккаунт записан в Antigravity, но завершение переключения не подтверждено. Проверьте аккаунт в Antigravity перед повторной попыткой.',
+    'switch-write-uncertain':
+      'Аккаунт в Antigravity мог измениться. Проверьте аккаунт в Antigravity перед повторной попыткой.',
+  },
   'agent-tools': {
     title: 'Подключение инструментов программирования',
     description: 'Выберите инструмент для использования моделей через Antigravity Manager.',

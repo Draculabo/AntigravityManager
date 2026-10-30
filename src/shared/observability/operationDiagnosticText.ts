@@ -22,12 +22,18 @@ export function formatOperationDiagnostic(diagnostic: OperationDiagnostic): stri
   }
   if (diagnostic.process) {
     lines.push(`Process failure: ${diagnostic.process.reason}`);
+    if (diagnostic.process.ownership) {
+      lines.push(`Process ownership: ${JSON.stringify(diagnostic.process.ownership)}`);
+    }
     if (diagnostic.process.windowsErrorCode !== undefined) {
       lines.push(`Windows error code: ${diagnostic.process.windowsErrorCode}`);
     }
   }
   if (diagnostic.accountCommit) {
     lines.push(`Account persistence: ${diagnostic.accountCommit}`);
+  }
+  if (diagnostic.credentialWrite) {
+    lines.push(`Client credential write: ${diagnostic.credentialWrite}`);
   }
   if (diagnostic.target) {
     lines.push(`Target: ${diagnostic.target}`);

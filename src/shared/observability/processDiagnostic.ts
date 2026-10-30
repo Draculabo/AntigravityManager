@@ -1,5 +1,19 @@
 import { z } from 'zod';
 
+export const ProcessOwnershipDiagnosticSchema = z.strictObject({
+  reason: z.enum([
+    'main-missing',
+    'main-replaced',
+    'extra-main',
+    'metadata-unavailable',
+    'observation-failed',
+  ]),
+  capturedCount: z.number().int().min(0).max(0xffffffff),
+  observedCount: z.number().int().min(0).max(0xffffffff).optional(),
+  matchedCount: z.number().int().min(0).max(0xffffffff).optional(),
+});
+export type ProcessOwnershipDiagnostic = z.infer<typeof ProcessOwnershipDiagnosticSchema>;
+
 /** Closed process observations exclude executable paths, command lines and native error prose. */
 export const ProcessDiagnosticSchema = z.strictObject({
   reason: z.enum([
@@ -22,5 +36,6 @@ export const ProcessDiagnosticSchema = z.strictObject({
     'native-call-failed',
   ]),
   windowsErrorCode: z.number().int().min(0).max(0xffffffff).optional(),
+  ownership: ProcessOwnershipDiagnosticSchema.optional(),
 });
 export type ProcessDiagnostic = z.infer<typeof ProcessDiagnosticSchema>;

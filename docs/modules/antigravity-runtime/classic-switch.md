@@ -18,6 +18,13 @@ services of each captured binary. PID, creation time, executable and ancestry es
 identity. A workspace binary with a similar name is not a termination target. The main instance
 must retain its original identity and profile.
 
+On native Windows and Linux, a same-executable descendant is excluded from the main-process
+set when both it and its nearest client ancestor explicitly select the same canonical data
+directory. A different or unknown ancestor profile remains an instance boundary. Independent
+roots and different installations remain visible to conflict checks. Missing profile arguments
+do not imply a shared default or portable directory. This prevents retirement of a same-profile
+helper from invalidating the surviving original main instance.
+
 Classic also has to confirm that its official consent record belongs to the selected account.
 This check waits up to five seconds for the official writer and never replaces a running
 client's file. A fresh service process alone cannot establish account readiness. In particular,
@@ -67,6 +74,20 @@ excluded. Supported sanitized log exports retain the validated trace.
 The compact public diagnostic retains its 2 KiB budget and adds a recovery summary on attempted
 recovery. Local snapshot errors preserve that diagnostic through owner, private RPC and desktop
 IPC projection. Existing error details and CLI formatting display the same support reference.
+
+Terminal Classic diagnostics also retain the coordinator's latest credential-write state:
+`not-attempted`, `uncertain` or `confirmed`. Starting any write, including reassertion or restart
+reconciliation, makes it uncertain until the prepared writer completes. A later failure cannot
+reuse an earlier confirmed write to claim that the latest write completed. This field describes
+the captured credential destination, not official-client account readiness or rollback.
+The normal error presentation tells users to inspect the account shown in Antigravity before
+retrying when credentials were written or may have changed; it does not turn the failure into
+success or finalize active-account metadata.
+
+Classic identity failures include closed ownership categories and bounded counts. They distinguish
+missing or replaced mains, extra mains, unreadable metadata and failed observation without
+retaining PIDs, executable paths, data-directory names or command lines. Unavailable observations
+do not report a fabricated zero-process count. This evidence never authorizes process control.
 
 Subject to existing reporting consent and availability, successful recovery produces one Sentry
 warning tagged `recovered-by-restart`; terminal failure produces one error with both attempts.

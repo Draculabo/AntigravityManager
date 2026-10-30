@@ -25,6 +25,32 @@ function createT(): TFunction {
 }
 
 describe('getLocalizedErrorMessage', () => {
+  it.each([
+    [
+      'confirmed',
+      'The new account was written to Antigravity, but the switch could not be confirmed. Check the account shown in Antigravity before trying again.',
+    ],
+    [
+      'uncertain',
+      'The account in Antigravity may have changed. Check the account shown in Antigravity before trying again.',
+    ],
+    ['not-attempted', 'The operation failed. Check the diagnostic details and retry.'],
+  ])(
+    'describes a %s client credential write without claiming switch success',
+    (credentialWrite, expected) => {
+      const diagnostic = {
+        schemaVersion: 1,
+        diagnosticId: '00000000-0000-4000-8000-000000000000',
+        operation: 'cloud-account-switch',
+        stage: 'process-close',
+        reason: 'process-close-failed',
+        target: 'classic',
+        credentialWrite,
+        reporting: { state: 'not-reported', reason: 'disabled' },
+      };
+      expect(getLocalizedErrorMessage({ data: { diagnostic } }, createT())).toBe(expected);
+    },
+  );
   it('does not localize raw missing Antigravity storage.json switch failures', () => {
     const rawMessage = 'Switch failed: storage_json_not_found';
     const message = getLocalizedErrorMessage(new Error(rawMessage), createT());

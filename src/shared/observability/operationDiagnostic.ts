@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ProcessDiagnosticSchema } from './processDiagnostic';
-import { SwitchTraceSchema, SwitchStageSchema } from './switchDiagnostic';
+import { SwitchTraceSchema, SwitchStageSchema, SwitchStepSchema } from './switchDiagnostic';
 
 export const ReportingReceiptSchema = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('captured'), eventId: z.string().regex(/^[a-f0-9]{32}$/) }),
@@ -131,6 +131,7 @@ export const OperationFailureSchema = z.strictObject({
   stage: OperationStageSchema,
   ...CauseClassificationSchema.shape,
   accountCommit: z.enum(['not-attempted', 'confirmed', 'uncertain']).optional(),
+  credentialWrite: SwitchStepSchema.shape.effects.shape.credentials.optional(),
   target: z.enum(['classic', 'ide', 'agy']).optional(),
   storage: z.enum(['credential-store', 'sqlite', 'cli-session']).optional(),
   rollback: z.enum(['not-attempted', 'succeeded', 'failed']).optional(),

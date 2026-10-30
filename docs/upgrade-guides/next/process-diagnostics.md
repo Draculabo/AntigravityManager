@@ -5,7 +5,9 @@ Target version: next
 ## Affected users
 
 Users who start the core independently through the CLI or a service manager must upgrade that
-core with the desktop. Owner compatibility `2` and `3` cannot attach to one another.
+core with the desktop. Owner compatibility `4` carries closed process-ownership evidence and
+client credential-write certainty. Earlier compatibility versions, including `2` and `3`, cannot
+attach to a version `4` owner or desktop.
 
 Desktop-embedded users and users whose standalone core is launched by the desktop upgrade normally.
 For supported in-app updates, the desktop stops the core it launched before installing the update;
@@ -43,3 +45,8 @@ installation or restart on every operating system. The owning
 [decision record](../../../.agents/notes/implemented/bug-fix/2026-10-17-process-identity-and-support-reports.md)
 and [architecture reference](../../architecture.md#correlated-account-operation-diagnostics)
 describe the contract and safe failure behavior.
+
+The [Classic switching reference](../../modules/antigravity-runtime/classic-switch.md) describes
+the additional diagnostic fields and partial-completion messages. The focused process-diagnostic
+and coordinator tests verify serialization and write certainty; they do not establish real-account
+switching or a service-manager upgrade.

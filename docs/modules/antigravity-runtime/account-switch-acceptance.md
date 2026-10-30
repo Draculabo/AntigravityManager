@@ -5,6 +5,11 @@ This procedure checks real account switching through both Manager CLI and Electr
 ## Prerequisites
 
 - Prepare an isolated home with two authorized accounts in `.antigravity-agent/cloud_accounts.db`, valid configuration, and an account ID array in a private JSON file. Do not commit either file.
+- When cloning a prepared home, start with an empty local-account index or copy its snapshots
+  and rewrite every `backup_file` into the new home's `.antigravity-agent/backups`. Absolute
+  destinations from the source profile are not isolated by copying the index. With
+  `--local-snapshots`, the runner rejects inherited external destinations and links before
+  loading the runtime or changing credentials. The check does not relocate or restore files.
 - Configure the official `classic`, `ide`, and `agy` executable paths. Give each desktop client its own isolated `--user-data-dir` and debugging port: Windows 9341/9342; Linux 9441/9442.
 - Use the current standalone runtime for CLI. For Electron, use a built application with matching renderer and main bundles. Its debugging port is Windows 9330 or Linux 9430.
 - Native SQLite and keyring libraries must match the ABI of the report process. `--native-root` selects a separate compatible native module directory when Electron and Node use different ABIs.
