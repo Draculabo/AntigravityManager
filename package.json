@@ -50,7 +50,7 @@
     "check:automation": "node scripts/github/workflow-contracts.mjs",
     "test:automation": "node --test scripts/github/triage.test.mjs",
     "review:eval": "node scripts/review-eval/run.mjs",
-    "test:review-eval": "node --test scripts/review-eval/run.test.mjs",
+    "test:review-eval": "node --test scripts/review-eval/*.test.mjs",
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:write": "prettier --write .",

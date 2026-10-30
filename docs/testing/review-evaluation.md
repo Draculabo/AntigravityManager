@@ -1,25 +1,36 @@
 # Historical Review Evaluation
 
-This procedure evaluates reviewer changes with confirmed historical defects and repaired controls.
-It is manually selected when review instructions, prompts, tools or models change. It does not
-change CI, merge permissions or the lesson-promotion threshold.
+This optional procedure investigates a specific reviewer miss, harmful recommendation or
+comparative performance claim with confirmed historical defects and repaired controls. A workflow
+edit does not require a model comparison. This procedure does not replace current-task acceptance
+or change CI, merge permissions or the lesson-promotion threshold.
 
 ## Corpus and evidence limits
 
 The evaluator-only [case definitions](../../scripts/review-eval/cases.mjs) own immutable revisions,
-source selection, root-cause rubrics, provenance and behavior to preserve. The initial corpus has
-two defects and their repaired controls:
+source selection, root-cause rubrics, provenance and behavior to preserve. The corpus has five
+defects and their repaired controls:
 
-| Defect                      | Confirmed behavior                                                                                             | Probe limit                                                                                                         |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| AppImage patch registration | The patch exists but pnpm does not register it; the repair adds workspace and lockfile registration.           | Configuration and referenced patch contents, not a Linux build or installer run.                                    |
-| Quota family tiers          | Argon and 3.8 Flash tiers remain separate; the repair restores conservative family grouping and display names. | Historical utility aggregation and presentation with synthetic quotas, not live-provider or Electron UI acceptance. |
+| Defect                      | Confirmed behavior                                                                                                                | Probe limit                                                                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AppImage patch registration | The patch exists but pnpm does not register it; the repair adds workspace and lockfile registration.                              | Configuration and referenced patch contents, not a Linux build or installer run.                                                                  |
+| Quota family tiers          | Argon and 3.8 Flash tiers remain separate; the repair restores conservative family grouping and display names.                    | Historical utility aggregation and presentation with synthetic quotas, not live-provider or Electron UI acceptance.                               |
+| Same-profile descendants    | An explicit-profile helper is captured as a main; its exit can invalidate switch ownership.                                       | Historical observer with synthetic Linux snapshots and controlled path/discovery dependencies, not native discovery or account acceptance.        |
+| Parent queue maintenance    | Worker-local changes cannot release a parent queue waiting for a final reply; yield replies must retain ownership and accounting. | Historical parent queue with a controlled worker-message transport, not SQLite reclamation or a latency bound.                                    |
+| Acceptance snapshot paths   | An isolated HOME retains external absolute snapshot destinations; the repair rejects them before runtime loading.                 | Extracted pre-runtime runner statements and the historical filesystem guard over temporary files and links, not native runtime or account writes. |
 
 Each sample is a focused historical source audit, not a reconstruction of a whole PR. Selected
 consumers are included; missing dependencies and linked instructions remain evidence gaps. Fixed
 controls are known to lack the target defect, not certified free of every other bug. This small,
 public corpus supports within-corpus comparisons, not a production accuracy estimate. Historical
 fixes may be in a model's training data, so source isolation cannot guarantee absence of prior knowledge.
+
+Case `paths` select common sources from both revisions. `fixedOnlyPaths` additionally select helpers
+introduced by the repair; missing selected sources fail preparation. Tests and decision records that
+reveal the repair stay out of reviewer inputs. Boundary probes execute only their pinned modules
+with explicit fixture imports, or the runner's extracted pre-runtime statements. The VM is a
+fixture mechanism for trusted historical sources, not a sandbox for untrusted code. Actual model
+reviews retain the source-only execution and access limits below.
 
 ## Prepare isolated inputs
 
@@ -115,5 +126,5 @@ Case selection is separate from promoting a permanent prevention rule. Add only 
 nonduplicative case with immutable revisions, a causal rubric, representative triggering inputs,
 a repaired control and a probe that distinguishes them. Keep credentials and private logs out of
 both inputs and answers. Unconfirmed incidents such as an unexplained diagnostic event stay out.
-Update the historical probes and rerun this procedure after corpus changes; changed corpora are
-not directly comparable by aggregate counts.
+Update and run the historical probe tests after corpus changes. Any subsequent model comparison
+needs fresh reviews of that corpus; changed corpora are not directly comparable by aggregate counts.

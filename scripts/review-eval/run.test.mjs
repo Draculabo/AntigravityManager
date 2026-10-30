@@ -143,6 +143,55 @@ test('preparation separates answers, preserves the worktree and refuses overwrit
   assert.equal(gitText(f.repository, ['status', '--porcelain']), status);
 });
 
+test('preparation exports every historical variant with its repair-only source', async (t) => {
+  const directory = await temporary(t);
+  const pack = path.join(directory, 'pack');
+  const prepared = await prepare(root, pack);
+  assert.equal(prepared.samples, CASES.length * 2);
+  const manifest = JSON.parse(await readFile(path.join(pack, 'evaluator.json'), 'utf8'));
+  for (const entry of CASES) {
+    for (const variant of ['before', 'fixed']) {
+      const sample = manifest.samples.find(
+        (item) => item.caseId === entry.id && item.variant === variant,
+      );
+      assert.equal(sample.revision, entry[variant]);
+      for (const file of entry.fixedOnlyPaths ?? []) {
+        assert.equal(
+          sample.files.some((input) => input.path === file),
+          variant === 'fixed',
+        );
+      }
+      assert.ok(
+        sample.files.every(
+          (input) => !input.path.endsWith('.test.mjs') && !input.path.endsWith('.test.ts'),
+        ),
+      );
+    }
+  }
+});
+
+test('a missing repair-only source fails preparation before output is created', async (t) => {
+  const f = await fixture(t);
+  const pack = path.join(f.directory, 'missing-repair');
+  await assert.rejects(
+    prepare(f.repository, pack, [
+      {
+        id: 'missing-repair',
+        before: f.manifest.samples.find((sample) => sample.variant === 'before').revision,
+        fixed: f.manifest.samples.find((sample) => sample.variant === 'fixed').revision,
+        paths: ['source.js'],
+        fixedOnlyPaths: ['missing.js'],
+        task: 'Audit the exported value.',
+        rubric: 'Evaluator-only fixture.',
+        evidence: 'Synthetic fixture.',
+        preserve: 'Keep the export.',
+      },
+    ]),
+    /Missing historical input: .*:missing.js/,
+  );
+  await assert.rejects(readFile(path.join(pack, 'evaluator.json')), { code: 'ENOENT' });
+});
+
 test('scores detection, false positives, harmful advice and unknown token usage without inventing a pass', async (t) => {
   const f = await fixture(t);
   for (const sample of f.results.samples) {

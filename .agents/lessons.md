@@ -2,9 +2,31 @@
 
 This file is a short-lived queue for reusable prevention gaps found while investigating recurring failures. Current behavior and permanent requirements belong in their owning documentation, skills, tests or scripts.
 
+## When to consult
+
+Before implementation, read the active candidates and inspect the owning module's instructions,
+tests and acceptance guidance for relevant prevention actions. Follow candidate links when the
+task shares their trigger or boundary. Record applicable actions with the planned acceptance in
+the task record; an empty queue does not mean the owning checks have no lessons to reuse.
+
+Verify adoption through the check or review action actually performed. Reading a rule alone does
+not establish that it protected the change. No relevant lesson is a valid result; a task needs no
+separate lesson file.
+
 ## When to capture
 
 Use this process when work follows a regression, repeated CI failure, reopened issue, rollback or failed live acceptance.
+
+At the end of each implementation task, briefly assess which assumption changed, what earlier
+checks missed and what concrete prevention action is needed. If no new gap was demonstrated,
+report that only when useful; no candidate or reflection document is required. Fix the specific
+defect and add its owning regression check on the first occurrence; the promotion threshold
+below applies only to a reusable process rule.
+
+When a failure appears after delivery, link it to the original task, revision or artifact and
+acceptance evidence where available. Reproduce or isolate the new observation and explain what
+the earlier checks missed. Distinguish product defects from fixture, artifact, environment and
+requirement errors before assigning a cause. Missing original evidence remains an explicit gap.
 
 Before adding a candidate:
 
