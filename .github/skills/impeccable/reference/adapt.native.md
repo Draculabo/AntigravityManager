@@ -26,15 +26,15 @@ Adapt an existing **native** design (`ios` / `android` / `adaptive`) to a differ
 
 Translate idioms; never transplant them:
 
-| iOS | Android |
-|---|---|
-| Tab bar | Navigation bar / rail / drawer |
-| Edge-swipe back, back chevron | Predictive Back gesture / button |
-| Switch, segmented control, system pickers | Material switch, chips, Material pickers |
-| Action sheet | Bottom sheet / Material dialog |
-| SF Symbols, SF Pro, Dynamic Type | Material Symbols, Roboto, sp scaling |
-| Semantic system colors, materials | Material color roles, tonal elevation |
-| System push/sheet transitions | Container transform, shared-axis, fade-through |
+| iOS                                       | Android                                        |
+| ----------------------------------------- | ---------------------------------------------- |
+| Tab bar                                   | Navigation bar / rail / drawer                 |
+| Edge-swipe back, back chevron             | Predictive Back gesture / button               |
+| Switch, segmented control, system pickers | Material switch, chips, Material pickers       |
+| Action sheet                              | Bottom sheet / Material dialog                 |
+| SF Symbols, SF Pro, Dynamic Type          | Material Symbols, Roboto, sp scaling           |
+| Semantic system colors, materials         | Material color roles, tonal elevation          |
+| System push/sheet transitions             | Container transform, shared-axis, fade-through |
 
 Rebuild navigation and controls in the target's vocabulary; carry over the brand's expressive layer (palette intent, type accent, motion personality) through the target's theming system.
 
@@ -51,6 +51,7 @@ Reconform, don't reflow. Replace web navigation with the platform's model, HTML-
 When the adaptation feels native to each context, hand off to `/impeccable polish` for the final pass.
 
 **Avoid**:
+
 - Ship a stretched phone layout on a tablet
 - Port one platform's controls or navigation onto the other
 - Hide core functionality on smaller devices (if it matters, make it work)

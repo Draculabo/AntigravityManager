@@ -9,6 +9,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 ### 1. Accessibility (VoiceOver / TalkBack)
 
 **Check for**:
+
 - **Missing labels**: interactive elements without accessibility labels, traits/roles, or state announcements
 - **Reading and focus order**: illogical traversal, unreachable controls, focus lost on navigation
 - **Text scaling**: fixed point sizes defeating Dynamic Type (iOS) or px instead of sp (Android); layouts that clip or overlap at large sizes
@@ -21,6 +22,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 ### 2. Performance
 
 **Check for**:
+
 - **Slow startup**: heavy work on launch before first frame
 - **Unvirtualized lists**: long content without FlatList / LazyColumn / List recycling
 - **Main-thread jank**: synchronous work in scroll or gesture paths, dropped frames on 60/120 Hz
@@ -33,6 +35,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 ### 3. Appearance & Theming
 
 **Check for**:
+
 - **Hard-coded colors**: raw hex instead of semantic system colors (iOS) / Material color roles (Android) / design tokens
 - **Broken dark appearance**: missing dark variants, poor contrast in dark, quick inverts
 - **Dynamic Color** (Android 12+): no static fallback scheme, or ignored where it fits
@@ -43,6 +46,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 ### 4. Platform Conformance (CRITICAL)
 
 Score against the loaded platform reference(s), including their slop tests. **Check for**:
+
 - **Broken system gestures**: edge-swipe back disabled (iOS), predictive Back hijacked (Android)
 - **Inset violations**: content under the notch, Dynamic Island, home indicator, status bar, or keyboard
 - **Off-platform navigation**: custom global nav, overloaded tab bars, iOS patterns on Android or vice versa
@@ -55,6 +59,7 @@ Score against the loaded platform reference(s), including their slop tests. **Ch
 ### 5. Adaptivity
 
 **Check for**:
+
 - **Stretched phone layouts**: tablet/iPad rendering a scaled-up phone UI instead of using size classes / window size classes
 - **Orientation breakage**: landscape clipping, ignored, or locked without reason
 - **Keyboard/IME handling**: inputs hidden behind the keyboard, no inset adjustment
@@ -67,21 +72,23 @@ Score against the loaded platform reference(s), including their slop tests. **Ch
 
 ### Audit Health Score
 
-| # | Dimension | Score | Key Finding |
-|---|-----------|-------|-------------|
-| 1 | Accessibility | ? | [most critical issue or "--"] |
-| 2 | Performance | ? | |
-| 3 | Appearance & Theming | ? | |
-| 4 | Platform Conformance | ? | |
-| 5 | Adaptivity | ? | |
-| **Total** | | **??/20** | **[Rating band]** |
+| #         | Dimension            | Score     | Key Finding                   |
+| --------- | -------------------- | --------- | ----------------------------- |
+| 1         | Accessibility        | ?         | [most critical issue or "--"] |
+| 2         | Performance          | ?         |                               |
+| 3         | Appearance & Theming | ?         |                               |
+| 4         | Platform Conformance | ?         |                               |
+| 5         | Adaptivity           | ?         |                               |
+| **Total** |                      | **??/20** | **[Rating band]**             |
 
 **Rating bands**: 18-20 Excellent (minor polish), 14-17 Good (address weak dimensions), 10-13 Acceptable (significant work needed), 6-9 Poor (major overhaul), 0-5 Critical (fundamental issues)
 
 ### Platform Conformance Verdict
+
 **Start here.** Pass/fail: does this read as a native app or a ported website? List specific violations. Be brutally honest.
 
 ### Executive Summary
+
 - Audit Health Score: **??/20** ([rating band])
 - Total issues found (count by severity: P0/P1/P2/P3)
 - Top 3-5 critical issues
@@ -90,12 +97,14 @@ Score against the loaded platform reference(s), including their slop tests. **Ch
 ### Detailed Findings by Severity
 
 Tag every issue with **P0-P3 severity**:
+
 - **P0 Blocking**: Prevents task completion. Fix immediately
 - **P1 Major**: Significant difficulty or platform-guideline violation. Fix before release
 - **P2 Minor**: Annoyance, workaround exists. Fix in next pass
 - **P3 Polish**: Nice-to-fix, no real user impact. Fix if time permits
 
 For each issue, document:
+
 - **[P?] Issue name**
 - **Location**: Screen, file, line
 - **Category**: Accessibility / Performance / Theming / Conformance / Adaptivity
@@ -107,6 +116,7 @@ For each issue, document:
 ### Patterns & Systemic Issues
 
 Identify recurring problems that indicate systemic gaps rather than one-off mistakes:
+
 - "Hard-coded colors appear in 15+ screens, should use semantic colors"
 - "Touch targets consistently below 44 pt throughout the tab bar and list rows"
 
@@ -132,6 +142,7 @@ After presenting the summary, tell the user:
 Keep P3s few: a long tail of minor issues buries the ones that matter.
 
 **Avoid**:
+
 - Report issues without explaining impact (why does this matter?)
 - Provide generic recommendations (be specific and actionable)
 - Skip positive findings (celebrate what works)

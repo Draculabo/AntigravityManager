@@ -1,4 +1,5 @@
 <!-- Generated from skill/agents/ at build time. Do not edit; edit the agent definition. -->
+
 This harness has no subagent capability, so you are running this role inline. Step fully out of the work you just finished, adopt only this file's instructions for the pass, and disclose the substitution in one line when you report. Where the text below addresses a parent agent, you are both parties: produce the full output contract first, then act on it yourself.
 
 # Impeccable Asset Producer
