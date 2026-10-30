@@ -45,6 +45,7 @@ const suites = {
   },
   release: {
     notes: '../release/github-release-notes.test.mjs',
+    artifacts: '../release/validate-release-artifacts.mjs',
   },
 };
 
@@ -53,6 +54,7 @@ const unitFiles = [
   '../build/publish-standalone-runtime.test.mjs',
   '../build/trace-standalone-runtime.test.mjs',
   '../release/github-release-notes.test.mjs',
+  '../release/validate-release-artifacts.test.mjs',
   './installers/prepare-windows-update-feed.test.mjs',
   './accounts/official-auth-state.test.mjs',
   './accounts/snapshot-isolation.test.mjs',
