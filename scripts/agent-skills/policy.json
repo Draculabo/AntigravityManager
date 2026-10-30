@@ -11,7 +11,7 @@
       "prefix": "openspec-",
       "owner": "OpenSpec CLI",
       "reason": "The CLI generates matching entry documents for both harnesses.",
-      "removeWhen": "OpenSpec adopts a shared entry or documented harness-specific entry content."
+      "removeWhen": "The generator adopts a shared entry or documented harness-specific entry content."
     }
   ]
 }

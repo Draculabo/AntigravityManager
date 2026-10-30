@@ -18,7 +18,7 @@ Agent governance is layered by responsibility:
 - `check-agent-contracts.mjs` validates the mechanically decidable parts of the governance system.
 
 The [skill maintenance reference](../../../../docs/development/agent-skills.md) adds a read-only
-inventory and explicit origin/mirror policy to that existing gate. OpenSpec's generated harness
+inventory and explicit origin/mirror policy to that existing gate. The generated harness
 directories remain in place; entry mirrors are checked after newline normalization instead of
 being replaced with Windows-dependent links or a second generator. Only special ownership and
 mirror relationships are configured; discovery supplies the catalog.
