@@ -1,7 +1,10 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { z } from 'zod';
 import { validateDocumentLifecycle } from './agent-document-lifecycle.mjs';
+import { validateRoutingCases } from './agent-routing/contracts.mjs';
+import { inspectSkills } from './agent-skills/contracts.mjs';
 
 export const ROOT_AGENT_LINE_LIMIT = 180;
 
@@ -14,6 +17,8 @@ const REQUIRED_FILES = [
   'docs/testing.md',
   'docs/error-handling.md',
   'docs/test-reliability.md',
+  'docs/development/agent-skills.md',
+  'docs/testing/agent-routing.md',
   'docs/upgrade-guides/README.md',
   'scripts/AGENTS.md',
   'scripts/README.md',
@@ -39,7 +44,16 @@ const LESSON_REQUIRED_SECTIONS = [
   'Promotion',
   'Active candidates',
 ];
-const LESSON_REQUIRED_FIELDS = ['Rule', 'Evidence', 'Cause', 'Prevention', 'Occurrences', 'Owner'];
+const LESSON_REQUIRED_FIELDS = [
+  'Rule',
+  'Evidence',
+  'Cause',
+  'Prevention',
+  'Occurrences',
+  'Owner',
+  'Since',
+  'Applies while',
+];
 
 function toPosixPath(value) {
   return value.split(path.sep).join('/');
@@ -69,12 +83,15 @@ function collectMarkdownFiles(directory) {
   return files;
 }
 
-function governanceFiles(rootDir) {
-  const explicitFiles = REQUIRED_FILES.map((file) => path.join(rootDir, file)).filter(existsSync);
+function governanceFiles(rootDir, skillFiles) {
+  // Skill bodies enter only after inventory has validated their resolved paths.
+  const explicitFiles = REQUIRED_FILES.filter((file) => !file.endsWith('/SKILL.md'))
+    .map((file) => path.join(rootDir, file))
+    .filter(existsSync);
   const noteFiles = collectMarkdownFiles(path.join(rootDir, '.agents', 'notes'));
   const guideFiles = collectMarkdownFiles(path.join(rootDir, 'docs', 'upgrade-guides'));
 
-  return [...new Set([...explicitFiles, ...noteFiles, ...guideFiles])].sort();
+  return [...new Set([...explicitFiles, ...noteFiles, ...guideFiles, ...skillFiles])].sort();
 }
 
 function validateMarkdownLinks(rootDir, filePath, content, errors) {
@@ -226,10 +243,14 @@ function validateAgentLessons(rootDir, errors) {
     const entryEnd = entries[index + 1]?.index ?? activeBody.length;
     const candidate = activeBody.slice(entryStart, entryEnd);
     for (const field of LESSON_REQUIRED_FIELDS) {
-      const fieldPattern = new RegExp(`^- \\*\\*${field}:\\*\\*\\s*\\S`, 'm');
+      const fieldPattern = new RegExp(`^- \\*\\*${field}:\\*\\*[ \\t]*\\S`, 'm');
       if (!fieldPattern.test(candidate)) {
         errors.push(`${relativeFile}: candidate "${slug}" needs a non-empty ${field} field`);
       }
+    }
+    const since = candidate.match(/^- \*\*Since:\*\*[ \t]*([^\r\n]*)/m)?.[1].trim();
+    if (since && !z.iso.date().safeParse(since).success) {
+      errors.push(`${relativeFile}: candidate "${slug}" Since must be a valid YYYY-MM-DD date`);
     }
   }
 }
@@ -274,7 +295,12 @@ export function validateAgentContracts(rootDir) {
     }
   }
 
-  for (const filePath of governanceFiles(resolvedRoot)) {
+  const skillReport = inspectSkills(resolvedRoot);
+  errors.push(...skillReport.errors);
+  const projectSkillFiles = skillReport.skills
+    .filter((skill) => skill.source === 'project')
+    .map((skill) => path.join(resolvedRoot, skill.path));
+  for (const filePath of governanceFiles(resolvedRoot, projectSkillFiles)) {
     const content = readText(filePath);
     const archived =
       path.relative(path.join(resolvedRoot, '.agents', 'notes'), filePath).split(path.sep)[0] ===
@@ -290,6 +316,7 @@ export function validateAgentContracts(rootDir) {
   }
 
   validateAgentLessons(resolvedRoot, errors);
+  errors.push(...validateRoutingCases(resolvedRoot));
 
   errors.push(
     ...validateDocumentLifecycle(

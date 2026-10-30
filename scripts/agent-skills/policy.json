@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "roots": [".agents/skills", ".codex/skills", ".claude/skills"],
+  "origins": [
+    { "path": ".agents/skills/impeccable", "owner": "Impeccable" },
+    { "path": ".codex/skills/ui-ux-pro-max", "owner": "UI UX Pro Max" }
+  ],
+  "mirrors": [
+    {
+      "roots": [".codex/skills", ".claude/skills"],
+      "prefix": "openspec-",
+      "owner": "OpenSpec CLI",
+      "reason": "The CLI generates matching entry documents for both harnesses.",
+      "removeWhen": "OpenSpec adopts a shared entry or documented harness-specific entry content."
+    }
+  ]
+}

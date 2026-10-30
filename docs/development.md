@@ -2,6 +2,8 @@
 
 This document covers contributor setup and routine commands. Command definitions in [package.json](../package.json) are authoritative; update this document when their purpose or required environment changes.
 
+For repository-local skill ownership, inventory and updates, see [Project Skill Maintenance](development/agent-skills.md).
+
 See [GitHub automation](development/github-automation.md) for check selection, inactive-PR
 maintenance, optional Ark issue triage, remote acceptance and recovery.
 

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { validateAgentContracts } from './check-agent-contracts.mjs';
 
 const REQUIRED_GOVERNANCE_FILES = [
@@ -14,6 +16,8 @@ const REQUIRED_GOVERNANCE_FILES = [
   'docs/testing.md',
   'docs/error-handling.md',
   'docs/test-reliability.md',
+  'docs/development/agent-skills.md',
+  'docs/testing/agent-routing.md',
   'docs/upgrade-guides/README.md',
   'scripts/AGENTS.md',
   'scripts/README.md',
@@ -43,8 +47,40 @@ async function createValidFixture() {
   );
 
   for (const relativePath of REQUIRED_GOVERNANCE_FILES) {
-    await writeFixtureFile(rootDir, relativePath, '# Reference\n');
+    const content = relativePath.endsWith('/SKILL.md')
+      ? `---\nname: ${path.basename(path.dirname(relativePath))}\ndescription: Fixture workflow.\n---\n`
+      : '# Reference\n';
+    await writeFixtureFile(rootDir, relativePath, content);
   }
+
+  await writeFixtureFile(
+    rootDir,
+    'scripts/agent-skills/policy.json',
+    JSON.stringify({
+      version: 1,
+      roots: ['.agents/skills'],
+      origins: [],
+      mirrors: [],
+    }),
+  );
+  await writeFixtureFile(
+    rootDir,
+    'scripts/agent-routing/cases.json',
+    JSON.stringify({
+      version: 1,
+      cases: [
+        {
+          id: 'fixture',
+          context: 'Read-only request.',
+          messages: [{ role: 'user', text: 'Explain the module.' }],
+          acceptedRoutes: ['Read-only.'],
+          requiredActions: ['Inspect source.'],
+          prohibitedActions: ['Edit files.'],
+          sources: ['AGENTS.md'],
+        },
+      ],
+    }),
+  );
 
   await writeFixtureFile(
     rootDir,
@@ -96,6 +132,81 @@ test('requires the semantic review skill', async (context) => {
   });
 });
 
+test('rejects malformed skill metadata through the governance entry', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(() => rm(rootDir, { recursive: true, force: true }));
+  await writeFixtureFile(
+    rootDir,
+    '.agents/skills/agm-code-review/SKILL.md',
+    '# Missing metadata\n',
+  );
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: ['.agents/skills/agm-code-review/SKILL.md: missing YAML frontmatter'],
+  });
+});
+
+test('rejects mirror drift through the governance entry', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(() => rm(rootDir, { recursive: true, force: true }));
+  await writeFixtureFile(
+    rootDir,
+    'scripts/agent-skills/policy.json',
+    JSON.stringify({
+      version: 1,
+      roots: ['.agents/skills', '.codex/skills', '.claude/skills'],
+      origins: [],
+      mirrors: [
+        {
+          roots: ['.codex/skills', '.claude/skills'],
+          prefix: 'openspec-',
+          owner: 'OpenSpec CLI',
+          reason: 'Generated entries.',
+          removeWhen: 'The generator uses a common entry.',
+        },
+      ],
+    }),
+  );
+  const entry = '---\nname: example\ndescription: Fixture workflow.\n---\n';
+  await writeFixtureFile(rootDir, '.codex/skills/openspec-example/SKILL.md', entry);
+  await writeFixtureFile(rootDir, '.claude/skills/openspec-example/SKILL.md', `${entry}Drift\n`);
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: [
+      '.codex/skills/openspec-example/SKILL.md <> .claude/skills/openspec-example/SKILL.md: mirror entry content differs (OpenSpec CLI)',
+    ],
+  });
+  const cli = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('./check-agent-contracts.mjs', import.meta.url)), rootDir],
+    {
+      encoding: 'utf8',
+      timeout: 10_000,
+      maxBuffer: 64 * 1024,
+    },
+  );
+  assert.equal(cli.status, 1, cli.stderr);
+  assert.match(cli.stderr, /mirror entry content differs/);
+});
+
+test('does not read a required skill body through an external link', async (context) => {
+  const rootDir = await createValidFixture();
+  const external = await mkdtemp(path.join(tmpdir(), 'agm-external-entry-'));
+  context.after(() => rm(rootDir, { recursive: true, force: true }));
+  context.after(() => rm(external, { recursive: true, force: true }));
+  await writeFixtureFile(
+    external,
+    'SKILL.md',
+    '---\nname: external\ndescription: External.\n---\n[Private reference](missing-outside.md)\n',
+  );
+  const directory = path.join(rootDir, '.agents/skills/agm-code-review');
+  await rm(directory, { recursive: true });
+  await symlink(external, directory, 'junction');
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: [
+      '.agents/skills/agm-code-review/SKILL.md: managed path resolves outside the repository',
+    ],
+  });
+});
+
 test('requires the lessons route for triggered failure reviews', async (context) => {
   const rootDir = await createValidFixture();
   context.after(async () => rm(rootDir, { recursive: true, force: true }));
@@ -108,6 +219,15 @@ test('requires the lessons route for triggered failure reviews', async (context)
   assert.deepEqual(validateAgentContracts(rootDir), {
     errors: ['AGENTS.md must link triggered failure reviews to .agents/lessons.md'],
   });
+});
+
+test('rejects a routing corpus with a missing rubric through the governance entry', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(() => rm(rootDir, { recursive: true, force: true }));
+  await writeFixtureFile(rootDir, 'scripts/agent-routing/cases.json', '{"version":1,"cases":[{}]}');
+  const result = validateAgentContracts(rootDir);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /^scripts\/agent-routing\/cases.json:/);
 });
 
 test('requires evidence and a prevention check for every active lesson candidate', async (context) => {
@@ -132,6 +252,8 @@ test('requires evidence and a prevention check for every active lesson candidate
       '- **Prevention:** [Run the targeted suite](../docs/testing.md).',
       '- **Occurrences:** CI failure on Linux, 2026-10-15.',
       '- **Owner:** [Testing strategy](../docs/testing.md).',
+      '- **Since:** 2026-10-15',
+      '- **Applies while:** The test fixture depends on the host platform.',
       '',
     ].join('\n'),
   );
@@ -166,11 +288,52 @@ test('accepts a complete active lesson candidate', async (context) => {
       '- **Prevention:** [Run the targeted suite](../docs/testing.md).',
       '- **Occurrences:** 1 independent incident, 2026-10-15.',
       '- **Owner:** [Testing strategy](../docs/testing.md).',
+      '- **Since:** 2026-10-15',
+      '- **Applies while:** The test fixture depends on the host platform.',
       '',
     ].join('\n'),
   );
 
   assert.deepEqual(validateAgentContracts(rootDir), { errors: [] });
+});
+
+test('requires lesson applicability and a real ISO calendar date', async (context) => {
+  const rootDir = await createValidFixture();
+  context.after(() => rm(rootDir, { recursive: true, force: true }));
+  const base =
+    '# Agent Lessons\n## When to capture\n## Candidate format\n## Promotion\n## Active candidates\n' +
+    '### Candidate: recurring-gap\n- **Rule:** Check ownership.\n- **Evidence:** Confirmed failure.\n' +
+    '- **Cause:** Wrong owner.\n- **Prevention:** Exercise the owned check.\n' +
+    '- **Occurrences:** 1 incident.\n- **Owner:** [Testing](../docs/testing.md).\n';
+  await writeFixtureFile(rootDir, '.agents/lessons.md', base);
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: [
+      '.agents/lessons.md: candidate "recurring-gap" needs a non-empty Since field',
+      '.agents/lessons.md: candidate "recurring-gap" needs a non-empty Applies while field',
+    ],
+  });
+  await writeFixtureFile(
+    rootDir,
+    '.agents/lessons.md',
+    `${base}- **Since:** 2026-02-30\n- **Applies while:** The ownership mechanism remains.\n`,
+  );
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: ['.agents/lessons.md: candidate "recurring-gap" Since must be a valid YYYY-MM-DD date'],
+  });
+  await writeFixtureFile(
+    rootDir,
+    '.agents/lessons.md',
+    `${base}- **Since:** 2026-02-28\n- **Applies while:** The ownership mechanism remains.\n`,
+  );
+  assert.deepEqual(validateAgentContracts(rootDir), { errors: [] });
+  await writeFixtureFile(
+    rootDir,
+    '.agents/lessons.md',
+    `${base}- **Since:** 2026-02-28\n- **Applies while:** \t\n- **Extra:** Other text.\n`,
+  );
+  assert.deepEqual(validateAgentContracts(rootDir), {
+    errors: ['.agents/lessons.md: candidate "recurring-gap" needs a non-empty Applies while field'],
+  });
 });
 
 test('requires script instructions and failure/reliability references', async (context) => {

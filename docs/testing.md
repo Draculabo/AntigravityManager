@@ -74,6 +74,11 @@ its usefulness on later tasks remains unverified until an applicable task actual
 
 ## Change-to-evidence matrix
 
+Agent entry metadata, declared mirrors and routing corpus references are checked by
+`pnpm run check:agent-contracts`; see [skill maintenance](development/agent-skills.md).
+[Routing evaluation](testing/agent-routing.md) separately observes workflow selection and scope.
+Neither a valid corpus nor a passing validator establishes a model routing baseline.
+
 Upgrade instructions and Agent Note replacement/archive metadata are checked by
 `pnpm run check:agent-contracts`. These fixtures validate document structure and relationships;
 they do not establish migration or recovery correctness. Underlying data changes still require
