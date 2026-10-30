@@ -60,3 +60,24 @@ its 28 fixtures and checks the current documents. These results establish local 
 workflow-contract evidence only. Six-platform GitHub execution, native macOS behavior, actual
 release uploads and automated PR creation remain unverified until the changed revision runs in
 their corresponding environments.
+
+The six-platform [GitHub dry run](https://github.com/Draculabo/AntigravityManager/actions/runs/41014479659)
+passes on `4d1bb683`: all six artifacts download with digest checks, 33 nonempty files validate,
+both Windows feeds prepare and publication is skipped. Node 20 deprecation annotations are absent.
+macOS Intel requires one existing retry after `hdiutil detach` cannot find its DMG mount path.
+
+The first [PR check run](https://github.com/Draculabo/AntigravityManager/actions/runs/41017524854)
+exposes two baseline gaps: 40 imported Impeccable files fail full-repository formatting, and three
+Windows-profile observer assertions fail on Ubuntu because changing `process.platform` does not
+replace Node's host-selected default path implementation. The files are formatted without
+excluding them from the gate; JavaScript semantic AST and JSON-value comparisons confirm no
+behavior/data change. The observer fixture selects Windows/POSIX path operations with its mocked
+platform while keeping the production observer and all result assertions intact.
+
+Linux Node 24.22.0 reproduces the original three failures, then passes all ten observer tests with
+the fixture correction; Windows passes the same ten tests. The full repository format command,
+focused lint and Agent contracts pass. A complete local Linux unit run reaches all 479 files but
+fails eight files because the reused dependency tree lacks the `better-sqlite3` native binding;
+it is not passing full-suite evidence. The PR's fresh dependency installation must establish the
+complete Linux result. Existing test-portability rules already cover this fixture gap, so no
+duplicate Agent Lessons candidate is added.

@@ -6,6 +6,22 @@ const mocks = vi.hoisted(() => ({
   wsl: vi.fn(() => false),
   configured: vi.fn(),
 }));
+vi.mock('node:path', async (original) => {
+  const actual = await original<typeof import('node:path')>();
+  // Changing process.platform does not change Node's host-selected default path implementation.
+  const selected = () => (process.platform === 'win32' ? actual.win32 : actual.posix);
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      dirname: (value: string) => selected().dirname(value),
+      basename: (value: string) => selected().basename(value),
+      join: (...values: string[]) => selected().join(...values),
+      resolve: (...values: string[]) => selected().resolve(...values),
+      isAbsolute: (value: string) => selected().isAbsolute(value),
+    },
+  };
+});
 vi.mock('node:child_process', async (original) => {
   const actual = await original<typeof import('node:child_process')>();
   return { ...actual, default: { ...actual, execFile: mocks.execFile }, execFile: mocks.execFile };
