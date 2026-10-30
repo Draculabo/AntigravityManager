@@ -62,6 +62,20 @@ export function isMasterKeyUnavailableError(error: unknown): boolean {
 export function getLocalizedErrorMessage(error: unknown, t: TFunction): string {
   const diagnostic = readFinalizedOperationDiagnostic(error);
   if (diagnostic) {
+    if (diagnostic.operation !== 'google-login') {
+      if (diagnostic.credentialWrite === 'confirmed') {
+        return t('operation-diagnostics.switch-written-unconfirmed', {
+          defaultValue:
+            'The new account was written to Antigravity, but the switch could not be confirmed. Check the account shown in Antigravity before trying again.',
+        });
+      }
+      if (diagnostic.credentialWrite === 'uncertain') {
+        return t('operation-diagnostics.switch-write-uncertain', {
+          defaultValue:
+            'The account in Antigravity may have changed. Check the account shown in Antigravity before trying again.',
+        });
+      }
+    }
     if (diagnostic.accountCommit === 'confirmed' || diagnostic.accountCommit === 'uncertain') {
       return t('operation-diagnostics.check-account-list', {
         defaultValue:

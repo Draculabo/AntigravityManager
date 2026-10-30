@@ -85,6 +85,10 @@ const zhCn = {
     'no-results': '未找到与“{{query}}”匹配的实例。',
   },
   'operation-diagnostics': {
+    'switch-written-unconfirmed':
+      '新账号已写入 Antigravity，但尚未确认切换完成。请检查 Antigravity 当前显示的账号后再决定是否重试。',
+    'switch-write-uncertain':
+      'Antigravity 中的账号可能已发生变化。请检查 Antigravity 当前显示的账号后再决定是否重试。',
     'check-account-list': '账号可能已经保存，请先刷新账号列表，再决定是否重新登录。',
     'check-proxy': '请检查上游代理设置后重试。',
     'check-connection': '请检查网络、代理和系统时间后重试，详情中包含实际观察到的错误。',

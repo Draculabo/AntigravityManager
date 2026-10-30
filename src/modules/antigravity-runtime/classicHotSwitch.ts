@@ -4,35 +4,57 @@ import { hasErrorCode } from '@/shared/errors/error-guards';
 import { readNativeProcessSnapshot } from '@/shared/platform/nativeProcessQuery';
 import { assertContextProcesses, sameInstallation } from './launchContext';
 import { getProcessProbeTimeout, observeProcesses } from './processObserver';
-import { processError } from './processErrors';
+import { processError, processOwnershipError } from './processErrors';
 import { assertNoWindowsUpdate } from './windowsUpdate';
-import type { LaunchContext } from './types';
+import type { LaunchContext, RuntimeProcess } from './types';
 
 const sameProcess = (left: ProcessInfo, right: ProcessInfo) =>
   left.pid === right.pid && left.startTime === right.startTime && left.exe === right.exe;
 
 /** Recovery requires the original main instance, independently of failed service observations. */
 export async function assertClassicRestartOwnership(context: LaunchContext): Promise<void> {
-  const current = await observeProcesses(
-    'classic',
-    getProcessProbeTimeout('classic', context.executablePath),
-    context.executablePath,
-  );
+  let current: RuntimeProcess[];
+  try {
+    current = await observeProcesses(
+      'classic',
+      getProcessProbeTimeout('classic', context.executablePath),
+      context.executablePath,
+    );
+  } catch (error) {
+    throw processOwnershipError(
+      'probe-failed',
+      {
+        reason: 'observation-failed',
+        capturedCount: context.processes.length,
+      },
+      error,
+    );
+  }
   assertContextProcesses(context, current);
-  if (
-    current.length !== context.processes.length ||
-    current.some(
+  const matched = current.filter((row) =>
+    context.processes.some(
+      (original) =>
+        original.pid === row.pid &&
+        original.startTime !== undefined &&
+        original.startTime === row.startTime &&
+        sameInstallation(original.executablePath, row.executablePath),
+    ),
+  );
+  if (current.length !== context.processes.length || matched.length !== current.length) {
+    const replaced = current.some(
       (row) =>
-        !context.processes.some(
-          (original) =>
-            original.pid === row.pid &&
-            original.startTime !== undefined &&
-            original.startTime === row.startTime &&
-            sameInstallation(original.executablePath, row.executablePath),
-        ),
-    )
-  ) {
-    throw processError('switched-hot-unconfirmed');
+        !matched.includes(row) && context.processes.some((original) => original.pid === row.pid),
+    );
+    throw processOwnershipError('switched-hot-unconfirmed', {
+      reason: replaced
+        ? 'main-replaced'
+        : matched.length < context.processes.length
+          ? 'main-missing'
+          : 'extra-main',
+      capturedCount: context.processes.length,
+      observedCount: current.length,
+      matchedCount: matched.length,
+    });
   }
   await assertNoWindowsUpdate('classic');
 }
@@ -82,7 +104,18 @@ export async function prepareClassicHotSwitch(
     return null;
   }
   await assertClassicRestartOwnership(context);
-  const initial = await readNativeProcessSnapshot(1000);
+  const observeSnapshot = async (timeout: number) => {
+    try {
+      return await readNativeProcessSnapshot(timeout);
+    } catch (error) {
+      throw processOwnershipError(
+        'probe-failed',
+        { reason: 'observation-failed', capturedCount: context.processes.length },
+        error,
+      );
+    }
+  };
+  const initial = await observeSnapshot(1000);
   const roots: ProcessInfo[] = [];
   for (const captured of context.processes) {
     const root = initial.find(
@@ -93,7 +126,16 @@ export async function prepareClassicHotSwitch(
         sameInstallation(captured.executablePath, row.exe),
     );
     if (!root) {
-      throw processError('probe-failed');
+      const observed = initial.find((row) => row.pid === captured.pid);
+      throw processOwnershipError('probe-failed', {
+        reason:
+          observed && !observed.exe && observed.startTime === captured.startTime
+            ? 'metadata-unavailable'
+            : observed
+              ? 'main-replaced'
+              : 'main-missing',
+        capturedCount: context.processes.length,
+      });
     }
     roots.push(root);
   }
@@ -105,12 +147,21 @@ export async function prepareClassicHotSwitch(
     if (Date.now() >= deadline) {
       throw processError('probe-failed');
     }
-    const rows = await readNativeProcessSnapshot(Math.min(1000, deadline - Date.now()));
+    const rows = await observeSnapshot(Math.min(1000, deadline - Date.now()));
     if (Date.now() >= deadline) {
       throw processError('probe-failed');
     }
-    if (roots.some((root) => !rows.some((row) => sameProcess(root, row)))) {
-      throw processError('switched-hot-unconfirmed');
+    const missing = roots.filter((root) => !rows.some((row) => sameProcess(root, row)));
+    if (missing.length) {
+      const unreadable = missing.some((root) =>
+        rows.some((row) => row.pid === root.pid && row.startTime === root.startTime && !row.exe),
+      );
+      const replaced = missing.some((root) => rows.some((row) => row.pid === root.pid));
+      throw processOwnershipError('switched-hot-unconfirmed', {
+        reason: unreadable ? 'metadata-unavailable' : replaced ? 'main-replaced' : 'main-missing',
+        capturedCount: roots.length,
+        matchedCount: roots.length - missing.length,
+      });
     }
     return rows;
   };

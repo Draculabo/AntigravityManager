@@ -13,6 +13,7 @@ import { verifyClientIdentity } from './client-ui.mjs';
 import { readOfficialSignedIn } from './official-auth-state.mjs';
 import { readClassicTermsAcceptance } from './classic-terms-state.mjs';
 import { captureWindowsCredential } from './windows-credential-recovery.mjs';
+import { assertSnapshotIsolation } from './snapshot-isolation.mjs';
 
 const options = new Command()
   .requiredOption('--owner <owner>', 'cli or electron')
@@ -59,6 +60,9 @@ const home = path.resolve(options.profileHome);
 const helperDirectory = path.resolve(options.helpers);
 const ids = JSON.parse(await fs.readFile(options.accountsFile, 'utf8'));
 assert.equal(ids.length, 2);
+if (options.localSnapshots) {
+  await assertSnapshotIsolation(home);
+}
 const environment = {
   ...process.env,
   HOME: home,

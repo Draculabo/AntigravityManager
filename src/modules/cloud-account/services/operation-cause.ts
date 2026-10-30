@@ -179,7 +179,14 @@ export function classifyOperationCause(error: unknown): {
   }
   visit(error);
   const primary = causes.find((value) => value.process?.windowsErrorCode !== undefined) ??
-    causes.find((value) => value.reason !== 'unknown' && value.reason !== 'network-failed') ??
+    // Ownership observation wrappers add context; a classified native cause still owns
+    // the failure (for example EPERM must not become a generic unavailable result).
+    causes.find(
+      (value) =>
+        value.reason !== 'unknown' &&
+        value.reason !== 'network-failed' &&
+        value.process?.ownership?.reason !== 'observation-failed',
+    ) ??
     causes.find((value) => value.reason !== 'unknown') ??
     causes.find((value) => value.nativeCode !== undefined) ?? { reason: 'unknown' as const };
   return {

@@ -128,12 +128,19 @@ export class OperationContext {
           ...(recoveryFailure ? { recoveryFailureStage: recoveryFailure.stage } : {}),
         }
       : undefined;
+    // The coordinator owns write certainty. Consumers must not infer it from an
+    // error code or from the fact that hot switching was attempted.
+    const credentialWrite =
+      this.operation !== 'google-login' && this.switchTrace?.outcome === 'failed'
+        ? this.switchTrace.steps.at(-1)?.effects.credentials
+        : undefined;
     const report: OperationReport = {
       failure: {
         schemaVersion: 1,
         diagnosticId: this.diagnosticId,
         operation: this.operation,
         ...failure,
+        ...(credentialWrite ? { credentialWrite } : {}),
         ...(switchRecovery ? { switchRecovery } : {}),
       },
       steps: [...this.steps],

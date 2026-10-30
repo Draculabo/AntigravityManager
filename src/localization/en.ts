@@ -92,6 +92,10 @@ const en = {
     'no-results': 'No workspaces match “{{query}}”.',
   },
   'operation-diagnostics': {
+    'switch-written-unconfirmed':
+      'The new account was written to Antigravity, but the switch could not be confirmed. Check the account shown in Antigravity before trying again.',
+    'switch-write-uncertain':
+      'The account in Antigravity may have changed. Check the account shown in Antigravity before trying again.',
     'check-account-list':
       'The account may already be saved. Refresh the account list before signing in again.',
     'check-proxy': 'Check the upstream proxy settings, then retry.',

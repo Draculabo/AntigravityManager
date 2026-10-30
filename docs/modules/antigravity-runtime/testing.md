@@ -217,6 +217,14 @@ write/readback, retirement, reassertion, replacement and consent confirmation th
 coordinator. It verifies one restart, post-exit reconciliation, one final account update, uncertain
 startup without another dispatch, and retention of both failures when recovery fails.
 
+`runtime-observer-profile` covers same-profile helper retirement for Classic and IDE on Windows and Linux,
+as well as unknown and distinct profile boundaries. `classic-hot-switch` verifies ownership
+failure categories without permitting termination. Coordinator tests verify that a failed rewrite
+returns uncertain credential state even after an earlier confirmed write. `errorMessages` and
+`process-failure-diagnostics` check partial-completion presentation, transport-safe evidence,
+Sentry projection and sanitized export. These checks do not establish the cause of every
+production `switched-hot-unconfirmed` report.
+
 `classic-terms-switch` includes a negative case where the official writer still records the previous
 account after service replacement. The live client must synchronize its own record; the Manager
 does not rewrite that file during hot switching. `switch-trace-diagnostics`, local/cloud owner,
@@ -227,6 +235,29 @@ These synthetic checks do not establish official account acceptance. The running
 the [account acceptance runner](account-switch-acceptance.md) records whether the captured main
 process identity survived each switch. Combine this with the trace outcome, official identity,
 genuine consent and provider-task evidence; a preserved main or new service PID alone is insufficient.
+
+The 2026-10-30 issue #374 follow-up validates the current fix in a Windows x64 Forge package
+built on `e1faed6c79f979d095ae84d39a87069f94c012d4` with its uncommitted source changes.
+Classic 2.28.2 passes cloud/local A-B-A through packaged Electron and cloud A-B-A through the
+packaged CLI. The exact original Windows credential is restored. Packaged diagnostics pass
+embedded/Core/CLI transport and preserve the existing master keys. These are package-payload
+and account-identity checks, without installer or AI-response acceptance.
+
+Native Ubuntu/WSLg Node 24.22.0 checks exercise production discovery over real fixture roots:
+same-profile and unscoped child retirement preserve the original main identity, while a different
+profile remains rejected. Fixture cleanup leaves no live roots. The separate official-client
+matrix requires a Linux filesystem for Unix sockets and a fresh isolated Secret Service keyring;
+an old test keyring with a different password cannot establish client credential behavior.
+An initial Classic 2.19.1 matrix remains partial for both B transitions because its durable terms
+slot still records another account, despite matching live Google and visible client identities.
+That older result does not establish acceptance of the current Linux client.
+
+The official Linux 2.28.1 archive downloaded separately from Google's release page passes all
+six cloud/local A-B-A transitions through the current standalone CLI/Core. Every transition
+confirms live Google identity, visible official-client identity and the selected account's durable
+terms record; the isolated Core stops afterward. Official setup is completed only with explicit
+authorization. This is Ubuntu/WSLg native process, keyring and client evidence, not a Linux Manager
+package, every Linux distribution or native Linux hot switching; these transitions use restart.
 
 On Windows Classic 2.23.0, the initial native run retained the previous account's consent slot on
 both cloud and local B switches, despite fresh services and target credential readback. Its two

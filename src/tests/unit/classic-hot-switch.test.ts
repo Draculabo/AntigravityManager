@@ -55,6 +55,64 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('Classic native service identity', () => {
+  it.each(['main-missing', 'main-replaced', 'extra-main'] as const)(
+    'retains closed ownership evidence for %s without authorizing termination',
+    async (reason) => {
+      const original = context.processes[0];
+      const observed =
+        reason === 'main-missing'
+          ? []
+          : reason === 'main-replaced'
+            ? [{ ...original, startTime: 30n }]
+            : [original, { ...original, pid: 200 }];
+      mocks.observe.mockResolvedValue(observed);
+      await expect(assertClassicRestartOwnership(context)).rejects.toMatchObject({
+        processDiagnostic: {
+          reason: 'switched-hot-unconfirmed',
+          ownership: {
+            reason,
+            capturedCount: 1,
+            observedCount: observed.length,
+            matchedCount: reason === 'extra-main' ? 1 : 0,
+          },
+        },
+      });
+      expect(process.kill).not.toHaveBeenCalled();
+    },
+  );
+  it('does not report an unreadable observation as an empty process set', async () => {
+    mocks.observe.mockRejectedValue(new Error('private command line'));
+    await expect(assertClassicRestartOwnership(context)).rejects.toMatchObject({
+      processDiagnostic: {
+        reason: 'probe-failed',
+        ownership: { reason: 'observation-failed', capturedCount: 1 },
+      },
+    });
+    expect(process.kill).not.toHaveBeenCalled();
+  });
+  it('retains the cause when the initial native snapshot fails', async () => {
+    const cause = Object.assign(new Error('private snapshot detail'), { code: 'EPERM' });
+    mocks.read.mockRejectedValueOnce(cause);
+    await expect(prepareClassicHotSwitch(context)).rejects.toMatchObject({
+      cause,
+      processDiagnostic: {
+        reason: 'probe-failed',
+        ownership: { reason: 'observation-failed', capturedCount: 1 },
+      },
+    });
+    expect(process.kill).not.toHaveBeenCalled();
+  });
+  it('distinguishes missing root metadata from process replacement before closing services', async () => {
+    const session = await prepareClassicHotSwitch(context);
+    mocks.read.mockResolvedValueOnce([{ ...root, exe: undefined }, service]);
+    await expect(session!.stopServices()).rejects.toMatchObject({
+      processDiagnostic: {
+        reason: 'switched-hot-unconfirmed',
+        ownership: { reason: 'metadata-unavailable', capturedCount: 1, matchedCount: 0 },
+      },
+    });
+    expect(process.kill).not.toHaveBeenCalled();
+  });
   it('allows a cold main observation its normal restart budget instead of the hot-service deadline', async () => {
     mocks.observe.mockImplementation(async (_target, timeout: number) => {
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -156,8 +214,15 @@ describe('Classic native service identity', () => {
   );
   it('uses an independent main observation for restart after the hot snapshot becomes unavailable', async () => {
     const session = await prepareClassicHotSwitch(context);
-    mocks.read.mockRejectedValueOnce(new Error('snapshot unavailable'));
-    await expect(session!.stopServices()).rejects.toThrow('snapshot unavailable');
+    const cause = new Error('snapshot unavailable');
+    mocks.read.mockRejectedValueOnce(cause);
+    await expect(session!.stopServices()).rejects.toMatchObject({
+      cause,
+      processDiagnostic: {
+        reason: 'probe-failed',
+        ownership: { reason: 'observation-failed', capturedCount: 1 },
+      },
+    });
     await expect(assertClassicRestartOwnership(context)).resolves.toBeUndefined();
   });
   it('uses restart for missing, external or stale-ancestry services', async () => {

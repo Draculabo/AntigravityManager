@@ -90,6 +90,51 @@ function report(options: ReturnType<typeof request>) {
 }
 
 describe('Classic hot-switch recovery through the production coordinator', () => {
+  it.each([
+    ['hot-prepare', 'not-attempted'],
+    ['hot-write', 'uncertain'],
+    ['credential-reassert', 'uncertain'],
+    ['service-replacement', 'confirmed'],
+    ['restart-write', 'uncertain'],
+    ['account-finalize', 'confirmed'],
+  ] as const)(
+    'reports the actual credential-write state after %s fails',
+    async (stage, credentialWrite) => {
+      const operation = new OperationContext('cloud-account-switch');
+      const options = request();
+      options.onSwitchTrace.mockImplementation((trace) => operation.setSwitchTrace(trace));
+      const error = processError('switched-hot-unconfirmed');
+      if (stage === 'hot-prepare') {
+        mocks.prepare.mockRejectedValueOnce(error);
+      } else if (stage === 'hot-write') {
+        options.performSwitch.mockRejectedValueOnce(error);
+      } else if (stage === 'credential-reassert') {
+        options.performSwitch.mockResolvedValueOnce(undefined).mockRejectedValueOnce(error);
+      } else if (stage === 'restart-write') {
+        mocks.replacement.mockRejectedValueOnce(error);
+        options.performSwitch
+          .mockResolvedValueOnce(undefined)
+          .mockResolvedValueOnce(undefined)
+          .mockRejectedValueOnce(error);
+      } else if (stage === 'account-finalize') {
+        options.afterSwitchSuccess.mockRejectedValueOnce(error);
+      } else {
+        mocks.replacement.mockRejectedValueOnce(error);
+      }
+      if (stage !== 'restart-write' && stage !== 'account-finalize') {
+        mocks.ownership.mockRejectedValueOnce(error);
+      }
+      await operation.run(async () => {
+        await expect(executeSwitchFlow(options)).rejects.toBeInstanceOf(Error);
+        const diagnostic = operation.finish({
+          stage: 'process-close',
+          reason: 'process-close-failed',
+          target: 'classic',
+        });
+        expect(diagnostic).toMatchObject({ credentialWrite });
+      });
+    },
+  );
   it('restarts when new services retain the previous account consent slot', async () => {
     const options = request();
     mocks.confirmTerms.mockResolvedValueOnce(false);

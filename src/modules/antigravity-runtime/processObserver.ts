@@ -230,10 +230,7 @@ async function scan(
   const byPid = new Map(rows.map((row) => [row.pid, row]));
   const candidates = new Map(results.map((row) => [row.pid, row]));
   return results.filter((candidate) => {
-    // An explicit profile may represent a separate instance and must still reach conflict checks.
-    if (candidate.args.some((arg) => /^--user-data-dir(?:=|$)/.test(arg))) {
-      return true;
-    }
+    const hasExplicitProfile = candidate.args.some((arg) => /^--user-data-dir(?:=|$)/.test(arg));
     const seen = new Set([candidate.pid]);
     let descendant = byPid.get(candidate.pid);
     while (descendant?.parentPid !== undefined && !seen.has(descendant.parentPid)) {
@@ -251,7 +248,23 @@ async function scan(
           platform: process.platform,
         })
       ) {
-        return false;
+        if (!hasExplicitProfile) {
+          return false;
+        }
+        // Stop at the nearest client ancestor. Different or unknown profiles remain
+        // independent instances; never infer a portable/default profile here.
+        try {
+          const candidateDirectory = getProcessUserDataDir(candidate);
+          const ancestorDirectory = getProcessUserDataDir(ancestor);
+          return !(
+            candidateDirectory &&
+            ancestorDirectory &&
+            canonicalPath(candidateDirectory) === canonicalPath(ancestorDirectory)
+          );
+        } catch {
+          // Keep malformed profile arguments visible to the owning context checks.
+          return true;
+        }
       }
       descendant = parent;
     }

@@ -55,6 +55,7 @@ const unitFiles = [
   '../release/github-release-notes.test.mjs',
   './installers/prepare-windows-update-feed.test.mjs',
   './accounts/official-auth-state.test.mjs',
+  './accounts/snapshot-isolation.test.mjs',
   './accounts/classic-terms-state.test.mjs',
   './agents/clients.test.mjs',
   './agents/audit-window.test.mjs',
