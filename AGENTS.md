@@ -75,11 +75,12 @@ Route the task before editing:
 For implementation work:
 
 1. Record the repository, branch and starting worktree state so pre-existing user changes remain untouched.
-2. Identify the owning module and every runtime boundary the change crosses; read the nearest instructions, current architecture reference and owning tests.
+2. Identify the owning module and every runtime boundary the change crosses; read the nearest instructions, current architecture reference, owning tests and relevant [Agent lessons](.agents/lessons.md).
 3. Inspect relevant consumers before changing a shared or public contract.
-4. Implement the smallest complete slice and update its tests and current documentation together.
-5. Use [agm-validate-change](.agents/skills/agm-validate-change/SKILL.md) to establish change scope and select focused evidence from [docs/testing.md](docs/testing.md); widen only when the affected surface requires it.
-6. Complete the final semantic review with [agm-code-review](.agents/skills/agm-code-review/SKILL.md), then report findings, evidence and remaining risks.
+4. Use [agm-validate-change](.agents/skills/agm-validate-change/SKILL.md) before implementation to define acceptance and select focused evidence from [docs/testing.md](docs/testing.md).
+5. Implement the smallest complete slice and update its tests and current documentation together.
+6. Use the validation skill to check the actual diff and execute the selected evidence; widen when affected consumers or boundaries require it.
+7. Complete the final semantic review with [agm-code-review](.agents/skills/agm-code-review/SKILL.md), assess prevention gaps through Agent lessons, then report findings, evidence and remaining risks.
 
 For high-risk or difficult-to-reverse decisions, add or update an [Agent Note](.agents/notes/README.md) in the same change.
 

@@ -10,11 +10,12 @@ The repository already had a detailed testing matrix and focused validation skil
 
 - Require contribution risk, revision-scoped evidence and recovery reporting in the existing PR template; [contribution guidance](../../../../CONTRIBUTING.md#risk-and-recovery) owns the levels and human confirmation.
 - Keep review rounds, stable finding IDs, resolution evidence and escalation after three substantive unresolved rounds in the existing review skill. Follow-up reviews trace fixes and affected consumers; the limit never clears a defect. This preserves bounded human attention without adding an automatic merge path.
-- Use the manually selected [historical evaluation](../../../../docs/testing/review-evaluation.md) for reviewer changes. Separate source inputs from evaluator rubrics and require human adjudication; harness/probe passes are not model performance results. No CI baseline project, scheduled review or CI workflow change is introduced by this extension.
+- Keep the [historical evaluation](../../../../docs/testing/review-evaluation.md) optional for a specific reviewer failure or comparative performance question. Separate source inputs from evaluator rubrics and require human adjudication; harness/probe passes are not model performance results. Current-task acceptance remains the default evidence, without a CI baseline project, scheduled review or CI workflow change.
 - Route read-only investigations, bug fixes, routine features and multi-boundary or high-risk changes differently in the root instructions.
 - Reproduce or isolate a reported bug and define the observable regression check before changing code.
 - Require a concise plan for multi-module or high-risk work, and preserve durable decisions in Agent Notes.
-- Keep [agm-validate-change](../../../skills/agm-validate-change/SKILL.md) responsible for establishing change scope, selecting focused checks and reporting validation results.
+- Invoke [agm-validate-change](../../../skills/agm-validate-change/SKILL.md) before implementation to define acceptance and select focused checks, then return to it to inspect the actual diff and report executed results. Relevant experience is consulted before editing through the [learning loop](2026-10-15-agent-learning-loop.md), which also owns completion reflection and post-delivery feedback.
+- Establish input provenance, the exercised entry and substituted boundaries, and the caller-visible observable before selecting checks, using the [behavioral evidence contract](../../../../docs/testing.md#behavioral-evidence-contract). Regression evidence includes a safe negative control, repaired result and preserved neighboring behavior; unavailable evidence remains a gap. Keep this record in the task report rather than adding a document per task.
 - Give [agm-code-review](../../../skills/agm-code-review/SKILL.md) a separate, independently callable responsibility for semantic review of implementation diffs and pull requests.
 - Use the repository's existing `npm` scripts and [testing matrix](../../../../docs/testing.md#change-to-evidence-matrix). Reserve exhaustive test and platform coverage for CI or changes that affect those surfaces.
 - Map shared types and module boundaries, cross-module user flows, governance files, native integrations and cross-platform behavior to minimum evidence and the conditions for widening it.
@@ -33,6 +34,12 @@ The repository already had a detailed testing matrix and focused validation skil
 
 **Require a heavyweight plan for every task.** Read-only questions and bounded fixes do not need extra artifacts; scale planning to the number of affected boundaries and the recovery cost.
 
+**Add more general reminders after each failure.** Recent failures include implementation-shaped binary fixtures, a parent queue missed by worker-local optimization and acceptance snapshots retaining external destinations. The existing real-evidence rules already apply. Make validation identify the actual input and entry, make review challenge those claims, and retain these defect classes in the existing historical corpus. Probe sensitivity does not establish reviewer performance.
+
+**Require an offline model comparison for every workflow edit.** A source-only historical audit
+does not exercise real development or show reduced rework. Select it for a concrete reviewer
+question, and assess workflow changes through acceptance and later failure feedback on real tasks.
+
 **Run full behavior or platform suites in local hooks.** Their cost and environment requirements do not match every commit or push. Keep the local gates deterministic and narrow; select behavior evidence separately and retain the full matrix in CI.
 
 **Select outgoing files to skip some pre-push type-checks.** New branches, rewritten refs and multiple pushed refs complicate comparison. The measured type-check cost supports a single unconditional check without another ref-selection implementation.
@@ -47,9 +54,34 @@ The repository already had a detailed testing matrix and focused validation skil
 
 ## Consequences
 
-Implementation work follows a risk-scaled sequence: route the task, preserve the starting worktree, diagnose before fixing, implement a coherent slice, validate with focused evidence, review the exact final diff, then report results and remaining gaps. Validation and review have separate skills; `docs/testing.md` owns the evidence matrix. Script discovery, reliable execution and failure-state review use existing tools and focused references. Lefthook reduces missed baseline checks but reads worktree state for contracts and types; it cannot certify a different staged or outgoing snapshot. No OpenSpec files or prompts are changed, and OpenSpec is not invoked automatically.
+Implementation work follows a risk-scaled sequence: route the task, preserve the starting worktree,
+consult relevant safeguards, define acceptance, diagnose before fixing, implement a coherent slice,
+validate with focused evidence, review the final diff and assess prevention gaps. Validation and
+review have separate skills; `docs/testing.md` owns the evidence matrix. Script discovery, reliable
+execution and failure-state review use existing tools and focused references. Lefthook reduces
+missed baseline checks but reads worktree state for contracts and types; it cannot certify a
+different staged or outgoing snapshot. No OpenSpec files or prompts are changed, and OpenSpec is
+not invoked automatically.
 
 ## Verification
+
+The 2026-10-30 task-integrated routing passes `pnpm run check:agent-contracts` (28 tests and
+the document validator). Acceptance now precedes implementation; historical model evaluation
+is optional. These structural checks do not establish workflow effectiveness.
+
+A subsequent source-only comparison completed 20 reviews across the five historical defects
+and repaired controls. Provisional model-assisted interpretation found all five targets under
+both instruction sets and one harmful quota reversal under each; human adjudication remains
+pending. Missing contracts and linked context limit the comparison. It demonstrates no detection
+gain and does not measure acceptance quality or rework on real tasks.
+
+The 2026-10-30 evidence-contract extension passes all 10 historical-evaluation tests, including
+the three new defect/repair probes, complete five-case preparation and rejection of missing
+repair-only sources. `pnpm run test:quality` passes all 23 tests and `pnpm run check:quality`
+passes with the expanded test-file selection. Checks use Node 24.22.0 and pnpm 10.34.6.
+The probes establish their documented synthetic or temporary-filesystem behavior only. At that
+extension's verification, no model comparison or human adjudication had been performed. The
+implementation session had seen the evaluator answers and could not supply a blind review result.
 
 The initial workflow split passed agent contracts, type-check, focused formatting and whitespace checks. The measured type-check took about 8.5 seconds and agent contracts about 2–3 seconds; these few observations cannot establish a failure rate. Before Lefthook integration, `core.hooksPath` was unset and CodeGraph owned the local pre-commit hook. No stacked-pull-request workflow was found. OpenSpec files remain unchanged.
 

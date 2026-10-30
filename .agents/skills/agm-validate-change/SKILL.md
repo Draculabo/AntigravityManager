@@ -1,21 +1,23 @@
 ---
 name: agm-validate-change
-description: Establish change scope and select focused validation evidence for an Antigravity Manager change. Use after implementation or before reporting work complete; do not use for read-only analysis or semantic code review.
+description: Define acceptance and select focused evidence before implementing an Antigravity Manager change, then validate the actual diff before reporting completion. Do not use for read-only analysis or semantic code review.
 ---
 
 # Validate an Antigravity Manager Change
 
 Validate the behavior a diff can affect without reflexively running the full repository suite. [Testing strategy](../../../docs/testing.md) owns the change-to-evidence mapping; the nearest `AGENTS.md` owns additional requirements.
 
-## Inspect the change
+## Plan and inspect the change
 
 1. Confirm the repository root, branch and starting worktree state. Separate this task's files from pre-existing user changes.
-2. For current worktree changes, run `pnpm run change-scope --base HEAD`. For outgoing commits or a pull request, verify the actual target base and head first, then pass those refs with `--base` and `--head`. Never guess a base or head. Keep the report output bounded; compare it with the starting state, then inspect task-owned changes while excluding pre-existing user-owned files.
-3. Classify each task-owned changed path as documentation/governance, renderer UI, routing, IPC/preload, Electron main lifecycle, persistence/security, proxy protocol/server, build/update or shared contract.
-4. Identify behavior that crosses more than one category; those paths need evidence from each affected side.
+2. Before implementation, apply the [behavioral evidence contract](../../../docs/testing.md#behavioral-evidence-contract) to the requested outcome and inspect relevant [Agent lessons](../../lessons.md) and their owning checks. Record acceptance, preserved behavior, applicable prevention actions and environment limits in the task record. Keep planned checks distinct from executed results; a separate tracked document is unnecessary.
+3. Classify intended paths as documentation/governance, renderer UI, routing, IPC/preload, Electron main lifecycle, persistence/security, proxy protocol/server, build/update or shared contract. Identify behavior that crosses categories; it needs evidence from each affected side.
+4. After implementation, compare the actual diff with that scope. For current worktree changes, run `pnpm run change-scope --base HEAD`. For outgoing commits or a pull request, verify the actual target base and head first, then pass those refs with `--base` and `--head`. Never guess a base or head. Keep the report output bounded; compare it with the starting state, then inspect task-owned changes while excluding pre-existing user-owned files.
+5. Update acceptance and affected checks when requirements, consumers or the diff change. Execute newly required or invalidated checks before reporting the revised outcome.
 
 ## Select evidence
 
+- For a regression, establish a safe negative control and the repaired result through the relevant path, plus a neighboring valid case that must remain supported. Use isolated historical inputs or a scoped mutation; preserve user-owned work. Record unavailable controls as evidence gaps. Scale native, packaged and live checks with the existing matrix.
 - Locate an existing runner in [scripts/README.md](../../../scripts/README.md), then follow [scripts/AGENTS.md](../../../scripts/AGENTS.md) before execution. Use its prerequisites, effects and evidence limits to select the check; add a runner only for a demonstrated coverage gap.
 - When tests or fixtures acquire resources, mutate global state or depend on asynchronous/platform behavior, use [test reliability](../../../docs/test-reliability.md) to establish isolation, readiness and cleanup before selecting commands. Use its diagnosis procedure for intermittent failures.
 - Start with the owning unit or integration test file.
@@ -37,7 +39,7 @@ The [Git hooks](../../../docs/development.md#local-git-checks) run staged whites
 
 If a relevant check fails, diagnose that failure before widening scope. Do not skip it, weaken assertions or attribute it to the environment without concrete environment evidence. Stop when fixing it would require authority or scope beyond the requested change.
 
-When the change follows a regression, repeated CI failure, reopened issue, rollback or failed live acceptance, apply the capture criteria in [Agent lessons](../../lessons.md). Record a candidate only when the evidence shows a reusable prevention gap; link the test, script or review rule that should prevent recurrence.
+At task completion, apply the reflection and capture criteria in [Agent lessons](../../lessons.md). Later CI failures, user reports, reopened issues and rollbacks return through that same process; a prior passing result does not clear a newly demonstrated failure.
 
 ## Pull request checks
 

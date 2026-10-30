@@ -31,9 +31,10 @@ is not a pass; explain the gap rather than suppressing it or narrowing away a kn
 
 ## Evidence principles
 
-Changes to reviewer instructions, prompts, tools or models use the manually selected
-[historical review evaluation](testing/review-evaluation.md). Its corpus probes and synthetic
-report tests establish harness behavior; only independently executed reviews measure a reviewer.
+Use the optional [historical review evaluation](testing/review-evaluation.md) to investigate a
+specific reviewer miss, harmful recommendation or comparative performance claim. It is not a
+routine development gate. Harness tests establish harness behavior; source-audit comparisons do
+not establish reduced rework in real development tasks.
 
 Before selecting a repository runner, use [the script guide](../scripts/README.md) and [script instructions](../scripts/AGENTS.md) to identify its existing entry, prerequisites and effects. [Test reliability](test-reliability.md) owns resource isolation, asynchronous completion and intermittent-failure diagnosis. [Failure ownership](error-handling.md) defines which state and recovery outcomes failure-path checks must establish.
 
@@ -42,6 +43,34 @@ Before selecting a repository runner, use [the script guide](../scripts/README.m
 - New validation scripts and regression tests must be capable of failing for a representative violation.
 - Never weaken assertions, skip checks or narrow coverage solely to make a failure disappear.
 - Report only checks that actually ran; report blocked or unavailable evidence separately.
+
+### Behavioral evidence contract
+
+Before implementing changed behavior, record its trigger, caller-visible acceptance result and
+existing behavior to preserve. Answer three questions in the task record, then update the record
+with executed results before completion:
+
+1. Where does the input come from: the reporter, an observed external artifact/protocol, an
+   authoritative specification or a synthetic example? Identify the source and limits. A fixture
+   copied from the implementation does not independently establish external compatibility.
+2. Which entry point executes the behavior, through which affected consumers and side effects?
+   Name substituted boundaries. A worker tested alone cannot establish parent-queue scheduling;
+   a source build cannot establish that a packaged artifact contains the same behavior.
+3. Which observable establishes the result, and what credible negative control shows the check
+   can catch the defect? For regressions, record the pre-fix failure or a representative mutation,
+   the repaired result and a neighboring valid case. Compilation failures and zero selected tests
+   do not establish regression sensitivity.
+
+Keep the record proportional to the change. Use isolated inputs for controls and preserve
+pre-existing work. The matrix below selects native, packaged and live evidence only for affected
+boundaries; unavailable environments or controls remain explicit gaps. Passing checks establish
+only their exercised behavior, even when the record is complete.
+
+When later CI, user feedback or a rollback contradicts acceptance, retain the original evidence
+and follow [Agent lessons](../.agents/lessons.md#when-to-capture) to identify the missed condition
+and repair its owning check. A format or contract pass establishes document consistency, not
+workflow effectiveness. A new prevention check must distinguish the defect from correct behavior;
+its usefulness on later tasks remains unverified until an applicable task actually exercises it.
 
 ## Change-to-evidence matrix
 

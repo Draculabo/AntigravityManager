@@ -111,12 +111,14 @@ export async function prepare(root, output, cases = CASES) {
         '--verify',
         `${entry[variant]}^{commit}`,
       ]).trim();
-      const files = gitText(root, ['ls-tree', '-r', '--name-only', revision, '--', ...entry.paths])
+      const paths =
+        variant === 'fixed' ? [...entry.paths, ...(entry.fixedOnlyPaths ?? [])] : entry.paths;
+      const files = gitText(root, ['ls-tree', '-r', '--name-only', revision, '--', ...paths])
         .trim()
         .split('\n')
         .filter(Boolean)
         .map((file) => ({ path: file, source: gitText(root, ['show', `${revision}:${file}`]) }));
-      for (const requested of entry.paths) {
+      for (const requested of paths) {
         if (
           !files.some((file) =>
             requested.endsWith('/') ? file.path.startsWith(requested) : file.path === requested,

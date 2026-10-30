@@ -31,4 +31,55 @@ export const CASES = [
     preserve:
       'Preserve minimum-percentage aggregation, unknown-model independence and distinct handling of the existing exact-presentation families.',
   },
+  {
+    id: 'same-profile-process-descendant',
+    before: 'e1faed6c79f979d095ae84d39a87069f94c012d4',
+    fixed: '9a3ffcb33556947772e9badf4b01c6d08c435181',
+    paths: [
+      'src/modules/antigravity-runtime/processObserver.ts',
+      'src/modules/antigravity-runtime/runtimePaths.ts',
+      'src/modules/antigravity-runtime/classicHotSwitch.ts',
+      'src/shared/platform/antigravityProcessIdentity.ts',
+    ],
+    task: 'Audit client-main observation during account switching. Native snapshots can include a main and a descendant using the same executable and explicit profile, followed by a snapshot after that descendant exits. Trace the resulting main identity set and its ownership consumers. Distinct or unknown profiles and independent instances must remain visible. Report supported defects and the limits of synthetic process evidence.',
+    rubric:
+      'The observer retains every explicit-profile descendant before examining ancestry. A same-executable, same-profile helper is captured as a main; its retirement then changes the captured main set and can fail hot replacement and restart ownership while the real main survives. The repair excludes only descendants with provable ancestry and the same explicit canonical profile as their nearest client ancestor. Removing all explicit-profile descendants or weakening restart identity checks is harmful.',
+    evidence:
+      'Fix commit 9a3ffcb33556947772e9badf4b01c6d08c435181; runtime-observer-profile.test.ts and the 2026-10-28 Classic recovery Agent Note document the reproduced shape, not a confirmed cause for every production report. The historical probe executes the observer with synthetic snapshots and controlled platform/path dependencies.',
+    preserve:
+      'Keep different or unknown profiles and independent roots visible. Preserve executable and creation-time ancestry checks and strict captured-main ownership.',
+  },
+  {
+    id: 'sqlite-parent-queue-yield',
+    before: '0ce7766c10d21547fe8d50dc31b6ef8cf8148b23',
+    fixed: '4d0763fef30d5441f3b3b43009712ec9033daacd',
+    paths: [
+      'src/shared/persistence/sqlite-worker/bounded-sqlite-worker.ts',
+      'src/modules/proxy-gateway/audit/traffic-audit.worker.ts',
+      'src/modules/proxy-gateway/audit/traffic-audit-retention.ts',
+      'src/modules/proxy-gateway/audit/traffic-audit.repository.ts',
+    ],
+    fixedOnlyPaths: ['src/modules/proxy-gateway/audit/traffic-audit-worker-dispatcher.ts'],
+    task: 'Audit audit-maintenance responsiveness through both the parent command queue and worker. A statistics read queued during unfinished maintenance must be serviceable before final maintenance completion. Trace admission accounting, replies and continuation; identify evidence needed beyond worker-only tests and preserve truthful completion and bounded shutdown.',
+    rubric:
+      'The parent permits only one active command until its reply, and the original worker runs maintenance synchronously. Worker-local yielding alone cannot release the parent queue. The repair adds a nonterminal yield reply, retains the pending command and admission accounting, and requeues its continuation behind peers while the dispatcher owns the pass. The old parent treats a yield-shaped reply as final success. Detect the parent/worker scheduling gap; reporting success on a partial slice or dropping queue accounting is harmful.',
+    evidence:
+      'Fix commit 4d0763fef30d5441f3b3b43009712ec9033daacd; the traffic-audit Agent Note records a 9.124-second statistics delay during maintenance. The historical probe drives each parent implementation with controlled worker messages; it proves reply ordering/accounting, not SQLite reclamation or a production latency bound.',
+    preserve:
+      'Resolve maintenance only on its final result, retain admission usage while yielded, and preserve ordinary reads, errors and terminal shutdown behavior.',
+  },
+  {
+    id: 'acceptance-snapshot-destination',
+    before: 'e1faed6c79f979d095ae84d39a87069f94c012d4',
+    fixed: '9a3ffcb33556947772e9badf4b01c6d08c435181',
+    paths: ['scripts/acceptance/accounts/account-switch-acceptance.mjs'],
+    fixedOnlyPaths: ['scripts/acceptance/accounts/snapshot-isolation.mjs'],
+    task: 'Audit local-snapshot acceptance isolation before native runtime loading or account operations. A copied profile can retain absolute backup_file destinations in its snapshot index, including another profile or a linked directory. Determine whether selecting an isolated HOME is sufficient, trace preflight ordering and preserve new destinations genuinely owned by the selected profile.',
+    rubric:
+      'The original runner redirects HOME but never validates persisted backup_file destinations, so inherited absolute paths can still refresh snapshots outside the new profile. The repair validates the index and canonical destination ancestry before environment mutation and native runtime loading when local snapshots are enabled. Lexical containment alone misses linked directories. Rewriting real external snapshots, deleting them or claiming HOME isolates these paths is harmful.',
+    evidence:
+      'Fix commit 9a3ffcb33556947772e9badf4b01c6d08c435181; the Classic recovery Agent Note records historical acceptance snapshots modified without original backups and unverified restoration. The probe executes extracted pre-runtime statements and the historical guard against disposable files; it never loads a native runtime or performs account writes.',
+    preserve:
+      'Accept new backup destinations inside the canonical isolated profile, reject external and linked destinations before runtime loading, and leave original bytes untouched. Production snapshot compatibility is outside this acceptance-only guard.',
+  },
 ];
