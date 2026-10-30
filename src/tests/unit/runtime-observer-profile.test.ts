@@ -13,7 +13,7 @@ vi.mock('node:path', async (original) => {
   return {
     ...actual,
     default: {
-      ...actual.default,
+      ...actual,
       dirname: (value: string) => selected().dirname(value),
       basename: (value: string) => selected().basename(value),
       join: (...values: string[]) => selected().join(...values),
