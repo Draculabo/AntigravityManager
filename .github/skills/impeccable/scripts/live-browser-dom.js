@@ -49,10 +49,14 @@
       const r = el.getBoundingClientRect();
       if (!rectIsUsableAnchor(r)) return null;
       const rect = {
-        x: r.x, y: r.y,
-        top: r.top, left: r.left,
-        right: r.right, bottom: r.bottom,
-        width: r.width, height: r.height,
+        x: r.x,
+        y: r.y,
+        top: r.top,
+        left: r.left,
+        right: r.right,
+        bottom: r.bottom,
+        width: r.width,
+        height: r.height,
       };
       return {
         __impeccableFrozenAnchor: true,
@@ -67,17 +71,22 @@
     function hasFrameworkHmrOwnership(el) {
       for (let node = el; node; node = node.parentElement) {
         let keys = [];
-        try { keys = Object.getOwnPropertyNames(node); } catch {}
-        if (keys.some((key) => (
-          key.startsWith('__reactFiber$')
-          || key.startsWith('__reactProps$')
-          || key.startsWith('__reactContainer$')
-          || key === '_reactRootContainer'
-          || key === '__vueParentComponent'
-          || key === '__vue_app__'
-          || key === '__vnode'
-          || key === '__svelte_meta'
-        ))) {
+        try {
+          keys = Object.getOwnPropertyNames(node);
+        } catch {}
+        if (
+          keys.some(
+            (key) =>
+              key.startsWith('__reactFiber$') ||
+              key.startsWith('__reactProps$') ||
+              key.startsWith('__reactContainer$') ||
+              key === '_reactRootContainer' ||
+              key === '__vueParentComponent' ||
+              key === '__vue_app__' ||
+              key === '__vnode' ||
+              key === '__svelte_meta',
+          )
+        ) {
           return true;
         }
       }
@@ -87,14 +96,19 @@
     function id8() {
       // randomUUID is secure-context only (issue #1055); getRandomValues is not.
       try {
-        if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID().replace(/-/g, '').slice(0, 8);
-      } catch { /* fall through */ }
+        if (typeof crypto?.randomUUID === 'function')
+          return crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+      } catch {
+        /* fall through */
+      }
       try {
         if (typeof crypto?.getRandomValues === 'function') {
           const bytes = crypto.getRandomValues(new Uint8Array(4));
           return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
         }
-      } catch { /* fall through */ }
+      } catch {
+        /* fall through */
+      }
       return (Math.random().toString(16).slice(2) + Date.now().toString(16)).slice(0, 8);
     }
 
@@ -125,10 +139,17 @@
     // Same box as the SvelteKit shadow host: 0x0, fixed, chrome overflows it.
     // `all: initial` also clears the popover UA box.
     for (const [name, value] of Object.entries({
-      all: 'initial', position: 'fixed', top: '0', left: '0', width: '0', height: '0', overflow: 'visible',
-    })) topLayerHost.style.setProperty(name, value, 'important');
+      all: 'initial',
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '0',
+      height: '0',
+      overflow: 'visible',
+    }))
+      topLayerHost.style.setProperty(name, value, 'important');
     const pageRoots = new WeakSet(); // chrome nodes mounted on the page itself
-    const openModals = [];           // in the order they opened; last is topmost
+    const openModals = []; // in the order they opened; last is topmost
 
     // Modals that were open before watching began have no readable top-layer
     // order, but the topmost one's backdrop covers the viewport, so a hit
@@ -161,7 +182,8 @@
       if (topLayerHost.parentNode === modal) return;
       if (modal) {
         modal.appendChild(topLayerHost);
-        for (const el of [...doc.body.children]) if (pageRoots.has(el)) topLayerHost.appendChild(el);
+        for (const el of [...doc.body.children])
+          if (pageRoots.has(el)) topLayerHost.appendChild(el);
         topLayerHost.showPopover();
       } else {
         doc.body.append(...topLayerHost.childNodes);
@@ -180,7 +202,13 @@
       openModals.push(...doc.querySelectorAll('dialog:modal'));
       raiseHitModal();
       const observer = new MutationObserver(syncTopLayerHost);
-      observer.observe(doc, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ['open'] });
+      observer.observe(doc, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ['open'],
+      });
       syncTopLayerHost();
       return () => {
         observer.disconnect();
@@ -220,7 +248,8 @@
         ta.setAttribute('readonly', '');
         ta.setAttribute('aria-hidden', 'true');
         ta.tabIndex = -1;
-        ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+        ta.style.cssText =
+          'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
         uiAppendToPage(ta);
         ta.select();
         return doc.execCommand('copy');
@@ -229,7 +258,11 @@
       } finally {
         ta?.remove();
         if (previous && previous !== activeElementDeep() && typeof previous.focus === 'function') {
-          try { previous.focus({ preventScroll: true }); } catch { /* best effort */ }
+          try {
+            previous.focus({ preventScroll: true });
+          } catch {
+            /* best effort */
+          }
         }
       }
     }

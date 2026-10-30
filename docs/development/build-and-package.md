@@ -31,6 +31,40 @@ environment. Remove the patch when the maker includes these behaviors and
 `pnpm run test:appimage-download` passes on Linux for both architectures.
 See [installer verification](../testing.md) for build and native update checks.
 
+## Release workflow verification
+
+[Publish Release](../../.github/workflows/publish.yaml) builds Windows, macOS and Linux for x64
+and arm64. Linux release jobs use Ubuntu 24.04; macOS uses `macos-15` for arm64 and
+`macos-15-intel` for x64. Action references are pinned to complete commits with their release
+versions in comments. Action runtimes use Node 24 independently of the project Node version in
+`.nvmrc` and pnpm version in `packageManager`.
+
+Dispatch the workflow on the revision being verified with `dry_run=true`. After all builds
+succeed, the read-only `verify-artifacts` job downloads and merges this run's `make-*` artifacts
+with digest mismatches treated as errors. It validates the six-target inventory, nonempty
+platform installers, macOS archives, Linux checksum files and Windows update assets. It also
+runs the existing Windows feed preparation against those downloaded files in the runner's
+temporary directory. The job does not create releases, upload release assets or open PRs.
+
+`pnpm run test:acceptance release artifacts --source <merged-artifact-directory>` runs the asset
+checks locally. Pass `--inventory <json-file>` to also validate GitHub inventory pages captured
+with `gh api --paginate --slurp` for the run's artifacts endpoint. This check reads the supplied
+files; it does not install packages or validate native execution. Synthetic negative fixtures
+are included in `pnpm run test:acceptance unit`.
+
+Publication requires both build and artifact verification to succeed and remains disabled for
+dry runs. The `release` environment retains its existing approval configuration. The publish
+job revalidates assets before creating a missing draft release; its existing protection against
+updating an already published release remains in effect. A dry run establishes build, artifact
+transport and local feed preparation evidence, but not installed application behavior, release
+uploads or automated PR creation. Those require their corresponding platform or release checks.
+
+For runner or Action failures, inspect the failing step before changing another part of the
+pipeline. Revert only the affected workflow change to a verified, supported runner or Action
+commit; retired `macos-14` is not a continuing recovery option. A failed dry run leaves Actions
+artifacts but performs no release writes. After a real publication failure, inspect the release
+and generated PR state before retrying because writes may already have succeeded.
+
 ## Runtime preparation integrity
 
 Standalone runtime preparation downloads Node only from the official distribution and verifies

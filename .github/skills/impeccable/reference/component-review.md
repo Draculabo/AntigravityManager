@@ -37,16 +37,18 @@ Present a second manifest at `.impeccable/review/hero.json`. You write this one,
   "stage": "hero",
   "id": "hero",
   "title": "First viewport",
-  "comp": {"path": ".impeccable/mocks/comp.png", "width": 1536, "height": 1024},
-  "components": [{
-    "id": "first-viewport",
-    "name": "First viewport",
-    "medium": "HTML / CSS",
-    "note": "Assembled first viewport",
-    "box": {"x": 0, "y": 0, "w": 1, "h": 1},
-    "preview": {"kind": "page", "path": "index.html"},
-    "dependencies": ["styles.css", "assets/plates/sky.png", "fonts/display.woff2"]
-  }]
+  "comp": { "path": ".impeccable/mocks/comp.png", "width": 1536, "height": 1024 },
+  "components": [
+    {
+      "id": "first-viewport",
+      "name": "First viewport",
+      "medium": "HTML / CSS",
+      "note": "Assembled first viewport",
+      "box": { "x": 0, "y": 0, "w": 1, "h": 1 },
+      "preview": { "kind": "page", "path": "index.html" },
+      "dependencies": ["styles.css", "assets/plates/sky.png", "fonts/display.woff2"]
+    }
+  ]
 }
 ```
 

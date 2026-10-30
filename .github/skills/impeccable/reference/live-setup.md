@@ -20,17 +20,17 @@ Create the file at the `path` the boot reported (default `.impeccable/live/confi
 
 **Glob syntax:** `**` matches any number of segments (including zero), `*` matches within a segment, `?` matches one character. Paths are project-root-relative with forward slashes.
 
-| Framework | `files` | `insertBefore` | `commentSyntax` |
-|-----------|---------|----------------|-----------------|
-| SPA with single shell (Vite / React / Plain HTML) | `["index.html"]` | `</body>` | `html` |
-| Next.js (App Router) | `["app/layout.tsx"]` | `</body>` | `jsx` |
-| Next.js (Pages) | `["pages/_document.tsx"]` | `</body>` | `jsx` |
-| Nuxt | `["app.vue"]` | `</body>` | `html` |
-| Svelte / SvelteKit | `["src/app.html"]` | `</body>` | `html` |
-| TanStack Router (SPA, Vite) | `["index.html"]` | `</body>` | `html` |
-| TanStack Start (SSR) | `["src/routes/__root.tsx"]` | `<Scripts` | `jsx` |
-| Astro | `[" <root layout .astro>"]` | `</body>` | `html` |
-| Multi-page (separate HTML per route) | `["public/**/*.html"]` glob over the served dir | `</body>` | `html` |
+| Framework                                         | `files`                                         | `insertBefore` | `commentSyntax` |
+| ------------------------------------------------- | ----------------------------------------------- | -------------- | --------------- |
+| SPA with single shell (Vite / React / Plain HTML) | `["index.html"]`                                | `</body>`      | `html`          |
+| Next.js (App Router)                              | `["app/layout.tsx"]`                            | `</body>`      | `jsx`           |
+| Next.js (Pages)                                   | `["pages/_document.tsx"]`                       | `</body>`      | `jsx`           |
+| Nuxt                                              | `["app.vue"]`                                   | `</body>`      | `html`          |
+| Svelte / SvelteKit                                | `["src/app.html"]`                              | `</body>`      | `html`          |
+| TanStack Router (SPA, Vite)                       | `["index.html"]`                                | `</body>`      | `html`          |
+| TanStack Start (SSR)                              | `["src/routes/__root.tsx"]`                     | `<Scripts`     | `jsx`           |
+| Astro                                             | `[" <root layout .astro>"]`                     | `</body>`      | `html`          |
+| Multi-page (separate HTML per route)              | `["public/**/*.html"]` glob over the served dir | `</body>`      | `html`          |
 
 Pick an anchor that exists in every file (`</body>` almost always works); `insertAfter` matches after a line instead. For multi-page sites prefer a glob so new pages are picked up automatically. For sites whose pages are rebuilt by a generator, the inject survives only until the next regeneration: re-run `impeccable live` after each build (accept is unaffected; it writes true source via the fallback flow).
 
@@ -50,7 +50,7 @@ If `config.cspChecked === true`, skip this whole section; the user was already a
 .github/skills/impeccable/scripts/impeccable detect-csp
 ```
 
-Output `{ shape, signals }`; the shape names the *patch mechanism*, so one template covers many frameworks:
+Output `{ shape, signals }`; the shape names the _patch mechanism_, so one template covers many frameworks:
 
 - **`null`**: no CSP; write the config with `cspChecked: true` and stop here.
 - **`append-arrays`**: CSP as structured directive arrays; auto-patchable (monorepo helpers with `additionalScriptSrc`/`additionalConnectSrc`, SvelteKit `kit.csp.directives`, Nuxt `nuxt-security`).
@@ -76,11 +76,10 @@ Declare near the top of the file that holds the CSP arrays, then append `...__im
 
 ```ts
 // Dev-only allowance so impeccable live mode can load. Guarded by NODE_ENV.
-const __impeccableLiveDev =
-  process.env.NODE_ENV === "development" ? ["http://localhost:8400"] : [];
+const __impeccableLiveDev = process.env.NODE_ENV === 'development' ? ['http://localhost:8400'] : [];
 ```
 
-Per-framework: Next.js + monorepo helper: edit the *app's* `next.config.*` (not the shared helper), appending to `additionalScriptSrc` / `additionalConnectSrc`. SvelteKit: `svelte.config.js`, `kit.csp.directives['script-src']` and `['connect-src']`. Nuxt + nuxt-security: `nuxt.config.*`, `security.headers.contentSecurityPolicy['script-src']` and `['connect-src']`. Reference outputs: [nextjs-turborepo/expected-after-patch.ts](https://github.com/pbakaus/impeccable/blob/8dac6ae7e020c43ab10ce9b41939f6fd42627b96/tests/framework-fixtures/nextjs-turborepo/expected-after-patch.ts), [sveltekit-csp/expected-after-patch.js](https://github.com/pbakaus/impeccable/blob/8dac6ae7e020c43ab10ce9b41939f6fd42627b96/tests/framework-fixtures/sveltekit-csp/expected-after-patch.js). Idempotency: if `__impeccableLiveDev` already exists in the file, the patch is applied; just mark `cspChecked: true`.
+Per-framework: Next.js + monorepo helper: edit the _app's_ `next.config.*` (not the shared helper), appending to `additionalScriptSrc` / `additionalConnectSrc`. SvelteKit: `svelte.config.js`, `kit.csp.directives['script-src']` and `['connect-src']`. Nuxt + nuxt-security: `nuxt.config.*`, `security.headers.contentSecurityPolicy['script-src']` and `['connect-src']`. Reference outputs: [nextjs-turborepo/expected-after-patch.ts](https://github.com/pbakaus/impeccable/blob/8dac6ae7e020c43ab10ce9b41939f6fd42627b96/tests/framework-fixtures/nextjs-turborepo/expected-after-patch.ts), [sveltekit-csp/expected-after-patch.js](https://github.com/pbakaus/impeccable/blob/8dac6ae7e020c43ab10ce9b41939f6fd42627b96/tests/framework-fixtures/sveltekit-csp/expected-after-patch.js). Idempotency: if `__impeccableLiveDev` already exists in the file, the patch is applied; just mark `cspChecked: true`.
 
 ### append-string
 
@@ -88,8 +87,7 @@ Two-point patch: declare a dev-only string, interpolate it into the CSP value at
 
 ```ts
 // Dev-only allowance so impeccable live mode can load.
-const __impeccableLiveDev =
-  process.env.NODE_ENV === "development" ? " http://localhost:8400" : "";
+const __impeccableLiveDev = process.env.NODE_ENV === 'development' ? ' http://localhost:8400' : '';
 ```
 
 - `script-src 'self' 'unsafe-inline'` becomes `` `script-src 'self' 'unsafe-inline'${__impeccableLiveDev}` ``

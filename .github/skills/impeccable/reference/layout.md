@@ -78,7 +78,15 @@ When the structure holds, hand off to `/impeccable polish`.
 Every variant declares a coarse `density` parameter and authors spacing against `var(--p-density, 1)`.
 
 ```json
-{"id":"density","kind":"range","min":0.6,"max":1.4,"step":0.05,"default":1,"label":"Density"}
+{
+  "id": "density",
+  "kind": "range",
+  "min": 0.6,
+  "max": 1.4,
+  "step": 0.05,
+  "default": 1,
+  "label": "Density"
+}
 ```
 
 Add one structural parameter only when the topology genuinely branches. Follow [live.md](live.md)'s parameter contract.
