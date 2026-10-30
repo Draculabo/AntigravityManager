@@ -2,6 +2,79 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.29.0
+
+**Release Date:** 2026-10-30
+**Since v0.28.0:** 12 commits · 6 merged PRs · 3 verified contributors
+
+> This release includes updates in Desktop & User Experience, Tooling & Maintenance, Accounts & Core, Proxy Gateway & Models.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — add account email to request detail view ([#381](https://github.com/Draculabo/AntigravityManager/pull/381))
+- **Feature** — automate issue triage and pull request checks ([43117b3](https://github.com/Draculabo/AntigravityManager/commit/43117b3d9d25e66363fa29096fdccb3c9ba28ee5))
+- **Feature** — multi-account isolated workspace profiles and concurrent IDE sessions ([#379](https://github.com/Draculabo/AntigravityManager/pull/379))
+- **Feature** — add interactive model playground and account targeting ([#385](https://github.com/Draculabo/AntigravityManager/pull/385))
+- **Feature** — apply Signal Blue design system with component-owned styles ([5126433](https://github.com/Draculabo/AntigravityManager/commit/5126433a4608b7a9048f2da0c167717b60d5b885))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.28.0 ([#380](https://github.com/Draculabo/AntigravityManager/pull/380))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Maintenance** — integrate Impeccable design workflow and product context ([900fec1](https://github.com/Draculabo/AntigravityManager/commit/900fec12c7827aa682dfdc714a45c088a69037e0))
+- **Feature** — automate issue triage and pull request checks ([43117b3](https://github.com/Draculabo/AntigravityManager/commit/43117b3d9d25e66363fa29096fdccb3c9ba28ee5))
+- **Fix** — optimize retention disk eviction, add payload index and exclude high-frequency IPC polling ([#383](https://github.com/Draculabo/AntigravityManager/pull/383))
+- **Fix** — make retention cooperative and preserve audit records ([4d0763f](https://github.com/Draculabo/AntigravityManager/commit/4d0763fef30d5441f3b3b43009712ec9033daacd))
+- **Feature** — apply Signal Blue design system with component-owned styles ([5126433](https://github.com/Draculabo/AntigravityManager/commit/5126433a4608b7a9048f2da0c167717b60d5b885))
+- **Maintenance** — add GitHub design skill and agent configuration ([e1faed6](https://github.com/Draculabo/AntigravityManager/commit/e1faed6c79f979d095ae84d39a87069f94c012d4))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Feature** — add account email to request detail view ([#381](https://github.com/Draculabo/AntigravityManager/pull/381))
+- **Feature** — multi-account isolated workspace profiles and concurrent IDE sessions ([#379](https://github.com/Draculabo/AntigravityManager/pull/379))
+- **Fix** — preserve main ownership during account switching ([9a3ffcb](https://github.com/Draculabo/AntigravityManager/commit/9a3ffcb33556947772e9badf4b01c6d08c435181))
+
+---
+
+## 🌐 Proxy Gateway & Models
+
+- **Feature** — add interactive model playground and account targeting ([#385](https://github.com/Draculabo/AntigravityManager/pull/385))
+- **Maintenance** — align target account header guards ([#388](https://github.com/Draculabo/AntigravityManager/pull/388))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Realmagnum · @Draculabo · @premkumar0184
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- feat(workspace): multi-account isolated workspace profiles and concurrent IDE sessions by @premkumar0184 ([#379](https://github.com/Draculabo/AntigravityManager/pull/379))
+- chore(linux): update package metadata to v0.28.0 by @Draculabo ([#380](https://github.com/Draculabo/AntigravityManager/pull/380))
+- feat(traffic): add account email to request detail view by @Realmagnum ([#381](https://github.com/Draculabo/AntigravityManager/pull/381))
+- fix(audit): optimize retention disk eviction, add payload index and exclude high-frequency IPC polling by @Realmagnum ([#383](https://github.com/Draculabo/AntigravityManager/pull/383))
+- feat(proxy-gateway): add interactive model playground and account targeting by @Realmagnum ([#385](https://github.com/Draculabo/AntigravityManager/pull/385))
+- chore(proxy): align target account header guards by @Realmagnum ([#388](https://github.com/Draculabo/AntigravityManager/pull/388))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.28.0...v0.29.0
+
 # 🚀 Antigravity Manager Release v0.28.0
 
 **Release Date:** 2026-10-28
