@@ -654,6 +654,7 @@ const zhCn = {
       vietnamese: '越南语',
       turkish: '土耳其语',
       french: '法语',
+      portuguese: '葡萄牙语（巴西）',
     },
     about: {
       title: '关于',

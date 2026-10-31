@@ -705,6 +705,7 @@ const en = {
       vietnamese: 'Vietnamese',
       turkish: 'Turkish',
       french: 'French',
+      portuguese: 'Portuguese (Brazil)',
     },
     about: {
       title: 'About',

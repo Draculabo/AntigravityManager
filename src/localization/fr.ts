@@ -517,6 +517,7 @@ const fr = {
       vietnamese: 'Vietnamien',
       turkish: 'Turc',
       french: 'Français',
+      portuguese: 'Portugais (Brésil)',
     },
     about: {
       title: 'A propos',

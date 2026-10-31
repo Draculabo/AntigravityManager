@@ -7,6 +7,7 @@ import en from './en';
 import zhCn from './zh-CN';
 import ru from './ru';
 import fr from './fr';
+import ptBr from './pt-BR';
 
 i18n
   .use(LanguageDetector)
@@ -18,7 +19,7 @@ i18n
       caches: ['localStorage'],
       lookupLocalStorage: 'lang',
     },
-    supportedLngs: ['en', 'zh-CN', 'ru', 'vi', 'tr', 'fr'],
+    supportedLngs: ['en', 'zh-CN', 'ru', 'vi', 'tr', 'fr', 'pt-BR'],
     load: 'currentOnly', // Only load the exact language code, not variants
     resources: {
       en: {
@@ -38,6 +39,9 @@ i18n
       },
       fr: {
         translation: fr,
+      },
+      'pt-BR': {
+        translation: ptBr,
       },
     },
   });
