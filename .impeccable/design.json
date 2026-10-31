@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-29T08:37:34.594Z",
+  "generatedAt": "2026-10-31T19:06:33.952Z",
   "title": "Design System: Antigravity Manager",
   "extensions": {
     "colorMeta": {
@@ -135,7 +135,7 @@
       "refersTo": "button-primary",
       "description": "Main action, 36px.",
       "html": "<button class=\"ds-primary\">Save changes</button>",
-      "css": ".ds-primary{background:var(--primary,#245bd7);color:var(--primary-foreground,#fff);font:500 14px/22px var(--font-sans,Geist,sans-serif);height:36px;padding:0 16px;border:0;border-radius:8px;transition:filter 150ms ease-out}.ds-primary:hover{filter:brightness(.94)}.ds-primary:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+      "css": ".ds-primary{background:var(--primary,oklch(51.3725% 0.199339 263.1402));color:var(--primary-foreground,oklch(100% 0 89.8756));font:500 14px/22px var(--font-sans,'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif);height:36px;padding:0 16px;border:0;border-radius:8px;transition:filter 150ms ease-out}.ds-primary:hover{filter:brightness(.94)}.ds-primary:focus-visible{outline:2px solid var(--ring,oklch(51.3725% 0.199339 263.1402));outline-offset:2px}"
     },
     {
       "name": "Secondary button",
@@ -143,14 +143,15 @@
       "refersTo": "button-secondary",
       "description": "Supporting action.",
       "html": "<button class=\"ds-secondary\">Use account</button>",
-      "css": ".ds-secondary{height:36px;padding:0 12px;border:0;border-radius:8px;background:var(--secondary,#edf1f7);color:var(--foreground,#202b3d);font:500 14px/22px sans-serif}.ds-secondary:hover{background:var(--accent,#e4edff)}.ds-secondary:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+      "css": ".ds-secondary{height:36px;padding:0 12px;border:0;border-radius:8px;background:var(--secondary,oklch(95.6831% 0.009121 258.3358));color:var(--foreground,oklch(28.7535% 0.036597 260.0472));font:500 14px/22px var(--font-sans,'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif)}.ds-secondary:hover{background:var(--accent,oklch(94.4691% 0.026177 264.442))}.ds-secondary:focus-visible{outline:2px solid var(--ring,oklch(51.3725% 0.199339 263.1402));outline-offset:2px}"
     },
     {
       "name": "Outline button",
       "kind": "button",
+      "refersTo": "outline-button",
       "description": "Bordered supporting action.",
       "html": "<button class=\"ds-outline\">Import</button>",
-      "css": ".ds-outline{height:36px;padding:0 12px;border:1px solid var(--border,#dce3ee);border-radius:8px;background:var(--card,#fff);color:var(--foreground,#202b3d);font:500 14px/22px sans-serif}.ds-outline:hover{background:var(--muted,#edf1f7);border-color:var(--input,#8798b0)}.ds-outline:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+      "css": ".ds-outline{height:36px;padding:0 12px;border:1px solid var(--border,oklch(91.3742% 0.016776 259.4189));border-radius:8px;background:var(--card,oklch(100% 0 89.8756));color:var(--foreground,oklch(28.7535% 0.036597 260.0472));font:500 14px/22px var(--font-sans,'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif)}.ds-outline:hover{background:var(--muted,oklch(95.6831% 0.009121 258.3358));border-color:var(--input,oklch(67.4534% 0.040602 256.9964))}.ds-outline:focus-visible{outline:2px solid var(--ring,oklch(51.3725% 0.199339 263.1402));outline-offset:2px}"
     },
     {
       "name": "Text field",
@@ -158,7 +159,7 @@
       "refersTo": "input",
       "description": "Readable field with themed border and focus.",
       "html": "<input class=\"ds-input\" aria-label=\"Proxy address\" placeholder=\"http://127.0.0.1:7890\" />",
-      "css": ".ds-input{height:36px;padding:4px 12px;border:1px solid var(--input,#8798b0);border-radius:6px;background:var(--background,#f2f5fa);color:var(--foreground,#202b3d);font:14px/22px sans-serif}.ds-input::placeholder{color:var(--muted-foreground,#58677c)}.ds-input:hover{border-color:var(--ring,#245bd7)}.ds-input:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+      "css": ".ds-input{height:36px;padding:4px 12px;border:1px solid var(--input,oklch(67.4534% 0.040602 256.9964));border-radius:6px;background:var(--background,oklch(96.9299% 0.00741 260.7315));color:var(--foreground,oklch(28.7535% 0.036597 260.0472));font:14px/22px var(--font-sans,'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif)}.ds-input::placeholder{color:var(--muted-foreground,oklch(50.9256% 0.038197 256.8202))}.ds-input:hover{border-color:var(--ring,oklch(51.3725% 0.199339 263.1402))}.ds-input:focus-visible{outline:2px solid var(--ring,oklch(51.3725% 0.199339 263.1402));outline-offset:2px}"
     },
     {
       "name": "Active navigation",
@@ -166,14 +167,15 @@
       "refersTo": "navigation-active",
       "description": "Sidebar selection.",
       "html": "<nav><a class=\"ds-nav\" href=\"#accounts\" aria-current=\"page\">Accounts</a></nav>",
-      "css": ".ds-nav{display:flex;align-items:center;height:40px;padding:0 12px;border-radius:6px;background:var(--sidebar-accent,#dae6fb);color:var(--sidebar-accent-foreground,#234f9d);font:600 14px/22px sans-serif;text-decoration:none}.ds-nav:hover{filter:brightness(.98)}.ds-nav:focus-visible{outline:2px solid var(--ring,#245bd7);outline-offset:2px}"
+      "css": ".ds-nav{display:flex;align-items:center;height:40px;padding:0 12px;border-radius:6px;background:var(--sidebar-accent,oklch(92.2288% 0.0314 261.7431));color:var(--sidebar-accent-foreground,oklch(44.2176% 0.136297 260.8528));font:600 14px/22px var(--font-sans,'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif);text-decoration:none}.ds-nav:hover{filter:brightness(.98)}.ds-nav:focus-visible{outline:2px solid var(--ring,oklch(51.3725% 0.199339 263.1402));outline-offset:2px}"
     },
     {
       "name": "Status label",
       "kind": "chip",
+      "refersTo": "status-label",
       "description": "Status with text and color.",
       "html": "<span class=\"ds-status\">Available</span>",
-      "css": ".ds-status{display:inline-flex;padding:0 8px;min-height:24px;align-items:center;border:1px solid var(--success-border,#d9e9df);border-radius:4px;background:var(--success-soft,#f0f7f3);color:var(--success,#25704f);font:500 12px/20px sans-serif}"
+      "css": ".ds-status{display:inline-flex;padding:0 8px;min-height:24px;align-items:center;border:1px solid var(--success-border,oklch(91.9268% 0.021647 158.5659));border-radius:4px;background:var(--success-soft,oklch(96.9757% 0.009083 161.3534));color:var(--success,oklch(48.9606% 0.091189 160.8783));font:500 12px/20px var(--font-sans,'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif)}"
     },
     {
       "name": "Account card",
@@ -181,7 +183,15 @@
       "refersTo": "account-card",
       "description": "Flat account surface and padded model row.",
       "html": "<article class=\"ds-card\"><h3>Personal</h3><p>preview@example.com</p><div class=\"ds-quota\"><span>Gemini 3 Pro</span><span>94%</span></div></article>",
-      "css": ".ds-card{padding:20px;border:1px solid var(--border,#dce3ee);border-radius:8px;background:var(--card,#fff);color:var(--foreground,#202b3d);font:14px/22px sans-serif}.ds-card h3{margin:0;font-size:16px;line-height:24px;font-weight:600}.ds-card p{margin:0 0 16px;color:var(--muted-foreground,#58677c);font-size:12px;line-height:20px}.ds-quota{display:flex;justify-content:space-between;gap:16px;padding:8px 12px;border-radius:6px}.ds-quota:hover{background:var(--muted,#edf1f7)}"
+      "css": ".ds-card{padding:20px;border:1px solid var(--border,oklch(91.3742% 0.016776 259.4189));border-radius:8px;background:var(--card,oklch(100% 0 89.8756));color:var(--foreground,oklch(28.7535% 0.036597 260.0472));font:14px/22px var(--font-sans,'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI Variable','Segoe UI','PingFang SC','Microsoft YaHei','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif)}.ds-card h3{margin:0;font-size:16px;line-height:24px;font-weight:600}.ds-card p{margin:0 0 16px;color:var(--muted-foreground,oklch(50.9256% 0.038197 256.8202));font-size:12px;line-height:20px}.ds-quota{display:flex;justify-content:space-between;gap:16px;padding:8px 12px;border-radius:6px}.ds-quota:hover{background:var(--muted,oklch(95.6831% 0.009121 258.3358))}"
+    },
+    {
+      "name": "Quota row",
+      "kind": "row",
+      "refersTo": "quota-row",
+      "description": "Model quota row with 12px horizontal padding.",
+      "html": "<div class=\"ds-quota-row\"><span>Gemini 3 Pro</span><span>94%</span></div>",
+      "css": ".ds-quota-row{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border-radius:6px;background:var(--card,oklch(100% 0 89.8756));color:var(--muted-foreground,oklch(50.9256% 0.038197 256.8202));font:500 12px/20px var(--font-mono,Geist Mono,monospace);transition:background-color 150ms ease-out}.ds-quota-row:hover{background:var(--muted,oklch(95.6831% 0.009121 258.3358))}"
     }
   ],
   "narrative": {
