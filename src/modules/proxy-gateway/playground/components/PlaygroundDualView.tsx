@@ -502,7 +502,16 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                       {accounts.map((acc) => (
                         <SelectItem key={acc.id} value={acc.id}>
                           <div className="flex items-center gap-2">
-                            <User size={12} className="text-muted-foreground shrink-0" />
+                            {acc.avatar_url ? (
+                              <img
+                                src={acc.avatar_url}
+                                alt=""
+                                className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <User size={12} className="text-muted-foreground shrink-0" />
+                            )}
                             <span className="font-medium">{acc.name || acc.email}</span>
                             {acc.email && (
                               <span className="text-muted-foreground text-[10px]">
@@ -557,6 +566,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
             <PlaygroundResponseCard
               result={resultA}
               selectedAccountEmail={accountA?.email}
+              accountAvatarUrl={accountA?.avatar_url ?? undefined}
               baseUrl={baseUrl}
               apiKey={apiKey}
             />
@@ -604,7 +614,16 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                       {accounts.map((acc) => (
                         <SelectItem key={acc.id} value={acc.id}>
                           <div className="flex items-center gap-2">
-                            <User size={12} className="text-muted-foreground shrink-0" />
+                            {acc.avatar_url ? (
+                              <img
+                                src={acc.avatar_url}
+                                alt=""
+                                className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <User size={12} className="text-muted-foreground shrink-0" />
+                            )}
                             <span className="font-medium">{acc.name || acc.email}</span>
                             {acc.email && (
                               <span className="text-muted-foreground text-[10px]">
@@ -659,6 +678,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
             <PlaygroundResponseCard
               result={resultB}
               selectedAccountEmail={accountB?.email}
+              accountAvatarUrl={accountB?.avatar_url ?? undefined}
               baseUrl={baseUrl}
               apiKey={apiKey}
             />

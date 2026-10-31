@@ -342,6 +342,7 @@ export const PlaygroundPage: React.FC = () => {
               <PlaygroundResponseCard
                 result={singleResult}
                 selectedAccountEmail={selectedAccount?.email}
+                accountAvatarUrl={selectedAccount?.avatar_url ?? undefined}
                 baseUrl={baseUrl}
               />
             </div>

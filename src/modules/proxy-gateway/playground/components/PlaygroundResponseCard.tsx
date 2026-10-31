@@ -22,6 +22,7 @@ import { buildPlaygroundCurl } from '../playground-request';
 interface PlaygroundResponseCardProps {
   result: PlaygroundExecuteResult;
   selectedAccountEmail?: string;
+  accountAvatarUrl?: string;
   baseUrl: string;
   apiKey?: string;
 }
@@ -40,6 +41,7 @@ function Metric({ label, value, title }: { label: string; value: string; title?:
 export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
   result,
   selectedAccountEmail,
+  accountAvatarUrl,
   baseUrl,
 }) => {
   const { t } = useTranslation();
@@ -93,7 +95,16 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
             </Badge>
 
             <div className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
-              <User size={13} className="text-muted-foreground shrink-0" />
+              {accountAvatarUrl ? (
+                <img
+                  src={accountAvatarUrl}
+                  alt={displayAccount}
+                  className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <User size={13} className="text-muted-foreground shrink-0" />
+              )}
               <span className="text-foreground max-w-[200px] truncate" title={displayAccount}>
                 {displayAccount}
               </span>

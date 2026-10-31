@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, StopCircle } from 'lucide-react';
+import { Play, StopCircle, User } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -261,8 +261,22 @@ export function PlaygroundAccountBenchmark({
                 <SelectContent>
                   {accounts.map((entry) => (
                     <SelectItem key={entry.id} value={entry.id}>
-                      {entry.name || entry.email}
-                      {entry.name ? ` (${entry.email})` : ''}
+                      <div className="flex items-center gap-2">
+                        {entry.avatar_url ? (
+                          <img
+                            src={entry.avatar_url}
+                            alt=""
+                            className="h-4 w-4 shrink-0 rounded-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <User size={13} className="text-muted-foreground shrink-0" />
+                        )}
+                        <span>
+                          {entry.name || entry.email}
+                          {entry.name ? ` (${entry.email})` : ''}
+                        </span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>

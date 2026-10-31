@@ -127,6 +127,18 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
                     disabled={!isSelected && selectedIds.length >= PLAYGROUND_MAX_COMPARE_ACCOUNTS}
                     className="shrink-0"
                   />
+                  {acc.avatar_url ? (
+                    <img
+                      src={acc.avatar_url}
+                      alt=""
+                      className="h-5 w-5 shrink-0 rounded-full border object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="bg-muted text-muted-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold">
+                      {acc.name?.[0]?.toUpperCase() || 'A'}
+                    </div>
+                  )}
                   <div className="truncate">
                     <div className="truncate font-medium">{acc.name || acc.email}</div>
                     {acc.email && acc.name && (
@@ -247,6 +259,7 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
                   key={res.attributedAccountId || index}
                   result={res}
                   selectedAccountEmail={matchedAcc?.email}
+                  accountAvatarUrl={matchedAcc?.avatar_url ?? undefined}
                   baseUrl={baseUrl}
                   apiKey={apiKey}
                 />

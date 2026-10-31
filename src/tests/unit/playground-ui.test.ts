@@ -227,6 +227,23 @@ describe('Playground lifecycle', () => {
     expect(checkbox.getAttribute('aria-checked')).toBe('false');
   });
 
+  it('renders google account avatar images when available', () => {
+    const accountWithAvatar: CloudAccountView = {
+      ...account,
+      avatar_url: 'https://lh3.googleusercontent.com/a/test-avatar',
+    };
+    mount(
+      createElement(PlaygroundResponseCard, {
+        result: result('answer with avatar'),
+        selectedAccountEmail: accountWithAvatar.email,
+        accountAvatarUrl: accountWithAvatar.avatar_url ?? undefined,
+        baseUrl: 'http://localhost:8045',
+      }),
+    );
+    const image = screen.getByRole('img');
+    expect(image.getAttribute('src')).toBe('https://lh3.googleusercontent.com/a/test-avatar');
+  });
+
   it('cancels an outstanding benchmark jitter timer on unmount', async () => {
     mocks.execute.mockResolvedValue(result('first'));
     const view = mount(createElement(PlaygroundAccountBenchmark, { accounts: [account] }));
