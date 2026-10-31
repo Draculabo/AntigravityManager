@@ -1096,6 +1096,9 @@ const tr = {
       'allow-local-video-paths': 'Yerel video yollarına izin ver',
       'allow-local-video-paths-desc':
         'Bağlı araçların bu bilgisayarda hesabınızın erişebildiği video dosyalarını okumasına izin verir. Yalnızca güvendiğiniz araçlar için etkinleştirin.',
+      'context-cache-enabled': 'Gemini bağlam önbelleği (Ücretli, Vertex AI)',
+      'context-cache-enabled-desc':
+        'Faturalandırması etkin ticari projeler için Google Cloud Vertex AI aracılığıyla sistem talimatlarını ve araçları (>8192 karakter) açıkça ücretli önbelleğe alma.',
       'global-system-prompt-title': 'Tüm yapay zekâ istekleri için talimatlar',
       'global-system-prompt-description':
         'Manager üzerinden gönderilen her istekte bu talimatlar, bağlı aracın talimatlarından önce otomatik olarak eklenir.',
@@ -1235,6 +1238,11 @@ const tr = {
     },
   },
   traffic: {
+    'recovered-badge': 'Kurtarıldı ({{count}} deneme)',
+    'recovered-hint': '{{count}} denemeden sonra kurtarıldı',
+    'fallback-diagnostics': 'Yedekleme teşhisleri',
+    'fallback-attempt-failed': 'Deneme {{index}} {{operation}}başarısız oldu{{status}}{{error}}',
+    'fallback-attempt-recovered': 'Deneme {{index}} {{operation}}üzerinde kurtarıldı{{status}}',
     'detail-load-failed': 'Bu istek yüklenemedi. Tekrar deneyin.',
     'detail-not-found': 'Bu kayıt artık mevcut değil. Temizlenmiş olabilir.',
     fields: {

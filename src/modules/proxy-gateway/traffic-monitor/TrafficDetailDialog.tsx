@@ -87,6 +87,16 @@ function TrafficDetailDialogContent({
           <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
             {t('traffic.detail-title')}
             {requestDetail && <OutcomeBadge outcome={requestDetail.request.outcome} />}
+            {requestDetail &&
+              requestDetail.request.outcome === 'completed' &&
+              (requestDetail.attempts.length > 1 ||
+                requestDetail.attempts.some(
+                  (a) => a.outcome !== 'completed' || (a.status !== null && a.status >= 400),
+                )) && (
+                <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                  {t('traffic.recovered-badge', { count: requestDetail.attempts.length })}
+                </span>
+              )}
           </DialogTitle>
           <DialogDescription className="truncate font-mono text-xs">
             {requestDetail?.request.id ?? id}
@@ -243,6 +253,55 @@ type RequestDetail = Extract<
   { recordKind: 'request' }
 >;
 
+function getFallbackDiagnosticsSummary(
+  attempts: RequestDetail['attempts'],
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const parts: string[] = [];
+  const failed = attempts.filter(
+    (a) => a.outcome !== 'completed' || (a.status !== null && a.status >= 400),
+  );
+  for (const a of failed) {
+    let err = a.error ?? '';
+    try {
+      const parsed = JSON.parse(err);
+      if (parsed.message) {
+        err = parsed.message;
+      }
+    } catch {
+      // keep err
+    }
+    const statusPart = a.status ? ` (HTTP ${a.status})` : '';
+    const opPart = a.operation ? `[${a.operation}] ` : '';
+    const errPart = err ? `: ${err.slice(0, 120)}` : '';
+    parts.push(
+      t('traffic.fallback-attempt-failed', {
+        defaultValue: `Attempt ${a.attemptIndex} ${opPart}failed${statusPart}${errPart}`,
+        error: errPart,
+        index: a.attemptIndex,
+        operation: opPart,
+        status: statusPart,
+      }),
+    );
+  }
+  const completed = attempts.find(
+    (a) => a.outcome === 'completed' && a.status !== null && a.status >= 200 && a.status < 300,
+  );
+  if (completed) {
+    const opPart = completed.operation ? `[${completed.operation}] ` : '';
+    const statusPart = completed.status ? `(HTTP ${completed.status})` : '';
+    parts.push(
+      t('traffic.fallback-attempt-recovered', {
+        defaultValue: `Recovered on Attempt ${completed.attemptIndex} ${opPart}${statusPart}`,
+        index: completed.attemptIndex,
+        operation: opPart,
+        status: statusPart,
+      }),
+    );
+  }
+  return parts.join('; ');
+}
+
 function MetadataPane({
   detail,
   accountEmail = null,
@@ -254,6 +313,13 @@ function MetadataPane({
 }) {
   const { t } = useTranslation();
   const request = detail.request;
+  const hasDegradation =
+    request.outcome === 'completed' &&
+    (detail.attempts.length > 1 ||
+      detail.attempts.some(
+        (a) => a.outcome !== 'completed' || (a.status !== null && a.status >= 400),
+      ));
+  const fallbackSummary = hasDegradation ? getFallbackDiagnosticsSummary(detail.attempts, t) : null;
   return (
     <section className={`min-h-0 overflow-auto p-4 ${borderless ? '' : 'border-r'}`}>
       <h3 className="mb-3 text-sm font-semibold">{t('traffic.client-request')}</h3>
@@ -284,6 +350,9 @@ function MetadataPane({
                       : t('traffic.no-visible-output'),
           },
           { label: t('traffic.fields.error'), value: request.error },
+          ...(fallbackSummary
+            ? [{ label: t('traffic.fallback-diagnostics'), value: fallbackSummary }]
+            : []),
         ]}
       />
       <details className="mt-4 rounded-md border p-3 text-xs">
@@ -359,6 +428,11 @@ function AttemptPane({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium">
                     {t('traffic.attempt', { index: attempt.attemptIndex })}
+                    {attempt.operation && (
+                      <span className="text-muted-foreground ml-1.5 text-xs font-normal">
+                        ({attempt.operation})
+                      </span>
+                    )}
                   </span>
                   <OutcomeBadge outcome={attempt.outcome} />
                 </div>

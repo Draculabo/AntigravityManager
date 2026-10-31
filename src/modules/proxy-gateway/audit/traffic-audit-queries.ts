@@ -144,6 +144,7 @@ export class TrafficAuditQueries {
     const totalQuery = this.orm.select({ value: count() }).from(requestLogs);
     const itemsQuery = this.orm
       .select({
+        attemptCount: sql<number>`(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=${requestLogs.id})`,
         attributedAccountId: requestLogs.attributedAccountId,
         completedAt: requestLogs.completedAt,
         durationMs: requestLogs.durationMs,
@@ -247,13 +248,14 @@ export class TrafficAuditQueries {
       'physical_model physicalModel,physical_model_family physicalModelFamily,' +
       'has_text_output hasTextOutput,has_image_output hasImageOutput,' +
       'input_tokens inputTokens,output_tokens outputTokens,' +
-      "outcome,protocol,'request' recordKind,status,traffic_class trafficClass,url " +
+      "outcome,protocol,'request' recordKind,status,traffic_class trafficClass,url," +
+      '(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id) attemptCount ' +
       `FROM request_logs WHERE ${requestWhere}${requestSearch} UNION ALL ` +
       "SELECT 'admin:'||id id,timestamp,NULL completedAt,NULL durationMs,'ADMIN' method,NULL model," +
       'NULL mappedModel,NULL attributedAccountId,NULL physicalModel,NULL physicalModelFamily,' +
       'NULL hasTextOutput,NULL hasImageOutput,NULL inputTokens,NULL outputTokens,' +
       "outcome,'admin-event' protocol,'admin' recordKind,NULL status," +
-      "'system' trafficClass,'/admin/'||operation url FROM audit_admin_events" +
+      "'system' trafficClass,'/admin/'||operation url,1 attemptCount FROM audit_admin_events" +
       adminWhere;
     const items = this.raw
       .prepare<Record<string, number | string>, SystemListRow>(
@@ -262,6 +264,7 @@ export class TrafficAuditQueries {
       .all({ ...bindings, limit: payload.limit, offset: payload.offset })
       .map((row) => ({
         ...row,
+        attemptCount: typeof row.attemptCount === 'number' ? row.attemptCount : 1,
         hasImageOutput: row.hasImageOutput === null ? null : Boolean(row.hasImageOutput),
         hasTextOutput: row.hasTextOutput === null ? null : Boolean(row.hasTextOutput),
       }));

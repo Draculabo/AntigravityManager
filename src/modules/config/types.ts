@@ -8,6 +8,7 @@ export const UpstreamProxyConfigSchema = z.object({
 export const ProxyExperimentalConfigSchema = z.object({
   enable_cloud_code_meta: z.boolean().default(false),
   allow_local_video_paths: z.boolean().default(false),
+  context_cache_enabled: z.boolean().default(true),
 });
 
 export const ImageSchedulerConfigSchema = z.object({
@@ -107,6 +108,7 @@ export const ProxyConfigSchema = z.object({
   experimental: ProxyExperimentalConfigSchema.default({
     enable_cloud_code_meta: false,
     allow_local_video_paths: false,
+    context_cache_enabled: true,
   }),
 });
 
@@ -233,6 +235,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     experimental: {
       enable_cloud_code_meta: false,
       allow_local_video_paths: false,
+      context_cache_enabled: true,
     },
   },
 };

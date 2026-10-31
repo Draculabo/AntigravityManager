@@ -151,7 +151,11 @@ export function getProxyResponseTimingContext(
 ):
   | Pick<
       TrafficAuditRequestContext,
-      'clientSessionId' | 'proxyTiming' | 'currentAccountId' | 'currentAccountEmail'
+      | 'clientSessionId'
+      | 'proxyTiming'
+      | 'currentAccountId'
+      | 'currentAccountEmail'
+      | 'attemptSequence'
     >
   | undefined {
   if (request) {

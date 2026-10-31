@@ -1126,6 +1126,9 @@ const ru = {
       'allow-local-video-paths': 'Разрешить локальные пути к видео',
       'allow-local-video-paths-desc':
         'Разрешает подключённым инструментам читать видео на этом компьютере, доступные вашему пользователю. Включайте только для доверенных инструментов.',
+      'context-cache-enabled': 'Контекстный кэш Gemini (платный, Vertex AI)',
+      'context-cache-enabled-desc':
+        'Платное явное кэширование промптов и инструментов (>8192 символов) через Google Cloud Vertex AI для коммерческих проектов с привязанным биллингом.',
       'global-system-prompt-title': 'Инструкции для всех запросов к ИИ',
       'global-system-prompt-description':
         'Эти инструкции автоматически добавляются перед инструкциями подключённого инструмента в каждом запросе через Manager.',
@@ -1265,6 +1268,12 @@ const ru = {
     },
   },
   traffic: {
+    'recovered-badge': 'Восстановлен (попыток: {{count}})',
+    'recovered-hint': 'Успешно выполнен после {{count}} попыток',
+    'fallback-diagnostics': 'Диагностика фолбека',
+    'fallback-attempt-failed':
+      'Попытка {{index}} {{operation}}завершилась ошибкой{{status}}{{error}}',
+    'fallback-attempt-recovered': 'Восстановлено на попытке {{index}} {{operation}}{{status}}',
     'detail-load-failed': 'Не удалось загрузить запрос. Повторите попытку.',
     'detail-not-found': 'Запись недоступна. Возможно, она была удалена.',
     fields: {

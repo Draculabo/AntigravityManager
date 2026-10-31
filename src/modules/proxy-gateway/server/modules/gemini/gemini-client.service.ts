@@ -519,7 +519,7 @@ export class GeminiClient {
         timeout: Math.min(this.getInternalTimeoutMs(), 20_000),
       });
       completeCurrentUpstreamAttempt(attempt, {
-        outcome: this.outcomeForStatus(response.status),
+        outcome: this.outcomeForStatus(response.status, response.data),
         responseBody: response.data,
         responseHeaders: this.toPlainHeaders(response.headers),
         status: response.status,
@@ -545,7 +545,14 @@ export class GeminiClient {
   }
 
   private isExplicitContextCacheEnabled(): boolean {
-    return process.env.PROXY_CONTEXT_CACHE_ENABLED?.trim().toLowerCase() !== 'false';
+    if (process.env.PROXY_CONTEXT_CACHE_ENABLED?.trim().toLowerCase() === 'false') {
+      return false;
+    }
+    const config = getServerConfig();
+    if (config?.experimental?.context_cache_enabled !== undefined) {
+      return config.experimental.context_cache_enabled;
+    }
+    return true;
   }
 
   private getExplicitContextCacheLocation(): string {
@@ -923,7 +930,7 @@ export class GeminiClient {
     const status = error.response?.status;
     completeCurrentUpstreamAttempt(attempt, {
       error,
-      outcome: status ? this.outcomeForStatus(status) : 'upstream_error',
+      outcome: status ? this.outcomeForStatus(status, responseBody) : 'upstream_error',
       partial,
       responseBody,
       responseHeaders: this.toPlainHeaders(error.response?.headers),
@@ -944,8 +951,23 @@ export class GeminiClient {
     return isString(nested) ? nested : undefined;
   }
 
-  private outcomeForStatus(status: number): 'completed' | 'auth_failed' | 'upstream_error' {
-    if (status === 401 || status === 403) {
+  private outcomeForStatus(
+    status: number,
+    responseBody?: unknown,
+  ): 'completed' | 'auth_failed' | 'upstream_error' {
+    if (status === 401) {
+      return 'auth_failed';
+    }
+    if (status === 403) {
+      const text =
+        typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody ?? '');
+      if (
+        text.includes('SERVICE_DISABLED') ||
+        text.includes('has not been used in project') ||
+        text.includes('is disabled')
+      ) {
+        return 'upstream_error';
+      }
       return 'auth_failed';
     }
     return status >= 400 ? 'upstream_error' : 'completed';

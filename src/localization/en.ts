@@ -566,6 +566,11 @@ const en = {
     'loading-records': 'Loading records…',
     'no-records': 'No records in this category.',
     'detail-title': 'Traffic detail',
+    'recovered-badge': 'Recovered ({{count}} attempts)',
+    'recovered-hint': 'Recovered after {{count}} attempts',
+    'fallback-diagnostics': 'Fallback diagnostics',
+    'fallback-attempt-failed': 'Attempt {{index}} {{operation}}failed{{status}}{{error}}',
+    'fallback-attempt-recovered': 'Recovered on Attempt {{index}} {{operation}}{{status}}',
     'loading-detail': 'Loading traffic detail…',
     'system-operation': 'System operation',
     metadata: 'Request details',
@@ -1448,6 +1453,9 @@ const en = {
       'allow-local-video-paths': 'Allow local video paths',
       'allow-local-video-paths-desc':
         'Let connected tools read video files on this computer that your user account can access. Enable only for tools you trust.',
+      'context-cache-enabled': 'Gemini context caching (Paid, Vertex AI)',
+      'context-cache-enabled-desc':
+        'Explicit paid caching of system instructions and tools (>8192 chars) via Google Cloud Vertex AI for commercial projects with billing enabled.',
       'global-system-prompt-title': 'Instructions for all AI requests',
       'global-system-prompt-description':
         'Automatically add these instructions before the instructions from each connected tool, for every request sent through Manager.',
