@@ -430,6 +430,7 @@ const en = {
     'clear-all': 'Clear all',
     'selected-count': '{{count}} account(s) selected',
     'compare-limit': 'Up to {{count}} accounts per comparison; further selections are disabled.',
+    'only-visible-models': 'Only visible models',
     'run-comparison': 'Run on Selected Accounts',
     'comparison-results': 'Comparison Results',
     'request-failed': 'Request failed',

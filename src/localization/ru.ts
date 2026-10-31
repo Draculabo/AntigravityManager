@@ -299,6 +299,7 @@ const ru = {
     'clear-all': 'Сбросить выбор',
     'selected-count': 'Выбрано аккаунтов: {{count}}',
     'compare-limit': 'До {{count}} аккаунтов за одно сравнение; остальные варианты недоступны.',
+    'only-visible-models': 'Только видимые модели',
     'run-comparison': 'Запустить на выбранных аккаунтах',
     'comparison-results': 'Результаты сравнения',
     'request-failed': 'Запрос завершился ошибкой',

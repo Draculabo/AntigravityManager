@@ -391,6 +391,7 @@ const zhCn = {
     'clear-all': '清空选择',
     'selected-count': '已选择 {{count}} 个账号',
     'compare-limit': '每次对比最多 {{count}} 个账号，超出的选项将被禁用。',
+    'only-visible-models': '仅显示可见模型',
     'run-comparison': '测试所选账号',
     'comparison-results': '账号对比结果',
     'request-failed': '请求失败',

@@ -374,6 +374,26 @@ describe('Playground lifecycle', () => {
     expect(writeText.mock.calls[0][0]).toContain('"max_tokens":128');
     expect(writeText.mock.calls[0][0]).not.toContain('"content":"Hello"');
   });
+
+  it('renders and toggles only-visible-models filter in playground page', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    mocks.status.mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 1,
+    });
+    mount(createElement(QueryClientProvider, { client }, createElement(PlaygroundPage)));
+    const toggle = screen.getByRole('switch', {
+      name: new RegExp(en.playground['only-visible-models']),
+    });
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+  });
 });
 
 describe('Playground gateway start', () => {

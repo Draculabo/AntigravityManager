@@ -287,6 +287,7 @@ const tr = {
     'selected-count': '{{count}} hesap seçildi',
     'compare-limit':
       'Karşılaştırma başına en fazla {{count}} hesap; sonraki seçimler devre dışı bırakılır.',
+    'only-visible-models': 'Yalnızca görünür modeller',
     'run-comparison': 'Seçili Hesaplarda Çalıştır',
     'comparison-results': 'Karşılaştırma Sonuçları',
     'request-failed': 'İstek başarısız oldu',

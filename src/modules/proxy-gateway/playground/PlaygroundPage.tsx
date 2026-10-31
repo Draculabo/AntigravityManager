@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { buildProxyExampleModels } from '@/modules/proxy-gateway/components/proxy-example-models';
 import { PlaygroundControls } from './components/PlaygroundControls';
@@ -46,9 +48,42 @@ export const PlaygroundPage: React.FC = () => {
 
   const availableModels = useMemo(() => buildProxyExampleModels(cloudAccounts), [cloudAccounts]);
 
+  const [onlyVisibleModels, setOnlyVisibleModels] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('agm_playground_only_visible_models');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleOnlyVisibleModels = (checked: boolean) => {
+    setOnlyVisibleModels(checked);
+    try {
+      localStorage.setItem('agm_playground_only_visible_models', String(checked));
+    } catch {
+      // Ignore local storage write errors
+    }
+  };
+
+  const modelVisibility = useMemo(() => config?.model_visibility ?? {}, [config?.model_visibility]);
+  const visibleAvailableModels = useMemo(() => {
+    if (!onlyVisibleModels) {
+      return availableModels;
+    }
+    const filtered = availableModels.filter((m) => modelVisibility[m.id] !== false);
+    return filtered.length > 0 ? filtered : availableModels;
+  }, [availableModels, onlyVisibleModels, modelVisibility]);
+
   const [activeTab, setActiveTab] = useState<'single' | 'compare' | 'benchmark' | 'dual'>('single');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('auto');
-  const [selectedModel, setSelectedModel] = useState<string>(() => availableModels[0]?.id ?? '');
+  const [selectedModel, setSelectedModel] = useState<string>(
+    () => visibleAvailableModels[0]?.id ?? '',
+  );
+
+  const effectiveSelectedModel = visibleAvailableModels.some((m) => m.id === selectedModel)
+    ? selectedModel
+    : (visibleAvailableModels[0]?.id ?? selectedModel);
   const [prompt, setPrompt] = useState<string>(() => t('playground.default-prompt'));
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.7);
@@ -72,7 +107,7 @@ export const PlaygroundPage: React.FC = () => {
 
   const buildInput = (accountId?: string): PlaygroundExecuteInput => ({
     accountId,
-    model: selectedModel,
+    model: effectiveSelectedModel,
     prompt,
     systemPrompt: systemPrompt.trim() || undefined,
     temperature,
@@ -210,7 +245,24 @@ export const PlaygroundPage: React.FC = () => {
           <p className="text-muted-foreground mt-1 text-xs">{t('playground.description')}</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="bg-muted/30 flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs">
+            <Switch
+              id="playground-filter-visible"
+              checked={onlyVisibleModels}
+              onCheckedChange={handleToggleOnlyVisibleModels}
+            />
+            <Label
+              htmlFor="playground-filter-visible"
+              className="flex cursor-pointer items-center gap-1.5 text-xs font-medium"
+            >
+              <span>{t('playground.only-visible-models')}</span>
+              <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-normal">
+                {visibleAvailableModels.length}/{availableModels.length}
+              </Badge>
+            </Label>
+          </div>
+
           {gatewayStatus?.running ? (
             <Badge
               variant="outline"
@@ -315,7 +367,7 @@ export const PlaygroundPage: React.FC = () => {
                 accounts={cloudAccounts}
                 selectedAccountId={selectedAccountId}
                 onSelectAccount={setSelectedAccountId}
-                selectedModel={selectedModel}
+                selectedModel={effectiveSelectedModel}
                 onSelectModel={setSelectedModel}
                 prompt={prompt}
                 onChangePrompt={setPrompt}
@@ -330,7 +382,7 @@ export const PlaygroundPage: React.FC = () => {
                 isLoading={isRunning}
                 onRun={handleRunSingle}
                 onStop={stop}
-                availableModels={availableModels}
+                availableModels={visibleAvailableModels}
               />
             </CardContent>
           </Card>
@@ -361,7 +413,7 @@ export const PlaygroundPage: React.FC = () => {
             <CardContent>
               <PlaygroundCompareView
                 accounts={cloudAccounts}
-                selectedModel={selectedModel}
+                selectedModel={effectiveSelectedModel}
                 onSelectModel={setSelectedModel}
                 prompt={prompt}
                 onChangePrompt={setPrompt}
@@ -370,7 +422,7 @@ export const PlaygroundPage: React.FC = () => {
                 onStop={stop}
                 compareResults={compareResults}
                 baseUrl={baseUrl}
-                availableModels={availableModels}
+                availableModels={visibleAvailableModels}
               />
             </CardContent>
           </Card>
@@ -378,14 +430,19 @@ export const PlaygroundPage: React.FC = () => {
 
         {/* Account Models Benchmark */}
         <TabsContent value="benchmark" className="space-y-6 pt-2">
-          <PlaygroundAccountBenchmark accounts={cloudAccounts} availableModels={availableModels} />
+          <PlaygroundAccountBenchmark
+            accounts={cloudAccounts}
+            availableModels={visibleAvailableModels}
+            onlyVisibleModels={onlyVisibleModels}
+            modelVisibility={modelVisibility}
+          />
         </TabsContent>
 
         {/* Dual Model Comparison */}
         <TabsContent value="dual" className="space-y-6 pt-2">
           <PlaygroundDualView
             accounts={cloudAccounts}
-            availableModels={availableModels}
+            availableModels={visibleAvailableModels}
             baseUrl={baseUrl}
           />
         </TabsContent>

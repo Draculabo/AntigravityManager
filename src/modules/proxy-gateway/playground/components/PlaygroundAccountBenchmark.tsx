@@ -31,6 +31,8 @@ import { BenchmarkResults } from './benchmark/BenchmarkResults';
 interface PlaygroundAccountBenchmarkProps {
   accounts: CloudAccountView[];
   availableModels?: Array<{ id: string; name: string }>;
+  onlyVisibleModels?: boolean;
+  modelVisibility?: Record<string, boolean>;
 }
 
 /** An abortable pause owns its timer and listener, including navigation during jitter. */
@@ -52,6 +54,8 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
 export function PlaygroundAccountBenchmark({
   accounts,
   availableModels = [],
+  onlyVisibleModels = false,
+  modelVisibility = {},
 }: PlaygroundAccountBenchmarkProps) {
   const { t } = useTranslation();
   const [accountId, setAccountId] = useState('');
@@ -68,8 +72,19 @@ export function PlaygroundAccountBenchmark({
     const list = rawQuotaModels.length
       ? disambiguateModelList(rawQuotaModels)
       : availableModels.map((model) => ({ ...model, quotaPercentage: undefined }));
-    return list.filter((model) => !isImageProxyExampleModel(model.id));
-  }, [account, availableModels]);
+    const filtered = list.filter((model) => {
+      if (isImageProxyExampleModel(model.id)) {
+        return false;
+      }
+      if (onlyVisibleModels && modelVisibility[model.id] === false) {
+        return false;
+      }
+      return true;
+    });
+    return filtered.length > 0
+      ? filtered
+      : list.filter((model) => !isImageProxyExampleModel(model.id));
+  }, [account, availableModels, onlyVisibleModels, modelVisibility]);
   // Default selection is derived so late quota hydration also includes newly advertised models.
   const [selection, setSelection] = useState<{ accountId: string; ids: string[] } | null>(null);
   const checkedIds =

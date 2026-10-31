@@ -504,6 +504,7 @@ const ptBR = {
     'clear-all': 'Limpar tudo',
     'selected-count': '{{count}} conta(s) selecionada(s)',
     'compare-limit': 'Até {{count}} contas por comparação; seleções adicionais ficam desativadas.',
+    'only-visible-models': 'Apenas modelos visíveis',
     'run-comparison': 'Executar nas Contas Selecionadas',
     'comparison-results': 'Resultados da Comparação',
     'request-failed': 'Falha na requisição',

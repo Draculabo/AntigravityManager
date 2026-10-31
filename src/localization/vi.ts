@@ -289,6 +289,7 @@ const vi = {
     'selected-count': 'Đã chọn {{count}} tài khoản',
     'compare-limit':
       'Tối đa {{count}} tài khoản mỗi lần so sánh; các lựa chọn thêm sẽ bị vô hiệu hóa.',
+    'only-visible-models': 'Chỉ mô hình hiển thị',
     'run-comparison': 'Chạy trên các tài khoản đã chọn',
     'comparison-results': 'Kết quả so sánh',
     'request-failed': 'Yêu cầu thất bại',

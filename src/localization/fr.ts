@@ -321,6 +321,7 @@ const fr = {
     'selected-count': '{{count}} compte(s) sélectionné(s)',
     'compare-limit':
       'Jusqu’à {{count}} comptes par comparaison ; les sélections suivantes sont désactivées.',
+    'only-visible-models': 'Modèles visibles uniquement',
     'run-comparison': 'Lancer sur les comptes sélectionnés',
     'comparison-results': 'Résultats de la comparaison',
     'request-failed': 'La requête a échoué',
