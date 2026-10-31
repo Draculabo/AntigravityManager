@@ -108,39 +108,62 @@ export class TrafficAuditRepository {
         return this.orm.delete(requestLogs).where(eq(requestLogs.id, command.payload.id)).run()
           .changes;
       case 'clear': {
-        if (command.payload.trafficClass === 'system') {
-          return this.raw.transaction(() => {
-            const requests =
+        const deleted = (() => {
+          if (command.payload.trafficClass === 'system') {
+            return this.raw.transaction(() => {
+              const requests =
+                this.orm
+                  .select({ value: count() })
+                  .from(requestLogs)
+                  .where(eq(requestLogs.trafficClass, 'system'))
+                  .get()?.value ?? 0;
+              const events =
+                this.orm.select({ value: count() }).from(auditAdminEvents).get()?.value ?? 0;
+              this.orm.delete(requestLogs).where(eq(requestLogs.trafficClass, 'system')).run();
+              this.orm.delete(auditAdminEvents).run();
+              this.orm
+                .delete(auditDropStats)
+                .where(eq(auditDropStats.trafficClass, 'system'))
+                .run();
+              return requests + events;
+            })();
+          }
+          if (command.payload.trafficClass) {
+            const rows =
               this.orm
                 .select({ value: count() })
                 .from(requestLogs)
-                .where(eq(requestLogs.trafficClass, 'system'))
+                .where(eq(requestLogs.trafficClass, command.payload.trafficClass))
                 .get()?.value ?? 0;
-            const events =
-              this.orm.select({ value: count() }).from(auditAdminEvents).get()?.value ?? 0;
-            this.orm.delete(requestLogs).where(eq(requestLogs.trafficClass, 'system')).run();
-            this.orm.delete(auditAdminEvents).run();
-            return requests + events;
-          })();
-        }
-        if (command.payload.trafficClass) {
-          const rows =
             this.orm
-              .select({ value: count() })
-              .from(requestLogs)
+              .delete(requestLogs)
               .where(eq(requestLogs.trafficClass, command.payload.trafficClass))
-              .get()?.value ?? 0;
-          this.orm
-            .delete(requestLogs)
-            .where(eq(requestLogs.trafficClass, command.payload.trafficClass))
-            .run();
-          return rows;
+              .run();
+            this.orm
+              .delete(auditDropStats)
+              .where(eq(auditDropStats.trafficClass, command.payload.trafficClass))
+              .run();
+            return rows;
+          }
+          const rows = this.orm.select({ value: count() }).from(requestLogs).get()?.value ?? 0;
+          const events =
+            this.orm.select({ value: count() }).from(auditAdminEvents).get()?.value ?? 0;
+          this.orm.delete(requestLogs).run();
+          this.orm.delete(auditAdminEvents).run();
+          this.orm.delete(auditDropStats).run();
+          return rows + events;
+        })();
+        this.retention.reclaimDiskSpaceDirect();
+        return deleted;
+      }
+      case 'resetDropStats': {
+        if (command.payload.trafficClass) {
+          return this.orm
+            .delete(auditDropStats)
+            .where(eq(auditDropStats.trafficClass, command.payload.trafficClass))
+            .run().changes;
         }
-        const rows = this.orm.select({ value: count() }).from(requestLogs).get()?.value ?? 0;
-        const events = this.orm.select({ value: count() }).from(auditAdminEvents).get()?.value ?? 0;
-        this.orm.delete(requestLogs).run();
-        this.orm.delete(auditAdminEvents).run();
-        return rows + events;
+        return this.orm.delete(auditDropStats).run().changes;
       }
       case 'stats':
         return this.retention.stats();

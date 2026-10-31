@@ -64,6 +64,8 @@ export class TrafficAuditRetention {
         yield;
       }
     }
+    this.raw.prepare('DELETE FROM audit_drop_stats WHERE last_seen < ?').run(summaryCutoff);
+    yield;
     yield* this.evictRowsBeyondLimit(config.maxRows, maxRequestRowId, maxAdminRowId, now);
     yield* this.reclaimDiskSpace();
 
@@ -158,6 +160,12 @@ export class TrafficAuditRetention {
       }
     }
     return { databaseBytes: sqliteFilesBytes(this.databasePath) };
+  }
+
+  public reclaimDiskSpaceDirect(): void {
+    for (const _ of this.reclaimDiskSpace()) {
+      // Drain generator to checkpoint WAL and incrementally vacuum freelist pages
+    }
   }
 
   private *reclaimDiskSpace(): Generator<void> {

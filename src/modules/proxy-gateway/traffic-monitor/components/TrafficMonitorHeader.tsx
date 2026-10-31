@@ -1,11 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Activity, AlertTriangle } from 'lucide-react';
+import { Activity, AlertTriangle, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ipc } from '@/ipc/manager';
 
 export function TrafficMonitorHeader() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const stats = useQuery({
     queryKey: ['gateway', 'audit-stats'],
     queryFn: () => ipc.client.gateway.auditStats(),
@@ -31,9 +32,21 @@ export function TrafficMonitorHeader() {
             {t('traffic.on-disk', { size: formatBytes(stats.data?.databaseBytes ?? 0) })}
           </span>
           {(stats.data?.droppedCount ?? 0) > 0 && (
-            <Badge variant="destructive" className="gap-1">
+            <Badge variant="destructive" className="gap-1.5 pr-1">
               <AlertTriangle className="h-3 w-3" />
-              {t('traffic.dropped', { count: stats.data?.droppedCount })}
+              <span>{t('traffic.dropped', { count: stats.data?.droppedCount })}</span>
+              <button
+                type="button"
+                className="hover:bg-destructive-foreground/20 rounded p-0.5 transition-colors"
+                title={t('traffic.reset-dropped')}
+                aria-label={t('traffic.reset-dropped')}
+                onClick={async () => {
+                  await ipc.client.gateway.auditResetDropStats({ trafficClass: null });
+                  await queryClient.invalidateQueries({ queryKey: ['gateway'] });
+                }}
+              >
+                <RotateCcw className="h-3 w-3" />
+              </button>
             </Badge>
           )}
         </div>

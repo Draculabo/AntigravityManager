@@ -1265,6 +1265,7 @@ const ru = {
     },
   },
   traffic: {
+    'reset-dropped': 'Сбросить',
     'detail-load-failed': 'Не удалось загрузить запрос. Повторите попытку.',
     'detail-not-found': 'Запись недоступна. Возможно, она была удалена.',
     fields: {

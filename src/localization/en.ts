@@ -522,6 +522,7 @@ const en = {
     records: '{{count}} records',
     'on-disk': '{{size}} on disk',
     dropped: '{{count}} dropped',
+    'reset-dropped': 'Reset',
     model: 'Model requests',
     auxiliary: 'Other requests',
     ipc: 'App actions',

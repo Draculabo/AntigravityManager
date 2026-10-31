@@ -422,11 +422,39 @@ export class TrafficAuditService {
   }
 
   public async clear(trafficClass: TrafficClass | null = null): Promise<number> {
+    if (trafficClass) {
+      this.pendingDropStats.delete(trafficClass);
+    } else {
+      this.pendingDropStats.clear();
+    }
+    if (this.pendingDropStats.size === 0) {
+      this.lastDropReason = null;
+    }
     const affected = Number(await this.request('clear', { trafficClass }));
     this.recordAdminEvent('clear_requests', affected, null);
     this.emit({
       id: trafficClass ?? 'all',
       kind: 'cleared',
+      timestamp: Date.now(),
+      trafficClass: trafficClass ?? undefined,
+    });
+    return affected;
+  }
+
+  public async resetDropStats(trafficClass: TrafficClass | null = null): Promise<number> {
+    if (trafficClass) {
+      this.pendingDropStats.delete(trafficClass);
+    } else {
+      this.pendingDropStats.clear();
+    }
+    if (this.pendingDropStats.size === 0) {
+      this.lastDropReason = null;
+    }
+    const affected = Number(await this.request('resetDropStats', { trafficClass }));
+    this.recordAdminEvent('reset_drop_stats', affected, null);
+    this.emit({
+      id: trafficClass ? `reset-drops:${trafficClass}` : 'reset-drops:all',
+      kind: 'updated',
       timestamp: Date.now(),
       trafficClass: trafficClass ?? undefined,
     });

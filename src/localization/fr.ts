@@ -383,6 +383,7 @@ const fr = {
   },
   traffic: {
     ...en.traffic,
+    'reset-dropped': 'Réinitialiser',
     'detail-load-failed': 'Impossible de charger cette requête. Réessayez.',
     'detail-not-found': 'Cet enregistrement est indisponible. Il a peut-être été effacé.',
     fields: {
