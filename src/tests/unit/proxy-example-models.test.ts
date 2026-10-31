@@ -3,6 +3,7 @@ import type { CloudQuotaModelInfo } from '@/modules/cloud-account/types';
 import {
   FALLBACK_PROXY_EXAMPLE_MODELS,
   buildProxyExampleModels,
+  disambiguateModelList,
   isImageProxyExampleModel,
 } from '@/modules/proxy-gateway/components/proxy-example-models';
 
@@ -51,5 +52,18 @@ describe('proxy example models', () => {
       isImageProxyExampleModel('gemini-3-pro-image-4k-16x9'),
       isImageProxyExampleModel('gemini-3.5-flash-high'),
     ]).toEqual([true, true, false]);
+  });
+
+  it('disambiguates colliding display names with their model id', () => {
+    const colliding = [
+      { id: 'gemini-2.5-flash', name: 'Gemini 3.5 Flash Lite' },
+      { id: 'gemini-2.5-flash-lite', name: 'Gemini 3.5 Flash Lite' },
+      { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro' },
+    ];
+    expect(disambiguateModelList(colliding)).toEqual([
+      { id: 'gemini-2.5-flash', name: 'Gemini 3.5 Flash Lite (gemini-2.5-flash)' },
+      { id: 'gemini-2.5-flash-lite', name: 'Gemini 3.5 Flash Lite (gemini-2.5-flash-lite)' },
+      { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro' },
+    ]);
   });
 });

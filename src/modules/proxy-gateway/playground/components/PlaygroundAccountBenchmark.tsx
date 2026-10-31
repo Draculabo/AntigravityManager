@@ -15,7 +15,10 @@ import {
 } from '@/components/ui/select';
 import { ipc } from '@/ipc/manager';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
-import { isImageProxyExampleModel } from '../../components/proxy-example-models';
+import {
+  disambiguateModelList,
+  isImageProxyExampleModel,
+} from '../../components/proxy-example-models';
 import {
   PLAYGROUND_MAX_BENCHMARK_ITERATIONS,
   PlaygroundReasoningEffortSchema,
@@ -54,16 +57,18 @@ export function PlaygroundAccountBenchmark({
   const [accountId, setAccountId] = useState('');
   const account = accounts.find((entry) => entry.id === accountId) ?? accounts[0];
   const models = useMemo(() => {
-    const quotaModels = Object.entries(account?.quota?.models ?? {}).map(([id, info]) => ({
-      id: id.replace(/^models\//i, '').trim(),
-      name: info.display_name?.trim() || id,
-      quotaPercentage: info.percentage,
-    }));
-    return (
-      quotaModels.length
-        ? quotaModels
-        : availableModels.map((model) => ({ ...model, quotaPercentage: undefined }))
-    ).filter((model) => !isImageProxyExampleModel(model.id));
+    const rawQuotaModels = Object.entries(account?.quota?.models ?? {}).map(([id, info]) => {
+      const cleanId = id.replace(/^models\//i, '').trim();
+      return {
+        id: cleanId,
+        name: info.display_name?.trim() || cleanId,
+        quotaPercentage: info.percentage,
+      };
+    });
+    const list = rawQuotaModels.length
+      ? disambiguateModelList(rawQuotaModels)
+      : availableModels.map((model) => ({ ...model, quotaPercentage: undefined }));
+    return list.filter((model) => !isImageProxyExampleModel(model.id));
   }, [account, availableModels]);
   // Default selection is derived so late quota hydration also includes newly advertised models.
   const [selection, setSelection] = useState<{ accountId: string; ids: string[] } | null>(null);
