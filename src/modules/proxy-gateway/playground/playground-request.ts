@@ -10,7 +10,7 @@ export function buildPlaygroundRequest(input: PlaygroundExecuteInput) {
   return {
     model: input.model,
     messages,
-    stream: false,
+    stream: true,
     ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
     ...(input.maxTokens !== undefined ? { max_tokens: input.maxTokens } : {}),
     ...(input.reasoningEffort === 'off'
@@ -35,6 +35,7 @@ export function buildPlaygroundCurl(
 ): string {
   const args = [
     `curl ${shellQuote(`${baseUrl}/v1/chat/completions`)}`,
+    `  -N`,
     `  -H 'Content-Type: application/json'`,
     `  -H 'Authorization: Bearer YOUR_API_KEY'`,
   ];

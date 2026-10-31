@@ -220,8 +220,8 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
       return null;
     }
 
-    const speedA = resultA.generationTokensPerSec ?? resultA.e2eTokensPerSec;
-    const speedB = resultB.generationTokensPerSec ?? resultB.e2eTokensPerSec;
+    const speedA = resultA.generationTokensPerSec;
+    const speedB = resultB.generationTokensPerSec;
 
     let speedDiffText: string | null = null;
     if (typeof speedA === 'number' && typeof speedB === 'number') {
@@ -233,11 +233,18 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
     }
 
     let ttftDiffText: string | null = null;
-    if (typeof resultA.ttftMs === 'number' && typeof resultB.ttftMs === 'number') {
-      const diffSec = Math.round((Math.abs(resultA.ttftMs - resultB.ttftMs) / 1000) * 10) / 10;
+    if (
+      typeof resultA.firstTextDeltaMs === 'number' &&
+      typeof resultB.firstTextDeltaMs === 'number'
+    ) {
+      const diffSec =
+        Math.round((Math.abs(resultA.firstTextDeltaMs - resultB.firstTextDeltaMs) / 1000) * 10) /
+        10;
       if (diffSec >= 0.1) {
         const winner =
-          resultA.ttftMs < resultB.ttftMs ? t('playground.model-a') : t('playground.model-b');
+          resultA.firstTextDeltaMs < resultB.firstTextDeltaMs
+            ? t('playground.model-a')
+            : t('playground.model-b');
         ttftDiffText = t('playground.dual-ttft-diff', { winner, diff: diffSec.toFixed(1) });
       }
     }

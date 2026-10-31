@@ -238,6 +238,20 @@ const vi = {
       identity: 'Nhận dạng',
       code: 'TypeScript',
     },
+    'preset-prompts': {
+      hello:
+        'Hãy chào hỏi, nêu tên mô hình của bạn và tóm tắt mục đích của bạn trong một câu ngắn.',
+      reasoning:
+        'Có 3 quả táo trên bàn. Bạn lấy đi 2 quả. Bạn có bao nhiêu quả táo? Hãy suy nghĩ từng bước.',
+      identity: 'Phiên bản mô hình chính xác, ngày ngắt kiến thức và nhà cung cấp của bạn là gì?',
+      code: 'Viết hàm debounce bằng TypeScript với generics chuẩn xác và clearTimeout.',
+    },
+    'default-prompt':
+      'Hãy chào hỏi, cho biết tên mô hình chính xác của bạn và kể một câu chuyện cười ngắn.',
+    'dual-default-prompt':
+      'Giải thích sự khác biệt giữa optimistic locking và pessimistic locking bằng một ví dụ thực tế ngắn gọn.',
+    'benchmark-default-prompt':
+      'Viết một câu khẩu hiệu 2 dòng có vần về lập trình và nêu 1 ưu điểm chính của AI.',
     'advanced-settings': 'Thông số nâng cao',
     'system-prompt': 'Lời nhắc hệ thống',
     'system-prompt-placeholder': 'Hướng dẫn hệ thống tùy chọn...',
@@ -256,6 +270,15 @@ const vi = {
     'copy-curl': 'Sao chép cURL',
     latency: 'Độ trễ',
     ttft: 'TTFT',
+    'not-measured': 'Chưa đo được',
+    'e2e-duration': 'Tổng thời gian',
+    'response-started': 'Bắt đầu phản hồi',
+    'first-byte': 'Byte đầu tiên',
+    'first-text': 'Văn bản đầu tiên',
+    'first-reasoning': 'Suy luận đầu tiên',
+    'tooltip-first-byte': 'Từ lúc bắt đầu yêu cầu đến byte đầu tiên nhận từ nhà cung cấp upstream.',
+    'tooltip-first-text':
+      'Từ lúc bắt đầu yêu cầu đến đoạn văn bản hiển thị đầu tiên. Nội dung chỉ có suy luận không được tính.',
     'tokens-total': 'Tokens',
     'compare-title': 'So sánh các tài khoản',
     'compare-desc':
@@ -264,6 +287,8 @@ const vi = {
     'select-all': 'Chọn tất cả',
     'clear-all': 'Bỏ chọn tất cả',
     'selected-count': 'Đã chọn {{count}} tài khoản',
+    'compare-limit':
+      'Tối đa {{count}} tài khoản mỗi lần so sánh; các lựa chọn thêm sẽ bị vô hiệu hóa.',
     'run-comparison': 'Chạy trên các tài khoản đã chọn',
     'comparison-results': 'Kết quả so sánh',
     'request-failed': 'Yêu cầu thất bại',
@@ -272,7 +297,7 @@ const vi = {
     'tab-benchmark': 'Đo hiệu năng mô hình',
     'benchmark-settings-title': 'Kiểm tra tất cả mô hình của tài khoản',
     'benchmark-settings-desc':
-      'Gửi tuần tự yêu cầu tới từng mô hình trên tài khoản này với khoảng trễ ngẫu nhiên.',
+      'Lặp lại yêu cầu kiểm tra cho từng mô hình trên tài khoản này, sau đó báo cáo trung vị và P95 từ các mẫu thu được.',
     'benchmark-prompt': 'Lời nhắc đo hiệu năng',
     'reset-prompt': 'Đặt lại mặc định',
     'select-account': 'Chọn tài khoản...',
@@ -284,6 +309,11 @@ const vi = {
     'stop-benchmark': 'Dừng đo kiểm',
     stopping: 'Đang dừng...',
     'testing-progress': 'Đang kiểm tra {{current}} / {{total}}: {{model}}...',
+    iterations: 'Số lần lặp',
+    'run-of': 'lần {{current}} / {{total}}',
+    samples: 'Mẫu',
+    'insufficient-samples': 'Cần ít nhất {{count}} mẫu',
+    'benchmark-profile': '{{count}} mô hình × {{iterations}} lần',
     'passed-failed': 'Thành công / Lỗi',
     'avg-ttft': 'TTFT trung bình',
     'avg-gen-speed': 'Tốc độ sinh trung bình',
@@ -295,6 +325,10 @@ const vi = {
       'Bảng thống kê hiệu năng gồm độ trễ, tốc độ sinh từ, thông lượng E2E và TTFT.',
     'copy-markdown': 'Sao chép báo cáo Markdown',
     'report-copied': 'Đã sao chép báo cáo vào bộ nhớ tạm',
+    'first-text-median': 'Trung vị văn bản đầu',
+    'first-text-p95': 'P95 văn bản đầu',
+    'gen-median': 'Trung vị tốc độ sinh',
+    'gen-p95': 'P95 tốc độ sinh',
     'gen-speed': 'Tốc độ sinh',
     'e2e-speed': 'Tốc độ E2E',
     'seconds-short': 'giây',
@@ -310,8 +344,9 @@ const vi = {
     'reasoning-medium': 'Trung bình (Medium)',
     'reasoning-high': 'Cao (High)',
     'tooltip-ttft': 'Thời gian phản hồi token đầu tiên (Time-to-First-Token)',
-    'tooltip-e2e-speed': 'Tốc độ sinh tổng thể trung bình (tokens/giây bao gồm thời gian chờ TTFT)',
-    'tooltip-gen-speed': 'Tốc độ sinh token thực tế của mô hình (không tính thời gian chờ TTFT)',
+    'tooltip-e2e-speed': 'Số token đầu ra chia cho tổng thời gian yêu cầu.',
+    'tooltip-gen-speed':
+      'Tốc độ giữa đoạn sinh đầu tiên và cuối cùng. Không hiển thị khi thiếu một trong hai mốc.',
     'tooltip-quota': 'Hạn mức mô hình còn lại trên tài khoản',
     'tooltip-tokens': 'Tokens đầu vào (Prompt) / Tokens đầu ra (Completion)',
     'total-latency': 'Tổng độ trễ',

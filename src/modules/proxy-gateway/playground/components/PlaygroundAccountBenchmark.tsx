@@ -17,10 +17,12 @@ import { ipc } from '@/ipc/manager';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import { isImageProxyExampleModel } from '../../components/proxy-example-models';
 import {
+  PLAYGROUND_MAX_BENCHMARK_ITERATIONS,
   PlaygroundReasoningEffortSchema,
   type PlaygroundReasoningEffort,
 } from '../playground.schema';
-import type { BenchmarkModelRow } from '../types';
+import { summarize } from '../benchmark-stats';
+import type { BenchmarkModelRow, BenchmarkSample } from '../types';
 import { BenchmarkResults } from './benchmark/BenchmarkResults';
 
 interface PlaygroundAccountBenchmarkProps {
@@ -73,6 +75,7 @@ export function PlaygroundAccountBenchmark({
     }
   };
   const [prompt, setPrompt] = useState(() => t('playground.benchmark-default-prompt'));
+  const [iterations, setIterations] = useState(3);
   const [minDelay, setMinDelay] = useState(500);
   const [maxDelay, setMaxDelay] = useState(1200);
   const [reasoning, setReasoning] = useState<PlaygroundReasoningEffort>('default');
@@ -115,6 +118,7 @@ export function PlaygroundAccountBenchmark({
         modelName: model.name,
         quotaPercentage: model.quotaPercentage,
         status: 'idle',
+        samples: [],
       }));
     setReportAccount(account.name || account.email);
     setRows(initialRows);
@@ -130,69 +134,93 @@ export function PlaygroundAccountBenchmark({
         if (!current()) {
           break;
         }
-        setProgress(
-          t('playground.testing-progress', {
-            current: index + 1,
-            total: initialRows.length,
-            model: row.modelName,
-          }),
-        );
         setRows((previous) =>
           previous.map((entry, i) => (i === index ? { ...entry, status: 'running' } : entry)),
         );
-        try {
-          const result = await ipc.client.gateway.playground.execute(
-            {
-              accountId: account.id,
-              model: row.modelId,
-              prompt,
-              temperature: 0.5,
-              maxTokens: 1024,
-              reasoningEffort: reasoning,
-            },
-            { signal: controller.signal },
+
+        const samples: BenchmarkSample[] = [];
+        for (let attempt = 0; attempt < iterations && current(); attempt++) {
+          setProgress(
+            t('playground.testing-progress', {
+              current: index + 1,
+              total: initialRows.length,
+              model: `${row.modelName} · ${t('playground.run-of', {
+                current: attempt + 1,
+                total: iterations,
+              })}`,
+            }),
           );
-          if (!current()) {
-            break;
+          try {
+            const result = await ipc.client.gateway.playground.execute(
+              {
+                accountId: account.id,
+                model: row.modelId,
+                prompt,
+                temperature: 0.5,
+                maxTokens: 1024,
+                reasoningEffort: reasoning,
+              },
+              { signal: controller.signal },
+            );
+            if (!current()) {
+              break;
+            }
+            samples.push({
+              status: result.success ? 'success' : 'error',
+              durationMs: result.durationMs,
+              firstReasoningDeltaMs: result.firstReasoningDeltaMs,
+              firstTextDeltaMs: result.firstTextDeltaMs,
+              generationTokensPerSec: result.generationTokensPerSec,
+              e2eTokensPerSec: result.e2eTokensPerSec,
+              promptTokens: result.promptTokens,
+              completionTokens: result.completionTokens,
+              totalTokens: result.totalTokens,
+              httpStatus: result.status,
+              content: result.content,
+              thinkingContent: result.thinkingContent,
+              error: result.error,
+            });
+          } catch (error) {
+            if (!current()) {
+              break;
+            }
+            samples.push({
+              status: 'error',
+              httpStatus: 500,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
-          setRows((previous) =>
-            previous.map((entry, i) =>
-              i === index
-                ? {
-                    ...entry,
-                    status: result.success ? 'success' : 'error',
-                    durationMs: result.durationMs,
-                    ttftMs: result.ttftMs,
-                    generationTokensPerSec: result.generationTokensPerSec,
-                    e2eTokensPerSec: result.e2eTokensPerSec,
-                    promptTokens: result.promptTokens,
-                    completionTokens: result.completionTokens,
-                    totalTokens: result.totalTokens,
-                    httpStatus: result.status,
-                    content: result.content,
-                    thinkingContent: result.thinkingContent,
-                    error: result.error,
-                  }
-                : entry,
-            ),
-          );
-        } catch (error) {
-          if (!current()) {
-            break;
-          }
-          setRows((previous) =>
-            previous.map((entry, i) =>
-              i === index
-                ? {
-                    ...entry,
-                    status: 'error',
-                    httpStatus: 500,
-                    error: error instanceof Error ? error.message : String(error),
-                  }
-                : entry,
-            ),
-          );
         }
+        if (!current()) {
+          break;
+        }
+
+        const successful = samples.filter((sample) => sample.status === 'success');
+        const firstText = summarize(
+          successful.flatMap((sample) =>
+            sample.firstTextDeltaMs === undefined ? [] : [sample.firstTextDeltaMs],
+          ),
+        );
+        const generation = summarize(
+          successful.flatMap((sample) =>
+            sample.generationTokensPerSec === undefined ? [] : [sample.generationTokensPerSec],
+          ),
+        );
+        setRows((previous) =>
+          previous.map((entry, i) =>
+            i === index
+              ? {
+                  ...entry,
+                  status: successful.length ? 'success' : 'error',
+                  samples,
+                  medianFirstTextMs: firstText.median,
+                  p95FirstTextMs: firstText.p95,
+                  medianGenerationTokensPerSec: generation.median,
+                  p95GenerationTokensPerSec: generation.p95,
+                }
+              : entry,
+          ),
+        );
       }
     } finally {
       if (current()) {
@@ -211,7 +239,7 @@ export function PlaygroundAccountBenchmark({
           <CardDescription>{t('playground.benchmark-settings-desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="benchmark-account">{t('playground.target-account')}</Label>
               <Select
@@ -234,6 +262,26 @@ export function PlaygroundAccountBenchmark({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="benchmark-iterations">{t('playground.iterations')}</Label>
+              <Input
+                id="benchmark-iterations"
+                type="number"
+                min={1}
+                max={PLAYGROUND_MAX_BENCHMARK_ITERATIONS}
+                step={1}
+                disabled={isRunning}
+                value={iterations}
+                onChange={(event) =>
+                  setIterations(
+                    Math.min(
+                      PLAYGROUND_MAX_BENCHMARK_ITERATIONS,
+                      Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                    ),
+                  )
+                }
+              />
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
@@ -360,7 +408,7 @@ export function PlaygroundAccountBenchmark({
             <span role="status" className="text-muted-foreground text-xs">
               {isRunning
                 ? progress
-                : t('playground.selected-models-count', { count: checkedIds.length })}
+                : t('playground.benchmark-profile', { iterations, count: checkedIds.length })}
             </span>
             {isRunning ? (
               <Button variant="destructive" onClick={stop}>

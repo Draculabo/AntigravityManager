@@ -238,6 +238,17 @@ const tr = {
       identity: 'Kimlik',
       code: 'TypeScript',
     },
+    'preset-prompts': {
+      hello: 'Selam ver, modelinin adını belirt ve amacını kısa bir cümleyle özetle.',
+      reasoning: 'Masada 3 elma var. 2 tanesini aldın. Kaç elman var? Adım adım düşün.',
+      identity: 'Tam model sürümün, bilgi kesilme tarihin ve sağlayıcın nedir?',
+      code: 'Doğru jenerikler ve clearTimeout içeren bir TypeScript debounce fonksiyonu yaz.',
+    },
+    'default-prompt': 'Selam ver, tam model adını belirt ve kısa bir fıkra anlat.',
+    'dual-default-prompt':
+      'İyimser kilitleme ile kötümser kilitleme arasındaki farkı kısa ve günlük bir benzetmeyle açıkla.',
+    'benchmark-default-prompt':
+      'Kodlama hakkında 2 satırlık kafiyeli bir slogan yaz ve yapay zekanın 1 önemli avantajını belirt.',
     'advanced-settings': 'Gelişmiş Parametreler',
     'system-prompt': 'Sistem İstemi',
     'system-prompt-placeholder': 'İsteğe bağlı sistem talimatları...',
@@ -256,6 +267,16 @@ const tr = {
     'copy-curl': 'cURL Olarak Kopyala',
     latency: 'Gecikme',
     ttft: 'TTFT',
+    'not-measured': 'Ölçülmedi',
+    'e2e-duration': 'Uçtan uca',
+    'response-started': 'Yanıt başlangıcı',
+    'first-byte': 'İlk bayt',
+    'first-text': 'İlk metin',
+    'first-reasoning': 'İlk akıl yürütme',
+    'tooltip-first-byte':
+      'İstek başlangıcından üst sağlayıcıdan alınan ilk bayta kadar geçen süre.',
+    'tooltip-first-text':
+      'İstek başlangıcından ilk görünür metin parçasına kadar geçen süre. Yalnızca akıl yürütme çıktısı sayılmaz.',
     'tokens-total': 'Belirteçler',
     'compare-title': 'Hesapları Karşılaştır',
     'compare-desc':
@@ -264,6 +285,8 @@ const tr = {
     'select-all': 'Tümünü seç',
     'clear-all': 'Tümünü temizle',
     'selected-count': '{{count}} hesap seçildi',
+    'compare-limit':
+      'Karşılaştırma başına en fazla {{count}} hesap; sonraki seçimler devre dışı bırakılır.',
     'run-comparison': 'Seçili Hesaplarda Çalıştır',
     'comparison-results': 'Karşılaştırma Sonuçları',
     'request-failed': 'İstek başarısız oldu',
@@ -272,7 +295,7 @@ const tr = {
     'tab-benchmark': 'Model Kıyaslaması',
     'benchmark-settings-title': 'Hesabın tüm modellerini test et',
     'benchmark-settings-desc':
-      'Rastgele gecikmelerle bu hesaptaki her modele sırayla bir test isteği gönderir.',
+      'Bu hesaptaki her model için test isteğini yineler, ardından toplanan örneklerden medyan ve p95 bildirir.',
     'benchmark-prompt': 'Kıyaslama İstemi',
     'reset-prompt': 'Varsayılana sıfırla',
     'select-account': 'Hesap seçin...',
@@ -284,6 +307,11 @@ const tr = {
     'stop-benchmark': 'Kıyaslamayı Durdur',
     stopping: 'Durduruluyor...',
     'testing-progress': 'Test ediliyor {{current}} / {{total}}: {{model}}...',
+    iterations: 'Tekrarlar',
+    'run-of': '{{current}} / {{total}}. çalıştırma',
+    samples: 'Örnekler',
+    'insufficient-samples': 'En az {{count}} örnek gerekli',
+    'benchmark-profile': '{{count}} model × {{iterations}} çalıştırma',
     'passed-failed': 'Başarılı / Başarısız',
     'avg-ttft': 'Ort. TTFT',
     'avg-gen-speed': 'Ort. Üretim Hızı',
@@ -295,6 +323,10 @@ const tr = {
       'Gecikme, üretim hızı, uçtan uca verimlilik ve TTFT performans özeti.',
     'copy-markdown': 'Markdown Raporunu Kopyala',
     'report-copied': 'Rapor panoya kopyalandı',
+    'first-text-median': 'İlk metin medyanı',
+    'first-text-p95': 'İlk metin p95',
+    'gen-median': 'Üretim medyanı',
+    'gen-p95': 'Üretim p95',
     'gen-speed': 'Üretim Hızı',
     'e2e-speed': 'E2E Hızı',
     'seconds-short': 'sn',
@@ -310,9 +342,9 @@ const tr = {
     'reasoning-medium': 'Orta (Medium)',
     'reasoning-high': 'Yüksek (High)',
     'tooltip-ttft': 'İlk belirtecin üretilmesine kadar geçen süre (Time-to-First-Token)',
-    'tooltip-e2e-speed':
-      'Ortalama uçtan uca üretim hızı (TTFT bekleme süresi dahil saniyedeki belirteç)',
-    'tooltip-gen-speed': 'Modelin saf belirteç üretim hızı (TTFT bekleme süresi hariç)',
+    'tooltip-e2e-speed': 'Çıkış belirteçlerinin toplam istek süresine bölümü.',
+    'tooltip-gen-speed':
+      'İlk ve son üretilen parça arasındaki hız. İkisinden biri gözlenmediyse ölçülmüş sayılmaz.',
     'tooltip-quota': 'Hesaptaki modelin kalan kotası',
     'tooltip-tokens': 'Giriş belirteçleri (Prompt) / Çıkış belirteçleri (Completion)',
     'total-latency': 'Toplam gecikme',

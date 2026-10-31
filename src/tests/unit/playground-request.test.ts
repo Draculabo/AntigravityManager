@@ -18,7 +18,7 @@ describe('Playground reproduction', () => {
     };
     expect(buildPlaygroundRequest(input)).toEqual({
       model: 'requested-alias',
-      stream: false,
+      stream: true,
       messages: [
         { role: 'system', content: 'Be concise.' },
         { role: 'user', content: input.prompt },
@@ -32,6 +32,8 @@ describe('Playground reproduction', () => {
     expect(curl).toContain(`What'"'"'s`);
     expect(curl).toContain('x-antigravity-account-id: served-account');
     expect(curl).toContain('Bearer YOUR_API_KEY');
+    expect(curl).toContain('"stream":true');
+    expect(curl).toContain('  -N');
     expect(curl).toContain('"max_tokens":42');
   });
 });

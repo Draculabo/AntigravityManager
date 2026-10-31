@@ -125,15 +125,27 @@ describe('Playground lifecycle', () => {
             modelId: 'model-a',
             modelName: 'Model | A',
             status: 'success',
-            httpStatus: 200,
-            ttftMs: 250,
-            generationTokensPerSec: 40,
-            e2eTokensPerSec: 30,
-            promptTokens: 10,
-            completionTokens: 20,
+            samples: [
+              {
+                status: 'success',
+                httpStatus: 200,
+                firstTextDeltaMs: 250,
+                generationTokensPerSec: 40,
+                e2eTokensPerSec: 30,
+                promptTokens: 10,
+                completionTokens: 20,
+              },
+            ],
+            medianFirstTextMs: 250,
+            medianGenerationTokensPerSec: 40,
           },
-          { modelId: 'model-b', modelName: 'Model B', status: 'error', httpStatus: 429 },
-          { modelId: 'model-c', modelName: 'Model C', status: 'skipped' },
+          {
+            modelId: 'model-b',
+            modelName: 'Model B',
+            status: 'error',
+            samples: [{ status: 'error', httpStatus: 429 }],
+          },
+          { modelId: 'model-c', modelName: 'Model C', status: 'skipped', samples: [] },
         ],
         'Test | Account & Co',
         i18n.t,
@@ -143,15 +155,15 @@ describe('Playground lifecycle', () => {
         '### Test \\| Account & Co 的模型评测结果',
         '**已测模型:** 2 | **成功:** 1 | **失败:** 1',
         '',
-        '| 模型 | 状态 | 首字耗时 (秒) | 生成速度 (tok/s) | 端到端速度 (tok/s) | Token 数（输入 / 输出） |',
-        '|---|---|---|---|---|---|',
-        '| Model \\| A | HTTP 200 | 0.3 | 40 | 30 | 10 / 20 |',
-        '| Model B | HTTP 429 | - | - | - | 0 / 0 |',
+        '| 模型 | 状态 | 首段文本中位数 (秒) | 首段文本 P95 (秒) | 生成速度中位数 (tok/s) | 生成速度 P95 (tok/s) | 样本数 | Token 数（输入 / 输出） |',
+        '|---|---|---|---|---|---|---|---|',
+        '| Model \\| A | HTTP 200 | 0.3 | 至少需要 3 个样本 | 40.0 | 至少需要 3 个样本 | 1/1 | 10 / 20 |',
+        '| Model B | HTTP 429 | - | - | - | - | 0/1 | 0 / 0 |',
       ].join('\n'),
     );
   });
 
-  it('starts unselected and compares all selected accounts beyond ten', () => {
+  it('limits a comparison to the supported number of accounts', () => {
     const accounts = Array.from({ length: 12 }, (_, index) => ({
       ...account,
       id: 'account-' + index,
@@ -172,20 +184,18 @@ describe('Playground lifecycle', () => {
       }),
     );
     expect(screen.queryAllByRole('checkbox', { checked: true })).toHaveLength(0);
-    expect(
-      screen
-        .getByRole('button', { name: en.playground['run-comparison'] })
-        .hasAttribute('disabled'),
-    ).toBe(true);
+    expect(screen.getByText(/Up to 8 accounts per comparison/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: en.playground['select-all'] }));
-    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(12);
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(8);
+    const overflow = screen.getByRole('checkbox', { name: accounts[10].email });
+    expect(overflow.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(overflow);
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(8);
     fireEvent.click(screen.getByRole('button', { name: en.playground['run-comparison'] }));
-    expect(compare).toHaveBeenLastCalledWith(accounts.map((entry) => entry.id));
-    fireEvent.click(screen.getByRole('checkbox', { name: accounts[10].email }));
+    expect(compare).toHaveBeenLastCalledWith(accounts.slice(0, 8).map((entry) => entry.id));
+    fireEvent.click(screen.getByRole('checkbox', { name: accounts[0].email }));
     fireEvent.click(screen.getByRole('button', { name: en.playground['run-comparison'] }));
-    expect(compare).toHaveBeenLastCalledWith(
-      accounts.filter((_, index) => index !== 10).map((entry) => entry.id),
-    );
+    expect(compare).toHaveBeenLastCalledWith(accounts.slice(1, 8).map((entry) => entry.id));
     fireEvent.click(screen.getByRole('button', { name: en.playground['clear-all'] }));
     expect(screen.getAllByRole('checkbox', { checked: false })).toHaveLength(12);
     expect(
@@ -235,7 +245,19 @@ describe('Playground lifecycle', () => {
     view.unmount();
     await act(async () => undefined);
     expect(clear).toHaveBeenCalledWith(handle);
-    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    expect(mocks.execute).toHaveBeenCalledTimes(3);
+  });
+
+  it('shows an explicit not-measured state instead of inventing a speed', () => {
+    mount(
+      createElement(PlaygroundResponseCard, {
+        result: result('plain answer'),
+        baseUrl: 'http://localhost:8045',
+      }),
+    );
+    expect(screen.getByText(en.playground['first-text'])).toBeTruthy();
+    expect(screen.getByText(en.playground['first-byte'])).toBeTruthy();
+    expect(screen.getAllByText(en.playground['not-measured']).length).toBeGreaterThanOrEqual(4);
   });
 
   it('ignores old dual responses and finalizers after Stop and a new Run', async () => {

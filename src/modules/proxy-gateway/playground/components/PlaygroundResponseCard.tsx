@@ -26,6 +26,17 @@ interface PlaygroundResponseCardProps {
   apiKey?: string;
 }
 
+function Metric({ label, value, title }: { label: string; value: string; title?: string }) {
+  return (
+    <div className="min-w-0" title={title}>
+      <dt className="text-muted-foreground truncate text-[10px] font-medium tracking-wide uppercase">
+        {label}
+      </dt>
+      <dd className="mt-0.5 text-xs font-medium tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
 export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
   result,
   selectedAccountEmail,
@@ -42,21 +53,13 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
     result.attributedAccountId ||
     t('playground.auto-pool');
 
-  const completionTokens = result.completionTokens;
-  const durationMs = result.durationMs;
-  const ttftMs = result.ttftMs;
-  const effectiveE2eSpeed =
-    result.e2eTokensPerSec ??
-    (typeof completionTokens === 'number' && completionTokens > 0 && durationMs > 0
-      ? Math.round((completionTokens / (durationMs / 1000)) * 10) / 10
-      : undefined);
-  const effectiveGenSpeed =
-    result.generationTokensPerSec ??
-    (typeof completionTokens === 'number' && completionTokens > 0
-      ? typeof ttftMs === 'number' && durationMs > ttftMs && durationMs - ttftMs >= 50
-        ? Math.round((completionTokens / ((durationMs - ttftMs) / 1000)) * 10) / 10
-        : effectiveE2eSpeed
-      : undefined);
+  const notMeasured = t('playground.not-measured');
+  const metricSeconds = (milliseconds?: number) =>
+    milliseconds === undefined ? notMeasured : `${(milliseconds / 1000).toFixed(2)} s`;
+  const metricMilliseconds = (milliseconds?: number) =>
+    milliseconds === undefined ? notMeasured : `${Math.round(milliseconds)} ms`;
+  const metricSpeed = (tokensPerSecond?: number) =>
+    tokensPerSecond === undefined ? notMeasured : `${tokensPerSecond.toFixed(1)} tok/s`;
 
   const onCopyResponse = async () => {
     if (!result.content) {
@@ -107,13 +110,7 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
               title={t('playground.latency')}
             >
               <Clock size={13} />
-              <span>{result.durationMs}ms</span>
-              {result.ttftMs !== undefined && (
-                <span className="text-muted-foreground text-[10px]">
-                  ({t('playground.ttft')}: {(result.ttftMs / 1000).toFixed(1)}{' '}
-                  {t('playground.seconds-short')})
-                </span>
-              )}
+              <span className="tabular-nums">{result.durationMs} ms</span>
             </div>
 
             {result.totalTokens !== undefined && result.totalTokens > 0 && (
@@ -122,17 +119,17 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
                 title={t('playground.tokens-total')}
               >
                 <Coins size={13} />
-                <span>{result.totalTokens} tok</span>
+                <span className="tabular-nums">{result.totalTokens} tok</span>
               </div>
             )}
 
-            {effectiveGenSpeed !== undefined && (
+            {result.success && (
               <div
                 className="flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400"
-                title={`${t('playground.gen-speed')} (${t('playground.e2e-speed')}: ${effectiveE2eSpeed ?? '-'} tok/s)`}
+                title={t('playground.gen-speed')}
               >
                 <Zap size={13} />
-                <span>{effectiveGenSpeed} tok/s</span>
+                <span className="tabular-nums">{metricSpeed(result.generationTokensPerSec)}</span>
               </div>
             )}
           </div>
@@ -140,6 +137,40 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
       </CardHeader>
 
       <CardContent className="flex flex-1 flex-col space-y-3 p-4">
+        {result.success && (
+          <dl className="bg-muted/30 grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border px-3 py-2 sm:grid-cols-3 lg:grid-cols-6">
+            <Metric
+              label={t('playground.e2e-duration')}
+              value={metricSeconds(result.durationMs)}
+              title={t('playground.latency')}
+            />
+            <Metric
+              label={t('playground.response-started')}
+              value={metricMilliseconds(result.responseStartedMs)}
+            />
+            <Metric
+              label={t('playground.first-byte')}
+              value={metricMilliseconds(result.upstreamFirstByteMs)}
+              title={t('playground.tooltip-first-byte')}
+            />
+            <Metric
+              label={t('playground.first-text')}
+              value={metricMilliseconds(result.firstTextDeltaMs)}
+              title={t('playground.tooltip-first-text')}
+            />
+            <Metric
+              label={t('playground.gen-speed')}
+              value={metricSpeed(result.generationTokensPerSec)}
+              title={t('playground.tooltip-gen-speed')}
+            />
+            <Metric
+              label={t('playground.e2e-speed')}
+              value={metricSpeed(result.e2eTokensPerSec)}
+              title={t('playground.tooltip-e2e-speed')}
+            />
+          </dl>
+        )}
+
         {result.error && (
           <div className="bg-destructive/10 border-destructive/20 text-destructive flex items-start gap-2.5 rounded-md border p-3 text-sm">
             <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -159,6 +190,12 @@ export const PlaygroundResponseCard: React.FC<PlaygroundResponseCardProps> = ({
               <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
                 <Brain size={13} />
                 <span>{t('playground.thinking-process')}</span>
+                {result.firstReasoningDeltaMs !== undefined && (
+                  <span className="text-muted-foreground text-[10px] font-normal tabular-nums">
+                    {t('playground.first-reasoning')}:{' '}
+                    {metricMilliseconds(result.firstReasoningDeltaMs)}
+                  </span>
+                )}
               </div>
               {showThinking ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>

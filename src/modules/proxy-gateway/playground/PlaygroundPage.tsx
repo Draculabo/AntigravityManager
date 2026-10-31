@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Columns2, FlaskConical, Gauge, Layers, Play, Power } from 'lucide-react';
@@ -16,7 +16,13 @@ import { PlaygroundResponseCard } from './components/PlaygroundResponseCard';
 import { PlaygroundCompareView } from './components/PlaygroundCompareView';
 import { PlaygroundAccountBenchmark } from './components/PlaygroundAccountBenchmark';
 import { PlaygroundDualView } from './components/PlaygroundDualView';
-import type { PlaygroundExecuteResult, PlaygroundReasoningEffort } from './playground.schema';
+import { runBounded } from './bounded-pool';
+import {
+  PLAYGROUND_COMPARE_CONCURRENCY,
+  type PlaygroundExecuteInput,
+  type PlaygroundExecuteResult,
+  type PlaygroundReasoningEffort,
+} from './playground.schema';
 import {
   ProxyRiskConfirmation,
   useProxyRiskConfirmation,
@@ -52,8 +58,33 @@ export const PlaygroundPage: React.FC = () => {
   const [singleResult, setSingleResult] = useState<PlaygroundExecuteResult | null>(null);
   const [compareResults, setCompareResults] = useState<PlaygroundExecuteResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const activeRun = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      activeRun.current?.abort();
+      activeRun.current = null;
+    },
+    [],
+  );
 
   const baseUrl = gatewayStatus?.base_url || `http://localhost:${config?.proxy?.port || 8045}`;
+
+  const buildInput = (accountId?: string): PlaygroundExecuteInput => ({
+    accountId,
+    model: selectedModel,
+    prompt,
+    systemPrompt: systemPrompt.trim() || undefined,
+    temperature,
+    maxTokens,
+    reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
+  });
+
+  const stop = () => {
+    activeRun.current?.abort();
+    activeRun.current = null;
+    setIsRunning(false);
+  };
 
   // Start Gateway mutation if stopped
   const startGatewayMutation = useMutation({
@@ -83,20 +114,20 @@ export const PlaygroundPage: React.FC = () => {
   });
 
   const handleRunSingle = async () => {
-    if (!prompt.trim()) {
+    if (!prompt.trim() || activeRun.current) {
       return;
     }
+    const controller = new AbortController();
+    activeRun.current = controller;
     setIsRunning(true);
     try {
-      const res = await ipc.client.gateway.playground.execute({
-        accountId: selectedAccountId === 'auto' ? undefined : selectedAccountId,
-        model: selectedModel,
-        prompt,
-        systemPrompt: systemPrompt.trim() || undefined,
-        temperature,
-        maxTokens,
-        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
-      });
+      const res = await ipc.client.gateway.playground.execute(
+        buildInput(selectedAccountId === 'auto' ? undefined : selectedAccountId),
+        { signal: controller.signal },
+      );
+      if (activeRun.current !== controller) {
+        return;
+      }
       setSingleResult(res);
       if (!res.success) {
         toast({
@@ -106,40 +137,60 @@ export const PlaygroundPage: React.FC = () => {
         });
       }
     } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
       toast({
         title: t('playground.request-error'),
         description: error instanceof Error ? error.message : String(error),
         variant: 'destructive',
       });
     } finally {
-      setIsRunning(false);
+      if (activeRun.current === controller) {
+        activeRun.current = null;
+        setIsRunning(false);
+      }
     }
   };
 
   const handleRunCompare = async (accountIds: string[]) => {
-    if (!prompt.trim() || accountIds.length === 0) {
+    if (!prompt.trim() || accountIds.length === 0 || activeRun.current) {
       return;
     }
+    const controller = new AbortController();
+    activeRun.current = controller;
     setIsRunning(true);
+    setCompareResults([]);
+    const collected: PlaygroundExecuteResult[] = [];
     try {
-      const res = await ipc.client.gateway.playground.compare({
+      await runBounded(
         accountIds,
-        model: selectedModel,
-        prompt,
-        systemPrompt: systemPrompt.trim() || undefined,
-        temperature,
-        maxTokens,
-        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
-      });
-      setCompareResults(res.results);
+        PLAYGROUND_COMPARE_CONCURRENCY,
+        controller.signal,
+        async (accountId) => {
+          const result = await ipc.client.gateway.playground.execute(
+            buildInput(accountId.trim() || undefined),
+            { signal: controller.signal },
+          );
+          collected.push(result);
+          setCompareResults([...collected]);
+          return result;
+        },
+      );
     } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
       toast({
         title: t('playground.compare-error'),
         description: error instanceof Error ? error.message : String(error),
         variant: 'destructive',
       });
     } finally {
-      setIsRunning(false);
+      if (activeRun.current === controller) {
+        activeRun.current = null;
+        setIsRunning(false);
+      }
     }
   };
 
@@ -278,6 +329,7 @@ export const PlaygroundPage: React.FC = () => {
                 onChangeReasoningEffort={setReasoningEffort}
                 isLoading={isRunning}
                 onRun={handleRunSingle}
+                onStop={stop}
                 availableModels={availableModels}
               />
             </CardContent>
@@ -314,6 +366,7 @@ export const PlaygroundPage: React.FC = () => {
                 onChangePrompt={setPrompt}
                 isLoading={isRunning}
                 onRunCompare={handleRunCompare}
+                onStop={stop}
                 compareResults={compareResults}
                 baseUrl={baseUrl}
                 availableModels={availableModels}
