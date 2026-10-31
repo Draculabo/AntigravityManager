@@ -644,6 +644,11 @@ const ptBR = {
     'loading-records': 'Carregando registros…',
     'no-records': 'Nenhum registro nesta categoria.',
     'detail-title': 'Detalhes do tráfego',
+    'recovered-badge': 'Recuperado ({{count}} tentativas)',
+    'recovered-hint': 'Recuperado após {{count}} tentativas',
+    'fallback-diagnostics': 'Diagnóstico de fallback',
+    'fallback-attempt-failed': 'Tentativa {{index}} {{operation}}falhou{{status}}{{error}}',
+    'fallback-attempt-recovered': 'Recuperado na Tentativa {{index}} {{operation}}{{status}}',
     'loading-detail': 'Carregando detalhes do tráfego…',
     'system-operation': 'Operação do sistema',
     metadata: 'Detalhes da requisição',
@@ -777,6 +782,9 @@ const ptBR = {
       'allow-local-video-paths': 'Permitir caminhos de vídeo locais',
       'allow-local-video-paths-desc':
         'Permite que ferramentas conectadas leiam arquivos de vídeo neste computador aos quais sua conta de usuário tem acesso. Ative apenas para ferramentas confiáveis.',
+      'context-cache-enabled': 'Cache de contexto do Gemini (Pago, Vertex AI)',
+      'context-cache-enabled-desc':
+        'Cache explícito pago de instruções do sistema e ferramentas (>8192 caracteres) via Google Cloud Vertex AI para projetos comerciais com faturamento ativado.',
       'global-system-prompt-title': 'Instruções para todas as requisições de IA',
       'global-system-prompt-description':
         'Adiciona automaticamente estas instruções antes das instruções de cada ferramenta conectada, para todas as requisições enviadas através do Manager.',

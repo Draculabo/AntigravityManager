@@ -142,4 +142,24 @@ describe('ExplicitContextCacheManager', () => {
       }),
     ).toBeNull();
   });
+
+  it('does not create cache candidates for internal aicode-consumers consumer projects', () => {
+    const manager = new ExplicitContextCacheManager();
+
+    expect(
+      manager.createCandidate({
+        model: 'gemini-3.8-flash-tiered',
+        project: 'aicode-consumers',
+        requestId: 'request-consumer',
+        requestType: 'agent',
+        userAgent: 'test-agent',
+        request: {
+          contents: [],
+          systemInstruction: {
+            parts: [{ text: 'static prefix '.repeat(700) }],
+          },
+        },
+      }),
+    ).toBeNull();
+  });
 });

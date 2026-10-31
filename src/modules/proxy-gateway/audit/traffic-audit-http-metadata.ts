@@ -117,7 +117,23 @@ export function firstHeader(value: unknown): string | null {
 }
 
 export function resolveHttpOutcome(status: number, error: unknown) {
-  if (status === 401 || status === 403) {
+  if (status === 401) {
+    return 'auth_failed' as const;
+  }
+  if (status === 403) {
+    const errorString =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error ?? '');
+    if (
+      errorString.includes('SERVICE_DISABLED') ||
+      errorString.includes('has not been used in project') ||
+      errorString.includes('is disabled')
+    ) {
+      return 'upstream_error' as const;
+    }
     return 'auth_failed' as const;
   }
   if (status === 408 || (error instanceof Error && /timeout/iu.test(error.message))) {

@@ -120,7 +120,7 @@ export function TrafficTable({
                         onFocus={() => setFocusedIndex(virtualRow.index)}
                         onClick={() => onOpen(item.id)}
                       >
-                        {renderCells(item, tab, (key) => t(key))}
+                        {renderCells(item, tab, (key, options) => t(key, options))}
                       </button>
                     </ContextMenu.Trigger>
                     {item.recordKind === 'request' && tab !== 'ipc' && (
@@ -199,7 +199,11 @@ function columnsFor(tab: TrafficClass, t: (key: string) => string) {
   };
 }
 
-function renderCells(item: TrafficAuditSummary, tab: TrafficClass, t: (key: string) => string) {
+function renderCells(
+  item: TrafficAuditSummary,
+  tab: TrafficClass,
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
   const common = [
     <span key="time" className="truncate">
       {formatTrafficTime(item.timestamp)}
@@ -270,6 +274,14 @@ function renderCells(item: TrafficAuditSummary, tab: TrafficClass, t: (key: stri
     </span>,
     <span key="outcome" className="flex items-center gap-1.5 truncate">
       <Outcome value={item.outcome} />
+      {item.outcome === 'completed' && (item.attemptCount ?? 1) > 1 && (
+        <span
+          className="inline-flex shrink-0 items-center justify-center rounded bg-amber-500/15 px-1 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+          title={t('traffic.recovered-hint', { count: item.attemptCount })}
+        >
+          {item.attemptCount}
+        </span>
+      )}
       <span className="text-muted-foreground">{item.status ?? '—'}</span>
     </span>,
     <span key="duration">{duration(item)}</span>,

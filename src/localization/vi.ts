@@ -1089,6 +1089,9 @@ const vi = {
       'allow-local-video-paths': 'Cho phép đường dẫn video cục bộ',
       'allow-local-video-paths-desc':
         'Cho phép công cụ kết nối đọc các video trên máy tính mà tài khoản của bạn có quyền truy cập. Chỉ bật khi tin tưởng mọi công cụ kết nối.',
+      'context-cache-enabled': 'Bộ nhớ đệm ngữ cảnh Gemini (Trả phí, Vertex AI)',
+      'context-cache-enabled-desc':
+        'Lưu bộ nhớ đệm rõ ràng có tính phí qua Google Cloud Vertex AI cho hướng dẫn hệ thống và công cụ (>8192 ký tự) cho các dự án thương mại có bật thanh toán.',
       'global-system-prompt-title': 'Hướng dẫn chung cho mọi yêu cầu AI',
       'global-system-prompt-description':
         'Tự động thêm hướng dẫn này trước hướng dẫn của công cụ kết nối trong mỗi yêu cầu gửi qua Manager.',
@@ -1227,6 +1230,11 @@ const vi = {
     },
   },
   traffic: {
+    'recovered-badge': 'Đã khôi phục ({{count}} lần thử)',
+    'recovered-hint': 'Đã khôi phục sau {{count}} lần thử',
+    'fallback-diagnostics': 'Chẩn đoán dự phòng',
+    'fallback-attempt-failed': 'Lần thử {{index}} {{operation}}thất bại{{status}}{{error}}',
+    'fallback-attempt-recovered': 'Đã khôi phục ở lần thử {{index}} {{operation}}{{status}}',
     'detail-load-failed': 'Không tải được yêu cầu này. Vui lòng thử lại.',
     'detail-not-found': 'Bản ghi này không còn khả dụng. Có thể đã bị xóa.',
     fields: {

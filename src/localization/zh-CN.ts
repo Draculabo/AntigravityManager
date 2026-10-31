@@ -526,6 +526,11 @@ const zhCn = {
     'loading-records': '正在加载记录…',
     'no-records': '当前分类暂无记录。',
     'detail-title': '流量详情',
+    'recovered-badge': '已恢复（{{count}} 次尝试）',
+    'recovered-hint': '重试 {{count}} 次后成功恢复',
+    'fallback-diagnostics': '降级诊断',
+    'fallback-attempt-failed': '尝试 {{index}} {{operation}}失败{{status}}{{error}}',
+    'fallback-attempt-recovered': '在尝试 {{index}} {{operation}}成功恢复{{status}}',
     'loading-detail': '正在加载流量详情…',
     'system-operation': '系统操作',
     metadata: '请求信息',
@@ -1363,6 +1368,9 @@ const zhCn = {
       'allow-local-video-paths': '允许本地视频路径',
       'allow-local-video-paths-desc':
         '允许连接的工具读取这台电脑上你有权限访问的视频文件。请只在信任所有连接工具时开启。',
+      'context-cache-enabled': 'Gemini 上下文缓存（付费，Vertex AI）',
+      'context-cache-enabled-desc':
+        '通过 Google Cloud Vertex AI 显式付费缓存系统提示词和工具（超过 8192 字符），仅适用于启用了结算的商业项目。',
       'global-system-prompt-title': '所有 AI 请求的统一提示词',
       'global-system-prompt-description':
         '每次通过 Manager 请求模型时，都会先添加这段提示词，再添加所用工具的提示词。',
