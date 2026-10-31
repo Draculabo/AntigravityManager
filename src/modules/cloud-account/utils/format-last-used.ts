@@ -1,7 +1,7 @@
 import { formatDistanceToNow, type Locale } from 'date-fns';
-import { enUS, fr, ru, tr, vi, zhCN } from 'date-fns/locale';
+import { enUS, fr, ptBR, ru, tr, vi, zhCN } from 'date-fns/locale';
 
-const locales: Partial<Record<string, Locale>> = { en: enUS, fr, ru, tr, vi, zh: zhCN };
+const locales: Partial<Record<string, Locale>> = { en: enUS, fr, pt: ptBR, ru, tr, vi, zh: zhCN };
 
 export function formatAccountLastUsed(timestampSeconds: number, language = 'en'): string {
   return formatDistanceToNow(timestampSeconds * 1000, {

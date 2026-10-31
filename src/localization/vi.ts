@@ -400,6 +400,7 @@ const vi = {
       vietnamese: 'Tiếng Việt',
       turkish: 'Tiếng Thổ Nhĩ Kỳ',
       french: 'Tiếng Pháp',
+      portuguese: 'Tiếng Bồ Đào Nha (Brazil)',
     },
     about: {
       title: 'Thông tin',

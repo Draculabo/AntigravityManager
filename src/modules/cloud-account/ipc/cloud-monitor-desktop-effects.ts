@@ -8,7 +8,7 @@ import type { CloudAccount } from '../types';
 import { CloudMonitorService } from '../services/CloudMonitorService';
 import { AutoSwitchService } from '../services/AutoSwitchService';
 import { switchCloudAccountForDesktop } from './cloud-account-switch-desktop';
-type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi' | 'fr' | 'tr';
+type CloudMonitorLanguage = 'en' | 'zh-CN' | 'ru' | 'vi' | 'fr' | 'tr' | 'pt-BR';
 
 const CLOUD_MONITOR_NOTIFICATION_TEXT: Record<
   CloudMonitorLanguage,
@@ -48,6 +48,12 @@ const CLOUD_MONITOR_NOTIFICATION_TEXT: Record<
     lowQuotaBody: (email, models) => `${email} : quota faible pour ${models}`,
     lowAICreditsTitle: 'Alerte de crédits IA faibles',
     lowAICreditsBody: (email, credits) => `${email} : solde de crédits IA faible (${credits})`,
+  },
+  'pt-BR': {
+    lowQuotaTitle: 'Alerta de Cota Baixa',
+    lowQuotaBody: (email, models) => `${email}: a cota está baixa para ${models}`,
+    lowAICreditsTitle: 'Alerta de Créditos de IA Baixos',
+    lowAICreditsBody: (email, credits) => `${email}: saldo de créditos de IA baixo (${credits})`,
   },
   tr: {
     lowQuotaTitle: 'Düşük Kota Uyarısı',

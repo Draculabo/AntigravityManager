@@ -2,7 +2,15 @@ import { z } from 'zod';
 import { CloudAccountIdSchema } from './cloud-account-mutation.schema';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 
-export const OwnerNotificationLanguageSchema = z.enum(['en', 'zh-CN', 'ru', 'vi', 'fr', 'tr']);
+export const OwnerNotificationLanguageSchema = z.enum([
+  'en',
+  'zh-CN',
+  'ru',
+  'vi',
+  'fr',
+  'tr',
+  'pt-BR',
+]);
 export type OwnerNotificationLanguage = z.infer<typeof OwnerNotificationLanguageSchema>;
 export const OwnerNotificationModelSchema = z
   .string()

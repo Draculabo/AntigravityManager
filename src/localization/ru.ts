@@ -415,6 +415,7 @@ const ru = {
       vietnamese: 'Вьетнамский',
       turkish: 'Турецкий',
       french: 'Французский',
+      portuguese: 'Португальский (Бразилия)',
     },
     about: {
       title: 'О программе',

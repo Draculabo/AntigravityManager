@@ -1,6 +1,6 @@
 import path from 'path';
 
-export type InstallNoticeLanguage = 'zh-CN' | 'en' | 'ru' | 'vi' | 'fr';
+export type InstallNoticeLanguage = 'zh-CN' | 'en' | 'ru' | 'vi' | 'fr' | 'pt-BR';
 
 const installNoticeText: Record<
   InstallNoticeLanguage,
@@ -39,6 +39,13 @@ const installNoticeText: Record<
     detailPrefix: 'Thư mục cài đặt: ',
     buttons: ['Mở thư mục cài đặt', 'Đã hiểu'],
   },
+  'pt-BR': {
+    title: 'Inicie pelo menu Iniciar',
+    message:
+      'Detectamos que você está executando o aplicativo a partir de um caminho não instalado. Para garantir que as atualizações automáticas funcionem, inicie pelo menu Iniciar ou atalho na área de trabalho. Se não houver atalho, execute o instalador novamente.',
+    detailPrefix: 'Diretório de instalação: ',
+    buttons: ['Abrir pasta de instalação', 'Entendi'],
+  },
   fr: {
     title: 'Lancez depuis le menu Demarrer',
     message:
@@ -71,6 +78,10 @@ export function resolveInstallNoticeLanguage({
 
   if (normalized.startsWith('vi')) {
     return 'vi';
+  }
+
+  if (normalized.startsWith('pt')) {
+    return 'pt-BR';
   }
 
   if (normalized.startsWith('fr')) {

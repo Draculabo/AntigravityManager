@@ -24,6 +24,9 @@ export async function getDesktopStartupErrorTexts(
     case 'tr':
       resource = await import('@/localization/tr');
       break;
+    case 'pt':
+      resource = await import('@/localization/pt-BR');
+      break;
     case 'vi':
       resource = await import('@/localization/vi');
       break;
