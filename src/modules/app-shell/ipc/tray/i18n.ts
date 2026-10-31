@@ -70,6 +70,18 @@ const fr: TrayTexts = {
   forbidden: 'Compte bloque',
 };
 
+const ptBR: TrayTexts = {
+  current: 'Atual',
+  quota: 'Cota',
+  switch_next: 'Alternar para o Próximo',
+  refresh_current: 'Atualizar Cota Atual',
+  show_window: 'Mostrar Janela Principal',
+  quit: 'Sair do Aplicativo',
+  no_account: 'Nenhuma Conta',
+  unknown_quota: 'Desconhecida',
+  forbidden: 'Conta Proibida',
+};
+
 const tr: TrayTexts = {
   current: 'Mevcut',
   quota: 'Kota',
@@ -94,6 +106,9 @@ export function getTrayTexts(lang: string = 'en'): TrayTexts {
   }
   if (lang.startsWith('fr')) {
     return fr;
+  }
+  if (lang.startsWith('pt')) {
+    return ptBR;
   }
   if (lang.startsWith('tr')) {
     return tr;

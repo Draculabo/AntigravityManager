@@ -403,6 +403,7 @@ const tr = {
       vietnamese: 'Vietnamca',
       turkish: 'Türkçe',
       french: 'Fransızca',
+      portuguese: 'Portekizce (Brezilya)',
     },
     about: {
       title: 'Hakkında',

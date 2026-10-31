@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ArrowRightLeft, MoreVertical, Repeat2, Trash2, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow, type Locale } from 'date-fns';
-import { enUS, fr, ru, vi, zhCN } from 'date-fns/locale';
+import { enUS, fr, ptBR, ru, vi, zhCN } from 'date-fns/locale';
 import { cn } from '@/shared/ui/utils';
 import { useTranslation } from 'react-i18next';
 
@@ -25,6 +25,8 @@ const DATE_LOCALE_MAP: Record<string, Locale> = {
   ru: ru,
   vi: vi,
   fr: fr,
+  'pt-BR': ptBR,
+  pt: ptBR,
 };
 
 interface AccountCardProps {
