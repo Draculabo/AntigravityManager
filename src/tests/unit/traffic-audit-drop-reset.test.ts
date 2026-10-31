@@ -137,4 +137,25 @@ describe('Traffic audit drop counter reset', () => {
       expect(mocks.auditResetDropStats).toHaveBeenCalledWith({ trafficClass: null });
     });
   });
+
+  it('hides reset button in AuditAndThoughtStoreCard when droppedCount is 0', async () => {
+    mocks.auditStats.mockResolvedValue({
+      rows: 10,
+      databaseBytes: 4096,
+      droppedCount: 0,
+      workerPendingCommands: 0,
+    });
+
+    render(
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(AuditAndThoughtStoreCard, { config, onChange: vi.fn() }),
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'traffic.reset-dropped' })).toBeNull();
+    });
+  });
 });

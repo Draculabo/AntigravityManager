@@ -93,13 +93,13 @@ export function AuditAndThoughtStoreCard({ config, onChange }: AuditAndThoughtSt
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-xs text-amber-700 hover:bg-amber-500/20 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-500/20 dark:hover:text-amber-200"
+                className="h-6 shrink-0 px-2 text-xs text-amber-700 hover:bg-amber-500/20 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-500/20 dark:hover:text-amber-200"
                 onClick={async () => {
                   await ipc.client.gateway.auditResetDropStats({ trafficClass: null });
                   await queryClient.invalidateQueries({ queryKey: ['gateway'] });
                 }}
               >
-                <RotateCcw className="mr-1 h-3 w-3" />
+                <RotateCcw className="mr-1 h-3 w-3 shrink-0" />
                 {t('traffic.reset-dropped')}
               </Button>
             </div>

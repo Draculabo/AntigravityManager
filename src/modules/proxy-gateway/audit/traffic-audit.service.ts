@@ -427,9 +427,10 @@ export class TrafficAuditService {
     } else {
       this.pendingDropStats.clear();
     }
-    if (this.pendingDropStats.size === 0) {
-      this.lastDropReason = null;
-    }
+    const remainingReasons = [...this.pendingDropStats.values()]
+      .filter((bucket) => bucket.count > 0)
+      .map((bucket) => bucket.reason);
+    this.lastDropReason = remainingReasons.at(-1) ?? null;
     const affected = Number(await this.request('clear', { trafficClass }));
     this.recordAdminEvent('clear_requests', affected, null);
     this.emit({
@@ -447,9 +448,10 @@ export class TrafficAuditService {
     } else {
       this.pendingDropStats.clear();
     }
-    if (this.pendingDropStats.size === 0) {
-      this.lastDropReason = null;
-    }
+    const remainingReasons = [...this.pendingDropStats.values()]
+      .filter((bucket) => bucket.count > 0)
+      .map((bucket) => bucket.reason);
+    this.lastDropReason = remainingReasons.at(-1) ?? null;
     const affected = Number(await this.request('resetDropStats', { trafficClass }));
     this.recordAdminEvent('reset_drop_stats', affected, null);
     this.emit({

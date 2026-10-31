@@ -163,9 +163,9 @@ export class TrafficAuditRetention {
   }
 
   public reclaimDiskSpaceDirect(): void {
-    for (const _ of this.reclaimDiskSpace()) {
-      // Drain generator to checkpoint WAL and incrementally vacuum freelist pages
-    }
+    this.raw.pragma('wal_checkpoint(TRUNCATE)');
+    this.raw.pragma('incremental_vacuum');
+    this.raw.pragma('wal_checkpoint(TRUNCATE)');
   }
 
   private *reclaimDiskSpace(): Generator<void> {
