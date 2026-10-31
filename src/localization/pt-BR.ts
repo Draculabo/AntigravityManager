@@ -599,6 +599,7 @@ const ptBR = {
     records: '{{count}} registros',
     'on-disk': '{{size}} no disco',
     dropped: '{{count}} descartados',
+    'reset-dropped': 'Redefinir',
     model: 'Requisições de modelo',
     auxiliary: 'Outras requisições',
     ipc: 'Ações do aplicativo',
