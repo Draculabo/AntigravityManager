@@ -1227,6 +1227,7 @@ const vi = {
     },
   },
   traffic: {
+    'reset-dropped': 'Đặt lại',
     'detail-load-failed': 'Không tải được yêu cầu này. Vui lòng thử lại.',
     'detail-not-found': 'Bản ghi này không còn khả dụng. Có thể đã bị xóa.',
     fields: {

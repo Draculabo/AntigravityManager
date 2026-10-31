@@ -482,6 +482,7 @@ const zhCn = {
     records: '{{count}} 条记录',
     'on-disk': '磁盘占用 {{size}}',
     dropped: '已丢弃 {{count}} 条',
+    'reset-dropped': '重置',
     model: '模型请求',
     auxiliary: '其他请求',
     ipc: '应用操作',

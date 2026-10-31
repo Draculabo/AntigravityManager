@@ -90,6 +90,7 @@ function resolveScope(requestPath: string): OwnerScope | null {
       'auditDelete',
       'auditClear',
       'auditRepair',
+      'auditResetDropStats',
     ].includes(path[1])
   ) {
     return 'audit';

@@ -42,6 +42,7 @@ const source = {
   stats: vi.fn(async () => stats),
   delete: vi.fn(async () => 1),
   clear: vi.fn(async () => 7),
+  resetDropStats: vi.fn(async () => 3),
   repair: vi.fn(async () => ({ repaired: true, backupPath: 'owner/backup.db' })),
   subscribe: vi.fn((listener: (event: TrafficAuditEvent) => void) => {
     publish = listener;
@@ -163,9 +164,11 @@ describe('selected audit owner', () => {
     expect(await selected.stats()).toEqual(stats);
     expect(await selected.delete({ id })).toEqual({ affected: 1 });
     expect(await selected.clear({ trafficClass: null })).toEqual({ affected: 7 });
+    expect(await selected.resetDropStats({ trafficClass: null })).toEqual({ affected: 3 });
     expect(await selected.repair()).toEqual({ repaired: true, backupPath: 'owner/backup.db' });
     expect(source.delete).toHaveBeenCalledWith(id);
     expect(source.clear).toHaveBeenCalledWith(null);
+    expect(source.resetDropStats).toHaveBeenCalledWith(null);
     expect(embedded).not.toHaveBeenCalled();
   });
 
