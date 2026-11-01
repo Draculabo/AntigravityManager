@@ -19,7 +19,9 @@ import { ipc } from '@/ipc/manager';
 import type { TrafficAuditBodyDescriptor } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
 
+import { getFallbackDiagnosticsSummary } from './traffic-fallback-diagnostics';
 import { formatTrafficTime } from './format-traffic-time';
+import { isFailedAuditAttempt } from '../audit/audit-attempt-outcome';
 
 const AuditBodyViewer = lazy(async () => ({
   default: (await import('./AuditBodyViewer')).AuditBodyViewer,
@@ -87,6 +89,13 @@ function TrafficDetailDialogContent({
           <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
             {t('traffic.detail-title')}
             {requestDetail && <OutcomeBadge outcome={requestDetail.request.outcome} />}
+            {requestDetail &&
+              requestDetail.request.outcome === 'completed' &&
+              requestDetail.attempts.some(isFailedAuditAttempt) && (
+                <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                  {t('traffic.recovered-badge', { count: requestDetail.attempts.length })}
+                </span>
+              )}
           </DialogTitle>
           <DialogDescription className="truncate font-mono text-xs">
             {requestDetail?.request.id ?? id}
@@ -254,6 +263,9 @@ function MetadataPane({
 }) {
   const { t } = useTranslation();
   const request = detail.request;
+  const hasDegradation =
+    request.outcome === 'completed' && detail.attempts.some(isFailedAuditAttempt);
+  const fallbackSummary = hasDegradation ? getFallbackDiagnosticsSummary(detail.attempts, t) : null;
   return (
     <section className={`min-h-0 overflow-auto p-4 ${borderless ? '' : 'border-r'}`}>
       <h3 className="mb-3 text-sm font-semibold">{t('traffic.client-request')}</h3>
@@ -284,6 +296,9 @@ function MetadataPane({
                       : t('traffic.no-visible-output'),
           },
           { label: t('traffic.fields.error'), value: request.error },
+          ...(fallbackSummary
+            ? [{ label: t('traffic.fallback-diagnostics'), value: fallbackSummary }]
+            : []),
         ]}
       />
       <details className="mt-4 rounded-md border p-3 text-xs">
@@ -359,6 +374,11 @@ function AttemptPane({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium">
                     {t('traffic.attempt', { index: attempt.attemptIndex })}
+                    {attempt.operation && (
+                      <span className="text-muted-foreground ml-1.5 text-xs font-normal">
+                        ({attempt.operation})
+                      </span>
+                    )}
                   </span>
                   <OutcomeBadge outcome={attempt.outcome} />
                 </div>

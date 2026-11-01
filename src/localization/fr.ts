@@ -383,6 +383,11 @@ const fr = {
   },
   traffic: {
     ...en.traffic,
+    'recovered-badge': 'Rétabli ({{count}} tentatives)',
+    'recovered-hint': 'Rétabli après {{count}} tentatives',
+    'fallback-diagnostics': 'Diagnostics de secours',
+    'fallback-attempt-failed': 'Tentative {{index}} {{operation}}a échoué{{status}}{{error}}',
+    'fallback-attempt-recovered': 'Rétabli à la tentative {{index}} {{operation}}{{status}}',
     'reset-dropped': 'Réinitialiser',
     'reset-dropped-failed': 'Impossible de réinitialiser le compteur. Réessayez.',
     'detail-load-failed': 'Impossible de charger cette requête. Réessayez.',
@@ -1262,6 +1267,9 @@ const fr = {
       'allow-local-video-paths': 'Autoriser les chemins video locaux',
       'allow-local-video-paths-desc':
         'Autoriser les outils connectés à lire les vidéos de cet ordinateur accessibles à votre compte. Activez uniquement pour des outils de confiance.',
+      'context-cache-enabled': 'Cache de contexte Gemini (Payant, Vertex AI)',
+      'context-cache-enabled-desc':
+        'Mise en cache explicite et payante via Google Cloud Vertex AI des instructions système et outils (>8192 caractères) pour les projets commerciaux avec facturation activée.',
       'global-system-prompt-title': 'Consignes pour toutes les requêtes IA',
       'global-system-prompt-description':
         'Ajouter automatiquement ces consignes avant celles de chaque outil connecté, pour toute requête passant par Manager.',

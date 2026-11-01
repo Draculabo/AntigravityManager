@@ -17,6 +17,60 @@ import {
   retention,
 } from './diagnostic-worker-fixture.mjs';
 
+for (const trafficClass of ['model', 'system']) {
+  test(`production ${trafficClass} list separates failed attempts from successful preparation`, async () => {
+    const audit = openWorker(`fallback-count-${trafficClass}`);
+    try {
+      await audit.command('insertParent', parent('healthy', trafficClass, Date.now()));
+      await audit.command('insertParent', parent('recovered', trafficClass, Date.now()));
+      for (const id of ['healthy', 'recovered']) {
+        await addAttempt(audit, id, `${id}-1`, 1, null, 'test', 200, 'completed');
+        await addAttempt(
+          audit,
+          id,
+          `${id}-2`,
+          2,
+          null,
+          'test',
+          id === 'healthy' ? 200 : 503,
+          id === 'healthy' ? 'completed' : 'upstream_error',
+        );
+        await addAttempt(audit, id, `${id}-3`, 3, null, 'test', null, 'in_progress');
+        await audit.command('completeParent', completedParent(id));
+      }
+      if (trafficClass === 'system') {
+        await audit.command('adminEvent', {
+          affectedCount: 0,
+          error: null,
+          operation: 'test',
+          outcome: 'completed',
+          timestamp: Date.now(),
+        });
+      }
+      const result = await list(audit, trafficClass);
+      assert.deepEqual(
+        result.items
+          .filter((row) => row.recordKind === 'request')
+          .map(({ id, attemptCount, failedAttemptCount }) => ({
+            id,
+            attemptCount,
+            failedAttemptCount,
+          }))
+          .sort((a, b) => a.id.localeCompare(b.id)),
+        [
+          { id: 'healthy', attemptCount: 3, failedAttemptCount: 0 },
+          { id: 'recovered', attemptCount: 3, failedAttemptCount: 1 },
+        ],
+      );
+      if (trafficClass === 'system') {
+        assert.equal(result.items.find((row) => row.recordKind === 'admin').failedAttemptCount, 0);
+      }
+    } finally {
+      await audit.close();
+    }
+  });
+}
+
 for (const operation of ['resetDropStats', 'clear']) {
   for (const trafficClass of ['model', 'system', null]) {
     test(`production worker ${operation} scopes drop deletion to ${trafficClass ?? 'all'}`, async () => {

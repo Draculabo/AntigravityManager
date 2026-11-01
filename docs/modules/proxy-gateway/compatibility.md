@@ -1,5 +1,21 @@
 # Proxy Compatibility Reference
 
+## Fallback diagnostics
+
+OpenAI, Gemini and Anthropic Messages responses include `x-antigravity-attempts` and
+`x-antigravity-fallback: true` when more than one upstream operation has started and at
+least one has failed before headers are sent. Successful cache creation followed by
+successful generation does not count as fallback. Streaming headers describe the state
+at first output; later failures cannot revise headers already sent.
+
+Traffic Monitor distinguishes total attempts from failed attempts. A completed request
+receives a recovery indicator only when its retained attempt records contain a failure.
+The detail summary identifies a successful attempt after the final recorded failure.
+Dropped audit writes can leave fewer retained attempts than the response headers report.
+HTTP 403 responses containing `SERVICE_DISABLED` or a disabled-API message are classified
+as upstream errors in audit presentation; ordinary credential failures remain authentication
+failures. This classification does not change retry or account-selection policy.
+
 ## Account Scheduling and Stream Completion
 
 Eligible accounts are selected with bounded model-quota weights when `proxy.quota_aware_scheduling_enabled` is true (the default). Each account's resolved upstream model selects its quota snapshot. A reported quota percentage below 25 or an unknown value has weight 1, 25–74 has weight 2, and 75 or above has weight 3. Existing model-capability, health, cooldown, and session-affinity rules still run before weighted round robin. The quota snapshot is only a preference: it never makes an ineligible account eligible and does not reserve capacity. Setting the switch to false restores equal-weight selection.

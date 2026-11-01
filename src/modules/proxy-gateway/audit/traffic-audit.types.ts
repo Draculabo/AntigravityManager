@@ -104,6 +104,8 @@ export const TrafficAuditListInputSchema = z.object({
 export type TrafficAuditListInput = z.infer<typeof TrafficAuditListInputSchema>;
 
 export const TrafficAuditSummarySchema = z.object({
+  attemptCount: z.number().int().optional(),
+  failedAttemptCount: z.number().int().nonnegative().optional(),
   attributedAccountId: z.string().nullable(),
   completedAt: z.number().int().nullable(),
   durationMs: z.number().int().nullable(),

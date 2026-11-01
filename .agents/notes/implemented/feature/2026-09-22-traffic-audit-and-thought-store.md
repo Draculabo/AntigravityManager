@@ -81,6 +81,18 @@ attempt updates the request-local clock. The streaming header write waits for fi
 TTFT is known without buffering the complete model response. The exposed session ID is the
 client-visible routing ID, not the credential-derived storage key.
 
+Fallback diagnostics distinguish failed physical attempts from successful preparation
+operations such as explicit-cache creation. Request-local failure counters drive response
+headers even when audit admission drops a record; persisted attempt outcomes drive list
+and detail presentation. The optional list failure count is computed from existing rows,
+so no database migration is required. Recovery summaries identify a successful operation
+after the final recorded failure rather than the first successful preparation call.
+Anthropic Messages exposes the same response timing/fallback headers as OpenAI and Gemini;
+its streaming headers wait for first output. These headers describe work observed before
+headers are sent, not later stream failures or guaranteed delivery of the whole response.
+Controller-handled HTTP errors contribute their emitted error body to parent audit
+classification when no thrown error reaches Fastify's error hook.
+
 Both persistence paths are fail-open. The audit queue defaults to 16 MiB, is capped at 64 MiB and
 enforces byte and command-count bounds across all live bodies. Writes never block or replace a
 model response, and shutdown draining is bounded. Management is available through typed IPC and

@@ -2,6 +2,7 @@
  * Gateway IPC Handlers
  * Provides ORPC handlers for controlling the API Gateway service (NestJS version)
  */
+import { ConfigManager } from '@/modules/config/ipc/manager';
 import { getNestServerStatus, type NestServerStartResult } from '@/server/main';
 import { explicitContextCacheManager } from '../server/modules/gemini/explicit-context-cache.store';
 import { gatewayLifecycleService } from '../services/gateway-lifecycle.service';
@@ -29,8 +30,15 @@ export const getGatewayStatus = async () => {
  * intentionally remain inside the gateway process.
  */
 export const getContextCacheStatus = () => {
+  if (process.env.PROXY_CONTEXT_CACHE_ENABLED?.trim().toLowerCase() === 'false') {
+    return {
+      enabled: false,
+      stats: explicitContextCacheManager.getStats(),
+    };
+  }
+  const configured = ConfigManager.loadConfig().proxy.experimental?.context_cache_enabled;
   return {
-    enabled: process.env.PROXY_CONTEXT_CACHE_ENABLED?.trim().toLowerCase() !== 'false',
+    enabled: configured !== undefined ? configured : true,
     stats: explicitContextCacheManager.getStats(),
   };
 };
