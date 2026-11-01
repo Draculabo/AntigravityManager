@@ -3,7 +3,11 @@ import path from 'node:path';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { resolveAntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { getAntigravityDbPaths, type PathResolutionOptions } from '@/shared/platform/paths';
-import { getAntigravityVersion, isCredentialStoreVersion } from '../utils/antigravityVersion';
+import {
+  compareVersion,
+  getAntigravityVersion,
+  isCredentialStoreVersion,
+} from '../utils/antigravityVersion';
 import { logger } from '@/shared/logging/logger';
 import { prepareClientAccountCredentials, type ClientAccountCredentials } from './clientAccount';
 import { createClientSqliteWriter, validateClientSqliteDestination } from './clientSqlite';
@@ -33,8 +37,14 @@ export async function resolveClientAccountStorage(
     return process.platform === 'darwin' ? 'credential-store' : 'cli-session';
   }
   if (target === 'ide') {
-    // Desktop IDE OAuth lifecycle belongs to its application-storage database, including 2.6.
-    // The standalone client's OS credential target does not identify an IDE profile.
+    if (process.platform === 'win32') {
+      try {
+        const version = await getAntigravityVersion(target, pathOptions?.executablePath);
+        return compareVersion(version.shortVersion, '2.6.0') >= 0 ? 'credential-store' : 'sqlite';
+      } catch {
+        // Unknown IDE versions retain the established SQLite destination.
+      }
+    }
     return 'sqlite';
   }
   try {

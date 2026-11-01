@@ -187,7 +187,7 @@ describe('client account destination', () => {
     });
     await expect(prepared.write()).rejects.toThrow('could not be confirmed');
   });
-  it('writes Windows IDE 2.6 credentials only to the selected profile database', async () => {
+  it('writes Windows IDE 2.6 credentials through the credential store', async () => {
     vi.mocked(getAntigravityVersion).mockResolvedValue({
       shortVersion: '2.6.0',
       bundleVersion: '2.6.0',
@@ -205,13 +205,16 @@ describe('client account destination', () => {
       executablePath: '/fixture/ide.exe',
     };
     const prepared = await prepareClientAccountWrite(credentials, 'ide', pathOptions);
-    expect(prepared.storage).toBe('sqlite');
+    expect(prepared.storage).toBe('credential-store');
     await prepared.write();
 
-    expect(writeAntigravityCredentialStoreToken).not.toHaveBeenCalled();
-    expect(readAntigravityCredentialStoreToken).not.toHaveBeenCalled();
-    expect(getAntigravityDbPaths).toHaveBeenCalledWith('ide', pathOptions);
-    expect(state.opens).toHaveBeenCalledWith('/fixture/state.vscdb');
+    expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledExactlyOnceWith(
+      credentials.token,
+      {},
+    );
+    expect(readAntigravityCredentialStoreToken).toHaveBeenCalledTimes(1);
+    expect(getAntigravityDbPaths).not.toHaveBeenCalled();
+    expect(state.opens).not.toHaveBeenCalled();
   });
   it('routes IDE, CLI and Classic versions without old-format or engine guesses', async () => {
     expect(await resolveClientAccountStorage('ide')).toBe('sqlite');
@@ -219,7 +222,7 @@ describe('client account destination', () => {
       shortVersion: '2.6.0',
       bundleVersion: '2.6.0',
     });
-    expect(await resolveClientAccountStorage('ide')).toBe('sqlite');
+    expect(await resolveClientAccountStorage('ide')).toBe('credential-store');
     expect(await resolveClientAccountStorage('agy')).toBe('cli-session');
     vi.mocked(getAntigravityVersion).mockResolvedValue({
       shortVersion: '2.18.1',
