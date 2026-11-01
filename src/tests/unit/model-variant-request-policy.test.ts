@@ -255,7 +255,7 @@ describe('applyAnthropicModelVariant', () => {
     });
   });
 
-  it('silently removes thinking and tool fields for a registered checkpoint without tool support', () => {
+  it('preserves tools for Gemini 3.1 Flash-Lite while removing unsupported thinking controls', () => {
     const request: AnthropicChatRequest = {
       model: 'gemini-3.1-flash-lite',
       messages: [{ role: 'user', content: 'Use the tool' }],
@@ -280,8 +280,18 @@ describe('applyAnthropicModelVariant', () => {
     expect(applyAnthropicModelVariant(request).request).toEqual({
       model: 'gemini-3.1-flash-lite',
       messages: [{ role: 'user', content: 'Use the tool' }],
-      tools: undefined,
-      tool_choice: undefined,
+      tools: [
+        {
+          name: 'lookup',
+          input_schema: {
+            type: 'object',
+          },
+        },
+      ],
+      tool_choice: {
+        type: 'tool',
+        name: 'lookup',
+      },
       thinking: undefined,
       max_tokens: 16384,
       output_config: undefined,
@@ -327,7 +337,7 @@ describe('applyOpenAIModelVariant', () => {
       tool_choice: undefined,
     });
   });
-  it('applies the registered model parameters and silently strips unsupported tools', () => {
+  it('applies the registered model parameters and preserves tools', () => {
     const request: OpenAIChatRequest = {
       model: 'gemini-2.5-flash',
       messages: [{ role: 'user', content: 'Use the tool' }],
@@ -352,8 +362,15 @@ describe('applyOpenAIModelVariant', () => {
       messages: [{ role: 'user', content: 'Use the tool' }],
       max_tokens: 16384,
       thinking: undefined,
-      tools: undefined,
-      tool_choice: undefined,
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'lookup',
+          },
+        },
+      ],
+      tool_choice: 'required',
     });
   });
 
