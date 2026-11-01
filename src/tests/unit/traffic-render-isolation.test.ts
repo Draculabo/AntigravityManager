@@ -31,6 +31,9 @@ vi.mock('@/modules/proxy-gateway/traffic-monitor/components/TrafficTable', () =>
 vi.mock('@/modules/proxy-gateway/traffic-monitor/TrafficDetailDialog', () => ({
   TrafficDetailDialog: () => null,
 }));
+vi.mock('@/modules/cloud-account/hooks/useCloudAccounts', () => ({
+  useCloudAccounts: () => ({ data: [] }),
+}));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
