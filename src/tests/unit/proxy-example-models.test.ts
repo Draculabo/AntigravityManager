@@ -5,6 +5,7 @@ import {
   buildProxyExampleModels,
   disambiguateModelList,
   isImageProxyExampleModel,
+  isProxyExampleModelVisible,
 } from '@/modules/proxy-gateway/components/proxy-example-models';
 
 function quota(displayName?: string): CloudQuotaModelInfo {
@@ -52,6 +53,15 @@ describe('proxy example models', () => {
       isImageProxyExampleModel('gemini-3-pro-image-4k-16x9'),
       isImageProxyExampleModel('gemini-3.5-flash-high'),
     ]).toEqual([true, true, false]);
+  });
+
+  it('matches model visibility by normalized id and keeps missing entries visible', () => {
+    expect([
+      isProxyExampleModelVisible('gemini-3.7-flash', { 'models/Gemini-3.7-Flash': false }),
+      isProxyExampleModelVisible('claude-sonnet-4-6', {
+        'models/Gemini-3.7-Flash': false,
+      }),
+    ]).toEqual([false, true]);
   });
 
   it('disambiguates colliding display names with their model id', () => {

@@ -88,3 +88,21 @@ export function buildProxyExampleModels(
 export function isImageProxyExampleModel(modelId: string): boolean {
   return modelId.toLowerCase().includes('image');
 }
+
+export function isProxyExampleModelVisible(
+  modelId: string,
+  visibilitySettings: Record<string, boolean>,
+): boolean {
+  const normalizedModelId = modelId
+    .replace(/^models\//i, '')
+    .trim()
+    .toLowerCase();
+  const visibilityEntry = Object.entries(visibilitySettings).find(
+    ([configuredModelId]) =>
+      configuredModelId
+        .replace(/^models\//i, '')
+        .trim()
+        .toLowerCase() === normalizedModelId,
+  );
+  return visibilityEntry?.[1] !== false;
+}

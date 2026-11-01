@@ -12,7 +12,10 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { buildProxyExampleModels } from '@/modules/proxy-gateway/components/proxy-example-models';
+import {
+  buildProxyExampleModels,
+  isProxyExampleModelVisible,
+} from '@/modules/proxy-gateway/components/proxy-example-models';
 import { PlaygroundControls } from './components/PlaygroundControls';
 import { PlaygroundResponseCard } from './components/PlaygroundResponseCard';
 import { PlaygroundCompareView } from './components/PlaygroundCompareView';
@@ -71,8 +74,7 @@ export const PlaygroundPage: React.FC = () => {
     if (!onlyVisibleModels) {
       return availableModels;
     }
-    const filtered = availableModels.filter((m) => modelVisibility[m.id] !== false);
-    return filtered.length > 0 ? filtered : availableModels;
+    return availableModels.filter((model) => isProxyExampleModelVisible(model.id, modelVisibility));
   }, [availableModels, onlyVisibleModels, modelVisibility]);
 
   const [activeTab, setActiveTab] = useState<'single' | 'compare' | 'benchmark' | 'dual'>('single');

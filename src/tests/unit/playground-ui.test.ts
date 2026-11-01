@@ -7,6 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import en from '@/localization/en';
 import zhCN from '@/localization/zh-CN';
 import { buildBenchmarkReport } from '@/modules/proxy-gateway/playground/components/benchmark/benchmark-export';
+import { FALLBACK_PROXY_EXAMPLE_MODELS } from '@/modules/proxy-gateway/components/proxy-example-models';
 import type { PlaygroundExecuteResult } from '@/modules/proxy-gateway/playground/playground.schema';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 
@@ -15,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   status: vi.fn(),
   toast: vi.fn(),
+  cloudAccounts: [] as CloudAccountView[],
+  config: { model_visibility: {} as Record<string, boolean>, proxy: { port: 8045 } },
 }));
 vi.mock('@/ipc/manager', () => ({
   ipc: {
@@ -25,10 +28,10 @@ vi.mock('@/ipc/manager', () => ({
 }));
 vi.mock('@/components/ui/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/modules/cloud-account/hooks/useCloudAccounts', () => ({
-  useCloudAccounts: () => ({ data: [] }),
+  useCloudAccounts: () => ({ data: mocks.cloudAccounts }),
 }));
 vi.mock('@/modules/config/hooks/useAppConfig', () => ({
-  useAppConfig: () => ({ config: { proxy: { port: 8045 } } }),
+  useAppConfig: () => ({ config: mocks.config }),
 }));
 
 import { PlaygroundDualView } from '@/modules/proxy-gateway/playground/components/PlaygroundDualView';
@@ -78,6 +81,8 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   vi.resetAllMocks();
+  mocks.cloudAccounts = [];
+  mocks.config = { model_visibility: {}, proxy: { port: 8045 } };
   localStorage.clear();
   await i18n.changeLanguage('en');
 });
@@ -393,6 +398,48 @@ describe('Playground lifecycle', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('filters hidden model options without restoring them when none are visible', async () => {
+    const hiddenAccount: CloudAccountView = {
+      ...account,
+      quota: {
+        models: {
+          'gemini-3-flash': { percentage: 100, resetTime: '' },
+          'claude-sonnet-4-6': { percentage: 100, resetTime: '' },
+        },
+      },
+    };
+    const allHiddenConfig = {
+      model_visibility: {
+        ...Object.fromEntries(FALLBACK_PROXY_EXAMPLE_MODELS.map((model) => [model.id, false])),
+        'gemini-3-flash': false,
+        'claude-sonnet-4-6': false,
+      },
+      proxy: { port: 8045 },
+    };
+    mocks.cloudAccounts = [hiddenAccount];
+    mocks.config = allHiddenConfig;
+    mocks.status.mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 1,
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    mount(createElement(QueryClientProvider, { client }, createElement(PlaygroundPage)));
+
+    expect(await screen.findByText(`0/${FALLBACK_PROXY_EXAMPLE_MODELS.length}`)).toBeTruthy();
+    expect(screen.getByRole('button', { name: en.playground.send }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: en.playground.model }));
+    expect(screen.queryByRole('option', { name: /gemini-3-flash/i })).toBeNull();
+    expect(screen.queryByRole('option', { name: /claude-sonnet-4-6/i })).toBeNull();
+    client.clear();
   });
 });
 

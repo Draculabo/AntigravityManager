@@ -329,7 +329,7 @@ export const PlaygroundControls: React.FC<PlaygroundControlsProps> = ({
               variant="default"
               size="sm"
               onClick={onRun}
-              disabled={isLoading || !prompt.trim()}
+              disabled={isLoading || availableModels.length === 0 || !prompt.trim()}
               className="h-8 gap-1.5 text-xs font-medium"
             >
               <Play size={14} className={isLoading ? 'animate-pulse' : ''} />
