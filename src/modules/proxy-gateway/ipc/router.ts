@@ -158,6 +158,12 @@ export const gatewayRouter = os.prefix('/gateway').router({
       return getAuditAdapter().clear(input);
     }),
 
+  auditResetDropStats: os
+    .input(z.object({ trafficClass: TrafficClassSchema.nullable() }))
+    .handler(async ({ input }) => {
+      return getAuditAdapter().resetDropStats(input);
+    }),
+
   auditRepair: os.handler(async () => {
     return getAuditAdapter().repair();
   }),
