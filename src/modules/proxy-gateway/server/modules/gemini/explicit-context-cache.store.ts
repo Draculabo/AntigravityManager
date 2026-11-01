@@ -68,6 +68,7 @@ export class ExplicitContextCacheManager {
     if (
       body.requestType === 'image_gen' ||
       !project ||
+      project === 'aicode-consumers' ||
       !model ||
       (!systemInstruction && (!tools || tools.length === 0))
     ) {

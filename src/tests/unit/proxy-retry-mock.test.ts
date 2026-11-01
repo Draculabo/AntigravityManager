@@ -1819,6 +1819,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
         experimental: {
           enable_cloud_code_meta: true,
           allow_local_video_paths: false,
+          context_cache_enabled: false,
         },
       }),
     );

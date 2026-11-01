@@ -19,6 +19,7 @@ import {
   FileReferenceError,
 } from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
 import { AnthropicService } from './anthropic.service';
+import { setProxyResponseTimingHeaders } from '../../common/proxy-response-timing';
 
 @Controller('v1')
 @UseGuards(ProxyGuard)
@@ -59,9 +60,10 @@ export class AnthropicController extends BaseProxyController {
       );
 
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, result);
+        this.writeSseResponse(res, result, true);
         return;
       } else {
+        setProxyResponseTimingHeaders(res, req);
         res.status(HttpStatus.OK).send(result);
       }
     } catch (error) {

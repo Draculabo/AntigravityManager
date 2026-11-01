@@ -87,6 +87,15 @@ report platform and upstream evidence separately using the [SOP](acceptance/live
 
 ## Proxy-gateway coverage
 
+Fallback diagnostics use `traffic-degradation-and-context-cache.test.ts` and
+`traffic-table-fallback.test.ts` for healthy preparation versus failed attempts and the
+actual recovery step. `proxy-fallback-http.integration.test.ts` exercises Anthropic
+streaming/non-streaming headers and controller-handled OpenAI error classification
+through Nest/Fastify, with substituted upstream services and persistence. Request-local
+failure counters remain observable when persistence admission returns no attempt handle.
+The native audit persistence suite verifies total/failed counts in model and system lists,
+including unfinished attempts and administrative events.
+
 The proxy gateway exposes several compatibility surfaces. Select tests by protocol and behavior rather than running every proxy test automatically:
 
 - Request and response conversion: the owning OpenAI, Anthropic or Gemini mapper tests.

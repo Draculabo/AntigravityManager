@@ -1066,6 +1066,29 @@ function SettingsPage() {
                     }
                   />
                 </div>
+                <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="settings-context-cache-enabled">
+                      {t('proxy.config.context-cache-enabled')}
+                    </Label>
+                    <p className="text-muted-foreground text-xs">
+                      {t('proxy.config.context-cache-enabled-desc')}
+                    </p>
+                  </div>
+                  <Switch
+                    id="settings-context-cache-enabled"
+                    checked={proxyConfig.experimental.context_cache_enabled}
+                    onCheckedChange={(checked) =>
+                      updateProxyConfig({
+                        ...proxyConfig,
+                        experimental: {
+                          ...proxyConfig.experimental,
+                          context_cache_enabled: checked,
+                        },
+                      })
+                    }
+                  />
+                </div>
               </CardContent>
             </Card>
             <UpstreamProxySettings

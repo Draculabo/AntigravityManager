@@ -26,6 +26,7 @@ import { localAccountOwner } from '@/modules/account/services/local-account-owne
 import { createLocalAccountRouter } from '@/modules/account/services/local-account.router';
 import { getCloudAccountSwitchStatus } from '@/modules/cloud-account/services/cloud-account-switch-status.service';
 import { serviceConfigService } from '@/modules/config/service-config.service';
+import { ConfigManager } from '@/modules/config/ipc/manager';
 import {
   createServiceConfigRouter,
   createAccountAlertPolicyRouter,
@@ -222,10 +223,20 @@ export function createCoreRpcOperations(
         runAccountMutation(() => cloudAccountMonitorControl.setWeeklyWarmupConfig(config)),
     },
     gatewayStatus: getNestServerStatus,
-    contextCacheStatus: () => ({
-      enabled: process.env.PROXY_CONTEXT_CACHE_ENABLED?.trim().toLowerCase() !== 'false',
-      stats: explicitContextCacheManager.getStats(),
-    }),
+    contextCacheStatus: () => {
+      if (process.env.PROXY_CONTEXT_CACHE_ENABLED?.trim().toLowerCase() === 'false') {
+        return {
+          enabled: false,
+          stats: explicitContextCacheManager.getStats(),
+        };
+      }
+      const config = ConfigManager.loadConfig();
+      const configured = config.proxy.experimental?.context_cache_enabled;
+      return {
+        enabled: configured !== undefined ? configured : true,
+        stats: explicitContextCacheManager.getStats(),
+      };
+    },
     accountSummaries: listCloudAccountSummaries,
     accountViews: () => cloudAccountListService.listViews(),
     accountFileImport: (filePath, strategy) =>
