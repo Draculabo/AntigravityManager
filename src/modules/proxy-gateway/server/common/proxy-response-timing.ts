@@ -66,7 +66,11 @@ export function buildProxyResponseTimingHeaders(request?: FastifyRequest): Recor
     headers['x-antigravity-account-email'] = context.currentAccountEmail;
   }
 
-  if (context?.attemptSequence !== undefined && context.attemptSequence > 1) {
+  if (
+    context?.attemptSequence !== undefined &&
+    context.attemptSequence > 1 &&
+    (context.failedAttemptCount ?? 0) > 0
+  ) {
     headers['x-antigravity-attempts'] = String(context.attemptSequence);
     headers['x-antigravity-fallback'] = 'true';
   }

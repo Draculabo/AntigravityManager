@@ -22,6 +22,7 @@ import type {
 import { classifyHttpTraffic } from './traffic-classifier';
 import { IncrementalSseRedactor } from './incremental-sse-redactor';
 import { auditJsonObject, parseAuditJsonBody } from './audit-json-object';
+import { isFailedAuditAttempt } from './audit-attempt-outcome';
 import {
   firstHeader,
   inferProtocol,
@@ -42,6 +43,7 @@ export { createThoughtSessionKey } from './traffic-audit-http-metadata';
 
 export interface TrafficAuditRequestContext {
   attemptSequence: number;
+  failedAttemptCount?: number;
   currentAccountId?: string | null;
   currentAccountEmail?: string | null;
   parent: AuditHandle | null;
@@ -156,6 +158,7 @@ export function getProxyResponseTimingContext(
       | 'currentAccountId'
       | 'currentAccountEmail'
       | 'attemptSequence'
+      | 'failedAttemptCount'
     >
   | undefined {
   if (request) {
@@ -212,6 +215,10 @@ export function completeCurrentUpstreamAttempt(
   handle: UpstreamAttemptHandle | null,
   input: CompleteUpstreamAttemptInput,
 ): void {
+  const context = getTrafficAuditRequestContext();
+  if (context && isFailedAuditAttempt(input)) {
+    context.failedAttemptCount = (context.failedAttemptCount ?? 0) + 1;
+  }
   trafficAuditService.completeAttempt(handle, input);
 }
 
@@ -336,7 +343,7 @@ function completeHttpAuditState(
   );
   trafficAuditService.completeParent(state.parent, {
     error: state.error,
-    outcome: outcome ?? resolveHttpOutcome(status, state.error),
+    outcome: outcome ?? resolveHttpOutcome(status, state.error ?? state.responseBody),
     partial: state.responsePartial,
     responseBody: state.responseBody,
     responseHeaders: reply.getHeaders(),

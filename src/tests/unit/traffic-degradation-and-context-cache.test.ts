@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { resolveHttpOutcome } from '@/modules/proxy-gateway/audit/traffic-audit-http-metadata';
 import { buildProxyResponseTimingHeaders } from '@/modules/proxy-gateway/server/common/proxy-response-timing';
@@ -16,12 +16,52 @@ vi.mock('react-i18next', () => ({
       if (key === 'traffic.recovered-badge' && options?.count) {
         return `Recovered (${options.count} attempts)`;
       }
-      return key;
+      if (key === 'traffic.fallback-attempt-recovered') {
+        return `Recovered on Attempt ${options?.index} ${options?.operation}${options?.status}`;
+      }
+      return typeof options?.defaultValue === 'string' ? options.defaultValue : key;
     },
   }),
 }));
 
 let currentRequestDetail: Record<string, unknown> = {};
+const clients: QueryClient[] = [];
+afterEach(() => {
+  cleanup();
+  clients.splice(0).forEach((client) => client.clear());
+});
+
+function renderAttempts(
+  attempts: Array<{
+    id: string;
+    attemptIndex: number;
+    operation: string;
+    outcome: string;
+    status: number;
+    error: string | null;
+  }>,
+) {
+  currentRequestDetail = {
+    recordKind: 'request',
+    request: { id: 'request', outcome: 'completed', trafficClass: 'model', status: 200 },
+    attempts,
+    bodies: [],
+  };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  clients.push(client);
+  render(
+    createElement(
+      QueryClientProvider,
+      { client },
+      createElement(TrafficDetailDialog, {
+        id: 'request',
+        includeCredentials: false,
+        onCopyCurl: vi.fn(),
+        onOpenChange: vi.fn(),
+      }),
+    ),
+  );
+}
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>();
@@ -67,6 +107,7 @@ describe('Traffic degradation & Context Cache Error Handling', () => {
   it('adds x-antigravity-attempts and x-antigravity-fallback headers when attemptSequence > 1', () => {
     const context = {
       attemptSequence: 2,
+      failedAttemptCount: 1,
       clientSessionId: 'sess-123',
       currentAccountId: 'acc-1',
       currentAccountEmail: 'test@example.com',
@@ -91,6 +132,19 @@ describe('Traffic degradation & Context Cache Error Handling', () => {
     expect(headers['x-antigravity-attempts']).toBe('2');
     expect(headers['x-antigravity-fallback']).toBe('true');
     expect(headers['x-antigravity-account-id']).toBe('acc-1');
+  });
+
+  it('does not emit a fallback header for two successful upstream operations', () => {
+    const headers = runWithTrafficAuditRequestContext(
+      {
+        attemptSequence: 2,
+        parent: null,
+        thoughtSessionKey: 'session',
+        thoughtSessionStable: true,
+      },
+      () => buildProxyResponseTimingHeaders(),
+    );
+    expect(headers['x-antigravity-fallback']).toBeUndefined();
   });
 
   it('renders recovered badge when a completed request required failover attempts', () => {
@@ -139,6 +193,7 @@ describe('Traffic degradation & Context Cache Error Handling', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    clients.push(queryClient);
 
     render(
       createElement(
@@ -154,6 +209,60 @@ describe('Traffic degradation & Context Cache Error Handling', () => {
     );
 
     expect(screen.getByText('Recovered (2 attempts)')).toBeTruthy();
+  });
+
+  it('does not call successful cache creation followed by successful generation a recovery', () => {
+    renderAttempts([
+      {
+        id: 'cache',
+        attemptIndex: 1,
+        operation: 'create-context-cache',
+        outcome: 'completed',
+        status: 200,
+        error: null,
+      },
+      {
+        id: 'generation',
+        attemptIndex: 2,
+        operation: 'generate',
+        outcome: 'completed',
+        status: 200,
+        error: null,
+      },
+    ]);
+    expect(screen.queryByText('Recovered (2 attempts)')).toBeNull();
+    expect(screen.queryByText('traffic.fallback-diagnostics')).toBeNull();
+  });
+
+  it('names the successful generation after failure rather than the earlier cache creation', () => {
+    renderAttempts([
+      {
+        id: 'cache',
+        attemptIndex: 1,
+        operation: 'create-context-cache',
+        outcome: 'completed',
+        status: 200,
+        error: null,
+      },
+      {
+        id: 'failed',
+        attemptIndex: 2,
+        operation: 'generate',
+        outcome: 'upstream_error',
+        status: 404,
+        error: 'cachedContent not found',
+      },
+      {
+        id: 'recovered',
+        attemptIndex: 3,
+        operation: 'generate',
+        outcome: 'completed',
+        status: 200,
+        error: null,
+      },
+    ]);
+    expect(screen.getAllByText(/Recovered on Attempt 3/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Recovered on Attempt 1/)).toBeNull();
   });
 
   it('defaults context_cache_enabled to true in ProxyConfigSchema', () => {

@@ -274,7 +274,7 @@ function renderCells(
     </span>,
     <span key="outcome" className="flex items-center gap-1.5 truncate">
       <Outcome value={item.outcome} />
-      {item.outcome === 'completed' && (item.attemptCount ?? 1) > 1 && (
+      {item.outcome === 'completed' && (item.failedAttemptCount ?? 0) > 0 && (
         <span
           className="inline-flex shrink-0 items-center justify-center rounded bg-amber-500/15 px-1 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
           title={t('traffic.recovered-hint', { count: item.attemptCount })}

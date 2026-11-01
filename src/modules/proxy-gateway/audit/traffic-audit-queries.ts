@@ -144,7 +144,10 @@ export class TrafficAuditQueries {
     const totalQuery = this.orm.select({ value: count() }).from(requestLogs);
     const itemsQuery = this.orm
       .select({
-        attemptCount: sql<number>`(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=${requestLogs.id})`,
+        // Drizzle strips interpolated column qualifiers in single-table projections.
+        // Keep this outer reference explicit so SQLite cannot bind it to an attempt ID.
+        attemptCount: sql<number>`(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id)`,
+        failedAttemptCount: sql<number>`(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id AND (outcome NOT IN ('completed','in_progress') OR status>=400))`,
         attributedAccountId: requestLogs.attributedAccountId,
         completedAt: requestLogs.completedAt,
         durationMs: requestLogs.durationMs,
@@ -249,13 +252,15 @@ export class TrafficAuditQueries {
       'has_text_output hasTextOutput,has_image_output hasImageOutput,' +
       'input_tokens inputTokens,output_tokens outputTokens,' +
       "outcome,protocol,'request' recordKind,status,traffic_class trafficClass,url," +
-      '(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id) attemptCount ' +
+      '(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id) attemptCount,' +
+      '(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id ' +
+      "AND (outcome NOT IN ('completed','in_progress') OR status>=400)) failedAttemptCount " +
       `FROM request_logs WHERE ${requestWhere}${requestSearch} UNION ALL ` +
       "SELECT 'admin:'||id id,timestamp,NULL completedAt,NULL durationMs,'ADMIN' method,NULL model," +
       'NULL mappedModel,NULL attributedAccountId,NULL physicalModel,NULL physicalModelFamily,' +
       'NULL hasTextOutput,NULL hasImageOutput,NULL inputTokens,NULL outputTokens,' +
       "outcome,'admin-event' protocol,'admin' recordKind,NULL status," +
-      "'system' trafficClass,'/admin/'||operation url,1 attemptCount FROM audit_admin_events" +
+      "'system' trafficClass,'/admin/'||operation url,1 attemptCount,0 failedAttemptCount FROM audit_admin_events" +
       adminWhere;
     const items = this.raw
       .prepare<Record<string, number | string>, SystemListRow>(
