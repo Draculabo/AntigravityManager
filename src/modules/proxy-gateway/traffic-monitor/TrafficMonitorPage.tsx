@@ -297,21 +297,23 @@ export function TrafficMonitorPage({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t('traffic.all-accounts')}</SelectItem>
-                  {filterOptions.data?.accountIds.map((id) => (
-                    <SelectItem
-                      key={id}
-                      value={id}
-                      textValue={
-                        cloudAccounts.find((account) => account.id === id)?.email ??
-                        t('traffic.unknown')
-                      }
-                    >
-                      <AccountOption
-                        account={cloudAccounts.find((account) => account.id === id)}
-                        fallback={t('traffic.unknown')}
-                      />
-                    </SelectItem>
-                  ))}
+                  {filterOptions.data?.accountIds
+                    ?.filter((id) => Boolean(id && typeof id === 'string' && id.trim() !== ''))
+                    .map((id) => (
+                      <SelectItem
+                        key={id}
+                        value={id}
+                        textValue={
+                          cloudAccounts.find((account) => account.id === id)?.email ??
+                          t('traffic.unknown')
+                        }
+                      >
+                        <AccountOption
+                          account={cloudAccounts.find((account) => account.id === id)}
+                          fallback={t('traffic.unknown')}
+                        />
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
