@@ -44,6 +44,7 @@ import type { TrafficClass } from './traffic-classifier';
 import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
 import { createPreparedAuditPayloadWriter } from './prepared-audit-payload';
 import { extractAuditModel, serializeAuditError } from './audit-parent-metadata';
+import { TrafficAuditDropStats } from './traffic-audit-drop-stats';
 import type { IncrementalAuditPayloadKind } from './incremental-audit-serializer';
 
 const TRAFFIC_AUDIT_FILENAME = 'request-audit.db';
@@ -76,19 +77,11 @@ export interface DatabaseRepairResult {
   repaired: boolean;
 }
 
-interface PendingDropStats {
-  bytes: number;
-  count: number;
-  flushing: boolean;
-  reason: string;
-}
-
 export class TrafficAuditService {
   private readonly terminal = new DiagnosticStoreShutdown();
   private worker: BoundedSqliteWorker | null = null;
   private queueConfigKey = '';
-  private readonly pendingDropStats = new Map<TrafficClass, PendingDropStats>();
-  private lastDropReason: string | null = null;
+  private readonly dropStats = new TrafficAuditDropStats();
   private maintenanceTimer: NodeJS.Timeout | null = null;
   private repairInProgress: Promise<DatabaseRepairResult> | null = null;
   private readonly activePayloadWrites = new Set<Promise<void>>();
@@ -398,14 +391,10 @@ export class TrafficAuditService {
       workerPendingCommands: true,
     }).parse(await this.request('stats', null));
     const queue = this.ensureWorker().getStats();
-    const unflushedDroppedCount = [...this.pendingDropStats.values()].reduce(
-      (total, bucket) => total + bucket.count,
-      0,
-    );
     return TrafficAuditStatsSchema.parse({
       ...persisted,
-      droppedCount: persisted.droppedCount + unflushedDroppedCount,
-      lastDropReason: this.lastDropReason ?? persisted.lastDropReason,
+      droppedCount: persisted.droppedCount + this.dropStats.count,
+      lastDropReason: this.dropStats.lastReason ?? persisted.lastDropReason,
       workerAlive: queue.alive,
       workerPendingBytes: queue.pendingBytes,
       workerPendingCommands: queue.pendingCommands,
@@ -422,16 +411,9 @@ export class TrafficAuditService {
   }
 
   public async clear(trafficClass: TrafficClass | null = null): Promise<number> {
-    if (trafficClass) {
-      this.pendingDropStats.delete(trafficClass);
-    } else {
-      this.pendingDropStats.clear();
-    }
-    const remainingReasons = [...this.pendingDropStats.values()]
-      .filter((bucket) => bucket.count > 0)
-      .map((bucket) => bucket.reason);
-    this.lastDropReason = remainingReasons.at(-1) ?? null;
-    const affected = Number(await this.request('clear', { trafficClass }));
+    const affected = Number(
+      await this.dropStats.reset(trafficClass, () => this.request('clear', { trafficClass })),
+    );
     this.recordAdminEvent('clear_requests', affected, null);
     this.emit({
       id: trafficClass ?? 'all',
@@ -443,16 +425,11 @@ export class TrafficAuditService {
   }
 
   public async resetDropStats(trafficClass: TrafficClass | null = null): Promise<number> {
-    if (trafficClass) {
-      this.pendingDropStats.delete(trafficClass);
-    } else {
-      this.pendingDropStats.clear();
-    }
-    const remainingReasons = [...this.pendingDropStats.values()]
-      .filter((bucket) => bucket.count > 0)
-      .map((bucket) => bucket.reason);
-    this.lastDropReason = remainingReasons.at(-1) ?? null;
-    const affected = Number(await this.request('resetDropStats', { trafficClass }));
+    const affected = Number(
+      await this.dropStats.reset(trafficClass, () =>
+        this.request('resetDropStats', { trafficClass }),
+      ),
+    );
     this.recordAdminEvent('reset_drop_stats', affected, null);
     this.emit({
       id: trafficClass ? `reset-drops:${trafficClass}` : 'reset-drops:all',
@@ -941,55 +918,14 @@ export class TrafficAuditService {
     droppedBytes = 0,
     trafficClass: TrafficClass = 'system',
   ): void {
-    const bucket = this.pendingDropStats.get(trafficClass) ?? {
-      bytes: 0,
-      count: 0,
-      flushing: false,
-      reason,
-    };
-    bucket.count += 1;
-    bucket.bytes += droppedBytes;
-    bucket.reason = reason;
-    this.pendingDropStats.set(trafficClass, bucket);
-    this.lastDropReason = reason;
+    this.dropStats.record(reason, droppedBytes, trafficClass);
   }
 
   private flushDropStats(): void {
     if (!this.worker) {
       return;
     }
-    for (const [trafficClass, bucket] of this.pendingDropStats) {
-      if (bucket.count <= 0 || bucket.flushing) {
-        continue;
-      }
-      const count = bucket.count;
-      const droppedBytes = bucket.bytes;
-      const reason = bucket.reason;
-      bucket.flushing = true;
-      const accepted = this.worker.tryWrite(
-        {
-          operation: 'drop',
-          payload: { count, droppedBytes, lastSeen: Date.now(), reason, trafficClass },
-        },
-        {
-          onFailure: () => {
-            bucket.flushing = false;
-          },
-          onSuccess: () => {
-            bucket.count = Math.max(0, bucket.count - count);
-            bucket.bytes = Math.max(0, bucket.bytes - droppedBytes);
-            bucket.flushing = false;
-            if ([...this.pendingDropStats.values()].every((entry) => entry.count === 0)) {
-              this.lastDropReason = null;
-            }
-          },
-          priority: 'background',
-        },
-      );
-      if (!accepted) {
-        bucket.flushing = false;
-      }
-    }
+    this.dropStats.flush(this.worker);
   }
 
   private recordAdminEvent(operation: string, affectedCount: number | null, error: unknown): void {

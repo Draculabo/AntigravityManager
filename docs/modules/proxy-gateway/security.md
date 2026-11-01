@@ -38,6 +38,13 @@ overflow, worker failure and shutdown-drain timeout are reported as counters but
 provider response. Read-only audit/Thought management calls are not recursively audited. Clear,
 delete, repair and setting changes produce metadata-only admin events.
 
+Resetting the drop baseline preserves request records. Clear also resets the selected
+traffic class's drop baseline, or every class when no class is selected. Both operations
+wait for already admitted drop writes before deleting persisted counts. New drops in
+the selected scope remain pending until the reset finishes and survive a successful
+reset. A failed reset retains unpersisted counts; a lost worker reply can leave the
+persisted outcome uncertain and requires reading the current statistics before retrying.
+
 Audit retention defaults to 24 hours for bodies, 30 days for summaries, 100,000 rows and
 256 MiB on disk. Disk pressure removes admin events, then bodies in system, IPC, auxiliary
 and model order, then summaries in the same traffic-class order. Body candidates use an

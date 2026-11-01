@@ -600,6 +600,7 @@ const ptBR = {
     'on-disk': '{{size}} no disco',
     dropped: '{{count}} descartados',
     'reset-dropped': 'Redefinir',
+    'reset-dropped-failed': 'Não foi possível redefinir o contador. Tente novamente.',
     model: 'Requisições de modelo',
     auxiliary: 'Outras requisições',
     ipc: 'Ações do aplicativo',

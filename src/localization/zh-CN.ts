@@ -483,6 +483,7 @@ const zhCn = {
     'on-disk': '磁盘占用 {{size}}',
     dropped: '已丢弃 {{count}} 条',
     'reset-dropped': '重置',
+    'reset-dropped-failed': '无法重置丢弃计数，请重试。',
     model: '模型请求',
     auxiliary: '其他请求',
     ipc: '应用操作',

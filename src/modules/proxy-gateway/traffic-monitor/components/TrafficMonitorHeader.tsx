@@ -1,12 +1,13 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Activity, AlertTriangle, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ipc } from '@/ipc/manager';
+import { useAuditDropReset } from '../../components/useAuditDropReset';
 
 export function TrafficMonitorHeader() {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
+  const resetDrops = useAuditDropReset();
   const stats = useQuery({
     queryKey: ['gateway', 'audit-stats'],
     queryFn: () => ipc.client.gateway.auditStats(),
@@ -37,17 +38,21 @@ export function TrafficMonitorHeader() {
               <span>{t('traffic.dropped', { count: stats.data?.droppedCount })}</span>
               <button
                 type="button"
-                className="hover:bg-destructive-foreground/20 rounded p-0.5 transition-colors"
+                className="hover:bg-destructive-foreground/20 focus-visible:ring-ring rounded p-0.5 transition-colors focus-visible:ring-2 disabled:opacity-50"
                 title={t('traffic.reset-dropped')}
                 aria-label={t('traffic.reset-dropped')}
-                onClick={async () => {
-                  await ipc.client.gateway.auditResetDropStats({ trafficClass: null });
-                  await queryClient.invalidateQueries({ queryKey: ['gateway'] });
-                }}
+                disabled={resetDrops.isPending}
+                aria-busy={resetDrops.isPending}
+                onClick={() => resetDrops.mutate()}
               >
                 <RotateCcw className="h-3 w-3" />
               </button>
             </Badge>
+          )}
+          {resetDrops.isError && (
+            <p role="alert" className="text-destructive basis-full text-xs">
+              {t('traffic.reset-dropped-failed')}
+            </p>
           )}
         </div>
       </div>

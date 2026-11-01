@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProxyConfig } from '@/modules/config/types';
 
@@ -156,6 +156,59 @@ describe('Traffic audit drop counter reset', () => {
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'traffic.reset-dropped' })).toBeNull();
+    });
+  });
+
+  describe.each(['header', 'settings'] as const)('%s reset feedback', (surface) => {
+    function renderSurface() {
+      return render(
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          surface === 'header'
+            ? createElement(TrafficMonitorHeader)
+            : createElement(AuditAndThoughtStoreCard, { config, onChange: vi.fn() }),
+        ),
+      );
+    }
+
+    it('prevents duplicate submission and refreshes the displayed counter on success', async () => {
+      mocks.auditStats.mockResolvedValue({ droppedCount: 4, rows: 0, databaseBytes: 0 });
+      let complete: () => void = () => {};
+      mocks.auditResetDropStats.mockReturnValue(
+        new Promise<void>((resolve) => {
+          complete = resolve;
+        }),
+      );
+      renderSurface();
+      const button = await screen.findByRole('button', { name: 'traffic.reset-dropped' });
+      fireEvent.click(button);
+      await waitFor(() => expect(button).toHaveProperty('disabled', true));
+      fireEvent.click(button);
+      expect(mocks.auditResetDropStats).toHaveBeenCalledTimes(1);
+      mocks.auditStats.mockResolvedValue({ droppedCount: 0, rows: 0, databaseBytes: 0 });
+      await act(async () => complete());
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'traffic.reset-dropped' })).toBeNull(),
+      );
+    });
+
+    it('reports failure, retains the counter and allows retry', async () => {
+      mocks.auditStats.mockResolvedValue({ droppedCount: 4, rows: 0, databaseBytes: 0 });
+      mocks.auditResetDropStats.mockRejectedValueOnce(new Error('synthetic queue failure'));
+      renderSurface();
+      fireEvent.click(await screen.findByRole('button', { name: 'traffic.reset-dropped' }));
+      expect((await screen.findByRole('alert')).textContent).toBe('traffic.reset-dropped-failed');
+      const button = screen.getByRole('button', { name: 'traffic.reset-dropped' });
+      expect(button).toHaveProperty('disabled', false);
+      expect(screen.getByRole('alert').textContent).not.toContain('synthetic queue failure');
+      mocks.auditResetDropStats.mockResolvedValue({ affected: 1 });
+      mocks.auditStats.mockResolvedValue({ droppedCount: 0, rows: 0, databaseBytes: 0 });
+      fireEvent.click(button);
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'traffic.reset-dropped' })).toBeNull(),
+      );
+      expect(screen.queryByRole('alert')).toBeNull();
     });
   });
 });
