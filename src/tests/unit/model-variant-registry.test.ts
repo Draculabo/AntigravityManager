@@ -283,7 +283,7 @@ describe('resolveModelVariant', () => {
         maxOutputTokens: 16384,
         includeThoughts: false,
         preserveClientBudget: false,
-        supportsTools: false,
+        supportsTools: true,
       },
       {
         canonicalModel: 'claude-opus-4-6-thinking',
