@@ -17,6 +17,14 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 This checks real worker messages, database reopen, body paging, retention and physical disk
 reclamation. It supplements, but does not replace, live gateway/provider acceptance.
 
+The persistence suite also checks scoped/global drop-baseline resets, preservation of
+request bodies during a statistics-only reset, drop clearing during request clearing,
+and pruning of obsolete drop records. `traffic-audit-drop-lifecycle.test.ts` exercises
+the service through the real weighted parent queue with a synthetic persistence worker.
+Controlled replies cover queued writes crossing a reset, failed admission, new drops
+during a reset and overlapping reset recovery. The component tests cover pending,
+failure, retry and the refreshed counter in both reset entry points.
+
 For a retention-only change, run `scripts/acceptance/runtime/audit-retention-native.test.mjs`
 with the same Electron command after rebuilding the audit worker. Its disposable databases
 cover class priority, physical reclamation, preservation of newer bodies when one body meets

@@ -64,6 +64,8 @@ export class TrafficAuditRetention {
         yield;
       }
     }
+    this.raw.prepare('DELETE FROM audit_drop_stats WHERE last_seen < ?').run(summaryCutoff);
+    yield;
     yield* this.evictRowsBeyondLimit(config.maxRows, maxRequestRowId, maxAdminRowId, now);
     yield* this.reclaimDiskSpace();
 
@@ -158,6 +160,12 @@ export class TrafficAuditRetention {
       }
     }
     return { databaseBytes: sqliteFilesBytes(this.databasePath) };
+  }
+
+  public reclaimDiskSpaceDirect(): void {
+    this.raw.pragma('wal_checkpoint(TRUNCATE)');
+    this.raw.pragma('incremental_vacuum');
+    this.raw.pragma('wal_checkpoint(TRUNCATE)');
   }
 
   private *reclaimDiskSpace(): Generator<void> {

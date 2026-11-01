@@ -1,5 +1,9 @@
 import { ORPCError, os } from '@orpc/server';
-import { AuditClearInputSchema, type AuditOperations } from './audit-owner.service';
+import {
+  AuditClearInputSchema,
+  AuditResetDropStatsInputSchema,
+  type AuditOperations,
+} from './audit-owner.service';
 import {
   AuditIdInputSchema,
   AuditMutationResultSchema,
@@ -58,6 +62,10 @@ export function createAuditOwnerRouter(owner: AuditOperations) {
       .input(AuditClearInputSchema)
       .output(AuditMutationResultSchema)
       .handler(({ input }) => owner.clear(input)),
+    resetDropStats: procedure
+      .input(AuditResetDropStatsInputSchema)
+      .output(AuditMutationResultSchema)
+      .handler(({ input }) => owner.resetDropStats(input)),
     repair: procedure.output(AuditRepairResultSchema).handler(() => owner.repair()),
     events: procedure
       .input(AuditEventReadInputSchema)

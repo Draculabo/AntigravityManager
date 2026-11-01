@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertTriangle, ChevronDown, Database, Wrench } from 'lucide-react';
+import { Activity, AlertTriangle, ChevronDown, Database, RotateCcw, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { ipc } from '@/ipc/manager';
 import type { ProxyConfig } from '@/modules/config/types';
 import { ThoughtDiagnosticsPanel } from './ThoughtDiagnosticsPanel';
+import { useAuditDropReset } from './useAuditDropReset';
 
 interface AuditAndThoughtStoreCardProps {
   config: Pick<ProxyConfig, 'thought_store' | 'traffic_audit'>;
@@ -21,6 +22,7 @@ interface AuditAndThoughtStoreCardProps {
 export function AuditAndThoughtStoreCard({ config, onChange }: AuditAndThoughtStoreCardProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const resetDrops = useAuditDropReset();
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const auditStats = useQuery({
     queryKey: ['gateway', 'audit-stats'],
@@ -80,13 +82,33 @@ export function AuditAndThoughtStoreCard({ config, onChange }: AuditAndThoughtSt
             </div>
           )}
           {auditStats.data && auditStats.data.droppedCount > 0 && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-              <AlertTriangle size={14} aria-hidden="true" />
-              {t('proxy.persistence.dropped', {
-                count: auditStats.data.droppedCount,
-                reason: auditStats.data.lastDropReason ?? 'unknown',
-              })}
+            <div className="flex items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={14} aria-hidden="true" />
+                <span>
+                  {t('proxy.persistence.dropped', {
+                    count: auditStats.data.droppedCount,
+                    reason: auditStats.data.lastDropReason ?? 'unknown',
+                  })}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 shrink-0 px-2 text-xs text-amber-700 hover:bg-amber-500/20 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-500/20 dark:hover:text-amber-200"
+                disabled={resetDrops.isPending}
+                aria-busy={resetDrops.isPending}
+                onClick={() => resetDrops.mutate()}
+              >
+                <RotateCcw className="mr-1 h-3 w-3 shrink-0" />
+                {t('traffic.reset-dropped')}
+              </Button>
             </div>
+          )}
+          {resetDrops.isError && (
+            <p role="alert" className="text-destructive text-xs">
+              {t('traffic.reset-dropped-failed')}
+            </p>
           )}
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

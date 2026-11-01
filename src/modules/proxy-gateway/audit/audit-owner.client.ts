@@ -51,6 +51,10 @@ export function createAuditClient(
       run(async () => parseAuditResponse(AuditMutationResultSchema, await rpc.delete(input))),
     clear: (input) =>
       run(async () => parseAuditResponse(AuditMutationResultSchema, await rpc.clear(input))),
+    resetDropStats: (input) =>
+      run(async () =>
+        parseAuditResponse(AuditMutationResultSchema, await rpc.resetDropStats(input)),
+      ),
     repair: () => run(async () => parseAuditResponse(AuditRepairResultSchema, await rpc.repair())),
     events: (input) =>
       run(async () => parseAuditResponse(AuditEventBatchSchema, await rpc.events(input))),
