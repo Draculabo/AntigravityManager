@@ -26,6 +26,9 @@ import { AuditOwnerEvents } from './audit-owner-events';
 export const AuditClearInputSchema = z.strictObject({
   trafficClass: TrafficClassSchema.nullable(),
 });
+export const AuditResetDropStatsInputSchema = z.strictObject({
+  trafficClass: TrafficClassSchema.nullable(),
+});
 type AuditSource = Pick<
   TrafficAuditService,
   | 'list'
@@ -36,6 +39,7 @@ type AuditSource = Pick<
   | 'stats'
   | 'delete'
   | 'clear'
+  | 'resetDropStats'
   | 'repair'
   | 'subscribe'
 >;
@@ -121,6 +125,14 @@ export function createAuditOwner(source: AuditSource = trafficAuditService) {
           affected: await source.clear(AuditClearInputSchema.parse(input).trafficClass),
         }),
       ),
+    resetDropStats: (input: z.infer<typeof AuditResetDropStatsInputSchema>) =>
+      run(async () =>
+        parseAuditResponse(AuditMutationResultSchema, {
+          affected: await source.resetDropStats(
+            AuditResetDropStatsInputSchema.parse(input).trafficClass,
+          ),
+        }),
+      ),
     repair: () =>
       run(async () => parseAuditResponse(AuditRepairResultSchema, await source.repair())),
     events: (input: z.infer<typeof AuditEventReadInputSchema>) =>
@@ -149,6 +161,7 @@ export type AuditOperations = Pick<
   | 'stats'
   | 'delete'
   | 'clear'
+  | 'resetDropStats'
   | 'repair'
   | 'events'
 >;

@@ -12,7 +12,9 @@ import {
   finalize,
   completedParent,
   addAttempt,
+  addBody,
   list,
+  retention,
 } from './diagnostic-worker-fixture.mjs';
 
 for (const trafficClass of ['model', 'system']) {
@@ -68,6 +70,68 @@ for (const trafficClass of ['model', 'system']) {
     }
   });
 }
+
+for (const operation of ['resetDropStats', 'clear']) {
+  for (const trafficClass of ['model', 'system', null]) {
+    test(`production worker ${operation} scopes drop deletion to ${trafficClass ?? 'all'}`, async () => {
+      const audit = openWorker(`${operation}-${trafficClass ?? 'all'}`);
+      try {
+        const classes = ['model', 'ipc', 'system'];
+        for (const [index, scope] of classes.entries()) {
+          await audit.command('insertParent', parent(scope, scope, Date.now()));
+          await audit.command('drop', {
+            count: index + 1,
+            droppedBytes: 0,
+            lastSeen: Date.now(),
+            reason: 'queue_capacity',
+            trafficClass: scope,
+          });
+        }
+        await addBody(audit, 'model', 'model-body', 'm'.repeat(256_000));
+        const before = await audit.command('stats', null);
+        await audit.command(operation, { trafficClass });
+        const after = await audit.command('stats', null);
+        const remaining = trafficClass === 'model' ? 5 : trafficClass === 'system' ? 3 : 0;
+        assert.equal(after.droppedCount, remaining);
+        assert.equal(after.rows, operation === 'resetDropStats' ? 3 : trafficClass ? 2 : 0);
+        if (operation === 'resetDropStats' || trafficClass === 'system') {
+          assert.equal(
+            (await audit.command('detail', { id: 'model' })).bodies[0].storedBytes,
+            256_000,
+          );
+        } else {
+          assert.ok(after.databaseBytes < before.databaseBytes);
+        }
+      } finally {
+        await audit.close();
+      }
+    });
+  }
+}
+
+test('production retention prunes obsolete drops and preserves recent drops', async () => {
+  const audit = openWorker('drop-retention');
+  try {
+    const now = Date.now();
+    for (const [trafficClass, lastSeen, count] of [
+      ['model', now - 2 * 24 * 60 * 60 * 1000, 7],
+      ['ipc', now, 3],
+    ]) {
+      await audit.command('drop', {
+        count,
+        droppedBytes: 0,
+        lastSeen,
+        reason: 'queue_capacity',
+        trafficClass,
+      });
+    }
+    assert.equal((await audit.command('stats', null)).droppedCount, 10);
+    await audit.command('maintenance', { ...retention(100), summaryRetentionDays: 1 });
+    assert.equal((await audit.command('stats', null)).droppedCount, 3);
+  } finally {
+    await audit.close();
+  }
+});
 
 test('production worker reopens schema v4 and serves paged UTF-8 bodies with parent-local dedup', async () => {
   const audit = openWorker('pages');

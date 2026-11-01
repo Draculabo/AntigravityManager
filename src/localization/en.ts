@@ -522,6 +522,8 @@ const en = {
     records: '{{count}} records',
     'on-disk': '{{size}} on disk',
     dropped: '{{count}} dropped',
+    'reset-dropped': 'Reset',
+    'reset-dropped-failed': 'Unable to reset the dropped count. Please try again.',
     model: 'Model requests',
     auxiliary: 'Other requests',
     ipc: 'App actions',

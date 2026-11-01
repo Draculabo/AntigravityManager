@@ -1274,6 +1274,8 @@ const ru = {
     'fallback-attempt-failed':
       'Попытка {{index}} {{operation}}завершилась ошибкой{{status}}{{error}}',
     'fallback-attempt-recovered': 'Восстановлено на попытке {{index}} {{operation}}{{status}}',
+    'reset-dropped': 'Сбросить',
+    'reset-dropped-failed': 'Не удалось сбросить счётчик. Попробуйте ещё раз.',
     'detail-load-failed': 'Не удалось загрузить запрос. Повторите попытку.',
     'detail-not-found': 'Запись недоступна. Возможно, она была удалена.',
     fields: {

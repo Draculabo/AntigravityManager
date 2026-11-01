@@ -1243,6 +1243,8 @@ const tr = {
     'fallback-diagnostics': 'Yedekleme teşhisleri',
     'fallback-attempt-failed': 'Deneme {{index}} {{operation}}başarısız oldu{{status}}{{error}}',
     'fallback-attempt-recovered': 'Deneme {{index}} {{operation}}üzerinde kurtarıldı{{status}}',
+    'reset-dropped': 'Sıfırla',
+    'reset-dropped-failed': 'Sayaç sıfırlanamadı. Lütfen tekrar deneyin.',
     'detail-load-failed': 'Bu istek yüklenemedi. Tekrar deneyin.',
     'detail-not-found': 'Bu kayıt artık mevcut değil. Temizlenmiş olabilir.',
     fields: {
