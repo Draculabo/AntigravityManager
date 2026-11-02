@@ -35,7 +35,7 @@ export function buildBenchmarkReport(
     '|---|---|---|---|---|---|---|---|',
     ...completed.map((row) => {
       const successful = row.samples.filter((sample) => sample.status === 'success');
-      const last = successful[successful.length - 1] ?? row.samples[row.samples.length - 1];
+      const last = row.samples[row.samples.length - 1];
       return `| ${cell(row.modelName)} | HTTP ${last?.httpStatus ?? 500} | ${
         row.medianFirstTextMs === undefined ? '-' : seconds(row.medianFirstTextMs)
       } | ${percentileCell(row.p95FirstTextMs, successful.length, seconds, t)} | ${
@@ -47,7 +47,7 @@ export function buildBenchmarkReport(
         successful.length,
         speed,
         t,
-      )} | ${successful.length}/${row.samples.length} | ${last?.promptTokens ?? 0} / ${last?.completionTokens ?? 0} |`;
+      )} | ${successful.length}/${row.samples.length} | ${last?.promptTokens ?? '-'} / ${last?.completionTokens ?? '-'} |`;
     }),
   ].join('\n');
 }

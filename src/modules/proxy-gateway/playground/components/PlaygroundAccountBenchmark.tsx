@@ -18,6 +18,7 @@ import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-ac
 import {
   disambiguateModelList,
   isImageProxyExampleModel,
+  isProxyExampleModelVisible,
 } from '../../components/proxy-example-models';
 import {
   PLAYGROUND_MAX_BENCHMARK_ITERATIONS,
@@ -72,23 +73,22 @@ export function PlaygroundAccountBenchmark({
     const list = rawQuotaModels.length
       ? disambiguateModelList(rawQuotaModels)
       : availableModels.map((model) => ({ ...model, quotaPercentage: undefined }));
-    const filtered = list.filter((model) => {
+    return list.filter((model) => {
       if (isImageProxyExampleModel(model.id)) {
         return false;
       }
-      if (onlyVisibleModels && modelVisibility[model.id] === false) {
+      if (onlyVisibleModels && !isProxyExampleModelVisible(model.id, modelVisibility)) {
         return false;
       }
       return true;
     });
-    return filtered.length > 0
-      ? filtered
-      : list.filter((model) => !isImageProxyExampleModel(model.id));
   }, [account, availableModels, onlyVisibleModels, modelVisibility]);
   // Default selection is derived so late quota hydration also includes newly advertised models.
   const [selection, setSelection] = useState<{ accountId: string; ids: string[] } | null>(null);
   const checkedIds =
-    selection?.accountId === account?.id ? selection.ids : models.map((model) => model.id);
+    selection?.accountId === account?.id
+      ? selection.ids.filter((id) => models.some((model) => model.id === id))
+      : models.map((model) => model.id);
   const select = (ids: string[]) => {
     if (account) {
       setSelection({ accountId: account.id, ids });
@@ -116,9 +116,18 @@ export function PlaygroundAccountBenchmark({
     activeRun.current?.abort();
     activeRun.current = null;
     setRows((previous) =>
-      previous.map((row) =>
-        row.status === 'running' || row.status === 'idle' ? { ...row, status: 'skipped' } : row,
-      ),
+      previous.map((row) => {
+        if (row.status !== 'running' && row.status !== 'idle') {
+          return row;
+        }
+        if (!row.samples.length) {
+          return { ...row, status: 'skipped' };
+        }
+        return {
+          ...row,
+          status: row.samples.some((sample) => sample.status === 'success') ? 'success' : 'error',
+        };
+      }),
     );
     setIsRunning(false);
     setProgress('');
@@ -210,37 +219,39 @@ export function PlaygroundAccountBenchmark({
               error: error instanceof Error ? error.message : String(error),
             });
           }
+          const completedSamples = [...samples];
+          const successful = completedSamples.filter((sample) => sample.status === 'success');
+          const firstText = summarize(
+            successful.flatMap((sample) =>
+              sample.firstTextDeltaMs === undefined ? [] : [sample.firstTextDeltaMs],
+            ),
+          );
+          const generation = summarize(
+            successful.flatMap((sample) =>
+              sample.generationTokensPerSec === undefined ? [] : [sample.generationTokensPerSec],
+            ),
+          );
+          setRows((previous) =>
+            previous.map((entry, i) =>
+              i === index
+                ? {
+                    ...entry,
+                    status:
+                      attempt + 1 < iterations
+                        ? 'running'
+                        : successful.length
+                          ? 'success'
+                          : 'error',
+                    samples: completedSamples,
+                    medianFirstTextMs: firstText.median,
+                    p95FirstTextMs: firstText.p95,
+                    medianGenerationTokensPerSec: generation.median,
+                    p95GenerationTokensPerSec: generation.p95,
+                  }
+                : entry,
+            ),
+          );
         }
-        if (!current()) {
-          break;
-        }
-
-        const successful = samples.filter((sample) => sample.status === 'success');
-        const firstText = summarize(
-          successful.flatMap((sample) =>
-            sample.firstTextDeltaMs === undefined ? [] : [sample.firstTextDeltaMs],
-          ),
-        );
-        const generation = summarize(
-          successful.flatMap((sample) =>
-            sample.generationTokensPerSec === undefined ? [] : [sample.generationTokensPerSec],
-          ),
-        );
-        setRows((previous) =>
-          previous.map((entry, i) =>
-            i === index
-              ? {
-                  ...entry,
-                  status: successful.length ? 'success' : 'error',
-                  samples,
-                  medianFirstTextMs: firstText.median,
-                  p95FirstTextMs: firstText.p95,
-                  medianGenerationTokensPerSec: generation.median,
-                  p95GenerationTokensPerSec: generation.p95,
-                }
-              : entry,
-          ),
-        );
       }
     } finally {
       if (current()) {

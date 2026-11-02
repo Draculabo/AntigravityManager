@@ -29,6 +29,7 @@ import type {
   PlaygroundExecuteInput,
   PlaygroundExecuteResult,
 } from '@/modules/proxy-gateway/playground/playground.schema';
+import { PLAYGROUND_MAX_COMPARE_ACCOUNTS } from '@/modules/proxy-gateway/playground/playground.schema';
 
 vi.mock('@/modules/proxy-gateway/traffic-monitor/copy-audit-curl', () => ({
   copyAuditCurl: vi.fn(),
@@ -273,13 +274,23 @@ describe('Electron gateway read adapter', () => {
       durationMs: 6000,
       status: 200,
     });
-    const accountIds = Array.from({ length: 12 }, (_, index) => 'core-' + index);
+    const accountIds = Array.from(
+      { length: PLAYGROUND_MAX_COMPARE_ACCOUNTS },
+      (_, index) => 'core-' + index,
+    );
     const comparison = {
       model: input.model,
       prompt: '你'.repeat(32768),
       systemPrompt: '你'.repeat(8192),
       accountIds,
     };
+    await expect(
+      rendererGateway.playground.compare({
+        ...comparison,
+        accountIds: [...accountIds, 'overflow-account'],
+      }),
+    ).rejects.toThrow('Input validation failed');
+    expect(operations.playground.compare).not.toHaveBeenCalled();
     const compared = await rendererGateway.playground.compare(comparison);
     expect(compared).toEqual({
       results: accountIds.map((accountId) => ({

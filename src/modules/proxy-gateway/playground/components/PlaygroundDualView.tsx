@@ -71,6 +71,12 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
     const other = availableModels.find((m) => m.id !== (availableModels[0]?.id || ''));
     return other?.id || availableModels[1]?.id || 'claude-sonnet-4-6';
   });
+  const effectiveModelAId = availableModels.some((model) => model.id === modelAId)
+    ? modelAId
+    : (availableModels[0]?.id ?? '');
+  const effectiveModelBId = availableModels.some((model) => model.id === modelBId)
+    ? modelBId
+    : (availableModels[1]?.id ?? availableModels[0]?.id ?? '');
 
   // Results & Execution state
   const [resultA, setResultA] = useState<PlaygroundExecuteResult | null>(null);
@@ -113,7 +119,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
   };
 
   const handleRun = async () => {
-    if (!prompt.trim()) {
+    if (!prompt.trim() || !effectiveModelAId || !effectiveModelBId) {
       return;
     }
 
@@ -129,7 +135,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
       .execute(
         {
           accountId: accountAId === 'auto' ? undefined : accountAId,
-          model: modelAId,
+          model: effectiveModelAId,
           prompt,
           systemPrompt: systemPrompt.trim() || undefined,
           temperature,
@@ -148,7 +154,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
           setResultA({
             success: false,
             content: '',
-            model: modelAId,
+            model: effectiveModelAId,
             durationMs: 0,
             status: 500,
             error: err instanceof Error ? err.message : String(err),
@@ -165,7 +171,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
       .execute(
         {
           accountId: accountBId === 'auto' ? undefined : accountBId,
-          model: modelBId,
+          model: effectiveModelBId,
           prompt,
           systemPrompt: systemPrompt.trim() || undefined,
           temperature,
@@ -184,7 +190,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
           setResultB({
             success: false,
             content: '',
-            model: modelBId,
+            model: effectiveModelBId,
             durationMs: 0,
             status: 500,
             error: err instanceof Error ? err.message : String(err),
@@ -215,8 +221,8 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
   const accountA = accounts.find((a) => a.id === accountAId);
   const accountB = accounts.find((a) => a.id === accountBId);
 
-  const quotaA = accountA?.quota?.models?.[modelAId]?.percentage;
-  const quotaB = accountB?.quota?.models?.[modelBId]?.percentage;
+  const quotaA = accountA?.quota?.models?.[effectiveModelAId]?.percentage;
+  const quotaB = accountB?.quota?.models?.[effectiveModelBId]?.percentage;
 
   // Comparison metrics between A and B
   const comparisonSummary = useMemo(() => {
@@ -436,7 +442,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                 variant="default"
                 size="sm"
                 onClick={handleRun}
-                disabled={isRunning || !prompt.trim()}
+                disabled={isRunning || !prompt.trim() || !effectiveModelAId || !effectiveModelBId}
                 className="h-8 gap-1.5 text-xs font-medium"
               >
                 {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
@@ -538,7 +544,11 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                   <Label htmlFor="model-a" className="text-[11px]">
                     {t('playground.model')}
                   </Label>
-                  <Select value={modelAId} onValueChange={setModelAId} disabled={isRunning}>
+                  <Select
+                    value={effectiveModelAId}
+                    onValueChange={setModelAId}
+                    disabled={isRunning}
+                  >
                     <SelectTrigger id="model-a" className="h-8 text-xs">
                       <SelectValue placeholder={t('playground.select-model')} />
                     </SelectTrigger>
@@ -650,7 +660,11 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                   <Label htmlFor="model-b" className="text-[11px]">
                     {t('playground.model')}
                   </Label>
-                  <Select value={modelBId} onValueChange={setModelBId} disabled={isRunning}>
+                  <Select
+                    value={effectiveModelBId}
+                    onValueChange={setModelBId}
+                    disabled={isRunning}
+                  >
                     <SelectTrigger id="model-b" className="h-8 text-xs">
                       <SelectValue placeholder={t('playground.select-model')} />
                     </SelectTrigger>

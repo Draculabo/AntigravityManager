@@ -237,7 +237,12 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
               variant="default"
               size="sm"
               onClick={() => onRunCompare(selectedIds)}
-              disabled={isLoading || selectedIds.length === 0 || !prompt.trim()}
+              disabled={
+                isLoading ||
+                availableModels.length === 0 ||
+                selectedIds.length === 0 ||
+                !prompt.trim()
+              }
               className="h-8 gap-1.5 text-xs font-medium"
             >
               <Play size={14} className={isLoading ? 'animate-pulse' : ''} />

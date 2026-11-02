@@ -85,7 +85,7 @@ export const PlaygroundPage: React.FC = () => {
 
   const effectiveSelectedModel = visibleAvailableModels.some((m) => m.id === selectedModel)
     ? selectedModel
-    : (visibleAvailableModels[0]?.id ?? selectedModel);
+    : (visibleAvailableModels[0]?.id ?? '');
   const [prompt, setPrompt] = useState<string>(() => t('playground.default-prompt'));
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.7);
@@ -151,7 +151,7 @@ export const PlaygroundPage: React.FC = () => {
   });
 
   const handleRunSingle = async () => {
-    if (!prompt.trim() || activeRun.current) {
+    if (!prompt.trim() || !effectiveSelectedModel || activeRun.current) {
       return;
     }
     const controller = new AbortController();
@@ -191,7 +191,7 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const handleRunCompare = async (accountIds: string[]) => {
-    if (!prompt.trim() || accountIds.length === 0 || activeRun.current) {
+    if (!prompt.trim() || !effectiveSelectedModel || accountIds.length === 0 || activeRun.current) {
       return;
     }
     const controller = new AbortController();
