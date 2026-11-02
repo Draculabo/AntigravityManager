@@ -204,6 +204,10 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
         title: t('playground.request-error'),
         variant: 'destructive',
       });
+    } finally {
+      if (activeRun.current === run) {
+        activeRun.current = null;
+      }
     }
   };
 

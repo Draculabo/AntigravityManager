@@ -96,12 +96,16 @@ export function BenchmarkResults({
     const succeeded = successfulSamples(row).length;
     return `${succeeded}/${row.samples.length}`;
   };
-  const p95 = (value: number | undefined, count: number): string =>
+  const p95 = (
+    value: number | undefined,
+    count: number,
+    format: (measured: number) => string = seconds,
+  ): string =>
     value === undefined
       ? count > 0 && count < MIN_BENCHMARK_SAMPLES
         ? t('playground.insufficient-samples', { count: MIN_BENCHMARK_SAMPLES })
         : notMeasured
-      : seconds(value);
+      : format(value);
 
   return (
     <div className="space-y-4">
@@ -191,7 +195,7 @@ export function BenchmarkResults({
                       {speed(row.medianGenerationTokensPerSec)}
                     </td>
                     <td className="px-3 py-2 tabular-nums">
-                      {speed(row.p95GenerationTokensPerSec)}
+                      {p95(row.p95GenerationTokensPerSec, succeeded, speed)}
                     </td>
                     <td className="px-3 py-2 tabular-nums">
                       {last?.promptTokens ?? '-'} / {last?.completionTokens ?? '-'}

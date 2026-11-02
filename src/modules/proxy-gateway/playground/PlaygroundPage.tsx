@@ -198,7 +198,7 @@ export const PlaygroundPage: React.FC = () => {
     activeRun.current = controller;
     setIsRunning(true);
     setCompareResults([]);
-    const collected: PlaygroundExecuteResult[] = [];
+    const collected = new Array<PlaygroundExecuteResult | undefined>(accountIds.length);
     try {
       await runBounded(
         accountIds,
@@ -209,9 +209,11 @@ export const PlaygroundPage: React.FC = () => {
             buildInput(accountId.trim() || undefined),
             { signal: controller.signal },
           );
-          collected.push(result);
-          setCompareResults([...collected]);
           return result;
+        },
+        (index, result) => {
+          collected[index] = result;
+          setCompareResults(collected.filter((entry): entry is PlaygroundExecuteResult => !!entry));
         },
       );
     } catch (error) {

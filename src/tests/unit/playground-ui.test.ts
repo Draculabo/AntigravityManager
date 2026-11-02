@@ -7,6 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import en from '@/localization/en';
 import zhCN from '@/localization/zh-CN';
 import { buildBenchmarkReport } from '@/modules/proxy-gateway/playground/components/benchmark/benchmark-export';
+import { BenchmarkResults } from '@/modules/proxy-gateway/playground/components/benchmark/BenchmarkResults';
 import { FALLBACK_PROXY_EXAMPLE_MODELS } from '@/modules/proxy-gateway/components/proxy-example-models';
 import type { PlaygroundExecuteResult } from '@/modules/proxy-gateway/playground/playground.schema';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
@@ -168,6 +169,34 @@ describe('Playground lifecycle', () => {
     );
   });
 
+  it('shows the insufficient-samples state for both p95 benchmark metrics', () => {
+    mount(
+      createElement(BenchmarkResults, {
+        accountName: 'Test account',
+        rows: [
+          {
+            modelId: 'model-a',
+            modelName: 'Model A',
+            status: 'success',
+            samples: [
+              {
+                status: 'success',
+                firstTextDeltaMs: 250,
+                generationTokensPerSec: 40,
+              },
+            ],
+            medianFirstTextMs: 250,
+            medianGenerationTokensPerSec: 40,
+          },
+        ],
+      }),
+    );
+
+    expect(
+      screen.getAllByText(i18n.t('playground.insufficient-samples', { count: 3 })),
+    ).toHaveLength(2);
+  });
+
   it('limits a comparison to the supported number of accounts', () => {
     const accounts = Array.from({ length: 12 }, (_, index) => ({
       ...account,
@@ -312,6 +341,68 @@ describe('Playground lifecycle', () => {
     });
     expect(screen.getByText('current A')).toBeTruthy();
     expect(screen.getByText('current B')).toBeTruthy();
+  });
+
+  it('keeps compare result cards in selected-account order as requests finish', async () => {
+    const accounts = ['account-a', 'account-b'].map((id) => ({
+      ...account,
+      id,
+      email: `${id}@example.com`,
+    }));
+    const first = deferred<PlaygroundExecuteResult>();
+    const second = deferred<PlaygroundExecuteResult>();
+    mocks.cloudAccounts = accounts;
+    mocks.status.mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 2,
+    });
+    mocks.execute.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    mount(createElement(QueryClientProvider, { client }, createElement(PlaygroundPage)));
+    fireEvent.keyDown(screen.getByRole('tab', { name: en.playground['tab-single'] }), {
+      key: 'ArrowRight',
+    });
+    await screen.findByRole('checkbox', { name: accounts[0].email });
+    fireEvent.click(screen.getByRole('checkbox', { name: accounts[0].email }));
+    fireEvent.click(screen.getByRole('checkbox', { name: accounts[1].email }));
+    fireEvent.click(screen.getByRole('button', { name: en.playground['run-comparison'] }));
+
+    await act(async () => {
+      second.resolve({ ...result('second'), attributedAccountId: accounts[1].id });
+    });
+    await act(async () => {
+      first.resolve({ ...result('first'), attributedAccountId: accounts[0].id });
+    });
+
+    const firstCardContent = screen.getByText('first');
+    const secondCardContent = screen.getByText('second');
+    expect(
+      firstCardContent.compareDocumentPosition(secondCardContent) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    client.clear();
+  });
+
+  it('does not abort a completed dual run when starting another run', async () => {
+    mocks.execute.mockResolvedValue(result('completed'));
+    mount(
+      createElement(PlaygroundDualView, { accounts: [account], baseUrl: 'http://localhost:8045' }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: en.playground['run-dual'] }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: en.playground.stop })).toBeNull(),
+    );
+    const completedSignals = mocks.execute.mock.calls.map((call) => call[1].signal as AbortSignal);
+
+    fireEvent.click(screen.getByRole('button', { name: en.playground['run-dual'] }));
+
+    expect(completedSignals.every((signal) => !signal.aborted)).toBe(true);
   });
 
   it('aborts benchmark on unmount and never dispatches the next model', async () => {
