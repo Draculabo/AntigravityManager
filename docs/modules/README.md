@@ -13,7 +13,7 @@ boundaries.
 | [`cloud-account`](../../src/modules/cloud-account/)             | OAuth account pool, quota, import, automatic switching and warmup           | [Cloud account module](cloud-account/overview.md)                                                                                 |
 | [`config`](../../src/modules/config/)                           | Application and runtime settings                                            | See [architecture](../architecture.md#feature-ownership) and [development](../development.md)                                     |
 | [`identity-profile`](../../src/modules/identity-profile/)       | Client identity profiles, storage initialization and dialog behavior        | [Identity profile module](identity-profile/overview.md)                                                                           |
-| [`proxy-gateway`](../../src/modules/proxy-gateway/)             | Local API gateway, protocol mapping, model routing and client configuration | [Proxy guides](proxy-gateway/README.md)                                                                                           |
+| [`proxy-gateway`](../../src/modules/proxy-gateway/)             | Local API gateway, protocol mapping, model playground, routing and client configuration | [Proxy guides](proxy-gateway/README.md)                                                                                           |
 | [`workspace`](../../src/modules/workspace/) | Account-bound project profiles and concurrent IDE instances | [Runtime ownership](workspace/runtime.md) |
 
 ## Module contracts and checks
