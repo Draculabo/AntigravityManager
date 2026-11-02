@@ -4,7 +4,19 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TrafficMonitorPage } from '@/modules/proxy-gateway/traffic-monitor/TrafficMonitorPage';
 
-const mocks = vi.hoisted(() => ({ read: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  read: vi.fn(),
+  accounts: [
+    {
+      id: 'private-account-id',
+      email: 'developer@example.test',
+      provider: 'google' as const,
+      created_at: 1,
+      last_used: 1,
+      proxy_configured: false,
+    },
+  ],
+}));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/ipc/manager', () => ({
   ipc: {
@@ -12,7 +24,10 @@ vi.mock('@/ipc/manager', () => ({
       gateway: {
         auditList: mocks.read,
         auditStats: async () => ({ rows: 1, databaseBytes: 1000, droppedCount: 0 }),
-        auditFilterOptions: async () => ({ accountIds: [], modelFamilies: [] }),
+        auditFilterOptions: async () => ({
+          accountIds: ['private-account-id'],
+          modelFamilies: [],
+        }),
       },
     },
   },
@@ -22,6 +37,9 @@ vi.mock('@/modules/proxy-gateway/traffic-monitor/components/TrafficTable', () =>
 }));
 vi.mock('@/modules/proxy-gateway/traffic-monitor/TrafficDetailDialog', () => ({
   TrafficDetailDialog: () => null,
+}));
+vi.mock('@/modules/cloud-account/hooks/useCloudAccounts', () => ({
+  useCloudAccounts: () => ({ data: mocks.accounts }),
 }));
 const clients: QueryClient[] = [];
 beforeEach(() => {
@@ -33,12 +51,18 @@ afterEach(() => {
   clients.splice(0).forEach((client) => client.clear());
   vi.unstubAllGlobals();
 });
-function mount() {
+function mount(initialAccountId?: string) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   clients.push(client);
-  render(createElement(QueryClientProvider, { client }, createElement(TrafficMonitorPage)));
+  render(
+    createElement(
+      QueryClientProvider,
+      { client },
+      createElement(TrafficMonitorPage, { initialAccountId }),
+    ),
+  );
   return client;
 }
 it('distinguishes a failed initial read from an empty list and offers a working retry', async () => {
@@ -69,4 +93,15 @@ it('keeps cached requests visible after a failed refresh and clears the warning 
   fireEvent.click(screen.getByRole('button', { name: 'action.retry' }));
   await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   expect(screen.getByText('Previously loaded requests')).toBeTruthy();
+});
+
+it('shows account emails and avatar fallbacks in the account filter instead of IDs', async () => {
+  mocks.read.mockResolvedValue({ items: [], total: 0 });
+  mount('private-account-id');
+  const accountFilter = await screen.findByRole('combobox', { name: 'traffic.account' });
+  expect(accountFilter.textContent).toContain('developer@example.test');
+  expect(accountFilter.textContent).not.toContain('private-account-id');
+  expect(screen.getByTestId('traffic-account-avatar-private-account-id').textContent).toContain(
+    'D',
+  );
 });
