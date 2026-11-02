@@ -29,7 +29,7 @@ the serving account.
 
 ## Playground execution
 
-The Playground uses the gateway's non-streaming Chat Completions endpoint. Execution follows the
+The Playground aggregates the gateway's streaming Chat Completions endpoint. Execution follows the
 selected gateway owner: embedded mode runs locally, while standalone mode delegates through
 private core RPC. The core reads its own gateway state and API key; credentials do not cross the
 control transport. Remote transport failures never fall back to the embedded gateway.
@@ -39,18 +39,28 @@ existing limits. Oversized responses fail explicitly. Generation uses the owner'
 request timeout rather than the short status-read timeout. Core shutdown closes admission and drains
 already admitted Playground requests before releasing the profile.
 
-Invalid completion payloads are reported as failures rather than successful empty responses.
+Aggregation requires the terminal `[DONE]` event and retains at most 8 MiB of stream data per
+request. Invalid events and truncated streams are reported as failures rather than successful
+empty responses. Timings distinguish response headers, upstream first byte, first reasoning and
+first visible text. Generation speed uses the first and last observed deltas; missing measurements
+remain unmeasured rather than falling back to end-to-end speed.
 Requests accept cancellation through the typed IPC call. Stopping Dual Models
 or Benchmark, or leaving either tab, cancels its pending calls and prevents stale results from
 changing a later run. Benchmark also cancels its jitter timer and dispatches no further probes.
 Cancellation cannot recover quota already consumed by an upstream request.
 
-Multi-account comparison starts with no selected accounts. Users can select individual accounts
-or all listed accounts; there is no account-count cap in the UI or IPC schema. The count displays
-the current selection, and execution remains disabled until at least one account is selected.
-Selected accounts execute concurrently; request and response byte limits and the owner's
-generation timeout still apply.
+Multi-account comparison starts with no selected accounts. Users can select up to eight accounts;
+Select all selects the first eight. The IPC schema and comparison service enforce the same account
+limit. Selected accounts execute with at most four requests in flight, and results retain the
+selection order. Request and response byte limits and the owner's generation timeout still apply.
 The initial model is taken from the displayed model catalog rather than a separate hardcoded ID.
+The visible-model filter applies to each Playground mode. An empty filtered catalog disables
+execution; changing visibility removes hidden models from the effective selection.
+
+Benchmark runs one to five probes per selected model, with three by default. Each completed sample
+updates the report immediately. Stop retains those samples and their statistics while cancelling
+the pending probe and skipping unstarted models. Medians use measured successful samples; p95
+requires at least three measurements for that metric.
 
 Starting the gateway from Playground uses the same first-use account-risk acknowledgement as
 API Proxy. A returned start failure remains a failure, including an occupied port.
@@ -58,7 +68,9 @@ API Proxy. A returned start failure remains a failure, including an occupied por
 Copy cURL preserves the submitted model, prompt, system prompt, temperature, token limit and
 reasoning settings and pins the serving account when known. It emits a POSIX-shell command with
 an API-key placeholder, never the configured credential. Benchmark Markdown exports describe the
-account captured at run start even if the selector changes after completion.
+account captured at run start even if the selector changes after completion. The table and export
+use the final completed sample for HTTP status and token counts, including failed samples. Missing
+token measurements appear as `-`; sample counts retain both successful and failed attempts.
 
 ## Related references
 

@@ -5,6 +5,13 @@ export const PLAYGROUND_RPC_MAX_REQUEST_BYTES = 256 * 1024;
 // Comparison envelopes repeat the submitted prompt for each account's cURL export.
 export const PLAYGROUND_RPC_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
+/** Keeps one comparison from turning into an unbounded account-wide probe. */
+export const PLAYGROUND_MAX_COMPARE_ACCOUNTS = 8;
+/** In-flight requests the comparison path may hold at once. */
+export const PLAYGROUND_COMPARE_CONCURRENCY = 4;
+/** Matches the maximum accepted by the benchmark controls. */
+export const PLAYGROUND_MAX_BENCHMARK_ITERATIONS = 5;
+
 export const PlaygroundPromptPresetSchema = z.strictObject({
   id: z.string().min(1).max(64),
   title: z.string().min(1).max(128),
@@ -40,7 +47,14 @@ export const PlaygroundExecuteResultSchema = z.strictObject({
   attributedAccountEmail: z.string().optional(),
   model: z.string(),
   durationMs: z.number().nonnegative(),
-  ttftMs: z.number().nonnegative().optional(),
+  /** Request start to the gateway response headers. */
+  responseStartedMs: z.number().nonnegative().optional(),
+  /** Gateway upstream first byte, when the gateway reported a positive value. */
+  upstreamFirstByteMs: z.number().nonnegative().optional(),
+  /** Request start to the first reasoning delta. */
+  firstReasoningDeltaMs: z.number().nonnegative().optional(),
+  /** Request start to the first visible text delta. */
+  firstTextDeltaMs: z.number().nonnegative().optional(),
   generationTokensPerSec: z.number().nonnegative().optional(),
   e2eTokensPerSec: z.number().nonnegative().optional(),
   promptTokens: z.number().int().nonnegative().optional(),
@@ -53,7 +67,7 @@ export const PlaygroundExecuteResultSchema = z.strictObject({
 export type PlaygroundExecuteResult = z.infer<typeof PlaygroundExecuteResultSchema>;
 
 export const PlaygroundCompareInputSchema = z.strictObject({
-  accountIds: z.array(z.string().max(256)).min(1),
+  accountIds: z.array(z.string().max(256)).min(1).max(PLAYGROUND_MAX_COMPARE_ACCOUNTS),
   model: z.string().min(1).max(256),
   prompt: z.string().min(1).max(32768),
   systemPrompt: z.string().max(8192).optional(),

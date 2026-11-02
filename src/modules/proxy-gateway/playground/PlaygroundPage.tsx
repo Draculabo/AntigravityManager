@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Columns2, FlaskConical, Gauge, Layers, Play, Power } from 'lucide-react';
@@ -9,14 +9,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { buildProxyExampleModels } from '@/modules/proxy-gateway/components/proxy-example-models';
+import {
+  buildProxyExampleModels,
+  isProxyExampleModelVisible,
+} from '@/modules/proxy-gateway/components/proxy-example-models';
 import { PlaygroundControls } from './components/PlaygroundControls';
 import { PlaygroundResponseCard } from './components/PlaygroundResponseCard';
 import { PlaygroundCompareView } from './components/PlaygroundCompareView';
 import { PlaygroundAccountBenchmark } from './components/PlaygroundAccountBenchmark';
 import { PlaygroundDualView } from './components/PlaygroundDualView';
-import type { PlaygroundExecuteResult, PlaygroundReasoningEffort } from './playground.schema';
+import { runBounded } from './bounded-pool';
+import {
+  PLAYGROUND_COMPARE_CONCURRENCY,
+  type PlaygroundExecuteInput,
+  type PlaygroundExecuteResult,
+  type PlaygroundReasoningEffort,
+} from './playground.schema';
 import {
   ProxyRiskConfirmation,
   useProxyRiskConfirmation,
@@ -40,9 +51,41 @@ export const PlaygroundPage: React.FC = () => {
 
   const availableModels = useMemo(() => buildProxyExampleModels(cloudAccounts), [cloudAccounts]);
 
+  const [onlyVisibleModels, setOnlyVisibleModels] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('agm_playground_only_visible_models');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleOnlyVisibleModels = (checked: boolean) => {
+    setOnlyVisibleModels(checked);
+    try {
+      localStorage.setItem('agm_playground_only_visible_models', String(checked));
+    } catch {
+      // Ignore local storage write errors
+    }
+  };
+
+  const modelVisibility = useMemo(() => config?.model_visibility ?? {}, [config?.model_visibility]);
+  const visibleAvailableModels = useMemo(() => {
+    if (!onlyVisibleModels) {
+      return availableModels;
+    }
+    return availableModels.filter((model) => isProxyExampleModelVisible(model.id, modelVisibility));
+  }, [availableModels, onlyVisibleModels, modelVisibility]);
+
   const [activeTab, setActiveTab] = useState<'single' | 'compare' | 'benchmark' | 'dual'>('single');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('auto');
-  const [selectedModel, setSelectedModel] = useState<string>(() => availableModels[0]?.id ?? '');
+  const [selectedModel, setSelectedModel] = useState<string>(
+    () => visibleAvailableModels[0]?.id ?? '',
+  );
+
+  const effectiveSelectedModel = visibleAvailableModels.some((m) => m.id === selectedModel)
+    ? selectedModel
+    : (visibleAvailableModels[0]?.id ?? '');
   const [prompt, setPrompt] = useState<string>(() => t('playground.default-prompt'));
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.7);
@@ -52,8 +95,33 @@ export const PlaygroundPage: React.FC = () => {
   const [singleResult, setSingleResult] = useState<PlaygroundExecuteResult | null>(null);
   const [compareResults, setCompareResults] = useState<PlaygroundExecuteResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const activeRun = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      activeRun.current?.abort();
+      activeRun.current = null;
+    },
+    [],
+  );
 
   const baseUrl = gatewayStatus?.base_url || `http://localhost:${config?.proxy?.port || 8045}`;
+
+  const buildInput = (accountId?: string): PlaygroundExecuteInput => ({
+    accountId,
+    model: effectiveSelectedModel,
+    prompt,
+    systemPrompt: systemPrompt.trim() || undefined,
+    temperature,
+    maxTokens,
+    reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
+  });
+
+  const stop = () => {
+    activeRun.current?.abort();
+    activeRun.current = null;
+    setIsRunning(false);
+  };
 
   // Start Gateway mutation if stopped
   const startGatewayMutation = useMutation({
@@ -83,20 +151,20 @@ export const PlaygroundPage: React.FC = () => {
   });
 
   const handleRunSingle = async () => {
-    if (!prompt.trim()) {
+    if (!prompt.trim() || !effectiveSelectedModel || activeRun.current) {
       return;
     }
+    const controller = new AbortController();
+    activeRun.current = controller;
     setIsRunning(true);
     try {
-      const res = await ipc.client.gateway.playground.execute({
-        accountId: selectedAccountId === 'auto' ? undefined : selectedAccountId,
-        model: selectedModel,
-        prompt,
-        systemPrompt: systemPrompt.trim() || undefined,
-        temperature,
-        maxTokens,
-        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
-      });
+      const res = await ipc.client.gateway.playground.execute(
+        buildInput(selectedAccountId === 'auto' ? undefined : selectedAccountId),
+        { signal: controller.signal },
+      );
+      if (activeRun.current !== controller) {
+        return;
+      }
       setSingleResult(res);
       if (!res.success) {
         toast({
@@ -106,40 +174,62 @@ export const PlaygroundPage: React.FC = () => {
         });
       }
     } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
       toast({
         title: t('playground.request-error'),
         description: error instanceof Error ? error.message : String(error),
         variant: 'destructive',
       });
     } finally {
-      setIsRunning(false);
+      if (activeRun.current === controller) {
+        activeRun.current = null;
+        setIsRunning(false);
+      }
     }
   };
 
   const handleRunCompare = async (accountIds: string[]) => {
-    if (!prompt.trim() || accountIds.length === 0) {
+    if (!prompt.trim() || !effectiveSelectedModel || accountIds.length === 0 || activeRun.current) {
       return;
     }
+    const controller = new AbortController();
+    activeRun.current = controller;
     setIsRunning(true);
+    setCompareResults([]);
+    const collected = new Array<PlaygroundExecuteResult | undefined>(accountIds.length);
     try {
-      const res = await ipc.client.gateway.playground.compare({
+      await runBounded(
         accountIds,
-        model: selectedModel,
-        prompt,
-        systemPrompt: systemPrompt.trim() || undefined,
-        temperature,
-        maxTokens,
-        reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
-      });
-      setCompareResults(res.results);
+        PLAYGROUND_COMPARE_CONCURRENCY,
+        controller.signal,
+        async (accountId) => {
+          const result = await ipc.client.gateway.playground.execute(
+            buildInput(accountId.trim() || undefined),
+            { signal: controller.signal },
+          );
+          return result;
+        },
+        (index, result) => {
+          collected[index] = result;
+          setCompareResults(collected.filter((entry): entry is PlaygroundExecuteResult => !!entry));
+        },
+      );
     } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
       toast({
         title: t('playground.compare-error'),
         description: error instanceof Error ? error.message : String(error),
         variant: 'destructive',
       });
     } finally {
-      setIsRunning(false);
+      if (activeRun.current === controller) {
+        activeRun.current = null;
+        setIsRunning(false);
+      }
     }
   };
 
@@ -159,7 +249,24 @@ export const PlaygroundPage: React.FC = () => {
           <p className="text-muted-foreground mt-1 text-xs">{t('playground.description')}</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="bg-muted/30 flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs">
+            <Switch
+              id="playground-filter-visible"
+              checked={onlyVisibleModels}
+              onCheckedChange={handleToggleOnlyVisibleModels}
+            />
+            <Label
+              htmlFor="playground-filter-visible"
+              className="flex cursor-pointer items-center gap-1.5 text-xs font-medium"
+            >
+              <span>{t('playground.only-visible-models')}</span>
+              <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-normal">
+                {visibleAvailableModels.length}/{availableModels.length}
+              </Badge>
+            </Label>
+          </div>
+
           {gatewayStatus?.running ? (
             <Badge
               variant="outline"
@@ -264,7 +371,7 @@ export const PlaygroundPage: React.FC = () => {
                 accounts={cloudAccounts}
                 selectedAccountId={selectedAccountId}
                 onSelectAccount={setSelectedAccountId}
-                selectedModel={selectedModel}
+                selectedModel={effectiveSelectedModel}
                 onSelectModel={setSelectedModel}
                 prompt={prompt}
                 onChangePrompt={setPrompt}
@@ -278,7 +385,8 @@ export const PlaygroundPage: React.FC = () => {
                 onChangeReasoningEffort={setReasoningEffort}
                 isLoading={isRunning}
                 onRun={handleRunSingle}
-                availableModels={availableModels}
+                onStop={stop}
+                availableModels={visibleAvailableModels}
               />
             </CardContent>
           </Card>
@@ -290,6 +398,7 @@ export const PlaygroundPage: React.FC = () => {
               <PlaygroundResponseCard
                 result={singleResult}
                 selectedAccountEmail={selectedAccount?.email}
+                accountAvatarUrl={selectedAccount?.avatar_url ?? undefined}
                 baseUrl={baseUrl}
               />
             </div>
@@ -308,15 +417,16 @@ export const PlaygroundPage: React.FC = () => {
             <CardContent>
               <PlaygroundCompareView
                 accounts={cloudAccounts}
-                selectedModel={selectedModel}
+                selectedModel={effectiveSelectedModel}
                 onSelectModel={setSelectedModel}
                 prompt={prompt}
                 onChangePrompt={setPrompt}
                 isLoading={isRunning}
                 onRunCompare={handleRunCompare}
+                onStop={stop}
                 compareResults={compareResults}
                 baseUrl={baseUrl}
-                availableModels={availableModels}
+                availableModels={visibleAvailableModels}
               />
             </CardContent>
           </Card>
@@ -324,14 +434,19 @@ export const PlaygroundPage: React.FC = () => {
 
         {/* Account Models Benchmark */}
         <TabsContent value="benchmark" className="space-y-6 pt-2">
-          <PlaygroundAccountBenchmark accounts={cloudAccounts} availableModels={availableModels} />
+          <PlaygroundAccountBenchmark
+            accounts={cloudAccounts}
+            availableModels={visibleAvailableModels}
+            onlyVisibleModels={onlyVisibleModels}
+            modelVisibility={modelVisibility}
+          />
         </TabsContent>
 
         {/* Dual Model Comparison */}
         <TabsContent value="dual" className="space-y-6 pt-2">
           <PlaygroundDualView
             accounts={cloudAccounts}
-            availableModels={availableModels}
+            availableModels={visibleAvailableModels}
             baseUrl={baseUrl}
           />
         </TabsContent>

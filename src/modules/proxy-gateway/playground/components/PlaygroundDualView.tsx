@@ -71,6 +71,12 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
     const other = availableModels.find((m) => m.id !== (availableModels[0]?.id || ''));
     return other?.id || availableModels[1]?.id || 'claude-sonnet-4-6';
   });
+  const effectiveModelAId = availableModels.some((model) => model.id === modelAId)
+    ? modelAId
+    : (availableModels[0]?.id ?? '');
+  const effectiveModelBId = availableModels.some((model) => model.id === modelBId)
+    ? modelBId
+    : (availableModels[1]?.id ?? availableModels[0]?.id ?? '');
 
   // Results & Execution state
   const [resultA, setResultA] = useState<PlaygroundExecuteResult | null>(null);
@@ -113,7 +119,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
   };
 
   const handleRun = async () => {
-    if (!prompt.trim()) {
+    if (!prompt.trim() || !effectiveModelAId || !effectiveModelBId) {
       return;
     }
 
@@ -129,7 +135,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
       .execute(
         {
           accountId: accountAId === 'auto' ? undefined : accountAId,
-          model: modelAId,
+          model: effectiveModelAId,
           prompt,
           systemPrompt: systemPrompt.trim() || undefined,
           temperature,
@@ -148,7 +154,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
           setResultA({
             success: false,
             content: '',
-            model: modelAId,
+            model: effectiveModelAId,
             durationMs: 0,
             status: 500,
             error: err instanceof Error ? err.message : String(err),
@@ -165,7 +171,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
       .execute(
         {
           accountId: accountBId === 'auto' ? undefined : accountBId,
-          model: modelBId,
+          model: effectiveModelBId,
           prompt,
           systemPrompt: systemPrompt.trim() || undefined,
           temperature,
@@ -184,7 +190,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
           setResultB({
             success: false,
             content: '',
-            model: modelBId,
+            model: effectiveModelBId,
             durationMs: 0,
             status: 500,
             error: err instanceof Error ? err.message : String(err),
@@ -204,6 +210,10 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
         title: t('playground.request-error'),
         variant: 'destructive',
       });
+    } finally {
+      if (activeRun.current === run) {
+        activeRun.current = null;
+      }
     }
   };
 
@@ -211,8 +221,8 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
   const accountA = accounts.find((a) => a.id === accountAId);
   const accountB = accounts.find((a) => a.id === accountBId);
 
-  const quotaA = accountA?.quota?.models?.[modelAId]?.percentage;
-  const quotaB = accountB?.quota?.models?.[modelBId]?.percentage;
+  const quotaA = accountA?.quota?.models?.[effectiveModelAId]?.percentage;
+  const quotaB = accountB?.quota?.models?.[effectiveModelBId]?.percentage;
 
   // Comparison metrics between A and B
   const comparisonSummary = useMemo(() => {
@@ -220,8 +230,8 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
       return null;
     }
 
-    const speedA = resultA.generationTokensPerSec ?? resultA.e2eTokensPerSec;
-    const speedB = resultB.generationTokensPerSec ?? resultB.e2eTokensPerSec;
+    const speedA = resultA.generationTokensPerSec;
+    const speedB = resultB.generationTokensPerSec;
 
     let speedDiffText: string | null = null;
     if (typeof speedA === 'number' && typeof speedB === 'number') {
@@ -233,11 +243,18 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
     }
 
     let ttftDiffText: string | null = null;
-    if (typeof resultA.ttftMs === 'number' && typeof resultB.ttftMs === 'number') {
-      const diffSec = Math.round((Math.abs(resultA.ttftMs - resultB.ttftMs) / 1000) * 10) / 10;
+    if (
+      typeof resultA.firstTextDeltaMs === 'number' &&
+      typeof resultB.firstTextDeltaMs === 'number'
+    ) {
+      const diffSec =
+        Math.round((Math.abs(resultA.firstTextDeltaMs - resultB.firstTextDeltaMs) / 1000) * 10) /
+        10;
       if (diffSec >= 0.1) {
         const winner =
-          resultA.ttftMs < resultB.ttftMs ? t('playground.model-a') : t('playground.model-b');
+          resultA.firstTextDeltaMs < resultB.firstTextDeltaMs
+            ? t('playground.model-a')
+            : t('playground.model-b');
         ttftDiffText = t('playground.dual-ttft-diff', { winner, diff: diffSec.toFixed(1) });
       }
     }
@@ -425,7 +442,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                 variant="default"
                 size="sm"
                 onClick={handleRun}
-                disabled={isRunning || !prompt.trim()}
+                disabled={isRunning || !prompt.trim() || !effectiveModelAId || !effectiveModelBId}
                 className="h-8 gap-1.5 text-xs font-medium"
               >
                 {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
@@ -495,7 +512,16 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                       {accounts.map((acc) => (
                         <SelectItem key={acc.id} value={acc.id}>
                           <div className="flex items-center gap-2">
-                            <User size={12} className="text-muted-foreground shrink-0" />
+                            {acc.avatar_url ? (
+                              <img
+                                src={acc.avatar_url}
+                                alt=""
+                                className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <User size={12} className="text-muted-foreground shrink-0" />
+                            )}
                             <span className="font-medium">{acc.name || acc.email}</span>
                             {acc.email && (
                               <span className="text-muted-foreground text-[10px]">
@@ -518,7 +544,11 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                   <Label htmlFor="model-a" className="text-[11px]">
                     {t('playground.model')}
                   </Label>
-                  <Select value={modelAId} onValueChange={setModelAId} disabled={isRunning}>
+                  <Select
+                    value={effectiveModelAId}
+                    onValueChange={setModelAId}
+                    disabled={isRunning}
+                  >
                     <SelectTrigger id="model-a" className="h-8 text-xs">
                       <SelectValue placeholder={t('playground.select-model')} />
                     </SelectTrigger>
@@ -550,6 +580,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
             <PlaygroundResponseCard
               result={resultA}
               selectedAccountEmail={accountA?.email}
+              accountAvatarUrl={accountA?.avatar_url ?? undefined}
               baseUrl={baseUrl}
               apiKey={apiKey}
             />
@@ -597,7 +628,16 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                       {accounts.map((acc) => (
                         <SelectItem key={acc.id} value={acc.id}>
                           <div className="flex items-center gap-2">
-                            <User size={12} className="text-muted-foreground shrink-0" />
+                            {acc.avatar_url ? (
+                              <img
+                                src={acc.avatar_url}
+                                alt=""
+                                className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <User size={12} className="text-muted-foreground shrink-0" />
+                            )}
                             <span className="font-medium">{acc.name || acc.email}</span>
                             {acc.email && (
                               <span className="text-muted-foreground text-[10px]">
@@ -620,7 +660,11 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
                   <Label htmlFor="model-b" className="text-[11px]">
                     {t('playground.model')}
                   </Label>
-                  <Select value={modelBId} onValueChange={setModelBId} disabled={isRunning}>
+                  <Select
+                    value={effectiveModelBId}
+                    onValueChange={setModelBId}
+                    disabled={isRunning}
+                  >
                     <SelectTrigger id="model-b" className="h-8 text-xs">
                       <SelectValue placeholder={t('playground.select-model')} />
                     </SelectTrigger>
@@ -652,6 +696,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
             <PlaygroundResponseCard
               result={resultB}
               selectedAccountEmail={accountB?.email}
+              accountAvatarUrl={accountB?.avatar_url ?? undefined}
               baseUrl={baseUrl}
               apiKey={apiKey}
             />

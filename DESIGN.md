@@ -86,29 +86,29 @@ colors:
   dark-chart-5: 'oklch(80.8917% 0.108399 20.3978)'
 typography:
   headline:
-    fontFamily: 'Geist, Microsoft YaHei, sans-serif'
+    fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Microsoft YaHei UI', 'Noto Sans CJK SC', sans-serif"
     fontSize: '30px'
     fontWeight: 600
     lineHeight: '38px'
     letterSpacing: '-0.025em'
   title:
-    fontFamily: 'Geist, Microsoft YaHei, sans-serif'
+    fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Microsoft YaHei UI', 'Noto Sans CJK SC', sans-serif"
     fontSize: '16px'
     fontWeight: 600
     lineHeight: '24px'
     letterSpacing: '-0.01em'
   body:
-    fontFamily: 'Geist, Microsoft YaHei, sans-serif'
+    fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Microsoft YaHei UI', 'Noto Sans CJK SC', sans-serif"
     fontSize: '14px'
     fontWeight: 400
     lineHeight: '22px'
   label:
-    fontFamily: 'Geist, Microsoft YaHei, sans-serif'
+    fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Microsoft YaHei UI', 'Noto Sans CJK SC', sans-serif"
     fontSize: '12px'
     fontWeight: 500
     lineHeight: '20px'
   data:
-    fontFamily: 'Geist Mono, ui-monospace, Consolas, monospace'
+    fontFamily: 'Geist Mono, monospace'
     fontSize: '12px'
     fontWeight: 500
     lineHeight: '20px'
@@ -155,10 +155,26 @@ components:
     rounded: '{rounded.control}'
     height: '40px'
   quota-row:
-    backgroundColor: '{colors.muted}'
-    textColor: '{colors.foreground}'
+    backgroundColor: '{colors.card}'
+    textColor: '{colors.muted-foreground}'
     rounded: '{rounded.control}'
     padding: '8px 12px'
+  outline-button:
+    backgroundColor: '{colors.card}'
+    textColor: '{colors.foreground}'
+    borderColor: '{colors.border}'
+    typography: '{typography.body}'
+    rounded: '{rounded.default}'
+    height: '36px'
+    padding: '0 12px'
+  status-label:
+    backgroundColor: '{colors.success-soft}'
+    textColor: '{colors.success}'
+    borderColor: '{colors.success-border}'
+    typography: '{typography.label}'
+    rounded: '{rounded.small}'
+    minHeight: '24px'
+    padding: '0 8px'
 ---
 
 # Design System: Antigravity Manager
@@ -271,8 +287,10 @@ global slot or ARIA-role selectors, or infer parts from sibling position.
 - Do use semantic color tokens for surfaces, text and status.
 - Do retain 12px horizontal padding inside model hover rows.
 - Do keep page-specific dimensions inside their owning component.
+- Do keep variants in shared components and express feature layout, spacing and responsive behavior with local Tailwind utilities.
 - Do open the account Use menu by click or keyboard, and close it with Escape or an outside click.
 - Don't reintroduce hover opening for the account Use menu.
 - Don't apply account icon widths to other page headers.
+- Don't infer business parts from sibling position or globally style components through slot or ARIA-role selectors.
 - Don't collapse input errors or adjacent actions into an unspaced inline row.
 - Don't let optional tool details move sibling primary actions out of alignment.

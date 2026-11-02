@@ -29,6 +29,28 @@ export const FALLBACK_PROXY_EXAMPLE_MODELS: readonly ProxyExampleModel[] = [
 
 type ProxyExampleAccount = Pick<CloudAccount, 'quota'>;
 
+export function disambiguateModelList<T extends { id: string; name: string }>(
+  models: readonly T[],
+): T[] {
+  const nameCounts = new Map<string, number>();
+  for (const model of models) {
+    const key = model.name.trim().toLowerCase();
+    nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+  }
+
+  return models.map((model) => {
+    const key = model.name.trim().toLowerCase();
+    const count = nameCounts.get(key) ?? 0;
+    if (count > 1 && !model.name.toLowerCase().includes(model.id.toLowerCase())) {
+      return {
+        ...model,
+        name: `${model.name} (${model.id})`,
+      };
+    }
+    return model;
+  });
+}
+
 export function buildProxyExampleModels(
   accounts: readonly ProxyExampleAccount[],
 ): ProxyExampleModel[] {
@@ -60,9 +82,27 @@ export function buildProxyExampleModels(
     }
   }
 
-  return [...modelsByNormalizedId.values()];
+  return disambiguateModelList([...modelsByNormalizedId.values()]);
 }
 
 export function isImageProxyExampleModel(modelId: string): boolean {
   return modelId.toLowerCase().includes('image');
+}
+
+export function isProxyExampleModelVisible(
+  modelId: string,
+  visibilitySettings: Record<string, boolean>,
+): boolean {
+  const normalizedModelId = modelId
+    .replace(/^models\//i, '')
+    .trim()
+    .toLowerCase();
+  const visibilityEntry = Object.entries(visibilitySettings).find(
+    ([configuredModelId]) =>
+      configuredModelId
+        .replace(/^models\//i, '')
+        .trim()
+        .toLowerCase() === normalizedModelId,
+  );
+  return visibilityEntry?.[1] !== false;
 }

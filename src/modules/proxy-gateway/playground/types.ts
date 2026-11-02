@@ -39,13 +39,11 @@ export const DEFAULT_PLAYGROUND_MODELS = [
 
 export type BenchmarkItemStatus = 'idle' | 'running' | 'success' | 'error' | 'skipped';
 
-export interface BenchmarkModelRow {
-  modelId: string;
-  modelName: string;
-  quotaPercentage?: number;
-  status: BenchmarkItemStatus;
+export interface BenchmarkSample {
+  status: 'success' | 'error';
   durationMs?: number;
-  ttftMs?: number;
+  firstReasoningDeltaMs?: number;
+  firstTextDeltaMs?: number;
   generationTokensPerSec?: number;
   e2eTokensPerSec?: number;
   promptTokens?: number;
@@ -55,4 +53,16 @@ export interface BenchmarkModelRow {
   content?: string;
   thinkingContent?: string;
   error?: string;
+}
+
+export interface BenchmarkModelRow {
+  modelId: string;
+  modelName: string;
+  quotaPercentage?: number;
+  status: BenchmarkItemStatus;
+  samples: BenchmarkSample[];
+  medianFirstTextMs?: number;
+  p95FirstTextMs?: number;
+  medianGenerationTokensPerSec?: number;
+  p95GenerationTokensPerSec?: number;
 }

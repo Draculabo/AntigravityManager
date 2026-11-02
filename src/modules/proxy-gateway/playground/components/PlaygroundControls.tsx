@@ -121,7 +121,16 @@ export const PlaygroundControls: React.FC<PlaygroundControlsProps> = ({
               {accounts.map((acc) => (
                 <SelectItem key={acc.id} value={acc.id}>
                   <div className="flex items-center gap-2">
-                    <User size={13} className="text-muted-foreground shrink-0" />
+                    {acc.avatar_url ? (
+                      <img
+                        src={acc.avatar_url}
+                        alt=""
+                        className="h-4 w-4 shrink-0 rounded-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <User size={13} className="text-muted-foreground shrink-0" />
+                    )}
                     <span className="font-medium">{acc.name || acc.email}</span>
                     {acc.email && acc.name && (
                       <span className="text-muted-foreground text-[11px]">({acc.email})</span>
@@ -320,7 +329,7 @@ export const PlaygroundControls: React.FC<PlaygroundControlsProps> = ({
               variant="default"
               size="sm"
               onClick={onRun}
-              disabled={isLoading || !prompt.trim()}
+              disabled={isLoading || availableModels.length === 0 || !prompt.trim()}
               className="h-8 gap-1.5 text-xs font-medium"
             >
               <Play size={14} className={isLoading ? 'animate-pulse' : ''} />
