@@ -10,8 +10,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import type { BenchmarkModelRow } from '../../types';
+import type { BenchmarkModelRow, BenchmarkSample } from '../../types';
+import { MIN_BENCHMARK_SAMPLES } from '../../benchmark-stats';
 import { buildBenchmarkReport } from './benchmark-export';
+
+function successfulSamples(row: BenchmarkModelRow): BenchmarkSample[] {
+  return row.samples.filter((sample) => sample.status === 'success');
+}
 
 export function BenchmarkResults({
   rows,
@@ -23,59 +28,85 @@ export function BenchmarkResults({
   const { t } = useTranslation();
   const [inspected, setInspected] = useState<BenchmarkModelRow | null>(null);
   const [copyError, setCopyError] = useState(false);
+  const notMeasured = t('playground.not-measured');
   const successful = rows.filter((row) => row.status === 'success');
   const failed = rows.filter((row) => row.status === 'error');
   const average = (values: number[]) =>
     values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined;
   const seconds = (value?: number) =>
-    value === undefined ? '-' : `${(value / 1000).toFixed(1)} ${t('playground.seconds-short')}`;
-  const speed = (value?: number) => (value === undefined ? '-' : `${value.toFixed(1)} tok/s`);
+    value === undefined
+      ? notMeasured
+      : `${(value / 1000).toFixed(1)} ${t('playground.seconds-short')}`;
+  const speed = (value?: number) =>
+    value === undefined ? notMeasured : `${value.toFixed(1)} tok/s`;
   const fastestGeneration = [...successful]
-    .filter((row) => row.generationTokensPerSec !== undefined)
-    .sort((a, b) => (b.generationTokensPerSec ?? 0) - (a.generationTokensPerSec ?? 0))[0];
-  const fastestTtft = [...successful]
-    .filter((row) => row.ttftMs !== undefined)
-    .sort((a, b) => (a.ttftMs ?? 0) - (b.ttftMs ?? 0))[0];
+    .filter((row) => row.medianGenerationTokensPerSec !== undefined)
+    .sort(
+      (a, b) => (b.medianGenerationTokensPerSec ?? 0) - (a.medianGenerationTokensPerSec ?? 0),
+    )[0];
+  const fastestFirstText = [...successful]
+    .filter((row) => row.medianFirstTextMs !== undefined)
+    .sort((a, b) => (a.medianFirstTextMs ?? 0) - (b.medianFirstTextMs ?? 0))[0];
+  const totalSamples = rows.reduce((sum, row) => sum + row.samples.length, 0);
   const summary = [
     [t('playground.passed-failed'), `${successful.length} / ${failed.length}`],
     [
       t('playground.avg-ttft'),
-      seconds(average(successful.flatMap((row) => (row.ttftMs === undefined ? [] : [row.ttftMs])))),
+      seconds(
+        average(
+          successful.flatMap((row) =>
+            row.medianFirstTextMs === undefined ? [] : [row.medianFirstTextMs],
+          ),
+        ),
+      ),
     ],
     [
       t('playground.avg-gen-speed'),
       speed(
         average(
           successful.flatMap((row) =>
-            row.generationTokensPerSec === undefined ? [] : [row.generationTokensPerSec],
+            row.medianGenerationTokensPerSec === undefined
+              ? []
+              : [row.medianGenerationTokensPerSec],
           ),
         ),
       ),
     ],
-    [
-      t('playground.avg-e2e-speed'),
-      speed(
-        average(
-          successful.flatMap((row) =>
-            row.e2eTokensPerSec === undefined ? [] : [row.e2eTokensPerSec],
-          ),
-        ),
-      ),
-    ],
+    [t('playground.samples'), String(totalSamples)],
     [
       t('playground.fastest-gen'),
       fastestGeneration
-        ? `${fastestGeneration.modelName}: ${speed(fastestGeneration.generationTokensPerSec)}`
-        : '-',
+        ? `${fastestGeneration.modelName}: ${speed(fastestGeneration.medianGenerationTokensPerSec)}`
+        : notMeasured,
     ],
     [
       t('playground.fastest-ttft'),
-      fastestTtft ? `${fastestTtft.modelName}: ${seconds(fastestTtft.ttftMs)}` : '-',
+      fastestFirstText
+        ? `${fastestFirstText.modelName}: ${seconds(fastestFirstText.medianFirstTextMs)}`
+        : notMeasured,
     ],
   ];
   if (!rows.length) {
     return null;
   }
+
+  const lastSample = (row: BenchmarkModelRow): BenchmarkSample | undefined =>
+    row.samples[row.samples.length - 1];
+  const sampleCount = (row: BenchmarkModelRow) => {
+    const succeeded = successfulSamples(row).length;
+    return `${succeeded}/${row.samples.length}`;
+  };
+  const p95 = (
+    value: number | undefined,
+    count: number,
+    format: (measured: number) => string = seconds,
+  ): string =>
+    value === undefined
+      ? count > 0 && count < MIN_BENCHMARK_SAMPLES
+        ? t('playground.insufficient-samples', { count: MIN_BENCHMARK_SAMPLES })
+        : notMeasured
+      : format(value);
+
   return (
     <div className="space-y-4">
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -92,7 +123,7 @@ export function BenchmarkResults({
           <Button
             size="sm"
             variant="outline"
-            disabled={!successful.length && !failed.length}
+            disabled={!rows.some((row) => row.samples.length)}
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(buildBenchmarkReport(rows, accountName, t));
@@ -119,59 +150,71 @@ export function BenchmarkResults({
                   'model',
                   'quota-left',
                   'status',
-                  'ttft',
-                  'gen-speed',
-                  'e2e-speed',
+                  'first-text-median',
+                  'first-text-p95',
+                  'gen-median',
+                  'gen-p95',
                   'tokens-total',
+                  'samples',
                   'view',
                 ].map((key) => (
-                  <th key={key} scope="col" className="px-3 py-2">
+                  <th key={key} scope="col" className="px-3 py-2 whitespace-nowrap">
                     {t(`playground.${key}`)}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.modelId} className="border-t">
-                  <th scope="row" className="px-3 py-2 font-medium">
-                    {row.modelName}
-                  </th>
-                  <td className="px-3 py-2">
-                    {row.quotaPercentage === undefined ? '-' : `${row.quotaPercentage}%`}
-                  </td>
-                  <td className="px-3 py-2">
-                    {row.status === 'success'
-                      ? `HTTP ${row.httpStatus}`
-                      : row.status === 'error'
-                        ? `HTTP ${row.httpStatus ?? 500}`
+              {rows.map((row) => {
+                const last = lastSample(row);
+                const succeeded = successfulSamples(row).length;
+                return (
+                  <tr key={row.modelId} className="border-t">
+                    <th scope="row" className="px-3 py-2 font-medium">
+                      {row.modelName}
+                    </th>
+                    <td className="px-3 py-2">
+                      {row.quotaPercentage === undefined ? '-' : `${row.quotaPercentage}%`}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {row.status === 'success' || row.status === 'error'
+                        ? `HTTP ${last?.httpStatus ?? 500}`
                         : t(`playground.${row.status === 'idle' ? 'pending' : row.status}`)}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums" title={t('playground.tooltip-ttft')}>
-                    {seconds(row.ttftMs)}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums" title={t('playground.tooltip-gen-speed')}>
-                    {speed(row.generationTokensPerSec)}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums" title={t('playground.tooltip-e2e-speed')}>
-                    {speed(row.e2eTokensPerSec)}
-                  </td>
-                  <td className="px-3 py-2 tabular-nums">
-                    {row.promptTokens ?? '-'} / {row.completionTokens ?? '-'}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!row.content && !row.error && !row.thinkingContent}
-                      aria-label={`${t('playground.view-response')}: ${row.modelName}`}
-                      onClick={() => setInspected(row)}
+                    </td>
+                    <td
+                      className="px-3 py-2 tabular-nums"
+                      title={t('playground.tooltip-first-text')}
                     >
-                      <Eye size={14} />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+                      {seconds(row.medianFirstTextMs)}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">{p95(row.p95FirstTextMs, succeeded)}</td>
+                    <td
+                      className="px-3 py-2 tabular-nums"
+                      title={t('playground.tooltip-gen-speed')}
+                    >
+                      {speed(row.medianGenerationTokensPerSec)}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {p95(row.p95GenerationTokensPerSec, succeeded, speed)}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {last?.promptTokens ?? '-'} / {last?.completionTokens ?? '-'}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">{sampleCount(row)}</td>
+                    <td className="px-3 py-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!row.samples.length}
+                        aria-label={`${t('playground.view-response')}: ${row.modelName}`}
+                        onClick={() => setInspected(row)}
+                      >
+                        <Eye size={14} />
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </CardContent>
@@ -188,22 +231,30 @@ export function BenchmarkResults({
           <DialogHeader>
             <DialogTitle>{inspected?.modelName}</DialogTitle>
             <DialogDescription>
-              {t('playground.latency')}: {inspected?.durationMs ?? '-'}ms · {t('playground.ttft')}:{' '}
-              {seconds(inspected?.ttftMs)}
+              {t('playground.first-text')}: {seconds(inspected?.medianFirstTextMs)} ·{' '}
+              {t('playground.gen-speed')}: {speed(inspected?.medianGenerationTokensPerSec)} ·{' '}
+              {t('playground.samples')}: {inspected ? sampleCount(inspected) : '-'}
             </DialogDescription>
           </DialogHeader>
-          {inspected?.error && (
+          {inspected?.samples.some((sample) => sample.error) && (
             <p role="alert" className="text-destructive whitespace-pre-wrap">
-              {inspected.error}
+              {[...(inspected?.samples ?? [])].reverse().find((sample) => sample.error)?.error}
             </p>
           )}
-          {inspected?.thinkingContent && (
+          {inspected?.samples.some((sample) => sample.thinkingContent) && (
             <details>
               <summary>{t('playground.thinking-process')}</summary>
-              <p className="whitespace-pre-wrap">{inspected.thinkingContent}</p>
+              <p className="whitespace-pre-wrap">
+                {
+                  [...(inspected?.samples ?? [])].reverse().find((sample) => sample.thinkingContent)
+                    ?.thinkingContent
+                }
+              </p>
             </details>
           )}
-          <p className="text-sm break-words whitespace-pre-wrap">{inspected?.content}</p>
+          <p className="text-sm break-words whitespace-pre-wrap">
+            {[...(inspected?.samples ?? [])].reverse().find((sample) => sample.content)?.content}
+          </p>
         </DialogContent>
       </Dialog>
     </div>

@@ -7,6 +7,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import en from '@/localization/en';
 import zhCN from '@/localization/zh-CN';
 import { buildBenchmarkReport } from '@/modules/proxy-gateway/playground/components/benchmark/benchmark-export';
+import { BenchmarkResults } from '@/modules/proxy-gateway/playground/components/benchmark/BenchmarkResults';
+import { FALLBACK_PROXY_EXAMPLE_MODELS } from '@/modules/proxy-gateway/components/proxy-example-models';
 import type { PlaygroundExecuteResult } from '@/modules/proxy-gateway/playground/playground.schema';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 
@@ -15,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   status: vi.fn(),
   toast: vi.fn(),
+  cloudAccounts: [] as CloudAccountView[],
+  config: { model_visibility: {} as Record<string, boolean>, proxy: { port: 8045 } },
 }));
 vi.mock('@/ipc/manager', () => ({
   ipc: {
@@ -25,10 +29,10 @@ vi.mock('@/ipc/manager', () => ({
 }));
 vi.mock('@/components/ui/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/modules/cloud-account/hooks/useCloudAccounts', () => ({
-  useCloudAccounts: () => ({ data: [] }),
+  useCloudAccounts: () => ({ data: mocks.cloudAccounts }),
 }));
 vi.mock('@/modules/config/hooks/useAppConfig', () => ({
-  useAppConfig: () => ({ config: { proxy: { port: 8045 } } }),
+  useAppConfig: () => ({ config: mocks.config }),
 }));
 
 import { PlaygroundDualView } from '@/modules/proxy-gateway/playground/components/PlaygroundDualView';
@@ -78,6 +82,8 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   vi.resetAllMocks();
+  mocks.cloudAccounts = [];
+  mocks.config = { model_visibility: {}, proxy: { port: 8045 } };
   localStorage.clear();
   await i18n.changeLanguage('en');
 });
@@ -125,15 +131,27 @@ describe('Playground lifecycle', () => {
             modelId: 'model-a',
             modelName: 'Model | A',
             status: 'success',
-            httpStatus: 200,
-            ttftMs: 250,
-            generationTokensPerSec: 40,
-            e2eTokensPerSec: 30,
-            promptTokens: 10,
-            completionTokens: 20,
+            samples: [
+              {
+                status: 'success',
+                httpStatus: 200,
+                firstTextDeltaMs: 250,
+                generationTokensPerSec: 40,
+                e2eTokensPerSec: 30,
+                promptTokens: 10,
+                completionTokens: 20,
+              },
+            ],
+            medianFirstTextMs: 250,
+            medianGenerationTokensPerSec: 40,
           },
-          { modelId: 'model-b', modelName: 'Model B', status: 'error', httpStatus: 429 },
-          { modelId: 'model-c', modelName: 'Model C', status: 'skipped' },
+          {
+            modelId: 'model-b',
+            modelName: 'Model B',
+            status: 'error',
+            samples: [{ status: 'error', httpStatus: 429 }],
+          },
+          { modelId: 'model-c', modelName: 'Model C', status: 'skipped', samples: [] },
         ],
         'Test | Account & Co',
         i18n.t,
@@ -143,15 +161,43 @@ describe('Playground lifecycle', () => {
         '### Test \\| Account & Co 的模型评测结果',
         '**已测模型:** 2 | **成功:** 1 | **失败:** 1',
         '',
-        '| 模型 | 状态 | 首字耗时 (秒) | 生成速度 (tok/s) | 端到端速度 (tok/s) | Token 数（输入 / 输出） |',
-        '|---|---|---|---|---|---|',
-        '| Model \\| A | HTTP 200 | 0.3 | 40 | 30 | 10 / 20 |',
-        '| Model B | HTTP 429 | - | - | - | 0 / 0 |',
+        '| 模型 | 状态 | 首段文本中位数 (秒) | 首段文本 P95 (秒) | 生成速度中位数 (tok/s) | 生成速度 P95 (tok/s) | 样本数 | Token 数（输入 / 输出） |',
+        '|---|---|---|---|---|---|---|---|',
+        '| Model \\| A | HTTP 200 | 0.3 | 至少需要 3 个样本 | 40.0 | 至少需要 3 个样本 | 1/1 | 10 / 20 |',
+        '| Model B | HTTP 429 | - | - | - | - | 0/1 | - / - |',
       ].join('\n'),
     );
   });
 
-  it('starts unselected and compares all selected accounts beyond ten', () => {
+  it('shows the insufficient-samples state for both p95 benchmark metrics', () => {
+    mount(
+      createElement(BenchmarkResults, {
+        accountName: 'Test account',
+        rows: [
+          {
+            modelId: 'model-a',
+            modelName: 'Model A',
+            status: 'success',
+            samples: [
+              {
+                status: 'success',
+                firstTextDeltaMs: 250,
+                generationTokensPerSec: 40,
+              },
+            ],
+            medianFirstTextMs: 250,
+            medianGenerationTokensPerSec: 40,
+          },
+        ],
+      }),
+    );
+
+    expect(
+      screen.getAllByText(i18n.t('playground.insufficient-samples', { count: 3 })),
+    ).toHaveLength(2);
+  });
+
+  it('limits a comparison to the supported number of accounts', () => {
     const accounts = Array.from({ length: 12 }, (_, index) => ({
       ...account,
       id: 'account-' + index,
@@ -172,20 +218,18 @@ describe('Playground lifecycle', () => {
       }),
     );
     expect(screen.queryAllByRole('checkbox', { checked: true })).toHaveLength(0);
-    expect(
-      screen
-        .getByRole('button', { name: en.playground['run-comparison'] })
-        .hasAttribute('disabled'),
-    ).toBe(true);
+    expect(screen.getByText(/Up to 8 accounts per comparison/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: en.playground['select-all'] }));
-    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(12);
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(8);
+    const overflow = screen.getByRole('checkbox', { name: accounts[10].email });
+    expect(overflow.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(overflow);
+    expect(screen.getAllByRole('checkbox', { checked: true })).toHaveLength(8);
     fireEvent.click(screen.getByRole('button', { name: en.playground['run-comparison'] }));
-    expect(compare).toHaveBeenLastCalledWith(accounts.map((entry) => entry.id));
-    fireEvent.click(screen.getByRole('checkbox', { name: accounts[10].email }));
+    expect(compare).toHaveBeenLastCalledWith(accounts.slice(0, 8).map((entry) => entry.id));
+    fireEvent.click(screen.getByRole('checkbox', { name: accounts[0].email }));
     fireEvent.click(screen.getByRole('button', { name: en.playground['run-comparison'] }));
-    expect(compare).toHaveBeenLastCalledWith(
-      accounts.filter((_, index) => index !== 10).map((entry) => entry.id),
-    );
+    expect(compare).toHaveBeenLastCalledWith(accounts.slice(1, 8).map((entry) => entry.id));
     fireEvent.click(screen.getByRole('button', { name: en.playground['clear-all'] }));
     expect(screen.getAllByRole('checkbox', { checked: false })).toHaveLength(12);
     expect(
@@ -217,6 +261,23 @@ describe('Playground lifecycle', () => {
     expect(checkbox.getAttribute('aria-checked')).toBe('false');
   });
 
+  it('renders google account avatar images when available', () => {
+    const accountWithAvatar: CloudAccountView = {
+      ...account,
+      avatar_url: 'https://lh3.googleusercontent.com/a/test-avatar',
+    };
+    mount(
+      createElement(PlaygroundResponseCard, {
+        result: result('answer with avatar'),
+        selectedAccountEmail: accountWithAvatar.email,
+        accountAvatarUrl: accountWithAvatar.avatar_url ?? undefined,
+        baseUrl: 'http://localhost:8045',
+      }),
+    );
+    const image = screen.getByRole('img');
+    expect(image.getAttribute('src')).toBe('https://lh3.googleusercontent.com/a/test-avatar');
+  });
+
   it('cancels an outstanding benchmark jitter timer on unmount', async () => {
     mocks.execute.mockResolvedValue(result('first'));
     const view = mount(createElement(PlaygroundAccountBenchmark, { accounts: [account] }));
@@ -235,7 +296,19 @@ describe('Playground lifecycle', () => {
     view.unmount();
     await act(async () => undefined);
     expect(clear).toHaveBeenCalledWith(handle);
-    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    expect(mocks.execute).toHaveBeenCalledTimes(3);
+  });
+
+  it('shows an explicit not-measured state instead of inventing a speed', () => {
+    mount(
+      createElement(PlaygroundResponseCard, {
+        result: result('plain answer'),
+        baseUrl: 'http://localhost:8045',
+      }),
+    );
+    expect(screen.getByText(en.playground['first-text'])).toBeTruthy();
+    expect(screen.getByText(en.playground['first-byte'])).toBeTruthy();
+    expect(screen.getAllByText(en.playground['not-measured']).length).toBeGreaterThanOrEqual(4);
   });
 
   it('ignores old dual responses and finalizers after Stop and a new Run', async () => {
@@ -268,6 +341,68 @@ describe('Playground lifecycle', () => {
     });
     expect(screen.getByText('current A')).toBeTruthy();
     expect(screen.getByText('current B')).toBeTruthy();
+  });
+
+  it('keeps compare result cards in selected-account order as requests finish', async () => {
+    const accounts = ['account-a', 'account-b'].map((id) => ({
+      ...account,
+      id,
+      email: `${id}@example.com`,
+    }));
+    const first = deferred<PlaygroundExecuteResult>();
+    const second = deferred<PlaygroundExecuteResult>();
+    mocks.cloudAccounts = accounts;
+    mocks.status.mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 2,
+    });
+    mocks.execute.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    mount(createElement(QueryClientProvider, { client }, createElement(PlaygroundPage)));
+    fireEvent.keyDown(screen.getByRole('tab', { name: en.playground['tab-single'] }), {
+      key: 'ArrowRight',
+    });
+    await screen.findByRole('checkbox', { name: accounts[0].email });
+    fireEvent.click(screen.getByRole('checkbox', { name: accounts[0].email }));
+    fireEvent.click(screen.getByRole('checkbox', { name: accounts[1].email }));
+    fireEvent.click(screen.getByRole('button', { name: en.playground['run-comparison'] }));
+
+    await act(async () => {
+      second.resolve({ ...result('second'), attributedAccountId: accounts[1].id });
+    });
+    await act(async () => {
+      first.resolve({ ...result('first'), attributedAccountId: accounts[0].id });
+    });
+
+    const firstCardContent = screen.getByText('first');
+    const secondCardContent = screen.getByText('second');
+    expect(
+      firstCardContent.compareDocumentPosition(secondCardContent) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    client.clear();
+  });
+
+  it('does not abort a completed dual run when starting another run', async () => {
+    mocks.execute.mockResolvedValue(result('completed'));
+    mount(
+      createElement(PlaygroundDualView, { accounts: [account], baseUrl: 'http://localhost:8045' }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: en.playground['run-dual'] }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: en.playground.stop })).toBeNull(),
+    );
+    const completedSignals = mocks.execute.mock.calls.map((call) => call[1].signal as AbortSignal);
+
+    fireEvent.click(screen.getByRole('button', { name: en.playground['run-dual'] }));
+
+    expect(completedSignals.every((signal) => !signal.aborted)).toBe(true);
   });
 
   it('aborts benchmark on unmount and never dispatches the next model', async () => {
@@ -334,6 +469,68 @@ describe('Playground lifecycle', () => {
     expect(writeText.mock.calls[0][0]).toContain('Original prompt');
     expect(writeText.mock.calls[0][0]).toContain('"max_tokens":128');
     expect(writeText.mock.calls[0][0]).not.toContain('"content":"Hello"');
+  });
+
+  it('renders and toggles only-visible-models filter in playground page', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    mocks.status.mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 1,
+    });
+    mount(createElement(QueryClientProvider, { client }, createElement(PlaygroundPage)));
+    const toggle = screen.getByRole('switch', {
+      name: new RegExp(en.playground['only-visible-models']),
+    });
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('filters hidden model options without restoring them when none are visible', async () => {
+    const hiddenAccount: CloudAccountView = {
+      ...account,
+      quota: {
+        models: {
+          'gemini-3-flash': { percentage: 100, resetTime: '' },
+          'claude-sonnet-4-6': { percentage: 100, resetTime: '' },
+        },
+      },
+    };
+    const allHiddenConfig = {
+      model_visibility: {
+        ...Object.fromEntries(FALLBACK_PROXY_EXAMPLE_MODELS.map((model) => [model.id, false])),
+        'gemini-3-flash': false,
+        'claude-sonnet-4-6': false,
+      },
+      proxy: { port: 8045 },
+    };
+    mocks.cloudAccounts = [hiddenAccount];
+    mocks.config = allHiddenConfig;
+    mocks.status.mockResolvedValue({
+      running: true,
+      port: 8045,
+      base_url: 'http://localhost:8045',
+      active_accounts: 1,
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    mount(createElement(QueryClientProvider, { client }, createElement(PlaygroundPage)));
+
+    expect(await screen.findByText(`0/${FALLBACK_PROXY_EXAMPLE_MODELS.length}`)).toBeTruthy();
+    expect(screen.getByRole('button', { name: en.playground.send }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: en.playground.model }));
+    expect(screen.queryByRole('option', { name: /gemini-3-flash/i })).toBeNull();
+    expect(screen.queryByRole('option', { name: /claude-sonnet-4-6/i })).toBeNull();
+    client.clear();
   });
 });
 

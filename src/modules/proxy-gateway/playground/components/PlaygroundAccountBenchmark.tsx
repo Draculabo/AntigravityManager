@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, StopCircle } from 'lucide-react';
+import { Play, StopCircle, User } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,17 +15,25 @@ import {
 } from '@/components/ui/select';
 import { ipc } from '@/ipc/manager';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
-import { isImageProxyExampleModel } from '../../components/proxy-example-models';
 import {
+  disambiguateModelList,
+  isImageProxyExampleModel,
+  isProxyExampleModelVisible,
+} from '../../components/proxy-example-models';
+import {
+  PLAYGROUND_MAX_BENCHMARK_ITERATIONS,
   PlaygroundReasoningEffortSchema,
   type PlaygroundReasoningEffort,
 } from '../playground.schema';
-import type { BenchmarkModelRow } from '../types';
+import { summarize } from '../benchmark-stats';
+import type { BenchmarkModelRow, BenchmarkSample } from '../types';
 import { BenchmarkResults } from './benchmark/BenchmarkResults';
 
 interface PlaygroundAccountBenchmarkProps {
   accounts: CloudAccountView[];
   availableModels?: Array<{ id: string; name: string }>;
+  onlyVisibleModels?: boolean;
+  modelVisibility?: Record<string, boolean>;
 }
 
 /** An abortable pause owns its timer and listener, including navigation during jitter. */
@@ -47,32 +55,47 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
 export function PlaygroundAccountBenchmark({
   accounts,
   availableModels = [],
+  onlyVisibleModels = false,
+  modelVisibility = {},
 }: PlaygroundAccountBenchmarkProps) {
   const { t } = useTranslation();
   const [accountId, setAccountId] = useState('');
   const account = accounts.find((entry) => entry.id === accountId) ?? accounts[0];
   const models = useMemo(() => {
-    const quotaModels = Object.entries(account?.quota?.models ?? {}).map(([id, info]) => ({
-      id: id.replace(/^models\//i, '').trim(),
-      name: info.display_name?.trim() || id,
-      quotaPercentage: info.percentage,
-    }));
-    return (
-      quotaModels.length
-        ? quotaModels
-        : availableModels.map((model) => ({ ...model, quotaPercentage: undefined }))
-    ).filter((model) => !isImageProxyExampleModel(model.id));
-  }, [account, availableModels]);
+    const rawQuotaModels = Object.entries(account?.quota?.models ?? {}).map(([id, info]) => {
+      const cleanId = id.replace(/^models\//i, '').trim();
+      return {
+        id: cleanId,
+        name: info.display_name?.trim() || cleanId,
+        quotaPercentage: info.percentage,
+      };
+    });
+    const list = rawQuotaModels.length
+      ? disambiguateModelList(rawQuotaModels)
+      : availableModels.map((model) => ({ ...model, quotaPercentage: undefined }));
+    return list.filter((model) => {
+      if (isImageProxyExampleModel(model.id)) {
+        return false;
+      }
+      if (onlyVisibleModels && !isProxyExampleModelVisible(model.id, modelVisibility)) {
+        return false;
+      }
+      return true;
+    });
+  }, [account, availableModels, onlyVisibleModels, modelVisibility]);
   // Default selection is derived so late quota hydration also includes newly advertised models.
   const [selection, setSelection] = useState<{ accountId: string; ids: string[] } | null>(null);
   const checkedIds =
-    selection?.accountId === account?.id ? selection.ids : models.map((model) => model.id);
+    selection?.accountId === account?.id
+      ? selection.ids.filter((id) => models.some((model) => model.id === id))
+      : models.map((model) => model.id);
   const select = (ids: string[]) => {
     if (account) {
       setSelection({ accountId: account.id, ids });
     }
   };
   const [prompt, setPrompt] = useState(() => t('playground.benchmark-default-prompt'));
+  const [iterations, setIterations] = useState(3);
   const [minDelay, setMinDelay] = useState(500);
   const [maxDelay, setMaxDelay] = useState(1200);
   const [reasoning, setReasoning] = useState<PlaygroundReasoningEffort>('default');
@@ -93,9 +116,18 @@ export function PlaygroundAccountBenchmark({
     activeRun.current?.abort();
     activeRun.current = null;
     setRows((previous) =>
-      previous.map((row) =>
-        row.status === 'running' || row.status === 'idle' ? { ...row, status: 'skipped' } : row,
-      ),
+      previous.map((row) => {
+        if (row.status !== 'running' && row.status !== 'idle') {
+          return row;
+        }
+        if (!row.samples.length) {
+          return { ...row, status: 'skipped' };
+        }
+        return {
+          ...row,
+          status: row.samples.some((sample) => sample.status === 'success') ? 'success' : 'error',
+        };
+      }),
     );
     setIsRunning(false);
     setProgress('');
@@ -115,6 +147,7 @@ export function PlaygroundAccountBenchmark({
         modelName: model.name,
         quotaPercentage: model.quotaPercentage,
         status: 'idle',
+        samples: [],
       }));
     setReportAccount(account.name || account.email);
     setRows(initialRows);
@@ -130,64 +163,90 @@ export function PlaygroundAccountBenchmark({
         if (!current()) {
           break;
         }
-        setProgress(
-          t('playground.testing-progress', {
-            current: index + 1,
-            total: initialRows.length,
-            model: row.modelName,
-          }),
-        );
         setRows((previous) =>
           previous.map((entry, i) => (i === index ? { ...entry, status: 'running' } : entry)),
         );
-        try {
-          const result = await ipc.client.gateway.playground.execute(
-            {
-              accountId: account.id,
-              model: row.modelId,
-              prompt,
-              temperature: 0.5,
-              maxTokens: 1024,
-              reasoningEffort: reasoning,
-            },
-            { signal: controller.signal },
+
+        const samples: BenchmarkSample[] = [];
+        for (let attempt = 0; attempt < iterations && current(); attempt++) {
+          setProgress(
+            t('playground.testing-progress', {
+              current: index + 1,
+              total: initialRows.length,
+              model: `${row.modelName} · ${t('playground.run-of', {
+                current: attempt + 1,
+                total: iterations,
+              })}`,
+            }),
           );
-          if (!current()) {
-            break;
+          try {
+            const result = await ipc.client.gateway.playground.execute(
+              {
+                accountId: account.id,
+                model: row.modelId,
+                prompt,
+                temperature: 0.5,
+                maxTokens: 1024,
+                reasoningEffort: reasoning,
+              },
+              { signal: controller.signal },
+            );
+            if (!current()) {
+              break;
+            }
+            samples.push({
+              status: result.success ? 'success' : 'error',
+              durationMs: result.durationMs,
+              firstReasoningDeltaMs: result.firstReasoningDeltaMs,
+              firstTextDeltaMs: result.firstTextDeltaMs,
+              generationTokensPerSec: result.generationTokensPerSec,
+              e2eTokensPerSec: result.e2eTokensPerSec,
+              promptTokens: result.promptTokens,
+              completionTokens: result.completionTokens,
+              totalTokens: result.totalTokens,
+              httpStatus: result.status,
+              content: result.content,
+              thinkingContent: result.thinkingContent,
+              error: result.error,
+            });
+          } catch (error) {
+            if (!current()) {
+              break;
+            }
+            samples.push({
+              status: 'error',
+              httpStatus: 500,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
-          setRows((previous) =>
-            previous.map((entry, i) =>
-              i === index
-                ? {
-                    ...entry,
-                    status: result.success ? 'success' : 'error',
-                    durationMs: result.durationMs,
-                    ttftMs: result.ttftMs,
-                    generationTokensPerSec: result.generationTokensPerSec,
-                    e2eTokensPerSec: result.e2eTokensPerSec,
-                    promptTokens: result.promptTokens,
-                    completionTokens: result.completionTokens,
-                    totalTokens: result.totalTokens,
-                    httpStatus: result.status,
-                    content: result.content,
-                    thinkingContent: result.thinkingContent,
-                    error: result.error,
-                  }
-                : entry,
+          const completedSamples = [...samples];
+          const successful = completedSamples.filter((sample) => sample.status === 'success');
+          const firstText = summarize(
+            successful.flatMap((sample) =>
+              sample.firstTextDeltaMs === undefined ? [] : [sample.firstTextDeltaMs],
             ),
           );
-        } catch (error) {
-          if (!current()) {
-            break;
-          }
+          const generation = summarize(
+            successful.flatMap((sample) =>
+              sample.generationTokensPerSec === undefined ? [] : [sample.generationTokensPerSec],
+            ),
+          );
           setRows((previous) =>
             previous.map((entry, i) =>
               i === index
                 ? {
                     ...entry,
-                    status: 'error',
-                    httpStatus: 500,
-                    error: error instanceof Error ? error.message : String(error),
+                    status:
+                      attempt + 1 < iterations
+                        ? 'running'
+                        : successful.length
+                          ? 'success'
+                          : 'error',
+                    samples: completedSamples,
+                    medianFirstTextMs: firstText.median,
+                    p95FirstTextMs: firstText.p95,
+                    medianGenerationTokensPerSec: generation.median,
+                    p95GenerationTokensPerSec: generation.p95,
                   }
                 : entry,
             ),
@@ -211,7 +270,7 @@ export function PlaygroundAccountBenchmark({
           <CardDescription>{t('playground.benchmark-settings-desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="benchmark-account">{t('playground.target-account')}</Label>
               <Select
@@ -228,12 +287,46 @@ export function PlaygroundAccountBenchmark({
                 <SelectContent>
                   {accounts.map((entry) => (
                     <SelectItem key={entry.id} value={entry.id}>
-                      {entry.name || entry.email}
-                      {entry.name ? ` (${entry.email})` : ''}
+                      <div className="flex items-center gap-2">
+                        {entry.avatar_url ? (
+                          <img
+                            src={entry.avatar_url}
+                            alt=""
+                            className="h-4 w-4 shrink-0 rounded-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <User size={13} className="text-muted-foreground shrink-0" />
+                        )}
+                        <span>
+                          {entry.name || entry.email}
+                          {entry.name ? ` (${entry.email})` : ''}
+                        </span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="benchmark-iterations">{t('playground.iterations')}</Label>
+              <Input
+                id="benchmark-iterations"
+                type="number"
+                min={1}
+                max={PLAYGROUND_MAX_BENCHMARK_ITERATIONS}
+                step={1}
+                disabled={isRunning}
+                value={iterations}
+                onChange={(event) =>
+                  setIterations(
+                    Math.min(
+                      PLAYGROUND_MAX_BENCHMARK_ITERATIONS,
+                      Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                    ),
+                  )
+                }
+              />
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
@@ -360,7 +453,7 @@ export function PlaygroundAccountBenchmark({
             <span role="status" className="text-muted-foreground text-xs">
               {isRunning
                 ? progress
-                : t('playground.selected-models-count', { count: checkedIds.length })}
+                : t('playground.benchmark-profile', { iterations, count: checkedIds.length })}
             </span>
             {isRunning ? (
               <Button variant="destructive" onClick={stop}>

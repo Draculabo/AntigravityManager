@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckSquare, Cpu, Play, Square } from 'lucide-react';
+import { CheckSquare, Cpu, Play, Square, StopCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
-import type { PlaygroundExecuteResult } from '../playground.schema';
+import {
+  PLAYGROUND_MAX_COMPARE_ACCOUNTS,
+  type PlaygroundExecuteResult,
+} from '../playground.schema';
 import { PlaygroundResponseCard } from './PlaygroundResponseCard';
 import { DEFAULT_PLAYGROUND_MODELS, PLAYGROUND_PRESETS, type PromptPreset } from '../types';
 
@@ -25,6 +28,7 @@ interface PlaygroundCompareViewProps {
   onChangePrompt: (prompt: string) => void;
   isLoading: boolean;
   onRunCompare: (selectedAccountIds: string[]) => void;
+  onStop?: () => void;
   compareResults: PlaygroundExecuteResult[];
   baseUrl: string;
   apiKey?: string;
@@ -39,6 +43,7 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
   onChangePrompt,
   isLoading,
   onRunCompare,
+  onStop,
   compareResults,
   baseUrl,
   apiKey,
@@ -48,13 +53,19 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const toggleAccount = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((item) => item !== id);
+      }
+      if (prev.length >= PLAYGROUND_MAX_COMPARE_ACCOUNTS) {
+        return prev;
+      }
+      return [...prev, id];
+    });
   };
 
   const selectAll = () => {
-    setSelectedIds(accounts.map((a) => a.id));
+    setSelectedIds(accounts.slice(0, PLAYGROUND_MAX_COMPARE_ACCOUNTS).map((a) => a.id));
   };
 
   const clearAll = () => {
@@ -113,8 +124,21 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
                     checked={isSelected}
                     onCheckedChange={() => toggleAccount(acc.id)}
                     aria-label={acc.name || acc.email}
+                    disabled={!isSelected && selectedIds.length >= PLAYGROUND_MAX_COMPARE_ACCOUNTS}
                     className="shrink-0"
                   />
+                  {acc.avatar_url ? (
+                    <img
+                      src={acc.avatar_url}
+                      alt=""
+                      className="h-5 w-5 shrink-0 rounded-full border object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="bg-muted text-muted-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold">
+                      {acc.name?.[0]?.toUpperCase() || 'A'}
+                    </div>
+                  )}
                   <div className="truncate">
                     <div className="truncate font-medium">{acc.name || acc.email}</div>
                     {acc.email && acc.name && (
@@ -184,22 +208,47 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
           />
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground text-xs">
-            {t('playground.selected-count', { count: selectedIds.length })}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-1">
+            <span className="text-muted-foreground text-xs">
+              {t('playground.selected-count', { count: selectedIds.length })}
+            </span>
+            {accounts.length > PLAYGROUND_MAX_COMPARE_ACCOUNTS && (
+              <p className="text-muted-foreground text-[11px]">
+                {t('playground.compare-limit', { count: PLAYGROUND_MAX_COMPARE_ACCOUNTS })}
+              </p>
+            )}
+          </div>
 
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            onClick={() => onRunCompare(selectedIds)}
-            disabled={isLoading || selectedIds.length === 0 || !prompt.trim()}
-            className="h-8 gap-1.5 text-xs font-medium"
-          >
-            <Play size={14} className={isLoading ? 'animate-pulse' : ''} />
-            {isLoading ? t('playground.running') : t('playground.run-comparison')}
-          </Button>
+          {isLoading && onStop ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={onStop}
+              className="h-8 gap-1.5 text-xs font-medium"
+            >
+              <StopCircle size={14} />
+              {t('playground.stop')}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={() => onRunCompare(selectedIds)}
+              disabled={
+                isLoading ||
+                availableModels.length === 0 ||
+                selectedIds.length === 0 ||
+                !prompt.trim()
+              }
+              className="h-8 gap-1.5 text-xs font-medium"
+            >
+              <Play size={14} className={isLoading ? 'animate-pulse' : ''} />
+              {isLoading ? t('playground.running') : t('playground.run-comparison')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -215,6 +264,7 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
                   key={res.attributedAccountId || index}
                   result={res}
                   selectedAccountEmail={matchedAcc?.email}
+                  accountAvatarUrl={matchedAcc?.avatar_url ?? undefined}
                   baseUrl={baseUrl}
                   apiKey={apiKey}
                 />
