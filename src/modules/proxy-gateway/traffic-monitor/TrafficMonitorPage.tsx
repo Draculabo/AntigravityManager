@@ -9,7 +9,17 @@ import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { Input } from '@/components/ui/input';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ipc } from '@/ipc/manager';
+import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
+import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import type { TrafficClass } from '@/modules/proxy-gateway/audit/traffic-classifier';
 import type { TrafficAuditListInput } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 
@@ -21,6 +31,30 @@ const PAGE_SIZE = 50;
 type MonitorTab = TrafficClass;
 type StatusMode = NonNullable<TrafficAuditListInput['statusMode']>;
 type Modality = NonNullable<TrafficAuditListInput['modality']>;
+
+function AccountOption({
+  account,
+  fallback,
+}: {
+  account: CloudAccountView | undefined;
+  fallback: string;
+}) {
+  if (!account) {
+    return <span className="truncate">{fallback}</span>;
+  }
+
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <Avatar data-testid={`traffic-account-avatar-${account.id}`} className="h-5 w-5 border">
+        {account.avatar_url && <AvatarImage src={account.avatar_url} alt="" />}
+        <AvatarFallback className="text-[9px] font-medium">
+          {account.email.slice(0, 1).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
+      <span className="truncate">{account.email}</span>
+    </span>
+  );
+}
 
 interface TrafficFilters {
   accountId?: string;
@@ -64,6 +98,7 @@ export function TrafficMonitorPage({
 }: TrafficMonitorPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { data: cloudAccounts = [] } = useCloudAccounts();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [refreshControlsKey, setRefreshControlsKey] = useState(0);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -237,24 +272,51 @@ export function TrafficMonitorPage({
       <div className="flex flex-wrap items-center gap-2 border-b px-6 py-2 text-xs">
         {tab === 'model' && (
           <>
-            <label className="text-muted-foreground flex items-center gap-1.5">
-              {t('traffic.account')}
-              <select
-                aria-label={t('traffic.account')}
-                className="bg-background text-foreground h-8 max-w-56 rounded-md border px-2"
-                value={accountId ?? ''}
-                onChange={(event) =>
-                  updateFilters({ accountId: event.target.value || undefined, page: 0 })
+            <div className="text-muted-foreground flex items-center gap-1.5">
+              <span>{t('traffic.account')}</span>
+              <Select
+                value={accountId ?? 'all'}
+                onValueChange={(value) =>
+                  updateFilters({ accountId: value === 'all' ? undefined : value, page: 0 })
                 }
               >
-                <option value="">{t('traffic.all-accounts')}</option>
-                {filterOptions.data?.accountIds.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <SelectTrigger
+                  aria-label={t('traffic.account')}
+                  className="h-8 w-64 max-w-64 px-2 text-xs"
+                >
+                  <SelectValue placeholder={t('traffic.all-accounts')}>
+                    {accountId ? (
+                      <AccountOption
+                        account={cloudAccounts.find((account) => account.id === accountId)}
+                        fallback={t('traffic.unknown')}
+                      />
+                    ) : (
+                      t('traffic.all-accounts')
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('traffic.all-accounts')}</SelectItem>
+                  {filterOptions.data?.accountIds
+                    ?.filter((id) => Boolean(id && typeof id === 'string' && id.trim() !== ''))
+                    .map((id) => (
+                      <SelectItem
+                        key={id}
+                        value={id}
+                        textValue={
+                          cloudAccounts.find((account) => account.id === id)?.email ??
+                          t('traffic.unknown')
+                        }
+                      >
+                        <AccountOption
+                          account={cloudAccounts.find((account) => account.id === id)}
+                          fallback={t('traffic.unknown')}
+                        />
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
             <label className="text-muted-foreground flex items-center gap-1.5">
               {t('traffic.model-family')}
               <select
