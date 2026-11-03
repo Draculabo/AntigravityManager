@@ -1,7 +1,7 @@
 # Desktop interface
 
-This reference describes the shared desktop presentation, accounts, Traffic Monitor, proxy
-configuration and settings.
+This reference describes the shared desktop presentation, accounts, Traffic Monitor, Model Playground,
+proxy configuration and settings.
 
 ## Visual system
 
@@ -66,6 +66,23 @@ appearance and keep JSON text legible in both modes.
 The traffic list handles Enter once when opening details. Closing details restores focus to the
 request row. Request and attempt cURL actions keep their existing credential policy.
 
+## Model playground
+
+The playground view at `/playground` provides single-account generation, multi-account comparison,
+dual-model comparison and account-wide model benchmarking.
+
+- Single-model testing configures prompts, presets, system prompts, temperature, max output tokens
+  and reasoning effort. The response card displays status, latency, TTFT, generation speed, E2E
+  throughput, token breakdown and collapsible reasoning disclosures.
+- Multi-account comparison evaluates one prompt across up to eight selected accounts concurrently with
+  bounded pool concurrency, highlighting availability differences.
+- Dual-model comparison displays a split workbench comparing two models or accounts side-by-side with
+  delta indicators for speed and TTFT.
+- Account model benchmarking runs sequential probes with randomized jitter delays across checked models,
+  summarizing median and p95 latency, TTFT and throughput with Markdown export.
+- Model visibility settings from application settings are respected across selectors, filtering out
+  hidden models.
+
 ## Proxy configuration and settings
 
 The proxy page keeps service status, start/stop, connection settings and automatic startup together.
@@ -126,7 +143,7 @@ the underlying configuration, device and cache operations in their existing modu
 
 ## Scope and verification
 
-These presentation conventions apply to the shared shell, the four views above and the account,
+These presentation conventions apply to the shared shell, the five views above and the account,
 request, device, import and tool dialogs described here. Additional feature flows still require
 their own behavior review. This is not
 a claim of complete native platform integration.

@@ -7,7 +7,7 @@ that module; cross-cutting runtime and security contracts remain in the root-lev
 ## Current behavior
 
 - [Compatibility reference](compatibility.md): request, response, stream and client compatibility.
-- [Account leases](account-leases.md): token and project persistence for selected proxy accounts.
+- [Account leases and playground](account-leases.md): token and project persistence, targeted account leases and in-app model playground execution.
 - [Schema conversion](schema-conversion.md): schema selection, conversion limits and diagnostics.
 - [Coding tool configuration](agent-tools.md): configure and recover Claude Code, Codex and
   OpenCode connections to the local gateway.

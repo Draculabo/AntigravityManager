@@ -151,6 +151,7 @@ Tool configuration changes local client settings. Read the [configuration and re
 | **Client account switching**      | Manual switching for Classic, IDE and agy CLI, with optional automatic switching based on account quota and rate limits  |
 | **Local API gateway**             | OpenAI Chat Completions and Responses, Anthropic Messages and native Gemini interfaces, with model routing and streaming |
 | **Coding tool setup**             | Configure Claude Code, Codex and OpenCode connections, with tool-specific backup and recovery                            |
+| **Model Playground**              | Interactive prompt testing, dual-model comparison, multi-account parallel testing and benchmarks with TTFT and speed metrics |
 | **Backups and identity profiles** | Local account snapshots and restoration, plus optional client identity-profile management                                |
 | **Diagnostics**                   | Traffic inspection, error details, diagnostic references for supported operations and a user-reviewed GitHub report flow |
 | **Desktop controls**              | System tray, quota notifications, appearance settings, compact account layouts and English, Chinese and Russian UI       |
