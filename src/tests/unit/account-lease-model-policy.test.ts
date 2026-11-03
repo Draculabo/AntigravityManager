@@ -609,4 +609,24 @@ describe('AccountLeaseModelPolicy', () => {
       'claude-opus-4-6-thinking',
     );
   });
+
+  it('resolves gemini-4-argon and gemini-4-argon-high to available Argon models', () => {
+    const tokenCache = new Map([
+      ['acc-1', createToken({ model_quotas: { 'gemini-4-argon-high': 100 } })],
+    ]);
+    const { policy } = createPolicy(tokenCache);
+
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-4-argon')).toBe('available');
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-4-argon')).toBe(
+      'gemini-4-argon-high',
+    );
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-4-argon-high')).toBe('available');
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-4-argon-high')).toBe(
+      'gemini-4-argon-high',
+    );
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-4-argon-low')).toBe('available');
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-4-argon-low')).toBe(
+      'gemini-4-argon-high',
+    );
+  });
 });

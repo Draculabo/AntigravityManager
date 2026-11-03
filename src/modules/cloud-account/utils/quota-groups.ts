@@ -1,4 +1,8 @@
-import type { CloudQuotaBucket, CloudQuotaGroup } from '@/modules/cloud-account/types';
+import type {
+  CloudQuotaBucket,
+  CloudQuotaGroup,
+  CloudQuotaModelInfo,
+} from '@/modules/cloud-account/types';
 import {
   getQuotaModelFamilyId,
   getQuotaModelFamilyIdByDisplayName,
@@ -131,4 +135,62 @@ export function selectWeeklyQuotaItems(
         bucket,
       })),
   );
+}
+
+/**
+ * When Google's quota summary returns a dedicated quota group or weekly bucket for
+ * Gemini 4 Argon but the upstream model catalog omits it from models, synthesize
+ * gemini-4-argon-high into the account models map so it can be managed in visibility settings,
+ * selected in playground, and scheduled through the proxy gateway.
+ */
+export function populateSyntheticArgonModels(
+  models: Record<string, CloudQuotaModelInfo>,
+  quotaGroups?: readonly CloudQuotaGroup[],
+): void {
+  if (!quotaGroups || quotaGroups.length === 0) {
+    return;
+  }
+
+  const hasArgonModel = Object.keys(models).some((key) => {
+    const normalized = key.replace(/^models\//i, '').toLowerCase();
+    return normalized.startsWith('gemini-4-argon');
+  });
+
+  if (hasArgonModel) {
+    return;
+  }
+
+  for (const group of quotaGroups) {
+    const isArgonGroup =
+      getDedicatedQuotaGroupFamilyId(group) === 'gemini-4-argon' ||
+      group.display_name.toLowerCase().includes('argon') ||
+      group.buckets.some((b) => b.bucket_id.toLowerCase().includes('argon'));
+
+    if (!isArgonGroup) {
+      continue;
+    }
+
+    const bucket =
+      group.buckets.find((b) => b.bucket_id.toLowerCase().includes('argon')) ?? group.buckets[0];
+    if (!bucket) {
+      continue;
+    }
+
+    const fraction = bucket.remaining_fraction ?? 1;
+    const percentage = Math.floor(fraction * 100);
+    const resetTime = bucket.reset_time || '';
+
+    models['gemini-4-argon-high'] = {
+      percentage,
+      resetTime,
+      display_name: 'Gemini 4 Argon (High)',
+      supports_images: true,
+      supports_thinking: true,
+      thinking_budget: 49152,
+      recommended: false,
+      max_tokens: 1048576,
+      max_output_tokens: 65536,
+    };
+    break;
+  }
 }

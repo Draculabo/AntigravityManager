@@ -109,7 +109,10 @@ export const PlaygroundCompareView: React.FC<PlaygroundCompareViewProps> = ({
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {accounts.map((acc) => {
             const isSelected = selectedIds.includes(acc.id);
-            const quota = acc.quota?.models?.[selectedModel]?.percentage;
+            const quota =
+              acc.quota?.models?.[selectedModel]?.percentage ??
+              acc.quota?.models?.[`${selectedModel}-high`]?.percentage ??
+              acc.quota?.models?.[`models/${selectedModel}`]?.percentage;
             return (
               <label
                 key={acc.id}

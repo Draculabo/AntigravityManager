@@ -1,5 +1,23 @@
 const modelSpecs = {
   models: {
+    'gemini-4-argon-high': {
+      context_window: 1048576,
+      max_output_tokens: 65536,
+      thinking_budget: 49152,
+      is_thinking: true,
+    },
+    'gemini-4-argon-medium': {
+      context_window: 1048576,
+      max_output_tokens: 65536,
+      thinking_budget: 24576,
+      is_thinking: true,
+    },
+    'gemini-4-argon-low': {
+      context_window: 1048576,
+      max_output_tokens: 65536,
+      thinking_budget: 8192,
+      is_thinking: true,
+    },
     'gemini-3.7-flash-high': {
       context_window: 1000000,
       max_output_tokens: 65536,
@@ -98,6 +116,7 @@ const modelSpecs = {
     },
   },
   aliases: {
+    'gemini-4-argon': 'gemini-4-argon-high',
     'gemini-3.7-flash': 'gemini-3.7-flash-high',
     'gemini-3.7-flash-tiered': 'gemini-3.7-flash-high',
     'gemini-3.6-flash': 'gemini-3.7-flash-high',

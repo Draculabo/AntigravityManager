@@ -90,7 +90,10 @@ export const PlaygroundControls: React.FC<PlaygroundControlsProps> = ({
 
   // Find quota % of selected model on selected account (if specific account is picked)
   const activeAccount = accounts.find((acc) => acc.id === selectedAccountId);
-  const selectedModelQuota = activeAccount?.quota?.models?.[selectedModel]?.percentage;
+  const selectedModelQuota =
+    activeAccount?.quota?.models?.[selectedModel]?.percentage ??
+    activeAccount?.quota?.models?.[`${selectedModel}-high`]?.percentage ??
+    activeAccount?.quota?.models?.[`models/${selectedModel}`]?.percentage;
 
   return (
     <div className="flex flex-col space-y-4">

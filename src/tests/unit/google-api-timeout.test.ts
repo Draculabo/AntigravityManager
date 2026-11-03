@@ -602,6 +602,17 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
         ],
       },
     ]);
+    expect(quota.models['gemini-4-argon-high']).toEqual({
+      percentage: 42,
+      resetTime: '2026-10-30T06:50:31Z',
+      display_name: 'Gemini 4 Argon (High)',
+      supports_images: true,
+      supports_thinking: true,
+      thinking_budget: 49152,
+      recommended: false,
+      max_tokens: 1048576,
+      max_output_tokens: 65536,
+    });
     expect(fetchMock.mock.calls.slice(1).map(([url, options]) => [url, options?.body])).toEqual([
       [
         'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',

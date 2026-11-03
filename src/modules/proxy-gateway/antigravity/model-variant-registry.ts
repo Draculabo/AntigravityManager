@@ -116,7 +116,47 @@ const GEMINI_31_PRO_VARIANTS: Record<
   },
 };
 
+const GEMINI_4_ARGON_VARIANTS: Record<
+  ModelVariantTier,
+  Omit<ResolvedModelVariant, 'canonicalModel' | 'tier'>
+> = {
+  low: {
+    model: 'gemini-4-argon-low',
+    thinkingBudget: 8192,
+    maxOutputTokens: 65536,
+    includeThoughts: true,
+    preserveClientBudget: false,
+    supportsTools: true,
+  },
+  medium: {
+    model: 'gemini-4-argon-medium',
+    thinkingBudget: 24576,
+    maxOutputTokens: 65536,
+    includeThoughts: true,
+    preserveClientBudget: false,
+    supportsTools: true,
+  },
+  high: {
+    model: 'gemini-4-argon-high',
+    thinkingBudget: 49152,
+    maxOutputTokens: 65536,
+    includeThoughts: true,
+    preserveClientBudget: false,
+    supportsTools: true,
+  },
+};
+
 const MODEL_VARIANT_FAMILIES: ModelVariantFamily[] = [
+  {
+    canonicalModel: 'gemini-4-argon',
+    variants: GEMINI_4_ARGON_VARIANTS,
+    aliases: {
+      'gemini-4-argon-high': 'tier',
+      'gemini-4-argon-medium': 'medium',
+      'gemini-4-argon-low': 'low',
+      'gemini-4-argon': 'tier',
+    },
+  },
   {
     canonicalModel: 'gemini-3.7-flash',
     variants: GEMINI_37_FLASH_VARIANTS,
