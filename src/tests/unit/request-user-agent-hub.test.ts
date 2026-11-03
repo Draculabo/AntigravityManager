@@ -15,11 +15,14 @@ describe('hub client identity', () => {
   });
 
   it('formats the identity sent by the Antigravity app language server', async () => {
-    const { buildHubUserAgent } =
+    const { buildHubUserAgent, buildUserAgent } =
       await import('@/modules/proxy-gateway/server/common/utils/request-user-agent');
 
     expect(buildHubUserAgent('2.26.0')).toMatch(
       /^antigravity\/hub\/2\.26\.0 \(aidev_client; os_type=(windows|darwin|linux); arch=[^)]+\)$/,
+    );
+    expect(buildUserAgent('2.28.2')).toMatch(
+      /^antigravity\/cli\/2\.28\.2 (windows|darwin|linux)\/[^/]+$/,
     );
   });
 

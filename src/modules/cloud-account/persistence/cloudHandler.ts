@@ -20,6 +20,7 @@ import {
   serializeDeviceHistory,
   serializeDeviceProfile,
 } from './cloud-account-device-profile-codec';
+import { populateSyntheticArgonModels } from '@/modules/cloud-account/utils/quota-groups';
 
 function parseCloudToken(accountId: string, value: string): CloudAccount['token'] {
   try {
@@ -39,7 +40,9 @@ function parseCloudQuota(
   }
 
   try {
-    return CloudQuotaDataSchema.parse(JSON.parse(value));
+    const parsed = CloudQuotaDataSchema.parse(JSON.parse(value));
+    populateSyntheticArgonModels(parsed.models, parsed.quota_groups);
+    return parsed;
   } catch (error) {
     logger.warn(`Invalid quota for account ${accountId}, continuing without quota`, error);
     return undefined;

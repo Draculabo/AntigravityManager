@@ -6,6 +6,8 @@ export interface ProxyExampleModel {
 }
 
 export const FALLBACK_PROXY_EXAMPLE_MODELS: readonly ProxyExampleModel[] = [
+  { id: 'gemini-4-argon', name: 'Gemini 4 Argon' },
+  { id: 'gemini-4-argon-high', name: 'Gemini 4 Argon (High)' },
   { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash' },
   { id: 'gemini-3.7-flash-low', name: 'Gemini 3.7 Flash (Low)' },
   { id: 'gemini-3.7-flash-medium', name: 'Gemini 3.7 Flash (Medium)' },

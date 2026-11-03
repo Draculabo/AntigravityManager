@@ -6,6 +6,7 @@ import {
   getDedicatedQuotaGroupFamilyId,
   getMinimumQuotaPercentage,
   isWeeklyQuotaBucket,
+  populateSyntheticArgonModels,
   selectWeeklyQuotaItems,
 } from '@/modules/cloud-account/utils/quota-groups';
 import {
@@ -187,6 +188,94 @@ describe('quota group score primitives', () => {
       realZero: 0,
       neither: null,
     });
+  });
+
+  it('synthesizes gemini-4-argon-high when dedicated Argon group is present and models omits Argon', () => {
+    const models: Record<string, any> = {
+      'gemini-3.8-flash-high': {
+        percentage: 80,
+        resetTime: '2026-11-01T00:00:00Z',
+      },
+    };
+    const argonGroups: CloudQuotaGroup[] = [
+      {
+        display_name: 'Gemini 4 Argon',
+        buckets: [
+          {
+            bucket_id: 'gemini-argon-wtu-weekly',
+            window: 'weekly',
+            remaining_fraction: 0.75,
+            reset_time: '2026-11-08T12:00:00Z',
+            display_name: 'Gemini 4 Argon Weekly Limit',
+          },
+        ],
+      },
+    ];
+
+    populateSyntheticArgonModels(models, argonGroups);
+
+    expect(models['gemini-4-argon-high']).toEqual({
+      percentage: 75,
+      resetTime: '2026-11-08T12:00:00Z',
+      display_name: 'Gemini 4 Argon (High)',
+      supports_images: true,
+      supports_thinking: true,
+      thinking_budget: 49152,
+      recommended: false,
+      max_tokens: 1048576,
+      max_output_tokens: 65536,
+    });
+  });
+
+  it('preserves existing Argon model when already present in models map', () => {
+    const models: Record<string, any> = {
+      'gemini-4-argon-high': {
+        percentage: 95,
+        resetTime: '2026-11-02T00:00:00Z',
+        display_name: 'Custom Argon',
+      },
+    };
+    const argonGroups: CloudQuotaGroup[] = [
+      {
+        display_name: 'Gemini 4 Argon',
+        buckets: [
+          {
+            bucket_id: 'gemini-argon-wtu-weekly',
+            window: 'weekly',
+            remaining_fraction: 0.2,
+            reset_time: '2026-11-09T00:00:00Z',
+          },
+        ],
+      },
+    ];
+
+    populateSyntheticArgonModels(models, argonGroups);
+
+    expect(models['gemini-4-argon-high'].percentage).toBe(95);
+    expect(models['gemini-4-argon-high'].display_name).toBe('Custom Argon');
+  });
+
+  it('does not synthesize Argon when no Argon group is in quota groups', () => {
+    const models: Record<string, any> = {
+      'gemini-3.8-flash-high': { percentage: 80, resetTime: '' },
+    };
+    const normalGroups: CloudQuotaGroup[] = [
+      {
+        display_name: 'Gemini Models',
+        buckets: [
+          {
+            bucket_id: 'gemini-weekly',
+            window: 'weekly',
+            remaining_fraction: 0.5,
+            reset_time: '',
+          },
+        ],
+      },
+    ];
+
+    populateSyntheticArgonModels(models, normalGroups);
+
+    expect(models['gemini-4-argon-high']).toBeUndefined();
   });
 });
 

@@ -2,6 +2,10 @@ import { isEmpty, isString } from 'lodash-es';
 import { logger } from '@/shared/logging/logger';
 
 const PUBLIC_MODEL_PRESET_DISPLAY_NAMES = {
+  'gemini-4-argon': 'Gemini 4 Argon',
+  'gemini-4-argon-low': 'Gemini 4 Argon (Low)',
+  'gemini-4-argon-medium': 'Gemini 4 Argon (Medium)',
+  'gemini-4-argon-high': 'Gemini 4 Argon (High)',
   'gemini-3.7-flash-low': 'Gemini 3.7 Flash (Low)',
   'gemini-3.7-flash-medium': 'Gemini 3.7 Flash (Medium)',
   'gemini-3.7-flash-high': 'Gemini 3.7 Flash (High)',
@@ -36,6 +40,10 @@ const PUBLIC_SUPPORTED_MODELS = [
 
 const CLAUDE_TO_GEMINI: Record<string, string> = {
   // Directly supported models
+  'gemini-4-argon': 'gemini-4-argon-high',
+  'gemini-4-argon-high': 'gemini-4-argon-high',
+  'gemini-4-argon-medium': 'gemini-4-argon-medium',
+  'gemini-4-argon-low': 'gemini-4-argon-low',
   'claude-sonnet-4-6-thinking': 'claude-sonnet-4-6-thinking',
   'claude-opus-4-6-thinking': 'claude-opus-4-6-thinking',
   'gemini-3.7-flash': 'gemini-3.7-flash',
@@ -120,6 +128,8 @@ const DYNAMIC_IMAGE_BASE_MODEL = 'gemini-3-pro-image';
 const DYNAMIC_IMAGE_RESOLUTIONS = ['', '-2k', '-4k'];
 const DYNAMIC_IMAGE_RATIOS = ['', '-1x1', '-4x3', '-3x4', '-16x9', '-9x16', '-21x9'];
 const EXTRA_DYNAMIC_MODELS = [
+  'gemini-4-argon',
+  'gemini-4-argon-high',
   'gemini-3.7-flash',
   'gemini-3.7-flash-high',
   'gemini-3.7-flash-medium',
@@ -152,6 +162,7 @@ function collectDynamicModelIds(dynamicModelIds?: Iterable<string>): Set<string>
 }
 
 const GEMINI_MODEL_ALIASES: Record<string, string> = {
+  'gemini-4-argon': 'gemini-4-argon-high',
   'gemini-3-pro-image-preview': 'gemini-3-pro-image',
   'gemini-3-flash-image': 'gemini-3.1-flash-image',
   'gemini-3.1-flash-image-preview': 'gemini-3.1-flash-image',

@@ -221,8 +221,14 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
   const accountA = accounts.find((a) => a.id === accountAId);
   const accountB = accounts.find((a) => a.id === accountBId);
 
-  const quotaA = accountA?.quota?.models?.[effectiveModelAId]?.percentage;
-  const quotaB = accountB?.quota?.models?.[effectiveModelBId]?.percentage;
+  const quotaA =
+    accountA?.quota?.models?.[effectiveModelAId]?.percentage ??
+    accountA?.quota?.models?.[`${effectiveModelAId}-high`]?.percentage ??
+    accountA?.quota?.models?.[`models/${effectiveModelAId}`]?.percentage;
+  const quotaB =
+    accountB?.quota?.models?.[effectiveModelBId]?.percentage ??
+    accountB?.quota?.models?.[`${effectiveModelBId}-high`]?.percentage ??
+    accountB?.quota?.models?.[`models/${effectiveModelBId}`]?.percentage;
 
   // Comparison metrics between A and B
   const comparisonSummary = useMemo(() => {

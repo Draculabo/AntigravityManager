@@ -356,4 +356,41 @@ describe('resolveModelVariant', () => {
       expect(rebindModelVariant(variant, 'gemini-3.8-flash-tiered')).toBeNull();
     },
   );
+
+  it('resolves and rebinds Gemini 4 Argon variants correctly', () => {
+    const defaultArgon = resolveModelVariant({ model: 'gemini-4-argon' });
+    expect(defaultArgon).toEqual({
+      canonicalModel: 'gemini-4-argon',
+      model: 'gemini-4-argon-high',
+      tier: 'high',
+      thinkingBudget: 49152,
+      maxOutputTokens: 65536,
+      includeThoughts: true,
+      preserveClientBudget: false,
+      supportsTools: true,
+    });
+
+    const lowArgon = resolveModelVariant({ model: 'gemini-4-argon', effort: 'low' });
+    expect(lowArgon).toEqual({
+      canonicalModel: 'gemini-4-argon',
+      model: 'gemini-4-argon-low',
+      tier: 'low',
+      thinkingBudget: 8192,
+      maxOutputTokens: 65536,
+      includeThoughts: true,
+      preserveClientBudget: false,
+      supportsTools: true,
+    });
+
+    expect(rebindModelVariant(defaultArgon, 'gemini-4-argon-medium')).toEqual({
+      canonicalModel: 'gemini-4-argon',
+      model: 'gemini-4-argon-medium',
+      tier: 'medium',
+      thinkingBudget: 24576,
+      maxOutputTokens: 65536,
+      includeThoughts: true,
+      preserveClientBudget: false,
+      supportsTools: true,
+    });
+  });
 });

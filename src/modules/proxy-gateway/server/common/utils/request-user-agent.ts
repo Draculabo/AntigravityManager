@@ -67,7 +67,7 @@ function getArchTag(): string {
 }
 
 export function buildUserAgent(version: string): string {
-  return `antigravity/${version} ${getPlatformTag()}/${getArchTag()}`;
+  return `antigravity/cli/${version} ${getPlatformTag()}/${getArchTag()}`;
 }
 
 /**
