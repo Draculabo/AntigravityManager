@@ -1,6 +1,131 @@
 import path from 'node:path';
 import type { KoffiFunc } from 'koffi';
 import { z } from 'zod';
+import { isEqual } from 'lodash-es';
+
+export const WindowsCredentialSnapshotSchema = z.object({
+  flags: z.number().int().min(0).max(0xffff_ffff),
+  username: z.string().nullable(),
+  comment: z.string().nullable(),
+  targetAlias: z.string().nullable(),
+  persist: z.number().int().min(1).max(3),
+  payload: z
+    .string()
+    .max(6828)
+    .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/)
+    .refine((value) => Buffer.from(value, 'base64').length <= 5120),
+});
+export type WindowsCredentialSnapshot = z.infer<typeof WindowsCredentialSnapshotSchema>;
+
+/** Recovery captures exact bytes and writable metadata, including an absent item. */
+export async function readWindowsCredentialSnapshot(
+  target: string,
+): Promise<WindowsCredentialSnapshot | null> {
+  return withCredentialApi(({ koffi, credential, advapi, getLastError }) => {
+    const read = advapi.func(
+      'int __stdcall CredReadW(str16 target, uint32_t type, uint32_t flags, _Out_ void **value)',
+    ) as KoffiFunc<
+      (target: string, type: number, flags: number, value: (bigint | null)[]) => number
+    >;
+    const free = advapi.func('void __stdcall CredFree(void *value)') as KoffiFunc<
+      (value: bigint) => void
+    >;
+    const output: (bigint | null)[] = [null];
+    if (!read(target, 1, 0, output)) {
+      const code = getLastError();
+      if (code === 1168) {
+        return null;
+      }
+      throw new Error(`Windows credential recovery read failed (${code})`);
+    }
+    const pointer = output[0];
+    if (typeof pointer !== 'bigint' || pointer === 0n) {
+      throw new Error('Windows credential recovery read returned no allocation');
+    }
+    try {
+      const metadata = WindowsCredentialSnapshotSchema.omit({ payload: true })
+        .extend({
+          targetName: z.literal(target),
+          type: z.literal(1),
+          attributeCount: z.literal(0),
+          blobSize: z.number().int().min(0).max(5120),
+          blob: z.bigint().nullable(),
+        })
+        .safeParse(koffi.decode(pointer, credential));
+      if (!metadata.success) {
+        throw new Error('Windows credential metadata cannot be safely backed up');
+      }
+      const {
+        blob,
+        blobSize,
+        targetName: _target,
+        type: _type,
+        attributeCount: _attributes,
+        ...saved
+      } = metadata.data;
+      if (blobSize > 0 && (blob === null || blob === 0n)) {
+        throw new Error('Windows credential recovery payload is unavailable');
+      }
+      const bytes: unknown = blobSize ? koffi.decode(blob, 'uint8_t', blobSize) : new Uint8Array();
+      const parsed = z
+        .union([z.instanceof(Uint8Array), z.array(z.number().int().min(0).max(255))])
+        .safeParse(bytes);
+      if (!parsed.success) {
+        throw new Error('Windows credential recovery payload is invalid');
+      }
+      return { ...saved, payload: Buffer.from(parsed.data).toString('base64') };
+    } finally {
+      free(pointer);
+    }
+  });
+}
+
+/** The caller owns stopping the client before restoring shared credentials. */
+export async function restoreWindowsCredentialSnapshot(
+  target: string,
+  saved: WindowsCredentialSnapshot | null,
+): Promise<void> {
+  await withCredentialApi(({ koffi, credential, advapi, getLastError }) => {
+    if (saved === null) {
+      const remove = advapi.func(
+        'int __stdcall CredDeleteW(str16 target, uint32_t type, uint32_t flags)',
+      ) as KoffiFunc<(target: string, type: number, flags: number) => number>;
+      if (!remove(target, 1, 0) && getLastError() !== 1168) {
+        throw new Error('Windows credential recovery deletion failed');
+      }
+      return;
+    }
+    const write = advapi.func('__stdcall', 'CredWriteW', 'int', [
+      koffi.pointer(credential),
+      'uint32_t',
+    ]);
+    const blob = Buffer.from(saved.payload, 'base64');
+    try {
+      if (
+        write(
+          {
+            ...saved,
+            type: 1,
+            targetName: target,
+            lastWritten: [0, 0],
+            blobSize: blob.length,
+            blob,
+            attributeCount: 0,
+            attributes: null,
+          },
+          0,
+        ) !== 1
+      ) {
+        throw new Error(`Windows credential recovery write failed (${getLastError()})`);
+      }
+    } finally {
+      blob.fill(0);
+    }
+  });
+  if (!isEqual(await readWindowsCredentialSnapshot(target), saved)) {
+    throw new Error('Windows credential recovery readback failed');
+  }
+}
 
 /** Uses the exact Win32 target; keytar joins service/account with a slash. */
 export async function readWindowsCredential(target: string): Promise<string | null> {

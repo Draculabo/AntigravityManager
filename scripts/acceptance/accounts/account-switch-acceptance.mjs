@@ -7,12 +7,15 @@ import { setTimeout as delay } from 'node:timers/promises';
 import spawn from 'cross-spawn';
 import { Command } from 'commander';
 import { chromium } from 'playwright';
-import { createCommand, connectBrowser } from './process-actions.mjs';
+import { createCommand, connectBrowser, withAcceptanceDeadline } from './process-actions.mjs';
 import { createCredentialReadback } from './credential-readback.mjs';
 import { verifyClientIdentity } from './client-ui.mjs';
-import { readOfficialSignedIn } from './official-auth-state.mjs';
+import { confirmOfficialIdeAgent, readOfficialSignedIn } from './official-auth-state.mjs';
 import { readClassicTermsAcceptance } from './classic-terms-state.mjs';
-import { captureWindowsCredential } from './windows-credential-recovery.mjs';
+import {
+  captureWindowsCredential,
+  restoreAfterClientShutdown,
+} from './windows-credential-recovery.mjs';
 import { assertSnapshotIsolation } from './snapshot-isolation.mjs';
 
 const options = new Command()
@@ -35,11 +38,17 @@ const options = new Command()
   .option('--native-root <path>', 'ABI-compatible native libraries for the report process')
   .option('--target <target>', 'Only run one client: classic, ide or agy')
   .option(
+    '--require-ide-agent',
+    'Require IDE Agent identity independently of storage discovery',
+    false,
+  )
+  .option(
     '--probe-cli',
     'Run a small real provider task through the official Antigravity CLI',
     false,
   )
   .option('--local-snapshots', 'Also verify A-B-A from local account snapshots', false)
+  .option('--cold-restart', 'Also verify IDE identity after a stopped-client relaunch', false)
   .option(
     '--complete-client-setup',
     'Complete explicitly authorized official first-run setup without interaction-data collection',
@@ -140,16 +149,18 @@ async function connect(port) {
 }
 
 async function invoke(name, input) {
-  return page.evaluate(
-    async ({ name, input }) => {
-      const parts = name.split('.');
-      let operation = window.accountAcceptance;
-      for (const part of parts) {
-        operation = operation[part];
-      }
-      return operation(input);
-    },
-    { name, input },
+  return withAcceptanceDeadline(() =>
+    page.evaluate(
+      async ({ name, input }) => {
+        const parts = name.split('.');
+        let operation = window.accountAcceptance;
+        for (const part of parts) {
+          operation = operation[part];
+        }
+        return operation(input);
+      },
+      { name, input },
+    ),
   );
 }
 
@@ -221,6 +232,10 @@ const { readTarget, expectedAccount } = createCredentialReadback({
 });
 
 async function verify(target, id, alias, source, since) {
+  return withAcceptanceDeadline(() => verifyWithinDeadline(target, id, alias, source, since));
+}
+
+async function verifyWithinDeadline(target, id, alias, source, since) {
   stage = 'read-target-token';
   const token = await readTarget(target);
   const expected = await expectedAccount(id);
@@ -278,6 +293,17 @@ async function verify(target, id, alias, source, since) {
     );
     if (!result.clientIdentityVisible && result.clientSignedIn && result.clientIdentityConfirmed) {
       result.clientVerification = 'official-auth-log-and-live-google';
+    }
+    if (
+      (process.platform === 'win32' || process.platform === 'linux') &&
+      target === 'ide' &&
+      (options.requireIdeAgent ||
+        (await library.resolveClientAccountStorage('ide', {
+          executablePath: config.antigravity_ide_executable,
+        })) === 'credential-store')
+    ) {
+      stage = 'agent-identity';
+      result.agentIdentityConfirmed = await confirmOfficialIdeAgent(library, expected.email);
     }
   } else if (options.probeCli) {
     stage = 'official-client-task';
@@ -405,6 +431,9 @@ try {
             errorCode: error.code ?? null,
           }),
         );
+        if (error.code === 'acceptance-operation-timeout') {
+          throw error;
+        }
         break;
       }
     }
@@ -425,18 +454,46 @@ try {
             ...result,
             status: target !== 'agy' && !result.clientIdentityConfirmed ? 'partial' : 'passed',
           });
+          console.log(
+            JSON.stringify({
+              target,
+              source: 'local',
+              account: alias,
+              status: report.results.at(-1).status,
+            }),
+          );
         } catch (error) {
           report.results.push({
             target,
             source: 'local',
             account: alias,
             status: 'failed',
+            stage,
             errorKind: error.name,
             errorCode: error.code ?? null,
           });
+          if (error.code === 'acceptance-operation-timeout') {
+            throw error;
+          }
           break;
         }
       }
+    }
+    if (
+      options.coldRestart &&
+      target === 'ide' &&
+      !report.results.some((result) => result.target === target && result.status !== 'passed')
+    ) {
+      stage = 'cold-restart';
+      const context = await library.prepareLaunchContext('ide');
+      await library.stopFromContext(context, 15000, { forceAfterTimeout: true });
+      const since = Date.now();
+      await library.startFromContext({ ...context, processes: [] });
+      const result = await verify(target, ids[0], 'A', 'cold-restart', since);
+      report.results.push({
+        ...result,
+        status: result.clientIdentityConfirmed ? 'passed' : 'partial',
+      });
     }
     const browser = clients.get(target);
     if (browser) {
@@ -488,9 +545,30 @@ try {
     await Promise.race([desktopBrowser.close().catch(() => {}), delay(3000)]);
   }
   desktop?.kill();
+  for (const target of options.target ? [options.target] : ['classic', 'ide']) {
+    if (target === 'agy') {
+      continue;
+    }
+    try {
+      const context = await library.prepareLaunchContext(target, {
+        userDataDir: path.join(home, `client-${target}`),
+      });
+      await library.stopFromContext(context, 15000, { forceAfterTimeout: true });
+      const stopped = await library.prepareLaunchContext(target, {
+        userDataDir: path.join(home, `client-${target}`),
+      });
+      assert.equal(stopped.processes.length, 0, 'Acceptance client is still running');
+      report.cleanup[`${target}ClientStopped`] = true;
+    } catch {
+      report.cleanup[`${target}ClientStopped`] = false;
+    }
+  }
   if (credentialRecovery) {
     try {
-      report.cleanup.originalCredentialRestored = credentialRecovery.restore();
+      report.cleanup.originalCredentialRestored = restoreAfterClientShutdown(
+        credentialRecovery,
+        report.cleanup.ideClientStopped !== false && report.cleanup.classicClientStopped !== false,
+      );
     } catch (error) {
       report.cleanup.originalCredentialRestored = false;
       report.cleanup.credentialRecoveryError = error instanceof Error ? error.name : 'UnknownError';
@@ -501,6 +579,8 @@ try {
     report.failure ||
     report.cleanup.originalCredentialRestored === false ||
     report.cleanup.ownerStopped === false ||
+    report.cleanup.ideClientStopped === false ||
+    report.cleanup.classicClientStopped === false ||
     report.results.some((result) => result.status === 'failed') ||
     !report.results.length
       ? 'failed'

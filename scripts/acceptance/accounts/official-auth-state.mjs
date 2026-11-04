@@ -1,5 +1,16 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import assert from 'node:assert/strict';
+
+/** Use the runtime's identity gate for every main process inspected by the acceptance runner. */
+export async function confirmOfficialIdeAgent(library, email) {
+  const context = await library.prepareLaunchContext('ide');
+  assert(context.processes.length > 0, 'No launched IDE main process to confirm');
+  for (const main of context.processes) {
+    await library.confirmIdeAccountIdentity(context, main.pid, email);
+  }
+  return true;
+}
 
 /** Require a fresh signed-in transition from the selected official client's private log. */
 export async function readOfficialSignedIn(home, target, since) {

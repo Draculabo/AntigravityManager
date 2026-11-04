@@ -3,7 +3,32 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { readOfficialSignedIn } from './official-auth-state.mjs';
+import { confirmOfficialIdeAgent, readOfficialSignedIn } from './official-auth-state.mjs';
+
+test('the runner Agent predicate rejects missing processes and any unconfirmed main process', async () => {
+  const context = { processes: [] };
+  const calls = [];
+  const library = {
+    prepareLaunchContext: async (target) => {
+      assert.equal(target, 'ide');
+      return context;
+    },
+    confirmIdeAccountIdentity: async (current, pid, email) => {
+      assert.equal(current, context);
+      assert.equal(email, 'selected@example.invalid');
+      calls.push(pid);
+      if (pid === 2) {
+        throw new Error('Agent account mismatch');
+      }
+    },
+  };
+  await assert.rejects(confirmOfficialIdeAgent(library, 'selected@example.invalid'), /No launched/);
+  context.processes = [{ pid: 1 }, { pid: 2 }];
+  await assert.rejects(confirmOfficialIdeAgent(library, 'selected@example.invalid'), /mismatch/);
+  assert.deepEqual(calls, [1, 2]);
+  context.processes = [{ pid: 1 }];
+  assert.equal(await confirmOfficialIdeAgent(library, 'selected@example.invalid'), true);
+});
 
 test('requires a fresh final signed-in transition from the latest official session', async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-official-auth-'));

@@ -161,6 +161,8 @@ const zhCn = {
   },
   appName: 'Antigravity 管理器',
   'process-runtime': {
+    'switched-identity-unconfirmed':
+      '凭据已更新，但重启后的 IDE Agent 尚未确认目标账号。请先检查 IDE 中的账号再重试；恢复旧凭据前须关闭所有 Antigravity 客户端。',
     'update-in-progress': 'Antigravity 正在更新。请先完成更新，再重试。',
     'close-failed': '未能关闭 Antigravity。请先保存聊天和文件，手动关闭应用后重试。',
     'exit-unconfirmed': 'Antigravity 尚未退出。请先保存聊天和文件，手动关闭应用后重试。',

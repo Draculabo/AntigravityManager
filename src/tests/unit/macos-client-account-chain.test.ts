@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { SQL } from 'drizzle-orm';
-
 const installation = z
   .object({
     ok: z.literal(true),
@@ -28,7 +27,6 @@ const sqlitePayloads = z
       await readFile(`${process.cwd()}/src/tests/fixtures/macos-client-protobuf.json`, 'utf8'),
     ),
   );
-
 const state = vi.hoisted(() => ({
   files: new Map<string, string>(),
   rows: new Map<string, string>(),
@@ -50,7 +48,6 @@ const database = '/fixture/state.vscdb';
 const cliFile = `${home}/.gemini/antigravity-cli/antigravity-oauth-token`;
 const oauthFile = `${home}/.gemini/oauth_creds.json`;
 const accountsFile = `${home}/.gemini/google_accounts.json`;
-
 vi.mock('node:os', () => ({ default: { homedir: () => '/fixture/home' } }));
 vi.mock('node:path', async (original) => {
   const actual = await original<typeof import('node:path')>();
@@ -132,6 +129,8 @@ vi.mock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
   }),
   isCredentialStoreVersion: (version: { shortVersion: string }) =>
     Number(version.shortVersion.split('.')[0]) >= 2,
+  compareVersion: (left: string, right: string) =>
+    left.localeCompare(right, undefined, { numeric: true }),
 }));
 vi.mock('@/shared/persistence/database/dbConnection', async () => {
   const { SQLiteSyncDialect } = await import('drizzle-orm/sqlite-core');
@@ -179,12 +178,18 @@ vi.mock('@/shared/persistence/database/dbConnection', async () => {
     },
   };
 });
-vi.mock('@/modules/antigravity-runtime/credentials/windowsCredentialStore', () => ({
+vi.mock('@/modules/antigravity-runtime/credentials/windowsCredentialStore', async (original) => ({
+  ...(await original<
+    typeof import('@/modules/antigravity-runtime/credentials/windowsCredentialStore')
+  >()),
   readWindowsCredential: () => {
     throw new Error('Windows credentials are forbidden in this fixture');
   },
   writeWindowsCredential: () => {
     throw new Error('Windows credentials are forbidden in this fixture');
+  },
+  readWindowsCredentialSnapshot: () => {
+    throw new Error('Windows credential recovery is forbidden in this fixture');
   },
 }));
 vi.mock('@napi-rs/keyring', () => ({

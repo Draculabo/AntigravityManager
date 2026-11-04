@@ -23,17 +23,36 @@ This procedure checks real account switching through both Manager CLI and Electr
 
 ## Run the matrix
 
+For synthetic Linux native recovery evidence, first prepare the helpers, then run
+`pnpm run test:acceptance accounts linux-credentials --native-root <Node-compatible-dependencies>`.
+It requires system libsecret, DBus and `gnome-keyring-daemon`. The runner creates a disposable
+HOME, XDG directories and DBus session, seeds two unlocked collections, and verifies required
+writes, JSON recovery through the maintenance API, missing-item refusal and absence restoration.
+It stops its keyring and deletes its temporary directory. It uses no real accounts and does not
+establish official-client login. `--output <file>` writes a sanitized report to an existing parent.
+
 1. Build the acceptance helpers using `pnpm run test:acceptance accounts prepare`. Use `--output <directory>` to keep a separate verification run's bundles, and supply that directory with `--helpers` when running the matrix.
 2. Run the acceptance command with `--owner cli` or `--owner electron`, a prepared `--runtime-root`, `--profile-home`, `--accounts-file`, and `--output`.
 3. Add `--local-snapshots` for cloud and local A-B-A switching. Add `--probe-cli` to require a real provider response from the official Antigravity CLI.
 4. For Electron, provide `--electron-bin` and optionally `--electron-app`. The runner invokes the renderer's real preload MessagePort transport.
 5. Repeat each owner on Windows and Linux. `--target classic|ide|agy` isolates failures without rerunning unrelated clients.
 6. Add `--keep-client-running` to exercise desktop switches and snapshots without the runner closing the client first. The report records `clientWasRunning` and `mainProcessPreserved` using the main process PID, creation time and executable identity. The production switch may restart the selected client; this option does not assert seamless in-process switching. Correlate these observations with `Switch trace v1` outcomes and official identity/consent results.
+   Add `--cold-restart` to verify the IDE again after a confirmed stop and fresh launch, following the A-B-A matrix.
+   For an independently identified IDE 2.6 or newer installation, also pass `--require-ide-agent`.
+   This requires Agent confirmation even if storage/version discovery incorrectly selects SQLite.
+   On Linux, isolate HOME/XDG directories and the DBus Secret Service session as well as the client
+   profile; a separate `--user-data-dir` alone does not isolate shared credentials. Keep the original
+   protected recovery files and stop owned clients before any manual recovery.
 7. Only after explicit authorization to accept the official first-run terms, add `--complete-client-setup` when an isolated profile requires setup. The runner leaves interaction-data collection unchecked. It opens the official Settings account panel when the main screen does not display the account.
 
 ## Interpret results
 
+Each renderer IPC operation and complete identity observation has a 90-second outer deadline.
+A stalled browser operation aborts the matrix and triggers cleanup; it cannot leave the runner
+waiting indefinitely or allow later switches to overlap an unresolved operation.
+
 - `passed`: the selected client's stored credentials belong to the selected account, Google confirms the live identity, and the official client confirms login through its visible account or a fresh `signedIn` authentication transition. The report names the confirmation method. The CLI client must satisfy the provider check when `--probe-cli` is enabled.
+  Windows and Linux IDE 2.6 also require `agentIdentityConfirmed` from their own embedded Agent. A matching desktop account alone cannot satisfy that check. Cleanup records confirmed official-client shutdown before restoring the shared Windows credential; failed shutdown makes the run fail.
 - `partial`: desktop credentials and a window are verified, but neither the visible account nor a fresh official authentication transition confirms login, or the client still requires first-run terms acceptance. Onboarding, sign-in and terms screen indicators are recorded without capturing account text.
 - `failed`: a required operation, identity check, renderer startup, or provider task fails. The report identifies its stage and safe error categories.
 

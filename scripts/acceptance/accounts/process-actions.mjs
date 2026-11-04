@@ -3,6 +3,25 @@ import { setTimeout as delay } from 'node:timers/promises';
 import spawn from 'cross-spawn';
 import { chromium } from 'playwright';
 
+/** Abort the matrix on a stalled browser/IPC observation, then let its owner tear down clients. */
+export async function withAcceptanceDeadline(action, timeout = 90000) {
+  let timer;
+  try {
+    return await Promise.race([
+      action(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error('Acceptance operation exceeded its deadline');
+          error.code = 'acceptance-operation-timeout';
+          reject(error);
+        }, timeout);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Capture bounded private output; expose only known error categories to reports. */
 export function createCommand(environment) {
   return async function command(executable, args, timeout = 90000) {

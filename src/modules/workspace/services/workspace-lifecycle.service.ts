@@ -76,7 +76,12 @@ export function createWorkspaceLifecycleService(
       token: account.token,
     };
 
-    const preparedWrite = await prepareClientAccountWrite(credentials, 'ide', context.pathOptions);
+    const preparedWrite = await prepareClientAccountWrite(
+      credentials,
+      'ide',
+      context.pathOptions,
+      'workspace',
+    );
     await preparedWrite.write();
 
     fs.mkdirSync(isolatedHome, { recursive: true });

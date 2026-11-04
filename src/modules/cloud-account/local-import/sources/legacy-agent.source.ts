@@ -6,8 +6,7 @@ import { getAgentDir } from '@/shared/platform/paths';
 import { ProtobufUtils } from '@/shared/serialization/protobuf';
 import { AccountBackupDataSchema } from '@/modules/account/types';
 import { credentialsFromAccountBackup } from '@/modules/account/public';
-import { decrypt } from '@/shared/security/security';
-import { isEncryptedPayloadCandidate } from '@/shared/security/crypto';
+import { decodeCredentialFileText } from '@/shared/security/credential-file-text';
 import {
   createLocalAccountDiscoveryFailure,
   createLocalAccountDiscoveryFailureByCode,
@@ -223,7 +222,7 @@ export class LegacyAgentDiscoverySource implements LocalAccountDiscoverySource {
 
         try {
           const content = fs.readFileSync(backupPath, 'utf-8');
-          const plaintext = isEncryptedPayloadCandidate(content) ? await decrypt(content) : content;
+          const plaintext = await decodeCredentialFileText(content);
           const backup: unknown = JSON.parse(plaintext);
           candidates.push({
             source: {

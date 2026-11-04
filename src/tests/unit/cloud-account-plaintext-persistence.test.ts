@@ -137,11 +137,13 @@ describe('plaintext cloud-account persistence', () => {
 
     const backupName = fs
       .readdirSync(state.directory)
-      .find((name) => name.startsWith('cloud_accounts.db.encrypted-backup-'));
+      .find((name) => name.startsWith('cloud_accounts.db.account-migration-'));
     if (!backupName) {
       throw new Error('Encrypted account backup was not created');
     }
-    const backup = new Database(path.join(state.directory, backupName), { readonly: true });
+    const backup = new Database(path.join(state.directory, backupName, 'encrypted.db'), {
+      readonly: true,
+    });
     const current = new Database(dbPath, { readonly: true });
     try {
       expect(
@@ -173,7 +175,7 @@ describe('plaintext cloud-account persistence', () => {
         .readdirSync(state.directory)
         .filter(
           (name) =>
-            name.startsWith('cloud_accounts.db.encrypted-backup-') &&
+            name.startsWith('cloud_accounts.db.account-migration-') &&
             !name.endsWith('-shm') &&
             !name.endsWith('-wal'),
         ),

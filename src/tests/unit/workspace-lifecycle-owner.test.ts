@@ -144,6 +144,7 @@ describe('workspace lifecycle ownership', () => {
       { email: 'a@example.invalid', name: 'a@example.invalid', token: {} },
       'ide',
       context.pathOptions,
+      'workspace',
     );
     release = reserveSwitch('ide');
   });

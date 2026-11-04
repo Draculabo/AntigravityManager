@@ -68,6 +68,8 @@ const vi = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'switched-identity-unconfirmed':
+      'Thông tin đăng nhập đã được cập nhật nhưng Agent của IDE vừa khởi động lại chưa xác nhận tài khoản đã chọn. Hãy kiểm tra tài khoản trong IDE trước khi thử lại. Đóng tất cả ứng dụng Antigravity trước khi khôi phục.',
     'update-in-progress': 'Antigravity đang cập nhật. Hãy hoàn tất cập nhật rồi thử lại.',
     'close-failed':
       'Không thể đóng Antigravity. Hãy lưu cuộc trò chuyện và tệp, đóng ứng dụng thủ công rồi thử lại.',

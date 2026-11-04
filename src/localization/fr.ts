@@ -78,6 +78,8 @@ const fr = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'switched-identity-unconfirmed':
+      'Les identifiants ont été mis à jour, mais l’Agent IDE redémarré n’a pas confirmé le compte choisi. Vérifiez le compte dans l’IDE avant de réessayer. Fermez tous les clients Antigravity avant une restauration.',
     'update-in-progress':
       'Antigravity est en cours de mise à jour. Terminez la mise à jour, puis réessayez.',
     'close-failed':

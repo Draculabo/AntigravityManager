@@ -3,7 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { test } from 'node:test';
-import { captureWindowsCredential } from './windows-credential-recovery.mjs';
+import {
+  captureWindowsCredential,
+  restoreAfterClientShutdown,
+} from './windows-credential-recovery.mjs';
 
 assert.equal(process.platform, 'win32');
 assert(process.env.AGM_ACCEPTANCE_NATIVE_ROOT);
@@ -42,5 +45,21 @@ test('native recovery leaves unchanged credentials untouched', async () => {
   } finally {
     assert.equal(absent.restore(), true);
     assert.equal(await library.readWindowsCredential(target), null);
+  }
+});
+
+test('runner cleanup refuses restoration after an unconfirmed client stop', async () => {
+  const target = `AntigravityManager-Recovery-${randomUUID()}`;
+  const absent = captureWindowsCredential(loadNative, target);
+  try {
+    await library.writeWindowsCredential(target, 'synthetic-original-user', 'original');
+    const recovery = captureWindowsCredential(loadNative, target);
+    await library.writeWindowsCredential(target, 'synthetic-selected-user', 'selected');
+    assert.throws(() => restoreAfterClientShutdown(recovery, false), /shutdown is unconfirmed/);
+    assert.equal(await library.readWindowsCredential(target), 'selected');
+    assert.equal(restoreAfterClientShutdown(recovery, true), true);
+    assert.equal(await library.readWindowsCredential(target), 'original');
+  } finally {
+    assert.equal(absent.restore(), true);
   }
 });

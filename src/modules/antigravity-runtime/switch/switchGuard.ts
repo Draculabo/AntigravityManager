@@ -3,7 +3,7 @@ import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarge
 import { reserveSwitch } from '../operation';
 import { processError } from '../processErrors';
 
-type SwitchOwner = 'local-account-switch' | 'cloud-account-switch';
+type SwitchOwner = 'local-account-switch' | 'cloud-account-switch' | 'ide-credential-recovery';
 
 let activeSwitchOwner: SwitchOwner | null = null;
 

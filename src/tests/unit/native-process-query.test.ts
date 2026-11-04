@@ -1,4 +1,11 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+
+vi.mock('node:fs', async (original) => {
+  const actual = await original<typeof import('node:fs')>();
+  const readFileSync = vi.fn();
+  return { ...actual, default: { ...actual, readFileSync }, readFileSync };
+});
 
 const mocks = vi.hoisted(() => ({ query: vi.fn() }));
 vi.mock('@draculabo/sysinfo-process-enhanced', () => ({ queryProcesses: mocks.query }));
@@ -11,9 +18,89 @@ const row = {
   cwd: '/tmp',
   startTime: 100n,
 };
+const platform = process.platform;
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+});
+
+// Linux proc(5): state is field 3, starttime is field 22, measured since boot.
+const stat = (pid: number, state: string, ticks = '8146913') =>
+  `${pid} (Antigravity (IDE)) ${state} ${Array(18).fill('0').join(' ')} ${ticks} 0`;
+afterEach(() => {
+  Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+});
+
+it.each(['Z', 'X'])(
+  'excludes a confirmed exited Linux process (%s) while preserving live rows',
+  async (state) => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    const dead = { ...row, pid: 43, exe: undefined, cmd: [] };
+    mocks.query.mockResolvedValue([row, dead]);
+    vi.mocked(readFileSync).mockImplementation((file) =>
+      String(file) === '/proc/42/stat' ? stat(42, 'S') : stat(43, state),
+    );
+    const { readNativeProcessSnapshot } = await import('@/shared/platform/nativeProcessQuery');
+    expect(await readNativeProcessSnapshot()).toEqual([{ ...row, startTime: 8146913n }]);
+  },
+);
+
+it.each([stat(44, 'Z'), '43 (Antigravity) S 1 0', 'invalid'])(
+  'refuses an invalid Linux creation identity (%s)',
+  async (content) => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    const ambiguous = { ...row, pid: 43, exe: undefined, cmd: [] };
+    mocks.query.mockResolvedValue([ambiguous]);
+    vi.mocked(readFileSync).mockReturnValue(content);
+    const { readNativeProcessSnapshot } = await import('@/shared/platform/nativeProcessQuery');
+    await expect(readNativeProcessSnapshot()).rejects.toThrow('creation identity');
+  },
+);
+
+it('refuses unreadable Linux proc data and never reads proc on Windows', async () => {
+  const ambiguous = { ...row, pid: 43, exe: undefined, cmd: [] };
+  mocks.query.mockResolvedValue([ambiguous]);
+  vi.mocked(readFileSync).mockImplementation(() => {
+    throw new Error('unavailable');
+  });
+  const { readNativeProcessSnapshot } = await import('@/shared/platform/nativeProcessQuery');
+  Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+  await expect(readNativeProcessSnapshot()).rejects.toThrow('unavailable');
+  vi.mocked(readFileSync).mockClear();
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  expect(await readNativeProcessSnapshot()).toEqual([ambiguous]);
+  expect(readFileSync).not.toHaveBeenCalled();
+});
+
+it('keeps a stable Linux creation identity across epoch corrections and detects PID reuse', async () => {
+  Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+  mocks.query
+    .mockResolvedValueOnce([row])
+    .mockResolvedValueOnce([{ ...row, startTime: 103n }])
+    .mockResolvedValueOnce([{ ...row, startTime: 103n }]);
+  vi.mocked(readFileSync)
+    .mockReturnValueOnce(stat(42, 'S', '1000'))
+    .mockReturnValueOnce(stat(42, 'S', '1000'))
+    .mockReturnValueOnce(stat(42, 'S', '2000'));
+  const { readNativeProcessSnapshot } = await import('@/shared/platform/nativeProcessQuery');
+  expect(await readNativeProcessSnapshot()).toEqual([{ ...row, startTime: 1000n }]);
+  expect(await readNativeProcessSnapshot()).toEqual([{ ...row, startTime: 1000n }]);
+  expect(await readNativeProcessSnapshot()).toEqual([{ ...row, startTime: 2000n }]);
+});
+
+it('retains a live unreadable client and excludes a process whose proc entry disappeared', async () => {
+  Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+  const ambiguous = { ...row, exe: undefined, cmd: [] };
+  mocks.query.mockResolvedValue([ambiguous]);
+  vi.mocked(readFileSync)
+    .mockReturnValueOnce(stat(42, 'S'))
+    .mockImplementationOnce(() => {
+      throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+    });
+  const { readNativeProcessSnapshot } = await import('@/shared/platform/nativeProcessQuery');
+  expect(await readNativeProcessSnapshot()).toEqual([{ ...ambiguous, startTime: 8146913n }]);
+  expect(await readNativeProcessSnapshot()).toEqual([]);
 });
 
 it('preserves the complete native snapshot and validates its boundary', async () => {

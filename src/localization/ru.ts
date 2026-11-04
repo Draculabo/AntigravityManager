@@ -77,6 +77,8 @@ const ru = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'switched-identity-unconfirmed':
+      'Учётные данные обновлены, но Agent перезапущенной IDE не подтвердил выбранный аккаунт. Проверьте аккаунт в IDE перед повторной попыткой. Перед восстановлением закройте все клиенты Antigravity.',
     'update-in-progress': 'Antigravity обновляется. Завершите обновление и попробуйте снова.',
     'close-failed':
       'Не удалось закрыть Antigravity. Сохраните чаты и файлы, закройте приложение вручную и повторите попытку.',

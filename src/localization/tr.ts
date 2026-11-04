@@ -69,6 +69,8 @@ const tr = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'switched-identity-unconfirmed':
+      'Kimlik bilgileri güncellendi ancak yeniden başlatılan IDE Agent seçilen hesabı doğrulamadı. Yeniden denemeden önce IDE hesabını kontrol edin. Geri yüklemeden önce tüm Antigravity istemcilerini kapatın.',
     'update-in-progress': 'Antigravity güncelleniyor. Güncellemeyi tamamlayıp tekrar deneyin.',
     'close-failed':
       'Antigravity kapatılamadı. Sohbetlerinizi ve dosyalarınızı kaydedin, uygulamayı elle kapatıp tekrar deneyin.',

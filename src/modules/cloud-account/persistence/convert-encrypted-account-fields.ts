@@ -1,6 +1,5 @@
-import fs from 'node:fs';
-import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
+import { isEqual } from 'lodash-es';
 import { logger } from '@/shared/logging/logger';
 import { accounts } from '@/shared/persistence/database/schema';
 import { isEncryptedPayloadCandidate } from '@/shared/security/crypto';
@@ -12,20 +11,17 @@ import {
 } from '@/modules/cloud-account/types';
 import { getCloudAccountsDbPath } from '@/shared/platform/paths';
 import { getCloudDb } from './cloud-account-db';
+import {
+  preserveCloudAccountMigrationBackups,
+  readAccountConversionFields,
+  type AccountConversionFields,
+} from './cloud-account-migration-backups';
 
 /** One-time conversion for databases written by releases that encrypted account fields. */
 export async function convertEncryptedAccountFields(): Promise<void> {
   const { raw, orm } = getCloudDb();
   try {
-    const rows = orm
-      .select({
-        id: accounts.id,
-        tokenJson: accounts.tokenJson,
-        quotaJson: accounts.quotaJson,
-        healthJson: accounts.healthJson,
-      })
-      .from(accounts)
-      .all();
+    const rows = readAccountConversionFields(raw);
     const encryptedSamples = rows.flatMap((row) =>
       [row.tokenJson, row.quotaJson, row.healthJson].filter(isEncryptedPayloadCandidate),
     );
@@ -34,12 +30,7 @@ export async function convertEncryptedAccountFields(): Promise<void> {
     }
 
     await initializeMasterKey({ encryptedSamples, storedAccountCount: rows.length });
-    const converted: Array<{
-      id: string;
-      tokenJson: string;
-      quotaJson: string | null;
-      healthJson: string | null;
-    }> = [];
+    const converted: AccountConversionFields[] = [];
     for (const row of rows) {
       const tokenJson = await decodeField(row.tokenJson, CloudTokenDataSchema);
       const quotaJson = await decodeField(row.quotaJson, CloudQuotaDataSchema);
@@ -53,15 +44,13 @@ export async function convertEncryptedAccountFields(): Promise<void> {
       }
     }
 
-    // SQLite's backup API includes committed WAL data. Preserve the encrypted original before
-    // replacing any field so a failed conversion can be recovered without exposing tokens in logs.
-    const backupPath = `${getCloudAccountsDbPath()}.encrypted-backup-${Date.now()}-${randomUUID()}`;
-    await raw.backup(backupPath);
-    if (process.platform !== 'win32') {
-      fs.chmodSync(backupPath, 0o600);
-    }
+    await preserveCloudAccountMigrationBackups(raw, getCloudAccountsDbPath(), rows, converted);
 
     orm.transaction((transaction) => {
+      // No await after the comparison: a conflicting writer must fail this SQLite transaction.
+      if (!isEqual(readAccountConversionFields(raw), rows)) {
+        throw new Error('Account fields changed during conversion; retry startup');
+      }
       for (const row of converted) {
         transaction
           .update(accounts)

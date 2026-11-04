@@ -21,7 +21,7 @@ export interface CloudAccountListDependencies {
   getCurrentAccountInfo(
     target: ListTarget,
   ): Pick<ReturnType<typeof getCurrentAccountInfo>, 'isAuthenticated' | 'email'>;
-  usesCredentialStore(target: 'classic'): boolean | Promise<boolean>;
+  usesCredentialStore(target: ListTarget): boolean | Promise<boolean>;
   getActiveAccountId(target: ActiveTarget): string;
   warn(message: string, error: unknown): void;
 }
@@ -56,15 +56,19 @@ export function createCloudAccountListService(deps: CloudAccountListDependencies
       const activeClassicAccountId = classicUsesCredentialStore
         ? deps.getActiveAccountId('classic')
         : '';
-      try {
-        const ideInfo = deps.getCurrentAccountInfo('ide');
-        if (ideInfo.isAuthenticated) {
-          ideEmail = normalizeAccountEmail(ideInfo.email);
+      const ideUsesCredentialStore = await deps.usesCredentialStore('ide');
+      if (!ideUsesCredentialStore) {
+        try {
+          const ideInfo = deps.getCurrentAccountInfo('ide');
+          if (ideInfo.isAuthenticated) {
+            ideEmail = normalizeAccountEmail(ideInfo.email);
+          }
+        } catch (error) {
+          deps.warn('Failed to read current ide account info during listing', error);
         }
-      } catch (error) {
-        deps.warn('Failed to read current ide account info during listing', error);
       }
-      const activeIdeAccountId = ideEmail ? '' : deps.getActiveAccountId('ide');
+      const activeIdeAccountId =
+        ideUsesCredentialStore || !ideEmail ? deps.getActiveAccountId('ide') : '';
       const activeAgyAccountId = deps.getActiveAccountId('agy');
 
       return accounts.map((account) => {
@@ -74,7 +78,10 @@ export function createCloudAccountListService(deps: CloudAccountListDependencies
             ? activeClassicAccountId === account.id
             : classicEmail === accountEmail;
         const isIdeActive =
-          ideEmail === accountEmail || (!!activeIdeAccountId && activeIdeAccountId === account.id);
+          ideUsesCredentialStore && activeIdeAccountId
+            ? activeIdeAccountId === account.id
+            : ideEmail === accountEmail ||
+              (!!activeIdeAccountId && activeIdeAccountId === account.id);
         const isAgyActive = activeAgyAccountId === account.id;
         return projectCloudAccountView({
           ...account,

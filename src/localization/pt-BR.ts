@@ -189,6 +189,8 @@ const ptBR = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'switched-identity-unconfirmed':
+      'As credenciais foram atualizadas, mas o Agent do IDE reiniciado não confirmou a conta selecionada. Verifique a conta no IDE antes de tentar novamente. Feche todos os clientes Antigravity antes de restaurar.',
     'update-in-progress':
       'O Antigravity está atualizando. Conclua a atualização e tente novamente.',
     'close-failed':

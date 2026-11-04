@@ -1,7 +1,7 @@
 import { prepareLaunchContext, prepareClientAccountWrite } from '@/modules/antigravity-runtime';
 import { credentialsFromAccountBackup } from '../persistence/snapshotCredentials';
 import {
-  initializeAccountBackupKey,
+  migrateAccountBackupFile,
   readAccountBackupFile,
   writeAccountBackupFile,
 } from '../persistence/account-backup-file';
@@ -45,6 +45,25 @@ const SWITCH_EXIT_TIMEOUT_MS = 10000;
 export async function listAccountsData(): Promise<Account[]> {
   const accountIndex = await readAccountsIndex();
   const accountList = Object.values(accountIndex);
+  let migrated = 0;
+  let failed = 0;
+  for (const account of accountList) {
+    const file = account.backup_file || path.join(getBackupsDir(), `${account.id}.json`);
+    try {
+      if (await migrateAccountBackupFile(file)) {
+        migrated += 1;
+      }
+    } catch {
+      failed += 1;
+      // Listing remains available; failed snapshots stay intact and fail explicitly on selection.
+      logger.warn('Local account snapshot migration did not complete', {
+        accountId: sanitizeAccountId(account.id),
+      });
+    }
+  }
+  if (migrated > 0 || failed > 0) {
+    logger.info('Local account snapshot migration result', { migrated, failed });
+  }
   // NOTE: Sort by last_used descending
   accountList.sort((leftAccount, rightAccount) => {
     const leftLastUsed = leftAccount.last_used || '';
@@ -142,9 +161,6 @@ export async function addAccountSnapshot(appTarget?: AntigravityAppTarget): Prom
   // NOTE  Backup data from DB
   const backupData = await dbBackup(account, appTarget, pathOptions);
 
-  await initializeAccountBackupKey(
-    Object.values(accounts).flatMap((saved) => (saved.backup_file ? [saved.backup_file] : [])),
-  );
   await writeAccountBackupFile(backupPath, backupData);
 
   // NOTE Re-read the latest index before committing account metadata.

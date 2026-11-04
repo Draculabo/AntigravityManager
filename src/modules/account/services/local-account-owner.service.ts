@@ -78,7 +78,8 @@ export function createLocalAccountOwner(policy: LocalAccountPolicy) {
       await Promise.allSettled([...active]);
     },
     listAccounts: () =>
-      execute('snapshot-unavailable', false, async () =>
+      // Listing can migrate historical snapshots; serialize it with capture, switch and deletion.
+      execute('snapshot-unavailable', true, async () =>
         LocalAccountListSchema.parse((await policy.listAccountsData()).map(projectLocalAccount)),
       ),
     getCurrentAccountInfo: (appTarget?: Parameters<typeof getCurrentAccountInfo>[0]) =>

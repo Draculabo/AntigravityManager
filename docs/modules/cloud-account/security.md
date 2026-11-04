@@ -8,9 +8,31 @@ The `accounts` table stores `token_json`, `quota_json` and `health_json` as plai
 token field includes OAuth access and refresh tokens and may include an ID token or upstream proxy
 URL. Account CRUD and ordinary startup do not use the account-encryption master key. On startup,
 only databases containing older encrypted account fields invoke the existing key providers. The
-owner validates every decrypted field, creates an SQLite backup beside the database, then writes
-all converted fields in one transaction. A missing key, invalid field or failed backup stops startup
-without changing account rows. The encrypted backup remains available for manual recovery.
+owner validates every decrypted field and creates a unique private directory beside the database:
+`<database>.account-migration-<random-suffix>/`. It preserves the original account ciphertext in
+`encrypted.db` using SQLite's online backup, including committed WAL pages. A separate working copy
+is converted into `decrypted.db`; both completed files are self-contained SQLite databases, without
+requiring a WAL/SHM sibling. The owner reopens both copies, checks SQLite integrity and compares all
+account IDs and token/quota/health field bytes with their expected versions. Only then does it
+replace the live fields in one transaction. Account fields changed during asynchronous key or
+backup work are refused rather than overwritten. Settings, workspaces, account metadata and
+unknown JSON properties are preserved.
+
+A missing key, invalid field, failed backup or failed backup verification stops startup without
+converting live account rows. A failed final transaction rolls back and retains both completed
+copies. Failed preparation can leave an encrypted copy and `decrypted.pending.db`; the pending
+file is not a completed recovery backup. Every attempt uses a new directory and history is never
+overwritten or automatically deleted. Directories use mode `0700` and files use `0600` on POSIX
+systems. Both versions contain sensitive account material; preserve them privately. Local backups
+do not protect against losing the entire profile or disk.
+
+For manual recovery, stop every Manager/Core process using the profile. Preserve the current DB,
+WAL and SHM together outside its active path, then copy a completed backup into the original database
+path without reusing the displaced WAL/SHM. Keep the historical backup unchanged. `decrypted.db`
+does not need the original master key; `encrypted.db` still requires that key during conversion.
+Restart and verify the account list and saved settings. Existing older `.encrypted-backup-*` files
+remain usable with the original key. An already converted plaintext database does not create a new
+migration pair on ordinary startup. See the [upgrade and recovery guide](../../upgrade-guides/next/cloud-account-backups.md).
 If a standalone core cannot access the old key provider, start the desktop once with the same
 profile to perform conversion, then start the core. A failed core attempt leaves rows unchanged.
 

@@ -23,6 +23,40 @@ const PackageJsonVersionSchema = z.object({
   name: z.string().regex(/antigravity/i),
   version: z.string().trim().min(1),
 });
+const IdeProductVersionSchema = z.object({
+  applicationName: z.literal('antigravity-ide'),
+  ideVersion: z
+    .string()
+    .trim()
+    .max(100)
+    .refine((value) => parse(value) !== null),
+});
+
+/** IDE product releases differ from the embedded VS Code package version. */
+function readLinuxIdeVersion(execPath: string): AntigravityVersion {
+  const resources = path.join(path.dirname(execPath), 'resources');
+  const productPath = path.join(resources, 'app', 'product.json');
+  const archive = path.join(resources, 'app.asar');
+  let content: Buffer;
+  if (fs.existsSync(productPath)) {
+    if (fs.statSync(productPath).size > 1024 * 1024) {
+      throw new Error('IDE product metadata exceeds its size limit');
+    }
+    content = fs.readFileSync(productPath);
+  } else {
+    uncache(archive);
+    content = extractFile(archive, 'product.json');
+  }
+  if (content.length > 1024 * 1024) {
+    throw new Error('IDE product metadata exceeds its size limit');
+  }
+  const raw: unknown = JSON.parse(content.toString('utf8'));
+  const product = IdeProductVersionSchema.safeParse(raw);
+  if (!product.success) {
+    throw new Error('Unable to read Antigravity IDE product version');
+  }
+  return { shortVersion: product.data.ideVersion, bundleVersion: product.data.ideVersion };
+}
 
 function cacheAndReturn(cacheKey: string, version: AntigravityVersion): AntigravityVersion {
   cachedVersions.set(cacheKey, version);
@@ -91,7 +125,10 @@ function parseVersionString(version: string | null): string {
   return trimmed;
 }
 
-async function readVersion(execPath: string): Promise<AntigravityVersion> {
+async function readVersion(
+  execPath: string,
+  target: AntigravityAppTarget,
+): Promise<AntigravityVersion> {
   if (process.platform === 'win32') {
     const parsed = parseVersionString(await readWindowsFileVersion(execPath));
     return { shortVersion: parsed, bundleVersion: parsed };
@@ -114,6 +151,9 @@ async function readVersion(execPath: string): Promise<AntigravityVersion> {
     };
   }
   if (process.platform === 'linux') {
+    if (target === 'ide') {
+      return readLinuxIdeVersion(execPath);
+    }
     // --version can launch an Electron GUI, including across WSL interop.
     // Missing installation metadata must never start an application.
     const manifest = readPackageJsonVersion(execPath);
@@ -142,6 +182,9 @@ function getVersionCacheKey(target: AntigravityAppTarget, execPath: string): str
     case 'linux': {
       const resources = path.join(path.dirname(execPath), 'resources');
       files.push(path.join(resources, 'app', 'package.json'), path.join(resources, 'app.asar'));
+      if (target === 'ide') {
+        files.push(path.join(resources, 'app', 'product.json'));
+      }
       break;
     }
   }
@@ -181,7 +224,9 @@ export async function getAntigravityVersion(
   }
   let pending = pendingVersions.get(cacheKey);
   if (!pending) {
-    pending = readVersion(execPath).then((version) => cacheAndReturn(cacheKey, version));
+    pending = readVersion(execPath, resolvedTarget).then((version) =>
+      cacheAndReturn(cacheKey, version),
+    );
     pendingVersions.set(cacheKey, pending);
     const release = () => {
       pendingVersions.delete(cacheKey);

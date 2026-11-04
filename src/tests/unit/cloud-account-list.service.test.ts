@@ -52,7 +52,7 @@ describe('cloud account list service', () => {
 
   it('preserves Classic credential ID precedence, IDE email, and Agy ID flags', async () => {
     const deps = dependencies(accounts, {
-      usesCredentialStore: () => true,
+      usesCredentialStore: (target) => target === 'classic',
       getCurrentAccountInfo: (target) => ({
         isAuthenticated: true,
         email: target === 'classic' ? 'OLD@example.com' : ' IDE@example.com ',
@@ -125,6 +125,31 @@ describe('cloud account list service', () => {
       ['agy', false, false],
     ]);
     expect(deps.getActiveAccountId).not.toHaveBeenCalledWith('classic');
+  });
+
+  it('uses IDE credential-store ID when IDE uses the credential store', async () => {
+    const deps = dependencies(accounts, {
+      usesCredentialStore: (target) => target === 'ide',
+      getCurrentAccountInfo: vi.fn(() => ({ isAuthenticated: false, email: '' })),
+      getActiveAccountId: vi.fn((target) => (target === 'ide' ? 'ide' : '')),
+    });
+
+    const views = await createCloudAccountListService(deps).listViews();
+    expect(
+      views.map(({ id, is_active_classic, is_active_ide, is_active_agy }) => [
+        id,
+        is_active_classic,
+        is_active_ide,
+        is_active_agy,
+      ]),
+    ).toEqual([
+      ['classic', false, false, false],
+      ['ide', false, true, false],
+      ['agy', false, false, false],
+    ]);
+    // IDE credential store skips the SQLite email lookup entirely
+    expect(deps.getCurrentAccountInfo).not.toHaveBeenCalledWith('ide');
+    expect(deps.getActiveAccountId).toHaveBeenCalledWith('ide');
   });
 
   it('refetches after the legacy OAuth-client-key backfill before projecting', async () => {

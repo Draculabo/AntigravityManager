@@ -13,7 +13,7 @@ This decision supersedes the [previous transport decision](2026-10-13-macos-clie
 
 ## Decision
 
-Keep Mac installation in dedicated credential modules shared by both process owners.
+Keep Mac Classic, Agy and pre-2.6 IDE installation in dedicated credential modules shared by both process owners.
 Use the complete client sequence described in [security](../../../../docs/security.md):
 delete/create Keychain commands through PATH, explicit complete password argument, root
 ID token, three direct file mirrors, sequential SQLite writes and refresh-token-only Agy
@@ -30,6 +30,22 @@ Reassert credentials after supervised service termination as a best-effort opera
 failed replacement confirmation selects the existing restart path without another
 installation attempt. Preserve the shared process owner's
 installation capture, process selection and user-closed-window checks.
+
+Ordinary Mac IDE 2.6 account switches synchronize desktop SQLite, Keychain and credential files.
+Use Keychain deletion and creation, the nested token and root account metadata, standalone and
+Google mirrors, dedicated CLI-session exclusion, best-effort native/file failures and a full IDE
+restart. Do not replace the Keychain transport
+with `-U` updates or `-X` hexadecimal values without a separate maintainer decision.
+IDE credential reads use the CLI/standalone/OAuth fallback order and expose complete
+token fields to existing snapshot and current-account consumers. Classic/Agy read contracts stay
+unchanged. The fallback can prefer a separate CLI session; changing its precedence requires
+independent client evidence rather than an invented Mac-only policy.
+
+The adaptation uses the existing shared SQLite transaction/online-backup writer and the already
+owned restart identity gate. This is an explicit exception to the legacy sequential SQLite
+decision above. A restarted Mac `agy` must confirm the selected account before cloud/local
+finalization. The Mac adapter does not adopt the separate Windows/Linux native recovery format.
+Older IDE versions and workspace provisioning retain their existing routing.
 
 ## Alternatives considered
 
@@ -50,9 +66,12 @@ do not establish WAL consistency. Success is not proof of official-client accoun
 The new payload and mirror locations are existing client contracts, not Manager database
 schema changes. Windows and Linux retain their existing installation policies.
 
-Physical Mac acceptance is the release gate for this behavior. A failed trial requires
-revisiting this decision and restoring the previous implementation together with its
-tests and current documentation; do not add an implicit fallback to that implementation.
+On 2026-11-04, the maintainer explicitly accepts releasing the Mac adaptation without local or
+remote Mac acceptance because no Mac is available, using credential contract checks and subsequent
+user feedback. This replaces the prior physical-Mac release gate; it does not establish native
+compatibility. Keychain permissions, Launch Services and official-client authentication remain
+unverified. A failed user trial requires revisiting this decision together with its tests and
+current documentation; do not introduce an implicit alternative credential transport.
 
 ## Verification
 
@@ -69,6 +88,10 @@ and partial-write behavior after an injected failure. These checks never invoke 
 Keychain commands or write real account credentials.
 
 No physical Mac, native Keychain permissions or official-client login has been validated
-in this environment. Acceptance requires two authorized accounts and A-B-A switches through
+in this environment. Recommended native acceptance uses two authorized accounts and A-B-A switches through
 the CLI and Electron owners, with the actual client identity and a real AI request checked
 after every switch. See [testing](../../../../docs/testing.md#client-credential-storage-checks).
+
+The IDE 2.6 adaptation adds a credential contract check with real isolated files,
+prepared-write failure fixtures, Mac bundle-version discovery and Mac restart/Agent identity
+cases. Their source-level results do not replace the native evidence waived above.
