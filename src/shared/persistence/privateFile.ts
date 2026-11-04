@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-/** Atomically replaces a private UTF-8 credential file in its owning directory. */
-export function writePrivateFileAtomically(target: string, payload: string): void {
+/** Atomically replaces a private credential file in its owning directory. */
+export function writePrivateFileAtomically(target: string, payload: string | Uint8Array): void {
   fs.mkdirSync(path.dirname(target), { mode: 0o700, recursive: true });
   const tempPath = `${target}.${process.pid}-${randomUUID()}.agm-tmp`;
 

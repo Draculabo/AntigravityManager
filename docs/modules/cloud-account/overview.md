@@ -114,14 +114,13 @@ policy. Do not put account tokens in logs, reports, IPC diagnostics, screenshots
 
 ## Focused persistence checks
 
-For cloud-account plaintext storage, run the focused mock tests with `pnpm test --run
-src/tests/unit/convert-encrypted-account-fields.test.ts
-src/tests/unit/cloud-account-batch-writer.test.ts`. The real SQLite reopen and old-ciphertext backup
-test needs the installed Electron ABI on Windows:
+For cloud-account plaintext storage, run the focused batch-writer tests with `pnpm test --run
+src/tests/unit/cloud-account-batch-writer.test.ts`. Conversion and plaintext persistence tests use
+real disposable SQLite databases and need the installed Electron ABI on Windows:
 
 ```powershell
 $env:ELECTRON_RUN_AS_NODE = '1'
-& .\node_modules\electron\dist\electron.exe .\node_modules\vitest\vitest.mjs run src/tests/unit/cloud-account-plaintext-persistence.test.ts
+& .\node_modules\electron\dist\electron.exe .\node_modules\vitest\vitest.mjs run src/tests/unit/convert-encrypted-account-fields.test.ts src/tests/unit/cloud-account-plaintext-persistence.test.ts
 ```
 
 `cloud-account-plaintext-persistence.test.ts` exercises real SQLite account deletion, current-account
@@ -132,3 +131,9 @@ for the adjacent desktop and standalone contracts. When the workspace SQLite bin
 for Electron, run the same Vitest entry with the matching Electron executable and
 `ELECTRON_RUN_AS_NODE=1`; do not rebuild it for Node over the desktop binary just to run these tests.
 This establishes native persistence behavior, not installed-client sign-out or live-provider requests.
+
+The conversion suite verifies both encrypted and decrypted database copies before live conversion,
+committed WAL data, complete account/settings/workspace preservation, no-key plaintext recovery,
+retained history, failed preparation/publication/readback and final-transaction rollback. Controlled
+updates across key-provider and backup boundaries verify that migration does not overwrite newer
+account fields. These tests mock only historical key access and decryption, not SQLite or backup I/O.

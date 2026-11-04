@@ -52,6 +52,15 @@ Module._load = function (request, ...args) {
   if (nativeWindows && request === './windowsCredentialStore') {
     const store = originalLoad.call(this, request, ...args);
     return {
+      ...store,
+      readWindowsCredentialSnapshot: async (target) => {
+        assert.equal(target, 'gemini:antigravity');
+        return store.readWindowsCredentialSnapshot(credentialTarget);
+      },
+      restoreWindowsCredentialSnapshot: async (target, saved) => {
+        assert.equal(target, 'gemini:antigravity');
+        return store.restoreWindowsCredentialSnapshot(credentialTarget, saved);
+      },
       readWindowsCredential: async (target) => {
         assert.equal(target, 'gemini:antigravity');
         return store.readWindowsCredential(credentialTarget);
@@ -254,6 +263,19 @@ try {
         assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
       }
       const hostCredential = await readAntigravityCredentialStoreToken();
+      const {
+        readWindowsCredentialSnapshot,
+        restoreWindowsCredentialSnapshot,
+      } = require('../src/modules/antigravity-runtime/credentials/windowsCredentialStore.ts');
+      const originalCredential = await readWindowsCredentialSnapshot(credentialTarget);
+      assert(originalCredential);
+      await writeAntigravityCredentialStoreToken(b.token);
+      await restoreWindowsCredentialSnapshot(credentialTarget, originalCredential);
+      assert.deepEqual(await readWindowsCredentialSnapshot(credentialTarget), originalCredential);
+      assert.deepEqual(await readAntigravityCredentialStoreToken(), hostCredential);
+      await restoreWindowsCredentialSnapshot(credentialTarget, null);
+      assert.equal(await readWindowsCredentialSnapshot(credentialTarget), null);
+      await restoreWindowsCredentialSnapshot(credentialTarget, originalCredential);
       const profileA = path.join(root, 'profile-a');
       const profileB = path.join(root, 'profile-b');
       for (const [profile, selected] of [

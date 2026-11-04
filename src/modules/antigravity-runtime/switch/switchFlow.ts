@@ -23,6 +23,7 @@ import { prepareClassicTermsSwitch, type ClassicTermsSwitch } from '../terms/cla
 import { withTimingTrace } from '@/shared/observability/timingTrace';
 import type { SwitchTrace } from '@/shared/observability/switchDiagnostic';
 import { executeClassicSwitch } from './classicSwitch';
+import { confirmIdeAccountIdentity } from '../ideAccountIdentity';
 
 export interface SwitchFlowOptions {
   onSwitchTrace?(trace: SwitchTrace): void;
@@ -357,11 +358,19 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
           stage = 'start';
           startAttempted = true;
           options.onDiagnosticStage?.('process-start');
+          let started: { pid: number };
           await trace.phase('startMs', async () => {
             try {
-              await startFromContext(context);
+              started = await startFromContext(context);
             } catch {
               throw processError('switched-startup-unconfirmed');
+            }
+            if (
+              ['win32', 'linux', 'darwin'].includes(process.platform) &&
+              context.target === 'ide' &&
+              useCredentialStore
+            ) {
+              await confirmIdeAccountIdentity(context, started.pid, options.accountEmail ?? '');
             }
           });
         }

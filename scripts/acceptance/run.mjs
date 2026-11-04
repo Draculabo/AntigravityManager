@@ -23,6 +23,7 @@ const suites = {
     prepare: './accounts/build-helpers.mjs',
     switch: './accounts/account-switch-acceptance.mjs',
     'auth-state': './accounts/client-ui.integration.mjs',
+    'linux-credentials': './accounts/linux-ide-credentials.integration.mjs',
     'graceful-close': './accounts/test-windows-graceful-close.integration.mjs',
     history: './accounts/test-official-ide-history.integration.mjs',
   },

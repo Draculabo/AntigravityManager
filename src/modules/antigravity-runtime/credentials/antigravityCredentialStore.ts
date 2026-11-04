@@ -11,7 +11,12 @@ import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
 import { readWindowsCredential, writeWindowsCredential } from './windowsCredentialStore';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { buildAntigravityCredentialPayload } from './antigravityCredentialPayload';
-import { readMacOSCredentialStore, writeMacOSCredentialStore } from './macosCredentialStore';
+import {
+  readMacOSCredentialStore,
+  readMacOSIdeCredentialPayload,
+  writeMacOSCredentialStore,
+} from './macosCredentialStore';
+import { readLinuxIdeCredentialSnapshot } from './linuxIdeCredentialStore';
 
 export interface CredentialStoreToken {
   accessToken?: string;
@@ -60,6 +65,7 @@ const CredentialTokenPayloadSchema = z
 const NestedCredentialPayloadSchema = z
   .object({
     token: CredentialTokenPayloadSchema,
+    id_token: z.string().trim().min(1).optional(),
   })
   .passthrough();
 
@@ -113,10 +119,12 @@ function parseCredentialStorePayload(payload: string): CredentialStoreToken {
     }
   }
 
+  const idToken =
+    token.id_token || (nestedPayload.success ? nestedPayload.data.id_token : undefined);
   return {
     refreshToken: token.refresh_token,
     ...(token.access_token ? { accessToken: token.access_token } : {}),
-    ...(token.id_token ? { idToken: token.id_token } : {}),
+    ...(idToken ? { idToken } : {}),
     ...(token.project_id ? { projectId: token.project_id } : {}),
     ...(expiryTimestamp !== undefined ? { expiryTimestamp } : {}),
   };
@@ -126,8 +134,22 @@ function parseCredentialStorePayload(payload: string): CredentialStoreToken {
 export async function readClientAccountToken(
   target?: AntigravityAppTarget | null,
 ): Promise<CredentialStoreToken | null> {
+  if (process.platform === 'darwin' && target === 'ide') {
+    return parseCredentialStorePayload(readMacOSIdeCredentialPayload());
+  }
   if (process.platform === 'darwin') {
     return readMacOSCredentialStore(true);
+  }
+  if (process.platform === 'linux' && target === 'ide') {
+    const snapshots = await readLinuxIdeCredentialSnapshot();
+    const tokens = snapshots.map((item) =>
+      parseCredentialStorePayload(decodeCredentialStoreText(Buffer.from(item.payload, 'base64'))),
+    );
+    if (tokens.some((token) => token.refreshToken !== tokens[0].refreshToken)) {
+      throw new CredentialStoreReadError('malformed');
+    }
+    // A running Agent can refresh one collection's access token independently.
+    return tokens.sort((a, b) => (b.expiryTimestamp ?? 0) - (a.expiryTimestamp ?? 0))[0] ?? null;
   }
   if (target !== 'agy') {
     return readAntigravityCredentialStoreToken();

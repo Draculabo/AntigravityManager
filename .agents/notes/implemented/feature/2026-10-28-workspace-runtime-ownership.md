@@ -12,9 +12,11 @@ after failed process observation or shutdown.
 
 ## Decision
 
-Keep desktop IDE OAuth in its captured profile's SQLite UnifiedStateSync state, including Windows
-IDE 2.6. Use the existing prepared writer and transactional recovery backup. Do not create a
-standalone HOME token mirror or accepted-terms records for desktop workspace startup. Keep the
+Use the prepared writer with the captured executable/profile and an explicit workspace purpose.
+Windows IDE 2.6 retains the shared native credential route currently selected by that writer;
+the ordinary-switch synchronization follow-up does not add its SQLite or HOME fallback writes
+to workspace startup. Older IDE SQLite writers retain their transactional recovery backup.
+Do not manufacture accepted-terms records. Keep the
 [prepared-storage decision](../architecture/2026-10-02-prepared-client-account-storage.md)'s other
 snapshot and Classic obligations.
 
@@ -56,8 +58,11 @@ metadata and an error rather than restoring against an uncertain process. Lists 
 snapshot and represent unknown observation explicitly. These are lifecycle contracts rather than
 additional credential authorities or an alternative hot-switch implementation.
 
-Workspace account credentials and process ownership are profile-scoped; customization sharing
-remains intentional and does not provide OS-user security isolation. Classic keeps its existing
+Workspace process ownership is profile-scoped, but Windows IDE 2.6 Agent credentials remain shared.
+Earlier desktop SQLite and sign-in observations below do not prove concurrent Agent account
+isolation. That problem is deferred; ordinary switching follows the revised
+[prepared-storage decision](../architecture/2026-10-02-prepared-client-account-storage.md).
+Customization sharing remains intentional and does not provide OS-user security isolation. Classic keeps its existing
 single hot attempt, full restart fallback and closed diagnostic timeline. Workspace launch does
 not retry an uncertain dispatch. No existing client credential format or workspace row is migrated.
 
@@ -67,6 +72,12 @@ propagate, and code rollback cannot recover removed files. Current behavior and 
 the [workspace runtime reference](../../../../docs/modules/workspace/runtime.md).
 
 ## Verification
+
+The historical Windows observations in this section establish desktop OAuth only. Later inspection
+and Agent identity checks show that the embedded agy backend uses shared native credentials and
+a standalone fallback. Keeping B's desktop signed in while A restarts does not establish distinct
+Agent identities. The ordinary-switch follow-up corrects that evidence boundary without changing
+the remaining process/deletion ownership decisions in this note.
 
 The inspected official Windows IDE executable reports version 2.6.0 and SHA-256
 `df765a8ae84a673ae9e8c8e60eca8e7e839351029c58803a107b8f010ce7b736`.

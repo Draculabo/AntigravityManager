@@ -32,6 +32,81 @@ function setPlatform(value: string) {
 }
 
 describe('product version query', () => {
+  it('reads the official Mac IDE bundle release independently of its VS Code engine', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-mac-version-'));
+    try {
+      const app = path.join(directory, 'Antigravity IDE.app');
+      const contents = path.join(app, 'Contents');
+      fs.mkdirSync(path.join(contents, 'Resources/app'), { recursive: true });
+      fs.writeFileSync(path.join(contents, 'Resources/app/package.json'), '{"version":"1.107.0"}');
+      const plist = path.join(contents, 'Info.plist');
+      fs.writeFileSync(
+        plist,
+        '<plist><dict><key>CFBundleShortVersionString</key><string>2.6.0</string><key>CFBundleVersion</key><string>2.6.0</string></dict></plist>',
+      );
+      setPlatform('darwin');
+      const executable = path.join(contents, 'MacOS/Electron');
+      expect(await getAntigravityVersion('ide', executable)).toEqual({
+        shortVersion: '2.6.0',
+        bundleVersion: '2.6.0',
+      });
+      fs.writeFileSync(
+        plist,
+        '<plist><dict><key>CFBundleShortVersionString</key><string>2.7.10</string><key>CFBundleVersion</key><string>2.7.10</string></dict></plist>',
+      );
+      expect(await getAntigravityVersion('ide', executable)).toEqual({
+        shortVersion: '2.7.10',
+        bundleVersion: '2.7.10',
+      });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+  it('reads Linux IDE product releases instead of the VS Code engine and invalidates product changes', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-ide-version-'));
+    try {
+      const app = path.join(directory, 'resources/app');
+      fs.mkdirSync(app, { recursive: true });
+      fs.writeFileSync(
+        path.join(app, 'package.json'),
+        JSON.stringify({ name: 'Antigravity IDE', version: '1.107.0' }),
+      );
+      const product = path.join(app, 'product.json');
+      fs.writeFileSync(
+        product,
+        JSON.stringify({
+          applicationName: 'antigravity-ide',
+          version: '1.107.0',
+          ideVersion: '2.6.0',
+        }),
+      );
+      setPlatform('linux');
+      const executable = path.join(directory, 'antigravity-ide');
+      expect(await getAntigravityVersion('ide', executable)).toEqual({
+        shortVersion: '2.6.0',
+        bundleVersion: '2.6.0',
+      });
+      fs.writeFileSync(
+        product,
+        JSON.stringify({
+          applicationName: 'antigravity-ide',
+          version: '1.107.0',
+          ideVersion: '2.7.10',
+        }),
+      );
+      expect(await getAntigravityVersion('ide', executable)).toEqual({
+        shortVersion: '2.7.10',
+        bundleVersion: '2.7.10',
+      });
+      fs.writeFileSync(
+        product,
+        JSON.stringify({ applicationName: 'unrelated-editor', ideVersion: '2.6.0' }),
+      );
+      await expect(getAntigravityVersion('ide', executable)).rejects.toThrow('product version');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it('reads and invalidates packed Linux metadata under standalone Node', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-packed-version-'));
     try {

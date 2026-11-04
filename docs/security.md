@@ -21,6 +21,9 @@ Sensitive data includes access and refresh tokens, API keys, authorization heade
   profile directory and its backups with OS account permissions; anyone able to read the database
   can read those tokens.
 - Other credential stores retain their existing keyring or encrypted-storage policies.
+- Account snapshot and client-recovery files use plaintext JSON with private file permissions.
+  New files do not depend on a machine-bound key. Historical encrypted files require their
+  original key only while being read; see [client credential storage](modules/antigravity-runtime/security.md#local-snapshots-and-client-recovery-files).
 - Do not put credentials in logs, test fixtures or diagnostic snapshots.
 - Do not copy production credentials into tests, bug reports or Agent Notes.
 

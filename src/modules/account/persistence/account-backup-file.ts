@@ -1,39 +1,53 @@
 import fs from 'node:fs';
-import { encrypt, decrypt, initializeMasterKey } from '@/shared/security/security';
+import { decodeCredentialFileText } from '@/shared/security/credential-file-text';
 import { isEncryptedPayloadCandidate } from '@/shared/security/crypto';
 import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
 import type { AccountBackupData } from '../types';
 import { parseAccountBackup } from './snapshotCredentials';
+import { preserveAccountMigrationBackups } from './account-migration-backup';
 
-/** New local snapshots use the existing master key; historical JSON is read without overwriting it. */
-export async function readAccountBackupFile(file: string): Promise<AccountBackupData> {
-  const content = await fs.promises.readFile(file, 'utf-8');
+/** Validate before migrating; preserve exact decoded fields and never overwrite a newer capture. */
+async function readSnapshot(file: string, content: string): Promise<AccountBackupData> {
+  const plaintext = await decodeCredentialFileText(content);
+  const backup = parseAccountBackup(plaintext);
   if (isEncryptedPayloadCandidate(content)) {
-    await initializeMasterKey({ encryptedSamples: [content] });
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      throw new Error('Account snapshot migration requires a regular file');
+    }
+    const current = fs.readFileSync(file, 'utf8');
+    if (current !== plaintext) {
+      if (current !== content) {
+        throw new Error('Account snapshot changed during migration; retry the operation');
+      }
+      // No await between comparison and replacement: same-owner writes cannot interleave.
+      preserveAccountMigrationBackups(file, content, plaintext);
+      writePrivateFileAtomically(file, plaintext);
+    }
   }
-  const plaintext = isEncryptedPayloadCandidate(content) ? await decrypt(content) : content;
-  return parseAccountBackup(plaintext);
+  return backup;
 }
 
-/** Plaintext cloud storage no longer initializes the key needed by local snapshots. */
-export async function initializeAccountBackupKey(files: readonly string[]): Promise<void> {
-  const encryptedSamples: string[] = [];
-  for (const file of files) {
-    if (!fs.existsSync(file)) {
-      continue;
-    }
-    const content = await fs.promises.readFile(file, 'utf8');
-    if (isEncryptedPayloadCandidate(content)) {
-      encryptedSamples.push(content);
-    }
+/** Successful reads convert historical ciphertext to portable JSON using its original key. */
+export async function readAccountBackupFile(file: string): Promise<AccountBackupData> {
+  const content = await fs.promises.readFile(file, 'utf-8');
+  return readSnapshot(file, content);
+}
+
+/** Account-list migration leaves plaintext snapshots untouched and reports a completed rewrite. */
+export async function migrateAccountBackupFile(file: string): Promise<boolean> {
+  const content = await fs.promises.readFile(file, 'utf8');
+  if (!isEncryptedPayloadCandidate(content)) {
+    return false;
   }
-  await initializeMasterKey({ encryptedSamples });
+  await readSnapshot(file, content);
+  return true;
 }
 
 export async function writeAccountBackupFile(
   file: string,
   backup: AccountBackupData,
 ): Promise<void> {
-  const payload = await encrypt(JSON.stringify(backup));
+  const payload = JSON.stringify(backup);
   writePrivateFileAtomically(file, payload);
 }
