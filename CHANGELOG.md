@@ -2,6 +2,98 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.30.0
+
+**Release Date:** 2026-11-04
+**Since v0.29.0:** 15 commits · 12 merged PRs · 4 verified contributors
+
+> This release includes updates in Desktop & User Experience, Tooling & Maintenance, Documentation, Proxy Gateway & Models, Accounts & Core, Security & Reliability.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — add Brazilian Portuguese (pt-BR) localization ([#395](https://github.com/Draculabo/AntigravityManager/pull/395))
+- **Feature** — add drop stats reset, retention pruning, and immediate disk reclamation ([#394](https://github.com/Draculabo/AntigravityManager/pull/394))
+- **Feature** — surface fallback degradation in traffic and configure paid context cache ([#392](https://github.com/Draculabo/AntigravityManager/pull/392))
+- **Feature** — improve diagnostics and multi-account testing ([#399](https://github.com/Draculabo/AntigravityManager/pull/399))
+- **Feature** — show account emails in account filter ([#400](https://github.com/Draculabo/AntigravityManager/pull/400))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.29.0 ([#390](https://github.com/Draculabo/AntigravityManager/pull/390))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Change** — agents: define acceptance before coding and reuse failure evidence ([8a433f0](https://github.com/Draculabo/AntigravityManager/commit/8a433f04c6512527eeb165b8fc8b5a8d43fcd99d))
+- **CI** — migrate release actions to Node 24 and verify artifacts ([#389](https://github.com/Draculabo/AntigravityManager/pull/389))
+- **Maintenance** — validate agent skills and routing fixtures ([8809888](https://github.com/Draculabo/AntigravityManager/commit/88098885a96132224cb8f24f15f99dead5a7a085))
+- **Feature** — add Brazilian Portuguese (pt-BR) localization ([#395](https://github.com/Draculabo/AntigravityManager/pull/395))
+- **Feature** — add drop stats reset, retention pruning, and immediate disk reclamation ([#394](https://github.com/Draculabo/AntigravityManager/pull/394))
+- **Feature** — support Gemini 4 Argon tiers and use CLI user-agent ([#405](https://github.com/Draculabo/AntigravityManager/pull/405))
+
+---
+
+## 📚 Documentation
+
+- **Documentation** — describe agent governance in project-local terms ([c170a02](https://github.com/Draculabo/AntigravityManager/commit/c170a02d608e03ec7b85878987dbaa0b881a47ea))
+- **Documentation** — diagnose blank Electron dev windows ([#401](https://github.com/Draculabo/AntigravityManager/pull/401))
+- **Documentation** — document model playground features and desktop interface ([#403](https://github.com/Draculabo/AntigravityManager/pull/403))
+
+---
+
+## 🌐 Proxy Gateway & Models
+
+- **Fix** — preserve tool calling for Gemini Flash-Lite ([#397](https://github.com/Draculabo/AntigravityManager/pull/397))
+- **Feature** — surface fallback degradation in traffic and configure paid context cache ([#392](https://github.com/Draculabo/AntigravityManager/pull/392))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Feature** — improve diagnostics and multi-account testing ([#399](https://github.com/Draculabo/AntigravityManager/pull/399))
+- **Feature** — show account emails in account filter ([#400](https://github.com/Draculabo/AntigravityManager/pull/400))
+
+---
+
+## 🔒 Security & Reliability
+
+- **Fix** — Windows IDE 2.6.x credential store support and active-badge restoration ([#398](https://github.com/Draculabo/AntigravityManager/pull/398))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Realmagnum · @Draculabo · @arthurhenriquelopes · @limonhassan606
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- ci: migrate release actions to Node 24 and verify artifacts by @Draculabo ([#389](https://github.com/Draculabo/AntigravityManager/pull/389))
+- chore(linux): update package metadata to v0.29.0 by @Draculabo ([#390](https://github.com/Draculabo/AntigravityManager/pull/390))
+- feat(proxy-gateway): surface fallback degradation in traffic and configure paid context cache by @Realmagnum ([#392](https://github.com/Draculabo/AntigravityManager/pull/392))
+- feat(audit): add drop stats reset, retention pruning, and immediate disk reclamation by @Realmagnum ([#394](https://github.com/Draculabo/AntigravityManager/pull/394))
+- feat(i18n): add Brazilian Portuguese (pt-BR) localization by @arthurhenriquelopes ([#395](https://github.com/Draculabo/AntigravityManager/pull/395))
+- fix(proxy): preserve tool calling for Gemini Flash-Lite by @Realmagnum ([#397](https://github.com/Draculabo/AntigravityManager/pull/397))
+- fix(credentials): Windows IDE 2.6.x credential store support and active-badge restoration by @limonhassan606 ([#398](https://github.com/Draculabo/AntigravityManager/pull/398))
+- feat(playground): improve diagnostics and multi-account testing by @Realmagnum ([#399](https://github.com/Draculabo/AntigravityManager/pull/399))
+- feat(traffic): show account emails in account filter by @Realmagnum ([#400](https://github.com/Draculabo/AntigravityManager/pull/400))
+- docs(development): diagnose blank Electron dev windows by @Realmagnum ([#401](https://github.com/Draculabo/AntigravityManager/pull/401))
+- docs(playground): document model playground features and desktop interface by @Realmagnum ([#403](https://github.com/Draculabo/AntigravityManager/pull/403))
+- feat(models): support Gemini 4 Argon tiers and use CLI user-agent by @Realmagnum ([#405](https://github.com/Draculabo/AntigravityManager/pull/405))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.29.0...v0.30.0
+
 # 🚀 Antigravity Manager Release v0.29.0
 
 **Release Date:** 2026-10-30
