@@ -2,7 +2,7 @@
 
 pkgname=antigravity-manager-bin
 _pkgname=antigravity-manager
-pkgver=0.29.0
+pkgver=0.30.0
 pkgrel=1
 pkgdesc="A modern, unified desktop manager for LLM accounts, proxies, and AI quotas."
 arch=('x86_64')
@@ -12,7 +12,7 @@ depends=('nss' 'alsa-lib' 'gtk3')
 provides=("${_pkgname}")
 conflicts=("${_pkgname}")
 source=("https://github.com/Draculabo/AntigravityManager/releases/download/v${pkgver}/Antigravity.Manager_${pkgver}_amd64.deb")
-sha256sums=('319fb3c0bbc8f4a804026734294a50f4e7041c77105ea5ae8887727dc95f4e0e')
+sha256sums=('960fb47ffec802e22f16492f1cd163573e006629d7596821b663fd415d124a88')
 
 package() {
   # makepkg automatically extracts the .deb file into data.tar.* and control.tar.*
