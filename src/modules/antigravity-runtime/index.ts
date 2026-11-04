@@ -26,3 +26,5 @@ export {
   CredentialStoreReadError,
 } from './credentials/antigravityCredentialStore';
 export { buildAntigravityCredentialPayload } from './credentials/antigravityCredentialPayload';
+export { restoreWindowsIdeCredentials } from './credentials/windowsIdeRecovery';
+export { restoreLinuxIdeCredentials } from './credentials/linuxIdeRecovery';

@@ -6,11 +6,14 @@ Workspace profiles reuse these boundaries rather than introducing another creden
 
 ## Credentials
 
-IDE OAuth belongs to `User/globalStorage/state.vscdb` inside the selected data directory, including
-Windows IDE 2.6. A prepared writer receives the resolved executable and directory from its launch
-context. It updates only that database, preserves unrelated rows and takes the existing recovery
-backup before replacing an existing account. IDE writes never update the standalone client's
-`gemini:antigravity` Windows credential.
+A prepared writer receives the resolved executable and directory from its launch context and an
+explicit workspace purpose. Older IDEs use `User/globalStorage/state.vscdb` inside that directory,
+preserving unrelated rows and taking a recovery backup. Windows IDE 2.6 selects the shared
+`gemini:antigravity` Windows item. Separate data directories and HOME values do not isolate this
+Agent credential; simultaneous per-workspace accounts remain unresolved. Ordinary account
+switching has additional synchronization and confirmation described in
+[client credential security](../antigravity-runtime/security.md#target-isolation); workspace launch
+does not inherit those additions.
 
 An isolated HOME holds workspace customizations. Desktop launch does not seed
 `.gemini/jetski-standalone-oauth-token`; the inspected extension uses that file in its cloud-development
@@ -24,7 +27,8 @@ One profile operation lock covers fresh profile lookup, strict process observati
 preparation and writes, provisioning and confirmed launch. An already running profile returns its
 observed PID without rewriting credentials. Concurrent starts for the same profile share the current
 start result. A primary IDE operation excludes concurrent profile operations before any mutation.
-Independent profiles can operate concurrently because their credential destinations differ.
+Independent profiles retain their operation leases; this does not serialize or isolate the shared
+Windows credential across concurrently running official clients.
 
 Changing a running profile's account or project holds the same operation lease through confirmed
 shutdown, metadata persistence and one full restart. Name-only edits do not restart the client.

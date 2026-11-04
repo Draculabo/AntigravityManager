@@ -123,7 +123,25 @@ For desktop acceptance, use an isolated Manager configuration and application ho
 
 The focused `client-account-write.test.ts`, `snapshot-credentials.test.ts`, `account-backup-file.test.ts`, `database-backup-keys.test.ts` and account handler suites cover destination routing, preflight, preserved topic rows, missing projects, primary-store failures, encrypted snapshot round trips and historical snapshot input. Credential-store and CLI suites cover native readback, required file failures and isolation of the local CLI session from other operating-system environments. `antigravityVersion.test.ts` covers version caching, coalescing, metadata changes and probe deadlines.
 
-Windows IDE uses the selected profile's state database, including IDE 2.6. Verify its UnifiedStateSync OAuth row and fresh official account confirmation; a successful local write alone is insufficient. Isolated A/B acceptance must keep both instances running, stop and restart only A, and verify B remains alive and authenticated. Compare the shared `gemini:antigravity` credential before and after to reject accidental standalone-store writes. Check official provider-populated user status after normal shutdown has flushed the database; the seeded minimal status cannot establish acceptance. The inspected 2.6 client can authenticate and populate account status without persisting a renewed short-lived access token into the original OAuth row, so that row's expiry alone is not an identity or refresh-success check. See [workspace runtime ownership](../workspace/runtime.md) for scope and recovery rules.
+Windows and Linux IDE 2.6 ordinary switching require matching desktop SQLite, native credentials and standalone fallback, followed by a fresh official Agent identity. `client-account-write`, `windows-ide-recovery`, `linux-ide-recovery`, `linux-ide-credential-read`, `ide-account-identity` and `runtime-switch` unit tests cover required destinations, preflight denial, partial failures, plaintext JSON recovery and historical encrypted readers, mismatched or unavailable Agent identity, process ownership and finalization ordering. `account-backup-file` copies a snapshot between isolated machine directories and verifies complete read/discovery with a different unavailable key, plus historical ciphertext read/rewrite and atomic replacement failure. `antigravityVersion` verifies Linux `ideVersion` discovery against a distinct VS Code engine version and product-metadata cache invalidation. The identity tests use a synthetic loopback server, not a live provider. Native Linux validation must independently exercise multiple Secret Service collections, exact secret/content-type restoration and absent-item deletion. The Windows native client-account integration verifies exact native recovery using a namespaced credential.
+
+Run the account acceptance matrix with `--target ide --local-snapshots --keep-client-running --cold-restart` for cloud/local A-B-A and an additional stopped-client relaunch. The runner checks live Google identity, the official renderer and the embedded Agent separately, then confirms client shutdown and exact shared-credential restoration. An access token refreshed by the official client can differ from the Manager's saved value; refresh-token ownership and live identity still must match. Multi-workspace account isolation is a separate unresolved scenario; profile-local desktop state or a synthetic SQLite test is insufficient proof of independent Agent accounts.
+
+`account-backup-file` verifies automatic migration of valid historical ciphertext to exact decoded
+JSON, preserved unknown fields, idempotence without the old key, and original-file retention after
+decryption, schema or replacement failure. Controlled decryption barriers verify that a newer file
+is not overwritten and a deleted file is not recreated. `local-account-owner` exercises registered
+snapshot migration through listing, partial-batch continuation, unchanged account-index bytes,
+sanitized failure logs and serialization with an admitted account write. External credential
+discovery remains read-only and does not migrate its source files.
+
+Migration backup cases verify the exact encrypted and plaintext copies before active-file
+replacement, immutable history across versions, retries after either backup write fails, refusal
+of mismatched history or redirected destinations, and failed backup readback. Recovery checks copy
+each representation back into the active snapshot path; plaintext recovery works without the old
+key, while encrypted recovery verifies and reuses its existing pair. Linux runs also verify `0700`
+directories and `0600` files. A scoped isolated-source mutation that omits preservation must fail
+the pre-replacement backup assertion; an unchanged passing run does not establish that control.
 
 `node scripts/test-client-account-write.integration.mjs` exercises real SQLite under Electron on Windows and Node on Linux/macOS with isolated synthetic credentials. Windows and Linux verify WAL-aware backups, repeated writes to one captured destination, A-to-B-to-A restoration, unchanged client recovery files and full transaction rollback on an injected primary-write failure. The Mac branch verifies sequential writes, root-level ID-token input, unchanged unrelated cache/auth rows, project removal and retained earlier statements after a later failure; it does not invoke Keychain. Windows additionally exercises the production Win32 credential adapter with exact-target A-to-B-to-A writes, independent keytar enumeration and repeated nondestructive reads. The credential target is redirected to a unique synthetic target and deleted during cleanup. Mocked CLI and Google destinations verify that an Agy switch does not change that host credential on Windows and Linux. For Linux validation from Windows, install Linux native dependencies in an isolated directory and set `AGM_CLIENT_NATIVE_DEPS` to that directory; Windows native modules cannot validate the Linux path.
 
@@ -138,6 +156,22 @@ or POSIX permission changes. The native SQLite check on Windows establishes byte
 statement compatibility only, not Mac runtime acceptance.
 
 These fixtures do not write live OS credentials or prove official-client account identity. Release acceptance still requires two authorized test accounts, real IDE switching with the mode selected from its service structure, Classic restart switching, CLI identity checks and a real AI request after each switch. Supervised-service hot switching preserves the same window/workspace; machine-service fallback must confirm full shutdown and one restart. Confirm that a closed window is not reopened. On macOS, best-effort database fallback can return success despite failed injection, so verify the actual client account rather than relying on the notification. Physical macOS acceptance must cover A-B-A through both CLI and Electron owners, Keychain permissions, the three local mirrors and real AI requests. System-wide Linux desktop acceptance requires a separate run.
+
+### Mac IDE 2.6 credential compatibility
+
+`macos-ide-credential-contract.test.ts` defines expected credential payloads and command arguments,
+then checks exact Keychain arguments and isolated real standalone/Google
+files without executing `security`. `macos-ide-account-write.test.ts` covers destination ordering,
+SQLite failure, best-effort native/file failures and unchanged workspace provisioning. The shared
+`runtime-switch` and loopback `ide-account-identity` tests include Mac: full restart must precede
+Agent confirmation, and failed confirmation must prevent account finalization. Version fixtures
+retain the official Mac `Info.plist` 2.6 release despite the 1.107.0 engine package.
+
+The maintainer accepts release of this Mac adaptation without a local or remote Mac trial, as
+recorded in the [Mac credential decision](../../../.agents/notes/implemented/security/2026-10-14-macos-client-credential-chain.md).
+Native Keychain execution/access prompts, Launch Services, supported Mac architectures and live
+official-client A-B-A/AI requests remain unverified. The synthetic contract and file checks do not
+establish those results. User reports can supply subsequent compatibility evidence.
 
 ## Agy binary patch compatibility
 

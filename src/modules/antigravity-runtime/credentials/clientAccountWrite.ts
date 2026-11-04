@@ -20,6 +20,16 @@ import { writeAgyCliToken } from './agyCliTokenStore';
 import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
 import { prepareMacOSClientAccountWrite } from './macosClientAccountWrite';
 import { CredentialReadbackError } from '@/shared/auth/credentialReadbackError';
+import { prepareWindowsIdeRecovery } from './windowsIdeRecovery';
+import { validateIdeStandaloneDestination, writeIdeStandaloneToken } from './ideStandaloneToken';
+import { prepareLinuxIdeRecovery } from './linuxIdeRecovery';
+import { writeLinuxIdeCredentialPayload } from './linuxIdeCredentialStore';
+import {
+  buildMacOSIdeCredentialPayload,
+  syncMacOSIdeCredentialFiles,
+  writeMacOSKeychainPayload,
+} from './macosCredentialStore';
+import { writeMacOSServiceMachineId } from './macosClientSqlite';
 
 export type ClientAccountStorage = 'cli-session' | 'credential-store' | 'sqlite';
 
@@ -37,7 +47,7 @@ export async function resolveClientAccountStorage(
     return process.platform === 'darwin' ? 'credential-store' : 'cli-session';
   }
   if (target === 'ide') {
-    if (process.platform === 'win32') {
+    if (['win32', 'linux', 'darwin'].includes(process.platform)) {
       try {
         const version = await getAntigravityVersion(target, pathOptions?.executablePath);
         return compareVersion(version.shortVersion, '2.6.0') >= 0 ? 'credential-store' : 'sqlite';
@@ -67,14 +77,24 @@ export async function prepareClientAccountWrite(
   input: ClientAccountCredentials,
   appTarget?: AntigravityAppTarget,
   pathOptions?: PathResolutionOptions,
+  purpose: 'account-switch' | 'workspace' = 'account-switch',
 ): Promise<PreparedClientAccountWrite> {
-  const credentials =
-    process.platform === 'darwin' ? input : prepareClientAccountCredentials(input);
   const target = resolveAntigravityAppTarget(appTarget);
-  const storage = await resolveClientAccountStorage(target, pathOptions);
-  if (process.platform === 'darwin') {
+  const storage =
+    (process.platform === 'linux' || process.platform === 'darwin') &&
+    target === 'ide' &&
+    purpose === 'workspace'
+      ? 'sqlite'
+      : await resolveClientAccountStorage(target, pathOptions);
+  const syncIde =
+    ['win32', 'linux', 'darwin'].includes(process.platform) &&
+    target === 'ide' &&
+    storage === 'credential-store' &&
+    purpose === 'account-switch';
+  if (process.platform === 'darwin' && !syncIde) {
     return prepareMacOSClientAccountWrite(input, target, storage, pathOptions);
   }
+  const credentials = prepareClientAccountCredentials(input);
   if (target === 'agy') {
     const payload = buildAntigravityCredentialPayload(credentials.token);
     return {
@@ -85,10 +105,73 @@ export async function prepareClientAccountWrite(
       },
     };
   }
+  let writeSqlite: (() => Promise<void>) | undefined;
+  let saveRecovery: (() => Promise<void>) | undefined;
+  let database: string | undefined;
+  if (storage === 'sqlite' || syncIde) {
+    const paths = getAntigravityDbPaths(target, pathOptions);
+    const dbPath = paths.find((file) => fs.existsSync(file)) ?? paths[0];
+    if (!dbPath) {
+      throw new Error('Selected client has no state database path');
+    }
+    let writablePath = fs.existsSync(dbPath) ? dbPath : path.dirname(dbPath);
+    while (!fs.existsSync(writablePath)) {
+      const parent = path.dirname(writablePath);
+      if (parent === writablePath) {
+        throw new Error('Client state directory is unavailable');
+      }
+      writablePath = parent;
+    }
+    fs.accessSync(writablePath, fs.constants.W_OK);
+    if (fs.existsSync(dbPath)) {
+      fs.accessSync(path.dirname(dbPath), fs.constants.W_OK);
+    }
+    validateClientSqliteDestination(dbPath);
+    database = dbPath;
+    writeSqlite = createClientSqliteWriter(dbPath, credentials);
+    if (syncIde && process.platform !== 'darwin') {
+      validateIdeStandaloneDestination();
+      saveRecovery =
+        process.platform === 'linux'
+          ? await prepareLinuxIdeRecovery(dbPath)
+          : await prepareWindowsIdeRecovery(dbPath);
+    }
+  }
   if (storage === 'credential-store') {
     return {
       storage,
       write: async () => {
+        // The switch owner calls this only after the captured IDE tree has exited.
+        await saveRecovery?.();
+        await writeSqlite?.();
+        if (syncIde && process.platform === 'darwin') {
+          if (database && credentials.serviceMachineId !== undefined) {
+            try {
+              writeMacOSServiceMachineId(database, credentials.serviceMachineId);
+            } catch {
+              logger.warn('Failed to synchronize macOS IDE service machine identity');
+            }
+          }
+          const payload = buildMacOSIdeCredentialPayload(credentials);
+          try {
+            writeMacOSKeychainPayload(payload);
+          } catch {
+            logger.warn('Failed to write macOS IDE Keychain credentials');
+          }
+          try {
+            syncMacOSIdeCredentialFiles(credentials, payload);
+          } catch {
+            logger.warn('Failed to synchronize macOS IDE credential files');
+          }
+          return;
+        }
+        if (syncIde && process.platform === 'linux') {
+          await writeLinuxIdeCredentialPayload(
+            buildAntigravityCredentialPayload(credentials.token),
+          );
+          writeIdeStandaloneToken(credentials.token);
+          return;
+        }
         await writeAntigravityCredentialStoreToken(
           credentials.token,
           target === 'classic' ? { syncClassicOAuthFile: true } : {},
@@ -113,26 +196,14 @@ export async function prepareClientAccountWrite(
             },
           );
         }
+        if (syncIde) {
+          writeIdeStandaloneToken(credentials.token);
+        }
       },
     };
   }
-  const paths = getAntigravityDbPaths(target, pathOptions);
-  const dbPath = paths.find((file) => fs.existsSync(file)) ?? paths[0];
-  if (!dbPath) {
-    throw new Error('Selected client has no state database path');
+  if (!writeSqlite) {
+    throw new Error('Selected client has no prepared account writer');
   }
-  let writablePath = fs.existsSync(dbPath) ? dbPath : path.dirname(dbPath);
-  while (!fs.existsSync(writablePath)) {
-    const parent = path.dirname(writablePath);
-    if (parent === writablePath) {
-      throw new Error('Client state directory is unavailable');
-    }
-    writablePath = parent;
-  }
-  fs.accessSync(writablePath, fs.constants.W_OK);
-  if (fs.existsSync(dbPath)) {
-    fs.accessSync(path.dirname(dbPath), fs.constants.W_OK);
-  }
-  validateClientSqliteDestination(dbPath);
-  return { storage, write: createClientSqliteWriter(dbPath, credentials) };
+  return { storage, write: writeSqlite };
 }

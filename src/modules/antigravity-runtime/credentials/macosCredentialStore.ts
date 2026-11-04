@@ -7,6 +7,7 @@ import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreTok
 import { logger } from '@/shared/logging/logger';
 import { redactDiagnosticText } from '@/shared/observability/sentryPrivacy';
 import type { ClientAccountCredentials } from './clientAccount';
+import { writeIdeStandaloneCredentialPayload } from './ideStandaloneToken';
 
 const NestedRefreshTokenSchema = z.object({ token: z.object({ refresh_token: z.string() }) });
 const RefreshTokenSchema = z.object({ refresh_token: z.string() });
@@ -72,7 +73,34 @@ function readFileCredentials(): { refreshToken: string } {
   return { refreshToken: credentials.refresh_token };
 }
 
+/** Search CLI, standalone, then flat OAuth credentials when Keychain is unavailable. */
+function readMacOSIdeFilePayload(): string {
+  const directory = path.join(os.homedir(), '.gemini');
+  for (const file of [
+    path.join(directory, 'antigravity-cli', 'antigravity-oauth-token'),
+    path.join(directory, 'jetski-standalone-oauth-token'),
+    path.join(directory, 'oauth_creds.json'),
+  ]) {
+    try {
+      const payload = fs.readFileSync(file, 'utf8');
+      parseRefreshToken(payload);
+      return payload;
+    } catch {
+      // Try the next credential file when this candidate is unavailable or malformed.
+    }
+  }
+  throw new Error('No credential found in macOS IDE credential files');
+}
+
+export function readMacOSIdeCredentialPayload(): string {
+  return readMacOSKeychainPayload(true, true);
+}
+
 export function readMacOSCredentialStore(allowFileFallback: boolean): { refreshToken: string } {
+  return parseRefreshToken(readMacOSKeychainPayload(allowFileFallback, false));
+}
+
+function readMacOSKeychainPayload(allowFileFallback: boolean, ide: boolean): string {
   const result = spawnSync('security', [
     'find-generic-password',
     '-s',
@@ -87,7 +115,9 @@ export function readMacOSCredentialStore(allowFileFallback: boolean): { refreshT
   if (result.status !== 0) {
     if (allowFileFallback) {
       try {
-        return readFileCredentials();
+        return ide
+          ? readMacOSIdeFilePayload()
+          : JSON.stringify({ refresh_token: readFileCredentials().refreshToken });
       } catch {
         // Only a successfully parsed file can replace a failed Keychain lookup.
       }
@@ -100,11 +130,16 @@ export function readMacOSCredentialStore(allowFileFallback: boolean): { refreshT
         decodeMacOSCredentialBase64(secret.slice('go-keyring-base64:'.length)),
       )
     : secret;
-  return parseRefreshToken(payload);
+  return payload;
 }
 
 export function writeMacOSCredentialStore(token: CredentialStoreTokenInput): void {
   const payload = JSON.stringify(buildMacOSCredentialPayload(token));
+  writeMacOSKeychainPayload(payload);
+}
+
+/** Replace the Keychain item with a go-keyring Base64 value using -w and -A. */
+export function writeMacOSKeychainPayload(payload: string): void {
   const value = `go-keyring-base64:${Buffer.from(payload, 'utf8').toString('base64')}`;
   spawnSync('security', ['delete-generic-password', '-s', 'gemini', '-a', 'antigravity']);
   const result = spawnSync('security', [
@@ -155,6 +190,36 @@ export function syncMacOSCredentialFiles(credentials: ClientAccountCredentials):
   } catch {
     logger.warn('Failed to write Antigravity CLI credential file');
   }
+  writeMacOSOAuthFiles(credentials);
+}
+
+/** Encode IDE token fields with account email and an optional root-level ID token. */
+export function buildMacOSIdeCredentialPayload(credentials: ClientAccountCredentials): string {
+  const payload = buildMacOSCredentialPayload(credentials.token);
+  return JSON.stringify({
+    token: { ...payload.token, expires_in: 3599 },
+    auth_method: payload.auth_method,
+    id_token_email: credentials.email,
+    ...(credentials.token.id_token !== undefined ? { id_token: credentials.token.id_token } : {}),
+  });
+}
+
+/** IDE switches mirror standalone and Google caches, leaving the dedicated Agy session alone. */
+export function syncMacOSIdeCredentialFiles(
+  credentials: ClientAccountCredentials,
+  payload: string,
+): void {
+  try {
+    writeIdeStandaloneCredentialPayload(payload);
+  } catch {
+    logger.warn('Failed to write macOS IDE standalone credential file');
+  }
+  writeMacOSOAuthFiles(credentials);
+}
+
+function writeMacOSOAuthFiles(credentials: ClientAccountCredentials): void {
+  const directory = path.join(os.homedir(), '.gemini');
+  fs.mkdirSync(directory, { recursive: true });
   const token = credentials.token;
   const oauthFile = path.join(directory, 'oauth_creds.json');
   fs.writeFileSync(

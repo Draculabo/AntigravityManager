@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   stopServices: vi.fn(),
   confirmReplacement: vi.fn(),
   assertCanRestart: vi.fn(),
+  confirmIdentity: vi.fn(),
+}));
+vi.mock('@/modules/antigravity-runtime/ideAccountIdentity', () => ({
+  confirmIdeAccountIdentity: mocks.confirmIdentity,
 }));
 vi.mock('@/modules/antigravity-runtime/launchContext', () => ({
   prepareLaunchContext: mocks.prepare,
@@ -39,7 +43,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.prepare.mockResolvedValue(switchContext);
   mocks.stop.mockResolvedValue(undefined);
-  mocks.start.mockResolvedValue(undefined);
+  mocks.start.mockResolvedValue({ pid: 123 });
+  mocks.confirmIdentity.mockReset().mockResolvedValue(undefined);
   mocks.initialize.mockReset();
   mocks.apply.mockReset();
   mocks.hot.mockReset().mockResolvedValue(null);
@@ -64,6 +69,62 @@ function options() {
 }
 
 describe('switch launch safety', () => {
+  it.each(['win32', 'linux', 'darwin'])(
+    'commits %s IDE 2.6 success only after confirming its restarted Agent identity',
+    async (platform) => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: platform });
+      const request = {
+        ...options(),
+        appTarget: 'ide' as const,
+        launchContext: { ...switchContext, target: 'ide' as const },
+        accountEmail: 'fixture@example.org',
+        useCredentialStore: true,
+      };
+      const events: string[] = [];
+      mocks.stop.mockImplementation(async () => {
+        events.push('close');
+      });
+      request.performSwitch.mockImplementation(async () => {
+        events.push('write');
+      });
+      mocks.start.mockImplementation(async () => {
+        events.push('start');
+        return { pid: 123 };
+      });
+      mocks.confirmIdentity.mockImplementation(async () => {
+        events.push('confirm');
+      });
+      request.afterSwitchSuccess.mockImplementation(async () => {
+        events.push('finalize');
+      });
+      await executeSwitchFlow(request);
+      expect(events).toEqual(['close', 'write', 'start', 'confirm', 'finalize']);
+      expect(mocks.confirmIdentity).toHaveBeenCalledExactlyOnceWith(
+        request.launchContext,
+        123,
+        request.accountEmail,
+      );
+      expect(mocks.hot).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['win32', 'linux', 'darwin'])(
+    'leaves %s account finalization untouched when the restarted IDE Agent cannot confirm the account',
+    async (platform) => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: platform });
+      mocks.confirmIdentity.mockRejectedValueOnce(new Error('identity unconfirmed'));
+      const request = {
+        ...options(),
+        appTarget: 'ide' as const,
+        launchContext: { ...switchContext, target: 'ide' as const },
+        accountEmail: 'fixture@example.org',
+        useCredentialStore: true,
+      };
+      await expect(executeSwitchFlow(request)).rejects.toThrow('identity unconfirmed');
+      expect(request.performSwitch).toHaveBeenCalledOnce();
+      expect(request.afterSwitchSuccess).not.toHaveBeenCalled();
+      expect(mocks.start).toHaveBeenCalledOnce();
+    },
+  );
   const profile = {
     machineId: 'machine',
     macMachineId: 'mac',

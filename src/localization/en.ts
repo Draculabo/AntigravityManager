@@ -179,6 +179,8 @@ const en = {
   },
   appName: 'Antigravity Manager',
   'process-runtime': {
+    'switched-identity-unconfirmed':
+      'Credentials were updated, but the restarted IDE Agent has not confirmed the selected account. Check the IDE account before retrying. Recovery requires closing all Antigravity clients.',
     'update-in-progress': 'Antigravity is updating. Finish the update, then try again.',
     'close-failed':
       'Could not close Antigravity. Save your chats and files, close the app manually, and retry.',

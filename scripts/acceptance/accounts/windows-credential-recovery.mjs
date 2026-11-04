@@ -136,3 +136,9 @@ export function captureWindowsCredential(loadNative, target) {
     },
   };
 }
+
+/** A failed stop must not restore a shared credential underneath a live client. */
+export function restoreAfterClientShutdown(recovery, clientsStopped) {
+  assert.equal(clientsStopped, true, 'Official client shutdown is unconfirmed');
+  return recovery.restore();
+}

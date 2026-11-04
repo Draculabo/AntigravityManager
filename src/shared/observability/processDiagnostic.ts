@@ -29,6 +29,7 @@ export const ProcessDiagnosticSchema = z.strictObject({
     'update-in-progress',
     'switched-hot-unconfirmed',
     'switched-startup-unconfirmed',
+    'switched-identity-unconfirmed',
     'system-directory-unavailable',
     'window-enumeration-failed',
     'window-close-failed',

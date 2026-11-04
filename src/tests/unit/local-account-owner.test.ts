@@ -19,6 +19,7 @@ import { readFinalizedOperationDiagnostic } from '@/shared/observability/operati
 import { projectOwnerOperationError } from '@/ipc/owner-operation-error';
 import { getErrorDetailsText } from '@/shared/utils/errorMessages';
 import { logger } from '@/shared/logging/logger';
+import { encrypt } from '@/shared/security/security';
 const writeAccount = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock('@/shared/security/security', async () => {
   const { encryptWithKey, decryptParsedPayloadWithKey, parseEncryptedPayload } =
@@ -156,6 +157,83 @@ async function remote() {
 }
 
 describe('selected local account owner', () => {
+  it('migrates registered encrypted snapshots during listing without changing the index or losing failed files', async () => {
+    const saved = await owner.addAccountSnapshot();
+    const snapshot = path.join(fixture.directory, 'backups', `${saved.id}.json`);
+    const original = await fs.readFile(snapshot, 'utf8');
+    const encrypted = await encrypt(original);
+    await fs.writeFile(snapshot, encrypted);
+    const unavailable = path.join(fixture.directory, 'backups', 'unavailable.json');
+    const corrupt = 'agm_enc_v1:unreadable-original-ciphertext';
+    await fs.writeFile(unavailable, corrupt);
+    const indexPath = path.join(fixture.directory, 'accounts.json');
+    const index = JSON.parse(await fs.readFile(indexPath, 'utf8'));
+    index.unavailable = {
+      ...index[saved.id],
+      id: 'unavailable',
+      email: 'unavailable@example.invalid',
+      backup_file: unavailable,
+    };
+    const indexBytes = JSON.stringify({
+      unavailable: index.unavailable,
+      [saved.id]: index[saved.id],
+    });
+    await fs.writeFile(indexPath, indexBytes);
+    const warning = vi.spyOn(logger, 'warn');
+    const listed = await owner.listAccounts();
+    expect(listed.map((account) => account.id).sort()).toEqual([saved.id, 'unavailable'].sort());
+    expect(await fs.readFile(snapshot, 'utf8')).toBe(original);
+    expect(await fs.readFile(unavailable, 'utf8')).toBe(corrupt);
+    expect(await fs.readFile(indexPath, 'utf8')).toBe(indexBytes);
+    expect(warning).toHaveBeenCalledWith('Local account snapshot migration did not complete', {
+      accountId: 'unavailable',
+    });
+    expect(JSON.stringify(warning.mock.calls)).not.toContain(corrupt);
+  });
+
+  it('waits for an admitted snapshot write before starting list-time migration', async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const capture = vi.fn(async () => {
+      entered();
+      await gate;
+      return {
+        id: 'queued',
+        name: 'Queued',
+        email: 'queued@example.invalid',
+        created_at: '2026-01-01',
+        last_used: '2026-01-01',
+      };
+    });
+    const list = vi.fn(async () => []);
+    const isolated = createLocalAccountOwner({
+      ...state,
+      ...identity,
+      getCurrentAccountInfo,
+      addAccountSnapshot: capture,
+      listAccountsData: list,
+    });
+    const writing = isolated.addAccountSnapshot();
+    const listing = isolated.listAccounts();
+    try {
+      await started;
+      expect(list).not.toHaveBeenCalled();
+      release();
+      await writing;
+      await listing;
+      expect(list).toHaveBeenCalledOnce();
+    } finally {
+      release?.();
+      await Promise.allSettled([writing, listing]);
+      await isolated.drain();
+    }
+  });
   it('retains the single switch diagnostic through owner, private RPC and desktop projection', async () => {
     const saved = await owner.addAccountSnapshot();
     const client = await remote();
