@@ -295,8 +295,9 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     const model = normalizeModelId(options?.model) ?? options?.model;
     const availableAccounts = Array.from(this.tokens.entries()).filter(
       ([, tokenData]) =>
-        tokenData.validation_blocked_until_ms === undefined ||
-        now >= tokenData.validation_blocked_until_ms,
+        !tokenData.service_disabled &&
+        (tokenData.validation_blocked_until_ms === undefined ||
+          now >= tokenData.validation_blocked_until_ms),
     );
     const waits = this.selectModelCapableAccounts(availableAccounts, model)
       .map(([accountId]) => this.getAccountRouteWait(accountId, model))
@@ -358,6 +359,36 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     this.selectionPolicy.clearAccountSessions(params.accountId);
   }
 
+  async markServiceDisabled(params: {
+    accountId: string;
+    reason: string;
+    appealUrl?: string;
+    appealLinkText?: string;
+    message?: string;
+  }): Promise<void> {
+    const now = Date.now();
+    const updateHealth = (health: CloudAccount['health']): CloudAccount['health'] => ({
+      ...health,
+      service_disabled: {
+        status: 'disabled',
+        reason: params.reason,
+        detected_at_ms: now,
+        appeal_url: params.appealUrl,
+        appeal_url_link_text: params.appealLinkText,
+        message: params.message?.trim().slice(0, 1000) || undefined,
+      },
+    });
+
+    await this.accountStore.mutateHealth(params.accountId, updateHealth);
+    await this.accountStore.setAccountStatus?.(params.accountId, 'expired', params.reason);
+
+    const tokenData = this.tokens.get(params.accountId);
+    if (tokenData) {
+      tokenData.service_disabled = true;
+    }
+    this.selectionPolicy.clearAccountSessions(params.accountId);
+  }
+
   async getNextToken(options?: GetNextTokenOptions): Promise<CloudAccount | null> {
     try {
       if (this.tokens.size === 0) {
@@ -396,6 +427,10 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         ) {
           return null;
         }
+        if (targetEntry[1].service_disabled) {
+          this.logger.warn(`Target account ${targetAccountId} is disabled (ToS)`);
+          return null;
+        }
         if (
           targetEntry[1].validation_blocked_until_ms !== undefined &&
           now < targetEntry[1].validation_blocked_until_ms
@@ -420,8 +455,9 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
       const fullAccountPool = Array.from(this.tokens.entries()).filter(
         ([, tokenData]) =>
-          tokenData.validation_blocked_until_ms === undefined ||
-          now >= tokenData.validation_blocked_until_ms,
+          !tokenData.service_disabled &&
+          (tokenData.validation_blocked_until_ms === undefined ||
+            now >= tokenData.validation_blocked_until_ms),
       );
       const modelCapableAccountPool = this.selectModelCapableAccounts(fullAccountPool, model);
       if (modelCapableAccountPool.length === 0) {

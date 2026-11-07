@@ -11,7 +11,7 @@ interface HealthMutationOptions {
 }
 
 function normalizeHealth(health: CloudAccountHealth | undefined): CloudAccountHealth | undefined {
-  if (!health?.validation && !health?.oauth) {
+  if (!health?.validation && !health?.oauth && !health?.service_disabled) {
     return undefined;
   }
   return health;
@@ -112,7 +112,14 @@ export async function clearValidationHealthAfterSuccessfulProbe(
       if (!currentHealth?.validation) {
         return currentHealth;
       }
-      return currentHealth.oauth ? { oauth: currentHealth.oauth } : undefined;
+      const next: CloudAccountHealth = {};
+      if (currentHealth.oauth) {
+        next.oauth = currentHealth.oauth;
+      }
+      if (currentHealth.service_disabled) {
+        next.service_disabled = currentHealth.service_disabled;
+      }
+      return Object.keys(next).length > 0 ? next : undefined;
     },
     {
       afterCommit: async () => {

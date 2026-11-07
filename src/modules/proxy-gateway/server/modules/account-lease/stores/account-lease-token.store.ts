@@ -1,4 +1,5 @@
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { isServiceDisabledReason } from '@/modules/cloud-account/utils/account-status';
 import type { AccountLeaseAccountStore } from '../interfaces/account-lease-adapters';
 import {
   buildAccountLeaseQuotaSnapshot,
@@ -65,6 +66,9 @@ export class AccountLeaseTokenCache {
       session_id: account.token.session_id || this.generateSessionId(),
       upstream_proxy_url: account.token.upstream_proxy_url || account.proxy_url || undefined,
       validation_blocked_until_ms: account.health?.validation?.next_probe_at_ms,
+      service_disabled:
+        account.health?.service_disabled !== undefined ||
+        isServiceDisabledReason(account.status_reason ?? ''),
       oauth_health: account.health?.oauth,
       quota,
       model_quotas: extractedState.modelQuotas,

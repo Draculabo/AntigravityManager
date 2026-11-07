@@ -19,6 +19,11 @@ export interface AccountLeaseAccountStore {
     accountId: string,
     mutation: (health: CloudAccount['health']) => CloudAccount['health'],
   ): Promise<CloudAccount['health']>;
+  setAccountStatus?(
+    accountId: string,
+    status: CloudAccount['status'],
+    reason?: string | null,
+  ): Promise<void>;
 }
 
 export interface AccountLeaseUpstream {
@@ -44,6 +49,8 @@ export const cloudAccountStoreAdapter: AccountLeaseAccountStore = {
   updateQuota: (accountId, quota) => CloudAccountRepo.updateQuota(accountId, quota),
   mutateHealth: (accountId, mutation) =>
     CloudAccountHealthService.mutateHealth(accountId, mutation),
+  setAccountStatus: (accountId, status, reason) =>
+    CloudAccountRepo.setAccountStatus(accountId, status, reason),
 };
 
 export const googleAccountLeaseUpstreamAdapter: AccountLeaseUpstream = {

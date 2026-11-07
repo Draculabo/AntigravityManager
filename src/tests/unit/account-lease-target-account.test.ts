@@ -207,4 +207,27 @@ describe('AccountLeaseService targetAccountId', () => {
 
     expect(leased).toBeNull();
   });
+
+  it('returns null and excludes from pool when account is service disabled', async () => {
+    const { service } = fixture();
+    await service.loadAccounts();
+
+    await service.markServiceDisabled({
+      accountId: 'acc-alpha',
+      reason: 'TOS_VIOLATION',
+      appealUrl: 'https://forms.gle/appeal',
+    });
+
+    const targetLeased = await service.getNextToken({
+      targetAccountId: 'acc-alpha',
+      model: 'gemini-3-flash',
+    });
+    expect(targetLeased).toBeNull();
+
+    // From pool: only acc-beta should be available
+    const poolLeased = await service.getNextToken({
+      model: 'gemini-3-flash',
+    });
+    expect(poolLeased?.id).toBe('acc-beta');
+  });
 });

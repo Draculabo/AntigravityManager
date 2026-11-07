@@ -14,6 +14,15 @@ const CloudAccountViewHealthSchema = z.strictObject({
     })
     .optional(),
   oauth: z.strictObject({ refresh_blocked: z.boolean() }).optional(),
+  service_disabled: z
+    .strictObject({
+      status: z.literal('disabled'),
+      reason: z.string(),
+      has_appeal_link: z.boolean(),
+      appeal_url: z.string().optional(),
+      appeal_url_link_text: z.string().optional(),
+    })
+    .optional(),
 });
 
 const CloudAccountViewQuotaSchema = z.strictObject({
@@ -64,7 +73,9 @@ export const CloudAccountViewSchema = CloudAccountSchema.pick({
   .extend({
     quota: CloudAccountViewQuotaSchema.optional(),
     health: CloudAccountViewHealthSchema.optional(),
-    status_reason: z.enum(['rate_limited', 'oauth_reauth', 'validation_required']).optional(),
+    status_reason: z
+      .enum(['rate_limited', 'oauth_reauth', 'validation_required', 'service_disabled'])
+      .optional(),
     proxy_configured: z.boolean(),
   })
   .strict();
@@ -75,10 +86,21 @@ function projectStatusReason(reason: string | undefined): CloudAccountView['stat
   if (!reason) {
     return undefined;
   }
-  if (isRateLimitReason(reason)) {
+  const normalized = reason.toLowerCase();
+  if (
+    normalized.includes('tos_violation') ||
+    normalized.includes('terms of service') ||
+    normalized.includes('service has been disabled') ||
+    normalized.includes('org_restriction_violation') ||
+    normalized === 'forbidden' ||
+    normalized.startsWith('forbidden:')
+  ) {
+    return 'service_disabled';
+  }
+  if (isRateLimitReason(normalized)) {
     return 'rate_limited';
   }
-  if (isOAuthReauthReason(reason) || reason.toLowerCase().includes('unauthorized')) {
+  if (isOAuthReauthReason(normalized) || normalized.includes('unauthorized')) {
     return 'oauth_reauth';
   }
   return 'validation_required';
@@ -136,6 +158,15 @@ export function projectCloudAccountView(account: CloudAccount): CloudAccountView
             : undefined,
           oauth: account.health.oauth
             ? { refresh_blocked: account.health.oauth.refresh_blocked }
+            : undefined,
+          service_disabled: account.health.service_disabled
+            ? {
+                status: account.health.service_disabled.status,
+                reason: account.health.service_disabled.reason,
+                has_appeal_link: Boolean(account.health.service_disabled.appeal_url),
+                appeal_url: account.health.service_disabled.appeal_url,
+                appeal_url_link_text: account.health.service_disabled.appeal_url_link_text,
+              }
             : undefined,
         }
       : undefined,

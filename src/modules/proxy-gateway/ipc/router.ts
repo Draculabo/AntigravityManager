@@ -101,6 +101,7 @@ export const gatewayRouter = os.prefix('/gateway').router({
             'model_forbidden',
             'quota_exhausted',
             'rate_limited',
+            'capacity_exhausted',
           ]),
           unavailableUntil: z.number(),
           status: z.number().int().min(100).max(599).optional(),

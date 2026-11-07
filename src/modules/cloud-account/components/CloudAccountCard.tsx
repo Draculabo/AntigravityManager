@@ -387,7 +387,9 @@ export function CloudAccountCard({
                 ? t('cloud.card.liveLimitModelForbidden', 'Model forbidden')
                 : availability?.reason === 'quota_exhausted'
                   ? t('cloud.card.liveLimitQuotaExhausted', 'Quota exhausted')
-                  : t('cloud.card.liveLimitRateLimited', 'Rate limited');
+                  : availability?.reason === 'capacity_exhausted'
+                    ? t('cloud.card.liveLimitCapacityExhausted', 'Server capacity exhausted (503)')
+                    : t('cloud.card.liveLimitRateLimited', 'Rate limited');
           const liveLimitTimingLabel = availability
             ? isLiveLimitActive
               ? t('cloud.card.liveLimitRemaining', '{{duration}} remaining', {
@@ -576,6 +578,9 @@ export function CloudAccountCard({
     !!aiCredits && Number.isFinite(aiCredits.credits) && aiCredits.credits >= 0;
 
   const validationBlockedStatusLabel = getCloudAccountBlockedStatusLabel(account, t);
+  const isAccountDisabled =
+    account.status_reason === 'service_disabled' ||
+    Boolean(account.health?.service_disabled);
 
   return (
     <Card
@@ -698,7 +703,9 @@ export function CloudAccountCard({
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant={
-                account.status === 'rate_limited' || account.status === 'expired'
+                account.status === 'rate_limited' ||
+                account.status === 'expired' ||
+                isAccountDisabled
                   ? 'destructive'
                   : 'outline'
               }
@@ -735,6 +742,20 @@ export function CloudAccountCard({
                 {t('cloud.card.completeValidation')}
               </Button>
             )}
+            {account.health?.service_disabled?.has_appeal_link &&
+              account.health.service_disabled.appeal_url && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-6 gap-1 px-2 text-xs"
+                  onClick={() =>
+                    window.open(account.health?.service_disabled?.appeal_url, '_blank')
+                  }
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  {t('cloud.card.submitAppeal')}
+                </Button>
+              )}
           </div>
 
           <div className="relative shrink-0">
@@ -805,7 +826,7 @@ export function CloudAccountCard({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleLaunchIsolatedIde}
-                  disabled={isLaunchingWorkspace || isDeleting || isSwitching}
+                  disabled={isLaunchingWorkspace || isDeleting || isSwitching || isAccountDisabled}
                   className="flex cursor-pointer items-center justify-between"
                 >
                   <span className="flex items-center gap-2">
@@ -825,9 +846,14 @@ export function CloudAccountCard({
           </div>
         </div>
 
-        <div className="space-y-2">
-          <AccountQuotaWindowSections
-            quotaWindow={quotaWindow}
+        {isAccountDisabled ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+            {t('cloud.card.serviceBlockedNotice')}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <AccountQuotaWindowSections
+              quotaWindow={quotaWindow}
             weeklyItems={
               isMinimalMode
                 ? weeklyQuotaItems.filter(
@@ -876,6 +902,7 @@ export function CloudAccountCard({
             }
           />
         </div>
+      )}
       </CardContent>
 
       <CardFooter className="bg-muted/10 mt-auto flex min-h-14 shrink-0 items-center justify-between gap-3 overflow-visible border-t px-5 py-3 [@media(max-width:760px)]:flex-wrap [@media(max-width:760px)]:px-4">
@@ -1119,6 +1146,9 @@ export function CompactCloudAccountCard({
     !!aiCredits && Number.isFinite(aiCredits.credits) && aiCredits.credits >= 0;
 
   const validationBlockedStatusLabel = getCloudAccountBlockedStatusLabel(account, t);
+  const isAccountDisabled =
+    account.status_reason === 'service_disabled' ||
+    Boolean(account.health?.service_disabled);
 
   return (
     <div
@@ -1145,7 +1175,9 @@ export function CompactCloudAccountCard({
           </span>
           <Badge
             variant={
-              account.status === 'rate_limited' || account.status === 'expired'
+              account.status === 'rate_limited' ||
+              account.status === 'expired' ||
+              isAccountDisabled
                 ? 'destructive'
                 : 'outline'
             }
@@ -1185,6 +1217,19 @@ export function CompactCloudAccountCard({
               {t('cloud.card.completeValidation')}
             </button>
           )}
+          {account.health?.service_disabled?.has_appeal_link &&
+            account.health.service_disabled.appeal_url && (
+              <button
+                type="button"
+                className="text-destructive inline-flex shrink-0 items-center gap-1 text-xs font-semibold hover:underline"
+                onClick={() =>
+                  window.open(account.health?.service_disabled?.appeal_url, '_blank')
+                }
+              >
+                <ExternalLink className="h-3 w-3" />
+                {t('cloud.card.submitAppeal')}
+              </button>
+            )}
 
           {shouldShowAiCredits && aiCredits && (
             <span className="text-muted-foreground shrink-0">
@@ -1204,21 +1249,27 @@ export function CompactCloudAccountCard({
           )}
         </div>
 
-        <AccountQuotaWindowSections
-          quotaWindow={quotaWindow}
-          weeklyItems={
-            isMinimalMode
-              ? weeklyQuotaItems.filter(
-                  (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
-                )
-              : weeklyQuotaItems
-          }
-          fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
-          weeklyHidden={isMinimalMode ? false : weeklyHidden}
-          hasQuotaSummary={account.quota?.quota_groups !== undefined}
-          variant="compact"
-          fiveHourContent={<CompactModelQuotaDisplay items={compactQuotaItems} />}
-        />
+        {isAccountDisabled ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-1 text-xs text-destructive">
+            {t('cloud.card.serviceBlockedNotice')}
+          </div>
+        ) : (
+          <AccountQuotaWindowSections
+            quotaWindow={quotaWindow}
+            weeklyItems={
+              isMinimalMode
+                ? weeklyQuotaItems.filter(
+                    (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
+                  )
+                : weeklyQuotaItems
+            }
+            fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
+            weeklyHidden={isMinimalMode ? false : weeklyHidden}
+            hasQuotaSummary={account.quota?.quota_groups !== undefined}
+            variant="compact"
+            fiveHourContent={<CompactModelQuotaDisplay items={compactQuotaItems} />}
+          />
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
@@ -1245,7 +1296,7 @@ export function CompactCloudAccountCard({
               </DropdownMenuLabel>
               <DropdownMenuItem
                 onClick={() => onSwitch(account.id)}
-                disabled={isSwitching || account.is_active_classic}
+                disabled={isSwitching || isAccountDisabled || account.is_active_classic}
                 className="flex cursor-pointer items-center justify-between"
               >
                 <span className="flex items-center gap-2">
@@ -1260,7 +1311,7 @@ export function CompactCloudAccountCard({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onSwitch(account.id, 'ide')}
-                disabled={isSwitching || account.is_active_ide}
+                disabled={isSwitching || isAccountDisabled || account.is_active_ide}
                 className="flex cursor-pointer items-center justify-between"
               >
                 <span className="flex items-center gap-2">
@@ -1275,7 +1326,7 @@ export function CompactCloudAccountCard({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onSwitch(account.id, 'agy')}
-                disabled={isSwitching || account.is_active_agy}
+                disabled={isSwitching || isAccountDisabled || account.is_active_agy}
                 className="flex cursor-pointer items-center justify-between"
               >
                 <span className="flex items-center gap-2">

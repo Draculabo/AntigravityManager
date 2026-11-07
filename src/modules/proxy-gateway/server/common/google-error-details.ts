@@ -42,13 +42,17 @@ export type ForbiddenUpstreamKind =
   | 'location_ineligible'
   | 'license_required'
   | 'validation_required'
-  | 'security_policy_violated';
+  | 'security_policy_violated'
+  | 'service_disabled';
 
 export interface ForbiddenUpstreamClassification {
   kind: ForbiddenUpstreamKind;
   validationLink?: string;
   validationDescription?: string;
   learnMoreUrl?: string;
+  appealUrl?: string;
+  appealLinkText?: string;
+  reason?: string;
 }
 
 const ACCOUNT_FORBIDDEN: ForbiddenUpstreamClassification = { kind: 'account_forbidden' };
@@ -79,6 +83,24 @@ function sanitizeUrl(value: unknown): string | undefined {
     return undefined;
   }
   return /^https?:\/\/[\x21-\x7e]+$/i.test(trimmed) ? trimmed : undefined;
+}
+
+function sanitizeAppealUrl(value: unknown): string | undefined {
+  const url = sanitizeUrl(value);
+  if (!url) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    const isAllowedHost =
+      hostname === 'forms.gle' ||
+      hostname.endsWith('.google.com') ||
+      hostname === 'google.com';
+    return isAllowedHost ? url : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function sanitizeDescription(value: unknown): string | undefined {
@@ -183,6 +205,30 @@ function classifyFromDetails(
     return { kind: 'security_policy_violated' };
   }
 
+  const disabledErrorInfo = details.find(
+    (detail) =>
+      (detail.type === undefined || detail.type === ERROR_INFO_TYPE) &&
+      (detail.reason === 'TOS_VIOLATION' ||
+        detail.reason === 'ORG_RESTRICTION_VIOLATION' ||
+        detail.metadata?.reason === 'TOS_VIOLATION' ||
+        detail.metadata?.reason === 'ORG_RESTRICTION_VIOLATION'),
+  );
+  if (disabledErrorInfo) {
+    const reason =
+      disabledErrorInfo.reason === 'ORG_RESTRICTION_VIOLATION' ||
+      disabledErrorInfo.metadata?.reason === 'ORG_RESTRICTION_VIOLATION'
+        ? 'ORG_RESTRICTION_VIOLATION'
+        : 'TOS_VIOLATION';
+    const appealUrl = sanitizeAppealUrl(disabledErrorInfo.metadata?.appeal_url);
+    const appealLinkText = sanitizeDescription(disabledErrorInfo.metadata?.appeal_url_link_text);
+    return {
+      kind: 'service_disabled',
+      reason,
+      appealUrl,
+      appealLinkText,
+    };
+  }
+
   const errorInfo = details.find(
     (detail) =>
       (detail.type === undefined || detail.type === ERROR_INFO_TYPE) &&
@@ -237,6 +283,33 @@ function classifyFromText(text: string): ForbiddenUpstreamClassification | null 
 
   if (text.includes(SECURITY_POLICY_VIOLATED_REASON)) {
     return { kind: 'security_policy_violated' };
+  }
+
+  if (
+    normalizedText.includes('violation of terms of service') ||
+    normalizedText.includes('tos_violation') ||
+    normalizedText.includes('service has been disabled')
+  ) {
+    const linkMatch =
+      /"appeal_url"\s*:\s*"([^"]+)"/.exec(text) ??
+      /https:\/\/forms\.gle\/[a-zA-Z0-9_-]+/.exec(text);
+    const linkTextMatch = /"appeal_url_link_text"\s*:\s*"([^"]+)"/.exec(text);
+    return {
+      kind: 'service_disabled',
+      reason: 'TOS_VIOLATION',
+      appealUrl: sanitizeAppealUrl(linkMatch?.[1] ?? linkMatch?.[0]),
+      appealLinkText: sanitizeDescription(linkTextMatch?.[1]),
+    };
+  }
+
+  if (
+    normalizedText.includes('org_restriction_violation') ||
+    normalizedText.includes('organization restriction')
+  ) {
+    return {
+      kind: 'service_disabled',
+      reason: 'ORG_RESTRICTION_VIOLATION',
+    };
   }
 
   const mentionsCloudCodeDomain = [...CLOUDCODE_ERROR_DOMAINS].some((domain) =>

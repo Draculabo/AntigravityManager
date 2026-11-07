@@ -15,6 +15,7 @@ export interface AccountLeaseTokenData {
   session_id?: string;
   upstream_proxy_url?: string;
   validation_blocked_until_ms?: number;
+  service_disabled?: boolean;
   oauth_health?: CloudAccountHealth['oauth'];
   quota?: CloudQuotaData;
   model_quotas: Record<string, number>;
