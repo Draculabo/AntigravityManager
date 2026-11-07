@@ -13,6 +13,16 @@ export function isTrustedExternalUrl(url: string): boolean {
     }
 
     const pathname = parsedUrl.pathname.replace(/\/$/u, '');
+    if (pathname === `${REPOSITORY_PATH}/issues/new` || parsedUrl.searchParams.has('template')) {
+      return (
+        pathname === `${REPOSITORY_PATH}/issues/new` &&
+        parsedUrl.hash === '' &&
+        !parsedUrl.pathname.includes('%') &&
+        parsedUrl.searchParams.size === 1 &&
+        parsedUrl.searchParams.get('template') === 'bug_report.md'
+      );
+    }
+
     return (
       pathname === REPOSITORY_PATH ||
       pathname === `${REPOSITORY_PATH}/issues` ||
