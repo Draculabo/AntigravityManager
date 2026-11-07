@@ -31,6 +31,8 @@ export interface ProxyTokenRetryState {
   retryAfterSeconds?: number;
   model?: string;
   imagePermit: ImageSchedulerPermit | null;
+  abortRetry?: boolean;
+  fatalError?: unknown;
 }
 
 export interface ProxyRetryAccountLeaseService {
@@ -79,6 +81,13 @@ export interface ProxyRetryAccountLeaseService {
     verificationUrl?: string;
     description?: string;
   }): Promise<void>;
+  markServiceDisabled?(params: {
+    accountId: string;
+    reason: string;
+    appealUrl?: string;
+    appealLinkText?: string;
+    message?: string;
+  }): Promise<void>;
 }
 
 export interface ProxyRetryLogger {
@@ -124,6 +133,8 @@ export class ProxyRetryService {
       failureCount: 0,
       allFailuresRateLimited: true,
       imagePermit: null,
+      abortRetry: false,
+      fatalError: null,
     };
   }
 
@@ -135,6 +146,20 @@ export class ProxyRetryService {
     signal?: AbortSignal,
     targetAccountId?: string,
   ): Promise<CloudAccount | null> {
+    if (retryState.abortRetry) {
+      return null;
+    }
+
+    if (
+      process.env.NODE_ENV !== 'test' &&
+      process.env.VITEST !== 'true' &&
+      retryState.attemptedAccountIds.size > 0 &&
+      !retryState.graceRetryToken
+    ) {
+      const jitterMs = Math.floor(Math.random() * 1500) + 1000;
+      await sleep(jitterMs);
+    }
+
     retryState.model = model;
     const graceRetryToken = retryState.graceRetryToken;
     retryState.graceRetryToken = null;
@@ -380,8 +405,51 @@ export class ProxyRetryService {
         this.persistModelRateLimit(accountId, model, persistenceMessage, status);
         return;
       }
-      if (status === 403 && (await this.handleRecoverableForbidden(accountId, error))) {
-        return;
+      if (status === 503) {
+        const bodyText = (error.body || error.message || '').toLowerCase();
+        if (
+          bodyText.includes('model_capacity_exhausted') ||
+          bodyText.includes('capacity available')
+        ) {
+          const retryDelay =
+            parseRetryDelay(error.body, error.headers?.retryAfter) ??
+            parseRetryDelay(error.message);
+          const cooldownMs = retryDelay ? retryDelay.delayMs : 3 * 60 * 1000;
+          this.modelAvailability.mark(
+            accountId,
+            model,
+            'capacity_exhausted',
+            Date.now() + cooldownMs,
+            {
+              status,
+              message: error.body ?? error.message,
+            },
+          );
+          return;
+        }
+      }
+      if (status === 403) {
+        const classification = classifyForbiddenUpstreamError({
+          body: error.body,
+          details: error.details,
+          message: error.message,
+        });
+        if (classification.kind === 'service_disabled') {
+          await this.accountLeaseService.markServiceDisabled?.({
+            accountId,
+            reason: classification.reason ?? 'TOS_VIOLATION',
+            appealUrl: classification.appealUrl,
+            appealLinkText: classification.appealLinkText,
+            message: error.message,
+          });
+          this.logger.warn(
+            `Upstream 403 service disabled for account ${accountId} (${classification.reason}); marked as disabled.`,
+          );
+          return;
+        }
+        if (await this.handleRecoverableForbidden(accountId, error)) {
+          return;
+        }
       }
       if (status === 401 || status === 403) {
         this.accountLeaseService.markAsForbidden(accountId);
@@ -439,8 +507,36 @@ export class ProxyRetryService {
     );
   }
 
+  isFatalCircuitBreakError(error: unknown): boolean {
+    if (error instanceof UpstreamRequestError && error.status === 403) {
+      const classification = classifyForbiddenUpstreamError({
+        body: error.body,
+        details: error.details,
+        message: error.message,
+      });
+      if (classification.kind === 'service_disabled') {
+        return true;
+      }
+    }
+    const message = (
+      error instanceof Error ? error.message : String(error ?? '')
+    ).toLowerCase();
+    return (
+      message.includes('tos_violation') ||
+      message.includes('violation of terms of service') ||
+      message.includes('service has been disabled')
+    );
+  }
+
   recordFailure(retryState: ProxyTokenRetryState, error: unknown): void {
     retryState.failureCount += 1;
+    if (this.isFatalCircuitBreakError(error)) {
+      retryState.abortRetry = true;
+      retryState.fatalError = error;
+      retryState.allFailuresRateLimited = false;
+      retryState.lastNonRateLimitError = error;
+      return;
+    }
     if (!(error instanceof UpstreamRequestError) || error.status !== 429) {
       retryState.allFailuresRateLimited = false;
       retryState.lastNonRateLimitError = error;
@@ -455,6 +551,9 @@ export class ProxyRetryService {
   }
 
   resolveTerminalError(retryState: ProxyTokenRetryState, lastError: unknown): unknown {
+    if (retryState.fatalError) {
+      return retryState.fatalError;
+    }
     this.refreshPoolRetryAfter(retryState);
     const allFailuresRateLimited = retryState.failureCount > 0 && retryState.allFailuresRateLimited;
     if (allFailuresRateLimited) {

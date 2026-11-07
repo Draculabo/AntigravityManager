@@ -11,10 +11,17 @@ import {
   createCloudAccountRefreshRequest,
   isRetryableInvalidGrantRefreshError,
 } from './CloudAccountRefreshService';
-import { clearValidationHealthAfterSuccessfulProbe } from './CloudAccountHealthService';
+import {
+  CloudAccountHealthService,
+  clearValidationHealthAfterSuccessfulProbe,
+} from './CloudAccountHealthService';
+import { classifyForbiddenUpstreamError } from '@/modules/proxy-gateway/server/common/google-error-details';
 import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '@/shared/logging/logger';
-import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
+import {
+  classifyAccountStatusFromError,
+  isServiceDisabledReason,
+} from '@/modules/cloud-account/utils/account-status';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
@@ -81,6 +88,28 @@ async function persistMonitorAccountStatusFromError(
   const classified = classifyAccountStatusFromError(error);
   if (classified) {
     await CloudAccountRepo.setAccountStatus(accountId, classified.status, classified.reason);
+
+    if (isServiceDisabledReason(classified.reason)) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const forbiddenClassification = classifyForbiddenUpstreamError({
+        body: errorMsg,
+        message: errorMsg,
+      });
+      if (forbiddenClassification.kind === 'service_disabled') {
+        const detectedAt = Date.now();
+        await CloudAccountHealthService.mutateHealth(accountId, (health) => ({
+          ...health,
+          service_disabled: {
+            status: 'disabled',
+            reason: forbiddenClassification.reason ?? 'TOS_VIOLATION',
+            detected_at_ms: detectedAt,
+            appeal_url: forbiddenClassification.appealUrl,
+            appeal_url_link_text: forbiddenClassification.appealLinkText,
+            message: errorMsg,
+          },
+        }));
+      }
+    }
   }
 }
 
@@ -295,6 +324,9 @@ export class CloudMonitorService {
         if (account.health?.oauth?.refresh_blocked) {
           continue;
         }
+        if (account.health?.service_disabled) {
+          continue;
+        }
         if (account.health?.validation && Date.now() < account.health.validation.next_probe_at_ms) {
           continue;
         }
@@ -333,7 +365,8 @@ export class CloudMonitorService {
           }
         }
 
-        await delay(1000);
+        const pollJitterMs = Math.floor(Math.random() * 2000) + 1500;
+        await delay(pollJitterMs);
 
         let quota: QuotaData;
         const previousAICredits = account.quota?.ai_credits;

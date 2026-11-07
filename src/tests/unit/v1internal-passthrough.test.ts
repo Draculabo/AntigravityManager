@@ -114,6 +114,10 @@ describe('v1internal diagnostic passthrough', () => {
       body,
       'access-acc-probe',
       undefined,
+      expect.objectContaining({
+        'x-machine-id': expect.any(String),
+        'X-Machine-Id': expect.any(String),
+      }),
     );
   });
 
@@ -166,6 +170,10 @@ describe('v1internal diagnostic passthrough', () => {
       { test: 'count' },
       'access-acc-probe',
       undefined,
+      expect.objectContaining({
+        'x-machine-id': expect.any(String),
+        'X-Machine-Id': expect.any(String),
+      }),
     );
 
     await controller.embedContent({ test: 'embed' }, createReply() as never);
@@ -174,6 +182,10 @@ describe('v1internal diagnostic passthrough', () => {
       { test: 'embed' },
       'access-acc-probe',
       undefined,
+      expect.objectContaining({
+        'x-machine-id': expect.any(String),
+        'X-Machine-Id': expect.any(String),
+      }),
     );
 
     await controller.generateChat({ test: 'chat' }, createReply() as never);
@@ -182,6 +194,10 @@ describe('v1internal diagnostic passthrough', () => {
       { test: 'chat' },
       'access-acc-probe',
       undefined,
+      expect.objectContaining({
+        'x-machine-id': expect.any(String),
+        'X-Machine-Id': expect.any(String),
+      }),
     );
   });
 

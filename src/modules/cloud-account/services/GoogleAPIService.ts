@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { setTimeout as delay } from 'node:timers/promises';
 import axios, { type AxiosProxyConfig, type AxiosRequestConfig } from 'axios';
@@ -494,6 +495,8 @@ function buildInternalApiHeaders(
     Authorization: `Bearer ${accessToken}`,
     'User-Agent': userAgent,
     'Content-Type': 'application/json',
+    'X-Goog-Api-Client': `gl-node/${process.versions.node ?? '24.22.0'}`,
+    'x-activity-request-id': randomUUID(),
   };
 }
 
@@ -1180,7 +1183,11 @@ export class GoogleAPIService {
                 continue;
               }
 
-              throw new Error('FORBIDDEN');
+              const text = responseDataToText(response.data);
+              const error = new Error(text ? `FORBIDDEN: ${text}` : 'FORBIDDEN');
+              Reflect.set(error, 'status', 403);
+              Reflect.set(error, 'responseData', response.data);
+              throw error;
             }
             if (status === 401) {
               throw new Error('UNAUTHORIZED');
@@ -1221,7 +1228,11 @@ export class GoogleAPIService {
           lastError = error instanceof Error ? error : new Error(String(error));
 
           // Abort retries for auth errors
-          if (errorMsg === 'FORBIDDEN' || errorMsg === 'UNAUTHORIZED') {
+          if (
+            errorMsg === 'FORBIDDEN' ||
+            errorMsg.startsWith('FORBIDDEN:') ||
+            errorMsg === 'UNAUTHORIZED'
+          ) {
             throw error;
           }
 

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosProxyConfig, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { isEmpty, isFunction, isNil, isNumber, isObjectLike, isString } from 'lodash-es';
+import { randomUUID } from 'node:crypto';
 import { Readable, Transform } from 'node:stream';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import {
@@ -354,6 +355,7 @@ export class GeminiClient {
     body: unknown,
     accessToken: string,
     upstreamProxyUrl?: string,
+    extraHeaders?: Record<string, string>,
   ): Promise<V1InternalRawResponse> {
     const response = await this.executeRequestWithEndpointFailover<string>(
       `:${verb}`,
@@ -366,6 +368,7 @@ export class GeminiClient {
         validateStatus: () => true,
       },
       `v1internal-${verb}`,
+      extraHeaders,
     );
 
     return {
@@ -669,6 +672,8 @@ export class GeminiClient {
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
             'User-Agent': requestUserAgent,
+            'X-Goog-Api-Client': `gl-node/${process.versions.node ?? '24.22.0'}`,
+            'x-activity-request-id': randomUUID(),
             ...projectHeaders,
             ...(extraHeaders ?? {}),
           };
@@ -964,7 +969,10 @@ export class GeminiClient {
       if (
         text.includes('SERVICE_DISABLED') ||
         text.includes('has not been used in project') ||
-        text.includes('is disabled')
+        text.includes('is disabled') ||
+        text.includes('has been disabled') ||
+        text.includes('TOS_VIOLATION') ||
+        text.includes('Terms of Service')
       ) {
         return 'upstream_error';
       }

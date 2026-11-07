@@ -247,11 +247,12 @@ export class OpenAIService extends BaseProxyService {
         // Use v1internal API (same as Anthropic handler)
         if (request.stream) {
           try {
+            const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
             const stream = await this.geminiClient.streamGenerateInternal(
               geminiBody,
               token.token.access_token,
               token.token.upstream_proxy_url,
-              extraHeaders,
+              accountTelemetryHeaders,
               signal,
             );
             return this.createOpenAIProtocolStream(
@@ -381,11 +382,12 @@ export class OpenAIService extends BaseProxyService {
               enforceAuthoritativeThinkingBudget,
             );
             if (request.stream) {
+              const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
               const stream = await this.geminiClient.streamGenerateInternal(
                 fallbackBody,
                 token.token.access_token,
                 token.token.upstream_proxy_url,
-                extraHeaders,
+                accountTelemetryHeaders,
                 signal,
               );
               return this.createOpenAIProtocolStream(
@@ -435,6 +437,10 @@ export class OpenAIService extends BaseProxyService {
         }
 
         this.recordRetryFailure(retryState, lastError);
+        if (retryState.abortRetry) {
+          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          break;
+        }
         if (isImageRequest) {
           if (
             await this.prepareScheduledImageRetry(

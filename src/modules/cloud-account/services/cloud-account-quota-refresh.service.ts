@@ -12,7 +12,11 @@ import {
   markAccountStatusFromError,
   mergeRefreshedToken,
 } from './cloud-account-refresh-state.service';
-import { clearValidationHealthAfterSuccessfulProbe } from './CloudAccountHealthService';
+import {
+  CloudAccountHealthService,
+  clearValidationHealthAfterSuccessfulProbe,
+} from './CloudAccountHealthService';
+import { classifyForbiddenUpstreamError } from '@/modules/proxy-gateway/server/common/google-error-details';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
 import { AppError } from '@/shared/errors/appError';
 import { logger } from '@/shared/logging/logger';
@@ -44,6 +48,11 @@ export async function refreshAccountQuotaCore(
   const account = await CloudAccountRepo.getAccount(accountId);
   if (!account) {
     throw new Error(`Account not found: ${accountId}`);
+  }
+
+  if (account.health?.service_disabled) {
+    logger.warn(`Skipping quota refresh for ${account.email}: account is marked service_disabled`);
+    return account;
   }
 
   let now = Math.floor(Date.now() / 1000);
@@ -175,9 +184,27 @@ export async function refreshAccountQuotaCore(
         await markAccountStatusFromError(account, refreshError);
         throw refreshError;
       }
-    } else if (errorMessage === 'FORBIDDEN') {
+    } else if (errorMessage === 'FORBIDDEN' || errorMessage.startsWith('FORBIDDEN')) {
       logger.warn(`Received 403 Forbidden for ${account.email}; marking account status from error`);
       await markAccountStatusFromError(account, error);
+      const forbiddenClassification = classifyForbiddenUpstreamError({
+        body: errorMessage,
+        message: errorMessage,
+      });
+      if (forbiddenClassification.kind === 'service_disabled') {
+        const detectedAt = Date.now();
+        await CloudAccountHealthService.mutateHealth(account.id, (health) => ({
+          ...health,
+          service_disabled: {
+            status: 'disabled',
+            reason: forbiddenClassification.reason ?? 'TOS_VIOLATION',
+            detected_at_ms: detectedAt,
+            appeal_url: forbiddenClassification.appealUrl,
+            appeal_url_link_text: forbiddenClassification.appealLinkText,
+            message: errorMessage,
+          },
+        }));
+      }
       return account;
     }
 

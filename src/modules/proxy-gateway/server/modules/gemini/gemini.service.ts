@@ -152,11 +152,12 @@ export class GeminiService extends BaseProxyService {
           enforceAuthoritativeThinkingBudget,
         );
 
+        const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
         const response = await this.generateInternalWithStreamFallback(
           internalBody,
           token.token.access_token,
           token.token.upstream_proxy_url,
-          extraHeaders,
+          accountTelemetryHeaders,
           signal,
         );
 
@@ -185,11 +186,12 @@ export class GeminiService extends BaseProxyService {
               effectiveVariantRequest.variant ?? undefined,
               enforceAuthoritativeThinkingBudget,
             );
+            const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
             const response = await this.generateInternalWithStreamFallback(
               fallbackBody,
               token.token.access_token,
               token.token.upstream_proxy_url,
-              extraHeaders,
+              accountTelemetryHeaders,
               signal,
             );
             this.markUpstreamSuccessForResponse(token.id, accountTargetModel, response);
@@ -203,6 +205,10 @@ export class GeminiService extends BaseProxyService {
         }
 
         this.recordRetryFailure(retryState, lastError);
+        if (retryState.abortRetry) {
+          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          break;
+        }
         if (isImageRequest) {
           if (
             await this.prepareScheduledImageRetry(
@@ -318,11 +324,12 @@ export class GeminiService extends BaseProxyService {
           enforceAuthoritativeThinkingBudget,
         );
 
+        const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
         const stream = await this.geminiClient.streamGenerateInternal(
           internalBody,
           token.token.access_token,
           token.token.upstream_proxy_url,
-          extraHeaders,
+          accountTelemetryHeaders,
           signal,
         );
         return this.passthroughSseStream(
@@ -353,11 +360,12 @@ export class GeminiService extends BaseProxyService {
               effectiveVariantRequest.variant ?? undefined,
               enforceAuthoritativeThinkingBudget,
             );
+            const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
             const stream = await this.geminiClient.streamGenerateInternal(
               fallbackBody,
               token.token.access_token,
               token.token.upstream_proxy_url,
-              extraHeaders,
+              accountTelemetryHeaders,
               signal,
             );
             return this.passthroughSseStream(
@@ -374,6 +382,10 @@ export class GeminiService extends BaseProxyService {
         }
 
         this.recordRetryFailure(retryState, lastError);
+        if (retryState.abortRetry) {
+          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          break;
+        }
         if (isImageRequest) {
           if (
             await this.prepareScheduledImageRetry(

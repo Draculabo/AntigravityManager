@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import {
   GeminiClient,
@@ -151,6 +152,20 @@ export abstract class BaseProxyService {
     );
     setCurrentAuditAccountId(account?.id ?? null, account?.email ?? null);
     return account;
+  }
+
+  protected resolveAccountTelemetryHeaders(
+    account: CloudAccount,
+    extraHeaders?: Record<string, string>,
+  ): Record<string, string> {
+    const machineId =
+      account.device_profile?.machineId ||
+      createHash('sha256').update(`agm-account-machine:${account.id}`).digest('hex');
+    return {
+      'x-machine-id': machineId,
+      'X-Machine-Id': machineId,
+      ...(extraHeaders ?? {}),
+    };
   }
 
   protected releaseImagePermit(retryState: ProxyTokenRetryState): void {
