@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CloudAccount } from '@/modules/cloud-account/types';
+import { CloudAccountHealthSchema, type CloudAccount } from '@/modules/cloud-account/types';
+import { classifyForbiddenUpstreamError } from '@/modules/proxy-gateway/server/common/google-error-details';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
@@ -63,6 +64,7 @@ function fixture() {
     getAccounts: vi.fn(async () => structuredClone(accounts)),
     getAccount: vi.fn(async (id) => structuredClone(accounts.find((a) => a.id === id))),
     updateToken: vi.fn(),
+    compareAndUpdateToken: vi.fn().mockResolvedValue(true),
     updateQuota: vi.fn(),
     mutateHealth: vi.fn(),
   };
@@ -79,10 +81,185 @@ function fixture() {
   };
 
   const service = new AccountLeaseService(store, upstream);
-  return { service, accounts };
+  return { service, accounts, store, upstream };
 }
 
 describe('AccountLeaseService targetAccountId', () => {
+  it('does not resurrect an evicted account when an in-flight refresh completes', async () => {
+    const { service, accounts, upstream } = fixture();
+    accounts[0].token.expiry_timestamp = 1;
+    await service.loadAccounts();
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(upstream.refreshAccessToken).mockImplementation(async () => {
+      entered();
+      await resume;
+      return { access_token: 'refreshed', expires_in: 3600, token_type: 'Bearer' };
+    });
+    const selection = service.getNextToken({ targetAccountId: 'acc-alpha' });
+    await started;
+    service.evictAccount('acc-alpha');
+    release();
+    expect(await selection).toBeNull();
+    expect(await service.getNextToken({ targetAccountId: 'acc-alpha' })).toBeNull();
+  });
+
+  it('does not resurrect an evicted account when project discovery completes', async () => {
+    const { service, accounts, upstream } = fixture();
+    accounts[0].token.project_id = undefined;
+    await service.loadAccounts();
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(upstream.fetchProjectId).mockImplementation(async () => {
+      entered();
+      await resume;
+      return 'discovered-project';
+    });
+    const selection = service.getNextToken({ targetAccountId: 'acc-alpha' });
+    await started;
+    service.evictAccount('acc-alpha');
+    release();
+    expect(await selection).toBeNull();
+    expect(await service.getNextToken({ targetAccountId: 'acc-alpha' })).toBeNull();
+  });
+
+  it('never leases a cached account when every profile read fails', async () => {
+    const { service, store } = fixture();
+    await service.loadAccounts();
+    vi.mocked(store.getAccount).mockRejectedValue(new Error('storage unavailable'));
+
+    await expect(service.getNextToken()).resolves.toBeNull();
+    expect(store.getAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it('selects another account when the selected account disappears during fulfillment', async () => {
+    const { service, accounts, store } = fixture();
+    await service.loadAccounts();
+    let missingId: string | undefined;
+    vi.mocked(store.getAccount).mockImplementation(async (id) => {
+      if (!missingId) {
+        missingId = id;
+        return undefined;
+      }
+      return structuredClone(accounts.find((account) => account.id === id));
+    });
+    const lease = await service.getNextToken();
+    expect(lease).not.toBeNull();
+    expect(lease?.id).not.toBe(missingId);
+    expect(store.getAccount).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not issue a lease quarantined while the device profile is being read', async () => {
+    const { service, accounts, store } = fixture();
+    await service.loadAccounts();
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(store.getAccount).mockImplementation(async () => {
+      entered();
+      await resume;
+      return structuredClone(accounts[0]);
+    });
+    const selection = service.getNextToken({ targetAccountId: 'acc-alpha' });
+    await waiting;
+    service.quarantineAccountInMemory('acc-alpha');
+    release();
+    expect(await selection).toBeNull();
+  });
+  it('preserves the configured device profile when leasing an account', async () => {
+    const { service, accounts } = fixture();
+    accounts[0].device_profile = {
+      machineId: 'configured-machine',
+      macMachineId: 'mac',
+      devDeviceId: 'device',
+      sqmId: 'sqm',
+    };
+    await service.loadAccounts();
+    expect((await service.getNextToken({ targetAccountId: 'acc-alpha' }))?.device_profile).toEqual(
+      accounts[0].device_profile,
+    );
+  });
+
+  it('uses an updated device binding without reloading the lease cache', async () => {
+    const { service, accounts } = fixture();
+    accounts[0].device_profile = {
+      machineId: 'old-machine',
+      macMachineId: 'mac',
+      devDeviceId: 'device',
+      sqmId: 'sqm',
+    };
+    await service.loadAccounts();
+    expect(
+      (await service.getNextToken({ targetAccountId: 'acc-alpha' }))?.device_profile?.machineId,
+    ).toBe('old-machine');
+    accounts[0].device_profile = { ...accounts[0].device_profile, machineId: 'new-machine' };
+    expect(
+      (await service.getNextToken({ targetAccountId: 'acc-alpha' }))?.device_profile?.machineId,
+    ).toBe('new-machine');
+  });
+  it('persists a ToS classification with a bounded long appeal label', async () => {
+    const { service, accounts, store } = fixture();
+    vi.mocked(store.mutateHealth).mockImplementation(async (id, mutate) => {
+      const account = accounts.find((item) => item.id === id)!;
+      account.health = CloudAccountHealthSchema.parse(mutate(account.health));
+      return account.health;
+    });
+    const result = classifyForbiddenUpstreamError({
+      details: [
+        {
+          reason: 'TOS_VIOLATION',
+          metadata: { appeal_url: 'https://forms.gle/test', appeal_url_link_text: 'x'.repeat(160) },
+        },
+      ],
+    });
+    await service.markServiceDisabled({
+      accountId: 'acc-alpha',
+      reason: result.reason!,
+      appealUrl: result.appealUrl,
+      appealLinkText: result.appealLinkText,
+    });
+    expect(accounts[0].health?.service_disabled?.appeal_url_link_text).toBe('x'.repeat(100));
+  });
+  it('does not clear a newer quarantine when a manual release completes late', async () => {
+    const { service } = fixture();
+    await service.loadAccounts();
+    service.quarantineAccountInMemory('acc-alpha');
+    const generation = service.getMemoryQuarantineGeneration('acc-alpha');
+    service.quarantineAccountInMemory('acc-alpha');
+    service.clearMemoryQuarantine('acc-alpha', generation);
+    expect(await service.getNextToken({ targetAccountId: 'acc-alpha' })).toBeNull();
+  });
+  it('keeps the loaded account quarantined if persisting ToS health fails', async () => {
+    const { service, store } = fixture();
+    await service.loadAccounts();
+    vi.mocked(store.mutateHealth).mockRejectedValueOnce(new Error('storage failed'));
+    await expect(
+      service.markServiceDisabled({ accountId: 'acc-alpha', reason: 'TOS_VIOLATION' }),
+    ).rejects.toThrow('storage failed');
+    expect(await service.getNextToken({ targetAccountId: 'acc-alpha' })).toBeNull();
+    await service.reloadAllAccountsOrThrow();
+    expect(await service.getNextToken({ targetAccountId: 'acc-alpha' })).toBeNull();
+    expect((await service.getNextToken({ targetAccountId: 'acc-beta' }))?.id).toBe('acc-beta');
+    service.clearMemoryQuarantine('acc-alpha', service.getMemoryQuarantineGeneration('acc-alpha'));
+    expect((await service.getNextToken({ targetAccountId: 'acc-alpha' }))?.id).toBe('acc-alpha');
+  });
   it('honors model-specific upstream lockouts for targeted leases', async () => {
     const { service } = fixture();
     await service.loadAccounts();

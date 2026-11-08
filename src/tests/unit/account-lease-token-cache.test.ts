@@ -41,6 +41,7 @@ function createStore(accounts: CloudAccount[]): AccountLeaseAccountStore {
     getAccounts: vi.fn().mockResolvedValue(accounts),
     getAccount: vi.fn(),
     updateToken: vi.fn(),
+    compareAndUpdateToken: vi.fn().mockResolvedValue(true),
     updateQuota: vi.fn(),
     mutateHealth: vi.fn(),
   };

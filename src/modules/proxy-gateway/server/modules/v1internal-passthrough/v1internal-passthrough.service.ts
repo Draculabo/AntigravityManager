@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 
 import { AccountLeaseService } from '../account-lease/account-lease.service';
@@ -43,18 +42,11 @@ export class V1InternalPassthroughService {
 
     setCurrentAuditAccountId(account.id);
 
-    const machineId =
-      account.device_profile?.machineId ||
-      createHash('sha256').update(`agm-account-machine:${account.id}`).digest('hex');
     const upstream = await this.geminiClient.postV1InternalRaw(
       verb,
       body,
       account.token.access_token,
       account.token.upstream_proxy_url,
-      {
-        'x-machine-id': machineId,
-        'X-Machine-Id': machineId,
-      },
     );
 
     return {

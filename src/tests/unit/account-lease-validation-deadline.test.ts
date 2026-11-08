@@ -41,6 +41,7 @@ function createService(account: CloudAccount): AccountLeaseService {
     getAccounts: vi.fn(async () => [structuredClone(account)]),
     getAccount: vi.fn(async () => structuredClone(account)),
     updateToken: vi.fn(),
+    compareAndUpdateToken: vi.fn().mockResolvedValue(true),
     updateQuota: vi.fn(),
     mutateHealth: vi.fn(async (_accountId, mutation) => {
       account.health = mutation(account.health);

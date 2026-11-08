@@ -65,6 +65,7 @@ export class AccountLeaseTokenCache {
       project_id: account.token.project_id || undefined,
       session_id: account.token.session_id || this.generateSessionId(),
       upstream_proxy_url: account.token.upstream_proxy_url || account.proxy_url || undefined,
+      device_profile: account.device_profile,
       validation_blocked_until_ms: account.health?.validation?.next_probe_at_ms,
       service_disabled:
         account.health?.service_disabled !== undefined ||

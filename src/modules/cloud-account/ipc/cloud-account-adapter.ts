@@ -60,6 +60,7 @@ export interface CloudAccountAdapter {
   switchAccount(accountId: string, appTarget?: AntigravityAppTarget): Promise<void>;
   listViews(): Promise<CloudAccountView[]>;
   refreshQuota(accountId: string): Promise<CloudAccountView>;
+  clearServiceDisabled(accountId: string): Promise<void>;
   syncFromIde(appTarget?: AntigravityAppTarget): Promise<CloudAccountView | null>;
   getSecurityStatus(): Promise<CloudAccountSecurityStatus>;
   openValidationLink(accountId: string): Promise<void>;
@@ -96,6 +97,7 @@ type StandaloneCoreCloudAccountClient = Pick<
   | 'exportAccountFile'
   | 'accountViews'
   | 'refreshAccountQuota'
+  | 'clearServiceDisabled'
   | 'syncFromIde'
   | 'switchCloudAccount'
   | 'accountSecurityStatus'
@@ -164,6 +166,11 @@ function createDesktopEmbeddedAdapter(): CloudAccountAdapter {
       const { refreshAccountQuotaForDesktop } = await import('./quota-refresh-desktop');
       return projectCloudAccountView(await refreshAccountQuotaForDesktop(accountId));
     },
+    clearServiceDisabled: async (accountId) => {
+      const { clearServiceDisabledManually } =
+        await import('../services/CloudAccountHealthService');
+      await clearServiceDisabledManually(accountId);
+    },
     syncFromIde: (appTarget) => syncIdeAccountView(appTarget),
     getSecurityStatus: async () => ({ state: 'plaintext' }),
     openValidationLink: async (accountId) => {
@@ -227,6 +234,7 @@ function createStandaloneCoreAdapter(
     switchAccount: (accountId, appTarget) => client.switchCloudAccount(accountId, appTarget),
     listViews: () => client.accountViews(),
     refreshQuota: (accountId) => client.refreshAccountQuota(accountId),
+    clearServiceDisabled: (accountId) => client.clearServiceDisabled(accountId),
     syncFromIde: (appTarget) => client.syncFromIde(appTarget),
     getSecurityStatus: () => client.accountSecurityStatus(),
     openValidationLink: async (accountId) => {

@@ -20,6 +20,7 @@ vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
   CloudAccountRepo: {
     getAccount: vi.fn(),
     updateHealth: vi.fn(),
+    compareAndUpdateHealth: vi.fn(),
   },
 }));
 
@@ -77,9 +78,17 @@ describe('CloudAccountRefreshService', () => {
     vi.clearAllMocks();
     CloudAccountRefreshService.resetStateForTesting();
     persistedAccount = createAccount();
+    persistedAccount.token.oauth_client_key = 'default';
     vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async () => persistedAccount);
     vi.mocked(CloudAccountRepo.updateHealth).mockImplementation(async (_accountId, health) => {
       persistedAccount.health = health;
+    });
+    vi.mocked(CloudAccountRepo.compareAndUpdateHealth).mockImplementation(async (_id, expected, previous, health) => {
+      if (JSON.stringify(persistedAccount.token) !== JSON.stringify(expected) || JSON.stringify(persistedAccount.health) !== JSON.stringify(previous)) {
+        return false;
+      }
+      persistedAccount.health = health;
+      return true;
     });
   });
 
@@ -112,8 +121,10 @@ describe('CloudAccountRefreshService', () => {
     await expect(CloudAccountRefreshService.refreshAccessToken(request)).rejects.toBeInstanceOf(
       CloudAccountRefreshBlockedError,
     );
-    expect(CloudAccountRepo.updateHealth).toHaveBeenCalledWith(
+    expect(CloudAccountRepo.compareAndUpdateHealth).toHaveBeenCalledWith(
       'acc-1',
+      expect.anything(),
+      expect.anything(),
       expect.objectContaining({
         validation: expect.objectContaining({ reason: 'VALIDATION_REQUIRED' }),
         oauth: expect.objectContaining({
@@ -155,6 +166,52 @@ describe('CloudAccountRefreshService', () => {
       refresh_blocked: false,
       invalid_grant_count: 1,
     });
+  });
+
+  it('does not refresh after the OAuth client changes even if the refresh token is unchanged', async () => {
+    persistedAccount.token.oauth_client_key = 'replacement-client';
+    await expect(CloudAccountRefreshService.refreshAccessToken(request)).rejects.toThrow(
+      'Account credentials changed before token refresh',
+    );
+    expect(GoogleAPIService.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('does not record an invalid grant against a reauthorized account', async () => {
+    const response = Promise.withResolvers<never>();
+    vi.mocked(GoogleAPIService.refreshAccessToken).mockReturnValueOnce(response.promise);
+    const pending = CloudAccountRefreshService.refreshAccessToken(request);
+    await vi.waitFor(() => expect(GoogleAPIService.refreshAccessToken).toHaveBeenCalledOnce());
+    persistedAccount.token = { ...persistedAccount.token, refresh_token: 'replacement' };
+    response.reject(invalidGrantError());
+    await expect(pending).rejects.toBeInstanceOf(OAuthTokenRefreshError);
+    expect(persistedAccount.health?.oauth).toBeUndefined();
+    expect(CloudAccountRepo.updateHealth).not.toHaveBeenCalled();
+  });
+
+  it('does not send a refresh token replaced while the operation was queued', async () => {
+    const gate = Promise.withResolvers<void>();
+    vi.mocked(GoogleAPIService.refreshAccessToken).mockImplementationOnce(async () => {
+      await gate.promise;
+      return { access_token: 'new', refresh_token: 'rotated', expires_in: 3600, token_type: 'Bearer' };
+    });
+    const first = CloudAccountRefreshService.refreshAccessToken(request);
+    const second = CloudAccountRefreshService.refreshAccessToken(request);
+    await vi.waitFor(() => expect(GoogleAPIService.refreshAccessToken).toHaveBeenCalledOnce());
+    persistedAccount.token.refresh_token = 'replacement';
+    gate.resolve();
+    await first;
+    await expect(second).rejects.toThrow('Account credentials changed before token refresh');
+    expect(GoogleAPIService.refreshAccessToken).toHaveBeenCalledOnce();
+  });
+
+  it('returns rotated credentials when clearing a prior failure cannot be saved', async () => {
+    persistedAccount.health = { oauth: { refresh_blocked: false, invalid_grant_count: 1 } };
+    const rotated = { access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer' };
+    vi.mocked(GoogleAPIService.refreshAccessToken).mockResolvedValueOnce(rotated);
+    vi.mocked(CloudAccountRepo.compareAndUpdateHealth).mockRejectedValueOnce(new Error('storage unavailable'));
+
+    await expect(CloudAccountRefreshService.refreshAccessToken(request)).resolves.toEqual(rotated);
+    expect(persistedAccount.health?.oauth?.invalid_grant_count).toBe(1);
   });
 
   it('does not call Google for an account with a persisted refresh block', async () => {

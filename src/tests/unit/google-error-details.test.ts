@@ -163,6 +163,33 @@ describe('google error details', () => {
     });
   });
 
+  it('bounds fallback appeal labels without changing validation descriptions', () => {
+    const label = 'x'.repeat(160);
+    expect(
+      classifyForbiddenUpstreamError({ body: `TOS_VIOLATION "appeal_url_link_text":"${label}"` })
+        .appealLinkText,
+    ).toBe('x'.repeat(100));
+    const details = extractGoogleErrorDetails({
+      error: {
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.Help',
+            links: [{ description: label, url: 'https://accounts.google.com/verify' }],
+          },
+        ],
+      },
+    });
+    expect(details?.[0].links?.[0].description).toBe(label);
+  });
+
+  it('rejects insecure appeal URLs while retaining the disabled classification', () => {
+    const result = classifyForbiddenUpstreamError({
+      details: [{ reason: 'TOS_VIOLATION', metadata: { appeal_url: 'http://forms.gle/test' } }],
+    });
+    expect(result.kind).toBe('service_disabled');
+    expect(result.appealUrl).toBeUndefined();
+  });
+
   it('classifies ORG_RESTRICTION_VIOLATION', () => {
     const payload = {
       error: {

@@ -234,7 +234,11 @@ export class AnthropicService extends BaseProxyService {
         if (classifyInvalidThoughtSignatureError(error)) {
           throw error;
         }
-        if (error instanceof Error && this.isProjectContextError(error.message)) {
+        if (
+          error instanceof Error &&
+          !this.retryPolicy.isFatalCircuitBreakError(error) &&
+          this.isProjectContextError(error.message)
+        ) {
           this.logger.warn(
             `Anthropic request hit project context issue, retrying without project: ${error.message}`,
           );

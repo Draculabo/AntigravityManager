@@ -6,6 +6,55 @@ import {
 } from '@/modules/cloud-account/services/cloud-account-view';
 
 describe('cloud account renderer view', () => {
+  it('does not expose an untrusted persisted appeal URL', () => {
+    const account: CloudAccount = {
+      id: '11111111-1111-4111-8111-111111111111',
+      provider: 'google',
+      email: 'example@example.com',
+      token: {
+        access_token: 'test',
+        refresh_token: 'test',
+        expires_in: 3600,
+        expiry_timestamp: 1000,
+        token_type: 'Bearer',
+      },
+      created_at: 1,
+      last_used: 1,
+      health: {
+        service_disabled: {
+          status: 'disabled',
+          reason: 'TOS_VIOLATION',
+          detected_at_ms: 1,
+          appeal_url: 'https://evil.example/appeal',
+        },
+      },
+    };
+    const view = projectCloudAccountView(account);
+    expect(view.health?.service_disabled?.appeal_url).toBeUndefined();
+    expect(view.health?.service_disabled?.has_appeal_link).toBe(false);
+  });
+  it('does not project a generic forbidden response as a ToS disability', () => {
+    const account: CloudAccount = {
+      id: '11111111-1111-4111-8111-111111111111',
+      provider: 'google',
+      email: 'example@example.com',
+      token: {
+        access_token: 'test',
+        refresh_token: 'test',
+        expires_in: 3600,
+        expiry_timestamp: 1000,
+        token_type: 'Bearer',
+      },
+      created_at: 1,
+      last_used: 1,
+      status: 'expired',
+      status_reason: 'FORBIDDEN',
+    };
+    expect(projectCloudAccountView(account).status_reason).not.toBe('service_disabled');
+    expect(
+      projectCloudAccountView({ ...account, status_reason: 'TOS_VIOLATION' }).status_reason,
+    ).toBe('service_disabled');
+  });
   it('keeps account-card fields while excluding credentials and device state', () => {
     const account: CloudAccount & { future_secret: string } = {
       id: '11111111-1111-4111-8111-111111111111',

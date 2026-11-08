@@ -790,7 +790,14 @@ const tr = {
       rateLimited: 'Hız Sınırına Takıldı',
       accountDisabledToS: 'Devre Dışı (ToS)',
       submitAppeal: 'İtiraz Et',
-      serviceBlockedNotice: 'Hizmet Google tarafından devre dışı bırakıldı (ToS ihlali). Modeller kullanılamıyor.',
+      'clear-disabled': 'Karantinayı kaldır',
+      'clear-disabled-title': 'Hesap karantinası kaldırılsın mı?',
+      'clear-disabled-description':
+        'Yalnızca Google erişimi geri yükledikten sonra devam edin. Yerel engel Google kontrol edilmeden kaldırılır; istekler yeniden başlayabilir ve hesap tekrar engellenebilir.',
+      'clear-disabled-confirm': 'Yerel engeli kaldır',
+      'clear-disabled-failed': 'Hesap karantinası kaldırılamadı',
+      serviceBlockedNotice:
+        'Hizmet Google tarafından devre dışı bırakıldı (ToS ihlali). Modeller kullanılamıyor.',
       validationRiskControlled: 'Risk / Hız Sınırı',
       validationOAuthReauthRequired: 'Google hesabına yeniden giriş yapın',
       validationRequired: 'Doğrulama Gerekiyor',

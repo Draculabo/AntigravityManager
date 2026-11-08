@@ -669,7 +669,8 @@ describe('ProxyRetryService', () => {
       'acc-tos',
       'gemini-3-flash',
       new UpstreamRequestError({
-        message: 'This service has been disabled in this account for violation of Terms of Service.',
+        message:
+          'This service has been disabled in this account for violation of Terms of Service.',
         status: 403,
         details: [
           {
@@ -693,6 +694,19 @@ describe('ProxyRetryService', () => {
       appealLinkText: 'Submit Appeal',
       message: 'This service has been disabled in this account for violation of Terms of Service.',
     });
+  });
+
+  it('quarantines an account on an image model ToS violation', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const error = new UpstreamRequestError({
+      message: 'Permission denied',
+      status: 403,
+      details: [{ type: 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'TOS_VIOLATION' }],
+    });
+    await policy.applyUpstreamPenalty('acc-image-tos', 'gemini-3-image', error);
+    expect(accountLeaseService.markServiceDisabled).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'acc-image-tos', reason: 'TOS_VIOLATION' }),
+    );
   });
 
   it('triggers circuit breaker and aborts retry on TOS_VIOLATION to prevent cascading bans', async () => {

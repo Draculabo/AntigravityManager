@@ -61,6 +61,7 @@ vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
   CloudAccountRepo: {
     getAccount: vi.fn(async () => account),
     updateToken: vi.fn(async () => {}),
+    compareAndUpdateToken: vi.fn(async () => true),
     updateLastUsed: vi.fn((id: string) => {
       ownerState.lastUsedId = id;
     }),

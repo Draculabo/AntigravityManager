@@ -790,7 +790,14 @@ const vi = {
       rateLimited: 'Bị giới hạn tốc độ',
       accountDisabledToS: 'Bị vô hiệu hóa (ToS)',
       submitAppeal: 'Gửi kháng nghị',
-      serviceBlockedNotice: 'Dịch vụ đã bị Google vô hiệu hóa (vi phạm Điều khoản). Các mô hình không thể sử dụng.',
+      'clear-disabled': 'Gỡ cách ly',
+      'clear-disabled-title': 'Gỡ cách ly tài khoản?',
+      'clear-disabled-description':
+        'Chỉ tiếp tục sau khi Google khôi phục quyền truy cập. Thao tác này gỡ chặn cục bộ mà không kiểm tra Google; yêu cầu có thể tiếp tục và tài khoản có thể bị chặn lại.',
+      'clear-disabled-confirm': 'Gỡ chặn cục bộ',
+      'clear-disabled-failed': 'Không thể gỡ cách ly tài khoản',
+      serviceBlockedNotice:
+        'Dịch vụ đã bị Google vô hiệu hóa (vi phạm Điều khoản). Các mô hình không thể sử dụng.',
       validationRiskControlled: 'Rủi ro / Bị giới hạn',
       validationOAuthReauthRequired: 'Cần đăng nhập lại Google',
       validationRequired: 'Cần xác minh',

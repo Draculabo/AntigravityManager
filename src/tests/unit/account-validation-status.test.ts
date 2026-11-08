@@ -79,4 +79,13 @@ describe('getCloudAccountHealthBlockKind', () => {
   it('does not report a health gate when no health is stored', () => {
     expect(getCloudAccountHealthBlockKind(undefined)).toBeNull();
   });
+
+  it('does not label a generic forbidden response as a ToS violation', () => {
+    expect(
+      getCloudAccountBlockedStatusLabel(
+        { status: 'expired', status_reason: 'FORBIDDEN' },
+        translate,
+      ),
+    ).not.toBe('cloud.card.accountDisabledToS');
+  });
 });

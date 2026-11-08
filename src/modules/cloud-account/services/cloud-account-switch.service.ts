@@ -302,7 +302,9 @@ export async function switchCloudAccountCore(
                     );
 
                     const updatedToken = mergeRefreshedToken(account.token, refreshedToken, now);
-                    await CloudAccountRepo.updateToken(account.id, updatedToken);
+                    if (!(await CloudAccountRepo.compareAndUpdateToken(account.id, account.token, updatedToken))) {
+                      throw new Error('Account token changed during switch refresh');
+                    }
 
                     account.token = updatedToken;
                     logger.info(`Token refreshed for ${account.email}`);

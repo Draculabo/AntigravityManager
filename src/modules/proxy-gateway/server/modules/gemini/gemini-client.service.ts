@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosProxyConfig, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { isEmpty, isFunction, isNil, isNumber, isObjectLike, isString } from 'lodash-es';
-import { randomUUID } from 'node:crypto';
 import { Readable, Transform } from 'node:stream';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import {
@@ -17,7 +16,10 @@ import {
   type ExplicitContextCacheResource,
 } from './explicit-context-cache.store';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
-import { extractGoogleErrorDetails } from '../../common/google-error-details';
+import {
+  classifyForbiddenUpstreamError,
+  extractGoogleErrorDetails,
+} from '../../common/google-error-details';
 import {
   Upstream4xxCaptureService,
   type Upstream4xxCaptureInput,
@@ -672,8 +674,6 @@ export class GeminiClient {
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
             'User-Agent': requestUserAgent,
-            'X-Goog-Api-Client': `gl-node/${process.versions.node ?? '24.22.0'}`,
-            'x-activity-request-id': randomUUID(),
             ...projectHeaders,
             ...(extraHeaders ?? {}),
           };
@@ -707,7 +707,8 @@ export class GeminiClient {
           if (
             retryPolicy.allowProjectHeaderDowngrade &&
             response.status === 403 &&
-            Boolean(projectHeaders['x-goog-user-project'])
+            Boolean(projectHeaders['x-goog-user-project']) &&
+            this.canDowngradeForbiddenResponse(response.data)
           ) {
             if (response.data instanceof Readable) {
               response.data.destroy();
@@ -1023,7 +1024,20 @@ export class GeminiClient {
     return (
       axios.isAxiosError(error) &&
       error.response?.status === 403 &&
-      Boolean(projectHeaders['x-goog-user-project'])
+      Boolean(projectHeaders['x-goog-user-project']) &&
+      this.canDowngradeForbiddenResponse(error.response.data)
+    );
+  }
+
+  private canDowngradeForbiddenResponse(data: unknown): boolean {
+    // A stream cannot be classified without consuming it; preserve the response instead of replaying.
+    if (this.isReadableStream(data)) {
+      return false;
+    }
+    const body = Buffer.isBuffer(data) ? data.toString('utf8') : this.describeAxiosErrorData(data);
+    return (
+      classifyForbiddenUpstreamError({ details: extractGoogleErrorDetails(data), body }).kind !==
+      'service_disabled'
     );
   }
 

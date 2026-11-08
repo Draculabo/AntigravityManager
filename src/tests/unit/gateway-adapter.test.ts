@@ -220,6 +220,7 @@ describe('Electron gateway read adapter', () => {
         sqmId: '{SQM}',
       })),
       accountProfileDeleteRevision: vi.fn(async () => ({ success: true as const })),
+      accountClearServiceDisabled: vi.fn(),
       accountRefreshQuota: vi.fn(async () => ({
         id: 'account-1',
         provider: 'google' as const,

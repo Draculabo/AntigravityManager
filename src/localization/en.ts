@@ -1169,7 +1169,14 @@ const en = {
       rateLimited: 'Rate Limited',
       accountDisabledToS: 'Disabled (ToS)',
       submitAppeal: 'Submit Appeal',
-      serviceBlockedNotice: 'Service has been disabled by Google (ToS violation). Models are unavailable.',
+      'clear-disabled': 'Clear quarantine',
+      'clear-disabled-title': 'Clear account quarantine?',
+      'clear-disabled-description':
+        'Only continue after Google has restored access. This clears the local block without checking Google; requests may resume and the account may be blocked again.',
+      'clear-disabled-confirm': 'Clear local block',
+      'clear-disabled-failed': 'Could not clear the account quarantine',
+      serviceBlockedNotice:
+        'Service has been disabled by Google (ToS violation). Models are unavailable.',
       validationRiskControlled: 'Risk / Rate Limited',
       validationOAuthReauthRequired: 'Sign in to Google again',
       validationRequired: 'Verification Required',

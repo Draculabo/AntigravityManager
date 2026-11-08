@@ -78,6 +78,7 @@ import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
 import { isWeeklyQuotaBucket } from '@/modules/cloud-account/utils/quota-groups';
 import { useOpenAccountValidationLink } from '@/modules/cloud-account/hooks/useOpenAccountValidationLink';
+import { ClearServiceDisabledDialog } from '@/modules/cloud-account/components/ClearServiceDisabledDialog';
 import {
   isGeminiWeeklyQuotaItem,
   isClaudeOrGptWeeklyQuotaItem,
@@ -579,8 +580,7 @@ export function CloudAccountCard({
 
   const validationBlockedStatusLabel = getCloudAccountBlockedStatusLabel(account, t);
   const isAccountDisabled =
-    account.status_reason === 'service_disabled' ||
-    Boolean(account.health?.service_disabled);
+    account.status_reason === 'service_disabled' || Boolean(account.health?.service_disabled);
 
   return (
     <Card
@@ -756,6 +756,9 @@ export function CloudAccountCard({
                   {t('cloud.card.submitAppeal')}
                 </Button>
               )}
+            {account.health?.service_disabled && (
+              <ClearServiceDisabledDialog accountId={account.id} />
+            )}
           </div>
 
           <div className="relative shrink-0">
@@ -847,62 +850,62 @@ export function CloudAccountCard({
         </div>
 
         {isAccountDisabled ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border p-3 text-xs">
             {t('cloud.card.serviceBlockedNotice')}
           </div>
         ) : (
           <div className="space-y-2">
             <AccountQuotaWindowSections
               quotaWindow={quotaWindow}
-            weeklyItems={
-              isMinimalMode
-                ? weeklyQuotaItems.filter(
-                    (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
-                  )
-                : weeklyQuotaItems
-            }
-            fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
-            weeklyHidden={isMinimalMode ? false : weeklyHidden}
-            hasQuotaSummary={account.quota?.quota_groups !== undefined}
-            fiveHourContent={
-              isMinimalMode ? (
-                <>
-                  {overallQuotaBar}
-                  <DetailedQuotaDisplay
-                    groups={detailedGroups.filter(
+              weeklyItems={
+                isMinimalMode
+                  ? weeklyQuotaItems.filter(
+                      (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
+                    )
+                  : weeklyQuotaItems
+              }
+              fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
+              weeklyHidden={isMinimalMode ? false : weeklyHidden}
+              hasQuotaSummary={account.quota?.quota_groups !== undefined}
+              fiveHourContent={
+                isMinimalMode ? (
+                  <>
+                    {overallQuotaBar}
+                    <DetailedQuotaDisplay
+                      groups={detailedGroups.filter(
+                        (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+                      )}
+                    />
+                    {!overallQuotaBar &&
+                    detailedGroups.filter(
                       (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+                    ).length === 0
+                      ? emptyQuotaState
+                      : null}
+                  </>
+                ) : (
+                  <>
+                    {providerGroupingsEnabled ? (
+                      <>
+                        {providerGroupedQuotaSection}
+                        {!providerGroupedQuotaSection && !hasDetailedQuota ? emptyQuotaState : null}
+                      </>
+                    ) : hasVisibleQuotaModels ? (
+                      <div className="space-y-3">
+                        {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
+                        <div className="pt-1" />
+                        {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
+                      </div>
+                    ) : hasDetailedQuota ? null : (
+                      emptyQuotaState
                     )}
-                  />
-                  {!overallQuotaBar &&
-                  detailedGroups.filter(
-                    (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
-                  ).length === 0
-                    ? emptyQuotaState
-                    : null}
-                </>
-              ) : (
-                <>
-                  {providerGroupingsEnabled ? (
-                    <>
-                      {providerGroupedQuotaSection}
-                      {!providerGroupedQuotaSection && !hasDetailedQuota ? emptyQuotaState : null}
-                    </>
-                  ) : hasVisibleQuotaModels ? (
-                    <div className="space-y-3">
-                      {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
-                      <div className="pt-1" />
-                      {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
-                    </div>
-                  ) : hasDetailedQuota ? null : (
-                    emptyQuotaState
-                  )}
-                  <DetailedQuotaDisplay groups={detailedGroups} />
-                </>
-              )
-            }
-          />
-        </div>
-      )}
+                    <DetailedQuotaDisplay groups={detailedGroups} />
+                  </>
+                )
+              }
+            />
+          </div>
+        )}
       </CardContent>
 
       <CardFooter className="bg-muted/10 mt-auto flex min-h-14 shrink-0 items-center justify-between gap-3 overflow-visible border-t px-5 py-3 [@media(max-width:760px)]:flex-wrap [@media(max-width:760px)]:px-4">
@@ -1147,8 +1150,7 @@ export function CompactCloudAccountCard({
 
   const validationBlockedStatusLabel = getCloudAccountBlockedStatusLabel(account, t);
   const isAccountDisabled =
-    account.status_reason === 'service_disabled' ||
-    Boolean(account.health?.service_disabled);
+    account.status_reason === 'service_disabled' || Boolean(account.health?.service_disabled);
 
   return (
     <div
@@ -1175,9 +1177,7 @@ export function CompactCloudAccountCard({
           </span>
           <Badge
             variant={
-              account.status === 'rate_limited' ||
-              account.status === 'expired' ||
-              isAccountDisabled
+              account.status === 'rate_limited' || account.status === 'expired' || isAccountDisabled
                 ? 'destructive'
                 : 'outline'
             }
@@ -1222,14 +1222,15 @@ export function CompactCloudAccountCard({
               <button
                 type="button"
                 className="text-destructive inline-flex shrink-0 items-center gap-1 text-xs font-semibold hover:underline"
-                onClick={() =>
-                  window.open(account.health?.service_disabled?.appeal_url, '_blank')
-                }
+                onClick={() => window.open(account.health?.service_disabled?.appeal_url, '_blank')}
               >
                 <ExternalLink className="h-3 w-3" />
                 {t('cloud.card.submitAppeal')}
               </button>
             )}
+          {account.health?.service_disabled && (
+            <ClearServiceDisabledDialog accountId={account.id} />
+          )}
 
           {shouldShowAiCredits && aiCredits && (
             <span className="text-muted-foreground shrink-0">
@@ -1250,7 +1251,7 @@ export function CompactCloudAccountCard({
         </div>
 
         {isAccountDisabled ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-1 text-xs text-destructive">
+          <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-2.5 py-1 text-xs">
             {t('cloud.card.serviceBlockedNotice')}
           </div>
         ) : (

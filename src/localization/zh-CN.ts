@@ -1090,6 +1090,12 @@ const zhCn = {
       rateLimited: '受限',
       accountDisabledToS: '已停用 (ToS)',
       submitAppeal: '提交申诉',
+      'clear-disabled': '解除隔离',
+      'clear-disabled-title': '解除账号隔离？',
+      'clear-disabled-description':
+        '仅在 Google 恢复访问权限后继续。此操作不会检查 Google，可能恢复请求并再次导致账号被封禁。',
+      'clear-disabled-confirm': '解除本地封锁',
+      'clear-disabled-failed': '无法解除账号隔离',
       serviceBlockedNotice: '此服务因违反服务条款已被 Google 停用。模型当前不可用。',
       validationRiskControlled: '风控 / 限流',
       validationOAuthReauthRequired: '需要重新登录 Google',

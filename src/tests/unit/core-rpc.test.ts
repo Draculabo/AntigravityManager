@@ -167,6 +167,7 @@ function operations(): CoreRpcOperations {
     })),
     accountValidationUrl: vi.fn(async () => ({ url: 'https://accounts.google.com/verify?id=1' })),
     accountRefreshQuota: vi.fn(async () => accountView),
+    accountClearServiceDisabled: vi.fn(),
     accountSyncFromIde: vi.fn(async () => accountView),
     accountSetProxy: vi.fn(async () => ({ success: true as const })),
     accountDelete: vi.fn(async () => ({ success: true as const })),

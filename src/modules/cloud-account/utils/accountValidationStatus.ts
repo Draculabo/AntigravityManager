@@ -4,11 +4,7 @@ import {
   isRateLimitReason,
 } from '@/modules/cloud-account/utils/account-status';
 
-export type CloudAccountHealthBlockKind =
-  | 'service_disabled'
-  | 'oauth_reauth'
-  | 'validation'
-  | null;
+export type CloudAccountHealthBlockKind = 'service_disabled' | 'oauth_reauth' | 'validation' | null;
 
 interface AccountHealthForDisplay {
   validation?: object;
@@ -53,9 +49,7 @@ export function getValidationBlockedStatusLabel(
     normalizedReason.includes('tos_violation') ||
     normalizedReason.includes('terms of service') ||
     normalizedReason.includes('service has been disabled') ||
-    normalizedReason.includes('org_restriction_violation') ||
-    normalizedReason === 'forbidden' ||
-    normalizedReason.startsWith('forbidden:')
+    normalizedReason.includes('org_restriction_violation')
   ) {
     return t('cloud.card.accountDisabledToS', 'Disabled (ToS)');
   }

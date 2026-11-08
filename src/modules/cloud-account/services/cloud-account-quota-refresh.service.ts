@@ -15,6 +15,8 @@ import {
 import {
   CloudAccountHealthService,
   clearValidationHealthAfterSuccessfulProbe,
+  evictAccountFromActiveLeaseCache,
+  quarantineAccountInActiveLeaseCache,
 } from './CloudAccountHealthService';
 import { classifyForbiddenUpstreamError } from '@/modules/proxy-gateway/server/common/google-error-details';
 import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
@@ -25,6 +27,12 @@ import { logger } from '@/shared/logging/logger';
 export interface QuotaRefreshHooks {
   onPrimarySuccess?: (account: CloudAccount) => void;
   onRetrySuccess?: (account: CloudAccount) => void;
+}
+
+class QuotaRefreshTokenConflictError extends Error {
+  constructor() {
+    super('Account token changed during quota refresh');
+  }
 }
 
 function recoverCachedQuotaOnRateLimit(
@@ -63,9 +71,16 @@ export async function refreshAccountQuotaCore(
         createCloudAccountRefreshRequest(account),
       );
 
-      account.token = mergeRefreshedToken(account.token, refreshedToken, now);
-      await CloudAccountRepo.updateToken(account.id, account.token);
+      const expected = account.token;
+      const updated = mergeRefreshedToken(expected, refreshedToken, now);
+      if (!(await CloudAccountRepo.compareAndUpdateToken(account.id, expected, updated))) {
+        throw new QuotaRefreshTokenConflictError();
+      }
+      account.token = updated;
     } catch (error) {
+      if (error instanceof QuotaRefreshTokenConflictError) {
+        throw error;
+      }
       logger.warn(
         `Failed to refresh token during quota refresh precheck for ${account.email}`,
         error,
@@ -130,8 +145,12 @@ export async function refreshAccountQuotaCore(
         );
         now = Math.floor(Date.now() / 1000);
 
-        account.token = mergeRefreshedToken(account.token, refreshedToken, now);
-        await CloudAccountRepo.updateToken(account.id, account.token);
+        const expected = account.token;
+        const updated = mergeRefreshedToken(expected, refreshedToken, now);
+        if (!(await CloudAccountRepo.compareAndUpdateToken(account.id, expected, updated))) {
+          throw new QuotaRefreshTokenConflictError();
+        }
+        account.token = updated;
 
         const previousAICredits = account.quota?.ai_credits;
         const quota = await GoogleAPIService.fetchQuota(
@@ -169,6 +188,9 @@ export async function refreshAccountQuotaCore(
         hooks.onRetrySuccess?.(account);
         return account;
       } catch (refreshError) {
+        if (refreshError instanceof QuotaRefreshTokenConflictError) {
+          throw refreshError;
+        }
         logger.error(
           `Failed to force refresh token or retry quota for ${account.email}`,
           refreshError,
@@ -186,14 +208,17 @@ export async function refreshAccountQuotaCore(
       }
     } else if (errorMessage === 'FORBIDDEN' || errorMessage.startsWith('FORBIDDEN')) {
       logger.warn(`Received 403 Forbidden for ${account.email}; marking account status from error`);
-      await markAccountStatusFromError(account, error);
       const forbiddenClassification = classifyForbiddenUpstreamError({
         body: errorMessage,
         message: errorMessage,
       });
       if (forbiddenClassification.kind === 'service_disabled') {
+        await quarantineAccountInActiveLeaseCache(account.id);
+      }
+      await markAccountStatusFromError(account, error);
+      if (forbiddenClassification.kind === 'service_disabled') {
         const detectedAt = Date.now();
-        await CloudAccountHealthService.mutateHealth(account.id, (health) => ({
+        account.health = await CloudAccountHealthService.mutateHealth(account.id, (health) => ({
           ...health,
           service_disabled: {
             status: 'disabled',
@@ -201,9 +226,10 @@ export async function refreshAccountQuotaCore(
             detected_at_ms: detectedAt,
             appeal_url: forbiddenClassification.appealUrl,
             appeal_url_link_text: forbiddenClassification.appealLinkText,
-            message: errorMessage,
+            message: errorMessage.slice(0, 1000),
           },
         }));
+        await evictAccountFromActiveLeaseCache(account.id);
       }
       return account;
     }

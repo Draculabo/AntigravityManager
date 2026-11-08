@@ -32,7 +32,12 @@ function createReply() {
 }
 
 function createService(overrides: {
-  account?: { email: string; id: string; token: Record<string, unknown> } | null;
+  account?: {
+    email: string;
+    id: string;
+    token: Record<string, unknown>;
+    device_profile?: { machineId: string };
+  } | null;
   upstream?: { body: string; headers: Record<string, string>; status: number };
 }) {
   const accountLeaseService = {
@@ -114,10 +119,24 @@ describe('v1internal diagnostic passthrough', () => {
       body,
       'access-acc-probe',
       undefined,
-      expect.objectContaining({
-        'x-machine-id': expect.any(String),
-        'X-Machine-Id': expect.any(String),
-      }),
+    );
+  });
+
+  it('does not inject the leased device profile at the upstream request boundary', async () => {
+    const { geminiClient, service } = createService({
+      account: {
+        id: 'acc-profile',
+        email: 'test@example.com',
+        token: { access_token: 'test' },
+        device_profile: { machineId: 'configured-machine' },
+      },
+    });
+    await service.forward('countTokens', {});
+    expect(geminiClient.postV1InternalRaw).toHaveBeenCalledWith(
+      'countTokens',
+      {},
+      'test',
+      undefined,
     );
   });
 
@@ -170,10 +189,6 @@ describe('v1internal diagnostic passthrough', () => {
       { test: 'count' },
       'access-acc-probe',
       undefined,
-      expect.objectContaining({
-        'x-machine-id': expect.any(String),
-        'X-Machine-Id': expect.any(String),
-      }),
     );
 
     await controller.embedContent({ test: 'embed' }, createReply() as never);
@@ -182,10 +197,6 @@ describe('v1internal diagnostic passthrough', () => {
       { test: 'embed' },
       'access-acc-probe',
       undefined,
-      expect.objectContaining({
-        'x-machine-id': expect.any(String),
-        'X-Machine-Id': expect.any(String),
-      }),
     );
 
     await controller.generateChat({ test: 'chat' }, createReply() as never);
@@ -194,10 +205,6 @@ describe('v1internal diagnostic passthrough', () => {
       { test: 'chat' },
       'access-acc-probe',
       undefined,
-      expect.objectContaining({
-        'x-machine-id': expect.any(String),
-        'X-Machine-Id': expect.any(String),
-      }),
     );
   });
 

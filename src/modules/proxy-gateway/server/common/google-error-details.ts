@@ -94,20 +94,23 @@ function sanitizeAppealUrl(value: unknown): string | undefined {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
     const isAllowedHost =
-      hostname === 'forms.gle' ||
-      hostname.endsWith('.google.com') ||
-      hostname === 'google.com';
-    return isAllowedHost ? url : undefined;
+      hostname === 'forms.gle' || hostname.endsWith('.google.com') || hostname === 'google.com';
+    return parsed.protocol === 'https:' && !parsed.username && !parsed.password && isAllowedHost
+      ? url
+      : undefined;
   } catch {
     return undefined;
   }
 }
 
-function sanitizeDescription(value: unknown): string | undefined {
+function sanitizeDescription(
+  value: unknown,
+  maxLength = MAX_DESCRIPTION_LENGTH,
+): string | undefined {
   if (!isString(value)) {
     return undefined;
   }
-  const trimmed = value.trim().replace(/\s+/g, ' ').slice(0, MAX_DESCRIPTION_LENGTH);
+  const trimmed = value.trim().replace(/\s+/g, ' ').slice(0, maxLength);
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
@@ -220,7 +223,10 @@ function classifyFromDetails(
         ? 'ORG_RESTRICTION_VIOLATION'
         : 'TOS_VIOLATION';
     const appealUrl = sanitizeAppealUrl(disabledErrorInfo.metadata?.appeal_url);
-    const appealLinkText = sanitizeDescription(disabledErrorInfo.metadata?.appeal_url_link_text);
+    const appealLinkText = sanitizeDescription(
+      disabledErrorInfo.metadata?.appeal_url_link_text,
+      100,
+    );
     return {
       kind: 'service_disabled',
       reason,
@@ -298,7 +304,7 @@ function classifyFromText(text: string): ForbiddenUpstreamClassification | null 
       kind: 'service_disabled',
       reason: 'TOS_VIOLATION',
       appealUrl: sanitizeAppealUrl(linkMatch?.[1] ?? linkMatch?.[0]),
-      appealLinkText: sanitizeDescription(linkTextMatch?.[1]),
+      appealLinkText: sanitizeDescription(linkTextMatch?.[1], 100),
     };
   }
 

@@ -102,6 +102,11 @@ export const cloudRouter = os.router({
       return getCloudAccountAdapter().refreshQuota(input.accountId);
     }),
 
+  clearServiceDisabled: os
+    .input(z.strictObject({ accountId: CloudAccountIdSchema }))
+    .output(z.void())
+    .handler(async ({ input }) => getCloudAccountAdapter().clearServiceDisabled(input.accountId)),
+
   switchCloudAccount: os
     .input(CloudAccountSwitchInputSchema)
     .output(z.void())

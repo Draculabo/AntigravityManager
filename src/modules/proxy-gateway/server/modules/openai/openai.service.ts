@@ -244,10 +244,10 @@ export class OpenAIService extends BaseProxyService {
           enforceAuthoritativeThinkingBudget,
         );
 
+        const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
         // Use v1internal API (same as Anthropic handler)
         if (request.stream) {
           try {
-            const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
             const stream = await this.geminiClient.streamGenerateInternal(
               geminiBody,
               token.token.access_token,
@@ -271,6 +271,9 @@ export class OpenAIService extends BaseProxyService {
               routedRequest.tools,
             );
           } catch (streamError) {
+            if (this.retryPolicy.isFatalCircuitBreakError(streamError)) {
+              throw streamError;
+            }
             this.logger.warn(
               `Stream path failed for model=${request.model}; falling back to non-stream generation: ${
                 streamError instanceof Error ? streamError.message : String(streamError)
@@ -281,7 +284,7 @@ export class OpenAIService extends BaseProxyService {
               geminiBody,
               token.token.access_token,
               token.token.upstream_proxy_url,
-              extraHeaders,
+              accountTelemetryHeaders,
               signal,
             );
             this.markUpstreamSuccessForResponse(token.id, geminiBody.model, response);
@@ -318,7 +321,7 @@ export class OpenAIService extends BaseProxyService {
             geminiBody,
             token.token.access_token,
             token.token.upstream_proxy_url,
-            extraHeaders,
+            accountTelemetryHeaders,
             signal,
           );
           this.markUpstreamSuccessForResponse(token.id, geminiBody.model, response);
@@ -345,7 +348,11 @@ export class OpenAIService extends BaseProxyService {
           );
         }
       } catch (err) {
-        if (err instanceof Error && this.isProjectContextError(err.message)) {
+        if (
+          err instanceof Error &&
+          !this.retryPolicy.isFatalCircuitBreakError(err) &&
+          this.isProjectContextError(err.message)
+        ) {
           this.logger.warn(
             `OpenAI compatibility request hit project context issue, retrying without project: ${err.message}`,
           );
@@ -381,8 +388,11 @@ export class OpenAIService extends BaseProxyService {
               effectiveVariantRequest.variant ?? undefined,
               enforceAuthoritativeThinkingBudget,
             );
+            const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(
+              token,
+              extraHeaders,
+            );
             if (request.stream) {
-              const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
               const stream = await this.geminiClient.streamGenerateInternal(
                 fallbackBody,
                 token.token.access_token,
@@ -411,7 +421,7 @@ export class OpenAIService extends BaseProxyService {
               fallbackBody,
               token.token.access_token,
               token.token.upstream_proxy_url,
-              extraHeaders,
+              accountTelemetryHeaders,
               signal,
             );
             this.markUpstreamSuccessForResponse(token.id, fallbackBody.model, response);

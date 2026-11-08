@@ -31,6 +31,7 @@ function createPolicyContext(tokenCache: Map<string, AccountLeaseTokenData>) {
     getAccounts: vi.fn(),
     getAccount: vi.fn(),
     updateToken: vi.fn(),
+    compareAndUpdateToken: vi.fn().mockResolvedValue(true),
     updateQuota: vi.fn(),
     mutateHealth: vi.fn(),
   };
@@ -72,6 +73,120 @@ function waitForPersistenceTurn(): Promise<void> {
 }
 
 describe('AccountLeaseHydrationPolicy', () => {
+  it('reports a conditional persistence conflict without logging credentials', async () => {
+    const token = createToken();
+    const { policy, accountStore, logger } = createPolicyContext(new Map([['acc-1', token]]));
+    vi.mocked(accountStore.getAccount).mockResolvedValue({
+      id: 'acc-1',
+      provider: 'google',
+      email: 'lease@example.com',
+      created_at: 1,
+      last_used: 1,
+      token: {
+        access_token: token.access_token,
+        refresh_token: token.refresh_token,
+        token_type: 'Bearer',
+        expires_in: 3600,
+        expiry_timestamp: token.expiry_timestamp,
+      },
+    });
+    vi.mocked(accountStore.compareAndUpdateToken).mockResolvedValue(false);
+    await expect(policy.persistTokenState('acc-1', token)).rejects.toThrow(
+      'Token state was not persisted for acc-1: account changed during update',
+    );
+  });
+  it('does not overwrite credentials replaced before deferred persistence', async () => {
+    const token = createToken({ access_token: 'old-access', refresh_token: 'old-refresh' });
+    const { policy, accountStore } = createPolicyContext(new Map([['acc-1', token]]));
+    vi.mocked(accountStore.getAccount).mockResolvedValue({
+      id: 'acc-1',
+      provider: 'google',
+      email: 'lease@example.com',
+      created_at: 1,
+      last_used: 1,
+      token: {
+        access_token: 'replacement-access',
+        refresh_token: 'replacement-refresh',
+        token_type: 'Bearer',
+        expires_in: 3600,
+        expiry_timestamp: 100,
+      },
+    });
+    await policy.persistTokenState('acc-1', token);
+    expect(accountStore.compareAndUpdateToken).not.toHaveBeenCalled();
+  });
+
+  it('retains rotated credentials when the cache reloads during refresh', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const token = createToken({ expiry_timestamp: nowSeconds - 1 });
+    const tokenCache = new Map([['acc-1', token]]);
+    const { policy, upstream, persistTokenState } = createPolicyContext(tokenCache);
+    let complete!: (value: {
+      access_token: string;
+      refresh_token: string;
+      expires_in: number;
+      token_type: string;
+    }) => void;
+    vi.mocked(upstream.refreshAccessToken).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const refresh = policy.refreshSelectedTokenIfNeeded('acc-1', token, nowSeconds);
+    const reloaded = { ...token };
+    tokenCache.set('acc-1', reloaded);
+    complete({
+      access_token: 'new-access',
+      refresh_token: 'rotated-refresh',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    });
+    await refresh;
+    await policy.drainBackgroundPersistence();
+    expect(reloaded.refresh_token).toBe('rotated-refresh');
+    expect(persistTokenState).toHaveBeenCalledWith(
+      'acc-1',
+      expect.objectContaining({ refresh_token: 'rotated-refresh' }),
+      expect.objectContaining({ refresh_token: 'refresh-token' }),
+    );
+  });
+
+  it('does not overwrite different credentials installed while refreshing', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const token = createToken({ expiry_timestamp: nowSeconds - 1 });
+    const tokenCache = new Map([['acc-1', token]]);
+    const { policy, upstream, persistTokenState } = createPolicyContext(tokenCache);
+    let complete!: (value: {
+      access_token: string;
+      refresh_token: string;
+      expires_in: number;
+      token_type: string;
+    }) => void;
+    vi.mocked(upstream.refreshAccessToken).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const refresh = policy.refreshSelectedTokenIfNeeded('acc-1', token, nowSeconds);
+    const replacement = createToken({
+      refresh_token: 'replacement-refresh',
+      access_token: 'replacement-access',
+    });
+    tokenCache.set('acc-1', replacement);
+    complete({
+      access_token: 'new-access',
+      refresh_token: 'rotated-refresh',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    });
+    await refresh;
+    await policy.drainBackgroundPersistence();
+    expect(replacement.refresh_token).toBe('replacement-refresh');
+    expect(persistTokenState).not.toHaveBeenCalled();
+  });
+
   it('hydrates and persists a missing project id without database or upstream singletons', async () => {
     const token = createToken({
       project_id: undefined,
@@ -97,6 +212,7 @@ describe('AccountLeaseHydrationPolicy', () => {
       expect.objectContaining({
         project_id: 'resolved-project',
       }),
+      expect.any(Object),
     );
   });
 
@@ -182,6 +298,7 @@ describe('AccountLeaseHydrationPolicy', () => {
       1,
       'acc-1',
       expect.objectContaining({ access_token: 'access-token-new', project_id: undefined }),
+      expect.any(Object),
     );
 
     releaseFirstPersistence?.();
@@ -195,6 +312,7 @@ describe('AccountLeaseHydrationPolicy', () => {
         access_token: 'access-token-new',
         project_id: 'resolved-project',
       }),
+      expect.any(Object),
     );
     await policy.drainBackgroundPersistence();
   });
@@ -244,6 +362,7 @@ describe('AccountLeaseHydrationPolicy', () => {
     expect(persistTokenState).toHaveBeenCalledWith(
       'acc-2',
       expect.objectContaining({ project_id: 'project-2' }),
+      expect.any(Object),
     );
     releaseFirstPersistence?.();
     await policy.drainBackgroundPersistence();

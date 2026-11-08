@@ -1401,7 +1401,14 @@ const ptBR = {
       rateLimited: 'Limite Atingido',
       accountDisabledToS: 'Desativado (ToS)',
       submitAppeal: 'Enviar Recurso',
-      serviceBlockedNotice: 'O serviço foi desativado pelo Google (violação dos ToS). Os modelos estão indisponíveis.',
+      'clear-disabled': 'Remover quarentena',
+      'clear-disabled-title': 'Remover a quarentena da conta?',
+      'clear-disabled-description':
+        'Continue somente após o Google restaurar o acesso. O bloqueio local será removido sem verificar o Google; as solicitações podem ser retomadas e a conta bloqueada novamente.',
+      'clear-disabled-confirm': 'Remover bloqueio local',
+      'clear-disabled-failed': 'Não foi possível remover a quarentena da conta',
+      serviceBlockedNotice:
+        'O serviço foi desativado pelo Google (violação dos ToS). Os modelos estão indisponíveis.',
       validationRiskControlled: 'Risco / Limite Atingido',
       validationOAuthReauthRequired: 'Fazer login no Google novamente',
       validationRequired: 'Verificação Necessária',

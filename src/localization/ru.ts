@@ -805,7 +805,14 @@ const ru = {
       rateLimited: 'Лимит исчерпан',
       accountDisabledToS: 'Заблокирован (ToS)',
       submitAppeal: 'Подать апелляцию',
-      serviceBlockedNotice: 'Сервис заблокирован Google за нарушение Условий использования (ToS). Модели недоступны.',
+      'clear-disabled': 'Снять карантин',
+      'clear-disabled-title': 'Снять карантин аккаунта?',
+      'clear-disabled-description':
+        'Продолжайте только после восстановления доступа Google. Локальная блокировка будет снята без проверки Google; запросы могут возобновиться, а аккаунт — снова заблокирован.',
+      'clear-disabled-confirm': 'Снять локальную блокировку',
+      'clear-disabled-failed': 'Не удалось снять карантин аккаунта',
+      serviceBlockedNotice:
+        'Сервис заблокирован Google за нарушение Условий использования (ToS). Модели недоступны.',
       validationRiskControlled: 'Риск / Ограничение',
       validationOAuthReauthRequired: 'Войдите в Google снова',
       validationRequired: 'Требуется проверка',

@@ -386,13 +386,6 @@ export class ProxyRetryService {
         });
         return;
       }
-      if (isImageModel && status === 403) {
-        this.modelAvailability.mark(accountId, model, 'model_forbidden', undefined, {
-          status,
-          message: error.body ?? error.message,
-        });
-        return;
-      }
       if (status === 429) {
         await this.accountLeaseService.markFromUpstreamError({
           accountIdOrEmail: accountId,
@@ -445,6 +438,13 @@ export class ProxyRetryService {
           this.logger.warn(
             `Upstream 403 service disabled for account ${accountId} (${classification.reason}); marked as disabled.`,
           );
+          return;
+        }
+        if (isImageModel && classification.kind === 'account_forbidden') {
+          this.modelAvailability.mark(accountId, model, 'model_forbidden', undefined, {
+            status,
+            message: error.body ?? error.message,
+          });
           return;
         }
         if (await this.handleRecoverableForbidden(accountId, error)) {
@@ -518,9 +518,7 @@ export class ProxyRetryService {
         return true;
       }
     }
-    const message = (
-      error instanceof Error ? error.message : String(error ?? '')
-    ).toLowerCase();
+    const message = (error instanceof Error ? error.message : String(error ?? '')).toLowerCase();
     return (
       message.includes('tos_violation') ||
       message.includes('violation of terms of service') ||

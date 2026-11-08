@@ -1,5 +1,9 @@
 import { isString } from 'lodash-es';
-import type { CloudAccountHealth, CloudQuotaData } from '@/modules/cloud-account/types';
+import type {
+  CloudAccount,
+  CloudAccountHealth,
+  CloudQuotaData,
+} from '@/modules/cloud-account/types';
 
 export interface AccountLeaseTokenData {
   email: string;
@@ -14,6 +18,7 @@ export interface AccountLeaseTokenData {
   project_id?: string;
   session_id?: string;
   upstream_proxy_url?: string;
+  device_profile?: CloudAccount['device_profile'];
   validation_blocked_until_ms?: number;
   service_disabled?: boolean;
   oauth_health?: CloudAccountHealth['oauth'];

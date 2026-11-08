@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { setTimeout as delay } from 'node:timers/promises';
 import axios, { type AxiosProxyConfig, type AxiosRequestConfig } from 'axios';
@@ -495,8 +494,6 @@ function buildInternalApiHeaders(
     Authorization: `Bearer ${accessToken}`,
     'User-Agent': userAgent,
     'Content-Type': 'application/json',
-    'X-Goog-Api-Client': `gl-node/${process.versions.node ?? '24.22.0'}`,
-    'x-activity-request-id': randomUUID(),
   };
 }
 

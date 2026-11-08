@@ -165,7 +165,11 @@ export class GeminiService extends BaseProxyService {
         this.releaseImagePermit(retryState);
         return this.normalizeGeminiGenerateResponse(response);
       } catch (err) {
-        if (err instanceof Error && this.isProjectContextError(err.message)) {
+        if (
+          err instanceof Error &&
+          !this.retryPolicy.isFatalCircuitBreakError(err) &&
+          this.isProjectContextError(err.message)
+        ) {
           this.logger.warn(
             `Gemini request hit project context issue, retrying without project: ${err.message}`,
           );
@@ -186,7 +190,10 @@ export class GeminiService extends BaseProxyService {
               effectiveVariantRequest.variant ?? undefined,
               enforceAuthoritativeThinkingBudget,
             );
-            const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
+            const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(
+              token,
+              extraHeaders,
+            );
             const response = await this.generateInternalWithStreamFallback(
               fallbackBody,
               token.token.access_token,
@@ -339,7 +346,11 @@ export class GeminiService extends BaseProxyService {
           this.takeImagePermit(retryState),
         );
       } catch (err) {
-        if (err instanceof Error && this.isProjectContextError(err.message)) {
+        if (
+          err instanceof Error &&
+          !this.retryPolicy.isFatalCircuitBreakError(err) &&
+          this.isProjectContextError(err.message)
+        ) {
           this.logger.warn(
             `Gemini stream request hit project context issue, retrying without project: ${err.message}`,
           );
@@ -360,7 +371,10 @@ export class GeminiService extends BaseProxyService {
               effectiveVariantRequest.variant ?? undefined,
               enforceAuthoritativeThinkingBudget,
             );
-            const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
+            const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(
+              token,
+              extraHeaders,
+            );
             const stream = await this.geminiClient.streamGenerateInternal(
               fallbackBody,
               token.token.access_token,

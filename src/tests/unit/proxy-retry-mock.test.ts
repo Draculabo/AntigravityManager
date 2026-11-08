@@ -176,6 +176,61 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(geminiHeaders).toEqual({});
   });
 
+  it('does not inject machine identity in non-stream and project fallback requests', async () => {
+    const service = new TestableOpenAIService();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
+    mockGeminiClient.generateInternal
+      .mockRejectedValueOnce(
+        new Error('Google Cloud Project lacks a Gemini Code Assist license (#3501)'),
+      )
+      .mockResolvedValueOnce({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] });
+    await service.handleChatCompletions({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hello' }],
+    } as any);
+    expect(mockGeminiClient.generateInternal).toHaveBeenCalledTimes(2);
+    const headers = mockGeminiClient.generateInternal.mock.calls.map((call) => call[3]);
+    expect(headers[0]).not.toHaveProperty('x-machine-id');
+    expect(headers[1]).toEqual(headers[0]);
+  });
+
+  it('does not replay a streaming ToS failure through non-stream generation', async () => {
+    const service = new TestableOpenAIService();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
+    const error = new UpstreamRequestError({
+      message: 'Permission denied',
+      status: 403,
+      details: [{ reason: 'TOS_VIOLATION' }],
+    });
+    mockGeminiClient.streamGenerateInternal.mockRejectedValue(error);
+    await expect(
+      service.handleChatCompletions({
+        model: 'gpt-4o',
+        stream: true,
+        messages: [{ role: 'user', content: 'hello' }],
+      } as any),
+    ).rejects.toBe(error);
+    expect(mockGeminiClient.streamGenerateInternal).toHaveBeenCalledOnce();
+    expect(mockGeminiClient.generateInternal).not.toHaveBeenCalled();
+  });
+
+  it('does not inject machine identity when a stream falls back to non-stream generation', async () => {
+    const service = new TestableOpenAIService();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
+    mockGeminiClient.streamGenerateInternal.mockRejectedValue(new Error('socket hang up'));
+    mockGeminiClient.generateInternal.mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+    });
+    await service.handleChatCompletions({
+      model: 'gpt-4o',
+      stream: true,
+      messages: [{ role: 'user', content: 'hello' }],
+    } as any);
+    const headers = mockGeminiClient.streamGenerateInternal.mock.calls[0][3];
+    expect(headers).not.toHaveProperty('x-machine-id');
+    expect(mockGeminiClient.generateInternal.mock.calls[0][3]).toEqual(headers);
+  });
+
   it('recovers a clean empty Anthropic stream with the compatibility text', async () => {
     const service = new TestableAnthropicService();
     const stream = new EventEmitter();
@@ -991,6 +1046,24 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect((result as any).candidates?.[0]?.content?.parts?.[0]?.text).toBe('ok');
   });
 
+  it('does not retry a ToS violation even when its message mentions project context', async () => {
+    const service = new TestableGeminiService();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
+    const error = new UpstreamRequestError({
+      message: 'Google Cloud Project lacks a Gemini Code Assist license (#3501)',
+      status: 403,
+      details: [{ reason: 'TOS_VIOLATION' }],
+    });
+    mockGeminiClient.generateInternal.mockRejectedValue(error);
+    await expect(
+      service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+        contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+      } as any),
+    ).rejects.toBe(error);
+    expect(mockGeminiClient.generateInternal).toHaveBeenCalledTimes(1);
+    expect(mockAccountLeaseService.getNextToken).toHaveBeenCalledTimes(1);
+  });
+
   it('rotates accounts when the no-project retry still lacks a Code Assist license', async () => {
     const service = new TestableGeminiService();
     const licenseMessage =
@@ -1117,6 +1190,8 @@ describe('GeminiClient internal request parity', () => {
     expect(postSpy.mock.calls[0][1]).toBe(JSON.stringify({ project: 'project-1', request: {} }));
     expect(postSpy.mock.calls[0][1]).not.toBeInstanceOf(Readable);
     expect(postSpy.mock.calls[0][2]?.headers).not.toHaveProperty('x-goog-user-project');
+    expect(postSpy.mock.calls[0][2]?.headers).not.toHaveProperty('X-Goog-Api-Client');
+    expect(postSpy.mock.calls[0][2]?.headers).not.toHaveProperty('x-activity-request-id');
   });
 
   it('uses stream body only for streamGenerateContent internal requests', async () => {
@@ -1160,6 +1235,28 @@ describe('GeminiClient internal request parity', () => {
     expect(postSpy).toHaveBeenCalledOnce();
     expect(postSpy.mock.calls[0][1]).toBe(JSON.stringify({ project: 'project-1', request: {} }));
     expect(postSpy.mock.calls[0][2]?.headers).not.toHaveProperty('x-goog-user-project');
+  });
+
+  it('preserves a streamed 403 ToS error without a second upstream request', async () => {
+    const body = JSON.stringify({
+      error: { message: 'Permission denied', details: [{ reason: 'TOS_VIOLATION' }] },
+    });
+    const forbidden = new AxiosError('Forbidden', undefined, undefined, undefined, {
+      data: Readable.from([body]),
+      status: 403,
+      statusText: 'Forbidden',
+      headers: {},
+      config: {} as any,
+    });
+    const postSpy = vi.spyOn(axios, 'post').mockRejectedValue(forbidden);
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    await expect(
+      client.streamGenerateInternal({ project: 'project-1', request: {} } as any, 'access-token'),
+    ).rejects.toMatchObject({
+      status: 403,
+      details: [expect.objectContaining({ reason: 'TOS_VIOLATION' })],
+    });
+    expect(postSpy).toHaveBeenCalledOnce();
   });
 
   it('removes case-insensitive quota-project reinjection while preserving other extra headers', async () => {
@@ -1251,6 +1348,51 @@ describe('GeminiClient internal request parity', () => {
 
     expect(postSpy).toHaveBeenCalledTimes(2);
     expect(postSpy.mock.calls[0][2]?.headers?.['x-goog-user-project']).toBe('project-1');
+    expect(postSpy.mock.calls[1][2]?.headers).not.toHaveProperty('x-goog-user-project');
+  });
+
+  it('does not downgrade an accepted ToS response for a non-content method', async () => {
+    const body = JSON.stringify({ error: { details: [{ reason: 'TOS_VIOLATION' }] } });
+    const postSpy = vi
+      .spyOn(axios, 'post')
+      .mockResolvedValue({ status: 403, data: body, headers: {} });
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    await expect(
+      client.postV1InternalRaw('loadCodeAssist', { project: 'project-1' }, 'access-token'),
+    ).resolves.toMatchObject({ status: 403, body });
+    expect(postSpy).toHaveBeenCalledOnce();
+  });
+
+  it('does not downgrade a rejected ToS response for a non-content method', async () => {
+    const forbidden = new AxiosError('Forbidden', undefined, undefined, undefined, {
+      data: { error: { details: [{ reason: 'TOS_VIOLATION' }] } },
+      status: 403,
+      statusText: 'Forbidden',
+      headers: {},
+      config: {} as any,
+    });
+    const postSpy = vi.spyOn(axios, 'post').mockRejectedValue(forbidden);
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    await expect(
+      client.postV1InternalRaw('loadCodeAssist', { project: 'project-1' }, 'access-token'),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(postSpy).toHaveBeenCalledOnce();
+  });
+
+  it('retains downgrade for an accepted ordinary 403', async () => {
+    const postSpy = vi
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({
+        status: 403,
+        data: '{"error":{"message":"PERMISSION_DENIED"}}',
+        headers: {},
+      })
+      .mockResolvedValueOnce({ status: 200, data: '{}', headers: {} });
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    await expect(
+      client.postV1InternalRaw('loadCodeAssist', { project: 'project-1' }, 'access-token'),
+    ).resolves.toMatchObject({ status: 200 });
+    expect(postSpy).toHaveBeenCalledTimes(2);
     expect(postSpy.mock.calls[1][2]?.headers).not.toHaveProperty('x-goog-user-project');
   });
 });

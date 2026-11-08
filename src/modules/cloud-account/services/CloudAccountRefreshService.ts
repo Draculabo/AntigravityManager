@@ -5,6 +5,8 @@ import {
   syncAccountOAuthHealthToActiveLeaseCache,
 } from './CloudAccountHealthService';
 import { GoogleAPIService, OAuthTokenRefreshError, type TokenResponse } from './GoogleAPIService';
+import { logger } from '@/shared/logging/logger';
+import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 
 export interface CloudAccountRefreshRequest {
   accountId: string;
@@ -57,6 +59,16 @@ export class CloudAccountRefreshService {
     if (effectiveHealth?.oauth?.refresh_blocked) {
       throw new CloudAccountRefreshBlockedError(request.accountId);
     }
+    const account = await CloudAccountRepo.getAccount(request.accountId);
+    if (
+      !account ||
+      account.token.refresh_token !== request.refreshToken ||
+      (account.token.oauth_client_key?.trim() || undefined) !==
+        (request.oauthClientKey?.trim() || undefined)
+    ) {
+      throw new Error('Account credentials changed before token refresh');
+    }
+    const expectedToken = { ...account.token };
 
     try {
       const refreshedToken = request.signal
@@ -72,12 +84,18 @@ export class CloudAccountRefreshService {
             request.oauthClientKey,
           );
       if (effectiveHealth?.oauth) {
-        const clearedHealth = await CloudAccountHealthService.mutateHealth(
-          request.accountId,
-          (currentHealth) =>
-            currentHealth?.validation ? { validation: currentHealth.validation } : undefined,
-        );
-        await syncAccountOAuthHealthToActiveLeaseCache(request.accountId, clearedHealth?.oauth);
+        try {
+          const clearedHealth = await CloudAccountHealthService.mutateHealth(
+            request.accountId,
+            (currentHealth) =>
+              currentHealth?.validation ? { validation: currentHealth.validation } : undefined,
+            { expectedToken },
+          );
+          await syncAccountOAuthHealthToActiveLeaseCache(request.accountId, clearedHealth?.oauth);
+        } catch {
+          // Do not discard credentials already rotated by the provider on a health update failure.
+          logger.warn('Unable to clear OAuth failure state after successful refresh');
+        }
       }
       return refreshedToken;
     } catch (error) {
@@ -86,7 +104,9 @@ export class CloudAccountRefreshService {
       }
 
       const failureAt = Date.now();
-      const updatedHealth = await CloudAccountHealthService.mutateHealth(
+      let updatedHealth: CloudAccount['health'];
+      try {
+        updatedHealth = await CloudAccountHealthService.mutateHealth(
         request.accountId,
         (currentHealth) => {
           const failureCount = Math.min(2, (currentHealth?.oauth?.invalid_grant_count ?? 0) + 1);
@@ -101,7 +121,14 @@ export class CloudAccountRefreshService {
             },
           };
         },
-      );
+        { expectedToken },
+        );
+      } catch (healthError) {
+        if (healthError instanceof Error && healthError.message === 'Account credentials changed during health update') {
+          throw error;
+        }
+        throw healthError;
+      }
       if (!updatedHealth?.oauth?.refresh_blocked) {
         await syncAccountOAuthHealthToActiveLeaseCache(request.accountId, updatedHealth?.oauth);
         throw error;

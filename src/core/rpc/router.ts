@@ -73,6 +73,7 @@ import {
   SetCloudAccountProxyInputSchema,
 } from '@/modules/cloud-account/services/cloud-account-mutation.schema';
 import { refreshAccountQuotaCore } from '@/modules/cloud-account/services/cloud-account-quota-refresh.service';
+import { clearServiceDisabledManually } from '@/modules/cloud-account/services/CloudAccountHealthService';
 import { cloudAccountWeeklyWarmupRunner } from '@/modules/cloud-account/services/cloud-account-weekly-warmup-runner';
 import { syncIdeAccountView } from '@/modules/cloud-account/services/ide-account-sync.service';
 import { SyncFromIdeInputSchema } from '@/modules/cloud-account/services/ide-account-sync.schema';
@@ -258,6 +259,8 @@ export function createCoreRpcOperations(
         });
         return projectCloudAccountView(account);
       }),
+    accountClearServiceDisabled: (accountId) =>
+      runAccountMutation(() => clearServiceDisabledManually(accountId)),
     accountSyncFromIde: (appTarget) =>
       runAccountMutation(async () => {
         try {
@@ -381,6 +384,10 @@ export function createCoreRpcRouter(operations: CoreRpcOperations) {
       .input(z.strictObject({ accountId: CloudAccountIdSchema }))
       .output(CloudAccountViewSchema)
       .handler(({ input }) => operations.accountRefreshQuota(input.accountId)),
+    accountClearServiceDisabled: os
+      .input(z.strictObject({ accountId: CloudAccountIdSchema }))
+      .output(z.void())
+      .handler(({ input }) => operations.accountClearServiceDisabled(input.accountId)),
     accountSyncFromIde: os
       .input(SyncFromIdeInputSchema)
       .output(CloudAccountViewSchema.nullable())
