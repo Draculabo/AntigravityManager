@@ -75,7 +75,7 @@ function waitForPersistenceTurn(): Promise<void> {
 describe('AccountLeaseHydrationPolicy', () => {
   it('reports a conditional persistence conflict without logging credentials', async () => {
     const token = createToken();
-    const { policy, accountStore, logger } = createPolicyContext(new Map([['acc-1', token]]));
+    const { policy, accountStore } = createPolicyContext(new Map([['acc-1', token]]));
     vi.mocked(accountStore.getAccount).mockResolvedValue({
       id: 'acc-1',
       provider: 'google',
