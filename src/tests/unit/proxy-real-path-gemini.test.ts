@@ -269,7 +269,7 @@ describe('real request path, Gemini surface', () => {
       expect(upstream.calls).toHaveLength(1);
       expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-high');
       expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
-        maxOutputTokens: 65536,
+        maxOutputTokens: 11024,
         thinkingConfig: {
           includeThoughts: true,
           thinkingBudget: 10000,
@@ -294,7 +294,7 @@ describe('real request path, Gemini surface', () => {
 
     expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-high');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
-      maxOutputTokens: 65536,
+      maxOutputTokens: 11024,
       thinkingConfig: {
         includeThoughts: true,
         thinkingBudget: 10000,
@@ -321,7 +321,7 @@ describe('real request path, Gemini surface', () => {
     expect(upstream.calls[0]?.body.model).toBe('gemini-pro-agent');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
       temperature: 0.2,
-      maxOutputTokens: 42_769,
+      maxOutputTokens: 11_025,
       thinkingConfig: {
         includeThoughts: true,
         thinkingBudget: 10_001,
@@ -354,6 +354,7 @@ describe('real request path, Gemini surface', () => {
       'acc-1',
       'gemini-3.8-flash',
       'medium',
+      false,
     );
   });
 
@@ -400,7 +401,7 @@ describe('real request path, Gemini surface', () => {
 
     expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-medium');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
-      maxOutputTokens: 65536,
+      maxOutputTokens: 5024,
       thinkingConfig: {
         includeThoughts: true,
         thinkingBudget: 4000,
@@ -575,16 +576,17 @@ describe('real request path, Gemini surface', () => {
       ...geminiRequest('hello'),
       tools: [],
       toolConfig: { extension: { value: 1 }, includeServerSideToolInvocations: false },
-      tool_config: { function_calling_config: { mode: 'ANY', allowed_function_names: ['read'] } },
+      tool_config: { function_calling_config: { mode: 'NONE' } },
     };
     await controller.modelAction('gemini-3-flash:generateContent', request, createReply() as never);
+    expect(upstream.calls).toHaveLength(1);
     expect(upstream.calls[0]?.body.request.tools).toEqual([]);
     expect(upstream.calls[0]?.body.request.toolConfig).toEqual({
       extension: { value: 1 },
       includeServerSideToolInvocations: true,
     });
     expect(upstream.calls[0]?.body.request.tool_config).toEqual({
-      function_calling_config: { mode: 'ANY', allowed_function_names: ['read'] },
+      function_calling_config: { mode: 'NONE' },
       include_server_side_tool_invocations: true,
     });
     expect(request.toolConfig.includeServerSideToolInvocations).toBe(false);

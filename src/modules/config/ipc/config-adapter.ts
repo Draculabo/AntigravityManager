@@ -1,4 +1,8 @@
 import type { CoreRpcClient } from '@/core/rpc/client';
+import { errorProcessOwner } from '@/modules/error-diagnostics/public';
+import { logger } from '@/shared/logging/logger';
+import { randomUUID } from 'node:crypto';
+import type { ServiceConfigWriteResult } from '../service-config.schema';
 import { errorReportingService, type ErrorReportingOperations } from '../error-reporting.service';
 import { serviceConfigService, type ServiceConfigOperations } from '../service-config.service';
 import {
@@ -44,16 +48,45 @@ export function selectConfigAdapter(
           errorReporting: {
             setEnabled: (enabled) => selection.client.setErrorReportingEnabled(enabled),
           },
-          read: () => selection.client.readServiceConfig(),
-          update: (input) => selection.client.updateServiceConfig(input),
-          writeSecret: (input) => selection.client.writeServiceSecret(input),
+          read: async () => {
+            const snapshot = await selection.client.readServiceConfig();
+            try {
+              await errorProcessOwner.applyBudget(snapshot.errorDiagnosticsBudget);
+            } catch {
+              logger.warn('Selected error diagnostic allocation could not be applied to the app');
+            }
+            return snapshot;
+          },
+          update: (input) => applyAppBudget(selection.client.updateServiceConfig(input)),
+          writeSecret: (input) => applyAppBudget(selection.client.writeServiceSecret(input)),
           revealSecret: (name) => selection.client.revealServiceSecret(name),
-          generateKey: () => selection.client.generateServiceApiKey(),
+          generateKey: () => applyAppBudget(selection.client.generateServiceApiKey()),
           accountAlertPolicy: {
             read: () => selection.client.readAccountAlertPolicy(),
             update: (input) => selection.client.updateAccountAlertPolicy(input),
           },
         };
+}
+
+async function applyAppBudget(
+  result: Promise<ServiceConfigWriteResult>,
+): Promise<ServiceConfigWriteResult> {
+  const saved = await result;
+  try {
+    await errorProcessOwner.applyBudget(saved.snapshot.errorDiagnosticsBudget);
+    return saved;
+  } catch (error) {
+    const diagnosticId = randomUUID();
+    logger.error('Settings were saved; the desktop diagnostic budget could not be applied.', { diagnosticId }, error);
+    return {
+      ...saved,
+      state: 'partial-failure',
+      issues: [
+        ...(saved.issues ?? []),
+        { step: 'error-diagnostics', fields: ['error_diagnostics'], reason: 'runtime-application-failed', diagnosticId },
+      ],
+    };
+  }
 }
 
 export function getConfigAdapter(): ConfigAdapter {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ContentDescriptorSchema } from '../diagnostics/content-capability.schema';
+import { ContentDescriptorSchema } from '@/shared/observability/content-capability.schema';
 export const AuditCurlInputSchema = z.strictObject({
   id: z.string().min(1).max(128),
   attemptId: z.string().min(1).max(128).optional(),

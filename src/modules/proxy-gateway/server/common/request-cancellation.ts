@@ -1,5 +1,10 @@
+import { GenerationDeadlineExceededError } from './exceptions/generation-deadline.exception';
+
 export function throwIfRequestAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
+    if (signal.reason instanceof GenerationDeadlineExceededError) {
+      throw signal.reason;
+    }
     throw new DOMException('Upstream request cancelled', 'AbortError');
   }
 }
@@ -12,7 +17,11 @@ export function awaitRequestOperation<T>(operation: Promise<T>, signal?: AbortSi
   return new Promise((resolve, reject) => {
     const cancel = () => {
       signal.removeEventListener('abort', cancel);
-      reject(new DOMException('Upstream request cancelled', 'AbortError'));
+      reject(
+        signal.reason instanceof GenerationDeadlineExceededError
+          ? signal.reason
+          : new DOMException('Upstream request cancelled', 'AbortError'),
+      );
     };
     operation.then(
       (value) => {

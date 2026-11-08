@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { omitThoughtSignaturePlaceholder } from '../antigravity/ThoughtSignatureCompat';
 import { ThoughtPartSignaturesSchema } from './thought-part-signatures';
 import { ThoughtRecordPageInputSchema } from './thought-management.schema';
 import { ThoughtProvenanceSchema } from './thought-record-provenance';
 import { ThoughtCandidateInputSchema } from './thought-candidate-query';
+import { ThoughtToolRecoveryInputSchema } from './thought-tool-recovery.schema';
 
 const SessionKeyPayloadSchema = z.object({ sessionKey: z.string().min(1).max(512) });
 const CleanupPayloadSchema = z.object({
@@ -39,7 +41,8 @@ const SavePayloadSchema = z.object({
   signature: z
     .string()
     .max(16 * 1024 * 1024)
-    .nullable(),
+    .nullable()
+    .transform(omitThoughtSignaturePlaceholder),
   partSignatures: ThoughtPartSignaturesSchema,
   sourceFamily: z.string().max(128).nullable(),
   thought: z.string().max(64 * 1024 * 1024),
@@ -82,6 +85,10 @@ export const ThoughtStoreWorkerCommandSchema = z.discriminatedUnion('operation',
   z.object({ operation: z.literal('listRecords'), payload: SessionKeyPayloadSchema }),
   z.object({ operation: z.literal('listRecordPage'), payload: ThoughtRecordPageInputSchema }),
   z.object({ operation: z.literal('findCandidates'), payload: ThoughtCandidateInputSchema }),
+  z.object({
+    operation: z.literal('toolRecoverySnapshot'),
+    payload: ThoughtToolRecoveryInputSchema,
+  }),
   z.object({
     operation: z.literal('getRecord'),
     payload: z.object({ id: z.number().int().positive(), sessionKey: z.string().min(1).max(512) }),

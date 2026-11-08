@@ -84,19 +84,42 @@ function parseToolArguments(argumentsString: string): Record<string, unknown> {
   };
 }
 
+function unwrapStructuredJson(text: string): string {
+  const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/iu.exec(text.trim());
+  if (fenced?.[1] === undefined) {
+    return text;
+  }
+  const payload = fenced[1].trim();
+  try {
+    JSON.parse(payload);
+    return payload;
+  } catch {
+    return text;
+  }
+}
+
 export function toOpenAIResponsesResponse(
   response: OpenAIChatResponse,
   responseId = response.id,
+  structuredOutput = false,
 ): Record<string, unknown> {
   const choice = response.choices[0];
   const output: Record<string, unknown>[] = [];
   const rawContent = choice?.message.content;
+  const refusal = choice?.message.refusal;
+  const answer =
+    structuredOutput &&
+    choice?.finish_reason === 'stop' &&
+    !refusal &&
+    !choice.message.tool_calls?.length &&
+    typeof rawContent === 'string'
+      ? unwrapStructuredJson(rawContent)
+      : rawContent;
   const content = isMalformedFunctionCallFinishReason(choice?.finish_reason)
     ? [typeof rawContent === 'string' ? rawContent : '', MALFORMED_FUNCTION_CALL_RECOVERY_TEXT]
         .filter(Boolean)
         .join('\n\n')
-    : rawContent;
-  const refusal = choice?.message.refusal;
+    : answer;
   const reasoningContent = choice?.message.reasoning_content;
   // Upstream already said whether the answer ran out of output budget; a response
   // that reports `completed` regardless makes a truncated answer look final.

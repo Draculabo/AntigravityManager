@@ -11,6 +11,126 @@ function openWorker(name, workerName = 'thought-store') {
   });
 }
 
+test('tool recovery permissions honor eviction through the production Worker while diagnostics retain signatures', async () => {
+  const name = 'tool-permission-eviction';
+  let worker = openWorker(name);
+  const now = Date.now();
+  const tools = Array.from({ length: 2000 }, (_, position) => ({
+    kind: 'tool',
+    position,
+    callId: `call-${position}`,
+    name: 'read',
+    argsDigest: 'b'.repeat(64),
+    signature: `opaque-${position}`,
+  }));
+  try {
+    for (let index = 0; index < 6; index += 1) {
+      await worker.command('save', {
+        sessionKey: 'session',
+        createdAt: now,
+        completedAt: now,
+        operationId: `op-${index}`,
+        causalAnchor: index.toString(16).padStart(64, '0'),
+        captureState: 'complete',
+        fingerprint: 'same',
+        model: 'gemini-pro',
+        sourceFamily: 'gemini',
+        thought: 'diagnostic reasoning',
+        visible: 'OK',
+        signature: null,
+        partSignatures: index === 5 ? [tools[0]] : tools,
+        toolIds: [],
+        toolNames: [],
+        meaningful: true,
+        maxSessionBytes: 64 * 1024 * 1024,
+        maxSessions: 2000,
+        maxTurns: 600,
+      });
+    }
+    const loaded = await worker.command('load', { sessionKey: 'session' });
+    assert.deepEqual(
+      loaded[0].partSignatures,
+      tools.map((part, index) => (index === 0 ? { ...part, signature: null } : part)),
+    );
+    assert.deepEqual(
+      (await worker.command('getRecord', { sessionKey: 'session', id: 1 })).partSignatures,
+      tools,
+    );
+    const input = { sessionKey: 'session', operationIds: ['op-0', 'op-5'] };
+    const expected = [
+      { operationId: 'op-0', positions: Array.from({ length: 1999 }, (_, index) => index + 1) },
+      { operationId: 'op-5', positions: [0] },
+    ];
+    assert.deepEqual(await worker.command('toolRecoverySnapshot', input), expected);
+    const layoutDigest = (parts) => {
+      const hash = createHash('sha256');
+      for (const part of parts) {
+        hash.update(JSON.stringify([part.position, part.callId, part.name, part.argsDigest]) + '\n');
+      }
+      return hash.digest('hex');
+    };
+    assert.deepEqual(await worker.command('toolRecoverySnapshot', { ...input, layouts: [
+      { operationId: 'op-0', digest: layoutDigest(tools) },
+      { operationId: 'op-5', digest: layoutDigest([tools[0]]) },
+    ] }), expected);
+    assert.deepEqual(await worker.command('toolRecoverySnapshot', {
+      ...input, layouts: input.operationIds.map((operationId) => ({ operationId, digest: '0'.repeat(64) })),
+    }), input.operationIds.map((operationId) => ({ operationId, positions: [] })));
+    assert.deepEqual(
+      await worker.command('toolRecoverySnapshot', { ...input, sessionKey: 'neighbor' }),
+      [],
+    );
+    await assert.rejects(
+      worker.command('toolRecoverySnapshot', {
+        sessionKey: 'session',
+        operationIds: Array.from({ length: 10257 }, (_, index) => `op-${index}`),
+      }),
+    );
+    await worker.close();
+    worker = openWorker(name);
+    assert.deepEqual(await worker.command('toolRecoverySnapshot', input), expected);
+    assert.equal((await worker.command('stats', null)).recoverableToolLinks, 10000);
+    const raw = new Database(worker.databasePath);
+    try {
+      raw.pragma('foreign_keys = ON');
+      raw.prepare('DELETE FROM thinking_records WHERE id=?').run(6);
+    } finally {
+      raw.close();
+    }
+    const replay = await worker.command('getRecord', { sessionKey: 'session', id: 1 });
+    await worker.command('save', {
+      ...replay,
+      sessionKey: 'session',
+      thought: 'diagnostic reasoning enriched',
+      meaningful: true,
+      maxSessionBytes: 64 * 1024 * 1024,
+      maxSessions: 2000,
+      maxTurns: 600,
+    });
+    assert.deepEqual(await worker.command('toolRecoverySnapshot', input), [expected[0]]);
+    assert.equal((await worker.command('stats', null)).recoverableToolLinks, 9999);
+    await worker.command('save', {
+      ...replay,
+      sessionKey: 'legacy',
+      operationId: null,
+      causalAnchor: null,
+      completedAt: null,
+      captureState: 'legacy',
+      meaningful: true,
+      maxSessionBytes: 64 * 1024 * 1024,
+      maxSessions: 2000,
+      maxTurns: 600,
+    });
+    const legacy = await worker.command('load', { sessionKey: 'legacy' });
+    assert.equal(legacy[0].thought, 'diagnostic reasoning');
+    assert.ok(legacy[0].partSignatures.every((part) => part.signature === null));
+    const legacyDiagnostic = await worker.command('getSession', { sessionKey: 'legacy' });
+    assert.deepEqual(legacyDiagnostic[0].partSignatures, tools);
+  } finally {
+    await worker.close();
+  }
+});
+
 test('round ownership restores old causal candidates through the real Worker without merging independent replies', async () => {
   const name = 'round-causal-recovery';
   let worker = openWorker(name);

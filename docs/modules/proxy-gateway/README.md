@@ -6,6 +6,8 @@ that module; cross-cutting runtime and security contracts remain in the root-lev
 
 ## Current behavior
 
+- [Gateway settings and runtime state](settings-runtime.md): manual startup choice, field patches,
+  independent saves, runtime application and configuration recovery.
 - [Compatibility reference](compatibility.md): request, response, stream and client compatibility.
 - [Account leases and playground](account-leases.md): token and project persistence, targeted account leases and in-app model playground execution.
 - [Schema conversion](schema-conversion.md): schema selection, conversion limits and diagnostics.

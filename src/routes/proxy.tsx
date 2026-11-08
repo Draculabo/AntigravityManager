@@ -1,3 +1,5 @@
+import { ConnectionProfilesCard } from '@/modules/proxy-gateway/components/ConnectionProfilesCard';
+import { SettingsSaveFeedback } from '@/modules/config/components/SettingsSaveFeedback';
 /**
  * API Proxy Service Page
  * Provides service control, model mapping, and usage examples
@@ -6,7 +8,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ipc } from '@/ipc/manager';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
 import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
 import type { ServiceConfigSnapshot } from '@/modules/config/service-config.schema';
@@ -20,6 +22,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OpenCodeSyncCard } from '@/modules/proxy-gateway/components/OpenCodeSyncCard';
+import { ClientConfigSyncCard } from '@/modules/proxy-gateway/components/ClientConfigSyncCard';
+import { DshSyncCard } from '@/modules/proxy-gateway/components/DshSyncCard';
 import { AgentToolSyncCard } from '@/modules/proxy-gateway/components/AgentToolSyncCard';
 import { GlobalSystemPromptCard } from '@/modules/proxy-gateway/components/GlobalSystemPromptCard';
 import { CoworkCompactionCard } from '@/modules/proxy-gateway/components/CoworkCompactionCard';
@@ -112,8 +116,8 @@ function ProxyPage() {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const { toast } = useToast();
-  const { config, isLoading, saveConfig, serviceAvailable, serviceLoading, retryService } =
-    useAppConfig();
+  const settings = useAppConfig();
+  const { config, isLoading, saveConfig, serviceAvailable, serviceLoading, retryService } = settings;
   const { data: cloudAccounts = [] } = useCloudAccounts();
 
   // Query all available local IPs
@@ -142,6 +146,8 @@ function ProxyPage() {
 
   // Local state for proxyConfig editing
   const [proxyConfig, setProxyConfig] = useState<ProxyConfig | undefined>(undefined);
+  const sourceProxyConfig = serviceAvailable ? config?.proxy : undefined;
+  const [previousProxyConfig, setPreviousProxyConfig] = useState<ProxyConfig | undefined>(undefined);
   const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
@@ -161,35 +167,19 @@ function ProxyPage() {
     });
   };
 
-  // Sync config.proxy to local state when loaded, and check actual server status
-  useEffect(() => {
-    if (config && serviceAvailable) {
-      // Check actual server status and sync with config
-      const syncServerStatus = async () => {
-        try {
-          const status = await ipc.client.gateway.status();
-          const actualEnabled = status.running;
-
-          // If config says enabled but server not running, or vice versa, sync
-          if (config.proxy.enabled !== actualEnabled) {
-            const syncedConfig = { ...config.proxy, enabled: actualEnabled };
-            setProxyConfig(syncedConfig);
-            syncNetworkDrafts(syncedConfig);
-            // Also save the corrected state
-            await saveConfig({ ...config, proxy: syncedConfig });
-          } else {
-            setProxyConfig(config.proxy);
-            syncNetworkDrafts(config.proxy);
-          }
-        } catch {
-          // If status check fails, just use config value
-          setProxyConfig(config.proxy);
-          syncNetworkDrafts(config.proxy);
-        }
-      };
-      syncServerStatus();
+  const runtimeStatus = useQuery({
+    queryKey: ['gatewayStatus'],
+    queryFn: () => ipc.client.gateway.status(),
+    enabled: serviceAvailable,
+    retry: false,
+  });
+  if (previousProxyConfig !== sourceProxyConfig) {
+    setPreviousProxyConfig(sourceProxyConfig);
+    if (sourceProxyConfig) {
+      setProxyConfig(sourceProxyConfig);
+      syncNetworkDrafts(sourceProxyConfig);
     }
-  }, [config, saveConfig, serviceAvailable]);
+  }
 
   const revealKey = async (copy: boolean) => {
     setKeyBusy(true);
@@ -389,6 +379,7 @@ print(response.choices[0].message.content)`;
 
   return (
     <div className="container space-y-5">
+      <SettingsSaveFeedback {...settings} />
       <div>
         <div className="flex items-start gap-3">
           <div className="bg-success-soft text-success border-success-border flex size-11 shrink-0 items-center justify-center rounded-xl border">
@@ -401,7 +392,7 @@ print(response.choices[0].message.content)`;
         </div>
 
         {/* Local Access Info Banner */}
-        {proxyConfig?.enabled && (
+        {runtimeStatus.data?.running && (
           <div className="bg-card mt-4 flex flex-col gap-2 rounded-md border p-3 text-sm">
             <div className="flex items-center gap-2">
               <div className="font-semibold">{t('proxy.config.local_access')}</div>
@@ -445,19 +436,20 @@ print(response.choices[0].message.content)`;
             </div>
             <div className="flex items-center gap-3">
               <span
-                className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium ${proxyConfig.enabled ? 'border-success-border bg-success-soft text-success' : 'bg-card text-muted-foreground'}`}
+                className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium ${runtimeStatus.data?.running ? 'border-success-border bg-success-soft text-success' : 'bg-card text-muted-foreground'}`}
               >
                 <span
                   aria-hidden="true"
-                  className={`size-1.5 rounded-full ${proxyConfig.enabled ? 'bg-success' : 'bg-muted-foreground'}`}
+                  className={`size-1.5 rounded-full ${runtimeStatus.data?.running ? 'bg-success' : 'bg-muted-foreground'}`}
                 />
-                {proxyConfig.enabled ? t('proxy.service.running') : t('proxy.service.stopped')}
+                {runtimeStatus.isError ? t('proxy.service.status-unavailable') : !runtimeStatus.data ? t('agent-tools.loading') : runtimeStatus.data.running ? t('proxy.service.running') : t('proxy.service.stopped')}
               </span>
-              <ProxyServiceControl
+              {runtimeStatus.data && !runtimeStatus.isError ? <ProxyServiceControl
                 config={proxyConfig}
-                onConfigChange={updateProxyConfig}
+                running={runtimeStatus.data.running}
+                onRuntimeChange={() => runtimeStatus.refetch()}
                 onError={setGatewayError}
-              />
+              /> : <Button variant="outline" onClick={() => void runtimeStatus.refetch()}>{t('agent-tools.retry')}</Button>}
             </div>
           </div>
         </CardHeader>
@@ -564,12 +556,15 @@ print(response.choices[0].message.content)`;
                       setKeyBusy(true);
                       try {
                         const result = await ipc.client.config.service.generateKey();
+                        settings.recordServiceApplication(result);
                         setProxyConfig(result.snapshot.proxy);
                         setRevealedKey(null);
                         setShowKey(false);
                         await retryService();
                         setIsRegenerateDialogOpen(false);
-                        if (result.state === 'restart-required') {
+                        if (result.state === 'partial-failure') {
+                          toast({ title: t('settings.service-apply-failed'), variant: 'destructive' });
+                        } else if (result.state === 'restart-required') {
                           toast({
                             title: t(
                               'settings.service-restart-required',
@@ -754,10 +749,20 @@ print(response.choices[0].message.content)`;
             <div className="mt-4 space-y-4">
               <ProxyAccountStrategy
                 value={proxyConfig.account_selection_strategy}
+                weeklyQuotaPriorityEnabled={proxyConfig.weekly_quota_priority_enabled}
                 onChange={async (account_selection_strategy) => {
                   const previous = proxyConfig;
                   try {
                     await updateProxyConfig({ ...proxyConfig, account_selection_strategy });
+                  } catch (error) {
+                    setProxyConfig(previous);
+                    throw error;
+                  }
+                }}
+                onWeeklyQuotaPriorityChange={async (weekly_quota_priority_enabled) => {
+                  const previous = proxyConfig;
+                  try {
+                    await updateProxyConfig({ ...proxyConfig, weekly_quota_priority_enabled });
                   } catch (error) {
                     setProxyConfig(previous);
                     throw error;
@@ -773,9 +778,24 @@ print(response.choices[0].message.content)`;
               />
               <CoworkCompactionCard
                 config={proxyConfig.cowork_compaction}
-                onChange={(cowork_compaction) =>
-                  updateProxyConfig({ ...proxyConfig, cowork_compaction })
-                }
+                apiKeyConfigured={proxyConfig.api_key_configured}
+                revealApiKey={async () => {
+                  const result = await ipc.client.config.service.revealSecret({ name: 'api-key' });
+                  return result.value;
+                }}
+                onChange={async (cowork_compaction) => {
+                  const previous = proxyConfig;
+                  try {
+                    await updateProxyConfig({ ...proxyConfig, cowork_compaction });
+                  } catch (error) {
+                    setProxyConfig((current) =>
+                      current?.cowork_compaction === cowork_compaction
+                        ? { ...current, cowork_compaction: previous.cowork_compaction }
+                        : current,
+                    );
+                    throw error;
+                  }
+                }}
               />
 
               <div className="flex items-center justify-between rounded-lg border p-4">
@@ -959,10 +979,14 @@ print(response.choices[0].message.content)`;
               <h2 className="text-lg font-semibold">{t('agent-tools.title')}</h2>
               <p className="text-muted-foreground text-sm">{t('agent-tools.description')}</p>
             </div>
+            <ConnectionProfilesCard baseUrl={baseUrl} />
             <div data-slot="agent-tool-grid" className="grid items-stretch gap-4 xl:grid-cols-3">
               <AgentToolSyncCard tool="claude" baseUrl={baseUrl} models={exampleModels} />
               <AgentToolSyncCard tool="codex" baseUrl={baseUrl} models={exampleModels} />
               <OpenCodeSyncCard baseUrl={baseUrl} models={exampleModels} />
+              <ClientConfigSyncCard client="hermes" baseUrl={baseUrl} />
+              <ClientConfigSyncCard client="openclaw" baseUrl={baseUrl} />
+              <DshSyncCard baseUrl={baseUrl} />
             </div>
           </section>
         </TabsContent>
@@ -982,6 +1006,7 @@ print(response.choices[0].message.content)`;
                 ...(patch.traffic_audit ? { expectedAuditRevision: config?.auditRevision } : {}),
                 proxy: patch,
               });
+              settings.recordServiceApplication(result);
               queryClient.setQueryData(['serviceConfig'], result.snapshot);
               setProxyConfig(result.snapshot.proxy);
               return result.state;

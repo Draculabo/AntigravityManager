@@ -18,6 +18,7 @@ import { cloudAccountWeeklyWarmupRunner } from '@/modules/cloud-account/services
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { configureCoreOwnerPresentation } from '@/modules/cloud-account/services/account-owner-presentation.service';
 import { accountOwnerEvents } from '@/modules/cloud-account/services/account-owner-events.service';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 const settings = vi.hoisted(() => new Map<string, unknown>());
 vi.mock('@/modules/cloud-account/ipc/handler', () => ({}));
@@ -115,7 +116,7 @@ async function remote() {
     process.platform === 'win32'
       ? `\\\\.\\pipe\\agm-monitor-${path.basename(directory)}`
       : path.join(directory, 'core.sock');
-  const operations = createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() });
+  const operations = createCoreRpcOperations(mockCoreGatewayLifecycle());
   server = new ManagementServer({
     endpoint,
     getStatus: () => ({ state: 'running', pid: 123, gateway: { running: false, port: null } }),

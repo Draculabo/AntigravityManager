@@ -72,7 +72,7 @@ export const cloudAccountStoreAdapter: AccountLeaseAccountStore = {
   updateToken: (accountId, token, guard) => CloudAccountRepo.updateToken(accountId, token, guard),
   compareAndUpdateToken: (accountId, expected, token, guard) =>
     guard
-      ? CloudAccountRepo.compareAndUpdateToken(accountId, expected, token, guard)
+      ? CloudAccountRepo.compareAndUpdateToken(accountId, expected, token, guard, true)
       : CloudAccountRepo.compareAndUpdateToken(accountId, expected, token),
   updateQuota: (accountId, quota, guard) => CloudAccountRepo.updateQuota(accountId, quota, guard),
   mutateHealth: (accountId, mutation, guard) =>

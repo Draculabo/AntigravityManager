@@ -371,7 +371,15 @@ export class AccountLeaseHydrationPolicy {
       );
       if (saved) {
         if (tokenData.stored_context) {
-          tokenData.stored_context.account = leaseStoredContext({ ...account, token: updatedToken }).account;
+          const current = await this.options.accountStore.getAccount(accountId);
+          captureLeaseWriteGuard(
+            { ...tokenData, stored_context: leaseStoredContext({ ...account, token: updatedToken }) },
+            isCurrent ?? (() => true),
+          )(current);
+          if (!current) {
+            throw new AccountLeaseStaleTokenError(accountId);
+          }
+          tokenData.stored_context.account = leaseStoredContext(current).account;
         }
         return true;
       }

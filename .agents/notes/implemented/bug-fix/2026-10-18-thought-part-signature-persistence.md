@@ -52,6 +52,23 @@ No encryption, raw API-key storage, tool execution or provider retry is added.
 The [upgrade guide](../../../../docs/upgrade-guides/next/replace-thought-store-history.md)
 states irreversible cache loss and the empty-store downgrade procedure.
 
+## D16 recovery permission follow-up
+
+Durable tool references govern recovery after capacity eviction as well as expiry.
+Recent/older reads batch the exact session/operation query; warm replay requests a
+bounded permission snapshot without copying diagnostic bodies. Acknowledged memory
+captures retain durability through a weak record association, rather than an
+unbounded operation index. Unavailable snapshots deny durable tool recovery and
+report the owning read failure, while unacknowledged current captures keep their
+existing finite fallback. Deletion and cancellation leases still guard publication.
+Diagnostic detail reads retain original signatures. No format migration is needed.
+The earlier legacy and D04 ownership obligations remain active; this closes the
+warm durable-eviction gap. Unproven legacy/history/partial tool signatures remain
+diagnostic only, because their original completion and expiry cannot be established.
+Enrichment follows unique tool identity across layout changes and cannot recreate
+an evicted signed reference after maintenance frees space. The production Worker regression fails against the
+prior compiled worker because its recent load restores an evicted signature.
+
 ## Alternatives considered
 
 - Keep or select one first/latest/longest signature: rejected by the A/B to B/B defect.

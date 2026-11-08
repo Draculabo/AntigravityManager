@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
+import { GeminiModelSwitchHistory } from '@/modules/proxy-gateway/server/modules/gemini/gemini-thought-signature-model';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
 import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
@@ -18,6 +19,7 @@ vi.mock('axios', () => ({ default: axiosMock, ...axiosMock }));
 const claude = Buffer.from([0x08, 0x04, 0x12, ...Array<number>(80).fill(0x7f)]).toString('base64');
 const gemini = Buffer.from([0x12, ...Array<number>(80).fill(0x7f)]).toString('base64');
 const placeholder = 'skip_thought_signature_validator';
+const encodedPlaceholder = 'c2tpcF90aG91Z2h0X3NpZ25hdHVyZV92YWxpZGF0b3I=';
 
 function requestFor(model: string, signature: string): GeminiInternalRequest {
   return {
@@ -69,6 +71,7 @@ describe('physical target signature format gates', () => {
     { model: 'gemini-3-flash', signature: claude, family: 'gemini' },
     { model: 'claude-sonnet-4-6', signature: gemini, family: 'claude' },
     { model: 'claude-sonnet-4-6', signature: placeholder, family: 'claude' },
+    { model: 'claude-sonnet-4-6', signature: encodedPlaceholder, family: 'claude' },
   ])(
     'rejects incompatible input before history preparation for $family',
     async ({ model, signature, family }) => {
@@ -127,6 +130,7 @@ describe('physical target signature format gates', () => {
 
   it.each([
     { model: 'gemini-3-flash', signature: placeholder },
+    { model: 'gemini-3-flash', signature: encodedPlaceholder },
     { model: 'gemini-3-flash', signature: gemini },
     { model: 'claude-sonnet-4-6', signature: claude },
     { model: 'claude-sonnet-4-6', signature: 'future-opaque-provider-signature' },
@@ -154,4 +158,64 @@ describe('physical target signature format gates', () => {
       }
     },
   );
+});
+
+describe('Gemini to Claude history projection', () => {
+  const geminiModel = 'gemini-3-flash';
+  const claudeModel = 'claude-sonnet-4-6';
+  const session = 'scoped-session';
+  const target = (signature: string) => requestFor(claudeModel, signature).request.contents;
+
+  it.each([gemini, placeholder, encodedPlaceholder])(
+    'preserves the tool exchange and original request when removing a known foreign signature',
+    (signature) => {
+      const history = new GeminiModelSwitchHistory();
+      history.recordSuccess(session, geminiModel, 1000);
+      const input = target(signature);
+      input[1].parts[0].thought_signature = signature;
+      input[1].parts.push({ text: 'visible response' });
+      input[1].parts.push({
+        thought: true,
+        text: 'private reasoning',
+        thoughtSignature: signature,
+      });
+      const original = structuredClone(input);
+      const expected = [
+        original[0],
+        {
+          role: 'model',
+          parts: [
+            { functionCall: { id: 'call-1', name: 'read', args: {} } },
+            { text: 'visible response' },
+          ],
+        },
+        original[2],
+      ];
+      expect(history.prepare(input, claudeModel, claudeModel, session, 1001)).toEqual(expected);
+      expect(input).toEqual(original);
+    },
+  );
+
+  it('keeps compatible and opaque signatures byte for byte', () => {
+    const history = new GeminiModelSwitchHistory();
+    history.recordSuccess(session, geminiModel, 1000);
+    for (const signature of [claude, 'future-opaque-provider-signature']) {
+      const input = target(signature);
+      expect(history.prepare(input, claudeModel, claudeModel, session, 1001)).toBe(input);
+    }
+  });
+
+  it('requires recent matching Gemini success and an explicitly requested Claude target', () => {
+    const history = new GeminiModelSwitchHistory();
+    const input = target(gemini);
+    expect(history.prepare(input, claudeModel, claudeModel, session, 1000)).toBe(input);
+    history.recordSuccess(session, claudeModel, 1000);
+    expect(history.prepare(input, claudeModel, claudeModel, session, 1001)).toBe(input);
+    history.recordSuccess(session, geminiModel, 1000);
+    expect(history.prepare(input, claudeModel, claudeModel, 'different-scope', 1001)).toBe(input);
+    expect(history.prepare(input, claudeModel, claudeModel, undefined, 1001)).toBe(input);
+    expect(history.prepare(input, geminiModel, claudeModel, session, 1001)).toBe(input);
+    expect(history.prepare(input, claudeModel, geminiModel, session, 1001)).toBe(input);
+    expect(history.prepare(input, claudeModel, claudeModel, session, 601000)).toBe(input);
+  });
 });

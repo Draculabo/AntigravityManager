@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
+import { performance } from 'node:perf_hooks';
 import { logger as diagnosticLogger } from '@/shared/logging/logger';
 
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
@@ -11,6 +12,7 @@ import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
 import { estimateRequestContext } from '@/modules/proxy-gateway/server/common/request-context-estimate';
+import { errorProcessOwner } from '@/modules/error-diagnostics/public';
 
 const axiosMock = vi.hoisted(() => ({
   post: vi.fn(),
@@ -54,20 +56,10 @@ describe('GeminiClient upstream proxy config', () => {
     setServerConfig(createProxyConfig('http://127.0.0.1:9090'));
     await client.generate('gemini-3-flash', { contents: [] } as never, 'access-token');
 
-    expect(axiosMock.post.mock.calls[0]?.[2]?.proxy).toEqual({
-      protocol: 'http',
-      host: '127.0.0.1',
-      port: 8080,
-      auth: {
-        username: 'user',
-        password: 'pass',
-      },
-    });
-    expect(axiosMock.post.mock.calls[1]?.[2]?.proxy).toEqual({
-      protocol: 'http',
-      host: '127.0.0.1',
-      port: 9090,
-    });
+    expect(axiosMock.post.mock.calls.map(([, , options]) => options.proxy)).toEqual([false, false]);
+    expect(
+      axiosMock.post.mock.calls.map(([, , options]) => options.httpsAgent?.proxy.href),
+    ).toEqual(['http://127.0.0.1:8080/', 'http://127.0.0.1:9090/']);
   });
 
   it('keeps the proxy snapshot across endpoint retries and refreshes it for the next request', async () => {
@@ -107,9 +99,9 @@ describe('GeminiClient upstream proxy config', () => {
       'synthetic-token',
     );
 
-    expect(axiosMock.post.mock.calls.map(([, , options]) => options.proxy?.port)).toEqual([
-      8080, 8080, 9090,
-    ]);
+    expect(
+      axiosMock.post.mock.calls.map(([, , options]) => options.httpsAgent?.proxy.port),
+    ).toEqual(['8080', '8080', '9090']);
   });
 
   it('does not fail over to another endpoint when cancellation arrives during a request', async () => {
@@ -161,6 +153,71 @@ describe('GeminiClient upstream proxy config', () => {
 });
 
 describe('GeminiClient internal endpoint selection', () => {
+  it('captures the original failed-send Error once when another endpoint recovers without HTTP audit context', async () => {
+    vi.stubEnv(
+      'PROXY_INTERNAL_BASE_URLS',
+      'https://one.invalid/v1internal,https://two.invalid/v1internal',
+    );
+    const capture = vi.spyOn(errorProcessOwner, 'capture');
+    const error = Object.assign(
+      new Error('controlled connection reset', { cause: new Error('socket source') }),
+      { code: 'ECONNRESET' },
+    );
+    axiosMock.post
+      .mockRejectedValueOnce(error)
+      .mockResolvedValue({ status: 200, headers: {}, data: { totalTokens: 12 } });
+    try {
+      const client = new GeminiClient(new Upstream4xxCaptureService());
+      await expect(
+        client.countTokensInternal(
+          {
+            request: {
+              model: 'models/gemini-3-flash',
+              contents: [{ role: 'user', parts: [{ text: 'controlled' }] }],
+            },
+          },
+          'synthetic-token',
+        ),
+      ).resolves.toEqual({ totalTokens: 12 });
+      expect(axiosMock.post).toHaveBeenCalledTimes(2);
+      expect(capture.mock.calls.filter(([input]) => input.stage === 'upstream-attempt')).toEqual([
+        [
+          expect.objectContaining({
+            error,
+            category: 'transfer',
+            functionName: 'count-tokens',
+            requestId: undefined,
+            attemptId: expect.stringMatching(/^[a-f0-9-]{36}$/u),
+          }),
+        ],
+      ]);
+    } finally {
+      capture.mockRestore();
+    }
+  });
+  it('forwards the count cancellation signal to Axios and refuses an aborted count before transport', async () => {
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    const controller = new AbortController();
+    const input = {
+      request: {
+        model: 'models/gemini-3-flash',
+        contents: [{ role: 'user', parts: [{ text: 'controlled count' }] }],
+      },
+    };
+    axiosMock.post.mockResolvedValue({ status: 200, headers: {}, data: { totalTokens: 12 } });
+    await expect(
+      client.countTokensInternal(input, 'synthetic-token', undefined, undefined, controller.signal),
+    ).resolves.toEqual({ totalTokens: 12 });
+    const forwarded: unknown = axiosMock.post.mock.calls[0]?.[2]?.signal;
+    expect(forwarded).toBeInstanceOf(AbortSignal);
+    controller.abort();
+    expect(forwarded).toMatchObject({ aborted: true });
+    const calls = axiosMock.post.mock.calls.length;
+    await expect(
+      client.countTokensInternal(input, 'synthetic-token', undefined, undefined, controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(axiosMock.post).toHaveBeenCalledTimes(calls);
+  });
   const body: GeminiInternalRequest = {
     model: 'claude-sonnet-4-6',
     project: 'synthetic-project',
@@ -455,6 +512,7 @@ describe('GeminiClient internal endpoint selection', () => {
             phase: 'physical-send',
             attempt: null,
             semanticEstimate: {
+              algorithmVersion: 2,
               estimatedInputTokens: 2372,
               systemTokens: 2250,
               textTokens: 9,
@@ -594,7 +652,7 @@ describe('GeminiClient internal endpoint selection', () => {
     });
     expect(axiosMock.post.mock.calls.map(([url]) => url)).toEqual([
       'https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent',
-      'https://sandbox-cloudcode-pa.googleapis.com/v1internal:generateContent',
+      'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:generateContent',
     ]);
     expect(axiosMock.post.mock.calls[0][1]).toEqual(axiosMock.post.mock.calls[1][1]);
     expect(axiosMock.post.mock.calls.map(([, , options]) => options.headers.Authorization)).toEqual(
@@ -639,18 +697,182 @@ describe('GeminiClient internal endpoint selection', () => {
     ]);
   });
 
+  it('spends the same deadline across physical endpoint attempts', async () => {
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    let now = 1000;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 10 });
+    axiosMock.post.mockImplementationOnce(async () => {
+      now += 4000;
+      throw { response: { status: 503, headers: {}, data: {} } };
+    });
+    try {
+      await client.generateInternal(body, 'token');
+
+      expect(axiosMock.post.mock.calls.map(([, , config]) => config.timeout)).toEqual([
+        10000, 6000,
+      ]);
+    } finally {
+      clock.mockRestore();
+      client.onModuleDestroy();
+    }
+  });
+
+  it('records a timed-out physical stream as timeout rather than a client disconnect', async () => {
+    vi.useFakeTimers();
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+    const capture = vi.spyOn(errorProcessOwner, 'capture');
+    const source = new PassThrough();
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    axiosMock.post.mockResolvedValueOnce({ status: 200, headers: {}, data: source });
+    try {
+      const stream = await client.streamGenerateInternal(body, 'token');
+      const errors: unknown[] = [];
+      stream.on('error', (error: unknown) => errors.push(error));
+      await vi.advanceTimersByTimeAsync(1001);
+
+      expect(errors).toMatchObject([{ name: 'GenerationDeadlineExceededError' }]);
+      expect(source.destroyed).toBe(true);
+      expect(capture.mock.calls.filter(([input]) => input.stage === 'upstream-attempt')).toEqual([
+        [
+          expect.objectContaining({
+            category: 'timeout',
+            error: expect.objectContaining({ name: 'GenerationDeadlineExceededError' }),
+          }),
+        ],
+      ]);
+      client.onModuleDestroy();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      capture.mockRestore();
+      client.onModuleDestroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not dispatch another endpoint after the logical deadline has been spent', async () => {
+    let now = 1000;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+    axiosMock.post.mockImplementationOnce(async () => {
+      now += 1001;
+      throw { response: { status: 503, headers: {}, data: {} } };
+    });
+    try {
+      await expect(
+        new GeminiClient(new Upstream4xxCaptureService()).generateInternal(body, 'token'),
+      ).rejects.toMatchObject({ name: 'GenerationDeadlineExceededError', code: 'ETIMEDOUT' });
+
+      expect(axiosMock.post).toHaveBeenCalledOnce();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('canonicalizes and deduplicates endpoint overrides while preserving candidate order', async () => {
+    vi.stubEnv(
+      'PROXY_INTERNAL_BASE_URLS',
+      'https://ONE.invalid:443/v1internal/,https://one.invalid/v1internal,http://two.invalid/v1internal',
+    );
+    axiosMock.post.mockRejectedValueOnce({ response: { status: 503, headers: {}, data: {} } });
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+
+    await client.generateInternal(body, 'synthetic-token');
+
+    expect(axiosMock.post.mock.calls.map(([url]) => url)).toEqual([
+      'https://one.invalid/v1internal:generateContent',
+      'http://two.invalid/v1internal:generateContent',
+    ]);
+  });
+
+  it.each([
+    'not-a-url',
+    'ftp://upstream.invalid/v1internal',
+    'https://private-user:private-secret@upstream.invalid/v1internal',
+    'https://upstream.invalid/v1internal?token=private-secret',
+    'https://upstream.invalid/v1internal#fragment',
+    'https://upstream.invalid/v1internal?',
+    'https://upstream.invalid/v1internal#',
+    'https:upstream.invalid/v1internal',
+    'https://upstream.invalid\\wrong-path',
+    'https://one.invalid/v1internal,,https://two.invalid/v1internal',
+    'https://upstream.invalid/\npath',
+    Array.from({ length: 9 }, (_, index) => `https://upstream-${index}.invalid/v1internal`).join(
+      ',',
+    ),
+    `https://upstream.invalid/${'a'.repeat(8192)}`,
+  ])('refuses invalid internal endpoint configuration before any send (%#)', async (configured) => {
+    vi.stubEnv('PROXY_INTERNAL_BASE_URLS', configured);
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+
+    const request = client.generateInternal(body, 'synthetic-token');
+
+    await expect(request).rejects.toMatchObject({ name: 'UpstreamEndpointConfigurationError' });
+    await expect(request).rejects.not.toThrow('private-secret');
+    expect(axiosMock.post).not.toHaveBeenCalled();
+  });
+
+  it('keeps primary override precedence over the alias without probing defaults', async () => {
+    vi.stubEnv('PROXY_INTERNAL_BASE_URLS', 'http://primary.invalid/prefix');
+    vi.stubEnv('ANTIGRAVITY_INTERNAL_BASE_URLS', 'http://alias.invalid/other');
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+
+    await client.generateInternal(body, 'synthetic-token');
+
+    expect(axiosMock.post.mock.calls.map(([url]) => url)).toEqual([
+      'http://primary.invalid/prefix:generateContent',
+    ]);
+  });
+
+  it('keeps a root endpoint slash so the method cannot be parsed as a port', async () => {
+    vi.stubEnv('PROXY_INTERNAL_BASE_URLS', 'http://root.invalid');
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+
+    await client.generateInternal(body, 'synthetic-token');
+
+    expect(axiosMock.post.mock.calls.map(([url]) => url)).toEqual([
+      'http://root.invalid/:generateContent',
+    ]);
+  });
+
+  it.each([
+    'ERR_CANCELED',
+    'ABORT_ERR',
+    'ERR_INVALID_URL',
+    'ERR_BAD_OPTION_VALUE',
+    'ERR_BAD_OPTION',
+    'ERR_NOT_SUPPORT',
+  ])('does not rotate endpoints after local Axios failure %s', async (code) => {
+    const error = Object.assign(new Error('local request failure'), { code });
+    axiosMock.post.mockRejectedValueOnce(error);
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+
+    await expect(client.generateInternal(body, 'synthetic-token')).rejects.toThrow();
+
+    expect(axiosMock.post).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['unary', 'stream'])(
-    'uses the Hub HTTP identity for %s content generation',
+    'uses the Hub HTTP identity for %s content generation despite header overrides',
     async (mode) => {
       const client = new GeminiClient(new Upstream4xxCaptureService());
+      const headers = {
+        'uSeR-aGeNt': 'untrusted-client/1.0',
+        'anthropic-beta': 'interleaved-thinking-2025-05-14',
+      };
       if (mode === 'stream') {
         axiosMock.post.mockResolvedValue({ status: 200, headers: {}, data: Readable.from([]) });
-        const stream = await client.streamGenerateInternal(body, 'synthetic-token');
+        const stream = await client.streamGenerateInternal(
+          body,
+          'synthetic-token',
+          undefined,
+          headers,
+        );
         for await (const _chunk of stream) {
           // Drain the transport so its audit lifecycle completes.
         }
       } else {
-        await client.generateInternal(body, 'synthetic-token');
+        await client.generateInternal(body, 'synthetic-token', undefined, headers);
       }
 
       expect(axiosMock.post).toHaveBeenCalledTimes(1);
@@ -660,6 +882,7 @@ describe('GeminiClient internal endpoint selection', () => {
       expect(options.headers).toEqual({
         Authorization: 'Bearer synthetic-token',
         'Content-Type': 'application/json',
+        'anthropic-beta': 'interleaved-thinking-2025-05-14',
         'User-Agent': `antigravity/hub/2.17.0 (aidev_client; os_type=${platform}; arch=${arch}; cl=986210228)`,
       });
       let text = '';

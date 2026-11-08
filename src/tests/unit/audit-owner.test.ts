@@ -14,6 +14,7 @@ import { toPublicORPCError } from '@/ipc/router';
 import type { TrafficAuditEvent } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 import type { TrafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import type { UsageRangeResult } from '@/modules/proxy-gateway/audit/usage-range.schema';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 const id = randomUUID();
 const usageInput = { accountId: 'account-one', modelIds: ['claude-sonnet'], from: 1000, to: 2000 };
@@ -21,8 +22,9 @@ const usageResult: UsageRangeResult = {
   ...usageInput,
   asOf: 1800,
   coverage: 'retained-local-records',
-  accountIdentity: 'stored-account-id',
-  timeBasis: 'request-start',
+  accountIdentity: 'current-account-incarnation',
+  timeBasis: 'attempt-start',
+  ambiguousTimeBasis: 'attempt-start-or-unattributed-request-start',
   recordedRequests: 1,
   countedRequests: 1,
   ambiguousRequests: 0,
@@ -56,6 +58,7 @@ const source = {
   list: vi.fn(async () => ({ items: [], total: 0 })),
   filterOptions: vi.fn(async () => ({ accountIds: ['account-one'], modelFamilies: ['gemini'] })),
   usageRange: vi.fn(async () => usageResult),
+  usageTrends: vi.fn<TrafficAuditService['usageTrends']>(),
   detail: vi.fn(async () => null),
   bodyPage: vi.fn<TrafficAuditService['bodyPage']>(async () => null),
   bodySearch: vi.fn(async () => ({ matches: [], truncated: false })),
@@ -106,7 +109,7 @@ async function remote() {
     shutdown: async () => {},
     onShutdownError: vi.fn(),
     rpc: {
-      ...createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() }),
+      ...createCoreRpcOperations(mockCoreGatewayLifecycle()),
       audit: owner,
     },
   });

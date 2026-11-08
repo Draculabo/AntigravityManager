@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PIXEL_PNG, pngWithBytes } from '../fixtures/image-content';
 
 import {
   boundResponsesInputItems,
@@ -7,13 +8,13 @@ import {
 } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-inline-media';
 
 function imageDataUrl(decodedBytes: number): string {
-  return `data:image/png;base64,${Buffer.alloc(decodedBytes).toString('base64')}`;
+  return `data:image/png;base64,${pngWithBytes(decodedBytes).toString('base64')}`;
 }
 
 function imageParts(count: number): unknown[] {
   return Array.from({ length: count }, () => ({
     type: 'input_image',
-    image_url: 'data:image/png;base64,AQ==',
+    image_url: `data:image/png;base64,${PIXEL_PNG.toString('base64')}`,
   }));
 }
 
@@ -29,7 +30,7 @@ describe('Responses inline media boundaries', () => {
     expect(() =>
       validateResponsesInputImageLimits({
         type: 'input_image',
-        image_url: 'data:image/png;BASE64,AQ==',
+        image_url: `data:image/png;BASE64,${PIXEL_PNG.toString('base64')}`,
       }),
     ).not.toThrow();
     expect(() =>

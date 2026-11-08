@@ -49,8 +49,10 @@ describe('Anthropic count_tokens', () => {
     );
 
     expect(reply.status).toHaveBeenCalledWith(200);
-    expect(reply.header).toHaveBeenCalledWith('X-AGM-Count-Tokens-Source', 'upstream');
-    expect(reply.body).toEqual({ input_tokens: 2048 });
+    expect(reply.header).toHaveBeenCalledWith('X-AGM-Count-Tokens-Source', 'estimated');
+    expect(reply.body).toEqual({ input_tokens: expect.any(Number) });
+    expect(upstream.countTokensCalls).toEqual([]);
+    expect(lease.getNextToken).not.toHaveBeenCalled();
   });
 
   it('counts the conversation the Messages endpoint would have sent', async () => {
@@ -58,6 +60,7 @@ describe('Anthropic count_tokens', () => {
     const lease = createLease([createAccount('acc-1', 'project-42')]);
     const controller = new AnthropicController(createGateway(upstream, lease).anthropicService);
 
+    const reply = createReply();
     await controller.countTokens(
       {
         messages: [
@@ -67,24 +70,16 @@ describe('Anthropic count_tokens', () => {
         model: 'claude-sonnet-4-5',
         system: 'You are terse.',
       } as never,
-      createReply() as never,
+      reply as never,
     );
 
-    const sent = upstream.countTokensCalls[0]?.body as {
-      request: { contents: Array<{ parts: Array<{ text?: string }> }>; model: string };
-    };
-    expect(sent.request.model).toMatch(/^models\//u);
-    expect(JSON.stringify(sent.request.contents)).toContain('first');
-    expect(JSON.stringify(sent.request.contents)).toContain('second');
-    expect(sent.request.contents).toEqual([
-      { role: 'user', parts: [{ text: 'first' }] },
-      { role: 'model', parts: [{ text: 'second' }] },
-    ]);
-    expect(Object.keys(sent.request).sort()).toEqual(['contents', 'model']);
-    expect(JSON.stringify(sent)).not.toContain('project-42');
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(reply.body).toEqual({ input_tokens: expect.any(Number) });
+    expect(upstream.countTokensCalls).toEqual([]);
+    expect(lease.getNextToken).not.toHaveBeenCalled();
   });
 
-  it('returns a bounded local estimate when the upstream omits the count', async () => {
+  it('returns a bounded local estimate without consulting upstream counts', async () => {
     const upstream = createUpstream({ countTokens: {} });
     const lease = createLease([createAccount('acc-1')]);
     const controller = new AnthropicController(createGateway(upstream, lease).anthropicService);
@@ -98,7 +93,7 @@ describe('Anthropic count_tokens', () => {
     expect((reply.body as { input_tokens: number }).input_tokens).toBeGreaterThan(0);
   });
 
-  it('includes long system prompts, tools and tool history in fallback estimates', async () => {
+  it('includes long system prompts, tools and tool history in local estimates', async () => {
     vi.useFakeTimers();
     try {
       const upstream = createUpstream({ countTokens: {} });
@@ -159,15 +154,14 @@ describe('Anthropic count_tokens', () => {
         (base.body as { input_tokens: number }).input_tokens,
       );
       expect(enriched.header).toHaveBeenCalledWith('X-AGM-Count-Tokens-Source', 'estimated');
-      expect(
-        Object.keys((upstream.countTokensCalls[1]?.body as { request: object }).request).sort(),
-      ).toEqual(['contents', 'model']);
+      expect(upstream.countTokensCalls).toEqual([]);
+      expect(lease.getNextToken).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('does not turn an unavailable account into an estimated success', async () => {
+  it('does not require an upstream account for local estimation', async () => {
     const upstream = createUpstream({ countTokens: { totalTokens: 10 } });
     const controller = new AnthropicController(
       createGateway(upstream, createLease([])).anthropicService,
@@ -176,13 +170,13 @@ describe('Anthropic count_tokens', () => {
 
     await controller.countTokens(countTokensBody('hello') as never, reply as never);
 
-    expect(reply.status).toHaveBeenCalledWith(503);
-    expect(reply.body).toMatchObject({ type: 'error' });
-    expect(reply.header).not.toHaveBeenCalledWith('X-AGM-Count-Tokens-Source', 'estimated');
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(reply.body).toEqual({ input_tokens: expect.any(Number) });
+    expect(reply.header).toHaveBeenCalledWith('X-AGM-Count-Tokens-Source', 'estimated');
     expect(upstream.countTokensCalls).toHaveLength(0);
   });
 
-  it('penalises the account when upstream rejects the count', async () => {
+  it('does not contact or penalize an account during local counting', async () => {
     const upstream = createUpstream({
       countTokens: () => {
         throw new UpstreamRequestError({
@@ -198,8 +192,9 @@ describe('Anthropic count_tokens', () => {
 
     await controller.countTokens(countTokensBody('hello') as never, reply as never);
 
-    expect(reply.body).toMatchObject({ type: 'error' });
-    expect(reply.status).toHaveBeenCalledWith(503);
-    expect(lease.penalties).toEqual([{ accountId: 'acc-1', kind: 'forbidden' }]);
+    expect(reply.body).toEqual({ input_tokens: expect.any(Number) });
+    expect(reply.status).toHaveBeenCalledWith(200);
+    expect(lease.penalties).toEqual([]);
+    expect(upstream.countTokensCalls).toEqual([]);
   });
 });

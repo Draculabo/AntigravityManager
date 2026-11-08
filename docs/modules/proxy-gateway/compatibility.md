@@ -18,6 +18,46 @@ failures. This classification does not change retry or account-selection policy.
 
 ## Model routes, variants and capability evidence
 
+OpenAI model list/retrieve keep their identity fields and local context/output limits.
+Context metadata is published as `context_length`, `max_context_length`,
+`max_input_tokens`, `max_model_len` and `max_tokens`. Output metadata is published as
+`max_completion_tokens` and `max_output_tokens`. The fields within each group are
+identical; model metadata's `max_tokens` does not change the generation parameter's
+output-limit meaning. List, retrieve and service probes share the same catalog.
+Gemini list/retrieve use the same local model specs for `inputTokenLimit` and
+`outputTokenLimit`, including configured alias targets and documented family fallbacks.
+They do not report a live provider entitlement or measured token count. Gemini and
+Anthropic lookup select an exact catalog ID first, then a unique case-folded match;
+ambiguous matches return 404. Gemini also accepts the existing `models/` name prefix.
+
+`GET /props` and `/v1/props` expose llama.cpp-compatible discovery metadata.
+The optional `model` query is one non-empty string, matched exactly against the
+published OpenAI catalog. Omission selects `gemini-3-flash`; an unavailable default
+or explicitly unknown model returns the existing `model_not_found` 404 envelope.
+An empty or repeated `model` returns 400. Other query fields, including Hermes's
+`autoload=false`, do not cause model loading or any other runtime mutation.
+`default_generation_settings.n_ctx` and `n_predict` contain the selected model's
+context and output limits; `model_alias` is its public ID, including a requested
+alias. `total_slots: 1` is a compatibility placeholder, not measured concurrency.
+
+`GET /version` and `/v1/version` return the application package's actual `version`,
+with its package name in `app` and `name`. All four discovery routes use the normal
+proxy guard, including configured API key and network policy. They acquire no
+account lease, perform no upstream requests and write no persistent state.
+
+Hermes probes `/v1/props` then `/props` and recognizes this response as its llama.cpp
+compatibility branch. Its context query requests `/props?model=...&autoload=false`
+and can read the existing model list/detail routes. `/version` is its vLLM detection
+fallback; `/v1/version` is an additional compatibility alias. These discovery
+responses do not advertise the full native llama.cpp or vLLM administration APIs,
+nor do they establish installed-client or real-provider acceptance.
+
+The existing `/v1/models/claude` directory returns one complete page with `data`,
+`first_id`, `last_id` and `has_more: false`. List items and retrieve share `type: model`,
+`id`, `display_name` and `created_at`. The epoch creation date indicates unknown provider
+release time. This gateway projection does not implement provider capability/lifecycle
+metadata or cursor filtering. See the [field upgrade instructions](../../upgrade-guides/next/model-directory-metadata.md).
+
 Model requests resolve user rules in this order: runtime deprecation forwarding,
 exact configured alias, a unique case-folded alias, a unique Claude-normalized
 alias, the most specific wildcard, the existing Anthropic family setting, built-in
@@ -41,6 +81,16 @@ Explicit effort is normalized for surrounding whitespace, case and underscores:
 HTTP 400 before account selection. Explicit physical tier IDs are not changed by
 request effort.
 
+Account availability and physical binding preserve explicit tiers. A missing
+explicit tier does not select another tier merely because the account advertises
+it. Registered public presets retain their defined physical recipes, including
+Gemini 3.5 Flash Low through `gemini-3.5-flash-extra-low` and Gemini 3.1 Pro High
+through `gemini-pro-agent`. Registered automatic Flash routes retain their physical
+`tiered` ID and adaptive budget regardless of request effort. Fixed High profiles
+do not bind to automatic profiles merely because both are registered as High.
+Explicit provider retirement rules retain their existing registered-recipe safety check and may
+name a replacement tier. Bare-family nearest-tier selection remains available.
+
 Capability failures are scoped to an account and known model family for 900
 seconds. A failure on account A does not block account B, and a denial for one
 family does not block another model on A. The record is enforced even when an
@@ -55,6 +105,52 @@ failures remain with their existing owners. Ambiguous 404 and all 403 credential
 or account-validation responses do not create a capability denial.
 
 ## Account Scheduling and Stream Completion
+
+Automatically controlled thinking requests can recover once from an explicitly
+overloaded upstream generation response on the same account. Admission requires
+HTTP 408 or a server-error status with explicit `overloaded` text, or trusted
+Google ErrorInfo `MODEL_OVERLOADED` evidence. Quota and capacity-exhaustion
+diagnostics retain their existing owners. The final wire budget must be adaptive
+`-1`, with at least 5024 output tokens available for a 4000-token thinking budget
+and the existing 1024-token output reserve.
+
+Chat, Responses, Anthropic and Gemini capture explicit thinking intent before
+variant/default processing. Explicit client controls, configured physical routes,
+fixed-tier names/recipes and image generation are excluded. Bare Gemini families
+may acquire a registered recipe during routing; their final adaptive wire budget
+determines eligibility. Configured positive budgets retain their selected value.
+
+The additional send uses an immutable copy of the failed wire body with thinking
+budget 4000 and the captured account, session, endpoint, proxy and headers. The
+allowance belongs to one logical request across account/project/protocol fallbacks.
+Its admission rechecks cancellation, the existing total deadline and account lease.
+Failure returns to the existing retry policy. A returned stream is never replayed
+by this recovery path. The structured `overload_thinking_retry` diagnostic carries
+the model, budget, local account ID and audit request ID when available.
+
+Anthropic `messages/count_tokens` uses the admitted mapped input for a complete local
+estimate by default, with source `estimated` and reason `anthropic-local`. It does not
+lease a provider account, contact upstream or commit account affinity. Proxy authentication,
+file resolution, schema conversion, media limits and tool-history validation still apply.
+Its count includes submitted historical images even when generation's send window is enabled.
+Unavailable local media coverage returns 503; local estimation does not imply generation
+access, provider eligibility or a successful model request.
+
+Gemini token-count responses admit only nonnegative safe integers from upstream; zero is valid.
+An unusable upstream count follows the existing operational-fallback policy. The internal
+count endpoint only accepts contents/model. Requests whose system instructions, tools or
+tool configuration are outside that coverage return a complete local estimate with
+`X-AGM-Count-Tokens-Source: estimated` and reason `upstream-contents-only`, even when the
+contents count succeeded. The contents-only upstream number is not a full request count.
+A local estimate with unknown media coverage fails with 503 instead of reporting a partial
+total as complete. Valid upstream counts can still cover that media. These heuristics are
+neither provider usage/billing nor a hard model-window measurement.
+
+Native Gemini token counting propagates downstream cancellation to account selection,
+retry grace and upstream count transport. Cancellation cannot produce an estimated 200,
+commit account affinity or accept a late count as success. A stopped requester releases
+its waiter even if a substituted dependency fails to honor abort; the real transport
+also receives the signal. File expansion and synchronous conversion remain non-preemptive.
 
 Ordinary generation and token-count operations stop rotating after two distinct
 accounts have returned HTTP 429 without a parsed retry hint or explicit durable
@@ -92,6 +188,55 @@ The initial selection retains its existing behavior; credential hydration and
 initial selection waits can still add latency. This is a retry-wait deadline,
 not a replacement for transport or hydration timeouts.
 
+Generation services additionally enforce one `request_timeout` budget across service
+preparation, account/endpoint waits, cache/session/thinking recovery and returned stream
+lifetime. Internal physical sends receive only the remaining timeout. A business deadline
+is terminal 504 and does not rotate or penalize another account. Pausing output or sending
+heartbeats does not extend it. Client disconnect remains cancellation. The owner releases
+timers, listeners and image permits; shared cache/SQLite work retains its own cleanup owner.
+Once a streaming upstream attempt starts, deadline diagnostics record the furthest validated
+output phase. The phases are `waiting_for_output`, `thinking_only` and `output_started`.
+Heartbeats and usage metadata do not advance the phase. The diagnostic records the phase
+and the audit request ID when available.
+The main HTTP Chat/Responses, Messages and Gemini generation controllers start it before
+file/history expansion. Direct service calls start at service entry. Responses WebSocket
+starts its per-message budget at dispatch, before transcript admission. WebSocket queue
+residence and HTTP body/multipart parsing retain their existing owners. Legacy completions
+own the generation dispatch and stream lifetime. Image Chat dispatch and its native Gemini
+protocol fallback share one owner; the fallback receives only the remaining budget.
+
+Gateway upstream requests use HTTP CONNECT when an account, application or environment
+proxy is selected. Explicit account and application settings take precedence over the
+environment. Environment selection honors `NO_PROXY`. Proxy authentication is sent on
+CONNECT and HTTPS origin headers travel inside TLS. The gateway bounds CONNECT by the
+attempt timeout and keeps a stream's tunnel open until it ends or closes. See the
+[proxy upgrade guide](../../upgrade-guides/next/upstream-proxy-connect.md).
+
+Each gateway client owns a bounded transport pool keyed by the complete proxy endpoint
+and credential fingerprint. Direct HTTP and HTTPS use separate native agents. The pool
+admits 20 active physical requests per proxy identity and retains up to 16 identities.
+Each agent has 20 total sockets and at most four idle sockets per destination. Idle
+sockets and fully idle pool entries expire after 90 seconds. TCP keepalive uses 60 seconds.
+Active streams retain their admission slot until end or close. Saturation returns a local
+503 before creating a physical attempt and preserves account health. Proxy changes use
+a different entry while earlier requests finish. Gateway shutdown cancels active work
+and destroys the client's agents.
+
+Internal sends use the gateway's generated HTTP User-Agent. Extra headers cannot replace
+it through another casing. Legitimate protocol headers, including `anthropic-beta`, retain
+their protocol contract. A recovery that reuses a transport snapshot retains its captured
+identity.
+A response save admitted before timeout can finish under its persistence owner. See the
+[upgrade guide](../../upgrade-guides/next/generation-deadline.md).
+
+Generation sends the account's project in the body when available. The generation service
+permits one body retry without it for the known Code Assist license rejection or an error
+that identifies the submitted project as invalid, missing or denied. Account rotation retains
+each account's project and shares the original downgrade allowance. The execution signal
+carries that allowance across image protocol fallback. The image adapter accepts the known
+license rejection or a transport-validated consumer denial only while the allowance remains.
+An unmatched project message or a status outside 400/403/404 preserves the original failure.
+
 OpenAI stream establishment rejected with ordinary HTTP 429 enters this shared
 rotation policy rather than issuing a non-stream request on the same account.
 Other existing establishment fallbacks remain. All-rate-limit failures retain
@@ -117,11 +262,9 @@ concurrent failure protection and lifecycle limits.
 
 Eligible accounts are selected with bounded model-quota weights when `proxy.quota_aware_scheduling_enabled` is true (the default). Each account's resolved upstream model selects its quota snapshot. A reported quota percentage below 25 or an unknown value has weight 1, 25–74 has weight 2, and 75 or above has weight 3. Existing model-capability, health, cooldown, and session-affinity rules still run before weighted round robin. The quota snapshot is only a preference: it never makes an ineligible account eligible and does not reserve capacity. Setting the switch to false restores equal-weight selection.
 
-Synthetic OpenAI Chat and Responses streams created from a completed non-stream response preserve reasoning before visible text. Chat emits `delta.reasoning_content`; Responses emits reasoning summary events. For a live upstream stream, EOF without a finish reason is a failure even after meaningful output. Chat does not fabricate `stop` or `[DONE]`; Responses emits `response.failed` and does not persist an incomplete response as completed history. An upstream error or idle timeout also fails. Once any response event has been sent, the gateway does not replay the request against another account because that could duplicate visible output or tool calls.
+Synthetic OpenAI Chat and Responses streams created from a completed non-stream response preserve reasoning before visible text. Chat emits `delta.reasoning_content`; Responses emits reasoning summary events. Live streams retain previously emitted content when the upstream connection is interrupted. See [partial-output interruption](stream-tool-compatibility.md#partial-output-interruption) for protocol-specific termination and eligibility. Once any response event has been sent, the gateway does not replay the request against another account because that could duplicate visible output or tool calls.
 
-Anthropic streaming idle timeout or EOF without a finish reason emits an Anthropic `error` event instead of `message_stop` and `[DONE]`. An upstream transport error retains the established preflight retry behavior before mapped output and remains a stream error after output.
-
-Native Gemini streaming requires an upstream finish reason. Timeout, transport failure, or EOF without a finish reason produces an SSE `error` payload, including after partial candidate output. An entirely empty stream still raises its existing empty-stream error. See [streaming liveness and backpressure](stream-tool-compatibility.md#streaming-liveness-and-backpressure) for heartbeat and pause behavior.
+Responses reports interruptions through `response.failed` and excludes failed responses from completed history. An entirely empty native Gemini stream raises its existing empty-stream error. Anthropic retains its preflight retry behavior before mapped output. See [streaming liveness and backpressure](stream-tool-compatibility.md#streaming-liveness-and-backpressure) for heartbeat and pause behavior.
 
 Gemini `generateContent`, `streamGenerateContent` before SSE delivery, and `countTokens`
 preserve a typed upstream HTTP error status in the 400–599 range. Their JSON error
@@ -337,10 +480,32 @@ retain endpoint failover and the existing bounded account rotation and grace ret
 
 Account selection accepts advertised `gemini-3.7-flash-tiered` and registered Gemini 3.6
 physical routes. Automatic Flash routes use `thinkingBudget: -1`, `includeThoughts: true` and
-`maxOutputTokens: 65536`; fixed low and medium routes retain their registered budgets. These
-parameters reach the internal provider request together. An unregistered generation is not
+`maxOutputTokens: 65536` in Gateway mode when no explicit output limit overrides it; fixed
+low and medium routes retain their registered budgets. These parameters pass through final
+account-cap and output planning. An unregistered generation is not
 accepted as a fallback. Selecting an older model does not silently upgrade its generation;
 provider retirement notices remain visible to clients.
+
+## Thinking control and output planning
+
+Gateway control uses registered model recipes and configured family budgets. Flash low and
+medium nonpositive settings resolve to 1,000 and 4,000 tokens. These defaults do not apply
+to an explicit Client budget.
+
+Client control preserves disabled, adaptive and fixed budgets through model selection and
+account rebinding. Budget 0 and recognized disabled effort values disable thinking. Budget
+-1 remains adaptive; a positive numeric budget takes precedence over an enabled effort level.
+OpenAI Chat and Responses reasoning controls, Anthropic Messages controls and native Gemini
+controls reach the final planner without being replaced by a registered recipe. Account output
+and thinking limits still apply. The existing Opus 4.6 output and thinking ceilings remain;
+its required-thinking route rejects an explicit disable request.
+
+For a positive budget B and explicit output M, B >= 6M reduces the budget to max(0, M - 1024).
+Otherwise, an output limit that cannot hold B expands to B + 1024. Without an output limit,
+text uses 1,024 output tokens above the budget and image generation uses 2,048. An explicit
+image output limit uses 1,024. The final output never exceeds the account/model cap, and
+cap-constrained fixed budgets leave 1,024 output tokens where possible, or one/zero tokens
+of thinking at very small caps. The planner retains adjustment reasons for these changes.
 
 ## Claude Agent SDK Client Identity
 
@@ -348,12 +513,38 @@ Claude request mapping normalizes the exact top-level Claude Agent SDK identity 
 
 The normalized Claude Code text remains a client customization rather than an official-provider identity marker. The mapper therefore retains the Antigravity fallback identity alongside it, preserving the existing cache and provider-routing contract.
 
+## Cowork Coordination State
+
+The internal compaction coordinator is separate from ordinary generation. It rejects
+unknown sources and owns bounded active operations, adoption confirmations and
+continuation protections. Provider summary success and a changed adopted-history
+fingerprint must precede completion. Completed operations receive up to 300 seconds
+to activate protection; an exact tenant/session/generation/operation/adopted-root proof
+activates a 30-second sliding window. Expiry cannot revive an operation.
+
+New operations and scoped invalidation revoke prior confirmation and protection.
+Active operations reserve protection capacity; a full store refuses new coordination
+instead of clearing another session. Snapshot counts expose all three stores.
+
+Anthropic Messages connects the coordinator after restored semantic-input preparation
+and before explicit cache replacement. Admission requires an explicitly selected digest
+of the current proxy API key and a stable D03 session hint. The scope includes every
+client sharing that key. A legacy user ID alone cannot establish the required session.
+
+Local compaction triggers terminate before account retry or penalty. The client requests
+its summary through the existing provider path. Successful provider completion and exact
+adoption of that summary establish continuation protection. Manual completion returns a
+local zero-usage acknowledgement. The gateway does not create a separate summary request
+or rewrite caller history. Native envelope compatibility and D14 joint acceptance remain
+unverified.
+
 ## Tool Result Association
 
 Claude-to-Gemini conversion tracks pending tool calls in history order. A tool result
 consumes exactly one preceding call with its ID. Distinct IDs preserve parallel calls
 with the same name and out-of-order results. Once consumed, an ID may be reused in a
-later round without changing earlier responses. Final pending calls remain valid.
+later round without changing earlier responses. Generation-history admission separately
+decides whether an unfinished exchange is a valid input; association alone does not authorize it.
 
 An orphan or repeated result, a duplicate pending ID, or a tool block on the wrong
 message role returns HTTP 400 with a position-only `invalid_request_error`. The gateway
@@ -375,6 +566,14 @@ cache arrays retain at most two distinct witnesses per call ID. Complete history
 authoritative when present. Exact item-ID replays keep their first position; conflicting
 item-ID payloads fail. Semantic replay comparison includes tool parameters and outputs,
 and a repeated anonymous tool result alone is not a replay anchor.
+
+Native Gemini binds each pending ID to its declared function name. A `functionResponse`
+with the exact placeholder `unknown` inherits a known nonempty name only when its
+explicit ID matches a preceding pending call. A missing ID does not authorize name
+recovery. Other names must match, including when inheriting the sole pending call's
+ID. Conflicts return HTTP 400 with `conflicting-result-name` and the part position
+before account selection or generation. This check preserves complete result payloads,
+deterministic IDs and sequential reuse after consumption; it does not execute or retry tools.
 
 Responses fills missing tool-call IDs from a stable digest of complete preceding history,
 normalized name and canonical arguments. Identical parallel calls still receive distinct
@@ -460,9 +659,11 @@ when the block closes. It does not choose opaque values by length. A parse failu
 the current thought block without committing its pending signature. Whole-response
 commit and cleanup after transport failure remain governed by D11.
 
-Missing tool-call signatures remain absent after exact scoped recovery. Claude request mapping does not invent a compatibility sentinel. Native Gemini mapping only completes the camel-case and snake-case aliases from a value the caller actually supplied, and does not generate a sentinel for Flash or pro-agent routes. SignatureStore does not retain `skip_thought_signature_validator` as recovery material. If the provider requires a genuine signature and scoped recovery misses, the request follows the normal failure path.
+Missing tool-call signatures remain absent after exact scoped recovery. Claude request mapping does not invent a compatibility sentinel. Native Gemini mapping only completes the camel-case and snake-case aliases from a value the caller actually supplied, and does not generate a sentinel for Flash or pro-agent routes. The exact text `skip_thought_signature_validator` and its canonical Base64 representation are both treated as placeholders. Both follow the existing Gemini-only model check and are excluded from signature cache and Thought Store recovery. A saved placeholder is read as an absent signature while its thought and tool metadata remain available. If the provider requires a genuine signature and scoped recovery misses, the request follows the normal failure path.
 
-Native Gemini generation rejects conflicting signature aliases before account selection. The service checks recognized Claude and Gemini signature formats against the routed target model; known cross-family values, explicit placeholders on Claude targets, and recognized signatures for an unregistered target fail before account selection or history preparation. The internal client repeats the check with the model actually sent upstream, including direct generation and warmup entry points. An explicit placeholder remains pass-through input for Gemini targets but is not treated as a real signature. Unknown opaque values are retained without inferring their family. These structural checks do not establish provider acceptance.
+Native Gemini generation rejects conflicting signature aliases before account selection. The service checks recognized Claude and Gemini signature formats against the routed target model. The check rejects known cross-family values, explicit placeholders on Claude targets, and recognized signatures for an unregistered target. The internal client repeats the check with the model actually sent upstream, including direct generation and warmup entry points. An explicit placeholder remains pass-through input for Gemini targets but is not treated as a real signature. Unknown opaque values are retained without inferring their family. These structural checks do not establish provider acceptance.
+
+Native Gemini generation can continue an explicitly selected Claude model after a successful Gemini response in the same authenticated session. Evidence is scoped to the credential, explicit session hint and first-user anchor. The gateway keeps up to 1,024 recent session observations in memory for ten minutes. For a proven switch, it removes recognized Gemini signatures and placeholders from model history and omits the private thought-only parts that carry them. Visible text, tool calls and tool results remain in the request. The history supplied by the client remains intact. Requests without matching evidence follow the existing signature checks.
 
 Every in-memory thought signature produced by a real upstream response carries its normalized physical model and, when the model registry can establish one, its canonical family. A supplied family hint is trusted only when its associated physical model is the model actually sent upstream; mapper rewrites such as the web-search fallback discard a stale pre-mapper family and resolve from the final physical model. Cache reads require the target effective model: known families may reuse signatures only inside the same canonical family, while unregistered models require an exact normalized physical-model match. Entries without provenance are cache misses. OpenAI-compatible responses record the effective upstream model rather than the client-visible response model.
 
@@ -509,15 +710,37 @@ builder, so `GET /v1/models/{id}` returns exactly the object the list published.
 
 ## Responses Requests and Durable History
 
+Chat Completions also accepts a Responses request body when `messages` is absent and
+`input`, `instructions` or `previous_response_id` is present. This compatibility entry
+validates a string or item-array input and reuses Responses preparation for instructions,
+roles, tool IDs, media and owned previous history. Malformed input returns 400. Missing or
+foreign previous response IDs return 404 before account execution. A supplied `messages`
+field selects the regular Chat path.
+
+The compatibility entry returns Chat completion objects or Chat SSE chunks, including
+`stream_options.include_usage`. Explicit `store: true` uses the Chat completion GET store.
+Streamed Chat storage retains its existing 400. A compatibility call can read a retained
+Responses parent but creates its new stored answer only through the Chat storage rule.
+The returned Chat ID belongs to the Chat surface and cannot address a new Responses node.
+
 Role-bearing messages with a missing or non-string `type` use the message path. Explicit empty-string and unknown string types are ignored as whole input items. Non-string roles default to `user`. String roles are retained through input parsing; the shared downstream conversion treats `system` and `developer` as instructions, keeps `assistant` and tool semantics, and degrades every other string role to `user` instead of forwarding an unknown Gemini role. Array content and a single typed object collect every string `text`, including empty strings, join them with newlines, and then append validated image or supported audio blocks. Both `input_image` and `image_url` accept a URL string or a validated URL object. URLs must be non-empty strings, `detail` must be `auto`, `low` or `high`, and other JSON extensions are retained. Supporting the object form for `input_image` is an intentional compatibility extension beyond upstream. Malformed image blocks are ignored rather than forwarded unchecked. `audio_url` accepts a URL object with optional `mime_type`, `mimeType`, or `format`: data URLs become Gemini `inlineData`, HTTP(S) URLs become `fileData`, and an unreadable tool-result source becomes the protocol-compatible `[audio]` text fallback. An untyped JSON object contributes no text; the enclosing message remains available to the existing cleanup rules. Top-level input objects and primitive content retain their existing conversion behavior.
 
 Function and custom-tool outputs unwrap an enclosing `content` field, accept an array or one typed object, keep text and supported image/audio media together, and retain the prior JSON-string fallback only when no supported part was recognized. The apply-patch retry-loop compactor runs on the extracted text without discarding media. Downstream mapping emits Gemini `functionResponse` first and then media `inlineData`; a pure-media result keeps an empty function result instead of fabricating success text.
 
-Raw history and input parsing share their type resolver. Native `reasoning` output items, assistant `phase: commentary`, `msg_thought_` IDs, and the reserved thinking prefix identify transcript-only items. Filtering precedes compaction, merging, call repair and deduplication. Leading tool exchanges follow the [association rules](#tool-result-association). Input conversion preserves terminal assistant roles and leaves an empty history empty; [generation admission](#generation-history-admission) owns prefill and invalid histories.
+Raw history and input parsing share their type resolver. Native `reasoning` output items,
+`msg_thought_` IDs and the reserved thinking prefix identify transcript-only items.
+`phase: commentary` alone does not discard genuine assistant content. Filtering precedes
+compaction, merging, call repair and deduplication. Leading tool exchanges follow the
+[association rules](#tool-result-association). Input conversion preserves terminal assistant
+roles and leaves an empty history empty; [generation admission](#generation-history-admission)
+owns prefill and invalid histories.
 
-For a full-replay request, media before the latest user turn is replaced with `[historical image omitted]` or `[historical audio omitted]` before validation. The latest turn and every following tool exchange stay intact for the live upstream request. Inline data-image payloads on that live slice are limited to 16 images, 20 MiB decoded per image, and 32 MiB decoded in total; invalid data URLs fail before account selection, while remote URLs are not counted by this inline-byte guard.
-
-The durable session copy is separate from the live request and recursively replaces all image/audio media with the same placeholders. Raw `data:image/` and `data:audio/` string values are removed. The session-store boundary repeats this sanitization on writes and reads, so non-stream completion, streaming `response.completed`, direct callers, and pre-upgrade durable records cannot replay inline bytes. Continuation therefore replays placeholders rather than old payloads without changing the completed response retained for GET.
+Valid historical media remains available by default. The optional image send window
+operates on a restored request copy and does not erase retained originals. File-backed
+sessions keep private media references, including exact image-bearing tool text, instead
+of copying inline payloads into session JSON. Argument values and unrelated metadata
+are not media slots. See [media admission, windows and durable recovery](inline-media-and-thought-history.md)
+for budgets, reference versions, missing-content errors and downgrade limits.
 
 The remaining ignore rules apply to new input and recovered history during request conversion without rewriting old GET payloads. An empty-type assistant item does not trigger WebSocket transcript replacement. File-reference resolution still precedes input conversion, so unresolved attachment references retain their existing errors even inside an otherwise ignored item or object content.
 

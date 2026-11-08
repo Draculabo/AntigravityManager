@@ -1,4 +1,15 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { resolveInternalEndpoints } from './internal-endpoints';
+import type { OverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
+import { GeminiHttpTransport } from './gemini-http-transport';
+import { isGoogleProjectConsumerDenial } from '@/shared/auth/google-project-denial';
+import {
+  generationAttemptTimeout,
+  generationDeadlineAt,
+  observeGenerationStreamProgress,
+  runGenerationWithDeadline,
+} from '../../common/generation-deadline';
+import { GenerationDeadlineExceededError } from '../../common/exceptions/generation-deadline.exception';
 import {
   UpstreamSessionRecovery,
   type UpstreamSessionRecoveryBudget,
@@ -10,6 +21,7 @@ import {
 import axios, { AxiosProxyConfig, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { isEmpty, isFunction, isNil, isNumber, isObjectLike, isString } from 'lodash-es';
 import { Readable } from 'node:stream';
+import { performance } from 'node:perf_hooks';
 import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import {
@@ -23,7 +35,10 @@ import { assertGeminiThoughtSignatureModel } from './gemini-thought-signature-mo
 import { InvalidThoughtSignatureModelError } from '../../common/invalid-thought-signature-model.exception';
 import { captureGeminiStreamResult } from './gemini-stream-capture';
 import { decodeInternalGeminiPayload } from '../../../antigravity/internal-sse';
-import { UpstreamGenerationError } from '../../../antigravity/UpstreamGenerationError';
+import {
+  UpstreamGenerationError,
+  isTerminalGenerationFailure,
+} from '../../../antigravity/UpstreamGenerationError';
 import { GenerationOutputState } from '../../../antigravity/GenerationOutputState';
 import {
   assertGeminiGenerationHistory,
@@ -60,10 +75,12 @@ import {
 import { safeStringifyPacket, sanitizeObject } from '@/shared/security/sensitiveDataMasking';
 import {
   completeCurrentUpstreamAttempt,
+  captureUpstreamAttemptUsage,
   startCurrentUpstreamAttempt,
 } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { toolCallGenerationDiagnostic } from '@/modules/proxy-gateway/audit/tool-call-generation-diagnostic';
-import type { UpstreamAttemptHandle } from '@/modules/proxy-gateway/audit/traffic-audit.service';
+import { getTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import type { CurrentUpstreamAttemptHandle } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import {
   estimateRequestContext,
@@ -97,6 +114,7 @@ interface PreparedInternalRequest {
 }
 
 interface InternalEndpointRetryPolicy {
+  baseUrls?: readonly string[];
   semanticContextEstimate?: RequestContextEstimate;
   allowProjectHeaderDowngrade: boolean;
   allowEndpointFailover?: boolean;
@@ -111,6 +129,8 @@ export interface GenerationTransportSnapshot {
 }
 
 export interface InternalGenerationOptions {
+  overloadThinkingRecovery?: OverloadThinkingRecovery;
+  onSemanticInput?: (body: GeminiInternalRequest, estimate: RequestContextEstimate) => void;
   transportCapture?: { current?: GenerationTransportSnapshot };
   thinkingRecovery?: { timeoutMs: number; transport: GenerationTransportSnapshot };
   recoveryAccountId?: string;
@@ -125,6 +145,11 @@ const PROJECT_HEADER_ATTEMPT_COUNT = 2;
 
 @Injectable()
 export class GeminiClient {
+  private readonly httpTransport = new GeminiHttpTransport();
+
+  onModuleDestroy(): void {
+    this.httpTransport.close();
+  }
   private readonly sessionRecovery = new UpstreamSessionRecovery();
 
   public forgetDeletedAccount(accountId: string): void {
@@ -133,11 +158,6 @@ export class GeminiClient {
   private readonly logger = new Logger(GeminiClient.name);
   // Default to v1beta for most features
   private readonly baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-  private readonly defaultInternalBaseUrls = [
-    'https://daily-cloudcode-pa.googleapis.com/v1internal',
-    'https://sandbox-cloudcode-pa.googleapis.com/v1internal',
-    'https://cloudcode-pa.googleapis.com/v1internal',
-  ];
 
   constructor(
     @Inject(Upstream4xxCaptureService)
@@ -158,21 +178,29 @@ export class GeminiClient {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     };
-    const attempt = startCurrentUpstreamAttempt({
-      endpoint: url,
-      headers,
-      model,
-      operation: 'gemini-stream-generate',
-      requestBody: content,
-    });
+    let attempt: CurrentUpstreamAttemptHandle | null = null;
 
     try {
-      const response = await axios.post(url, content, {
-        headers,
-        responseType: 'stream',
-        timeout: 60000,
-        proxy: axiosProxy,
-      });
+      const response = await this.httpTransport.post<Readable>(
+        url,
+        content,
+        {
+          headers,
+          responseType: 'stream',
+          timeout: 60000,
+          proxy: axiosProxy,
+        },
+        () => {
+          attempt = startCurrentUpstreamAttempt({
+            endpoint: url,
+            headers,
+            model,
+            operation: 'gemini-stream-generate',
+            usageScope: 'generation',
+            requestBody: content,
+          });
+        },
+      );
       return captureGeminiStreamResult(response.data, {
         attempt,
         model,
@@ -207,20 +235,29 @@ export class GeminiClient {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     };
-    const attempt = startCurrentUpstreamAttempt({
-      endpoint: url,
-      headers,
-      model,
-      operation: 'gemini-generate',
-      requestBody: content,
-    });
+    let attempt: CurrentUpstreamAttemptHandle | null = null;
 
     try {
-      const response = await axios.post<GeminiResponse>(url, content, {
-        headers,
-        timeout: 60000, // 60s timeout
-        proxy: axiosProxy,
-      });
+      const response = await this.httpTransport.post<GeminiResponse>(
+        url,
+        content,
+        {
+          headers,
+          timeout: 60000, // 60s timeout
+          proxy: axiosProxy,
+        },
+        () => {
+          attempt = startCurrentUpstreamAttempt({
+            endpoint: url,
+            headers,
+            model,
+            operation: 'gemini-generate',
+            usageScope: 'generation',
+            requestBody: content,
+          });
+        },
+      );
+      captureUpstreamAttemptUsage(attempt, response.data);
       const conflict = findUpstreamThoughtSignatureConflict(response.data);
       if (conflict) {
         throw conflict;
@@ -322,6 +359,31 @@ export class GeminiClient {
     signal?: AbortSignal,
     options?: InternalGenerationOptions,
   ): Promise<NodeJS.ReadableStream> {
+    return runGenerationWithDeadline(
+      this.getInternalTimeoutMs(),
+      signal,
+      async (boundedSignal, owner) => {
+        const result = await this.executeStreamGenerateInternal(
+          body,
+          accessToken,
+          upstreamProxyUrl,
+          extraHeaders,
+          boundedSignal,
+          options,
+        );
+        return owner ? owner.retainReadable(result) : result;
+      },
+    );
+  }
+
+  private async executeStreamGenerateInternal(
+    body: GeminiInternalRequest,
+    accessToken: string,
+    upstreamProxyUrl: string | undefined,
+    extraHeaders: Record<string, string> | undefined,
+    signal: AbortSignal,
+    options?: InternalGenerationOptions,
+  ): Promise<NodeJS.ReadableStream> {
     const response = await this.executeInternalWithExplicitContextCache<NodeJS.ReadableStream>(
       ':streamGenerateContent?alt=sse',
       body,
@@ -345,6 +407,26 @@ export class GeminiClient {
     upstreamProxyUrl?: string,
     extraHeaders?: Record<string, string>,
     signal?: AbortSignal,
+    options?: InternalGenerationOptions,
+  ): Promise<GeminiResponse> {
+    return runGenerationWithDeadline(this.getInternalTimeoutMs(), signal, (boundedSignal) =>
+      this.executeGenerateInternal(
+        body,
+        accessToken,
+        upstreamProxyUrl,
+        extraHeaders,
+        boundedSignal,
+        options,
+      ),
+    );
+  }
+
+  private async executeGenerateInternal(
+    body: GeminiInternalRequest,
+    accessToken: string,
+    upstreamProxyUrl: string | undefined,
+    extraHeaders: Record<string, string> | undefined,
+    signal: AbortSignal,
     options?: InternalGenerationOptions,
   ): Promise<GeminiResponse> {
     const response = await this.executeInternalWithExplicitContextCache<
@@ -378,17 +460,20 @@ export class GeminiClient {
     accessToken: string,
     upstreamProxyUrl?: string,
     extraHeaders?: Record<string, string>,
+    signal?: AbortSignal,
   ): Promise<GeminiCountTokensResponse> {
+    throwIfRequestAborted(signal);
     const response = await this.executeRequestWithEndpointFailover<unknown>(
       ':countTokens',
       body,
       accessToken,
       upstreamProxyUrl,
-      {},
+      { signal },
       'count-tokens',
       extraHeaders,
     );
 
+    throwIfRequestAborted(signal);
     return this.toCountTokensResponse(response.data);
   }
 
@@ -504,9 +589,14 @@ export class GeminiClient {
         () => request,
       );
     }
+    const baseUrls = this.getInternalBaseUrls();
+    const recoveryBudget: UpstreamSessionRecoveryBudget = options.recoveryBudget ?? {
+      attempted: false,
+    };
+    recoveryBudget.deadlineAt ??= generationDeadlineAt(config.signal);
     return this.sessionRecovery.execute({
       accountId: options.recoveryAccountId,
-      budget: options.recoveryBudget,
+      budget: recoveryBudget,
       identity: options.upstreamSession,
       canRecover: options.canRecoverUpstreamSession,
       signal: config.signal,
@@ -524,6 +614,7 @@ export class GeminiClient {
           (prepared) => {
             recoveryBody = prepared;
           },
+          baseUrls,
         ),
       recover: async (admit) => {
         const recoveryConfig = { ...config };
@@ -539,6 +630,7 @@ export class GeminiClient {
             allowProjectHeaderDowngrade: false,
             allowEndpointFailover: false,
             semanticContextEstimate: estimateRequestContext(recoveryBody),
+            baseUrls,
           },
           () => {
             const admission = admit();
@@ -561,6 +653,7 @@ export class GeminiClient {
     extraHeaders: Record<string, string> | undefined,
     options: InternalGenerationOptions,
     onPrepared: (body: GeminiInternalRequest) => void,
+    baseUrls: readonly string[],
   ): Promise<AxiosResponse<T>> {
     throwIfRequestAborted(config.signal);
     assertGeminiThoughtSignatureAliases(body.request.contents);
@@ -596,6 +689,7 @@ export class GeminiClient {
       }),
     );
     const semanticContextEstimate = estimateRequestContext(body);
+    options.onSemanticInput?.(body, semanticContextEstimate);
     onPrepared(body);
     const prepared = await this.applyExplicitContextCache(
       body,
@@ -604,25 +698,81 @@ export class GeminiClient {
       config.signal,
     );
     throwIfRequestAborted(config.signal);
+    const sendPrepared = async (wireBody: GeminiInternalRequest): Promise<AxiosResponse<T>> => {
+      const transportCapture = options.transportCapture ?? {};
+      let sentBody = wireBody;
+      try {
+        return await this.executeRequestWithEndpointFailover<T>(
+          path,
+          wireBody,
+          accessToken,
+          upstreamProxyUrl,
+          config,
+          operation,
+          extraHeaders,
+          {
+            allowProjectHeaderDowngrade: true,
+            transportCapture,
+            semanticContextEstimate,
+            baseUrls,
+          },
+          () => {
+            sentBody = upstreamSession
+              ? withUpstreamSessionIdentity(wireBody, upstreamSession)
+              : wireBody;
+            return sentBody;
+          },
+        );
+      } catch (error) {
+        const transport = transportCapture.current;
+        const recoveredBody = transport
+          ? options.overloadThinkingRecovery?.admit(
+              error,
+              sentBody,
+              config.signal,
+              options.canRecoverUpstreamSession,
+              options.recoveryBudget?.deadlineAt,
+            )
+          : undefined;
+        if (recoveredBody && transport) {
+          return this.executeRequestWithEndpointFailover<T>(
+            path,
+            recoveredBody,
+            accessToken,
+            upstreamProxyUrl,
+            config,
+            operation,
+            extraHeaders,
+            {
+              allowProjectHeaderDowngrade: false,
+              allowEndpointFailover: false,
+              transport,
+              semanticContextEstimate,
+            },
+            () => {
+              throwIfRequestAborted(config.signal);
+              generationAttemptTimeout(config.signal, this.getInternalTimeoutMs());
+              if (options.canRecoverUpstreamSession?.() === false) {
+                throw error;
+              }
+              this.logger.warn({
+                event: 'overload_thinking_retry',
+                thinkingBudget: 4000,
+                model: recoveredBody.model,
+                accountId: options.recoveryAccountId ?? null,
+                requestId: getTrafficAuditRequestContext()?.parent?.id ?? null,
+              });
+              return upstreamSession
+                ? withUpstreamSessionIdentity(recoveredBody, upstreamSession)
+                : recoveredBody;
+            },
+          );
+        }
+        throw error;
+      }
+    };
     try {
-      return await this.executeRequestWithEndpointFailover<T>(
-        path,
-        prepared.body,
-        accessToken,
-        upstreamProxyUrl,
-        config,
-        operation,
-        extraHeaders,
-        {
-          allowProjectHeaderDowngrade: true,
-          transportCapture: options.transportCapture,
-          semanticContextEstimate,
-        },
-        () =>
-          upstreamSession
-            ? withUpstreamSessionIdentity(prepared.body, upstreamSession)
-            : prepared.body,
-      );
+      return await sendPrepared(prepared.body);
     } catch (error) {
       if (!prepared.cacheKey || !this.shouldRetryWithoutExplicitContextCache(error)) {
         throw error;
@@ -632,21 +782,7 @@ export class GeminiClient {
       this.logger.warn(
         `[ContextCache] Cached resource was rejected; retrying once without cache ${prepared.cacheKey.slice(0, 16)}`,
       );
-      return this.executeRequestWithEndpointFailover<T>(
-        path,
-        body,
-        accessToken,
-        upstreamProxyUrl,
-        config,
-        operation,
-        extraHeaders,
-        {
-          allowProjectHeaderDowngrade: true,
-          transportCapture: options.transportCapture,
-          semanticContextEstimate,
-        },
-        () => (upstreamSession ? withUpstreamSessionIdentity(body, upstreamSession) : body),
-      );
+      return sendPrepared(body);
     }
   }
 
@@ -667,7 +803,12 @@ export class GeminiClient {
 
     const cacheName = await awaitRequestOperation(
       explicitContextCacheManager.resolve(candidate, () =>
-        this.createExplicitContextCache(candidate, accessToken, upstreamProxyUrl),
+        this.createExplicitContextCache(
+          candidate,
+          accessToken,
+          upstreamProxyUrl,
+          generationAttemptTimeout(signal, Math.min(this.getInternalTimeoutMs(), 20_000)),
+        ),
       ),
       signal,
     );
@@ -712,7 +853,9 @@ export class GeminiClient {
     candidate: ExplicitContextCacheCandidate,
     accessToken: string,
     upstreamProxyUrl?: string,
+    timeoutMs = Math.min(this.getInternalTimeoutMs(), 20_000),
   ): Promise<ExplicitContextCacheResource | null> {
+    const deadlineAt = performance.now() + timeoutMs;
     const location = this.getExplicitContextCacheLocation();
     const baseUrl = this.getExplicitContextCacheBaseUrl(location);
     const url = `${baseUrl}/v1/projects/${encodeURIComponent(
@@ -732,20 +875,34 @@ export class GeminiClient {
       'Content-Type': 'application/json',
       'User-Agent': requestUserAgent,
     };
-    const attempt = startCurrentUpstreamAttempt({
-      endpoint: url,
-      headers,
-      model: candidate.source.model,
-      operation: 'create-context-cache',
-      requestBody: body,
-    });
+    const remainingMs = Math.floor(deadlineAt - performance.now());
+    if (remainingMs <= 0) {
+      return null;
+    }
+    let attempt: CurrentUpstreamAttemptHandle | null = null;
 
     try {
-      const response = await axios.post<ExplicitContextCacheResource>(url, body, {
-        headers,
-        proxy: this.resolveUpstreamAxiosProxy(upstreamProxyUrl),
-        timeout: Math.min(this.getInternalTimeoutMs(), 20_000),
-      });
+      const response = await this.httpTransport.post<ExplicitContextCacheResource>(
+        url,
+        body,
+        {
+          headers,
+          proxy: this.resolveUpstreamAxiosProxy(upstreamProxyUrl),
+          timeout: remainingMs,
+          // Coalesced cache creation owns its work; cancelling one waiter must not cancel peers.
+          signal: AbortSignal.timeout(remainingMs),
+        },
+        () => {
+          attempt = startCurrentUpstreamAttempt({
+            endpoint: url,
+            headers,
+            model: candidate.source.model,
+            operation: 'create-context-cache',
+            usageScope: 'non-generation',
+            requestBody: body,
+          });
+        },
+      );
       completeCurrentUpstreamAttempt(attempt, {
         outcome: this.outcomeForStatus(response.status, response.data),
         responseBody: response.data,
@@ -800,18 +957,9 @@ export class GeminiClient {
   }
 
   private getInternalBaseUrls(): string[] {
-    const fromEnv =
-      process.env.PROXY_INTERNAL_BASE_URLS ?? process.env.ANTIGRAVITY_INTERNAL_BASE_URLS;
-    const configuredBaseUrls = fromEnv
-      ?.split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-    if (configuredBaseUrls && configuredBaseUrls.length > 0) {
-      return configuredBaseUrls.map((url) => url.replace(/\/+$/, ''));
-    }
-
-    return this.defaultInternalBaseUrls.map((url) => url.replace(/\/+$/, ''));
+    return resolveInternalEndpoints(
+      process.env.PROXY_INTERNAL_BASE_URLS ?? process.env.ANTIGRAVITY_INTERNAL_BASE_URLS,
+    );
   }
 
   private getInternalTimeoutMs(): number {
@@ -826,6 +974,19 @@ export class GeminiClient {
     }
 
     if (!error.response) {
+      if (
+        error.name === 'AbortError' ||
+        [
+          'ERR_CANCELED',
+          'ABORT_ERR',
+          'ERR_INVALID_URL',
+          'ERR_BAD_OPTION_VALUE',
+          'ERR_BAD_OPTION',
+          'ERR_NOT_SUPPORT',
+        ].includes(error.code ?? '')
+      ) {
+        return false;
+      }
       return true;
     }
 
@@ -849,7 +1010,7 @@ export class GeminiClient {
     body: InternalEndpointRequestBody,
     accessToken: string,
     upstreamProxyUrl: string | undefined,
-    config: AxiosRequestConfig,
+    config: AxiosRequestConfig & { signal?: AbortSignal },
     operation: string,
     extraHeaders?: Record<string, string>,
     retryPolicy: InternalEndpointRetryPolicy = { allowProjectHeaderDowngrade: true },
@@ -857,7 +1018,7 @@ export class GeminiClient {
   ): Promise<AxiosResponse<T>> {
     const baseUrls = retryPolicy.transport
       ? [retryPolicy.transport.baseUrl]
-      : this.getInternalBaseUrls();
+      : (retryPolicy.baseUrls ?? this.getInternalBaseUrls());
     const timeout = this.getInternalTimeoutMs();
     const axiosProxy = retryPolicy.transport
       ? retryPolicy.transport.proxy
@@ -883,13 +1044,12 @@ export class GeminiClient {
           : this.createProjectHeaders(body);
 
       for (let index = 0; index < baseUrls.length; index++) {
-        if (config.signal?.aborted) {
-          throw new Error('Upstream request cancelled');
-        }
+        throwIfRequestAborted(config.signal);
         const baseUrl = baseUrls[index];
         const url = `${baseUrl}${path}`;
         lastEndpoint = url;
-        let attempt: UpstreamAttemptHandle | null = null;
+        let attempt: CurrentUpstreamAttemptHandle | null = null;
+        let sentProject: string | undefined;
         // Admission failure has no physical attempt and must retain its original typed error.
         const contentAttemptBody = isContentRequest ? createContentAttemptBody?.() : undefined;
         const attemptBody = contentAttemptBody ?? body;
@@ -905,12 +1065,28 @@ export class GeminiClient {
                 ...projectHeaders,
                 ...(extraHeaders ?? {}),
               };
-          if (isContentRequest) {
+          if (!retryPolicy.transport) {
+            for (const headerName of Object.keys(headers)) {
+              if (headerName.toLowerCase() === 'user-agent') {
+                delete headers[headerName];
+              }
+            }
+            headers['User-Agent'] = requestUserAgent;
+          }
+          if (isContentRequest || hasTriggeredProjectHeaderDowngrade) {
             for (const headerName of Object.keys(headers)) {
               if (headerName.toLowerCase() === 'x-goog-user-project') {
                 delete headers[headerName];
               }
             }
+          }
+          const projectValues = new Set(
+            Object.entries(headers)
+              .filter(([name]) => name.toLowerCase() === 'x-goog-user-project')
+              .map(([, value]) => value),
+          );
+          if (projectValues.size === 1) {
+            sentProject = projectValues.values().next().value;
           }
           if (retryPolicy.transportCapture) {
             retryPolicy.transportCapture.current = {
@@ -920,42 +1096,58 @@ export class GeminiClient {
             };
           }
           const serializedBody = JSON.stringify(attemptBody);
-          attempt = startCurrentUpstreamAttempt({
-            endpoint: url,
-            headers,
-            model: this.extractRequestModel(body),
-            operation,
-            requestBody: attemptBody,
-          });
-          if (contentAttemptBody) {
-            recordGenerationRequestAttempt(
-              contentAttemptBody,
-              serializedBody,
-              retryPolicy.semanticContextEstimate,
-            );
-          }
-          markProxyUpstreamStarted();
+          const attemptTimeout = generationAttemptTimeout(
+            config.signal,
+            Math.min(timeout, config.timeout && config.timeout > 0 ? config.timeout : timeout),
+          );
           const timing = getCurrentProxyTimingState();
-          const response = await axios.post<T>(
+          const response = await this.httpTransport.post<T>(
             url,
             this.createInternalRequestBody(path, serializedBody),
             {
               headers,
-              timeout,
               proxy: axiosProxy,
               ...config,
+              timeout: attemptTimeout,
               onDownloadProgress: (progress) => {
                 if (progress.loaded > 0) {
                   markProxyUpstreamFirstByte(timing);
                 }
               },
             },
+            () => {
+              if (isContentRequest && config.responseType === 'stream') {
+                observeGenerationStreamProgress(config.signal, 'waiting_for_output');
+              }
+              attempt = startCurrentUpstreamAttempt({
+                endpoint: url,
+                headers,
+                model: this.extractRequestModel(body),
+                operation,
+                usageScope: isContentRequest ? 'generation' : 'non-generation',
+                requestBody: attemptBody,
+              });
+              if (contentAttemptBody) {
+                recordGenerationRequestAttempt(
+                  contentAttemptBody,
+                  serializedBody,
+                  retryPolicy.semanticContextEstimate,
+                );
+              }
+              markProxyUpstreamStarted();
+            },
           );
+          if (!(response.data instanceof Readable)) {
+            captureUpstreamAttemptUsage(attempt, response.data);
+          }
+          if (config.signal?.aborted && response.data instanceof Readable) {
+            response.data.destroy();
+          }
+          throwIfRequestAborted(config.signal);
           if (
             retryPolicy.allowProjectHeaderDowngrade &&
             response.status === 403 &&
-            Boolean(projectHeaders['x-goog-user-project']) &&
-            this.canDowngradeForbiddenResponse(response.data)
+            this.canDowngradeProjectHeader(path, response.data, sentProject)
           ) {
             if (response.data instanceof Readable) {
               response.data.destroy();
@@ -966,7 +1158,7 @@ export class GeminiClient {
               status: response.status,
             });
             this.logger.warn(
-              `[${operation}] received 403 with x-goog-user-project; retrying without project header.`,
+              `[${operation}] project consumer denied; retrying once without project header.`,
             );
             hasTriggeredProjectHeaderDowngrade = true;
             shouldRetryWithoutProjectHeader = true;
@@ -979,25 +1171,43 @@ export class GeminiClient {
             operation === 'generate-content' ||
               operation === 'stream-generate' ||
               operation === 'weekly-warmup',
+            config.signal,
           );
         } catch (error) {
           if (config.signal?.aborted) {
+            if (axios.isAxiosError(error) && !(error.response?.data instanceof Readable)) {
+              captureUpstreamAttemptUsage(attempt, error.response?.data);
+            }
             completeCurrentUpstreamAttempt(attempt, {
-              error,
-              outcome: 'client_cancelled',
+              error:
+                config.signal.reason instanceof GenerationDeadlineExceededError
+                  ? config.signal.reason
+                  : error,
+              outcome:
+                config.signal.reason instanceof GenerationDeadlineExceededError
+                  ? 'upstream_error'
+                  : 'client_cancelled',
               partial: true,
             });
-            throw new Error('Upstream request cancelled');
+            throwIfRequestAborted(config.signal);
           }
           await this.completeFailedAttempt(attempt, error);
+          if (
+            error instanceof GenerationDeadlineExceededError ||
+            isTerminalGenerationFailure(error)
+          ) {
+            throw error;
+          }
           lastError = error;
 
           if (
             retryPolicy.allowProjectHeaderDowngrade &&
-            this.shouldRetryWithoutProjectHeader(error, projectHeaders)
+            axios.isAxiosError(error) &&
+            error.response?.status === 403 &&
+            this.canDowngradeProjectHeader(path, error.response.data, sentProject)
           ) {
             this.logger.warn(
-              `[${operation}] received 403 with x-goog-user-project; retrying without project header.`,
+              `[${operation}] project consumer denied; retrying once without project header.`,
             );
             hasTriggeredProjectHeaderDowngrade = true;
             shouldRetryWithoutProjectHeader = true;
@@ -1043,9 +1253,10 @@ export class GeminiClient {
 
   private captureAxiosResponse<T>(
     response: AxiosResponse<T>,
-    attempt: UpstreamAttemptHandle | null,
+    attempt: CurrentUpstreamAttemptHandle | null,
     model: string | undefined,
     validateSignatures: boolean,
+    signal?: AbortSignal,
   ): AxiosResponse<T> {
     if (response.data instanceof Readable) {
       response.data = captureGeminiStreamResult(response.data, {
@@ -1055,6 +1266,7 @@ export class GeminiClient {
         status: response.status,
         outcome: this.outcomeForStatus(response.status),
         validateSignatures,
+        signal,
       }) as T;
       return response;
     }
@@ -1095,7 +1307,7 @@ export class GeminiClient {
   }
 
   private async completeFailedAttempt(
-    attempt: UpstreamAttemptHandle | null,
+    attempt: CurrentUpstreamAttemptHandle | null,
     error: unknown,
   ): Promise<void> {
     if (!axios.isAxiosError(error)) {
@@ -1207,27 +1419,17 @@ export class GeminiClient {
     };
   }
 
-  private shouldRetryWithoutProjectHeader(
-    error: unknown,
-    projectHeaders: Record<string, string>,
+  private canDowngradeProjectHeader(
+    path: string,
+    data: unknown,
+    project: string | undefined,
   ): boolean {
     return (
-      axios.isAxiosError(error) &&
-      error.response?.status === 403 &&
-      Boolean(projectHeaders['x-goog-user-project']) &&
-      this.canDowngradeForbiddenResponse(error.response.data)
-    );
-  }
-
-  private canDowngradeForbiddenResponse(data: unknown): boolean {
-    // A stream cannot be classified without consuming it; preserve the response instead of replaying.
-    if (this.isReadableStream(data)) {
-      return false;
-    }
-    const body = Buffer.isBuffer(data) ? data.toString('utf8') : this.describeAxiosErrorData(data);
-    return (
-      classifyForbiddenUpstreamError({ details: extractGoogleErrorDetails(data), body }).kind !==
-      'service_disabled'
+      project !== undefined &&
+      /^:(?:loadCodeAssist|fetchAvailableModels|retrieveUserQuotaSummary|countTokens)(?:\?|$)/u.test(
+        path,
+      ) &&
+      isGoogleProjectConsumerDenial(data, project)
     );
   }
 
@@ -1238,6 +1440,12 @@ export class GeminiClient {
   ): Promise<never> {
     if (axios.isAxiosError(error)) {
       const responseData = error.response?.data;
+      const project = this.createProjectHeaders(captureInput.upstreamRequest)[
+        'x-goog-user-project'
+      ];
+      const projectConsumerDenied =
+        error.response?.status === 403 &&
+        Boolean(project && isGoogleProjectConsumerDenial(responseData, project));
       const upstreamMessage = await this.extractAxiosErrorMessage(responseData);
       const upstreamErrorBody = this.describeAxiosErrorData(responseData);
       this.logger.error(
@@ -1260,6 +1468,7 @@ export class GeminiClient {
         details: extractGoogleErrorDetails(responseData),
         upstreamStatus: readUpstreamErrorStatus(responseData),
         transportFailure: error.response ? undefined : classifyTransportError(error),
+        ...(projectConsumerDenied ? { projectConsumerDenied: true } : {}),
       });
     }
     this.throwAsCleanError(error);
@@ -1458,7 +1667,8 @@ export class GeminiClient {
       error instanceof UpstreamGenerationError ||
       error instanceof InvalidGenerationHistoryError ||
       error instanceof UnsupportedGeminiFinishReasonError ||
-      error instanceof UpstreamRequestError
+      error instanceof UpstreamRequestError ||
+      isTerminalGenerationFailure(error)
     ) {
       throw error;
     }

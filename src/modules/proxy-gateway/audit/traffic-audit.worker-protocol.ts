@@ -2,10 +2,12 @@ import { z } from 'zod';
 
 import { TrafficClassSchema } from './traffic-classifier';
 import { UsageRangeWorkerInputSchema } from './usage-range.schema';
+import { UsageTrendsWorkerInputSchema } from './usage-trends.schema';
 import { AuditScopedSessionIdSchema } from './audit-session-export.schema';
 
 const NullableString = z.string().nullable();
 const NullableInteger = z.number().int().nullable();
+const NullableUsageCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable();
 export const AuditCaptureGenerationSchema = z.object({
   trafficClass: TrafficClassSchema,
   generation: z.number().int().nonnegative(),
@@ -87,6 +89,10 @@ export const TrafficAuditWorkerCommandSchema = z.discriminatedUnion('operation',
     payload: z.object({
       accountId: NullableString,
       accountIdHash: NullableString,
+      accountGenerationHash: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
+      accountSubjectHash: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
+      accountGrantHash: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
+      usageScope: z.enum(['generation', 'non-generation']).nullable(),
       attemptIndex: z.number().int().positive(),
       endpoint: z.string(),
       id: z.string().min(1),
@@ -100,6 +106,10 @@ export const TrafficAuditWorkerCommandSchema = z.discriminatedUnion('operation',
   z.object({
     operation: z.literal('completeAttempt'),
     payload: z.object({
+      inputTokens: NullableUsageCount,
+      outputTokens: NullableUsageCount,
+      cachedTokens: NullableUsageCount,
+      reasoningTokens: NullableUsageCount,
       completedAt: z.number().int().nonnegative(),
       durationMs: z.number().int().nonnegative(),
       error: NullableString,
@@ -195,6 +205,7 @@ export const TrafficAuditWorkerCommandSchema = z.discriminatedUnion('operation',
     payload: z.strictObject({ sessionId: AuditScopedSessionIdSchema }),
   }),
   z.strictObject({ operation: z.literal('usageRange'), payload: UsageRangeWorkerInputSchema }),
+  z.strictObject({ operation: z.literal('usageTrends'), payload: UsageTrendsWorkerInputSchema }),
   z.object({ operation: z.literal('detail'), payload: z.object({ id: z.string().min(1) }) }),
   z.object({
     operation: z.literal('bodyPage'),

@@ -26,7 +26,8 @@ import type {
   HttpResponseEvidence,
 } from '@/shared/observability/operationDiagnostic';
 import { readHttpResponseEvidence } from './google-http-evidence';
-import { createGoogleProxyAgent } from './google-proxy-agent';
+import { createUpstreamProxyAgent } from '@/modules/config/upstream-proxy-agent';
+import { isGoogleProjectConsumerDenial } from '@/shared/auth/google-project-denial';
 import { populateSyntheticArgonModels } from '@/modules/cloud-account/utils/quota-groups';
 import type { CloudSubscriptionState } from '../types';
 import { observeSubscription } from '../utils/subscription-tier';
@@ -44,22 +45,22 @@ const URLS = {
 };
 
 const PROJECT_CONTEXT_ENDPOINTS = [
-  URLS.LOAD_PROJECT,
   URLS.DAILY_LOAD_PROJECT,
   URLS.SANDBOX_LOAD_PROJECT,
+  URLS.LOAD_PROJECT,
 ] as const;
 
 const QUOTA_API_ENDPOINTS = [
-  'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels',
   'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
+  'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels',
   'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
 ];
 
 // Daily is the host the Antigravity app queries and the only one observed to return every group.
 const QUOTA_SUMMARY_ENDPOINTS = [
   'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
-  'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
   'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
+  'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
 ];
 
 // Request timeout in milliseconds (30 seconds)
@@ -177,7 +178,7 @@ function isSuccessfulHttpStatus(status: number): boolean {
 }
 
 function shouldFallbackProjectContextStatus(status: number): boolean {
-  return status === 404 || status === 429 || (status >= 500 && status < 600);
+  return status === 408 || status === 404 || status === 429 || (status >= 500 && status < 600);
 }
 
 function responseDataToText(data: unknown): string {
@@ -238,7 +239,7 @@ async function requestGoogleApi(
   url: string,
   options: GoogleApiRequestOptions,
 ): Promise<GoogleApiHttpResponse> {
-  const agent = createGoogleProxyAgent(url, options.proxy, options.signal);
+  const agent = createUpstreamProxyAgent(url, options.proxy, options.signal);
   try {
     const response = await axios.request<unknown>({
       data: options.data,
@@ -1184,15 +1185,12 @@ export class GoogleAPIService {
 
     const { projectId, subscriptionTier } = projectContext;
 
-    const payload: { project?: string } = projectId ? { project: projectId } : {};
+    let currentPayload: { project?: string } = projectId ? { project: projectId } : {};
     let lastError: Error | null = null;
 
     for (let endpointIndex = 0; endpointIndex < QUOTA_API_ENDPOINTS.length; endpointIndex++) {
       const endpoint = QUOTA_API_ENDPOINTS[endpointIndex];
       const hasNextEndpoint = endpointIndex + 1 < QUOTA_API_ENDPOINTS.length;
-      let currentPayload = { ...payload };
-      let retriedWithoutProject = false;
-
       while (true) {
         const remainingMs = deadlineAt - Date.now();
         if (remainingMs <= 0) {
@@ -1216,12 +1214,14 @@ export class GoogleAPIService {
             const status = response.status;
 
             if (status === 403) {
-              if ('project' in currentPayload && !retriedWithoutProject) {
+              if (
+                currentPayload.project &&
+                isGoogleProjectConsumerDenial(response.data, currentPayload.project)
+              ) {
                 logger.warn(
-                  '[GoogleAPIService] Quota API returned 403 with project ID, retrying without project ID',
+                  '[GoogleAPIService] Quota API rejected the project consumer; retrying without project ID',
                 );
                 currentPayload = {};
-                retriedWithoutProject = true;
                 continue;
               }
 
@@ -1260,7 +1260,7 @@ export class GoogleAPIService {
           }
           const quotaGroups = await this.fetchQuotaSummary(
             accessToken,
-            projectId,
+            currentPayload.project,
             axiosOptions,
             signal,
             deadlineAt,
@@ -1318,7 +1318,7 @@ export class GoogleAPIService {
     signal: AbortSignal | undefined,
     deadlineAt: number,
   ): Promise<QuotaGroup[] | undefined> {
-    const payload: { project?: string } = projectId ? { project: projectId } : {};
+    let currentPayload: { project?: string } = projectId ? { project: projectId } : {};
     // Model-specific groups such as Gemini 4 Argon are not returned to the bare client identity.
     const headers = buildInternalApiHeaders(
       accessToken,
@@ -1326,9 +1326,6 @@ export class GoogleAPIService {
     );
 
     for (const endpoint of QUOTA_SUMMARY_ENDPOINTS) {
-      let currentPayload = { ...payload };
-      let retriedWithoutProject = false;
-
       while (true) {
         const remainingMs = deadlineAt - Date.now();
         if (remainingMs <= 0) {
@@ -1352,23 +1349,33 @@ export class GoogleAPIService {
             logger.warn(
               `[GoogleAPIService] Quota summary API ${endpoint} returned ${response.status}`,
             );
-            if (response.status === 403 && 'project' in currentPayload && !retriedWithoutProject) {
+            if (
+              response.status === 403 &&
+              currentPayload.project &&
+              isGoogleProjectConsumerDenial(response.data, currentPayload.project)
+            ) {
               logger.warn(
-                '[GoogleAPIService] Quota summary returned 403 with project ID, retrying without project ID',
+                '[GoogleAPIService] Quota summary rejected the project consumer; retrying without project ID',
               );
               currentPayload = {};
-              retriedWithoutProject = true;
               continue;
             }
-            // Hosts reject the summary independently (sandbox returns 403 for some accounts), so
-            // only a rejected credential ends this optional lookup before every host is tried.
-            if (response.status === 401) {
+            if (
+              response.status !== 408 &&
+              response.status !== 429 &&
+              !(response.status >= 500 && response.status < 600)
+            ) {
               return undefined;
             }
             break;
           }
 
-          return toQuotaGroups(parseQuotaSummaryResponse(response.data));
+          try {
+            return toQuotaGroups(parseQuotaSummaryResponse(response.data));
+          } catch (error) {
+            logger.warn('[GoogleAPIService] Quota summary response is invalid', error);
+            return undefined;
+          }
         } catch (error) {
           signal?.throwIfAborted();
           logger.warn(`[GoogleAPIService] Quota summary API request failed at ${endpoint}`, error);

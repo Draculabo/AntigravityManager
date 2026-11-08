@@ -22,6 +22,7 @@ const entries = [
   'cli/main.cjs',
   'core/traffic-audit.worker.js',
   'core/thought-store.worker.js',
+  'core/error-window.worker.js',
 ];
 
 // These optional paths are already excluded by the core build aliases or have JS fallbacks.

@@ -15,6 +15,8 @@ export class UpstreamRequestError extends Error {
   readonly upstreamStatus?: GoogleErrorStatus;
   readonly source?: 'bare' | 'wrapped';
   readonly messageTruncated?: boolean;
+  /** The transport matched structured denial to the actual sent body project. */
+  readonly projectConsumerDenied?: boolean;
   /**
    * Structured `google.rpc` details captured before `body` was truncated, so a classifier can
    * read them even when the rendered body was clipped to 1000 characters.
@@ -31,6 +33,7 @@ export class UpstreamRequestError extends Error {
     upstreamStatus?: GoogleErrorStatus;
     source?: 'bare' | 'wrapped';
     messageTruncated?: boolean;
+    projectConsumerDenied?: boolean;
   }) {
     super(params.message);
     this.name = 'UpstreamRequestError';
@@ -49,6 +52,7 @@ export class UpstreamRequestError extends Error {
     this.upstreamStatus = params.upstreamStatus;
     this.source = params.source;
     this.messageTruncated = params.messageTruncated;
+    this.projectConsumerDenied = params.projectConsumerDenied;
 
     // Sanitize and limit body size
     if (isString(params.body)) {

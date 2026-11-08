@@ -4,12 +4,18 @@ import path from 'node:path';
 
 import type { ThoughtStoreConfig } from '@/modules/config/types';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { errorProcessOwner } from '@/modules/error-diagnostics/public';
 import type {
   GeminiContent,
   GeminiInternalRequest,
 } from '@/modules/proxy-gateway/antigravity/types';
 import { getTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { recordProxyThinkingFill } from '@/modules/proxy-gateway/server/common/proxy-response-timing';
+import { recordThoughtRestoreCompletion } from '../server/common/generation-request-diagnostics';
+import {
+  recordThoughtRestoreOutcome,
+  type ThoughtRestoreUnavailable,
+} from './thought-restore-diagnostics';
 import { getServerConfig } from '@/server/server-config';
 import { logger } from '@/shared/logging/logger';
 import { DiagnosticStoreShutdown } from '../diagnostics/store-shutdown';
@@ -51,7 +57,9 @@ import { assertThoughtReplyBudget, MAX_THOUGHT_READ_RECORDS } from './thought-re
 import { thoughtCausalHistory } from './thought-causal-history';
 import { mergeThoughtProvenance } from './thought-record-provenance';
 import { ThoughtReadBudgetError } from './thought-read-budget';
-import { expireThoughtToolSignatures } from './thought-tool-links';
+import { ThoughtToolRecovery } from './thought-tool-recovery';
+import { ThoughtToolRecoverySnapshotSchema } from './thought-tool-recovery.schema';
+import { thoughtToolLayoutDigest } from './thought-tool-layout';
 import { invalidateThoughtRecoveryPeers } from './thought-recovery-peers';
 import { ThoughtStreamCapture } from './thought-stream-capture';
 import {
@@ -71,6 +79,12 @@ const TOUCH_PERSIST_INTERVAL_MS = 5 * 60 * 1000;
 const HYDRATION_FAILURE_COOLDOWN_MS = 1000;
 const MAX_QUEUE_BYTES = 128 * 1024 * 1024;
 const MAX_QUEUE_COMMANDS = 256;
+type ThoughtRestoreSource = 'memoryHits' | 'coldHits' | 'restoredSourceUnknown';
+interface ThoughtHydrationResult {
+  records: ThoughtRecord[];
+  unavailable: ThoughtRestoreUnavailable | null;
+  restoredSource: ThoughtRestoreSource;
+}
 export const HARD_MAX_THOUGHT_TURNS = 10_000;
 export const HARD_MAX_THOUGHT_SESSION_BYTES = 64 * 1024 * 1024;
 
@@ -106,6 +120,7 @@ function resolveThoughtSessionLimits(
 }
 
 export class ThoughtStoreService {
+  private readonly toolRecovery = new ThoughtToolRecovery();
   private readonly terminal = new DiagnosticStoreShutdown();
   private worker: BoundedSqliteWorker | null = null;
   private readonly maintenance = new DiagnosticMaintenanceScheduler(
@@ -138,7 +153,7 @@ export class ThoughtStoreService {
     (error) => logger.warn('Thought Store maintenance failed', error),
   );
   private readonly sessions = new ThoughtSessionMemory();
-  private readonly hydration = new ThoughtHydrationRequests();
+  private readonly hydration = new ThoughtHydrationRequests<ThoughtHydrationResult>();
   private readonly hydrationLoads = new ThoughtHydrationQueue();
   private hydrationGeneration = 0;
   private readonly hydrationLeases = new ThoughtCaptureLeases();
@@ -186,10 +201,24 @@ export class ThoughtStoreService {
     signal?: AbortSignal,
   ): Promise<void> {
     if (signal?.aborted) {
+      recordThoughtRestoreOutcome('cancelled');
+      recordThoughtRestoreCompletion();
       throw thoughtHydrationCancelled();
     }
     const sessionKey = this.getCurrentSessionKey();
-    if (!sessionKey || !this.isEnabled() || !this.hydrationLoads.acceptsWork()) {
+    if (!sessionKey) {
+      if (this.getCurrentCaptureLease()?.valid === false) {
+        recordThoughtRestoreOutcome('invalidated');
+        recordThoughtRestoreCompletion();
+      }
+      return;
+    }
+    if (!this.isEnabled()) {
+      return;
+    }
+    if (!this.hydrationLoads.acceptsWork()) {
+      recordThoughtRestoreOutcome('admissionUnavailable');
+      recordThoughtRestoreCompletion();
       return;
     }
     const contents = body.request.contents;
@@ -198,6 +227,7 @@ export class ThoughtStoreService {
     }
 
     const startedAt = performance.now();
+    let unavailable = false;
     const generation = this.hydrationGeneration;
     const hydrationLease = this.hydrationLeases.acquire(sessionKey);
     const captureLease = this.getCurrentCaptureLease();
@@ -205,11 +235,17 @@ export class ThoughtStoreService {
       this.captureAnchors.set(captureLease, thoughtCausalHistory(contents).after);
     }
     try {
-      let records = await this.hydration.run(
+      const hydrated = await this.hydration.run(
         sessionKey,
         (sharedSignal) => this.ensureHydrated(sessionKey, sharedSignal),
         signal,
       );
+      let records = hydrated.records;
+      let restoredSource = hydrated.restoredSource;
+      if (hydrated.unavailable) {
+        unavailable = true;
+        recordThoughtRestoreOutcome(hydrated.unavailable);
+      }
       if (signal?.aborted) {
         throw thoughtHydrationCancelled();
       }
@@ -219,10 +255,10 @@ export class ThoughtStoreService {
         !captureLease?.valid ||
         !this.terminal.acceptsWork()
       ) {
+        recordThoughtRestoreOutcome('invalidated');
         return;
       }
       const causal = thoughtCausalHistory(contents);
-      records = records.map((record) => expireThoughtToolSignatures(record));
       const missing = [
         ...new Set(
           contents.flatMap((content, index) => {
@@ -257,16 +293,24 @@ export class ThoughtStoreService {
               ),
             signal,
           );
-          records = mergeHydratedThoughtRecords(selected, records).map((record) =>
-            expireThoughtToolSignatures(record),
-          );
+          if (selected.length > 0) {
+            restoredSource = records.length > 0 ? 'restoredSourceUnknown' : 'coldHits';
+          }
+          records = mergeHydratedThoughtRecords(selected, records);
         } catch (error) {
           if (signal?.aborted) {
             throw thoughtHydrationCancelled();
           }
           if (!hydrationLease.valid || !captureLease?.valid) {
+            recordThoughtRestoreOutcome('invalidated');
             return;
           }
+          unavailable = true;
+          recordThoughtRestoreOutcome(
+            error instanceof ThoughtHydrationAdmissionError
+              ? 'admissionUnavailable'
+              : 'readUnavailable',
+          );
           if (error instanceof ThoughtHydrationAdmissionError) {
             this.hydrationAdmissionFailures += 1;
           } else {
@@ -278,25 +322,47 @@ export class ThoughtStoreService {
             error,
           );
         }
+      } else if (missing.length > 0 && memory?.loaded && memory.olderLookupRetryAt) {
+        unavailable = true;
+        recordThoughtRestoreOutcome('cooldownUnavailable');
       }
+      records = await this.resolveToolRecovery(sessionKey, records, signal, () => {
+        unavailable = true;
+      });
       if (!hydrationLease.valid || !captureLease?.valid || signal?.aborted) {
+        recordThoughtRestoreOutcome(signal?.aborted ? 'cancelled' : 'invalidated');
         return;
       }
       this.ingestContents(sessionKey, contents, model, true, records, causal.before);
-      this.restoreContents(sessionKey, contents, model, records, causal.before);
+      this.restoreContents(
+        sessionKey,
+        contents,
+        model,
+        records,
+        causal.before,
+        restoredSource,
+        unavailable,
+      );
     } catch (error) {
+      if (signal?.aborted) {
+        recordThoughtRestoreOutcome('cancelled');
+      }
       if (
         generation !== this.hydrationGeneration ||
         !hydrationLease.valid ||
         !captureLease?.valid ||
         !this.terminal.acceptsWork()
       ) {
+        if (!signal?.aborted) {
+          recordThoughtRestoreOutcome('invalidated');
+        }
         return;
       }
       throw error;
     } finally {
       hydrationLease.release();
       recordProxyThinkingFill(startedAt);
+      recordThoughtRestoreCompletion();
     }
   }
 
@@ -644,6 +710,7 @@ export class ThoughtStoreService {
           previous.createdAt,
           maxBytes,
         );
+        this.toolRecovery.inherit(previous, session.records[currentIndex]);
       }
     }
     this.pruneMemorySession(sessionKey, session, config);
@@ -679,14 +746,13 @@ export class ThoughtStoreService {
     contents: GeminiContent[],
     model: string,
     hydrated: ThoughtRecord[],
-    causalAnchors?: readonly string[],
+    causalAnchors: readonly string[],
+    restoredSource: ThoughtRestoreSource,
+    unavailable: boolean,
   ): void {
     const session = this.sessions.get(sessionKey);
     const records = hydrated;
-    if (records.length === 0) {
-      return;
-    }
-    if (session) {
+    if (session && records.length > 0) {
       session.lastAccessed = Date.now();
       this.touchSession(sessionKey);
     }
@@ -695,6 +761,17 @@ export class ThoughtStoreService {
       records,
       model,
       records.some((record) => record.causalAnchor) ? causalAnchors : undefined,
+      (outcome) => {
+        if (outcome.kind === 'restored') {
+          recordThoughtRestoreOutcome(restoredSource);
+        } else if (outcome.kind === 'no-candidate') {
+          recordThoughtRestoreOutcome(unavailable ? 'unresolved' : 'noCandidate');
+        } else if (outcome.kind === 'unresolved') {
+          recordThoughtRestoreOutcome('unresolved');
+        } else {
+          recordThoughtRestoreOutcome('matchedUnchanged');
+        }
+      },
     );
   }
 
@@ -721,6 +798,7 @@ export class ThoughtStoreService {
         latest.createdAt,
         maxBytes,
       );
+      this.toolRecovery.inherit(latest, session.records[index]);
     } else {
       session.records.push(toMemoryRecord(input, `memory-${randomUUID()}`, now, maxBytes));
     }
@@ -737,16 +815,29 @@ export class ThoughtStoreService {
       this.writeFailures += 1;
       return;
     }
-    const accepted = this.tryWriteSessionAccess(session, 'save', {
-      ...input,
-      createdAt: now,
-      maxSessionBytes: HARD_MAX_THOUGHT_SESSION_BYTES,
-      maxDiskBytes: config.max_disk_mib * 1024 * 1024,
-      maxSessions: config.max_sessions,
-      maxTurns,
-      meaningful: isMeaningfulThought(input.thought),
-      sessionKey,
-    });
+    const accepted = this.tryWriteSessionAccess(
+      session,
+      'save',
+      {
+        ...input,
+        createdAt: now,
+        maxSessionBytes: HARD_MAX_THOUGHT_SESSION_BYTES,
+        maxDiskBytes: config.max_disk_mib * 1024 * 1024,
+        maxSessions: config.max_sessions,
+        maxTurns,
+        meaningful: isMeaningfulThought(input.thought),
+        sessionKey,
+      },
+      () => {
+        if (input.operationId) {
+          for (const record of session.records) {
+            if (record.operationId === input.operationId) {
+              this.toolRecovery.markPersisted(record);
+            }
+          }
+        }
+      },
+    );
     if (!accepted) {
       this.writeFailures += 1;
     }
@@ -760,14 +851,21 @@ export class ThoughtStoreService {
       listener(sessionKey);
     }
   }
-  private async ensureHydrated(sessionKey: string, signal: AbortSignal): Promise<ThoughtRecord[]> {
+  private async ensureHydrated(
+    sessionKey: string,
+    signal: AbortSignal,
+  ): Promise<ThoughtHydrationResult> {
     const existing = this.sessions.get(sessionKey);
     if (existing?.loaded) {
       existing.lastAccessed = Date.now();
-      return existing.records;
+      return { records: existing.records, unavailable: null, restoredSource: 'memoryHits' };
     }
     if (existing?.hydrationRetryAt !== undefined && performance.now() < existing.hydrationRetryAt) {
-      return existing.records;
+      return {
+        records: existing.records,
+        unavailable: 'cooldownUnavailable',
+        restoredSource: 'memoryHits',
+      };
     }
     const { maxBytes, maxTurns } = resolveThoughtSessionLimits(this.getConfig());
     const generation = this.hydrationGeneration;
@@ -780,18 +878,29 @@ export class ThoughtStoreService {
           ),
         signal,
       )
-      .then((persisted) => {
-        const records = mergeHydratedThoughtRecords(
-          persisted,
-          this.sessions.get(sessionKey)?.records ?? [],
-        );
+      .then((persisted): ThoughtHydrationResult => {
+        const captured = this.sessions.get(sessionKey)?.records ?? [];
+        const records = mergeHydratedThoughtRecords(persisted, captured);
+        // Merges retain persisted IDs even when current captures supply restored content.
+        const restoredSource: ThoughtRestoreSource =
+          captured.length === 0
+            ? 'coldHits'
+            : persisted.length === 0
+              ? 'memoryHits'
+              : 'restoredSourceUnknown';
+        const persistedOperations = new Set(persisted.map((record) => record.operationId));
+        for (const record of records) {
+          if (record.operationId && persistedOperations.has(record.operationId)) {
+            this.toolRecovery.markPersisted(record);
+          }
+        }
         if (
           signal.aborted ||
           !this.terminal.acceptsWork() ||
           generation !== this.hydrationGeneration ||
           !hydrationLease.valid
         ) {
-          return records;
+          return { records, unavailable: null, restoredSource };
         }
         const session = {
           lastAccessed: Date.now(),
@@ -805,21 +914,37 @@ export class ThoughtStoreService {
         if (persisted.length > 0) {
           this.touchSession(sessionKey);
         }
-        return records;
+        return { records, unavailable: null, restoredSource };
       })
-      .catch((error) => {
+      .catch((error): ThoughtHydrationResult => {
         if (signal.aborted) {
           throw thoughtHydrationCancelled();
         }
         const captured = this.sessions.get(sessionKey);
         if (error instanceof ThoughtHydrationAdmissionError && error.reason === 'closed') {
-          return captured?.records ?? [];
+          return {
+            records: captured?.records ?? [],
+            unavailable: 'admissionUnavailable',
+            restoredSource: 'memoryHits',
+          };
         }
         if (error instanceof ThoughtHydrationAdmissionError) {
           this.hydrationAdmissionFailures += 1;
         } else {
           this.readFailures += 1;
         }
+        errorProcessOwner.capture({
+          error,
+          source: 'proxy-gateway',
+          module: 'thought-store',
+          functionName: 'ensureHydrated',
+          stage: 'hydration',
+          category:
+            error instanceof ThoughtHydrationAdmissionError
+              ? 'thought_hydration_admission_failed'
+              : 'thought_hydration_read_failed',
+          requestId: getTrafficAuditRequestContext()?.parent?.id,
+        });
         logger.warn('Thought Store hydration failed; continuing without restore', error);
         if (
           this.terminal.acceptsWork() &&
@@ -837,10 +962,77 @@ export class ThoughtStoreService {
           });
           this.pruneMemorySessions(this.getConfig().max_sessions);
         }
-        return captured?.records ?? [];
+        return {
+          records: captured?.records ?? [],
+          restoredSource: 'memoryHits',
+          unavailable:
+            error instanceof ThoughtHydrationAdmissionError
+              ? 'admissionUnavailable'
+              : 'readUnavailable',
+        };
       })
       .finally(() => hydrationLease.release());
     return load;
+  }
+
+  private async resolveToolRecovery(
+    sessionKey: string,
+    records: ThoughtRecord[],
+    signal?: AbortSignal,
+    onUnavailable?: () => void,
+  ): Promise<ThoughtRecord[]> {
+    const operationIds = [
+      ...new Set(
+        records.flatMap((record) =>
+          record.operationId &&
+          record.partSignatures.some((part) => part.kind === 'tool' && part.signature)
+            ? [record.operationId]
+            : [],
+        ),
+      ),
+    ];
+    if (operationIds.length === 0) {
+      return this.toolRecovery.apply(records, []);
+    }
+    const memory = this.sessions.get(sessionKey);
+    if (performance.now() < (memory?.toolLinkRetryAt ?? 0)) {
+      recordThoughtRestoreOutcome('cooldownUnavailable');
+      onUnavailable?.();
+      return this.toolRecovery.apply(records);
+    }
+    try {
+      return await this.hydrationLoads.run(async () => {
+        const snapshot = ThoughtToolRecoverySnapshotSchema.parse(
+          await this.request('toolRecoverySnapshot', { sessionKey, operationIds,
+            layouts: records.flatMap((record) => record.operationId ? [{ operationId: record.operationId, digest: thoughtToolLayoutDigest(record.partSignatures) }] : []),
+          }),
+        );
+        return this.toolRecovery.apply(records, snapshot);
+      }, signal);
+    } catch (error) {
+      if (signal?.aborted) {
+        throw thoughtHydrationCancelled();
+      }
+      onUnavailable?.();
+      recordThoughtRestoreOutcome(
+        error instanceof ThoughtHydrationAdmissionError
+          ? 'admissionUnavailable'
+          : 'readUnavailable',
+      );
+      if (error instanceof ThoughtHydrationAdmissionError) {
+        this.hydrationAdmissionFailures += 1;
+      } else {
+        this.readFailures += 1;
+        if (memory) {
+          memory.toolLinkRetryAt = performance.now() + HYDRATION_FAILURE_COOLDOWN_MS;
+        }
+      }
+      logger.warn(
+        'Thought Store tool permissions unavailable; continuing without tool restore',
+        error,
+      );
+      return this.toolRecovery.apply(records);
+    }
   }
 
   private touchSession(sessionKey: string): void {
@@ -871,11 +1063,13 @@ export class ThoughtStoreService {
     session: MemorySession,
     operation: TOperation,
     payload: Extract<ThoughtStoreWorkerCommand, { operation: TOperation }>['payload'],
+    onSuccess?: () => void,
   ): boolean {
     const access = { queuedAt: performance.now() };
     const accepted = this.ensureWorker().tryWrite(
       { operation, payload },
       {
+        onSuccess,
         onFailure: () => {
           // An older failure must not invalidate a newer accepted access write.
           if (session.persistedAccess === access) {
@@ -925,6 +1119,15 @@ export class ThoughtStoreService {
             : 'write_failed';
         const safeReason = ThoughtStoreStatsSchema.shape.lastWriteFailure.safeParse(reason);
         this.lastWriteFailure = safeReason.success ? safeReason.data : 'write_failed';
+        errorProcessOwner.capture({
+          // Worker replies carry messages, not the original worker Error or its stack.
+          error: `Thought Store write failed: ${this.lastWriteFailure}`,
+          source: 'proxy-gateway',
+          module: 'thought-store',
+          functionName: 'onWriteFailure',
+          stage: 'persistence',
+          category: 'thought_store_write_failed',
+        });
         if (message === 'Thought Store write rejected: session_capacity') {
           this.sessionCapacityRefused = true;
         }

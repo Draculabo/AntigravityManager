@@ -115,11 +115,11 @@ describe('Responses tool history repair', () => {
 
   it('rejects ambiguous socket-cache recovery after compaction without replacing state', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol();
-    protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
+    await protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
     protocol.complete({ id: 'first', output: [call()] });
-    protocol.accept({ type: 'response.append', input: [{ type: 'compaction' }, prompt] });
+    await protocol.accept({ type: 'response.append', input: [{ type: 'compaction' }, prompt] });
     protocol.complete({ id: 'second', output: [call('write')] });
-    protocol.accept({ type: 'response.append', input: [{ type: 'compaction' }, prompt] });
+    await protocol.accept({ type: 'response.append', input: [{ type: 'compaction' }, prompt] });
     await expect(protocol.accept({ type: 'response.append', input: [result] })).rejects.toThrow(
       'Invalid tool history at input[1]: ambiguous-cached-call.',
     );

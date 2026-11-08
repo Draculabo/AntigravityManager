@@ -7,7 +7,7 @@ import {
   ContentIdentitySchema,
   ContentChunkSchema,
   ContentClosedSchema,
-} from '../diagnostics/content-capability.schema';
+} from '@/shared/observability/content-capability.schema';
 const procedure = os.use(async ({ next }) => {
   try {
     return await next({});

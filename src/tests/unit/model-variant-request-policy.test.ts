@@ -14,6 +14,17 @@ import type {
   OpenAIChatRequest,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
+const proAgentRecipe = {
+  canonicalModel: 'gemini-3.1-pro',
+  model: 'gemini-pro-agent',
+  tier: 'high',
+  thinkingBudget: 10001,
+  maxOutputTokens: 65535,
+  includeThoughts: true,
+  preserveClientBudget: false,
+  supportsTools: true,
+};
+
 describe('applyGeminiModelVariant', () => {
   it('rejects an unknown Gemini thinking level before sanitizing the request', () => {
     const request = {
@@ -131,7 +142,7 @@ describe('applyGeminiModelVariant', () => {
         contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
         generationConfig: { temperature: 0.2 },
       },
-      variant: null,
+      variant: proAgentRecipe,
     });
     expect(directRequest.generationConfig?.thinkingConfig).toEqual({
       includeThoughts: false,
@@ -193,12 +204,14 @@ describe('applyAnthropicModelVariant', () => {
       request: {
         model: 'gemini-pro-agent',
         messages: [{ role: 'user', content: 'Hello' }],
-        max_tokens: 65535,
+        max_tokens: 2048,
         thinking: {
           type: 'enabled',
           budget_tokens: 10001,
         },
         output_config: undefined,
+        tools: undefined,
+        tool_choice: undefined,
       },
       variant: {
         canonicalModel: 'gemini-3.1-pro',
@@ -228,7 +241,7 @@ describe('applyAnthropicModelVariant', () => {
     expect(applied.request).toEqual({
       model: 'gemini-3-flash-agent',
       messages: [{ role: 'user', content: 'Hello' }],
-      max_tokens: 65536,
+      max_tokens: 2048,
       thinking: {
         type: 'enabled',
         budget_tokens: 10000,
@@ -255,13 +268,13 @@ describe('applyAnthropicModelVariant', () => {
 
     expect(applied.request).toMatchObject({
       model: 'gemini-pro-agent',
-      max_tokens: 65535,
       thinking: {
         type: 'enabled',
         budget_tokens: 10001,
       },
       output_config: undefined,
     });
+    expect(applied.request).not.toHaveProperty('max_tokens');
     expect(applied.variant?.tier).toBe('high');
   });
 
@@ -281,9 +294,13 @@ describe('applyAnthropicModelVariant', () => {
         messages: [{ role: 'user', content: 'Hello' }],
         thinking: {
           type: 'enabled',
+          budget_tokens: 10001,
         },
+        output_config: undefined,
+        tools: undefined,
+        tool_choice: undefined,
       },
-      variant: null,
+      variant: proAgentRecipe,
     });
   });
 
@@ -325,7 +342,6 @@ describe('applyAnthropicModelVariant', () => {
         name: 'lookup',
       },
       thinking: undefined,
-      max_tokens: 16384,
       output_config: undefined,
     });
   });
@@ -343,7 +359,6 @@ describe('applyAnthropicModelVariant', () => {
       model: 'gemini-pro-agent',
       messages: [{ role: 'user', content: 'Hello' }],
       output_config: undefined,
-      max_tokens: 65535,
       thinking: {
         type: 'enabled',
         budget_tokens: 10001,
@@ -393,7 +408,6 @@ describe('applyOpenAIModelVariant', () => {
     expect(rebindOpenAIModelVariant(applied, 'gemini-3.7-flash-tiered').request).toEqual({
       model: 'gemini-3.7-flash-tiered',
       messages: [{ role: 'user', content: 'Hello' }],
-      max_tokens: 65536,
       thinking: { type: 'enabled', budget_tokens: -1 },
       tools: undefined,
       tool_choice: undefined,
@@ -422,7 +436,7 @@ describe('applyOpenAIModelVariant', () => {
     expect(applyOpenAIModelVariant(request).request).toEqual({
       model: 'gemini-3.1-flash-lite',
       messages: [{ role: 'user', content: 'Use the tool' }],
-      max_tokens: 16384,
+      max_tokens: 4096,
       thinking: undefined,
       tools: [
         {
@@ -449,11 +463,11 @@ describe('applyOpenAIModelVariant', () => {
 
     expect(applied.request).toMatchObject({
       model: 'gemini-3.5-flash-low',
-      max_tokens: 65536,
       thinking: {
         budget_tokens: 4000,
       },
     });
+    expect(applied.request).not.toHaveProperty('max_tokens');
   });
 
   it('reads Responses reasoning.effort after the legacy effort field', () => {
@@ -494,9 +508,7 @@ describe('applyOpenAIModelVariant', () => {
       model: 'gemini-3.7-flash-low',
       reasoning: { effort: 'low', max_tokens: 2048 },
     });
-    expect(
-      rebindOpenAIModelVariant(applied, 'gemini-3.7-flash-high').request,
-    ).toMatchObject({
+    expect(rebindOpenAIModelVariant(applied, 'gemini-3.7-flash-high').request).toMatchObject({
       model: 'gemini-3.7-flash-high',
       reasoning: { effort: 'high', max_tokens: 2048 },
     });
@@ -515,11 +527,11 @@ describe('applyOpenAIModelVariant', () => {
 
     expect(applied.request).toMatchObject({
       model: 'gemini-3.7-flash-high',
-      max_tokens: 65536,
       thinking: {
         budget_tokens: 10000,
       },
     });
+    expect(applied.request).not.toHaveProperty('max_tokens');
     expect(applied.variant?.tier).toBe('high');
   });
 
@@ -539,10 +551,13 @@ describe('applyOpenAIModelVariant', () => {
       request: {
         model: 'gemini-pro-agent',
         messages: [],
-        reasoning_effort: 'medium',
-        thinking: { type: 'enabled' },
+        reasoning_effort: 'high',
+        reasoning: undefined,
+        thinking: { type: 'enabled', budget_tokens: 10001 },
+        tools: undefined,
+        tool_choice: undefined,
       },
-      variant: null,
+      variant: proAgentRecipe,
     });
   });
 
@@ -559,7 +574,7 @@ describe('applyOpenAIModelVariant', () => {
     expect(rebindOpenAIModelVariant(applied, 'gemini-3-flash-agent').request).toEqual({
       model: 'gemini-3-flash-agent',
       messages: [{ role: 'user', content: 'Hello' }],
-      max_tokens: 65536,
+      reasoning: undefined,
       thinking: {
         type: 'enabled',
         budget_tokens: 10000,

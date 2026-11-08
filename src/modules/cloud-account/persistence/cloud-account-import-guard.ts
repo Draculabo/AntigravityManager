@@ -30,6 +30,7 @@ export function cloudAccountRowValues(account: CloudAccount): AccountValues {
     proxyUrl: account.proxy_url ?? null,
     proxyPriority: account.proxy_priority ?? 50,
     proxyEnabled: account.proxy_enabled === false ? 0 : 1,
+    googleUsageIdentityJson: null,
   };
 }
 
@@ -39,7 +40,7 @@ function parseJsonColumn(value: string | null): unknown {
 
 function comparableRow(row: AccountValues) {
   return {
-    ...omit(row, 'lifecycleGeneration'),
+    ...omit(row, 'lifecycleGeneration', 'googleUsageIdentityJson'),
     tokenJson: parseJsonColumn(row.tokenJson),
     quotaJson: parseJsonColumn(row.quotaJson),
     healthJson: parseJsonColumn(row.healthJson),

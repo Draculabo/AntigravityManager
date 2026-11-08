@@ -1,10 +1,11 @@
 import { Readable, Transform } from 'node:stream';
 import { IncrementalSseRedactor } from '@/modules/proxy-gateway/audit/incremental-sse-redactor';
-import { completeCurrentUpstreamAttempt } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import {
-  trafficAuditService,
-  type UpstreamAttemptHandle,
-} from '@/modules/proxy-gateway/audit/traffic-audit.service';
+  completeCurrentUpstreamAttempt,
+  captureUpstreamAttemptUsage,
+  type CurrentUpstreamAttemptHandle,
+} from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { toolCallGenerationDiagnostic } from '@/modules/proxy-gateway/audit/tool-call-generation-diagnostic';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import {
@@ -16,17 +17,20 @@ import { decodeInternalGeminiPayload } from '../../../antigravity/internal-sse';
 import { GenerationOutputState } from '../../../antigravity/GenerationOutputState';
 import { UpstreamGenerationError } from '../../../antigravity/UpstreamGenerationError';
 import { upstreamGenerationFailure } from '../../common/upstream-generation-failure';
+import { GenerationDeadlineExceededError } from '../../common/exceptions/generation-deadline.exception';
+import { observeGenerationStreamProgress } from '../../common/generation-deadline';
 
 /** Own the upstream stream until validated frames are released or the consumer closes. */
 export function captureGeminiStreamResult(
   source: Readable,
   input: {
-    attempt: UpstreamAttemptHandle | null;
+    attempt: CurrentUpstreamAttemptHandle | null;
     model?: string;
     responseHeaders: Record<string, unknown> | undefined;
     status: number;
     outcome: 'completed' | 'auth_failed' | 'upstream_error';
     validateSignatures?: boolean;
+    signal?: AbortSignal;
   },
 ): Readable {
   let sourceEnded = false;
@@ -47,6 +51,7 @@ export function captureGeminiStreamResult(
   const validatedFrames: Array<readonly string[]> = [];
   const auditRedactor = new IncrementalSseRedactor({
     onRawParsedEvent: (event) => {
+      captureUpstreamAttemptUsage(input.attempt, event);
       if (signatureConflict || generationFailure) {
         return;
       }
@@ -62,6 +67,7 @@ export function captureGeminiStreamResult(
           generationFailure ??= new UpstreamGenerationError('invalid_upstream_response');
         } else if (decoded.kind === 'response') {
           generation.observe(decoded.response);
+          observeGenerationStreamProgress(input.signal, generation.streamPhase);
         }
       }
       if (!signatureConflict && !generationFailure) {
@@ -83,7 +89,7 @@ export function captureGeminiStreamResult(
       toolCallWarning ??= toolCallGenerationDiagnostic(event);
     },
   });
-  const auditWriter = trafficAuditService.beginAttemptSse(input.attempt);
+  const auditWriter = trafficAuditService.beginAttemptSse(input.attempt?.audit ?? null);
   const timing = getCurrentProxyTimingState();
   let totalBytes = 0;
   let completed = false;
@@ -109,6 +115,10 @@ export function captureGeminiStreamResult(
       return;
     }
     completed = true;
+    if (input.signal?.reason instanceof GenerationDeadlineExceededError) {
+      outcome = 'upstream_error';
+      error = input.signal.reason;
+    }
     const final = auditRedactor.finish();
     if (signatureConflict) {
       outcome = 'upstream_error';
@@ -120,7 +130,10 @@ export function captureGeminiStreamResult(
         error = generationFailure;
       }
     }
-    let auditPartial = outcome !== 'completed';
+    let auditPartial =
+      outcome !== 'completed' ||
+      final.result.parseErrorOffset !== null ||
+      final.result.errorSummary !== null;
     for (const sanitized of final.chunks) {
       if (!captureSanitizedEvent(sanitized)) {
         auditPartial = true;

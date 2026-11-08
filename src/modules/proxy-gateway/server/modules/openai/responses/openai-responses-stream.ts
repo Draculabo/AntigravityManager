@@ -1,4 +1,7 @@
 import { isString } from 'lodash-es';
+import { errorProcessOwner } from '@/modules/error-diagnostics/public';
+import { getTrafficAuditRequestContext } from '../../../../audit/traffic-audit-context';
+import { classifyTransportError } from '../../../../antigravity/stream-error-utils';
 import { OpenAIResponsesStreamingMapper } from '../../../../antigravity/OpenAIResponsesStreamingMapper';
 import { readUpstreamErrorStatus } from '../../../common/upstream-error-codec';
 import {
@@ -42,6 +45,7 @@ export function createResponsesStream(
   options: ConstructorParameters<typeof OpenAIResponsesStreamingMapper>[0],
   hooks: ResponsesStreamHooks,
 ) {
+  const requestId = getTrafficAuditRequestContext()?.parent?.id;
   const frames = new SerializedResponsesFrames();
   const stream = createFrameControlledSseStream(upstream, (sink) => {
     const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -108,6 +112,25 @@ export function createResponsesStream(
         sink.write(mapper.fail(code, publicMessage));
       }
       sink.end();
+    }
+    function captureDecodeError(error: unknown, functionName: 'mapChunk' | 'end'): void {
+      if (error instanceof Error && classifyTransportError(error) === 'cancelled') {
+        return;
+      }
+      try {
+        errorProcessOwner.capture({
+          error,
+          source: 'proxy-gateway',
+          module: 'openai-responses-stream',
+          functionName,
+          stage: 'stream-decoding',
+          protocol: 'openai-responses',
+          category: 'local_conversion',
+          requestId,
+        });
+      } catch {
+        // Diagnostic failure must preserve stream termination without recursive logging.
+      }
     }
     function* mapChunk(chunk: Buffer): Generator<string> {
       if (completed) {
@@ -188,12 +211,29 @@ export function createResponsesStream(
               complete(candidate.finishReason);
               return;
             }
-          } catch {
+          } catch (error) {
             streamFailed ||= hooks.requiresCleanImageEnd;
+            if (!(error instanceof Error) || classifyTransportError(error) !== 'cancelled') {
+              try {
+                errorProcessOwner.capture({
+                  error,
+                  source: 'proxy-gateway',
+                  module: 'openai-responses-stream',
+                  functionName: 'mapChunk',
+                  stage: 'stream-mapping',
+                  protocol: 'openai-responses',
+                  category: 'local_conversion',
+                  requestId,
+                });
+              } catch {
+                // Diagnostic failure must preserve per-event continuation without recursive logging.
+              }
+            }
             // Preserve the existing adapter policy for per-event mapping failures.
           }
         }
       } catch (error) {
+        captureDecodeError(error, 'mapChunk');
         fail(
           'stream_decode_error',
           error instanceof TypeError
@@ -212,7 +252,8 @@ export function createResponsesStream(
         (function* () {
           try {
             yield* mapChunk(Buffer.from(decoder.decode() + '\n\n'));
-          } catch {
+          } catch (error) {
+            captureDecodeError(error, 'end');
             fail('stream_decode_error', 'Upstream response stream contained invalid UTF-8.');
             return;
           }

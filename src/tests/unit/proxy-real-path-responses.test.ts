@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
 import { z } from 'zod';
+import { PIXEL_PNG, PIXEL_GIF } from '../fixtures/image-content';
 
 import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
@@ -336,7 +337,10 @@ describe('real request path, Responses input compatibility', () => {
       const lease = createLease([createAccount('acc-1')]);
       const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
       const reply = createReply();
-      const image = { type: 'input_image', image_url: 'data:image/png;base64,AA==' };
+      const image = {
+        type: 'input_image',
+        image_url: `data:image/png;base64,${PIXEL_PNG.toString('base64')}`,
+      };
 
       await controller.responses(
         {
@@ -351,7 +355,10 @@ describe('real request path, Responses input compatibility', () => {
       expect(reply.statusCode).toBe(200);
       expect(upstream.calls).toHaveLength(1);
       expect(upstream.calls[0]?.body.request.contents).toEqual([
-        { role: 'user', parts: [{ inlineData: { mimeType: 'image/png', data: 'AA==' } }] },
+        {
+          role: 'user',
+          parts: [{ inlineData: { mimeType: 'image/png', data: PIXEL_PNG.toString('base64') } }],
+        },
       ]);
     },
   );
@@ -465,7 +472,7 @@ describe('real request path, Responses input compatibility', () => {
                 { type: 'input_text', text: 'image generated' },
                 {
                   type: 'input_image',
-                  image_url: 'data:image/webp;name=source;BASE64,AQ==',
+                  image_url: `data:image/gif;name=source;BASE64,${PIXEL_GIF.toString('base64')}`,
                 },
               ],
             },
@@ -489,7 +496,7 @@ describe('real request path, Responses input compatibility', () => {
             id: 'call_image',
           },
         }),
-        { inlineData: { mimeType: 'image/webp', data: 'AQ==' } },
+        { inlineData: { mimeType: 'image/gif', data: PIXEL_GIF.toString('base64') } },
       ]);
       expect(JSON.stringify(toolParts?.[0])).not.toContain('data:image/');
     },

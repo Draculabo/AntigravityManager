@@ -15,7 +15,7 @@ import {
   decodeThoughtRecordPage,
   ThoughtMutationReceiptSchema,
 } from './thought-management.schema';
-import { DiagnosticContentCapabilities } from '../diagnostics/content-capability';
+import { DiagnosticContentCapabilities } from '@/shared/observability/content-capability';
 import { ThoughtCaptureLeases } from './thought-capture-leases';
 import {
   ContentReadInputSchema,
@@ -24,7 +24,7 @@ import {
   DIAGNOSTIC_RETAINED_BYTES,
   type ContentReadInput,
   type ContentIdentity,
-} from '../diagnostics/content-capability.schema';
+} from '@/shared/observability/content-capability.schema';
 import {
   ThoughtSessionsInputSchema,
   ThoughtSessionInputSchema,

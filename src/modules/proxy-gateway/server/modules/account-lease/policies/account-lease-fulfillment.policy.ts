@@ -1,4 +1,5 @@
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { googleUsageGrantHash } from '@/modules/cloud-account/incarnation';
 import type {
   AccountLeaseHydrationPolicy,
   AccountLeaseRefreshControl,
@@ -46,23 +47,27 @@ export class AccountLeaseFulfillmentPolicy {
       }
 
       const timestamp = Date.now();
+      const token = {
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        id_token: tokenData.id_token,
+        token_type: tokenData.token_type,
+        expires_in: tokenData.expires_in,
+        expiry_timestamp: tokenData.expiry_timestamp,
+        project_id: effectiveProjectId,
+        oauth_client_key: tokenData.oauth_client_key,
+        session_id: tokenData.session_id,
+        upstream_proxy_url: tokenData.upstream_proxy_url,
+      };
       return {
         id: accountId,
+        lifecycle_generation: tokenData.stored_context?.account.lifecycle_generation,
+        google_usage_subject_hash: tokenData.stored_context?.account.google_usage_subject_hash,
+        google_usage_grant_hash: googleUsageGrantHash(token) ?? undefined,
         provider: 'google',
         email: tokenData.email,
         device_profile: persistedAccount.device_profile,
-        token: {
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
-          id_token: tokenData.id_token,
-          token_type: tokenData.token_type,
-          expires_in: tokenData.expires_in,
-          expiry_timestamp: tokenData.expiry_timestamp,
-          project_id: effectiveProjectId,
-          oauth_client_key: tokenData.oauth_client_key,
-          session_id: tokenData.session_id,
-          upstream_proxy_url: tokenData.upstream_proxy_url,
-        },
+        token,
         created_at: timestamp,
         last_used: timestamp,
       };

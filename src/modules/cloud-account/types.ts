@@ -150,6 +150,9 @@ export interface CloudAccountOAuthLeaseContext {
 }
 
 export interface CloudAccount {
+  /** Private verified usage identity; never included in account views or exports. */
+  google_usage_subject_hash?: string;
+  google_usage_grant_hash?: string;
   /** Storage-owned incarnation; omitted from account exports and renderer projections. */
   lifecycle_generation?: string;
   id: string; // UUID
@@ -284,6 +287,8 @@ export const CloudAccountHealthSchema = z
 export const CloudAccountLifecycleGenerationSchema = z.string().regex(/^[a-f0-9]{32}$/);
 
 export const CloudAccountSchema = z.object({
+  google_usage_subject_hash: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
+  google_usage_grant_hash: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
   lifecycle_generation: CloudAccountLifecycleGenerationSchema.optional(),
   id: z.string(),
   provider: z.enum(['google', 'anthropic']),

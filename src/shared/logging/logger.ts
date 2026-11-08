@@ -13,6 +13,7 @@ import {
 } from '@/shared/observability/operationDiagnostic';
 import { currentOperationIdentity } from '@/shared/observability/operationScope';
 import { SwitchTraceSchema } from '@/shared/observability/switchDiagnostic';
+import { LocalErrorDispatch, type LocalErrorSink } from './local-error-sink';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
@@ -60,6 +61,7 @@ function safeStringify(obj: unknown): string {
 }
 
 class Logger {
+  private readonly localErrors = new LocalErrorDispatch();
   private winstonLogger: winston.Logger;
   private recentLogs: LogEntry[] = [];
   private sentryReporter: SentryReporter | null = null;
@@ -161,6 +163,14 @@ class Logger {
     this.sentryEnabled = enabled;
   }
 
+  setLocalErrorSink(sink: LocalErrorSink): () => void {
+    return this.localErrors.register(sink);
+  }
+
+  getLocalErrorSinkFailures(): number {
+    return this.localErrors.failedCaptures;
+  }
+
   private formatArgs(args: unknown[]): string {
     return args
       .map((arg) => (isObjectLike(arg) ? safeStringify(arg) : String(sanitizeObject(arg))))
@@ -198,6 +208,10 @@ class Logger {
       level,
       message: mergedMessage,
     });
+
+    if (level === 'error') {
+      this.localErrors.capture({ message: sanitizedMessage, error: this.extractError(args) });
+    }
 
     if (
       level === 'error' &&

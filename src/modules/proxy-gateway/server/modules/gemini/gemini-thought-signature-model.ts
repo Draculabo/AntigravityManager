@@ -1,4 +1,4 @@
-import type { GeminiPart } from '../../../antigravity/types';
+import type { GeminiContent, GeminiPart } from '../../../antigravity/types';
 import { classifyThoughtSignatureFamily } from '../../../antigravity/thought-signature-format';
 import { normalizeThoughtSignatureModelContext } from '../../../antigravity/thought-signature-model';
 import {
@@ -48,5 +48,72 @@ export function assertGeminiThoughtSignatureModel(
         );
       }
     }
+  }
+}
+
+const MODEL_SWITCH_EVIDENCE_MS = 10 * 60 * 1000;
+const MAX_MODEL_SWITCH_SESSIONS = 1024;
+
+export class GeminiModelSwitchHistory {
+  private readonly geminiSuccess = new Map<string, number>();
+
+  recordSuccess(sessionKey: string | undefined, model: string, now = Date.now()): void {
+    if (!sessionKey || resolveTargetFamily(model) !== 'gemini') {
+      return;
+    }
+    this.geminiSuccess.delete(sessionKey);
+    this.geminiSuccess.set(sessionKey, now + MODEL_SWITCH_EVIDENCE_MS);
+    if (this.geminiSuccess.size > MAX_MODEL_SWITCH_SESSIONS) {
+      const oldest = this.geminiSuccess.keys().next().value;
+      if (oldest !== undefined) {
+        this.geminiSuccess.delete(oldest);
+      }
+    }
+  }
+
+  prepare(
+    contents: GeminiContent[],
+    requestedModel: string,
+    targetModel: string,
+    sessionKey: string | undefined,
+    now = Date.now(),
+  ): GeminiContent[] {
+    const expiresAt = sessionKey ? this.geminiSuccess.get(sessionKey) : undefined;
+    if (
+      expiresAt === undefined ||
+      expiresAt <= now ||
+      resolveTargetFamily(requestedModel) !== 'claude' ||
+      resolveTargetFamily(targetModel) !== 'claude'
+    ) {
+      return contents;
+    }
+
+    let changed = false;
+    const projected = contents.flatMap((content) => {
+      if (content.role !== 'model') {
+        return [content];
+      }
+      const parts = content.parts.flatMap((part) => {
+        const signature = part.thoughtSignature ?? part.thought_signature;
+        const family = signature ? classifyThoughtSignatureFamily(signature) : 'unknown';
+        if (family !== 'gemini' && family !== 'placeholder') {
+          return [part];
+        }
+        const { thoughtSignature, thought_signature, ...unsigned } = part;
+        changed = true;
+        const fields = Object.keys(unsigned);
+        const privateThought =
+          unsigned.thought === true && fields.every((key) => key === 'thought' || key === 'text');
+        return privateThought || fields.length === 0 ? [] : [unsigned];
+      });
+      if (parts.length === 0 && content.parts.length > 0) {
+        return [];
+      }
+      return parts.length !== content.parts.length ||
+        parts.some((part, index) => part !== content.parts[index])
+        ? [{ ...content, parts }]
+        : [content];
+    });
+    return changed ? projected : contents;
   }
 }

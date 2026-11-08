@@ -1,3 +1,4 @@
+import { SettingsSaveFeedback } from '@/modules/config/components/SettingsSaveFeedback';
 import { UpstreamProxySettings } from '@/modules/config/components/UpstreamProxySettings';
 import { ThinkingBudgetSettings } from '@/modules/config/components/ThinkingBudgetSettings';
 import { createFileRoute } from '@tanstack/react-router';
@@ -38,6 +39,9 @@ import {
 } from '@/modules/antigravity-runtime/actions/system';
 import { isClarityAvailable } from '@/shared/analytics/clarity';
 import { AntigravityClientCacheSettings } from '@/modules/antigravity-runtime/components/AntigravityClientCacheSettings';
+import { ClaudeCoworkRuntimeSettings } from '@/modules/antigravity-runtime/components/ClaudeCoworkRuntimeSettings';
+import { ErrorDiagnosticsCard } from '@/modules/error-diagnostics/ui';
+import { ImageSendWindowSettings } from '@/modules/proxy-gateway/ui';
 
 function parseArgsInput(value: string): string[] {
   const args: string[] = [];
@@ -76,6 +80,7 @@ function parseArgsInput(value: string): string[] {
 function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { t, i18n } = useTranslation();
+  const settings = useAppConfig();
   const {
     config,
     isLoading,
@@ -83,7 +88,7 @@ function SettingsPage() {
     serviceAvailable,
     accountAlertPolicyAvailable,
     retryService,
-  } = useAppConfig();
+  } = settings;
   const { toast } = useToast();
 
   // Local draft overrides for executable paths and arguments
@@ -343,6 +348,7 @@ function SettingsPage() {
 
   return (
     <div className="container space-y-5">
+      <SettingsSaveFeedback {...settings} />
       <div className="flex items-start gap-3">
         <div className="bg-warning-soft text-warning border-warning-border flex size-11 shrink-0 items-center justify-center rounded-xl border">
           <Settings className="size-5" aria-hidden="true" />
@@ -760,7 +766,9 @@ function SettingsPage() {
             </Card>
           )}
 
+          <ClaudeCoworkRuntimeSettings />
           <AntigravityClientCacheSettings />
+          <ErrorDiagnosticsCard config={config} available={serviceAvailable} />
 
           <Card className="shadow-none">
             <CardHeader className="p-4">
@@ -1093,19 +1101,23 @@ function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-            <UpstreamProxySettings
+            <UpstreamProxySettings onApplicationResult={settings.recordServiceApplication}
               proxy={proxyConfig}
               available={serviceAvailable}
               onSaved={async () => {
                 await retryService();
               }}
             />
-            <ThinkingBudgetSettings
+            <ThinkingBudgetSettings onApplicationResult={settings.recordServiceApplication}
               config={proxyConfig.thinking_budget}
               available={serviceAvailable}
               onSaved={async () => {
                 await retryService();
               }}
+            />
+            <ImageSendWindowSettings
+              config={proxyConfig.image_scheduler}
+              available={serviceAvailable}
             />
           </fieldset>
         </TabsContent>

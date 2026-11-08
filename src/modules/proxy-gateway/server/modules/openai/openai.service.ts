@@ -1,4 +1,7 @@
+import { createOverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { runGenerationWithDeadline } from '../../common/generation-deadline';
+import { isUpstreamStreamInterruption } from '../../common/stream-interruption';
 import { assertOpenAIGenerationHistory } from '../../common/generation-history';
 import { throwIfRequestAborted } from '../../common/request-cancellation';
 import { publicProxyErrorMessage } from '../../common/public-error-message';
@@ -26,6 +29,7 @@ import {
 import { preparedSchemaState } from '@/modules/proxy-gateway/antigravity/schema/SchemaPreparation';
 import {
   prepareOpenAIRequestSchemas,
+  validateOpenAIRequestTools,
   type PreparedOpenAISchemas,
 } from './chat/openai-schema-preparation';
 import { isString } from 'lodash-es';
@@ -36,7 +40,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { Observable } from 'rxjs';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { resolveGlobalSystemPrompt } from '@/modules/proxy-gateway/antigravity/GlobalSystemPrompt';
-import { buildToolConfig } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
 import { cleanImageModelName } from '@/modules/proxy-gateway/antigravity/ImageGenerationConfig';
 import {
   isMalformedFunctionCallFinishReason,
@@ -143,6 +146,31 @@ export class OpenAIService extends BaseProxyService {
     schemaPreparation?: PreparedOpenAISchemas,
     requestContext?: SignatureScopeContext,
   ): Promise<OpenAIChatResponse | Observable<string>> {
+    return runGenerationWithDeadline(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      signal,
+      async (boundedSignal, owner) => {
+        const result = await this.executeChatCompletions(
+          request,
+          outputProtocol,
+          boundedSignal,
+          responsesContext,
+          schemaPreparation,
+          requestContext,
+        );
+        return owner && result instanceof Observable ? owner.retainObservable(result) : result;
+      },
+    );
+  }
+
+  private async executeChatCompletions(
+    request: OpenAIChatRequest,
+    outputProtocol: OpenAIOutputProtocol,
+    signal: AbortSignal,
+    responsesContext?: OpenAIResponsesExecutionContext,
+    schemaPreparation?: PreparedOpenAISchemas,
+    requestContext?: SignatureScopeContext,
+  ): Promise<OpenAIChatResponse | Observable<string>> {
     throwIfRequestAborted(signal);
     const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
     request = responsesContext?.mediaAdmitted ? request : admitOpenAIInlineMedia(request);
@@ -154,8 +182,26 @@ export class OpenAIService extends BaseProxyService {
       outputProtocol === 'chat-completions'
         ? resolveOpenAIStreamUsage(request.stream_options)
         : false;
-    const appliedVariantRequest = applyOpenAIModelVariant(request);
+    const routingModel = request.model.toLowerCase().includes('-image')
+      ? cleanImageModelName(request.model)
+      : request.model;
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(routingModel);
+    const explicitPhysicalTarget =
+      routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
+    const appliedVariantRequest = applyOpenAIModelVariant(
+      { ...request, model: routeResolution.resolvedModel },
+      explicitPhysicalTarget,
+    );
     const routedRequest = appliedVariantRequest.request;
+    const overloadThinkingRecovery = createOverloadThinkingRecovery({
+      model: request.model,
+      explicitThinking:
+        request.thinking !== undefined ||
+        request.reasoning_effort !== undefined ||
+        request.reasoning !== undefined,
+      physicalTarget: explicitPhysicalTarget,
+      registeredBudget: appliedVariantRequest.variant?.thinkingBudget,
+    });
     const toolCallIdentity = new ResponseToolCallIdentity(() =>
       hashSessionAnchor([
         'openai-response:v1',
@@ -164,13 +210,10 @@ export class OpenAIService extends BaseProxyService {
         routedRequest.tools,
       ]),
     );
+    const schemaProtocol = outputProtocol === 'responses' ? 'responses' : 'openai';
     const { schemas: preparedSchemas, batch: schemaBatch } =
-      schemaPreparation ??
-      prepareOpenAIRequestSchemas(
-        routedRequest,
-        outputProtocol === 'responses' ? 'responses' : 'openai',
-      );
-    buildToolConfig(routedRequest.tool_choice, preparedSchemas.tools ?? []);
+      schemaPreparation ?? prepareOpenAIRequestSchemas(routedRequest, schemaProtocol);
+    validateOpenAIRequestTools(routedRequest.tool_choice, preparedSchemas, schemaProtocol);
     const recoveryBudget = { attempted: false };
     const scope = responsesContext
       ? resolveResponsesSessionScope(
@@ -190,15 +233,11 @@ export class OpenAIService extends BaseProxyService {
       ? this.toOpenAISessionKey(responsesContext.responseId)
       : scope.cacheKey;
     const targetAccountId = readTargetAccountHeader(requestContext?.headers);
-    const routingModel = routedRequest.model.toLowerCase().includes('-image')
-      ? cleanImageModelName(routedRequest.model)
-      : routedRequest.model;
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(routingModel);
-    const targetModel = routeResolution.resolvedModel;
+    const targetModel = routedRequest.model;
     const effort = resolveOpenAIRequestEffort(routedRequest);
-    const enforceAuthoritativeThinkingBudget =
-      usesAuthoritativeThinkingBudget(request.model) ||
-      usesAuthoritativeThinkingBudget(targetModel);
+    const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
+      routeResolution.resolvedModel,
+    );
     const isImageRequest = isGeminiImageModel(routingModel) || isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
@@ -210,7 +249,10 @@ export class OpenAIService extends BaseProxyService {
 
     // Retry loop for account selection
     let lastError: unknown = null;
-    const retryState = this.createTokenRetryState(effort);
+    const retryState = this.createTokenRetryState(
+      effort,
+      appliedVariantRequest.variant !== null || explicitPhysicalTarget,
+    );
     const maxRetries = await this.getMaxRetryAttempts(
       retryState,
       targetModel,
@@ -253,6 +295,7 @@ export class OpenAIService extends BaseProxyService {
         token.id,
         targetModel,
         effort,
+        retryState.physicalTarget,
       );
       const effectiveVariantRequest = rebindOpenAIModelVariant(
         appliedVariantRequest,
@@ -280,6 +323,7 @@ export class OpenAIService extends BaseProxyService {
           'openai',
           {
             ...preparedSchemaState(schemaBatch),
+            omitToolsWithResponseSchema: schemaProtocol === 'responses',
             globalSystemPrompt,
             mediaWindow: getServerConfig()?.image_scheduler,
             imageRequest: {
@@ -309,7 +353,13 @@ export class OpenAIService extends BaseProxyService {
               token.token.upstream_proxy_url,
               accountTelemetryHeaders,
               signal,
-              this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
+              this.createScopedGenerationOptions(
+                token,
+                scope.storeKey,
+                recoveryBudget,
+                signal,
+                overloadThinkingRecovery,
+              ),
             );
             this.commitUpstreamSession(token, signal);
             return this.createOpenAIProtocolStream(
@@ -352,7 +402,13 @@ export class OpenAIService extends BaseProxyService {
               token.token.upstream_proxy_url,
               accountTelemetryHeaders,
               signal,
-              this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
+              this.createScopedGenerationOptions(
+                token,
+                scope.storeKey,
+                recoveryBudget,
+                signal,
+                overloadThinkingRecovery,
+              ),
             );
             this.commitUpstreamSession(token, signal);
             this.markUpstreamSuccessForResponse(token, geminiBody.model, response);
@@ -394,7 +450,13 @@ export class OpenAIService extends BaseProxyService {
             token.token.upstream_proxy_url,
             accountTelemetryHeaders,
             signal,
-            this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
+            this.createScopedGenerationOptions(
+              token,
+              scope.storeKey,
+              recoveryBudget,
+              signal,
+              overloadThinkingRecovery,
+            ),
           );
           this.commitUpstreamSession(token, signal);
           this.markUpstreamSuccessForResponse(token, geminiBody.model, response);
@@ -426,13 +488,9 @@ export class OpenAIService extends BaseProxyService {
           throw err;
         }
         this.rethrowTerminalGenerationFailure(err, retryState);
-        if (
-          err instanceof Error &&
-          !this.retryPolicy.isFatalCircuitBreakError(err) &&
-          this.isProjectContextError(err.message)
-        ) {
+        if (!this.retryPolicy.isFatalCircuitBreakError(err) && this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)) {
           this.logger.warn(
-            `OpenAI compatibility request hit project context issue, retrying without project: ${err.message}`,
+            'OpenAI compatibility project context rejected. Retrying once without project.',
           );
           try {
             markProxyNormalizationStarted();
@@ -450,6 +508,7 @@ export class OpenAIService extends BaseProxyService {
               'openai',
               {
                 ...preparedSchemaState(schemaBatch),
+                omitToolsWithResponseSchema: schemaProtocol === 'responses',
                 globalSystemPrompt,
                 mediaWindow: getServerConfig()?.image_scheduler,
                 imageRequest: {
@@ -479,7 +538,13 @@ export class OpenAIService extends BaseProxyService {
                 token.token.upstream_proxy_url,
                 accountTelemetryHeaders,
                 signal,
-                this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
+                this.createScopedGenerationOptions(
+                  token,
+                  scope.storeKey,
+                  recoveryBudget,
+                  signal,
+                  overloadThinkingRecovery,
+                ),
               );
               this.commitUpstreamSession(token, signal);
               return this.createOpenAIProtocolStream(
@@ -506,7 +571,13 @@ export class OpenAIService extends BaseProxyService {
               token.token.upstream_proxy_url,
               accountTelemetryHeaders,
               signal,
-              this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
+              this.createScopedGenerationOptions(
+                token,
+                scope.storeKey,
+                recoveryBudget,
+                signal,
+                overloadThinkingRecovery,
+              ),
             );
             this.commitUpstreamSession(token, signal);
             this.markUpstreamSuccessForResponse(token, fallbackBody.model, response);
@@ -760,7 +831,7 @@ export class OpenAIService extends BaseProxyService {
         hasSentDone = true;
         terminated = true;
         clearHeartbeat();
-        if (successLease && !requiresCleanImageEnd) {
+        if (successLease && !requiresCleanImageEnd && !streamFailed) {
           this.markUpstreamSuccess(successLease, signatureSourceModel ?? model);
         }
         subscriber.complete();
@@ -781,6 +852,41 @@ export class OpenAIService extends BaseProxyService {
         subscriber.complete();
       };
 
+      const finishInterrupted = (): boolean => {
+        if (
+          terminated ||
+          requiresCleanImageEnd ||
+          streamFailed ||
+          !outputState.interruptionFinishReason ||
+          (!hasEmittedContent && toolCallIndex === 0)
+        ) {
+          return false;
+        }
+        streamFailed = true;
+        idleTimer.clear();
+        releaseImagePermit();
+        if (!sawFinishReason) {
+          sawFinishReason = true;
+          pushChunk({
+            id: streamId,
+            object: 'chat.completion.chunk',
+            created,
+            model,
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: toolCallIndex > 0 ? 'tool_calls' : 'length',
+              },
+            ],
+            usage: includeUsage ? null : lastUsage,
+          });
+        }
+        this.logger.warn('Finalizing interrupted Chat output without committing upstream success.');
+        complete();
+        return true;
+      };
+
       // Keep the downstream connection alive while the upstream is still working but
       // silent. Comments are ignored by SSE clients, so they never change usage,
       // signatures or the first-real-event gate.
@@ -793,6 +899,9 @@ export class OpenAIService extends BaseProxyService {
       };
 
       const idleTimer = this.createStreamIdleTimer(upstreamStream, 'OpenAI-SSE', () => {
+        if (finishInterrupted()) {
+          return;
+        }
         fail('upstream_timeout', 'Upstream response stream timed out.');
       });
 
@@ -1125,6 +1234,9 @@ export class OpenAIService extends BaseProxyService {
           this.markUpstreamSuccess(successLease, signatureSourceModel ?? model);
         }
         if (streamFailed || !sawFinishReason) {
+          if (finishInterrupted()) {
+            return;
+          }
           fail('upstream_interrupted', 'Upstream stream ended without output or a finish reason.');
           return;
         }
@@ -1141,12 +1253,18 @@ export class OpenAIService extends BaseProxyService {
         this.logger.error(
           `OpenAI-compatible stream error: ${publicProxyErrorMessage(cleanError.message)}`,
         );
+        if (isUpstreamStreamInterruption(err) && finishInterrupted()) {
+          return;
+        }
         handleData(Buffer.from('\n\n'));
         fail('upstream_stream_error', 'Upstream response stream failed.');
       });
 
       upstreamStream.on('close', () => {
         if (terminated) {
+          return;
+        }
+        if (finishInterrupted()) {
           return;
         }
         fail('upstream_interrupted', 'Upstream response stream closed before completion.');

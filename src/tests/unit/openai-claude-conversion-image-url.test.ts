@@ -6,6 +6,14 @@ import {
 } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
 import type { OpenAIContentPart } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
+const pendingToolCall = (id: string) => ({
+  role: 'assistant',
+  content: '',
+  tool_calls: [
+    { id, type: 'function' as const, function: { name: 'read_media', arguments: '{}' } },
+  ],
+});
+
 describe('OpenAI image URL conversion', () => {
   const imageUrls: ReadonlyArray<NonNullable<OpenAIContentPart['image_url']>> = [
     'data:image/png;base64,AA==',
@@ -44,6 +52,7 @@ describe('OpenAI image URL conversion', () => {
     const request = convertOpenAIToClaude({
       model: 'gemini-3-flash',
       messages: [
+        pendingToolCall('call_image'),
         {
           role: 'tool',
           tool_call_id: 'call_image',
@@ -55,7 +64,7 @@ describe('OpenAI image URL conversion', () => {
       ],
     });
 
-    expect(request.messages).toEqual([
+    expect(request.messages.slice(1)).toEqual([
       {
         role: 'user',
         content: [
@@ -110,6 +119,7 @@ describe('OpenAI image URL conversion', () => {
     const request = convertOpenAIToClaude({
       model: 'gemini-3-flash',
       messages: [
+        pendingToolCall('call_audio'),
         {
           role: 'tool',
           tool_call_id: 'call_audio',
@@ -117,7 +127,7 @@ describe('OpenAI image URL conversion', () => {
         },
       ],
     });
-    expect(request.messages[0]?.content).toEqual([
+    expect(request.messages[1]?.content).toEqual([
       {
         type: 'tool_result',
         tool_use_id: 'call_audio',
@@ -131,6 +141,7 @@ describe('OpenAI image URL conversion', () => {
     const request = convertOpenAIToClaude({
       model: 'gemini-3-flash',
       messages: [
+        pendingToolCall('call_image'),
         {
           role: 'tool',
           tool_call_id: 'call_image',
@@ -144,7 +155,7 @@ describe('OpenAI image URL conversion', () => {
       ],
     });
 
-    expect(request.messages[0]?.content).toEqual([
+    expect(request.messages[1]?.content).toEqual([
       {
         type: 'tool_result',
         tool_use_id: 'call_image',

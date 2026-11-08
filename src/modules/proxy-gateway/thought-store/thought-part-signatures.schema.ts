@@ -1,14 +1,12 @@
 import { z } from 'zod';
+import { omitThoughtSignaturePlaceholder } from '../antigravity/ThoughtSignatureCompat';
 
 const SignatureSchema = z
   .string()
   .min(1)
   .max(16 * 1024 * 1024)
-  .refine(
-    (value) => value !== 'skip_thought_signature_validator',
-    'A placeholder is not a persisted signature',
-  )
-  .nullable();
+  .nullable()
+  .transform(omitThoughtSignaturePlaceholder);
 const PositionSchema = z.number().int().nonnegative();
 export const ThoughtPartSignaturesSchema = z
   .array(

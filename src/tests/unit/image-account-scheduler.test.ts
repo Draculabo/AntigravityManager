@@ -92,6 +92,7 @@ describe('ImageAccountSchedulerService', () => {
     expect(parsed.image_scheduler).toEqual({
       per_account_concurrency: 4,
       send_window_enabled: false,
+      send_window_strategy: 'count',
       send_window_count: 10,
       send_window_memory_mib: 32,
       send_window_strip_remote_urls: false,

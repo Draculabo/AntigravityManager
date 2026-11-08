@@ -26,6 +26,39 @@ const NODE_KEYWORDS = new Set([
 ]);
 const ARRAY_KEYWORDS = new Set(['allOf', 'anyOf', 'oneOf', 'prefixItems']);
 
+function recoverObjectItemProperties(source: JsonSchemaMap): JsonSchemaMap {
+  const { type, items, properties } = source;
+  const objectShape =
+    typeof type === 'string'
+      ? type.toLowerCase() === 'object'
+      : type === undefined && isSchemaMap(properties);
+  if (!objectShape || !isSchemaMap(items)) {
+    return source;
+  }
+
+  const fields = Object.values(items);
+  // A misplaced map contains named declarations, while a normal items schema describes one value.
+  if (
+    fields.length === 0 ||
+    !fields.every(
+      (field) =>
+        isSchemaMap(field) &&
+        (typeof field.type === 'string' ||
+          Array.isArray(field.type) ||
+          typeof field.$ref === 'string'),
+    )
+  ) {
+    return source;
+  }
+
+  const recovered: JsonSchemaMap = {
+    ...source,
+    properties: { ...items, ...(isSchemaMap(properties) ? properties : {}) },
+  };
+  delete recovered.items;
+  return recovered;
+}
+
 function resolvePointer(document: JsonSchemaMap, reference: string): JsonValue {
   if (!reference.startsWith('#')) {
     throw new SchemaInputError('unsupported-reference');
@@ -108,6 +141,9 @@ export function resolveSchemaReferences(
           }
           // Resolve the target while it is on the stack; sibling declarations win.
           source = { ...walk(target, depth + 1, root, budget, false), ...node };
+        }
+        if (policy === 'tool') {
+          source = recoverObjectItemProperties(source);
         }
         const result: JsonSchemaMap = {};
         for (const [key, value] of Object.entries(source)) {

@@ -65,6 +65,7 @@ export default defineConfig({
         main: 'src/core/main.ts',
         'traffic-audit.worker': 'src/modules/proxy-gateway/audit/traffic-audit.worker.ts',
         'thought-store.worker': 'src/modules/proxy-gateway/thought-store/thought-store.worker.ts',
+        'error-window.worker': 'src/modules/error-diagnostics/error-window.worker.ts',
       },
       external: [
         'better-sqlite3',

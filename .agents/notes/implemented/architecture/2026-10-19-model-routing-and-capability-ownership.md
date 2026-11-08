@@ -23,6 +23,14 @@ stable across OpenAI, Anthropic and Gemini request paths. Unsupported effort
 values fail before account selection. Account-local capability denials survive
 ordinary cache reload and do not become a process-wide rejection flag.
 
+Resolved targets carry physical provenance through ordinary and grace retries, account filtering,
+quota/cooldown recovery, targeted selection, refreshed candidates and final binding. Public presets
+and physical recipes can share a name but differ in budget. A configured physical target therefore
+cannot be reinterpreted as a public preset or rewritten by a legacy alias. Explicit fixed tiers
+require the complete registered profile, including automatic-budget sentinels. Existing registered
+provider retirement forwarding keeps its explicit replacement semantics. Count and generation
+consume the same resolved target and admitted thinking level.
+
 ## Alternatives considered
 
 A process-wide rejection flag and catalog-as-entitlement shortcut were rejected:
@@ -52,3 +60,4 @@ stage report is D08 routing and availability implementation (local artifact `D08
 
 Live-provider and packaged-client checks remain deferred until the full D01–D29
 stage is complete.
+The 2026-11-07 provenance and tier-binding changes were independently source-reviewed. That review fixed legacy public recipe fallthrough on physical targets and a Gemini count effort mismatch. Earlier passing evidence above predates this snapshot. Tests, test edits, type checks, lint, builds, formatting, check scripts and live operations are explicitly deferred by the user. See the current source implementation report (local artifact `D08-explicit-tier-binding-implementation.md` in the 2026-10-11 review collection).

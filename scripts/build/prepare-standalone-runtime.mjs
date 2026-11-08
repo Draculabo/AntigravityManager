@@ -201,6 +201,7 @@ try {
     cliSha256: await hash(path.join(root, 'cli', 'main.cjs')),
     auditWorkerSha256: await hash(path.join(root, 'core', 'traffic-audit.worker.js')),
     thoughtWorkerSha256: await hash(path.join(root, 'core', 'thought-store.worker.js')),
+    errorWindowWorkerSha256: await hash(path.join(root, 'core', 'error-window.worker.js')),
   };
   await writeFile(
     path.join(root, 'runtime-manifest.json'),

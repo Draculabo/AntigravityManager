@@ -37,7 +37,7 @@ describe('GenerationConstraintsService', () => {
     });
 
     expect(request.request.generationConfig).toEqual({
-      maxOutputTokens: 65536,
+      maxOutputTokens: 11024,
       thinkingConfig: {
         includeThoughts: true,
         thinkingBudget: 10000,
@@ -62,7 +62,7 @@ describe('GenerationConstraintsService', () => {
 
     expect(request.request.generationConfig).toEqual({
       temperature: 0.2,
-      maxOutputTokens: 42_769,
+      maxOutputTokens: 11_025,
       thinkingConfig: {
         includeThoughts: true,
         thinkingBudget: 10_001,
@@ -116,10 +116,10 @@ describe('GenerationConstraintsService', () => {
     expect(request.request.generationConfig?.thinkingConfig).toEqual({
       thinkingBudget: 8192,
     });
-    expect(request.request.generationConfig?.maxOutputTokens).toBe(20_000);
+    expect(request.request.generationConfig?.maxOutputTokens).toBe(9_216);
   });
 
-  it('caps negative adaptive thinking budgets by model thinking budget and output capacity', () => {
+  it('preserves adaptive thinking without replacing it with a fixed account budget', () => {
     const policy = createPolicy({
       outputLimit: 12_000,
       thinkingBudget: 8_000,
@@ -133,7 +133,7 @@ describe('GenerationConstraintsService', () => {
     policy.applyInternalGenerationConstraints(request, 'models/gemini-2.5-flash', 'acc-1');
 
     expect(request.request.generationConfig?.thinkingConfig).toEqual({
-      thinkingBudget: 8000,
+      thinkingBudget: -1,
     });
     expect(request.request.generationConfig?.maxOutputTokens).toBe(12_000);
   });
@@ -147,7 +147,7 @@ describe('GenerationConstraintsService', () => {
       includeThoughts: true,
     });
     expect(request.request.generationConfig).toEqual({
-      maxOutputTokens: 65536,
+      maxOutputTokens: 4096,
       thinkingConfig: { includeThoughts: true, thinkingBudget: -1 },
     });
   });

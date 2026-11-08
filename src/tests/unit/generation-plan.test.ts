@@ -69,7 +69,7 @@ describe('resolveGenerationPlan', () => {
       outputCap: 4096,
       thinkingCap: 2048,
     });
-    expect(plan.maxOutputTokens).toBe(4096);
+    expect(plan.maxOutputTokens).toBe(3072);
     expect(plan.thinking).toEqual({ kind: 'budget', budget: 2048 });
   });
 
@@ -81,7 +81,7 @@ describe('resolveGenerationPlan', () => {
       outputCap: 65_535,
       thinkingCap: 10_001,
     });
-    expect(plan.maxOutputTokens).toBe(42_769);
+    expect(plan.maxOutputTokens).toBe(11_025);
     expect(plan.thinking).toEqual({ kind: 'budget', budget: 10_001 });
     expect(plan.adjustmentReasons).toContain('output-derived-from-thinking-budget');
   });
@@ -95,7 +95,7 @@ describe('resolveGenerationPlan', () => {
       outputCap: 65_535,
       thinkingCap: 10_001,
     });
-    expect(plan.maxOutputTokens).toBe(18_193);
+    expect(plan.maxOutputTokens).toBe(11_025);
     expect(plan.thinking).toEqual({ kind: 'budget', budget: 10_001 });
     expect(plan.adjustmentReasons).toContain('output-raised-for-thinking-budget');
   });

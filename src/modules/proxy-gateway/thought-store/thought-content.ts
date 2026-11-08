@@ -130,12 +130,19 @@ interface RestorableTurn {
   matchedIndex: number | null;
 }
 
+export type ThoughtContentRestoreOutcome =
+  | { kind: 'restored'; record: ThoughtRecord }
+  | { kind: 'no-candidate' }
+  | { kind: 'unresolved' }
+  | { kind: 'matched-unchanged' };
+
 /** Restore only uniquely identified records; similarity and array order are not ownership. */
 export function restoreStoredThoughts(
   contents: GeminiContent[],
   records: readonly ThoughtRecord[],
   model: string,
   causalAnchors?: readonly string[],
+  onOutcome?: (outcome: ThoughtContentRestoreOutcome) => void,
 ): number {
   const available = records.filter((record) => areThoughtRecordModelsCompatible(record, { model }));
   const turns: RestorableTurn[] = [];
@@ -181,12 +188,20 @@ export function restoreStoredThoughts(
 
   let restored = 0;
   for (const turn of turns) {
-    if (turn.complete || turn.matchedIndex === null) {
+    if (turn.complete) {
+      continue;
+    }
+    if (turn.matchedIndex === null) {
+      // The matcher also returns null for ambiguity and competing ownership claims.
+      onOutcome?.({ kind: available.length === 0 ? 'no-candidate' : 'unresolved' });
       continue;
     }
     const record = available[turn.matchedIndex];
     if (restoreRecordIntoParts(turn.parts, record)) {
       restored += 1;
+      onOutcome?.({ kind: 'restored', record });
+    } else {
+      onOutcome?.({ kind: 'matched-unchanged' });
     }
   }
   return restored;

@@ -13,12 +13,41 @@ const image = (data: string, id?: string) => ({
 });
 
 describe('Responses image send window', () => {
+  it('never traverses tool arguments or message metadata as media slots', () => {
+    const call = {
+      type: 'function_call',
+      name: 'inspect',
+      arguments: { type: 'input_image', image_url: 'data:image/png;base64,AQ==' },
+    };
+    const historical = {
+      ...image('Ag=='),
+      metadata: { example: { type: 'input_image', image_url: 'data:image/png;base64,Aw==' } },
+    };
+    const current = image('BA==');
+    const result = applyResponsesImageSendWindow(
+      [call, historical, current],
+      {
+        per_account_concurrency: 4,
+        send_window_enabled: true,
+        send_window_strategy: 'count',
+        send_window_count: 1,
+        send_window_memory_mib: 1,
+        send_window_strip_remote_urls: false,
+      },
+      [current],
+    );
+    expect(result[0]).toEqual(call);
+    expect(result[1]).toMatchObject({ metadata: historical.metadata });
+    expect(result[2]).toEqual(current);
+  });
+
   it('keeps the existing behavior when the window is disabled', () => {
     const input = [image('AQ=='), image('Ag==')];
     expect(
       applyResponsesImageSendWindow(input, {
         per_account_concurrency: 4,
         send_window_enabled: false,
+        send_window_strategy: 'count',
         send_window_count: 1,
         send_window_memory_mib: 1,
         send_window_strip_remote_urls: true,
@@ -35,7 +64,8 @@ describe('Responses image send window', () => {
       {
         per_account_concurrency: 4,
         send_window_enabled: true,
-        send_window_count: 1,
+        send_window_strategy: 'count',
+        send_window_count: 2,
         send_window_memory_mib: 1,
         send_window_strip_remote_urls: false,
       },
@@ -60,6 +90,7 @@ describe('Responses image send window', () => {
       {
         per_account_concurrency: 4,
         send_window_enabled: true,
+        send_window_strategy: 'count',
         send_window_count: 0,
         send_window_memory_mib: 1,
         send_window_strip_remote_urls: false,
@@ -77,6 +108,7 @@ describe('Responses image send window', () => {
         {
           per_account_concurrency: 4,
           send_window_enabled: true,
+          send_window_strategy: 'memory',
           send_window_count: 10,
           send_window_memory_mib: 1,
           send_window_strip_remote_urls: false,
@@ -94,6 +126,7 @@ describe('Responses image send window', () => {
         {
           per_account_concurrency: 4,
           send_window_enabled: true,
+          send_window_strategy: 'memory',
           send_window_count: 10,
           send_window_memory_mib: 0,
           send_window_strip_remote_urls: false,
@@ -112,6 +145,7 @@ describe('Responses image send window', () => {
     const result = applyResponsesImageSendWindow([remote], {
       per_account_concurrency: 4,
       send_window_enabled: true,
+      send_window_strategy: 'count',
       send_window_count: 0,
       send_window_memory_mib: 1,
       send_window_strip_remote_urls: false,

@@ -18,6 +18,8 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 import { responsesIdentityFixture } from './responses-identity.fixture';
+import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
+import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 
 const headers = { authorization: 'Bearer synthetic-durable-owner' };
 const image =
@@ -25,7 +27,10 @@ const image =
 let folder: string | undefined;
 const stores: OpenAIResponsesSessionService[] = [];
 afterEach(async () => {
-  await Promise.all(stores.splice(0).map((store) => store.flush()));
+  for (const store of stores.splice(0)) {
+    await store.flush();
+    store.onModuleDestroy();
+  }
   vi.restoreAllMocks();
   if (folder) {
     if (
@@ -45,7 +50,18 @@ function isolatedDefault() {
   return folder;
 }
 function createStore() {
-  const store = new OpenAIResponsesSessionService();
+  if (!folder) {
+    throw new Error('Missing isolated identity fixture directory');
+  }
+  const store = new OpenAIResponsesSessionService(
+    undefined,
+    new FilesService(
+      new FileContentStore({
+        rootDirectory: path.join(folder, 'public-files'),
+        sweepIntervalMs: 0,
+      }),
+    ),
+  );
   stores.push(store);
   return store;
 }
@@ -142,7 +158,7 @@ describe('Fresh Responses history and restart identity', () => {
       if (!first) {
         throw new Error('Expected preparation');
       }
-      writer.saveDelta(first.responseId, {
+      await writer.saveDeltaWithMedia(first.responseId, {
         ...first.session,
         inputDelta: first.session.inputItems,
         parent: first.parent,
@@ -155,7 +171,7 @@ describe('Fresh Responses history and restart identity', () => {
         'utf8',
       );
       expect(serialized).toContain(first.session.identity.initialTaskFingerprint);
-      expect(serialized).toContain('[historical image omitted]');
+      expect(serialized).toContain('__agm_responses_media_reference');
       expect(serialized).not.toContain(image);
       expect(serialized).not.toContain('synthetic-durable-owner');
       const restarted = createStore();
@@ -168,6 +184,7 @@ describe('Fresh Responses history and restart identity', () => {
       }
       expect(restored.session.identity).toEqual(first.session.identity);
       expect(restored.routingSessionId).toBe(first.routingSessionId);
+      expect(JSON.stringify(restored.request.messages)).toContain(image);
       expect(
         resolveResponsesSessionScope(
           restored.request,

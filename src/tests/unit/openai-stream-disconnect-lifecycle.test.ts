@@ -94,8 +94,12 @@ describe('OpenAI downstream disconnect lifecycle', () => {
     const destroySpy = vi.spyOn(upstream, 'destroy');
     const service = createService();
     const handleChatCompletions = vi.fn(
-      (_request: unknown, _protocol: unknown, _signal: unknown, context: { responseId: string }) =>
-        createResponsesStream(service, upstream, context.responseId),
+      async (
+        _request: unknown,
+        _protocol: unknown,
+        _signal: unknown,
+        context: { responseId: string },
+      ) => createResponsesStream(service, upstream, context.responseId),
     );
     const controller = new OpenAIOperations({ handleChatCompletions } as never);
     const reply = createRawReply();
@@ -126,24 +130,39 @@ describe('OpenAI downstream disconnect lifecycle', () => {
     expect(OpenAIResponsesSessionStore.get(responseId)).toBeNull();
   });
 
-  it('destroys a pending Chat Completions upstream on raw close', async () => {
-    const upstream = new PassThrough();
-    const service = createService();
-    const controller = new OpenAIOperations({
-      handleChatCompletions: vi.fn(() => createChatStream(service, upstream)),
-    } as never);
-    const reply = createRawReply();
+  it.each(['chat', 'completions'] as const)(
+    'destroys a pending %s upstream on raw close',
+    async (surface) => {
+      const upstream = new PassThrough();
+      const service = createService();
+      const controller = new OpenAIOperations({
+        handleChatCompletions: vi.fn(async () => createChatStream(service, upstream)),
+      } as never);
+      const reply = createRawReply();
 
-    await controller.chatCompletions(
-      { messages: [{ content: 'keep streaming', role: 'user' }], model: 'gpt-4o', stream: true },
-      reply as never,
-      createRequest() as never,
-    );
+      if (surface === 'completions') {
+        await controller.completions(
+          { prompt: 'keep streaming', model: 'gpt-4o', stream: true },
+          reply as never,
+          createRequest() as never,
+        );
+      } else {
+        await controller.chatCompletions(
+          {
+            messages: [{ content: 'keep streaming', role: 'user' }],
+            model: 'gpt-4o',
+            stream: true,
+          },
+          reply as never,
+          createRequest() as never,
+        );
+      }
 
-    reply.raw.emit('close');
+      reply.raw.emit('close');
 
-    expect(upstream.destroyed).toBe(true);
-  });
+      expect(upstream.destroyed).toBe(true);
+    },
+  );
 
   it('aborts an upstream request that is still being established', async () => {
     let resolveStream: ((value: Observable<string>) => void) | undefined;

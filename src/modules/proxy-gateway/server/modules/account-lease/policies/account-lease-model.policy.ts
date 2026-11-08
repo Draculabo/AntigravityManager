@@ -1,6 +1,7 @@
 import { AccountModelCatalog, type AccountModelEvidence } from './account-model-catalog';
 import { getPublicModelIdForDisplayName } from '../../../../antigravity/ModelMapping';
 import {
+  isModelTierBindingAllowed,
   rebindModelVariant,
   resolveModelVariant,
 } from '../../../../antigravity/model-variant-registry';
@@ -13,7 +14,6 @@ import {
   isBareModelFamilyAvailable,
   parseBareModelEffort,
   resolveBareFamilyModel,
-  resolveTieredFamilyModel,
   type TieredModelSuffix,
 } from './account-bare-model-tier';
 
@@ -73,14 +73,14 @@ export class AccountLeaseModelPolicy {
     return this.catalog.getPositiveModelEvidenceFromToken(token);
   }
 
-  buildDynamicModelCandidates(modelName: string): string[] | null {
+  buildDynamicModelCandidates(modelName: string, physicalTarget = false): string[] | null {
     const normalizedModel = normalizeModelId(modelName)?.toLowerCase();
     if (!normalizedModel) {
       return null;
     }
 
     if (GEMINI_PRO_FAMILY.has(normalizedModel)) {
-      return this.buildGeminiProCandidates(normalizedModel);
+      return this.buildGeminiProCandidates(normalizedModel, physicalTarget);
     }
 
     if (GEMINI_PRO_IMAGE_FAMILY.has(normalizedModel)) {
@@ -101,13 +101,15 @@ export class AccountLeaseModelPolicy {
       return [
         normalizedModel,
         ...[...GEMINI_4_ARGON_FAMILY].filter((candidate) => candidate !== normalizedModel),
-      ];
+      ].filter((candidate) =>
+        this.isSafeRegisteredFallback(normalizedModel, candidate, physicalTarget),
+      );
     }
 
     return null;
   }
 
-  private buildGeminiProCandidates(normalizedModel: string): string[] {
+  private buildGeminiProCandidates(normalizedModel: string, physicalTarget: boolean): string[] {
     const candidates: string[] = [];
     const seen = new Set<string>();
     const pushCandidate = (candidate: string) => {
@@ -139,10 +141,17 @@ export class AccountLeaseModelPolicy {
     pushCandidate('gemini-3.1-pro-low');
     pushCandidate('gemini-3-pro-low');
 
-    return candidates;
+    return candidates.filter((candidate) =>
+      this.isSafeRegisteredFallback(normalizedModel, candidate, physicalTarget),
+    );
   }
 
-  resolveDynamicModelForAccount(accountId: string, mappedModel: string, effort?: string): string {
+  resolveDynamicModelForAccount(
+    accountId: string,
+    mappedModel: string,
+    effort?: string,
+    physicalTarget = false,
+  ): string {
     const tokenData = this.options.getTokenCache().get(accountId);
 
     if (!tokenData) {
@@ -158,10 +167,6 @@ export class AccountLeaseModelPolicy {
     }
 
     const normalizedMappedModel = normalizeModelId(mappedModel)?.toLowerCase() ?? mappedModel;
-    const safeAvailableModels = this.filterSafeRegisteredFallbacks(
-      normalizedMappedModel,
-      availableModels,
-    );
     if (
       effort !== undefined &&
       isBareModelFamilyAvailable(normalizedMappedModel, availableModels)
@@ -171,16 +176,13 @@ export class AccountLeaseModelPolicy {
     const resolvedModel = this.resolveAvailableModel(
       tokenData,
       normalizedMappedModel,
-      safeAvailableModels,
+      availableModels,
       effort,
+      physicalTarget,
     );
     if (!resolvedModel) {
       return mappedModel;
     }
-    if (!this.isSafeRegisteredFallback(mappedModel, resolvedModel)) {
-      return mappedModel;
-    }
-
     if (resolvedModel !== normalizedMappedModel) {
       this.options.logger.log(
         `[Dynamic-Model-Rewrite] account=${accountId} ${mappedModel} -> ${resolvedModel}`,
@@ -193,6 +195,7 @@ export class AccountLeaseModelPolicy {
     accountId: string,
     mappedModel: string,
     effort?: string,
+    physicalTarget = false,
   ): AccountModelAvailability {
     const tokenData = this.options.getTokenCache().get(accountId);
     if (!tokenData) {
@@ -222,25 +225,21 @@ export class AccountLeaseModelPolicy {
       assertSupportedBareModelEffort(effort);
     }
 
-    const safeAvailableModels = this.filterSafeRegisteredFallbacks(
-      normalizedMappedModel,
-      availableModels,
-    );
     const resolvedModel = this.resolveAvailableModel(
       tokenData,
       normalizedMappedModel,
-      safeAvailableModels,
+      availableModels,
       effort,
+      physicalTarget,
     );
-    return resolvedModel && this.isSafeRegisteredFallback(normalizedMappedModel, resolvedModel)
-      ? 'available'
-      : 'unavailable';
+    return resolvedModel ? 'available' : 'unavailable';
   }
 
   getExactModelAvailabilityForAccount(
     accountId: string,
     mappedModel: string,
     effort?: string,
+    physicalTarget = false,
   ): AccountModelAvailability {
     const tokenData = this.options.getTokenCache().get(accountId);
     if (!tokenData) {
@@ -270,10 +269,13 @@ export class AccountLeaseModelPolicy {
       assertSupportedBareModelEffort(effort);
     }
 
-    if (availableModels.has(normalizedMappedModel)) {
+    if (
+      availableModels.has(normalizedMappedModel) &&
+      this.isSafeRegisteredFallback(normalizedMappedModel, normalizedMappedModel, physicalTarget)
+    ) {
       return 'available';
     }
-    if (effort === undefined) {
+    if (physicalTarget || effort === undefined) {
       return 'unavailable';
     }
     return resolveBareFamilyModel(normalizedMappedModel, effort, availableModels, true)
@@ -311,28 +313,25 @@ export class AccountLeaseModelPolicy {
   }
 
   /**
-   * Registered variants may fall back only to another physical model with a
-   * registered full parameter tuple. Unregistered requests keep the legacy
-   * dynamic-family behavior.
+   * Registered recipes define public-to-physical equivalence. Account binding
+   * must not use a different profile merely because that profile is available.
    */
-  private isSafeRegisteredFallback(requestedModel: string, physicalModel: string): boolean {
-    if (requestedModel.trim().toLowerCase() === physicalModel.trim().toLowerCase()) {
-      return true;
-    }
-    const requestedVariant = resolveModelVariant({ model: requestedModel });
-    if (!requestedVariant) {
-      return true;
-    }
-    return rebindModelVariant(requestedVariant, physicalModel) !== null;
+  private isSafeRegisteredFallback(
+    requestedModel: string,
+    physicalModel: string,
+    physicalTarget: boolean,
+  ): boolean {
+    return isModelTierBindingAllowed(requestedModel, physicalModel, physicalTarget);
   }
 
   private filterSafeRegisteredFallbacks(
     requestedModel: string,
     availableModels: Set<string>,
+    physicalTarget: boolean,
   ): Set<string> {
     return new Set(
       [...availableModels].filter((physicalModel) =>
-        this.isSafeRegisteredFallback(requestedModel, physicalModel),
+        this.isSafeRegisteredFallback(requestedModel, physicalModel, physicalTarget),
       ),
     );
   }
@@ -342,6 +341,7 @@ export class AccountLeaseModelPolicy {
     normalizedMappedModel: string,
     availableModels: Set<string>,
     effort?: string,
+    physicalTarget = false,
   ): string | null {
     const forwardedModel = this.resolveForwardedModelForAccount(
       tokenData,
@@ -349,13 +349,28 @@ export class AccountLeaseModelPolicy {
       availableModels,
     );
     if (forwardedModel) {
-      return forwardedModel;
+      const requestedVariant = resolveModelVariant({ model: normalizedMappedModel, physicalTarget });
+      if (!requestedVariant || rebindModelVariant(requestedVariant, forwardedModel)) {
+        return forwardedModel;
+      }
     }
 
+    // Provider retirement rules name a replacement explicitly. Ordinary account
+    // fallback below must preserve the resolved request's operating profile.
+    const safeAvailableModels = this.filterSafeRegisteredFallbacks(
+      normalizedMappedModel,
+      availableModels,
+      physicalTarget,
+    );
+    if (physicalTarget) {
+      return safeAvailableModels.has(normalizedMappedModel)
+        ? normalizedMappedModel
+        : [...safeAvailableModels][0] ?? null;
+    }
     const displayPresetModel = this.resolveDisplayPresetForAccount(
       tokenData,
       normalizedMappedModel,
-      availableModels,
+      safeAvailableModels,
     );
     if (displayPresetModel) {
       return displayPresetModel;
@@ -364,7 +379,7 @@ export class AccountLeaseModelPolicy {
     const bareFamilyModel = resolveBareFamilyModel(
       normalizedMappedModel,
       effort,
-      availableModels,
+      safeAvailableModels,
       effort !== undefined,
     );
     if (bareFamilyModel) {
@@ -373,18 +388,13 @@ export class AccountLeaseModelPolicy {
 
     const candidates = this.buildDynamicModelCandidates(normalizedMappedModel);
     for (const candidate of candidates ?? []) {
-      if (availableModels.has(candidate)) {
+      if (safeAvailableModels.has(candidate)) {
         return candidate;
       }
     }
 
-    if (availableModels.has(normalizedMappedModel)) {
+    if (safeAvailableModels.has(normalizedMappedModel)) {
       return normalizedMappedModel;
-    }
-
-    const tieredFamilyModel = resolveTieredFamilyModel(normalizedMappedModel, availableModels);
-    if (tieredFamilyModel) {
-      return tieredFamilyModel;
     }
 
     return null;

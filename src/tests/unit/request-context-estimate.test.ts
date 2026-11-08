@@ -18,6 +18,7 @@ function request(): GeminiInternalRequest {
             { text: '你好' },
             { inlineData: { mimeType: 'image/png', data: 'AQ==' } },
             { inlineData: { mimeType: 'audio/wav', data: 'AQ==' } },
+            { inlineData: { mimeType: 'audio/mpeg', data: 'AQ==' } },
             { inlineData: { mimeType: 'application/pdf', data: 'AQ==' } },
             { fileData: { mimeType: 'video/mp4', fileUri: 'https://example.invalid/video' } },
           ],
@@ -40,16 +41,17 @@ describe('complete request context estimate', () => {
     const body = request();
     const original = structuredClone(body);
     expect(estimateRequestContext(body)).toEqual({
-      estimatedInputTokens: 479,
+      algorithmVersion: 2,
+      estimatedInputTokens: 415,
       systemTokens: 1,
       textTokens: 4,
       toolTokens: 44,
       thoughtMetadataTokens: 100,
-      mediaTokens: 322,
+      mediaTokens: 258,
       messageOverheadTokens: 8,
       signatureCharacters: 60,
-      inlineMediaBytes: 3,
-      unestimatedMediaParts: 2,
+      inlineMediaBytes: 4,
+      unestimatedMediaParts: 4,
       messages: 2,
     });
     expect(body).toEqual(original);
@@ -129,6 +131,7 @@ describe('complete request context estimate', () => {
       },
     ];
     expect(estimateRequestContext(body)).toEqual({
+      algorithmVersion: 2,
       estimatedInputTokens: 268,
       systemTokens: 1,
       textTokens: 0,

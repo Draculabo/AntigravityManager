@@ -61,6 +61,7 @@ describe('Cowork context compaction coordination', () => {
     expect(coordinator.snapshot()).toEqual({
       activeOperations: 1,
       confirmations: 0,
+      protections: 0,
     });
   });
 
@@ -137,6 +138,7 @@ describe('Cowork context compaction coordination', () => {
     expect(coordinator.snapshot()).toEqual({
       activeOperations: 0,
       confirmations: 1,
+      protections: 1,
     });
   });
 
@@ -210,6 +212,7 @@ describe('Cowork context compaction coordination', () => {
     expect(coordinator.snapshot()).toEqual({
       activeOperations: 0,
       confirmations: 0,
+      protections: 0,
     });
   });
 
@@ -230,6 +233,7 @@ describe('Cowork context compaction coordination', () => {
     expect(coordinator.snapshot()).toEqual({
       activeOperations: 2,
       confirmations: 0,
+      protections: 0,
     });
   });
 });

@@ -13,6 +13,8 @@ it('saves a selected strategy and lets users retry after a failed save', async (
     const [value, setValue] = useState<'balanced' | 'account-first'>('balanced');
     return createElement(ProxyAccountStrategy, {
       value,
+      weeklyQuotaPriorityEnabled: false,
+      onWeeklyQuotaPriorityChange: vi.fn(),
       onChange: async (next) => {
         await save(next);
         setValue(next);

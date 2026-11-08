@@ -210,6 +210,10 @@ describe('traffic audit and Thought Store boundaries', () => {
         payload: {
           accountId: null,
           accountIdHash: null,
+          accountGenerationHash: null,
+          accountSubjectHash: null,
+          accountGrantHash: null,
+          usageScope: null,
           attemptIndex: 1,
           endpoint: 'https://example.test',
           id: attemptId,

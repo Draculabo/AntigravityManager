@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ErrorDiagnosticsConfigSchema } from '@/modules/error-diagnostics/configuration';
 
 export const UpstreamProxyConfigSchema = z.object({
   enabled: z.boolean(),
@@ -26,6 +27,7 @@ export const ProxyExperimentalConfigSchema = z.object({
 export const ImageSchedulerConfigSchema = z.object({
   per_account_concurrency: z.number().int().nonnegative().default(4),
   send_window_enabled: z.boolean().default(false),
+  send_window_strategy: z.enum(['count', 'memory']).default('count'),
   send_window_count: z.number().int().nonnegative().max(256).default(10),
   send_window_memory_mib: z.number().int().positive().max(512).default(32),
   send_window_strip_remote_urls: z.boolean().default(false),
@@ -35,6 +37,7 @@ export const CoworkCompactionConfigSchema = z.object({
   auto_enabled: z.boolean().default(false),
   manual_enabled: z.boolean().default(false),
   auto_threshold: z.number().int().min(50_000).max(2_000_000).default(200_000),
+  trusted_client_key_hashes: z.array(z.string().regex(/^[a-f0-9]{64}$/u)).max(32).default([]),
 });
 
 export const ThinkingBudgetConfigSchema = z.object({
@@ -94,6 +97,7 @@ export const ProxyConfigSchema = z.object({
   backend_canary_enabled: z.boolean().default(true),
   parity_enabled: z.boolean().default(false),
   quota_aware_scheduling_enabled: z.boolean().default(true),
+  weekly_quota_priority_enabled: z.boolean().default(false),
   parity_shadow_enabled: z.boolean().default(false),
   parity_kill_switch: z.boolean().default(false),
   parity_no_go_mismatch_rate: z.number().default(0.15),
@@ -134,6 +138,7 @@ export const ProxyConfigSchema = z.object({
   image_scheduler: ImageSchedulerConfigSchema.default({
     per_account_concurrency: 4,
     send_window_enabled: false,
+    send_window_strategy: 'count',
     send_window_count: 10,
     send_window_memory_mib: 32,
     send_window_strip_remote_urls: false,
@@ -142,6 +147,7 @@ export const ProxyConfigSchema = z.object({
     auto_enabled: false,
     manual_enabled: false,
     auto_threshold: 200_000,
+    trusted_client_key_hashes: [],
   }),
   thinking_budget: ThinkingBudgetConfigSchema.default({
     control_source: 'gateway',
@@ -203,6 +209,7 @@ export const AppConfigSchema = z.object({
   antigravity_args: z.array(z.string()).optional().default([]),
   antigravity_ide_args: z.array(z.string()).optional().default([]),
   proxy: ProxyConfigSchema,
+  error_diagnostics: ErrorDiagnosticsConfigSchema.default({ max_storage_mib: 500 }),
 });
 
 export type ModelAliasRoute = z.infer<typeof ModelAliasRouteSchema>;
@@ -219,6 +226,7 @@ export type ProxyConfig = z.infer<typeof ProxyConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
+  error_diagnostics: { max_storage_mib: 500 },
   language: 'zh-CN',
   theme: 'dark',
   auto_refresh: false,
@@ -254,6 +262,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     backend_canary_enabled: true,
     parity_enabled: false,
     quota_aware_scheduling_enabled: true,
+    weekly_quota_priority_enabled: false,
     account_selection_strategy: 'balanced',
     parity_shadow_enabled: false,
     parity_kill_switch: false,
@@ -292,6 +301,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     image_scheduler: {
       per_account_concurrency: 4,
       send_window_enabled: false,
+      send_window_strategy: 'count',
       send_window_count: 10,
       send_window_memory_mib: 32,
       send_window_strip_remote_urls: false,
@@ -300,6 +310,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
       auto_enabled: false,
       manual_enabled: false,
       auto_threshold: 200_000,
+      trusted_client_key_hashes: [],
     },
     thinking_budget: {
       control_source: 'gateway',

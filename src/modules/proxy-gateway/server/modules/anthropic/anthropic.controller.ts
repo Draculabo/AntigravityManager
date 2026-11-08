@@ -28,8 +28,14 @@ import { AnthropicService } from './anthropic.service';
 import { setProxyResponseTimingHeaders } from '../../common/proxy-response-timing';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
+import { GenerationDeadlineScope } from '../../common/generation-deadline';
+import { awaitRequestOperation } from '../../common/request-cancellation';
 import { getServerConfig } from '@/server/server-config';
 import { getAllDynamicModels } from '@/modules/proxy-gateway/antigravity/ModelMapping';
+import {
+  CoworkCompactionControl,
+  isCoworkLocalAcknowledgement,
+} from '../../common/cowork-compaction-control';
 
 @Controller('v1')
 @UseGuards(ProxyGuard)
@@ -46,14 +52,12 @@ export class AnthropicController extends BaseProxyController {
 
   @Get('models/claude')
   listClaudeModels() {
+    const data = this.listClaudeModelIds().map((id) => this.toClaudeModelMetadata(id));
     return {
-      object: 'list',
-      data: this.listClaudeModelIds().map((id) => ({
-        id,
-        object: 'model',
-        created: 1706745600,
-        owned_by: 'antigravity',
-      })),
+      data,
+      first_id: data[0]?.id ?? null,
+      has_more: false,
+      last_id: data.at(-1)?.id ?? null,
     };
   }
 
@@ -71,12 +75,17 @@ export class AnthropicController extends BaseProxyController {
       return;
     }
 
-    res.status(HttpStatus.OK).send({
-      type: 'model',
-      id: matched,
-      display_name: matched,
-      created_at: '2024-10-22T00:00:00Z',
-    });
+    res.status(HttpStatus.OK).send(this.toClaudeModelMetadata(matched));
+  }
+
+  private toClaudeModelMetadata(id: string) {
+    return {
+      type: 'model' as const,
+      id,
+      display_name: id,
+      // This is a local gateway directory; provider release dates are unknown.
+      created_at: '1970-01-01T00:00:00Z',
+    };
   }
 
   @Post('messages/count_tokens')
@@ -128,15 +137,24 @@ export class AnthropicController extends BaseProxyController {
     @Req() req?: FastifyRequest,
   ) {
     const abortScope = createProxyRequestAbortScope(req, res);
+    const deadline = new GenerationDeadlineScope(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      abortScope.signal,
+    );
     try {
-      const request = await this.expandFileHandles(body);
+      const request = await awaitRequestOperation(this.expandFileHandles(body), deadline.signal);
       const context = req ? { headers: req.headers, url: req.url } : undefined;
-      const result = await (abortScope.signal
-        ? this.proxyService.handleAnthropicMessages(request, context, abortScope.signal)
-        : this.proxyService.handleAnthropicMessages(request, context));
+      const result = await awaitRequestOperation(
+        this.proxyService.handleAnthropicMessages(request, context, deadline.signal),
+        deadline.signal,
+      );
+
+      if (isCoworkLocalAcknowledgement(result)) {
+        res.header('X-AGM-Response-Source', 'local_compaction_acknowledgement');
+      }
 
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, result, true);
+        this.writeSseResponse(res, deadline.retainObservable(result), true);
         return;
       } else {
         setProxyResponseTimingHeaders(res, req);
@@ -147,9 +165,21 @@ export class AnthropicController extends BaseProxyController {
         this.sendFileReferenceError(res, 'anthropic', error);
         return;
       }
+      if (error instanceof CoworkCompactionControl && error.outcome.kind === 'trigger') {
+        res.header('X-AGM-Response-Source', 'local_compaction_trigger');
+        res.header('X-AGM-Compaction-Operation', error.outcome.operationId);
+        res.status(HttpStatus.BAD_REQUEST).send({
+          type: 'error',
+          error: { type: 'invalid_request_error', message: error.message },
+        });
+        return;
+      }
       this.sendAnthropicErrorResponse(res, '/v1/messages', error);
     } finally {
       abortScope.dispose();
+      if (!deadline.retained || deadline.signal.aborted) {
+        deadline.dispose();
+      }
     }
   }
 

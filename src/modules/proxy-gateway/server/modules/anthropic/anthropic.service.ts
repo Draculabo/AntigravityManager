@@ -1,10 +1,13 @@
+import { createOverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import { AggregationAdmissionError } from '../../common/aggregation-admission';
 import { captureCurrentAuditSession } from '../../../audit/traffic-audit-context';
+import { runGenerationWithDeadline } from '../../common/generation-deadline';
 import { assertAnthropicGenerationHistory } from '../../common/generation-history';
 import { publicProxyErrorMessage } from '../../common/public-error-message';
 import { GenerationOutputState } from '../../../antigravity/GenerationOutputState';
 import { UpstreamGenerationError } from '../../../antigravity/UpstreamGenerationError';
 import { upstreamGenerationFailure } from '../../common/upstream-generation-failure';
+import { isUpstreamStreamInterruption } from '../../common/stream-interruption';
 import { resolveUpstreamErrorHttpStatus } from '../../common/upstream-error-http-status';
 import { anthropicHttpErrorType } from '../../common/public-http-error-fields';
 import { hashSessionAnchor } from '../../common/session-anchor-hash';
@@ -68,6 +71,7 @@ import {
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import {
   BaseProxyService,
+  completeCountEstimate,
   type CountTokensResult,
 } from '@/modules/proxy-gateway/server/common/base-proxy.service';
 import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
@@ -77,6 +81,15 @@ import { classifyInvalidThoughtSignatureError } from './invalid-thought-signatur
 import { registerObservableFlowControl } from '../../common/observable-flow-control';
 import { awaitRequestOperation, throwIfRequestAborted } from '../../common/request-cancellation';
 import { isGeminiImageModel } from '../../shared/services/rate-limit-tracker.service';
+import {
+  createCoworkCompactionRequest,
+  clearCoworkCompactionState,
+  type CoworkCompactionRequest,
+} from '../../common/cowork-compaction';
+import {
+  CoworkCompactionControl,
+  coworkLocalAcknowledgement,
+} from '../../common/cowork-compaction-control';
 
 interface AnthropicUpstreamResult {
   body: GeminiInternalRequest;
@@ -91,6 +104,10 @@ const ANTHROPIC_STREAM_FIRST_EVENT_TIMEOUT_MS = 30_000;
 
 @Injectable()
 export class AnthropicService extends BaseProxyService {
+  onModuleDestroy(): void {
+    clearCoworkCompactionState();
+  }
+
   constructor(
     @Inject(AccountLeaseService) accountLeaseService: AccountLeaseService,
     @Inject(GeminiClient) geminiClient: GeminiClient,
@@ -109,10 +126,8 @@ export class AnthropicService extends BaseProxyService {
   /**
    * `POST /v1/messages/count_tokens`.
    *
-   * The body is converted by the same mapper the Messages endpoint uses, so the counted
-   * conversation retains caller turns without a generation-only continuation. Everything else
-   * that mapper produces -- generation config, tools, safety settings -- is dropped, because the upstream
-   * counting endpoint accepts only the contents and rejects the rest.
+   * Count the admitted mapped input locally, retaining system/tools and caller turns
+   * without a generation-only continuation. This is a labelled heuristic, not provider usage.
    */
   async handleAnthropicCountTokens(request: AnthropicChatRequest): Promise<number> {
     const result = await this.handleAnthropicCountTokensWithSource(request);
@@ -132,7 +147,6 @@ export class AnthropicService extends BaseProxyService {
     }
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(request.model);
     const targetModel = routeResolution.resolvedModel;
-    const effort = request.output_config?.effort;
     this.logger.log(
       `Anthropic count_tokens request received: model=${request.model}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
@@ -147,24 +161,59 @@ export class AnthropicService extends BaseProxyService {
       {
         schemasPrepared: true,
         cacheSchemas: !batch.degraded,
-        mediaWindow: getServerConfig()?.image_scheduler,
         purpose: 'count',
       },
     );
 
-    return this.countTokensWithLeaseDetailed(
-      request.model,
-      geminiBody.request.contents ?? [],
-      'Anthropic-count_tokens',
-      geminiBody,
-      effort,
-    );
+    return completeCountEstimate(geminiBody, 'anthropic-local');
   }
 
   async handleAnthropicMessages(
     request: AnthropicChatRequest,
     requestContext?: SignatureScopeContext,
     signal?: AbortSignal,
+  ): Promise<AnthropicChatResponse | Observable<string>> {
+    return runGenerationWithDeadline(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      signal,
+      async (boundedSignal, owner) => {
+        const compaction = createCoworkCompactionRequest(request, requestContext, boundedSignal);
+        try {
+          const result = await this.executeAnthropicMessages(
+            request,
+            requestContext,
+            boundedSignal,
+            compaction,
+          );
+          const observed = compaction?.observe(result) ?? result;
+          return owner && observed instanceof Observable
+            ? owner.retainObservable(observed)
+            : observed;
+        } catch (error) {
+          if (
+            error instanceof CoworkCompactionControl &&
+            error.outcome.kind === 'acknowledgement'
+          ) {
+            return coworkLocalAcknowledgement(
+              request.model,
+              error.outcome.message,
+              request.stream === true,
+            );
+          }
+          if (!(error instanceof CoworkCompactionControl)) {
+            compaction?.fail();
+          }
+          throw error;
+        }
+      },
+    );
+  }
+
+  private async executeAnthropicMessages(
+    request: AnthropicChatRequest,
+    requestContext: SignatureScopeContext | undefined,
+    signal: AbortSignal,
+    compaction?: CoworkCompactionRequest,
   ): Promise<AnthropicChatResponse | Observable<string>> {
     throwIfRequestAborted(signal);
     const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
@@ -179,8 +228,21 @@ export class AnthropicService extends BaseProxyService {
     } finally {
       reportSchemaIssues(batch, 'anthropic');
     }
-    const appliedVariantRequest = applyAnthropicModelVariant(request);
+    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(request.model);
+    const explicitPhysicalTarget =
+      routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
+    const appliedVariantRequest = applyAnthropicModelVariant(
+      { ...request, model: routeResolution.resolvedModel },
+      explicitPhysicalTarget,
+    );
     const routedRequest = appliedVariantRequest.request;
+    const overloadThinkingRecovery = createOverloadThinkingRecovery({
+      model: request.model,
+      explicitThinking:
+        request.thinking !== undefined || request.output_config?.effort !== undefined,
+      physicalTarget: explicitPhysicalTarget,
+      registeredBudget: appliedVariantRequest.variant?.thinkingBudget,
+    });
     const effort = routedRequest.output_config?.effort;
     const toolCallIdentity = new ResponseToolCallIdentity(() =>
       hashSessionAnchor([
@@ -203,10 +265,7 @@ export class AnthropicService extends BaseProxyService {
       (message) => message.role !== 'system',
     ).length;
 
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(
-      routedRequest.model,
-    );
-    const targetModel = routeResolution.resolvedModel;
+    const targetModel = routedRequest.model;
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
       `Anthropic request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}`,
@@ -214,7 +273,10 @@ export class AnthropicService extends BaseProxyService {
 
     // Retry loop
     let lastError: unknown = null;
-    const retryState = this.createTokenRetryState(effort);
+    const retryState = this.createTokenRetryState(
+      effort,
+      appliedVariantRequest.variant !== null || explicitPhysicalTarget,
+    );
     const maxRetries = await this.getMaxRetryAttempts(
       retryState,
       targetModel,
@@ -249,6 +311,7 @@ export class AnthropicService extends BaseProxyService {
         token.id,
         targetModel,
         effort,
+        retryState.physicalTarget,
       );
       const effectiveVariantRequest = rebindAnthropicModelVariant(
         appliedVariantRequest,
@@ -267,10 +330,13 @@ export class AnthropicService extends BaseProxyService {
 
       try {
         const execution = await this.executeAnthropicAccountRequest({
+          compaction,
           upstreamOptions: this.createScopedGenerationOptions(
             token,
             scope.storeKey,
             recoveryBudget,
+            signal,
+            overloadThinkingRecovery,
           ),
           globalSystemPrompt,
           signal,
@@ -325,20 +391,17 @@ export class AnthropicService extends BaseProxyService {
           throw error;
         }
         lastError = error;
-        if (
-          error instanceof Error &&
-          !this.retryPolicy.isFatalCircuitBreakError(error) &&
-          this.isProjectContextError(error.message)
-        ) {
-          this.logger.warn(
-            `Anthropic request hit project context issue, retrying without project: ${error.message}`,
-          );
+        if (!this.retryPolicy.isFatalCircuitBreakError(error) && this.admitProjectDowngrade(retryState, error, token.token.project_id, signal)) {
+          this.logger.warn('Anthropic project context rejected. Retrying once without project.');
           try {
             const execution = await this.executeAnthropicAccountRequest({
+              compaction,
               upstreamOptions: this.createScopedGenerationOptions(
                 token,
                 scope.storeKey,
                 recoveryBudget,
+                signal,
+                overloadThinkingRecovery,
               ),
               signal,
               globalSystemPrompt,
@@ -400,11 +463,11 @@ export class AnthropicService extends BaseProxyService {
           }
         }
 
-        // Registered families must exhaust account rotation for their exact tier before
-        // the lease policy may rebind to another registered tier with a full parameter tuple.
+        // Registered recipes and explicit routes retain their target through quota failures.
         if (
           !appliedVariantRequest.variant &&
           !this.retryPolicy.isFatalCircuitBreakError(lastError) &&
+          !explicitPhysicalTarget &&
           error instanceof Error &&
           this.isQuotaExhaustedError(error.message)
         ) {
@@ -427,10 +490,13 @@ export class AnthropicService extends BaseProxyService {
               })?.family ??
               null;
             const execution = await this.executeAnthropicAccountRequest({
+              compaction,
               upstreamOptions: this.createScopedGenerationOptions(
                 token,
                 scope.storeKey,
                 recoveryBudget,
+                signal,
+                overloadThinkingRecovery,
               ),
               signal,
               accountId: token.id,
@@ -521,6 +587,7 @@ export class AnthropicService extends BaseProxyService {
   }
 
   private async executeAnthropicAccountRequest(params: {
+    compaction?: CoworkCompactionRequest;
     globalSystemPrompt: string | null;
     upstreamOptions: InternalGenerationOptions;
     signal?: AbortSignal;
@@ -573,6 +640,7 @@ export class AnthropicService extends BaseProxyService {
             params.signal,
             {
               ...params.upstreamOptions,
+              onSemanticInput: params.compaction?.admit,
             },
           ),
         };
@@ -587,6 +655,7 @@ export class AnthropicService extends BaseProxyService {
           params.extraHeaders,
           {
             ...params.upstreamOptions,
+            onSemanticInput: params.compaction?.admit,
           },
           params.signal,
         ),
@@ -632,6 +701,7 @@ export class AnthropicService extends BaseProxyService {
     signatureFamilyModel?: string | null,
     registeredToolNames: readonly string[] = [],
     toolCallIdentity?: ResponseToolCallIdentity,
+    onInterrupted?: () => void,
   ): FlowControlledSseStream<string> {
     const observable = new FlowControlledSseStream(upstreamStream, (subscriber) => {
       const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -681,10 +751,37 @@ export class AnthropicService extends BaseProxyService {
         subscriber.complete();
       };
 
+      const finalizeInterruption = (): boolean => {
+        const finishReason = outputState.interruptionFinishReason;
+        if (terminal || !state.hasContent || !finishReason) {
+          return false;
+        }
+        terminal = true;
+        clearPingTimer();
+        idleTimer.clear();
+        onInterrupted?.();
+        this.logger.warn(
+          'Anthropic upstream interrupted after output. Finalizing partial response.',
+        );
+        state.trailingSignature = null;
+        for (const chunk of state.endBlock(false)) {
+          subscriber.next(chunk);
+        }
+        for (const chunk of state.emitFinish(finishReason, lastUsageMetadata)) {
+          subscriber.next(chunk);
+        }
+        subscriber.complete();
+        return true;
+      };
+
       const idleTimer = this.createStreamIdleTimer(
         upstreamStream,
         'Claude-SSE',
-        () => failStream('Upstream response stream timed out.'),
+        () => {
+          if (!finalizeInterruption()) {
+            failStream('Upstream response stream timed out.');
+          }
+        },
         ANTHROPIC_STREAM_IDLE_TIMEOUT_MS,
       );
 
@@ -705,7 +802,9 @@ export class AnthropicService extends BaseProxyService {
             this.logger.error(
               `[Claude-SSE] Stream idle for ${(consecutiveIdlePings * ANTHROPIC_STREAM_PING_INTERVAL_MS) / 1000}s (${consecutiveIdlePings}x ${ANTHROPIC_STREAM_PING_INTERVAL_MS / 1000}s timeout), terminating`,
             );
-            failStream('Upstream response stream timed out.');
+            if (!finalizeInterruption()) {
+              failStream('Upstream response stream timed out.');
+            }
             return;
           }
           this.logger.debug(
@@ -821,7 +920,9 @@ export class AnthropicService extends BaseProxyService {
           return;
         }
         if (!lastFinishReason) {
-          failStream('Upstream response stream ended without a finish reason.');
+          if (!finalizeInterruption()) {
+            failStream('Upstream response stream ended without a finish reason.');
+          }
           return;
         }
         const failure = outputState.failure();
@@ -845,6 +946,9 @@ export class AnthropicService extends BaseProxyService {
         const { type } = classifyStreamError(cleanError);
 
         this.logger.error(`Stream error: ${type} - ${publicProxyErrorMessage(cleanError.message)}`);
+        if (isUpstreamStreamInterruption(cleanError) && finalizeInterruption()) {
+          return;
+        }
         if (emittedResponseEvent) {
           failStream(cleanError.message);
         } else {
@@ -857,7 +961,9 @@ export class AnthropicService extends BaseProxyService {
         if (terminal) {
           return;
         }
-        failStream('Upstream response stream closed before completion.');
+        if (!finalizeInterruption()) {
+          failStream('Upstream response stream closed before completion.');
+        }
       });
 
       return () => {
@@ -883,6 +989,7 @@ export class AnthropicService extends BaseProxyService {
     onSuccessfulCompletion?: () => void,
     toolCallIdentity?: ResponseToolCallIdentity,
   ): Promise<Observable<string>> {
+    let streamInterrupted = false;
     const mappedStream = this.processAnthropicInternalStream(
       upstreamStream,
       model,
@@ -892,6 +999,9 @@ export class AnthropicService extends BaseProxyService {
       signatureFamilyModel,
       registeredToolNames,
       toolCallIdentity,
+      () => {
+        streamInterrupted = true;
+      },
     );
 
     return new Promise((resolve, reject) => {
@@ -1000,7 +1110,7 @@ export class AnthropicService extends BaseProxyService {
             return;
           }
           completed = true;
-          if (!sawErrorEvent) {
+          if (!sawErrorEvent && !streamInterrupted) {
             onSuccessfulCompletion?.();
           }
           downstream?.complete();

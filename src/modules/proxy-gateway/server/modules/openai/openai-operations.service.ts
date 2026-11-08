@@ -1,4 +1,5 @@
 import { FlowControlledSseStream } from '../../common/flow-controlled-sse-stream';
+import { admitGenerationProjectRecovery } from '../../common/generation-project-recovery';
 import { resolveClientSessionHint } from '../../common/client-session-hint';
 import { admitOpenAIInlineMedia } from '../../common/inline-media-admission';
 import {
@@ -7,6 +8,7 @@ import {
 } from '../../common/protocol-session-anchor';
 import type { SignatureScopeContext } from '../../common/signature-session-scope';
 import { randomUUID } from 'node:crypto';
+import { containsResponsesMediaReference } from './responses/openai-responses-media-store';
 import {
   getOwnedResponsesHistory,
   resolveResponsesMediaStore,
@@ -35,7 +37,7 @@ import {
   GeminiRequest,
   GeminiResponse,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
-import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
+import { modelNotFoundError, readOpenAIModelCatalog } from './openai-model-catalog';
 import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
 import {
   IMAGE_GENERATION_SAFETY_SETTINGS,
@@ -62,16 +64,9 @@ import {
   type OpenAIResponsesSessionParent,
   type OpenAIResponsesSessionStoreLike,
 } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import {
-  getOpenAICompatibleModels,
-  MODEL_LIST_CREATED_AT,
-  MODEL_LIST_OWNER,
-} from '@/modules/proxy-gateway/antigravity/ModelMapping';
-import {
-  getContextWindow,
-  getMaxOutputTokens,
-} from '@/modules/proxy-gateway/antigravity/ModelSpecs';
 import { getServerConfig } from '@/server/server-config';
+import { GenerationDeadlineScope } from '../../common/generation-deadline';
+import { awaitRequestOperation } from '../../common/request-cancellation';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import {
@@ -110,6 +105,7 @@ import {
   validateResponsesInputImageLimits,
 } from './responses/openai-responses-inline-media';
 import { applyResponsesImageSendWindow } from './responses/openai-responses-media-window';
+import { parseChatResponsesCompatibility } from './chat/chat-responses-compatibility';
 
 export const IMAGE_QUOTA_REFRESH = Symbol('IMAGE_QUOTA_REFRESH');
 
@@ -185,10 +181,7 @@ export class OpenAIOperations extends BaseProxyController {
 
   listModels(res: FastifyReply) {
     try {
-      const modelMapping = getConfiguredModelMapping(getServerConfig());
-      const data = this.listOpenAICompatibleModelIds().map((id) =>
-        this.toOpenAIModelObjectEntry(id, modelMapping),
-      );
+      const data = readOpenAIModelCatalog(this.accountLeaseService);
 
       res.status(HttpStatus.OK).send({
         object: 'list',
@@ -207,42 +200,6 @@ export class OpenAIOperations extends BaseProxyController {
   }
 
   /**
-   * The published catalog, shared by the list and the retrieve route so the two cannot
-   * disagree about which models this gateway serves.
-   */
-  private listOpenAICompatibleModelIds(): string[] {
-    const config = getServerConfig();
-    const onlyRawQuotaModels = config?.only_raw_quota_models ?? false;
-    const dynamicModelIds = onlyRawQuotaModels
-      ? this.accountLeaseService?.getAllRawQuotaModels()
-      : this.accountLeaseService?.getAllCollectedModels();
-
-    return getOpenAICompatibleModels(
-      getConfiguredModelMapping(config),
-      dynamicModelIds,
-      onlyRawQuotaModels,
-    );
-  }
-
-  /** Exactly the entry `GET /v1/models` puts in its `data` array. */
-  private toOpenAIModelObjectEntry(
-    id: string,
-    modelMapping: Record<string, string>,
-  ): Record<string, unknown> {
-    // An alias routes to another id at request time, so it inherits that target's limits;
-    // publishing the alias's own unknown id would under-state the model a client will reach.
-    const limitModel = modelMapping[id] ?? id;
-    return {
-      id,
-      object: 'model',
-      created: MODEL_LIST_CREATED_AT,
-      owned_by: MODEL_LIST_OWNER,
-      context_length: getContextWindow(limitModel),
-      max_completion_tokens: getMaxOutputTokens(limitModel),
-    };
-  }
-
-  /**
    * `GET /v1/models/{id}`, what an OpenAI SDK calls through `client.models.retrieve()`.
    *
    * Answers out of the same catalog `GET /v1/models` publishes, so a client that has just read
@@ -253,22 +210,15 @@ export class OpenAIOperations extends BaseProxyController {
    */
   retrieveModel(model: string, res: FastifyReply) {
     try {
-      const served = this.listOpenAICompatibleModelIds().includes(model);
-      if (!served) {
-        res.status(HttpStatus.NOT_FOUND).send({
-          error: {
-            code: 'model_not_found',
-            message: `The model '${model}' does not exist or you do not have access to it.`,
-            param: 'model',
-            type: 'invalid_request_error',
-          },
-        });
+      const entry = readOpenAIModelCatalog(this.accountLeaseService).find(
+        (item) => item.id === model,
+      );
+      if (!entry) {
+        res.status(HttpStatus.NOT_FOUND).send(modelNotFoundError(model));
         return;
       }
 
-      res
-        .status(HttpStatus.OK)
-        .send(this.toOpenAIModelObjectEntry(model, getConfiguredModelMapping(getServerConfig())));
+      res.status(HttpStatus.OK).send(entry);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to retrieve model';
       this.logger.error(message, error instanceof Error ? error.stack : undefined);
@@ -340,17 +290,24 @@ export class OpenAIOperations extends BaseProxyController {
       stream: body.stream,
     };
     const abortScope = this.createRequestAbortScope(req, res);
+    const deadline = new GenerationDeadlineScope(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      abortScope.signal,
+    );
     try {
-      const result = await this.proxyService.handleChatCompletions(
-        request,
-        'chat-completions',
-        abortScope.signal,
-        undefined,
-        undefined,
-        req ? { headers: req.headers, url: req.url } : undefined,
+      const result = await awaitRequestOperation(
+        this.proxyService.handleChatCompletions(
+          request,
+          'chat-completions',
+          deadline.signal,
+          undefined,
+          undefined,
+          req ? { headers: req.headers, url: req.url } : undefined,
+        ),
+        deadline.signal,
       );
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, result, true);
+        this.writeSseResponse(res, deadline.retainObservable(result), true);
         return;
       }
 
@@ -361,25 +318,38 @@ export class OpenAIOperations extends BaseProxyController {
       this.sendOpenAIErrorResponse(res, '/v1/completions', error);
     } finally {
       abortScope.dispose();
+      if (!deadline.retained || deadline.signal.aborted) {
+        deadline.dispose();
+      }
     }
   }
 
   async responses(body: ResponsesRequestBody, res: FastifyReply, req?: FastifyRequest) {
-    let expanded: ResponsesRequestBody;
-    try {
-      expanded = await expandFileReferences(body, 'openai-responses', this.files);
-    } catch (error) {
-      if (error instanceof FileReferenceError) {
-        this.sendFileReferenceError(res, 'openai', error);
-        return;
-      }
-      throw error;
-    }
-
     const abortScope = this.createRequestAbortScope(req, res);
+    const deadline = new GenerationDeadlineScope(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      abortScope.signal,
+    );
     try {
+      let expanded: ResponsesRequestBody;
+      try {
+        expanded = await awaitRequestOperation(
+          expandFileReferences(body, 'openai-responses', this.files),
+          deadline.signal,
+        );
+      } catch (error) {
+        if (error instanceof FileReferenceError) {
+          this.sendFileReferenceError(res, 'openai', error);
+          return;
+        }
+        throw error;
+      }
+
       const context = req ? { headers: req.headers, url: req.url } : undefined;
-      const prepared = await this.prepareResponsesRequest(expanded, context);
+      const prepared = await awaitRequestOperation(
+        this.prepareResponsesRequest(expanded, context),
+        deadline.signal,
+      );
       if (!prepared) {
         res
           .status(HttpStatus.NOT_FOUND)
@@ -387,32 +357,46 @@ export class OpenAIOperations extends BaseProxyController {
         return;
       }
 
-      const result = await this.proxyService.handleChatCompletions(
-        prepared.request,
-        'responses',
-        abortScope.signal,
-        this.toResponsesExecutionContext(prepared),
-        undefined,
-        context,
+      const result = await awaitRequestOperation(
+        this.proxyService.handleChatCompletions(
+          prepared.request,
+          'responses',
+          deadline.signal,
+          this.toResponsesExecutionContext(prepared),
+          undefined,
+          context,
+        ),
+        deadline.signal,
       );
       if (body.stream && this.isObservableLike(result)) {
         this.writeSseResponse(
           res,
-          this.cacheResponsesStream(result, prepared, abortScope.signal),
+          deadline.retainObservable(this.cacheResponsesStream(result, prepared, deadline.signal)),
           true,
         );
         return;
       }
 
       const response = result as OpenAIChatResponse;
-      const responsesResponse = toOpenAIResponsesResponse(response, prepared.responseId);
-      await this.saveResponsesSession(responsesResponse, prepared, abortScope.signal);
+      const format = prepared.request.response_format?.type;
+      const responsesResponse = toOpenAIResponsesResponse(
+        response,
+        prepared.responseId,
+        !body.stream && (format === 'json_schema' || format === 'json_object'),
+      );
+      await awaitRequestOperation(
+        this.saveResponsesSession(responsesResponse, prepared, deadline.signal),
+        deadline.signal,
+      );
       setProxyResponseTimingHeaders(res, req);
       res.status(HttpStatus.OK).send(responsesResponse);
     } catch (error) {
       this.sendOpenAIErrorResponse(res, '/v1/responses', error);
     } finally {
       abortScope.dispose();
+      if (!deadline.retained || deadline.signal.aborted) {
+        deadline.dispose();
+      }
     }
   }
 
@@ -634,24 +618,62 @@ export class OpenAIOperations extends BaseProxyController {
     req?: FastifyRequest,
   ) {
     const abortScope = this.createRequestAbortScope(req, res);
+    const deadline = new GenerationDeadlineScope(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      abortScope.signal,
+    );
     try {
-      const maxTokens = resolveOutputTokenLimit(body);
-      // Handles become inline content before the request is mapped: upstream
-      // has no file plane, so a `file_id` left in place reaches nothing.
-      const request = await expandFileReferences(body, 'openai-chat', this.files);
+      const compatibility = parseChatResponsesCompatibility(body);
+      const chatMaxTokens = compatibility ? undefined : resolveOutputTokenLimit(body);
+      let request: OpenAIChatRequest;
+      let responsesContext: OpenAIResponsesExecutionContext | undefined;
+      if (compatibility) {
+        const expanded = await awaitRequestOperation(
+          expandFileReferences(compatibility, 'openai-responses', this.files),
+          deadline.signal,
+        );
+        const prepared = await awaitRequestOperation(
+          this.prepareResponsesRequest(
+            expanded,
+            req ? { headers: req.headers, url: req.url } : undefined,
+          ),
+          deadline.signal,
+        );
+        if (!prepared) {
+          res
+            .status(HttpStatus.NOT_FOUND)
+            .send(buildResponseNotFoundError(compatibility.previous_response_id ?? ''));
+          return;
+        }
+        request = {
+          ...prepared.request,
+          store: compatibility.store,
+          stream_options: compatibility.stream_options,
+        };
+        responsesContext = this.toResponsesExecutionContext(prepared);
+      } else {
+        request = await awaitRequestOperation(
+          expandFileReferences(body, 'openai-chat', this.files),
+          deadline.signal,
+        );
+      }
+      const maxTokens = compatibility ? request.max_tokens : chatMaxTokens;
       const normalizedRequest =
         maxTokens === undefined ? request : { ...request, max_tokens: maxTokens };
-      const result = await this.proxyService.handleChatCompletions(
-        normalizedRequest,
-        'chat-completions',
-        abortScope.signal,
-        undefined,
-        undefined,
-        req ? { headers: req.headers, url: req.url } : undefined,
+      const result = await awaitRequestOperation(
+        this.proxyService.handleChatCompletions(
+          normalizedRequest,
+          'chat-completions',
+          deadline.signal,
+          responsesContext,
+          undefined,
+          req ? { headers: req.headers, url: req.url } : undefined,
+        ),
+        deadline.signal,
       );
 
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, result, true);
+        this.writeSseResponse(res, deadline.retainObservable(result), true);
         return;
       } else {
         if (body.store === true) {
@@ -668,6 +690,9 @@ export class OpenAIOperations extends BaseProxyController {
       this.sendOpenAIErrorResponse(res, '/v1/chat/completions', error);
     } finally {
       abortScope.dispose();
+      if (!deadline.retained || deadline.signal.aborted) {
+        deadline.dispose();
+      }
     }
   }
 
@@ -720,6 +745,9 @@ export class OpenAIOperations extends BaseProxyController {
     const captureLease = getTrafficAuditRequestContext()?.thoughtCaptureLease;
 
     const originalInputItems = normalizeResponsesInputItems(body.input);
+    if (containsResponsesMediaReference(originalInputItems)) {
+      throw new BadRequestException('Client supplied an internal Responses media reference');
+    }
     const currentInputItems = omitMediaBeforeLatestUserTurn(originalInputItems);
     try {
       validateResponsesInputImageLimits(latestUserTurnForMediaValidation(originalInputItems));
@@ -1037,14 +1065,21 @@ export class OpenAIOperations extends BaseProxyController {
     req?: FastifyRequest,
   ): Promise<void> {
     const abortScope = this.createRequestAbortScope(req, res);
+    const deadline = new GenerationDeadlineScope(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      abortScope.signal,
+    );
     try {
-      const result = await this.proxyService.handleChatCompletions(
-        request,
-        'chat-completions',
-        abortScope.signal,
-        undefined,
-        undefined,
-        req ? { headers: req.headers, url: req.url } : undefined,
+      const result = await awaitRequestOperation(
+        this.proxyService.handleChatCompletions(
+          request,
+          'chat-completions',
+          deadline.signal,
+          undefined,
+          undefined,
+          req ? { headers: req.headers, url: req.url } : undefined,
+        ),
+        deadline.signal,
       );
       if (result instanceof Observable) {
         this.logProxyEndpointError(
@@ -1093,7 +1128,7 @@ export class OpenAIOperations extends BaseProxyController {
       let message = error instanceof Error ? error.message : 'Internal Server Error';
       let resolvedError = error;
 
-      if (this.isProjectContextErrorMessage(message)) {
+      if (admitGenerationProjectRecovery(error, deadline.signal)) {
         try {
           const geminiRequest = this.buildGeminiImageRequest(request, prompt);
           const { parsedBaseModel } = resolveImageGenerationConfig(request.model, {
@@ -1101,18 +1136,15 @@ export class OpenAIOperations extends BaseProxyController {
             quality: request.quality,
             size: request.size,
           });
-          const geminiResult = await (abortScope.signal
-            ? this.proxyService.handleGeminiGenerateContent(
-                parsedBaseModel,
-                geminiRequest,
-                'image_gen',
-                abortScope.signal,
-              )
-            : this.proxyService.handleGeminiGenerateContent(
-                parsedBaseModel,
-                geminiRequest,
-                'image_gen',
-              ));
+          const geminiResult = await awaitRequestOperation(
+            this.proxyService.handleGeminiGenerateContent(
+              parsedBaseModel,
+              geminiRequest,
+              'image_gen',
+              deadline.signal,
+            ),
+            deadline.signal,
+          );
           const fallbackImage = this.extractInlineBase64ImageFromGeminiResponse(geminiResult);
           if (fallbackImage) {
             const response: OpenAIImageResponse = {
@@ -1142,6 +1174,7 @@ export class OpenAIOperations extends BaseProxyController {
       this.sendOpenAIErrorResponse(res, path, resolvedError, message);
     } finally {
       abortScope.dispose();
+      deadline.dispose();
     }
   }
 

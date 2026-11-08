@@ -88,33 +88,6 @@ export function resolveBareFamilyModel(
   );
 }
 
-export function resolveTieredFamilyModel(
-  normalizedMappedModel: string,
-  availableModels: ReadonlySet<string>,
-): string | null {
-  const requested = parseTieredModel(normalizedMappedModel);
-  if (!requested) {
-    return null;
-  }
-
-  const familyCandidates = [...availableModels]
-    .map((model) => ({ model, parsed: parseTieredModel(model) }))
-    .filter(
-      (item): item is { model: string; parsed: ParsedTieredModel } =>
-        item.parsed?.base === requested.base,
-    );
-  if (familyCandidates.length === 0) {
-    return null;
-  }
-
-  familyCandidates.sort(
-    (left, right) =>
-      getTierDistance(requested.tier, left.parsed.tier) -
-      getTierDistance(requested.tier, right.parsed.tier),
-  );
-  return familyCandidates[0]?.model ?? null;
-}
-
 function findLowestTierAboveLow(tiers: ReadonlyMap<TieredModelSuffix, string>): string | undefined {
   const lowIndex = MODEL_EFFORT_TIERS.indexOf('low');
   for (const tier of MODEL_EFFORT_TIERS.slice(lowIndex + 1)) {
@@ -156,21 +129,6 @@ function findClosestTier(
     }
   }
   return closest?.model ?? null;
-}
-
-function getTierDistance(
-  requestedTier: TieredModelSuffix,
-  candidateTier: TieredModelSuffix,
-): number {
-  if (!isPreferenceTier(candidateTier) || !isPreferenceTier(requestedTier)) {
-    return 0;
-  }
-  const requestedIndex = MODEL_EFFORT_TIERS.indexOf(requestedTier);
-  const candidateIndex = MODEL_EFFORT_TIERS.indexOf(candidateTier);
-  if (candidateIndex >= requestedIndex) {
-    return candidateIndex - requestedIndex;
-  }
-  return MODEL_EFFORT_TIERS.length + requestedIndex - candidateIndex;
 }
 
 function isPreferenceTier(tier: TieredModelSuffix): tier is ModelEffortTier {

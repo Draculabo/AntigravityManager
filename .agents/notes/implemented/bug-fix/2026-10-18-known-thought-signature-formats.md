@@ -69,6 +69,19 @@ Ordinary audit-only use retains its existing behavior; raw diagnostic forwarding
 countTokens remain outside generation response validation. Warmup still acknowledges HTTP
 status without consuming model output.
 
+The exact canonical Base64 encoding of the legacy Gemini placeholder is also
+recognized. Both forms follow the same model gate and are absent from recoverable
+signature material. The Thought Store decodes an older saved placeholder to null
+and keeps its part layout. The change does not rewrite existing database rows.
+
+The native Gemini gateway projects an outbound Claude continuation only when an explicit
+Claude selection and the routed Claude target follow a successful Gemini generation under
+the same credential and anchored session. The bounded in-memory observation lasts ten
+minutes and is discarded on gateway restart. The projection omits recognized Gemini
+signatures and placeholders from model parts and drops the private thought-only parts that
+carry them. It retains visible content and tool exchanges. Unproven switches still use the
+position-only target gate. A shared API key by itself cannot authorize the projection.
+
 ## Alternatives considered
 
 - Decode printable Base64 to text: rejected because ASCII protobuf data is binary.
@@ -104,3 +117,5 @@ The request guard report (local artifact `D04-request-alias-implementation.md` i
 records failing controller/transport baselines, safe rejection and equivalent-pair coverage.
 The response guard report (local artifact `D04-response-alias-implementation.md` in the 2026-10-11 review collection)
 records fragmented-event isolation, safe terminal errors, parser bounds and protocol evidence.
+The model switch checks exercise unary and streaming continuations over loopback HTTP, including
+the original 400 when projection is disabled. Installed-client and provider acceptance remain open.

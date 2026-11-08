@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PIXEL_PNG, PIXEL_GIF } from '../fixtures/image-content';
 import {
   MAX_INPUT_IMAGES,
   MAX_INPUT_IMAGE_BYTES,
@@ -11,12 +12,12 @@ describe('image input validation', () => {
   it('preserves valid generation images in request order', () => {
     expect(
       parseGenerationInputImages([
-        'data:image/png;base64,AQ==',
-        'data:image/webp;name=source;base64,Ag==',
+        `data:image/png;base64,${PIXEL_PNG.toString('base64')}`,
+        `data:image/gif;name=source;base64,${PIXEL_GIF.toString('base64')}`,
       ]),
     ).toEqual([
-      { data: 'AQ==', mimeType: 'image/png' },
-      { data: 'Ag==', mimeType: 'image/webp' },
+      { data: PIXEL_PNG.toString('base64'), mimeType: 'image/png' },
+      { data: PIXEL_GIF.toString('base64'), mimeType: 'image/gif' },
     ]);
   });
 

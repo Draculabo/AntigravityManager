@@ -11,6 +11,7 @@ import {
   readServiceConfigErrorCode,
   type ServiceConfigSnapshot,
   type ServiceConfigUpdate,
+  type ServiceConfigWriteResult,
   type ServiceSecretWrite,
 } from '../service-config.schema';
 import { UpstreamProxyUrlSchema } from '../upstream-proxy.schema';
@@ -19,9 +20,10 @@ interface UpstreamProxySettingsProps {
   proxy: Pick<ServiceConfigSnapshot['proxy'], 'upstream_proxy' | 'upstream_proxy_configured'>;
   available: boolean;
   onSaved(): Promise<void>;
+  onApplicationResult?(result: ServiceConfigWriteResult): void;
 }
 
-export function UpstreamProxySettings({ proxy, available, onSaved }: UpstreamProxySettingsProps) {
+export function UpstreamProxySettings({ proxy, available, onSaved, onApplicationResult }: UpstreamProxySettingsProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [draft, setDraft] = useState<string | null>(null);
@@ -49,15 +51,19 @@ export function UpstreamProxySettings({ proxy, available, onSaved }: UpstreamPro
         'name' in change
           ? await ipc.client.config.service.writeSecret(change)
           : await ipc.client.config.service.update(change);
+      onApplicationResult?.(result);
       if ('name' in change) {
         setDraft(null);
       }
       await onSaved();
       toast({
         title:
-          result.state === 'applied'
+          result.state === 'partial-failure'
+            ? t('settings.service-apply-failed')
+            : result.state === 'applied'
             ? t('settings.toast.saved.title')
             : t('settings.service-restart-required'),
+        ...(result.state === 'partial-failure' ? { variant: 'destructive' as const } : {}),
       });
     } catch (error) {
       reportFailure(error);

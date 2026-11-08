@@ -36,6 +36,7 @@ test('runtime tracing excludes host assets while retaining all explicit native e
       'cli/main.cjs',
       'core/traffic-audit.worker.js',
       'core/thought-store.worker.js',
+      'core/error-window.worker.js',
     ]) {
       await file(entry, 'module.exports = {};');
     }

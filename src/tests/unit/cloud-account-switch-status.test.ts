@@ -11,6 +11,7 @@ import {
   recordSwitchFailure,
   recordSwitchSuccess,
 } from '@/modules/antigravity-runtime/switch/switchMetrics';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 vi.mock('@/modules/cloud-account/ipc/handler', () => ({}));
 afterEach(() => {
@@ -74,7 +75,7 @@ describe('switch diagnostics boundary', () => {
     ).toBe(false);
   });
   it('keeps diagnostics outside account-mutation admission and drain', async () => {
-    const operations = createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() });
+    const operations = createCoreRpcOperations(mockCoreGatewayLifecycle());
     operations.closeAccountMutationAdmission();
     const before = operations.accountSwitchStatus();
     await operations.drainAccountMutations();

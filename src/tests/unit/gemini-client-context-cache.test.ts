@@ -1,4 +1,7 @@
 import axios from 'axios';
+import { performance } from 'node:perf_hooks';
+import { setServerConfig } from '@/server/server-config';
+import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
@@ -6,6 +9,87 @@ import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemi
 import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
 
 describe('GeminiClient explicit context cache', () => {
+  it('spends one deadline across cache creation, rejected cache and full-request retry', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    vi.stubEnv('PROXY_INTERNAL_BASE_URLS', 'http://cache-deadline.invalid/v1internal');
+    vi.stubEnv('PROXY_CONTEXT_CACHE_ENABLED', 'true');
+    vi.stubEnv('PROXY_CONTEXT_CACHE_MIN_CHARACTERS', '1');
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 10 });
+    const post = vi
+      .spyOn(axios, 'post')
+      .mockImplementationOnce(async () => {
+        now += 4000;
+        return {
+          status: 200,
+          data: {
+            name: 'projects/project-a/locations/us-central1/cachedContents/deadline',
+            expireTime: '2099-01-01T00:00:00Z',
+          },
+        };
+      })
+      .mockImplementationOnce(async () => {
+        now += 3000;
+        throw new axios.AxiosError('Cached content missing', undefined, undefined, undefined, {
+          status: 400,
+          statusText: '',
+          headers: {},
+          config: { headers: new axios.AxiosHeaders() },
+          data: { error: { message: 'Cached content missing' } },
+        });
+      })
+      .mockResolvedValueOnce({ status: 200, data: { candidates: [] } });
+    try {
+      await new GeminiClient(new Upstream4xxCaptureService()).generateInternal(
+        {
+          model: 'gemini-2.5-pro',
+          project: 'project-a',
+          requestId: 'cache-deadline',
+          userAgent: 'fixture',
+          request: {
+            contents: [{ role: 'user', parts: [{ text: 'Controlled cache deadline.' }] }],
+            systemInstruction: { parts: [{ text: 'You are a coding assistant.' }] },
+            tools: [{ functionDeclarations: [{ name: 'read_file' }] }],
+          },
+        },
+        'synthetic-token',
+      );
+      expect(post.mock.calls.map(([, , config]) => config?.timeout)).toEqual([10000, 6000, 3000]);
+      expect(post.mock.calls.slice(1).map(([, , config]) => config?.signal?.aborted)).toEqual([
+        false,
+        false,
+      ]);
+    } finally {
+      setServerConfig(DEFAULT_APP_CONFIG.proxy);
+    }
+  });
+  it('validates endpoint routing before creating a billable explicit cache resource', async () => {
+    vi.stubEnv('PROXY_INTERNAL_BASE_URLS', 'https://private-user:private-secret@invalid.example');
+    vi.stubEnv('PROXY_CONTEXT_CACHE_ENABLED', 'true');
+    vi.stubEnv('PROXY_CONTEXT_CACHE_MIN_CHARACTERS', '1');
+    const post = vi.spyOn(axios, 'post').mockResolvedValue({ data: {} } as never);
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+
+    await expect(
+      client.generateInternal(
+        {
+          model: 'gemini-2.5-pro',
+          project: 'project-a',
+          requestId: 'invalid-route',
+          userAgent: 'test',
+          request: {
+            contents: [{ role: 'user', parts: [{ text: 'What changed?' }] }],
+            systemInstruction: { parts: [{ text: 'You are a coding assistant.' }] },
+            tools: [{ functionDeclarations: [{ name: 'read_file' }] }],
+          },
+        },
+        'access-token',
+      ),
+    ).rejects.toMatchObject({ name: 'UpstreamEndpointConfigurationError' });
+
+    expect(post).not.toHaveBeenCalled();
+    expect(explicitContextCacheManager.getStats().activeEntries).toBe(0);
+  });
   afterEach(() => {
     explicitContextCacheManager.clear();
     vi.restoreAllMocks();

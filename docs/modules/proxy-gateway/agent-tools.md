@@ -1,6 +1,6 @@
 # Coding Tool Configuration Reference
 
-The proxy page configures Claude Code, Codex and OpenCode on the computer and under the user
+The proxy page configures Claude Code, Codex, OpenCode, Hermes, OpenClaw and DSH on the computer and under the user
 running the selected Manager backend. An Electron renderer connected to a standalone core
 changes the core user's files, not the renderer user's files. Installation detection is advisory;
 settings can be saved before installing a client. Reopen clients after changing settings.
@@ -44,6 +44,104 @@ client write fails. The original client backup remains available for recovery.
 Original Claude/Codex backups may contain prior client credentials. See the private-file policy
 in [security.md](../../security.md). Configuration and previews do not prove upstream availability.
 Use the [live acceptance SOP](./acceptance/live-agent.md) to verify requests and traffic records.
+
+## Independent connection profiles
+
+The connection-profile card saves separate connection plans for the same client. Choose a name,
+address, supported protocol/SDK combination, model set and an existing backend credential source.
+The existing Manager key, existing OpenCode dedicated key and the current client-configured key
+are snapshot sources. They do not create new proxy keys. Profile credentials never enter public
+IPC, previews or renderer state. Changing the source replaces only that saved profile's snapshot.
+
+OpenCode, OpenClaw and DSH receive an independent provider ID per saved connection. OpenClaw
+allow tokens and default selections remain independently owned. Other provider nodes and later
+unrelated changes survive removal. Claude, Codex and Hermes keep a library of saved connections
+with one active native connection. Applying another switches that connection; the prior plan
+and credential remain saved. A saved or owned connection does not establish that the client
+has loaded it or that a model request succeeds.
+
+Save the profile before requesting an apply/remove preview. A stale saved revision, changed
+native file, changed key or ownership receipt invalidates the preview. Remove its native
+connection before deleting an applied saved profile or changing its client, DSH profile or
+OpenClaw format. The library uses the selected backend's home and environment paths.
+
+The version-1 catalog is `client-connection-profiles.json` in the Manager data directory.
+Connection keys stay in separate OS-keyring accounts. Private originals, first backups and
+write-intent state are encrypted with a keyring-owned encryption key. Preserve the catalog and
+the original user's keyring together for recovery. An unavailable keyring or missing encryption
+key stops operations without a plaintext fallback. Native writes and catalog finalization are
+separate steps; an interrupted operation reports failure and reconciles known before/after
+bytes on the next operation. Unexpected intervening changes require resolving the conflict.
+
+## Hermes and OpenClaw configuration
+
+Both cards use the selected backend's existing Manager proxy key. The key stays in the backend
+and is written only to the client connection fields. Status and previews expose installation,
+paths, endpoint, model IDs and explicit selection options without file contents or credentials.
+Installation detection runs outside the write queue, with one version command bounded to five
+seconds and 64 KiB. A found executable can have an unknown version. Settings can be saved before
+installing either client; a saved file does not establish that a client has loaded it.
+
+Hermes targets `HERMES_HOME/config.yaml`, otherwise `~/.hermes/config.yaml`. Its YAML document
+adapter keeps comments and unrelated nodes. The `antigravity-manager` provider uses `api`,
+`api_key`, `transport: chat_completions` and `discover_models`. Explicit model IDs are written
+when discovery is off. Conflicting credential or endpoint aliases in that provider are refused.
+Only explicit default activation changes `model.provider` and `model.default`.
+
+OpenClaw targets `OPENCLAW_CONFIG_PATH`, otherwise `OPENCLAW_DIR/openclaw.json` or
+`~/.openclaw/openclaw.json`. JSONC edits keep comments and unrelated nodes. The selected `v1`
+format owns individual Manager entries in `agents.defaults.models`; `v2` owns only its
+`antigravity-manager/*` token in `agents.defaults.modelPolicy.allow`. Changing formats removes
+only entries recorded by Manager. Personal allow entries remain. Provider fields use `baseUrl`,
+`apiKey`, `api: openai-completions` and the selected model IDs. Model capabilities are not guessed.
+`models.mode` stays unchanged by default. The separate merge option previews and changes that
+global field explicitly. Only explicit activation changes `agents.defaults.model.primary`.
+
+Apply and remove require a preview whose hash covers both the configuration and ownership
+receipt. Each backend admits at most 32 queued writes or previews and 32 independent status
+operations. Shutdown closes admission and drains both groups before releasing the backend.
+The owner keeps an exclusive first `.antigravity-manager.bak` with the original file text or
+original absence. Backups, receipts and replacement files use private creation permissions.
+On Windows, the backend user's directory permissions govern access. Configuration and receipt
+reads are limited to 1 MiB; unsafe or malformed files are refused.
+
+Replacement uses a unique temporary file, a final source comparison and readback. The adjacent
+`.antigravity-manager.owner` receipt records each field's previous value and written hash.
+Removal restores a value only while it still matches that hash, so changed managed fields cause
+a conflict. Only newly created parent mappings that remain empty are pruned. Later personal fields remain. Default activation is retained unless explicitly
+changed or removed; removing its selected model from a later sync requires a new explicit
+selection. Whole-file backup restoration is not exposed by these cards.
+
+Configuration and receipt are separate writes. `data.clientConfigCode: receipt-failed` means
+the client file may already have changed and ownership was not confirmed. Inspect the file and
+first backup before further changes. `write-unconfirmed` also requires inspection. Neither
+error means that rollback completed. Both clients must be reopened after configuration changes.
+
+## DSH profile configuration
+
+The DSH card targets the selected backend user's DSH_HOME/profiles/<profile>/cordis.patch.yml.
+Set DSH_HOME in that backend's environment. The selected profile must contain one supported
+llm-pi-ai entry with a providers mapping. Preview shows the Manager provider, protocol, endpoint,
+models and credential reference. Existing-reference mode leaves credential provisioning to DSH.
+The explicit Manager-key option supports only the declared native version-1 credentials-local
+store without a custom path. Unknown declarations, unsafe permissions or unsupported formats
+are refused. Credential values stay in the backend and its native store.
+
+Default-model activation is separate. It requires a recognized agent-default-model entry and a
+model in the submitted list. Removal restores the exact unchanged owned default, preserving a
+later personal selection. The profile library uses independent provider/credential namespaces.
+
+Apply/remove consume a reviewed profile, ownership and relevant credential snapshot. The owner
+uses native exclusive locks, private first backups, source comparisons and readback. Changed or
+unowned managed nodes cause a conflict. Cleanup retains credentials referenced by another
+provider or profile, or whose unreferenced ownership cannot be established. Profile, credential
+and receipt writes are separate. A partial failure requires inspection of the files and backups;
+it does not establish rollback and is never automatically replayed.
+
+Other composition patches and launch-environment values can override the saved profile. Disk
+persistence does not establish effective running configuration, credential availability in a
+separately launched client, or a successful request. Verify those through the original real-client
+acceptance when authorized. No real DSH client or profile was used for this source snapshot.
 
 The SOP accepts `--client-settings PATH` for Claude/Codex directories produced by one-click
 configuration. This mode does not supply model, provider, endpoint or authorization overrides
@@ -98,3 +196,5 @@ never point this script at a production profile. Screenshots capture only the to
 Use `--model-name <visible-label>` to select a particular displayed model. When aliases share a
 label, the script selects the first entry and records the actual model ID from the written file;
 the displayed label alone is not evidence of the physical model used.
+
+Independent connection profiles require the original owner keyring for credential and recovery access. Read the [connection profile upgrade and recovery guide](../../upgrade-guides/next/connection-profiles.md) before copying profiles, resetting credentials or downgrading. Its recovery procedure is not runtime-verified for this source snapshot.

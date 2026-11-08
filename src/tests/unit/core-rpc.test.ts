@@ -92,6 +92,14 @@ function operations(): CoreRpcOperations {
   return {
     playground: { execute: vi.fn(), compare: vi.fn() },
     diagnosticLogs: vi.fn(),
+    errorDiagnostics: {
+      status: vi.fn(),
+      query: vi.fn(),
+      open: vi.fn(),
+      readContent: vi.fn(),
+      closeContent: vi.fn(),
+      clear: vi.fn(),
+    },
     errorReporting: { setEnabled: vi.fn() },
     ipcCapture: ipcCaptureOwner,
     auditFile: auditFileOwner,
@@ -188,6 +196,17 @@ function operations(): CoreRpcOperations {
       base_url: `http://localhost:${port}`,
     })),
     gatewayStop: vi.fn(async () => ({ success: true as const })),
+    gatewayManualStart: vi.fn(),
+    gatewayManualStop: vi.fn(),
+    gatewayRetrySaveChoice: vi.fn(),
+    clientConfig: { status: vi.fn(), preview: vi.fn(), mutate: vi.fn() },
+    connectionProfiles: {
+      list: vi.fn(),
+      save: vi.fn(),
+      preview: vi.fn(),
+      mutate: vi.fn(),
+      delete: vi.fn(),
+    },
   };
 }
 

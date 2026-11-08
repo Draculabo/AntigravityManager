@@ -1,3 +1,4 @@
+import { isThoughtSignaturePlaceholder } from '../antigravity/ThoughtSignatureCompat';
 import type { ThoughtRecordInput } from './thought-store.types';
 import { areThoughtRecordModelsCompatible } from './thought-store.model';
 import { areThoughtSignaturesEquivalent } from '../antigravity/thought-signature-format';
@@ -22,7 +23,7 @@ export function hasThoughtTools(
 /** Conflicting opaque values cannot identify one turn, even when a tool ID is reused. */
 export function thoughtSignaturesConflict(left: string | null, right: string | null): boolean {
   const isSignature = (value: string | null): value is string =>
-    Boolean(value) && value !== 'skip_thought_signature_validator';
+    Boolean(value) && !isThoughtSignaturePlaceholder(value);
   return isSignature(left) && isSignature(right) && !areThoughtSignaturesEquivalent(left, right);
 }
 

@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -14,11 +15,19 @@ type AccountStrategy = ServiceConfigSnapshot['proxy']['account_selection_strateg
 interface ProxyAccountStrategyProps {
   value: AccountStrategy;
   onChange(value: AccountStrategy): Promise<void>;
+  weeklyQuotaPriorityEnabled: boolean;
+  onWeeklyQuotaPriorityChange(value: boolean): Promise<void>;
 }
 
-export function ProxyAccountStrategy({ value, onChange }: ProxyAccountStrategyProps) {
+export function ProxyAccountStrategy({
+  value,
+  onChange,
+  weeklyQuotaPriorityEnabled,
+  onWeeklyQuotaPriorityChange,
+}: ProxyAccountStrategyProps) {
   const { t } = useTranslation();
   const id = useId();
+  const weeklyPriorityId = useId();
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const save = async (next: string) => {
@@ -29,6 +38,17 @@ export function ProxyAccountStrategy({ value, onChange }: ProxyAccountStrategyPr
     setFailed(false);
     try {
       await onChange(next);
+    } catch {
+      setFailed(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const saveWeeklyPriority = async (next: boolean) => {
+    setSaving(true);
+    setFailed(false);
+    try {
+      await onWeeklyQuotaPriorityChange(next);
     } catch {
       setFailed(true);
     } finally {
@@ -63,6 +83,23 @@ export function ProxyAccountStrategy({ value, onChange }: ProxyAccountStrategyPr
       <p className="text-muted-foreground text-xs">
         {t('proxy.account-strategy.client-description')}
       </p>
+      <div className="flex items-center justify-between gap-4 pt-2">
+        <div className="space-y-1">
+          <Label htmlFor={weeklyPriorityId}>{t('proxy.account-strategy.weekly-priority')}</Label>
+          <p className="text-muted-foreground text-xs" id={`${weeklyPriorityId}-description`}>
+            {t('proxy.account-strategy.weekly-priority-description')}
+          </p>
+        </div>
+        <Switch
+          id={weeklyPriorityId}
+          aria-describedby={`${weeklyPriorityId}-description`}
+          checked={weeklyQuotaPriorityEnabled}
+          disabled={saving}
+          onCheckedChange={(next) => {
+            void saveWeeklyPriority(next);
+          }}
+        />
+      </div>
       {failed && (
         <p role="alert" className="text-destructive text-xs">
           {t('proxy.account-strategy.save-failed')}

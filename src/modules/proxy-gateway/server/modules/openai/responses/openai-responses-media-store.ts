@@ -1,6 +1,13 @@
 import { GoneException } from '@nestjs/common';
 
 import type { PrivateContentStore } from '../../files/files.service';
+import {
+  containsToolTextImage,
+  isValidToolTextReference,
+  restoreResponsesToolText,
+  storeResponsesToolText,
+  type ResponsesToolTextReference,
+} from './openai-responses-tool-text';
 
 const MEDIA_REFERENCE_FIELD = '__agm_responses_media_reference';
 const MEDIA_REFERENCE_VERSION = 1;
@@ -8,12 +15,14 @@ const MEDIA_ID_PATTERN = /^[a-f0-9]{32}$/u;
 const DATA_URL_MIME_PATTERN = /^data:((?:image|audio)\/[a-z0-9.+_-]+)(?:;[^,]*)*;base64$/iu;
 const BASE64_PATTERN = /^(?:[a-z0-9+/]{4})*(?:[a-z0-9+/]{2}==|[a-z0-9+/]{3}=)?$/iu;
 
-interface ResponsesMediaReference {
+interface ProtocolMediaReference {
   [MEDIA_REFERENCE_FIELD]: typeof MEDIA_REFERENCE_VERSION;
   encoding: 'base64' | 'data-url';
   id: string;
   prefix?: string;
 }
+type ResponsesMediaReference = ProtocolMediaReference | ResponsesToolTextReference;
+type MediaRepresentation = 'base64' | 'data-url' | 'tool-text';
 
 export class ResponsesMediaUnavailableError extends GoneException {
   public constructor() {
@@ -41,6 +50,12 @@ export class OpenAIResponsesMediaStore {
         throw new Error('Client supplied an internal Responses media reference');
       }
 
+      if (representation === 'tool-text') {
+        return typeof value === 'string' && containsToolTextImage(value)
+          ? storeResponsesToolText(value, this.content)
+          : value;
+      }
+
       if (representation === 'data-url') {
         if (typeof value !== 'string' || !value.startsWith('data:')) {
           return value;
@@ -56,12 +71,19 @@ export class OpenAIResponsesMediaStore {
   }
 
   public async restore(items: unknown[]): Promise<unknown[]> {
-    return (await transformResponsesMedia(items, async (value) => {
+    return (await transformResponsesMedia(items, async (value, representation) => {
       if (!isMediaReference(value)) {
         return value;
       }
-      if (!isValidMediaReference(value)) {
+      if (!isValidMediaReference(value, representation)) {
         throw new ResponsesMediaUnavailableError();
+      }
+      if (value[MEDIA_REFERENCE_FIELD] === 2) {
+        try {
+          return await restoreResponsesToolText(value, this.content);
+        } catch {
+          throw new ResponsesMediaUnavailableError();
+        }
       }
 
       let bytes: Buffer;
@@ -75,7 +97,7 @@ export class OpenAIResponsesMediaStore {
     })) as unknown[];
   }
 
-  private async storeBase64(value: string): Promise<ResponsesMediaReference> {
+  private async storeBase64(value: string): Promise<ProtocolMediaReference> {
     const bytes = decodeBase64(value);
     const id = await this.content.put(bytes);
     return {
@@ -85,7 +107,7 @@ export class OpenAIResponsesMediaStore {
     };
   }
 
-  private async storeDataUrl(value: string): Promise<ResponsesMediaReference> {
+  private async storeDataUrl(value: string): Promise<ProtocolMediaReference> {
     const separator = value.indexOf(',');
     if (separator < 0) {
       throw new Error('Invalid inline Responses media data URL');
@@ -113,6 +135,9 @@ export function containsInlineResponsesMedia(value: unknown): boolean {
     if (isMediaReference(mediaValue)) {
       return false;
     }
+    if (representation === 'tool-text') {
+      return containsToolTextImage(mediaValue);
+    }
     if (representation === 'data-url') {
       return typeof mediaValue === 'string' && mediaValue.startsWith('data:');
     }
@@ -122,8 +147,8 @@ export function containsInlineResponsesMedia(value: unknown): boolean {
 
 /** Reject malformed references while accepting ordinary tool arguments unchanged. */
 export function hasInvalidResponsesMediaReference(value: unknown): boolean {
-  return inspectResponsesMedia(value, (mediaValue) => {
-    return isMediaReference(mediaValue) && !isValidMediaReference(mediaValue);
+  return inspectResponsesMedia(value, (mediaValue, representation) => {
+    return isMediaReference(mediaValue) && !isValidMediaReference(mediaValue, representation);
   });
 }
 
@@ -133,7 +158,7 @@ export function containsResponsesMediaReference(value: unknown): boolean {
 
 async function transformResponsesMedia(
   value: unknown,
-  transformMedia: (mediaValue: unknown, representation: 'base64' | 'data-url') => Promise<unknown>,
+  transformMedia: (mediaValue: unknown, representation: MediaRepresentation) => Promise<unknown>,
 ): Promise<unknown> {
   if (Array.isArray(value)) {
     const mapped: unknown[] = [];
@@ -148,6 +173,12 @@ async function transformResponsesMedia(
   if (isToolCallRecord(value)) {
     return structuredClone(value);
   }
+  if (isToolResultRecord(value)) {
+    return {
+      ...structuredClone(value),
+      output: await transformToolOutput(value.output, transformMedia),
+    };
+  }
   if (isMediaRecord(value)) {
     return transformMediaRecord(value, transformMedia);
   }
@@ -161,7 +192,7 @@ async function transformResponsesMedia(
 
 async function transformMediaRecord(
   value: Record<string, unknown>,
-  transformMedia: (mediaValue: unknown, representation: 'base64' | 'data-url') => Promise<unknown>,
+  transformMedia: (mediaValue: unknown, representation: MediaRepresentation) => Promise<unknown>,
 ): Promise<Record<string, unknown>> {
   const mapped = structuredClone(value);
   if (value.type === 'input_image' || value.type === 'image_url') {
@@ -186,7 +217,7 @@ async function transformMediaRecord(
 
 async function transformUrlValue(
   value: unknown,
-  transformMedia: (mediaValue: unknown, representation: 'base64' | 'data-url') => Promise<unknown>,
+  transformMedia: (mediaValue: unknown, representation: MediaRepresentation) => Promise<unknown>,
 ): Promise<unknown> {
   if (typeof value === 'string') {
     return transformMedia(value, 'data-url');
@@ -194,7 +225,7 @@ async function transformUrlValue(
   if (isMediaReference(value)) {
     return transformMedia(value, 'data-url');
   }
-  if (!isRecord(value) || typeof value.url !== 'string') {
+  if (!isRecord(value) || (typeof value.url !== 'string' && !isMediaReference(value.url))) {
     return value;
   }
   return {
@@ -205,7 +236,7 @@ async function transformUrlValue(
 
 function inspectResponsesMedia(
   value: unknown,
-  inspect: (mediaValue: unknown, representation: 'base64' | 'data-url') => boolean,
+  inspect: (mediaValue: unknown, representation: MediaRepresentation) => boolean,
 ): boolean {
   if (Array.isArray(value)) {
     return value.some((entry) => inspectResponsesMedia(entry, inspect));
@@ -215,6 +246,9 @@ function inspectResponsesMedia(
   }
   if (isToolCallRecord(value)) {
     return false;
+  }
+  if (isToolResultRecord(value)) {
+    return inspectToolOutput(value.output, inspect);
   }
   if (isMediaRecord(value)) {
     if (value.type === 'input_image' || value.type === 'image_url') {
@@ -232,7 +266,7 @@ function inspectResponsesMedia(
 
 function inspectUrlValue(
   value: unknown,
-  inspect: (mediaValue: unknown, representation: 'base64' | 'data-url') => boolean,
+  inspect: (mediaValue: unknown, representation: MediaRepresentation) => boolean,
 ): boolean {
   if (typeof value === 'string') {
     return inspect(value, 'data-url');
@@ -265,9 +299,17 @@ function isMediaReference(value: unknown): value is ResponsesMediaReference {
   return isRecord(value) && MEDIA_REFERENCE_FIELD in value;
 }
 
-function isValidMediaReference(value: ResponsesMediaReference): boolean {
+function isValidMediaReference(
+  value: ResponsesMediaReference,
+  representation: MediaRepresentation,
+): boolean {
+  if (value[MEDIA_REFERENCE_FIELD] === 2) {
+    return representation === 'tool-text' && isValidToolTextReference(value);
+  }
   if (
+    representation === 'tool-text' ||
     value[MEDIA_REFERENCE_FIELD] !== MEDIA_REFERENCE_VERSION ||
+    typeof value.id !== 'string' ||
     !MEDIA_ID_PATTERN.test(value.id)
   ) {
     return false;
@@ -280,6 +322,69 @@ function isValidMediaReference(value: ResponsesMediaReference): boolean {
     typeof value.prefix === 'string' &&
     DATA_URL_MIME_PATTERN.test(`data:${value.prefix.slice(0, -1)}`)
   );
+}
+
+function isToolResultRecord(value: Record<string, unknown>): boolean {
+  return value.type === 'function_call_output' || value.type === 'custom_tool_call_output';
+}
+
+async function transformToolOutput(
+  value: unknown,
+  transform: (value: unknown, representation: MediaRepresentation) => Promise<unknown>,
+): Promise<unknown> {
+  if (typeof value === 'string' || isMediaReference(value)) {
+    return transform(value, 'tool-text');
+  }
+  if (Array.isArray(value)) {
+    const result: unknown[] = [];
+    for (const block of value) {
+      result.push(await transformToolOutput(block, transform));
+    }
+    return result;
+  }
+  if (isRecord(value)) {
+    if ('content' in value) {
+      return {
+        ...structuredClone(value),
+        content: await transformToolOutput(value.content, transform),
+      };
+    }
+    if (isToolTextBlock(value)) {
+      return { ...structuredClone(value), text: await transform(value.text, 'tool-text') };
+    }
+    if (isMediaRecord(value)) {
+      return transformMediaRecord(value, transform);
+    }
+  }
+  return structuredClone(value);
+}
+
+function inspectToolOutput(
+  value: unknown,
+  inspect: (value: unknown, representation: MediaRepresentation) => boolean,
+): boolean {
+  if (typeof value === 'string' || isMediaReference(value)) {
+    return inspect(value, 'tool-text');
+  }
+  if (Array.isArray(value)) {
+    return value.some((block: unknown) => inspectToolOutput(block, inspect));
+  }
+  if (isRecord(value)) {
+    if ('content' in value) {
+      return inspectToolOutput(value.content, inspect);
+    }
+    if (isToolTextBlock(value)) {
+      return inspect(value.text, 'tool-text');
+    }
+    if (isMediaRecord(value)) {
+      return inspectResponsesMedia(value, inspect);
+    }
+  }
+  return false;
+}
+
+function isToolTextBlock(value: Record<string, unknown>): boolean {
+  return value.type === 'text' || value.type === 'input_text' || value.type === 'output_text';
 }
 
 function decodeBase64(value: string): Buffer {

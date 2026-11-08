@@ -8,7 +8,7 @@ import {
   ContentClosedSchema,
   ContentReadInputSchema,
   ContentIdentitySchema,
-} from '../diagnostics/content-capability.schema';
+} from '@/shared/observability/content-capability.schema';
 export function createAuditCurlClient(
   rpc: RouterClient<ReturnType<typeof createAuditCurlOwnerRouter>>,
 ): AuditCurlOperations {

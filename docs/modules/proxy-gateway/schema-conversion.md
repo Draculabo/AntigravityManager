@@ -18,6 +18,29 @@ upstream compatibility transformations rather than a complete JSON Schema valida
 references, named anchors, dynamic references and nested resource scope changes are unsupported.
 The converter fetches no reference resources.
 
+For tool declarations, an explicit object or an untyped schema with `properties` can recover
+named parameters misplaced under `items`. Recovery requires a nonempty map of declarations
+that each have a type or a reference. Existing `properties` win on duplicate names, and
+recovered references resolve against the original document. The conversion removes the
+recovered `items` field from the outbound object and retains its `required` list.
+
+Array tool declarations keep their resolved `items` and discard misplaced `properties`.
+This follows the effective type after reference siblings and branch selection have been
+applied. Arrays without usable `items` receive the existing string-item fallback.
+
+Native Gemini generation prepares supplied function parameter schemas once before account
+selection, including the native `OBJECT` root spelling. It preserves omitted parameter
+schemas, built-in declarations and runtime function arguments. Enum normalization applies
+to declaration nodes, including when an argument object uses keys such as `enum` or `$ref`.
+
+Translated Anthropic requests use the explicit built-in tool type to skip search schemas.
+Ordinary functions named `web_search`, `google_search` or `builtin_web_search` receive the
+same declaration conversion and admission budgets as other functions.
+
+Explicit native Gemini `ANY` requires a declared function. Both tool-config aliases check
+every allowed function name against the request's declarations before account selection.
+Valid choices preserve provider extension fields and each alias's existing default policy.
+
 | Finding                                            | Result                                                             |
 | -------------------------------------------------- | ------------------------------------------------------------------ |
 | Unconvertible tool child node                      | Fixed string fallback; retain tool, siblings and parent `required` |
@@ -36,11 +59,26 @@ Fallback nodes contain exactly:
 }
 ```
 
-HTTP Schema input errors use status 400 and `invalid_request_error` in the caller's protocol.
+HTTP Schema input errors use status 400 with the caller's invalid-request shape. Native
+Gemini uses `INVALID_ARGUMENT`.
 Responses WebSocket uses an `error` event with `invalid_request_error` and `invalid_schema`.
 Schema rejection precedes account leasing, upstream execution and streaming publication. A
 rejected WebSocket Schema does not replace admitted socket configuration. History repair and
 quota/model policies retain their current owners and behavior.
+
+## Responses structured output
+
+For Responses requests with `text.format.type: json_schema`, the Gemini internal
+request sends `responseSchema` and omits optional tool declarations and tool
+configuration. Previous tool calls and results remain in the conversation.
+A required or named tool choice with JSON Schema fails before generation with
+`invalid_tool_choice`. JSON object mode does not use this tool restriction.
+
+After a successful non-streaming Responses answer in JSON Schema or JSON object
+mode, the gateway removes one outer Markdown fence if it encloses the entire
+answer and its payload parses as JSON. Ordinary text, invalid JSON and streaming
+deltas pass through this compatibility rule without modification. The check
+establishes valid JSON syntax. Schema validation remains separate.
 
 ## Bounds and cache
 

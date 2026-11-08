@@ -12,6 +12,19 @@ or the exact provider-generated answer reported by the user.
 
 ## Decision
 
+The hot namespace has one 10,000-association ceiling across message, legacy and
+tool-ID indexes, counting aliases and null ambiguity markers. A 500-session ceiling
+alone left one session's message slots unbounded. Oldest captured associations are
+evicted first, while the separate session LRU remains. Keep this retention policy
+feature-owned instead of creating another mutable reverse registry.
+
+Mapper cache values have no authoritative physical completion timestamp, so their
+existing one-hour horizon becomes a fixed first-capture maximum. Reads, equivalent
+updates and conflicts cannot renew it. Extending unknown provenance to seven days
+or stamping a read as completion would fabricate lifetime evidence. Proven durable
+Thought references keep their separate original-completion contract. A later capture
+after expiry may establish a new association; eviction never replays a tool/model.
+
 OpenAI Chat and Anthropic Messages derive signature ownership at the protocol service boundary.
 The scope includes a digest of the presented proxy credential, a session hint and the initial
 content anchor. Headers take precedence over query parameters and body metadata. Stable user

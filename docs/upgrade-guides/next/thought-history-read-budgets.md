@@ -11,8 +11,10 @@ large per-part signature transfers remain supported within the stated budgets.
 
 ## Required action
 
-1. Upgrade desktop and standalone core together; owner compatibility is now 6 because
-   the typed Thought Store configuration includes its independent disk budget. A
+1. Upgrade desktop and standalone core together; owner compatibility is now 9, retaining
+   the Thought Store disk contract from compatibility 6 and adding the
+   [local error window](local-error-window.md) and
+   [physical-attempt audit migration](physical-attempt-usage.md). A
    mismatched running owner is refused without fallback or automatic termination.
    Existing schema-2 databases receive a transactional additive schema-3 upgrade
    preserving their rows and original bytes; no profile reset is required. The
@@ -65,7 +67,7 @@ Requests begun after completion can capture new history; no old response is repl
 Maintenance protects its admitted active-request snapshot, including older sessions.
 
 The private selected-owner record-list response is now a versioned metadata page;
-desktop and core must be upgraded together under compatibility 6. The diagnostic
+desktop and core must be upgraded together under compatibility 9. The diagnostic
 panel follows bounded cursors to inspect history beyond the complete-read limit.
 Existing HTTP complete reads still refuse over-budget results. HTTP callers can use
 the new `/v1/thinking/sessions/:sessionId/records` metadata route; see the
@@ -102,7 +104,7 @@ untested. Without a valid older copy, retain the upgraded database and current b
 until a deliberate cache-loss procedure is agreed. Old schema-2 builds can also
 prune durable history to 200 turns/session bytes. Schema-0/1 binaries retain the
 separate replacement guide's constraints.
-Owner compatibility 6 prevents mixed live owners; it does not make an old installed
+Owner compatibility 9 prevents mixed live owners; it does not make an old installed
 binary safe against expanded history. Actual older-binary downgrade remains untested.
 
 ## Verification

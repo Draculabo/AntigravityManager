@@ -35,6 +35,7 @@ const CloudAccountViewQuotaSchema = z.strictObject({
     }),
   ),
   subscription_tier: z.string().optional(),
+  is_forbidden: z.boolean().optional(),
   subscription_status: z
     .strictObject({
       refresh_status: z.enum(['succeeded', 'failed']),
@@ -172,6 +173,7 @@ export function projectCloudAccountView(account: CloudAccount): CloudAccountView
             ]),
           ),
           subscription_tier: account.quota.subscription_tier,
+          is_forbidden: account.quota.is_forbidden === true || account.quota.isForbidden === true,
           subscription_status: account.quota.subscription
             ? {
                 refresh_status: account.quota.subscription.refresh_status,

@@ -7,6 +7,7 @@ type AssociationFailure =
   | 'invalid-role'
   | 'ambiguous-cached-call'
   | 'ambiguous-missing-id'
+  | 'conflicting-result-name'
   | 'conflicting-item-id';
 
 export class InvalidToolResultAssociationError extends BadRequestException {

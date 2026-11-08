@@ -11,12 +11,14 @@ import {
   DesktopPreferencesSchema,
 } from '@/modules/config/service-config.schema';
 import { splitSettingsChange } from '@/modules/config/settings-change';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 const fixture = vi.hoisted(() => ({
   directory: '',
   apply: vi.fn(async () => {}),
   port: 0,
   listenAddress: '',
+  restartFields: vi.fn<(config: import('@/modules/config/types').ProxyConfig) => string[]>(() => []),
   policy: new Map<string, unknown>(),
 }));
 vi.mock('@/modules/cloud-account/persistence/cloud-account-settings-store', () => ({
@@ -55,6 +57,7 @@ vi.mock('@/modules/proxy-gateway/thought-store/thought-store.service', () => ({
   thoughtStoreService: { configure: fixture.apply },
 }));
 vi.mock('@/server/main', () => ({
+  getNestServerRestartFields: fixture.restartFields,
   getNestServerStatus: async () => ({
     running: fixture.port > 0,
     port: fixture.port,
@@ -77,6 +80,7 @@ beforeEach(async () => {
   fixture.apply.mockReset().mockResolvedValue(undefined);
   fixture.port = 0;
   fixture.listenAddress = '';
+  fixture.restartFields.mockReset();
   fixture.policy.clear();
   fixture.directory = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-service-config-'));
   endpoint =
@@ -106,7 +110,7 @@ async function connected() {
   const { ManagementServer } = await import('@/core/management/server');
   const { CoreRpcClient } = await import('@/core/rpc/client');
   const { createCoreRpcOperations } = await import('@/core/rpc/router');
-  const operations = createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() });
+  const operations = createCoreRpcOperations(mockCoreGatewayLifecycle());
   const server = new ManagementServer({
     endpoint,
     getStatus: () => ({
@@ -144,6 +148,34 @@ describe('service configuration', () => {
     expect(
       ServiceConfigUpdateSchema.safeParse({ proxy: { account_selection_strategy: 'invalid' } })
         .success,
+    ).toBe(false);
+  }, 15000);
+
+  it('persists a partial image-window strategy through RPC without changing scheduler concurrency', async () => {
+    const { client } = await connected();
+    const before = await readDisk();
+    const image_scheduler = {
+      ...before.proxy.image_scheduler,
+      send_window_enabled: true,
+      send_window_strategy: 'memory',
+      send_window_memory_mib: 16,
+    };
+    const result = await client.updateServiceConfig({
+      proxy: {
+        image_scheduler: {
+          send_window_enabled: true,
+          send_window_strategy: 'memory',
+          send_window_memory_mib: 16,
+        },
+      },
+    });
+    expect(result.snapshot.proxy.image_scheduler).toEqual(image_scheduler);
+    expect((await client.readServiceConfig()).proxy.image_scheduler).toEqual(image_scheduler);
+    expect(await readDisk()).toEqual({ ...before, proxy: { ...before.proxy, image_scheduler } });
+    expect(
+      ServiceConfigUpdateSchema.safeParse({
+        proxy: { image_scheduler: { send_window_strategy: 'combined' } },
+      }).success,
     ).toBe(false);
   }, 15000);
 
@@ -327,7 +359,7 @@ describe('service configuration', () => {
     const { client } = await connected();
     fixture.apply.mockRejectedValue(new Error('fixture-key-private fixture-pass'));
     const result = await client.updateServiceConfig({ proxy: { request_timeout: 321 } });
-    expect(result.state).toBe('restart-required');
+    expect(result.state).toBe('partial-failure');
     expect((await readDisk()).proxy.request_timeout).toBe(321);
     const { logger } = await import('@/shared/logging/logger');
     expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toMatch(
@@ -335,6 +367,7 @@ describe('service configuration', () => {
     );
     fixture.apply.mockResolvedValue(undefined);
     fixture.port = 8045;
+    fixture.restartFields.mockImplementation((proxy) => proxy.port !== fixture.port ? ['proxy.port'] : []);
     expect((await client.updateServiceConfig({ proxy: { port: 8048 } })).state).toBe(
       'restart-required',
     );
@@ -344,6 +377,7 @@ describe('service configuration', () => {
     const { client } = await connected();
     fixture.port = 8045;
     fixture.listenAddress = '::';
+    fixture.restartFields.mockImplementation((proxy) => proxy.network.lan_access ? [] : ['proxy.network.lan_access']);
     await client.writeServiceSecret({ name: 'api-key', value: 'fixture-key-private' });
     await client.updateServiceConfig({ proxy: { network: { lan_access: true } } });
     const result = await client.updateServiceConfig({

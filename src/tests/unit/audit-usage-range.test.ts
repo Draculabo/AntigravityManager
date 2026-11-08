@@ -22,12 +22,18 @@ const from = 1000,
   to = 2000,
   asOf = 1800;
 const range = { accountId: 'account-a', modelIds: ['claude-sonnet', 'gpt-model'], from, to };
+const identity = {
+  accountGenerationHash: 'a'.repeat(64),
+  accountSubjectHash: null,
+  accountGrantHash: 'b'.repeat(64),
+};
 const empty = {
   ...range,
   asOf,
   coverage: 'retained-local-records',
-  accountIdentity: 'stored-account-id',
-  timeBasis: 'request-start',
+  accountIdentity: 'current-account-incarnation',
+  timeBasis: 'attempt-start',
+  ambiguousTimeBasis: 'attempt-start-or-unattributed-request-start',
   recordedRequests: 0,
   countedRequests: 0,
   ambiguousRequests: 0,
@@ -77,22 +83,38 @@ function insert(row: Row = {}) {
     raw
       .prepare(
         `INSERT INTO upstream_attempts(id,parent_id,attempt_index,timestamp,completed_at,
-      endpoint,operation,account_id,model,request_headers,outcome) VALUES(?,?,?,?,?,'https://example.test','generate',?,?,'{}','completed')`,
+      endpoint,operation,account_id,model,request_headers,outcome,account_generation_hash,
+      account_grant_hash,usage_scope,input_tokens,output_tokens,cached_tokens)
+      VALUES(?,?,?,?,?,'https://example.test','generate',?,?,'{}',?,?,?,?,?,?,?)`,
       )
       .run(
         `${id}-${index}`,
         id,
         index + 1,
         row.timestamp ?? 1500,
-        attempt.completedAt === undefined ? 1600 : attempt.completedAt,
+        attempt.completedAt === undefined
+          ? row.completedAt === undefined
+            ? Math.max(1600, row.timestamp ?? 1500)
+            : row.completedAt
+          : attempt.completedAt,
         attempt.accountId,
         attempt.model,
+        row.outcome ?? 'completed',
+        attempt.accountId === null ? null : identity.accountGenerationHash,
+        attempt.accountId === null ? null : identity.accountGrantHash,
+        row.trafficClass === 'auxiliary' ? null : 'generation',
+        row.input === undefined ? 100 : row.input,
+        row.output === undefined ? 20 : row.output,
+        row.cached === undefined ? 60 : row.cached,
       );
   }
   return id;
 }
-function read() {
-  return repository.execute({ operation: 'usageRange', payload: { range, asOf } });
+function read(input = range) {
+  return repository.execute({
+    operation: 'usageRange',
+    payload: { range: input, asOf, ...identity },
+  });
 }
 beforeEach(() => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-cycle-usage-'));
@@ -139,6 +161,7 @@ describe('retained usage range in the native audit repository', () => {
       recordedRequests: 3,
       countedRequests: 2,
       missingUsageRequests: 1,
+      missingCachedRequests: 1,
       inputTokens: 200,
       outputTokens: 40,
       cachedTokens: 120,
@@ -165,14 +188,14 @@ describe('retained usage range in the native audit repository', () => {
       recordedRequests: 10,
       countedRequests: 5,
       missingUsageRequests: 5,
-      missingCachedRequests: 1,
-      inputTokens: 500,
-      outputTokens: 100,
-      cachedTokens: 240,
-      totalTokens: 600,
+      missingCachedRequests: 2,
+      inputTokens: 700,
+      outputTokens: 140,
+      cachedTokens: 480,
+      totalTokens: 840,
     });
   });
-  it('rejects missing/multiple/unknown/mismatched attempt ownership rather than guessing the last account', () => {
+  it('counts owned attempts across retries and keeps unattributed requests ambiguous', () => {
     insert({ attempts: [] });
     insert({
       attempts: [
@@ -188,13 +211,24 @@ describe('retained usage range in the native audit repository', () => {
     });
     insert({ attempts: [{ accountId: null, model: 'claude-sonnet' }] });
     insert({ attempts: [{ accountId: 'account-a', model: 'gpt-model' }] });
-    expect(read()).toEqual({ ...empty, recordedRequests: 5, ambiguousRequests: 5 });
+    expect(read()).toEqual({
+      ...empty,
+      recordedRequests: 5,
+      countedRequests: 3,
+      ambiguousRequests: 2,
+      inputTokens: 400,
+      outputTokens: 80,
+      cachedTokens: 240,
+      totalTokens: 480,
+    });
   });
   it('remains idempotent across reads and parent completion replacements', () => {
     const id = insert();
     const first = read();
     expect(read()).toEqual(first);
     raw.prepare('UPDATE request_logs SET input_tokens=110 WHERE id=?').run(id);
+    expect(read()).toEqual(first);
+    raw.prepare('UPDATE upstream_attempts SET input_tokens=110 WHERE parent_id=?').run(id);
     expect(read()).toEqual({
       ...empty,
       recordedRequests: 1,
@@ -210,9 +244,7 @@ describe('retained usage range in the native audit repository', () => {
   it('distinguishes a recorded zero from missing usage and does not double count duplicate model selectors', () => {
     insert({ input: 0, output: 0, cached: 0 });
     const duplicated = { ...range, modelIds: ['claude-sonnet', 'claude-sonnet'] };
-    expect(
-      repository.execute({ operation: 'usageRange', payload: { range: duplicated, asOf } }),
-    ).toEqual({
+    expect(read(duplicated)).toEqual({
       ...empty,
       ...duplicated,
       recordedRequests: 1,
@@ -232,8 +264,8 @@ describe('retained usage range in the native audit repository', () => {
       ...empty,
       recordedRequests: 4,
       countedRequests: 2,
-      ambiguousRequests: 2,
-      missingCachedRequests: 2,
+      missingUsageRequests: 2,
+      missingCachedRequests: 4,
       inputTokens: 200,
       outputTokens: 40,
       totalTokens: 240,
@@ -247,9 +279,7 @@ describe('retained usage range in the native audit repository', () => {
   it('treats quoted and wildcard model names as exact parameter values', () => {
     insert();
     const injected = { ...range, accountId: "a' OR 1=1 --", modelIds: ['%', "x') OR 1=1 --"] };
-    expect(
-      repository.execute({ operation: 'usageRange', payload: { range: injected, asOf } }),
-    ).toEqual({ ...empty, ...injected });
+    expect(read(injected)).toEqual({ ...empty, ...injected });
   });
 });
 describe('usage query transport constraints', () => {

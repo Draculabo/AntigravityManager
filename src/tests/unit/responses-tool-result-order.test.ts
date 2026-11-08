@@ -206,6 +206,8 @@ describe('Responses chronological tool names', () => {
       error: {
         type: 'invalid_request_error',
         message: 'Invalid tool history at input[2]: duplicate-pending-id.',
+        code: 'invalid_tool_history',
+        param: null,
       },
     });
     expect(lease.getNextToken).not.toHaveBeenCalled();
@@ -232,6 +234,8 @@ describe('Responses chronological tool names', () => {
         error: {
           type: 'invalid_request_error',
           message: 'Invalid tool history at input[0]: missing-pending-call.',
+          code: 'invalid_tool_history',
+          param: null,
         },
       });
       expect(lease.getNextToken).not.toHaveBeenCalled();

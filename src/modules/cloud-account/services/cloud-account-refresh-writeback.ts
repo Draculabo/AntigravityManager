@@ -50,6 +50,7 @@ export class CloudAccountRefreshWriteback {
         this.account.token,
         token,
         this.guard,
+        true,
       ))
     ) {
       throw new CloudAccountRefreshContextChangedError(this.account.id);

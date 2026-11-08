@@ -22,14 +22,16 @@ interface RecoveryOptions {
     model: string,
     excluded: readonly string[],
     effort?: string,
+    physicalTarget?: boolean,
   ) => Array<[string, AccountLeaseTokenData]>;
   getCurrent: (id: string) => AccountLeaseTokenData | undefined;
-  physicalModel: (id: string, model: string, effort?: string) => string;
+  physicalModel: (id: string, model: string, effort?: string, physicalTarget?: boolean) => string;
   isAvailable: (
     id: string,
     token: AccountLeaseTokenData,
     model: string,
     effort?: string,
+    physicalTarget?: boolean,
   ) => boolean;
   refresh: (
     id: string,
@@ -70,24 +72,29 @@ export class AccountLeaseQuotaRecoveryPolicy {
   async prepare(request: {
     model?: string;
     effort?: string;
+    physicalTarget?: boolean;
     excluded: readonly string[];
     waitBudget: AccountLeaseSelectionWait;
     signal?: AbortSignal;
     allowance?: { used: boolean };
   }): Promise<void> {
-    const { model, effort, signal } = request;
+    const { model, effort, signal, physicalTarget } = request;
     const budget = Math.min(2000, request.waitBudget.remainingMs());
     if (!model || this.stopped || signal?.aborted || budget <= 0 || request.allowance?.used) {
       return;
     }
     const now = Date.now();
-    const candidates = this.options.getCandidates(model, request.excluded, effort);
+    const candidates = this.options.getCandidates(model, request.excluded, effort, physicalTarget);
     const needsRefresh = (id: string, token: AccountLeaseTokenData) =>
-      needsQuotaWindowRefresh(token.quota, this.options.physicalModel(id, model, effort), now);
+      needsQuotaWindowRefresh(
+        token.quota,
+        this.options.physicalModel(id, model, effort, physicalTarget),
+        now,
+      );
     if (
       candidates.some(
         ([id, token]) =>
-          !needsRefresh(id, token) && this.options.isAvailable(id, token, model, effort),
+          !needsRefresh(id, token) && this.options.isAvailable(id, token, model, effort, physicalTarget),
       )
     ) {
       return;
@@ -95,7 +102,7 @@ export class AccountLeaseQuotaRecoveryPolicy {
     const candidate = candidates
       .filter(
         ([id, token]) =>
-          needsRefresh(id, token) && this.options.isAvailable(id, token, model, effort),
+          needsRefresh(id, token) && this.options.isAvailable(id, token, model, effort, physicalTarget),
       )
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .find(([, token]) => {
@@ -139,7 +146,7 @@ export class AccountLeaseQuotaRecoveryPolicy {
         }
         const outcome = await this.options.refresh(
           id,
-          this.options.physicalModel(id, model, effort),
+          this.options.physicalModel(id, model, effort, physicalTarget),
           controller.signal,
           deadlineMs,
           effort,

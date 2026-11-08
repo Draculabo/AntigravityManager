@@ -10,15 +10,19 @@ import {
   DshStatusSchema,
   DshSyncInputSchema,
   DshWriteResultSchema,
+  DshErrorCodeSchema,
 } from './dsh-owner.schema';
 
 async function operation<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work();
   } catch (error) {
+    const remote = error instanceof ORPCError
+      ? z.strictObject({ dshCode: DshErrorCodeSchema }).safeParse(error.data)
+      : null;
     throw new ORPCError('SERVICE_UNAVAILABLE', {
       message: 'DSH settings are unavailable right now. Please try again.',
-      data: { dshCode: error instanceof DshOwnerError ? error.code : 'operation-failed' },
+      data: { dshCode: error instanceof DshOwnerError ? error.code : remote?.success ? remote.data.dshCode : 'operation-failed' },
     });
   }
 }

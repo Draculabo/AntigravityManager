@@ -2,6 +2,10 @@
 
 Status: implemented
 
+Partially superseded by: [Bounded internal endpoints](2026-11-05-internal-endpoint-configuration.md)
+for current candidates and regional fallback policy. The observed October runs below remain
+historical evidence.
+
 ## Problem
 
 Real Windows and Linux coding-tool acceptance repeatedly records production Cloud Code 429
@@ -11,11 +15,12 @@ it does not establish Google's internal capacity or quota cause.
 
 ## Decision
 
-Prefer the already supported Daily endpoint before production in the default GeminiClient
-endpoint list. Keep both endpoints, explicit environment ordering, failure classification,
-account selection and retry bounds unchanged. A third endpoint is unnecessary for the observed
-failover behavior. This ordering follows the local acceptance evidence and does not assume that
-it eliminates all 429 responses.
+The confirmed D10 policy uses Daily, Sandbox, then production in the default GeminiClient
+endpoint list. Explicit environment overrides retain validated, deduplicated preference.
+Regional HTTP fallback permits 408/404/5xx; 429 and 499 remain with account/request failure
+ownership. The replacement decision defines candidate bounds and configuration failure.
+The earlier Daily-before-Prod decision followed local observations and did not prove that
+regional failover eliminates quota rejection.
 
 ## Alternatives considered
 
@@ -26,13 +31,14 @@ it eliminates all 429 responses.
 
 ## Consequences
 
-The first default generation attempt now reaches Daily. Production remains a fallback for the
-existing retryable statuses.
+The first default generation attempt reaches Daily. Sandbox and production remain bounded
+fallbacks for the current retryable statuses; quota rejection does not initiate regional retry.
 
 ## Verification
 
-Tests exercise actual request ordering, identical credentials and
-body across 429 failover, explicit overrides, and stopping after success. Live evidence remains
+Current tests exercise actual request ordering, identical credentials and body across allowed
+failover, explicit overrides and stopping after success. The October acceptance observed 429
+failover under the earlier policy. Live evidence remains
 separate from complete task success: a client can receive successful responses and still fail
 its local tools or exceed the task timeout.
 

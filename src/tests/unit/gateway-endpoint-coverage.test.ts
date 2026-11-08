@@ -187,6 +187,11 @@ const CENSUS: readonly CensusEntry[] = [
   { method: 'POST', routePath: '/v1/uploads/:id/cancel', testFile: 'openai-uploads.test.ts' },
 
   // OpenAI protocol entry controllers (src/modules/proxy-gateway/server/modules/openai/openai-*.controller.ts)
+  ...['/props', '/v1/props', '/version', '/v1/version'].map((routePath) => ({
+    method: 'GET',
+    routePath,
+    testFile: 'openai-probes-http.integration.test.ts',
+  })),
   { method: 'GET', routePath: '/v1/models', testFile: 'openai-retrieve-model.test.ts' },
   { method: 'GET', routePath: '/v1/models/:model', testFile: 'openai-retrieve-model.test.ts' },
   {

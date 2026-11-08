@@ -8,7 +8,7 @@ import {
   thoughtResourceId,
   type ThoughtRecordInput,
 } from '../thought-store/thought-owner.schema';
-import { readDiagnosticContent } from '../diagnostics/read-content';
+import { readDiagnosticContent } from '@/shared/observability/read-diagnostic-content';
 
 let selected: ThoughtOperations = thoughtOwner;
 export function selectThoughtAdapter(

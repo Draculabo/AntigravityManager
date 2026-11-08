@@ -42,6 +42,12 @@ upgrade decisions below. The existing
 [signature-store ownership decision](2026-10-09-signature-session-isolation.md)
 continues to own stored signature recovery and its historical evidence.
 
+Account scheduling recognizes a terminal numeric `:step:` pattern in a winning `x-session-id` header
+within a presented credential scope and only to the affinity projection. Stored
+Responses lineage does not attest to the original hint field and keeps its full
+routing identity. Audit export retains the full child session
+identity, as do storage and signature-cache keys. Live-client acceptance is pending.
+
 ## Alternatives considered
 
 - Alphabetical priority among product headers is deterministic but selects the wrong winner.

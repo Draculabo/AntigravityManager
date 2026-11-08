@@ -23,6 +23,7 @@ import {
 } from './audit-owner.schema';
 import { AuditOwnerEvents } from './audit-owner-events';
 import { UsageRangeInputSchema, UsageRangeResultSchema } from './usage-range.schema';
+import { UsageTrendsInputSchema, UsageTrendsResultSchema } from './usage-trends.schema';
 
 export const AuditClearInputSchema = z.strictObject({
   trafficClass: TrafficClassSchema.nullable(),
@@ -35,6 +36,7 @@ type AuditSource = Pick<
   | 'list'
   | 'filterOptions'
   | 'usageRange'
+  | 'usageTrends'
   | 'detail'
   | 'bodyPage'
   | 'bodySearch'
@@ -81,6 +83,11 @@ export function createAuditOwner(source: AuditSource = trafficAuditService) {
       run(async () =>
         parseAuditResponse(TrafficAuditFilterOptionsSchema, await source.filterOptions()),
       ),
+    usageTrends: (input: z.infer<typeof UsageTrendsInputSchema>) =>
+      run(async () => parseAuditResponse(
+        UsageTrendsResultSchema,
+        await source.usageTrends(UsageTrendsInputSchema.parse(input)),
+      )),
     usageRange: (input: z.infer<typeof UsageRangeInputSchema>) =>
       run(async () =>
         parseAuditResponse(
@@ -165,6 +172,7 @@ export type AuditOperations = Pick<
   | 'list'
   | 'filterOptions'
   | 'usageRange'
+  | 'usageTrends'
   | 'detail'
   | 'bodyPage'
   | 'bodySearch'

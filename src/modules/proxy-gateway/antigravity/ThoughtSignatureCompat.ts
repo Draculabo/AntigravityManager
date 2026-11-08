@@ -1,6 +1,15 @@
 import type { GeminiContent } from './types';
 
 export const PLACEHOLDER_THOUGHT_SIGNATURE = 'skip_thought_signature_validator';
+const ENCODED_PLACEHOLDER = 'c2tpcF90aG91Z2h0X3NpZ25hdHVyZV92YWxpZGF0b3I=';
+
+export function isThoughtSignaturePlaceholder(value: string | null): boolean {
+  return value === PLACEHOLDER_THOUGHT_SIGNATURE || value === ENCODED_PLACEHOLDER;
+}
+
+export function omitThoughtSignaturePlaceholder(value: string | null): string | null {
+  return isThoughtSignaturePlaceholder(value) ? null : value;
+}
 
 export function isGeminiFlashModel(modelName: string): boolean {
   const normalized = modelName.toLowerCase();

@@ -7,6 +7,14 @@ Status: implemented
 The target protocol behavior uses native `reasoning` items with `summary_text` for both non-stream and streaming Responses, alongside dual Gemini tool configuration aliases. Replacing the streaming thought representation alone can drop historical commentary filtering, tool-call associations, image metadata, or cache semantics; retaining native reasoning in continuation input can also replay presentation-only thought text upstream. The chosen defaults must coexist with our existing persistence and cache paths.
 
 ## Decision
+Chat Completions accepts Responses-shaped bodies when messages is absent and input,
+instructions or previous_response_id is present. The entry validates the alternate body
+before file expansion and reuses Responses preparation, including credential-owned history,
+media admission and tool pairing. It selects Chat output for unary and stream execution.
+Explicit storage saves only a Chat completion, so the returned Chat ID addresses the Chat
+GET route. Existing Responses parents remain readable through the owned history boundary.
+Malformed compatibility input returns 400, and absent or foreign parent IDs return 404
+before account execution. The completed Chat answer creates no implicit Responses node.
 
 This decision supersedes the non-stream reasoning, streaming-commentary, and camel-only tool decisions in [the earlier compatibility note](2026-08-30-openai-responses-tool-compatibility.md). Other safeguards in that note remain applicable. Current behavior is documented in [the proxy compatibility reference](../../../../docs/modules/proxy-gateway/compatibility.md).
 

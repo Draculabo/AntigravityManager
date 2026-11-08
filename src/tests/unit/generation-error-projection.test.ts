@@ -13,6 +13,7 @@ import type { AnthropicService } from '@/modules/proxy-gateway/server/modules/an
 import type { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
 import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
 import { createReply } from './proxy-real-path.harness';
+import { GenerationDeadlineExceededError } from '@/modules/proxy-gateway/server/common/exceptions/generation-deadline.exception';
 
 beforeEach(() => {
   vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
@@ -62,6 +63,44 @@ function providerError() {
 describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
   '%s bounded error projection',
   (protocol) => {
+    it('projects a logical business deadline as 504 rather than cancellation or account denial', async () => {
+      const error = new GenerationDeadlineExceededError();
+      const reply = createReply();
+      if (protocol === 'gemini') {
+        const service = { handleGeminiGenerateContent: vi.fn().mockRejectedValue(error) };
+        await new GeminiController(service as unknown as GeminiService).modelAction(
+          'fixture:generateContent',
+          { contents: [] },
+          reply as never,
+        );
+      } else if (protocol === 'messages') {
+        const service = { handleAnthropicMessages: vi.fn().mockRejectedValue(error) };
+        await new AnthropicController(service as unknown as AnthropicService).anthropicMessages(
+          {
+            model: 'fixture',
+            max_tokens: 16,
+            messages: [{ role: 'user', content: 'controlled' }],
+          },
+          reply as never,
+        );
+      } else {
+        const service = { handleChatCompletions: vi.fn().mockRejectedValue(error) };
+        const operations = new OpenAIOperations(service as unknown as OpenAIService);
+        if (protocol === 'chat') {
+          await operations.chatCompletions(
+            { model: 'fixture', messages: [{ role: 'user', content: 'controlled' }] },
+            reply as never,
+          );
+        } else {
+          await operations.responses({ model: 'fixture', input: 'controlled' }, reply as never);
+        }
+      }
+      expect(reply.statusCode).toBe(504);
+      expect(JSON.stringify(reply.body)).toContain('Generation request deadline exceeded.');
+      if (protocol === 'messages') {
+        expect(reply.body).toMatchObject({ type: 'error', error: { type: 'timeout_error' } });
+      }
+    });
     it('preserves provider identity and existing correlation without disclosing private details', async () => {
       const error = providerError();
       const reply = createReply();

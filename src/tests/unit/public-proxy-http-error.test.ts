@@ -40,7 +40,11 @@ async function httpFailure(
   if (protocol === 'gemini') {
     await new GeminiController(
       gateway?.geminiService ?? (service as unknown as GeminiService),
-    ).modelAction('gemini-3-flash:generateContent', { contents: [] }, reply as never);
+    ).modelAction(
+      'gemini-3-flash:generateContent',
+      { contents: [{ role: 'user', parts: [{ text: 'controlled' }] }] },
+      reply as never,
+    );
   } else if (protocol === 'messages') {
     await new AnthropicController(
       gateway?.anthropicService ?? (service as unknown as AnthropicService),

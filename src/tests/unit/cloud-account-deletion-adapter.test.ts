@@ -20,6 +20,7 @@ import {
   serviceConfigService,
 } from '@/modules/config/service-config.service';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 vi.mock('@/modules/cloud-account/ipc/handler', () => ({}));
 const closeables: Array<{ close(): Promise<void> }> = [];
@@ -101,6 +102,7 @@ describe('cloud account deletion adapter', () => {
       shutdown: async () => {},
       onShutdownError: vi.fn(),
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,

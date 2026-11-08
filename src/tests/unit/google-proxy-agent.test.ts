@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import axios from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
-import { createGoogleProxyAgent } from '@/modules/cloud-account/services/google-proxy-agent';
+import { createUpstreamProxyAgent } from '@/modules/config/upstream-proxy-agent';
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -29,7 +29,7 @@ describe('Google CONNECT proxy transport', () => {
       throw new Error('Synthetic proxy has no port');
     }
     const controller = new AbortController();
-    const agent = createGoogleProxyAgent(
+    const agent = createUpstreamProxyAgent(
       'https://example.invalid/token',
       { host: '127.0.0.1', port: address.port, protocol: 'http' },
       controller.signal,
@@ -64,8 +64,8 @@ describe('Google CONNECT proxy transport', () => {
     vi.stubEnv('no_proxy', 'example.invalid');
     vi.stubEnv('npm_config_no_proxy', '');
     vi.stubEnv('npm_config_https_proxy', '');
-    expect(createGoogleProxyAgent('https://example.invalid/token')).toBeUndefined();
-    const agent = createGoogleProxyAgent('https://example.invalid/token', {
+    expect(createUpstreamProxyAgent('https://example.invalid/token')).toBeUndefined();
+    const agent = createUpstreamProxyAgent('https://example.invalid/token', {
       host: '127.0.0.1',
       port: 7898,
       protocol: 'http',
@@ -84,7 +84,7 @@ describe('Google CONNECT proxy transport', () => {
       vi.stubEnv('NO_PROXY', '');
       vi.stubEnv('npm_config_no_proxy', '');
       vi.stubEnv('npm_config_https_proxy', '');
-      expect(() => createGoogleProxyAgent('https://example.invalid/token')).toThrow(
+      expect(() => createUpstreamProxyAgent('https://example.invalid/token')).toThrow(
         UpstreamProxyConfigurationError,
       );
     },

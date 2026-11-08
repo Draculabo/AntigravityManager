@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { firstValueFrom, Observable, of, throwError } from 'rxjs';
 
 import { AnthropicController } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
 import { OpenAIOperations as ProxyController } from '../../modules/proxy-gateway/server/modules/openai/openai-operations.service';
@@ -8,6 +8,7 @@ import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/
 import { DEFAULT_APP_CONFIG } from '../../modules/config/types';
 import { setServerConfig } from '../../server/server-config';
 import { ProxyAccountUnavailableError } from '../../modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
+import { PIXEL_PNG, PIXEL_GIF, PIXEL_JPEG } from '../fixtures/image-content';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};
@@ -399,7 +400,12 @@ describe('ProxyController Integration', () => {
           created: 1770652800,
           owned_by: 'antigravity',
           context_length: 1048576,
+          max_context_length: 1048576,
+          max_input_tokens: 1048576,
+          max_model_len: 1048576,
+          max_tokens: 1048576,
           max_completion_tokens: 65536,
+          max_output_tokens: 65536,
         },
         {
           id: 'gemini-3-pro-image',
@@ -407,7 +413,12 @@ describe('ProxyController Integration', () => {
           created: 1770652800,
           owned_by: 'antigravity',
           context_length: 1048576,
+          max_context_length: 1048576,
+          max_input_tokens: 1048576,
+          max_model_len: 1048576,
+          max_tokens: 1048576,
           max_completion_tokens: 65536,
+          max_output_tokens: 65536,
         },
         {
           id: 'gemini-pro-agent',
@@ -415,7 +426,12 @@ describe('ProxyController Integration', () => {
           created: 1770652800,
           owned_by: 'antigravity',
           context_length: 1048576,
+          max_context_length: 1048576,
+          max_input_tokens: 1048576,
+          max_model_len: 1048576,
+          max_tokens: 1048576,
           max_completion_tokens: 65535,
+          max_output_tokens: 65535,
         },
       ],
     });
@@ -464,7 +480,9 @@ describe('ProxyController Integration', () => {
     expect(reply.header).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
     expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'no-cache');
     expect(reply.header).toHaveBeenCalledWith('Connection', 'keep-alive');
-    expect(reply.send).toHaveBeenCalledWith(stream);
+    const delivered = reply.send.mock.calls[0]?.[0];
+    expect(delivered).toBeInstanceOf(Observable);
+    expect(await firstValueFrom(delivered as Observable<string>)).toBe('data: {"ok":true}\n\n');
   });
 
   it('writes a stream error through the raw OpenAI SSE response', async () => {
@@ -557,7 +575,7 @@ describe('ProxyController Integration', () => {
         messages: [{ role: 'user', content: 'hello world' }],
       }),
       'chat-completions',
-      undefined,
+      expect.any(AbortSignal),
       undefined,
       undefined,
       undefined,
@@ -698,7 +716,7 @@ describe('ProxyController Integration', () => {
     expect(proxyService.handleChatCompletions).toHaveBeenCalledWith(
       expect.any(Object),
       'responses',
-      undefined,
+      expect.any(AbortSignal),
       expect.objectContaining({
         requestSessionId: expect.any(String),
         responseId: expect.any(String),
@@ -1034,7 +1052,7 @@ describe('ProxyController Integration', () => {
         model: 'gemini-3.1-flash-image',
       }),
       'chat-completions',
-      undefined,
+      expect.any(AbortSignal),
       undefined,
       undefined,
       undefined,
@@ -1063,7 +1081,10 @@ describe('ProxyController Integration', () => {
 
     await controller.imageGenerations(
       {
-        image: ['data:image/png;base64,AQ==', 'data:image/webp;base64,Ag=='],
+        image: [
+          `data:image/png;base64,${PIXEL_PNG.toString('base64')}`,
+          `data:image/gif;base64,${PIXEL_GIF.toString('base64')}`,
+        ],
         imageSize: '2k',
         prompt: 'draw from references',
         style: 'natural',
@@ -1084,11 +1105,11 @@ describe('ProxyController Integration', () => {
               },
               {
                 type: 'image_url',
-                image_url: { url: 'data:image/png;base64,AQ==' },
+                image_url: { url: `data:image/png;base64,${PIXEL_PNG.toString('base64')}` },
               },
               {
                 type: 'image_url',
-                image_url: { url: 'data:image/webp;base64,Ag==' },
+                image_url: { url: `data:image/gif;base64,${PIXEL_GIF.toString('base64')}` },
               },
             ],
           },
@@ -1099,7 +1120,7 @@ describe('ProxyController Integration', () => {
         stream: false,
       },
       'chat-completions',
-      undefined,
+      expect.any(AbortSignal),
       undefined,
       undefined,
       undefined,
@@ -1234,7 +1255,7 @@ describe('ProxyController Integration', () => {
 
     await controller.imageGenerations(
       {
-        image: 'data:image/png;base64,AQ==',
+        image: `data:image/png;base64,${PIXEL_PNG.toString('base64')}`,
         model: 'gemini-3.1-flash-image-16x9-4k',
         prompt: 'draw a fox',
       },
@@ -1250,7 +1271,7 @@ describe('ProxyController Integration', () => {
             role: 'user',
             parts: [
               { text: 'draw a fox, (vivid colors, dramatic lighting, rich details)' },
-              { inlineData: { data: 'AQ==', mimeType: 'image/png' } },
+              { inlineData: { data: PIXEL_PNG.toString('base64'), mimeType: 'image/png' } },
             ],
           },
         ],
@@ -1263,6 +1284,7 @@ describe('ProxyController Integration', () => {
         ]),
       }),
       'image_gen',
+      expect.any(AbortSignal),
     );
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.send).toHaveBeenCalledWith(
@@ -1344,23 +1366,23 @@ describe('ProxyController Integration', () => {
         {
           type: 'file',
           fieldname: 'mask',
-          filename: 'mask.webp',
-          mimetype: 'image/webp',
-          data: Buffer.from('mask-image'),
+          filename: 'mask.gif',
+          mimetype: 'image/gif',
+          data: PIXEL_GIF,
         },
         {
           type: 'file',
           fieldname: 'image',
           filename: 'main.png',
           mimetype: 'image/png',
-          data: Buffer.from('main-image'),
+          data: PIXEL_PNG,
         },
         {
           type: 'file',
           fieldname: 'image[]',
           filename: 'reference.jpg',
           mimetype: 'image/jpeg',
-          data: Buffer.from('reference-image'),
+          data: PIXEL_JPEG,
         },
       ]) as any,
       reply as any,
@@ -1379,19 +1401,19 @@ describe('ProxyController Integration', () => {
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/png;base64,${Buffer.from('main-image').toString('base64')}`,
+                url: `data:image/png;base64,${PIXEL_PNG.toString('base64')}`,
               },
             },
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/webp;base64,${Buffer.from('mask-image').toString('base64')}`,
+                url: `data:image/gif;base64,${PIXEL_GIF.toString('base64')}`,
               },
             },
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/jpeg;base64,${Buffer.from('reference-image').toString('base64')}`,
+                url: `data:image/jpeg;base64,${PIXEL_JPEG.toString('base64')}`,
               },
             },
           ],
@@ -1422,7 +1444,7 @@ describe('ProxyController Integration', () => {
     expect(proxyService.handleChatCompletions).toHaveBeenCalledWith(
       expect.objectContaining({ size: '1920x1080' }),
       'chat-completions',
-      undefined,
+      expect.any(AbortSignal),
       undefined,
       undefined,
       { headers: { 'content-type': 'multipart/form-data; boundary=----parity' }, url: undefined },
@@ -1473,7 +1495,7 @@ describe('ProxyController Integration', () => {
     };
     const controller = new ProxyController(proxyService as any);
     const reply = createReplyMock();
-    const imageData = Buffer.from('source-image');
+    const imageData = PIXEL_PNG;
 
     await controller.imageEdits(
       createMultipartRequest([
@@ -1508,6 +1530,7 @@ describe('ProxyController Integration', () => {
         ],
       }),
       'image_gen',
+      expect.any(AbortSignal),
     );
     expect(reply.status).toHaveBeenCalledWith(200);
   });

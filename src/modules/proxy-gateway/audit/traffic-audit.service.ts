@@ -9,6 +9,7 @@ import { getProxyStateDir } from '@/shared/platform/paths';
 import { preserveCorruptSqliteDatabase } from '@/shared/persistence/database/preserve-corrupt-sqlite';
 import { BoundedSqliteWorker } from '@/shared/persistence/sqlite-worker/bounded-sqlite-worker';
 import { logger } from '@/shared/logging/logger';
+import { readCurrentCloudAccountUsageIdentity } from '@/modules/cloud-account/incarnation';
 import { DiagnosticStoreShutdown } from '../diagnostics/store-shutdown';
 import {
   MAX_AUDIT_BODY_BYTES,
@@ -54,12 +55,14 @@ import { AuditCaptureGenerations } from './audit-capture-generations';
 import { auditBodyForExport } from './audit-body-export';
 import { auditSessionForExport } from './audit-session-export';
 import { AuditSessionSnapshotSchema } from './audit-session-export.schema';
+import { UsageTrendsInputSchema, UsageTrendsResultSchema, type UsageTrendsInput } from './usage-trends.schema';
 import {
   UsageRangeInputSchema,
   UsageRangeResultSchema,
   type UsageRangeInput,
 } from './usage-range.schema';
 import type { IncrementalAuditPayloadKind } from './incremental-audit-serializer';
+import { extractAuditUsage } from './audit-usage';
 
 const TRAFFIC_AUDIT_FILENAME = 'request-audit.db';
 
@@ -278,6 +281,10 @@ export class TrafficAuditService {
       {
         accountId: input.accountId ?? null,
         accountIdHash: input.accountId ? sha256Hex(input.accountId) : null,
+        accountGenerationHash: input.accountGenerationHash ?? null,
+        accountSubjectHash: input.accountSubjectHash ?? null,
+        accountGrantHash: input.accountGrantHash ?? null,
+        usageScope: input.usageScope ?? null,
         attemptIndex,
         endpoint: sanitizeAuditUrl(input.endpoint),
         id: handle.id,
@@ -317,6 +324,7 @@ export class TrafficAuditService {
       return;
     }
     const completedAt = Date.now();
+    const usage = input.usage ?? extractAuditUsage(input.responseBody);
     // Establish body ownership before completion makes this request eligible for eviction.
     if (!input.responsePayloadHandled) {
       this.capturePayload({
@@ -336,6 +344,10 @@ export class TrafficAuditService {
     const accepted = this.tryWrite(
       'completeAttempt',
       {
+        inputTokens: usage?.inputTokens ?? null,
+        outputTokens: usage?.outputTokens ?? null,
+        cachedTokens: usage?.cachedTokens ?? null,
+        reasoningTokens: usage?.reasoningTokens ?? null,
         completedAt,
         durationMs: Math.max(0, completedAt - handle.startedAt),
         error: serializeAuditError(input.error),
@@ -391,14 +403,32 @@ export class TrafficAuditService {
     return TrafficAuditFilterOptionsSchema.parse(result);
   }
 
+  public async usageTrends(input: UsageTrendsInput) {
+    return UsageTrendsResultSchema.parse(await this.request('usageTrends', {
+      ...UsageTrendsInputSchema.parse(input), asOf: Date.now(),
+    }));
+  }
+
   public async usageRange(input: UsageRangeInput) {
     try {
-      return UsageRangeResultSchema.parse(
+      const range = UsageRangeInputSchema.parse(input);
+      const identity = await readCurrentCloudAccountUsageIdentity(range.accountId);
+      if (!identity) {
+        throw new Error('Current account incarnation is unavailable for retained usage');
+      }
+      const result = UsageRangeResultSchema.parse(
         await this.request('usageRange', {
-          range: UsageRangeInputSchema.parse(input),
+          range,
+          ...identity,
           asOf: Date.now(),
         }),
       );
+      const current = await readCurrentCloudAccountUsageIdentity(range.accountId);
+      if (!current || current.accountGenerationHash !== identity.accountGenerationHash ||
+          current.accountSubjectHash !== identity.accountSubjectHash || current.accountGrantHash !== identity.accountGrantHash) {
+        throw new Error('Account incarnation changed during retained usage query');
+      }
+      return result;
     } catch (error) {
       logger.warn('Retained usage query failed', error);
       throw error;

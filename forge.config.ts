@@ -505,6 +505,11 @@ const config: ForgeConfig = {
           config: 'vite.worker.config.mts',
           target: 'main',
         },
+        {
+          entry: 'src/modules/error-diagnostics/error-window.worker.ts',
+          config: 'vite.worker.config.mts',
+          target: 'main',
+        },
       ],
       renderer: [
         {

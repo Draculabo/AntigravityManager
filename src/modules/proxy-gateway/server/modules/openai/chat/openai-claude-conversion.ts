@@ -1,13 +1,13 @@
 /**
- * Pure request and response conversion between the OpenAI surface and the Claude shape the
- * gateway speaks internally. Extracted from `OpenAIService` with no behavior change: these
- * functions never touched instance state, only each other.
+ * Request and response conversion between the OpenAI surface and the internal Claude shape.
+ * Client thinking control preserves explicit budgets, effort and disabled settings.
  *
  * `OpenAIService` remains the protocol owner and keeps the orchestration. This module holds
  * only the mapping it delegates to.
  */
 
 import { BadRequestException } from '@nestjs/common';
+import { getServerConfig } from '@/server/server-config';
 import { recordPromptTransformation } from '../../../common/prompt-transformation-diagnostics';
 import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
 import { v4 as uuidv4 } from 'uuid';
@@ -323,13 +323,20 @@ export function convertOpenAIToClaude(
     tools: options.preparedSchemas
       ? structuredClone(options.preparedSchemas.tools)
       : convertOpenAIToolsToAnthropicTools(request.tools),
-    thinking: request.thinking
-      ? {
-          type: request.thinking.type ?? 'enabled',
-          budget_tokens: request.thinking.budget_tokens,
-          effort: request.thinking.effort,
-        }
-      : undefined,
+    thinking:
+      getServerConfig()?.thinking_budget?.control_source === 'client'
+        ? {
+            type: request.thinking?.type ?? 'enabled',
+            budget_tokens: request.thinking?.budget_tokens ?? request.reasoning?.max_tokens,
+            effort: request.reasoning_effort ?? request.reasoning?.effort ?? request.thinking?.effort,
+          }
+        : request.thinking
+          ? {
+              type: request.thinking.type ?? 'enabled',
+              budget_tokens: request.thinking.budget_tokens,
+              effort: request.thinking.effort,
+            }
+          : undefined,
     max_tokens: request.max_tokens,
     temperature: request.temperature,
     top_p: request.top_p,

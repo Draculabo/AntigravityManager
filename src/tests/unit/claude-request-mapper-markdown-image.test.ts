@@ -5,6 +5,32 @@ import { extractToolResultImages } from '@/modules/proxy-gateway/antigravity/Mar
 import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 describe('ClaudeRequestMapper Markdown image compatibility', () => {
+  it('extracts standalone and explicit JSON image fields while preserving unrelated tool data', () => {
+    const data =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const url = `data:image/png;base64,${data}`;
+    expect(extractToolResultImages(`  ${url}\n`)).toEqual({
+      text: '[image extracted from tool result]',
+      media: [{ inlineData: { mimeType: 'image/png', data } }],
+    });
+    const raw = JSON.stringify({ screenshot: url, log: url, nested: { image: url }, count: 2 });
+    const extracted = extractToolResultImages(raw);
+    expect(JSON.parse(extracted.text)).toEqual({
+      screenshot: '[image extracted from tool result]',
+      log: url,
+      nested: { image: url },
+      count: 2,
+    });
+    expect(extracted.media).toEqual([{ inlineData: { mimeType: 'image/png', data } }]);
+    for (const text of [
+      JSON.stringify({ image: 'data:image/png;base64,AQ==' }),
+      `log: ${url}`,
+      `\`\`\`json\n${raw}\n\`\`\``,
+    ]) {
+      expect(extractToolResultImages(text)).toEqual({ text, media: [] });
+    }
+  });
+
   it('extracts a validated Markdown image from tool text without treating code examples as media', () => {
     const data =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';

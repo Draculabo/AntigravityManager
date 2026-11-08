@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import type { PromptTransformationState } from '../server/common/prompt-transformation-diagnostics';
+import type { ThoughtRestoreDiagnostics } from '../thought-store/thought-restore-diagnostics';
 import type { SignatureSessionScope } from '../server/common/signature-session-scope';
 import {
   thoughtCaptureLeases,
@@ -21,7 +23,6 @@ import {
   trafficAuditService,
   type AuditSseBodyWriter,
   type AuditHandle,
-  type UpstreamAttemptHandle,
 } from './traffic-audit.service';
 import type {
   CompleteUpstreamAttemptInput,
@@ -32,6 +33,17 @@ import { isSuccessfulProbeCandidate } from './audit-probe-policy';
 import { IncrementalSseRedactor } from './incremental-sse-redactor';
 import { auditJsonObject, parseAuditJsonBody } from './audit-json-object';
 import { isFailedAuditAttempt } from './audit-attempt-outcome';
+import { captureGatewayErrorDiagnostic } from './gateway-error-diagnostic';
+import {
+  createCurrentUpstreamAttempt,
+  completeUpstreamAttemptDiagnostic,
+  captureUpstreamAttemptUsage,
+  currentUpstreamAttemptUsage,
+  isUpstreamAttemptUsagePartial,
+  type CurrentUpstreamAttemptHandle,
+} from './upstream-attempt-diagnostics';
+export type { CurrentUpstreamAttemptHandle } from './upstream-attempt-diagnostics';
+export { captureUpstreamAttemptUsage } from './upstream-attempt-diagnostics';
 
 import { resolveAuditSessionId } from './audit-session-identity';
 import {
@@ -54,9 +66,13 @@ export interface TrafficAuditRequestContext {
   thoughtCaptureLease?: ThoughtCaptureLease;
   auditSessionId?: string;
   promptTransformations?: PromptTransformationState;
+  thoughtRestore?: ThoughtRestoreDiagnostics;
   attemptSequence: number;
   failedAttemptCount?: number;
   currentAccountId?: string | null;
+  currentAccountGenerationHash?: string;
+  currentAccountSubjectHash?: string;
+  currentAccountGrantHash?: string;
   currentAccountEmail?: string | null;
   parent: AuditHandle | null;
   responseUsage?: AuditUsage;
@@ -193,25 +209,50 @@ export function runWithTrafficAuditRequestContext<TResult>(
 
 export function startCurrentUpstreamAttempt(
   input: StartUpstreamAttemptInput,
-): UpstreamAttemptHandle | null {
+): CurrentUpstreamAttemptHandle {
   const context = getTrafficAuditRequestContext();
+  const snapshot = {
+    ...input,
+    accountId: input.accountId ?? context?.currentAccountId ?? undefined,
+    accountGenerationHash:
+      input.accountGenerationHash ??
+      (input.accountId === undefined || input.accountId === context?.currentAccountId
+        ? context?.currentAccountGenerationHash
+        : undefined),
+    accountSubjectHash:
+      input.accountSubjectHash ??
+      (input.accountId === undefined || input.accountId === context?.currentAccountId
+        ? context?.currentAccountSubjectHash
+        : undefined),
+    accountGrantHash:
+      input.accountGrantHash ??
+      (input.accountId === undefined || input.accountId === context?.currentAccountId
+        ? context?.currentAccountGrantHash
+        : undefined),
+  };
   if (!context) {
-    return null;
+    return createCurrentUpstreamAttempt(null, input.operation, undefined, snapshot);
   }
   context.attemptSequence += 1;
-  return trafficAuditService.startAttempt(context.parent, context.attemptSequence, {
-    ...input,
-    accountId: input.accountId ?? context.currentAccountId ?? undefined,
-  });
+  const audit = trafficAuditService.startAttempt(context.parent, context.attemptSequence, snapshot);
+  return createCurrentUpstreamAttempt(audit, input.operation, context.parent?.id, snapshot);
 }
 
 export function setCurrentAuditAccountId(
   accountId: string | null,
   accountEmail?: string | null,
+  lifecycleGeneration?: string,
+  subjectHash?: string,
+  grantHash?: string,
 ): void {
   const context = getTrafficAuditRequestContext();
   if (context) {
     context.currentAccountId = accountId;
+    context.currentAccountGenerationHash = lifecycleGeneration
+      ? createHash('sha256').update(lifecycleGeneration).digest('hex')
+      : undefined;
+    context.currentAccountSubjectHash = subjectHash;
+    context.currentAccountGrantHash = grantHash;
     if (accountEmail !== undefined) {
       context.currentAccountEmail = accountEmail;
     }
@@ -232,7 +273,7 @@ export function captureCurrentAuditUsage(value: unknown): void {
 export function captureCurrentAuditSession(scope: SignatureSessionScope): void {
   const context = getTrafficAuditRequestContext();
   if (context) {
-    context.auditSessionId = scope.affinityKey;
+    context.auditSessionId = scope.auditKey;
     bindCurrentThoughtRecoveryScope(scope.storeKey);
   }
 }
@@ -257,14 +298,23 @@ export function bindCurrentThoughtRecoveryScope(sessionKey: string): void {
 }
 
 export function completeCurrentUpstreamAttempt(
-  handle: UpstreamAttemptHandle | null,
+  handle: CurrentUpstreamAttemptHandle | null,
   input: CompleteUpstreamAttemptInput,
 ): void {
+  captureUpstreamAttemptUsage(handle, input.responseBody);
+  const usage = mergeAuditUsage(currentUpstreamAttemptUsage(handle), input.usage);
+  if (handle && !completeUpstreamAttemptDiagnostic(handle, input)) {
+    return;
+  }
   const context = getTrafficAuditRequestContext();
   if (context && isFailedAuditAttempt(input)) {
     context.failedAttemptCount = (context.failedAttemptCount ?? 0) + 1;
   }
-  trafficAuditService.completeAttempt(handle, input);
+  trafficAuditService.completeAttempt(handle?.audit ?? null, {
+    ...input,
+    usage,
+    partial: input.partial || isUpstreamAttemptUsagePartial(handle),
+  });
 }
 
 /** Runs Nest handlers inside the request context created by the Fastify lifecycle hooks. */
@@ -397,6 +447,12 @@ function completeHttpAuditState(
   state.completed = true;
   state.thoughtCaptureLease?.release();
   const status = statusOverride ?? reply.statusCode;
+  captureGatewayErrorDiagnostic({
+    error: state.error,
+    status,
+    protocol: inferProtocol(state.request.url),
+    requestId: state.parent?.id,
+  });
   const suppress =
     state.deferProbe &&
     status >= 200 &&

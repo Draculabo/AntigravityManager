@@ -123,9 +123,15 @@ function collectCandidates(
     return;
   }
 
-  Object.entries(value).forEach(([key, entry]) => {
-    collectCandidates(entry, [...path, key], protectedItem, candidates);
-  });
+  const field =
+    value.type === 'function_call_output' || value.type === 'custom_tool_call_output'
+      ? 'output'
+      : value.type === 'message' || typeof value.role === 'string'
+        ? 'content'
+        : null;
+  if (field) {
+    collectCandidates(value[field], [...path, field], protectedItem, candidates);
+  }
 }
 
 function isWindowEnabled(config: ImageSchedulerConfig | undefined): boolean {

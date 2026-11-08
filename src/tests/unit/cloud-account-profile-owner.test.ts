@@ -11,6 +11,7 @@ import { selectCloudAccountAdapter } from '@/modules/cloud-account/ipc/cloud-acc
 import { CloudAccountDeviceBindingStore } from '@/modules/cloud-account/persistence/cloud-account-device-binding-store';
 import { generateDeviceProfile } from '@/modules/identity-profile/ipc/handler';
 import type { DeviceProfile, DeviceProfileVersion } from '@/modules/identity-profile/types';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 const capture: DeviceProfile = {
   machineId: 'captured-machine',
@@ -153,7 +154,7 @@ async function startOwner(): Promise<CoreRpcClient> {
     getStatus: () => ({ state: 'running', pid: 123, gateway: { running: false, port: null } }),
     shutdown: async () => {},
     onShutdownError: vi.fn(),
-    rpc: createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() }),
+    rpc: createCoreRpcOperations(mockCoreGatewayLifecycle()),
   });
   await server.start();
   return new CoreRpcClient(endpoint);

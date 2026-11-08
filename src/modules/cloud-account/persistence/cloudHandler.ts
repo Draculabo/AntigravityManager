@@ -24,6 +24,7 @@ import {
   parseDeviceProfileColumn,
 } from './cloud-account-device-profile-codec';
 import { populateSyntheticArgonModels } from '@/modules/cloud-account/utils/quota-groups';
+import { bindGoogleUsageIdentity, createGoogleUsageIdentity, googleUsageGrantHash, readGoogleUsageIdentity } from './google-usage-identity';
 
 function parseCloudToken(accountId: string, value: string): CloudAccount['token'] {
   try {
@@ -77,14 +78,17 @@ function assertPlainAccountFields(row: AccountRow): void {
 }
 
 function parseAccountRow(row: AccountRow): CloudAccount {
+  const token = parseCloudToken(row.id, row.tokenJson);
   return {
+    google_usage_subject_hash: readGoogleUsageIdentity(row.googleUsageIdentityJson, token),
+    google_usage_grant_hash: googleUsageGrantHash(token) ?? undefined,
     lifecycle_generation: CloudAccountLifecycleGenerationSchema.parse(row.lifecycleGeneration),
     id: row.id,
     provider: row.provider as CloudAccount['provider'],
     email: row.email,
     name: row.name ?? undefined,
     avatar_url: row.avatarUrl ?? undefined,
-    token: parseCloudToken(row.id, row.tokenJson),
+    token,
     quota: parseCloudQuota(row.id, row.quotaJson),
     health: parseCloudHealth(row.id, row.healthJson),
     device_profile: parseDeviceProfileColumn(row.deviceProfileJson),
@@ -196,7 +200,7 @@ export class CloudAccountRepo {
   }
 
   /** Email admission and the returned incarnation belong to the same insertion transaction. */
-  static async insertAccount(account: CloudAccount): Promise<CloudAccount> {
+  static async insertAccount(account: CloudAccount, verifiedGoogleSubject?: string): Promise<CloudAccount> {
     CloudAccountSchema.parse(account);
     const { raw, orm } = getCloudDb();
     try {
@@ -208,7 +212,10 @@ export class CloudAccountRepo {
           if (existingEmails.some((existing) => existing.email.toLowerCase() === email)) {
             throw new CloudAccountEmailConflictError();
           }
-          transaction.insert(accounts).values(cloudAccountRowValues(account)).run();
+          transaction.insert(accounts).values({
+            ...cloudAccountRowValues(account),
+            googleUsageIdentityJson: verifiedGoogleSubject === undefined ? null : createGoogleUsageIdentity(verifiedGoogleSubject, account.token),
+          }).run();
           const row = transaction.select().from(accounts).where(eq(accounts.id, account.id)).get();
           if (!row) {
             throw new Error('Inserted cloud account could not be read');
@@ -276,15 +283,27 @@ export class CloudAccountRepo {
     id: string,
     token: CloudTokenData,
     guard?: CloudAccountWriteGuard,
+    trustedRefresh = false,
   ): Promise<void> {
     // Validate token data before persistence
     CloudTokenDataSchema.parse(token);
+    if (trustedRefresh && !guard) {
+      throw new Error('Trusted token refresh requires an account write guard');
+    }
 
-    writeAccount(id, guard, (transaction) => {
+    let subject: string | undefined;
+    writeAccount(id, (current) => {
+      guard?.(current);
+      if (current?.google_usage_subject_hash && (trustedRefresh || (
+        googleUsageGrantHash(current.token) === googleUsageGrantHash(token)
+      ))) {
+        subject = current.google_usage_subject_hash;
+      }
+    }, (transaction) => {
       const tokenJson = JSON.stringify(token);
       const result = transaction
         .update(accounts)
-        .set({ tokenJson })
+        .set({ tokenJson, googleUsageIdentityJson: subject ? bindGoogleUsageIdentity(subject, token) : null })
         .where(eq(accounts.id, id))
         .run();
       if (result.changes === 0) {
@@ -298,11 +317,24 @@ export class CloudAccountRepo {
     expected: CloudTokenData,
     token: CloudTokenData,
     guard?: CloudAccountWriteGuard,
+    trustedRefresh = false,
   ): Promise<boolean> {
+    if (trustedRefresh && !guard) {
+      throw new Error('Trusted token refresh requires an account write guard');
+    }
     const validated = CloudTokenDataSchema.parse(token);
     const expectedJson = JSON.stringify(CloudTokenDataSchema.parse(expected));
     let updated = false;
-    writeAccount(id, guard, (transaction) => {
+    let subject: string | undefined;
+    writeAccount(id, (current) => {
+      guard?.(current);
+      if (
+        current?.google_usage_subject_hash &&
+        (trustedRefresh || googleUsageGrantHash(current.token) === googleUsageGrantHash(validated))
+      ) {
+        subject = current.google_usage_subject_hash;
+      }
+    }, (transaction) => {
       const row = transaction
         .select({ tokenJson: accounts.tokenJson })
         .from(accounts)
@@ -317,7 +349,10 @@ export class CloudAccountRepo {
       updated =
         transaction
           .update(accounts)
-          .set({ tokenJson: JSON.stringify(validated) })
+          .set({
+            tokenJson: JSON.stringify(validated),
+            googleUsageIdentityJson: subject ? bindGoogleUsageIdentity(subject, validated) : null,
+          })
           .where(and(eq(accounts.id, id), eq(accounts.tokenJson, row.tokenJson)))
           .run().changes === 1;
     });

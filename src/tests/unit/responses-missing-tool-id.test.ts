@@ -3,6 +3,7 @@ import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/module
 import { prepareOpenAIResponsesSessionInput } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-session-input';
 import { OpenAIResponsesSessionStoreImpl } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
 import { responsesIdentityFixture } from './responses-identity.fixture';
+import { PIXEL_PNG } from '../fixtures/image-content';
 
 const call = { type: 'function_call', name: 'read', arguments: '{"a":1,"b":2}' };
 const prompt = { type: 'message', role: 'user', content: 'Read the fixture.' };
@@ -73,12 +74,14 @@ describe('Responses deterministic missing tool IDs', () => {
     expect(items).toEqual(original);
   });
 
-  it('materializes generated IDs in the retained delta before image history is trimmed', () => {
+  it('materializes generated IDs while retaining original image history', () => {
     const store = new OpenAIResponsesSessionStoreImpl();
     const image = {
       type: 'message',
       role: 'user',
-      content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+      content: [
+        { type: 'input_image', image_url: `data:image/png;base64,${PIXEL_PNG.toString('base64')}` },
+      ],
     };
     const prepared = prepareOpenAIResponsesSessionInput([], [image, call]);
     const id = toolIds(prepared.merged)[0];
@@ -93,7 +96,7 @@ describe('Responses deterministic missing tool IDs', () => {
     if (!parent) {
       throw new Error('Missing fixture parent');
     }
-    expect(JSON.stringify(parent.inputItems)).not.toContain('data:image/');
+    expect(parent.inputItems).toEqual(prepared.delta);
     const continued = prepareOpenAIResponsesSessionInput(parent.inputItems, [result]);
     expect(toolIds(continued.merged)).toEqual([id]);
     expect(continued.delta).toEqual([{ ...result, call_id: id }]);

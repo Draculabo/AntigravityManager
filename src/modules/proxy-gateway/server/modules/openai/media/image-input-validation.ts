@@ -1,4 +1,5 @@
 import type { ImageMonitoringInput } from './image-monitoring-summary';
+import { validatedImageMimeType } from '../../../common/image-content-validation';
 
 export const MAX_INPUT_IMAGES = 16;
 export const MAX_INPUT_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -67,16 +68,17 @@ export function parseInputImageDataUrl(
     throw new Error('Input image contains invalid base64 data');
   }
 
+  const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+  const decodedBytes = (encoded.length / 4) * 3 - padding;
+  validateInputImageLimits(imageCount, decodedBytes, totalBytes + decodedBytes);
   const decoded = Buffer.from(encoded, 'base64');
   if (decoded.toString('base64') !== encoded) {
     throw new Error('Input image contains invalid base64 data');
   }
-  const nextTotal = totalBytes + decoded.length;
-  validateInputImageLimits(imageCount, decoded.length, nextTotal);
   return {
     image: {
       data: encoded,
-      mimeType,
+      mimeType: validatedImageMimeType(decoded),
     },
     decodedBytes: decoded.length,
   };

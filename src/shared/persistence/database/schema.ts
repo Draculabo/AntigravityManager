@@ -20,6 +20,7 @@ export const accounts = sqliteTable('accounts', {
   proxyPriority: integer('proxy_priority').notNull().default(50),
   proxyEnabled: integer('proxy_enabled').notNull().default(1),
   lifecycleGeneration: text('lifecycle_generation'),
+  googleUsageIdentityJson: text('google_usage_identity_json'),
 });
 
 export const settings = sqliteTable('settings', {

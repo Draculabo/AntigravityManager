@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { awaitRequestOperation, throwIfRequestAborted } from './request-cancellation';
+import type { OverloadThinkingRecovery } from './overload-thinking-recovery';
 import {
   GeminiClient,
   type InternalGenerationOptions,
@@ -22,6 +23,7 @@ import {
   type RegisteredGenerationConstraints,
 } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
 import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { applyGeminiModelVariant } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import {
   hasExplicitQuotaExhaustedSignal,
   isGeminiImageModel,
@@ -37,7 +39,6 @@ import { UnsupportedGeminiFinishReasonError } from '@/modules/proxy-gateway/anti
 import { isTerminalGenerationFailure } from '../../antigravity/UpstreamGenerationError';
 import { performance } from 'node:perf_hooks';
 import { ThinkingOnlyRecovery, recoverThinkingOnlyStream } from './thinking-only-recovery';
-import { isProjectLicenseErrorMessage } from '@/modules/proxy-gateway/server/common/google-error-details';
 import { setCurrentAuditAccountId } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { collectGeminiStream } from './collect-gemini-stream';
 import { generateGeminiWithAggregationFallback } from './aggregate-gemini-fallback';
@@ -46,9 +47,14 @@ import { estimateRequestContext } from './request-context-estimate';
 import { createUpstreamSessionIdentity } from './upstream-session-identity';
 import { UpstreamThoughtSignatureConflictError } from './upstream-thought-signature-validation';
 import { InvalidThoughtSignatureModelError } from './invalid-thought-signature-model.exception';
+import { UpstreamEndpointConfigurationError } from './exceptions/upstream-endpoint-configuration.exception';
+import { GenerationDeadlineExceededError } from './exceptions/generation-deadline.exception';
+import { generationDeadlineAt } from './generation-deadline';
+import { admitGenerationProjectRecovery } from './generation-project-recovery';
 import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
 import { UpstreamRequestError } from './exceptions/upstream-request.exception';
 import { ProxyAccountUnavailableError } from './exceptions/proxy-account-unavailable.exception';
+import { CoworkCompactionControl } from './cowork-compaction-control';
 import {
   isUpstreamSessionRecoveryFailure,
   type UpstreamSessionRecoveryBudget,
@@ -101,6 +107,19 @@ function isCountTokensEstimateEligible(error: unknown): boolean {
   );
 }
 
+export function completeCountEstimate(
+  body: GeminiInternalRequest,
+  reason: string,
+): CountTokensResult {
+  const estimate = estimateRequestContext(body);
+  if (estimate.unestimatedMediaParts > 0) {
+    throw new ServiceUnavailableException(
+      'A complete local token estimate is unavailable for this media. Retry upstream counting or simplify the input.',
+    );
+  }
+  return { totalTokens: estimate.estimatedInputTokens, source: 'estimated', reason };
+}
+
 @Injectable()
 export abstract class BaseProxyService {
   protected readonly logger = new Logger(this.constructor.name);
@@ -139,7 +158,10 @@ export abstract class BaseProxyService {
       error instanceof InvalidGenerationHistoryError ||
       error instanceof UpstreamThoughtSignatureConflictError ||
       error instanceof InvalidThoughtSignatureModelError ||
-      error instanceof InvalidToolResultAssociationError
+      error instanceof InvalidToolResultAssociationError ||
+      error instanceof UpstreamEndpointConfigurationError ||
+      error instanceof GenerationDeadlineExceededError ||
+      error instanceof CoworkCompactionControl
     ) {
       if (retryState) {
         this.releaseImagePermit(retryState);
@@ -152,8 +174,11 @@ export abstract class BaseProxyService {
     token: CloudAccount,
     storeKey: string,
     recoveryBudget: UpstreamSessionRecoveryBudget,
+    signal?: AbortSignal,
+    overloadThinkingRecovery?: OverloadThinkingRecovery,
   ): InternalGenerationOptions {
     recoveryBudget.deadlineAt ??=
+      generationDeadlineAt(signal) ??
       performance.now() + (getServerConfig()?.request_timeout ?? 300) * 1000;
     recoveryBudget.thinkingOnlyEnabled ??=
       getServerConfig()?.experimental?.thinking_only_recovery ?? false;
@@ -162,6 +187,7 @@ export abstract class BaseProxyService {
       recoveryBudget,
       upstreamSession: createUpstreamSessionIdentity(token.id, storeKey),
       canRecoverUpstreamSession: () => this.accountLeaseService.isLeaseEligible(token),
+      overloadThinkingRecovery,
     };
   }
 
@@ -226,10 +252,11 @@ export abstract class BaseProxyService {
     };
   }
 
-  protected createTokenRetryState(effort?: string): ProxyTokenRetryState {
+  protected createTokenRetryState(effort?: string, physicalTarget = false): ProxyTokenRetryState {
     return this.retryPolicy.createTokenRetryState(
       (getServerConfig()?.request_timeout ?? 300) * 1000,
       effort,
+      physicalTarget,
     );
   }
 
@@ -265,7 +292,14 @@ export abstract class BaseProxyService {
       effort,
       targetAccountId,
     );
-    setCurrentAuditAccountId(account?.id ?? null, account?.email ?? null);
+    throwIfRequestAborted(signal);
+    setCurrentAuditAccountId(
+      account?.id ?? null,
+      account?.email ?? null,
+      account?.lifecycle_generation,
+      account?.google_usage_subject_hash,
+      account?.google_usage_grant_hash,
+    );
     return account;
   }
 
@@ -431,17 +465,21 @@ export abstract class BaseProxyService {
     return this.retryPolicy.resolveTerminalError(retryState, lastError);
   }
 
-  private isProjectNotFoundError(errorMessage: string): boolean {
-    const msg = errorMessage.toLowerCase();
-    return (
-      msg.includes('invalid project resource name projects/') ||
-      (msg.includes('resource projects/') && msg.includes('could not be found')) ||
-      (msg.includes('project') && msg.includes('not found'))
-    );
-  }
-
-  protected isProjectContextError(errorMessage: string): boolean {
-    return isProjectLicenseErrorMessage(errorMessage) || this.isProjectNotFoundError(errorMessage);
+  protected admitProjectDowngrade(
+    state: ProxyTokenRetryState,
+    error: unknown,
+    project: string | undefined,
+    signal?: AbortSignal,
+  ): boolean {
+    if (
+      state.projectDowngraded ||
+      !project?.trim() ||
+      !admitGenerationProjectRecovery(error, signal, project)
+    ) {
+      return false;
+    }
+    state.projectDowngraded = true;
+    return true;
   }
 
   protected isQuotaExhaustedError(errorMessage: string): boolean {
@@ -522,36 +560,50 @@ export abstract class BaseProxyService {
     label: string,
     estimateBody?: GeminiInternalRequest,
     effort?: string,
+    signal?: AbortSignal,
+    resolvedTarget?: { physicalTarget: boolean },
   ): Promise<CountTokensResult> {
-    const targetModel = this.resolveTargetModel(model);
+    throwIfRequestAborted(signal);
+    const route = resolvedTarget
+      ? undefined
+      : this.modelRoutingPolicy.resolveModelRouteForRequest(model);
+    const explicitPhysicalTarget =
+      route?.source === 'configured' || route?.source === 'dynamic-legacy';
+    const applied = route
+      ? applyGeminiModelVariant(route.resolvedModel, { contents }, explicitPhysicalTarget)
+      : undefined;
+    const targetModel = applied?.model ?? model;
+    const physicalTarget =
+      resolvedTarget?.physicalTarget ?? (applied?.variant != null || explicitPhysicalTarget);
     const extraHeaders = this.createModelSpecificHeaders(model);
-    const retryState = this.createTokenRetryState(effort);
+    const retryState = this.createTokenRetryState(effort, physicalTarget);
     const maxRetries = await this.getMaxRetryAttempts(
       retryState,
       targetModel,
       false,
-      undefined,
+      signal,
       effort,
     );
     let lastError: unknown = null;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      await this.waitBeforeRetry(
-        attempt,
-        maxRetries,
-        label,
-        retryState.graceRetryToken !== null,
-        isGeminiImageModel(targetModel),
+      throwIfRequestAborted(signal);
+      await awaitRequestOperation(
+        this.waitBeforeRetry(
+          attempt,
+          maxRetries,
+          label,
+          retryState.graceRetryToken !== null,
+          isGeminiImageModel(targetModel),
+        ),
+        signal,
       );
 
-      const token = await this.selectRetryToken(
-        retryState,
-        targetModel,
-        undefined,
-        false,
-        undefined,
-        effort,
+      const token = await awaitRequestOperation(
+        this.selectRetryToken(retryState, targetModel, undefined, false, signal, effort),
+        signal,
       );
+      throwIfRequestAborted(signal);
       if (!token) {
         if (lastError !== null) {
           throw this.resolveTerminalRetryError(retryState, lastError);
@@ -562,50 +614,80 @@ export abstract class BaseProxyService {
         token.id,
         targetModel,
         effort,
+        physicalTarget,
       );
 
+      let totalTokens: number;
       try {
-        const response = await this.geminiClient.countTokensInternal(
-          { request: { contents, model: `models/${effectiveTargetModel}` } },
-          token.token.access_token,
-          token.token.upstream_proxy_url,
-          extraHeaders,
+        const response = await awaitRequestOperation(
+          this.geminiClient.countTokensInternal(
+            { request: { contents, model: `models/${effectiveTargetModel}` } },
+            token.token.access_token,
+            token.token.upstream_proxy_url,
+            extraHeaders,
+            signal,
+          ),
+          signal,
         );
-        if (!isNumber(response.totalTokens)) {
+        throwIfRequestAborted(signal);
+        if (
+          !isNumber(response.totalTokens) ||
+          !Number.isSafeInteger(response.totalTokens) ||
+          response.totalTokens < 0
+        ) {
           throw new Error('Upstream returned no token count');
         }
-
-        this.commitUpstreamSession(token);
-        this.markUpstreamSuccess(token, effectiveTargetModel);
-        return { totalTokens: response.totalTokens, source: 'upstream' };
+        totalTokens = response.totalTokens;
       } catch (error) {
+        throwIfRequestAborted(signal);
+        if (error instanceof UpstreamEndpointConfigurationError) {
+          throw error;
+        }
         lastError = error;
         this.recordRetryFailure(retryState, error);
-        if (await this.prepareGraceRetry(retryState, token, error, label)) {
+        if (await this.prepareGraceRetry(retryState, token, error, label, signal)) {
           if (!isGeminiImageModel(targetModel)) {
             attempt -= 1;
           }
           continue;
         }
+        throwIfRequestAborted(signal);
         await this.applyUpstreamPenalty(token, effectiveTargetModel, error, effort);
+        continue;
       }
+
+      const countRequest = estimateBody?.request;
+      const needsCompleteEstimate =
+        countRequest &&
+        ((countRequest.systemInstruction?.parts.length ?? 0) > 0 ||
+          (countRequest.tools?.length ?? 0) > 0 ||
+          countRequest.toolConfig !== undefined ||
+          countRequest.tool_config !== undefined);
+      const result =
+        estimateBody && needsCompleteEstimate
+          ? completeCountEstimate(estimateBody, 'upstream-contents-only')
+          : { totalTokens, source: 'upstream' as const };
+      throwIfRequestAborted(signal);
+      this.commitUpstreamSession(token, signal);
+      this.markUpstreamSuccess(token, effectiveTargetModel);
+      return result;
     }
 
+    throwIfRequestAborted(signal);
     const terminalError = this.resolveTerminalRetryError(
       retryState,
       lastError || new Error(`${label} request failed after retries`),
     );
     if (estimateBody && isCountTokensEstimateEligible(lastError)) {
-      const estimate = estimateRequestContext(estimateBody);
+      const result = completeCountEstimate(
+        estimateBody,
+        terminalError instanceof Error ? terminalError.message : String(terminalError),
+      );
       this.logger.warn(
         `${label} upstream count unavailable; returning bounded local estimate ` +
-          `(tokens=${estimate.estimatedInputTokens}, unestimatedMedia=${estimate.unestimatedMediaParts})`,
+          `(tokens=${result.totalTokens})`,
       );
-      return {
-        totalTokens: estimate.estimatedInputTokens,
-        source: 'estimated',
-        reason: terminalError instanceof Error ? terminalError.message : String(terminalError),
-      };
+      return result;
     }
     throw terminalError;
   }

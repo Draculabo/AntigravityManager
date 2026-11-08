@@ -1,4 +1,5 @@
 import { responsesIdentityFixture } from './responses-identity.fixture';
+import { PIXEL_PNG } from '../fixtures/image-content';
 import { createHash } from 'node:crypto';
 import fs from 'fs';
 import os from 'os';
@@ -25,6 +26,7 @@ import {
 import { thoughtCaptureLeases } from '@/modules/proxy-gateway/thought-store/thought-capture-leases';
 
 const HOUR_MS = 60 * 60 * 1000;
+const pixelDataUrl = `data:image/png;base64,${PIXEL_PNG.toString('base64')}`;
 
 function createReplyMock() {
   const reply: Record<string, unknown> = {};
@@ -127,7 +129,7 @@ describe('Responses continuation across a restart', () => {
         {
           type: 'message',
           role: 'user',
-          content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+          content: [{ type: 'input_image', image_url: pixelDataUrl }],
         },
         rawCall,
       ],
@@ -155,7 +157,7 @@ describe('Responses continuation across a restart', () => {
     if (!parent) {
       throw new Error('Missing fixture parent');
     }
-    expect(JSON.stringify(parent.session.inputItems)).toContain('data:image/png;base64,AQ==');
+    expect(JSON.stringify(parent.session.inputItems)).toContain(pixelDataUrl);
     expect(parent.session.inputItems[1]).toEqual(canonicalCall);
     const child = prepareOpenAIResponsesSessionInput(parent.session.inputItems, [
       { type: 'function_call_output', output: 'done' },
@@ -378,7 +380,7 @@ describe('Responses continuation across a restart', () => {
       {
         type: 'message',
         role: 'user',
-        content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+        content: [{ type: 'input_image', image_url: pixelDataUrl }],
       },
       {
         type: 'function_call',
@@ -400,7 +402,7 @@ describe('Responses continuation across a restart', () => {
     await writer.flush();
 
     const persisted = fs.readFileSync(filePath, 'utf8');
-    expect(persisted).not.toContain('data:image/png;base64,AQ==');
+    expect(persisted).not.toContain(pixelDataUrl);
     expect(persisted).not.toContain('data:image/png;base64,Ag==');
     expect(persisted).toContain('data:image/jpeg;base64,example==');
     expect(fs.readFileSync(filePath, 'utf8')).toContain('__agm_responses_media_reference');
@@ -414,7 +416,7 @@ describe('Responses continuation across a restart', () => {
       {
         type: 'message',
         role: 'user',
-        content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+        content: [{ type: 'input_image', image_url: pixelDataUrl }],
       },
       {
         type: 'function_call',
@@ -430,7 +432,7 @@ describe('Responses continuation across a restart', () => {
     expect(inputItems[0]).toEqual({
       type: 'message',
       role: 'user',
-      content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+      content: [{ type: 'input_image', image_url: pixelDataUrl }],
     });
   });
 
@@ -457,7 +459,7 @@ describe('Responses continuation across a restart', () => {
                     type: 'message',
                     role: 'user',
                     content: [
-                      { type: 'input_image', image_url: 'data:image/png;base64,AQ==' },
+                      { type: 'input_image', image_url: pixelDataUrl },
                       {
                         type: 'audio_url',
                         audio_url: { url: 'data:audio/wav;base64,Ag==' },
@@ -502,7 +504,7 @@ describe('Responses continuation across a restart', () => {
           {
             type: 'message',
             role: 'user',
-            content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+            content: [{ type: 'input_image', image_url: pixelDataUrl }],
           },
         ],
       },
@@ -513,13 +515,13 @@ describe('Responses continuation across a restart', () => {
     const restarted = createStore();
     const responseId = getSentResponseId(reply);
     const stored = restarted.get(responseId);
-    expect(JSON.stringify(stored?.inputItems)).not.toContain('data:image/png;base64,AQ==');
+    expect(JSON.stringify(stored?.inputItems)).not.toContain(pixelDataUrl);
     expect(JSON.stringify(stored?.inputItems)).toContain('__agm_responses_media_reference');
     const restored = await restarted.restoreInputMedia(responseId);
     expect(restored?.session.inputItems[0]).toEqual({
       type: 'message',
       role: 'user',
-      content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+      content: [{ type: 'input_image', image_url: pixelDataUrl }],
     });
   });
 
@@ -557,7 +559,7 @@ describe('Responses continuation across a restart', () => {
           {
             type: 'message',
             role: 'user',
-            content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+            content: [{ type: 'input_image', image_url: pixelDataUrl }],
           },
         ],
       },
@@ -578,13 +580,13 @@ describe('Responses continuation across a restart', () => {
     }
     const restarted = createStore();
     const stored = restarted.get(responseId);
-    expect(JSON.stringify(stored?.inputItems)).not.toContain('data:image/png;base64,AQ==');
+    expect(JSON.stringify(stored?.inputItems)).not.toContain(pixelDataUrl);
     expect(JSON.stringify(stored?.inputItems)).toContain('__agm_responses_media_reference');
     const restored = await restarted.restoreInputMedia(responseId);
     expect(restored?.session.inputItems[0]).toEqual({
       type: 'message',
       role: 'user',
-      content: [{ type: 'input_image', image_url: 'data:image/png;base64,AQ==' }],
+      content: [{ type: 'input_image', image_url: pixelDataUrl }],
     });
   });
 

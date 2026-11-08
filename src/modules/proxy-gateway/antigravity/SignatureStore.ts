@@ -10,7 +10,7 @@
 import { logger } from '@/shared/logging/logger';
 import { getTrafficAuditRequestContext } from '../audit/traffic-audit-context';
 import { registerThoughtRecoveryPeer } from '../thought-store/thought-recovery-peers';
-import { PLACEHOLDER_THOUGHT_SIGNATURE } from './ThoughtSignatureCompat';
+import { isThoughtSignaturePlaceholder } from './ThoughtSignatureCompat';
 import { areThoughtSignaturesEquivalent } from './thought-signature-format';
 import {
   areThoughtSignatureModelsCompatible,
@@ -19,26 +19,14 @@ import {
   type ThoughtSignatureModelContext,
 } from './thought-signature-model';
 
-interface StoredSignature {
-  thoughtSessionKey?: string;
-  /** Null retains an ambiguity marker until scope clearing, expiry or eviction. */
-  signature: string | null;
-  updatedAt: number;
-  sourceModel: string;
-  sourceFamily: string | null;
-  messageCount?: number;
-}
-
-interface StoredToolCallSignature extends StoredSignature {
-  sessionKey: string;
-  toolName?: string;
-}
-
-interface SessionSignatureBucket {
-  signaturesByMessageCount: Map<string, StoredSignature>;
-  legacySignature?: StoredSignature;
-  updatedAt: number;
-}
+import {
+  clearThoughtSignatureScope,
+  pruneSignatureCache,
+  signatureExpired,
+  type StoredSignature,
+  type StoredToolCallSignature,
+  type SessionSignatureBucket,
+} from './signature-cache-retention';
 
 class SignatureStoreImpl {
   private static instance: SignatureStoreImpl;
@@ -77,10 +65,11 @@ class SignatureStoreImpl {
     }
     const { signature: sig, sessionKey, messageCount, toolCallId } = options;
     const source = normalizeThoughtSignatureModelContext(options);
-    if (!sig || sig === PLACEHOLDER_THOUGHT_SIGNATURE || !source || !sessionKey?.trim()) {
+    if (!sig || isThoughtSignaturePlaceholder(sig) || !source || !sessionKey?.trim()) {
       return;
     }
 
+    pruneSignatureCache(this.signaturesBySession, this.signaturesByToolCallKey);
     if (toolCallId) {
       this.storeByToolCallId(sig, source, toolCallId, sessionKey, options.toolName);
     }
@@ -134,6 +123,7 @@ class SignatureStoreImpl {
 
     this.touchSession(sessionKey, bucket, now);
     this.evictOverflowSessions();
+    pruneSignatureCache(this.signaturesBySession, this.signaturesByToolCallKey, now);
   }
 
   /**
@@ -162,7 +152,11 @@ class SignatureStoreImpl {
       let latestSignature: string | null = null;
       for (const cached of stored.signaturesByMessageCount.values()) {
         const messageCount = cached.messageCount ?? -1;
-        if (this.hasSameSource(cached, target) && messageCount > latestMessageCount) {
+        if (
+          !signatureExpired(cached) &&
+          this.hasSameSource(cached, target) &&
+          messageCount > latestMessageCount
+        ) {
           latestMessageCount = messageCount;
           latestSignature = cached.signature;
         }
@@ -201,7 +195,7 @@ class SignatureStoreImpl {
     if (!stored || (options.toolName !== undefined && stored.toolName !== options.toolName)) {
       return null;
     }
-    if (Date.now() - stored.updatedAt >= SignatureStoreImpl.SESSION_TTL_MS) {
+    if (signatureExpired(stored)) {
       this.signaturesByToolCallKey.delete(toolCallKey);
       return null;
     }
@@ -284,41 +278,11 @@ class SignatureStoreImpl {
 
   /** Thought identity is retained at capture; it is never guessed from a protocol cache key. */
   public clearThoughtSession(thoughtSessionKey?: string): { removed: number; unknown: number } {
-    let removed = 0;
-    let unknown = 0;
-    for (const [key, bucket] of this.signaturesBySession) {
-      for (const [slot, signature] of bucket.signaturesByMessageCount) {
-        if (thoughtSessionKey === undefined || signature.thoughtSessionKey === thoughtSessionKey) {
-          bucket.signaturesByMessageCount.delete(slot);
-          removed += 1;
-        } else if (signature.thoughtSessionKey === undefined) {
-          unknown += 1;
-        }
-      }
-      if (bucket.legacySignature) {
-        if (
-          thoughtSessionKey === undefined ||
-          bucket.legacySignature.thoughtSessionKey === thoughtSessionKey
-        ) {
-          bucket.legacySignature = undefined;
-          removed += 1;
-        } else if (bucket.legacySignature.thoughtSessionKey === undefined) {
-          unknown += 1;
-        }
-      }
-      if (!bucket.legacySignature && bucket.signaturesByMessageCount.size === 0) {
-        this.signaturesBySession.delete(key);
-      }
-    }
-    for (const [key, signature] of this.signaturesByToolCallKey) {
-      if (thoughtSessionKey === undefined || signature.thoughtSessionKey === thoughtSessionKey) {
-        this.signaturesByToolCallKey.delete(key);
-        removed += 1;
-      } else if (signature.thoughtSessionKey === undefined) {
-        unknown += 1;
-      }
-    }
-    return { removed, unknown };
+    return clearThoughtSignatureScope(
+      this.signaturesBySession,
+      this.signaturesByToolCallKey,
+      thoughtSessionKey,
+    );
   }
 
   private storeByToolCallId(
@@ -328,7 +292,6 @@ class SignatureStoreImpl {
     sessionKey: string,
     toolName?: string,
   ): void {
-    this.evictExpiredToolCallEntries();
     const toolCallKey = this.createToolCallKey(toolCallId, sessionKey, source);
     const existing = this.signaturesByToolCallKey.get(toolCallKey);
     const stored = this.mergeStoredSignature(existing, sig, source);
@@ -338,7 +301,6 @@ class SignatureStoreImpl {
       toolName,
       signature: existing && existing.toolName !== toolName ? null : stored.signature,
     });
-    this.evictOverflowToolCallEntries();
   }
 
   private mergeStoredSignature(
@@ -357,7 +319,6 @@ class SignatureStoreImpl {
     ) {
       return {
         ...existing,
-        updatedAt,
         thoughtSessionKey:
           getTrafficAuditRequestContext()?.thoughtSessionKey ?? existing.thoughtSessionKey,
       };
@@ -368,7 +329,6 @@ class SignatureStoreImpl {
     return {
       ...existing,
       signature: null,
-      updatedAt,
       thoughtSessionKey:
         getTrafficAuditRequestContext()?.thoughtSessionKey ?? existing.thoughtSessionKey,
     };
@@ -383,7 +343,7 @@ class SignatureStoreImpl {
     return {
       signature,
       thoughtSessionKey: getTrafficAuditRequestContext()?.thoughtSessionKey,
-      updatedAt,
+      capturedAt: updatedAt,
       sourceModel: source.model,
       sourceFamily: source.family,
       ...(messageCount !== undefined ? { messageCount } : {}),
@@ -404,7 +364,7 @@ class SignatureStoreImpl {
     stored: StoredSignature | undefined | null,
     target: NormalizedThoughtSignatureModelContext,
   ): string | null {
-    if (!stored) {
+    if (!stored || signatureExpired(stored)) {
       return null;
     }
     return areThoughtSignatureModelsCompatible(
@@ -436,28 +396,8 @@ class SignatureStoreImpl {
   }
 
   private touchToolCallEntry(toolCallKey: string, stored: StoredToolCallSignature): void {
-    stored.updatedAt = Date.now();
     this.signaturesByToolCallKey.delete(toolCallKey);
     this.signaturesByToolCallKey.set(toolCallKey, stored);
-  }
-
-  private evictExpiredToolCallEntries(): void {
-    const oldestAllowed = Date.now() - SignatureStoreImpl.SESSION_TTL_MS;
-    for (const [toolCallKey, stored] of this.signaturesByToolCallKey.entries()) {
-      if (stored.updatedAt <= oldestAllowed) {
-        this.signaturesByToolCallKey.delete(toolCallKey);
-      }
-    }
-  }
-
-  private evictOverflowToolCallEntries(): void {
-    while (this.signaturesByToolCallKey.size > SignatureStoreImpl.MAX_SESSION_ENTRIES) {
-      const oldestToolCallKey = this.signaturesByToolCallKey.keys().next().value;
-      if (!oldestToolCallKey) {
-        return;
-      }
-      this.signaturesByToolCallKey.delete(oldestToolCallKey);
-    }
   }
 
   private touchSession(

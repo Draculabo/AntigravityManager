@@ -101,7 +101,7 @@ describe('OpenAI Responses preflight errors', () => {
     expect(reply.body).toMatchObject({
       error: {
         message: expect.stringMatching(/input_audio must be an object/),
-        type: 'server_error',
+        type: 'invalid_request_error',
       },
     });
     expect(upstream.calls).toHaveLength(0);
@@ -134,7 +134,7 @@ describe('OpenAI Responses preflight errors', () => {
     expect(reply.body).toMatchObject({
       error: {
         message: 'Input image contains invalid base64 data',
-        type: 'server_error',
+        type: 'invalid_request_error',
       },
     });
     expect(upstream.calls).toHaveLength(0);

@@ -16,6 +16,7 @@ import {
   CloudSwitchDiagnosticSchema,
   type CloudSwitchDiagnostic,
 } from '@/modules/cloud-account/services/operation-diagnostic.schema';
+import { mockCoreGatewayLifecycle } from './core-gateway-lifecycle';
 
 function expectTerminalDiagnostic(expected: Omit<CloudSwitchDiagnostic, 'diagnosticId'>) {
   const records = vi
@@ -206,7 +207,7 @@ async function startOwner(): Promise<CoreRpcClient> {
     getStatus: () => ({ state: 'running', pid: 123, gateway: { running: false, port: null } }),
     shutdown: async () => {},
     onShutdownError: vi.fn(),
-    rpc: createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() }),
+    rpc: createCoreRpcOperations(mockCoreGatewayLifecycle()),
   });
   await server.start();
   return new CoreRpcClient(endpoint);

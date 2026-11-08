@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,7 @@ import {
   readServiceConfigErrorCode,
   type ServiceConfigSnapshot,
   type ServiceConfigUpdate,
+  type ServiceConfigWriteResult,
 } from '../service-config.schema';
 import { ThinkingBudgetConfigSchema } from '../types';
 
@@ -80,17 +81,20 @@ interface ThinkingBudgetSettingsProps {
   config: ThinkingBudgetConfig;
   available: boolean;
   onSaved(): Promise<void>;
+  onApplicationResult?(result: ServiceConfigWriteResult): void;
 }
 
 export function ThinkingBudgetSettings({
   config,
   available,
   onSaved,
+  onApplicationResult,
 }: ThinkingBudgetSettingsProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const initial = useMemo(() => parseDraft(config), [config]);
   const [drafts, setDrafts] = useState<Record<string, string>>(initial.drafts);
+  const baseline = useRef({ ...initial.drafts });
   const [invalid, setInvalid] = useState<string[]>(initial.invalid);
   const [busy, setBusy] = useState(false);
 
@@ -110,12 +114,19 @@ export function ThinkingBudgetSettings({
     setBusy(true);
     try {
       const result = await ipc.client.config.service.update(change);
+      onApplicationResult?.(result);
+      for (const [key, value] of Object.entries(change.proxy?.thinking_budget ?? {})) {
+        baseline.current[key] = String(value);
+      }
       await onSaved();
       toast({
         title:
-          result.state === 'applied'
+          result.state === 'partial-failure'
+            ? t('settings.service-apply-failed')
+            : result.state === 'applied'
             ? t('settings.toast.saved.title')
             : t('settings.service-restart-required'),
+        ...(result.state === 'partial-failure' ? { variant: 'destructive' as const } : {}),
       });
     } catch (error) {
       reportFailure(error);
@@ -149,9 +160,17 @@ export function ThinkingBudgetSettings({
         );
         return;
       }
-      patch[field.key] = normalized;
+      if (normalized !== Number(baseline.current[field.key])) {
+        patch[field.key] = normalized;
+      }
     }
-    patch.control_source = drafts.control_source ?? config.control_source;
+    const source = drafts.control_source ?? config.control_source;
+    if (source !== baseline.current.control_source) {
+      patch.control_source = source;
+    }
+    if (Object.keys(patch).length === 0) {
+      return;
+    }
     const parsed = ThinkingBudgetConfigSchema.partial().safeParse(patch);
     if (!parsed.success) {
       setInvalid(GATEWAY_FIELDS.map((field) => field.key));

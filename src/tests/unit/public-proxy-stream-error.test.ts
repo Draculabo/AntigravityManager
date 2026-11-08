@@ -10,6 +10,8 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+import { UpstreamThoughtSignatureConflictError } from '@/modules/proxy-gateway/server/common/upstream-thought-signature-validation';
+import { GenerationDeadlineExceededError } from '@/modules/proxy-gateway/server/common/exceptions/generation-deadline.exception';
 
 vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-public-stream-test/0.0.0',
@@ -277,3 +279,103 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
     });
   },
 );
+
+describe.each(['chat', 'messages', 'gemini'] as const)('%s interrupted output', (protocol) => {
+  it.each([
+    ['text', 'eof'],
+    ['text', 'reset'],
+    ['tool', 'eof'],
+    ['tool', 'reset'],
+    ['tool-without-id', 'eof'],
+  ] as const)('retains %s and sends one terminal sequence after %s', async (kind, ending) => {
+    const text = '```typescript\nconst answer = 42;\n';
+    const part =
+      kind === 'text'
+        ? { text }
+        : {
+            functionCall: {
+              ...(kind === 'tool' ? { id: 'call-interrupted' } : {}),
+              name: 'read_file',
+              args: { path: '/fixture' },
+            },
+          };
+    const transportError =
+      ending === 'reset'
+        ? Object.assign(new Error('Controlled connection reset'), { code: 'ECONNRESET' })
+        : undefined;
+    const { output, upstream, lease } = await run(
+      protocol,
+      [
+        frame({
+          response: {
+            candidates: [{ content: { role: 'model', parts: [part] } }],
+            usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 3, totalTokenCount: 10 },
+          },
+        }),
+      ],
+      transportError,
+    );
+    expect(output).not.toContain('"error":');
+    if (kind === 'text') {
+      expect(output).toContain(JSON.stringify(text).slice(1, -1));
+      expect(output).not.toContain('Warning');
+    } else {
+      expect(output).toContain('read_file');
+      expect(output).toContain('/fixture');
+    }
+    if (protocol === 'chat') {
+      expect(output.match(/"finish_reason":"[^"]+"/gu)).toEqual([
+        `"finish_reason":"${kind !== 'text' ? 'tool_calls' : 'length'}"`,
+      ]);
+      expect(output.match(/data: \[DONE\]/gu)).toHaveLength(1);
+    } else if (protocol === 'messages') {
+      expect(output.match(/"stop_reason":"[^"]+"/gu)).toEqual([
+        `"stop_reason":"${kind !== 'text' ? 'tool_use' : 'max_tokens'}"`,
+      ]);
+      expect(output.match(/event: message_stop/gu)).toHaveLength(1);
+    } else {
+      expect(output.match(/"finishReason":"[^"]+"/gu)).toEqual([
+        `"finishReason":"${kind !== 'text' ? 'STOP' : 'MAX_TOKENS'}"`,
+      ]);
+    }
+    expect(upstream.streamGenerateInternal).toHaveBeenCalledOnce();
+    expect(upstream.generateInternal).not.toHaveBeenCalled();
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    new UpstreamThoughtSignatureConflictError('controlled fixture'),
+    new GenerationDeadlineExceededError(),
+    Object.assign(new Error('Upstream request cancelled'), { name: 'AbortError' }),
+    new Error('Unknown stream failure'),
+  ])('keeps nontransport failure $name explicit after output', async (cause) => {
+    const { output, lease } = await run(protocol, [frame(partial)], cause);
+    expect(publicError(protocol, output)).toBeDefined();
+    expect(output).not.toContain('[DONE]');
+    expect(output).not.toContain('event: message_stop');
+    expect(output).not.toContain('"finishReason":"MAX_TOKENS"');
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { thought: true, text: 'Reasoning without an answer' },
+    { text: '   ' },
+    { inlineData: { mimeType: 'image/png', data: 'AQ==' } },
+  ])('requires visible text or a complete tool before truncation', async (part) => {
+    const { output } = await run(protocol, [
+      frame({
+        response: { candidates: [{ content: { role: 'model', parts: [part] } }] },
+      }),
+    ]);
+    expect(publicError(protocol, output)).toBeDefined();
+    expect(output).not.toContain('[DONE]');
+    expect(output).not.toContain('event: message_stop');
+  });
+
+  it('rejects a malformed trailing frame after valid text', async () => {
+    const { output } = await run(protocol, [frame(partial), 'data: {"response":']);
+    expect(publicError(protocol, output)).toBeDefined();
+    expect(output).not.toContain('[DONE]');
+    expect(output).not.toContain('event: message_stop');
+  });
+});

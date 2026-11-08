@@ -9,6 +9,7 @@ export {
   type ThoughtToolSignature,
 } from './thought-part-signatures.schema';
 
+import { isThoughtSignaturePlaceholder } from '../antigravity/ThoughtSignatureCompat';
 import { hashSessionAnchor } from '../server/common/session-anchor-hash';
 import { areThoughtSignaturesEquivalent } from '../antigravity/thought-signature-format';
 
@@ -18,7 +19,7 @@ export function readThoughtPartSignature(part: object): string | null {
     Reflect.get(part, 'thoughtSignature') ?? Reflect.get(part, 'thought_signature');
   return typeof value === 'string' &&
     value.length > 0 &&
-    value !== 'skip_thought_signature_validator'
+    !isThoughtSignaturePlaceholder(value)
     ? value
     : null;
 }
@@ -59,7 +60,7 @@ export function thoughtSignaturesOf(record: {
   partSignatures: readonly ThoughtPartSignature[];
 }): string[] {
   return [record.signature, ...record.partSignatures.map((part) => part.signature)].filter(
-    (value): value is string => Boolean(value) && value !== 'skip_thought_signature_validator',
+    (value): value is string => Boolean(value) && !isThoughtSignaturePlaceholder(value),
   );
 }
 

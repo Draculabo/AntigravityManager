@@ -320,10 +320,31 @@ it('expires tool links at original completion while retaining diagnostic signatu
       recoverableToolLinks: 1,
     });
     clock.mockReturnValue(now + THOUGHT_TOOL_LINK_TTL_MS - 1);
+    expect(
+      repository.execute({
+        operation: 'toolRecoverySnapshot',
+        payload: {
+          sessionKey: 'session',
+          operationIds: ['operation'],
+        },
+      }),
+    ).toEqual([{ operationId: 'operation', positions: [0] }]);
     expect(repository.execute({ operation: 'findCandidates', payload: input })).toMatchObject([
       { partSignatures: [{ signature: 'opaque' }] },
     ]);
     clock.mockReturnValue(now + THOUGHT_TOOL_LINK_TTL_MS);
+    expect(
+      repository.execute({
+        operation: 'toolRecoverySnapshot',
+        payload: {
+          sessionKey: 'session',
+          operationIds: ['operation'],
+        },
+      }),
+    ).toEqual([{ operationId: 'operation', positions: [] }]);
+    expect(
+      repository.execute({ operation: 'load', payload: { sessionKey: 'session' } }),
+    ).toMatchObject([{ partSignatures: [{ signature: null }] }]);
     expect(repository.execute({ operation: 'findCandidates', payload: input })).toMatchObject([
       { partSignatures: [{ signature: null }] },
     ]);
@@ -424,6 +445,30 @@ it('caps recoverable references at 10,000 without deleting the associated diagno
       repository.execute({ operation: 'getRecord', payload: { sessionKey: 'session', id: 1 } }),
     );
     expect(diagnostic.partSignatures).toEqual(tools);
+    const loaded = z
+      .array(ThoughtRecordSchema)
+      .parse(repository.execute({ operation: 'load', payload: { sessionKey: 'session' } }));
+    expect(loaded[0].partSignatures).toEqual(selected[0].partSignatures);
+    const snapshot = repository.execute({
+      operation: 'toolRecoverySnapshot',
+      payload: {
+        sessionKey: 'session',
+        operationIds: ['op-0', 'op-extra'],
+      },
+    });
+    expect(snapshot).toEqual([
+      { operationId: 'op-0', positions: Array.from({ length: 1999 }, (_, index) => index + 1) },
+      { operationId: 'op-extra', positions: [0] },
+    ]);
+    expect(
+      repository.execute({
+        operation: 'toolRecoverySnapshot',
+        payload: {
+          sessionKey: 'neighbor',
+          operationIds: ['op-0'],
+        },
+      }),
+    ).toEqual([]);
   } finally {
     repository.execute({ operation: 'shutdown', payload: null });
   }

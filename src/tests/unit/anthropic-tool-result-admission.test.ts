@@ -114,7 +114,7 @@ describe('tool-result admission through protocol services', () => {
           messages: [{ role: 'tool', tool_call_id: 't', content: 'orphan output' }],
         }),
       ).rejects.toMatchObject({ reason: 'missing-pending-call' });
-      expect(lease.getNextToken).toHaveBeenCalledTimes(1);
+      expect(lease.getNextToken).not.toHaveBeenCalled();
       expect(lease.penalties).toEqual([]);
       expect(upstream.calls).toEqual([]);
     },

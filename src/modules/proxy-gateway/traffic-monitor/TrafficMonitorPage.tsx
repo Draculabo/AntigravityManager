@@ -1,6 +1,7 @@
 import { TrafficMonitorHeader } from './components/TrafficMonitorHeader';
 import { TrafficSearchForm } from './components/TrafficSearchForm';
 import { TrafficRefreshControls } from './components/TrafficRefreshControls';
+import { TrafficUsageTrends } from './components/TrafficUsageTrends';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -260,6 +261,8 @@ export function TrafficMonitorPage({
         />
         <TrafficClearControls tab={tab} />
       </div>
+
+      {tab === 'model' && <TrafficUsageTrends accounts={cloudAccounts} />}
 
       <div className="flex flex-wrap items-center gap-2 border-b px-6 py-2 text-xs">
         <TrafficSessionFilter

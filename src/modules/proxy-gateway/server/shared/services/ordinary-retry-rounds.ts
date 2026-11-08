@@ -13,6 +13,7 @@ interface OrdinaryRetryLease {
   getNextToken(options: {
     model: string;
     effort?: string;
+    physicalTarget?: boolean;
     sessionKey?: string;
     excludeAccountIds: string[];
     allowSelectionWait?: boolean;
@@ -23,6 +24,7 @@ interface OrdinaryRetryLease {
   getOrdinaryRetryWaitMs(options: {
     model: string;
     effort?: string;
+    physicalTarget?: boolean;
     accountId?: string;
   }): number | null;
 }
@@ -132,6 +134,7 @@ export class OrdinaryRetryRounds {
     sessionKey?: string,
     signal?: AbortSignal,
     effort?: string,
+    physicalTarget = false,
   ): Promise<CloudAccount | null> {
     throwIfRequestAborted(signal);
     if (
@@ -144,6 +147,7 @@ export class OrdinaryRetryRounds {
     let token = await lease.getNextToken({
       model,
       effort,
+      physicalTarget,
       sessionKey,
       excludeAccountIds: Array.from(this.roundAccountIds),
       signal,
@@ -153,7 +157,7 @@ export class OrdinaryRetryRounds {
     throwIfRequestAborted(signal);
     let waited = false;
     if (!token && this.normalSends > 0) {
-      const poolWait = lease.getOrdinaryRetryWaitMs({ model, effort });
+      const poolWait = lease.getOrdinaryRetryWaitMs({ model, effort, physicalTarget });
       if (poolWait === null) {
         return null;
       }
@@ -170,6 +174,7 @@ export class OrdinaryRetryRounds {
       token = await lease.getNextToken({
         model,
         effort,
+        physicalTarget,
         sessionKey,
         excludeAccountIds: [],
         allowSelectionWait: false,
@@ -181,7 +186,7 @@ export class OrdinaryRetryRounds {
     if (!token || (!waited && !(await this.wait(this.normalDelay(rotation), signal)))) {
       return null;
     }
-    if (lease.getOrdinaryRetryWaitMs({ model, effort, accountId: token.id }) !== 0) {
+    if (lease.getOrdinaryRetryWaitMs({ model, effort, physicalTarget, accountId: token.id }) !== 0) {
       return null;
     }
     throwIfRequestAborted(signal);

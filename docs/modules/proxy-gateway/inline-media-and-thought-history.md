@@ -1,8 +1,8 @@
 # Inline media admission and thought history
 
-This reference describes admission for ordinary OpenAI Chat and Anthropic Messages,
-including Anthropic `count_tokens`, nested tool results and Markdown images recognized
-by the request mapper. Responses converted through the Chat service also pass admission.
+This reference describes admission for OpenAI Chat, Responses, Anthropic Messages and
+native Gemini, including token counting, nested tool results and Markdown images recognized
+by the request mapper. Image generation and multipart edit inputs use the same image checks.
 
 ## Media admission
 
@@ -15,8 +15,11 @@ Recognized file signatures determine MIME within the declared media family. For 
 PNG bytes declared as JPEG become `image/png`, with the original bytes preserved. Recognized
 content from another family is rejected rather than replaced with text. M4A audio retains
 `audio/mp4` only when an audio container brand is present. Text-like documents keep their
-specific declared MIME. Unknown binary signatures retain the declared MIME; this check
-does not prove that an entire image, PDF or codec stream can be decoded by the provider.
+specific declared MIME. Explicit images require a recognized PNG, JPEG, GIF, WebP or BMP
+signature and minimum container structure. Unknown binary, header-only and truncated images
+return HTTP 400 before leasing. This does not decode pixels or establish codec correctness;
+PNG CRCs and compressed payload validation remain the decoder's responsibility. Other unknown
+binary media retain their declared MIME under their existing audio/video/document contracts.
 
 All inline images in one request share the existing image-generation limits: at most
 16 images, 20 MiB decoded per image and 32 MiB decoded in total. Images inside tool results,
@@ -26,9 +29,37 @@ retain the existing transport limits rather than adopting new per-file limits.
 
 Remote URL behavior and local video-path configuration remain owned by their existing
 resolvers. Admission does not fetch remote resources or enable local file access. Markdown
-that the mapper does not recognize as an inline image remains text. System instructions and
-tool-result prose keep their existing text representation; Markdown syntax in those positions
-does not become an image or consume the image budget.
+that the mapper does not recognize as an inline image remains text. System instructions keep
+their literal text representation. Tool results recognize standalone image data URLs, Markdown
+images outside code fences, and string data URLs in the JSON top-level fields `image`,
+`screenshot`, `data`, `image_url` and `picture`. JSON parsing is bounded to the maximum
+aggregate image Base64 representation plus 64 KiB of metadata; larger tool text stays text.
+Other JSON fields, nested examples and data URLs inside ordinary log lines are not extracted.
+
+Tool-text image extraction rejects invalid candidates without removing their original text,
+and records only a bounded request-local diagnostic kind. Accepted tool images join the same
+request-wide count/byte budget before leasing. Extracted image bytes are not copied into
+these diagnostic entries.
+Function-call arguments remain opaque even when an object inside them resembles an image block.
+
+## Image send window
+
+Settings → Proxy provides a disabled-by-default image history window. Count retains
+the newest images up to N, including current images; 0 removes this soft count limit.
+Every current image remains protected, so current images above N leave no historical
+slots. The count strategy does not apply the memory strategy's soft budget. Remote
+images join count selection only when enabled, and current remote images stay protected.
+
+The separate memory strategy retains the newest continuous historical suffix within its
+exact decoded-file-byte budget. Current inline images above that budget fail explicitly.
+It ignores the count preference and retains remote URLs, whose file size is unknown.
+Neither strategy downloads remote content, relaxes admission limits, decodes pixel memory,
+deletes persisted originals or rewrites tool arguments. Switching off or increasing the
+window can reuse originals that remain within the private store's retention contract.
+
+Configuration without `send_window_strategy` resolves to `count`. The new explicit
+strategy replaces the earlier controlled implementation's combined soft limits; see
+the [upgrade guide](../../upgrade-guides/next/strict-inline-images.md).
 
 ## Durable Responses media
 
@@ -39,8 +70,14 @@ content ID and enough metadata to restore the original representation. This name
 public Files handle or route. It reuses the content store's content-addressed deduplication,
 20 MiB per-item limit, 512 MiB total limit and 48-hour expiry.
 
-Only recognized Responses image and audio fields are externalized. This includes message
-media, `audio_url`, and structured media returned in tool-result output. Data URLs embedded in
+Recognized Responses image and audio fields are externalized. This includes message
+media, `audio_url`, and structured media returned in tool-result output. Image-bearing
+tool-output strings and text blocks recognized by the same standalone/JSON/Markdown policy
+are stored as exact JSON-encoded strings in private chunks. The version-2 text reference
+contains chunk IDs, byte count and SHA-256; at most four 16 MiB chunks (64 MiB serialized
+text) are admitted. All chunks consume the existing aggregate disk/expiry policy. Missing,
+altered or malformed text references produce the same 410 as unavailable protocol media.
+Data URLs embedded in
 `function_call` or `custom_tool_call` arguments remain ordinary tool input and are not rewritten.
 A client cannot supply the internal reference marker; malformed references are rejected before
 they enter trusted history.
@@ -51,12 +88,18 @@ returns 410 with instructions to start a new conversation or resend the media. D
 response only requires the caller-owned session record and remains possible after its media has
 expired.
 
+Concurrent operations on a newly opened content store wait for the same index load and startup
+cleanup. A second cold read cannot observe the not-yet-loaded in-memory index as an empty store.
+
 Streaming publishes `response.completed` only after a write containing media references reaches
 the backing session file. A storage failure terminates the stream with the sanitized Responses
 persistence error and is not retried. Non-streaming success follows the same commit rule. Records
 created before this private-media format are discarded by the strict session decoder; there is no
 media migration, compatibility reader or encryption layer. Old cursors therefore require a new
 conversation, while clients may resend history they still hold.
+
+Version-1 image/audio references remain readable. Older versions cannot restore the new
+version-2 tool-text references; follow the [downgrade instructions](../../upgrade-guides/next/responses-tool-media.md).
 
 ## Thought history
 
@@ -85,6 +128,33 @@ session slightly earlier than its last in-memory access suggests. Retention sett
 SQLite schema and thought record encoding remain unchanged. This optimization reduces
 access writes, not record saves, and does not recover a failed thought-record save.
 
+Request-local restore diagnostics use fixed counters in the existing audit context.
+Signature-cache hits and misses count tool-signature lookups. Store hits count turns
+whose outbound parts actually changed after ownership checks. A loaded memory result,
+or memory used without a successful persistent read result, counts as a memory hit.
+A fresh persistent read without current memory records counts as a cold hit. When
+nonempty persistent and current record sets merge, restored turns count as
+`restoredSourceUnknown`. This conservative classification applies to the whole merged
+result, including older-history lookups; persisted IDs do not establish content origin.
+Complete supplied history adds no hit.
+An owned candidate that changes nothing has a separate `matchedUnchanged` counter.
+
+`noCandidate` means completed lookups left the current compatible record set empty for
+a turn that needs restoration. An unmatched turn with compatible records counts as
+`unresolved`, because the matcher does not distinguish absence from ambiguity or
+competing ownership claims. Admission failures, read failures and active failure
+cooldowns have separate counters. A missing candidate after any such unavailable
+lookup also counts as `unresolved`. Cancellation and invalidation have their own
+counters. These outcomes do not infer global absence, expiry or deletion. Shared cold
+reads deliver the same availability and source classification to every waiting request.
+Counters accumulate over existing retries and contain no history, signatures or tool identities.
+
+The existing `[ContextEstimate]` debug output includes a `thoughtRestore` snapshot on
+physical sends and at `thought-restore-complete`. The completion record covers cancelled
+or invalidated preparation that never dispatches. Records include the audit request ID
+when capture supplies one. The counters are diagnostic log metadata; they are not stored
+in the audit database or displayed in the thought management UI.
+
 ## Complete context observation
 
 Internal content generation estimates semantic input after thought restoration and before
@@ -105,12 +175,11 @@ string used by unary and streamed request bodies. `attempt` uses the existing re
 attempt sequence, or is null without a trusted request context. Raw passthrough and
 count-token operations do not enter this typed generation diagnostic.
 
-The diagnostic contains numeric totals, component counts and bounded transformation
-metadata; it does not log prompt text, signatures, encoded media, URLs or credentials. Text uses
-ASCII/non-ASCII character heuristics with a margin. Image cost is approximated from size;
-audio uses a PCM size approximation that cannot recover compressed-audio duration.
-PDFs, video, other binary data and remote media increment `unestimatedMediaParts` instead
-of presenting a fabricated token count. Their inline byte counts remain visible.
+The diagnostic contains numeric totals, component counts, `algorithmVersion` and bounded
+transformation metadata. Text uses ASCII/4 and non-ASCII/2.2, rounded per nonempty block
+with a minimum of one. Image cost is approximated from size. Version 2 treats audio
+without verified duration, PDFs, video, other binary data and remote media as unknown.
+These parts increment `unestimatedMediaParts` and retain their inline byte counts.
 
 Transformation metadata records a closed kind, owning surface and zero-based message/part
 position. A null position means that level does not apply. System positions refer to the

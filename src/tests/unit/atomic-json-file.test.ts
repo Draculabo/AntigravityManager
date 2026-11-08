@@ -102,6 +102,28 @@ describe('atomic file persistence', () => {
     ]);
   });
 
+  it('checks owner revocation after syncing temporary content and preserves the original destination', async () => {
+    const { events, writer } = createWriter('linux');
+    const revoked = new Error('export revoked');
+    await expect(
+      writer.write('/state/diagnostic.txt', 'complete diagnostic', {
+        beforeCommit: () => {
+          events.push('check-owner');
+          throw revoked;
+        },
+      }),
+    ).rejects.toBe(revoked);
+    expect(events).toEqual([
+      'mkdir',
+      'open-file',
+      'write-file',
+      'sync-file',
+      'close-file',
+      'check-owner',
+      'remove',
+    ]);
+  });
+
   it('skips parent-directory sync on Windows while retaining file sync and replacement', async () => {
     const { events, writer } = createWriter('win32');
 

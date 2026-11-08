@@ -58,6 +58,38 @@ the same failed response events. Anthropic closes an active content block withou
 committing a pending signature before emitting the error; it sends no successful
 message terminal afterward.
 
+## Partial-output interruption
+
+After valid visible text or a complete tool call, Chat, Anthropic and native Gemini
+close a transport interruption with a protocol terminal sequence. Eligible causes
+are recognized upstream network/transfer failures, stream idle expiry and EOF or
+premature close without a finish reason. Normal EOF validates any buffered UTF-8
+and SSE tail before applying this rule.
+
+| Adapter   | Text interruption                                              | Existing complete tool call     |
+| --------- | -------------------------------------------------------------- | ------------------------------- |
+| Chat      | `finish_reason: length`, then `[DONE]`                         | `tool_calls`, then `[DONE]`     |
+| Anthropic | Close the active block, emit `max_tokens`, then `message_stop` | `tool_use`, then `message_stop` |
+| Gemini    | `MAX_TOKENS`                                                   | `STOP`                          |
+| Responses | `response.failed` containing observed partial output           | `response.failed`               |
+
+Gemini adds a fixed `finishMessage` and `gatewayInterrupted: true` to the generated
+terminal candidate. The gateway preserves emitted model text, tool names and
+arguments. It does not repair Markdown or append warning text to the answer.
+Termination occurs once. Previously observed usage remains available, but an
+interrupted connection cannot provide a complete final usage total.
+
+Thinking alone, signatures, whitespace, inline media and ambiguous multiple
+candidates do not authorize this completion. Provider error events, invalid
+protocol data, signature conflicts, caller cancellation and the request's total
+deadline keep their existing error ownership. Image generation retains its clean
+upstream-end requirement. An already emitted terminal reason is not replaced.
+
+The generated terminal sequence preserves client compatibility while the physical
+attempt remains interrupted. It does not commit account/model success, retry
+generation or persist a completed Responses turn. The adapters log the interruption
+independently of the client-facing finish reason.
+
 ## Empty output and optional thinking continuation
 
 The unary and SSE boundaries reject malformed generation containers, parts and
@@ -125,9 +157,9 @@ With `stream_options: { "include_usage": true }`, ordinary completion chunks con
 `usage: null`. After the finish chunk, the gateway keeps reading upstream usage trailers.
 On clean completion it emits one final completion chunk with `choices: []` and the latest
 available usage, followed by `[DONE]`. No independent statistics block is fabricated when
-usage is absent, including the unary-to-stream fallback path. Interrupted or cancelled
-streams do not promise final usage; transport failure remains an error rather than a
-successful usage trailer. Existing request timeout and stream idle limits still apply.
+usage is absent, including the unary-to-stream fallback path. Eligible partial-output
+interruption uses the latest observed usage with its truncation terminal. Cancelled
+streams do not promise final usage. Existing request timeout and stream idle limits still apply.
 
 Responses and Anthropic retain their own usage contracts. This option changes only the
 OpenAI Chat compatibility surface.

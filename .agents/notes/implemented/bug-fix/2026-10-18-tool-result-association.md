@@ -40,6 +40,17 @@ Complete retained history takes precedence over cached ambiguity. Identical dura
 replays keep their first position; different payloads sharing an item ID fail explicitly.
 Tool payloads participate in full-replay equality and are not anonymous suffix anchors.
 
+Native Gemini retains the declared function name alongside each pending ID. A response
+must name that same function, including when it inherits an ID from one pending call.
+The exact placeholder `unknown` can inherit a known nonempty call name only through
+an explicitly supplied matching pending ID. The repair consumes the call chronologically
+and clones the changed result while preserving the original payload. Missing IDs,
+orphan IDs and conflicting explicit names retain the existing failure rules.
+A conflicting name returns a position-only `conflicting-result-name` failure before
+account selection. Completed IDs can name another function in a later round, and valid
+responses retain their complete payload. This extends the existing invocation-local
+tracker without changing generated ID hashes, tool execution or auxiliary token counting.
+
 ## Alternatives considered
 
 - Choose the last name for an ambiguous ID: rejected because pending calls are indistinguishable.
@@ -55,9 +66,10 @@ describes client recovery without repeating side effects. Pending tracker memory
 by the admitted history, and consumed IDs are removed. There is no new durable format,
 credential handling, dependency, encryption or retry.
 
-This implements Claude-history association and Responses chronological repair. Native Gemini,
-missing-ID generation and
-signature-cache turn identity remain separate D04 obligations.
+This implements Claude-history association, Responses chronological repair and native
+Gemini pending-call name binding. Deterministic ID generation already belongs to the
+respective protocol normalizers; signature-cache turn identity remains a separate D04
+obligation and is not established by pending-call admission alone.
 
 ## Verification
 
@@ -68,3 +80,7 @@ The slice report (local artifact `D04-tool-result-association-implementation.md`
 records exact evidence and environment limitations. Live-provider acceptance remains deferred.
 The Responses repair follow-up (local artifact `D04-responses-history-repair-implementation.md` in the 2026-10-11 review collection)
 records the chronological cache, replay and no-lease rejection evidence.
+
+The 2026-11-05 native-name regression fails for both explicit and inherited result IDs
+before this change, with four neighboring tests preserved. The repaired selection also
+checks stream/unary no-lease rejection and valid sequential ID reuse with distinct names.

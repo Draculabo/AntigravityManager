@@ -12,6 +12,7 @@ import {
 } from '@/shared/persistence/database/dbConnection';
 import * as drizzleSchema from '@/shared/persistence/database/schema';
 import { ensureCloudAccountLifecycleSchema } from './cloud-account-lifecycle-schema';
+import { ensureGoogleUsageIdentitySchema } from './google-usage-identity-schema';
 
 export const CLOUD_ACCOUNT_SQLITE_BUSY_TIMEOUT_MS = 3000;
 
@@ -92,6 +93,7 @@ function ensureDatabaseInitialized(dbPath: string): void {
       db.exec('ALTER TABLE accounts ADD COLUMN proxy_enabled INTEGER NOT NULL DEFAULT 1');
     }
     ensureCloudAccountLifecycleSchema(db);
+    ensureGoogleUsageIdentitySchema(db, dbPath);
 
     db.exec(`CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);`);
 

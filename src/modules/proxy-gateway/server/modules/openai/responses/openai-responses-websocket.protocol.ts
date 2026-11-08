@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { awaitRequestOperation, throwIfRequestAborted } from '../../../common/request-cancellation';
 
 import { mergeOpenAIResponsesInputItems } from './openai-responses-session.store';
 import { parseResponsesInputItem } from './responses-input-item';
@@ -38,7 +39,11 @@ export class OpenAIResponsesWebSocketProtocol {
   private lastResponsePendingToolCallIds = new Set<string>();
   private readonly toolCallItems = new Map<string, unknown>();
 
-  public async accept(payload: unknown): Promise<OpenAIResponsesWebSocketAction> {
+  public async accept(
+    payload: unknown,
+    signal?: AbortSignal,
+  ): Promise<OpenAIResponsesWebSocketAction> {
+    throwIfRequestAborted(signal);
     const event = toRecord(payload);
     if (!event) {
       throw new Error('websocket request must be a JSON object');
@@ -46,14 +51,14 @@ export class OpenAIResponsesWebSocketProtocol {
 
     if (this.shouldHandlePrewarmLocally(event)) {
       return {
-        events: await this.handlePrewarmLocally(event),
+        events: await this.handlePrewarmLocally(event, signal),
         kind: 'local',
       };
     }
 
     return {
       kind: 'request',
-      request: await this.normalizeRequest(event),
+      request: await this.normalizeRequest(event, signal),
     };
   }
 
@@ -111,6 +116,7 @@ export class OpenAIResponsesWebSocketProtocol {
 
   private async handlePrewarmLocally(
     payload: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<OpenAIResponsesWebSocketEvent[]> {
     const responseId = `resp_prewarm_${randomUUID()}`;
     const createdAt = Math.floor(Date.now() / 1000);
@@ -155,7 +161,7 @@ export class OpenAIResponsesWebSocketProtocol {
     const normalized = { ...payload };
     delete normalized.type;
     delete normalized.generate;
-    await this.validateRequest?.(normalized, 'prewarm');
+    await this.validateBeforePublish(normalized, 'prewarm', signal);
     this.lastRequest = normalized;
     this.lastResponseOutput = [];
     this.lastResponseId = responseId;
@@ -165,6 +171,7 @@ export class OpenAIResponsesWebSocketProtocol {
 
   private async normalizeRequest(
     payload: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     const eventType = getString(payload, 'type') ?? '';
     if (eventType === 'response.create' && this.lastRequest === null) {
@@ -176,7 +183,7 @@ export class OpenAIResponsesWebSocketProtocol {
       if (!getString(normalized, 'model')) {
         throw new Error('missing model in response.create request');
       }
-      await this.validateRequest?.(normalized, 'generate');
+      await this.validateBeforePublish(normalized, 'generate', signal);
       this.lastRequest = normalized;
       return normalized;
     }
@@ -194,7 +201,7 @@ export class OpenAIResponsesWebSocketProtocol {
       delete replacement.generate;
       delete replacement.previous_response_id;
       replacement.stream = true;
-      await this.validateRequest?.(replacement, 'generate');
+      await this.validateBeforePublish(replacement, 'generate', signal);
       this.lastRequest = replacement;
       this.lastResponseOutput = [];
       return replacement;
@@ -223,7 +230,7 @@ export class OpenAIResponsesWebSocketProtocol {
       }
     }
 
-    await this.validateRequest?.(normalized, 'generate');
+    await this.validateBeforePublish(normalized, 'generate', signal);
     for (const item of newInput) {
       const itemRecord = toRecord(item);
       const type = itemRecord ? getString(itemRecord, 'type') : null;
@@ -240,6 +247,16 @@ export class OpenAIResponsesWebSocketProtocol {
     // failed generation would reintroduce discarded text or duplicate ID-less items.
     this.lastResponseOutput = [];
     return normalized;
+  }
+
+  private async validateBeforePublish(
+    request: Record<string, unknown>,
+    mode: 'prewarm' | 'generate',
+    signal?: AbortSignal,
+  ): Promise<void> {
+    throwIfRequestAborted(signal);
+    await awaitRequestOperation(Promise.resolve(this.validateRequest?.(request, mode)), signal);
+    throwIfRequestAborted(signal);
   }
 }
 

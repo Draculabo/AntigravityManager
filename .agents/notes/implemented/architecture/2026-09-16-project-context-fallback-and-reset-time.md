@@ -8,7 +8,13 @@ Google's Code Assist project-context endpoint can be unavailable at one hostname
 
 ## Decision
 
-`GoogleAPIService.fetchProjectContext` tries the production, daily-production, and sandbox `loadCodeAssist` endpoints in that order. It advances only after HTTP 404, HTTP 429, HTTP 5xx, or a transport failure. HTTP 400, authentication failures, malformed successful payloads, and other non-retryable responses remain terminal so a bad request or credential is not hidden by cross-host retries.
+`GoogleAPIService.fetchProjectContext` tries Daily, Sandbox and Prod `loadCodeAssist`
+endpoints in that order, matching the confirmed internal endpoint preference used by
+generation, primary quota and summary lookup. It advances only after HTTP 408, HTTP 404, HTTP 429,
+HTTP 5xx or a transport failure. HTTP 400, authentication failures, malformed successful
+payloads and other non-retryable responses remain terminal so a bad request or credential
+is not hidden by cross-host retries. This preference does not change OAuth/public endpoints
+or each metadata operation's separate error policy.
 
 Fallback logging records endpoint and status metadata only; it does not serialize raw transport error objects that may carry request configuration.
 
@@ -17,7 +23,8 @@ Fallback logging records endpoint and status metadata only; it does not serializ
 ## Alternatives considered
 
 - Retrying every HTTP error would mask malformed requests and invalid or unauthorized credentials, while creating unnecessary external traffic.
-- Preserving the old two-endpoint path would skip the daily-production host in the established three-host fallback sequence before sandbox.
+- Preserving Prod-first metadata and Sandbox-first primary quota would keep contradictory
+  operation preferences rather than the confirmed Daily/Sandbox/Prod order.
 - Parsing seconds and milliseconds at each display call site would allow tooltip and relative-time displays to diverge.
 - Persisting request diagnostics as part of this change was not selected. Request logging needs a separate threat model, redaction policy, retention design, and explicit product surface before it can safely record provider interactions.
 
@@ -27,4 +34,9 @@ Project lookup may issue up to three host requests for a recoverable provider ou
 
 ## Verification
 
-Focused unit tests verify production-to-daily, daily-to-sandbox, and transport fallback; terminal HTTP 400/401/403 behavior; and seconds/milliseconds reset-time parsing. The existing quota-lookup test also verifies that quota retrieval proceeds without a project after all project-context transport attempts fail.
+Focused unit tests verify Daily-to-Sandbox-to-Prod, HTTP 408 and transport fallback; terminal
+HTTP 400/401/403 behavior; and seconds/milliseconds reset-time parsing. Quota tests also
+verify that retrieval proceeds without a project after project-context transport failures,
+the same deadline/proxy snapshot survives the metadata chain, and the primary/summary
+results retain their existing complete shapes. These controlled changes do not establish
+live availability or change the earlier evidence limits for any host.

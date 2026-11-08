@@ -13,6 +13,7 @@ type ToolConfigurationFailure =
   | 'missing-function-name'
   | 'unknown-function-name'
   | 'required-without-functions'
+  | 'required-with-json-schema'
   | 'mixed-search-and-function-tools';
 
 interface ToolChoiceDeclaration {
@@ -26,6 +27,8 @@ const TOOL_CONFIGURATION_FAILURE_MESSAGES: Record<ToolConfigurationFailure, stri
   'missing-function-name': 'A named tool_choice must include a function name.',
   'unknown-function-name': 'tool_choice refers to a function that is not declared in this request.',
   'required-without-functions': 'tool_choice requires a function, but this request declares none.',
+  'required-with-json-schema':
+    'This upstream path cannot require a tool call with Responses json_schema. Call the tool in a separate request or remove json_schema.',
   'mixed-search-and-function-tools':
     'This upstream path cannot combine Google Search with function declarations in one request.',
 };

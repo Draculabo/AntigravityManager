@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createCoreRpcOperations } from '@/core/rpc/router';
 import { switchCloudAccountCore } from '@/modules/cloud-account/services/cloud-account-switch.service';
 import { bindCloudIdentityProfile } from '@/modules/cloud-account/services/cloud-account-identity-profile.service';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 vi.mock('@/modules/cloud-account/services/cloud-account-switch.service', () => ({
   switchCloudAccountCore: vi.fn(),
@@ -23,10 +24,7 @@ describe('core cloud account switch lifecycle', () => {
       finishSwitch = resolve;
     });
     vi.mocked(switchCloudAccountCore).mockReturnValueOnce(pending);
-    const operations = createCoreRpcOperations({
-      startGateway: vi.fn(),
-      stopGateway: vi.fn(),
-    });
+    const operations = createCoreRpcOperations(mockCoreGatewayLifecycle());
 
     const switching = operations.accountSwitch('account-1', 'agy');
     expect(switchCloudAccountCore).toHaveBeenCalledExactlyOnceWith('account-1', 'agy', {
@@ -64,10 +62,7 @@ describe('core cloud account switch lifecycle', () => {
       finishBind = resolve;
     });
     vi.mocked(bindCloudIdentityProfile).mockReturnValueOnce(pending);
-    const operations = createCoreRpcOperations({
-      startGateway: vi.fn(),
-      stopGateway: vi.fn(),
-    });
+    const operations = createCoreRpcOperations(mockCoreGatewayLifecycle());
     const profile = {
       machineId: 'machine',
       macMachineId: 'mac',

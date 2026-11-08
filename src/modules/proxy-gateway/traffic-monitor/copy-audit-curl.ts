@@ -7,7 +7,7 @@ import {
   AuditCurlOwnerError,
   curlResourceId,
 } from './audit-curl-owner.schema';
-import { readDiagnosticContent } from '../diagnostics/read-content';
+import { readDiagnosticContent } from '@/shared/observability/read-diagnostic-content';
 
 export type { CopyAuditCurlInput } from './build-audit-curl';
 

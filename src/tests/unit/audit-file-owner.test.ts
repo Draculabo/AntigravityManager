@@ -17,6 +17,7 @@ import {
   exportSelectedAuditBody,
   exportSelectedAuditSession,
 } from '@/modules/proxy-gateway/ipc/audit-file-desktop';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 let directory: string;
 let server: ManagementServer | undefined;
@@ -60,7 +61,7 @@ async function remote() {
     shutdown: async () => {},
     onShutdownError: vi.fn(),
     rpc: {
-      ...createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() }),
+      ...createCoreRpcOperations(mockCoreGatewayLifecycle()),
       auditFile: owner,
     },
   });

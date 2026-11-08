@@ -13,6 +13,7 @@ export class AccountLeaseConfigPolicy {
     const config = getServerConfig();
     return {
       quotaAwareSchedulingEnabled: config?.quota_aware_scheduling_enabled ?? true,
+      weeklyQuotaPriorityEnabled: config?.weekly_quota_priority_enabled === true,
       parityEnabled: Boolean(config?.parity_enabled) && !config?.parity_kill_switch,
       parityShadowEnabled: Boolean(config?.parity_shadow_enabled),
       schedulingMode: this.getSchedulingMode(),

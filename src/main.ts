@@ -26,7 +26,7 @@ import {
 import { desktopCoreConnection } from '@/modules/app-shell/services/desktop-core-connection';
 import { selectDesktopOwners } from '@/modules/app-shell/services/desktop-owner-selection';
 import { getDesktopStartupErrorTexts } from '@/modules/app-shell/services/desktop-startup-text';
-import { getDesktopPreferencesLanguage } from '@/modules/config/ipc/desktop-preferences';
+import { desktopPreferencesStore, getDesktopPreferencesLanguage } from '@/modules/config/ipc/desktop-preferences';
 import { createDesktopShutdownCoordinator } from '@/modules/app-shell/services/desktop-shutdown';
 import { ProfileLease, ProfileOwnershipError } from '@/core/ownership/profile-lease';
 import { initDatabase } from '@/modules/account/public';
@@ -38,8 +38,13 @@ import { auditCurlOwner } from '@/modules/proxy-gateway/traffic-monitor/audit-cu
 import { thoughtOwner } from '@/modules/proxy-gateway/thought-store/thought-owner.service';
 import { openCodeOwner } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.service';
 import { agentToolsOwner } from '@/modules/proxy-gateway/agent-tools/agent-tools.owner';
+import { clientConfigOwner } from '@/modules/proxy-gateway/agent-tools/client-config-owner.service';
+import { connectionProfilesOwner } from '@/modules/proxy-gateway/connection-profiles/connection-profiles.owner';
+import { dshOwner } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.service';
 import { localAccountOwner } from '@/modules/account/services/local-account-owner.service';
 import { loadDesktopPreferences } from '@/modules/config/ipc/handlers';
+import { getConfigAdapter } from '@/modules/config/ipc/config-adapter';
+import { errorProcessOwner, errorDiagnosticOwner } from '@/modules/error-diagnostics/public';
 import { serviceConfigService } from '@/modules/config/service-config.service';
 import { cloudAccountAlertPolicy } from '@/modules/cloud-account/services/cloud-account-alert-policy.service';
 import {
@@ -68,7 +73,8 @@ import {
 } from '@/modules/app-shell/ipc/tray/handler';
 import { restoreExistingWindow } from '@/modules/app-shell/utils/windowActivation';
 import { rpcHandler } from './ipc/handler';
-import { ConfigManager } from '@/modules/config/ipc/manager';
+import { ConfigManager, ConfigLoadError } from '@/modules/config/ipc/manager';
+import { gatewayLifecycleService } from '@/modules/proxy-gateway/services/gateway-lifecycle.service';
 import { AppConfig } from '@/modules/config/types';
 import { isAutoStartLaunch, syncAutoStart } from '@/modules/antigravity-runtime/utils/autoStart';
 import { safeStringifyPacket } from './shared/security/sensitiveDataMasking';
@@ -99,6 +105,7 @@ import { isTrustedExternalUrl } from '@/modules/app-shell/utils/externalUrlPolic
 // logging below runs, so the shipped app keeps logging to disk as before.
 // Importing the logger module itself must stay free of filesystem side effects.
 logger.enableFileLogging();
+errorProcessOwner.register('app');
 configureImageQuotaRefresh(() => getCloudAccountAdapter().forcePoll());
 
 const packetLogPath = path.join(app.getPath('userData'), 'orpc_packets.log');
@@ -572,6 +579,8 @@ const desktopShutdown = createDesktopShutdownCoordinator({
   },
   drainWarmups: async () => {
     await desktopRpcAdmission.drain();
+    desktopPreferencesStore.closeAdmission();
+    await desktopPreferencesStore.drain();
     ipcAuditRecorder.closeAdmission();
     await ipcAuditRecorder.drain();
     await drainAccountOwnerPresentation();
@@ -581,18 +590,28 @@ const desktopShutdown = createDesktopShutdownCoordinator({
     auditFileOwner.closeAdmission();
     auditOwner.closeAdmission();
     thoughtOwner.closeAdmission();
+    errorDiagnosticOwner.closeAdmission();
     auditCurlOwner.closeAdmission();
     openCodeOwner.closeAdmission();
     agentToolsOwner.closeAdmission();
+    clientConfigOwner.closeAdmission();
+    connectionProfilesOwner.closeAdmission();
+    dshOwner.closeAdmission();
     localAccountOwner.closeAdmission();
     cloudAccountAlertPolicy.closeAdmission();
     localAccountImportCoordinator.closeAdmission();
     await auditFileOwner.drain();
     await auditOwner.drain();
     await thoughtOwner.drain();
+    await errorDiagnosticOwner.drain();
     await auditCurlOwner.drain();
     await openCodeOwner.drain();
     await agentToolsOwner.drain();
+    await clientConfigOwner.drain();
+    await connectionProfilesOwner.drain();
+    await dshOwner.drain();
+    gatewayLifecycleService.closeAdmission();
+    await gatewayLifecycleService.drain();
     serviceConfigService.closeAdmission();
     await localAccountOwner.drain();
     await serviceConfigService.drain();
@@ -805,8 +824,14 @@ app
       selectDesktopEmbedded: () => selectDesktopOwners({ mode: 'desktop-embedded' }),
       initializeDesktopEmbedded: async () => {
         logger.info('Step: Load Config');
-        const config = ConfigManager.loadConfig();
-        startupConfig = config;
+        try {
+          startupConfig = ConfigManager.loadConfig();
+        } catch (error) {
+          if (!(error instanceof ConfigLoadError)) {
+            throw error;
+          }
+          logger.error('Service settings are unavailable; desktop features remain available.', error);
+        }
         if (shouldStartHidden) {
           logger.info('Startup: Auto-start detected, window will start hidden');
         }
@@ -818,6 +843,16 @@ app
         initDatabase();
       },
     });
+    try {
+      const selectedConfig = await getConfigAdapter().read();
+      await errorProcessOwner.start(
+        'app',
+        selectedConfig.error_diagnostics,
+        selectedConfig.errorDiagnosticsBudget,
+      );
+    } catch {
+      logger.warn('Local error diagnostic storage unavailable; captures remain bounded in memory');
+    }
   })
   .then(() => {
     logger.info('Step: setupORPC');

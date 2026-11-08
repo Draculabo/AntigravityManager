@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DiagnosticContentCapabilities } from '@/modules/proxy-gateway/diagnostics/content-capability';
+import { DiagnosticContentCapabilities } from '@/shared/observability/content-capability';
 import {
   DIAGNOSTIC_CHUNK_BYTES,
   DIAGNOSTIC_CONTENT_TTL_MS,
   DIAGNOSTIC_RETAINED_BYTES,
   type ContentIdentity,
-} from '@/modules/proxy-gateway/diagnostics/content-capability.schema';
-import { readDiagnosticContent } from '@/modules/proxy-gateway/diagnostics/read-content';
+} from '@/shared/observability/content-capability.schema';
+import { readDiagnosticContent } from '@/shared/observability/read-diagnostic-content';
 
 function identity(value: ContentIdentity): ContentIdentity {
   return {

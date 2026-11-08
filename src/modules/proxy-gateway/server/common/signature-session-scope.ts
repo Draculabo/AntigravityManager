@@ -22,6 +22,7 @@ export interface SignatureSessionScope {
   storeKey: string;
   cacheKey: string;
   affinityKey: string;
+  auditKey: string;
   hint: SessionHintDiagnostics;
 }
 
@@ -31,7 +32,10 @@ function digest(value: string): string {
 
 /** Canonical one-way caller identity shared by scoped caches and history ownership. */
 export function tenantIdentity(headers: RequestHeaders): string {
-  const credential = extractApiKeyToken(headers);
+  return credentialIdentity(extractApiKeyToken(headers));
+}
+
+function credentialIdentity(credential: string | null): string {
   return digest(JSON.stringify(credential === null ? ['anonymous'] : ['credential', credential]));
 }
 
@@ -56,12 +60,19 @@ function scope(
   hint: SessionHintDiagnostics,
 ): SignatureSessionScope {
   // Retain only digests. Credentials and conversation contents never enter cache keys or logs.
-  const tenant = tenantIdentity(headers);
+  const credential = extractApiKeyToken(headers);
+  const tenant = credentialIdentity(credential);
   const storeKey = `session:store:v2:${digest(JSON.stringify([tenant, sessionId ?? null, anchor]))}`;
+  const auditKey = sessionId ? accountAffinity(tenant, sessionId) : storeKey;
+  const root =
+    sessionId && credential !== null && hint.source === 'header' && hint.field === 'x-session-id'
+      ? /^([A-Za-z0-9_-]+):step:[0-9]+$/.exec(sessionId)?.[1]
+      : undefined;
   return {
     storeKey,
     cacheKey: `${protocol}:scope:v5:${digest(storeKey)}`,
-    affinityKey: sessionId ? accountAffinity(tenant, sessionId) : storeKey,
+    affinityKey: root ? accountAffinity(tenant, root) : auditKey,
+    auditKey,
     hint,
   };
 }

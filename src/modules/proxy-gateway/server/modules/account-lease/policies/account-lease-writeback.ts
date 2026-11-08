@@ -9,6 +9,8 @@ import { assertStoredLeaseEligibility } from './account-lease-eligibility';
 export function leaseStoredContext(account: CloudAccount): { account: CloudAccount } {
   return {
     account: {
+      google_usage_subject_hash: account.google_usage_subject_hash,
+      google_usage_grant_hash: account.google_usage_grant_hash,
       id: account.id,
       ...(account.lifecycle_generation
         ? { lifecycle_generation: account.lifecycle_generation }

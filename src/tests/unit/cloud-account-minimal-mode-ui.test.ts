@@ -2,10 +2,12 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CloudAccountListSummary } from '@/modules/cloud-account/components/CloudAccountListSummary';
+import type { AccountPoolSummary } from '@/modules/cloud-account/utils/account-pool-summary';
 import { CloudAccountToolbar } from '@/modules/cloud-account/components/CloudAccountToolbar';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
+    i18n: { language: 'en' },
     t: (key: string) => {
       const translations: Record<string, string> = {
         'cloud.title': 'Accounts',
@@ -42,64 +44,35 @@ vi.mock('@/modules/cloud-account/components/QuotaGroupVisibilityMenu', () => ({
   QuotaGroupVisibilityMenu: () => null,
 }));
 
-describe('CloudAccountListSummary minimal mode', () => {
-  it('renders standard full-size cards when minimal mode is off', () => {
-    const { container } = render(
-      React.createElement(CloudAccountListSummary, {
-        totalAccounts: 5,
-        activeAccounts: 1,
-        rateLimitedAccounts: 0,
-        overallQuotaPercentage: 82.8,
-        effectiveQuotaStatus: 'high',
-        isMinimalMode: false,
-      }),
+describe('CloudAccountListSummary', () => {
+  it('shows pool counts and the account health details', () => {
+    const summary: AccountPoolSummary = {
+      totalAccounts: 5,
+      sourceAccountCount: 5,
+      states: { 'enabled-normal': 2, disabled: 1, exception: 1, unknown: 1 },
+      accounts: [{ id: 'sample', label: 'Sample account', state: 'enabled-normal' }],
+      currentClientAccounts: 1,
+      rateLimitedAccounts: 0,
+      scope: 'enabled-normal',
+      scopeAccountCount: 2,
+      families: [],
+    };
+
+    render(React.createElement(CloudAccountListSummary, { summary, onScopeChange: vi.fn() }));
+
+    expect(screen.getByRole('heading', { name: 'Accounts' })).toBeTruthy();
+    expect(screen.getByText('Manage your Google Gemini accounts.')).toBeTruthy();
+    expect(screen.getByText('Total accounts').nextElementSibling?.textContent).toBe('5');
+    expect(
+      screen.getByText('cloud.pool-summary.enabled-normal', { selector: 'dt' }).nextElementSibling
+        ?.textContent,
+    ).toBe('2');
+    expect(
+      screen.getByText('cloud.pool-summary.rate-limited').nextElementSibling?.textContent,
+    ).toBe('0');
+    expect(screen.getByText('Sample account').nextElementSibling?.textContent).toBe(
+      'cloud.pool-summary.enabled-normal',
     );
-
-    expect(screen.getByText('Accounts')).not.toBeNull();
-    expect(screen.getByText('Manage your Google Gemini accounts.')).not.toBeNull();
-    expect(screen.getByText('5')).not.toBeNull();
-    expect(screen.getByText('1')).not.toBeNull();
-    expect(screen.getByText('0')).not.toBeNull();
-    expect(screen.getByText('82.8%')).not.toBeNull();
-
-    const standardDl = container.querySelector('dl.grid-cols-2.xl\\:grid-cols-4');
-    expect(standardDl).not.toBeNull();
-  });
-
-  it('renders compact inline stats on the right of header when minimal mode is on', () => {
-    const { container } = render(
-      React.createElement(CloudAccountListSummary, {
-        totalAccounts: 5,
-        activeAccounts: 1,
-        rateLimitedAccounts: 0,
-        overallQuotaPercentage: 82.8,
-        effectiveQuotaStatus: 'high',
-        overallWeeklyQuotaPercentage: 91.5,
-        effectiveWeeklyQuotaStatus: 'high',
-        isMinimalMode: true,
-      }),
-    );
-
-    expect(screen.getByText('Accounts')).not.toBeNull();
-    expect(screen.getByText('Manage your Google Gemini accounts.')).not.toBeNull();
-    expect(screen.getByText('5')).not.toBeNull();
-    expect(screen.getByText('1')).not.toBeNull();
-    expect(screen.getByText('0')).not.toBeNull();
-    expect(screen.getByText('82.8%')).not.toBeNull();
-    expect(screen.getByText('Weekly Quota')).not.toBeNull();
-    expect(screen.getByText('91.5%')).not.toBeNull();
-
-    // The standard large cards grid should not exist
-    const standardDl = container.querySelector('dl.grid-cols-2.xl\\:grid-cols-4');
-    expect(standardDl).toBeNull();
-
-    // The compact summary dl should exist with background color styling
-    const compactDl = container.querySelector('dl.divide-border');
-    expect(compactDl).not.toBeNull();
-    expect(container.querySelector('.bg-info-soft')).not.toBeNull();
-    expect(container.querySelector('.bg-success-soft')).not.toBeNull();
-    expect(container.querySelector('.bg-warning-soft')).not.toBeNull();
-    expect(container.querySelectorAll('.bg-card').length).toBe(2);
   });
 });
 

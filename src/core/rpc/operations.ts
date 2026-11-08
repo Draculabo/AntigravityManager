@@ -44,6 +44,7 @@ import type { AuditCurlOperations } from '@/modules/proxy-gateway/traffic-monito
 import type { OpenCodeOperations } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.service';
 import type { AgentToolsOperations } from '@/modules/proxy-gateway/agent-tools/agent-tools.service';
 import type { DshOperations } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.service';
+import type { ClientConfigOperations } from '@/modules/proxy-gateway/agent-tools/client-config-owner.service';
 
 import type { AuditFileOperations } from '@/modules/proxy-gateway/audit/audit-file-owner.service';
 import type { ThoughtOperations } from '@/modules/proxy-gateway/thought-store/thought-owner.service';
@@ -51,6 +52,10 @@ import type { AuditOperations } from '@/modules/proxy-gateway/audit/audit-owner.
 import { ErrorReportingOperations } from '@/modules/config/error-reporting.service';
 
 export interface CoreRpcOperations {
+  gatewayManualStart(port: number): Promise<import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayManualStartResult>;
+  gatewayManualStop(): Promise<import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayManualStopResult>;
+  gatewayRetrySaveChoice(choice: import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayRememberChoice): Promise<import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayChoicePersistence>;
+  errorDiagnostics: import('@/modules/error-diagnostics/public').ErrorDiagnosticOperations;
   playground: import('@/modules/proxy-gateway/playground/playground.service').PlaygroundOperations;
   diagnosticLogs: import('@/modules/app-shell/diagnostic-logs/core-router').CoreLogReader;
   errorReporting: ErrorReportingOperations;
@@ -75,6 +80,8 @@ export interface CoreRpcOperations {
   openCode: OpenCodeOperations;
   agentTools: AgentToolsOperations;
   dsh?: DshOperations;
+  clientConfig: ClientConfigOperations;
+  connectionProfiles: import('@/modules/proxy-gateway/connection-profiles/connection-profiles.owner').ConnectionProfilesOperations;
   localAccount: LocalAccountOperations;
   accountAlertPolicy: CloudAccountAlertPolicyOperations;
   serviceConfig: ServiceConfigOperations;

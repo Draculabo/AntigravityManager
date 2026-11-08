@@ -211,6 +211,7 @@
     "@tanstack/react-virtual": "^3.14.13",
     "@types/uuid": "^11.0.0",
     "@uiw/react-codemirror": "^4.25.11",
+    "acorn": "8.15.0",
     "axios": "^1.15.0",
     "better-sqlite3": "^12.4.6",
     "class-transformer": "^0.5.1",

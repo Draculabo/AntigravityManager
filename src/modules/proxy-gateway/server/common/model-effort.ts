@@ -33,3 +33,7 @@ export function assertSupportedModelEffort(effort: string | undefined): void {
   }
   throw new InvalidModelEffortError(effort);
 }
+
+export function isDisabledThinkingEffort(effort: string | undefined): boolean {
+  return ['none', 'off', 'false', '0', 'disabled'].includes(effort?.trim().toLowerCase() ?? '');
+}

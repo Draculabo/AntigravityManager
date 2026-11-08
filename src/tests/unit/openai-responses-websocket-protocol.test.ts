@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
+import { setServerConfig } from '@/server/server-config';
 import WebSocket from 'ws';
 import { of } from 'rxjs';
 
@@ -11,6 +14,57 @@ import { SchemaInputError } from '@/modules/proxy-gateway/antigravity/schema/Sch
 import { ToolConfigurationError } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
 
 describe('OpenAIResponsesWebSocketProtocol', () => {
+  it('times out socket preparation without publishing the late transcript', async () => {
+    const server = createServer();
+    let release: () => void = () => undefined;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const streamRequest = vi.fn(async () => of());
+    const validateRequest = vi.fn().mockReturnValueOnce(blocked);
+    const detach = attachOpenAIResponsesWebSocketServer(server, {
+      isAuthorized: () => true,
+      streamRequest,
+      validateRequest,
+    });
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+    let socket: WebSocket | undefined;
+    try {
+      server.listen(0, '127.0.0.1');
+      await once(server, 'listening');
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        throw new Error('Expected loopback WebSocket listener');
+      }
+      socket = new WebSocket(`ws://127.0.0.1:${address.port}/v1/responses`);
+      await once(socket, 'open');
+      const timeout = once(socket, 'message', { signal: AbortSignal.timeout(4000) });
+      socket.send(
+        JSON.stringify({ type: 'response.create', model: 'fixture', input: 'controlled' }),
+      );
+      const [expired] = await timeout;
+      expect(JSON.parse(String(expired))).toMatchObject({
+        type: 'error',
+        error: { message: 'Generation request deadline exceeded.' },
+      });
+      release();
+      const append = once(socket, 'message', { signal: AbortSignal.timeout(4000) });
+      socket.send(JSON.stringify({ type: 'response.append', input: 'late follow-up' }));
+      const [rejected] = await append;
+      expect(JSON.parse(String(rejected))).toMatchObject({
+        type: 'error',
+        error: { message: expect.stringContaining('before response.create') },
+      });
+      expect(validateRequest).toHaveBeenCalledOnce();
+      expect(streamRequest).not.toHaveBeenCalled();
+    } finally {
+      release();
+      socket?.terminate();
+      detach();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      setServerConfig(DEFAULT_APP_CONFIG.proxy);
+    }
+  }, 12_000);
   it('retains admitted socket configuration after a rejected append', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol((request) => {
       if (request.model === 'invalid') {
@@ -70,6 +124,33 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
       }),
     ).rejects.toThrow(ToolConfigurationError);
     expect(protocol.getPreviousResponseId()).toBe('');
+    await expect(protocol.accept({ type: 'response.append', input: [] })).rejects.toThrow(
+      'before response.create',
+    );
+  });
+
+  it('rejects forced tools with json_schema before publishing a prewarm', async () => {
+    const operations = createResponsesWebSocketOperations(
+      {
+        prepareResponsesRequest: vi.fn(async () => ({
+          request: {
+            model: 'fixture',
+            messages: [{ role: 'user', content: 'Call the function.' }],
+            tool_choice: 'required',
+            tools: [{ type: 'function', function: { name: 'lookup' } }],
+            response_format: { type: 'json_schema', json_schema: { schema: { type: 'object' } } },
+          },
+        })) as never,
+      },
+      { handleChatCompletions: vi.fn() } as never,
+    );
+    const protocol = new OpenAIResponsesWebSocketProtocol(async (request, mode) => {
+      await operations.validateRequest?.(request, mode);
+    });
+
+    await expect(
+      protocol.accept({ type: 'response.create', generate: false, model: 'fixture' }),
+    ).rejects.toMatchObject({ reason: 'required-with-json-schema' });
     await expect(protocol.accept({ type: 'response.append', input: [] })).rejects.toThrow(
       'before response.create',
     );

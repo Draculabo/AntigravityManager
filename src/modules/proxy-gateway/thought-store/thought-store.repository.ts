@@ -16,6 +16,7 @@ import { areThoughtRecordModelsCompatible } from './thought-store.model';
 import { packThought, unpackThought } from './thought-store.blob';
 import { initializeThoughtStoreSchema } from './thought-store.database';
 import { decodeThoughtPartSignatures, thoughtPartsBytes } from './thought-part-signatures';
+import { omitThoughtSignaturePlaceholder } from '../antigravity/ThoughtSignatureCompat';
 import { mergeThoughtRecordContent } from './thought-record-content';
 import { parsePartSignatures, parseThoughtToolList } from './thought-store.codec';
 import { ThoughtStoreReads } from './thought-store-reads';
@@ -71,7 +72,10 @@ export class ThoughtStoreRepository {
         );
         return this.ingestHistory(command.payload);
       case 'load':
-        return this.reads.load(command.payload.sessionKey, command.payload);
+        return this.toolLinks.recoverable(
+          command.payload.sessionKey,
+          this.reads.load(command.payload.sessionKey, command.payload),
+        );
       case 'getSession':
         return this.reads.load(command.payload.sessionKey);
       case 'listSessions':
@@ -81,9 +85,12 @@ export class ThoughtStoreRepository {
       case 'listRecordPage':
         return this.reads.listRecordPage(command.payload);
       case 'findCandidates':
-        return queryThoughtCandidates(this.orm, this.reads, command.payload).map((record) =>
-          this.toolLinks.recoverable(record),
+        return this.toolLinks.recoverable(
+          command.payload.sessionKey,
+          queryThoughtCandidates(this.orm, this.reads, command.payload),
         );
+      case 'toolRecoverySnapshot':
+        return this.toolLinks.snapshot(command.payload.sessionKey, command.payload.operationIds, command.payload.layouts);
       case 'getRecord':
         return this.reads.getRecord(command.payload.sessionKey, command.payload.id);
       case 'touch':
@@ -277,6 +284,7 @@ export class ThoughtStoreRepository {
             .all()
             .map((row) => ({
               ...row,
+              signature: omitThoughtSignaturePlaceholder(row.signature),
               partSignatures: parsePartSignatures(row.partSignatures),
               toolIds: parseThoughtToolList(row.toolIds),
               toolNames: parseThoughtToolList(row.toolNames),
@@ -383,15 +391,19 @@ export class ThoughtStoreRepository {
         id = Number(result.lastInsertRowid);
       }
 
-      this.toolLinks.save(id, {
-        ...payload,
-        ...content,
-        operationId: stored.operationId,
-        causalAnchor: stored.causalAnchor,
-        completedAt: stored.completedAt,
-        captureState: stored.captureState,
-        partSignatures: oversized ? [] : content.partSignatures,
-      });
+      this.toolLinks.save(
+        id,
+        {
+          ...payload,
+          ...content,
+          operationId: stored.operationId,
+          causalAnchor: stored.causalAnchor,
+          completedAt: stored.completedAt,
+          captureState: stored.captureState,
+          partSignatures: oversized ? [] : content.partSignatures,
+        },
+        latest && matches ? latest.partSignatures : undefined,
+      );
       return {
         id,
         oversized,

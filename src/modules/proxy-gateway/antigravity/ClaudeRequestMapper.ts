@@ -1,14 +1,16 @@
+import { isDisabledThinkingEffort } from '../server/common/model-effort';
 import { createHash } from 'node:crypto';
 import { prepareGoogleGenerationContents } from '../server/common/generation-history';
 import type { ImageSchedulerConfig } from '@/modules/config/types';
 import { v4 as uuidv4 } from 'uuid';
 import { isEmpty, isString, sortBy } from 'lodash-es';
 import { mapClaudeModelToGemini, normalizeGeminiModelAlias } from './ModelMapping';
-import { getMaxOutputTokens, getThinkingBudget } from './ModelSpecs';
+import { getThinkingBudget } from './ModelSpecs';
 import { normalizeObjectJsonSchema } from './JsonSchemaUtils';
 import { SchemaConversionBatch, validateSchemaInput } from './schema/SchemaConversion';
 import { reportSchemaIssues } from './schema/SchemaPreparation';
 import { SignatureStore } from './SignatureStore';
+import { recordThoughtRestoreOutcome } from '../thought-store/thought-restore-diagnostics';
 import { isGeminiFlashModel, modelKeepsThinkingWithoutSignature } from './ThoughtSignatureCompat';
 import { normalizeSystemPrompt } from './SystemPromptNormalization';
 import { recordPromptTransformation } from '../server/common/prompt-transformation-diagnostics';
@@ -65,6 +67,7 @@ interface ResolvedRequestConfig {
 }
 
 export interface ClaudeRequestMapperOptions {
+  omitToolsWithResponseSchema?: boolean;
   /** Undefined resolves current configuration for direct mapper/count callers; null pins disabled. */
   globalSystemPrompt?: string | null;
   schemasPrepared?: boolean;
@@ -154,11 +157,19 @@ export function transformClaudeRequestIn(
   };
 
   // 4. Generation Config & Thinking
+  const clientControlled = getServerConfig()?.thinking_budget?.control_source === 'client';
+  const clientEffort = claudeReq.thinking?.effort ?? claudeReq.output_config?.effort;
+  const clientDisabled =
+    clientControlled &&
+    (['disabled', 'off', 'false', '0'].includes((claudeReq.thinking?.type ?? '').toLowerCase()) ||
+      claudeReq.thinking?.budget_tokens === 0 ||
+      isDisabledThinkingEffort(clientEffort));
   const thinkingType = (claudeReq.thinking?.type ?? '').toLowerCase();
   const autoThinkingEnabled =
     !claudeReq.thinking && shouldEnableThinkingByDefault(requestConfig.finalModel, claudeReq.model);
   let isThinkingEnabled =
-    thinkingType === 'enabled' || thinkingType === 'adaptive' || autoThinkingEnabled;
+    !clientDisabled &&
+    (thinkingType === 'enabled' || thinkingType === 'adaptive' || autoThinkingEnabled || clientControlled);
 
   if (isThinkingEnabled && !targetModelSupportsThinking(requestConfig.finalModel)) {
     logger.warn(
@@ -196,6 +207,10 @@ export function transformClaudeRequestIn(
   // Update thinking config based on the final decision
   if (!isThinkingEnabled && generationConfig.thinkingConfig) {
     delete generationConfig.thinkingConfig;
+  }
+  if (clientControlled && !isThinkingEnabled) {
+    // Preserve the mapper's capability/signature decision through final planning.
+    generationConfig.thinkingConfig = { includeThoughts: false, thinkingBudget: 0 };
   }
 
   // 2. Contents (Messages)
@@ -248,6 +263,12 @@ export function transformClaudeRequestIn(
   if (innerRequest.tools && innerRequest.toolConfig === undefined) {
     innerRequest.toolConfig = toolConfig;
     innerRequest.tool_config = toSnakeToolConfig(toolConfig);
+  }
+
+  if (options.omitToolsWithResponseSchema && generationConfig?.responseSchema) {
+    delete innerRequest.tools;
+    delete innerRequest.toolConfig;
+    delete innerRequest.tool_config;
   }
 
   // Inject imageConfig if present (for image generation models)
@@ -789,15 +810,20 @@ function buildContents(
           family: signatureTargetFamily,
           familyModel: signatureTargetFamilyModel,
         };
-        const finalSig =
-          block.signature ||
-          SignatureStore.getForToolCall({
+        const cachedSignature = block.signature
+          ? null
+          : SignatureStore.getForToolCall({
             ...signatureTarget,
             toolCallId: block.id,
             toolName: block.name,
             sessionKey: signatureSessionKey,
-          }) ||
-          lastThoughtSignature;
+          });
+        if (!block.signature) {
+          recordThoughtRestoreOutcome(
+            cachedSignature ? 'signatureCacheHits' : 'signatureCacheMisses',
+          );
+        }
+        const finalSig = block.signature || cachedSignature || lastThoughtSignature;
         if (finalSig) {
           part.thoughtSignature = finalSig;
           part.thought_signature = finalSig;
@@ -1056,9 +1082,22 @@ function buildGenerationConfig(
   const isOpenAIPath = source === 'openai';
   const config: GenerationConfig = {};
   const thinkingType = String(claudeReq.thinking?.type ?? '').toLowerCase();
+  const clientControlled = getServerConfig()?.thinking_budget?.control_source === 'client';
 
   const buildThinkingConfig = (): GenerationConfig['thinkingConfig'] => {
     const thinkingConfig: GenerationConfig['thinkingConfig'] = { includeThoughts: true };
+    if (clientControlled) {
+      const budget = claudeReq.thinking?.budget_tokens;
+      const effort = claudeReq.thinking?.effort ?? claudeReq.output_config?.effort;
+      if (budget !== undefined) {
+        thinkingConfig.thinkingBudget = budget;
+      } else if (effort !== undefined) {
+        thinkingConfig.thinkingLevel = effort;
+      } else {
+        thinkingConfig.thinkingBudget = -1;
+      }
+      return thinkingConfig;
+    }
     if (thinkingType === 'adaptive') {
       if (isClaudeModel(mappedModel)) {
         thinkingConfig.thinkingLevel = resolveAdaptiveThinkingLevel(claudeReq);
@@ -1102,8 +1141,6 @@ function buildGenerationConfig(
     config.seed = claudeReq.seed;
     if (claudeReq.max_tokens !== undefined) {
       config.maxOutputTokens = claudeReq.max_tokens;
-    } else {
-      config.maxOutputTokens = getMaxOutputTokens(mappedModel);
     }
     if (claudeReq.stop_sequences && claudeReq.stop_sequences.length > 0) {
       config.stopSequences = claudeReq.stop_sequences;

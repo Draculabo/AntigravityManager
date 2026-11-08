@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { and, count, desc, eq, gte, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { omit } from 'lodash-es';
 
 import {
   auditAdminEvents,
@@ -344,7 +345,7 @@ export class TrafficAuditQueries {
       .map(normalizeBodyDescriptor);
     return {
       attempts: attempts.map((attempt) => ({
-        ...attempt,
+        ...omit(attempt, 'accountSubjectHash', 'accountGrantHash'),
         outcome: auditCaptureOutcome(attempt.outcome, attempt.completedAt),
       })),
       bodies,

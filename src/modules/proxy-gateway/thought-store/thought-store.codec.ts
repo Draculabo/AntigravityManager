@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { omitThoughtSignaturePlaceholder } from '../antigravity/ThoughtSignatureCompat';
 import { decodeThoughtPartSignatures } from './thought-part-signatures';
 import { unpackThought } from './thought-store.blob';
 import type { thinkingRecords } from './thought-store.schema';
@@ -74,7 +75,7 @@ export function decodeThoughtRow(
     oversized: row.oversized,
     oversizedBytes: row.oversizedBytes,
     oversizedSha256: row.oversizedSha256,
-    signature: row.signature,
+    signature: omitThoughtSignaturePlaceholder(row.signature),
     partSignatures: parsePartSignatures(row.partSignatures, thought),
     sourceFamily: row.sourceFamily,
     thought,

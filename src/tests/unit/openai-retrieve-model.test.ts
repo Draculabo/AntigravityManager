@@ -46,11 +46,18 @@ describe('OpenAI retrieve model', () => {
 
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.body).toEqual(listed);
-    expect(reply.body).toMatchObject({
+    expect(reply.body).toEqual({
       id: 'gemini-3-flash',
       object: 'model',
+      created: 1770652800,
+      owned_by: 'antigravity',
       context_length: 1_048_576,
+      max_context_length: 1_048_576,
+      max_input_tokens: 1_048_576,
+      max_model_len: 1_048_576,
+      max_tokens: 1_048_576,
       max_completion_tokens: 65_536,
+      max_output_tokens: 65_536,
     });
   });
 
@@ -65,10 +72,18 @@ describe('OpenAI retrieve model', () => {
     controller.retrieveModel('my-fast', reply as never);
 
     expect(reply.status).toHaveBeenCalledWith(200);
-    expect(reply.body).toMatchObject({
+    expect(reply.body).toEqual({
       id: 'my-fast',
+      object: 'model',
+      created: 1770652800,
+      owned_by: 'antigravity',
       context_length: 200_000,
+      max_context_length: 200_000,
+      max_input_tokens: 200_000,
+      max_model_len: 200_000,
+      max_tokens: 200_000,
       max_completion_tokens: 64_000,
+      max_output_tokens: 64_000,
     });
   });
 

@@ -3,6 +3,27 @@ import { isString } from 'lodash-es';
 import { mockAxiosRequests } from '../helpers/mock-axios-request';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
+function projectConsumerDenial() {
+  return {
+    ok: false,
+    status: 403,
+    json: async () => ({
+      error: {
+        code: 403,
+        status: 'PERMISSION_DENIED',
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+            reason: 'USER_PROJECT_DENIED',
+            domain: 'googleapis.com',
+            metadata: { consumer: 'projects/project-1' },
+          },
+        ],
+      },
+    }),
+  };
+}
+
 // Mock module to test timeout behavior
 describe('GoogleAPIService Timeout', () => {
   beforeEach(() => {
@@ -389,10 +410,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
   it('retries quota on the same endpoint without project after project 403', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-      })
+      .mockResolvedValueOnce(projectConsumerDenial())
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -534,7 +552,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     );
   });
 
-  it('moves to the next summary host after it rejects the request with and without project', async () => {
+  it('keeps a classified project downgrade when a transient failure moves summary to the next host', async () => {
     const observedAt = 1_793_000_000_000;
     vi.spyOn(Date, 'now').mockReturnValue(observedAt);
     const fetchMock = vi
@@ -550,8 +568,8 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
           },
         }),
       })
-      .mockResolvedValueOnce({ ok: false, status: 403 })
-      .mockResolvedValueOnce({ ok: false, status: 403 })
+      .mockResolvedValueOnce(projectConsumerDenial())
+      .mockResolvedValueOnce({ ok: false, status: 503 })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -626,8 +644,8 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
         JSON.stringify({}),
       ],
       [
-        'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
-        JSON.stringify({ project: 'project-1' }),
+        'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
+        JSON.stringify({}),
       ],
     ]);
   });
@@ -685,7 +703,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
           },
         }),
       })
-      .mockResolvedValueOnce({ ok: false, status: 403 })
+      .mockResolvedValueOnce(projectConsumerDenial())
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -752,8 +770,8 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
       })
       .mockResolvedValue({
         ok: false,
-        status: 400,
-        text: vi.fn().mockResolvedValue('INVALID_ARGUMENT'),
+        status: 503,
+        text: vi.fn().mockResolvedValue('UNAVAILABLE'),
       });
 
     mockAxiosRequests(fetchMock);
@@ -786,22 +804,16 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     expect(quota.quota_groups).toBeUndefined();
     expect(fetchMock.mock.calls.slice(1).map(([url]) => url)).toEqual([
       'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
-      'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
       'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
+      'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
     ]);
   });
 
   it('keeps forbidden behavior when quota still returns 403 without project', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-      });
+    const fetchMock = vi.fn().mockResolvedValueOnce(projectConsumerDenial()).mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+    });
 
     mockAxiosRequests(fetchMock);
 
@@ -986,7 +998,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
     expect(fetchMock.mock.calls[3]?.[1]?.body).toBe(JSON.stringify({}));
   });
 
-  it('falls back to daily-prod loadCodeAssist when prod returns 429', async () => {
+  it('falls back to Sandbox loadCodeAssist when Daily returns 429', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -1017,10 +1029,10 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
 
     await expect(GoogleAPIService.fetchProjectId('access-token')).resolves.toBe('daily-project');
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
+      'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
     );
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
-      'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
+      'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist',
     );
   });
 });

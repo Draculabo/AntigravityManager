@@ -37,12 +37,40 @@ change stored quota snapshots, account scores, warmup eligibility, automatic swi
 account selection. Claude visibility also covers GPT/third-party (`3p`) buckets; unclassified or
 shared groups remain visible.
 
-The weekly view includes provider buckets whose `window` or `bucket_id` contains `week`, without
+The weekly view includes provider buckets whose `window` or `bucket_id` identifies `week` or `7d`, without
 substituting model quota when those buckets are missing. The five-hour view retains non-weekly
 detailed buckets.
 
+The account overview separates enabled normal accounts, manually disabled accounts,
+confirmed verification/OAuth/access issues and unconfirmed health. Confirmed issues
+take precedence over manual disablement in the primary count. Client-current identities
+and rate-limit observations are separate counts. Account state details identify the
+rows behind the counts. These counts use the current tier filter.
+
+The pool matrix defaults to enabled normal accounts. Its all-normal scope also includes
+disabled accounts with confirmed normal health, and an empty enabled pool never falls
+back to disabled accounts. Each model family counts an account once. Five-hour and
+weekly columns preserve original window percentages; the effective column takes the
+minimum across matching model values and all matching valid window restrictions.
+Expired reset boundaries are marked for refresh and never release a restriction.
+Known zero values remain in each column's displayed denominator. Missing model data
+remains unknown rather than establishing unsupported access or contributing zero.
+
+Tier-weighted remaining percentages use Ultra 2, Pro 1.5 and Free 1. Missing or
+unrecognized subscription identity is excluded from the weighted denominator and its
+exclusion count is visible. This statistic does not represent official capacity,
+remaining tokens, request success probability or live gateway callability. Scope
+changes affect this presentation only. Existing account sorting and routing keep
+their own contracts.
+
 Grouped quota comes from the Cloud Code quota summary. Manager requests it from the Daily host,
-then production, then sandbox, and moves to the next host after any rejection except HTTP 401.
+then Sandbox, then Prod, advancing on network errors or HTTP 408/429/5xx. Permanent
+rejections and malformed successful summaries end optional enrichment while retaining
+primary model quota. A structured Google project-consumer denial permits one no-project
+retry; that removal persists across hosts and from primary quota into summary. Unknown
+403 responses do not grant this retry.
+Project-context and primary model-quota lookup use that same internal host order with
+their own status/deadline policies. OAuth and public endpoints retain separate routing.
 The summary request identifies itself as the Antigravity app's `hub` client, because Google does
 not return model-specific groups such as Gemini 4 Argon to the bare client identity; model quota
 requests keep the existing client identity. A group named exactly after one registered model family, such as
@@ -133,35 +161,12 @@ for a current weekly/7d bucket with a valid offset-bearing reset instant. Invali
 expired and not-yet-started windows are unavailable; no following cycle is invented.
 Reset interpretation is independent of remaining quota and local time zone.
 
-The selected audit owner exposes `usageRange` (renderer IPC: `auditUsageRange`) for
-an explicit account ID, exact physical model IDs and a positive interval no longer
-than seven days. Its scalar SQLite aggregation stays on the audit worker and uses
-the existing request-start timestamp. The owner captures an `asOf` time; starts and
-completions after that instant are not counted. The right endpoint is exclusive,
-including when it equals the reset. Cached tokens are listed separately from
-`inputTokens + outputTokens`; reasoning is not added again.
-
-Only terminal parent records with complete nonnegative integer input/output usage
-and exactly one matching completed upstream attempt contribute. Known usage on
-failed or cancelled requests can contribute. Multi-attempt or mismatched ownership
-is excluded as ambiguous; unavailable/invalid usage is counted separately. Missing
-cache data is distinct from a recorded zero. Repeated reads do not write or double
-count records. Unsafe accumulated totals fail rather than returning rounded counts.
-Failures retain their original trusted diagnostic and propagate through the existing
-sanitized audit-owner error boundary; they never become successful zero usage.
-
-Every result is labeled `retained-local-records`, `stored-account-id` and
-`request-start`. It is not an authoritative balance, a complete account history or
-an incarnation-safe total. Audit recording can be disabled or dropped, records can
-be deleted/expired, and historical attempts do not carry account lifecycle generations.
-Local account lifecycle generations are operation-ownership evidence, not provider
-quota resets. A future logical-account total must retain cycle usage across verified
-re-additions of the same Google account; local ID reuse alone cannot prove identity.
-Per-attempt usage capture and an audit schema extension remain deferred enhancements.
-The query does not alter those recording or retention policies. An empty retained
-range does not prove zero usage across all clients. The account-card cycle display
-and authoritative group/model attribution remain pending; neither a name-based
-family guess nor an invented history is attached to quota buckets.
+The account card requests retained usage for recognized model groups and valid cycle
+windows. Fresh Google enrollment records private evidence from the user-info response.
+It joins retained attempts for the same verified Google account across local re-adds.
+Accounts without that evidence use their current incarnation and credential instead.
+Imports do not supply identity evidence. See [physical-attempt accounting](../proxy-gateway/diagnostic-retention.md#physical-attempt-usage-accounting)
+for coverage and ambiguity limits. The result is not an authoritative balance.
 
 ## Quota observation ordering
 
@@ -540,8 +545,10 @@ The proxy-gateway adapter uses the existing Claude mapper or native Gemini reque
 `GeminiClient` transport. It first requests `streamGenerateContent?alt=sse`, then falls back to
 `generateContent` on transport failure; it does not repeat an HTTP rejection as a non-streaming
 request. Content requests preserve the project in the body but omit `x-goog-user-project`, including
-after extra headers are merged. Non-content internal methods retain the bounded Google 403
-project-header downgrade. A 60-second deadline and cancellation signal bound transport work. No
+after extra headers are merged. Known metadata/count internal methods may remove the
+quota-project header once after a structured Google consumer denial matching the actual
+unambiguous header. Ordinary 403 and arbitrary diagnostic verbs do not permit downgrade;
+body.project and other headers remain. A 60-second deadline and cancellation signal bound transport work. No
 internal HTTP endpoint or authentication bypass is exposed.
 
 ## Persistence and security

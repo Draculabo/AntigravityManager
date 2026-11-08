@@ -125,6 +125,10 @@ export function validateResponsesInputImageLimits(input: unknown): void {
       return;
     }
 
+    if (value.type === 'function_call' || value.type === 'custom_tool_call') {
+      return;
+    }
+
     if (value.type === 'input_image' || value.type === 'image_url') {
       const rawImageUrl = value.image_url;
       const imageUrl =
@@ -143,8 +147,10 @@ export function validateResponsesInputImageLimits(input: unknown): void {
       return;
     }
 
-    for (const entry of Object.values(value)) {
-      visit(entry);
+    if (value.type === 'function_call_output' || value.type === 'custom_tool_call_output') {
+      visit(value.output);
+    } else if (value.type === 'message' || typeof value.role === 'string') {
+      visit(value.content);
     }
   };
 

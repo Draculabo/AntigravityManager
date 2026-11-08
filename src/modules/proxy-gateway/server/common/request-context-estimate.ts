@@ -5,6 +5,7 @@ import type { GeminiInternalRequest, GeminiPart } from '../../antigravity/types'
  * admission limit, or a reason to rewrite or trim the caller's history.
  */
 export interface RequestContextEstimate {
+  algorithmVersion: number;
   estimatedInputTokens: number;
   systemTokens: number;
   textTokens: number;
@@ -54,14 +55,7 @@ function estimateInlineMedia(part: NonNullable<GeminiPart['inlineData']>): {
     return { bytes, tokens, unestimated: 0 };
   }
 
-  if (part.mimeType.startsWith('audio/')) {
-    return {
-      bytes,
-      tokens: Math.max(64, Math.ceil(bytes / 1_000)),
-      unestimated: 0,
-    };
-  }
-
+  // The gateway envelope carries no verified audio duration or sample format.
   return { bytes, tokens: 0, unestimated: 1 };
 }
 
@@ -73,6 +67,7 @@ function estimateInlineMedia(part: NonNullable<GeminiPart['inlineData']>): {
 export function estimateRequestContext(body: GeminiInternalRequest): RequestContextEstimate {
   const request = body.request;
   const estimate: RequestContextEstimate = {
+    algorithmVersion: 2,
     estimatedInputTokens: 0,
     systemTokens: 0,
     textTokens: 0,

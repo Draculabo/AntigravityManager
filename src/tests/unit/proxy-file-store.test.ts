@@ -47,6 +47,20 @@ afterEach(async () => {
 });
 
 describe('local proxy file store', () => {
+  it('waits for the same cold index load for concurrent reads', async () => {
+    const rootDirectory = mkdtempSync(join(tmpdir(), 'agm-store-'));
+    createdRoots.push(rootDirectory);
+    const writer = createStore({ rootDirectory });
+    const original = await writer.put({ bytes: png, displayName: 'cold.png' });
+    writer.onModuleDestroy();
+    const reader = createStore({ rootDirectory });
+    const results = await Promise.all([reader.get(original.id), reader.get(original.id)]);
+    expect(results).toEqual([
+      { record: original, bytes: png },
+      { record: original, bytes: png },
+    ]);
+  });
+
   it('round-trips put, stat, get, list and delete', async () => {
     const store = createStore();
     const record = await store.put({

@@ -2,6 +2,7 @@ import { normalizeObjectJsonSchema } from '../JsonSchemaUtils';
 import type { ClaudeRequest } from '../types';
 import { logger } from '@/shared/logging/logger';
 import { SchemaConversionBatch } from './SchemaConversion';
+import { isGoogleSearchToolType } from '../ToolChoiceCompat';
 
 export interface PreparedSchemaState {
   schemasPrepared: true;
@@ -15,10 +16,7 @@ export function prepareClaudeSchemas(
   return {
     ...request,
     tools: request.tools?.map((tool, ordinal) => {
-      if (
-        ['web_search', 'google_search', 'builtin_web_search'].includes(tool.name) ||
-        ['web_search_20250305', 'builtin_web_search'].includes(tool.type ?? '')
-      ) {
+      if (isGoogleSearchToolType(tool.type)) {
         return { ...tool };
       }
       return {
@@ -49,7 +47,7 @@ export function prepareResponseFormat(
 /** Fixed fields only. Isolated reporting excludes request data and surrounding logs. */
 export function reportSchemaIssues(
   batch: SchemaConversionBatch,
-  protocol: 'openai' | 'responses' | 'anthropic' | 'anthropic-count-tokens',
+  protocol: 'openai' | 'responses' | 'anthropic' | 'anthropic-count-tokens' | 'gemini',
 ): void {
   if (batch.issueCount === 0) {
     return;

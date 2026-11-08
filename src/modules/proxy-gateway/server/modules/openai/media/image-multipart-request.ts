@@ -1,6 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import type { ImageMonitoringInput, ImageMonitoringRequest } from './image-monitoring-summary';
 import { validateInputImageLimits } from './image-input-validation';
+import { validatedImageMimeType } from '../../../common/image-content-validation';
 
 const IMAGE_FIELD_PATTERN = /^image\d+$/u;
 const MAX_IMAGE_MULTIPART_FILE_PARTS = 64;
@@ -9,15 +10,11 @@ export function isEditImageField(name: string): boolean {
   return name === 'image' || name === 'image[]' || IMAGE_FIELD_PATTERN.test(name);
 }
 
-function toImageInput(
-  data: Buffer,
-  filename: string | undefined,
-  mimeType: string | undefined,
-): ImageMonitoringInput {
+function toImageInput(data: Buffer, filename: string | undefined): ImageMonitoringInput {
   return {
     data: data.toString('base64'),
     filename,
-    mimeType: mimeType || 'image/png',
+    mimeType: validatedImageMimeType(data),
   };
 }
 
@@ -48,17 +45,16 @@ export async function parseImageMultipartRequest(
       }
 
       const bytes = await part.toBuffer();
-      const image = toImageInput(bytes, part.filename, part.mimetype);
       if (isImage) {
         const nextTotal = totalInputImageBytes + bytes.length;
         validateInputImageLimits(inputImages.length + 1, bytes.length, nextTotal);
         totalInputImageBytes = nextTotal;
-        inputImages.push(image);
+        inputImages.push(toImageInput(bytes, part.filename));
       } else {
         const nextTotal = totalInputImageBytes + bytes.length;
         validateInputImageLimits(inputImages.length, bytes.length, nextTotal);
         totalInputImageBytes = nextTotal;
-        body.mask = image;
+        body.mask = toImageInput(bytes, part.filename);
       }
       continue;
     }

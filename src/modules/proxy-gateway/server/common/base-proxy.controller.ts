@@ -74,16 +74,6 @@ export abstract class BaseProxyController {
     writeProxySseResponse(res, stream, { includeTiming });
   }
 
-  protected isProjectContextErrorMessage(message: string): boolean {
-    const lowered = message.toLowerCase();
-    return (
-      lowered.includes('#3501') ||
-      (lowered.includes('google cloud project') && lowered.includes('code assist license')) ||
-      (lowered.includes('resource projects/') && lowered.includes('could not be found')) ||
-      (lowered.includes('project') && lowered.includes('not found'))
-    );
-  }
-
   private resolveErrorMessageText(error: unknown): string {
     return error instanceof Error ? error.message : 'Internal Server Error';
   }

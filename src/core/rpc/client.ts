@@ -1,4 +1,5 @@
 import type { AuditFileOperations } from '@/modules/proxy-gateway/audit/audit-file-owner.service';
+import { GatewayRememberChoiceSchema, GatewayManualStartResultSchema, GatewayManualStopResultSchema, GatewayChoicePersistenceSchema, type GatewayRememberChoice } from '@/modules/proxy-gateway/services/gateway-management.schema';
 import {
   PlaygroundExecuteResultSchema,
   PlaygroundCompareResultSchema,
@@ -14,6 +15,7 @@ import type { AuditCurlOperations } from '@/modules/proxy-gateway/traffic-monito
 import { createAuditCurlClient } from '@/modules/proxy-gateway/traffic-monitor/audit-curl-owner.client';
 import type { ThoughtOperations } from '@/modules/proxy-gateway/thought-store/thought-owner.service';
 import { createThoughtClient } from '@/modules/proxy-gateway/thought-store/thought-owner.client';
+import { createErrorDiagnosticClient } from '@/modules/error-diagnostics/public';
 import type { AuditOperations } from '@/modules/proxy-gateway/audit/audit-owner.service';
 import { createAuditClient } from '@/modules/proxy-gateway/audit/audit-owner.client';
 import {
@@ -96,6 +98,10 @@ import type { DeviceProfile, DeviceProfilesSnapshot } from '@/modules/identity-p
 import { createLocalAccountClient } from '@/modules/account/services/local-account-client';
 import { createOpenCodeClient } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.client';
 import { createAgentToolsClient } from '@/modules/proxy-gateway/agent-tools/agent-tools.client';
+import { createClientConfigClient } from '@/modules/proxy-gateway/agent-tools/client-config-owner.client';
+import { createConnectionProfilesClient } from '@/modules/proxy-gateway/connection-profiles/connection-profiles.client';
+import type { ConnectionProfilesOperations } from '@/modules/proxy-gateway/connection-profiles/connection-profiles.owner';
+import type { ClientConfigOperations } from '@/modules/proxy-gateway/agent-tools/client-config-owner.service';
 import type { AgentToolsOperations } from '@/modules/proxy-gateway/agent-tools/agent-tools.service';
 import type { DshOperations } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.service';
 import {
@@ -111,6 +117,7 @@ import type { OpenCodeOperations } from '@/modules/proxy-gateway/opencode-sync/o
 import type { LocalAccountOperations } from '@/modules/account/services/local-account-owner.service';
 
 export class CoreRpcClient {
+  readonly errorDiagnostics: import('@/modules/error-diagnostics/public').ErrorDiagnosticOperations;
   readonly playground: import('@/modules/proxy-gateway/playground/playground.service').PlaygroundOperations;
   async diagnosticLogs(until: number) {
     return LogSourceSchema.parse(await this.rpc.diagnosticLogs({ until }));
@@ -127,6 +134,8 @@ export class CoreRpcClient {
   readonly openCode: OpenCodeOperations;
   readonly agentTools: AgentToolsOperations;
   readonly dsh: DshOperations;
+  readonly clientConfig: ClientConfigOperations;
+  readonly connectionProfiles: ConnectionProfilesOperations;
   readonly localAccounts: LocalAccountOperations;
   async readAccountAlertPolicy() {
     return CloudAccountAlertPolicySchema.parse(await this.rpc.accountAlertPolicy.read());
@@ -196,6 +205,7 @@ export class CoreRpcClient {
     };
     this.audit = createAuditClient(this.accountMutationRpc.audit);
     this.thought = createThoughtClient(this.accountMutationRpc.thought);
+    this.errorDiagnostics = createErrorDiagnosticClient(this.accountMutationRpc.errorDiagnostics);
     this.auditCurl = createAuditCurlClient(this.accountMutationRpc.auditCurl);
     this.auditFile = {
       exportSession: async (input) => {
@@ -219,6 +229,8 @@ export class CoreRpcClient {
     };
     this.openCode = createOpenCodeClient(this.accountMutationRpc.openCode);
     this.agentTools = createAgentToolsClient(this.accountMutationRpc.agentTools);
+    this.clientConfig = createClientConfigClient(this.accountMutationRpc.clientConfig);
+    this.connectionProfiles = createConnectionProfilesClient(this.accountMutationRpc.connectionProfiles);
     this.dsh = {
       status: async (input: DshProfileInput) =>
         DshStatusSchema.parse(await this.accountMutationRpc.dsh.status(input)),
@@ -321,6 +333,18 @@ export class CoreRpcClient {
 
   async startGateway(port: number): Promise<z.infer<typeof GatewayStartResultSchema>> {
     return GatewayStartResultSchema.parse(await this.rpc.gatewayStart({ port }));
+  }
+
+  async manualStartGateway(port: number) {
+    return GatewayManualStartResultSchema.parse(await this.accountMutationRpc.gatewayManualStart({ port }));
+  }
+
+  async manualStopGateway() {
+    return GatewayManualStopResultSchema.parse(await this.accountMutationRpc.gatewayManualStop());
+  }
+
+  async retryGatewaySaveChoice(choice: GatewayRememberChoice) {
+    return GatewayChoicePersistenceSchema.parse(await this.accountMutationRpc.gatewayRetrySaveChoice(GatewayRememberChoiceSchema.parse(choice)));
   }
 
   async stopGateway(): Promise<z.infer<typeof GatewayStopResultSchema>> {

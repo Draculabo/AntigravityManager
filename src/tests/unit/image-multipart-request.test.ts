@@ -1,6 +1,7 @@
 import fastifyMultipart from '@fastify/multipart';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PIXEL_PNG, PIXEL_GIF } from '../fixtures/image-content';
 import { MAX_INPUT_IMAGES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
 import {
   isEditImageField,
@@ -9,7 +10,7 @@ import {
 
 const servers: Array<ReturnType<typeof Fastify>> = [];
 
-function createFileOnlyRequest(files: Array<{ fieldname: string; value: string }>): FastifyRequest {
+function createFileOnlyRequest(files: Array<{ fieldname: string; value: Buffer }>): FastifyRequest {
   return {
     isMultipart: () => true,
     parts: async function* () {
@@ -31,7 +32,15 @@ afterEach(async () => {
 });
 
 describe('parseImageMultipartRequest', () => {
-  it('parses real multipart fields and preserves uploaded MIME types', async () => {
+  it.each(['image', 'mask'])('rejects header-only %s bytes', async (fieldname) => {
+    await expect(
+      parseImageMultipartRequest(
+        createFileOnlyRequest([{ fieldname, value: PIXEL_PNG.subarray(0, 8) }]),
+      ),
+    ).rejects.toThrow(/incomplete image structure/);
+  });
+
+  it('parses real multipart fields and uses the image bytes to correct MIME types', async () => {
     const server = Fastify();
     servers.push(server);
     await server.register(fastifyMultipart);
@@ -44,10 +53,11 @@ describe('parseImageMultipartRequest', () => {
         `--${boundary}\r\nContent-Disposition: form-data; name="aspect_ratio"\r\n\r\n16:9`,
         `--${boundary}\r\nContent-Disposition: form-data; name="image_size"\r\n\r\n4K`,
         `--${boundary}\r\nContent-Disposition: form-data; name="style"\r\n\r\nvivid`,
-        `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="main.webp"\r\nContent-Type: image/webp\r\n\r\nMAIN`,
-        `--${boundary}\r\nContent-Disposition: form-data; name="image1"; filename="reference.jpg"\r\nContent-Type: image/jpeg\r\n\r\nREFERENCE`,
+        `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="main.webp"\r\nContent-Type: image/webp\r\n\r\n${PIXEL_PNG.toString('latin1')}`,
+        `--${boundary}\r\nContent-Disposition: form-data; name="image1"; filename="reference.jpg"\r\nContent-Type: image/jpeg\r\n\r\n${PIXEL_GIF.toString('latin1')}`,
         `--${boundary}--\r\n`,
       ].join('\r\n'),
+      'latin1',
     );
 
     const response = await server.inject({
@@ -67,14 +77,14 @@ describe('parseImageMultipartRequest', () => {
       style: 'vivid',
       image: [
         {
-          data: Buffer.from('MAIN').toString('base64'),
+          data: PIXEL_PNG.toString('base64'),
           filename: 'main.webp',
-          mimeType: 'image/webp',
+          mimeType: 'image/png',
         },
         {
-          data: Buffer.from('REFERENCE').toString('base64'),
+          data: PIXEL_GIF.toString('base64'),
           filename: 'reference.jpg',
-          mimeType: 'image/jpeg',
+          mimeType: 'image/gif',
         },
       ],
     });
@@ -118,18 +128,16 @@ describe('parseImageMultipartRequest', () => {
   it('allows sixteen edit images plus a mask without counting the mask as an image', async () => {
     const files = Array.from({ length: MAX_INPUT_IMAGES }, (_, index) => ({
       fieldname: index % 2 === 0 ? 'image[]' : `image${index + 1}`,
-      value: `IMAGE-${index + 1}`,
+      value: PIXEL_PNG,
     }));
-    files.splice(5, 0, { fieldname: 'mask', value: 'FIRST-MASK' });
-    files.push({ fieldname: 'mask', value: 'LAST-MASK' });
+    files.splice(5, 0, { fieldname: 'mask', value: PIXEL_PNG });
+    files.push({ fieldname: 'mask', value: PIXEL_GIF });
 
     const body = await parseImageMultipartRequest(createFileOnlyRequest(files));
 
     expect(Array.isArray(body.image)).toBe(true);
     expect(body.image).toHaveLength(MAX_INPUT_IMAGES);
-    expect(body.mask).toEqual(
-      expect.objectContaining({ data: Buffer.from('LAST-MASK').toString('base64') }),
-    );
+    expect(body.mask).toEqual(expect.objectContaining({ data: PIXEL_GIF.toString('base64') }));
   });
 
   it('overrides the global multipart file limit for sixteen images plus repeated masks', async () => {
@@ -142,22 +150,25 @@ describe('parseImageMultipartRequest', () => {
     const imageParts = Array.from(
       { length: MAX_INPUT_IMAGES },
       (_, index) =>
-        `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${index}.png"\r\nContent-Type: image/png\r\n\r\n${index}`,
+        `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${index}.png"\r\nContent-Type: image/png\r\n\r\n${PIXEL_PNG.toString('latin1')}`,
     );
-    const maskParts = ['FIRST-MASK', 'LAST-MASK'].map(
+    const maskParts = [PIXEL_PNG, PIXEL_GIF].map(
       (value, index) =>
-        `--${boundary}\r\nContent-Disposition: form-data; name="mask"; filename="mask-${index}.png"\r\nContent-Type: image/png\r\n\r\n${value}`,
+        `--${boundary}\r\nContent-Disposition: form-data; name="mask"; filename="mask-${index}.png"\r\nContent-Type: image/png\r\n\r\n${value.toString('latin1')}`,
     );
     const response = await server.inject({
       method: 'POST',
       url: '/images/edits',
       headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
-      payload: Buffer.from([...imageParts, ...maskParts, `--${boundary}--`, ''].join('\r\n')),
+      payload: Buffer.from(
+        [...imageParts, ...maskParts, `--${boundary}--`, ''].join('\r\n'),
+        'latin1',
+      ),
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.json().image).toHaveLength(MAX_INPUT_IMAGES);
-    expect(response.json().mask.data).toBe(Buffer.from('LAST-MASK').toString('base64'));
+    expect(response.json().mask.data).toBe(PIXEL_GIF.toString('base64'));
   });
 
   it('drains unsupported file fields without buffering them', async () => {
@@ -200,13 +211,13 @@ describe('parseImageMultipartRequest', () => {
     const imageParts = Array.from(
       { length: MAX_INPUT_IMAGES + 1 },
       (_, index) =>
-        `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${index}.png"\r\nContent-Type: image/png\r\n\r\n${index}`,
+        `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${index}.png"\r\nContent-Type: image/png\r\n\r\n${PIXEL_PNG.toString('latin1')}`,
     );
     const response = await server.inject({
       method: 'POST',
       url: '/images/edits',
       headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
-      payload: Buffer.from([...imageParts, `--${boundary}--`, ''].join('\r\n')),
+      payload: Buffer.from([...imageParts, `--${boundary}--`, ''].join('\r\n'), 'latin1'),
     });
 
     expect(response.statusCode).toBe(400);
@@ -214,9 +225,9 @@ describe('parseImageMultipartRequest', () => {
   });
 
   it('rejects a seventeenth edit image', async () => {
-    const files = Array.from({ length: MAX_INPUT_IMAGES + 1 }, (_, index) => ({
+    const files = Array.from({ length: MAX_INPUT_IMAGES + 1 }, () => ({
       fieldname: 'image',
-      value: `IMAGE-${index + 1}`,
+      value: PIXEL_PNG,
     }));
 
     await expect(parseImageMultipartRequest(createFileOnlyRequest(files))).rejects.toThrow(

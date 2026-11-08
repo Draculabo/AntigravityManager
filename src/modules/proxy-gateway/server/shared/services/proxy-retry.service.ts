@@ -32,10 +32,12 @@ export interface ProxyTokenRetryState {
   graceRetriedAccountIds: Set<string>;
   lastNonRateLimitError: unknown | null;
   failureCount: number;
+  projectDowngraded?: boolean;
   allFailuresRateLimited: boolean;
   retryAfterSeconds?: number;
   model?: string;
   effort?: string;
+  physicalTarget?: boolean;
   imagePermit: ImageSchedulerPermit | null;
   abortRetry?: boolean;
   fatalError?: unknown;
@@ -48,11 +50,12 @@ export interface ProxyRetryAccountLeaseService {
   isLeaseCurrent(token: CloudAccount): boolean;
   isLeaseEligible(token: CloudAccount): boolean;
   acceptLeaseCompletion(token: CloudAccount): boolean;
-  getRetryAccountPoolSize(model?: string, effort?: string): Promise<number>;
+  getRetryAccountPoolSize(model?: string, effort?: string, physicalTarget?: boolean): Promise<number>;
   rejectSession(token: CloudAccount): void;
   getOrdinaryRetryWaitMs(options: {
     model: string;
     effort?: string;
+    physicalTarget?: boolean;
     accountId?: string;
   }): number | null;
   getNextToken(options?: {
@@ -60,6 +63,7 @@ export interface ProxyRetryAccountLeaseService {
     excludeAccountIds?: string[];
     model?: string;
     effort?: string;
+    physicalTarget?: boolean;
     allowSelectionWait?: boolean;
     targetAccountId?: string;
   }): Promise<CloudAccount | null>;
@@ -68,6 +72,7 @@ export interface ProxyRetryAccountLeaseService {
     excludeAccountIds?: string[];
     model?: string;
     effort?: string;
+    physicalTarget?: boolean;
     signal?: AbortSignal;
     targetAccountId?: string;
   }): Promise<{ token: CloudAccount; permit: ImageSchedulerPermit }>;
@@ -83,14 +88,21 @@ export interface ProxyRetryAccountLeaseService {
     model?: string;
     effort?: string;
   }): Promise<void>;
-  getRemainingRateLimitWait(accountIdOrEmail: string, model?: string, effort?: string): number;
+  getRemainingRateLimitWait(
+    accountIdOrEmail: string,
+    model?: string,
+    effort?: string,
+    physicalTarget?: boolean,
+  ): number;
   getMinimumRateLimitWaitForPool?(options?: {
     model?: string;
     effort?: string;
+    physicalTarget?: boolean;
   }): number | undefined;
   getEligibleRetryAccountCount(options: {
     model?: string;
     effort?: string;
+    physicalTarget?: boolean;
     excludeAccountIds: string[];
   }): number;
   markModelSuccess(accountIdOrEmail: string, model: string): void;
@@ -162,7 +174,11 @@ export class ProxyRetryService {
     private readonly modelAvailability: ModelAvailabilityService,
   ) {}
 
-  createTokenRetryState(timeoutMs = 300_000, effort?: string): ProxyTokenRetryState {
+  createTokenRetryState(
+    timeoutMs = 300_000,
+    effort?: string,
+    physicalTarget = false,
+  ): ProxyTokenRetryState {
     return {
       attemptedAccountIds: new Set<string>(),
       graceRetryToken: null,
@@ -171,6 +187,7 @@ export class ProxyRetryService {
       failureCount: 0,
       allFailuresRateLimited: true,
       effort,
+      physicalTarget,
       imagePermit: null,
       abortRetry: false,
       fatalError: null,
@@ -192,6 +209,7 @@ export class ProxyRetryService {
     const poolSize = await this.accountLeaseService.getRetryAccountPoolSize(
       model,
       retryState?.effort ?? effort,
+      retryState?.physicalTarget,
     );
     retryState?.ordinaryRounds.configure(poolSize);
     return poolSize <= 1 ? 3 : Math.min(12, Math.max(4, poolSize * 2));
@@ -210,9 +228,7 @@ export class ProxyRetryService {
       return null;
     }
 
-    if (signal?.aborted) {
-      return null;
-    }
+    throwIfRequestAborted(signal);
 
     if (
       process.env.NODE_ENV !== 'test' &&
@@ -227,6 +243,7 @@ export class ProxyRetryService {
       }
     }
 
+    throwIfRequestAborted(signal);
     retryState.model = model;
     retryState.effort = effort;
     retryState.selectedToken = null;
@@ -251,6 +268,7 @@ export class ProxyRetryService {
           this.accountLeaseService.getOrdinaryRetryWaitMs({
             model,
             effort,
+            physicalTarget: retryState.physicalTarget,
             accountId: graceRetryToken.id,
           }) !== 0)
       ) {
@@ -273,6 +291,7 @@ export class ProxyRetryService {
           sessionKey,
           excludeAccountIds: Array.from(retryState.attemptedAccountIds),
           model,
+          physicalTarget: retryState.physicalTarget,
           effort,
           signal,
           targetAccountId,
@@ -291,7 +310,22 @@ export class ProxyRetryService {
         }
         throw error;
       }
-      retryState.imagePermit = selected.permit;
+      if (signal?.aborted) {
+        selected.permit.release();
+        throwIfRequestAborted(signal);
+      }
+      let released = false;
+      const permit = {
+        release: () => {
+          if (!released) {
+            released = true;
+            signal?.removeEventListener('abort', permit.release);
+            selected.permit.release();
+          }
+        },
+      };
+      signal?.addEventListener('abort', permit.release, { once: true });
+      retryState.imagePermit = permit;
       retryState.ordinaryRotation.selectAccount(selected.token.id, false);
       retryState.attemptedAccountIds.add(selected.token.id);
       retryState.selectedToken = selected.token;
@@ -307,12 +341,14 @@ export class ProxyRetryService {
             sessionKey,
             signal,
             effort,
+            retryState.physicalTarget,
           )
         : await this.accountLeaseService.getNextToken({
             sessionKey,
             excludeAccountIds: Array.from(retryState.attemptedAccountIds),
             model,
             effort,
+            physicalTarget: retryState.physicalTarget,
             targetAccountId,
             ...(targetAccountId ? { signal } : {}),
           });
@@ -382,6 +418,7 @@ export class ProxyRetryService {
         this.accountLeaseService.getOrdinaryRetryWaitMs({
           model: retryState.model,
           effort: retryState.effort,
+          physicalTarget: retryState.physicalTarget,
           accountId: token.id,
         }) !== 0
       ) {
@@ -403,6 +440,7 @@ export class ProxyRetryService {
       this.accountLeaseService.getEligibleRetryAccountCount({
         model: retryState.model,
         effort: retryState.effort,
+        physicalTarget: retryState.physicalTarget,
         excludeAccountIds: Array.from(retryState.attemptedAccountIds),
       }) > 0
     ) {
@@ -783,6 +821,7 @@ export class ProxyRetryService {
     const waitSeconds = this.accountLeaseService.getMinimumRateLimitWaitForPool?.({
       model: retryState.model,
       effort: retryState.effort,
+      physicalTarget: retryState.physicalTarget,
     });
     if (waitSeconds !== undefined) {
       this.mergeRetryAfter(retryState, waitSeconds);
@@ -851,6 +890,7 @@ export class ProxyRetryService {
       accountId,
       model,
       effort,
+      true,
     );
     if (waitSeconds <= 0) {
       return;

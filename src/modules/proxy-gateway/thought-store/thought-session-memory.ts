@@ -6,6 +6,7 @@ import { mergeThoughtRecordContent } from './thought-record-content';
 const MAX_RETAINED_BYTES = 256 * 1024 * 1024;
 
 export interface MemorySession {
+  toolLinkRetryAt?: number;
   olderLookupRetryAt?: number;
   lastAccessed: number;
   persistedAccess: { queuedAt: number } | null;

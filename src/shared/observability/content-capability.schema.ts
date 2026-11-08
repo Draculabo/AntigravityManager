@@ -6,7 +6,7 @@ export const DIAGNOSTIC_CONTENT_TTL_MS = 5 * 60 * 1000;
 export const ContentIdentitySchema = z.strictObject({
   epoch: z.uuid(),
   capabilityId: z.uuid(),
-  kind: z.enum(['thought', 'curl']),
+  kind: z.enum(['thought', 'curl', 'error']),
   resourceId: z.string().min(1).max(1024),
 });
 export const ContentDescriptorSchema = ContentIdentitySchema.extend({

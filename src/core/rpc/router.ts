@@ -1,4 +1,6 @@
 import type { CoreRpcOperations, CoreRpcWorkLifecycle } from './operations';
+import { GatewayRememberChoiceSchema, GatewayManualStartResultSchema, GatewayManualStopResultSchema, GatewayChoicePersistenceSchema } from '@/modules/proxy-gateway/services/gateway-management.schema';
+import { gatewayLifecycleService } from '@/modules/proxy-gateway/services/gateway-lifecycle.service';
 import { createPlaygroundRouter } from '@/modules/proxy-gateway/playground/playground.router';
 import { playgroundService } from '@/modules/proxy-gateway/playground/playground.service';
 import { createDiagnosticLogCoreRouter } from '@/modules/app-shell/diagnostic-logs/core-router';
@@ -22,6 +24,10 @@ import { agentToolsOwner } from '@/modules/proxy-gateway/agent-tools/agent-tools
 import { createAgentToolsRouter } from '@/modules/proxy-gateway/agent-tools/agent-tools.router';
 import { createDshOwnerRouter } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.router';
 import { dshOwner } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.service';
+import { clientConfigOwner } from '@/modules/proxy-gateway/agent-tools/client-config-owner.service';
+import { connectionProfilesOwner } from '@/modules/proxy-gateway/connection-profiles/connection-profiles.owner';
+import { createConnectionProfilesRouter } from '@/modules/proxy-gateway/connection-profiles/connection-profiles.router';
+import { createClientConfigOwnerRouter } from '@/modules/proxy-gateway/agent-tools/client-config-owner.router';
 import { createOpenCodeOwnerRouter } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.router';
 export type { CoreRpcOperations, CoreRpcWorkLifecycle } from './operations';
 import { localAccountOwner } from '@/modules/account/services/local-account-owner.service';
@@ -29,6 +35,10 @@ import { createLocalAccountRouter } from '@/modules/account/services/local-accou
 import { getCloudAccountSwitchStatus } from '@/modules/cloud-account/services/cloud-account-switch-status.service';
 import { deleteCloudAccount } from '@/modules/cloud-account/services/cloud-account-deletion.service';
 import { serviceConfigService } from '@/modules/config/service-config.service';
+import {
+  errorDiagnosticOwner,
+  createErrorDiagnosticRouter,
+} from '@/modules/error-diagnostics/public';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import {
   createServiceConfigRouter,
@@ -136,7 +146,7 @@ import {
 } from './schema';
 
 export function createCoreRpcOperations(
-  core: Pick<CoreService, 'startGateway' | 'stopGateway'>,
+  core: Pick<CoreService, 'startGateway' | 'stopGateway' | 'manualStartGateway' | 'manualStopGateway' | 'retryGatewaySaveChoice'>,
 ): CoreRpcOperations & CoreRpcWorkLifecycle {
   const inFlightAccountWork = new Set<Promise<unknown>>();
   let acceptingAccountMutations = true;
@@ -156,6 +166,7 @@ export function createCoreRpcOperations(
 
   return {
     diagnosticLogs: (until) => readDiagnosticLogs('core', until),
+    errorDiagnostics: errorDiagnosticOwner,
     playground: {
       execute: (input, signal) =>
         runAccountMutation(() => playgroundService.execute(input, signal)),
@@ -170,6 +181,8 @@ export function createCoreRpcOperations(
     openCode: openCodeOwner,
     agentTools: agentToolsOwner,
     dsh: dshOwner,
+    clientConfig: clientConfigOwner,
+    connectionProfiles: connectionProfilesOwner,
     localAccount: localAccountOwner,
     errorReporting: errorReportingService,
     serviceConfig: {
@@ -180,28 +193,36 @@ export function createCoreRpcOperations(
       generateKey: () => runAccountMutation(serviceConfigService.generateKey),
     },
     closeAccountMutationAdmission: () => {
+      gatewayLifecycleService.closeAdmission();
       acceptingAccountMutations = false;
       ipcCaptureOwner.closeAdmission();
       auditCurlOwner.closeAdmission();
       thoughtOwner.closeAdmission();
+      errorDiagnosticOwner.closeAdmission();
       auditOwner.closeAdmission();
       auditFileOwner.closeAdmission();
       openCodeOwner.closeAdmission();
       agentToolsOwner.closeAdmission();
       dshOwner.closeAdmission();
+      clientConfigOwner.closeAdmission();
+      connectionProfilesOwner.closeAdmission();
       localAccountOwner.closeAdmission();
       cloudAccountAlertPolicy.closeAdmission();
       localAccountImportCoordinator.closeAdmission();
     },
     drainAccountMutations: async () => {
+      await gatewayLifecycleService.drain();
       await ipcCaptureOwner.drain();
       await auditCurlOwner.drain();
       await thoughtOwner.drain();
+      await errorDiagnosticOwner.drain();
       await auditOwner.drain();
       await auditFileOwner.drain();
       await openCodeOwner.drain();
       await agentToolsOwner.drain();
       await dshOwner.drain();
+      await clientConfigOwner.drain();
+      await connectionProfilesOwner.drain();
       await localAccountOwner.drain();
       await Promise.allSettled(Array.from(inFlightAccountWork));
       await localAccountImportCoordinator.drain();
@@ -319,6 +340,9 @@ export function createCoreRpcOperations(
       return { success: true };
     },
     gatewayStart: (port) => core.startGateway(port),
+    gatewayManualStart: (port) => runAccountMutation(() => core.manualStartGateway(port)),
+    gatewayManualStop: () => runAccountMutation(() => core.manualStopGateway()),
+    gatewayRetrySaveChoice: (choice) => runAccountMutation(() => core.retryGatewaySaveChoice(choice)),
     gatewayStop: async () => {
       const success = await core.stopGateway();
       if (!success) {
@@ -331,17 +355,25 @@ export function createCoreRpcOperations(
 
 export function createCoreRpcRouter(operations: CoreRpcOperations) {
   return os.router({
+    gatewayManualStart: os.input(z.strictObject({ port: z.number().int().min(1024).max(65535) }))
+      .output(GatewayManualStartResultSchema).handler(({ input }) => operations.gatewayManualStart(input.port)),
+    gatewayManualStop: os.output(GatewayManualStopResultSchema).handler(() => operations.gatewayManualStop()),
+    gatewayRetrySaveChoice: os.input(GatewayRememberChoiceSchema).output(GatewayChoicePersistenceSchema)
+      .handler(({ input }) => operations.gatewayRetrySaveChoice(input)),
     playground: createPlaygroundRouter(operations.playground),
     diagnosticLogs: createDiagnosticLogCoreRouter(operations.diagnosticLogs),
     errorReporting: createErrorReportingRouter(operations.errorReporting),
     ipcCapture: createIpcCaptureRouter(operations.ipcCapture),
     audit: createAuditOwnerRouter(operations.audit),
     thought: createThoughtOwnerRouter(operations.thought),
+    errorDiagnostics: createErrorDiagnosticRouter(operations.errorDiagnostics),
     auditCurl: createAuditCurlOwnerRouter(operations.auditCurl),
     auditFile: createAuditFileRouter(operations.auditFile),
     openCode: createOpenCodeOwnerRouter(operations.openCode),
     agentTools: createAgentToolsRouter(operations.agentTools),
     dsh: createDshOwnerRouter(operations.dsh ?? dshOwner),
+    clientConfig: createClientConfigOwnerRouter(operations.clientConfig),
+    connectionProfiles: createConnectionProfilesRouter(operations.connectionProfiles),
     localAccount: createLocalAccountRouter(operations.localAccount),
     accountAlertPolicy: createAccountAlertPolicyRouter(operations.accountAlertPolicy),
     serviceConfig: createServiceConfigRouter(operations.serviceConfig),

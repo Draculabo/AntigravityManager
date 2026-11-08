@@ -6,6 +6,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 export interface WriteFileAtomicOptions {
   /** Optional POSIX permission bits for newly created files. */
   mode?: number;
+  /** Synchronous owner revocation check immediately before each replacement attempt. */
+  beforeCommit?: () => void;
 }
 
 export interface WriteJsonFileAtomicOptions {
@@ -66,8 +68,10 @@ async function replaceTemporaryFile(
   dependencies: AtomicFileWriterDependencies,
   temporaryPath: string,
   filePath: string,
+  beforeCommit?: () => void,
 ): Promise<void> {
   for (let attempt = 0; ; attempt++) {
+    beforeCommit?.();
     try {
       await dependencies.rename(temporaryPath, filePath);
       return;
@@ -112,7 +116,7 @@ export function createAtomicFileWriter(
         await temporaryHandle.close();
         temporaryHandle = null;
 
-        await replaceTemporaryFile(dependencies, temporaryPath, filePath);
+        await replaceTemporaryFile(dependencies, temporaryPath, filePath, options.beforeCommit);
         if (dependencies.platform !== 'win32') {
           await syncParentDirectory(dependencies, directory);
         }
@@ -190,6 +194,7 @@ export function writeFileAtomicSync(
     fs.closeSync(descriptor);
     descriptor = null;
 
+    options.beforeCommit?.();
     fs.renameSync(temporaryPath, filePath);
     syncParentDirectorySync(directory);
   } catch (error) {

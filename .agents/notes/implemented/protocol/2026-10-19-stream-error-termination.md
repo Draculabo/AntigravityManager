@@ -12,7 +12,8 @@ an error, and protocol consumers could lose the original status and message.
 
 Decode embedded errors as a first-class result carrying bounded structured
 fields. Aggregation and protocol consumers stop on that result. Empty, invalid
-or incomplete streams fail explicitly; no synthetic successful STOP is created.
+and ineligible incomplete streams fail explicitly. Eligible transport interruption
+after validated partial output follows the adopted protocol terminal contract.
 
 Unknown nonempty string terminal reasons are provider protocol failures. The
 direct-response boundary and internal SSE decoder reject them before normal
@@ -93,6 +94,31 @@ Attempt audit records retain actual HTTP status independently from generation
 outcome, so HTTP 200 with an empty answer or embedded failure is not an audited
 generation success. A successful continuation cannot rewrite that first attempt.
 
+On 2026-11-07 the user approved partial-output interruption finalization.
+Shared generation evidence
+identifies previously validated visible text or a complete tool call. Each
+protocol adapter owns its terminal frames. Chat uses `length`, Anthropic uses
+`max_tokens` and native Gemini uses `MAX_TOKENS` for interrupted text. Existing
+complete tool calls retain `tool_calls`, `tool_use` or `STOP` respectively.
+Responses retains a failed terminal result carrying its partial output.
+
+The selected behavior lets clients retain partial output using their normal
+protocol completion path. It preserves model text, complete tool arguments and
+the latest observed usage. It neither repairs Markdown nor adds warning prose.
+Gemini carries a fixed interruption marker in its terminal candidate.
+
+Physical attempt audit outcome remains interrupted or failed. Synthetic terminal
+frames do not commit account/model success or trigger a replacement generation.
+Anthropic carries an invocation-owned interruption marker through its preflight
+wrapper so ordinary Observable completion cannot commit false success.
+
+Eligibility excludes thinking-only or whitespace output, signatures, inline
+media, ambiguous multiple candidates, structured provider failures, invalid
+protocol data, signature conflicts, caller cancellation and the total generation
+deadline. Normal EOF validates buffered UTF-8 and SSE before finalization. Image
+generation retains clean-end requirements, and an existing terminal reason wins.
+See the current [partial-output interruption contract](../../../../docs/modules/proxy-gateway/stream-tool-compatibility.md#partial-output-interruption).
+
 ## Alternatives considered
 
 Keeping errors inside a response object was rejected because each protocol then
@@ -144,12 +170,25 @@ Appending newly generated thought as an assistant turn was rejected because it
 would invent missing signed history. Returning task-ready text after recovery
 failure was rejected because it represents an unfulfilled request as success.
 
+Keeping explicit failure for every network interruption after usable output was
+replaced for Chat, Anthropic and Gemini following user approval. Some clients
+reject incomplete streams despite receiving useful text. A protocol terminal
+sequence addresses that compatibility case while physical diagnostics retain
+the interruption. Treating every error as eligible was rejected because provider
+denials, invalid data and cancellation have different owners. Applying this
+policy to Responses was rejected because its failed result already carries
+partial output. Repairing code fences or adding warnings to model text was
+rejected because it changes the generated content.
+
 ## Consequences
 
-Some previously permissive streams now terminate with an explicit error. Partial
-parts remain available to diagnostics but do not turn an error into a completed
-response. Terminal-frame and public error mapping still belong to each protocol
-owner.
+Invalid streams and explicit provider failures retain explicit error results.
+Eligible interrupted partial output receives protocol terminal frames that some
+clients treat as token truncation or completed tool delivery. The physical request
+remains a failed attempt and is excluded from success commits. Terminal-frame and
+public error mapping belong to each protocol owner. Tool clients may proceed with
+already emitted complete tool calls, and final usage may be unavailable. Installed
+client and live-provider behavior require separate acceptance.
 
 Enabling continuation can perform one additional provider request. Existing
 profiles remain valid because the new field is optional; turning it off restores
@@ -194,3 +233,12 @@ memory credit, transport snapshot identity, physical attempt audit outcomes and
 usage snapshot accounting. Provider HTTP is intercepted, leases and persistence
 are synthetic, and WebSocket projection uses a loopback server. Native workers,
 packaged clients and live providers remain separate acceptance boundaries.
+
+The 2026-11-07 adoption adds regression cases in the public four-protocol stream
+matrix for text and complete tools followed by EOF or a transport reset. Focused
+Anthropic checks cover idle expiry, premature close, signature ownership and
+exclusion from account/model success. The loopback HTTP integration exercises
+actual SSE output through the protocol controllers with a controlled upstream.
+Negative controls and executed command results are recorded in the incremental
+review artifacts. These checks substitute the provider and account boundary.
+They do not establish installed-client rendering or live-provider behavior.

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ContentDescriptorSchema } from '../diagnostics/content-capability.schema';
+import { ContentDescriptorSchema } from '@/shared/observability/content-capability.schema';
 import { ThoughtPartSignaturesSchema } from './thought-part-signatures.schema';
 import { ThoughtProvenanceSchema } from './thought-record-provenance';
 

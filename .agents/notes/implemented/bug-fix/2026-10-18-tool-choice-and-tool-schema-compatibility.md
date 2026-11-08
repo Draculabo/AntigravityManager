@@ -32,6 +32,16 @@ The apply_patch freeform schema and argument adapter run only when the client de
 matching tool as `type: custom`. The tool name, description and runtime argument object for
 ordinary functions are preserved without command guessing or length-based truncation.
 
+Schema preparation uses the same explicit built-in type predicate as tool classification.
+An ordinary search-named function therefore passes declaration normalization and budgets
+before the mapper receives prepared schemas. This keeps the preparation path consistent
+with the mapper's ordinary-function classification.
+
+Native Gemini admission validates explicit `ANY` and allowed function names independently
+for the camel and snake aliases. Missing functions or undeclared names fail before account
+selection. Provider extension fields and the default policy remain owned by the native
+protocol adapter.
+
 Tool Schema enum values are serialized to strings consistently. Literal empty strings are
 removed, whitespace-only strings remain, and an enum emptied by that rule is removed.
 Nonempty enums set the corresponding Schema node type to `string`; `const` follows the same
@@ -42,6 +52,11 @@ coerced to match a declaration.
 Existing local JSON Pointer resolution, conversion budgets, diagnostics, request-scoped
 preparation reuse, successful Schema caching and bounded degradation remain in force.
 This change does not establish live Google acceptance.
+The D05 follow-up recovers misplaced tool declaration keywords identified during schema review. Named type or reference declarations stored in an object's `items` can be
+recovered into `properties`, with existing properties taking precedence. Array declarations
+keep `items` and drop misplaced `properties`. Array cleanup follows reference resolution and
+effective type selection so an explicit object sibling can retain its inherited properties.
+These repairs operate on prepared declaration copies under the existing conversion budget.
 
 ## Alternatives considered
 

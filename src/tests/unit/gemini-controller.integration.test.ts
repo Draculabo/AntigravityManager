@@ -98,15 +98,15 @@ describe('GeminiController Integration', () => {
           expect.objectContaining({
             name: 'models/gemini-3-flash',
             description: '',
-            inputTokenLimit: 128000,
-            outputTokenLimit: 8192,
+            inputTokenLimit: 1048576,
+            outputTokenLimit: 65536,
             supportedGenerationMethods: ['generateContent', 'countTokens'],
           }),
           expect.objectContaining({
             name: 'models/gemini-3.1-pro-high',
             description: '',
-            inputTokenLimit: 128000,
-            outputTokenLimit: 8192,
+            inputTokenLimit: 1048576,
+            outputTokenLimit: 65536,
             supportedGenerationMethods: ['generateContent', 'countTokens'],
           }),
           expect.objectContaining({
@@ -184,8 +184,8 @@ describe('GeminiController Integration', () => {
           name: 'models/gemini-2.5-flash',
           displayName: 'gemini-2.5-flash',
           description: '',
-          inputTokenLimit: 128000,
-          outputTokenLimit: 8192,
+          inputTokenLimit: 1048576,
+          outputTokenLimit: 65536,
           supportedGenerationMethods: ['generateContent', 'countTokens'],
           temperature: 1,
           topK: 64,
@@ -196,8 +196,8 @@ describe('GeminiController Integration', () => {
           name: 'models/gemini-3-pro-image',
           displayName: 'gemini-3-pro-image',
           description: '',
-          inputTokenLimit: 128000,
-          outputTokenLimit: 8192,
+          inputTokenLimit: 1048576,
+          outputTokenLimit: 65536,
           supportedGenerationMethods: ['generateContent', 'countTokens'],
           temperature: 1,
           topK: 64,
@@ -208,8 +208,8 @@ describe('GeminiController Integration', () => {
           name: 'models/gemini-pro-agent',
           displayName: 'gemini-pro-agent',
           description: '',
-          inputTokenLimit: 128000,
-          outputTokenLimit: 8192,
+          inputTokenLimit: 1048576,
+          outputTokenLimit: 65535,
           supportedGenerationMethods: ['generateContent', 'countTokens'],
           temperature: 1,
           topK: 64,
@@ -404,6 +404,7 @@ describe('GeminiController Integration', () => {
     expect(proxyService.handleGeminiCountTokensWithSource).toHaveBeenCalledWith(
       'models/gemini-2.5-flash',
       body,
+      undefined,
     );
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.send).toHaveBeenCalledWith({ totalTokens: 9 });

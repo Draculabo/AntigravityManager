@@ -26,10 +26,12 @@ import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thoug
 
 import { ProxyConfig } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from './server-config';
+import { isEqual } from 'lodash-es';
 
 let app: NestFastifyApplication | null = null;
 let currentPort: number = 0;
 let currentListenAddress = '';
+let startupConfig: ProxyConfig | null = null;
 let detachResponsesWebSocketServer: (() => void) | null = null;
 
 export type NestServerStartResult =
@@ -129,6 +131,7 @@ async function cleanupFailedServerStart() {
     app = null;
     currentPort = 0;
     currentListenAddress = '';
+    startupConfig = null;
   }
 }
 
@@ -230,6 +233,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
     });
     currentPort = port;
     currentListenAddress = listenAddress;
+    startupConfig = structuredClone(config);
     logger.info(`NestJS Proxy Server running on http://localhost:${port}`);
     return {
       success: true,
@@ -288,6 +292,7 @@ export async function stopNestServer(): Promise<boolean> {
       app = null;
       currentPort = 0;
       currentListenAddress = '';
+      startupConfig = null;
       logger.info('NestJS server stopped.');
       return true;
     } catch (e) {
@@ -300,6 +305,29 @@ export async function stopNestServer(): Promise<boolean> {
 
 export function isNestServerRunning(): boolean {
   return app !== null;
+}
+
+/** Listener hooks and constructor-owned limits keep their startup values until an explicit restart. */
+export function getNestServerRestartFields(config: ProxyConfig): string[] {
+  if (!app || !startupConfig) {
+    return [];
+  }
+  const fields: string[] = [];
+  if (startupConfig.port !== config.port) {
+    fields.push('proxy.port');
+  }
+  for (const key of Object.keys(config.network)) {
+    if (!isEqual(Reflect.get(startupConfig.network, key), Reflect.get(config.network, key))) {
+      fields.push(`proxy.network.${key}`);
+    }
+  }
+  if (startupConfig.image_scheduler.per_account_concurrency !== config.image_scheduler.per_account_concurrency) {
+    fields.push('proxy.image_scheduler.per_account_concurrency');
+  }
+  if (hasConfiguredApiKey(startupConfig.api_key) !== hasConfiguredApiKey(config.api_key)) {
+    fields.push('proxy.api_key');
+  }
+  return fields;
 }
 
 export async function reloadNestServerAccountLeaseCache(): Promise<boolean> {

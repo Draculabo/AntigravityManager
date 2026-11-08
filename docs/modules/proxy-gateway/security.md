@@ -172,6 +172,15 @@ restore in the UI or supplies CLI `--yes`. See
 [agent-tools reference](agent-tools.md) for the difference between removal
 and restoration.
 
+Independent connection profiles snapshot existing keys into separate OS-keyring accounts.
+Their version-1 metadata catalog contains no raw key. Private field originals, first native
+backups and interrupted-write ownership are AES-256-GCM encrypted using an independent
+OS-keyring encryption key. The selected backend owns this catalog and its keyring entries.
+The renderer receives only profile metadata and credential availability. Losing the encryption
+key makes the ownership catalog unreadable. Operations fail without a plaintext fallback or
+an automatic empty replacement. Preserve the catalog and the original user's keyring together.
+These profile records do not change existing client snapshot or recovery-file formats.
+
 ## Local video paths
 
 OpenAI Chat Completions local `video_url` paths are disabled by default. The user can enable

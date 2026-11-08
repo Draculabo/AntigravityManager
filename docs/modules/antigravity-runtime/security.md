@@ -2,6 +2,34 @@
 
 This reference owns official-client credential destinations, local snapshots and recovery. Use [account switching acceptance](account-switch-acceptance.md) for live evidence and [global security rules](../../security.md) for shared requirements.
 
+## Read-only Cowork runtime inspection
+
+Cowork discovery and inspection remain separate from the Agy binary patcher. Discovery
+admits regular Claude files under explicit roots/custom bundle layouts and records their
+bounded size and SHA-256 fingerprint. A custom bundle whose canonical executable escapes
+its bundle is refused. Direct symbolic runtime files are refused.
+
+Inspection requires a fingerprint from admitted discovery, reopens the selected canonical
+file, bounds descriptor reads to the admitted size plus one growth probe, and compares
+the complete SHA-256. Oversized, changed or unavailable candidates return an unreadable
+state with a rediscovery instruction. A source classification or write-free plan does
+not authorize mutation, establish a valid executable signature, prove the exact running
+installation, or verify client launch. Transactional backup/write/recovery, platform
+process ownership and signing remain unimplemented for Cowork.
+
+Source inspection requires valid UTF-8 and parses at most 1 MiB of complete JavaScript
+with Acorn. Only unique top-level function declarations matching the frozen reverse
+accumulation algorithm are eligible. Parameter/local bindings, loop conditions and
+returns must agree; text in strings/comments and unrelated filters are not evidence.
+Shadowed `Math` bindings are refused. Native/bundled payload extraction and nested
+function scopes remain unsupported pending a verified format contract.
+
+A pure original-to-8k preview preserves the exact UTF-8 byte count and all bytes outside
+the selected function, then parses and checks the result again. It returns original and
+preview hashes and the byte range; it performs no filesystem write. Recognized return-zero
+and 35k legacy forms require version-matched original recovery material and cannot
+produce a ready upgrade plan. See the [preflight decision](../../../.agents/notes/implemented/security/2026-11-05-cowork-structural-preflight.md).
+
 ## Local-account transport
 
 Legacy local-account transport contains bounded account/identity metadata and closed error categories, without backup paths, raw database rows or credential-bearing backup objects. Snapshot restore accepts an account ID and reads its existing backup only inside the selected owner. The unused raw backup/restore renderer contracts are removed; internal durable backup codecs and native injection policy remain unchanged. Admission/drain covers both reads and serialized writes, and existing database primitives close their per-operation handles in `finally` blocks.
@@ -180,3 +208,49 @@ failure alongside the recovery failure, stops success publication and adds no au
 This consent-only recovery does not restore credentials. These are local filesystem checks,
 not a lock enforced by the official client; independently started external writers can still race.
 No raw file contents, paths or identities enter the new diagnostic messages.
+
+## Cowork runtime IPC ownership
+
+The `coworkRuntime` feature router owns bounded discovery, selected-target inspection,
+source-only preview, transaction receipts and lifecycle admission. Selection and preview
+UUIDs reference main-process snapshots. IPC callers cannot supply patched source, a
+recovery destination, package eligibility or process callbacks. Reinspection compares
+the selected hash; changed installations require a new selection and preview.
+
+The production service has no verified Claude package adapter. All real discovered
+targets therefore remain unsupported for mutation and process control. Windows writes
+are denied, and `.app` targets require complete signing-resource recovery before any
+future adapter can admit them. An exact standalone JavaScript match remains an
+inspection-only preview and does not prove Claude product ownership.
+
+For a recognized thin arm64 Mach-O Bun standalone executable, inspection can display
+the payload envelope's file range. For the supported module table layout it also shows
+the module count, the virtual entry name and its content byte range. The probe reads
+only bounded format metadata from the selected file. Virtual entry names are displayed
+as text and never resolved as filesystem paths. Unrecognized module metadata leaves
+the envelope-only result available. Native targets remain ineligible for writes and
+process control. Package identity, source extraction and the pruning function require
+their own evidence.
+
+The transaction implementation accepts only a trusted main-process unsigned-source
+adapter that independently verifies package identity and exact-instance lifecycle.
+Its immutable original backup and versioned journal remain under the Manager profile,
+outside the installation. Restore checks package/version/instance, immutable backup
+identity and the complete original structural plan. Current contents must equal the
+recomputed patched bytes or the exact original. Preview and backup lookup are read-only.
+Prepared and interrupted journal phases block another apply or manual start until
+explicit recovery. Manual start rechecks ownership and selected bytes before dispatch.
+Confirmed restore of original bytes and permissions reconciles the journal without
+inspecting, stopping or starting the client. A mode-only restore uses the stopped-client
+transaction. Changed target bytes, ownership, journal identity or backup material refuse
+recovery instead of overwriting an external update.
+Rollback checks current bytes and stopped-instance evidence before replacing anything.
+Primary, rollback and restart failures remain distinct in typed receipts. Raw causes
+remain in main. A successful write does not establish restart or functional acceptance.
+
+General settings shows an explicit confirmation for each admitted action. Apply and
+restore require a ready one-use preview and known selected-instance process state.
+The result keeps file effect, recovery and restart separate. A lost reply requires
+inspection before retrying with a fresh preview.
+
+See the module's [remaining package and platform work](../../../src/modules/antigravity-runtime/cowork/TODO.md).

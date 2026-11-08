@@ -4,6 +4,21 @@ This reference selects process, credential and switch evidence. Use the [account
 
 Run commands from the repository root unless a step specifies another directory.
 
+The focused `claude-cowork-runtime.test.ts` checks source classification, bounded
+fingerprint admission, stale and same-length changed targets, and canonical bundle escape
+through an isolated directory link. The Windows directory-link fixture needs junction
+permission. Fixture roots are verified before cleanup; no installed Claude binary,
+process or signing command is used. These read-only checks do not establish safe patch
+application or real client compatibility.
+
+`claude-cowork-source-plan.test.ts` uses the frozen reverse-accumulation algorithm
+and independently changed bindings to check structural source admission. It covers
+string/comment decoys, duplicate functions, shadowed intrinsics, legacy recovery
+refusal, unsupported scopes, parse budgets, Unicode byte offsets and exact preservation
+outside the function. A controlled VM executes the generated preview at the 8k cutoff.
+These fixtures establish a pure source preview, not native payload extraction, executable
+signing, installed patch application or rollback.
+
 The focused `antigravity-process-identity.test.ts` and `runtime-observer.test.ts` suites reject
 third-party tool names, product text in unrelated folders/arguments and unreadable tool metadata.
 They retain supported binary names, configured/captured executable identity and genuine competing

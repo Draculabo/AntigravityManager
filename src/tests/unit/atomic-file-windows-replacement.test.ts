@@ -38,6 +38,17 @@ afterEach(() => {
 });
 
 describe('bounded Windows atomic replacement recovery', () => {
+  it('rechecks owner revocation before a Windows rename retry and preserves the pending target', async () => {
+    const { writer, dependencies, handle } = fixture();
+    dependencies.rename.mockRejectedValueOnce(Object.assign(new Error('sharing conflict'), { code: 'EPERM' }));
+    const revoked = new Error('export revoked');
+    const guard = vi.fn().mockImplementationOnce(() => undefined).mockImplementation(() => { throw revoked; });
+    await expect(writer.write('/fixture/diagnostic.txt', 'complete', { beforeCommit: guard })).rejects.toBe(revoked);
+    expect(dependencies.rename).toHaveBeenCalledOnce();
+    expect(guard).toHaveBeenCalledTimes(2);
+    expect(handle.writeFile).toHaveBeenCalledOnce();
+    expect(dependencies.remove).toHaveBeenCalledOnce();
+  });
   it('retries the same completed temporary file after EPERM without writing or syncing again', async () => {
     const { writer, dependencies, handle } = fixture();
     const blocked = Object.assign(new Error('Synthetic sharing conflict'), { code: 'EPERM' });

@@ -8,6 +8,7 @@ import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/Cl
 import { normalizeSystemPrompt } from '@/modules/proxy-gateway/antigravity/SystemPromptNormalization';
 import { convertOpenAIToClaude } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
 import { prepareGeminiRequestThoughtSignatures } from '@/modules/proxy-gateway/antigravity/thought-signature-format';
+import { extractToolResultImages } from '@/modules/proxy-gateway/antigravity/MarkdownImageParts';
 
 function context() {
   return {
@@ -20,6 +21,24 @@ function context() {
 afterEach(() => vi.restoreAllMocks());
 
 describe('bounded request-local transformation metadata', () => {
+  it('records only bounded invalid-tool-image metadata and preserves the original text', () => {
+    runWithTrafficAuditRequestContext(context(), () => {
+      const text = 'data:image/png;base64,AQ==';
+      for (let index = 0; index < 70; index += 1) {
+        expect(extractToolResultImages(text)).toEqual({ text, media: [] });
+      }
+      expect(snapshotPromptTransformations()).toEqual({
+        entries: Array.from({ length: 64 }, () => ({
+          kind: 'tool-image-candidate-preserved',
+          surface: 'messages',
+          message: null,
+          part: null,
+        })),
+        dropped: 6,
+      });
+    });
+  });
+
   it('reports signature wrapping once at its exact part without retaining the signature', () => {
     const raw = Buffer.from([0x08, 0x04, 0x12, 0x01, 0x41]).toString('base64');
     const original = {

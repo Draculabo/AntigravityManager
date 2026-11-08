@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AppConfigSchema, ProxyConfigSchema } from './types';
 import type { CloudAccountAlertPolicy } from '@/modules/cloud-account/services/cloud-account-alert-policy.schema';
+import { ErrorWindowBudgetSchema } from '@/modules/error-diagnostics/configuration';
 
 export const SERVICE_CONFIG_MAX_BYTES = 128 * 1024;
 export const ServiceConfigErrorCodeSchema = z.enum(['unavailable', 'invalid-input', 'conflict']);
@@ -29,6 +30,7 @@ export const ServiceProxySchema = ProxyConfigSchema.omit({ api_key: true, upstre
     backend_canary_enabled: z.boolean(),
     parity_enabled: z.boolean(),
     quota_aware_scheduling_enabled: z.boolean(),
+    weekly_quota_priority_enabled: z.boolean(),
     parity_shadow_enabled: z.boolean(),
     parity_kill_switch: z.boolean(),
     scheduling_mode: ProxyConfigSchema.shape.scheduling_mode.removeDefault(),
@@ -55,6 +57,7 @@ export const ServiceProxySchema = ProxyConfigSchema.omit({ api_key: true, upstre
     image_scheduler: z.strictObject({
       per_account_concurrency: z.number().int().min(0).max(256),
       send_window_enabled: z.boolean(),
+      send_window_strategy: z.enum(['count', 'memory']),
       send_window_count: z.number().int().min(0).max(256),
       send_window_memory_mib: z.number().int().min(1).max(512),
       send_window_strip_remote_urls: z.boolean(),
@@ -65,6 +68,7 @@ export const ServiceProxySchema = ProxyConfigSchema.omit({ api_key: true, upstre
   .strict();
 
 export const ServiceRuntimeSchema = AppConfigSchema.pick({
+  error_diagnostics: true,
   antigravity_executable: true,
   antigravity_ide_executable: true,
   antigravity_cli_executable: true,
@@ -73,6 +77,7 @@ export const ServiceRuntimeSchema = AppConfigSchema.pick({
 })
   .extend({
     antigravity_executable: text.nullable(),
+    error_diagnostics: AppConfigSchema.shape.error_diagnostics.removeDefault().strict(),
     antigravity_ide_executable: text.nullable(),
     antigravity_cli_executable: text.nullable(),
     antigravity_args: z.array(text).max(64),
@@ -81,6 +86,12 @@ export const ServiceRuntimeSchema = AppConfigSchema.pick({
   .strict();
 
 export const ServiceConfigSnapshotSchema = ServiceRuntimeSchema.extend({
+  initialization: z.strictObject({
+    source: z.enum(['missing', 'blank']),
+    writeback: z.enum(['saved', 'failed']),
+    diagnosticId: z.string().uuid().optional(),
+  }).optional(),
+  errorDiagnosticsBudget: ErrorWindowBudgetSchema,
   auditRevision: z
     .string()
     .regex(/^[a-f0-9]{64}$/u)
@@ -120,9 +131,18 @@ export const ServiceSecretWriteSchema = z
   .strictObject({ name: ServiceSecretNameSchema, value: z.string().max(4096).nullable() })
   .refine((value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 3000);
 export const ServiceSecretRevealSchema = z.strictObject({ value: z.string().max(4096) });
+export const ServiceConfigApplyIssueSchema = z.strictObject({
+  step: z.enum(['gateway-config', 'audit', 'thought-store', 'error-diagnostics', 'runtime-status']),
+  fields: z.array(z.string().max(128)).max(64),
+  reason: z.literal('runtime-application-failed'),
+  diagnosticId: z.string().uuid(),
+});
+export type ServiceConfigApplyIssue = z.infer<typeof ServiceConfigApplyIssueSchema>;
 export const ServiceConfigWriteResultSchema = z.strictObject({
-  state: z.enum(['applied', 'restart-required']),
+  state: z.enum(['applied', 'restart-required', 'partial-failure']),
   snapshot: ServiceConfigSnapshotSchema,
+  issues: z.array(ServiceConfigApplyIssueSchema).max(8).optional(),
+  restartFields: z.array(z.string().max(128)).max(64).optional(),
 });
 export type ServiceConfigSnapshot = z.infer<typeof ServiceConfigSnapshotSchema>;
 export type ServiceConfigUpdate = z.infer<typeof ServiceConfigUpdateSchema>;
@@ -131,6 +151,7 @@ export type ServiceSecretWrite = z.infer<typeof ServiceSecretWriteSchema>;
 export type ServiceConfigWriteResult = z.infer<typeof ServiceConfigWriteResultSchema>;
 
 export const DesktopPreferencesSchema = AppConfigSchema.omit({
+  error_diagnostics: true,
   proxy: true,
   antigravity_executable: true,
   antigravity_ide_executable: true,

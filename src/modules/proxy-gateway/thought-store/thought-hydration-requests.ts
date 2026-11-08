@@ -4,27 +4,27 @@ export function thoughtHydrationCancelled(): Error {
   return new DOMException('Thought restoration cancelled', 'AbortError');
 }
 
-interface Subscriber {
-  resolve: (records: ThoughtRecord[]) => void;
+interface Subscriber<TResult> {
+  resolve: (records: TResult) => void;
   reject: (error: unknown) => void;
   detach: () => void;
 }
 
-interface HydrationJob {
+interface HydrationJob<TResult> {
   controller: AbortController;
-  subscribers: Set<Subscriber>;
+  subscribers: Set<Subscriber<TResult>>;
 }
 
 /** Cancellation belongs to each requester; shared reads survive while another requester waits. */
-export class ThoughtHydrationRequests {
-  private readonly jobs = new Map<string, HydrationJob>();
+export class ThoughtHydrationRequests<TResult = ThoughtRecord[]> {
+  private readonly jobs = new Map<string, HydrationJob<TResult>>();
   private readonly pending = new Set<Promise<void>>();
 
   public run(
     key: string,
-    load: (signal: AbortSignal) => Promise<ThoughtRecord[]>,
+    load: (signal: AbortSignal) => Promise<TResult>,
     signal?: AbortSignal,
-  ): Promise<ThoughtRecord[]> {
+  ): Promise<TResult> {
     if (signal?.aborted) {
       return Promise.reject(thoughtHydrationCancelled());
     }
@@ -35,7 +35,7 @@ export class ThoughtHydrationRequests {
       this.jobs.set(key, job);
     }
     const current = job;
-    const result = new Promise<ThoughtRecord[]>((resolve, reject) => {
+    const result = new Promise<TResult>((resolve, reject) => {
       const cancel = () => {
         subscriber.detach();
         current.subscribers.delete(subscriber);
@@ -47,7 +47,7 @@ export class ThoughtHydrationRequests {
           current.controller.abort();
         }
       };
-      const subscriber: Subscriber = {
+      const subscriber: Subscriber<TResult> = {
         resolve,
         reject,
         detach: () => signal?.removeEventListener('abort', cancel),
@@ -94,8 +94,8 @@ export class ThoughtHydrationRequests {
 
   private async execute(
     key: string,
-    job: HydrationJob,
-    load: (signal: AbortSignal) => Promise<ThoughtRecord[]>,
+    job: HydrationJob<TResult>,
+    load: (signal: AbortSignal) => Promise<TResult>,
   ): Promise<void> {
     try {
       const records = await load(job.controller.signal);

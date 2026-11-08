@@ -16,6 +16,9 @@ export type UsageRangeInput = z.infer<typeof UsageRangeInputSchema>;
 
 export const UsageRangeWorkerInputSchema = z.strictObject({
   range: UsageRangeInputSchema,
+  accountGenerationHash: z.string().regex(/^[a-f0-9]{64}$/u),
+  accountSubjectHash: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
+  accountGrantHash: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
   asOf: safeCount,
 });
 export type UsageRangeWorkerInput = z.infer<typeof UsageRangeWorkerInputSchema>;
@@ -37,8 +40,9 @@ export const UsageRangeResultSchema = UsageRangeTotalsSchema.extend({
   to: safeCount,
   asOf: safeCount,
   coverage: z.literal('retained-local-records'),
-  accountIdentity: z.literal('stored-account-id'),
-  timeBasis: z.literal('request-start'),
+  accountIdentity: z.enum(['current-account-incarnation', 'verified-google-account']),
+  timeBasis: z.literal('attempt-start'),
+  ambiguousTimeBasis: z.literal('attempt-start-or-unattributed-request-start'),
   totalTokens: safeCount,
 }).refine(
   (value) =>
@@ -47,6 +51,6 @@ export const UsageRangeResultSchema = UsageRangeTotalsSchema.extend({
     value.totalTokens === value.inputTokens + value.outputTokens &&
     value.recordedRequests ===
       value.countedRequests + value.ambiguousRequests + value.missingUsageRequests &&
-    value.missingCachedRequests <= value.countedRequests,
+    value.missingCachedRequests <= value.countedRequests + value.missingUsageRequests,
 );
 export type UsageRangeResult = z.infer<typeof UsageRangeResultSchema>;

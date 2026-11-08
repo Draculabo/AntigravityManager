@@ -5,15 +5,21 @@ import {
   type MockHttpTransport,
 } from '../helpers/mock-axios-request';
 
+// This matrix owns traversal and payloads; the timeout suite owns elapsed retry budgets.
+vi.mock('node:timers/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:timers/promises')>()),
+  setTimeout: vi.fn(async () => undefined),
+}));
+
 const MAIN_QUOTA_ENDPOINTS = [
-  'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels',
   'https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
+  'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels',
   'https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels',
 ];
 const SUMMARY_ENDPOINTS = [
   'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
-  'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
   'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
+  'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
 ];
 
 function http(status: number, data: unknown = {}) {
@@ -101,7 +107,7 @@ describe('Google API project, quota and summary fallback matrix', () => {
   });
 
   it.each([429, 500, 502, 503, 504])(
-    'moves the primary quota request from Sandbox to the next endpoint after HTTP %i',
+    'moves the primary quota request from Daily to Sandbox after HTTP %i',
     async (status) => {
       const fetchMock = vi
         .fn()
@@ -120,6 +126,8 @@ describe('Google API project, quota and summary fallback matrix', () => {
         SUMMARY_ENDPOINTS[0],
       ]);
     },
+    // This first matrix also loads the cold configuration/module graph on Windows.
+    15_000,
   );
 
   it('keeps primary quota data when the shared deadline expires during summary', async () => {
@@ -184,7 +192,7 @@ describe('Google API project, quota and summary fallback matrix', () => {
     ).toEqual(['8080', '8080', '8080']);
   });
 
-  it.each([429, 500, 502, 503, 504])(
+  it.each([408, 429, 500, 502, 503, 504])(
     'tries the next summary endpoint after transient HTTP %i and keeps summary separate',
     async (status) => {
       const fetchMock = vi
@@ -214,8 +222,8 @@ describe('Google API project, quota and summary fallback matrix', () => {
     },
   );
 
-  it.each([400, 401, 403, 404])(
-    'preserves primary quota and stops summary traversal only on HTTP 401 (received %i)',
+  it.each([400, 401, 403, 404, 405, 409, 422, 499, 600])(
+    'preserves primary quota and stops summary traversal on permanent HTTP %i',
     async (status) => {
       const fetchMock = vi
         .fn()
@@ -229,8 +237,170 @@ describe('Google API project, quota and summary fallback matrix', () => {
 
       expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
         MAIN_QUOTA_ENDPOINTS[0],
-        ...(status === 401 ? [SUMMARY_ENDPOINTS[0]] : SUMMARY_ENDPOINTS),
+        SUMMARY_ENDPOINTS[0],
       ]);
     },
   );
+
+  it.each(['USER_PROJECT_DENIED', 'BILLING_DISABLED'])(
+    'removes the identified project once after %s and preserves the downgrade across hosts',
+    async (reason) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(mainQuotaResponse())
+        .mockResolvedValueOnce(http(403, projectDenial(reason)))
+        .mockResolvedValueOnce(http(503))
+        .mockResolvedValueOnce(summaryResponse());
+      const googleApi = await loadGoogleApi(fetchMock);
+
+      const quota = await googleApi.fetchQuota('access-token');
+
+      expect(quota.quota_groups?.[0]?.display_name).toBe('Gemini Models');
+      expect(fetchMock.mock.calls.map(([url, options]) => [url, options.body])).toEqual([
+        [MAIN_QUOTA_ENDPOINTS[0], JSON.stringify({ project: 'project-1' })],
+        [SUMMARY_ENDPOINTS[0], JSON.stringify({ project: 'project-1' })],
+        [SUMMARY_ENDPOINTS[0], JSON.stringify({})],
+        [SUMMARY_ENDPOINTS[1], JSON.stringify({})],
+      ]);
+    },
+  );
+
+  it.each([
+    ['unknown denial', { error: 'project permission denied' }],
+    ['account permission', projectDenial('IAM_PERMISSION_DENIED')],
+    ['other consumer', projectDenial('USER_PROJECT_DENIED', 'projects/other-project')],
+    ['other domain', projectDenial('USER_PROJECT_DENIED', 'projects/project-1', 'other.example')],
+  ])('does not remove project or advance after %s', async (_name, error) => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mainQuotaResponse())
+      .mockResolvedValueOnce(http(403, error))
+      .mockResolvedValue(summaryResponse());
+    const googleApi = await loadGoogleApi(fetchMock);
+
+    const quota = await googleApi.fetchQuota('access-token');
+
+    expect(quota.models['gemini-3-flash']?.percentage).toBe(65);
+    expect(quota.quota_groups).toBeUndefined();
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      MAIN_QUOTA_ENDPOINTS[0],
+      SUMMARY_ENDPOINTS[0],
+    ]);
+  });
+
+  it('keeps a primary-quota project downgrade through summary without granting another retry', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(http(403, projectDenial('USER_PROJECT_DENIED')))
+      .mockResolvedValueOnce(mainQuotaResponse())
+      .mockResolvedValueOnce(http(403, projectDenial('USER_PROJECT_DENIED')))
+      .mockResolvedValue(summaryResponse());
+    const googleApi = await loadGoogleApi(fetchMock);
+
+    const quota = await googleApi.fetchQuota('access-token');
+
+    expect(quota.models['gemini-3-flash']?.percentage).toBe(65);
+    expect(quota.quota_groups).toBeUndefined();
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.body])).toEqual([
+      [MAIN_QUOTA_ENDPOINTS[0], JSON.stringify({ project: 'project-1' })],
+      [MAIN_QUOTA_ENDPOINTS[0], JSON.stringify({})],
+      [SUMMARY_ENDPOINTS[0], JSON.stringify({})],
+    ]);
+  });
+
+  it('rejects an unidentified primary quota denial without retrying', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(http(403, { error: 'permission denied' }));
+    const googleApi = await loadGoogleApi(fetchMock);
+
+    await expect(googleApi.fetchQuota('access-token')).rejects.toThrow('FORBIDDEN');
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([MAIN_QUOTA_ENDPOINTS[0]]);
+  });
+
+  it('does not restore the project after primary endpoint failover', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(http(403, projectDenial('USER_PROJECT_DENIED')))
+      .mockResolvedValueOnce(http(503))
+      .mockResolvedValueOnce(mainQuotaResponse())
+      .mockResolvedValueOnce(summaryResponse());
+    const googleApi = await loadGoogleApi(fetchMock);
+
+    const quota = await googleApi.fetchQuota('access-token');
+
+    expect(quota.quota_groups?.[0]?.display_name).toBe('Gemini Models');
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.body])).toEqual([
+      [MAIN_QUOTA_ENDPOINTS[0], JSON.stringify({ project: 'project-1' })],
+      [MAIN_QUOTA_ENDPOINTS[0], JSON.stringify({})],
+      [MAIN_QUOTA_ENDPOINTS[1], JSON.stringify({})],
+      [SUMMARY_ENDPOINTS[0], JSON.stringify({})],
+    ]);
+  });
+
+  it('does not grant a second summary downgrade after the no-project retry is denied', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mainQuotaResponse())
+      .mockResolvedValue(http(403, projectDenial('USER_PROJECT_DENIED')));
+    const googleApi = await loadGoogleApi(fetchMock);
+
+    const quota = await googleApi.fetchQuota('access-token');
+
+    expect(quota.quota_groups).toBeUndefined();
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.body])).toEqual([
+      [MAIN_QUOTA_ENDPOINTS[0], JSON.stringify({ project: 'project-1' })],
+      [SUMMARY_ENDPOINTS[0], JSON.stringify({ project: 'project-1' })],
+      [SUMMARY_ENDPOINTS[0], JSON.stringify({})],
+    ]);
+  });
+
+  it('does not turn malformed successful summary data into a transport retry', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mainQuotaResponse())
+      .mockResolvedValueOnce(http(200, { groups: 'invalid' }))
+      .mockResolvedValue(summaryResponse());
+    const googleApi = await loadGoogleApi(fetchMock);
+
+    const quota = await googleApi.fetchQuota('access-token');
+
+    expect(quota.models['gemini-3-flash']?.percentage).toBe(65);
+    expect(quota.quota_groups).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('advances a failed summary transport without dropping the project', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mainQuotaResponse())
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
+      .mockResolvedValueOnce(summaryResponse());
+    const googleApi = await loadGoogleApi(fetchMock);
+
+    const quota = await googleApi.fetchQuota('access-token');
+
+    expect(quota.quota_groups?.[0]?.display_name).toBe('Gemini Models');
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.body])).toEqual([
+      [MAIN_QUOTA_ENDPOINTS[0], JSON.stringify({ project: 'project-1' })],
+      [SUMMARY_ENDPOINTS[0], JSON.stringify({ project: 'project-1' })],
+      [SUMMARY_ENDPOINTS[1], JSON.stringify({ project: 'project-1' })],
+    ]);
+  });
 });
+
+function projectDenial(reason: string, consumer = 'projects/project-1', domain = 'googleapis.com') {
+  return {
+    error: {
+      code: 403,
+      status: 'PERMISSION_DENIED',
+      details: [
+        {
+          '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+          reason,
+          domain,
+          metadata: { consumer },
+        },
+      ],
+    },
+  };
+}

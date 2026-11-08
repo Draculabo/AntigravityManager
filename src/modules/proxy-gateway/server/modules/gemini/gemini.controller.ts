@@ -32,6 +32,7 @@ import { InvalidCountTokensRequestError } from './gemini-count-tokens';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
+import { getContextWindow, getMaxOutputTokens } from '../../../antigravity/ModelSpecs';
 import { AccountLeaseService } from '../account-lease/account-lease.service';
 import { resolveUpstreamErrorHttpStatus } from '../../common/upstream-error-http-status';
 import { publicProxyErrorMessage } from '../../common/public-error-message';
@@ -43,6 +44,8 @@ import {
 } from '../../common/base-proxy.controller';
 import { formatCountTokensReason } from '../../common/base-proxy.service';
 import { setProxyResponseTimingHeaders } from '../../common/proxy-response-timing';
+import { GenerationDeadlineScope } from '../../common/generation-deadline';
+import { awaitRequestOperation } from '../../common/request-cancellation';
 import { writeProxySseResponse } from '../../common/proxy-sse-response';
 
 type GeminiModelMetadata = {
@@ -81,7 +84,12 @@ export class GeminiController {
   @Get('models/:model')
   getModel(@Param('model') model: string) {
     const targetName = model.startsWith('models/') ? model : `models/${model}`;
-    const matched = this.buildGeminiModelList().find((item) => item.name === targetName);
+    const models = this.buildGeminiModelList();
+    const exact = models.find((item) => item.name === targetName);
+    const folded = exact
+      ? []
+      : models.filter((item) => item.name.toLowerCase() === targetName.toLowerCase());
+    const matched = exact ?? (folded.length === 1 ? folded[0] : undefined);
 
     if (matched) {
       return matched;
@@ -129,29 +137,44 @@ export class GeminiController {
     res: FastifyReply,
     req?: FastifyRequest,
   ): Promise<void> {
-    let request: GeminiRequest;
-    try {
-      // Handles become inline bytes before anything else reads the request:
-      // the upstream transport has no file plane to forward a `fileUri` to.
-      request = await expandFileReferences(body, 'gemini', this.files);
-    } catch (error) {
-      if (error instanceof FileReferenceError) {
-        res.status(error.httpStatus).send({
-          error: {
-            code: error.httpStatus,
-            message: publicProxyErrorMessage(error.message),
-            status: error.httpStatus === 404 ? 'NOT_FOUND' : 'INVALID_ARGUMENT',
-          },
-        });
-        return;
-      }
-      throw error;
-    }
-
     const abortScope = createProxyRequestAbortScope(req, res);
+    const deadline =
+      action === 'generateContent' || action === 'streamGenerateContent'
+        ? new GenerationDeadlineScope(
+            (getServerConfig()?.request_timeout ?? 300) * 1000,
+            abortScope.signal,
+          )
+        : undefined;
+    const signal = deadline?.signal ?? abortScope.signal;
     try {
+      let request: GeminiRequest;
+      try {
+        // Handles become inline bytes before anything else reads the request:
+        // the upstream transport has no file plane to forward a `fileUri` to.
+        request = await awaitRequestOperation(
+          expandFileReferences(body, 'gemini', this.files),
+          signal,
+        );
+      } catch (error) {
+        if (error instanceof FileReferenceError) {
+          res.status(error.httpStatus).send({
+            error: {
+              code: error.httpStatus,
+              message: publicProxyErrorMessage(error.message),
+              status: error.httpStatus === 404 ? 'NOT_FOUND' : 'INVALID_ARGUMENT',
+            },
+          });
+          return;
+        }
+        throw error;
+      }
+
       if (action === 'countTokens') {
-        const result = await this.proxyService.handleGeminiCountTokensWithSource(model, request);
+        const result = await this.proxyService.handleGeminiCountTokensWithSource(
+          model,
+          request,
+          signal,
+        );
         res.header('X-AGM-Count-Tokens-Source', result.source);
         if (result.reason) {
           res.header('X-AGM-Count-Tokens-Reason', formatCountTokensReason(result.reason));
@@ -164,11 +187,14 @@ export class GeminiController {
         const stream = await this.proxyService.handleGeminiStreamGenerateContent(
           model,
           request,
-          abortScope.signal,
+          signal,
           { headers: req?.headers ?? {}, url: req?.url },
         );
         if (stream instanceof Observable) {
-          writeProxySseResponse(res, stream, { includeTiming: true, request: req });
+          writeProxySseResponse(res, deadline ? deadline.retainObservable(stream) : stream, {
+            includeTiming: true,
+            request: req,
+          });
           return;
         }
       }
@@ -178,7 +204,7 @@ export class GeminiController {
           model,
           request,
           'generate-content',
-          abortScope.signal,
+          signal,
           'gemini',
           { headers: req?.headers ?? {}, url: req?.url },
         );
@@ -231,6 +257,9 @@ export class GeminiController {
       });
     } finally {
       abortScope.dispose();
+      if (deadline && (!deadline.retained || deadline.signal.aborted)) {
+        deadline.dispose();
+      }
     }
   }
 
@@ -298,17 +327,20 @@ export class GeminiController {
       onlyRawQuotaModels,
     );
 
-    return dynamicModelIds.map((id) => this.toGeminiModelMetadata(`models/${id}`));
+    const mapping = getConfiguredModelMapping(config);
+    return dynamicModelIds.map((id) =>
+      this.toGeminiModelMetadata(`models/${id}`, mapping[id] ?? id),
+    );
   }
 
-  private toGeminiModelMetadata(modelName: string): GeminiModelMetadata {
+  private toGeminiModelMetadata(modelName: string, limitModel: string): GeminiModelMetadata {
     const displayName = modelName.replace(/^models\//, '');
     return {
       name: modelName,
       displayName,
       description: '',
-      inputTokenLimit: 128000,
-      outputTokenLimit: 8192,
+      inputTokenLimit: getContextWindow(limitModel),
+      outputTokenLimit: getMaxOutputTokens(limitModel),
       supportedGenerationMethods: ['generateContent', 'countTokens'],
       temperature: 1,
       topK: 64,

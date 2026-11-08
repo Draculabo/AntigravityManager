@@ -7,7 +7,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { parse } from 'jsonc-parser';
 import { DEFAULT_APP_CONFIG } from '../../../src/modules/config/types';
-import { getAgentDir, getProxyStateDir, getAntigravityDbPaths } from '../../../src/shared/platform/paths';
+import {
+  getAgentDir,
+  getProxyStateDir,
+  getAntigravityDbPaths,
+} from '../../../src/shared/platform/paths';
 import { z } from 'zod';
 import { bootstrapDesktopOwner } from '../../../src/modules/app-shell/services/desktop-owner-bootstrap';
 import { standaloneCoreConnection } from '../../../src/modules/app-shell/services/standalone-core-connection';
@@ -92,7 +96,10 @@ async function check(): Promise<void> {
   for (const target of ['classic', 'ide'] as const) {
     for (const candidate of getAntigravityDbPaths(target)) {
       const relative = path.relative(home, candidate);
-      assert(!relative.startsWith('..') && !path.isAbsolute(relative), 'Client database discovery escaped the isolated home');
+      assert(
+        !relative.startsWith('..') && !path.isAbsolute(relative),
+        'Client database discovery escaped the isolated home',
+      );
     }
   }
   assert.equal(
@@ -118,20 +125,46 @@ async function check(): Promise<void> {
   );
   const responsesPath = path.join(getProxyStateDir(), 'openai-responses-sessions.json');
   await fs.mkdir(path.dirname(responsesPath), { recursive: true });
-  await fs.writeFile(responsesPath, JSON.stringify({ version: 1, entries: ['A', 'B'].map((key) => ({
-    key: `native-owner-${key}`, updatedAt: Date.now(), value: { node: {
-      identity: { version: 1, origin: 'content', initialTaskFingerprint: 'f'.repeat(64) },
-      thoughtSessionKey: `native-owner-scope-${key}`, historyOwner: 'unknown', parent: null,
-      inputDelta: [{ role: 'user', content: key }], responseOutput: [], toolCallItems: [], model: 'fixture',
-    } },
-  })) }));
-  const retainedResponseKeys = async () => z.object({ entries: z.array(z.object({ key: z.string() })) })
-    .parse(JSON.parse(await fs.readFile(responsesPath, 'utf8'))).entries.map((entry) => entry.key);
-  const assertRecoveryDeletion = (receipt: Awaited<ReturnType<CoreRpcClient['thought']['delete']>>, removed: number) => {
-    assert.deepEqual(receipt, { sessions: 0, records: 0, recoveryComplete: true, recovery: [
-      { owner: 'signature-cache', state: 'complete', removed: 0, unknown: 0 },
-      { owner: 'responses', state: 'complete', removed, unknown: 0 },
-    ] });
+  await fs.writeFile(
+    responsesPath,
+    JSON.stringify({
+      version: 1,
+      entries: ['A', 'B'].map((key) => ({
+        key: `native-owner-${key}`,
+        updatedAt: Date.now(),
+        value: {
+          node: {
+            identity: { version: 1, origin: 'content', initialTaskFingerprint: 'f'.repeat(64) },
+            thoughtSessionKey: `native-owner-scope-${key}`,
+            historyOwner: 'unknown',
+            parent: null,
+            inputDelta: [{ role: 'user', content: key }],
+            responseOutput: [],
+            toolCallItems: [],
+            model: 'fixture',
+          },
+        },
+      })),
+    }),
+  );
+  const retainedResponseKeys = async () =>
+    z
+      .object({ entries: z.array(z.object({ key: z.string() })) })
+      .parse(JSON.parse(await fs.readFile(responsesPath, 'utf8')))
+      .entries.map((entry) => entry.key);
+  const assertRecoveryDeletion = (
+    receipt: Awaited<ReturnType<CoreRpcClient['thought']['delete']>>,
+    removed: number,
+  ) => {
+    assert.deepEqual(receipt, {
+      sessions: 0,
+      records: 0,
+      recoveryComplete: true,
+      recovery: [
+        { owner: 'signature-cache', state: 'complete', removed: 0, unknown: 0 },
+        { owner: 'responses', state: 'complete', removed, unknown: 0 },
+      ],
+    });
   };
   const children: ChildProcess[] = [];
   const connection = {
@@ -198,9 +231,91 @@ async function check(): Promise<void> {
     process.stdout.write('Standalone-core account view passed.\n');
     assert.equal((await getConfigAdapter().read()).proxy.auto_start, false);
     const client = new CoreRpcClient(getManagementEndpoint(), undefined, handshake.epoch);
+    const errorStatus = await client.errorDiagnostics.status();
+    assert.equal(errorStatus.role, 'core');
+    assert.equal(errorStatus.storage.state, 'ready');
+    const selectedBudget = (await client.readServiceConfig()).errorDiagnosticsBudget;
+    if (errorStatus.storage.state === 'ready') {
+      assert.equal(errorStatus.storage.allocationBytes, selectedBudget.coreBytes);
+      assert.equal(errorStatus.storage.records, 1);
+    }
+    const errorPage = await client.errorDiagnostics.query({ source: 'native-bootstrap' });
+    assert.equal(errorPage.records.length, 1);
+    const diagnostic = await client.errorDiagnostics.open({ id: errorPage.records[0].id });
+    assert(diagnostic);
+    const {
+      kind: errorKind,
+      epoch: errorEpoch,
+      capabilityId: errorCapability,
+      resourceId: errorResource,
+    } = diagnostic.transfer;
+    const errorIdentity = {
+      kind: errorKind,
+      epoch: errorEpoch,
+      capabilityId: errorCapability,
+      resourceId: errorResource,
+    };
+    const diagnosticChunks: Buffer[] = [];
+    let errorCursor = 0;
+    while (errorCursor < diagnostic.transfer.totalBytes) {
+      const chunk = await client.errorDiagnostics.readContent({
+        ...errorIdentity,
+        cursor: errorCursor,
+      });
+      assert.equal(chunk.cursor, errorCursor);
+      assert(chunk.nextCursor > errorCursor);
+      diagnosticChunks.push(Buffer.from(chunk.data, 'base64'));
+      errorCursor = chunk.nextCursor;
+    }
+    const parsedDiagnostic = z
+      .object({ stack: z.string(), stackComplete: z.literal(true) })
+      .parse(JSON.parse(Buffer.concat(diagnosticChunks).toString('utf8')));
+    assert.equal(
+      parsedDiagnostic.stack,
+      'Error: isolated diagnostic\n' + '    at 诊断😀 (fixture.ts:1:2)\n'.repeat(5000),
+    );
+    assert.equal((await client.errorDiagnostics.clear()).records, 1);
+    assert.equal((await client.errorDiagnostics.query({})).records.length, 0);
+    const changedWindow = await client.updateServiceConfig({
+      error_diagnostics: { max_storage_mib: 128 },
+    });
+    assert.equal(changedWindow.state, 'restart-required');
+    const changedStatus = await client.errorDiagnostics.status();
+    assert.equal(changedStatus.storage.state, 'ready');
+    if (changedStatus.storage.state === 'ready') {
+      assert.equal(
+        changedStatus.storage.allocationBytes,
+        changedWindow.snapshot.errorDiagnosticsBudget.coreBytes,
+      );
+    }
+    process.stdout.write(
+      'Selected core error window, resolved budget update/pending app acknowledgement, complete diagnostic transfer and independent clear passed.\n',
+    );
+    const previousImages = (await client.readServiceConfig()).proxy.image_scheduler;
+    const imageWindow = await client.updateServiceConfig({
+      proxy: {
+        image_scheduler: {
+          send_window_strategy: 'memory',
+          send_window_memory_mib: 16,
+        },
+      },
+    });
+    assert.deepEqual(imageWindow.snapshot.proxy.image_scheduler, {
+      ...previousImages,
+      send_window_strategy: 'memory',
+      send_window_memory_mib: 16,
+    });
+    assert.deepEqual(
+      (await getConfigAdapter().read()).proxy.image_scheduler,
+      imageWindow.snapshot.proxy.image_scheduler,
+    );
+    process.stdout.write(
+      'Selected core image-window strategy and preserved scheduler settings passed.\n',
+    );
     assert.deepEqual(await client.localAccounts.listAccounts(), []);
     await client.openCode.status('http://127.0.0.1:8045');
     assert.equal((await client.gatewayStatus()).running, false);
+    assert.equal((await client.errorDiagnostics.status()).storage.state, 'ready');
     await client.thought.stats();
     assertRecoveryDeletion(await client.thought.delete({ sessionKey: 'native-owner-scope-A' }), 1);
     assert.deepEqual(await retainedResponseKeys(), ['native-owner-B']);
@@ -316,8 +431,19 @@ async function check(): Promise<void> {
     assert.equal(await connection.probeProfileOwner(), null);
     const reopened = await bootstrapDesktopOwner(dependencies);
     const reopenedHandshake = await connection.management.handshake();
-    const reopenedClient = new CoreRpcClient(getManagementEndpoint(), undefined, reopenedHandshake.epoch);
-    assertRecoveryDeletion(await reopenedClient.thought.delete({ sessionKey: 'native-owner-scope-A' }), 0);
+    const reopenedClient = new CoreRpcClient(
+      getManagementEndpoint(),
+      undefined,
+      reopenedHandshake.epoch,
+    );
+    assert.equal(
+      (await reopenedClient.errorDiagnostics.query({ source: 'native-bootstrap' })).records.length,
+      0,
+    );
+    assertRecoveryDeletion(
+      await reopenedClient.thought.delete({ sessionKey: 'native-owner-scope-A' }),
+      0,
+    );
     assert.deepEqual(await retainedResponseKeys(), []);
     const rows = await getAuditAdapter().list({ limit: 50, offset: 0, trafficClass: 'ipc' });
     assert(rows.items.some((item) => item.url === '/ipc/native/bootstrap'));

@@ -8,6 +8,114 @@ import {
 import { STRING_SCHEMA_FALLBACK } from '@/modules/proxy-gateway/antigravity/schema/JsonSchemaReferenceResolver';
 
 describe('bounded schema reference preparation', () => {
+  it('recovers named object fields from items before resolving references', () => {
+    const input = {
+      type: 'OBJECT',
+      $defs: { path: { type: 'string' } },
+      items: {
+        path: { $ref: '#/$defs/path' },
+        mode: { $ref: 'https://example.invalid/discarded' },
+      },
+      properties: { mode: { type: 'integer' } },
+      required: ['path', 'mode'],
+    };
+    const original = structuredClone(input);
+    const batch = new SchemaConversionBatch();
+
+    expect(normalizeObjectJsonSchema(input, batch)).toEqual({
+      type: 'object',
+      properties: { path: { type: 'string' }, mode: { type: 'integer' } },
+      required: ['path', 'mode'],
+    });
+    expect(batch.issues).toEqual([]);
+    expect(input).toEqual(original);
+  });
+
+  it('recovers fields in nested object-like declarations and preserves real array items', () => {
+    expect(
+      normalizeObjectJsonSchema({
+        type: 'object',
+        properties: {
+          nested: {
+            properties: { active: { type: 'boolean' } },
+            items: { id: { type: 'integer' } },
+          },
+          list: {
+            type: 'array',
+            items: { type: 'object', properties: { id: { type: 'integer' } } },
+          },
+          ambiguous: {
+            type: 'object',
+            items: { type: 'object', properties: { id: { type: 'integer' } } },
+          },
+        },
+      }),
+    ).toEqual({
+      type: 'object',
+      properties: {
+        nested: { properties: { active: { type: 'boolean' }, id: { type: 'integer' } } },
+        list: { type: 'array', items: { type: 'object', properties: { id: { type: 'integer' } } } },
+        ambiguous: {
+          type: 'object',
+          items: { type: 'object', properties: { id: { type: 'integer' } } },
+        },
+      },
+    });
+  });
+
+  it('keeps object items outside this tool declaration rule for structured outputs', () => {
+    const input = { type: 'object', properties: {}, items: { id: { type: 'integer' } } };
+    expect(normalizeObjectJsonSchema(input, undefined, 'output')).toEqual(input);
+  });
+
+  it('keeps array item definitions and drops object properties in tool declarations', () => {
+    const schema = {
+      type: 'object',
+      $defs: { number: { type: 'number' } },
+      properties: {
+        values: {
+          type: 'ARRAY',
+          items: { $ref: '#/$defs/number' },
+          properties: { stray: { type: 'string' } },
+        },
+        bare: { type: 'array', properties: { stray: { type: 'string' } } },
+        record: { type: 'object', properties: { label: { type: 'string' } } },
+      },
+    };
+    const original = structuredClone(schema);
+    expect(normalizeObjectJsonSchema(schema)).toEqual({
+      type: 'object',
+      properties: {
+        values: { type: 'array', items: { type: 'number' } },
+        bare: { type: 'array', items: { type: 'string' } },
+        record: { type: 'object', properties: { label: { type: 'string' } } },
+      },
+    });
+    expect(schema).toEqual(original);
+  });
+
+  it('preserves object properties when a reference sibling selects the object type', () => {
+    expect(
+      normalizeObjectJsonSchema({
+        type: 'object',
+        $defs: { shape: { type: 'array', properties: { value: { type: 'string' } } } },
+        properties: { record: { $ref: '#/$defs/shape', type: 'object' } },
+      }),
+    ).toEqual({
+      type: 'object',
+      properties: { record: { type: 'object', properties: { value: { type: 'string' } } } },
+    });
+  });
+
+  it('keeps the tool array rule outside structured output schemas', () => {
+    const schema = {
+      type: 'array',
+      items: { type: 'number' },
+      properties: { existing: { type: 'string' } },
+    };
+    expect(normalizeObjectJsonSchema(schema, undefined, 'output')).toEqual(schema);
+  });
+
   it('resolves complete escaped and percent-encoded pointers without definition collisions', () => {
     const schema = {
       type: 'object',
@@ -114,7 +222,7 @@ describe('bounded schema reference preparation', () => {
       }),
     ).toEqual({
       type: 'object',
-      properties: { literal: { type: 'object', enum: ['{"$ref":"#/missing","type":"NUMBER"}'] } },
+      properties: { literal: { type: 'string', enum: ['{"$ref":"#/missing","type":"NUMBER"}'] } },
     });
   });
 

@@ -11,6 +11,7 @@ import { logger } from '@/shared/logging/logger';
 
 const state = vi.hoisted(() => ({
   directory: '',
+  context: { thoughtSessionKey: 'capture-session' },
   requests: vi.fn<(command: SqliteWorkerCommand) => Promise<unknown>>(),
   writes:
     vi.fn<(command: SqliteWorkerCommand, callbacks?: SqliteWorkerWriteCallbacks) => boolean>(),
@@ -26,7 +27,7 @@ vi.mock('@/server/server-config', async () => {
   };
 });
 vi.mock('@/modules/proxy-gateway/audit/traffic-audit-context', () => ({
-  getTrafficAuditRequestContext: () => ({ thoughtSessionKey: 'capture-session' }),
+  getTrafficAuditRequestContext: () => state.context,
   getProxyResponseTimingContext: () => undefined,
 }));
 vi.mock('@/shared/persistence/sqlite-worker/bounded-sqlite-worker', () => ({
@@ -41,6 +42,7 @@ vi.mock('@/shared/persistence/sqlite-worker/bounded-sqlite-worker', () => ({
 import { ThoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 let store: ThoughtStoreService;
 beforeEach(async () => {
+  state.context = { thoughtSessionKey: 'capture-session' };
   state.directory = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-thought-capture-'));
   state.writes.mockReset().mockReturnValue(true);
   state.requests.mockReset().mockResolvedValue([]);
@@ -86,8 +88,21 @@ function warmFixture(): GeminiInternalRequest {
   };
 }
 
+async function prepareCapture(model: string): Promise<void> {
+  await store.prepareInternalRequest(
+    {
+      model,
+      requestId: 'capture-preflight',
+      userAgent: 'test',
+      request: { contents: [] },
+    },
+    model,
+  );
+}
+
 describe('Thought Store placeholder capture', () => {
   it('captures and restores distinct parallel tool signatures through the service', async () => {
+    await prepareCapture('gemini-pro-agent');
     const parts = [
       { functionCall: { id: 'a', name: 'read', args: { path: '/a' } }, thoughtSignature: 'A' },
       {
@@ -212,6 +227,7 @@ describe('Thought Store placeholder capture', () => {
   });
 
   it('keeps hot captures from different physical Claude models independently recoverable', async () => {
+    await prepareCapture('claude-sonnet-4-6');
     const signature = 's'.repeat(60);
     const functionCall = { id: 'reused', name: 'read', args: {} };
     for (const model of ['claude-sonnet-4-6', 'claude-opus-4-6-thinking']) {
@@ -497,6 +513,7 @@ describe('Thought Store placeholder capture', () => {
   });
 
   it('keeps a real signature on placeholder text and upgrades a replayed sentinel', async () => {
+    await prepareCapture('gemini-pro-agent');
     const signature = 'provider-signature-'.repeat(8);
     const functionCall = { id: 'read-1', name: 'read_fixture', args: { path: 'fixture.txt' } };
     store.captureGeminiResponse(

@@ -29,6 +29,8 @@ describe('standalone worker admission', () => {
     await expect(assertCoreRuntimeResources(directory)).rejects.toThrow('not a file');
     await fs.rmdir(path.join(directory, 'thought-store.worker.js'));
     await fs.writeFile(path.join(directory, 'thought-store.worker.js'), '');
+    await expect(assertCoreRuntimeResources(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+    await fs.writeFile(path.join(directory, 'error-window.worker.js'), '');
     await expect(assertCoreRuntimeResources(directory)).resolves.toBeUndefined();
   });
 });

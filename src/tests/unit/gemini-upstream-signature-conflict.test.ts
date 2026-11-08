@@ -12,6 +12,7 @@ import {
   type TrafficAuditRequestContext,
 } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { captureGeminiStreamResult } from '@/modules/proxy-gateway/server/modules/gemini/gemini-stream-capture';
+import { logger } from '@/shared/logging/logger';
 
 const axiosMock = vi.hoisted(() => ({
   post: vi.fn(),
@@ -149,6 +150,113 @@ describe('Gemini upstream signature alias conflicts', () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
+
+  it.each([
+    ['waiting_for_output', []],
+    ['thinking_only', [{ thought: true, text: 'private stage fixture' }]],
+    [
+      'output_started',
+      [{ thought: true, text: 'private stage fixture' }, { text: 'answer fixture' }],
+    ],
+    ['output_started', [{ functionCall: { name: 'read', args: { path: 'private fixture' } } }]],
+  ] as const)(
+    'reports stream deadline progress %s without logging payloads',
+    async (stage, parts) => {
+      vi.useFakeTimers();
+      const source = new PassThrough();
+      const warning = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+      const client = new GeminiClient(new Upstream4xxCaptureService());
+      try {
+        setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+        axiosMock.post.mockResolvedValue({ status: 200, headers: {}, data: source });
+        const stream = await client.streamGenerateInternal(request, 'synthetic-token');
+        const error = vi.fn();
+        stream.on('error', error);
+        stream.resume();
+        source.write(
+          ': heartbeat\n\ndata: {"response":{"usageMetadata":{"promptTokenCount":5}}}\n\n',
+        );
+        for (const part of parts) {
+          source.write(
+            `data: ${JSON.stringify({ response: { candidates: [{ content: { role: 'model', parts: [part] } }] } })}\n\n`,
+          );
+        }
+        await vi.advanceTimersByTimeAsync(1001);
+        expect(
+          warning.mock.calls.filter(
+            ([message]) => message === 'Generation stream deadline exceeded',
+          ),
+        ).toEqual([['Generation stream deadline exceeded', { phase: stage, requestId: null }]]);
+        expect(error).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ name: 'GenerationDeadlineExceededError' }),
+        );
+        expect(source.destroyed).toBe(true);
+      } finally {
+        source.destroy();
+        await client.onModuleDestroy();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(['deadline', 'disconnect'] as const)(
+    'distinguishes %s while the stream is waiting for response headers',
+    async (termination) => {
+      vi.useFakeTimers();
+      const warning = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+      const client = new GeminiClient(new Upstream4xxCaptureService());
+      const caller = new AbortController();
+      try {
+        setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+        let dispatched = () => {};
+        const started = new Promise<void>((resolve) => {
+          dispatched = resolve;
+        });
+        axiosMock.post.mockImplementation((_url, _body, config: { signal: AbortSignal }) => {
+          dispatched();
+          return new Promise((_resolve, reject) => {
+            config.signal.addEventListener('abort', () => reject(config.signal.reason), {
+              once: true,
+            });
+          });
+        });
+        const pending = client.streamGenerateInternal(
+          request,
+          'synthetic-token',
+          undefined,
+          undefined,
+          caller.signal,
+        );
+        const failure = expect(pending).rejects.toMatchObject({
+          name: termination === 'deadline' ? 'GenerationDeadlineExceededError' : 'AbortError',
+        });
+        await started;
+        if (termination === 'disconnect') {
+          caller.abort();
+        }
+        await vi.advanceTimersByTimeAsync(1001);
+        await failure;
+        expect(
+          warning.mock.calls.filter(
+            ([message]) => message === 'Generation stream deadline exceeded',
+          ),
+        ).toEqual(
+          termination === 'deadline'
+            ? [
+                [
+                  'Generation stream deadline exceeded',
+                  { phase: 'waiting_for_output', requestId: null },
+                ],
+              ]
+            : [],
+        );
+      } finally {
+        caller.abort();
+        await client.onModuleDestroy();
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it.each(['thinking', 'tool', 'text'] as const)(
     'rejects an internal %s conflict before capture without endpoint failover',

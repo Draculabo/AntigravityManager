@@ -13,6 +13,7 @@ import { gatewayAuditMiddleware, gatewayRouter } from '@/modules/proxy-gateway/i
 import { antigravityRuntimeRouter } from '@/modules/antigravity-runtime/ipc/router';
 import { appShellRouter } from '@/modules/app-shell/ipc/router';
 import { workspaceRouter } from '@/modules/workspace/ipc/router';
+import { errorDesktopRouter } from '@/modules/error-diagnostics/desktop';
 
 import { ORPCError, os } from '@orpc/server';
 import { isString } from 'lodash-es';
@@ -202,4 +203,5 @@ export const router = os
     config: configRouter,
     gateway: gatewayRouter,
     workspace: workspaceRouter,
+    ...errorDesktopRouter,
   });

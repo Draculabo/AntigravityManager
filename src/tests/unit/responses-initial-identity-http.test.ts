@@ -148,7 +148,8 @@ describe('Responses identity through controlled gateway transports', () => {
       const id = completedId(first.body, stream);
       const identity = store.get(id)?.identity;
       expect(identity?.origin).toBe('content');
-      expect(JSON.stringify(store.get(id))).not.toContain(image);
+      expect(JSON.stringify(identity)).not.toContain(image);
+      expect(JSON.stringify(store.get(id)?.inputItems)).toContain(image);
       const next = await app.inject({
         method: 'POST',
         url: '/v1/responses',
@@ -165,7 +166,7 @@ describe('Responses identity through controlled gateway transports', () => {
       expect(upstream.calls[1].options?.upstreamSession).toEqual(
         upstream.calls[0].options?.upstreamSession,
       );
-      expect(JSON.stringify(upstream.calls[1].body)).not.toContain(image);
+      expect(JSON.stringify(upstream.calls[1].body)).toContain(image);
     },
   );
   it('rejects old cursors and invalid media before leasing, regardless of body admission flags', async () => {
@@ -246,7 +247,7 @@ describe('Responses identity through controlled gateway transports', () => {
         expect(upstream.calls[2].options?.upstreamSession).toEqual(
           upstream.calls[0].options?.upstreamSession,
         );
-        expect(JSON.stringify(upstream.calls[1].body)).not.toContain(image);
+        expect(JSON.stringify(upstream.calls[1].body)).toContain(image);
       } finally {
         socket.terminate();
         detach();

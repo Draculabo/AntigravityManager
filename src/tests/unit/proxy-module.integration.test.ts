@@ -15,6 +15,7 @@ import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/ope
 import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { OpenAIMediaController } from '@/modules/proxy-gateway/server/modules/openai/openai-media.controller';
 import { OpenAIModelsController } from '@/modules/proxy-gateway/server/modules/openai/openai-models.controller';
+import { OpenAIProbesController } from '@/modules/proxy-gateway/server/modules/openai/openai-probes.controller';
 import { OpenAIResponsesController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses.controller';
 import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
 import { OpenAIResponsesStoreController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-store.controller';
@@ -93,6 +94,7 @@ describe('ProxyModule dependency graph', () => {
       expect(application.get(ProxyService)).toBeInstanceOf(ProxyService);
       expect(application.get(OpenAIOperations)).toBeInstanceOf(OpenAIOperations);
       expect(application.get(OpenAIModelsController)).toBeInstanceOf(OpenAIModelsController);
+      expect(application.get(OpenAIProbesController)).toBeInstanceOf(OpenAIProbesController);
       expect(application.get(OpenAIChatController)).toBeInstanceOf(OpenAIChatController);
       expect(application.get(OpenAIResponsesController)).toBeInstanceOf(OpenAIResponsesController);
       expect(application.get(OpenAIMediaController)).toBeInstanceOf(OpenAIMediaController);

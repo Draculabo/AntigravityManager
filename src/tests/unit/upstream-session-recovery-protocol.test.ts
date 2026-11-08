@@ -61,7 +61,10 @@ describe('final context recovery failure through actual protocol and client serv
     const upstream = createUpstream({});
     upstream.streamGenerateInternal
       .mockRejectedValueOnce(
-        new UpstreamRequestError({ status: 400, message: 'Project not found' }),
+        new UpstreamRequestError({
+          status: 400,
+          message: "Resource 'projects/test-project' could not be found",
+        }),
       )
       .mockImplementation(async (...args) => {
         const stream = await client.streamGenerateInternal(...args);

@@ -4,6 +4,7 @@ export interface ResolveModelVariantInput {
   model: string;
   budgetTokens?: number;
   effort?: string;
+  physicalTarget?: boolean;
 }
 
 export interface ResolvedModelVariant {
@@ -360,17 +361,54 @@ function resolveNonVariantModel(
 
 export function resolveModelVariant(input: ResolveModelVariantInput): ResolvedModelVariant | null {
   const model = input.model.trim().toLowerCase();
+  if (input.physicalTarget) {
+    const physicalFamily = MODEL_VARIANT_FAMILIES.find((candidate) =>
+      Object.values(candidate.variants).some((variant) => variant.model === model) ||
+      Object.prototype.hasOwnProperty.call(candidate.physicalAliases ?? {}, model),
+    );
+    if (physicalFamily) {
+      return rebindModelVariant(
+        { canonicalModel: physicalFamily.canonicalModel, tier: 'high', ...physicalFamily.variants.high },
+        model,
+      );
+    }
+    const variant = resolveNonVariantModel(
+      model,
+      parseEffort(input.effort) ?? inferTier(input.budgetTokens),
+      input.budgetTokens,
+    );
+    return variant?.model === model ? variant : null;
+  }
   const family = MODEL_VARIANT_FAMILIES.find(
     (candidate) =>
       candidate.canonicalModel === model ||
       Object.prototype.hasOwnProperty.call(candidate.aliases, model),
   );
   if (!family) {
+    const physicalFamily = MODEL_VARIANT_FAMILIES.find((candidate) =>
+      Object.values(candidate.variants).some((variant) => variant.model === model),
+    );
+    if (physicalFamily) {
+      return rebindModelVariant(
+        { canonicalModel: physicalFamily.canonicalModel, tier: 'high', ...physicalFamily.variants.high },
+        model,
+      );
+    }
     return resolveNonVariantModel(
       model,
       parseEffort(input.effort) ?? inferTier(input.budgetTokens),
       input.budgetTokens,
     );
+  }
+
+  if (model.endsWith('-tiered') && family.physicalAliases?.[model] === 'automatic') {
+    return {
+      canonicalModel: family.canonicalModel,
+      tier: 'high',
+      ...family.variants.high,
+      model,
+      thinkingBudget: -1,
+    };
   }
 
   const explicitModelTier = parseExplicitModelTier(model);
@@ -384,6 +422,51 @@ export function resolveModelVariant(input: ResolveModelVariantInput): ResolvedMo
     tier,
     ...family.variants[tier],
   };
+}
+
+/** Account binding preserves an explicit profile while retaining registered public recipes. */
+export function isModelTierBindingAllowed(
+  requestedModel: string,
+  physicalModel: string,
+  physicalTarget = false,
+): boolean {
+  const requested = requestedModel.trim().toLowerCase();
+  const physical = physicalModel.trim().toLowerCase();
+  const requestedVariant = resolveModelVariant({ model: requested, physicalTarget });
+  if (
+    requested === physical &&
+    (physicalTarget || !requestedVariant || requestedVariant.model === physical)
+  ) {
+    return true;
+  }
+
+  if (physicalTarget && !requestedVariant) {
+    return false;
+  }
+  const reboundVariant = rebindModelVariant(requestedVariant, physical);
+  const requestedSuffix = /-(extra-low|low|medium|high|tiered)$/.exec(requested)?.[1];
+  const isPhysicalRecipe = MODEL_VARIANT_FAMILIES.some((family) =>
+    Object.values(family.variants).some((variant) => variant.model === requested),
+  );
+  if (!requestedSuffix && isPhysicalRecipe) {
+    return false;
+  }
+  if (requestedVariant) {
+    if (!reboundVariant) {
+      return false;
+    }
+    return (
+      (!physicalTarget && !requestedSuffix) ||
+      (reboundVariant.tier === requestedVariant.tier &&
+        reboundVariant.thinkingBudget === requestedVariant.thinkingBudget &&
+        reboundVariant.maxOutputTokens === requestedVariant.maxOutputTokens &&
+        reboundVariant.includeThoughts === requestedVariant.includeThoughts &&
+        reboundVariant.preserveClientBudget === requestedVariant.preserveClientBudget &&
+        reboundVariant.supportsTools === requestedVariant.supportsTools)
+    );
+  }
+
+  return !requestedSuffix || physical.endsWith(`-${requestedSuffix}`);
 }
 
 export function rebindModelVariant(

@@ -1,6 +1,7 @@
 import type { GeminiInternalRequest } from './types';
 
-const PLACEHOLDER_SIGNATURE = 'skip_thought_signature_validator';
+import { isThoughtSignaturePlaceholder } from './ThoughtSignatureCompat';
+
 const MAX_CLASSIFIED_SIGNATURE_LENGTH = 1024 * 1024;
 const STANDARD_BASE64 = /^[A-Za-z0-9+/]*={0,2}$/u;
 
@@ -43,7 +44,7 @@ function isRawClaudePayload(bytes: Buffer): boolean {
 }
 
 function inspectThoughtSignature(signature: string): ThoughtSignatureInspection {
-  if (signature === PLACEHOLDER_SIGNATURE) {
+  if (isThoughtSignaturePlaceholder(signature)) {
     return { format: 'opaque', family: 'placeholder' };
   }
 

@@ -21,6 +21,106 @@ Earlier zero headers are ambiguous and display unknown. Stages can overlap and a
 never summed into duration. TTFT describes the latest upstream attempt whose first
 byte was observed, not the sum of retries.
 
+## Physical-attempt usage accounting
+
+Audit schema 5 stores actual upstream input, output, cached and reasoning counters
+on each physical attempt. The selected lease snapshots its account incarnation as
+a SHA256 digest at send time. Unary responses and raw parsed stream frames supply
+the counters before semantic validation, retries or client cancellation can hide
+them. Existing once-only completion owns the terminal write. Partial or missing
+provider usage stays incomplete; no estimate or parent-response total fills it.
+
+The bounded current-cycle query selects exact physical model IDs and verified Google
+subject when available. Otherwise it selects the current account incarnation and
+credential digest. It uses the attempt's start time within a half-open
+range and a captured owner clock. Count/cache-management operations are excluded.
+Repeated generation attempts contribute their own usage once. Request counters
+count each parent once within the selected account/model group, so a parent that
+uses two accounts can appear once in each account's separate result.
+
+`recordedRequests` equals `countedRequests + ambiguousRequests + missingUsageRequests`.
+A missing or partial selected attempt makes the request incomplete. Known terminal
+scalars still contribute to the displayed subtotal, including failures/cancellation.
+Cache has its own missing counter, bounded by complete plus missing requests. It is
+not added again to input plus output. Records without the required identity evidence
+are ambiguous and contribute no guessed tokens. Known other subjects and credentials
+are excluded.
+
+Retained parents with no attempts or potentially matching missing attempt identity
+also contribute an ambiguity marker. These markers use the parent's request-start
+window because the physical start/ownership is unavailable, and contribute no tokens.
+`ambiguousTimeBasis` explicitly declares `attempt-start-or-unattributed-request-start`.
+Grouping deduplicates a marker and any known attempts belonging to the same parent.
+Known other accounts/models/incarnations and non-generation attempts cannot create
+these fallback markers. Malformed or oversized stream frames also keep the attempt
+incomplete, including buffered raw SSE; already observed safe counters remain usable.
+
+Fresh Google enrollment can establish verified continuity across deletion and re-addition.
+The subject and credential digests are private and absent from renderer results and
+account exports. Legacy data cannot establish a subject. Missing records, disabled
+capture, dropped writes and other provider channels prevent a complete billing claim.
+
+The trusted account owner resolves identity before and after a read. Missing or
+changed identity fails through the existing audit error surface. Application and
+standalone core require owner compatibility 9. The schema-4-or-5-to-6 migration retains
+existing audit rows and bodies; backup, failure and downgrade instructions are in
+the [upgrade guide](../../upgrade-guides/next/physical-attempt-usage.md).
+
+## Minute usage trends
+
+Traffic Monitor's model category includes a separate usage-trends panel. It queries
+retained local metadata for the recent hour or 24 hours at one-minute resolution.
+Time range, account, exact model ID and requested/actual model view are separate
+from the request-list filters. Validated local preferences restore these choices
+when the panel is reopened; saving failure leaves the current view usable and
+reports that the preference was not saved.
+
+The audit Worker groups one database snapshot using the captured owner clock. Time
+cohorts use parent request-start time; bucket labels are minute starts, and the
+first and last minute can be partial. A request started before the selected range
+is outside the cohort even if an attempt completes inside it. Requests and physical
+generation attempts are distinct counters. Each selected attempt contributes usage
+once; parent response counters are never added. Token-count, cache-management and
+other explicitly non-generation attempts are excluded. Historical model attempts
+without an explicit usage scope retain the existing legacy generation classification.
+A retained model request without any attempt recorded as of the snapshot has
+unknown usage. The trends query does not read saved bodies.
+
+Requested-model view groups the parent request's model; actual-model view groups
+each physical attempt's model, without inferring it from the requested model.
+An account filter selects recorded physical-attempt account IDs. These are historical
+records, not evidence of the current account incarnation or official billing cycle.
+A request that tries several models can appear in several model rows; row request
+counts must not be summed to obtain the overall distinct request count. All views
+use the same selected attempt-usage basis, rather than mixing logical response
+usage with physical retry usage.
+
+Missing, unsafe, unfinished or partial attempt usage makes the corresponding Token
+aggregate unknown, and incomplete-request counts disclose affected records. Known
+zero usage is distinct from unknown. No cache or reasoning detail is added again
+to input plus output. Minutes with no matching retained records are zero within
+this local dataset. Retention, disabled capture and dropped writes mean the chart
+cannot establish that no upstream work occurred or reconstruct full account usage.
+
+The result contains at most 1,441 minute buckets and 50 model rows. A truncation flag
+labels limited model breakdowns; total counters are aggregated independently from
+all matching records. Existing audit admission and response-byte limits still
+apply. No schema migration, pricing table, generated request or provider lookup is
+introduced by reading these trends.
+
+### Daily activity
+
+The optional activity heatmap shows the latest 30 local calendar days, including
+today up to the audit owner's snapshot time. Calendar boundaries follow the
+audit Worker's local timezone and account for clock changes. Each day counts
+distinct matching retained model requests by request-start time. The panel
+shares its account, exact model and requested/actual model filters with the
+minute trends. The minute range selector applies to the minute charts only.
+
+An empty date has no matching retained records. Data may be absent because of
+retention, disabled capture or dropped writes. The heatmap reads only request
+and attempt metadata and loads when expanded.
+
 ## Successful probe noise
 
 Request history excludes successful 2xx GET probes by default, limited to exact
@@ -103,7 +203,7 @@ unchanged; a body is still exported by its selected saved body ID.
 ## Scoped session capture and export
 
 New HTTP audit capture resolves the canonical D03 client hint and caller credential
-scope. Protocol services publish their resolved affinity/store identity after
+scope. Protocol services publish their resolved audit identity after
 verified Responses lineage restoration or generated-content anchoring. Completion
 retains that identity on the parent; attempts/bodies keep their parent links.
 Response session headers cannot overwrite it. Equivalent Bearer/API-key credentials
@@ -332,6 +432,19 @@ retains its drain deadline and reports incomplete drain.
 
 ## Reasoning history management
 
+The protocol SignatureStore bounds its combined hot message, legacy and tool-ID
+associations to 10,000, including ambiguity markers. Its separate 500-session LRU
+remains active. New captures evict the oldest captured association when capacity is
+exceeded; reading a slot does not move its capture age. Each alias counts separately.
+Rewind and scoped deletion release their actual slots without a permanent alias log.
+
+These mapper cache values lack proven provider-completion metadata and keep a fixed
+one-hour maximum from first capture. Reads, equivalent stores and conflicting null
+markers do not renew that maximum. A genuinely later capture after expiry can create
+a fresh association. This cache horizon does not extend the durable seven-day tool
+reference policy or assign completion metadata to legacy records. Cache eviction is
+a miss and does not delete independent Thought diagnostic records or replay work.
+
 New explicit client scopes use the D03 hint resolver and normalized caller digest.
 Their `thought:client:v2` keys preserve distinct Unicode, case and punctuation
 without storing credentials or raw hints. An unverified previous-response cursor
@@ -411,9 +524,22 @@ and replay never renew completion or move the reference's eviction order. Expire
 or capacity-evicted links lose automatic tool-signature recovery while the diagnostic
 entity retains its stored content. Counts report currently unexpired durable links;
 the retained L1 and older legacy matching remain separate owners, not proof of a
-global whole-process association cap. Newly proven operation records also check
-tool expiry before warm recovery. Legacy records retain the prior D04 matching
-limits and have no invented completion time or backfilled durable tool links.
+global whole-process association cap. Recent loads and older candidates apply a
+single bounded, session-scoped tool permission query. Warm replay refreshes those
+permissions before restoring tools, including capacity eviction and seven-day expiry.
+The reply contains at most 10,256 operation entries and 10,000 positions, without
+thought bodies. Unavailable permission reads deny durable tool restoration for that
+request, report the existing read/admission failure and use the existing one-second
+read-failure cooldown. Unacknowledged memory captures keep their finite fallback;
+successful write acknowledgement or hydration makes durable permissions authoritative.
+Late replies cannot cross scoped deletion, cancellation or terminal generations.
+Management detail reads retain diagnostic signatures. Legacy records retain the prior D04 matching
+limits for signed thought content. Legacy/history/partial records without proven
+complete-operation provenance cannot automatically restore tool signatures: their
+original tool-link expiry is unknown. No completion time or durable tool link is
+invented or backfilled. Same-round enrichment preserves the permissions of live
+tools across layout changes; replay never recreates a previously signed association
+after capacity eviction, even when later maintenance frees space.
 
 Schema 3 adds nullable operation/causal/completion provenance and the reference
 table/indexes. Schema-2 rows, blobs and timestamps survive one transactional additive

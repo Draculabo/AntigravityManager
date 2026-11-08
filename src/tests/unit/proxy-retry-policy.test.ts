@@ -61,6 +61,51 @@ function createPolicy() {
 }
 
 describe('ProxyRetryService', () => {
+  it('releases a late image permit after the request has already aborted', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const controller = new AbortController();
+    const permit = { release: vi.fn() };
+    const token = createToken('late-image');
+    let resolve: (value: { token: CloudAccount; permit: typeof permit }) => void = () => undefined;
+    accountLeaseService.getNextImageToken.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const state = policy.createTokenRetryState();
+    const selection = policy.selectRetryToken(
+      state,
+      'gemini-3-pro-image',
+      undefined,
+      true,
+      controller.signal,
+    );
+    const assertion = expect(selection).rejects.toMatchObject({ name: 'AbortError' });
+    controller.abort();
+    resolve({ token, permit });
+    await assertion;
+    expect(permit.release).toHaveBeenCalledOnce();
+    expect(state.imagePermit).toBeNull();
+    expect(state.attemptedAccountIds).toEqual(new Set());
+  });
+
+  it('releases an admitted image permit immediately on abort even after transport handoff', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const controller = new AbortController();
+    const permit = { release: vi.fn() };
+    accountLeaseService.getNextImageToken.mockResolvedValue({
+      token: createToken('image-a'),
+      permit,
+    });
+    const state = policy.createTokenRetryState();
+    await policy.selectRetryToken(state, 'gemini-3-pro-image', undefined, true, controller.signal);
+    const handedOff = policy.takeImagePermit(state);
+    controller.abort();
+    expect(permit.release).toHaveBeenCalledOnce();
+    handedOff?.release();
+    expect(permit.release).toHaveBeenCalledOnce();
+  });
   it.each([false, true])(
     'keeps account targeting separate from effort for image=%s',
     async (image) => {
@@ -93,6 +138,7 @@ describe('ProxyRetryService', () => {
         excludeAccountIds: [],
         model,
         effort: 'high',
+        physicalTarget: false,
         targetAccountId: token.id,
         signal: controller.signal,
       });
@@ -144,6 +190,7 @@ describe('ProxyRetryService', () => {
       expect(await policy.getMaxRetryAttempts('gemini-3-flash')).toBe(expected);
       expect(accountLeaseService.getRetryAccountPoolSize).toHaveBeenCalledWith(
         'gemini-3-flash',
+        undefined,
         undefined,
       );
     },
@@ -199,6 +246,8 @@ describe('ProxyRetryService', () => {
       sessionKey: 'session-1',
       excludeAccountIds: [],
       model: 'gemini-3-flash',
+      effort: undefined,
+      physicalTarget: false,
       signal: undefined,
       selectionDeadlineMs: expect.any(Number),
     });
@@ -206,6 +255,8 @@ describe('ProxyRetryService', () => {
       sessionKey: 'session-1',
       excludeAccountIds: ['acc-1'],
       model: 'gemini-3-flash',
+      effort: undefined,
+      physicalTarget: false,
       allowSelectionWait: false,
       signal: undefined,
       selectionDeadlineMs: accountLeaseService.getNextToken.mock.calls[0][0].selectionDeadlineMs,

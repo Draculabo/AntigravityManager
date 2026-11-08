@@ -20,16 +20,35 @@ and do not supply credentials, provider bodies or arbitrary metadata to reportin
 
 The desktop public envelope preserves validated `loginCode`/`switchCode` and the safe diagnostic.
 Standalone management and RPC carry the coordinator's identity; consumers reject mismatched
-identities. Management response version is `2` and owner compatibility is `6`; the handshake envelope
+identities. Management response version is `2` and owner compatibility is `10`; the handshake envelope
 format and diagnostic schema remain `1`. Compatibility `6` includes the required
 independent Thought Store disk setting and coordinated management contracts.
 An incompatible owner fails startup verification before
 account mutations, with no local owner fallback.
 
-Owner compatibility `6` also includes audit archive-usage status and the derived
+Owner compatibility `10` retains audit archive-usage status and the derived
 `capture_interrupted` read outcome. Audit Worker initialization carries the owning
 process start boundary so replacing a Worker does not terminate current captures.
-The audit database keeps its existing schema and stored outcome vocabulary.
+The v6 audit schema preserves existing rows and stored outcome vocabulary through an additive migration.
+
+Owner compatibility `10` includes the process-owned local error window, its resolved
+deployment budget and typed metadata/content operations. App/core use separate
+Worker databases and bounded fixed allocations; the shared logger holds only an
+optional sink. Gateway stop/start does not replace those owners. See
+[local error diagnostics](modules/error-diagnostics/overview.md).
+
+The same compatibility `10` snapshot includes an explicit image history strategy.
+The selected configuration owner resolves a missing strategy to `count`; renderer
+controls send partial window updates without changing image scheduler concurrency.
+The protocol adapters apply the shared window to the send view, independently of
+admission and durable originals. See [inline media](modules/proxy-gateway/inline-media-and-thought-history.md).
+
+Owner compatibility `10` supports verified Google identity across account deletion and re-addition
+for retained cycle usage. The account owner resolves a private credential-bound proof;
+the audit Worker aggregates only matching physical-attempt identity. Accounts without
+proof keep current-incarnation scope. Neither private identity digest enters public
+results. Parent totals do not supply physical attempt usage. Older running app/core owners are refused before RPC. See the
+[physical-attempt usage upgrade guide](upgrade-guides/next/physical-attempt-usage.md).
 
 The renderer retains a text snapshot for details and explicit reporting. The CLI prints the
 same safe reference on failure. Account persistence certainty is independent of presentation:
@@ -42,6 +61,11 @@ Explicit account/configuration settings retain precedence over environment routi
 NO_PROXY. The same abort signal covers the request and proxy handshake; the owner destroys
 the agent after the buffered response or failure. Rejected responses contribute only closed
 connection evidence to diagnostics. There is no automatic direct fallback or added retry.
+
+Owner compatibility `10` also requires the selected-owner client configuration preview/apply/remove
+contracts and manual gateway lifecycle results. Manual runtime effects and persistence are
+reported separately; a save-only retry does not repeat a lifecycle operation. Older app/Core
+owners are refused before these operations.
 
 ## Atomic file replacement
 
@@ -418,7 +442,7 @@ Local-account discovery, validation, confirmation, discard and post-import statu
 
 Switch diagnostics follow the selected account adapter and use a strict read-only core RPC. Metrics, switch guards and device-hardening safe-mode state belong to the process performing switches, as indicated by an explicit provenance and volatile process epoch. Restart creates a new epoch without merging counters from Electron. Failed-switch messages are fixed public text; reasons and hardening stages are closed enums. Guard summaries expose at most 128 queued owners while retaining the total pending count. Diagnostic reads do not join account-mutation drain or modify hardening state. An unavailable standalone-core owner produces a stable error instead of desktop-embedded counters.
 
-Configuration uses separate ownership contracts. The selected configuration adapter reads and serializes runtime/proxy changes in the owner, preserves the existing `gui_config.json` durable format, and applies gateway changes only in that process. Persisted changes return `applied` or `restart-required`; application failure does not roll back a successful durable write. Admitted configuration work drains during shutdown. Executable paths and arguments are owner settings; binary patch preparation reads the current owner snapshot.
+Configuration uses separate ownership contracts. The selected configuration adapter reads and serializes runtime/proxy changes in the owner, preserves the existing `gui_config.json` durable format, and applies gateway changes only in that process. Persisted changes return `applied`, `restart-required` or `partial-failure`, including affected fields and safe diagnostic references. Application failure does not roll back a successful durable write. Admitted configuration work drains during shutdown. Executable paths and arguments are owner settings; binary patch preparation reads the current owner snapshot. [Gateway settings and runtime state](modules/proxy-gateway/settings-runtime.md) defines patch, startup-choice, recovery and consumer behavior.
 
 Electron stores desktop preferences in versioned `desktop-preferences.json` under its user-data directory. Its first read seeds only desktop fields from the legacy GUI file; subsequent reads never reseed. Desktop writes have no shared-profile effects and remain available when the standalone-core owner is unavailable. The settings view combines these independent sources for display and sends only changed fields to their owning contract. Alert policy retains its effective SQLite settings source through a separate selected-owner API; stale same-named GUI fields are not promoted into monitoring policy. Startup consent reads use the desktop file when present, with a read-only legacy fallback before its creation.
 
@@ -669,10 +693,14 @@ Native Linux shutdown captures descendants of the verified main processes before
 
 ## Client account storage
 
-Internal Cloud Code generation uses the Daily endpoint first, then the production endpoint.
-Explicit `PROXY_INTERNAL_BASE_URLS` or `ANTIGRAVITY_INTERNAL_BASE_URLS` values retain their
-configured order. Endpoint failover preserves the account and request; account rotation remains
-owned by the existing retry policy. A recovered upstream 429 remains visible in traffic audit.
+Internal Cloud Code generation uses Daily, Sandbox, then production. Explicit
+`PROXY_INTERNAL_BASE_URLS` or `ANTIGRAVITY_INTERNAL_BASE_URLS` values retain their normalized,
+deduplicated order, limited to eight HTTP(S) candidates and 8 KiB without URL credentials,
+query, fragment or control characters. Invalid routing fails before explicit cache creation
+and physical generation, without account rotation or penalty. Blank selected overrides keep
+the defaults; the primary variable takes precedence when present. A request's cache/session
+recovery retains its validated candidate list. Endpoint failover preserves the account and
+request; HTTP 429/499 do not grant regional retries. Account rotation remains with its owner.
 
 Both cloud switches and local snapshot restores use the runtime-owned prepared account writer. Preparation validates a detached credential copy, captures one destination, and checks existing SQLite state before closing the application or updating account state. Reassertion during hot switching reuses that writer. Ordinary Windows and Linux IDE 2.6.0 and later switches synchronize SQLite UnifiedStateSync, the shared `gemini:antigravity` system credential and the standalone fallback, then require a full restart and Agent account confirmation. Older IDEs and IDEs on other platforms retain their platform-specific routing. Linux workspace provisioning retains SQLite. Classic version 2 and later write system credentials, while earlier Classic versions write SQLite UnifiedStateSync. CLI writes only the current operating-system environment's local session and Google OAuth files; it does not write the system credential used by host applications or sessions in WSL distributions. Host credential writes do not synchronize CLI sessions. If Classic's version is unavailable, the resolved installation's existing database selects SQLite; otherwise it selects system credentials. If Windows or Linux IDE version detection fails, switching retains SQLite.
 

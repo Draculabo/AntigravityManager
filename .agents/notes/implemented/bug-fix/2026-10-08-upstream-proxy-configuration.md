@@ -22,6 +22,33 @@ URL creation checks the saved configuration; request-time checks remain to handl
 authorization. Desktop and standalone-core transports expose a stable configuration error, with
 localized recovery instructions and no proxy URL or credentials.
 
+The config-owned Node agent factory also serves Google account requests and gateway
+upstream requests. Axios's proxy option uses absolute-form forwarding, which exposed
+the generation bearer header to a plain HTTP proxy even for an HTTPS origin. A CONNECT
+tunnel preserves origin TLS. Keep credentials out of the agent's constructor URL because
+the dependency can log that URL in debug mode. Each gateway client owns a bounded pool
+keyed by a SHA-256 fingerprint of proxy endpoint and credentials. The gateway bounds
+the entire physical attempt through response headers, including queued connection and
+CONNECT work. A returned stream retains the admission slot through end or close.
+Shutdown aborts pending connects and active responses, then destroys all agents.
+
+The initial limits are 16 proxy identities, 20 active physical requests per identity,
+20 sockets per agent and four idle sockets per destination. These finite starting values
+bound cold proxy entries and open streams without introducing a second wait queue.
+An idle socket or entirely idle entry expires after 90 seconds. TCP keepalive uses
+60 seconds. Busy entries are preserved during proxy changes or pool pressure. Saturation
+produces a terminal local 503 with no provider attempt, account rotation or penalty.
+
+CONNECT signals belong to each native request. A narrow AsyncLocalStorage binding passes
+the signal to the native Agent dispatch hook, which captures it before queueing. Each new
+connection delegates the existing CONNECT/TLS implementation to a signal-bound connector.
+The pooled agent itself carries no request signal. This prevents an earlier caller's
+cancellation from affecting later reused connections and closes a stalled CONNECT promptly.
+
+Internal HTTP User-Agent is canonicalized after extra headers are applied. This prevents
+mixed-case overrides while preserving other protocol headers. Captured transport identity
+remains fixed for an admitted recovery.
+
 ## Alternatives considered
 
 - Falling back to direct requests violates the user's explicit proxy routing choice.

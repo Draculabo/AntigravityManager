@@ -13,6 +13,7 @@ import { GeminiClient } from '../../modules/proxy-gateway/server/modules/gemini/
 import { Upstream4xxCaptureService } from '../../modules/proxy-gateway/server/common/upstream-4xx-capture.service';
 import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
+import { UpstreamEndpointConfigurationError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-endpoint-configuration.exception';
 import { setServerConfig } from '../../server/server-config';
 import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
@@ -31,6 +32,7 @@ import {
   type TrafficAuditRequestContext,
 } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { MAX_SSE_EVENT_BYTES } from '@/modules/proxy-gateway/antigravity/internal-sse';
+import { PIXEL_PNG } from '../fixtures/image-content';
 
 // The three services the protocol services used to build for themselves. Real instances:
 // these tests drive the retry path, so a placeholder would change what is under test.
@@ -227,6 +229,24 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
       }),
     ).rejects.toBeInstanceOf(UpstreamProxyConfigurationError);
+
+    expect(mockAccountLeaseService.getNextToken).toHaveBeenCalledOnce();
+    expect(mockAccountLeaseService.markAsForbidden).not.toHaveBeenCalled();
+    expect(mockAccountLeaseService.markAsRateLimited).not.toHaveBeenCalled();
+    expect(mockAccountLeaseService.markFromUpstreamError).not.toHaveBeenCalled();
+  });
+
+  it('surfaces invalid endpoint configuration without switching or penalising an account', async () => {
+    const service = new TestableGeminiService();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
+    const error = new UpstreamEndpointConfigurationError();
+    mockGeminiClient.generateInternal.mockRejectedValueOnce(error);
+
+    await expect(
+      service.handleGeminiGenerateContent('gemini-3-flash', {
+        contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+      }),
+    ).rejects.toBe(error);
 
     expect(mockAccountLeaseService.getNextToken).toHaveBeenCalledOnce();
     expect(mockAccountLeaseService.markAsForbidden).not.toHaveBeenCalled();
@@ -475,7 +495,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
           usageMetadata: { totalTokenCount: 5 },
         },
       });
-      stream.push(Buffer.from('data: not json\n\n'));
+      stream.push(Buffer.from(': upstream-heartbeat\n\n'));
       stream.push(Buffer.from(`data: ${payload}\n\n`));
       stream.push(null);
     }, 10);
@@ -542,9 +562,17 @@ describe('ProxyService Empty Stream Retry Logic', () => {
 
     expect(completed).toBe(true);
     expect(stream.destroyed).toBe(true);
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]).toContain(': upstream-heartbeat');
-    expect(chunks[1]).toContain('Upstream response stream timed out.');
+    const output = chunks.join('');
+    expect(output).toBe(
+      ': upstream-heartbeat\n\n' +
+        `data: ${JSON.stringify({
+          error: {
+            code: 502,
+            message: 'Upstream response stream timed out.',
+            status: 'UPSTREAM_STREAM_ERROR',
+          },
+        })}\n\n`,
+    );
     expect(release).toHaveBeenCalledOnce();
   });
 
@@ -637,7 +665,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.generateInternal.mockResolvedValue({
-      candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
     });
 
     await service.handleGeminiGenerateContent('models/claude-sonnet-4-5', {
@@ -950,7 +978,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       messages: [
         {
           role: 'user',
-          content: 'Inspect ![screen](data:image/png;base64,AAAABBBB) carefully.',
+          content: `Inspect ![screen](data:image/png;base64,${PIXEL_PNG.toString('base64')}) carefully.`,
         },
       ],
     });
@@ -958,7 +986,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     const internalRequest = mockGeminiClient.generateInternal.mock.calls[0][0];
     expect(internalRequest.request.contents[0].parts).toEqual([
       { text: 'Inspect ' },
-      { inlineData: { mimeType: 'image/png', data: 'AAAABBBB' } },
+      { inlineData: { mimeType: 'image/png', data: PIXEL_PNG.toString('base64') } },
       { text: ' carefully.' },
     ]);
   });
@@ -980,7 +1008,10 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       messages: [
         {
           role: 'user',
-          content: [{ type: 'video_url', video_url: { url: videoPath } }],
+          content: [
+            { type: 'text', text: 'Analyze this clip.' },
+            { type: 'video_url', video_url: { url: videoPath } },
+          ],
         },
       ],
     };
@@ -988,7 +1019,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     try {
       await service.handleChatCompletions(request);
       expect(mockGeminiClient.generateInternal.mock.calls[0][0].request.contents).toEqual([
-        { role: 'user', parts: [{ text: 'Continue' }] },
+        { role: 'user', parts: [{ text: 'Analyze this clip.' }] },
       ]);
 
       mockGeminiClient.generateInternal.mockClear();
@@ -1001,6 +1032,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         {
           role: 'user',
           parts: [
+            { text: 'Analyze this clip.' },
             {
               inlineData: {
                 mimeType: 'video/webm',
@@ -1054,6 +1086,12 @@ describe('ProxyService Empty Stream Retry Logic', () => {
           tool_calls: [
             { id: 'call_old', type: 'function', function: { name: 'lookup', arguments: '{}' } },
           ],
+        },
+        {
+          role: 'tool',
+          tool_call_id: 'call_old',
+          name: 'lookup',
+          content: 'Historical lookup result.',
         },
       ],
       tools: [{ type: 'web_search_20250305' }],
@@ -1155,6 +1193,12 @@ describe('ProxyService Empty Stream Retry Logic', () => {
                   function: { name: 'lookup', arguments: '{}' },
                 },
               ],
+            },
+            {
+              role: 'tool',
+              tool_call_id: 'call_parent',
+              name: 'lookup',
+              content: 'Parent lookup result.',
             },
           ],
         } as any,
@@ -1401,6 +1445,29 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(mockAccountLeaseService.getNextToken).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    'Deployment project route not found',
+    'Resource projects/other-project could not be found',
+  ])('does not remove project for an unrelated provider error: %s', async (message) => {
+    const service = new TestableGeminiService();
+    mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
+    const failure = new Error(message);
+    mockGeminiClient.generateInternal.mockRejectedValueOnce(failure).mockResolvedValueOnce({
+      candidates: [{ content: { parts: [{ text: 'ordinary retry' }] }, finishReason: 'STOP' }],
+    });
+    await expect(
+      service.handleGeminiGenerateContent('gemini-3-flash', {
+        contents: [{ role: 'user', parts: [{ text: 'Controlled project request.' }] }],
+      }),
+    ).resolves.toMatchObject({
+      candidates: [{ content: { parts: [{ text: 'ordinary retry' }] } }],
+    });
+    expect(mockGeminiClient.generateInternal.mock.calls.map(([body]) => body.project)).toEqual([
+      'project-1',
+      'project-1',
+    ]);
+  });
+
   it('rotates accounts when the no-project retry still lacks a Code Assist license', async () => {
     const service = new TestableGeminiService();
     const licenseMessage =
@@ -1445,6 +1512,31 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       'gemini-3-flash-agent',
     ]);
     expect((result as any).candidates?.[0]?.content?.parts?.[0]?.text).toBe('ok');
+  });
+
+  it('does not renew the generation project downgrade after rotating accounts', async () => {
+    const service = new TestableGeminiService();
+    const failure = new UpstreamRequestError({
+      status: 403,
+      message:
+        'You are currently configured to use a Google Cloud Project but lack a Gemini Code Assist license. (#3501)',
+    });
+    mockAccountLeaseService.getNextToken
+      .mockResolvedValueOnce(createToken('acc-1'))
+      .mockResolvedValueOnce(createToken('acc-2'))
+      .mockResolvedValueOnce(null);
+    mockGeminiClient.generateInternal.mockRejectedValue(failure);
+    await expect(
+      service.handleGeminiGenerateContent('gemini-3-flash', {
+        contents: [{ role: 'user', parts: [{ text: 'Controlled project request.' }] }],
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mockGeminiClient.generateInternal.mock.calls.map(([body]) => body.project)).toEqual([
+      'project-1',
+      undefined,
+      'project-1',
+      'project-1',
+    ]);
   });
 
   it('rotates immediately on location ineligibility without a payload project retry', async () => {
@@ -1518,7 +1610,7 @@ describe('GeminiClient internal request parity', () => {
     model: 'gemini-3-flash',
     requestId: 'synthetic-parity',
     userAgent: 'synthetic-parity',
-    request: { contents: [] },
+    request: { contents: [{ role: 'user', parts: [{ text: 'Check the transport envelope.' }] }] },
   };
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -1543,13 +1635,21 @@ describe('GeminiClient internal request parity', () => {
   });
 
   it('uses stream body only for streamGenerateContent internal requests', async () => {
-    const responseStream = new EventEmitter();
+    const responseStream = Readable.from([
+      'data: {"response":{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}}\n\n',
+    ]);
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
       data: responseStream,
     });
     const client = new GeminiClient(new Upstream4xxCaptureService());
 
-    await client.streamGenerateInternal(structuredClone(generationRequest), 'access-token');
+    const response = await client.streamGenerateInternal(
+      structuredClone(generationRequest),
+      'access-token',
+    );
+    for await (const _chunk of response) {
+      // Consume the response to finish its real stream/audit lifecycle.
+    }
 
     expect(postSpy).toHaveBeenCalledOnce();
     expect(postSpy.mock.calls[0][1]).toBeInstanceOf(Readable);
@@ -1672,7 +1772,20 @@ describe('GeminiClient internal request parity', () => {
       undefined,
       undefined,
       {
-        data: { error: { message: 'PERMISSION_DENIED' } },
+        data: {
+          error: {
+            code: 403,
+            status: 'PERMISSION_DENIED',
+            details: [
+              {
+                '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+                domain: 'googleapis.com',
+                reason: 'USER_PROJECT_DENIED',
+                metadata: { consumer: 'projects/project-1' },
+              },
+            ],
+          },
+        },
         status: 403,
         statusText: 'Forbidden',
         headers: {},
@@ -1930,8 +2043,8 @@ describe('ProxyService Protocol Parity Fixtures', () => {
         },
       });
 
-      stream.emit('data', Buffer.from('data: not json\n'));
-      stream.emit('data', Buffer.from(`data: ${payload}\n`));
+      stream.emit('data', Buffer.from(': upstream-heartbeat\n\n'));
+      stream.emit('data', Buffer.from(`data: ${payload}\n\n`));
       stream.emit('end');
     });
 

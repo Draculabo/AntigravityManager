@@ -89,6 +89,36 @@ joins it; cancellation of the joining caller does not revoke other callers' work
 Final D08 identity integration, freshness/reason UI, subscription and official-cycle
 accounting remain work. These checks are not live-provider acceptance.
 
+## Weekly quota expiry preference
+
+The API Proxy scheduling settings expose an optional weekly-quota expiry preference,
+disabled by default. It changes allocation of unbound requests, including requests
+without a session key. An existing valid session binding suppresses this preference
+even when its account needs the normal failure fallback. Explicit preferred-account
+selection retains its existing precedence.
+
+Only provider-declared group/model membership for the account's resolved physical
+model can establish a candidate. A weekly bucket must have positive, non-depleted
+remaining quota and an unambiguous reset instant in the next 24 hours. Missing,
+invalid, expired or conflicting weekly observations do not promote an account.
+Historical group-label guesses remain available to existing protection logic but
+cannot establish this optimization.
+
+After existing eligibility and lock checks, the earliest reset group wins before
+manual priority. Equal reset deadlines use existing manual priority and selection
+behavior. In account-first mode this preference precedes model-level retained affinity
+for a new session; model affinity is not an existing session binding. Existing quota
+weighting and hard depletion gates retain their owners.
+
+The preference is projected for each selection, including after a completed wait.
+No saved account priority is overwritten and no other account is disabled. Depletion,
+cycle expiry or a disabled switch removes the temporary preference on subsequent
+selection. The user option remains saved until disabled; a later eligible cycle can
+qualify again. Quota recovery still requires the existing fresh evidence. This mode
+dispatches no probes or generated requests of its own and provides no additional
+quota. The settings owner's save/application results distinguish saved configuration
+from runtime application.
+
 ## Deleted-account cleanup
 
 Deletion invalidates in-flight cache loads, refresh/project results and pending
@@ -214,6 +244,15 @@ existing cross-owner limits.
 
 ## Stable selection and initial recovery
 
+All selection strategies exclude a finite target-model quota at or below zero
+before priority, preferred-account or session selection. The quota reader resolves
+the account's physical model first. Missing or non-finite quota stays unknown and
+does not become zero. Quota weighting may be disabled without disabling this gate.
+Retry alternative counts and retry waits apply the same depletion rule. Expired
+depleted windows still enter the existing bounded quota-revalidation flow before
+selection; an eligible fresh quota snapshot can admit the account again. Recovery
+checks do not mistake a known-zero alternative for an immediately usable account.
+
 Candidate account IDs use binary ascending order before selection. Reloading the
 same pool in a different storage order does not change its rotation sequence.
 Balanced selection retains its target-model quota weights and round-robin cursor;
@@ -226,7 +265,7 @@ account cooldown, when it is at most two seconds and fits the selection budget.
 Parity cache-first can instead wait for its eligible session account within the
 same budget. Selection never clears locks. After a completed wait it reads current
 locks, cooldowns, account-entry identity, OAuth/validation eligibility, model
-capability and account-first quota again. A still-blocked or replaced pool returns
+capability and target-model quota again. A still-blocked or replaced pool returns
 no candidate; the caller retains its existing unavailable/error contract.
 
 The initial-selection wait deadline is shared across credential-refresh failover
@@ -241,6 +280,13 @@ acquisition. Ordinary hydration without an owned signal retains its existing
 provider timeout. Complete account-deletion and in-flight cleanup remain D01-R12 work.
 
 ## Successful account affinity
+
+When the winning session hint is the `x-session-id` header and a credential is
+present, `root:step:1` uses `root` for account selection. The root accepts ASCII
+letters, digits, underscores and hyphens. Other suffixes, anonymous requests and
+restored Responses lineages use their original affinity. Sibling steps and their
+root can share a selected account within one credential scope. Each child keeps
+its original audit identity, history and signature-cache keys.
 
 Selection and hydration return a pending account. They do not publish a session
 binding or replace the account retained by account-first scheduling. Ordinary

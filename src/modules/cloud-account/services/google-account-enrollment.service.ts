@@ -80,7 +80,7 @@ export async function enrollGoogleAccount(
     'account-persist',
     async () => {
       try {
-        return await CloudAccountRepo.insertAccount(account);
+        return await CloudAccountRepo.insertAccount(account, userInfo.id);
       } catch (error) {
         if (error instanceof CloudAccountEmailConflictError) {
           operation.accountCommit = 'not-attempted';

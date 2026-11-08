@@ -107,9 +107,10 @@ describe('service settings in the renderer', () => {
       max_wait_seconds: 77,
     });
     expect(api.toast).toHaveBeenLastCalledWith({
-      title: 'Settings saved. Turn the proxy off and back on to apply the changes.',
+      title: 'settings.service-restart-required',
       description: undefined,
     });
+    expect(result.current.hasUnsavedChanges).toBe(false);
   });
 
   it('routes alert edits solely to the account alert policy API', async () => {
@@ -157,7 +158,7 @@ describe('service settings in the renderer', () => {
       });
     });
     await act(async () => {
-      await expect(save).rejects.toThrow('Desktop preferences unavailable');
+      await expect(save).rejects.toThrow('settings.partial-save-failed');
     });
 
     expect(api.updateService).toHaveBeenCalledExactlyOnceWith({
@@ -167,11 +168,35 @@ describe('service settings in the renderer', () => {
       proxy: { request_timeout: 211 },
     });
     expect(api.toast).toHaveBeenLastCalledWith({
-      error: expect.objectContaining({ message: 'Desktop preferences unavailable' }),
       title: 'settings.toast.saveFailed.title',
-      description: 'settings.service-unavailable',
+      description: 'settings.partial-save-failed',
       variant: 'destructive',
     });
+    expect(result.current.saveOutcomes).toEqual([
+      { owner: 'service', state: 'saved' },
+      {
+        owner: 'desktop',
+        state: 'failed',
+        error: expect.objectContaining({ message: 'Desktop preferences unavailable' }),
+      },
+    ]);
+    expect(result.current.hasUnsavedChanges).toBe(true);
+    expect(result.current.config?.theme).toBe('dark');
+    api.saveDesktop.mockImplementation(async (patch) => ({
+      ...DesktopPreferencesSchema.strip().parse(DEFAULT_APP_CONFIG),
+      ...patch,
+    }));
+    await act(async () => {
+      await result.current.retrySave();
+    });
+    expect(api.updateService).toHaveBeenCalledTimes(1);
+    expect(api.saveDesktop).toHaveBeenCalledTimes(2);
+    expect(result.current.hasUnsavedChanges).toBe(false);
+    expect(result.current.config?.theme).toBe('dark');
+    expect(result.current.saveOutcomes).toEqual([
+      { owner: 'service', state: 'saved' },
+      { owner: 'desktop', state: 'saved' },
+    ]);
   });
 
   it('shows translated guidance instead of a backend error when saving fails', async () => {
@@ -188,14 +213,15 @@ describe('service settings in the renderer', () => {
       });
     });
     await act(async () => {
-      await expect(save).rejects.toThrow('Internal service RPC failed');
+      await expect(save).rejects.toThrow('settings.partial-save-failed');
     });
 
     expect(api.toast).toHaveBeenLastCalledWith({
-      error,
       title: 'settings.toast.saveFailed.title',
-      description: 'settings.service-unavailable',
+      description: 'settings.partial-save-failed',
       variant: 'destructive',
     });
+    expect(result.current.saveOutcomes).toEqual([{ owner: 'service', state: 'failed', error }]);
+    expect(result.current.hasUnsavedChanges).toBe(true);
   });
 });

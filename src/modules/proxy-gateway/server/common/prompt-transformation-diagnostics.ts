@@ -8,6 +8,7 @@ export type PromptTransformationKind =
   | 'global-system-prepended'
   | 'empty-text-removed'
   | 'prefill-tail-appended'
+  | 'tool-image-candidate-preserved'
   | 'thought-signature-wrapped';
 
 export interface PromptTransformation {

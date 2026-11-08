@@ -1,10 +1,10 @@
 import { isObservable } from 'rxjs';
-import { buildToolConfig } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
 import type { SignatureScopeContext } from '../../../common/signature-session-scope';
 import type { OpenAIOperations, PreparedResponsesRequest } from '../openai-operations.service';
 import type { OpenAIService } from '../openai.service';
 import {
   prepareOpenAIRequestSchemas,
+  validateOpenAIRequestTools,
   type PreparedOpenAISchemas,
 } from '../chat/openai-schema-preparation';
 import { parseResponsesRequestBody } from './openai-responses-request';
@@ -34,7 +34,7 @@ export function createResponsesWebSocketOperations(
         throw new Error('Unknown or expired previous_response_id');
       }
       const schemas = prepareOpenAIRequestSchemas(prepared.request, 'responses');
-      buildToolConfig(prepared.request.tool_choice, schemas.schemas.tools ?? []);
+      validateOpenAIRequestTools(prepared.request.tool_choice, schemas.schemas, 'responses');
       if (mode === 'generate') {
         preparedRequests.set(request, { request: prepared, schemas, context });
       }

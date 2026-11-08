@@ -132,7 +132,7 @@ export function normalizeObjectJsonSchema(
       schema === undefined && policy === 'tool' ? { type: 'object', properties: {} } : schema;
     validateSchemaInput(input, batch);
     const normalizedSchema = resolveSchemaReferences(input, batch, policy, toolOrdinal);
-    cleanJsonSchemaRecursive(normalizedSchema);
+    cleanJsonSchemaRecursive(normalizedSchema, policy);
     if (!isString(normalizedSchema.type)) {
       normalizedSchema.type = 'object';
     }
@@ -151,11 +151,14 @@ export function normalizeObjectJsonSchema(
   }
 }
 
-function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
+function cleanJsonSchemaRecursive(
+  value: JsonSchemaValue,
+  policy: 'tool' | 'output' | 'compatibility' = 'compatibility',
+): void {
   if (Array.isArray(value)) {
     // Array: Recursively process each element
     for (const entry of value) {
-      cleanJsonSchemaRecursive(entry);
+      cleanJsonSchemaRecursive(entry, policy);
     }
     return;
   }
@@ -195,15 +198,15 @@ function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
   // Literal data (const/enum/default/examples) is not a schema traversal edge.
   if (isJsonSchemaMap(map.properties)) {
     for (const child of Object.values(map.properties)) {
-      cleanJsonSchemaRecursive(child);
+      cleanJsonSchemaRecursive(child, policy);
     }
   }
   if (isJsonSchemaMap(map.items)) {
-    cleanJsonSchemaRecursive(map.items);
+    cleanJsonSchemaRecursive(map.items, policy);
   }
   for (const keyword of ['allOf', 'anyOf', 'oneOf']) {
     if (Array.isArray(map[keyword])) {
-      cleanJsonSchemaRecursive(map[keyword]);
+      cleanJsonSchemaRecursive(map[keyword], policy);
     }
   }
 
@@ -307,5 +310,8 @@ function cleanJsonSchemaRecursive(value: JsonSchemaValue): void {
       }
       map['type'] = selectedType;
     }
+  }
+  if (policy === 'tool' && map.type === 'array') {
+    delete map.properties;
   }
 }

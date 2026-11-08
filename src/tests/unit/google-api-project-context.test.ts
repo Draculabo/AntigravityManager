@@ -21,10 +21,10 @@ describe('GoogleAPIService project-context fallback policy', () => {
     vi.useRealTimers();
   });
 
-  it('tries daily-prod before sandbox after the production endpoint is rate limited', async () => {
+  it.each([408, 429])('tries Sandbox after Daily returns retryable HTTP %i', async (status) => {
     const transport = vi
       .fn()
-      .mockResolvedValueOnce({ status: 429, text: async () => 'RESOURCE_EXHAUSTED' })
+      .mockResolvedValueOnce({ status, text: async () => 'temporary project-context failure' })
       .mockResolvedValueOnce(projectContext('daily-project'));
     mockAxiosRequests(transport as unknown as MockHttpTransport);
     const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
@@ -34,8 +34,8 @@ describe('GoogleAPIService project-context fallback policy', () => {
     ).resolves.toBe('daily-project');
 
     expect(transport.mock.calls.map(([url]) => url)).toEqual([
-      PROD_LOAD_PROJECT,
       DAILY_LOAD_PROJECT,
+      SANDBOX_LOAD_PROJECT,
     ]);
     for (const [, options] of transport.mock.calls) {
       expect(options.headers).not.toHaveProperty('X-Goog-Api-Client');
@@ -43,7 +43,7 @@ describe('GoogleAPIService project-context fallback policy', () => {
     }
   });
 
-  it('continues from daily-prod to sandbox for retryable HTTP failures', async () => {
+  it('continues Daily to Sandbox to Prod for retryable HTTP failures', async () => {
     const transport = vi
       .fn()
       .mockResolvedValueOnce({ status: 404, text: async () => 'NOT_FOUND' })
@@ -57,13 +57,13 @@ describe('GoogleAPIService project-context fallback policy', () => {
     ).resolves.toBe('sandbox-project');
 
     expect(transport.mock.calls.map(([url]) => url)).toEqual([
-      PROD_LOAD_PROJECT,
       DAILY_LOAD_PROJECT,
       SANDBOX_LOAD_PROJECT,
+      PROD_LOAD_PROJECT,
     ]);
   });
 
-  it('continues to daily-prod after a transport failure', async () => {
+  it('continues to Sandbox after a Daily transport failure', async () => {
     const observedAt = 1_800_000_000_000;
     vi.spyOn(Date, 'now').mockReturnValue(observedAt);
     const transport = vi
@@ -84,8 +84,8 @@ describe('GoogleAPIService project-context fallback policy', () => {
       },
     });
     expect(transport.mock.calls.map(([url]) => url)).toEqual([
-      PROD_LOAD_PROJECT,
       DAILY_LOAD_PROJECT,
+      SANDBOX_LOAD_PROJECT,
     ]);
   });
 

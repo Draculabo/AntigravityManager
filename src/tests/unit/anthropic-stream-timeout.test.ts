@@ -52,7 +52,8 @@ describe('Anthropic stream timeout compatibility', () => {
     const controller = new AbortController();
     upstream.streamGenerateInternal.mockImplementation(
       async (_body, _token, _proxy, _headers, signal) => {
-        expect(signal).toBe(controller.signal);
+        expect(signal?.aborted).toBe(false);
+        expect(signal).toBeInstanceOf(AbortSignal);
         signal?.addEventListener('abort', () => stream.destroy(new Error('synthetic disconnect')), {
           once: true,
         });
@@ -187,7 +188,7 @@ describe('Anthropic stream timeout compatibility', () => {
     observable.subscribe().unsubscribe();
   });
 
-  it('emits 20-second pings and aborts after five consecutive idle intervals', async () => {
+  it('finalizes partial output after five idle ping intervals', async () => {
     vi.useFakeTimers();
     const hangingStream = new PassThrough();
     const upstream = createUpstream({ streamFrames: [] });
@@ -223,19 +224,16 @@ describe('Anthropic stream timeout compatibility', () => {
     expect(completed).toBe(true);
     expect(
       chunks.filter((chunk) => chunk === ': ping\n\n' || chunk.includes('event: error')),
-    ).toEqual([
-      ': ping\n\n',
-      ': ping\n\n',
-      ': ping\n\n',
-      ': ping\n\n',
-      'event: error\ndata: {"type":"error","error":{"type":"api_error","message":"Upstream response stream timed out."}}\n\n',
-    ]);
+    ).toEqual([': ping\n\n', ': ping\n\n', ': ping\n\n', ': ping\n\n']);
+    expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
+    expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);
     expect(chunks.some((chunk) => chunk.includes('data: [DONE]'))).toBe(false);
     expect(hangingStream.destroyed).toBe(true);
     expect(idleTimerSpy.mock.calls[0]?.[3]).toBe(120_000);
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
   });
 
-  it('fails when Anthropic content ends without a finish reason', async () => {
+  it('finalizes partial output at EOF without a finish reason', async () => {
     const upstreamStream = new PassThrough();
     const upstream = createUpstream({ streamFrames: [] });
     upstream.streamGenerateInternal.mockResolvedValue(upstreamStream);
@@ -253,9 +251,10 @@ describe('Anthropic stream timeout compatibility', () => {
     upstreamStream.end();
     await finished;
 
-    expect(chunks.filter((chunk) => chunk.includes('event: error'))).toHaveLength(1);
-    expect(chunks.join('')).toContain('without a finish reason');
-    expect(chunks.some((chunk) => chunk.includes('message_stop'))).toBe(false);
+    expect(chunks.filter((chunk) => chunk.includes('event: error'))).toEqual([]);
+    expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
+    expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
   });
 
   it('resets the consecutive ping counter when upstream business progress arrives', async () => {
@@ -302,7 +301,9 @@ describe('Anthropic stream timeout compatibility', () => {
       expect(complete).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(chunks.filter((chunk) => chunk === ': ping\n\n')).toHaveLength(5);
-      expect(chunks.filter((chunk) => chunk.includes('event: error'))).toHaveLength(1);
+      expect(chunks.filter((chunk) => chunk.includes('event: error'))).toEqual([]);
+      expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
+      expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);
       expect(complete).toHaveBeenCalledOnce();
       expect(source.destroyed).toBe(true);
       expect(lease.markModelSuccess).not.toHaveBeenCalled();
@@ -343,7 +344,9 @@ describe('Anthropic stream timeout compatibility', () => {
 
     expect(completed).toBe(true);
     expect(chunks.filter((chunk) => chunk === ': ping\n\n')).toEqual([]);
-    expect(chunks.filter((chunk) => chunk.includes('event: error'))).toHaveLength(1);
+    expect(chunks.filter((chunk) => chunk.includes('event: error'))).toEqual([]);
+    expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
+    expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);
     expect(chunks.some((chunk) => chunk.includes('data: [DONE]'))).toBe(false);
     expect(upstreamStream.destroyed).toBe(true);
   });
@@ -364,7 +367,7 @@ describe('Anthropic stream timeout compatibility', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('fails when the upstream closes before emitting end', async () => {
+  it('finalizes partial output when the upstream closes before emitting end', async () => {
     vi.useFakeTimers();
     const upstreamStream = new PassThrough();
     const upstream = createUpstream({ streamFrames: [] });
@@ -384,9 +387,10 @@ describe('Anthropic stream timeout compatibility', () => {
     upstreamStream.emit('close');
     await failure;
 
-    expect(chunks.join('')).toContain('closed before completion');
-    expect(chunks.filter((chunk) => chunk.startsWith('event: error'))).toHaveLength(1);
-    expect(chunks.some((chunk) => chunk.includes('message_stop'))).toBe(false);
+    expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
+    expect(chunks.filter((chunk) => chunk.startsWith('event: error'))).toEqual([]);
+    expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
     expect(upstreamStream.destroyed).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });

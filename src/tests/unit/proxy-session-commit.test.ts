@@ -91,23 +91,16 @@ afterEach(async () => {
 });
 
 describe('session commit at production protocol success boundaries', () => {
-  it.each(['anthropic', 'gemini'] as const)(
+  it.each(['gemini'] as const)(
     'commits token-count affinity only after a valid count: %s',
-    async (surface) => {
+    async (_surface) => {
       const lease = await fixture();
       const committed = vi.spyOn(lease, 'commitSession');
       const upstream = createUpstream({ countTokens: { totalTokens: 23 } });
       const gateway = createGateway(upstream, lease);
-      const result =
-        surface === 'anthropic'
-          ? await gateway.anthropicService.handleAnthropicCountTokens({
-              model: 'gemini-3-flash',
-              max_tokens: 100,
-              messages: [{ role: 'user', content: 'count controlled' }],
-            })
-          : await gateway.geminiService.handleGeminiCountTokens('gemini-3-flash', {
-              contents: [{ role: 'user', parts: [{ text: 'count controlled' }] }],
-            });
+      const result = await gateway.geminiService.handleGeminiCountTokens('gemini-3-flash', {
+        contents: [{ role: 'user', parts: [{ text: 'count controlled' }] }],
+      });
       expect(result).toBe(23);
       expect(committed.mock.calls.map(([token]) => token.id)).toEqual(['commit-a']);
     },

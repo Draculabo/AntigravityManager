@@ -5,6 +5,8 @@ export interface AccountLeaseSelectionOptions {
   sessionKey?: string;
   excludeAccountIds?: string[];
   model?: string;
+  /** The model is already a resolved physical route, even when its ID is also a public preset. */
+  physicalTarget?: boolean;
   targetAccountId?: string;
   effort?: string;
   allowSelectionWait?: boolean;

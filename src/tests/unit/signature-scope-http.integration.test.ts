@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -22,6 +24,8 @@ import {
   createGateway,
   createLease,
   createUpstream,
+  geminiStreamFrame,
+  geminiTextResponse,
 } from './proxy-real-path.harness';
 
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
@@ -44,6 +48,7 @@ async function surface() {
   let generation = 0;
   const signatureA = 'synthetic-http-signature-a';
   const upstream = createUpstream({
+    streamFrames: [geminiStreamFrame(geminiTextResponse('Continued after the switch'))],
     generate: () => ({
       candidates: [
         {
@@ -255,4 +260,116 @@ describe('HTTP signature scope admission', () => {
         .map((part) => part.thoughtSignature),
     ).toEqual([signatureA]);
   });
+});
+
+describe('HTTP continuation after switching from Gemini to Claude', () => {
+  // The original model response is represented by a recognized Gemini-format signature.
+  const geminiSignature = Buffer.from([0x12, ...Array<number>(80).fill(0x7f)]).toString('base64');
+  const encodedPlaceholder = 'c2tpcF90aG91Z2h0X3NpZ25hdHVyZV92YWxpZGF0b3I=';
+  const initial = { contents: [{ role: 'user', parts: [{ text: 'Inspect the workspace' }] }] };
+  const readCall = { id: 'call-read', name: 'read_file', args: { path: 'example.txt' } };
+  const listCall = { id: 'call-list', name: 'list_files', args: { directory: '.' } };
+  const readResult = { id: 'call-read', name: 'read_file', response: { text: 'example contents' } };
+  const listResult = { id: 'call-list', name: 'list_files', response: { files: ['example.txt'] } };
+  const continuation = {
+    contents: [
+      ...initial.contents,
+      {
+        role: 'model',
+        parts: [
+          { thought: true, text: 'Private Gemini reasoning', thoughtSignature: geminiSignature },
+          { text: 'I checked the workspace.', thoughtSignature: geminiSignature },
+          {
+            functionCall: readCall,
+            thoughtSignature: geminiSignature,
+            thought_signature: geminiSignature,
+          },
+          { functionCall: listCall, thought_signature: encodedPlaceholder },
+        ],
+      },
+      {
+        role: 'user',
+        parts: [{ functionResponse: readResult }, { functionResponse: listResult }],
+      },
+    ],
+  };
+  const headers = { authorization: 'Bearer synthetic-tenant-a', 'x-session-id': 'model-switch' };
+  const seedUrl = '/v1beta/models/gemini-3-flash:generateContent';
+
+  it.each([
+    ['generateContent', 'generateContent', 'generate'],
+    ['streamGenerateContent', 'streamGenerateContent', 'stream'],
+  ] as const)(
+    'preserves tool exchanges from %s to %s after a proven switch',
+    async (seedAction, action, kind) => {
+      const { app, upstream } = await surface();
+      await app.listen(0, '127.0.0.1');
+      const origin = await app.getUrl();
+      const send = (model: string, method: string, payload: object) =>
+        fetch(`${origin}/v1beta/models/${model}:${method}`, {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(5_000),
+        });
+      const seed = await send('gemini-3-flash', seedAction, initial);
+      const seedBody = await seed.text();
+      expect(seed.status, seedBody).toBe(200);
+      expect(upstream.calls[0]?.body.model).toBe('gemini-3-flash-agent');
+
+      const response = await send('claude-sonnet-4-6', action, continuation);
+      const body = await response.text();
+
+      expect(response.status, body).toBe(200);
+      expect(upstream.calls).toHaveLength(2);
+      expect(upstream.calls[1]).toMatchObject({
+        kind,
+        body: { model: 'claude-sonnet-4-6-thinking' },
+      });
+      expect(upstream.calls[1]?.body.request.contents).toEqual([
+        ...initial.contents,
+        {
+          role: 'model',
+          parts: [
+            { text: 'I checked the workspace.' },
+            { functionCall: readCall },
+            { functionCall: listCall },
+          ],
+        },
+        {
+          role: 'user',
+          parts: [{ functionResponse: readResult }, { functionResponse: listResult }],
+        },
+      ]);
+      if (kind === 'stream') {
+        expect(response.headers.get('content-type')).toContain('text/event-stream');
+        expect(body).toContain('Continued after the switch');
+      }
+    },
+  );
+
+  it.each([
+    ['another session', { ...headers, 'x-session-id': 'unrelated' }],
+    ['another credential', { ...headers, authorization: 'Bearer synthetic-tenant-b' }],
+  ] as const)(
+    'retains the 400 and does not forward a switch in %s',
+    async (_label, requestHeaders) => {
+      const { app, upstream } = await surface();
+      const seed = await app.inject({ method: 'POST', url: seedUrl, headers, payload: initial });
+      expect(seed.statusCode).toBe(200);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1beta/models/claude-sonnet-4-6:generateContent',
+        headers: requestHeaders,
+        payload: continuation,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: { message: expect.stringContaining('incompatible with target model family claude') },
+      });
+      expect(upstream.calls).toHaveLength(1);
+    },
+  );
 });

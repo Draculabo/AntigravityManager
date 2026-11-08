@@ -32,12 +32,14 @@ export class MediaWindowLimitError extends Error {
 
 function resolveOptions(config: ImageSchedulerConfig | undefined): {
   enabled: boolean;
+  strategy: 'count' | 'memory';
   count: number;
   memoryBytes: number;
   stripRemoteUrls: boolean;
 } {
   return {
     enabled: config?.send_window_enabled === true,
+    strategy: config?.send_window_strategy ?? 'count',
     count: config?.send_window_count ?? 10,
     memoryBytes: (config?.send_window_memory_mib ?? 32) * 1024 * 1024,
     stripRemoteUrls: config?.send_window_strip_remote_urls === true,
@@ -66,7 +68,7 @@ export function planMediaSendWindow(
     (total, candidate) => total + (candidate.protected && candidate.inline ? candidate.bytes : 0),
     0,
   );
-  if (protectedBytes > options.memoryBytes) {
+  if (options.strategy === 'memory' && protectedBytes > options.memoryBytes) {
     throw new MediaWindowLimitError(
       `Current request images exceed the configured send window memory of ${options.memoryBytes} bytes`,
     );
@@ -77,38 +79,46 @@ export function planMediaSendWindow(
     .filter((entry) => entry.candidate.inline);
 
   const selected = new Set<number>();
-  if (options.count === 0) {
-    inline.forEach((entry) => selected.add(entry.index));
-  } else {
-    inline
-      .filter((entry) => !entry.candidate.protected)
-      .slice(-options.count)
-      .forEach((entry) => selected.add(entry.index));
-  }
   candidates.forEach((candidate, index) => {
     if (candidate.protected) {
       selected.add(index);
     }
   });
 
-  let selectedBytes = inline.reduce(
-    (total, entry) => total + (selected.has(entry.index) ? entry.candidate.bytes : 0),
-    0,
-  );
-  for (const entry of inline) {
-    if (selectedBytes <= options.memoryBytes) {
-      break;
+  let selectedBytes = protectedBytes;
+  if (options.strategy === 'count') {
+    const countable = candidates
+      .map((candidate, index) => ({ candidate, index }))
+      .filter(({ candidate }) => candidate.inline || options.stripRemoteUrls);
+    const currentCount = countable.filter(({ candidate }) => candidate.protected).length;
+    const history = countable.filter(({ candidate }) => !candidate.protected);
+    const remaining = Math.max(0, options.count - currentCount);
+    const retained = options.count === 0 ? history : remaining > 0 ? history.slice(-remaining) : [];
+    for (const { candidate, index } of retained) {
+      selected.add(index);
+      selectedBytes += candidate.bytes;
     }
-    if (entry.candidate.protected || !selected.has(entry.index)) {
-      continue;
+  } else {
+    for (const { candidate, index } of inline.toReversed()) {
+      if (candidate.protected) {
+        continue;
+      }
+      if (selectedBytes + candidate.bytes > options.memoryBytes) {
+        break;
+      }
+      selected.add(index);
+      selectedBytes += candidate.bytes;
     }
-    selected.delete(entry.index);
-    selectedBytes -= entry.candidate.bytes;
   }
 
   candidates.forEach((candidate, index) => {
     const omitInline = candidate.inline && !selected.has(index);
-    if (omitInline || (!candidate.inline && options.stripRemoteUrls)) {
+    const omitRemote =
+      !candidate.inline &&
+      options.strategy === 'count' &&
+      options.stripRemoteUrls &&
+      !selected.has(index);
+    if (omitInline || omitRemote) {
       omitted.add(index);
     }
   });

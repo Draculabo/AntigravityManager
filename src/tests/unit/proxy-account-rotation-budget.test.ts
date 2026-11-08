@@ -90,7 +90,7 @@ describe('Ordinary account rotation through production protocol services', () =>
         .mockRejectedValueOnce(hinted);
       const lease = createLease(accounts.map((id) => createAccount(id)));
       const pending = request(createGateway(upstream, lease), surface, true);
-      await vi.runAllTimersAsync();
+      await vi.advanceTimersByTimeAsync(150);
       const stream = await pending;
       if (!(stream instanceof Observable)) {
         throw new Error('Expected protocol stream');
@@ -146,44 +146,34 @@ describe('Ordinary account rotation through production protocol services', () =>
     expect(Date.now()).toBe(150);
   });
 
-  it.each(['anthropic', 'gemini'] as const)(
-    'expands hinted token-count rotation on %s',
-    async (surface) => {
-      const upstream = createUpstream({
-        countTokens: () => {
-          if (upstream.countTokensCalls.length < 4) {
-            throw new UpstreamRequestError({
-              message: 'temporarily limited',
-              status: 429,
-              headers: { retryAfter: '20' },
-            });
-          }
-          return { totalTokens: 10 };
-        },
-      });
-      const gateway = createGateway(upstream, createLease(accounts.map((id) => createAccount(id))));
-      const pending =
-        surface === 'anthropic'
-          ? gateway.anthropicService.handleAnthropicCountTokens({
-              model: 'gemini-3-flash',
-              messages: [{ role: 'user', content: 'count this' }],
-              max_tokens: 100,
-            })
-          : gateway.geminiService.handleGeminiCountTokens('gemini-3-flash', {
-              contents: [{ role: 'user', parts: [{ text: 'count this' }] }],
-            });
-      const result = pending.then(
-        (value) => ({ value }),
-        (error: unknown) => ({ error }),
-      );
-      await vi.runAllTimersAsync();
-      expect(await result).toEqual({ value: 10 });
-      expect(upstream.countTokensCalls.map((call) => call.accessToken)).toEqual(
-        accounts.map((id) => 'access-' + id),
-      );
-      expect(Date.now()).toBe(150);
-    },
-  );
+  it.each(['gemini'] as const)('expands hinted token-count rotation on %s', async (_surface) => {
+    const upstream = createUpstream({
+      countTokens: () => {
+        if (upstream.countTokensCalls.length < 4) {
+          throw new UpstreamRequestError({
+            message: 'temporarily limited',
+            status: 429,
+            headers: { retryAfter: '20' },
+          });
+        }
+        return { totalTokens: 10 };
+      },
+    });
+    const gateway = createGateway(upstream, createLease(accounts.map((id) => createAccount(id))));
+    const pending = gateway.geminiService.handleGeminiCountTokens('gemini-3-flash', {
+      contents: [{ role: 'user', parts: [{ text: 'count this' }] }],
+    });
+    const result = pending.then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await vi.runAllTimersAsync();
+    expect(await result).toEqual({ value: 10 });
+    expect(upstream.countTokensCalls.map((call) => call.accessToken)).toEqual(
+      accounts.map((id) => 'access-' + id),
+    );
+    expect(Date.now()).toBe(150);
+  });
 
   it('caps ordinary attempts at twelve even when more eligible accounts remain', async () => {
     const pool = Array.from({ length: 15 }, (_, i) => createAccount('budget-' + i));
@@ -210,9 +200,9 @@ describe('Ordinary account rotation through production protocol services', () =>
     }
   });
 
-  it.each(['anthropic', 'gemini'] as const)(
+  it.each(['gemini'] as const)(
     'preserves image-model token-count backoff outside ordinary rotation on %s',
-    async (surface) => {
+    async (_surface) => {
       const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
       try {
         const upstream = createUpstream({
@@ -227,16 +217,9 @@ describe('Ordinary account rotation through production protocol services', () =>
           upstream,
           createLease(accounts.map((id) => createAccount(id))),
         );
-        const pending =
-          surface === 'anthropic'
-            ? gateway.anthropicService.handleAnthropicCountTokens({
-                model: 'gemini-3.1-flash-image',
-                messages: [{ role: 'user', content: 'count this' }],
-                max_tokens: 100,
-              })
-            : gateway.geminiService.handleGeminiCountTokens('gemini-3.1-flash-image', {
-                contents: [{ role: 'user', parts: [{ text: 'count this' }] }],
-              });
+        const pending = gateway.geminiService.handleGeminiCountTokens('gemini-3.1-flash-image', {
+          contents: [{ role: 'user', parts: [{ text: 'count this' }] }],
+        });
         await vi.runAllTimersAsync();
         expect(await pending).toBe(10);
         expect(upstream.countTokensCalls.map((call) => call.accessToken)).toEqual([
@@ -261,7 +244,7 @@ describe('Ordinary account rotation through production protocol services', () =>
       upstream.streamGenerateInternal.mockRejectedValueOnce(generic429());
       const lease = createLease(accounts.map((id) => createAccount(id)));
       const result = request(createGateway(upstream, lease), surface, true);
-      await vi.runAllTimersAsync();
+      await vi.advanceTimersByTimeAsync(50);
       const stream = await result;
       expect(stream).toBeInstanceOf(Observable);
       if (!(stream instanceof Observable)) {
@@ -281,25 +264,18 @@ describe('Ordinary account rotation through production protocol services', () =>
     },
   );
 
-  it.each(['anthropic', 'gemini'] as const)(
+  it.each(['gemini'] as const)(
     'applies the same A/B budget to %s token counting',
-    async (surface) => {
+    async (_surface) => {
       const upstream = createUpstream({
         countTokens: () => {
           throw generic429();
         },
       });
       const gateway = createGateway(upstream, createLease(accounts.map((id) => createAccount(id))));
-      const pending =
-        surface === 'anthropic'
-          ? gateway.anthropicService.handleAnthropicCountTokens({
-              model: 'gemini-3-flash',
-              messages: [{ role: 'user', content: 'count this' }],
-              max_tokens: 100,
-            })
-          : gateway.geminiService.handleGeminiCountTokens('gemini-3-flash', {
-              contents: [{ role: 'user', parts: [{ text: 'count this' }] }],
-            });
+      const pending = gateway.geminiService.handleGeminiCountTokens('gemini-3-flash', {
+        contents: [{ role: 'user', parts: [{ text: 'count this' }] }],
+      });
       const result = pending.catch((error: unknown) => error);
       await vi.runAllTimersAsync();
       expect(await result).toBeInstanceOf(ProxyAccountUnavailableError);

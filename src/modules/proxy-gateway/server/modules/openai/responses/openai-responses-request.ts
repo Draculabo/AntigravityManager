@@ -48,7 +48,7 @@ export interface ResponsesRequestBody {
   frequency_penalty?: number;
   seed?: number;
   reasoning?: OpenAIChatRequest['reasoning'];
-  tool_choice?: OpenAIChatRequest['tool_choice'];
+  tool_choice?: string | { type: string; name?: string; function?: { name: string } };
   stream?: boolean;
   user?: string;
   text?: { format?: unknown };
@@ -84,6 +84,7 @@ const ResponsesToolChoiceSchema = z.union([
   z.string(),
   z.object({
     type: z.string(),
+    name: z.string().optional(),
     function: z
       .object({
         name: z.string(),
@@ -271,6 +272,21 @@ export function normalizeResponsesInput(input: unknown): string {
   return JSON.stringify(input);
 }
 
+function normalizeResponsesToolChoice(
+  choice: ResponsesRequestBody['tool_choice'],
+): OpenAIChatRequest['tool_choice'] {
+  if (
+    choice &&
+    typeof choice === 'object' &&
+    choice.type === 'function' &&
+    choice.function === undefined &&
+    typeof choice.name === 'string'
+  ) {
+    return { type: 'function', function: { name: choice.name } };
+  }
+  return choice;
+}
+
 export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAIChatRequest {
   const messages: OpenAIChatRequest['messages'] = [];
   if (isString(body.instructions) && !isEmpty(body.instructions.trim())) {
@@ -386,7 +402,7 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
     frequency_penalty: body.frequency_penalty,
     seed: body.seed,
     reasoning: body.reasoning,
-    tool_choice: body.tool_choice,
+    tool_choice: normalizeResponsesToolChoice(body.tool_choice),
     response_format: toResponsesOpenAIResponseFormat(body.text?.format),
     stream: body.stream,
     extra: {

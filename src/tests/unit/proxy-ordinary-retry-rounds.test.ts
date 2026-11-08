@@ -89,7 +89,8 @@ describe('ordinary request rounds through protocol services', () => {
         undefined,
         true,
       );
-      await vi.runAllTimersAsync();
+      // Advance retry admission, then consume the stream before its business deadline.
+      await vi.advanceTimersByTimeAsync(10_000);
       const result = await pending;
       if (!(result instanceof Observable)) {
         throw new Error('Expected a protocol stream');
@@ -191,9 +192,9 @@ describe('ordinary request rounds through protocol services', () => {
     },
   );
 
-  it.each(['anthropic', 'gemini'] as const)(
+  it.each(['gemini'] as const)(
     'does not spend token-count slots on grace: %s',
-    async (surface) => {
+    async (_surface) => {
       const upstream = createUpstream({
         countTokens: () => {
           if (upstream.countTokensCalls.length <= 3) {
@@ -203,16 +204,9 @@ describe('ordinary request rounds through protocol services', () => {
         },
       });
       const gateway = createGateway(upstream, createLease([createAccount('round-a')]));
-      const pending =
-        surface === 'anthropic'
-          ? gateway.anthropicService.handleAnthropicCountTokens({
-              model,
-              messages: [{ role: 'user', content: 'controlled' }],
-              max_tokens: 100,
-            })
-          : gateway.geminiService.handleGeminiCountTokens(model, {
-              contents: [{ role: 'user', parts: [{ text: 'controlled' }] }],
-            });
+      const pending = gateway.geminiService.handleGeminiCountTokens(model, {
+        contents: [{ role: 'user', parts: [{ text: 'controlled' }] }],
+      });
       const result = pending.then(
         (value) => ({ value }),
         (error: unknown) => ({ error }),

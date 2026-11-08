@@ -1,6 +1,16 @@
+import { createOverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { runGenerationWithDeadline } from '../../common/generation-deadline';
+import { isUpstreamStreamInterruption } from '../../common/stream-interruption';
+import { normalizeObjectJsonSchema } from '../../../antigravity/JsonSchemaUtils';
+import {
+  SchemaConversionBatch,
+  SchemaInputError,
+} from '../../../antigravity/schema/SchemaConversion';
+import { reportSchemaIssues } from '../../../antigravity/schema/SchemaPreparation';
 import { assertGeminiGenerationHistory } from '../../common/generation-history';
-import { throwIfRequestAborted } from '../../common/request-cancellation';
+import { awaitRequestOperation, throwIfRequestAborted } from '../../common/request-cancellation';
+import { admitGeminiInlineMedia } from '../../common/inline-media-admission';
 import { upstreamGenerationFailure } from '../../common/upstream-generation-failure';
 import { resolveUpstreamErrorHttpStatus } from '../../common/upstream-error-http-status';
 import { publicGoogleErrorDetails } from '../../common/upstream-error-codec';
@@ -21,7 +31,11 @@ import { applyGeminiMediaSendWindow } from '@/modules/proxy-gateway/antigravity/
 import { getServerConfig } from '@/server/server-config';
 import { assertGeminiThoughtSignatureAliases } from './gemini-thought-signature-validation';
 import { normalizeGeminiToolCallIds } from './gemini-tool-call-identity';
-import { assertGeminiThoughtSignatureModel } from './gemini-thought-signature-model';
+import {
+  assertGeminiThoughtSignatureModel,
+  GeminiModelSwitchHistory,
+} from './gemini-thought-signature-model';
+import { extractApiKeyToken } from '../../guards/api-key-auth.util';
 import { InvalidThoughtSignatureModelError } from '../../common/invalid-thought-signature-model.exception';
 import { UpstreamThoughtSignatureConflictError } from '../../common/upstream-thought-signature-validation';
 import { isEmpty, isNumber } from 'lodash-es';
@@ -73,6 +87,8 @@ import { GenerationOutputState } from '../../../antigravity/GenerationOutputStat
 
 @Injectable()
 export class GeminiService extends BaseProxyService {
+  private readonly modelSwitchHistory = new GeminiModelSwitchHistory();
+
   constructor(
     @Inject(AccountLeaseService) accountLeaseService: AccountLeaseService,
     @Inject(GeminiClient) geminiClient: GeminiClient,
@@ -107,7 +123,9 @@ export class GeminiService extends BaseProxyService {
   async handleGeminiCountTokensWithSource(
     model: string,
     request: GeminiRequest,
+    signal?: AbortSignal,
   ): Promise<CountTokensResult> {
+    throwIfRequestAborted(signal);
     const resolved = resolveCountTokensRequest(request);
     if (!resolved) {
       throw new InvalidCountTokensRequestError(
@@ -115,11 +133,15 @@ export class GeminiService extends BaseProxyService {
       );
     }
 
+    const admittedRequest = admitGeminiInlineMedia(resolved.request);
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    const explicitPhysicalTarget =
+      routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
     const appliedVariantRequest = applyGeminiModelVariant(
       routeResolution.resolvedModel,
-      resolved.request,
+      admittedRequest,
+      explicitPhysicalTarget,
     );
     this.logger.log(
       `Gemini countTokens request received: model=${normalizedModel}, mappedModel=${appliedVariantRequest.model}, routeSource=${routeResolution.source}`,
@@ -129,14 +151,17 @@ export class GeminiService extends BaseProxyService {
 
     return this.countTokensWithLeaseDetailed(
       appliedVariantRequest.model,
-      resolved.contents,
+      admittedRequest.contents,
       'Gemini-countTokens',
       {
         requestId: '',
         request: estimateRequest,
         model: appliedVariantRequest.model,
-        userAgent: await resolveRequestUserAgent(),
+        userAgent: await awaitRequestOperation(resolveRequestUserAgent(), signal),
       },
+      admittedRequest.generationConfig?.thinkingConfig?.thinkingLevel,
+      signal,
+      { physicalTarget: appliedVariantRequest.variant !== null || explicitPhysicalTarget },
     );
   }
 
@@ -148,24 +173,77 @@ export class GeminiService extends BaseProxyService {
     imageRetryPenaltyMode: ImageRetryPenaltyMode = 'gemini',
     requestContext?: SignatureScopeContext,
   ): Promise<GeminiResponse> {
+    return runGenerationWithDeadline(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      signal,
+      (boundedSignal) =>
+        this.executeGeminiGenerateContent(
+          model,
+          request,
+          requestType,
+          boundedSignal,
+          imageRetryPenaltyMode,
+          requestContext,
+        ),
+    );
+  }
+
+  private async executeGeminiGenerateContent(
+    model: string,
+    request: GeminiRequest,
+    requestType: 'generate-content' | 'image_gen',
+    signal: AbortSignal,
+    imageRetryPenaltyMode: ImageRetryPenaltyMode,
+    requestContext?: SignatureScopeContext,
+  ): Promise<GeminiResponse> {
     throwIfRequestAborted(signal);
     const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
     assertGeminiThoughtSignatureAliases(request.contents);
+    request = admitGeminiInlineMedia(request);
     request = normalizeGeminiToolCallIds(request);
     const recoveryBudget = { attempted: false };
     const scope = resolveGeminiSessionScope(request, requestContext?.headers, requestContext?.url);
     captureCurrentAuditSession(scope);
+    const modelSwitchKey =
+      scope.hint.source !== 'none' &&
+      scope.hint.source !== 'legacy-user' &&
+      requestContext &&
+      extractApiKeyToken(requestContext.headers) !== null
+        ? scope.storeKey
+        : undefined;
     request = this.parseToolConfig(request);
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
-    const appliedVariantRequest = applyGeminiModelVariant(routeResolution.resolvedModel, request);
+    const explicitPhysicalTarget =
+      routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
+    const variantRequest = applyGeminiModelVariant(
+      routeResolution.resolvedModel,
+      request,
+      explicitPhysicalTarget,
+    );
     const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
       routeResolution.resolvedModel,
     );
-    const targetModel = appliedVariantRequest.model;
+    const overloadThinkingRecovery = createOverloadThinkingRecovery({
+      model,
+      explicitThinking: request.generationConfig?.thinkingConfig !== undefined,
+      physicalTarget: explicitPhysicalTarget,
+      registeredBudget: variantRequest.variant?.thinkingBudget,
+    });
+    const targetModel = variantRequest.model;
     const effort = request.generationConfig?.thinkingConfig?.thinkingLevel;
-    assertGeminiThoughtSignatureModel(request.contents, targetModel);
-    assertGeminiGenerationHistory(request.contents);
+    const contents = this.modelSwitchHistory.prepare(
+      variantRequest.request.contents,
+      normalizedModel,
+      targetModel,
+      modelSwitchKey,
+    );
+    assertGeminiThoughtSignatureModel(contents, targetModel);
+    assertGeminiGenerationHistory(contents);
+    const appliedVariantRequest =
+      contents === variantRequest.request.contents
+        ? variantRequest
+        : { ...variantRequest, request: { ...variantRequest.request, contents } };
     const isImageRequest = requestType === 'image_gen' || isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
@@ -174,7 +252,10 @@ export class GeminiService extends BaseProxyService {
     markProxyCleanComplete();
 
     let lastError: unknown = null;
-    const retryState = this.createTokenRetryState(effort);
+    const retryState = this.createTokenRetryState(
+      effort,
+      appliedVariantRequest.variant !== null || explicitPhysicalTarget,
+    );
     const maxRetries = await this.getMaxRetryAttempts(
       retryState,
       targetModel,
@@ -211,6 +292,7 @@ export class GeminiService extends BaseProxyService {
         token.id,
         targetModel,
         effort,
+        retryState.physicalTarget,
       );
       const effectiveVariantRequest = rebindGeminiModelVariant(
         appliedVariantRequest,
@@ -244,11 +326,18 @@ export class GeminiService extends BaseProxyService {
           token.token.upstream_proxy_url,
           accountTelemetryHeaders,
           signal,
-          this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
+          this.createScopedGenerationOptions(
+            token,
+            scope.storeKey,
+            recoveryBudget,
+            signal,
+            overloadThinkingRecovery,
+          ),
         );
 
         this.commitUpstreamSession(token, signal);
         this.markUpstreamSuccessForResponse(token, accountTargetModel, response);
+        this.modelSwitchHistory.recordSuccess(modelSwitchKey, accountTargetModel);
         this.releaseImagePermit(retryState);
         return this.normalizeGeminiGenerateResponse(response);
       } catch (err) {
@@ -257,14 +346,8 @@ export class GeminiService extends BaseProxyService {
           throw err;
         }
         this.rethrowTerminalGenerationFailure(err, retryState);
-        if (
-          err instanceof Error &&
-          !this.retryPolicy.isFatalCircuitBreakError(err) &&
-          this.isProjectContextError(err.message)
-        ) {
-          this.logger.warn(
-            `Gemini request hit project context issue, retrying without project: ${err.message}`,
-          );
+        if (!this.retryPolicy.isFatalCircuitBreakError(err) && this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)) {
+          this.logger.warn('Gemini project context rejected. Retrying once without project.');
           try {
             markProxyNormalizationStarted();
             const requestUserAgent = await resolveRequestUserAgent();
@@ -293,10 +376,17 @@ export class GeminiService extends BaseProxyService {
               token.token.upstream_proxy_url,
               accountTelemetryHeaders,
               signal,
-              this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
+              this.createScopedGenerationOptions(
+                token,
+                scope.storeKey,
+                recoveryBudget,
+                signal,
+                overloadThinkingRecovery,
+              ),
             );
             this.commitUpstreamSession(token, signal);
             this.markUpstreamSuccessForResponse(token, accountTargetModel, response);
+            this.modelSwitchHistory.recordSuccess(modelSwitchKey, accountTargetModel);
             this.releaseImagePermit(retryState);
             return this.normalizeGeminiGenerateResponse(response);
           } catch (fallbackErr) {
@@ -364,24 +454,75 @@ export class GeminiService extends BaseProxyService {
     signal?: AbortSignal,
     requestContext?: SignatureScopeContext,
   ): Promise<Observable<string>> {
+    return runGenerationWithDeadline(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      signal,
+      async (boundedSignal, owner) => {
+        const result = await this.executeGeminiStreamGenerateContent(
+          model,
+          request,
+          boundedSignal,
+          requestContext,
+        );
+        return owner ? owner.retainObservable(result) : result;
+      },
+    );
+  }
+
+  private async executeGeminiStreamGenerateContent(
+    model: string,
+    request: GeminiRequest,
+    signal: AbortSignal,
+    requestContext?: SignatureScopeContext,
+  ): Promise<Observable<string>> {
     throwIfRequestAborted(signal);
     const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
     assertGeminiThoughtSignatureAliases(request.contents);
+    request = admitGeminiInlineMedia(request);
     request = normalizeGeminiToolCallIds(request);
     const recoveryBudget = { attempted: false };
     const scope = resolveGeminiSessionScope(request, requestContext?.headers, requestContext?.url);
     captureCurrentAuditSession(scope);
+    const modelSwitchKey =
+      scope.hint.source !== 'none' &&
+      scope.hint.source !== 'legacy-user' &&
+      requestContext &&
+      extractApiKeyToken(requestContext.headers) !== null
+        ? scope.storeKey
+        : undefined;
     request = this.parseToolConfig(request);
     const normalizedModel = this.normalizeGeminiModel(model);
     const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
-    const appliedVariantRequest = applyGeminiModelVariant(routeResolution.resolvedModel, request);
+    const explicitPhysicalTarget =
+      routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
+    const variantRequest = applyGeminiModelVariant(
+      routeResolution.resolvedModel,
+      request,
+      explicitPhysicalTarget,
+    );
     const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
       routeResolution.resolvedModel,
     );
-    const targetModel = appliedVariantRequest.model;
+    const overloadThinkingRecovery = createOverloadThinkingRecovery({
+      model,
+      explicitThinking: request.generationConfig?.thinkingConfig !== undefined,
+      physicalTarget: explicitPhysicalTarget,
+      registeredBudget: variantRequest.variant?.thinkingBudget,
+    });
+    const targetModel = variantRequest.model;
     const effort = request.generationConfig?.thinkingConfig?.thinkingLevel;
-    assertGeminiThoughtSignatureModel(request.contents, targetModel);
-    assertGeminiGenerationHistory(request.contents);
+    const contents = this.modelSwitchHistory.prepare(
+      variantRequest.request.contents,
+      normalizedModel,
+      targetModel,
+      modelSwitchKey,
+    );
+    assertGeminiThoughtSignatureModel(contents, targetModel);
+    assertGeminiGenerationHistory(contents);
+    const appliedVariantRequest =
+      contents === variantRequest.request.contents
+        ? variantRequest
+        : { ...variantRequest, request: { ...variantRequest.request, contents } };
     const isImageRequest = isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
     this.logger.log(
@@ -390,7 +531,10 @@ export class GeminiService extends BaseProxyService {
     markProxyCleanComplete();
 
     let lastError: unknown = null;
-    const retryState = this.createTokenRetryState(effort);
+    const retryState = this.createTokenRetryState(
+      effort,
+      appliedVariantRequest.variant !== null || explicitPhysicalTarget,
+    );
     const maxRetries = await this.getMaxRetryAttempts(
       retryState,
       targetModel,
@@ -427,6 +571,7 @@ export class GeminiService extends BaseProxyService {
         token.id,
         targetModel,
         effort,
+        retryState.physicalTarget,
       );
       const effectiveVariantRequest = rebindGeminiModelVariant(
         appliedVariantRequest,
@@ -460,7 +605,13 @@ export class GeminiService extends BaseProxyService {
           token.token.upstream_proxy_url,
           accountTelemetryHeaders,
           signal,
-          this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
+          this.createScopedGenerationOptions(
+            token,
+            scope.storeKey,
+            recoveryBudget,
+            signal,
+            overloadThinkingRecovery,
+          ),
         );
         this.commitUpstreamSession(token, signal);
         return this.passthroughSseStream(
@@ -468,6 +619,7 @@ export class GeminiService extends BaseProxyService {
           token,
           accountTargetModel,
           this.takeImagePermit(retryState),
+          () => this.modelSwitchHistory.recordSuccess(modelSwitchKey, accountTargetModel),
         );
       } catch (err) {
         if (err instanceof UpstreamProxyConfigurationError) {
@@ -475,13 +627,9 @@ export class GeminiService extends BaseProxyService {
           throw err;
         }
         this.rethrowTerminalGenerationFailure(err, retryState);
-        if (
-          err instanceof Error &&
-          !this.retryPolicy.isFatalCircuitBreakError(err) &&
-          this.isProjectContextError(err.message)
-        ) {
+        if (!this.retryPolicy.isFatalCircuitBreakError(err) && this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)) {
           this.logger.warn(
-            `Gemini stream request hit project context issue, retrying without project: ${err.message}`,
+            'Gemini stream project context rejected. Retrying once without project.',
           );
           try {
             markProxyNormalizationStarted();
@@ -511,7 +659,13 @@ export class GeminiService extends BaseProxyService {
               token.token.upstream_proxy_url,
               accountTelemetryHeaders,
               signal,
-              this.createScopedGenerationOptions(token, scope.storeKey, recoveryBudget),
+              this.createScopedGenerationOptions(
+                token,
+                scope.storeKey,
+                recoveryBudget,
+                signal,
+                overloadThinkingRecovery,
+              ),
             );
             this.commitUpstreamSession(token, signal);
             return this.passthroughSseStream(
@@ -519,6 +673,7 @@ export class GeminiService extends BaseProxyService {
               token,
               accountTargetModel,
               this.takeImagePermit(retryState),
+              () => this.modelSwitchHistory.recordSuccess(modelSwitchKey, accountTargetModel),
             );
           } catch (fallbackErr) {
             if (fallbackErr instanceof UpstreamProxyConfigurationError) {
@@ -585,6 +740,7 @@ export class GeminiService extends BaseProxyService {
     successLease?: CloudAccount,
     model?: string,
     imagePermit?: ImageSchedulerPermit | null,
+    onSuccess?: () => void,
   ): Observable<string> {
     const observesImageSuccess = isGeminiImageModel(model);
     const observable = new FlowControlledSseStream(upstreamStream, (subscriber) => {
@@ -596,6 +752,7 @@ export class GeminiService extends BaseProxyService {
       let streamFailed = false;
       let sawFinishReason = false;
       const outputState = new GenerationOutputState();
+      let lastUsageMetadata: GeminiResponse['usageMetadata'];
       let terminated = false;
       let imagePermitReleased = false;
       const releaseImagePermit = (): void => {
@@ -623,6 +780,38 @@ export class GeminiService extends BaseProxyService {
         );
         subscriber.complete();
       };
+      const finishInterrupted = (): boolean => {
+        const finishReason = outputState.interruptionFinishReason;
+        if (terminated || streamFailed || observesImageSuccess || !finishReason) {
+          return false;
+        }
+        terminated = true;
+        streamFailed = true;
+        idleTimer.clear();
+        releaseImagePermit();
+        if (!sawFinishReason) {
+          sawFinishReason = true;
+          subscriber.next(
+            `data: ${JSON.stringify({
+              candidates: [
+                {
+                  index: 0,
+                  finishReason,
+                  finishMessage:
+                    'Upstream stream interrupted before completion. Preceding content preserved by gateway.',
+                  gatewayInterrupted: true,
+                },
+              ],
+              usageMetadata: lastUsageMetadata,
+            })}\n\n`,
+          );
+        }
+        this.logger.warn(
+          'Finalizing interrupted Gemini output without committing upstream success.',
+        );
+        subscriber.complete();
+        return true;
+      };
       const inspectData = (data: string): { valid: boolean; error?: string; cause?: Error } => {
         let hasValidResponse = false;
         if (observesImageSuccess) {
@@ -645,6 +834,7 @@ export class GeminiService extends BaseProxyService {
           if (decoded.kind === 'response') {
             const response = decoded.response;
             outputState.observe(response);
+            lastUsageMetadata = response.usageMetadata ?? lastUsageMetadata;
             if (response.promptFeedback?.blockReason) {
               sawFinishReason = true;
               hasValidResponse = true;
@@ -696,6 +886,9 @@ export class GeminiService extends BaseProxyService {
         return true;
       };
       const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Gemini-SSE', () => {
+        if (finishInterrupted()) {
+          return;
+        }
         fail('Upstream response stream timed out.');
       });
 
@@ -766,6 +959,9 @@ export class GeminiService extends BaseProxyService {
           return;
         }
         if (!sawFinishReason || streamFailed) {
+          if (finishInterrupted()) {
+            return;
+          }
           fail('Upstream stream ended without output or a finish reason.');
           return;
         }
@@ -777,6 +973,7 @@ export class GeminiService extends BaseProxyService {
           (!observesImageSuccess || sawImageData)
         ) {
           this.markUpstreamSuccess(successLease, model);
+          onSuccess?.();
         }
         terminated = true;
         subscriber.complete();
@@ -784,6 +981,9 @@ export class GeminiService extends BaseProxyService {
 
       upstreamStream.on('error', (err: unknown) => {
         if (terminated) {
+          return;
+        }
+        if (isUpstreamStreamInterruption(err) && finishInterrupted()) {
           return;
         }
         idleTimer.clear();
@@ -805,6 +1005,9 @@ export class GeminiService extends BaseProxyService {
 
       upstreamStream.on('close', () => {
         if (terminated) {
+          return;
+        }
+        if (finishInterrupted()) {
           return;
         }
         idleTimer.clear();
@@ -901,6 +1104,70 @@ export class GeminiService extends BaseProxyService {
     if (!aliases.success || (request.tools !== undefined && !Array.isArray(request.tools))) {
       throw new BadRequestException('Invalid Gemini tools or tool configuration');
     }
-    return { ...request, ...aliases.data };
+    const batch = new SchemaConversionBatch();
+    let ordinal = 0;
+    try {
+      const tools = request.tools?.map((tool) => {
+        if (!tool || typeof tool !== 'object' || Array.isArray(tool)) {
+          throw new BadRequestException('Invalid Gemini tool declaration');
+        }
+        if (tool.functionDeclarations === undefined) {
+          return tool;
+        }
+        if (!Array.isArray(tool.functionDeclarations)) {
+          throw new BadRequestException('Invalid Gemini function declarations');
+        }
+        return {
+          ...tool,
+          functionDeclarations: tool.functionDeclarations.map((declaration) => {
+            if (!declaration || typeof declaration.name !== 'string' || !declaration.name.trim()) {
+              throw new BadRequestException('Invalid Gemini function declaration');
+            }
+            const toolOrdinal = ordinal++;
+            if (declaration.parameters === undefined) {
+              return declaration;
+            }
+            const parameters = declaration.parameters;
+            return {
+              ...declaration,
+              parameters: normalizeObjectJsonSchema(
+                parameters?.type === 'OBJECT' ? { ...parameters, type: 'object' } : parameters,
+                batch,
+                'tool',
+                toolOrdinal,
+              ),
+            };
+          }),
+        };
+      });
+      const names = new Set(
+        tools?.flatMap(
+          (tool) => tool.functionDeclarations?.map((declaration) => declaration.name) ?? [],
+        ),
+      );
+      const camelChoice = aliases.data.toolConfig?.functionCallingConfig;
+      const snakeChoice = aliases.data.tool_config?.function_calling_config;
+      for (const choice of [
+        { mode: camelChoice?.mode, names: camelChoice?.allowedFunctionNames },
+        { mode: snakeChoice?.mode, names: snakeChoice?.allowed_function_names },
+      ]) {
+        if (
+          (choice.mode === 'ANY' && names.size === 0) ||
+          choice.names?.some((name) => !names.has(name))
+        ) {
+          throw new BadRequestException(
+            'Gemini function selection requires declared function names',
+          );
+        }
+      }
+      return { ...request, ...aliases.data, ...(tools ? { tools } : {}) };
+    } catch (error) {
+      if (error instanceof SchemaInputError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    } finally {
+      reportSchemaIssues(batch, 'gemini');
+    }
   }
 }

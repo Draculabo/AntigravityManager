@@ -10,6 +10,11 @@ call is still pending now receive HTTP 400. Tool calls must belong to assistant
 messages and tool results to user messages in the intermediate Claude history.
 Clients retaining unambiguous history can upgrade normally on every platform.
 
+Native Gemini generation also rejects a `functionResponse.name` that differs from its
+pending `functionCall.name`, even when the response has the correct ID or is the sole
+pending result. The error names its position and `conflicting-result-name`, without
+including the function arguments or result payload.
+
 Chat, Responses, Messages and native Gemini generation also reject an empty or
 whitespace-only business request, initial-system-only history, an unanchored
 assistant start and a call without its result. Responses no longer converts a
@@ -29,6 +34,8 @@ their separate behavior.
 5. Preserve actual tool results and signed history after a signature rejection.
    The gateway no longer guesses completion/interruption or retries a rewritten
    conversation. Recover the original history or start a fresh accurate summary.
+6. For native Gemini, retain the original function name on its response. Do not rename
+   a result to another function merely because its call ID is unchanged.
 
 Completed IDs can still be reused in a later round. No application stop, configuration
 conversion or manual profile edit is required.

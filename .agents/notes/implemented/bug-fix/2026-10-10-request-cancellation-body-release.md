@@ -30,6 +30,15 @@ or upstream failure penalty. External wire schemas and durable formats remain un
 The returned capture stream owns its source and unpipes/destroys it on close. This preserves
 terminal audit completion while ensuring downstream teardown closes the original HTTP stream.
 
+Gemini count actions also forward the HTTP abort signal through service preparation,
+account pool/selection waits, retry grace and Axios count transport. The shared count
+owner checks cancellation before each new account action, after upstream settlement,
+before success effects and before local-estimate fallback. Its request waiter releases
+even if a substituted transport ignores abort; the production transport separately owns
+aborting Axios. Late counts/failures cannot publish success, commit session affinity or
+become a successful estimate for a cancelled request. Failures already observed before
+cancellation can have existing retry-policy effects; cancellation does not reverse them.
+
 ## Alternatives considered
 
 - Bind a shared hydration to its first request's signal: incorrectly cancels other requesters.
@@ -45,7 +54,8 @@ Requester cancellation is prompt, but active SQL/decode work is not preempted. C
 can remain live after individual request bodies are collected. Shared static cache creation
 can outlive one request under its existing timeout. RSS does not necessarily fall immediately
 when objects become collectible. Deprecated Complete/count endpoints are outside this new
-Messages signal contract; file expansion and synchronous conversion are not made preemptible.
+Messages signal contract, except native Gemini count now has the explicit signal chain
+described above. File expansion and synchronous conversion are not made preemptible.
 
 ## Verification
 
@@ -66,3 +76,9 @@ the original upstream connection closes. A source-teardown regression first fail
 alive source and passes when capture-stream close owns source destruction.
 
 Current behavior is documented in [diagnostic retention](../../../../docs/modules/proxy-gateway/diagnostic-retention.md).
+
+The count follow-up first fails five controlled pre-abort/late-result/HTTP-close cases,
+then checks pending account selection and actual Axios signal forwarding. Deferred
+promises establish dispatch/cancellation ordering; no real upstream or account is used.
+It does not extend the earlier loopback/native acceptance to count-specific socket or
+installed-client behavior.

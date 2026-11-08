@@ -16,6 +16,7 @@ import { selectOpenCodeAdapter } from '@/modules/proxy-gateway/ipc/opencode-adap
 import { router, toPublicORPCError } from '@/ipc/router';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { logger } from '@/shared/logging/logger';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 const renderer = createRouterClient(router);
 
@@ -80,7 +81,7 @@ async function remote() {
     shutdown: async () => {},
     onShutdownError: vi.fn(),
     rpc: {
-      ...createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() }),
+      ...createCoreRpcOperations(mockCoreGatewayLifecycle()),
       openCode: owner,
     },
   });

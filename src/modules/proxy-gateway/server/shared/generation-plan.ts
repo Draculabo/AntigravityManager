@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { isDisabledThinkingEffort, parseModelEffort } from '../common/model-effort';
 
 export type GenerationControlSource = 'gateway' | 'client';
 export type ThinkingPlan =
@@ -9,6 +10,7 @@ export type ThinkingPlan =
 
 export interface GenerationPlanInput {
   source: GenerationControlSource;
+  imageGeneration?: boolean;
   model: string;
   clientDisabled?: boolean;
   clientBudget?: number;
@@ -32,9 +34,10 @@ export interface GenerationPlan {
 const LEVELS = new Set(['low', 'medium', 'high']);
 
 /** Headroom added to a positive budget when the client sent no explicit output limit. */
-const DEFAULT_OUTPUT_HEADROOM = 32_768;
+const DEFAULT_OUTPUT_HEADROOM = 1_024;
+const IMAGE_OUTPUT_HEADROOM = 2_048;
 /** Headroom added when the client did send an explicit limit that cannot hold the budget. */
-const EXPLICIT_OUTPUT_HEADROOM = 8_192;
+const EXPLICIT_OUTPUT_HEADROOM = 1_024;
 
 export function resolveGenerationPlan(input: GenerationPlanInput): GenerationPlan {
   const reasons: string[] = [];
@@ -44,32 +47,30 @@ export function resolveGenerationPlan(input: GenerationPlanInput): GenerationPla
   const thinking = constrainThinking(requestedThinking, thinkingCap, reasons);
   const explicitMax = input.explicitMaxOutputTokens;
   const registeredMax = input.registeredMaxOutputTokens;
-  const requestedMax = registeredMax ?? explicitMax;
+  const requestedMax = explicitMax ?? registeredMax;
   let maxOutputTokens = positiveIntegerOrDefault(requestedMax, outputCap);
   if (registeredMax !== undefined && registeredMax !== maxOutputTokens) {
     reasons.push('registered-output-constrained');
   }
 
+  const defaultHeadroom = input.imageGeneration ? IMAGE_OUTPUT_HEADROOM : DEFAULT_OUTPUT_HEADROOM;
   let constrainedThinking = thinking;
   if (thinking.kind === 'budget' && thinking.budget > 0) {
     // No caller-supplied limit at all: derive one from the budget so a positive
     // thinking budget never has to share its output allowance.
-    if (requestedMax === undefined) {
-      maxOutputTokens = Math.min(outputCap, thinking.budget + DEFAULT_OUTPUT_HEADROOM);
+    if (explicitMax === undefined) {
+      maxOutputTokens = thinking.budget + Math.min(defaultHeadroom, outputCap - thinking.budget);
       reasons.push('output-derived-from-thinking-budget');
     }
-    if (input.explicitMaxOutputTokens !== undefined && thinking.budget >= 6 * maxOutputTokens) {
+    if (input.explicitMaxOutputTokens !== undefined && thinking.budget / 6 >= maxOutputTokens) {
       const reduced = Math.max(0, maxOutputTokens - 1024);
       constrainedThinking = { kind: 'budget', budget: reduced };
       reasons.push('thinking-budget-reduced-by-six-times-rule');
     } else if (maxOutputTokens <= thinking.budget) {
-      // A client-supplied limit only gets the smaller headroom; an omitted limit keeps
-      // the wider default so a long answer is not truncated by its own thinking budget.
+      // Image generation reserves more output only when the caller omitted its limit.
       const headroom =
-        input.explicitMaxOutputTokens !== undefined
-          ? EXPLICIT_OUTPUT_HEADROOM
-          : DEFAULT_OUTPUT_HEADROOM;
-      const raised = Math.min(outputCap, thinking.budget + headroom);
+        input.explicitMaxOutputTokens !== undefined ? EXPLICIT_OUTPUT_HEADROOM : defaultHeadroom;
+      const raised = thinking.budget + Math.min(headroom, outputCap - thinking.budget);
       if (raised !== maxOutputTokens) {
         maxOutputTokens = raised;
         reasons.push('output-raised-for-thinking-budget');
@@ -78,8 +79,13 @@ export function resolveGenerationPlan(input: GenerationPlanInput): GenerationPla
   }
 
   maxOutputTokens = Math.min(maxOutputTokens, outputCap);
-  if (constrainedThinking.kind === 'budget' && constrainedThinking.budget >= maxOutputTokens) {
-    const adjustedBudget = Math.max(0, maxOutputTokens - 1);
+  if (
+    constrainedThinking.kind === 'budget' &&
+    (constrainedThinking.budget >= maxOutputTokens ||
+      (maxOutputTokens === outputCap && constrainedThinking.budget > maxOutputTokens - 1024))
+  ) {
+    const outputReserve = Math.min(1024, Math.max(1, maxOutputTokens - 1));
+    const adjustedBudget = Math.max(0, maxOutputTokens - outputReserve);
     if (adjustedBudget !== constrainedThinking.budget) {
       reasons.push('thinking-budget-kept-below-output');
     }
@@ -100,7 +106,10 @@ export function resolveGenerationPlan(input: GenerationPlanInput): GenerationPla
 }
 
 function resolveThinking(input: GenerationPlanInput, reasons: string[]): ThinkingPlan {
-  if (input.source === 'client' && input.clientDisabled) {
+  if (
+    input.source === 'client' &&
+    (input.clientDisabled || isDisabledThinkingEffort(input.clientEffort))
+  ) {
     return { kind: 'disabled' };
   }
   if (input.source === 'client' && input.clientBudget !== undefined) {
@@ -134,13 +143,19 @@ function resolveThinking(input: GenerationPlanInput, reasons: string[]): Thinkin
     return { kind: 'budget', budget };
   }
   if (input.clientEffort !== undefined) {
-    const effort = input.clientEffort.trim().toLowerCase();
-    if (!LEVELS.has(effort)) {
+    const effort = parseModelEffort(input.clientEffort);
+    if (!effort || !LEVELS.has(effort)) {
       throw new BadRequestException(`Unsupported model effort "${input.clientEffort}"`);
     }
     return { kind: 'level', level: effort };
   }
   if (input.registeredThinkingBudget !== undefined) {
+    if (
+      !Number.isSafeInteger(input.registeredThinkingBudget) ||
+      input.registeredThinkingBudget < -1
+    ) {
+      throw new BadRequestException('thinking budget must be -1 or a non-negative safe integer');
+    }
     if (input.registeredThinkingBudget === -1) {
       return { kind: 'adaptive' };
     }

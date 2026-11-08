@@ -24,6 +24,7 @@ import type {
 } from './traffic-audit.worker-protocol';
 import { initialAuditGenerations, AUDIT_TRAFFIC_CLASSES } from './audit-capture-generations';
 import { readUsageRange } from './traffic-audit-usage-range';
+import { readUsageTrends } from './traffic-audit-usage-trends';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { recoverInterruptedAudit } from './traffic-audit-recovery';
 import { auditSessionSnapshot } from './audit-session-snapshot';
@@ -189,6 +190,8 @@ export class TrafficAuditRepository {
         return auditSessionSnapshot(this.raw, this.queries, command.payload.sessionId);
       case 'usageRange':
         return readUsageRange(this.raw, command.payload);
+      case 'usageTrends':
+        return readUsageTrends(this.raw, command.payload);
       case 'detail':
         return this.queries.detail(command.payload.id);
       case 'bodyPage':
@@ -362,6 +365,10 @@ export class TrafficAuditRepository {
         durationMs: payload.durationMs,
         error: payload.error,
         outcome: payload.outcome,
+        inputTokens: payload.inputTokens,
+        outputTokens: payload.outputTokens,
+        cachedTokens: payload.cachedTokens,
+        reasoningTokens: payload.reasoningTokens,
         responseHeaders: payload.responseHeaders,
         responsePartial: Boolean(payload.responsePartial),
         status: payload.status,

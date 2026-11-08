@@ -5,6 +5,7 @@ import {
   type AuditOperations,
 } from './audit-owner.service';
 import { UsageRangeInputSchema, UsageRangeResultSchema } from './usage-range.schema';
+import { UsageTrendsInputSchema, UsageTrendsResultSchema } from './usage-trends.schema';
 import {
   AuditIdInputSchema,
   AuditMutationResultSchema,
@@ -42,6 +43,10 @@ export function createAuditOwnerRouter(owner: AuditOperations) {
     filterOptions: procedure
       .output(TrafficAuditFilterOptionsSchema)
       .handler(() => owner.filterOptions()),
+    usageTrends: procedure
+      .input(UsageTrendsInputSchema)
+      .output(UsageTrendsResultSchema)
+      .handler(({ input }) => owner.usageTrends(input)),
     usageRange: procedure
       .input(UsageRangeInputSchema)
       .output(UsageRangeResultSchema)

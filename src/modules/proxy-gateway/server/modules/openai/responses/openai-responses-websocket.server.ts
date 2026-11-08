@@ -5,7 +5,9 @@ import type { Duplex } from 'node:stream';
 import { isObservable, Subscriber, type Observable } from 'rxjs';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { FlowControlledSseStream } from '../../../common/flow-controlled-sse-stream';
-import { awaitRequestOperation } from '../../../common/request-cancellation';
+import { awaitRequestOperation, throwIfRequestAborted } from '../../../common/request-cancellation';
+import { GenerationDeadlineScope } from '../../../common/generation-deadline';
+import { getServerConfig } from '@/server/server-config';
 import { DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES } from '../../../proxy.constants';
 import { logger } from '@/shared/logging/logger';
 import { ResponsesWebSocketOutput } from './responses-websocket-output';
@@ -123,84 +125,94 @@ function handleConnection(
         }
         const payload = parseClientPayload(rawData);
         return thoughtContext.run(payload, context, async () => {
-          const action = await protocol.accept(payload);
-          if (!thoughtContext.mayRetain()) {
-            throw new Error('Responses history was invalidated');
-          }
-          if (action.kind === 'local') {
-            await sendEvents(socket, action.events, failTransport);
-            return;
-          }
-
-          const pendingStream = dependencies.streamRequest(action.request, abort.signal, context);
-          void pendingStream.then(
-            (lateStream) => {
-              if (abort.signal.aborted && lateStream instanceof FlowControlledSseStream) {
-                lateStream.destroy();
-              }
-            },
-            () => {},
+          const deadline = new GenerationDeadlineScope(
+            (getServerConfig()?.request_timeout ?? 300) * 1000,
+            abort.signal,
           );
-          const stream = await awaitRequestOperation(pendingStream, abort.signal);
-          if (!isObservable(stream)) {
-            throw new Error('Responses WebSocket upstream did not return a stream');
-          }
-          const parseUpstreamChunk = createUpstreamEventParser();
-          output = new ResponsesWebSocketOutput(
-            socket,
-            stream instanceof FlowControlledSseStream ? stream : null,
-            failTransport,
-          );
-          const currentOutput = output;
-          let cancel: (() => void) | undefined;
+          const signal = deadline.signal;
           try {
-            await new Promise<void>((resolve, reject) => {
-              cancel = (): void => resolve();
-              abort.signal.addEventListener('abort', cancel, { once: true });
-              const subscriber = new Subscriber<unknown>({
-                next: (chunk) => {
-                  try {
-                    const canonical = takeSerializedResponsesFrame(stream, chunk);
-                    if (canonical) {
-                      currentOutput.enqueueSerialized(canonical.json);
-                      if (
-                        !abort.signal.aborted &&
-                        thoughtContext.mayRetain() &&
-                        canonical.completedState
-                      ) {
-                        protocol.complete(canonical.completedState);
-                      }
-                      return;
-                    }
-                    for (const event of parseUpstreamChunk(chunk)) {
-                      currentOutput.enqueue(event);
-                      if (abort.signal.aborted) {
-                        break;
-                      }
-                      if (event.type === 'response.completed' && thoughtContext.mayRetain()) {
-                        protocol.complete(event.response);
-                      }
-                    }
-                  } catch {
-                    failTransport(
-                      new Error('Responses WebSocket upstream event exceeds decode budget'),
-                    );
-                  }
-                },
-                error: reject,
-                complete: () => currentOutput.end(resolve),
-              });
-              activeSubscription = subscriber;
-              stream.subscribe(subscriber);
-            });
-          } finally {
-            if (cancel) {
-              abort.signal.removeEventListener('abort', cancel);
+            const action = await protocol.accept(payload, signal);
+            if (!thoughtContext.mayRetain()) {
+              throw new Error('Responses history was invalidated');
             }
-            activeSubscription?.unsubscribe();
-            activeSubscription = null;
-            currentOutput.stop();
-            output = null;
+            if (action.kind === 'local') {
+              await sendEvents(socket, action.events, failTransport);
+              return;
+            }
+
+            const pendingStream = dependencies.streamRequest(action.request, signal, context);
+            void pendingStream.then(
+              (lateStream) => {
+                if (signal.aborted && lateStream instanceof FlowControlledSseStream) {
+                  lateStream.destroy();
+                }
+              },
+              () => {},
+            );
+            const stream = await awaitRequestOperation(pendingStream, signal);
+            throwIfRequestAborted(signal);
+            if (!isObservable(stream)) {
+              throw new Error('Responses WebSocket upstream did not return a stream');
+            }
+            const parseUpstreamChunk = createUpstreamEventParser();
+            output = new ResponsesWebSocketOutput(
+              socket,
+              stream instanceof FlowControlledSseStream ? stream : null,
+              failTransport,
+            );
+            const currentOutput = output;
+            let cancel: (() => void) | undefined;
+            try {
+              await new Promise<void>((resolve, reject) => {
+                cancel = (): void => reject(signal.reason);
+                signal.addEventListener('abort', cancel, { once: true });
+                const subscriber = new Subscriber<unknown>({
+                  next: (chunk) => {
+                    try {
+                      const canonical = takeSerializedResponsesFrame(stream, chunk);
+                      if (canonical) {
+                        currentOutput.enqueueSerialized(canonical.json);
+                        if (
+                          !signal.aborted &&
+                          thoughtContext.mayRetain() &&
+                          canonical.completedState
+                        ) {
+                          protocol.complete(canonical.completedState);
+                        }
+                        return;
+                      }
+                      for (const event of parseUpstreamChunk(chunk)) {
+                        currentOutput.enqueue(event);
+                        if (signal.aborted) {
+                          break;
+                        }
+                        if (event.type === 'response.completed' && thoughtContext.mayRetain()) {
+                          protocol.complete(event.response);
+                        }
+                      }
+                    } catch {
+                      failTransport(
+                        new Error('Responses WebSocket upstream event exceeds decode budget'),
+                      );
+                    }
+                  },
+                  error: reject,
+                  complete: () => currentOutput.end(resolve),
+                });
+                activeSubscription = subscriber;
+                stream.subscribe(subscriber);
+              });
+            } finally {
+              if (cancel) {
+                signal.removeEventListener('abort', cancel);
+              }
+              activeSubscription?.unsubscribe();
+              activeSubscription = null;
+              currentOutput.stop();
+              output = null;
+            }
+          } finally {
+            deadline.dispose();
           }
         });
       })

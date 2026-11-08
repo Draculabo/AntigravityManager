@@ -15,7 +15,7 @@ export function normalizeGeminiToolCallIds(request: GeminiRequest): GeminiReques
     content.parts.some((part) => part.functionCall && !part.functionCall.id),
   );
   let anchor = needsGeneratedId ? hashSessionAnchor(['gemini-tool-identity:v1']) : '';
-  const pending = new Set<string>();
+  const pending = new Map<string, string>();
   let changed = false;
 
   const contents = request.contents.map((content, contentIndex): GeminiContent => {
@@ -48,7 +48,7 @@ export function normalizeGeminiToolCallIds(request: GeminiRequest): GeminiReques
             'duplicate-pending-id',
           );
         }
-        pending.add(id);
+        pending.set(id, call.name);
 
         const normalizedPart = call.id === id ? part : { ...part, functionCall: { ...call, id } };
         contentChanged ||= normalizedPart !== part;
@@ -68,17 +68,31 @@ export function normalizeGeminiToolCallIds(request: GeminiRequest): GeminiReques
               pending.size > 1 ? 'ambiguous-missing-id' : 'missing-pending-call',
             );
           }
-          id = [...pending][0];
+          id = [...pending.keys()][0];
         } else if (!pending.has(id)) {
           throw new InvalidToolResultAssociationError(
             `contents[${contentIndex}].parts[${partIndex}]`,
             'missing-pending-call',
           );
         }
+        const callName = pending.get(id);
+        // Only an explicit pending ID can replace the exact client placeholder.
+        const name =
+          response.id && response.name === 'unknown' && callName && callName !== 'unknown'
+            ? callName
+            : response.name;
+        if (callName !== name) {
+          throw new InvalidToolResultAssociationError(
+            `contents[${contentIndex}].parts[${partIndex}]`,
+            'conflicting-result-name',
+          );
+        }
         pending.delete(id);
 
         const normalizedPart =
-          response.id === id ? part : { ...part, functionResponse: { ...response, id } };
+          response.id === id && response.name === name
+            ? part
+            : { ...part, functionResponse: { ...response, id, name } };
         contentChanged ||= normalizedPart !== part;
         if (needsGeneratedId) {
           contentAnchor = hashSessionAnchor([contentAnchor, 'part', normalizedPart]);

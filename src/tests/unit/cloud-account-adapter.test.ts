@@ -32,6 +32,7 @@ import { desktopOAuthLogin } from '@/modules/cloud-account/ipc/desktop-oauth-log
 import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
 import { CloudAccountHealthService } from '@/modules/cloud-account/services/CloudAccountHealthService';
 import * as serverMain from '@/server/main';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 vi.mock('@/modules/cloud-account/ipc/handler', () => ({}));
@@ -256,6 +257,7 @@ describe('cloud account read adapter', () => {
       onShutdownError: vi.fn(),
       oauth,
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,
@@ -344,6 +346,7 @@ describe('cloud account read adapter', () => {
       shutdown: async () => {},
       onShutdownError: vi.fn(),
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,
@@ -374,6 +377,7 @@ describe('cloud account read adapter', () => {
       shutdown: async () => {},
       onShutdownError: vi.fn(),
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,
@@ -475,6 +479,7 @@ describe('cloud account read adapter', () => {
       shutdown: async () => {},
       onShutdownError: vi.fn(),
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,
@@ -508,6 +513,7 @@ describe('cloud account read adapter', () => {
       shutdown: async () => {},
       onShutdownError: vi.fn(),
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,
@@ -559,6 +565,7 @@ describe('cloud account read adapter', () => {
     });
     vi.spyOn(IdeAccountImportAdapter, 'syncFromIde').mockImplementation(() => waiting);
     const operations = createCoreRpcOperations({
+      ...mockCoreGatewayLifecycle(),
       startGateway: vi.fn(async (port: number) => ({ success: true as const, port, base_url: '' })),
       stopGateway: vi.fn(async () => true),
     });
@@ -621,6 +628,7 @@ describe('cloud account read adapter', () => {
       shutdown: async () => {},
       onShutdownError: vi.fn(),
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,
@@ -665,6 +673,7 @@ describe('cloud account read adapter', () => {
       .mockImplementation(() => {});
     const refresh = vi.spyOn(quotaService, 'refreshAccountQuotaCore');
     const operations = createCoreRpcOperations({
+      ...mockCoreGatewayLifecycle(),
       startGateway: vi.fn(async (port: number) => ({ success: true as const, port, base_url: '' })),
       stopGateway: vi.fn(async () => true),
     });
@@ -716,6 +725,7 @@ describe('cloud account read adapter', () => {
     );
     const run = vi.spyOn(WeeklyWarmupService, 'run');
     const operations = createCoreRpcOperations({
+      ...mockCoreGatewayLifecycle(),
       startGateway: vi.fn(async (port: number) => ({ success: true as const, port, base_url: '' })),
       stopGateway: vi.fn(async () => true),
     });
@@ -751,6 +761,7 @@ describe('cloud account read adapter', () => {
     const embedded = await rendererCloud.listCloudAccounts();
     const socketPath = await endpoint();
     const operations = createCoreRpcOperations({
+      ...mockCoreGatewayLifecycle(),
       startGateway: vi.fn(async (port: number) => ({
         success: true as const,
         port,
@@ -790,6 +801,7 @@ describe('cloud account read adapter', () => {
       shutdown: async () => {},
       onShutdownError: vi.fn(),
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,
@@ -835,6 +847,7 @@ describe('cloud account read adapter', () => {
       shutdown: async () => {},
       onShutdownError: vi.fn(),
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,

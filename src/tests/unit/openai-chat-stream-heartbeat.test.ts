@@ -289,7 +289,12 @@ describe('OpenAI Chat stream heartbeat', () => {
 
     expect(completed).toBe(true);
     expect(chunks.join('')).toContain('partial');
-    expect(chunks.join('')).toContain('upstream_timeout');
+    if (_label === 'Chat Completions') {
+      expect(chunks.join('')).toContain('"finish_reason":"length"');
+      expect(chunks.at(-1)).toBe('data: [DONE]\n\n');
+    } else {
+      expect(chunks.join('')).toContain('upstream_timeout');
+    }
     expect(upstreamStream.destroyed).toBe(true);
   });
 

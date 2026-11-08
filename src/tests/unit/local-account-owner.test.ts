@@ -20,6 +20,7 @@ import { projectOwnerOperationError } from '@/ipc/owner-operation-error';
 import { getErrorDetailsText } from '@/shared/utils/errorMessages';
 import { logger } from '@/shared/logging/logger';
 import { encrypt } from '@/shared/security/security';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 const writeAccount = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock('@/shared/security/security', async () => {
   const { encryptWithKey, decryptParsedPayloadWithKey, parseEncryptedPayload } =
@@ -146,7 +147,7 @@ async function remote() {
     shutdown: async () => {},
     onShutdownError: vi.fn(),
     rpc: {
-      ...createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() }),
+      ...createCoreRpcOperations(mockCoreGatewayLifecycle()),
       localAccount: owner,
     },
   });

@@ -7,7 +7,10 @@ import type { ThoughtRecord } from '@/modules/proxy-gateway/thought-store/though
 import type { TrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { thoughtCausalHistory } from '@/modules/proxy-gateway/thought-store/thought-causal-history';
 import { hashSessionAnchor } from '@/modules/proxy-gateway/server/common/session-anchor-hash';
-import type { SqliteWorkerCommand } from '@/shared/persistence/sqlite-worker/bounded-sqlite-worker';
+import type {
+  SqliteWorkerCommand,
+  SqliteWorkerWriteCallbacks,
+} from '@/shared/persistence/sqlite-worker/bounded-sqlite-worker';
 
 const state = vi.hoisted(() => ({
   directory: '',
@@ -15,7 +18,8 @@ const state = vi.hoisted(() => ({
   maxSessions: 2,
   outstandingLoads: 0,
   close: vi.fn<() => Promise<void>>(),
-  writes: vi.fn<() => boolean>(),
+  writes:
+    vi.fn<(command: SqliteWorkerCommand, callbacks?: SqliteWorkerWriteCallbacks) => boolean>(),
   load: vi.fn<(sessionKey: string) => Promise<ThoughtRecord[]>>(),
   requests: vi.fn<(command: SqliteWorkerCommand) => Promise<unknown>>(),
   contexts: new Map<string, TrafficAuditRequestContext>(),
@@ -107,6 +111,13 @@ beforeEach(async () => {
         state.outstandingLoads -= 1;
       }
     }
+    if (command.operation === 'toolRecoverySnapshot') {
+      const { ThoughtToolRecoveryInputSchema } =
+        await import('@/modules/proxy-gateway/thought-store/thought-tool-recovery.schema');
+      return ThoughtToolRecoveryInputSchema.parse(command.payload).operationIds.map(
+        (operationId) => ({ operationId, positions: [0, 1] }),
+      );
+    }
     return [];
   });
   store = new ThoughtStoreService();
@@ -179,6 +190,200 @@ function capture(toolId: string) {
 }
 
 describe('cold Thought Store hydration', () => {
+  it.each([false, true])(
+    'distinguishes rejected memory captures from acknowledged durable tools: %s',
+    async (acknowledged) => {
+      const original = state.requests.getMockImplementation()!;
+      state.requests.mockImplementation((command) =>
+        command.operation === 'toolRecoverySnapshot' ? Promise.resolve([]) : original(command),
+      );
+      const empty = request('memory-tool');
+      empty.request.contents = [];
+      await store.prepareInternalRequest(empty, empty.model);
+      state.writes.mockReturnValue(acknowledged);
+      store.captureGeminiResponse(
+        state.sessionKey,
+        {
+          candidates: [
+            {
+              content: {
+                role: 'model',
+                parts: [
+                  {
+                    functionCall: { id: 'memory-tool', name: 'read', args: {} },
+                    thoughtSignature: 'original-tool-signature',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        empty.model,
+      );
+      const write = state.writes.mock.calls.findLast(([command]) => command.operation === 'save');
+      expect(write).toBeDefined();
+      if (acknowledged) {
+        expect(write?.[1]?.onSuccess).toBeTypeOf('function');
+        write?.[1]?.onSuccess?.();
+      }
+      const body = request('memory-tool');
+      await store.prepareInternalRequest(body, body.model);
+      expect(body.request.contents[0].parts).toEqual([
+        {
+          functionCall: { id: 'memory-tool', name: 'read', args: {} },
+          ...(acknowledged ? {} : { thoughtSignature: 'original-tool-signature' }),
+        },
+      ]);
+      expect(state.load).toHaveBeenCalledOnce();
+    },
+  );
+  it('denies durable tools during permission-read failure and retries after the existing cooldown', async () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
+    const make = () => request('read-failure');
+    const saved = {
+      ...record('read-failure'),
+      operationId: 'failed-read-op',
+      captureState: 'complete' as const,
+      completedAt: Date.now(),
+      causalAnchor: thoughtCausalHistory(make().request.contents).before[0],
+      partSignatures: [
+        ...record('read-failure').partSignatures,
+        {
+          kind: 'tool' as const,
+          position: 1,
+          callId: 'read-failure',
+          name: 'read',
+          argsDigest: hashSessionAnchor({}),
+          signature: 'tool-signature',
+        },
+      ],
+    };
+    state.load.mockResolvedValue([saved]);
+    const original = state.requests.getMockImplementation()!;
+    const permissions = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('synthetic tool permission failure'))
+      .mockResolvedValue([{ operationId: 'failed-read-op', positions: [1] }]);
+    state.requests.mockImplementation((command) =>
+      command.operation === 'toolRecoverySnapshot' ? permissions() : original(command),
+    );
+    try {
+      for (const body of [make(), make()]) {
+        await store.prepareInternalRequest(body, body.model);
+        expect(body.request.contents[0].parts).toEqual([
+          {
+            thought: true,
+            text: 'read-failure reasoning',
+            thoughtSignature: signature('read-failure'),
+          },
+          { functionCall: { id: 'read-failure', name: 'read', args: {} } },
+        ]);
+      }
+      expect(permissions).toHaveBeenCalledOnce();
+      expect((await store.stats()).readFailures).toBe(1);
+      clock.mockReturnValue(1101);
+      const later = make();
+      await store.prepareInternalRequest(later, later.model);
+      expect(later.request.contents[0].parts[1]).toMatchObject({
+        thoughtSignature: 'tool-signature',
+      });
+      expect(state.load).toHaveBeenCalledOnce();
+      expect(permissions).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+  it('ignores a tool permission reply that arrives after scoped deletion', async () => {
+    const body = request('late-permission');
+    state.load.mockResolvedValue([
+      {
+        ...record('late-permission'),
+        operationId: 'late-op',
+        captureState: 'complete',
+        completedAt: Date.now(),
+        causalAnchor: thoughtCausalHistory(body.request.contents).before[0],
+        partSignatures: [
+          ...record('late-permission').partSignatures,
+          {
+            kind: 'tool',
+            position: 1,
+            callId: 'late-permission',
+            name: 'read',
+            argsDigest: hashSessionAnchor({}),
+            signature: 'tool-signature',
+          },
+        ],
+      },
+    ]);
+    const original = state.requests.getMockImplementation()!;
+    let release!: () => void;
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    state.requests.mockImplementation(async (command) => {
+      if (command.operation !== 'toolRecoverySnapshot') {
+        return original(command);
+      }
+      started();
+      await gate;
+      return [{ operationId: 'late-op', positions: [1] }];
+    });
+    const pending = store.prepareInternalRequest(body, body.model);
+    try {
+      await ready;
+      await store.deleteSession(state.sessionKey);
+    } finally {
+      release();
+      await pending;
+    }
+    expect(body).toEqual(request('late-permission'));
+    expect((await store.stats()).memoryRecords).toBe(0);
+  });
+  it('rechecks warm tool permissions after capacity eviction and preserves diagnostic thought', async () => {
+    const body = request('warm');
+    const saved = {
+      ...record('warm'),
+      operationId: 'warm-op',
+      captureState: 'complete' as const,
+      completedAt: Date.now(),
+      causalAnchor: thoughtCausalHistory(body.request.contents).before[0],
+      partSignatures: [
+        ...record('warm').partSignatures,
+        {
+          kind: 'tool' as const,
+          position: 1,
+          callId: 'warm',
+          name: 'read',
+          argsDigest: hashSessionAnchor({}),
+          signature: 'tool-signature',
+        },
+      ],
+    };
+    state.load.mockResolvedValue([saved]);
+    const original = state.requests.getMockImplementation()!;
+    const permissions = vi
+      .fn()
+      .mockResolvedValueOnce([{ operationId: 'warm-op', positions: [1] }])
+      .mockResolvedValue([{ operationId: 'warm-op', positions: [] }]);
+    state.requests.mockImplementation((command) =>
+      command.operation === 'toolRecoverySnapshot' ? permissions() : original(command),
+    );
+    await store.prepareInternalRequest(body, body.model);
+    expect(body.request.contents[0].parts[1]).toMatchObject({ thoughtSignature: 'tool-signature' });
+    const later = request('warm');
+    await store.prepareInternalRequest(later, later.model);
+    expect(later.request.contents[0].parts).toEqual([
+      { thought: true, text: 'warm reasoning', thoughtSignature: signature('warm') },
+      { functionCall: { id: 'warm', name: 'read', args: {} } },
+    ]);
+    expect(state.load).toHaveBeenCalledOnce();
+    expect(permissions).toHaveBeenCalledTimes(2);
+    expect(saved.partSignatures[1].signature).toBe('tool-signature');
+  });
   it('throttles failed older lookup and permits a later independent recovery without reloading the recent window', async () => {
     const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
     const original = state.requests.getMockImplementation()!;

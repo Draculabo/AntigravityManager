@@ -24,6 +24,7 @@ import {
 } from '@/modules/cloud-account/services/cloud-account-list.service';
 import { LocalAccountImportPreviewSchema } from '@/modules/cloud-account/local-import/transport.schema';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
   CloudAccountRepo: { getAccounts: vi.fn() },
@@ -145,7 +146,7 @@ async function remote() {
     process.platform === 'win32'
       ? `\\\\.\\pipe\\agm-local-${path.basename(directory)}`
       : path.join(directory, 'core.sock');
-  const operations = createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() });
+  const operations = createCoreRpcOperations(mockCoreGatewayLifecycle());
   server = new ManagementServer({
     endpoint,
     getStatus: () => ({ state: 'running', pid: 123, gateway: { running: false, port: null } }),

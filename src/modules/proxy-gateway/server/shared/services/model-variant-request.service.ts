@@ -1,3 +1,4 @@
+import { getServerConfig } from '@/server/server-config';
 import {
   rebindModelVariant,
   resolveModelVariant,
@@ -8,7 +9,7 @@ import type {
   GeminiRequest,
   OpenAIChatRequest,
 } from '../../common/interfaces/request-interfaces';
-import { assertSupportedModelEffort } from '../../common/model-effort';
+import { assertSupportedModelEffort, isDisabledThinkingEffort } from '../../common/model-effort';
 
 function removeAuthoritativeGeminiThinkingControls(request: GeminiRequest): GeminiRequest {
   const generationConfig = request.generationConfig;
@@ -89,17 +90,23 @@ export interface AppliedGeminiModelVariant {
 export function applyGeminiModelVariant(
   model: string,
   request: GeminiRequest,
+  physicalTarget = false,
 ): AppliedGeminiModelVariant {
-  assertSupportedModelEffort(request.generationConfig?.thinkingConfig?.thinkingLevel);
-  const usesAuthoritativeBudget = usesAuthoritativeThinkingBudget(model);
+  const clientControlled = getServerConfig()?.thinking_budget?.control_source === 'client';
+  const requestedEffort = request.generationConfig?.thinkingConfig?.thinkingLevel;
+  const routeEffort =
+    clientControlled && isDisabledThinkingEffort(requestedEffort) ? undefined : requestedEffort;
+  assertSupportedModelEffort(routeEffort);
+  const usesAuthoritativeBudget = !clientControlled && usesAuthoritativeThinkingBudget(model);
   const sanitizedRequest = usesAuthoritativeBudget
     ? removeAuthoritativeGeminiThinkingControls(request)
     : request;
   const thinkingConfig = sanitizedRequest.generationConfig?.thinkingConfig;
   const variant = resolveModelVariant({
     model,
+    physicalTarget,
     budgetTokens: thinkingConfig?.thinkingBudget,
-    effort: thinkingConfig?.thinkingLevel,
+    effort: clientControlled ? routeEffort : thinkingConfig?.thinkingLevel,
   });
 
   return {
@@ -129,16 +136,22 @@ export interface AppliedAnthropicModelVariant {
 
 export function applyAnthropicModelVariant(
   request: AnthropicChatRequest,
+  physicalTarget = false,
 ): AppliedAnthropicModelVariant {
-  assertSupportedModelEffort(request.output_config?.effort);
-  const usesAuthoritativeBudget = usesAuthoritativeThinkingBudget(request.model);
+  const clientControlled = getServerConfig()?.thinking_budget?.control_source === 'client';
+  const requestedEffort = request.output_config?.effort;
+  const routeEffort =
+    clientControlled && isDisabledThinkingEffort(requestedEffort) ? undefined : requestedEffort;
+  assertSupportedModelEffort(routeEffort);
+  const usesAuthoritativeBudget = !clientControlled && usesAuthoritativeThinkingBudget(request.model);
   const sanitizedRequest = usesAuthoritativeBudget
     ? removeAuthoritativeAnthropicThinkingControls(request)
     : request;
   const variant = resolveModelVariant({
     model: sanitizedRequest.model,
+    physicalTarget,
     budgetTokens: sanitizedRequest.thinking?.budget_tokens,
-    effort: sanitizedRequest.output_config?.effort,
+    effort: routeEffort,
   });
   if (!variant) {
     return {
@@ -147,11 +160,14 @@ export function applyAnthropicModelVariant(
     };
   }
 
+  if (clientControlled) {
+    return { request: { ...sanitizedRequest, model: variant.model }, variant };
+  }
+
   return {
     request: {
       ...sanitizedRequest,
       model: variant.model,
-      max_tokens: variant.maxOutputTokens,
       thinking:
         variant.thinkingBudget === 0
           ? undefined
@@ -173,14 +189,17 @@ export function rebindAnthropicModelVariant(
 ): AppliedAnthropicModelVariant {
   const variant = rebindModelVariant(applied.variant, physicalModel);
   if (!variant) {
-    return applied;
+    return { request: { ...applied.request, model: physicalModel }, variant: null };
+  }
+
+  if (getServerConfig()?.thinking_budget?.control_source === 'client') {
+    return { request: { ...applied.request, model: variant.model }, variant };
   }
 
   return {
     request: {
       ...applied.request,
       model: variant.model,
-      max_tokens: variant.maxOutputTokens,
       thinking:
         variant.thinkingBudget === 0
           ? undefined
@@ -200,10 +219,13 @@ export interface AppliedOpenAIModelVariant {
   variant: ReturnType<typeof resolveModelVariant>;
 }
 
-export function applyOpenAIModelVariant(request: OpenAIChatRequest): AppliedOpenAIModelVariant {
-  const usesAuthoritativeBudget = usesAuthoritativeThinkingBudget(request.model);
+export function applyOpenAIModelVariant(request: OpenAIChatRequest, physicalTarget = false): AppliedOpenAIModelVariant {
+  const clientControlled = getServerConfig()?.thinking_budget?.control_source === 'client';
+  const usesAuthoritativeBudget = !clientControlled && usesAuthoritativeThinkingBudget(request.model);
   const requestedEffort = resolveOpenAIRequestEffort(request);
-  assertSupportedModelEffort(requestedEffort);
+  const routeEffort =
+    clientControlled && isDisabledThinkingEffort(requestedEffort) ? undefined : requestedEffort;
+  assertSupportedModelEffort(routeEffort);
   const variantEffort =
     request.reasoning_effort ??
     request.reasoning?.effort ??
@@ -213,8 +235,9 @@ export function applyOpenAIModelVariant(request: OpenAIChatRequest): AppliedOpen
     : request;
   const variant = resolveModelVariant({
     model: sanitizedRequest.model,
+    physicalTarget,
     budgetTokens: sanitizedRequest.thinking?.budget_tokens,
-    effort: variantEffort,
+    effort: clientControlled ? routeEffort : variantEffort,
   });
   if (!variant) {
     return {
@@ -223,11 +246,14 @@ export function applyOpenAIModelVariant(request: OpenAIChatRequest): AppliedOpen
     };
   }
 
+  if (clientControlled) {
+    return { request: { ...sanitizedRequest, model: variant.model }, variant };
+  }
+
   return {
     request: {
       ...sanitizedRequest,
       model: variant.model,
-      max_tokens: variant.maxOutputTokens,
       thinking:
         variant.thinkingBudget === 0
           ? undefined
@@ -266,7 +292,11 @@ export function rebindOpenAIModelVariant(
 ): AppliedOpenAIModelVariant {
   const variant = rebindModelVariant(applied.variant, physicalModel);
   if (!variant) {
-    return applied;
+    return { request: { ...applied.request, model: physicalModel }, variant: null };
+  }
+
+  if (getServerConfig()?.thinking_budget?.control_source === 'client') {
+    return { request: { ...applied.request, model: variant.model }, variant };
   }
 
   return {
@@ -274,8 +304,7 @@ export function rebindOpenAIModelVariant(
       {
         ...applied.request,
         model: variant.model,
-        max_tokens: variant.maxOutputTokens,
-        thinking:
+          thinking:
           variant.thinkingBudget === 0
             ? undefined
             : {

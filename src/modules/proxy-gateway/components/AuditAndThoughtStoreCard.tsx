@@ -19,7 +19,7 @@ import { PersistenceNumberSetting as NumberSetting } from './PersistenceNumberSe
 
 interface AuditAndThoughtStoreCardProps {
   config: Pick<ProxyConfig, 'thought_store' | 'traffic_audit'>;
-  onChange: (patch: PersistenceSettingsPatch) => Promise<'applied' | 'restart-required'>;
+  onChange: (patch: PersistenceSettingsPatch) => Promise<'applied' | 'restart-required' | 'partial-failure'>;
   revisionAvailable?: boolean;
   onReload?: () => Promise<unknown>;
 }
@@ -39,7 +39,7 @@ export function AuditAndThoughtStoreCard({
   const resetDrops = useAuditDropReset();
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [saveState, setSaveState] = useState<
-    'idle' | 'saving' | 'applied' | 'restart-required' | 'conflict' | 'failed'
+    'idle' | 'saving' | 'applied' | 'restart-required' | 'partial-failure' | 'conflict' | 'failed'
   >('idle');
   const pending = useRef(false);
   const [reloadFailed, setReloadFailed] = useState(false);
@@ -91,7 +91,7 @@ export function AuditAndThoughtStoreCard({
         )}
         {saveState !== 'idle' && (
           <p
-            role={saveState === 'failed' || saveState === 'conflict' ? 'alert' : 'status'}
+            role={saveState === 'failed' || saveState === 'conflict' || saveState === 'partial-failure' ? 'alert' : 'status'}
             className="text-xs"
           >
             {t(`proxy.persistence.save-${saveState}`)}

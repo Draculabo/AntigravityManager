@@ -124,13 +124,8 @@ function CloudAccountListContent() {
     effectiveSelectedTierKeySet,
     hasActiveTierFilter,
     visibleAccountIds,
-    totalAccounts,
-    activeAccounts,
-    rateLimitedAccounts,
-    overallQuotaPercentage,
-    effectiveQuotaStatus,
-    overallWeeklyQuotaPercentage,
-    effectiveWeeklyQuotaStatus,
+    poolSummary,
+    setPoolScope,
   } = useCloudAccountListView(accounts, config, currentSort);
 
   const { refreshSelectedAccounts, deleteSelectedAccounts } = useCloudAccountBatchActions({
@@ -353,14 +348,8 @@ function CloudAccountListContent() {
   return (
     <div data-slot="cloud-account-list" className="flex flex-col gap-6 pb-20">
       <CloudAccountListSummary
-        totalAccounts={totalAccounts}
-        activeAccounts={activeAccounts}
-        rateLimitedAccounts={rateLimitedAccounts}
-        overallQuotaPercentage={overallQuotaPercentage}
-        effectiveQuotaStatus={effectiveQuotaStatus}
-        overallWeeklyQuotaPercentage={overallWeeklyQuotaPercentage}
-        effectiveWeeklyQuotaStatus={effectiveWeeklyQuotaStatus}
-        isMinimalMode={isMinimalMode}
+        summary={poolSummary}
+        onScopeChange={setPoolScope}
       />
 
       <CloudAccountToolbar

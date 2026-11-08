@@ -133,6 +133,7 @@ export async function writeDiagnosticAttachment(
   filePath: string,
   text: string,
   profileDirectory = getAgentDir(),
+  beforeCommit?: () => void,
 ) {
   const destinationDirectory = await realpath(path.dirname(filePath));
   const profile = await realpath(profileDirectory).catch(() => path.resolve(profileDirectory));
@@ -146,5 +147,5 @@ export async function writeDiagnosticAttachment(
   ) {
     throw new Error('Diagnostic attachment destination is unavailable');
   }
-  await writeFileAtomic(filePath, text, { mode: 0o600 });
+  await writeFileAtomic(filePath, text, { mode: 0o600, beforeCommit });
 }

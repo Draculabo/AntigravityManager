@@ -40,7 +40,7 @@ export class V1InternalPassthroughService {
       );
     }
 
-    setCurrentAuditAccountId(account.id);
+    setCurrentAuditAccountId(account.id, account.email, account.lifecycle_generation, account.google_usage_subject_hash, account.google_usage_grant_hash);
 
     const upstream = await this.geminiClient.postV1InternalRaw(
       verb,

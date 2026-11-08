@@ -1,3 +1,8 @@
+import {
+  accountPriorityCandidates,
+  getAccountProxyPriority,
+  weeklyQuotaPriorityCandidates,
+} from './account-lease-priority';
 import { AccountLeaseAffinity } from './account-lease-affinity';
 import { AccountLeaseSelectionWait } from './account-lease-selection-wait';
 
@@ -16,6 +21,7 @@ export interface AccountLeaseRateLimitReader {
 
 export interface AccountLeaseSelectionConfig {
   quotaAwareSchedulingEnabled: boolean;
+  weeklyQuotaPriorityEnabled?: boolean;
   parityEnabled: boolean;
   parityShadowEnabled: boolean;
   schedulingMode: AccountLeaseSelectionMode;
@@ -37,6 +43,7 @@ export interface AccountLeaseSelectionRequest<T> {
   waitBudget?: AccountLeaseSelectionWait;
   signal?: AbortSignal;
   getModelQuota?: (accountId: string, token: T, model: string) => number | undefined;
+  getWeeklyQuotaResetAt?: (accountId: string, token: T, model: string, now: number) => number | undefined;
   sessionKey?: string;
   model?: string;
   effort?: string;
@@ -121,13 +128,19 @@ export class AccountLeaseSelectionPolicy {
         .filter(([id, token]) => this.isCurrent(request, id, token))
         .sort(([leftId, leftToken], [rightId, rightToken]) => {
           const priorityDifference =
-            this.proxyPriority(leftToken) - this.proxyPriority(rightToken);
+            getAccountProxyPriority(leftToken) - getAccountProxyPriority(rightToken);
           if (priorityDifference !== 0) {
             return priorityDifference;
           }
           return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
         }),
     };
+    if (this.affinity.getSession(request.sessionKey, request.now)) {
+      request = {
+        ...request,
+        config: { ...request.config, weeklyQuotaPriorityEnabled: false },
+      };
+    }
     this.affinity.cleanup(request.now);
     this.affinity.setStrategy(request.config.accountSelectionStrategy);
     if (
@@ -178,7 +191,7 @@ export class AccountLeaseSelectionPolicy {
     if (request.isCurrentCandidate?.(id, token) === false) {
       return false;
     }
-    if (request.config.accountSelectionStrategy !== 'account-first' || !request.model) {
+    if (!request.model) {
       return true;
     }
     const quota = request.getModelQuota?.(id, token, request.model);
@@ -196,7 +209,7 @@ export class AccountLeaseSelectionPolicy {
     ) {
       return 0;
     }
-    const binding = this.getValidSessionBinding(request.sessionKey, request.now);
+    const binding = this.affinity.getSession(request.sessionKey, request.now);
     const sticky = request.allTokens.find(([id]) => id === binding?.accountId);
     return sticky ? this.remainingWaitMs(request, sticky[0]) : 0;
   }
@@ -247,7 +260,10 @@ export class AccountLeaseSelectionPolicy {
     const preferred = candidates.find(([id]) => id === request.config.preferredAccountId);
     const session = this.findStickySessionToken(candidates, request.sessionKey, request.now);
     const retained = candidates.find(([id]) => id === this.affinity.getModelAccount(model));
-    return preferred ?? session ?? retained ?? this.highestPriorityGroup(candidates)[0] ?? null;
+    return (
+      preferred ?? session ?? weeklyQuotaPriorityCandidates(candidates, request)[0] ?? retained ??
+      accountPriorityCandidates(candidates, request)[0] ?? null
+    );
   }
 
   private collectEligibleTokens<T>(
@@ -266,19 +282,12 @@ export class AccountLeaseSelectionPolicy {
     });
   }
 
-  private getValidSessionBinding(
-    sessionKey: string | undefined,
-    now: number,
-  ): { accountId: string; expiresAt: number } | null {
-    return this.affinity.getSession(sessionKey, now) ?? null;
-  }
-
   private findStickySessionToken<T>(
     candidates: Array<AccountLeaseSelectionEntry<T>>,
     sessionKey: string | undefined,
     now: number,
   ): AccountLeaseSelectionEntry<T> | null {
-    const stickyBinding = this.getValidSessionBinding(sessionKey, now);
+    const stickyBinding = this.affinity.getSession(sessionKey, now);
     if (!stickyBinding) {
       return null;
     }
@@ -348,7 +357,7 @@ export class AccountLeaseSelectionPolicy {
     }
 
     return this.pickRoundRobinEntry(
-      this.weightedCandidates(this.highestPriorityGroup(availableTokens), request),
+      this.weightedCandidates(accountPriorityCandidates(availableTokens, request), request),
     );
   }
 
@@ -384,7 +393,7 @@ export class AccountLeaseSelectionPolicy {
     }
 
     return this.pickRoundRobinEntry(
-      this.weightedCandidates(this.highestPriorityGroup(availableTokens), request),
+      this.weightedCandidates(accountPriorityCandidates(availableTokens, request), request),
     );
   }
 
@@ -412,7 +421,7 @@ export class AccountLeaseSelectionPolicy {
     }
 
     return this.peekRoundRobinCandidateAccountId(
-      this.weightedCandidates(this.highestPriorityGroup(availableTokens), request),
+      this.weightedCandidates(accountPriorityCandidates(availableTokens, request), request),
     );
   }
 
@@ -448,34 +457,13 @@ export class AccountLeaseSelectionPolicy {
     }
 
     return this.peekRoundRobinCandidateAccountId(
-      this.weightedCandidates(this.highestPriorityGroup(availableTokens), request),
+      this.weightedCandidates(accountPriorityCandidates(availableTokens, request), request),
     );
   }
 
   private isProxyEnabled<T>(token: T): boolean {
     const candidate = token as T & PrioritizedLeaseToken;
     return candidate.proxy_enabled !== false;
-  }
-
-  private proxyPriority<T>(token: T): number {
-    const candidate = token as T & PrioritizedLeaseToken;
-    const priority = candidate.proxy_priority;
-    return typeof priority === 'number' &&
-      Number.isInteger(priority) &&
-      priority >= 1 &&
-      priority <= 100
-      ? priority
-      : 50;
-  }
-
-  private highestPriorityGroup<T>(
-    candidates: Array<AccountLeaseSelectionEntry<T>>,
-  ): Array<AccountLeaseSelectionEntry<T>> {
-    if (candidates.length === 0) {
-      return [];
-    }
-    const minimum = Math.min(...candidates.map(([, token]) => this.proxyPriority(token)));
-    return candidates.filter(([, token]) => this.proxyPriority(token) === minimum);
   }
 
   private executeShadowComparison<T>(request: AccountLeaseSelectionRequest<T>): void {

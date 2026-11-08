@@ -104,7 +104,7 @@ describe('real request path, Anthropic messages surface', () => {
 
     await controller.anthropicMessages(
       {
-        max_tokens: 128,
+        max_tokens: 16384,
         messages: [{ content: 'Use the configured profile.', role: 'user' }],
         model: 'gemini-3.5-flash',
         stream: false,
@@ -120,7 +120,7 @@ describe('real request path, Anthropic messages surface', () => {
     expect(upstream.calls[0]?.body.model).toBe('gemini-3-flash-agent');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual(
       expect.objectContaining({
-        maxOutputTokens: 65536,
+        maxOutputTokens: 16384,
         thinkingConfig: {
           includeThoughts: true,
           thinkingBudget: 10000,
@@ -137,7 +137,7 @@ describe('real request path, Anthropic messages surface', () => {
 
     await controller.anthropicMessages(
       {
-        max_tokens: 128,
+        max_tokens: 16384,
         messages: [{ content: 'Use the configured profile.', role: 'user' }],
         model: 'gemini-pro-agent',
         stream: false,
@@ -187,6 +187,7 @@ describe('real request path, Anthropic messages surface', () => {
       'acc-1',
       'gemini-3.8-flash',
       'medium',
+      false,
     );
   });
 

@@ -1,10 +1,12 @@
-import { ConfigManager } from '@/modules/config/ipc/manager';
+import { ConfigLoadError, ConfigManager } from '@/modules/config/ipc/manager';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { initDatabase } from '@/modules/account/public';
 import { getNestServerStatus, type NestServerStartResult } from '@/server/main';
 import { gatewayLifecycleService } from '@/modules/proxy-gateway/services/gateway-lifecycle.service';
+import type { GatewayManualStartResult, GatewayManualStopResult, GatewayRememberChoice, GatewayChoicePersistence } from '@/modules/proxy-gateway/services/gateway-management.schema';
 import { logger } from '@/shared/logging/logger';
 import type { AppConfig } from '@/modules/config/types';
+import { errorProcessOwner } from '@/modules/error-diagnostics/public';
 
 export type CoreState = 'stopped' | 'starting' | 'running' | 'stopping';
 
@@ -17,22 +19,33 @@ export interface CoreStatus {
 export interface CoreDependencies {
   enableFileLogging(): void;
   loadConfig(): AppConfig;
+  initializeErrorDiagnostics?(config: AppConfig): Promise<void>;
   initializeAccounts(): Promise<void>;
   initializeLocalDatabase(): void;
   startGateway(config: AppConfig['proxy']): Promise<NestServerStartResult>;
   startGatewayOnPort(port: number): Promise<NestServerStartResult>;
   stopGateway(): Promise<boolean>;
   getGatewayStatus(): ReturnType<typeof getNestServerStatus>;
+  manualStartGateway?(port: number): Promise<GatewayManualStartResult>;
+  manualStopGateway?(): Promise<GatewayManualStopResult>;
+  retryGatewaySaveChoice?(choice: GatewayRememberChoice): Promise<GatewayChoicePersistence>;
 }
 
 const defaultDependencies: CoreDependencies = {
-  enableFileLogging: () => logger.enableFileLogging(undefined, 'core'),
+  enableFileLogging: () => {
+    logger.enableFileLogging(undefined, 'core');
+    errorProcessOwner.register('core');
+  },
   loadConfig: () => ConfigManager.loadConfig(),
+  initializeErrorDiagnostics: (config) => errorProcessOwner.start('core', config.error_diagnostics),
   initializeAccounts: () => CloudAccountRepo.init(),
   initializeLocalDatabase: () => initDatabase(),
   startGateway: (config) => gatewayLifecycleService.startConfigured(config),
   startGatewayOnPort: (port) => gatewayLifecycleService.start(port),
   stopGateway: () => gatewayLifecycleService.stop(),
+  manualStartGateway: (port) => gatewayLifecycleService.manualStart(port),
+  manualStopGateway: () => gatewayLifecycleService.manualStop(),
+  retryGatewaySaveChoice: (choice) => gatewayLifecycleService.retrySaveChoice(choice),
   getGatewayStatus: () => getNestServerStatus(),
 };
 
@@ -42,6 +55,7 @@ export class CoreService {
   private startPromise: Promise<void> | null = null;
   private stopPromise: Promise<void> | null = null;
   private gatewayQueue: Promise<void> = Promise.resolve();
+  private pendingGatewayMutations = 0;
 
   constructor(private readonly dependencies: CoreDependencies = defaultDependencies) {}
 
@@ -71,11 +85,28 @@ export class CoreService {
   private async startInternal(): Promise<void> {
     try {
       this.dependencies.enableFileLogging();
-      const config = this.dependencies.loadConfig();
+      let config: AppConfig | undefined;
+      try {
+        config = this.dependencies.loadConfig();
+      } catch (error) {
+        if (!(error instanceof ConfigLoadError)) {
+          throw error;
+        }
+        logger.error('Service settings are unavailable; Core management remains available.', error);
+      }
+      if (config) {
+        try {
+          await this.dependencies.initializeErrorDiagnostics?.(config);
+        } catch {
+          logger.warn(
+            'Local error diagnostic storage unavailable; captures remain bounded in memory',
+          );
+        }
+      }
       await this.dependencies.initializeAccounts();
       this.dependencies.initializeLocalDatabase();
 
-      if (config.proxy.auto_start) {
+      if (config?.proxy.auto_start) {
         const result = await this.dependencies.startGateway(config.proxy);
         if (!result.success) {
           throw new Error(`Gateway startup failed: ${result.message}`);
@@ -120,13 +151,59 @@ export class CoreService {
     }
   }
 
+  manualStartGateway(port: number): Promise<GatewayManualStartResult> {
+    return this.enqueueGatewayMutation(async () => {
+      this.requireRunning();
+      if (!this.dependencies.manualStartGateway) {
+        throw new Error('Manual gateway control is unavailable.');
+      }
+      const result = await this.dependencies.manualStartGateway(port);
+      if (result.operation.success) {
+        this.gatewayPort = result.operation.port;
+      } else {
+        await this.refreshGatewayStatus();
+      }
+      return result;
+    });
+  }
+
+  manualStopGateway(): Promise<GatewayManualStopResult> {
+    return this.enqueueGatewayMutation(async () => {
+      this.requireRunning();
+      if (!this.dependencies.manualStopGateway) {
+        throw new Error('Manual gateway control is unavailable.');
+      }
+      const result = await this.dependencies.manualStopGateway();
+      if (result.success) {
+        this.gatewayPort = null;
+      }
+      return result;
+    });
+  }
+
+  retryGatewaySaveChoice(choice: GatewayRememberChoice): Promise<GatewayChoicePersistence> {
+    return this.enqueueGatewayMutation(async () => {
+      this.requireRunning();
+      if (!this.dependencies.retryGatewaySaveChoice) {
+        throw new Error('Saving gateway startup choices is unavailable.');
+      }
+      return this.dependencies.retryGatewaySaveChoice(choice);
+    });
+  }
+
   private async refreshGatewayStatus(): Promise<void> {
     const status = await this.dependencies.getGatewayStatus();
     this.gatewayPort = status.running ? status.port : null;
   }
 
   private enqueueGatewayMutation<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.gatewayQueue.then(operation);
+    if (this.state !== 'running' || this.stopPromise || this.pendingGatewayMutations >= 32) {
+      return Promise.reject(new Error('Core gateway control is unavailable or its queue is full.'));
+    }
+    this.pendingGatewayMutations += 1;
+    const result = this.gatewayQueue.then(operation).finally(() => {
+      this.pendingGatewayMutations -= 1;
+    });
     this.gatewayQueue = result.then(
       () => undefined,
       () => undefined,

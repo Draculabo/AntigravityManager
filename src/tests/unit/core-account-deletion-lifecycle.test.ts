@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createCoreRpcOperations } from '@/core/rpc/router';
 import { deleteCloudAccount } from '@/modules/cloud-account/services/cloud-account-deletion.service';
 import { serviceConfigService } from '@/modules/config/service-config.service';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -17,10 +18,7 @@ it('drains admitted deletion and rejects a new deletion after shutdown admission
     entered.resolve();
     await completed.promise;
   });
-  const operations = createCoreRpcOperations({
-    startGateway: vi.fn(),
-    stopGateway: vi.fn(),
-  });
+  const operations = createCoreRpcOperations(mockCoreGatewayLifecycle());
   const pending = operations.accountDelete('deleted-a');
   await entered.promise;
   operations.closeAccountMutationAdmission();
@@ -62,7 +60,7 @@ it('keeps configuration admission open until admitted deletion has enqueued its 
     await resume.promise;
     await serviceConfigService.clearDeletedAccountPreference(accountId);
   });
-  const operations = createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() });
+  const operations = createCoreRpcOperations(mockCoreGatewayLifecycle());
   const pending = operations.accountDelete('deleted-a');
   await entered.promise;
   operations.closeAccountMutationAdmission();

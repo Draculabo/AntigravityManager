@@ -24,6 +24,7 @@ import {
 import { selectAuditCurlAdapter } from '@/modules/proxy-gateway/ipc/audit-curl-adapter';
 import { copyAuditCurl } from '@/modules/proxy-gateway/traffic-monitor/copy-audit-curl';
 import { toPublicORPCError } from '@/ipc/router';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 const clipboard = vi.hoisted(() => ({ writeText: vi.fn() }));
 vi.mock('electron', () => ({ clipboard }));
@@ -127,7 +128,7 @@ async function remote() {
     shutdown: async () => {},
     onShutdownError: vi.fn(),
     rpc: {
-      ...createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() }),
+      ...createCoreRpcOperations(mockCoreGatewayLifecycle()),
       thought: owner,
       auditCurl: curlOwner,
     },

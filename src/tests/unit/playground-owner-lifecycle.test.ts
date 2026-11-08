@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCoreRpcOperations } from '@/core/rpc/router';
 import { playgroundService } from '@/modules/proxy-gateway/playground/playground.service';
 import type { PlaygroundExecuteResult } from '@/modules/proxy-gateway/playground/playground.schema';
+import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -12,7 +13,7 @@ describe('Playground core ownership', () => {
       finish = resolve;
     });
     const execute = vi.spyOn(playgroundService, 'execute').mockReturnValue(pending);
-    const operations = createCoreRpcOperations({ startGateway: vi.fn(), stopGateway: vi.fn() });
+    const operations = createCoreRpcOperations(mockCoreGatewayLifecycle());
     const input = { model: 'gemini-3-flash', prompt: 'Hi' };
     const execution = operations.playground.execute(input);
     operations.closeAccountMutationAdmission();

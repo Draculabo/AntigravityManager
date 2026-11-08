@@ -7,8 +7,10 @@ import {
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 
 const config = {
+  ...DEFAULT_APP_CONFIG.proxy.image_scheduler,
   per_account_concurrency: DEFAULT_APP_CONFIG.proxy.image_scheduler.per_account_concurrency,
   send_window_enabled: true,
+  send_window_strategy: 'count' as const,
   send_window_count: 10,
   send_window_memory_mib: 32,
   send_window_strip_remote_urls: false,
@@ -33,8 +35,7 @@ describe('shared media send window', () => {
       [inline(1000), inline(2000), inline(3000, true), inline(4000, true)],
       { ...config, send_window_count: 1 },
     );
-    expect(plan.omitted.size).toBe(1);
-    expect(plan.omitted.has(0)).toBe(true);
+    expect([...plan.omitted]).toEqual([0, 1]);
     expect(plan.protectedBytes).toBe(7000);
   });
 
@@ -49,6 +50,7 @@ describe('shared media send window', () => {
   it('keeps a newest-first decoded-byte suffix within the memory budget', () => {
     const plan = planMediaSendWindow([inline(20), inline(30), inline(40)], {
       ...config,
+      send_window_strategy: 'memory',
       send_window_memory_mib: 0.00004,
       send_window_count: 0,
     });
@@ -59,19 +61,50 @@ describe('shared media send window', () => {
     expect(() =>
       planMediaSendWindow([inline(1024 * 1024 + 1, true)], {
         ...config,
+        send_window_strategy: 'memory',
         send_window_memory_mib: 1,
       }),
     ).toThrow(MediaWindowLimitError);
   });
 
-  it('strips remote images only when explicitly enabled', () => {
+  it('counts historical remote images only when explicitly enabled', () => {
     const kept = planMediaSendWindow([remote()], config);
     expect(kept.omitted.size).toBe(0);
-    const stripped = planMediaSendWindow([remote()], {
+    const stripped = planMediaSendWindow([remote(), inline(1, true)], {
       ...config,
+      send_window_count: 1,
       send_window_strip_remote_urls: true,
     });
     expect([...stripped.omitted]).toEqual([0]);
+  });
+
+  it('does not combine the count strategy with the memory soft budget', () => {
+    const plan = planMediaSendWindow([inline(2 * 1024 * 1024), inline(2 * 1024 * 1024, true)], {
+      ...config,
+      send_window_count: 0,
+      send_window_memory_mib: 1,
+    });
+    expect([...plan.omitted]).toEqual([]);
+    expect(plan.selectedBytes).toBe(4 * 1024 * 1024);
+  });
+
+  it('keeps current remote images and selects only the newest counted history', () => {
+    const plan = planMediaSendWindow([remote(), inline(1), remote(true)], {
+      ...config,
+      send_window_count: 2,
+      send_window_strip_remote_urls: true,
+    });
+    expect([...plan.omitted]).toEqual([0]);
+  });
+
+  it('uses memory independently from count and keeps unmeasured remote URLs', () => {
+    const plan = planMediaSendWindow([inline(1), inline(1), remote(), remote(true)], {
+      ...config,
+      send_window_strategy: 'memory',
+      send_window_count: 1,
+      send_window_strip_remote_urls: true,
+    });
+    expect([...plan.omitted]).toEqual([]);
   });
 
   it('is idempotent once an omitted slot is no longer a recognized image record', () => {

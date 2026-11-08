@@ -1,7 +1,42 @@
 import fs from 'node:fs';
 import Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 6;
+
+function preservePreviousVersion(database: Database.Database, databasePath: string, version: number): void {
+  const source = fs.lstatSync(databasePath);
+  if (!source.isFile() || source.isSymbolicLink()) {
+    throw new Error('Traffic audit migration requires a regular database file');
+  }
+  const checkpoint = database.pragma('wal_checkpoint(TRUNCATE)');
+  const checkpointResult = z.array(z.object({ busy: z.literal(0) })).nonempty().safeParse(checkpoint);
+  if (!checkpointResult.success) {
+    throw new Error('Traffic audit migration could not checkpoint the existing database');
+  }
+  const backupPath = `${databasePath}.schema-v${version}-backup-${Date.now()}-${randomUUID()}`;
+  const descriptor = fs.openSync(backupPath, 'wx', 0o600);
+  fs.closeSync(descriptor);
+  database.prepare('VACUUM INTO ?').run(backupPath);
+  const backup = new Database(backupPath, { readonly: true, fileMustExist: true });
+  try {
+    if (
+      backup.pragma('user_version', { simple: true }) !== version ||
+      backup.pragma('quick_check', { simple: true }) !== 'ok'
+    ) {
+      throw new Error('Traffic audit migration backup verification failed');
+    }
+  } finally {
+    backup.close();
+  }
+  const backupDescriptor = fs.openSync(backupPath, 'r+');
+  try {
+    fs.fsyncSync(backupDescriptor);
+  } finally {
+    fs.closeSync(backupDescriptor);
+  }
+}
 
 export function configureTrafficAuditDatabase(database: Database.Database): void {
   database.pragma('auto_vacuum = INCREMENTAL');
@@ -31,7 +66,14 @@ export function openTrafficAuditDatabase(databasePath: string): Database.Databas
     database.close();
     throw new Error(`Unsupported traffic audit schema version: ${schemaVersion}`);
   }
-  if (hasRequestLogs && schemaVersion < SCHEMA_VERSION) {
+  if (hasRequestLogs && (schemaVersion === 4 || schemaVersion === 5)) {
+    try {
+      preservePreviousVersion(database, databasePath, schemaVersion);
+    } catch (error) {
+      database.close();
+      throw error;
+    }
+  } else if (hasRequestLogs && schemaVersion < 4) {
     database.close();
     const backupPath = `${databasePath}.schema-v${schemaVersion}-backup-${Date.now()}`;
     for (const suffix of ['', '-wal', '-shm']) {
@@ -60,13 +102,27 @@ export function initializeTrafficAuditSchema(database: Database.Database): void 
       .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit_payloads'")
       .get(),
   );
-  if (schemaVersion === SCHEMA_VERSION && hasRequestLogs && !hasPayloads) {
+  if (schemaVersion >= 4 && hasRequestLogs && !hasPayloads) {
     throw new Error(
       'Unsupported prototype traffic audit schema; preserve the prototype database and create a fresh database',
     );
   }
 
-  database.exec(
+  database.transaction(() => {
+    if (schemaVersion === 4 && hasRequestLogs) {
+      database.exec(
+        'ALTER TABLE upstream_attempts ADD COLUMN account_generation_hash TEXT;' +
+          "ALTER TABLE upstream_attempts ADD COLUMN usage_scope TEXT CHECK(usage_scope IN ('generation','non-generation'));" +
+          'ALTER TABLE upstream_attempts ADD COLUMN input_tokens INTEGER;' +
+          'ALTER TABLE upstream_attempts ADD COLUMN output_tokens INTEGER;' +
+          'ALTER TABLE upstream_attempts ADD COLUMN cached_tokens INTEGER;' +
+          'ALTER TABLE upstream_attempts ADD COLUMN reasoning_tokens INTEGER;',
+      );
+    }
+    if ((schemaVersion === 4 || schemaVersion === 5) && hasRequestLogs) {
+      database.exec('ALTER TABLE upstream_attempts ADD COLUMN account_subject_hash TEXT; ALTER TABLE upstream_attempts ADD COLUMN account_grant_hash TEXT');
+    }
+    database.exec(
     'CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);' +
       'CREATE TABLE IF NOT EXISTS request_logs (' +
       'id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, completed_at INTEGER, method TEXT NOT NULL,' +
@@ -84,7 +140,9 @@ export function initializeTrafficAuditSchema(database: Database.Database): void 
       'attempt_index INTEGER NOT NULL, timestamp INTEGER NOT NULL, completed_at INTEGER, operation TEXT NOT NULL,' +
       'endpoint TEXT NOT NULL, account_id TEXT, account_id_hash TEXT, model TEXT, request_headers TEXT NOT NULL,' +
       'status INTEGER, duration_ms INTEGER, outcome TEXT NOT NULL, error TEXT, response_headers TEXT,' +
-      'response_partial INTEGER NOT NULL DEFAULT 0' +
+      'response_partial INTEGER NOT NULL DEFAULT 0, account_generation_hash TEXT, account_subject_hash TEXT, account_grant_hash TEXT,' +
+      "usage_scope TEXT CHECK(usage_scope IN ('generation','non-generation'))," +
+      'input_tokens INTEGER, output_tokens INTEGER, cached_tokens INTEGER, reasoning_tokens INTEGER' +
       ');' +
       'CREATE TABLE IF NOT EXISTS audit_payloads (' +
       'id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES request_logs(id) ON DELETE CASCADE,' +
@@ -126,14 +184,17 @@ export function initializeTrafficAuditSchema(database: Database.Database): void 
       'CREATE INDEX IF NOT EXISTS idx_request_family_timestamp ON request_logs(physical_model_family,timestamp DESC);' +
       'CREATE INDEX IF NOT EXISTS idx_request_session_timestamp ON request_logs(session_id,timestamp DESC);' +
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_attempt_parent_order ON upstream_attempts(parent_id,attempt_index);' +
+      'CREATE INDEX IF NOT EXISTS idx_attempt_usage_range ON upstream_attempts(account_id,model,timestamp);' +
+      'CREATE INDEX IF NOT EXISTS idx_attempt_subject_usage_range ON upstream_attempts(account_subject_hash,model,timestamp);' +
       'CREATE INDEX IF NOT EXISTS idx_payload_request_created ON audit_payloads(request_id,created_at);' +
       'CREATE INDEX IF NOT EXISTS idx_payload_retention ON audit_payloads(state,created_at);' +
       'CREATE INDEX IF NOT EXISTS idx_payload_disk_eviction ON audit_payloads(created_at,id) WHERE stored_bytes>0;' +
       'DROP INDEX IF EXISTS idx_payload_stored_bytes;' +
-      "INSERT INTO schema_meta(key,value) VALUES('schema_version','4') " +
-      "ON CONFLICT(key) DO UPDATE SET value='4';" +
-      "INSERT INTO schema_meta(key,value) VALUES('layout','classified-chunked-payload-v4') " +
-      "ON CONFLICT(key) DO UPDATE SET value='classified-chunked-payload-v4';",
+      "INSERT INTO schema_meta(key,value) VALUES('schema_version','6') " +
+      "ON CONFLICT(key) DO UPDATE SET value='6';" +
+      "INSERT INTO schema_meta(key,value) VALUES('layout','classified-chunked-payload-v6') " +
+      "ON CONFLICT(key) DO UPDATE SET value='classified-chunked-payload-v6';",
   );
-  database.pragma(`user_version = ${SCHEMA_VERSION}`);
+    database.pragma(`user_version = ${SCHEMA_VERSION}`);
+  })();
 }

@@ -8,6 +8,8 @@ import type {
 import type { z } from 'zod';
 import { getContextCacheStatus, getGatewayStatus, startGateway, stopGateway } from './handlers';
 import { playgroundService, type PlaygroundOperations } from '../playground/playground.service';
+import { gatewayLifecycleService } from '../services/gateway-lifecycle.service';
+import type { GatewayManualStartResult, GatewayManualStopResult, GatewayRememberChoice, GatewayChoicePersistence } from '../services/gateway-management.schema';
 
 type GatewayStatus = z.infer<typeof GatewayStatusSchema>;
 type ContextCacheStatus = z.infer<typeof ContextCacheStatusSchema>;
@@ -20,11 +22,15 @@ export interface GatewayAdapter {
   contextCacheStats(): Promise<ContextCacheStatus>;
   start(port: number): Promise<GatewayStartResult>;
   stop(): Promise<GatewayStopResult>;
+  manualStart(port: number): Promise<GatewayManualStartResult>;
+  manualStop(): Promise<GatewayManualStopResult>;
+  retrySaveChoice(choice: GatewayRememberChoice): Promise<GatewayChoicePersistence>;
 }
 
 type StandaloneCoreGatewayOperations = Pick<
   CoreRpcClient,
-  'gatewayStatus' | 'contextCacheStatus' | 'startGateway' | 'stopGateway' | 'playground'
+  'gatewayStatus' | 'contextCacheStatus' | 'startGateway' | 'stopGateway' | 'playground' |
+  'manualStartGateway' | 'manualStopGateway' | 'retryGatewaySaveChoice'
 >;
 
 export type GatewaySelection =
@@ -37,6 +43,9 @@ function createDesktopEmbeddedAdapter(): GatewayAdapter {
     status: getGatewayStatus,
     contextCacheStats: async () => getContextCacheStatus(),
     start: startGateway,
+    manualStart: (port) => gatewayLifecycleService.manualStart(port),
+    manualStop: () => gatewayLifecycleService.manualStop(),
+    retrySaveChoice: (choice) => gatewayLifecycleService.retrySaveChoice(choice),
     stop: async () => {
       const success = await stopGateway();
       if (!success) {
@@ -54,6 +63,9 @@ function createStandaloneCoreAdapter(client: StandaloneCoreGatewayOperations): G
     contextCacheStats: () => client.contextCacheStatus(),
     start: (port) => client.startGateway(port),
     stop: () => client.stopGateway(),
+    manualStart: (port) => client.manualStartGateway(port),
+    manualStop: () => client.manualStopGateway(),
+    retrySaveChoice: (choice) => client.retryGatewaySaveChoice(choice),
   };
 }
 

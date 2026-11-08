@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AuditUsage } from './audit-usage';
 
 import { TrafficClassSchema, type TrafficClass } from './traffic-classifier';
 
@@ -67,6 +68,10 @@ export interface CompleteAuditParentInput {
 
 export interface StartUpstreamAttemptInput {
   accountId?: string;
+  accountGenerationHash?: string;
+  accountSubjectHash?: string;
+  accountGrantHash?: string;
+  usageScope?: 'generation' | 'non-generation';
   endpoint: string;
   headers?: Record<string, unknown>;
   model?: string;
@@ -75,6 +80,7 @@ export interface StartUpstreamAttemptInput {
 }
 
 export interface CompleteUpstreamAttemptInput {
+  usage?: AuditUsage;
   error?: unknown;
   outcome: AuditOutcome;
   partial?: boolean;

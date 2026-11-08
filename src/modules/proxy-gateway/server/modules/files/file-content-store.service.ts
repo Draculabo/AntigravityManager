@@ -46,7 +46,7 @@ export class FileContentStore {
   private readonly records = new Map<string, StoredFileRecord>();
   private readonly sweepTimer?: NodeJS.Timeout;
 
-  private loaded = false;
+  private loading?: Promise<void>;
 
   constructor(@Optional() @Inject(FILE_STORE_OPTIONS) options?: FileStoreOptions) {
     this.disk = new FileStoreDisk(
@@ -247,12 +247,16 @@ export class FileContentStore {
     return total;
   }
 
-  private async load(): Promise<void> {
-    if (this.loaded) {
-      return;
-    }
-    this.loaded = true;
+  private load(): Promise<void> {
+    // Every operation waits for the index and startup cleanup, including cold concurrent reads.
+    this.loading ??= this.loadRecords().catch((error) => {
+      this.loading = undefined;
+      throw error;
+    });
+    return this.loading;
+  }
 
+  private async loadRecords(): Promise<void> {
     const { records, indexEntryCount } = await this.disk.open();
     const now = Date.now();
     for (const record of records) {
