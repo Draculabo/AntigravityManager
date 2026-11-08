@@ -7,6 +7,7 @@ import {
 import { GoogleAPIService, OAuthTokenRefreshError, type TokenResponse } from './GoogleAPIService';
 import { logger } from '@/shared/logging/logger';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import { assertAccountOAuthRecoveryReady } from '@/modules/cloud-account/persistence/oauth-recovery-service';
 
 export interface CloudAccountRefreshRequest {
   accountId: string;
@@ -53,6 +54,7 @@ export class CloudAccountRefreshService {
   private static async refreshAccessTokenLocked(
     request: CloudAccountRefreshRequest,
   ): Promise<TokenResponse> {
+    assertAccountOAuthRecoveryReady(request.accountId);
     // request.health is only a transport hint. The persisted value is authoritative
     // because another caller may have changed the account while this request waited.
     const effectiveHealth = await CloudAccountHealthService.getHealth(request.accountId);

@@ -1,4 +1,5 @@
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import { assertAccountOAuthRecoveryReady } from '@/modules/cloud-account/persistence/oauth-recovery-service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
 import { GoogleAPIService } from './GoogleAPIService';
@@ -53,6 +54,7 @@ export async function refreshAccountQuotaCore(
   accountId: string,
   hooks: QuotaRefreshHooks = {},
 ): Promise<CloudAccount> {
+  assertAccountOAuthRecoveryReady(accountId);
   const account = await CloudAccountRepo.getAccount(accountId);
   if (!account) {
     throw new Error(`Account not found: ${accountId}`);

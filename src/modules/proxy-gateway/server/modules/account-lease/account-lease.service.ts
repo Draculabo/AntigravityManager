@@ -41,7 +41,10 @@ import {
   createProfileOAuthRecoveryJournal,
   type OAuthRecoveryJournal,
 } from '@/modules/cloud-account/persistence/oauth-recovery-journal';
-import { recoverOAuthJournal } from '@/modules/cloud-account/persistence/oauth-recovery-service';
+import {
+  isAccountOAuthRecoveryBlocked,
+  recoverOAuthJournal,
+} from '@/modules/cloud-account/persistence/oauth-recovery-service';
 import {
   ModelAvailabilityService,
   proxyModelAvailabilityStore,
@@ -160,6 +163,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       isStillEligible: (accountId, tokenData) =>
         this.tokens.get(accountId) === tokenData &&
         !tokenData.service_disabled &&
+        !(this.recoveryJournal && isAccountOAuthRecoveryBlocked(accountId, this.recoveryJournal)) &&
         !this.quarantinedAccountIds.has(accountId),
       hydrationPolicy: this.hydrationPolicy,
       bindSession: (sessionKey, accountId, expiresAt) =>
@@ -222,7 +226,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       await this.hydrationPolicy.retryFailedPersistence();
       const count = await this.tokenCache.loadAccounts();
       this.restoreMemoryQuarantines();
-      return count;
+      return count - this.excludeRecoveryBlockedAccounts();
     } finally {
       this.syncImageSchedulerAccounts();
     }
@@ -244,6 +248,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       await this.hydrationPolicy.retryFailedPersistence();
       count = await this.tokenCache.loadAccountsOrThrow();
       this.restoreMemoryQuarantines();
+      count -= this.excludeRecoveryBlockedAccounts();
     } finally {
       this.syncImageSchedulerAccounts();
     }
@@ -254,6 +259,21 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   clearAllSessions(): void {
     this.selectionPolicy.clearSessions();
+  }
+
+  private excludeRecoveryBlockedAccounts(): number {
+    if (!this.recoveryJournal) {
+      return 0;
+    }
+    let excluded = 0;
+    for (const accountId of this.tokens.keys()) {
+      if (isAccountOAuthRecoveryBlocked(accountId, this.recoveryJournal)) {
+        this.tokens.delete(accountId);
+        this.selectionPolicy.clearAccountSessions(accountId);
+        excluded += 1;
+      }
+    }
+    return excluded;
   }
 
   evictAccount(accountId: string): boolean {

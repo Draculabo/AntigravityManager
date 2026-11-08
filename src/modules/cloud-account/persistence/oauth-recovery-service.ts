@@ -1,7 +1,31 @@
 import { applyOAuthRecoveryRecord, type OAuthRecoveryAccountStore } from './oauth-recovery-apply';
-import { OAuthRecoveryJournal } from './oauth-recovery-journal';
+import { createProfileOAuthRecoveryJournal, OAuthRecoveryJournal } from './oauth-recovery-journal';
 import type { OAuthRecoveryRecord } from './oauth-recovery-codec';
 import { CloudAccountRepo } from './cloudHandler';
+import { logger } from '@/shared/logging/logger';
+
+type OAuthRecoveryBlockReason = 'missing' | 'conflict';
+const blockedAccountsByProfile = new Map<string, ReadonlyMap<string, OAuthRecoveryBlockReason>>();
+
+export class OAuthRecoveryPendingError extends Error {
+  constructor() {
+    super('Account OAuth recovery requires manual resolution');
+    this.name = 'OAuthRecoveryPendingError';
+  }
+}
+
+export function isAccountOAuthRecoveryBlocked(
+  accountId: string,
+  journal: OAuthRecoveryJournal = createProfileOAuthRecoveryJournal(),
+): boolean {
+  return blockedAccountsByProfile.get(journal.scope)?.has(accountId) ?? false;
+}
+
+export function assertAccountOAuthRecoveryReady(accountId: string): void {
+  if (isAccountOAuthRecoveryBlocked(accountId)) {
+    throw new OAuthRecoveryPendingError();
+  }
+}
 
 export async function commitOAuthRecoveryRecord(
   journal: OAuthRecoveryJournal,
@@ -20,14 +44,26 @@ export async function commitOAuthRecoveryRecord(
 export async function recoverOAuthJournal(
   journal: OAuthRecoveryJournal,
   store: OAuthRecoveryAccountStore = CloudAccountRepo,
-): Promise<void> {
+): Promise<ReadonlyMap<string, OAuthRecoveryBlockReason>> {
   const entries = await journal.readAll();
+  const blockedAccounts = new Map<string, OAuthRecoveryBlockReason>();
   for (const entry of entries) {
     const result = await applyOAuthRecoveryRecord(entry.record, store);
     if (result !== 'applied') {
-      // Preserve the encrypted record until the conflict or deletion is resolved explicitly.
-      throw new Error(`OAuth recovery requires manual resolution: ${result}`);
+      blockedAccounts.set(entry.record.accountId, result);
+      logger.warn('Account OAuth recovery requires manual resolution', {
+        accountId: entry.record.accountId,
+        recordName: entry.name,
+        reason: result,
+      });
+      continue;
     }
     await journal.remove(entry.name);
   }
+  if (blockedAccounts.size > 0) {
+    blockedAccountsByProfile.set(journal.scope, blockedAccounts);
+  } else {
+    blockedAccountsByProfile.delete(journal.scope);
+  }
+  return blockedAccounts;
 }

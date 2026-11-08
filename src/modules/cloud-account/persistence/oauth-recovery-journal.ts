@@ -19,6 +19,11 @@ export class OAuthRecoveryJournal {
   private static readonly writes = new Map<string, Promise<void>>();
   constructor(private readonly directory: string) {}
 
+  get scope(): string {
+    const resolved = path.resolve(this.directory);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  }
+
   async append(record: OAuthRecoveryRecord): Promise<string> {
     const validated = parseOAuthRecoveryRecord(JSON.stringify(record));
     const directory = path.resolve(this.directory);

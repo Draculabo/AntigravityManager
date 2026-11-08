@@ -385,7 +385,7 @@ describe('plaintext cloud-account persistence', () => {
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     });
     await CloudAccountRepo.removeAccount(first.id);
-    await expect(CloudAccountRepo.init()).rejects.toThrow('manual resolution: missing');
+    await expect(CloudAccountRepo.init()).resolves.toBeUndefined();
     expect(await CloudAccountRepo.getAccount(first.id)).toBeUndefined();
     expect((await journal.readAll()).map((entry) => entry.name)).toEqual([name]);
   });
@@ -423,7 +423,7 @@ describe('plaintext cloud-account persistence', () => {
       } else {
         const replacement = { ...first.token, access_token: 'replacement-access', refresh_token: 'replacement-refresh' };
         await CloudAccountRepo.updateToken(first.id, replacement);
-        await expect(recoverOAuthJournal(journal)).rejects.toThrow('manual resolution');
+        expect(await recoverOAuthJournal(journal)).toEqual(new Map([[first.id, 'conflict']]));
         expect((await CloudAccountRepo.getAccount(first.id))?.token).toEqual(replacement);
         expect((await journal.readAll()).map((entry) => entry.name)).toEqual([name]);
       }
@@ -576,7 +576,7 @@ describe('plaintext cloud-account persistence', () => {
 
     // On restart, journal detects conflict and does NOT overwrite the reauthorized token:
     const restarted = new AccountLeaseService(cloudAccountStoreAdapter, upstream);
-    await expect(restarted.loadAccounts()).rejects.toThrow('manual resolution: conflict');
+    await expect(restarted.loadAccounts()).resolves.toBe(0);
     expect((await CloudAccountRepo.getAccount(first.id))?.token).toEqual(reauthorized);
   });
   it('does not resurrect a deleted account when recovering from a crash on restart', async () => {
@@ -626,7 +626,7 @@ describe('plaintext cloud-account persistence', () => {
 
     // On restart, journal detects account is missing and does NOT resurrect it:
     const restarted = new AccountLeaseService(cloudAccountStoreAdapter, upstream);
-    await expect(restarted.loadAccounts()).rejects.toThrow('manual resolution: missing');
+    await expect(restarted.loadAccounts()).resolves.toBe(0);
     expect(await CloudAccountRepo.getAccount(first.id)).toBeUndefined();
   });
   it('persists a failed rotated token before clean shutdown when storage recovers', async () => {

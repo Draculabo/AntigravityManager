@@ -2,6 +2,7 @@ import fs from 'fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import { isAccountOAuthRecoveryBlocked } from '@/modules/cloud-account/persistence/oauth-recovery-service';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { GoogleAPIService, type QuotaData, type TokenResponse } from './GoogleAPIService';
 import {
@@ -339,7 +340,7 @@ export class CloudMonitorService {
         if (account.health?.oauth?.refresh_blocked) {
           continue;
         }
-        if (account.health?.service_disabled) {
+        if (account.health?.service_disabled || isAccountOAuthRecoveryBlocked(account.id)) {
           continue;
         }
         if (account.health?.validation && Date.now() < account.health.validation.next_probe_at_ms) {
