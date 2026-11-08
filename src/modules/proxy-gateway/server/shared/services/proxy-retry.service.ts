@@ -150,6 +150,10 @@ export class ProxyRetryService {
       return null;
     }
 
+    if (signal?.aborted) {
+      return null;
+    }
+
     if (
       process.env.NODE_ENV !== 'test' &&
       process.env.VITEST !== 'true' &&
@@ -158,6 +162,9 @@ export class ProxyRetryService {
     ) {
       const jitterMs = Math.floor(Math.random() * 1500) + 1000;
       await sleep(jitterMs);
+      if (signal?.aborted) {
+        return null;
+      }
     }
 
     retryState.model = model;

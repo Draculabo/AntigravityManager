@@ -737,6 +737,23 @@ describe('ProxyRetryService', () => {
     expect(terminalError).toBe(tosError);
   });
 
+  it('returns null immediately when client abort signal is already triggered', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const retryState = policy.createTokenRetryState();
+    const controller = new AbortController();
+    controller.abort();
+
+    const nextToken = await policy.selectRetryToken(
+      retryState,
+      'gemini-3-flash',
+      undefined,
+      false,
+      controller.signal,
+    );
+    expect(nextToken).toBeNull();
+    expect(accountLeaseService.getNextToken).not.toHaveBeenCalled();
+  });
+
   it('marks model availability as capacity_exhausted on 503 MODEL_CAPACITY_EXHAUSTED', async () => {
     const { policy, accountLeaseService } = createPolicy();
 
