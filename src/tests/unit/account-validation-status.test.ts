@@ -50,7 +50,42 @@ describe('getCloudAccountHealthBlockKind', () => {
     expect(getCloudAccountHealthBlockKind(health)).toBe('validation');
   });
 
+  it('shows service_disabled before other gates when present', () => {
+    const health: CloudAccountHealth = {
+      oauth: { refresh_blocked: true },
+      validation: {
+        detected_at_ms: 1,
+        next_probe_at_ms: 2,
+        reason: 'VALIDATION_REQUIRED',
+        status: 'requires_action',
+      },
+      service_disabled: {
+        status: 'disabled',
+        reason: 'TOS_VIOLATION',
+        detected_at_ms: 1,
+        appeal_url: 'https://forms.gle/test',
+      },
+    };
+
+    expect(getCloudAccountHealthBlockKind(health)).toBe('service_disabled');
+    expect(
+      getCloudAccountBlockedStatusLabel(
+        { health, status: 'expired', status_reason: 'TOS_VIOLATION' },
+        translate,
+      ),
+    ).toBe('cloud.card.accountDisabledToS');
+  });
+
   it('does not report a health gate when no health is stored', () => {
     expect(getCloudAccountHealthBlockKind(undefined)).toBeNull();
+  });
+
+  it('does not label a generic forbidden response as a ToS violation', () => {
+    expect(
+      getCloudAccountBlockedStatusLabel(
+        { status: 'expired', status_reason: 'FORBIDDEN' },
+        translate,
+      ),
+    ).not.toBe('cloud.card.accountDisabledToS');
   });
 });

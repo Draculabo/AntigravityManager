@@ -195,7 +195,7 @@ export class AnthropicService extends BaseProxyService {
           accountId: token.id,
           accessToken: token.token.access_token,
           upstreamProxyUrl: token.token.upstream_proxy_url,
-          extraHeaders,
+          extraHeaders: this.resolveAccountTelemetryHeaders(token, extraHeaders),
           projectId: token.token.project_id ?? '',
           request: this.toClaudeRequest(accountRequest, sessionKey),
           targetModel: accountTargetModel,
@@ -234,7 +234,11 @@ export class AnthropicService extends BaseProxyService {
         if (classifyInvalidThoughtSignatureError(error)) {
           throw error;
         }
-        if (error instanceof Error && this.isProjectContextError(error.message)) {
+        if (
+          error instanceof Error &&
+          !this.retryPolicy.isFatalCircuitBreakError(error) &&
+          this.isProjectContextError(error.message)
+        ) {
           this.logger.warn(
             `Anthropic request hit project context issue, retrying without project: ${error.message}`,
           );
@@ -243,7 +247,7 @@ export class AnthropicService extends BaseProxyService {
               accountId: token.id,
               accessToken: token.token.access_token,
               upstreamProxyUrl: token.token.upstream_proxy_url,
-              extraHeaders,
+              extraHeaders: this.resolveAccountTelemetryHeaders(token, extraHeaders),
               projectId: '',
               request: this.toClaudeRequest(accountRequest, sessionKey),
               targetModel: accountTargetModel,
@@ -315,7 +319,7 @@ export class AnthropicService extends BaseProxyService {
               accountId: token.id,
               accessToken: token.token.access_token,
               upstreamProxyUrl: token.token.upstream_proxy_url,
-              extraHeaders,
+              extraHeaders: this.resolveAccountTelemetryHeaders(token, extraHeaders),
               projectId: token.token.project_id ?? '',
               request: downgradedRequest,
               targetModel: downgradedVariant.request.model,
@@ -364,6 +368,10 @@ export class AnthropicService extends BaseProxyService {
 
         lastError = error;
         this.recordRetryFailure(retryState, lastError);
+        if (retryState.abortRetry) {
+          await this.applyUpstreamPenalty(token.id, accountTargetModel, error);
+          break;
+        }
         if (
           !appliedVariantRequest.variant &&
           (await this.prepareGraceRetry(retryState, token, lastError, 'Anthropic'))

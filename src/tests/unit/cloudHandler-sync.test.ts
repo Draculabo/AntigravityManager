@@ -1032,7 +1032,7 @@ describe('cloud switch fail-fast path', () => {
     const startAntigravityMock = vi.fn(async () => undefined);
     const recordSwitchFailureMock = vi.fn();
     const recordSwitchSuccessMock = vi.fn();
-    const updateTokenMock = vi.fn(async () => undefined);
+    const compareAndUpdateTokenMock = vi.fn(async () => true);
     const refreshAntigravityProcessCacheMock = vi.fn(async () => undefined);
     const refreshAccessTokenMock = vi.fn(async () => ({
       access_token: 'refreshed-access',
@@ -1067,7 +1067,7 @@ describe('cloud switch fail-fast path', () => {
     vi.doMock('@/modules/cloud-account/persistence/cloudHandler', () => ({
       CloudAccountRepo: {
         getAccount: vi.fn(async () => account),
-        updateToken: updateTokenMock,
+        compareAndUpdateToken: compareAndUpdateTokenMock,
         updateLastUsed: vi.fn(),
         setActive: vi.fn(),
       },
@@ -1135,6 +1135,7 @@ describe('cloud switch fail-fast path', () => {
 
     vi.doMock('../../shared/platform/paths', () => ({
       getAntigravityDbPaths: () => [],
+      getCloudAccountsDbPath: () => 'mock-cloud-db',
       refreshAntigravityProcessCache: refreshAntigravityProcessCacheMock,
     }));
 
@@ -1164,14 +1165,16 @@ describe('cloud switch fail-fast path', () => {
 
     const { switchCloudAccountCore: switchCloudAccount } =
       await import('@/modules/cloud-account/services/cloud-account-switch.service');
+    const expectedToken = { ...account.token };
     await expect(switchCloudAccount('acc-1')).rejects.toMatchObject({
       switchCode: 'target-write-failed',
     });
 
     expect(refreshAccessTokenMock).toHaveBeenCalledWith('refresh', undefined, undefined);
     expect(refreshAntigravityProcessCacheMock).not.toHaveBeenCalled();
-    expect(updateTokenMock).toHaveBeenCalledWith(
+    expect(compareAndUpdateTokenMock).toHaveBeenCalledWith(
       'acc-1',
+      expectedToken,
       expect.objectContaining({
         access_token: 'refreshed-access',
         expiry_timestamp: expect.any(Number),

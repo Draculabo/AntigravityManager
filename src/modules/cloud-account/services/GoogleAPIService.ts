@@ -1180,7 +1180,11 @@ export class GoogleAPIService {
                 continue;
               }
 
-              throw new Error('FORBIDDEN');
+              const text = responseDataToText(response.data);
+              const error = new Error(text ? `FORBIDDEN: ${text}` : 'FORBIDDEN');
+              Reflect.set(error, 'status', 403);
+              Reflect.set(error, 'responseData', response.data);
+              throw error;
             }
             if (status === 401) {
               throw new Error('UNAUTHORIZED');
@@ -1221,7 +1225,11 @@ export class GoogleAPIService {
           lastError = error instanceof Error ? error : new Error(String(error));
 
           // Abort retries for auth errors
-          if (errorMsg === 'FORBIDDEN' || errorMsg === 'UNAUTHORIZED') {
+          if (
+            errorMsg === 'FORBIDDEN' ||
+            errorMsg.startsWith('FORBIDDEN:') ||
+            errorMsg === 'UNAUTHORIZED'
+          ) {
             throw error;
           }
 

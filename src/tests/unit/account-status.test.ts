@@ -26,4 +26,24 @@ describe('classifyAccountStatusFromError', () => {
       reason: '{"error":"invalid_grant"}',
     });
   });
+
+  it('classifies TOS_VIOLATION as expired with ToS reason', () => {
+    expect(
+      classifyAccountStatusFromError(
+        new Error(
+          'This service has been disabled in this account for violation of Terms of Service.',
+        ),
+      ),
+    ).toEqual({
+      status: 'expired',
+      reason: 'This service has been disabled in this account for violation of Terms of Service.',
+    });
+  });
+
+  it('classifies FORBIDDEN quota errors as expired', () => {
+    expect(classifyAccountStatusFromError(new Error('FORBIDDEN'))).toEqual({
+      status: 'expired',
+      reason: 'FORBIDDEN',
+    });
+  });
 });

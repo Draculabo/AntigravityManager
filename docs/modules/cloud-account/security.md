@@ -36,6 +36,28 @@ migration pair on ordinary startup. See the [upgrade and recovery guide](../../u
 If a standalone core cannot access the old key provider, start the desktop once with the same
 profile to perform conversion, then start the core. A failed core attempt leaves rows unchanged.
 
+## Unresolved OAuth recovery
+
+Startup replays validated files in the profile's `oauth-recovery` directory before loading
+account leases. A record for a deleted account or different stored credentials remains encrypted
+and unchanged. These account-local conflicts do not prevent core startup or recovery of other
+accounts. Account management remains available, and recovery never recreates a deleted account or
+overwrites replacement credentials.
+
+The recovery owner tracks unresolved account IDs within the active profile. Proxy leases,
+background monitoring, automatic client switching, quota refresh and OAuth refresh exclude these accounts until a successful
+rescan finds no unresolved record. This state is separate from ToS quarantine and OAuth revocation.
+The warning identifies the account ID, recovery filename and closed failure reason without tokens.
+An unreadable, corrupt or undecryptable journal still fails initialization because its affected
+accounts cannot be established safely.
+
+For manual resolution, stop all Manager and Core processes using the profile and preserve a private
+backup of the profile, including the database and recovery directory. Confirm that a conflicting
+record is superseded by an intended reauthorization, or belongs to an intentionally deleted
+account. Move only that warning's recovery file into the private backup, then restart Manager and
+verify the stored account identity before sending requests. Retain the backup and its original
+key material. Moving the file does not restore provider access or prove that its credentials work.
+
 ## OAuth enrollment and client selection
 
 Google login in both the standalone core and Electron main uses a loopback-only callback listener

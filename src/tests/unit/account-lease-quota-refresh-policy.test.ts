@@ -29,6 +29,7 @@ function createPolicy(tokenCache: Map<string, AccountLeaseTokenData>) {
     getAccounts: vi.fn(),
     getAccount: vi.fn(),
     updateToken: vi.fn(),
+    compareAndUpdateToken: vi.fn().mockResolvedValue(true),
     updateQuota: vi.fn(),
     mutateHealth: vi.fn(),
   };

@@ -38,6 +38,14 @@ import {
 import { AccountLeaseConfigPolicy } from './policies/account-lease-config.policy';
 import { normalizeTrustedGoogleValidationUrl } from '@/modules/cloud-account/utils/google-validation-url';
 import {
+  createProfileOAuthRecoveryJournal,
+  OAuthRecoveryJournal,
+} from '@/modules/cloud-account/persistence/oauth-recovery-journal';
+import {
+  isAccountOAuthRecoveryBlocked,
+  recoverOAuthJournal,
+} from '@/modules/cloud-account/persistence/oauth-recovery-service';
+import {
   ModelAvailabilityService,
   proxyModelAvailabilityStore,
 } from '../../shared/services/model-availability.service';
@@ -93,6 +101,8 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   private readonly forbiddenCooldownMs = 30 * 60 * 1000;
 
   private tokens: Map<string, TokenData> = new Map();
+  private readonly quarantinedAccountIds = new Set<string>();
+  private readonly quarantineGenerations = new Map<string, number>();
   private readonly configPolicy = new AccountLeaseConfigPolicy();
   private readonly quotaRefreshPolicy: AccountLeaseQuotaRefreshPolicy;
   private readonly tokenCache: AccountLeaseTokenCache;
@@ -101,6 +111,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   private readonly fulfillmentPolicy: AccountLeaseFulfillmentPolicy;
   private readonly modelPolicy: AccountLeaseModelPolicy;
   private readonly limitPolicy: AccountLeaseLimitPolicy;
+  private readonly recoveryJournal: OAuthRecoveryJournal | null;
 
   constructor(
     @Optional()
@@ -120,7 +131,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @Inject(ImageAccountSchedulerService)
     private readonly imageScheduler: ImageAccountSchedulerService = new ImageAccountSchedulerService(),
+    @Optional()
+    @Inject(OAuthRecoveryJournal)
+    recoveryJournal?: OAuthRecoveryJournal | null,
   ) {
+    this.recoveryJournal =
+      recoveryJournal === undefined ? createProfileOAuthRecoveryJournal() : recoveryJournal;
     this.quotaRefreshPolicy = new AccountLeaseQuotaRefreshPolicy({
       accountStore: this.accountStore,
       upstream: this.upstream,
@@ -142,9 +158,15 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       upstream: this.upstream,
       getTokenCache: () => this.tokens,
       logger: this.logger,
-      persistTokenState: (accountId, tokenData) => this.persistTokenState(accountId, tokenData),
+      recoveryJournal: this.recoveryJournal ?? undefined,
     });
     this.fulfillmentPolicy = new AccountLeaseFulfillmentPolicy({
+      accountStore: this.accountStore,
+      isStillEligible: (accountId, tokenData) =>
+        this.tokens.get(accountId) === tokenData &&
+        !tokenData.service_disabled &&
+        !(this.recoveryJournal && isAccountOAuthRecoveryBlocked(accountId, this.recoveryJournal)) &&
+        !this.quarantinedAccountIds.has(accountId),
       hydrationPolicy: this.hydrationPolicy,
       bindSession: (sessionKey, accountId, expiresAt) =>
         this.selectionPolicy.bindSession(sessionKey, accountId, expiresAt),
@@ -192,12 +214,21 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.hydrationPolicy.drainBackgroundPersistence();
+    await this.hydrationPolicy.retryFailedPersistence();
   }
 
   async loadAccounts(): Promise<number> {
     try {
-      return await this.tokenCache.loadAccounts();
+      if (this.recoveryJournal) {
+        await recoverOAuthJournal(this.recoveryJournal, this.accountStore).catch((error) => {
+          this.logger.error('Failed to recover OAuth journal on account lease load', error);
+          throw error;
+        });
+      }
+      await this.hydrationPolicy.retryFailedPersistence();
+      const count = await this.tokenCache.loadAccounts();
+      this.restoreMemoryQuarantines();
+      return count - this.excludeRecoveryBlockedAccounts();
     } finally {
       this.syncImageSchedulerAccounts();
     }
@@ -213,7 +244,13 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   async reloadAllAccountsOrThrow(): Promise<number> {
     let count: number;
     try {
+      if (this.recoveryJournal) {
+        await recoverOAuthJournal(this.recoveryJournal, this.accountStore);
+      }
+      await this.hydrationPolicy.retryFailedPersistence();
       count = await this.tokenCache.loadAccountsOrThrow();
+      this.restoreMemoryQuarantines();
+      count -= this.excludeRecoveryBlockedAccounts();
     } finally {
       this.syncImageSchedulerAccounts();
     }
@@ -226,11 +263,61 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     this.selectionPolicy.clearSessions();
   }
 
+  private excludeRecoveryBlockedAccounts(): number {
+    if (!this.recoveryJournal) {
+      return 0;
+    }
+    let excluded = 0;
+    for (const accountId of this.tokens.keys()) {
+      if (isAccountOAuthRecoveryBlocked(accountId, this.recoveryJournal)) {
+        this.tokens.delete(accountId);
+        this.selectionPolicy.clearAccountSessions(accountId);
+        excluded += 1;
+      }
+    }
+    return excluded;
+  }
+
   evictAccount(accountId: string): boolean {
     this.selectionPolicy.clearAccountSessions(accountId);
     const deleted = this.tokens.delete(accountId);
     this.syncImageSchedulerAccounts();
     return deleted;
+  }
+
+  quarantineAccountInMemory(accountId: string): void {
+    this.quarantineGenerations.set(accountId, (this.quarantineGenerations.get(accountId) ?? 0) + 1);
+    this.quarantinedAccountIds.add(accountId);
+    const token = this.tokens.get(accountId);
+    if (token) {
+      token.service_disabled = true;
+    }
+    this.selectionPolicy.clearAccountSessions(accountId);
+  }
+
+  getMemoryQuarantineGeneration(accountId: string): number {
+    return this.quarantineGenerations.get(accountId) ?? 0;
+  }
+
+  clearMemoryQuarantine(accountId: string, expectedGeneration: number): boolean {
+    if (this.getMemoryQuarantineGeneration(accountId) !== expectedGeneration) {
+      return false;
+    }
+    this.quarantinedAccountIds.delete(accountId);
+    const token = this.tokens.get(accountId);
+    if (token) {
+      token.service_disabled = false;
+    }
+    return true;
+  }
+
+  private restoreMemoryQuarantines(): void {
+    for (const id of this.quarantinedAccountIds) {
+      const token = this.tokens.get(id);
+      if (token) {
+        token.service_disabled = true;
+      }
+    }
   }
 
   updateAccountOAuthHealth(accountId: string, oauthHealth: CloudAccountHealth['oauth']): boolean {
@@ -295,8 +382,9 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     const model = normalizeModelId(options?.model) ?? options?.model;
     const availableAccounts = Array.from(this.tokens.entries()).filter(
       ([, tokenData]) =>
-        tokenData.validation_blocked_until_ms === undefined ||
-        now >= tokenData.validation_blocked_until_ms,
+        !tokenData.service_disabled &&
+        (tokenData.validation_blocked_until_ms === undefined ||
+          now >= tokenData.validation_blocked_until_ms),
     );
     const waits = this.selectModelCapableAccounts(availableAccounts, model)
       .map(([accountId]) => this.getAccountRouteWait(accountId, model))
@@ -358,6 +446,31 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     this.selectionPolicy.clearAccountSessions(params.accountId);
   }
 
+  async markServiceDisabled(params: {
+    accountId: string;
+    reason: string;
+    appealUrl?: string;
+    appealLinkText?: string;
+    message?: string;
+  }): Promise<void> {
+    const now = Date.now();
+    const updateHealth = (health: CloudAccount['health']): CloudAccount['health'] => ({
+      ...health,
+      service_disabled: {
+        status: 'disabled',
+        reason: params.reason,
+        detected_at_ms: now,
+        appeal_url: params.appealUrl,
+        appeal_url_link_text: params.appealLinkText,
+        message: params.message?.trim().slice(0, 1000) || undefined,
+      },
+    });
+
+    this.quarantineAccountInMemory(params.accountId);
+    await this.accountStore.mutateHealth(params.accountId, updateHealth);
+    await this.accountStore.setAccountStatus?.(params.accountId, 'expired', params.reason);
+  }
+
   async getNextToken(options?: GetNextTokenOptions): Promise<CloudAccount | null> {
     try {
       if (this.tokens.size === 0) {
@@ -396,6 +509,10 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         ) {
           return null;
         }
+        if (targetEntry[1].service_disabled) {
+          this.logger.warn(`Target account ${targetAccountId} is disabled (ToS)`);
+          return null;
+        }
         if (
           targetEntry[1].validation_blocked_until_ms !== undefined &&
           now < targetEntry[1].validation_blocked_until_ms
@@ -420,8 +537,9 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
       const fullAccountPool = Array.from(this.tokens.entries()).filter(
         ([, tokenData]) =>
-          tokenData.validation_blocked_until_ms === undefined ||
-          now >= tokenData.validation_blocked_until_ms,
+          !tokenData.service_disabled &&
+          (tokenData.validation_blocked_until_ms === undefined ||
+            now >= tokenData.validation_blocked_until_ms),
       );
       const modelCapableAccountPool = this.selectModelCapableAccounts(fullAccountPool, model);
       if (modelCapableAccountPool.length === 0) {
@@ -473,13 +591,21 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
         const [accountId, tokenData] = selectedTokenEntry;
         try {
-          return await this.finalizeSelectedToken(accountId, tokenData, nowSeconds, sessionKey);
+          const lease = await this.finalizeSelectedToken(
+            accountId,
+            tokenData,
+            nowSeconds,
+            sessionKey,
+          );
+          if (lease) {
+            return lease;
+          }
         } catch (error) {
           if (!(error instanceof AccountLeaseRefreshRejectedError)) {
             throw error;
           }
-          remainingAccountPool = remainingAccountPool.filter(([id]) => id !== accountId);
         }
+        remainingAccountPool = remainingAccountPool.filter(([id]) => id !== accountId);
       }
 
       return null;

@@ -14,6 +14,15 @@ const CloudAccountViewHealthSchema = z.strictObject({
     })
     .optional(),
   oauth: z.strictObject({ refresh_blocked: z.boolean() }).optional(),
+  service_disabled: z
+    .strictObject({
+      status: z.literal('disabled'),
+      reason: z.string(),
+      has_appeal_link: z.boolean(),
+      appeal_url: z.string().optional(),
+      appeal_url_link_text: z.string().optional(),
+    })
+    .optional(),
 });
 
 const CloudAccountViewQuotaSchema = z.strictObject({
@@ -64,21 +73,56 @@ export const CloudAccountViewSchema = CloudAccountSchema.pick({
   .extend({
     quota: CloudAccountViewQuotaSchema.optional(),
     health: CloudAccountViewHealthSchema.optional(),
-    status_reason: z.enum(['rate_limited', 'oauth_reauth', 'validation_required']).optional(),
+    status_reason: z
+      .enum(['rate_limited', 'oauth_reauth', 'validation_required', 'service_disabled'])
+      .optional(),
     proxy_configured: z.boolean(),
   })
   .strict();
 
 export type CloudAccountView = z.infer<typeof CloudAccountViewSchema>;
 
+function trustedAppealUrl(value: string | undefined): string | undefined {
+  if (!value || value.length > 512) {
+    return undefined;
+  }
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== 'https:' ||
+      url.username ||
+      url.password ||
+      !(
+        url.hostname === 'forms.gle' ||
+        url.hostname === 'google.com' ||
+        url.hostname.endsWith('.google.com')
+      )
+    ) {
+      return undefined;
+    }
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
 function projectStatusReason(reason: string | undefined): CloudAccountView['status_reason'] {
   if (!reason) {
     return undefined;
   }
-  if (isRateLimitReason(reason)) {
+  const normalized = reason.toLowerCase();
+  if (
+    normalized.includes('tos_violation') ||
+    normalized.includes('terms of service') ||
+    normalized.includes('service has been disabled') ||
+    normalized.includes('org_restriction_violation')
+  ) {
+    return 'service_disabled';
+  }
+  if (isRateLimitReason(normalized)) {
     return 'rate_limited';
   }
-  if (isOAuthReauthReason(reason) || reason.toLowerCase().includes('unauthorized')) {
+  if (isOAuthReauthReason(normalized) || normalized.includes('unauthorized')) {
     return 'oauth_reauth';
   }
   return 'validation_required';
@@ -86,6 +130,7 @@ function projectStatusReason(reason: string | undefined): CloudAccountView['stat
 
 /** An allowlisted MessagePort payload; future persistence fields cannot enter by spread. */
 export function projectCloudAccountView(account: CloudAccount): CloudAccountView {
+  const appealUrl = trustedAppealUrl(account.health?.service_disabled?.appeal_url);
   return CloudAccountViewSchema.parse({
     id: account.id,
     provider: account.provider,
@@ -136,6 +181,15 @@ export function projectCloudAccountView(account: CloudAccount): CloudAccountView
             : undefined,
           oauth: account.health.oauth
             ? { refresh_blocked: account.health.oauth.refresh_blocked }
+            : undefined,
+          service_disabled: account.health.service_disabled
+            ? {
+                status: account.health.service_disabled.status,
+                reason: account.health.service_disabled.reason,
+                has_appeal_link: Boolean(appealUrl),
+                appeal_url: appealUrl,
+                appeal_url_link_text: account.health.service_disabled.appeal_url_link_text,
+              }
             : undefined,
         }
       : undefined,

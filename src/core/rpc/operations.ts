@@ -97,6 +97,7 @@ export interface CoreRpcOperations {
     accountId: string,
   ): Promise<z.infer<typeof AccountValidationUrlResultSchema>>;
   accountRefreshQuota(accountId: string): Promise<z.infer<typeof CloudAccountViewSchema>>;
+  accountClearServiceDisabled(accountId: string): Promise<void>;
   accountSyncFromIde(
     appTarget?: AntigravityAppTarget,
   ): Promise<z.infer<typeof CloudAccountViewSchema> | null>;

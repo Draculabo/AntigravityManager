@@ -2,12 +2,15 @@ import type { CloudAccount } from '@/modules/cloud-account/types';
 import type { AccountLeaseHydrationPolicy } from './account-lease-hydration.policy';
 import { AccountLeaseRefreshRejectedError } from './account-lease-hydration.policy';
 import type { AccountLeaseTokenData } from '../interfaces/account-lease-token-types';
+import type { AccountLeaseAccountStore } from '../interfaces/account-lease-adapters';
 
 interface AccountLeaseFulfillmentLogger {
   error(message: string, error?: unknown): void;
 }
 
 interface AccountLeaseFulfillmentPolicyOptions {
+  accountStore: AccountLeaseAccountStore;
+  isStillEligible: (accountId: string, tokenData: AccountLeaseTokenData) => boolean;
   hydrationPolicy: AccountLeaseHydrationPolicy;
   bindSession: (sessionKey: string | undefined, accountId: string, expiresAt: number) => void;
   stickySessionTtlMs: number;
@@ -35,6 +38,10 @@ export class AccountLeaseFulfillmentPolicy {
         nowSeconds,
         fallbackProjectId: this.options.resolveFallbackProjectId(),
       });
+      const persistedAccount = await this.options.accountStore.getAccount(accountId);
+      if (!persistedAccount || !this.options.isStillEligible(accountId, tokenData)) {
+        return null;
+      }
 
       this.options.bindSession(sessionKey, accountId, Date.now() + this.options.stickySessionTtlMs);
 
@@ -43,6 +50,7 @@ export class AccountLeaseFulfillmentPolicy {
         id: accountId,
         provider: 'google',
         email: tokenData.email,
+        device_profile: persistedAccount.device_profile,
         token: {
           access_token: tokenData.access_token,
           refresh_token: tokenData.refresh_token,
@@ -63,7 +71,7 @@ export class AccountLeaseFulfillmentPolicy {
         throw error;
       }
       this.options.logger.error('Failed to finalize selected account token', error);
-      return null;
+      throw error;
     }
   }
 }

@@ -88,6 +88,28 @@ describe('gateway server startup', () => {
     );
   });
 
+  it('closes diagnostic stores even when Nest shutdown fails', async () => {
+    const close = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('pending token write'))
+      .mockResolvedValue(undefined);
+    mockCreate.mockResolvedValue({
+      register: vi.fn().mockResolvedValue(undefined),
+      enableCors: vi.fn(),
+      listen: vi.fn().mockResolvedValue(undefined),
+      close,
+      get: vi.fn(() => ({ getAccountCount: () => 0 })),
+      getHttpServer: vi.fn(() => ({})),
+    });
+    const auditClose = vi.spyOn(trafficAuditService, 'close').mockResolvedValue(undefined);
+    const thoughtClose = vi.spyOn(thoughtStoreService, 'close').mockResolvedValue(undefined);
+    expect((await bootstrapNestServer(DEFAULT_APP_CONFIG.proxy)).success).toBe(true);
+    await expect(stopNestServer()).resolves.toBe(false);
+    expect(auditClose).toHaveBeenCalledOnce();
+    expect(thoughtClose).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it('reports EADDRINUSE as an expected startup failure and cleans up the server', async () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const listen = vi.fn().mockRejectedValue(

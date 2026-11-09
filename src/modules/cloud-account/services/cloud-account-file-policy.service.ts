@@ -122,9 +122,13 @@ export async function importCloudAccounts(
           replacesStoredRefreshGrant &&
           existing.status === 'expired' &&
           isOAuthReauthReason(existing.status_reason ?? '');
-        const recoveredHealth = existing.health?.validation
-          ? { validation: existing.health.validation }
-          : undefined;
+        const recoveredHealth =
+          existing.health?.validation || existing.health?.service_disabled
+            ? {
+                validation: existing.health?.validation,
+                service_disabled: existing.health?.service_disabled,
+              }
+            : undefined;
         const updatedAccount: CloudAccount = {
           ...existing,
           provider: importedAccount.provider,

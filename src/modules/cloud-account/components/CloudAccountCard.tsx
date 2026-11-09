@@ -78,6 +78,7 @@ import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
 import { isWeeklyQuotaBucket } from '@/modules/cloud-account/utils/quota-groups';
 import { useOpenAccountValidationLink } from '@/modules/cloud-account/hooks/useOpenAccountValidationLink';
+import { ClearServiceDisabledDialog } from '@/modules/cloud-account/components/ClearServiceDisabledDialog';
 import {
   isGeminiWeeklyQuotaItem,
   isClaudeOrGptWeeklyQuotaItem,
@@ -387,7 +388,9 @@ export function CloudAccountCard({
                 ? t('cloud.card.liveLimitModelForbidden', 'Model forbidden')
                 : availability?.reason === 'quota_exhausted'
                   ? t('cloud.card.liveLimitQuotaExhausted', 'Quota exhausted')
-                  : t('cloud.card.liveLimitRateLimited', 'Rate limited');
+                  : availability?.reason === 'capacity_exhausted'
+                    ? t('cloud.card.liveLimitCapacityExhausted', 'Server capacity exhausted (503)')
+                    : t('cloud.card.liveLimitRateLimited', 'Rate limited');
           const liveLimitTimingLabel = availability
             ? isLiveLimitActive
               ? t('cloud.card.liveLimitRemaining', '{{duration}} remaining', {
@@ -576,6 +579,8 @@ export function CloudAccountCard({
     !!aiCredits && Number.isFinite(aiCredits.credits) && aiCredits.credits >= 0;
 
   const validationBlockedStatusLabel = getCloudAccountBlockedStatusLabel(account, t);
+  const isAccountDisabled =
+    account.status_reason === 'service_disabled' || Boolean(account.health?.service_disabled);
 
   return (
     <Card
@@ -698,7 +703,9 @@ export function CloudAccountCard({
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant={
-                account.status === 'rate_limited' || account.status === 'expired'
+                account.status === 'rate_limited' ||
+                account.status === 'expired' ||
+                isAccountDisabled
                   ? 'destructive'
                   : 'outline'
               }
@@ -734,6 +741,23 @@ export function CloudAccountCard({
                 <ExternalLink className="h-3 w-3" />
                 {t('cloud.card.completeValidation')}
               </Button>
+            )}
+            {account.health?.service_disabled?.has_appeal_link &&
+              account.health.service_disabled.appeal_url && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-6 gap-1 px-2 text-xs"
+                  onClick={() =>
+                    window.open(account.health?.service_disabled?.appeal_url, '_blank')
+                  }
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  {t('cloud.card.submitAppeal')}
+                </Button>
+              )}
+            {account.health?.service_disabled && (
+              <ClearServiceDisabledDialog accountId={account.id} />
             )}
           </div>
 
@@ -805,7 +829,7 @@ export function CloudAccountCard({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleLaunchIsolatedIde}
-                  disabled={isLaunchingWorkspace || isDeleting || isSwitching}
+                  disabled={isLaunchingWorkspace || isDeleting || isSwitching || isAccountDisabled}
                   className="flex cursor-pointer items-center justify-between"
                 >
                   <span className="flex items-center gap-2">
@@ -825,57 +849,63 @@ export function CloudAccountCard({
           </div>
         </div>
 
-        <div className="space-y-2">
-          <AccountQuotaWindowSections
-            quotaWindow={quotaWindow}
-            weeklyItems={
-              isMinimalMode
-                ? weeklyQuotaItems.filter(
-                    (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
-                  )
-                : weeklyQuotaItems
-            }
-            fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
-            weeklyHidden={isMinimalMode ? false : weeklyHidden}
-            hasQuotaSummary={account.quota?.quota_groups !== undefined}
-            fiveHourContent={
-              isMinimalMode ? (
-                <>
-                  {overallQuotaBar}
-                  <DetailedQuotaDisplay
-                    groups={detailedGroups.filter(
+        {isAccountDisabled ? (
+          <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border p-3 text-xs">
+            {t('cloud.card.serviceBlockedNotice')}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <AccountQuotaWindowSections
+              quotaWindow={quotaWindow}
+              weeklyItems={
+                isMinimalMode
+                  ? weeklyQuotaItems.filter(
+                      (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
+                    )
+                  : weeklyQuotaItems
+              }
+              fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
+              weeklyHidden={isMinimalMode ? false : weeklyHidden}
+              hasQuotaSummary={account.quota?.quota_groups !== undefined}
+              fiveHourContent={
+                isMinimalMode ? (
+                  <>
+                    {overallQuotaBar}
+                    <DetailedQuotaDisplay
+                      groups={detailedGroups.filter(
+                        (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+                      )}
+                    />
+                    {!overallQuotaBar &&
+                    detailedGroups.filter(
                       (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
+                    ).length === 0
+                      ? emptyQuotaState
+                      : null}
+                  </>
+                ) : (
+                  <>
+                    {providerGroupingsEnabled ? (
+                      <>
+                        {providerGroupedQuotaSection}
+                        {!providerGroupedQuotaSection && !hasDetailedQuota ? emptyQuotaState : null}
+                      </>
+                    ) : hasVisibleQuotaModels ? (
+                      <div className="space-y-3">
+                        {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
+                        <div className="pt-1" />
+                        {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
+                      </div>
+                    ) : hasDetailedQuota ? null : (
+                      emptyQuotaState
                     )}
-                  />
-                  {!overallQuotaBar &&
-                  detailedGroups.filter(
-                    (group) => isGeminiQuotaGroup(group) || isClaudeOrGptQuotaGroup(group),
-                  ).length === 0
-                    ? emptyQuotaState
-                    : null}
-                </>
-              ) : (
-                <>
-                  {providerGroupingsEnabled ? (
-                    <>
-                      {providerGroupedQuotaSection}
-                      {!providerGroupedQuotaSection && !hasDetailedQuota ? emptyQuotaState : null}
-                    </>
-                  ) : hasVisibleQuotaModels ? (
-                    <div className="space-y-3">
-                      {renderQuotaModelGroup(t('cloud.card.groupGoogleGemini'), geminiModels)}
-                      <div className="pt-1" />
-                      {renderQuotaModelGroup(t('cloud.card.groupAnthropicClaude'), claudeModels)}
-                    </div>
-                  ) : hasDetailedQuota ? null : (
-                    emptyQuotaState
-                  )}
-                  <DetailedQuotaDisplay groups={detailedGroups} />
-                </>
-              )
-            }
-          />
-        </div>
+                    <DetailedQuotaDisplay groups={detailedGroups} />
+                  </>
+                )
+              }
+            />
+          </div>
+        )}
       </CardContent>
 
       <CardFooter className="bg-muted/10 mt-auto flex min-h-14 shrink-0 items-center justify-between gap-3 overflow-visible border-t px-5 py-3 [@media(max-width:760px)]:flex-wrap [@media(max-width:760px)]:px-4">
@@ -1119,6 +1149,8 @@ export function CompactCloudAccountCard({
     !!aiCredits && Number.isFinite(aiCredits.credits) && aiCredits.credits >= 0;
 
   const validationBlockedStatusLabel = getCloudAccountBlockedStatusLabel(account, t);
+  const isAccountDisabled =
+    account.status_reason === 'service_disabled' || Boolean(account.health?.service_disabled);
 
   return (
     <div
@@ -1145,7 +1177,7 @@ export function CompactCloudAccountCard({
           </span>
           <Badge
             variant={
-              account.status === 'rate_limited' || account.status === 'expired'
+              account.status === 'rate_limited' || account.status === 'expired' || isAccountDisabled
                 ? 'destructive'
                 : 'outline'
             }
@@ -1185,6 +1217,20 @@ export function CompactCloudAccountCard({
               {t('cloud.card.completeValidation')}
             </button>
           )}
+          {account.health?.service_disabled?.has_appeal_link &&
+            account.health.service_disabled.appeal_url && (
+              <button
+                type="button"
+                className="text-destructive inline-flex shrink-0 items-center gap-1 text-xs font-semibold hover:underline"
+                onClick={() => window.open(account.health?.service_disabled?.appeal_url, '_blank')}
+              >
+                <ExternalLink className="h-3 w-3" />
+                {t('cloud.card.submitAppeal')}
+              </button>
+            )}
+          {account.health?.service_disabled && (
+            <ClearServiceDisabledDialog accountId={account.id} />
+          )}
 
           {shouldShowAiCredits && aiCredits && (
             <span className="text-muted-foreground shrink-0">
@@ -1204,21 +1250,27 @@ export function CompactCloudAccountCard({
           )}
         </div>
 
-        <AccountQuotaWindowSections
-          quotaWindow={quotaWindow}
-          weeklyItems={
-            isMinimalMode
-              ? weeklyQuotaItems.filter(
-                  (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
-                )
-              : weeklyQuotaItems
-          }
-          fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
-          weeklyHidden={isMinimalMode ? false : weeklyHidden}
-          hasQuotaSummary={account.quota?.quota_groups !== undefined}
-          variant="compact"
-          fiveHourContent={<CompactModelQuotaDisplay items={compactQuotaItems} />}
-        />
+        {isAccountDisabled ? (
+          <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-2.5 py-1 text-xs">
+            {t('cloud.card.serviceBlockedNotice')}
+          </div>
+        ) : (
+          <AccountQuotaWindowSections
+            quotaWindow={quotaWindow}
+            weeklyItems={
+              isMinimalMode
+                ? weeklyQuotaItems.filter(
+                    (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
+                  )
+                : weeklyQuotaItems
+            }
+            fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
+            weeklyHidden={isMinimalMode ? false : weeklyHidden}
+            hasQuotaSummary={account.quota?.quota_groups !== undefined}
+            variant="compact"
+            fiveHourContent={<CompactModelQuotaDisplay items={compactQuotaItems} />}
+          />
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
@@ -1245,7 +1297,7 @@ export function CompactCloudAccountCard({
               </DropdownMenuLabel>
               <DropdownMenuItem
                 onClick={() => onSwitch(account.id)}
-                disabled={isSwitching || account.is_active_classic}
+                disabled={isSwitching || isAccountDisabled || account.is_active_classic}
                 className="flex cursor-pointer items-center justify-between"
               >
                 <span className="flex items-center gap-2">
@@ -1260,7 +1312,7 @@ export function CompactCloudAccountCard({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onSwitch(account.id, 'ide')}
-                disabled={isSwitching || account.is_active_ide}
+                disabled={isSwitching || isAccountDisabled || account.is_active_ide}
                 className="flex cursor-pointer items-center justify-between"
               >
                 <span className="flex items-center gap-2">
@@ -1275,7 +1327,7 @@ export function CompactCloudAccountCard({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onSwitch(account.id, 'agy')}
-                disabled={isSwitching || account.is_active_agy}
+                disabled={isSwitching || isAccountDisabled || account.is_active_agy}
                 className="flex cursor-pointer items-center justify-between"
               >
                 <span className="flex items-center gap-2">

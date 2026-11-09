@@ -47,6 +47,7 @@ describe('AccountLeaseService pool Retry-After', () => {
           structuredClone(accounts.find((account) => account.id === id)),
         ),
         updateToken: vi.fn(),
+        compareAndUpdateToken: vi.fn().mockResolvedValue(true),
         updateQuota: vi.fn(),
         mutateHealth: vi.fn(async () => undefined),
       };
@@ -81,6 +82,7 @@ describe('AccountLeaseService pool Retry-After', () => {
         structuredClone(accounts.find((account) => account.id === id)),
       ),
       updateToken: vi.fn(),
+      compareAndUpdateToken: vi.fn().mockResolvedValue(true),
       updateQuota: vi.fn(),
       mutateHealth: vi.fn(async () => undefined),
     };

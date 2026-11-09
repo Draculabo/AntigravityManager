@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
+import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '../../server/server-config';
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import { CloudAccountHealthService } from '@/modules/cloud-account/services/CloudAccountHealthService';
+import type { CloudAccount } from '@/modules/cloud-account/types';
+import { accountLeaseStoreFixture, leaseAccount } from '../support/account-lease-store-fixture';
 
 function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   return {
@@ -16,154 +19,75 @@ function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   };
 }
 
-function seedTokens(service: AccountLeaseService): void {
-  const nowSec = Math.floor(Date.now() / 1000);
-  (service as any).tokens = new Map([
-    [
-      'acc-1',
-      {
-        account_id: 'acc-1',
-        email: 'acc-1@test.dev',
-        access_token: 'token-1',
-        refresh_token: 'refresh-1',
-        token_type: 'Bearer',
-        expires_in: 3600,
-        expiry_timestamp: nowSec + 3600,
-        project_id: 'project-1',
-        session_id: 'session-1',
-      },
-    ],
-    [
-      'acc-2',
-      {
-        account_id: 'acc-2',
-        email: 'acc-2@test.dev',
-        access_token: 'token-2',
-        refresh_token: 'refresh-2',
-        token_type: 'Bearer',
-        expires_in: 3600,
-        expiry_timestamp: nowSec + 3600,
-        project_id: 'project-2',
-        session_id: 'session-2',
-      },
-    ],
-  ]);
-}
-
 describe('AccountLeaseService parity scheduling replay', () => {
   let service: AccountLeaseService;
+  let fixture: ReturnType<typeof accountLeaseStoreFixture>;
 
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    vi.spyOn(CloudAccountHealthService, 'getHealth').mockResolvedValue(undefined);
-    service = new AccountLeaseService();
-    seedTokens(service);
-  });
+  async function seedAccounts(accounts: CloudAccount[]): Promise<void> {
+    fixture.accounts.clear();
+    for (const account of accounts) {
+      fixture.accounts.set(account.id, structuredClone(account));
+    }
+    await service.loadAccounts();
+  }
 
-  afterEach(async () => {
-    await service.onModuleDestroy();
-  });
-
-  it('rewrites gemini pro model to first available account candidate', () => {
-    const nowSec = Math.floor(Date.now() / 1000);
-    (service as any).tokens = new Map([
-      [
-        'acc-1',
-        {
-          account_id: 'acc-1',
-          email: 'acc-1@test.dev',
-          access_token: 'token-1',
-          refresh_token: 'refresh-1',
-          token_type: 'Bearer',
-          expires_in: 3600,
-          expiry_timestamp: nowSec + 3600,
-          project_id: 'project-1',
-          session_id: 'session-1',
-          model_quotas: {
-            'gemini-3.1-pro-low': 80,
-          },
-          model_limits: {},
-          model_reset_times: {},
-          model_forwarding_rules: {},
-        },
-      ],
-    ]);
-
-    const resolved = service.resolveDynamicModelForAccount('acc-1', 'gemini-3-pro');
-    expect(resolved).toBe('gemini-3.1-pro-low');
-  });
-
-  it('keeps original model when dynamic rewrite is not applicable', () => {
-    const resolved = service.resolveDynamicModelForAccount('acc-1', 'gemini-3-flash');
-    expect(resolved).toBe('gemini-3-flash');
-  });
-
-  it('selects an account that advertises the requested dynamic model', async () => {
-    const nowSec = Math.floor(Date.now() / 1000);
-    (service as any).tokens = new Map([
-      [
-        'acc-1',
-        {
-          account_id: 'acc-1',
-          email: 'acc-1@test.dev',
-          access_token: 'token-1',
-          refresh_token: 'refresh-1',
-          token_type: 'Bearer',
-          expires_in: 3600,
-          expiry_timestamp: nowSec + 3600,
-          project_id: 'project-1',
-          model_quotas: { 'gemini-3-flash': 80 },
-          model_limits: {},
-          model_reset_times: {},
-          model_forwarding_rules: {},
-        },
-      ],
-      [
-        'acc-2',
-        {
-          account_id: 'acc-2',
-          email: 'acc-2@test.dev',
-          access_token: 'token-2',
-          refresh_token: 'refresh-2',
-          token_type: 'Bearer',
-          expires_in: 3600,
-          expiry_timestamp: nowSec + 3600,
-          project_id: 'project-2',
-          model_quotas: { 'gpt-oss-120b-medium': 80 },
-          model_limits: {},
-          model_reset_times: {},
-          model_forwarding_rules: {},
-        },
-      ],
-    ]);
-
-    const selected = await service.getNextToken({ model: 'gpt-oss-120b-medium' });
-
-    expect(selected?.id).toBe('acc-2');
-  });
-
-  it('passes oauth_client_key when refreshing token and persists refreshed key', async () => {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const tokenData = {
-      account_id: 'acc-1',
-      email: 'acc-1@test.dev',
+  function refreshAccount(): CloudAccount {
+    return leaseAccount('acc-1', {
       access_token: 'token-1',
       refresh_token: 'refresh-1',
       oauth_client_key: 'custom-client',
       upstream_proxy_url: 'http://127.0.0.1:8080',
-      token_type: 'Bearer',
-      expires_in: 3600,
-      expiry_timestamp: nowSec - 1,
-      project_id: 'project-1',
-      session_id: 'session-1',
-      model_quotas: {},
-      model_limits: {},
-      model_reset_times: {},
-      model_forwarding_rules: {},
-    };
+      expiry_timestamp: Math.floor(Date.now() / 1000) - 1,
+    });
+  }
 
-    (service as any).tokens = new Map([['acc-1', tokenData]]);
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    setServerConfig(createProxyConfig({}));
+    vi.spyOn(CloudAccountHealthService, 'getHealth').mockResolvedValue(undefined);
+    fixture = accountLeaseStoreFixture([leaseAccount('acc-1'), leaseAccount('acc-2')]);
+    vi.spyOn(CloudAccountRepo, 'getAccount').mockImplementation(fixture.store.getAccount);
+    service = new AccountLeaseService(
+      fixture.store,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      null,
+    );
+    await service.loadAccounts();
+  });
 
+  afterEach(async () => {
+    await service.onModuleDestroy();
+    vi.restoreAllMocks();
+    setServerConfig(DEFAULT_APP_CONFIG.proxy);
+  });
+
+  it('rewrites gemini pro model to first available account candidate', async () => {
+    const account = leaseAccount('acc-1');
+    account.quota = { models: { 'gemini-3.1-pro-low': { percentage: 80, resetTime: '' } } };
+    await seedAccounts([account]);
+    expect(service.resolveDynamicModelForAccount('acc-1', 'gemini-3-pro')).toBe(
+      'gemini-3.1-pro-low',
+    );
+  });
+
+  it('keeps original model when dynamic rewrite is not applicable', () => {
+    expect(service.resolveDynamicModelForAccount('acc-1', 'gemini-3-flash')).toBe('gemini-3-flash');
+  });
+
+  it('selects an account that advertises the requested dynamic model', async () => {
+    const first = leaseAccount('acc-1');
+    first.quota = { models: { 'gemini-3-flash': { percentage: 80, resetTime: '' } } };
+    const second = leaseAccount('acc-2');
+    second.quota = { models: { 'gpt-oss-120b-medium': { percentage: 80, resetTime: '' } } };
+    await seedAccounts([first, second]);
+    expect((await service.getNextToken({ model: 'gpt-oss-120b-medium' }))?.id).toBe('acc-2');
+  });
+
+  it('passes oauth_client_key when refreshing token and persists refreshed key', async () => {
+    await seedAccounts([refreshAccount()]);
     const refreshSpy = vi.spyOn(GoogleAPIService, 'refreshAccessToken').mockResolvedValue({
       access_token: 'token-new',
       refresh_token: 'refresh-new',
@@ -172,118 +96,77 @@ describe('AccountLeaseService parity scheduling replay', () => {
       token_type: 'Bearer',
       oauth_client_key: 'custom-fallback',
     });
-    const persistSpy = vi.spyOn(service as any, 'persistTokenState').mockResolvedValue(undefined);
-
-    const selected = await (service as any).finalizeSelectedToken('acc-1', tokenData, nowSec);
+    const selected = await service.getNextToken({ targetAccountId: 'acc-1' });
     await service.onModuleDestroy();
-
     expect(refreshSpy).toHaveBeenCalledWith('refresh-1', 'http://127.0.0.1:8080', 'custom-client');
-    expect(persistSpy).toHaveBeenCalledWith(
-      'acc-1',
-      expect.objectContaining({
-        refresh_token: 'refresh-new',
-        id_token: 'id-new',
-      }),
+    expect(selected?.token).toMatchObject({
+      refresh_token: 'refresh-new',
+      id_token: 'id-new',
+      oauth_client_key: 'custom-fallback',
+    });
+    expect((await fixture.store.getAccount('acc-1'))?.token).toMatchObject({
+      access_token: 'token-new',
+      refresh_token: 'refresh-new',
+      id_token: 'id-new',
+      oauth_client_key: 'custom-fallback',
+    });
+    expect((await service.getNextToken({ targetAccountId: 'acc-1' }))?.token.oauth_client_key).toBe(
+      'custom-fallback',
     );
-    expect(selected?.token.refresh_token).toBe('refresh-new');
-    expect(selected?.token.id_token).toBe('id-new');
-    expect(selected?.token.oauth_client_key).toBe('custom-fallback');
-    expect((service as any).tokens.get('acc-1')?.oauth_client_key).toBe('custom-fallback');
   });
 
   it('refreshes selected token when expiry is inside the request timeout buffer', async () => {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const tokenData = {
-      account_id: 'acc-1',
-      email: 'acc-1@test.dev',
-      access_token: 'token-1',
-      refresh_token: 'refresh-1',
-      token_type: 'Bearer',
-      expires_in: 3600,
-      expiry_timestamp: nowSec + 100,
-      project_id: 'project-1',
-      session_id: 'session-1',
-      model_quotas: {},
-      model_limits: {},
-      model_reset_times: {},
-      model_forwarding_rules: {},
-    };
-
-    (service as any).tokens = new Map([['acc-1', tokenData]]);
-
+    await seedAccounts([
+      leaseAccount('acc-1', {
+        refresh_token: 'refresh-1',
+        expiry_timestamp: Math.floor(Date.now() / 1000) + 100,
+      }),
+    ]);
     const refreshSpy = vi.spyOn(GoogleAPIService, 'refreshAccessToken').mockResolvedValue({
       access_token: 'token-new',
       expires_in: 7200,
       token_type: 'Bearer',
     });
-    vi.spyOn(service as any, 'persistTokenState').mockResolvedValue(undefined);
-
-    const selected = await (service as any).finalizeSelectedToken('acc-1', tokenData, nowSec);
-
+    const selected = await service.getNextToken({ targetAccountId: 'acc-1' });
     expect(refreshSpy).toHaveBeenCalledWith('refresh-1', undefined, undefined);
     expect(selected?.token.access_token).toBe('token-new');
   });
 
   it('coalesces concurrent token refreshes for the same account', async () => {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const tokenData = {
-      account_id: 'acc-1',
-      email: 'acc-1@test.dev',
-      access_token: 'token-1',
-      refresh_token: 'refresh-1',
-      oauth_client_key: 'custom-client',
-      upstream_proxy_url: 'http://127.0.0.1:8080',
-      token_type: 'Bearer',
-      expires_in: 3600,
-      expiry_timestamp: nowSec - 1,
-      project_id: 'project-1',
-      session_id: 'session-1',
-      model_quotas: {},
-      model_limits: {},
-      model_reset_times: {},
-      model_forwarding_rules: {},
-    };
-
-    (service as any).tokens = new Map([['acc-1', tokenData]]);
-
-    let resolveRefresh: (() => void) | undefined;
-    const refreshSpy = vi.spyOn(GoogleAPIService, 'refreshAccessToken').mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveRefresh = () => {
-            resolve({
-              access_token: 'token-new',
-              expires_in: 7200,
-              token_type: 'Bearer',
-              oauth_client_key: 'custom-client',
-            });
-          };
-        }),
-    );
-    vi.spyOn(service as any, 'persistTokenState').mockResolvedValue(undefined);
-
-    const first = (service as any).finalizeSelectedToken('acc-1', tokenData, nowSec);
-    const second = (service as any).finalizeSelectedToken('acc-1', tokenData, nowSec);
-    await vi.waitFor(() => {
-      expect(refreshSpy).toHaveBeenCalledTimes(1);
+    await seedAccounts([refreshAccount()]);
+    const started = Promise.withResolvers<void>();
+    const completion =
+      Promise.withResolvers<Awaited<ReturnType<typeof GoogleAPIService.refreshAccessToken>>>();
+    const refreshSpy = vi.spyOn(GoogleAPIService, 'refreshAccessToken').mockImplementation(() => {
+      started.resolve();
+      return completion.promise;
     });
-    resolveRefresh?.();
-
+    const first = service.getNextToken({ targetAccountId: 'acc-1' });
+    const second = service.getNextToken({ targetAccountId: 'acc-1' });
+    await started.promise;
+    completion.resolve({
+      access_token: 'token-new',
+      expires_in: 7200,
+      token_type: 'Bearer',
+      oauth_client_key: 'custom-client',
+    });
     const selected = await Promise.all([first, second]);
-    expect(selected[0]?.token.access_token).toBe('token-new');
-    expect(selected[1]?.token.access_token).toBe('token-new');
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(selected.map((lease) => lease?.token.access_token)).toEqual(['token-new', 'token-new']);
   });
 
-  it('keeps oauth_client_key unset for legacy account refreshed by enterprise client', () => {
-    const normalized = (service as any).normalizeRefreshedOauthClientKey(
-      {
-        oauth_client_key: undefined,
-        project_id: undefined,
-      },
-      'antigravity_enterprise',
-    );
-
-    expect(normalized).toBeUndefined();
+  it('keeps oauth_client_key unset for legacy account refreshed by enterprise client', async () => {
+    await seedAccounts([leaseAccount('acc-1', { expiry_timestamp: 1, project_id: undefined })]);
+    vi.spyOn(GoogleAPIService, 'fetchProjectId').mockResolvedValue(null);
+    vi.spyOn(GoogleAPIService, 'refreshAccessToken').mockResolvedValue({
+      access_token: 'token-new',
+      expires_in: 3600,
+      token_type: 'Bearer',
+      oauth_client_key: 'antigravity_enterprise',
+    });
+    expect(
+      (await service.getNextToken({ targetAccountId: 'acc-1' }))?.token.oauth_client_key,
+    ).toBeUndefined();
   });
 
   it('prioritizes preferred account in parity mode', async () => {
@@ -295,9 +178,7 @@ describe('AccountLeaseService parity scheduling replay', () => {
         preferred_account_id: 'acc-2',
       }),
     );
-
-    const token = await service.getNextToken({ model: 'gemini-2.5-flash' });
-    expect(token?.id).toBe('acc-2');
+    expect((await service.getNextToken({ model: 'gemini-2.5-flash' }))?.id).toBe('acc-2');
   });
 
   it('rotates sticky account when limited in balance mode', async () => {
@@ -309,24 +190,17 @@ describe('AccountLeaseService parity scheduling replay', () => {
         preferred_account_id: '',
       }),
     );
-
     const first = await service.getNextToken({
       sessionKey: 'openai:user-1',
       model: 'gemini-2.5-flash',
     });
     expect(first?.id).toBe('acc-1');
-
     await service.markFromUpstreamError({
       accountIdOrEmail: 'acc-1',
       status: 429,
       model: 'gemini-2.5-flash',
-      body: JSON.stringify({
-        error: {
-          details: [{ reason: 'RATE_LIMIT_EXCEEDED' }],
-        },
-      }),
+      body: JSON.stringify({ error: { details: [{ reason: 'RATE_LIMIT_EXCEEDED' }] } }),
     });
-
     const second = await service.getNextToken({
       sessionKey: 'openai:user-1',
       model: 'gemini-2.5-flash',
@@ -342,55 +216,39 @@ describe('AccountLeaseService parity scheduling replay', () => {
         scheduling_mode: 'performance-first',
       }),
     );
-
     await service.markFromUpstreamError({
       accountIdOrEmail: 'acc-1',
       status: 429,
       model: 'gemini-2.5-flash',
       body: JSON.stringify({
-        error: {
-          details: [{ reason: 'QUOTA_EXHAUSTED', metadata: { quotaResetDelay: '30s' } }],
-        },
+        error: { details: [{ reason: 'QUOTA_EXHAUSTED', metadata: { quotaResetDelay: '30s' } }] },
       }),
     });
-
-    const sameModel = await service.getNextToken({ model: 'gemini-2.5-flash' });
-    expect(sameModel?.id).toBe('acc-2');
-
-    const otherModel = await service.getNextToken({
-      model: 'gemini-2.5-pro',
-      excludeAccountIds: ['acc-2'],
-    });
-    expect(otherModel?.id).toBe('acc-1');
+    expect((await service.getNextToken({ model: 'gemini-2.5-flash' }))?.id).toBe('acc-2');
+    expect(
+      (await service.getNextToken({ model: 'gemini-2.5-pro', excludeAccountIds: ['acc-2'] }))?.id,
+    ).toBe('acc-1');
   });
 
   it('does not fall back to accounts explicitly excluded by retry policy', async () => {
-    setServerConfig(
-      createProxyConfig({
-        parity_enabled: false,
-        parity_kill_switch: false,
-      }),
-    );
+    setServerConfig(createProxyConfig({ parity_enabled: false, parity_kill_switch: false }));
+    await seedAccounts([leaseAccount('acc-1')]);
+    expect(await service.getNextToken({ excludeAccountIds: ['acc-1'] })).toBeNull();
+  });
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    (service as any).tokens = new Map([
-      [
-        'acc-1',
-        {
-          account_id: 'acc-1',
-          email: 'acc-1@test.dev',
-          access_token: 'token-1',
-          refresh_token: 'refresh-1',
-          token_type: 'Bearer',
-          expires_in: 3600,
-          expiry_timestamp: nowSec + 3600,
-          project_id: 'project-1',
-          session_id: 'session-1',
-        },
-      ],
-    ]);
+  it('does not issue a cached lease after its persisted account is deleted', async () => {
+    fixture.accounts.delete('acc-1');
+    expect(await service.getNextToken({ targetAccountId: 'acc-1' })).toBeNull();
+    expect((await service.getNextToken({ targetAccountId: 'acc-2' }))?.id).toBe('acc-2');
+  });
 
-    const token = await service.getNextToken({ excludeAccountIds: ['acc-1'] });
-    expect(token).toBeNull();
+  it('does not refresh cached credentials replaced by reauthorization', async () => {
+    await seedAccounts([refreshAccount()]);
+    const replacement = leaseAccount('acc-1', { refresh_token: 'reauthorized-refresh' });
+    fixture.accounts.set('acc-1', replacement);
+    const refresh = vi.spyOn(GoogleAPIService, 'refreshAccessToken');
+    expect(await service.getNextToken({ targetAccountId: 'acc-1' })).toBeNull();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(await fixture.store.getAccount('acc-1')).toEqual(replacement);
   });
 });

@@ -33,6 +33,8 @@ import { updateTrayMenu } from '@/modules/app-shell/ipc/tray/handler';
 import { readAccountValidationLinkErrorCode } from '@/modules/cloud-account/services/account-validation-link.schema';
 import { desktopOAuthLogin } from '@/modules/cloud-account/ipc/desktop-oauth-login';
 import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
+import { CloudAccountHealthService } from '@/modules/cloud-account/services/CloudAccountHealthService';
+import * as serverMain from '@/server/main';
 
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 vi.mock('@/modules/cloud-account/ipc/handler', () => ({}));
@@ -74,6 +76,161 @@ afterEach(async () => {
 });
 
 describe('cloud account read adapter', () => {
+  it.each(['desktop-embedded', 'standalone-core'] as const)(
+    'retains a concurrent ToS quarantine via %s',
+    async (mode) => {
+      let stored: CloudAccount = {
+        id: 'account-race',
+        provider: 'google',
+        email: 'example@example.com',
+        created_at: 1,
+        last_used: 1,
+        token: {
+          access_token: 'test',
+          refresh_token: 'test',
+          expires_in: 3600,
+          expiry_timestamp: 9999999999,
+          token_type: 'Bearer',
+        },
+        health: {
+          service_disabled: { status: 'disabled', reason: 'TOS_VIOLATION', detected_at_ms: 1 },
+        },
+        status: 'expired',
+        status_reason: 'TOS_VIOLATION',
+      };
+      vi.spyOn(CloudAccountRepo, 'getAccount').mockImplementation(async () =>
+        structuredClone(stored),
+      );
+      vi.spyOn(CloudAccountRepo, 'updateHealth').mockImplementation(async (_id, health) => {
+        stored.health = health;
+      });
+      vi.spyOn(CloudAccountRepo, 'setAccountStatus').mockImplementation(
+        async (_id, status, reason) => {
+          stored.status = status;
+          stored.status_reason = reason ?? undefined;
+        },
+      );
+      let generation = 0;
+      vi.spyOn(serverMain, 'getNestServerAccountMemoryQuarantineGeneration').mockImplementation(
+        () => generation,
+      );
+      vi.spyOn(serverMain, 'clearNestServerAccountMemoryQuarantine').mockImplementation(
+        (_id, expected) => expected === generation,
+      );
+      let continueReload!: () => void;
+      let enteredReload!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enteredReload = resolve;
+      });
+      const resume = new Promise<void>((resolve) => {
+        continueReload = resolve;
+      });
+      vi.spyOn(serverMain, 'reloadNestServerAccountLeaseCache').mockImplementation(async () => {
+        enteredReload();
+        await resume;
+        return true;
+      });
+      if (mode === 'standalone-core') {
+        const socketPath = await endpoint();
+        const server = new ManagementServer({
+          endpoint: socketPath,
+          getStatus: () => ({
+            state: 'running',
+            pid: 123,
+            gateway: { running: false, port: null },
+          }),
+          shutdown: async () => {},
+          onShutdownError: vi.fn(),
+          rpc: createCoreRpcOperations({
+            startGateway: vi.fn(async (port: number) => ({
+              success: true as const,
+              port,
+              base_url: '',
+            })),
+            stopGateway: vi.fn(async () => true),
+          }),
+        });
+        closeables.push(server);
+        await server.start();
+        selectCloudAccountAdapter({ mode, client: new CoreRpcClient(socketPath) });
+      }
+      const releasing = rendererCloud.clearServiceDisabled({ accountId: stored.id });
+      const rejected = expect(releasing).rejects.toThrow();
+      await entered;
+      generation++;
+      const later = CloudAccountHealthService.mutateHealth(stored.id, (health) => ({
+        ...health,
+        service_disabled: { status: 'disabled', reason: 'TOS_VIOLATION', detected_at_ms: 2 },
+      }));
+      continueReload();
+      await rejected;
+      await later;
+      expect(stored.health?.service_disabled?.detected_at_ms).toBe(2);
+      expect(stored.status).toBe('expired');
+    },
+    15_000,
+  );
+  it('clears quarantine through both selected owners', async () => {
+    let stored: CloudAccount = {
+      id: 'account-1',
+      provider: 'google',
+      email: 'example@example.com',
+      created_at: 1,
+      last_used: 1,
+      token: {
+        access_token: 'test',
+        refresh_token: 'test',
+        expires_in: 3600,
+        expiry_timestamp: 9999999999,
+        token_type: 'Bearer',
+      },
+      health: {
+        service_disabled: { status: 'disabled', reason: 'TOS_VIOLATION', detected_at_ms: 1 },
+      },
+      status: 'expired',
+      status_reason: 'TOS_VIOLATION',
+    };
+    vi.spyOn(CloudAccountRepo, 'getAccount').mockImplementation(async () =>
+      structuredClone(stored),
+    );
+    vi.spyOn(CloudAccountRepo, 'updateHealth').mockImplementation(async (_id, health) => {
+      stored.health = health;
+    });
+    vi.spyOn(CloudAccountRepo, 'setAccountStatus').mockImplementation(
+      async (_id, status, reason) => {
+        stored.status = status;
+        stored.status_reason = reason ?? undefined;
+      },
+    );
+    await rendererCloud.clearServiceDisabled({ accountId: stored.id });
+    expect(stored.health?.service_disabled).toBeUndefined();
+    stored.health = {
+      service_disabled: { status: 'disabled', reason: 'TOS_VIOLATION', detected_at_ms: 1 },
+    };
+    stored.status = 'expired';
+    stored.status_reason = 'TOS_VIOLATION';
+    const socketPath = await endpoint();
+    const server = new ManagementServer({
+      endpoint: socketPath,
+      getStatus: () => ({ state: 'running', pid: 123, gateway: { running: false, port: null } }),
+      shutdown: async () => {},
+      onShutdownError: vi.fn(),
+      rpc: createCoreRpcOperations({
+        startGateway: vi.fn(async (port: number) => ({
+          success: true as const,
+          port,
+          base_url: '',
+        })),
+        stopGateway: vi.fn(async () => true),
+      }),
+    });
+    closeables.push(server);
+    await server.start();
+    selectCloudAccountAdapter({ mode: 'standalone-core', client: new CoreRpcClient(socketPath) });
+    await rendererCloud.clearServiceDisabled({ accountId: stored.id });
+    expect(stored.health?.service_disabled).toBeUndefined();
+    expect(stored.status).toBe('active');
+  }, 15_000);
   it('routes login through the selected remote owner and keeps the renderer result strict', async () => {
     const socketPath = await endpoint();
     const loginView = { ...view, id: '11111111-1111-4111-8111-111111111111' };
@@ -850,6 +1007,7 @@ describe('cloud account read adapter', () => {
           refreshAccountQuota: vi.fn(async () => {
             throw error;
           }),
+          clearServiceDisabled: vi.fn(),
           syncFromIde: vi.fn(async () => {
             throw error;
           }),

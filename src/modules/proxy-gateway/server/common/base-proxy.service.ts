@@ -153,6 +153,18 @@ export abstract class BaseProxyService {
     return account;
   }
 
+  /**
+   * Resolves account-specific request headers for upstream calls.
+   * Preserves a clean, minimal header footprint without synthetic machine telemetry,
+   * passing through explicitly provided extra headers.
+   */
+  protected resolveAccountTelemetryHeaders(
+    _account: CloudAccount,
+    extraHeaders?: Record<string, string>,
+  ): Record<string, string> {
+    return { ...(extraHeaders ?? {}) };
+  }
+
   protected releaseImagePermit(retryState: ProxyTokenRetryState): void {
     this.retryPolicy.releaseImagePermit(retryState);
   }
