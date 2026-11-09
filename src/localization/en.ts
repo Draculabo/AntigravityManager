@@ -737,6 +737,7 @@ const en = {
       turkish: 'Turkish',
       french: 'French',
       portuguese: 'Portuguese (Brazil)',
+      japanese: 'Japanese',
     },
     about: {
       title: 'About',

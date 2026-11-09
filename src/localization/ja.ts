@@ -1,0 +1,1773 @@
+const ja = {
+  'workspace-profile': {
+    'path-copied': 'パスをコピーしました',
+    'project-folder-path-copied-to-clipboard':
+      'プロジェクトフォルダのパスをクリップボードにコピーしました。',
+    'failed-to-copy': 'コピーに失敗しました',
+    'never-launched': '未起動',
+    'last-active': '最終アクティブ: {{time}}',
+    'status-unavailable': 'ステータス取得不可',
+    running: '実行中',
+    'workspace-process-is-stopped': 'ワークスペースプロセスは停止しています',
+    idle: 'アイドル',
+    'bound-google-account': '紐づけ済みの Google アカウント',
+    standard: '標準',
+    unbound: '未紐づけ',
+    'project-folder': 'プロジェクトフォルダ',
+    'copy-project-folder-path': 'プロジェクトフォルダのパスをコピー',
+    'copy-path': 'パスをコピー',
+    'isolated-profile-data': '分離プロファイルデータ:',
+    'user-data-dir': 'ユーザデータディレクトリ:',
+    'already-running': 'すでに実行中',
+    'launch-ide': 'IDE を起動',
+    stop: '停止',
+    'more-actions': 'その他のアクション',
+    'edit-profile': 'プロファイルを編集',
+    'copy-path-label': 'パスをコピー',
+    'delete-workspace': 'ワークスペースを削除',
+    'failed-to-select-directory': 'ディレクトリの選択に失敗しました',
+    'workspace-profile-name-is-required': 'ワークスペースプロファイル名は必須です。',
+    'workspace-profile-name-cannot-exceed-100-characters':
+      'ワークスペースプロファイル名は 100 文字以内で入力してください。',
+    'a-bound-google-account-must-be-selected':
+      '紐づける Google アカウントを選択してください。',
+    'project-directory-path-is-required': 'プロジェクトディレクトリのパスは必須です。',
+    'failed-to-save-workspace-profile': 'ワークスペースプロファイルの保存に失敗しました',
+    'edit-workspace-profile': 'ワークスペースプロファイルを編集',
+    'create-new-workspace': '新しいワークスペースを作成',
+    'profile-name': 'プロファイル名',
+    'e-g-acme-client-portal-personal-research':
+      '例: Acme クライアントポータル、個人リサーチ',
+    'select-google-account': 'Google アカウントを選択',
+    'project-directory': 'プロジェクトディレクトリ',
+    'path-to-project-folder': '/path/to/project/folder',
+    'browse-for-project-folder': 'プロジェクトフォルダを参照',
+    'browse-folder': 'フォルダを参照',
+    'isolated-user-data-directory': '分離ユーザデータディレクトリ',
+    'auto-managed': '自動管理',
+    'created-automatically-when-saved': '保存時に自動作成されます',
+    cancel: 'キャンセル',
+    'save-changes': '変更を保存',
+    'create-workspace': 'ワークスペースを作成',
+    'failed-to-delete-workspace': 'ワークスペースの削除に失敗しました',
+    'delete-workspace-profile': 'ワークスペースプロファイルを削除',
+    'warning-this-workspace-is-currently-running-please-stop-the-ide-before-deleting-it':
+      '警告: このワークスペースは現在実行中です。削除する前に IDE を停止してください。',
+    'workspace-launched': 'ワークスペースを起動しました',
+    'launch-failed': '起動に失敗しました',
+    'could-not-launch-workspace-instance': 'ワークスペースインスタンスを起動できませんでした',
+    'workspace-stopped': 'ワークスペースを停止しました',
+    'ide-process-terminated-cleanly': 'IDE プロセスの終了を確認しました。',
+    'stop-failed': '停止に失敗しました',
+    'could-not-terminate-workspace-process':
+      'ワークスペースプロセスを終了できませんでした',
+    'workspace-updated': 'ワークスペースを更新しました',
+    'workspace-created': 'ワークスペースを作成しました',
+    'workspace-deleted': 'ワークスペースを削除しました',
+    'deletion-failed': '削除に失敗しました',
+    workspaces: 'ワークスペース',
+    'refresh-workspaces': 'ワークスペースを再読み込み',
+    refresh: '再読み込み',
+    'new-workspace': '新しいワークスペース',
+    'search-workspaces-by-name-path-account':
+      '名前、パス、アカウントでワークスペースを検索...',
+    'loading-workspace-profiles': 'ワークスペースプロファイルを読み込み中...',
+    'failed-to-load-workspaces': 'ワークスペースの読み込みに失敗しました',
+    'unknown-error-occurred': '不明なエラーが発生しました',
+    retry: '再試行',
+    'no-workspaces-configured-yet': 'まだワークスペースが設定されていません',
+    'create-your-first-workspace': '最初のワークスペースを作成',
+    'launched-description': 'Antigravity IDE が実行中です (PID: {{pid}})。',
+    'running-pid': 'プロセス実行中、PID: {{pid}}',
+    'edit-description':
+      'ワークスペースプロファイルの詳細、紐づけ Google アカウント、プロジェクトフォルダを更新します。',
+    'create-description':
+      '専用の Google アカウントとプロジェクトフォルダを持つ、分離された Antigravity IDE ワークスペースセッションを構成します。',
+    'restart-warning':
+      'アカウントまたはプロジェクトを変更すると、この IDE インスタンスは再起動されます。適用前に作業内容を保存してください。',
+    'no-accounts':
+      'Antigravity Manager に Google アカウントが見つかりません。ワークスペースを作成する前に、アカウントページでアカウントを追加してください。',
+    'login-data-description':
+      'このディレクトリは、ワークスペースのログインとセッションデータを分離して保持します。',
+    intro:
+      '異なる Google アカウントとプロジェクトにまたがる、並列かつ分離された Antigravity IDE セッションを管理します。',
+    'empty-description':
+      '専用の Google 認証情報とプロジェクトフォルダを持つ、並列の Antigravity IDE インスタンスを起動するため、分離ワークスペースプロファイルを作成します。',
+    'remove-profile-data':
+      'このワークスペースのログインとセッションデータを完全に削除する',
+    'delete-confirm': 'ワークスペース「{{name}}」を削除しますか?',
+    'no-results': '「{{query}}」に一致するワークスペースはありません。',
+  },
+  'operation-diagnostics': {
+    'switch-written-unconfirmed':
+      '新しいアカウントは Antigravity に書き込まれましたが、切り替えを確認できませんでした。再試行する前に Antigravity に表示されているアカウントを確認してください。',
+    'switch-write-uncertain':
+      'Antigravity のアカウントが変更された可能性があります。再試行する前に Antigravity に表示されているアカウントを確認してください。',
+    'check-account-list':
+      'このアカウントはすでに保存されている可能性があります。再度サインインする前にアカウント一覧を更新してください。',
+    'check-proxy': '上流プロキシの設定を確認してから再試行してください。',
+    'check-connection':
+      'ネットワーク、プロキシ、システム時刻を確認してから再試行してください。詳細に検出された失敗が含まれます。',
+    'close-client': '作業を保存してクライアントを閉じ、切り替えを再試行してください。',
+    reauthorize: 'このアカウントに再度サインインして認可を更新してください。',
+    retry: '操作に失敗しました。診断詳細を確認して再試行してください。',
+  },
+  'agent-tools': {
+    title: 'コーディングツールを接続する',
+    description:
+      'ツールを選択し、Antigravity Manager 経由で利用可能なモデルを使用します。',
+    loading: '設定を読み込み中…',
+    installed: 'インストール済み',
+    'not-installed': 'インストールが検出されません',
+    'read-error': '既存の設定を読み込めませんでした。変更前に再試行してください。',
+    retry: '再試行',
+    configured: '設定を保存しました',
+    'custom-address': '別のアドレスを使用',
+    'not-configured': '未設定',
+    'not-verified': 'リクエスト未検証',
+    address: 'Manager アドレス',
+    model: 'モデル',
+    'not-set': '未設定',
+    'choose-model': 'セットアップ中に選択',
+    update: '設定を更新',
+    configure: '設定',
+    view: '設定を表示',
+    restore: 'バックアップから復元',
+    remove: '接続を削除',
+    'install-notice':
+      'ツールのインストール前に設定を保存できます。インストール後に再度開いてください。',
+    'action-error': 'ツール設定を更新できませんでした',
+    saved: '設定を更新しました',
+    reopen: '設定を読み込むため {{name}} を開き直してください。',
+    'configure-title': '{{name}} を接続',
+    'configure-description':
+      'リクエストは Manager を使用します。既存の設定は最初の変更前にバックアップされます。',
+    'restore-title': '{{name}} の設定を復元しますか?',
+    'restore-description':
+      '設定ファイル全体を元のバックアップで置き換えます。以降の編集も含めてすべて失われます。Manager が作成したファイルは削除されます。バックアップは一度のみ使用されます。',
+    'remove-title': 'Manager の接続を削除しますか?',
+    'remove-description':
+      '関連のない設定とバックアップを保持したまま、以前の接続設定を復元します。',
+    'preview-title': '{{name}} の設定',
+    'preview-description':
+      'Manager への接続に必要な設定のみ表示されます。接続キーは隠されます。',
+    confirm: '確認',
+    advanced: 'アドレスと設定ファイル',
+    'reset-address': '現在の Manager アドレスを使用',
+    'backend-files':
+      'これらの設定は Manager サービスを実行しているコンピュータ上、実行中のユーザ配下に保存されます。',
+    'backup-notice':
+      '最初のバックアップは更新をまたいで保持されます。保存後、ツールを開き直してください。',
+    'toml-notice':
+      'Codex 設定ファイルの書式やコメントは変更される可能性があります。復元用に完全バックアップが保存されます。既存のサインインと権限設定は保持されます。',
+    'codex-review':
+      'タスクと自動レビュー双方のリクエストを構成します。既存の有効化されたレビュールートと承認設定は保持されます。',
+    'model-count': '{{count}} 個のモデル',
+    'plugin-notice':
+      'ダイレクトログインプラグインがインストールされています。別の接続を使用する可能性があります。OpenCode で選択中のプロバイダを確認してください。',
+    'revoke-key': 'OpenCode の接続キーを無効化',
+    errors: {
+      unavailable: 'ツール設定が利用できません。再試行してください。',
+      'invalid-config':
+        '設定ファイルが無効または大きすぎます。ツールを構成する前に修正してください。',
+      'read-failed': '設定ファイルを読み込めませんでした。アクセスを確認して再試行してください。',
+      'write-failed': '設定を保存できませんでした。復元用バックアップは保持されています。',
+      'backup-failed':
+        'バックアップを作成できませんでした。ツール設定は変更されていません。',
+      'backup-missing': '復元用バックアップはありません。',
+      'configuration-changed':
+        'この操作中に設定が変更されました。再度読み込んで再試行してください。',
+      'key-missing': '最初にプロキシページで接続キーを生成してください。',
+      'review-route-disabled':
+        'Codex レビュールートは無効です。構成前にモデルルーティングで有効化してください。',
+    },
+
+    'address-help':
+      'サービスが別のコンピュータで実行されている場合を除き、現在の Manager アドレスを使用してください。',
+    'invalid-address':
+      'http:// または https:// で始まり、サインイン情報や余分なパラメータを含まない Manager アドレスを使用してください。',
+    'model-required': '保存する前にモデルを選択してください。',
+  },
+  appName: 'Antigravity Manager',
+  'process-runtime': {
+    'switched-identity-unconfirmed':
+      '認証情報は更新されましたが、再起動された IDE Agent が選択されたアカウントを確認していません。再試行する前に IDE のアカウントを確認してください。復旧には、すべての Antigravity クライアントを閉じる必要があります。',
+    'update-in-progress':
+      'Antigravity を更新中です。更新を完了してから再試行してください。',
+    'close-failed':
+      'Antigravity を閉じられませんでした。チャットとファイルを保存し、アプリを手動で閉じてから再試行してください。',
+    'exit-unconfirmed':
+      'Antigravity の終了が完了していません。チャットとファイルを保存し、アプリを手動で閉じてから再試行してください。',
+    working: '処理中...',
+    busy: 'Antigravity はビジー状態です。現在の操作が完了するまで待機してください。',
+    'missing-executable':
+      'Antigravity が見つからないか、開けませんでした。設定でアプリケーションの場所を確認してください。',
+    'target-conflict':
+      '実行中の Antigravity は、設定で選択されているものとは異なるインストールです。アカウントを切り替える前に、閉じるか一致するインストールを選択してください。',
+    'directory-conflict':
+      'Antigravity は、設定で選択されているものとは異なるデータフォルダを使用しています。アカウントを切り替える前に、閉じるかフォルダ設定を確認してください。',
+    'probe-failed':
+      'Antigravity のステータスを時間内に確認できませんでした。アプリが開いているか確認して再試行してください。',
+    'launch-failed':
+      'Antigravity を開けませんでした。アプリケーションの場所とアクセス権限を確認してください。',
+    'startup-unconfirmed':
+      'Antigravity の起動がまだ確認されていません。二重起動を避けるため、再起動は試行されませんでした。再試行する前にアプリを確認してください。',
+    'switched-hot-unconfirmed':
+      '新しいアカウントは保存されましたが、Antigravity IDE の変更を確認できませんでした。再試行する前に IDE に表示されているアカウントを確認してください。',
+    'switched-startup-unconfirmed':
+      '新しいアカウントは保存されましたが、Antigravity の起動がまだ確認されていません。再起動は試行されませんでした。再試行する前にアプリを確認してください。',
+  },
+  common: {
+    close: '閉じる',
+    cancel: 'キャンセル',
+    'core-unavailable-title': 'Antigravity Manager に接続できません',
+    'core-unavailable-body':
+      'アカウントとプロキシは現在利用できません。Antigravity Manager を閉じて開き直してください。問題が続く場合は、最新バージョンをインストールしてください。',
+    'account-data-unavailable-title': '保存されたアカウントを開けません',
+    'account-data-unavailable-body':
+      '保存されたアカウントを現在読み込めません。普段使用しているコンピュータアカウントでサインインしていることを確認してから、Antigravity Manager を開き直してください。アカウントデータは変更されていません。',
+    'already-running-title': 'Antigravity Manager はすでに実行中です',
+    'already-running-body':
+      'もう一つの Antigravity Manager ウィンドウを閉じてから再試行してください。見つからない場合は、コンピュータを再起動してください。',
+    loading: '読み込み中...',
+    error: 'エラー',
+    unknown: '不明',
+    notAvailable: 'N/A',
+    openMenu: 'メニューを開く',
+
+    'dismiss-notification': '通知を閉じる',
+    'reading-settings': '設定を読み込み中…',
+  },
+  status: {
+    checking: 'ステータスを確認中...',
+    running: 'Antigravity はバックグラウンドで実行中です',
+    stopped: 'Antigravity サービスは停止しました',
+    services: 'サービス',
+    dashboard_title: 'サービスステータス',
+    open_dashboard: 'サービスステータスを開く',
+    checking_short: '確認中...',
+    running_short: '実行中',
+    stopped_short: '停止',
+    all_running: 'すべてのサービスが実行中',
+    all_stopped: 'すべてのサービスが停止',
+    partial_running: '{{running}}/{{total}} のサービスが実行中',
+  },
+  action: {
+    stop: '停止',
+    start: '開始',
+    switch: '切り替え',
+    deleteBackup: 'バックアップを削除',
+    backupCurrent: '現在をバックアップ',
+    retry: '再試行',
+    details: '詳細',
+    openLogs: 'ログディレクトリを開く',
+  },
+  update: {
+    'release-notes': {
+      view: '変更内容を見る',
+      title: 'リリースノート',
+      loading: 'リリースノートを読み込み中...',
+      failed:
+        'リリースノートを読み込めませんでした。このアップデートはダウンロードまたはインストール可能です。',
+      empty: 'このリリースにはリリースノートが含まれていません。',
+      history: 'リリース履歴',
+      'release-page': 'リリースページ',
+      'link-failed': 'このリンクを開けませんでした。もう一度お試しください。',
+    },
+    title: 'アップデート',
+    checking: '確認中...',
+    checkNow: 'アップデートを確認',
+    checkFailed: 'アップデートを確認できません',
+    upToDate: '最新の状態です。',
+    unsupported: 'このプラットフォームでは自動アップデート確認は利用できません。',
+    available: {
+      title: 'アップデートがあります',
+      description: 'バージョン {{version}} が GitHub で利用可能です。',
+      download: 'ダウンロード',
+      'manual-download': '手動ダウンロード',
+      'open-download-failed': 'ダウンロードページを開けませんでした',
+      downloading: 'ダウンロード中...',
+      dismiss: '閉じる',
+      macosUnsignedNote:
+        'この macOS ビルドは公式に署名されていません。macOS がアプリをブロックする場合は、GitHub の README または関連 Issue の手動署名手順に従ってください。',
+    },
+    downloaded: {
+      title: 'アップデートの準備完了',
+      description: 'バージョン {{version}} をダウンロードしました。',
+      restart: '再起動',
+    },
+  },
+  error: {
+    logs: {
+      title: 'サニタイズ済みログプレビュー',
+      description:
+        'オプション: 直近 10 分間のログをプレビューし、保存して GitHub にファイルを手動で添付します。不確実な内容は削除されます。元のログは変更されません。',
+      generate: 'サニタイズ済みログ添付を生成',
+      save: '確認済み添付を保存',
+      summary: '{{kib}} KiB · 内容が削除されたレコード {{removed}} 件 · 最大 1 MiB',
+      missing:
+        '欠落または読み取り不可のログソース: {{sources}}。この添付は不完全です。',
+      truncated:
+        '読み取りまたは添付の制限によりログが切り詰められました。この添付は不完全です。',
+      generating: 'サニタイズ済みログを準備中…',
+      saving: '保存場所を選択…',
+      saved: '添付を保存しました。手動で GitHub の Issue にファイルを追加してください。',
+      cancelled: '保存をキャンセルしました。再度場所を選択できます。',
+      expired: 'このプレビューは期限切れです。保存前に新しい添付を生成してください。',
+      failed:
+        '最近のログがないか、添付を生成または保存できませんでした。再試行するか、エラー詳細のみを報告してください。元のログは代替として使用されません。',
+    },
+    toast: {
+      'report-issue': 'GitHub に報告',
+      'no-details':
+        'エラースタックは利用できません。利用可能な場合は通知テキストが表示されます。',
+      copied:
+        'エラー情報をコピーしました。GitHub レポートに貼り付け、作業内容を記述してから送信してください。',
+      'copy-failed':
+        'エラー情報をコピーできませんでした。もう一度お試しください。詳細を開いて手動でエラーをコピーすることもできます。',
+      'open-failed':
+        'GitHub を開けませんでした。エラー情報はコピーされています。{{url}} を開いてレポートに貼り付けてください。',
+    },
+    generic: '予期しないエラーが発生しました。',
+    detailsTitle: 'エラーの詳細',
+    detailsDescription:
+      'これらの詳細は問題解決に役立ちますが、プライベートなファイルの場所を含む場合があります。共有前に確認してください。',
+    keychainUnavailable: '保存されたサインイン情報に現在アクセスできません。',
+    keychainHint: {
+      translocation:
+        'アプリをアプリケーションフォルダに移動してから、再度開いてください。',
+      keychainDenied:
+        'macOS が保存されたサインイン情報へのアクセスをブロックしました。アプリのインストール手順を確認してから再試行してください。',
+      signNotarize:
+        '利用可能であれば、macOS が検証済みと認識するバージョンをインストールしてください。',
+    },
+    dataMigrationFailed: '以前のバージョンで保存されたアカウントを読み込めません。',
+    masterKeyUnavailable:
+      '保存されたアカウントが見つかりましたが、現在開くことができません。アカウントデータは変更されていません。',
+    dataMigrationHint: {
+      relogin: '再度ログインするか、アカウントを追加し直してください。',
+      clearData:
+        '問題が解消しない場合は、ローカルのアカウントデータを消去して再度サインインしてください。',
+    },
+    antigravityStorageJsonNotFound:
+      'Antigravity のセットアップが完了していません。選択した Antigravity アプリを開いて一度サインインしてから、アカウント切り替えを再試行してください。',
+    antigravityProjectIdMissing:
+      'このアカウントは Antigravity で使用する準備ができていません。Antigravity で一度サインインしてから、切り替えを再試行してください。',
+    antigravityDatabasePermissionDenied:
+      'Antigravity のサインイン情報を保存できませんでした。そのデータフォルダが変更を許可しているか確認するか、Antigravity を一度開いて Manager を再起動してください。',
+    cloudAccountLoginExpired:
+      'このクラウドアカウントのログイン情報は期限切れです。再度ログインしてください。',
+  },
+  nav: {
+    navigation: 'ナビゲーション',
+    'collapse-sidebar': 'サイドバーを折りたたむ',
+    'expand-sidebar': 'サイドバーを展開',
+    accounts: 'アカウント',
+    playground: 'プレイグラウンド',
+    workspaces: 'ワークスペース',
+    proxy: 'API プロキシ',
+    settings: '設定',
+    traffic: 'トラフィック',
+  },
+  playground: {
+    title: 'モデルプレイグラウンド',
+    description:
+      'アカウントまたはストラテジープール全体で、モデルと補完を対話的にテストします。',
+    'gateway-online': 'ゲートウェイオンライン',
+    'gateway-offline': 'ゲートウェイオフライン',
+    'gateway-offline-title': 'API プロキシは停止しています。',
+    'gateway-offline-desc':
+      '補完とモデル応答をテストするためゲートウェイを起動してください。',
+    'start-gateway': 'ゲートウェイを起動',
+    'starting-gateway': '起動中...',
+    'gateway-started': 'API プロキシが正常に起動しました。',
+    'gateway-start-failed': 'API プロキシの起動に失敗しました。',
+    'tab-single': '単一アカウント',
+    'tab-compare': 'マルチアカウント比較',
+    'test-single-title': 'アカウントでプロンプトをテスト',
+    'test-single-desc':
+      'アカウント (または自動プール) を選択し、モデルを選んでテストプロンプトを実行します。',
+    'target-account': '対象アカウント',
+    'auto-pool': '自動 (ストラテジープール)',
+    'auto-pool-desc': '自動 (プールルーティング戦略を使用)',
+    'rate-limited': 'レート制限',
+    'quota-left': 'クォータ',
+    model: 'モデル',
+    'select-model': 'モデルを選択...',
+    'presets-label': 'プリセット',
+    presets: {
+      hello: '挨拶',
+      reasoning: '推論',
+      identity: 'アイデンティティ',
+      code: 'TypeScript',
+    },
+    'preset-prompts': {
+      hello:
+        '挨拶をし、モデル名を述べ、目的を短く 1 文で要約してください。',
+      reasoning:
+        'テーブルに 3 つのリンゴがあります。あなたは 2 つを取りました。あなたは何個のリンゴを持っていますか? 段階的に考えてください。',
+      identity: 'あなたの正確なモデルバージョン、知識カットオフ日、プロバイダは何ですか?',
+      code:
+        '適切なジェネリクスと clearTimeout を使用した TypeScript の debounce 関数を書いてください。',
+    },
+    'default-prompt':
+      '挨拶をし、正確なモデル名を述べ、短いジョークを教えてください。',
+    'dual-default-prompt':
+      '楽観的ロックと悲観的ロックの違いを、簡潔な現実世界のアナロジーで説明してください。',
+    'benchmark-default-prompt':
+      'コーディングに関する 2 行の押韻スローガンを書き、AI の重要な利点を 1 つ述べてください。',
+    'advanced-settings': '高度なパラメータ',
+    'system-prompt': 'システムプロンプト',
+    'system-prompt-placeholder':
+      'オプションのシステム命令 (例: あなたは有能なアシスタントです)...',
+    temperature: 'Temperature',
+    'max-tokens': '最大出力トークン',
+    prompt: 'プロンプト',
+    'prompt-placeholder': 'ここにプロンプトを入力...',
+    'ctrl-enter-hint': 'Ctrl+Enter で送信',
+    clear: 'クリア',
+    send: 'プロンプトを実行',
+    running: '実行中...',
+    stop: '停止',
+    response: '応答',
+    'thinking-process': '思考プロセス',
+    'copy-response': '応答をコピー',
+    'copy-curl': 'cURL としてコピー',
+    latency: 'レイテンシ',
+    ttft: 'TTFT',
+    'not-measured': '未計測',
+    'e2e-duration': 'エンドツーエンド',
+    'response-started': '応答開始',
+    'first-byte': '初バイト',
+    'first-text': '初テキスト',
+    'first-reasoning': '初推論',
+    'tooltip-first-byte':
+      'リクエスト開始から上流プロバイダからの最初のバイト受信までの時間。',
+    'tooltip-first-text':
+      'リクエスト開始から最初の可視テキストデルタまでの時間。推論のみの出力はカウントされません。',
+    'tokens-total': 'トークン',
+    'http-error': 'エラー {{status}}',
+    'compare-title': 'アカウントを比較',
+    'compare-desc':
+      '同じプロンプトを複数のアカウントに並列送信し、レイテンシと出力を比較します。',
+    'select-accounts-compare': '比較するアカウントを選択',
+    'select-all': 'すべて選択',
+    'clear-all': 'すべてクリア',
+    'selected-count': '{{count}} 個のアカウントを選択中',
+    'compare-limit':
+      '比較あたり最大 {{count}} アカウントまで。それ以上の選択は無効化されます。',
+    'only-visible-models': '表示中のモデルのみ',
+    'run-comparison': '選択アカウントで実行',
+    'comparison-results': '比較結果',
+    'request-failed': 'リクエスト失敗',
+    'request-error': '予期しないエラーが発生しました',
+    'compare-error': '比較実行エラー',
+    'tab-benchmark': 'アカウントベンチマーク',
+    'benchmark-settings-title': 'アカウントの全モデルをテスト',
+    'benchmark-settings-desc':
+      'このアカウントの全モデルに対しプローブリクエストを繰り返し、収集サンプルから中央値と p95 を報告します。',
+    'benchmark-prompt': 'ベンチマークプローブプロンプト',
+    'reset-prompt': 'デフォルトにリセット',
+    'select-account': 'アカウントを選択...',
+    'min-delay': '最小遅延',
+    'max-delay': '最大遅延',
+    'models-to-test': 'テストするモデル ({{count}})',
+    'selected-models-count': '{{count}} 個のモデルを選択中',
+    'run-benchmark': 'ベンチマークを開始',
+    'stop-benchmark': 'ベンチマークを停止',
+    stopping: '停止中...',
+    'testing-progress': '{{total}} 中 {{current}} をテスト中: {{model}}...',
+    iterations: 'イテレーション',
+    'run-of': '{{total}} 回中 {{current}} 回目',
+    samples: 'サンプル',
+    'insufficient-samples': '少なくとも {{count}} サンプル必要',
+    'benchmark-profile': '{{count}} モデル × {{iterations}} 回',
+    'passed-failed': '成功 / 失敗',
+    'avg-ttft': '平均 TTFT',
+    'avg-gen-speed': '平均生成速度',
+    'avg-e2e-speed': '平均 E2E 速度',
+    'fastest-gen': '最速生成',
+    'fastest-ttft': '最速 TTFT',
+    'benchmark-results-title': 'ベンチマーク結果',
+    'benchmark-results-desc':
+      'レイテンシ、生成速度、E2E スループット、TTFT のパフォーマンス内訳。',
+    'copy-markdown': 'Markdown レポートをコピー',
+    'report-copied': 'レポートをクリップボードにコピーしました',
+    'report-title': '{{account}} のベンチマーク結果',
+    'report-tested': 'テスト済みモデル',
+    'report-passed': '成功',
+    'report-failed': '失敗',
+    'report-tokens': 'トークン (入力/出力)',
+    'first-text-median': '初テキスト中央値',
+    'first-text-p95': '初テキスト p95',
+    'gen-median': '生成中央値',
+    'gen-p95': '生成 p95',
+    'gen-speed': '生成速度',
+    'e2e-speed': 'E2E 速度',
+    'seconds-short': '秒',
+    status: 'ステータス',
+    pending: '保留中',
+    skipped: 'スキップ',
+    view: '表示',
+    'view-response': '応答詳細を表示',
+    'reasoning-level': '推論レベル',
+    'reasoning-default': 'デフォルト (自動)',
+    'reasoning-off': '無効 (オフ)',
+    'reasoning-low': '低',
+    'reasoning-medium': '中',
+    'reasoning-high': '高',
+    'tooltip-ttft': '最初の生成トークンまでの時間',
+    'tooltip-e2e-speed':
+      '出力トークンを完全なリクエスト時間で割った値。',
+    'tooltip-gen-speed':
+      '最初と最後の生成デルタ間の出力速度。いずれかのデルタが観測されなかった場合は未計測。',
+    'tooltip-quota': 'アカウントのモデル残クォータ',
+    'tooltip-tokens': '入力トークン (プロンプト) / 出力トークン (補完)',
+    'total-latency': '合計レイテンシ',
+    'tab-dual': 'デュアルモデル',
+    'dual-title': 'デュアルモデル比較',
+    'dual-desc':
+      '同じプロンプトを 2 つの異なるモデルまたはアカウントに同時送信し、出力を並べて比較します。',
+    'model-a': 'モデル A',
+    'model-b': 'モデル B',
+    'run-dual': 'デュアル比較を実行',
+    'running-dual': '両モデル実行中...',
+    'dual-stopped': 'デュアル比較を停止しました。',
+    'dual-awaiting':
+      'モデル A とモデル B を設定し、実行をクリックして比較してください。',
+    'comparison-summary': '比較サマリー',
+    'dual-speed-diff': '{{winner}} の生成が {{diff}} tok/s 速い',
+    'dual-ttft-diff': '{{winner}} の応答が {{diff}} 秒早い (TTFT)',
+  },
+  traffic: {
+    'detail-load-failed':
+      'このリクエストを読み込めませんでした。もう一度お試しください。',
+    'detail-not-found':
+      'このレコードは利用できなくなりました。消去された可能性があります。',
+    fields: {
+      category: 'カテゴリ',
+      method: 'リクエストメソッド',
+      'requested-model': 'リクエストされたモデル',
+      'mapped-model': '選択されたモデルルート',
+      error: 'エラー詳細',
+      affected: '影響を受けたレコード',
+      'request-id': 'リクエスト ID',
+      'client-address': 'クライアントアドレス',
+      username: 'ユーザ',
+      'reasoning-tokens': '推論トークン',
+      'cached-tokens': 'キャッシュトークン',
+      query: '追加のリクエストオプション',
+    },
+    outcomes: {
+      in_progress: '進行中',
+      completed: '完了',
+      client_cancelled: 'キャンセル',
+      client_disconnected: '接続切断',
+      timeout: 'タイムアウト',
+      upstream_error: 'モデルサービスエラー',
+      auth_failed: 'サインイン失敗',
+      internal_error: 'アプリエラー',
+      partial: '部分的結果',
+    },
+    title: 'トラフィックモニター',
+    description:
+      'モデルリクエストとアプリアクティビティを確認して問題を素早く発見します。',
+    records: '{{count}} 件のレコード',
+    'on-disk': 'ディスク上 {{size}}',
+    dropped: '{{count}} 件ドロップ',
+    'reset-dropped': 'リセット',
+    'reset-dropped-failed': 'ドロップ数をリセットできません。もう一度お試しください。',
+    model: 'モデルリクエスト',
+    auxiliary: 'その他のリクエスト',
+    ipc: 'アプリアクション',
+    system: 'システムイベント',
+    'advanced-diagnostics': '高度な診断',
+    'search-metadata': 'モデル、リクエスト ID、アドレスで検索',
+    'date-from': '開始',
+    'date-to': '終了',
+    account: 'アカウント',
+    'account-email': 'アカウントメール',
+    'all-accounts': 'すべてのアカウント',
+    'model-family': 'モデルファミリー',
+    'all-model-families': 'すべてのモデルファミリー',
+    'physical-model': '使用モデル',
+    'output-type': '出力',
+    'all-output-types': 'すべての出力',
+    'text-output': 'テキスト',
+    'image-output': '画像',
+    'mixed-output': 'テキスト + 画像',
+    'no-visible-output': '可視出力なし',
+    unknown: '不明',
+    'tokens-in-out': '入力 / 出力トークン',
+    'input-tokens': '入力トークン',
+    'output-tokens': '出力トークン',
+    'all-statuses': 'すべてのステータス',
+    'exact-status': '正確なコード',
+    unfinished: '未完了',
+    'no-status': 'ステータスなし',
+    'include-current-credential':
+      'コピーする cURL に現在のプロキシキーを含める',
+    'credential-warning':
+      'コピーされたコマンドは、現在のプロキシキーをクリップボードおよび貼り付け先に露出します。フィルタ変更時やページを離れると設定はリセットされます。',
+    'current-credential': '現在のキー',
+    'copy-request-curl': 'リクエストを cURL としてコピー',
+    'copy-upstream-curl':
+      'モデルサービスリクエストを cURL としてコピー (プライベート値は隠されます)',
+    'curl-copied': 'cURL コマンドをクリップボードにコピーしました。',
+    'curl-copy-failed': 'cURL コマンドをコピーできません。',
+    'new-records': '{{count}} 件の新規レコード',
+    refresh: '再読み込み',
+    'confirm-clear': 'クリアを確認',
+    'clear-category': 'カテゴリをクリア',
+    total: '合計 {{count}} 件 · ページ {{page}}',
+    'loading-records': 'レコードを読み込み中…',
+    'no-records': 'このカテゴリにレコードはありません。',
+    'detail-title': 'トラフィック詳細',
+    'recovered-badge': '復旧 ({{count}} 回試行)',
+    'recovered-hint': '{{count}} 回試行後に復旧',
+    'fallback-diagnostics': 'フォールバック診断',
+    'fallback-attempt-failed':
+      '試行 {{index}} {{operation}}失敗{{status}}{{error}}',
+    'fallback-attempt-recovered':
+      '試行 {{index}} で復旧 {{operation}}{{status}}',
+    'loading-detail': 'トラフィック詳細を読み込み中…',
+    'system-operation': 'システム操作',
+    metadata: 'リクエスト詳細',
+    attempts: '再試行履歴 ({{count}})',
+    payloads: '完全な内容 ({{count}})',
+    'client-request': 'クライアントリクエスト',
+    'request-headers': 'リクエストヘッダ',
+    'response-headers': '応答ヘッダ',
+    'upstream-attempts': 'モデルサービスに送信されたリクエスト',
+    'no-attempts': 'モデルサービスに送信されたリクエストはありません。',
+    attempt: '試行 {{index}}',
+    running: '実行中',
+    client: 'クライアント',
+    upstream: 'モデルサービス',
+    request: 'リクエスト',
+    response: '応答',
+    'select-body': 'リクエストまたは応答のボディを選択してください。',
+    concise: '簡潔',
+    full: '完全',
+    'view-mode-help': '表示モードについて',
+    'concise-help':
+      '主要なリクエスト詳細を表示。展開セクションは引き続き完全な内容を表示します。',
+    'full-help':
+      '読み込まれたすべての詳細を表示。内容を整理できない、または不完全な場合、両表示は同じに見えることがあります。',
+    'search-body': 'このボディ内を検索',
+    'copy-loaded': '読み込み分をコピー',
+    'view-all-body': 'すべて表示',
+    'load-more': 'さらに読み込む',
+    'load-next-window': '次のセクション',
+    'save-full': '完全に保存',
+    matches: '{{count}} 件一致',
+    'first-100': '先頭 100 件',
+    'parse-error': '位置 {{offset}} でこの内容を読み取れませんでした。',
+    partial: '部分',
+    'session-key': 'セッション ID',
+    'select-session':
+      '保存された推論を表示するセッションを選択してください。',
+    'no-sessions': '保存された推論はまだありません。',
+    'delete-session': 'セッション履歴を削除',
+    turns: '{{count}} ターン',
+    offset: 'コンテンツ位置 {{offset}}',
+    'unknown-model': '不明なモデル',
+    'thought-oversized':
+      '推論内容が 64 MiB を超えたため、完全に保存されませんでした。参照: {{hash}}',
+    time: '時刻',
+    operation: '操作',
+    'operation-url': '操作 / URL',
+    result: '結果',
+    duration: '継続時間',
+    status: 'ステータス',
+    endpoint: 'サービスアドレス',
+    protocol: 'API フォーマット',
+    'repair-databases': '保存レコードを修復',
+    'open-monitor': 'トラフィックモニターを開く',
+
+    'loading-description':
+      'リクエストレコードが準備できるとここに表示されます。',
+    'empty-description':
+      'プロキシ経由で送信されたリクエストがここに表示されます。フィルタを調整することもできます。',
+    'empty-category-description':
+      'このカテゴリのレコードがここに表示されます。別のカテゴリを試すか、フィルタを調整してください。',
+    'load-failed': 'リクエストレコードを読み込めませんでした',
+    'load-failed-description':
+      'もう一度お試しください。レコードが削除されたわけではありません。',
+    'refresh-failed':
+      'レコードを更新できませんでした。以前に読み込まれたレコードは引き続き表示されます。',
+  },
+  editionSelection: {
+    title: 'Antigravity エディションを選択',
+    description:
+      '使用している Antigravity のバージョンを選択してください。Manager が正しいアプリケーションに接続するために役立ちます。',
+    edition1x: {
+      name: 'Antigravity 1.x',
+      description:
+        '元の Antigravity アプリケーション。レガシーバージョンを使用している場合はこれを選択してください。',
+    },
+    edition20: {
+      name: 'Antigravity IDE',
+      description:
+        '新しい Antigravity IDE (2.0)。最新の IDE バージョンを使用している場合はこれを選択してください。',
+    },
+    confirm: '続行',
+  },
+  account: {
+    current: '現在',
+    lastUsed: '最終使用 {{time}}',
+    switchToAntigravity: 'Antigravity に切り替え',
+    switchToIde: 'Antigravity IDE に切り替え',
+    launchIsolatedIde: '分離 IDE を起動',
+    launchIsolatedIdeSuccess: '分離 IDE を起動しました',
+    launchIsolatedIdeSuccessDesc: '{{name}} の分離 IDE インスタンスを起動しました',
+    launchIsolatedIdeError: '起動失敗',
+  },
+  home: {
+    title: 'アカウント',
+    description: 'Antigravity の Google Gemini アカウントを管理します。',
+    noBackups: {
+      title: 'バックアップが見つかりません',
+      description:
+        '現在の Antigravity アカウントのバックアップを作成して開始してください。',
+      action: '現在のアカウントをバックアップ',
+    },
+  },
+  settings: {
+    'service-unavailable':
+      '設定を現在読み込みまたは保存できません。再試行してください。問題が続く場合は、Antigravity Manager を閉じて開き直してください。',
+    'service-retry': '再試行',
+    'service-restart-required':
+      '設定を保存しました。変更を適用するためプロキシをオフにしてから再度オンにしてください。',
+    'service-save': '保存',
+    'service-secret-configured':
+      'プロキシアドレスは設定済みです。置き換えるには新しいアドレスを入力してください。',
+    'weekly-warmup': {
+      error: 'ウォームアップ設定を読み込みまたは保存できませんでした。',
+      retry: '再試行',
+      'cost-notice':
+        'ウォームアップは実際のモデルクォータを使用し、AI クレジットを消費する可能性があります。HTTP の受理は新しい週次タイマーを保証しません。',
+      title: '週次クォータウォームアップ',
+      description:
+        '選択した週次クォータがリセットされた後、クォータバケットごとに最小リクエストを 1 つ送信し、成功サイクルを記録します。',
+      enabled: '週次クォータウォームアップを有効化',
+      groups: 'ウォームアップするクォータグループ',
+      group: {
+        claude: 'Claude クォータグループ',
+        gemini: 'Gemini クォータグループ',
+      },
+    },
+    title: '設定',
+    description: 'アプリケーション設定を管理します。',
+    general: '一般',
+    connection: '接続',
+    models: 'モデル',
+    appearance: {
+      title: '外観',
+      description:
+        'Antigravity Manager のデバイス上での見た目をカスタマイズします。',
+    },
+    darkMode: 'ダークモード',
+    darkModeDescription: '夜間の視認性向上のためダークモードを有効化します。',
+    language: {
+      title: '言語',
+      description: '優先する言語を選択してください。',
+      english: 'English',
+      chinese: 'Chinese (Simplified)',
+      russian: 'Russian',
+      vietnamese: 'Vietnamese',
+      turkish: 'Turkish',
+      french: 'French',
+      portuguese: 'Portuguese (Brazil)',
+      japanese: '日本語',
+    },
+    about: {
+      title: '情報',
+      description: 'アプリケーション情報。',
+    },
+    cache: {
+      title: 'Antigravity キャッシュ',
+      description:
+        '既知の Antigravity および Antigravity IDE のキャッシュディレクトリをクリアして、ログインやバージョン検証の問題を解決します。',
+      clear: 'Antigravity キャッシュをクリア',
+      dialogTitle: 'Antigravity キャッシュをクリアしますか?',
+      dialogDescription:
+        '以下の既存キャッシュディレクトリが削除されます。',
+      pathsLabel: 'キャッシュディレクトリ',
+      noPaths:
+        '既知の Antigravity キャッシュディレクトリは見つかりませんでした。',
+      warning:
+        'ロックまたはファイル再作成を避けるため、キャッシュクリア前に Antigravity を閉じてください。',
+      cancel: 'キャンセル',
+      confirm: 'キャッシュをクリア',
+      clearing: 'クリア中...',
+      clearedTitle: 'キャッシュをクリアしました',
+      clearedDescription:
+        'Antigravity キャッシュディレクトリから {{size}} MB を削除しました。',
+      failedTitle: 'キャッシュクリアに失敗しました',
+      notFoundTitle: 'Antigravity キャッシュが見つかりません',
+
+      'paths-failed': 'キャッシュの場所を見つけられませんでした',
+      'paths-retry-description':
+        'キャッシュクリアの前に再試行してください。',
+      'partial-title': '一部のキャッシュをクリアできませんでした',
+      'partial-description':
+        '{{size}} MB を解放しました。{{count}} 箇所をクリアできませんでした。Antigravity を閉じて再試行してください。',
+    },
+    version: 'バージョン',
+    platform: 'プラットフォーム',
+    license: 'ライセンス',
+    openLogDir: '開く',
+    toast: {
+      saved: {
+        title: '設定を保存しました',
+        description: '設定が更新されました。',
+      },
+      saveFailed: {
+        title: '設定保存エラー',
+      },
+    },
+    account: {
+      'client-setup': 'クライアントの場所と起動オプション',
+      'client-setup-description':
+        'Manager がクライアントを見つけられない、またはカスタム起動オプションが必要な場合のみ変更してください。',
+      'choose-file': 'ファイルを選択',
+      'clear-field': 'このフィールドをクリア',
+      title: 'アカウント設定',
+      description: '自動アカウント更新と同期を設定します。',
+      auto_refresh: 'クォータ自動更新',
+      auto_refresh_desc:
+        'すべてのアカウントのクォータ情報を定期的に更新します',
+      auto_sync: '現在のアカウントを自動同期',
+      auto_sync_desc: 'アクティブなアカウント情報を定期的に同期します',
+      antigravity_executable: 'Antigravity 実行ファイル',
+      antigravity_executable_desc:
+        'ポータブルモードデータの検索と Antigravity の起動に使用されるオプションのパス。',
+      antigravity_executable_placeholder:
+        '例: C:\\Program Files\\Antigravity\\Antigravity.exe',
+      antigravity_cli_executable: 'Antigravity CLI 実行ファイル',
+      antigravity_cli_executable_desc:
+        'agy CLI 実行ファイルへのパス。適格性パッチはこのファイルのみに限定されます。',
+      antigravity_cli_executable_placeholder:
+        '例: C:\\Program Files\\Antigravity\\agy.exe',
+      detect_antigravity_cli: '検出',
+      agy_cli_detected: 'Antigravity CLI を検出しました',
+      agy_cli_detect_failed: 'Antigravity CLI が見つかりません',
+      agy_patch_desc:
+        'CLI をバックアップし、一意の ARM64 または x86_64 適格性パターンを検証してパッチを適用し、macOS では Mach-O ファイルを再署名します。',
+      agy_patch_action: '適格性パッチを適用',
+      agy_patch_success: 'Antigravity CLI にパッチを適用しました',
+      agy_patch_already_applied: 'パッチは既に適用済みです',
+      agy_patch_failed: 'Antigravity CLI にパッチを適用できません',
+      agy_patch_result:
+        'フォーマット: {{format}}; アーキテクチャ: {{architectures}}; バックアップ: {{backupPath}}',
+      agy_patch_no_backup: '不要',
+      antigravity_ide_executable: 'Antigravity IDE 実行ファイル',
+      antigravity_ide_executable_desc:
+        'オプションの Antigravity IDE 実行ファイルパス。Classic アカウント切り替え時、このパスのプロセスは終了から保護されます。',
+      antigravity_ide_executable_placeholder:
+        '例: C:\\Program Files\\Antigravity IDE\\Antigravity IDE.exe',
+      antigravity_args: 'Antigravity 起動引数',
+      antigravity_args_desc:
+        'Antigravity 起動時に渡すオプションの引数 (--user-data-dir など)。',
+      antigravity_args_placeholder:
+        '例: --user-data-dir D:\\AntigravityProfile',
+      antigravity_ide_args: 'Antigravity IDE 起動引数',
+      antigravity_ide_args_desc:
+        'Antigravity IDE 起動時に渡すオプションの引数 (--user-data-dir など)。',
+      antigravity_ide_args_placeholder:
+        '例: --user-data-dir D:\\AntigravityIdeProfile',
+      detect_antigravity_args: '検出',
+    },
+    startup: {
+      title: 'スタートアップ',
+      description: 'システム起動時のアプリケーション起動動作を制御します。',
+      auto_startup: 'システムと共に起動',
+      auto_startup_desc:
+        'サインイン時に起動し、アプリをシステムトレイに常駐させます',
+      start_in_tray: 'トレイで起動',
+      start_in_tray_desc:
+        'アプリケーションをシステムトレイに最小化した状態で起動します',
+      macos_hint:
+        'macOS ではログイン項目の動作に署名済みアプリが必要です。自動起動が失敗する場合は、アプリに署名するか、システム設定で手動で有効化してください。',
+    },
+    privacy: {
+      title: 'プライバシー',
+      description:
+        'アプリケーション改善のためのデータ使用方法を制御します。',
+      error_reporting: 'エラーレポート',
+      error_reporting_desc:
+        'アプリ改善のため匿名のエラーレポートを送信します。個人データは収集されません。',
+      telemetry: 'パフォーマンステレメトリ',
+      telemetry_desc:
+        '遅いアカウント切り替えの診断のため匿名のタイミング指標とトレースを共有します。',
+      clarity: 'Microsoft Clarity',
+      clarity_desc:
+        'アプリ改善のため匿名のインタラクション診断、ヒートマップ、セッション再生を共有します。',
+      clarity_unavailable:
+        'このビルドでは Microsoft Clarity は構成されていません。',
+      restart_note:
+        '一部のログおよび診断設定はアプリ再起動後に反映されます。',
+    },
+    notifications: {
+      title: '通知',
+      description: 'アカウントイベントのデスクトップ通知を設定します。',
+      quotaAlert: '低クォータ通知',
+      quotaAlertDesc:
+        'モデルクォータが設定したしきい値を下回ったときに通知されます',
+      quotaThreshold: '通知しきい値',
+      quotaThresholdDesc: '通知をトリガーする下限パーセンテージ',
+      saveFailed: '通知設定の保存に失敗しました',
+      thresholdSaveFailed: 'しきい値設定の保存に失敗しました',
+      aiCreditsAlert: 'AI クレジット低下通知',
+      aiCreditsAlertDesc:
+        'AI クレジット残高が設定した金額以下になったときに通知されます',
+      aiCreditsThreshold: 'AI クレジット通知しきい値',
+      aiCreditsThresholdDesc:
+        '通知をトリガーするクレジット残高の下限',
+      aiCreditsThresholdSaveFailed:
+        'AI クレジットしきい値設定の保存に失敗しました',
+    },
+    proxy: {
+      title: '上流プロキシ',
+      description:
+        'Google/Gemini API への送信リクエスト用プロキシを設定します。',
+      enable: '上流プロキシを有効化',
+      url: 'プロキシ URL',
+      'configure-before-enabling':
+        '有効化する前に有効な HTTP(S) プロキシ URL を保存してください。URL をクリアするとプロキシも無効になります。',
+      'configuration-invalid':
+        '有効化された上流プロキシに有効な URL がありません。有効なアドレスを保存するか、プロキシを無効化してください。',
+      'url-invalid': '有効な HTTP または HTTPS プロキシ URL を入力してください。',
+      timeout: 'リクエストタイムアウト (秒)',
+    },
+    modelMapping: {
+      title: 'モデルマッピング',
+      description:
+        'Claude Code のモデルを Antigravity のモデルにマッピングします。リクエストを賢くルーティングしてコストと速度を最適化します。',
+      claudeKeyword: 'Claude モデル (キーワード)',
+      targetGemini: '対象 Gemini モデル',
+      addPlaceholderKey: '例: op-3',
+      addPlaceholderValue: '例: gemini-3-flash',
+      noMappings: 'カスタムマッピングは定義されていません。',
+      mapsTo: 'マッピング先',
+      default: 'デフォルト',
+      restoreDefaults: 'デフォルトに戻す',
+    },
+    modelVisibility: {
+      title: 'モデル表示',
+      description:
+        'アカウントカードに表示するモデルを制御します。非表示モデルはクォータ表示に現れません。',
+      searchPlaceholder: 'モデルを検索...',
+      showAll: 'すべて表示',
+      hideAll: 'すべて非表示',
+      reset: 'デフォルトにリセット',
+      save: '変更を保存',
+      noModels: 'モデルが見つかりません',
+      modelsShown: '{{total}} 中 {{visible}} モデル表示',
+      quotaManagement: 'クォータ管理',
+      hidden: '非表示',
+      noModelsFound: 'モデルが見つかりません',
+      totalModels: '合計',
+      visibleModels: '表示',
+      hiddenModels: '非表示',
+      saving: '保存中...',
+    },
+    autoSwitchModels: {
+      title: '自動切り替えモデル設定',
+      description:
+        '枯渇時に自動切り替えをトリガーするモデルを設定し、次のアクティブアカウント選択時に優先する特定モデルを指定します。',
+      searchPlaceholder: 'モデルを検索...',
+      noModels: 'モデルが見つかりません。',
+      noModelsFound: 'モデルが見つかりません。',
+      includeLabel: '含める',
+      priorityLabel: '優先度',
+      save: '設定を保存',
+      saving: '保存中...',
+      saved: '自動切り替えモデル設定を正常に保存しました。',
+      saveFailed: '自動切り替えモデル設定の保存に失敗しました。',
+    },
+    providerGroupings: {
+      title: 'プロバイダグルーピング',
+      description: '整理のためモデルをプロバイダ別にグループ化します',
+      enabled: 'プロバイダグルーピングを有効化',
+      models: '{{count}} モデル',
+      avgLabel: '平均',
+      resetLabel: 'リセット',
+      overall: '全体',
+      healthy: '良好',
+      degraded: '低下',
+      limited: '制限',
+      critical: '重大',
+    },
+    examples: {
+      title: '使用例',
+      description: 'ローカル API プロキシを呼び出すコマンド例。',
+      curl: 'cURL',
+      python: 'Python',
+      copy: 'コピー',
+      copied: 'コピーしました!',
+      openai_protocol: 'OpenAI プロトコル',
+      anthropic_protocol: 'Anthropic プロトコル',
+      openai_tools: 'Cursor、Windsurf、NextChat',
+      anthropic_tools: 'Claude Code CLI',
+      flash: 'Fast',
+      pro: 'Pro',
+      flash_preview: 'Preview',
+      pro_high: 'Best',
+      sonnet: 'Thinking',
+      opus: 'Opus',
+    },
+    gateway: {
+      title: 'API プロキシサービス',
+      description: 'ローカル API プロキシサーバを制御します。',
+      status_running: '実行中',
+      status_stopped: '停止',
+      action_start: 'サービスを開始',
+      action_stop: 'サービスを停止',
+      accounts_info: '{{count}} 個のアカウントが利用可能',
+      port: 'リッスンポート',
+      port_hint: 'デフォルト 8045、変更適用には再起動が必要',
+      timeout: 'リクエストタイムアウト',
+      timeout_hint: 'デフォルト 120 秒、範囲 30-600 秒',
+      api_key: 'API キー',
+      regenerate_key: '再生成',
+      regenerateConfirm: {
+        title: 'API キーを再生成しますか?',
+        description:
+          '現在の API キーが即座に無効になります。古いキーを使用するアプリケーションは動作を停止します。',
+        cancel: 'キャンセル',
+        confirm: '再生成',
+      },
+      key_warning:
+        'API キーを安全に保管してください。共有しないでください。',
+      auto_start: 'アプリと共に自動起動',
+      auto_start_desc:
+        'アプリケーション起動時にプロキシサービスを開始します',
+    },
+    proxy_tab: 'プロキシ',
+    save: '設定を保存',
+  },
+  toast: {
+    backupSuccess: {
+      title: '成功',
+      description: 'アカウントバックアップを正常に作成しました。',
+    },
+    backupError: {
+      title: 'エラー',
+      description: 'バックアップ作成に失敗しました: {{error}}',
+    },
+    switchSuccess: {
+      title: '成功',
+      description: 'アカウントを正常に切り替えました。',
+    },
+    switchError: {
+      title: 'エラー',
+      description: 'アカウント切り替えに失敗しました: {{error}}',
+    },
+    deleteSuccess: {
+      title: '成功',
+      description: 'アカウントバックアップを正常に削除しました。',
+    },
+    deleteError: {
+      title: 'エラー',
+      description: 'バックアップ削除に失敗しました: {{error}}',
+    },
+  },
+  cloud: {
+    'total-accounts': '合計アカウント数',
+    title: 'アカウント',
+    description: 'Google Gemini アカウントを管理します。',
+    security: {
+      compatibilityMode: {
+        title: 'セキュリティキーはこのコンピュータに保存されます',
+        description:
+          'セキュアなシステムストレージが利用できないため、セキュリティキーはローカルファイルに保存されます。このコンピュータとそのバックアップを非公開に保ってください。',
+      },
+    },
+    autoSwitch: '自動切り替え',
+    providerGroupings: 'プロバイダグルーピング',
+    addAccount: 'アカウントを追加',
+    checkQuota: '今すぐクォータを確認',
+    polling: 'ポーリングを開始しました',
+    globalQuota: 'グローバルクォータ',
+    weeklyQuota: '週次クォータ',
+    layout: {
+      auto: '自動',
+      twoCol: '2 カラム',
+      threeCol: '3 カラム',
+      list: 'リスト',
+      compact: 'コンパクト',
+    },
+    'auto-switch-client': 'クライアントアカウントの自動切り替え',
+    'auto-switch-description':
+      'Antigravity、IDE、CLI のアカウントを切り替えます。API リクエストが使用するアカウントは API プロキシページで選択してください。',
+    'minimal-mode': 'ミニマルモード',
+    'minimal-mode-description':
+      '主要な Gemini クォータとリセット時刻のみ表示',
+    'quota-display': {
+      title: 'クォータ表示',
+      description:
+        'アカウントカードに表示する内容を選択します。これはクォータやリクエストに使用されるアカウントを変更しません。',
+      'five-hours-gemini': 'Gemini 5 時間クォータ',
+      'five-hours-claude': 'Claude 5 時間クォータ',
+      'weekly-gemini': 'Gemini 週次クォータ',
+      'weekly-claude': 'Claude 週次クォータ',
+    },
+    'quota-window': {
+      label: 'クォータウィンドウ',
+      'five-hours': '5 時間クォータ',
+      'five-hours-short': '5h',
+      weekly: '週次クォータ',
+      'weekly-short': '週',
+      'compact-weekly-short': '週',
+      'both-short': '両方',
+      'no-weekly-quota': '週次クォータデータなし',
+      'weekly-summary-unavailable':
+        'モデルサービスは週次使用量情報を提供しませんでした。',
+      'weekly-bucket-unavailable':
+        '返された情報から週次使用量を見つけられませんでした。',
+    },
+    recommendation: {
+      badge: '次のおすすめ',
+      description:
+        '最新取得の {{context}} クォータから自動選択されました。',
+      context: {
+        overall: '全体',
+        claude: 'Claude',
+        pro3: 'Gemini Pro',
+        flash: 'Gemini Flash',
+      },
+    },
+    authDialog: {
+      'manual-sign-in': '手動でコードを入力',
+      'waiting-for-browser':
+        'ブラウザでサインインを完了してください。完了するとこのウィンドウが更新されます。',
+      title: 'Google アカウントを追加',
+      description:
+        'サインイン方法を選択し、ブラウザで Google にサインインしてください。アカウントは自動的に追加されます。',
+      oauthClient: 'サインイン方法',
+      oauthClientPlaceholder: 'サインイン方法を選択',
+      openLogin: 'ログインページを開く',
+      authCode: '認可コード',
+      placeholder: '4/... で始まるコードを貼り付け',
+      instruction:
+        '自動サインインが完了しない場合は、ブラウザからコードをここに貼り付けてください。',
+      verify: '検証して追加',
+    },
+    localImport: {
+      trigger: 'このコンピュータからインポート',
+      title: 'このコンピュータからインポート',
+      description:
+        'このコンピュータですでにサインインされているアカウントを検索します。インポート前に結果を確認してください。',
+      scanning: 'ローカルアカウントをスキャンして検証中…',
+      importing: '確認済みアカウントをインポート中…',
+      summary: 'ローカルアカウントスキャンサマリー',
+      accounts: 'アカウント',
+      validationFailures: '検証失敗',
+      discoveryFailures: 'ソース失敗',
+      merged: 'マージ済み',
+      noAccounts: '検証済みローカルアカウントは見つかりませんでした。',
+      issues: 'インポートされない項目',
+      project: 'プロジェクト',
+      emailCollision:
+        '{{email}} には {{count}} 種類の保存済みサインインがあります。',
+      rescan: '再スキャン',
+      cancel: 'キャンセル',
+      close: '閉じる',
+      confirm: '{{count}} アカウントをインポート',
+      resultTitle: 'ローカルアカウントのインポート完了',
+      resultDescription:
+        'アカウント一覧が確認済みの結果で更新されました。',
+      imported: 'インポート済み {{count}}',
+      skipped: 'スキップ {{count}}',
+      failed: '失敗 {{count}}',
+      sources: {
+        'antigravity-keyring': 'システムサインインストレージ',
+        'antigravity-classic-db': 'Antigravity 保存アカウント',
+        'antigravity-ide-db': 'Antigravity IDE 保存アカウント',
+        'legacy-agent': 'レガシー Agent データ',
+      },
+      validationErrors: {
+        'credential-unavailable':
+          'これらのサインイン詳細は利用できなくなりました。Antigravity に再度サインインして、再スキャンしてください。',
+        'authentication-failed':
+          'Google はこのサインインを受け入れませんでした。Antigravity に再度サインインして、再スキャンしてください。',
+        'network-failed':
+          'ネットワークエラーのためアカウントを検証できませんでした。',
+        'timed-out': 'アカウント検証がタイムアウトしました。',
+        'unverified-email': 'Google アカウントのメールが検証されていません。',
+        'invalid-profile': 'Google は無効なアカウントプロファイルを返しました。',
+      },
+      discoveryErrors: {
+        missing:
+          'ここには保存されたサインイン詳細が見つかりませんでした。',
+        'permission-denied':
+          '保存されたサインイン詳細へのアクセスが拒否されました。アクセス権限を確認して再試行してください。',
+        locked:
+          '保存されたサインイン詳細がロックされているか使用中です。アクセスのロックを解除するか Antigravity を閉じて、再スキャンしてください。',
+        malformed:
+          '保存されたサインイン詳細を読み取れませんでした。Antigravity に再度サインインして、再スキャンしてください。',
+        'timed-out':
+          '保存されたサインイン詳細の読み取りに時間がかかりすぎました。再スキャンしてください。',
+        'read-failed':
+          '保存されたサインイン詳細を読み取れませんでした。再スキャンしてください。',
+      },
+      importErrors: {
+        'credential-unavailable':
+          'これらのサインイン詳細は利用できなくなりました。インポート前に再スキャンしてください。',
+        'identity-required': '検証済みのアカウントアイデンティティが必要です。',
+        'identity-conflict':
+          'これらのサインイン詳細は既存のアカウントと一致しません。インポート前にアカウントを確認してください。',
+        'persistence-failed': 'アカウントを保存できませんでした。',
+      },
+      errors: {
+        'preview-failed':
+          'ローカルアカウントプレビューを準備できませんでした。',
+        'session-not-found':
+          'これらのスキャン結果は利用できなくなりました。再度スキャンしてください。',
+        'session-expired':
+          'これらのスキャン結果は期限切れです。再度スキャンしてください。',
+        'session-consumed':
+          'これらのスキャン結果はすでに使用されています。さらにアカウントをインポートするには再度スキャンしてください。',
+        'confirmation-failed':
+          'ローカルアカウントのインポートを完了できませんでした。',
+        'internal-error':
+          'ローカルアカウントのインポートリクエストに失敗しました。',
+      },
+    },
+    card: {
+      'client-app': 'アプリ',
+      'client-ide': 'IDE',
+      'client-cli': 'CLI',
+      'client-usage': 'クライアント使用状況',
+      'client-in-use': '{{client}} が使用中',
+      'not-in-use': '未使用',
+      active: 'アクティブ',
+      use: '使用',
+      rateLimited: 'レート制限',
+      accountDisabledToS: '無効化 (ToS)',
+      submitAppeal: '異議申し立てを送信',
+      'clear-disabled': '隔離を解除',
+      'clear-disabled-title': 'アカウントの隔離を解除しますか?',
+      'clear-disabled-description':
+        'Google がアクセスを復元した後にのみ続行してください。これは Google を確認せずにローカルブロックを解除します。リクエストが再開され、アカウントが再度ブロックされる可能性があります。',
+      'clear-disabled-confirm': 'ローカルブロックを解除',
+      'clear-disabled-failed': 'アカウントの隔離を解除できませんでした',
+      serviceBlockedNotice:
+        'サービスは Google により無効化されました (ToS 違反)。モデルは利用できません。',
+      validationRiskControlled: 'リスク / レート制限',
+      validationOAuthReauthRequired: 'Google に再度サインインしてください',
+      validationRequired: '検証が必要',
+      completeValidation: '検証',
+      left: '残り',
+      used: '使用済み',
+      unknown: '不明なユーザ',
+      actions: 'アクション',
+      useAccount: 'アカウントを使用',
+      identityProfile: 'アイデンティティプロファイル',
+      refresh: 'クォータを更新',
+      delete: 'アカウントを削除',
+      noQuota: 'クォータデータなし',
+      rateLimitedQuota: 'レート制限',
+      liveLimitModelNotSupported: 'モデルはサポートされていません',
+      liveLimitModelForbidden: 'モデルは禁止されています',
+      liveLimitQuotaExhausted: 'クォータを使い切りました',
+      liveLimitCapacityExhausted: 'サーバキャパシティ枯渇 (503)',
+      liveLimitRateLimited: 'レート制限',
+      liveLimitRemaining: '残り {{duration}}',
+      liveLimitDetectedAgo: '{{duration}} 前に検出',
+      liveLimitActiveTitle: 'モデルサービスは一時的に利用できません。',
+      liveLimitRecentTitle:
+        'モデルサービスは最近エラーを報告しました。',
+      liveLimitQuotaSnapshot:
+        '最後のクォータ確認では依然として {{percentage}}% と表示される場合があります。',
+      liveLimitMessage: 'メッセージ: {{message}}',
+      resetPrefix: 'リセット',
+      resetTime: 'リセット時刻',
+      resetUnknown: '不明',
+      detailedQuota: '詳細クォータ',
+      quotaGroupUnknown: 'クォータグループ',
+      gemini3Ready: 'Gemini 3 対応',
+      groupGoogleGemini: 'Google Gemini',
+      groupAnthropicClaude: 'Anthropic Claude',
+      proxy: 'プロキシ',
+      proxyPlaceholder: '例: http://127.0.0.1:7890',
+      proxySaved: 'プロキシを保存しました',
+      'network-proxy': 'ネットワークプロキシ',
+      'network-proxy-description':
+        'オプション: このアカウント用のネットワークプロキシを使用します。Enter を押すかアドレスフィールドを離れると保存されます。',
+      'proxy-replace-placeholder': '新しいプロキシアドレスを入力',
+      'proxy-remove': 'プロキシを削除',
+      'proxy-save-failed': 'プロキシを保存できませんでした',
+      noProxy: 'プロキシなし',
+      aiCredits: 'AI クレジット',
+      aiCreditsValue: '{{amount}} クレジット',
+      creditsExpiry: '{{date}} 失効',
+      modelVisibility: 'モデル表示',
+    },
+    identity: {
+      'profile-errors': {
+        'account-not-found': 'このアカウントは利用できなくなりました。',
+        'baseline-unavailable':
+          '復元する元のアイデンティティプロファイルがありません。',
+        'revision-not-found':
+          '選択されたアイデンティティプロファイルが見つかりませんでした。',
+        'profile-invalid':
+          'このアイデンティティプロファイルは使用できません。別のものを選択してください。',
+        'profile-write-failed':
+          'アイデンティティプロファイルを保存できませんでした。再試行してください。',
+        'profile-operation-failed':
+          'アイデンティティアクションを完了できませんでした。再試行してください。',
+      },
+      title: 'アカウントデバイス情報',
+      loading: '読み込み中...',
+      generateAndBind: '新しいデバイス情報を作成',
+      captureAndBind: '現在のデバイス情報を使用',
+      restoreOriginal: '元のデバイス情報を復元',
+      openFolder: 'デバイス情報フォルダを開く',
+      previewTitle: '新しいデバイス情報',
+      confirm: '確認',
+      cancel: 'キャンセル',
+      close: '閉じる',
+      currentStorage: '現在のデバイス設定',
+      accountBinding: 'このアカウント用に保存',
+      history: '保存されたバージョン',
+      noHistory: 'アイデンティティ履歴なし',
+      current: 'アクティブ',
+      restore: '復元',
+      generateSuccess: 'アイデンティティを作成して紐づけました',
+      captureSuccess:
+        '現在のアイデンティティをキャプチャして紐づけました',
+      restoreOriginalSuccess: 'ベースラインアイデンティティを復元しました',
+      restoreVersionSuccess: '履歴アイデンティティを復元しました',
+      deleteVersionSuccess: '履歴アイデンティティを削除しました',
+      openFolderSuccess: 'アイデンティティストレージを開きました',
+      baseline: '元のデバイス情報',
+
+      description:
+        'アカウント切り替え時に使用するため、このアカウントのデバイス情報を保存します。',
+      'load-failed': 'デバイス情報を読み取れませんでした',
+      'retry-description':
+        '再試行してください。保存されたデバイス情報は変更されていません。',
+      'refresh-failed':
+        '更新できませんでした。以前に読み込まれたデバイス情報が引き続き表示されます。',
+      updating: 'デバイス情報を更新中…',
+      'device-id': 'デバイス ID',
+      'mac-device-id': 'Mac デバイス ID',
+      'installation-id': 'インストール ID',
+      'diagnostic-id': '診断 ID',
+      'delete-version': '保存バージョンを削除: {{label}}',
+    },
+    list: {
+      noAccounts: 'まだクラウドアカウントが追加されていません。',
+      noFilteredAccounts:
+        '選択したティアに一致するアカウントはありません。',
+    },
+    error: {
+      loadFailed: 'クラウドアカウントの読み込みに失敗しました。',
+      'report-issue': 'この問題を報告',
+      'report-preparing': 'エラー情報を準備中…',
+      'report-copied': 'エラー情報をコピーしました',
+      'report-paste-guide':
+        'GitHub レポートに貼り付け、作業内容を記述してから送信してください。',
+      'report-copy-failed': 'エラー情報をコピーできませんでした',
+      'report-retry':
+        'もう一度お試しください。詳細を開いて手動でエラーをコピーすることもできます。',
+      'report-open-failed': 'GitHub を開けませんでした',
+      'report-manual-open':
+        'エラー情報はコピーされています。{{url}} を開いてレポートに貼り付けてください。',
+      dataRepair: {
+        title: '保存されたアカウントを開けません',
+        description:
+          'アプリは一部の保存アカウントを読み取れません。コンピュータアカウントの変更後、またはローカルファイルが破損した場合に発生することがあります。',
+        stepReLogin:
+          'アプリの再起動が解決しない場合は、再度サインインするか、該当アカウントを追加し直してください。アカウントが復元されるまで既存のアプリデータを保持してください。',
+        stepMacPrivacy:
+          'macOS では権限プロンプトを確認してください。アプリをアプリケーションフォルダに移動してから、再度開いてください。',
+        stepCheckGithub:
+          '最新のトラブルシューティング手順は GitHub リポジトリの README を確認してください。',
+        stepOpenIssue:
+          'この問題を GitHub で報告してください。クリックするとエラー情報がコピーされ、レポートフォームが開きます。',
+        openRepository: 'GitHub リポジトリを開く',
+      },
+    },
+    toast: {
+      validationLinkFailed: {
+        title: 'Google 検証ページを開けませんでした',
+        codes: {
+          'account-not-found':
+            'このアカウントは利用できなくなりました。',
+          'no-trusted-link':
+            'このアカウントで利用可能な Google 検証ページはありません。',
+          'validation-link-failed':
+            'Google 検証ページを開けませんでした。再試行してください。',
+        },
+      },
+      addSuccess: 'アカウントを正常に追加しました!',
+      addFailed: {
+        title: 'アカウント追加に失敗しました',
+        codes: {
+          'authorization-denied':
+            'Google 認可が拒否されました。アカウントを追加するには再試行してください。',
+          'login-active': 'Google サインインがすでに進行中です。',
+          'login-cancelled': 'サインインがキャンセルされました。',
+          'login-timeout':
+            'サインインがタイムアウトしました。準備ができたら再度開始してください。',
+          'duplicate-account':
+            'この Google アカウントはすでに追加されています。',
+          'browser-open-failed':
+            'ブラウザを開けませんでした。デフォルトブラウザを確認して再試行してください。',
+          'login-failed':
+            'アカウントを追加できませんでした。再試行してください。',
+          'proxy-configuration-invalid':
+            '有効な上流プロキシアドレスを保存するか、設定で上流プロキシを無効化してから、再度サインインしてください。',
+        },
+      },
+      quotaRefreshed: 'クォータを更新しました',
+      refreshFailed: 'クォータの更新に失敗しました',
+      pollFailed:
+        'すべてのアカウントのクォータのポーリングに失敗しました',
+      switched: {
+        title: 'アカウントを切り替えました!',
+        description: 'Antigravity を再起動中...',
+      },
+      switchFailed: 'アカウント切り替えに失敗しました',
+      switchFailureCodes: {
+        'account-not-found': 'このアカウントは利用できなくなりました。',
+        'reauth-required':
+          '切り替え前にこのアカウントに再度サインインしてください。',
+        'identity-profile-required':
+          '切り替え前にアイデンティティプロファイルを設定してください。',
+        'process-close-failed':
+          'Antigravity の終了を確認できませんでした。作業を保存し、確認ダイアログを解決し、Antigravity を閉じてから再度切り替えてください。',
+        'process-control-failed':
+          'Antigravity を閉じるまたは再起動できませんでした。再試行してください。',
+        'target-write-failed':
+          'Antigravity で選択されたアカウントを使用できませんでした。再試行してください。',
+        'switch-failed':
+          'アカウントを切り替えできませんでした。再試行してください。',
+      },
+      deleted: 'アカウントを削除しました',
+      deleteFailed: 'アカウント削除に失敗しました',
+      deleteConfirm: 'このアカウントを削除してもよろしいですか?',
+      autoSwitchOn: '自動切り替えを有効化',
+      autoSwitchOff: '自動切り替えを無効化',
+      updateSettingsFailed: '設定の更新に失敗しました',
+      actionFailed: 'アクションが失敗しました',
+      startAuthFailed: 'サインインフローの開始に失敗しました',
+      refreshCreditsAvailable: 'AI クレジット: {{amount}}',
+      refreshCreditsUnavailable:
+        'この更新では AI クレジットは利用できません。',
+      batchRefreshSuccess: '{{count}} アカウントを正常に更新しました。',
+      batchRefreshPartial: {
+        title: '更新は問題を伴って完了しました',
+        description: '{{successful}} アカウントを更新、{{failed}} 失敗。',
+      },
+      batchDeleteSuccess: '{{count}} アカウントを正常に削除しました。',
+      batchDeletePartial: {
+        title: '削除は問題を伴って完了しました',
+        description: '{{successful}} アカウントを削除、{{failed}} 失敗。',
+      },
+    },
+    batch: {
+      actions: '選択されたアカウントのアクション',
+      'delete-title': '{{count}} アカウントを削除しますか?',
+      cancel: 'キャンセル',
+      selected: '選択済み {{count}}',
+      delete: '選択を削除',
+      refresh: '選択を更新',
+      selectAll: 'すべて選択',
+      clear: '選択をクリア',
+      confirmDelete:
+        '{{count}} アカウントを削除してもよろしいですか?',
+    },
+    tierFilter: {
+      all: 'すべてのティア',
+      reset: 'すべてにリセット',
+      selectedCount: '{{count}} ティア',
+      unknown: '不明',
+    },
+    sort: {
+      recentlyUsed: '最近使用',
+      quotaOverall: '全体クォータ',
+      quotaClaude: 'Claude クォータ',
+      quotaPro3: 'Pro3 クォータ',
+      quotaFlash: 'Flash クォータ',
+    },
+    exportImport: {
+      'file-errors': {
+        'file-too-large':
+          '選択されたファイルが大きすぎます。より小さいアカウントバックアップを選択してください。',
+        'invalid-export':
+          'このアカウントバックアップを認識できませんでした。有効なバックアップファイルを選択してください。',
+        'read-failed':
+          '選択されたファイルを開けませんでした。まだ元の場所にあるか確認してください。',
+        'write-failed':
+          'アカウントバックアップを保存できませんでした。保存場所を確認して再試行してください。',
+        'import-failed':
+          'アカウントをインポートできませんでした。もう一度お試しください。',
+        'tokens-missing':
+          'このアカウントバックアップにはサインイン詳細がありません。それらを含むバックアップをエクスポートしてください。',
+        'account-write-failed': 'このアカウントを保存できません。',
+      },
+      export: 'エクスポート',
+      import: 'インポート',
+      exportTitle: 'アカウントをエクスポート',
+      exportDesc:
+        'アカウントのサインイン詳細を含めるかどうかを選択します。サインイン詳細を含むバックアップは非公開に保ってください。',
+      includeTokens: 'サインイン詳細を含める (アカウントを復元)',
+      stripTokens: 'サインイン詳細を除外 (共有時により安全)',
+      exportSuccess: 'アカウントを正常にエクスポートしました',
+      importTitle: 'アカウントをインポート',
+      importDesc: '以前にエクスポートされた JSON ファイルを選択してください。',
+      importStrategy: 'インポート戦略',
+      strategyMerge: 'マージ - 既存を更新、新規を追加',
+      strategyOverwrite: '上書き - 既存データをすべて置換',
+      strategySkip: 'スキップ - 新規アカウントのみ追加',
+      importSuccess:
+        'インポート {{imported}}、更新 {{updated}}、スキップ {{skipped}}',
+      importErrors: 'インポートは {{count}} 件のエラーで完了しました',
+      selectFile: 'ファイルを選択',
+      importing: 'インポート中...',
+      fileTooLarge: 'ファイルサイズが 5MB の制限を超えています',
+      invalidJson: '無効な JSON ファイル形式',
+      readFileFailed: 'ファイルの読み取りに失敗しました',
+    },
+
+    feedback: {
+      'loading-title': 'アカウントを読み込み中',
+      'loading-description':
+        'アカウント詳細が準備できるとここに表示されます。',
+      'empty-description':
+        'アカウントを追加を選択してサインインするか、既存のアカウントファイルをインポートしてください。',
+      'filtered-description':
+        '別のプランを試すか、フィルタをクリアしてより多くのアカウントを表示してください。',
+    },
+  },
+  proxy: {
+    'advanced-options': 'サービス設定の詳細',
+    'advanced-description':
+      'アカウント選択、共有指示、ツール互換性。',
+    tabs: {
+      tools: 'ツール',
+      models: 'モデル',
+      records: 'レコード',
+      examples: '例',
+    },
+    'account-strategy': {
+      'save-failed':
+        '選択を保存できませんでした。再試行するには再度選択してください。',
+      title: 'API リクエストに使用するアカウント',
+      balanced: '利用可能なアカウント間でローテート',
+      'account-first': '同じアカウントを優先',
+      'balanced-description':
+        '新しい会話を利用可能なアカウント間で分散します。既存の会話は利用可能な限り同じアカウントを維持します。',
+      'account-first-description':
+        'モデルごとに同じアカウントを使い続けます。クォータが枯渇、一時的に制限、またはリクエストに対応できない場合に切り替えます。既存の会話は利用可能なアカウントを維持します。',
+      'client-description':
+        'この設定は Antigravity、IDE、CLI にサインインしているアカウントを変更しません。クライアントの自動切り替えはアカウントページで制御します。',
+    },
+    title: 'API プロキシ',
+    description: 'ローカル API プロキシサービスを管理します。',
+    save: '設定を保存',
+    copy: 'コピー',
+    copied: 'コピーしました!',
+    regenerate: '再生成',
+    regenerateConfirm: {
+      title: 'API キーを再生成しますか?',
+      description:
+        '現在の API キーが即座に無効になります。古いキーを使用するアプリケーションは動作を停止します。',
+      cancel: 'キャンセル',
+      confirm: '再生成',
+    },
+    'risk-confirmation': {
+      title: 'プロキシを起動する前にリスクを確認',
+      description:
+        '2 月以降、Google は取り締まりを強化しています。このソフトウェアで単にアカウントを切り替えるだけであれば、Google アカウントに影響することはありません。\n\nただし、リバースプロキシとして使用したり同様の目的で使用することは Google の利用規約違反であり、アカウント停止につながる可能性があります。',
+      'account-advice':
+        '失ってもよいアカウントのみを使用してください。',
+      cancel: 'キャンセル',
+      confirm: 'リスクを理解しました。プロキシを起動',
+    },
+    service: {
+      title: 'サービスステータス',
+      description: 'ローカル API プロキシサーバを制御します。',
+      running: '実行中',
+      stopped: '停止',
+      start: 'サービスを開始',
+      stop: 'サービスを停止',
+      start_failed: 'サービス開始に失敗しました',
+      port_in_use_title: 'ポートはすでに使用中です',
+      port_in_use_description:
+        'ポート {{port}} は別のプロセスによってすでに使用されています。そのプロセスを閉じるか、設定で API プロキシのリッスンポートを変更して再試行してください。',
+    },
+    config: {
+      port: 'リッスンポート',
+      timeout: 'リクエストタイムアウト',
+      api_key: 'API キー',
+      auto_start: 'アプリと共に自動起動',
+      auto_start_desc:
+        'アプリケーション起動時にプロキシサービスを開始します',
+      cloud_code_meta: 'Cloud Code 互換性',
+      cloud_code_meta_desc:
+        '古い Cloud Code クライアントに必要な追加応答情報を付加します。他のクライアントが受け入れない可能性があるため、必要な場合のみ有効化してください。',
+      'allow-local-video-paths': 'ローカル動画パスを許可',
+      'allow-local-video-paths-desc':
+        '接続されたツールが、あなたのユーザアカウントでアクセス可能なこのコンピュータ上の動画ファイルを読めるようにします。信頼できるツールのみで有効化してください。',
+      'context-cache-enabled':
+        'Gemini コンテキストキャッシング (有料、Vertex AI)',
+      'context-cache-enabled-desc':
+        '課金が有効な商用プロジェクトで、Google Cloud Vertex AI 経由でシステム命令とツール (>8192 文字) を明示的に有料キャッシュします。',
+      'global-system-prompt-title':
+        'すべての AI リクエスト用の命令',
+      'global-system-prompt-description':
+        'Manager 経由で送信されるすべてのリクエストで、接続された各ツールの命令の前にこれらの命令を自動的に追加します。',
+      'global-system-prompt-placeholder':
+        'グローバルシステムプロンプトを入力...\n例: 日本語で返信し、コード変更を簡潔に説明してください。',
+      'global-system-prompt-character-count': '{{count}} 文字',
+      'global-system-prompt-long-warning':
+        '2,000 文字を超えると会話履歴の余地が減ります。これらの命令を短くすることを検討してください。',
+      local_access: 'ローカルネットワークアクセス:',
+      select_ip: 'IP を選択',
+      no_token_warning:
+        '⚠️ API キーが設定されていません。全員にアクセス可能です!',
+      show_key: '表示',
+      hide_key: '非表示',
+    },
+    mapping: {
+      title: 'モデルマッピング',
+      description:
+        '各 Claude モデルリクエストを処理する Gemini モデルを選択します。',
+      maps_to: 'マッピング先',
+      restore: 'デフォルトに戻す',
+      'only-raw-quota-models':
+        'アカウントで見つかったモデルのみリスト',
+      'only-raw-quota-models-desc':
+        '接続されたツールは最新のアカウントクォータ確認からのモデル名のみ参照します。追加のモデルエイリアスは表示されません。',
+    },
+    'open-code': {
+      title: 'OpenCode 同期',
+      description:
+        '他の設定、コメント、書式を保持したまま OpenCode を Manager に接続します。',
+      synced: '同期済み',
+      'synced-custom-url': 'カスタム URL で同期',
+      'not-synced': '未同期',
+      'config-path': '設定',
+      'configured-models': '設定済みモデル',
+      runtime: 'OpenCode インストール',
+      installed: 'インストール済み',
+      'not-installed': '検出されません',
+      credential: 'OpenCode 接続キー',
+      'key-stored': 'セキュアなシステムストレージに保存',
+      'key-missing': '次回同期時に作成',
+      'backup-notice':
+        'バックアップはコメントと書式を保持します。Manager 接続キーは使用不可の値に置換され、復元時には現在のキーが使用されます。',
+      sync: 'OpenCode を設定して同期',
+      restore: 'バックアップから復元',
+      clear: '管理対象設定をクリア',
+      revoke: '専用キーを取り消し',
+      'model-dialog-title': 'OpenCode モデルを選択',
+      'model-dialog-description':
+        '選択されたモデルは追加または更新されます。選択されていない既存モデルは削除されません。',
+      'custom-base-url': 'Manager アドレス',
+      'reset-base-url': 'リセット',
+      'invalid-base-url': '有効な HTTP または HTTPS URL を入力してください。',
+      'sync-accounts': 'OpenCode サインインプラグイン内のアカウントを使用',
+      'sync-accounts-description':
+        '有効にすると、OpenCode はこれらのアカウントにサインインし続けるための情報をこのコンピュータ上のファイルに保存します。これはデフォルトでオフです。信頼できるコンピュータでのみ有効化してください。',
+      'select-models': '追加または更新するモデル',
+      'selected-count': '{{total}} 中 {{selected}} を選択',
+      'select-all': 'すべて選択',
+      'deselect-all': 'すべて選択解除',
+      'confirm-sync': '同期を確認',
+      'auth-plugin-warning-title':
+        '別のサインインプラグインが見つかりました',
+      'auth-plugin-warning-description':
+        'opencode-antigravity-auth は別の接続を使用する可能性があります。これらの設定を使用する前に、OpenCode で Manager が選択されているか確認してください。',
+      'view-config': '設定を表示',
+      'restore-confirm-title': 'OpenCode のバックアップを復元しますか?',
+      'restore-confirm-description':
+        '設定ファイル全体を元のバックアップで置き換えます。以降の編集も含まれます。バックアップは一度のみ使用されます。',
+      'confirm-restore': '復元を確認',
+      'clear-confirm-title': 'Manager の接続を削除しますか?',
+      'clear-confirm-description':
+        'この接続と専用キーを削除します。他のプロバイダ、設定、バックアップは保持されます。',
+      'confirm-clear': 'クリアを確認',
+      'config-viewer-title': 'OpenCode 設定',
+      'config-viewer-description': '読み取り専用の設定プレビュー',
+      'config-redacted-notice':
+        'このプレビューではプライベート値が隠されています。',
+      'config-copied':
+        'プライベート値を隠した状態で設定をコピーしました',
+      'config-copy-failed': '設定のコピーに失敗しました',
+      'config-load-failed': '設定の読み込みに失敗しました',
+      'copy-config': '設定をコピー (プライベート値は隠されます)',
+      'success-title': 'OpenCode 設定を更新しました',
+      'error-title': 'OpenCode 更新に失敗しました',
+      'unknown-error': '不明な OpenCode 設定エラー',
+
+      'choose-model-hint':
+        '続行するには少なくとも 1 つのモデルを選択してください。',
+      'config-retry-description':
+        '再試行してください。保存された設定は変更されていません。',
+    },
+    examples: {
+      title: '使用例',
+      description: 'ローカル API プロキシを呼び出すコマンド例。',
+    },
+    persistence: {
+      title: 'リクエスト履歴と推論',
+      description:
+        '問題診断のためリクエストと会話履歴をこのデバイスに保持します。',
+      'audit-title': 'リクエスト履歴',
+      'audit-description':
+        'リクエスト、応答、モデルサービスへの到達試行を機微な詳細を隠してこのコンピュータに保存します。',
+      rows: '{{count}} リクエスト',
+      queue: '{{count}} 件のレコードが保存待ち',
+      dropped:
+        '{{count}} 件のレコードを保存できませんでした ({{reason}})。モデルリクエストは通常通り続行されました。',
+      'disk-gib': 'ディスク制限 (GiB)',
+      'body-hours': '完全内容の保持 (時間)',
+      'summary-days': 'サマリー保持 (日)',
+      'max-rows': '最大行数',
+      'no-audit': 'まだトラフィックレコードはありません。',
+      'audit-metadata':
+        'リクエスト詳細とモデルサービスの試行',
+      'audit-body-missing':
+        '完全なリクエストまたは応答内容は保存されていません。',
+      'audit-body-expired':
+        '完全な内容は期限切れですが、リクエスト詳細は引き続き利用可能です。',
+      partial: '部分',
+      'logical-size': '内容サイズ',
+      'parse-error-offset': '読み取れなかった位置',
+      loading: '読み込み中…',
+      'copy-progress': '完全コピーを準備中: {{value}}%',
+      'previous-page': '前のページ',
+      'next-page': '次のページ',
+      'copy-full': '完全なボディをコピー',
+      'confirm-copy-full': '{{size}} のコピーを確認',
+      'clear-audit': 'リクエスト履歴をクリア',
+      'repair-audit': 'リクエスト履歴を修復',
+      'thought-title': '会話推論履歴',
+      'thought-description':
+        '後のターンで会話を継続できるよう推論を保存します。',
+      sessions: '{{count}} セッション',
+      'hard-limit':
+        '各会話は最大 200 ターンおよび 64 MiB の内容を保存できます。',
+      'retention-days': '保持 (日)',
+      'max-sessions': '最大セッション数',
+      oversized:
+        '内容が 64 MiB を超えたため、完全に保存されませんでした。',
+      'no-thought-body': '保存された推論内容はありません。',
+      signature: '署名',
+      'copy-signature': '署名をコピー',
+      'no-thought': 'まだ推論履歴はありません。',
+      'clear-thought': '推論履歴をクリア',
+      'repair-thought': '推論履歴を修復',
+      'confirm-clear': 'クリアを確認',
+      'confirm-repair': '修復を確認',
+    },
+  },
+};
+export default ja;
