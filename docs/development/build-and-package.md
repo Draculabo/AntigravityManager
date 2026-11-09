@@ -31,6 +31,20 @@ environment. Remove the patch when the maker includes these behaviors and
 `pnpm run test:appimage-download` passes on Linux for both architectures.
 See [installer verification](../testing.md) for build and native update checks.
 
+### Windows NSIS upgrades
+
+The per-user NSIS installer asks before replacing a registered installation when opened directly.
+The app's restart-and-install action supplies confirmation for an in-app update. Setup extracts
+the full ZIP payload and verifies the required application files and uninstaller in a sibling
+directory before moving the installed files. It restores the old directory if activation fails.
+If restoration is blocked, setup preserves the backup and displays its location in interactive
+mode. Setup keeps account and preference data in their existing profile locations.
+
+The locked `app-builder-lib` patch selects this installation step while retaining the upstream
+uninstaller build, signing and registration steps. `make:nsis` verifies the full installer's SHA-512
+and records its size in the update metadata. See [Windows updater acceptance](../testing/delivery.md#windows-automatic-updates)
+for failure and upgrade checks.
+
 ## Release workflow verification
 
 [Publish Release](../../.github/workflows/publish.yaml) builds Windows, macOS and Linux for x64

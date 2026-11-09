@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
@@ -80,9 +80,13 @@ assert(existsSync(metadata), `NSIS metadata is missing: ${metadata}`);
 const parsed = YAML.parse(readFileSync(metadata, 'utf8'));
 const bytes = readFileSync(exe);
 assert.equal(parsed.version, version);
+assert.equal(parsed.files?.length, 1);
 assert.equal(parsed.files?.[0]?.url, exeName);
-assert.equal(parsed.files?.[0]?.size, statSync(exe).size);
 assert.equal(parsed.files?.[0]?.sha512, createHash('sha512').update(bytes).digest('base64'));
+// Full-download packages omit the size electron-builder adds when generating a blockmap.
+parsed.files[0].size ??= bytes.length;
+assert.equal(parsed.files[0].size, bytes.length);
+writeFileSync(metadata, YAML.stringify(parsed));
 
 renameSync(metadata, path.join(output, `latest-nsis-${arch}.yml`));
 rmSync(path.join(output, 'builder-debug.yml'), { force: true });

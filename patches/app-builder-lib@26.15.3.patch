@@ -1,0 +1,48 @@
+diff --git a/templates/nsis/installSection.nsh b/templates/nsis/installSection.nsh
+--- a/templates/nsis/installSection.nsh
++++ b/templates/nsis/installSection.nsh
+@@ -14,3 +14,7 @@
++!ifmacrodef agmConfirmUpgrade
++  !insertmacro agmConfirmUpgrade
++!endif
++
+ !ifdef ONE_CLICK
+   !ifdef HEADER_ICO
+     File /oname=$PLUGINSDIR\installerHeaderico.ico "${HEADER_ICO}"
+@@ -52,2 +56,5 @@
++!ifmacrodef agmInstallApplication
++  !insertmacro agmInstallApplication
++!else
+ !insertmacro uninstallOldVersion SHELL_CONTEXT
+ !insertmacro handleUninstallResult SHELL_CONTEXT
+@@ -66,4 +73,5 @@
+ !insertmacro installApplicationFiles
++!endif
+ !insertmacro registryAddInstallInfo
+ !insertmacro addStartMenuLink $keepShortcuts
+ !insertmacro addDesktopLink $keepShortcuts
+diff --git a/templates/nsis/include/installUtil.nsh b/templates/nsis/include/installUtil.nsh
+--- a/templates/nsis/include/installUtil.nsh
++++ b/templates/nsis/include/installUtil.nsh
+@@ -19,3 +19,4 @@
++!ifmacrondef agmInstallApplication
+ Function GetInQuotes
+   Exch $R0
+   Push $R1
+@@ -81,4 +82,5 @@
+     Exch $R0
+ FunctionEnd
+-
++!endif
++
+ Var /GLOBAL isTryToKeepShortcuts
+@@ -96,3 +98,4 @@
++!ifmacrondef agmInstallApplication
+ !macro readReg VAR ROOT_KEY SUB_KEY NAME
+   ${if} "${ROOT_KEY}" == "SHELL_CONTEXT"
+     ReadRegStr "${VAR}" SHELL_CONTEXT "${SUB_KEY}" "${NAME}"
+@@ -246,3 +249,4 @@
+   Push "${ROOT_KEY}"
+   Call uninstallOldVersion
+ !macroend
++!endif
