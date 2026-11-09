@@ -14,11 +14,21 @@ export interface AccountLeaseAccountStore {
   getAccounts(): Promise<CloudAccount[]>;
   getAccount(accountId: string): Promise<CloudAccount | undefined>;
   updateToken(accountId: string, token: CloudAccount['token']): Promise<void>;
+  compareAndUpdateToken(
+    accountId: string,
+    expected: CloudAccount['token'],
+    token: CloudAccount['token'],
+  ): Promise<boolean>;
   updateQuota(accountId: string, quota: CloudQuotaData): Promise<void>;
   mutateHealth(
     accountId: string,
     mutation: (health: CloudAccount['health']) => CloudAccount['health'],
   ): Promise<CloudAccount['health']>;
+  setAccountStatus?(
+    accountId: string,
+    status: CloudAccount['status'],
+    reason?: string | null,
+  ): Promise<void>;
 }
 
 export interface AccountLeaseUpstream {
@@ -41,9 +51,13 @@ export const cloudAccountStoreAdapter: AccountLeaseAccountStore = {
   getAccounts: () => CloudAccountRepo.getAccounts(),
   getAccount: (accountId) => CloudAccountRepo.getAccount(accountId),
   updateToken: (accountId, token) => CloudAccountRepo.updateToken(accountId, token),
+  compareAndUpdateToken: (accountId, expected, token) =>
+    CloudAccountRepo.compareAndUpdateToken(accountId, expected, token),
   updateQuota: (accountId, quota) => CloudAccountRepo.updateQuota(accountId, quota),
   mutateHealth: (accountId, mutation) =>
     CloudAccountHealthService.mutateHealth(accountId, mutation),
+  setAccountStatus: (accountId, status, reason) =>
+    CloudAccountRepo.setAccountStatus(accountId, status, reason),
 };
 
 export const googleAccountLeaseUpstreamAdapter: AccountLeaseUpstream = {

@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG, ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '../../server/server-config';
 import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { accountLeaseStoreFixture, leaseAccount } from '../support/account-lease-store-fixture';
 
 function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   return {
@@ -14,44 +15,18 @@ function createProxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   };
 }
 
-function seedTokens(service: AccountLeaseService): void {
-  const nowSec = Math.floor(Date.now() / 1000);
-  (service as any).tokens = new Map([
-    [
-      'acc-1',
-      {
-        account_id: 'acc-1',
-        email: 'acc-1@test.dev',
-        access_token: 'token-1',
-        refresh_token: 'refresh-1',
-        token_type: 'Bearer',
-        expires_in: 3600,
-        expiry_timestamp: nowSec + 3600,
-        project_id: 'project-1',
-      },
-    ],
-    [
-      'acc-2',
-      {
-        account_id: 'acc-2',
-        email: 'acc-2@test.dev',
-        access_token: 'token-2',
-        refresh_token: 'refresh-2',
-        token_type: 'Bearer',
-        expires_in: 3600,
-        expiry_timestamp: nowSec + 3600,
-        project_id: 'project-2',
-      },
-    ],
-  ]);
-}
-
 describe('Parity rollout guard replay', () => {
   let service: AccountLeaseService;
 
-  beforeEach(() => {
-    service = new AccountLeaseService();
-    seedTokens(service);
+  beforeEach(async () => {
+    const { store } = accountLeaseStoreFixture([leaseAccount('acc-1'), leaseAccount('acc-2')]);
+    service = new AccountLeaseService(store, undefined, undefined, undefined, undefined, null);
+    await service.loadAccounts();
+  });
+
+  afterEach(async () => {
+    await service.onModuleDestroy();
+    setServerConfig(DEFAULT_APP_CONFIG.proxy);
   });
 
   it('supports kill-switch rollback from parity path to baseline path', async () => {

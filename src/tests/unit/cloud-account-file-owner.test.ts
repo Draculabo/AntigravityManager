@@ -225,6 +225,24 @@ describe.each(['desktop-embedded', 'standalone-core'] as const)(
       );
     });
 
+    it('preserves service disability when a refresh grant is replaced', async () => {
+      accounts[0].health = {
+        service_disabled: { status: 'disabled', reason: 'TOS_VIOLATION', detected_at_ms: 1 },
+      };
+      accounts[0].status = 'expired';
+      accounts[0].status_reason = 'TOS_VIOLATION';
+      await importDocument([
+        exportedAccount({ ...account.token, refresh_token: 'replacement-grant' }),
+      ]);
+      await renderer.importCloudAccounts({ strategy: 'merge' });
+      expect(accounts[0].health?.service_disabled).toEqual({
+        status: 'disabled',
+        reason: 'TOS_VIOLATION',
+        detected_at_ms: 1,
+      });
+      expect(accounts[0].status_reason).toBe('TOS_VIOLATION');
+    });
+
     it('accepts exactly 5 MiB, rejects larger files and never transports the document in RPC', async () => {
       const content = JSON.stringify({
         version: '1.0',

@@ -119,4 +119,97 @@ describe('google error details', () => {
 
     expect(details?.[0]?.links?.[0]?.url).toBeUndefined();
   });
+
+  it('classifies TOS_VIOLATION from structured ErrorInfo and extracts appeal url', () => {
+    const payload = {
+      error: {
+        code: 403,
+        message:
+          'This service has been disabled in this account for violation of Terms of Service. Please submit an appeal to continue using this product.',
+        status: 'PERMISSION_DENIED',
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+            reason: 'TOS_VIOLATION',
+            domain: 'cloudcode-pa.googleapis.com',
+            metadata: {
+              uiMessage: 'true',
+              appeal_url: 'https://forms.gle/hGzM9MEUv2azZsrb9',
+              appeal_url_link_text: 'Submit Appeal',
+            },
+          },
+        ],
+      },
+    };
+
+    const details = extractGoogleErrorDetails(payload);
+    expect(classifyForbiddenUpstreamError({ details })).toEqual({
+      kind: 'service_disabled',
+      reason: 'TOS_VIOLATION',
+      appealUrl: 'https://forms.gle/hGzM9MEUv2azZsrb9',
+      appealLinkText: 'Submit Appeal',
+    });
+  });
+
+  it('classifies TOS_VIOLATION from error text fallback', () => {
+    const text =
+      '{"error":{"code":403,"message":"This service has been disabled in this account for violation of Terms of Service.","details":[{"metadata":{"appeal_url":"https://forms.gle/test1234"}}]}}';
+
+    expect(classifyForbiddenUpstreamError({ body: text })).toEqual({
+      kind: 'service_disabled',
+      reason: 'TOS_VIOLATION',
+      appealUrl: 'https://forms.gle/test1234',
+      appealLinkText: undefined,
+    });
+  });
+
+  it('bounds fallback appeal labels without changing validation descriptions', () => {
+    const label = 'x'.repeat(160);
+    expect(
+      classifyForbiddenUpstreamError({ body: `TOS_VIOLATION "appeal_url_link_text":"${label}"` })
+        .appealLinkText,
+    ).toBe('x'.repeat(100));
+    const details = extractGoogleErrorDetails({
+      error: {
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.Help',
+            links: [{ description: label, url: 'https://accounts.google.com/verify' }],
+          },
+        ],
+      },
+    });
+    expect(details?.[0].links?.[0].description).toBe(label);
+  });
+
+  it('rejects insecure appeal URLs while retaining the disabled classification', () => {
+    const result = classifyForbiddenUpstreamError({
+      details: [{ reason: 'TOS_VIOLATION', metadata: { appeal_url: 'http://forms.gle/test' } }],
+    });
+    expect(result.kind).toBe('service_disabled');
+    expect(result.appealUrl).toBeUndefined();
+  });
+
+  it('classifies ORG_RESTRICTION_VIOLATION', () => {
+    const payload = {
+      error: {
+        code: 403,
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+            reason: 'ORG_RESTRICTION_VIOLATION',
+            domain: 'googleapis.com',
+          },
+        ],
+      },
+    };
+
+    const details = extractGoogleErrorDetails(payload);
+    expect(classifyForbiddenUpstreamError({ details })).toEqual({
+      kind: 'service_disabled',
+      reason: 'ORG_RESTRICTION_VIOLATION',
+      appealUrl: undefined,
+      appealLinkText: undefined,
+    });
+  });
 });

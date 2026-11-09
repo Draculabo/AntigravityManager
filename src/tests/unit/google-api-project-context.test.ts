@@ -37,6 +37,10 @@ describe('GoogleAPIService project-context fallback policy', () => {
       PROD_LOAD_PROJECT,
       DAILY_LOAD_PROJECT,
     ]);
+    for (const [, options] of transport.mock.calls) {
+      expect(options.headers).not.toHaveProperty('X-Goog-Api-Client');
+      expect(options.headers).not.toHaveProperty('x-activity-request-id');
+    }
   });
 
   it('continues from daily-prod to sandbox for retryable HTTP failures', async () => {

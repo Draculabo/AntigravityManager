@@ -12,6 +12,8 @@ import { logger } from '../../shared/logging/logger';
 import { getAntigravityStoragePaths } from '@/shared/platform/paths';
 import { detectAgyCliExecutablePath } from '@/modules/antigravity-runtime/binary-patch/agyCliPathDetection';
 import * as electronMock from 'electron';
+import * as healthService from '@/modules/cloud-account/services/CloudAccountHealthService';
+import { CloudAccountHealthSchema, type CloudAccount } from '@/modules/cloud-account/types';
 
 // Mock dependencies
 vi.mock('@/modules/cloud-account/persistence/cloudHandler');
@@ -39,6 +41,11 @@ describe('CloudMonitorService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(true);
+    vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async (id) => {
+      const accounts = await CloudAccountRepo.getAccounts();
+      return accounts?.find((entry) => entry.id === id);
+    });
     vi.mocked(getAntigravityStoragePaths).mockReturnValue([process.cwd()]);
     vi.mocked(detectAgyCliExecutablePath).mockReturnValue(null);
     vi.mocked(CloudAccountSettingsStore.getSetting).mockReset();
@@ -217,6 +224,147 @@ describe('CloudMonitorService', () => {
     expect(AutoSwitchService.checkAndSwitchIfNeeded).toHaveBeenCalled();
   });
 
+  it('evicts an already loaded lease after monitoring detects a ToS violation', async () => {
+    const account = {
+      id: 'monitor-tos',
+      provider: 'google',
+      email: 'test@example.com',
+      created_at: 1,
+      last_used: 1,
+      token: {
+        access_token: 'token',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+        token_type: 'Bearer',
+        expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
+        project_id: 'project',
+      },
+    } as const;
+    let stored = structuredClone(account) as import('@/modules/cloud-account/types').CloudAccount;
+    const lease = new AccountLeaseService(
+      {
+        getAccounts: vi.fn(async () => [structuredClone(stored)]),
+        getAccount: vi.fn(async () => structuredClone(stored)),
+        updateToken: vi.fn(),
+        compareAndUpdateToken: vi.fn().mockResolvedValue(true),
+        updateQuota: vi.fn(),
+        mutateHealth: vi.fn(),
+      },
+      {
+        fetchQuota: vi.fn(),
+        refreshAccessToken: vi.fn(),
+        fetchProjectId: vi.fn(),
+        normalizeRefreshedOAuthClientKey: vi.fn(),
+      },
+    );
+    await lease.loadAccounts();
+    expect((await lease.getNextToken({ targetAccountId: account.id }))?.id).toBe(account.id);
+    vi.mocked(CloudAccountRepo.getAccounts).mockImplementation(async () => [
+      structuredClone(stored),
+    ]);
+    vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async () => structuredClone(stored));
+    vi.mocked(CloudAccountRepo.updateHealth).mockImplementation(async (_id, health) => {
+      stored.health = health;
+    });
+    vi.mocked(GoogleAPIService.fetchQuota).mockRejectedValue(new Error('FORBIDDEN: TOS_VIOLATION'));
+    vi.spyOn(healthService, 'quarantineAccountInActiveLeaseCache').mockImplementation(
+      async (id) => {
+        lease.quarantineAccountInMemory(id);
+      },
+    );
+    const evict = vi
+      .spyOn(healthService, 'evictAccountFromActiveLeaseCache')
+      .mockImplementation(async (id) => {
+        lease.evictAccount(id);
+      });
+    const poll = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(4000);
+    await poll;
+    expect(evict).toHaveBeenCalledWith(account.id);
+    expect(stored.health?.service_disabled?.reason).toBe('TOS_VIOLATION');
+    expect(await lease.getNextToken({ targetAccountId: account.id })).toBeNull();
+  });
+
+  it('persists bounded health for a long monitor ToS response', async () => {
+    const stored: CloudAccount = {
+      id: 'monitor-long',
+      provider: 'google',
+      email: 'test@example.com',
+      created_at: 1,
+      last_used: 1,
+      token: {
+        access_token: 'token',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+        token_type: 'Bearer',
+        expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
+      },
+    };
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([structuredClone(stored)]);
+    vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async () => structuredClone(stored));
+    vi.mocked(CloudAccountRepo.updateHealth).mockImplementation(async (_id, health) => {
+      stored.health = CloudAccountHealthSchema.parse(health);
+    });
+    vi.mocked(GoogleAPIService.fetchQuota).mockRejectedValue(
+      new Error(`FORBIDDEN: TOS_VIOLATION ${'x'.repeat(2000)}`),
+    );
+    vi.spyOn(healthService, 'quarantineAccountInActiveLeaseCache').mockResolvedValue();
+    vi.spyOn(healthService, 'evictAccountFromActiveLeaseCache').mockResolvedValue();
+    const poll = CloudMonitorService.poll();
+    await vi.advanceTimersByTimeAsync(4000);
+    await poll;
+    expect(stored.health?.service_disabled?.reason).toBe('TOS_VIOLATION');
+    expect(stored.health?.service_disabled?.message?.length).toBe(1000);
+  });
+
+  it('quarantines the loaded account if monitor status persistence fails', async () => {
+    const account = {
+      id: 'monitor-fail',
+      provider: 'google',
+      email: 'test@example.com',
+      created_at: 1,
+      last_used: 1,
+      token: {
+        access_token: 'token',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+        token_type: 'Bearer',
+        expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
+        project_id: 'project',
+      },
+    } as const;
+    const lease = new AccountLeaseService(
+      {
+        getAccounts: vi.fn(async () => [account]),
+        getAccount: vi.fn(async () => account),
+        updateToken: vi.fn(),
+        compareAndUpdateToken: vi.fn().mockResolvedValue(true),
+        updateQuota: vi.fn(),
+        mutateHealth: vi.fn(),
+      },
+      {
+        fetchQuota: vi.fn(),
+        refreshAccessToken: vi.fn(),
+        fetchProjectId: vi.fn(),
+        normalizeRefreshedOAuthClientKey: vi.fn(),
+      },
+    );
+    await lease.loadAccounts();
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([account]);
+    vi.mocked(CloudAccountRepo.setAccountStatus).mockRejectedValueOnce(new Error('write failed'));
+    vi.mocked(GoogleAPIService.fetchQuota).mockRejectedValue(new Error('FORBIDDEN: TOS_VIOLATION'));
+    vi.spyOn(healthService, 'quarantineAccountInActiveLeaseCache').mockImplementation(
+      async (id) => {
+        lease.quarantineAccountInMemory(id);
+      },
+    );
+    const poll = CloudMonitorService.poll();
+    const result = expect(poll).rejects.toThrow('write failed');
+    await vi.advanceTimersByTimeAsync(4000);
+    await result;
+    expect(await lease.getNextToken({ targetAccountId: account.id })).toBeNull();
+  });
+
   it('skips auto-switch for targets whose storage.json is absent', async () => {
     vi.mocked(getAntigravityStoragePaths).mockReturnValue([]);
     vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
@@ -311,8 +459,9 @@ describe('CloudMonitorService', () => {
       undefined,
       undefined,
     );
-    expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
+    expect(CloudAccountRepo.compareAndUpdateToken).toHaveBeenCalledWith(
       'acc1',
+      expect.objectContaining({ access_token: 'old_token' }),
       expect.objectContaining({
         access_token: 'new_token',
         refresh_token: 'new_ref_token',
@@ -359,8 +508,9 @@ describe('CloudMonitorService', () => {
       undefined,
       undefined,
     );
-    expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
+    expect(CloudAccountRepo.compareAndUpdateToken).toHaveBeenCalledWith(
       'acc-401',
+      expect.objectContaining({ access_token: 'stale_token' }),
       expect.objectContaining({
         access_token: 'refreshed_access_token',
       }),
@@ -405,8 +555,9 @@ describe('CloudMonitorService', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await pollPromise;
 
-    expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
+    expect(CloudAccountRepo.compareAndUpdateToken).toHaveBeenCalledWith(
       'credits-401',
+      expect.objectContaining({ access_token: 'stale_token' }),
       expect.objectContaining({ access_token: 'refreshed_access_token' }),
     );
     expect(GoogleAPIService.fetchAICredits).toHaveBeenNthCalledWith(1, 'stale_token', undefined);
@@ -422,6 +573,62 @@ describe('CloudMonitorService', () => {
       }),
     );
   });
+
+  it('does not use a refreshed token if the account changed during monitor refresh', async () => {
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      {
+        id: 'conflict',
+        email: 'conflict@example.com',
+        token: { access_token: 'old', refresh_token: 'refresh', expiry_timestamp: 1 },
+      },
+    ] as never);
+    vi.mocked(GoogleAPIService.refreshAccessToken).mockResolvedValue({
+      access_token: 'new',
+      refresh_token: 'rotated',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    });
+    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValueOnce(false);
+    await CloudMonitorService.poll();
+    expect(GoogleAPIService.fetchQuota).not.toHaveBeenCalled();
+    expect(CloudAccountRepo.updateQuota).not.toHaveBeenCalled();
+    expect(CloudAccountRepo.setAccountStatus).not.toHaveBeenCalled();
+  });
+
+  it.each(['quota', 'credits'] as const)(
+    'does not publish stale quota after a refresh conflict during %s retry',
+    async (source) => {
+      vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+        {
+          id: 'conflict-401',
+          email: 'conflict@example.com',
+          token: {
+            access_token: 'old',
+            refresh_token: 'refresh',
+            expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
+          },
+        },
+      ] as never);
+      if (source === 'quota') {
+        vi.mocked(GoogleAPIService.fetchQuota).mockRejectedValueOnce(new Error('UNAUTHORIZED'));
+      } else {
+        vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValueOnce({ models: {} } as never);
+        vi.mocked(GoogleAPIService.fetchAICredits).mockRejectedValueOnce(new Error('UNAUTHORIZED'));
+      }
+      vi.mocked(GoogleAPIService.refreshAccessToken).mockResolvedValueOnce({
+        access_token: 'new',
+        refresh_token: 'rotated',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      });
+      vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValueOnce(false);
+      await CloudMonitorService.poll();
+      expect(GoogleAPIService.fetchQuota).toHaveBeenCalledTimes(1);
+      expect(CloudAccountRepo.updateQuota).not.toHaveBeenCalled();
+      expect(CloudAccountRepo.setAccountStatus).not.toHaveBeenCalled();
+    },
+    10_000,
+  );
 
   it('should share in-flight poll promise for concurrent poll() calls', async () => {
     let resolveGetAccounts: (value: unknown) => void;
@@ -656,12 +863,12 @@ describe('CloudMonitorService AI credits alert', () => {
     );
 
     const pollPromise = CloudMonitorService.poll();
-    await vi.advanceTimersByTimeAsync(3000); // 3 accounts * 1s sleep each
+    // node:timers/promises uses real timers here; the three jittered waits total at most 10.5s.
     await pollPromise;
 
     // acc1 (3000 <= 5000) and acc3 (5000 <= 5000) should fire; acc2 (8000 > 5000) should not
     expect(notificationShowSpy).toHaveBeenCalledTimes(2);
-  });
+  }, 15_000);
 });
 
 describe('AccountLeaseService project-id hydration', () => {
@@ -688,7 +895,7 @@ describe('AccountLeaseService project-id hydration', () => {
 
     vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([account] as never);
     vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue(account as never);
-    vi.mocked(CloudAccountRepo.updateToken).mockResolvedValue(undefined as never);
+    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(true);
     vi.mocked(GoogleAPIService.fetchProjectId).mockResolvedValue('resolved-project' as never);
 
     const service = new AccountLeaseService();
@@ -696,8 +903,9 @@ describe('AccountLeaseService project-id hydration', () => {
     await service.onModuleDestroy();
 
     expect(GoogleAPIService.fetchProjectId).toHaveBeenCalledWith('access-token');
-    expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
+    expect(CloudAccountRepo.compareAndUpdateToken).toHaveBeenCalledWith(
       'acc-1',
+      expect.objectContaining({ access_token: 'access-token' }),
       expect.objectContaining({
         project_id: 'resolved-project',
       }),
@@ -779,7 +987,7 @@ describe('AccountLeaseService project-id hydration', () => {
 
     vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([account] as never);
     vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue(account as never);
-    vi.mocked(CloudAccountRepo.updateToken).mockResolvedValue(undefined as never);
+    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(true);
     vi.mocked(GoogleAPIService.fetchProjectId).mockResolvedValue('resolved-project-4' as never);
 
     const service = new AccountLeaseService();
@@ -787,8 +995,9 @@ describe('AccountLeaseService project-id hydration', () => {
     await service.onModuleDestroy();
 
     expect(GoogleAPIService.fetchProjectId).toHaveBeenCalledWith('access-token-4');
-    expect(CloudAccountRepo.updateToken).toHaveBeenCalledWith(
+    expect(CloudAccountRepo.compareAndUpdateToken).toHaveBeenCalledWith(
       'acc-4',
+      expect.objectContaining({ access_token: 'access-token-4' }),
       expect.objectContaining({
         project_id: 'resolved-project-4',
       }),

@@ -317,6 +317,10 @@ export class CoreRpcClient {
     );
   }
 
+  async clearServiceDisabled(accountId: string): Promise<void> {
+    await this.accountMutationRpc.accountClearServiceDisabled({ accountId });
+  }
+
   async syncFromIde(
     appTarget?: AntigravityAppTarget,
   ): Promise<z.infer<typeof CloudAccountViewSchema> | null> {

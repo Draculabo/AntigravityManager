@@ -35,6 +35,7 @@ function createPolicy() {
     getMinimumRateLimitWaitForPool: vi.fn().mockReturnValue(undefined),
     markModelSuccess: vi.fn(),
     markValidationRequired: vi.fn().mockResolvedValue(undefined),
+    markServiceDisabled: vi.fn().mockResolvedValue(undefined),
     markImageRateLimitFast: vi.fn().mockReturnValue(false),
     reconcileImageRateLimit: vi.fn().mockResolvedValue(undefined),
   };
@@ -659,6 +660,119 @@ describe('ProxyRetryService', () => {
       verificationUrl: 'https://accounts.google.com/verify',
       description: 'Verify your account',
     });
+  });
+
+  it('marks the account as service_disabled for a TOS_VIOLATION 403', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-tos',
+      'gemini-3-flash',
+      new UpstreamRequestError({
+        message:
+          'This service has been disabled in this account for violation of Terms of Service.',
+        status: 403,
+        details: [
+          {
+            type: 'type.googleapis.com/google.rpc.ErrorInfo',
+            reason: 'TOS_VIOLATION',
+            domain: 'cloudcode-pa.googleapis.com',
+            metadata: {
+              appeal_url: 'https://forms.gle/appeal123',
+              appeal_url_link_text: 'Submit Appeal',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(accountLeaseService.markAsForbidden).not.toHaveBeenCalled();
+    expect(accountLeaseService.markServiceDisabled).toHaveBeenCalledWith({
+      accountId: 'acc-tos',
+      reason: 'TOS_VIOLATION',
+      appealUrl: 'https://forms.gle/appeal123',
+      appealLinkText: 'Submit Appeal',
+      message: 'This service has been disabled in this account for violation of Terms of Service.',
+    });
+  });
+
+  it('quarantines an account on an image model ToS violation', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const error = new UpstreamRequestError({
+      message: 'Permission denied',
+      status: 403,
+      details: [{ type: 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'TOS_VIOLATION' }],
+    });
+    await policy.applyUpstreamPenalty('acc-image-tos', 'gemini-3-image', error);
+    expect(accountLeaseService.markServiceDisabled).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'acc-image-tos', reason: 'TOS_VIOLATION' }),
+    );
+  });
+
+  it('triggers circuit breaker and aborts retry on TOS_VIOLATION to prevent cascading bans', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const tosError = new UpstreamRequestError({
+      message: 'This service has been disabled in this account for violation of Terms of Service.',
+      status: 403,
+      details: [
+        {
+          type: 'type.googleapis.com/google.rpc.ErrorInfo',
+          reason: 'TOS_VIOLATION',
+          domain: 'cloudcode-pa.googleapis.com',
+        },
+      ],
+    });
+
+    const retryState = policy.createTokenRetryState();
+    policy.recordFailure(retryState, tosError);
+
+    expect(retryState.abortRetry).toBe(true);
+    expect(retryState.fatalError).toBe(tosError);
+
+    const nextToken = await policy.selectRetryToken(retryState, 'gemini-3-flash');
+    expect(nextToken).toBeNull();
+    expect(accountLeaseService.getNextToken).not.toHaveBeenCalled();
+
+    const terminalError = policy.resolveTerminalError(retryState, tosError);
+    expect(terminalError).toBe(tosError);
+  });
+
+  it('returns null immediately when client abort signal is already triggered', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+    const retryState = policy.createTokenRetryState();
+    const controller = new AbortController();
+    controller.abort();
+
+    const nextToken = await policy.selectRetryToken(
+      retryState,
+      'gemini-3-flash',
+      undefined,
+      false,
+      controller.signal,
+    );
+    expect(nextToken).toBeNull();
+    expect(accountLeaseService.getNextToken).not.toHaveBeenCalled();
+  });
+
+  it('marks model availability as capacity_exhausted on 503 MODEL_CAPACITY_EXHAUSTED', async () => {
+    const { policy, accountLeaseService } = createPolicy();
+
+    await policy.applyUpstreamPenalty(
+      'acc-503',
+      'claude-opus-4-6-thinking',
+      new UpstreamRequestError({
+        message: 'No capacity available for model claude-opus-4-6-thinking on the server',
+        status: 503,
+        body: '{"error":{"details":[{"reason":"MODEL_CAPACITY_EXHAUSTED"}]}}',
+      }),
+    );
+
+    expect(accountLeaseService.markAsForbidden).not.toHaveBeenCalled();
+    const entry = proxyModelAvailabilityStore
+      .getSnapshot()
+      .find((e) => e.accountId === 'acc-503' && e.modelId === 'claude-opus-4-6-thinking');
+    expect(entry).toBeDefined();
+    expect(entry?.reason).toBe('capacity_exhausted');
   });
 
   it('keeps the account in rotation for a SECURITY_POLICY_VIOLATED 403', async () => {

@@ -39,6 +39,7 @@ function mockAdapter(): CloudAccountAdapter {
     switchAccount: vi.fn(),
     listViews: vi.fn(),
     refreshQuota: vi.fn(),
+    clearServiceDisabled: vi.fn(),
     syncFromIde: vi.fn(),
     getSecurityStatus: vi.fn(),
     openValidationLink: vi.fn(),

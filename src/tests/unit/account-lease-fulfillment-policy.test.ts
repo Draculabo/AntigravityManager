@@ -3,6 +3,31 @@ import { AccountLeaseFulfillmentPolicy } from '@/modules/proxy-gateway/server/mo
 import type { AccountLeaseHydrationPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration.policy';
 import { AccountLeaseRefreshRejectedError } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration.policy';
 import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
+import type { AccountLeaseAccountStore } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+
+function createAccountStore(): AccountLeaseAccountStore {
+  return {
+    getAccounts: vi.fn(),
+    getAccount: vi.fn(async (id) => ({
+      id,
+      provider: 'google' as const,
+      email: 'lease@example.com',
+      created_at: 1,
+      last_used: 1,
+      token: {
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+        expires_in: 3600,
+        expiry_timestamp: 3600,
+        token_type: 'Bearer',
+      },
+    })),
+    updateToken: vi.fn(),
+    compareAndUpdateToken: vi.fn().mockResolvedValue(true),
+    updateQuota: vi.fn(),
+    mutateHealth: vi.fn(),
+  };
+}
 
 function createToken(overrides: Partial<AccountLeaseTokenData> = {}): AccountLeaseTokenData {
   return {
@@ -36,6 +61,8 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       error: vi.fn(),
     };
     const policy = new AccountLeaseFulfillmentPolicy({
+      accountStore: createAccountStore(),
+      isStillEligible: () => true,
       hydrationPolicy,
       bindSession,
       stickySessionTtlMs: 600_000,
@@ -73,7 +100,7 @@ describe('AccountLeaseFulfillmentPolicy', () => {
     );
   });
 
-  it('returns null and logs when fulfillment fails', async () => {
+  it('throws and logs when fulfillment fails', async () => {
     const hydrationPolicy = {
       hydrateSelectedToken: vi.fn().mockRejectedValue(new Error('hydrate failed')),
     } as unknown as AccountLeaseHydrationPolicy;
@@ -81,6 +108,8 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       error: vi.fn(),
     };
     const policy = new AccountLeaseFulfillmentPolicy({
+      accountStore: createAccountStore(),
+      isStillEligible: () => true,
       hydrationPolicy,
       bindSession: vi.fn(),
       stickySessionTtlMs: 600_000,
@@ -94,7 +123,7 @@ describe('AccountLeaseFulfillmentPolicy', () => {
         tokenData: createToken(),
         nowSeconds: 100,
       }),
-    ).resolves.toBeNull();
+    ).rejects.toThrow('hydrate failed');
     expect(logger.error).toHaveBeenCalledWith(
       'Failed to finalize selected account token',
       expect.any(Error),
@@ -107,6 +136,8 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       hydrateSelectedToken: vi.fn().mockRejectedValue(rejection),
     } as unknown as AccountLeaseHydrationPolicy;
     const policy = new AccountLeaseFulfillmentPolicy({
+      accountStore: createAccountStore(),
+      isStillEligible: () => true,
       hydrationPolicy,
       bindSession: vi.fn(),
       stickySessionTtlMs: 600_000,
@@ -122,4 +153,35 @@ describe('AccountLeaseFulfillmentPolicy', () => {
       }),
     ).rejects.toBe(rejection);
   });
+
+  it.each(['missing', 'ineligible'] as const)(
+    'does not bind a session or issue a lease when the account is %s',
+    async (state) => {
+      const accountStore = createAccountStore();
+      if (state === 'missing') {
+        vi.mocked(accountStore.getAccount).mockResolvedValue(undefined);
+      }
+      const bindSession = vi.fn();
+      const policy = new AccountLeaseFulfillmentPolicy({
+        accountStore,
+        isStillEligible: () => state !== 'ineligible',
+        hydrationPolicy: {
+          hydrateSelectedToken: vi.fn().mockResolvedValue('project'),
+        } as unknown as AccountLeaseHydrationPolicy,
+        bindSession,
+        stickySessionTtlMs: 600_000,
+        resolveFallbackProjectId: () => 'fallback',
+        logger: { error: vi.fn() },
+      });
+      await expect(
+        policy.finalizeSelectedToken({
+          accountId: 'acc-1',
+          tokenData: createToken(),
+          nowSeconds: 100,
+          sessionKey: 'session',
+        }),
+      ).resolves.toBeNull();
+      expect(bindSession).not.toHaveBeenCalled();
+    },
+  );
 });

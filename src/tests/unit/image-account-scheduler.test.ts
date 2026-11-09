@@ -8,6 +8,7 @@ import {
   ImageQueueTimeoutError,
 } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { ImageAccountSchedulerService } from '@/modules/proxy-gateway/server/modules/account-lease/image-account-scheduler.service';
+import { accountLeaseStoreFixture, leaseAccount } from '../support/account-lease-store-fixture';
 
 function configureScheduler(perAccountConcurrency: number, requestTimeout = 1): void {
   const proxy: ProxyConfig = {
@@ -18,35 +19,21 @@ function configureScheduler(perAccountConcurrency: number, requestTimeout = 1): 
   setServerConfig(proxy);
 }
 
-function seedTokens(service: AccountLeaseService, accountIds: string[]): void {
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  (service as unknown as { tokens: Map<string, unknown> }).tokens = new Map(
-    accountIds.map((accountId) => [
-      accountId,
-      {
-        account_id: accountId,
-        access_token: `token-${accountId}`,
-        email: `${accountId}@test.dev`,
-        expires_in: 3600,
-        expiry_timestamp: nowSeconds + 3600,
-        project_id: `project-${accountId}`,
-        refresh_token: `refresh-${accountId}`,
-        token_type: 'Bearer',
-      },
-    ]),
-  );
-}
-
-function createLeaseService(scheduler: ImageAccountSchedulerService): AccountLeaseService {
-  return new AccountLeaseService(undefined, undefined, undefined, undefined, scheduler);
+async function createLeaseService(
+  scheduler: ImageAccountSchedulerService,
+  accountIds: string[],
+): Promise<AccountLeaseService> {
+  const { store } = accountLeaseStoreFixture(accountIds.map((id) => leaseAccount(id)));
+  const service = new AccountLeaseService(store, undefined, undefined, undefined, scheduler, null);
+  await service.loadAccounts();
+  return service;
 }
 
 describe('ImageAccountSchedulerService', () => {
   it('pins image leases to the target and waits for its capacity instead of using another account', async () => {
     configureScheduler(1, 1);
     const scheduler = new ImageAccountSchedulerService();
-    const service = createLeaseService(scheduler);
-    seedTokens(service, ['a', 'b']);
+    const service = await createLeaseService(scheduler, ['a', 'b']);
     const first = await service.getNextImageToken({ targetAccountId: 'b' });
     expect(first.token.id).toBe('b');
     const controller = new AbortController();
@@ -154,8 +141,7 @@ describe('AccountLeaseService image scheduling', () => {
   it('admits only six of eight requests across three cap-two accounts until permits release', async () => {
     configureScheduler(2, 1);
     const scheduler = new ImageAccountSchedulerService();
-    const service = createLeaseService(scheduler);
-    seedTokens(service, ['a', 'b', 'c']);
+    const service = await createLeaseService(scheduler, ['a', 'b', 'c']);
     const resolved: Awaited<ReturnType<AccountLeaseService['getNextImageToken']>>[] = [];
     const requests = Array.from({ length: 8 }, () =>
       service.getNextImageToken({ model: 'gemini-3.1-flash-image' }).then((lease) => {
@@ -180,8 +166,7 @@ describe('AccountLeaseService image scheduling', () => {
   it('skips a saturated preferred account and selects another eligible account', async () => {
     configureScheduler(1);
     const scheduler = new ImageAccountSchedulerService();
-    const service = createLeaseService(scheduler);
-    seedTokens(service, ['a', 'b']);
+    const service = await createLeaseService(scheduler, ['a', 'b']);
     service.setPreferredAccount('a');
 
     const first = await service.getNextImageToken({ model: 'gemini-3.1-flash-image' });
@@ -196,8 +181,7 @@ describe('AccountLeaseService image scheduling', () => {
   it('periodically reselects an account that becomes eligible without a capacity notification', async () => {
     configureScheduler(1, 1);
     const scheduler = new ImageAccountSchedulerService();
-    const service = createLeaseService(scheduler);
-    seedTokens(service, ['busy', 'cooling']);
+    const service = await createLeaseService(scheduler, ['busy', 'cooling']);
     service.setPreferredAccount('busy');
     const tokens = (
       service as unknown as { tokens: Map<string, { validation_blocked_until_ms?: number }> }
@@ -220,8 +204,7 @@ describe('AccountLeaseService image scheduling', () => {
   it('queues when all eligible accounts are busy and wakes after one release', async () => {
     configureScheduler(1, 1);
     const scheduler = new ImageAccountSchedulerService();
-    const service = createLeaseService(scheduler);
-    seedTokens(service, ['a']);
+    const service = await createLeaseService(scheduler, ['a']);
 
     const first = await service.getNextImageToken({ model: 'gemini-3.1-flash-image' });
     let settled = false;
@@ -240,8 +223,7 @@ describe('AccountLeaseService image scheduling', () => {
   it('distinguishes unavailable accounts, queue timeout, and cancellation', async () => {
     configureScheduler(1, 0.03);
     const emptyScheduler = new ImageAccountSchedulerService();
-    const emptyService = createLeaseService(emptyScheduler);
-    seedTokens(emptyService, ['blocked']);
+    const emptyService = await createLeaseService(emptyScheduler, ['blocked']);
     const blockedTokens = (
       emptyService as unknown as { tokens: Map<string, { validation_blocked_until_ms?: number }> }
     ).tokens;
@@ -254,8 +236,7 @@ describe('AccountLeaseService image scheduling', () => {
     ).rejects.toBeInstanceOf(ImageAccountUnavailableError);
 
     const scheduler = new ImageAccountSchedulerService();
-    const service = createLeaseService(scheduler);
-    seedTokens(service, ['a']);
+    const service = await createLeaseService(scheduler, ['a']);
     const held = await service.getNextImageToken({ model: 'gemini-3.1-flash-image' });
     await expect(
       service.getNextImageToken({ model: 'gemini-3.1-flash-image' }),
@@ -275,8 +256,7 @@ describe('AccountLeaseService image scheduling', () => {
   it('treats an explicit zero cap as a queue that reaches the normal deadline', async () => {
     configureScheduler(0, 0.01);
     const scheduler = new ImageAccountSchedulerService();
-    const service = createLeaseService(scheduler);
-    seedTokens(service, ['a']);
+    const service = await createLeaseService(scheduler, ['a']);
 
     await expect(
       service.getNextImageToken({ model: 'gemini-3.1-flash-image' }),

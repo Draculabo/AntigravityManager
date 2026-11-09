@@ -250,6 +250,20 @@ describe('core-owned cloud account switching', () => {
       reporting: { state: 'not-reported', reason: 'disabled' },
     });
   });
+  it('does not inject credentials when refresh races with account replacement', async () => {
+    account.token.refresh_token = 'private-refresh-token';
+    vi.mocked(CloudAccountRefreshService.refreshAccessToken).mockResolvedValueOnce({
+      access_token: 'new-access',
+      refresh_token: 'new-refresh',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    });
+    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValueOnce(false);
+    await expect(switchCloudAccountCore(account.id)).rejects.toThrow();
+    expect(CloudAccountRepo.compareAndUpdateToken).toHaveBeenCalledOnce();
+    expect(credentialWrite).not.toHaveBeenCalled();
+    expect(CloudAccountRepo.setActive).not.toHaveBeenCalled();
+  });
   it('records a safe native write error code without changing the public error contract', async () => {
     credentialWrite.mockRejectedValueOnce(
       Object.assign(

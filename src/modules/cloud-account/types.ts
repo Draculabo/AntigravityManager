@@ -76,6 +76,14 @@ export interface CloudAccountHealth {
     blocked_at_ms?: number;
     reason?: 'invalid_grant';
   };
+  service_disabled?: {
+    status: 'disabled';
+    reason: string;
+    detected_at_ms: number;
+    appeal_url?: string;
+    appeal_url_link_text?: string;
+    message?: string;
+  };
 }
 
 export interface CloudAccount {
@@ -186,6 +194,16 @@ export const CloudAccountHealthSchema = z
         invalid_grant_last_at_ms: z.number().int().nonnegative().optional(),
         blocked_at_ms: z.number().int().nonnegative().optional(),
         reason: z.literal('invalid_grant').optional(),
+      })
+      .optional(),
+    service_disabled: z
+      .object({
+        status: z.literal('disabled'),
+        reason: z.string().min(1).max(128),
+        detected_at_ms: z.number().int().nonnegative(),
+        appeal_url: HttpsUrlSchema.optional(),
+        appeal_url_link_text: z.string().max(100).optional(),
+        message: z.string().max(1000).optional(),
       })
       .optional(),
   })

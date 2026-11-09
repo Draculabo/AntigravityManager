@@ -36,7 +36,10 @@ import {
  */
 describe('proxy gateway state ownership', () => {
   async function createContext() {
-    return NestFactory.createApplicationContext(ProxyModule, { logger: false });
+    return NestFactory.createApplicationContext(ProxyModule, {
+      logger: false,
+      abortOnError: false,
+    });
   }
 
   it('hands every protocol service the same shared instances', async () => {

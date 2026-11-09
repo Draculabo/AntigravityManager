@@ -211,7 +211,12 @@ export async function stopNestServer(): Promise<boolean> {
     try {
       detachResponsesWebSocketServer?.();
       detachResponsesWebSocketServer = null;
-      await app.close();
+      let closeFailure: unknown;
+      try {
+        await app.close();
+      } catch (error) {
+        closeFailure = error;
+      }
       const storeResults = await Promise.allSettled([
         trafficAuditService.close(),
         thoughtStoreService.close(),
@@ -219,6 +224,9 @@ export async function stopNestServer(): Promise<boolean> {
       const failures = storeResults.flatMap((result) =>
         result.status === 'rejected' ? [result.reason] : [],
       );
+      if (closeFailure !== undefined) {
+        failures.unshift(closeFailure);
+      }
       if (failures.length > 0) {
         throw new AggregateError(failures, 'Gateway diagnostic stores did not close');
       }
@@ -254,6 +262,26 @@ export function evictNestServerAccountLeaseAccount(accountId: string): boolean {
   }
 
   return app.get(AccountLeaseService).evictAccount(accountId);
+}
+
+export function quarantineNestServerAccountLeaseAccount(accountId: string): void {
+  if (app) {
+    app.get(AccountLeaseService).quarantineAccountInMemory(accountId);
+  }
+}
+
+export function getNestServerAccountMemoryQuarantineGeneration(accountId: string): number {
+  return app?.get(AccountLeaseService).getMemoryQuarantineGeneration(accountId) ?? 0;
+}
+
+export function clearNestServerAccountMemoryQuarantine(
+  accountId: string,
+  generation: number,
+): boolean {
+  if (app) {
+    return app.get(AccountLeaseService).clearMemoryQuarantine(accountId, generation);
+  }
+  return true;
 }
 
 export function updateNestServerAccountLeaseOAuthHealth(

@@ -8,7 +8,8 @@ export type ProxyModelAvailabilityReason =
   | 'model_not_supported'
   | 'model_forbidden'
   | 'quota_exhausted'
-  | 'rate_limited';
+  | 'rate_limited'
+  | 'capacity_exhausted';
 
 export interface ProxyModelAvailability {
   accountId: string;
@@ -29,7 +30,13 @@ const PERSISTENCE_KEY = 'proxy_model_availability.v1';
 const ProxyModelAvailabilitySchema = z.object({
   accountId: z.string().min(1),
   modelId: z.string().min(1),
-  reason: z.enum(['model_not_supported', 'model_forbidden', 'quota_exhausted', 'rate_limited']),
+  reason: z.enum([
+    'model_not_supported',
+    'model_forbidden',
+    'quota_exhausted',
+    'rate_limited',
+    'capacity_exhausted',
+  ]),
   unavailableUntil: z.number().finite(),
   status: z.number().int().min(100).max(599).optional(),
   detectedAt: z.number().finite(),
@@ -83,7 +90,9 @@ export class ModelAvailabilityService {
     const timeout =
       reason === 'model_not_supported' || reason === 'model_forbidden'
         ? MODEL_UNAVAILABLE_CACHE_MS
-        : DEFAULT_RATE_LIMIT_CACHE_MS;
+        : reason === 'capacity_exhausted'
+          ? 3 * 60 * 1000
+          : DEFAULT_RATE_LIMIT_CACHE_MS;
     this.entries.set(createKey(accountId, modelId), {
       accountId,
       modelId: normalizeModelId(modelId),

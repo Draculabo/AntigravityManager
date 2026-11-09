@@ -38,6 +38,7 @@ function createService(refreshAccessToken: AccountLeaseUpstream['refreshAccessTo
       structuredClone(accounts.find((account) => account.id === accountId)),
     ),
     updateToken: vi.fn(),
+    compareAndUpdateToken: vi.fn().mockResolvedValue(true),
     updateQuota: vi.fn(),
     mutateHealth: vi.fn(),
   };

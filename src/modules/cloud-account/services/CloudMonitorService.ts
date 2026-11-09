@@ -2,6 +2,7 @@ import fs from 'fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import { isAccountOAuthRecoveryBlocked } from '@/modules/cloud-account/persistence/oauth-recovery-service';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { GoogleAPIService, type QuotaData, type TokenResponse } from './GoogleAPIService';
 import {
@@ -11,10 +12,19 @@ import {
   createCloudAccountRefreshRequest,
   isRetryableInvalidGrantRefreshError,
 } from './CloudAccountRefreshService';
-import { clearValidationHealthAfterSuccessfulProbe } from './CloudAccountHealthService';
+import {
+  CloudAccountHealthService,
+  clearValidationHealthAfterSuccessfulProbe,
+  evictAccountFromActiveLeaseCache,
+  quarantineAccountInActiveLeaseCache,
+} from './CloudAccountHealthService';
+import { classifyForbiddenUpstreamError } from '@/modules/proxy-gateway/server/common/google-error-details';
 import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '@/shared/logging/logger';
-import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
+import {
+  classifyAccountStatusFromError,
+  isServiceDisabledReason,
+} from '@/modules/cloud-account/utils/account-status';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AntigravityAppTargetSchema } from '@/shared/platform/antigravityAppTarget';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
@@ -80,7 +90,36 @@ async function persistMonitorAccountStatusFromError(
 
   const classified = classifyAccountStatusFromError(error);
   if (classified) {
+    if (isServiceDisabledReason(classified.reason)) {
+      const classification = classifyForbiddenUpstreamError({ message: classified.reason });
+      if (classification.kind === 'service_disabled') {
+        await quarantineAccountInActiveLeaseCache(accountId);
+      }
+    }
     await CloudAccountRepo.setAccountStatus(accountId, classified.status, classified.reason);
+
+    if (isServiceDisabledReason(classified.reason)) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const forbiddenClassification = classifyForbiddenUpstreamError({
+        body: errorMsg,
+        message: errorMsg,
+      });
+      if (forbiddenClassification.kind === 'service_disabled') {
+        const detectedAt = Date.now();
+        await CloudAccountHealthService.mutateHealth(accountId, (health) => ({
+          ...health,
+          service_disabled: {
+            status: 'disabled',
+            reason: forbiddenClassification.reason ?? 'TOS_VIOLATION',
+            detected_at_ms: detectedAt,
+            appeal_url: forbiddenClassification.appealUrl,
+            appeal_url_link_text: forbiddenClassification.appealLinkText,
+            message: errorMsg.slice(0, 1000),
+          },
+        }));
+        await evictAccountFromActiveLeaseCache(accountId);
+      }
+    }
   }
 }
 
@@ -114,6 +153,12 @@ function mergeRefreshedToken(
       newToken.oauth_client_key,
     ),
   };
+}
+
+class MonitorTokenConflictError extends Error {
+  constructor() {
+    super('Account token changed during monitor refresh');
+  }
 }
 
 export class CloudMonitorService {
@@ -295,6 +340,9 @@ export class CloudMonitorService {
         if (account.health?.oauth?.refresh_blocked) {
           continue;
         }
+        if (account.health?.service_disabled || isAccountOAuthRecoveryBlocked(account.id)) {
+          continue;
+        }
         if (account.health?.validation && Date.now() < account.health.validation.next_probe_at_ms) {
           continue;
         }
@@ -322,8 +370,13 @@ export class CloudMonitorService {
               const newToken = await CloudAccountRefreshService.refreshAccessToken(
                 createCloudAccountRefreshRequest(account),
               );
-              account.token = mergeRefreshedToken(account.token, newToken, now);
-              await CloudAccountRepo.updateToken(account.id, account.token);
+              const updated = mergeRefreshedToken(account.token, newToken, now);
+              if (
+                !(await CloudAccountRepo.compareAndUpdateToken(account.id, account.token, updated))
+              ) {
+                throw new MonitorTokenConflictError();
+              }
+              account.token = updated;
               accessToken = newToken.access_token;
             } catch (refreshError) {
               logger.error(`Monitor: Token refresh failed for ${account.email}`, refreshError);
@@ -333,7 +386,8 @@ export class CloudMonitorService {
           }
         }
 
-        await delay(1000);
+        const pollJitterMs = Math.floor(Math.random() * 2000) + 1500;
+        await delay(pollJitterMs);
 
         let quota: QuotaData;
         const previousAICredits = account.quota?.ai_credits;
@@ -359,8 +413,17 @@ export class CloudMonitorService {
                   createCloudAccountRefreshRequest(account),
                 );
                 now = Math.floor(Date.now() / 1000);
-                account.token = mergeRefreshedToken(account.token, refreshedToken, now);
-                await CloudAccountRepo.updateToken(account.id, account.token);
+                const updated = mergeRefreshedToken(account.token, refreshedToken, now);
+                if (
+                  !(await CloudAccountRepo.compareAndUpdateToken(
+                    account.id,
+                    account.token,
+                    updated,
+                  ))
+                ) {
+                  throw new MonitorTokenConflictError();
+                }
+                account.token = updated;
                 accessToken = refreshedToken.access_token;
 
                 const retriedAICredits = await GoogleAPIService.fetchAICredits(
@@ -373,6 +436,9 @@ export class CloudMonitorService {
                   quota.ai_credits = previousAICredits;
                 }
               } catch (retryError) {
+                if (retryError instanceof MonitorTokenConflictError) {
+                  throw retryError;
+                }
                 logger.warn(
                   `Monitor: Failed to fetch credits for ${account.email} after token refresh`,
                   retryError,
@@ -398,8 +464,13 @@ export class CloudMonitorService {
               createCloudAccountRefreshRequest(account),
             );
             now = Math.floor(Date.now() / 1000);
-            account.token = mergeRefreshedToken(account.token, refreshedToken, now);
-            await CloudAccountRepo.updateToken(account.id, account.token);
+            const updated = mergeRefreshedToken(account.token, refreshedToken, now);
+            if (
+              !(await CloudAccountRepo.compareAndUpdateToken(account.id, account.token, updated))
+            ) {
+              throw new MonitorTokenConflictError();
+            }
+            account.token = updated;
             accessToken = refreshedToken.access_token;
 
             const retriedQuota = await GoogleAPIService.fetchQuota(accessToken, account.proxy_url);
@@ -439,6 +510,10 @@ export class CloudMonitorService {
         refreshedAccounts.push(account);
         proxyModelAvailabilityStore.clearCapabilityFailures(account.id);
       } catch (error) {
+        if (error instanceof MonitorTokenConflictError) {
+          logger.warn('Monitor: Account token changed during refresh; skipping stale result');
+          continue;
+        }
         logger.error(`Monitor: Failed to update ${account.email}`, error);
         await persistMonitorAccountStatusFromError(account.id, error);
         const classified = isRetryableInvalidGrantRefreshError(error)

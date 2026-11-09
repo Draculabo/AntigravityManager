@@ -15,12 +15,16 @@ interface AccountTierBadgeProps {
   className?: string;
 }
 
-export function AccountTierBadge({ account, unknownLabel, className }: AccountTierBadgeProps) {
+export function AccountTierBadge({
+  account,
+  unknownLabel: _unknownLabel,
+  className,
+}: AccountTierBadgeProps) {
   const tierKey = getAccountTierKey(account);
-  const tierLabel =
-    tierKey === ACCOUNT_TIER_UNKNOWN_KEY
-      ? unknownLabel
-      : formatAccountTierLabel(account.quota?.subscription_tier);
+  if (tierKey === ACCOUNT_TIER_UNKNOWN_KEY) {
+    return null;
+  }
+  const tierLabel = formatAccountTierLabel(account.quota?.subscription_tier);
 
   return (
     <Badge
@@ -28,7 +32,6 @@ export function AccountTierBadge({ account, unknownLabel, className }: AccountTi
       className={cn(
         'h-5 max-w-28 shrink-0 border px-1.5 text-[10px] font-semibold',
         DEFAULT_TIER_BADGE_CLASS,
-        tierKey === ACCOUNT_TIER_UNKNOWN_KEY && 'text-muted-foreground',
         className,
       )}
       title={tierLabel}

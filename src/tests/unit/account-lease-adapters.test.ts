@@ -27,6 +27,7 @@ describe('AccountLeaseService adapters', () => {
       getAccounts: vi.fn().mockResolvedValue([account]),
       getAccount: vi.fn().mockResolvedValue(account),
       updateToken: vi.fn().mockResolvedValue(undefined),
+      compareAndUpdateToken: vi.fn().mockResolvedValue(true),
       updateQuota: vi.fn().mockResolvedValue(undefined),
       mutateHealth: vi.fn(),
     };
@@ -44,8 +45,9 @@ describe('AccountLeaseService adapters', () => {
     expect(upstream.fetchProjectId).toHaveBeenCalledWith('access-token', undefined);
     // Hydration publishes the lease before its queued persistence finishes.
     await service.onModuleDestroy();
-    expect(accountStore.updateToken).toHaveBeenCalledWith(
+    expect(accountStore.compareAndUpdateToken).toHaveBeenCalledWith(
       'acc-1',
+      expect.objectContaining({ access_token: 'access-token' }),
       expect.objectContaining({
         project_id: 'resolved-project',
       }),

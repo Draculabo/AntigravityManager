@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { logger } from '@/shared/logging/logger';
 import {
   CloudAccount,
@@ -107,6 +107,11 @@ export class CloudAccountRepo {
     } finally {
       raw.close();
     }
+    const [{ createProfileOAuthRecoveryJournal }, { recoverOAuthJournal }] = await Promise.all([
+      import('./oauth-recovery-journal'),
+      import('./oauth-recovery-service'),
+    ]);
+    await recoverOAuthJournal(createProfileOAuthRecoveryJournal());
   }
 
   static async addAccount(account: CloudAccount): Promise<void> {
@@ -225,6 +230,38 @@ export class CloudAccountRepo {
     }
   }
 
+  static async compareAndUpdateToken(
+    id: string,
+    expected: CloudTokenData,
+    token: CloudTokenData,
+  ): Promise<boolean> {
+    const validated = CloudTokenDataSchema.parse(token);
+    const { raw, orm } = getCloudDb();
+    try {
+      const row = orm
+        .select({ tokenJson: accounts.tokenJson })
+        .from(accounts)
+        .where(eq(accounts.id, id))
+        .get();
+      if (
+        !row ||
+        JSON.stringify(parseCloudToken(id, row.tokenJson)) !==
+          JSON.stringify(CloudTokenDataSchema.parse(expected))
+      ) {
+        return false;
+      }
+      return (
+        orm
+          .update(accounts)
+          .set({ tokenJson: JSON.stringify(validated) })
+          .where(and(eq(accounts.id, id), eq(accounts.tokenJson, row.tokenJson)))
+          .run().changes === 1
+      );
+    } finally {
+      raw.close();
+    }
+  }
+
   static async updateQuota(id: string, quota: CloudQuotaData): Promise<void> {
     // Validate quota data before persistence
     CloudQuotaDataSchema.parse(quota);
@@ -251,6 +288,41 @@ export class CloudAccountRepo {
       if (result.changes === 0) {
         throw new Error(`updateHealth: No account found with ID ${id}`);
       }
+    } finally {
+      raw.close();
+    }
+  }
+
+  static async compareAndUpdateHealth(
+    id: string,
+    expectedToken: CloudTokenData,
+    expectedHealth: CloudAccount['health'],
+    health: CloudAccount['health'],
+  ): Promise<boolean> {
+    const parsedHealth = health === undefined ? undefined : CloudAccountHealthSchema.parse(health);
+    const { raw, orm } = getCloudDb();
+    try {
+      const row = orm.select().from(accounts).where(eq(accounts.id, id)).get();
+      if (
+        !row ||
+        JSON.stringify(parseCloudToken(id, row.tokenJson)) !==
+          JSON.stringify(CloudTokenDataSchema.parse(expectedToken)) ||
+        JSON.stringify(parseCloudHealth(id, row.healthJson)) !== JSON.stringify(expectedHealth)
+      ) {
+        return false;
+      }
+      return (
+        raw
+          .prepare(
+            'UPDATE accounts SET health_json = ? WHERE id = ? AND token_json = ? AND health_json IS ?',
+          )
+          .run(
+            parsedHealth ? JSON.stringify(parsedHealth) : null,
+            id,
+            row.tokenJson,
+            row.healthJson,
+          ).changes === 1
+      );
     } finally {
       raw.close();
     }
