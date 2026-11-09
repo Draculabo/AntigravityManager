@@ -421,6 +421,7 @@ function SettingsPage() {
                     <SelectItem value="tr">{t('settings.language.turkish')}</SelectItem>
                     <SelectItem value="fr">{t('settings.language.french')}</SelectItem>
                     <SelectItem value="pt-BR">{t('settings.language.portuguese')}</SelectItem>
+                    <SelectItem value="ja">{t('settings.language.japanese')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
